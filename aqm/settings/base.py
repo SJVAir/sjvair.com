@@ -60,6 +60,8 @@ INSTALLED_APPS = [
     'huey.contrib.djhuey',
     'localflavor',
     'storages',
+
+    'aqm.apps.accounts',
 ]
 
 MIDDLEWARE = [
@@ -112,7 +114,7 @@ AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
 )
 
-# AUTH_USER_MODEL = 'users.User'
+AUTH_USER_MODEL = 'accounts.User'
 
 
 # Password validation
@@ -154,7 +156,6 @@ LANGUAGE_CODE = 'en'
 
 LANGUAGES = (
     ('en', gettext_lazy('English')),
-    ('es', gettext_lazy('Spanish')),
 )
 
 # Static files (CSS, JavaScript, Images)
