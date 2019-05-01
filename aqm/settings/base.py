@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'storages',
 
     'aqm.apps.accounts',
+    'aqm.apps.sensors',
 ]
 
 MIDDLEWARE = [
@@ -102,10 +103,10 @@ WSGI_APPLICATION = 'aqm.wsgi.application'
 # https://docs.djangoproject.com/en/2.2/ref/settings/#databases
 
 DATABASES = {
-    'default': dj_database_url.config()
+    'default': dj_database_url.config(
+        engine='django.contrib.gis.db.backends.postgis'
+    )
 }
-
-DATABASES['default']['ENGINE'] = 'django.contrib.gis.db.backends.postgis'
 
 
 # Auth
