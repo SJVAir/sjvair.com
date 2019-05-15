@@ -19,7 +19,11 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from aqm.apps.sensors.urls import urlpatterns as sensor_urls
+
 urlpatterns = [
+    path('sensors', include('aqm.apps.sensors.urls', namespace='sensors')),
+
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
     path('batcave/', admin.site.urls),

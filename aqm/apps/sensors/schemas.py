@@ -33,13 +33,7 @@ PM2_SCHEMA = {
 PAYLOAD_SCHEMA = {
     'type': 'object',
     'properties': {
-        'temperature': {
-            'type': 'object',
-            'properties': {
-                'fahrenheit': {'type': 'number'},
-                'fahrenheit': {'type': 'number'},
-            }
-        },
+        'celcius': {'type': 'number'},
         'humidity': {'type': 'number'},
         'barometric_pressure': {'type': 'number'},
         'voc': {'type': 'number'},
@@ -48,7 +42,15 @@ PAYLOAD_SCHEMA = {
             'properties': {
                 'a': PM2_SCHEMA,
                 'b': PM2_SCHEMA,
-            }
-        }
-    }
+            },
+            'required': ['a', 'b']
+        },
+    },
+    'required': [
+        'celcius',
+        'humidity',
+        # 'barometric_pressue',
+        # 'voc',
+        'pm2'
+    ]
 }

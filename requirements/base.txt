@@ -1,4 +1,4 @@
-Django==2.2
+Django==2.2.1
 
 dj-database-url==0.5.0
 dj-static==0.0.6
@@ -38,7 +38,10 @@ psycopg2==2.8.1 --no-binary psycopg2
 pylibmc==1.6.0
 python-dotenv==0.10.1
 pytz==2019.1
+PyYAML==5.1
 redis==3.2.1
 sentry-sdk==0.7.10
 Unipath==1.1
 whitenoise==4.1.2
+
+git+https://github.com/dmpayton/django-resticus#develop
