@@ -1,0 +1,5 @@
+- model: sensors.sensor
+  pk: tVHjUABhRs2Di3eZaufwgw
+  fields:
+    name: RAHS
+    position: SRID=4326;POINT (-119.7987389 36.7627216)

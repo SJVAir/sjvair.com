@@ -48,6 +48,7 @@ sudo apt-get install -y postgresql-10 postgresql-server-dev-10 postgresql-10-pos
 # Create vagrant pgsql superuser with password vagrant and database vagrant_dev
 sudo su postgres -c "psql -c \"CREATE ROLE vagrant SUPERUSER LOGIN PASSWORD 'vagrant'\""
 sudo su postgres -c "createdb -E UTF8 -T template0 --locale=en_US.utf8 -O vagrant vagrant_dev"
+# sudo su postgres -c "dropdb vagrant_dev"
 
 # Install PostGIS
 sudo su postgres -c "psql -c \"CREATE EXTENSION postgis\""
