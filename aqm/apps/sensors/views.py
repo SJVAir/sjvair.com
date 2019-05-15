@@ -36,12 +36,12 @@ class SensorDetail(generics.DetailUpdateEndpoint):
 class SensorData(generics.ListCreateEndpoint):
     model = SensorData
     form_class = PayloadForm
-    fields = ['timestamp', 'position', 'celcius', 'fahrenheit',
+    fields = ['id', 'timestamp', 'position', 'celcius', 'fahrenheit',
         'humidity', 'pm2']
 
     @cached_property
     def sensor(self):
-        get_object_or_404(Sensor, pk=self.kwargs['pk'])
+        return get_object_or_404(Sensor, pk=self.kwargs['sensor_id'])
 
     def get_queryset(self):
         return self.model.objects.filter(sensor_id=self.sensor.pk)
@@ -51,4 +51,4 @@ class SensorData(generics.ListCreateEndpoint):
         self.object.sensor = self.sensor
         self.object.position = self.sensor.position
         self.object.save()
-        return {'object': self.serialize(self.object)}
+        return {'data': self.serialize(self.object, include=['sensor'])}

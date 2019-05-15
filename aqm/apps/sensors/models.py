@@ -1,7 +1,10 @@
+from decimal import Decimal
+
 from django.contrib.gis.db import models
 from django.contrib.postgres.fields import JSONField
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
+from resticus.encoders import JSONEncoder
 
 from aqm.utils.validators import JSONSchemaValidator
 
@@ -39,27 +42,28 @@ class SensorData(models.Model):
         on_delete=models.CASCADE)
     position = models.PointField()
 
-    payload = JSONField(validators=[JSONSchemaValidator(PAYLOAD_SCHEMA)])
+    payload = JSONField(encoder=JSONEncoder, validators=[JSONSchemaValidator(PAYLOAD_SCHEMA)])
     is_processed = models.BooleanField(default=False)
 
     celcius = models.DecimalField(max_digits=4, decimal_places=1, null=True)
     humidity = models.DecimalField(max_digits=4, decimal_places=1, null=True)
     # Air pressure? Altitude?
 
-    pm2 = JSONField(null=True, validators=[
+    pm2 = JSONField(null=True, encoder=JSONEncoder, validators=[
         JSONSchemaValidator(PAYLOAD_SCHEMA['properties']['pm2'])
     ])
 
     objects = SensorDataQuerySet.as_manager()
 
     def __str__(self):
-        return f'<SensorData timestamp={self.timestamp} position={self.position}>'
+        return f'timestamp={self.timestamp} position={self.position}'
 
     def get_fahrenheit(self):
-        return (self.celcius * (9. / 5.)) + 32
+        if self.celcius:
+            return (self.celcius * (Decimal(9) / Decimal(5))) + 32
 
     def set_fahrenheit(self, value):
-        self.celcius = (value - 32) * (5. / 9.)
+        self.celcius = (value - 32) * (Decimal(5) / Decimal(9))
 
     fahrenheit = property(get_fahrenheit, set_fahrenheit)
 
