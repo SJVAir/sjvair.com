@@ -23,7 +23,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     end
 
     # Config hostname and IP address so entry can be added to HOSTS file
-    config.vm.hostname = "aqm-vagrant"
+    config.vm.hostname = "camp-vagrant"
 
     # Configure a synced folder between HOST and GUEST
     config.vm.synced_folder ".", "/vagrant", id: "vagrant-root", :mount_options => ["dmode=744","fmode=744"]

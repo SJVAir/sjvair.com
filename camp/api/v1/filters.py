@@ -1,6 +1,6 @@
 from resticus.filters import FilterSet
 
-from .models import Sensor
+from camp.apps.sensors.models import Sensor
 
 
 class SensorFilter(FilterSet):

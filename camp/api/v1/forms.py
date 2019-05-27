@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import SensorData
+from camp.apps.sensors.models import SensorData
 
 class PayloadForm(forms.ModelForm):
     class Meta:

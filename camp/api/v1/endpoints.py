@@ -6,7 +6,7 @@ from resticus import generics
 
 from .filters import SensorFilter
 from .forms import PayloadForm
-from .models import Sensor, SensorData
+from camp.apps.sensors.models import Sensor, SensorData
 
 
 class SensorList(generics.ListEndpoint):

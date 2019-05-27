@@ -7,7 +7,7 @@ from django.utils.translation import ugettext_lazy as _
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from nameparser.parser import HumanName
 
-from aqm.apps.accounts import managers
+from camp.apps.accounts import managers
 
 
 class User(AbstractBaseUser, PermissionsMixin, models.Model):
