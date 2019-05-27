@@ -1,7 +1,5 @@
-Air Quality Monitoring - API Server
-===================================
-
-Community Air Monitoring (CAM)
+Community Air Monitoring Project
+================================
 
 California Air Resource Board (CARB)
 
@@ -17,14 +15,14 @@ https://ww2.arb.ca.gov/homepage
 2. Get the code
 
 ```
-host:~$ git clone git@github.com:dmpayton/aqm-server.git
-host:~$ cd aqm-server
+host:~$ git clone git@github.com:dmpayton/camp-server.git
+host:~$ cd camp-server
 ```
 
 3. Provision the vagrant box
 
 ```
-host:~/aqm-server$ vagrant up
+host:~/camp-server$ vagrant up
 ```
 
 This will automatically install Python dependencies and run database migrations.
@@ -32,7 +30,7 @@ This will automatically install Python dependencies and run database migrations.
 4. Shell in and navigate to the project directory
 
 ```
-host:~/aqm-server$ vagrant ssh
+host:~/camp-server$ vagrant ssh
 vagrant:~$ cd /vagrant
 ```
 
@@ -75,13 +73,13 @@ vagrant:/vagrant$ python manage.py migrate
 Suspend the box without fully shutting it down (makes `vagrant up` faster):
 
 ```
-host:~/aqm-server$ vagrant suspend
+host:~/camp-server$ vagrant suspend
 ```
 
 Fully shut down the box:
 
 ```
-host:~/aqm-server$ vagrant halt
+host:~/camp-server$ vagrant halt
 ```
 
 ### How do I access Postgres from outside my Vagrant box?

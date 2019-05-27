@@ -6,7 +6,7 @@ from django.contrib.postgres.fields import JSONField
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from resticus.encoders import JSONEncoder
 
-from aqm.utils.validators import JSONSchemaValidator
+from camp.utils.validators import JSONSchemaValidator
 
 from .schemas import PM2_SCHEMA, PAYLOAD_SCHEMA
 from .querysets import SensorQuerySet, SensorDataQuerySet

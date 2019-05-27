@@ -10,12 +10,12 @@ from django.utils import timezone
 
 from resticus.encoders import JSONEncoder
 
-from . import views
-from .models import Sensor, SensorData
+from . import endpoints
+from camp.apps.sensors.models import Sensor, SensorData
 
-sensor_list = views.SensorList.as_view()
-sensor_detail = views.SensorDetail.as_view()
-sensor_data = views.SensorData.as_view()
+sensor_list = endpoints.SensorList.as_view()
+sensor_detail = endpoints.SensorDetail.as_view()
+sensor_data = endpoints.SensorData.as_view()
 
 
 def streaming_json(stream):
@@ -84,7 +84,7 @@ def fake_sensor_data(sensor, payload=None, process=True, save=True):
     return data
 
 
-class SensorTests(TestCase):
+class SensorAPITests(TestCase):
     fixtures = ['sensors.yaml']
 
     def setUp(self):
@@ -92,7 +92,7 @@ class SensorTests(TestCase):
         self.sensor = Sensor.objects.get(name='RAHS')
 
     def test_get_sensor_list(self):
-        url = reverse('sensors:sensor-list')
+        url = reverse('api:v1:sensor-list')
         request = self.factory.get(url)
         response = sensor_list(request)
         assert response.status_code == 200
@@ -101,7 +101,7 @@ class SensorTests(TestCase):
         assert content['data'][0]['id'] == str(self.sensor.pk)
 
     def test_get_sensor_detail(self):
-        url = reverse('sensors:sensor-detail', kwargs={'sensor_id': self.sensor.pk})
+        url = reverse('api:v1:sensor-detail', kwargs={'sensor_id': self.sensor.pk})
         request = self.factory.get(url)
         response = sensor_detail(request, sensor_id=self.sensor.pk)
         assert response.status_code == 200
@@ -116,7 +116,7 @@ class SensorTests(TestCase):
             data.timestamp = now - timedelta(minutes=10 * x)
             data.save()
 
-        url = reverse('sensors:sensor-data', kwargs={'sensor_id': self.sensor.pk})
+        url = reverse('api:v1:sensor-data', kwargs={'sensor_id': self.sensor.pk})
         request = self.factory.get(url)
         response = sensor_data(request, sensor_id=self.sensor.pk)
         assert response.status_code == 200
@@ -126,13 +126,10 @@ class SensorTests(TestCase):
 
     def test_create_sensor_data(self):
         payload = fake_sensor_payload()
-        url = reverse('sensors:sensor-data', kwargs={'sensor_id': self.sensor.pk})
+        url = reverse('api:v1:sensor-data', kwargs={'sensor_id': self.sensor.pk})
         request = self.factory.post(url, {'payload': payload}, content_type='application/json')
         response = sensor_data(request, sensor_id=self.sensor.pk)
         assert response.status_code == 200
 
         content = streaming_json(response.streaming_content)
         assert content['data']['sensor'] == str(self.sensor.pk)
-
-
-

@@ -1,5 +1,5 @@
 """
-WSGI config for aqm project.
+WSGI config for camp project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 

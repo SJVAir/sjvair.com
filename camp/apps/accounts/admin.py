@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import ugettext_lazy as _
 
-from aqm.apps.accounts.models import User
+from camp.apps.accounts.models import User
 
 
 @admin.register(User)
