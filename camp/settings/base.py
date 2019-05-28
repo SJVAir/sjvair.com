@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'localflavor',
     'storages',
 
+    'camp.api',
     'camp.apps.accounts',
     'camp.apps.sensors',
 ]

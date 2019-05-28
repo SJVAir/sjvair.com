@@ -1,0 +1,80 @@
+{% load staticfiles %}
+<!DOCTYPE html>
+<html lang="en">
+<head class="has-navbar-fixed-top">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <meta name="description" content="Community Air Monitoring Project brought to you by the Central California Asthma Collaborative">
+
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="theme-color" content="#ffffff">
+
+    <title>{% block title %}Community Air Monitoring Project{% endblock %}</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.5/css/bulma.min.css" integrity="sha256-vK3UTo/8wHbaUn+dTQD0X6dzidqc5l7gczvH+Bnowwk=" crossorigin="anonymous" />
+
+    <!-- <link type="text/css" rel="stylesheet" href="{% static 'css/style.css' %}" /> -->
+    <link type="text/css" rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato:400,400i,700,700i,900,900i|Roboto+Slab" />
+
+    <script defer src="https://pro.fontawesome.com/releases/v5.8.2/js/all.js" integrity="sha384-RLPiEwcAdrH2NjFcwJipJtlFoIN1xvqPYeeDX5yYtSNu+HTIkQCDvPQ9thsUnPUS" crossorigin="anonymous"></script>
+
+    {% block extra-head %}{% endblock %}
+</head>
+<body class="{% block body-class %}{% endblock %}">
+
+<nav class="navbar is-fixed-top is-info" role="navigation" aria-label="main navigation">
+    <div class="navbar-brand">
+        <a class="navbar-item" href="/">
+            <span class="fal fa-lungs fa-2x"></span>
+            &nbsp;
+            <span>Community Air Monitoring Project</span>
+        </a>
+
+        <a role="button" class="navbar-burger burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+        </a>
+    </div>
+
+    <div id="navbarBasicExample" class="navbar-menu">
+        <div class="navbar-end">
+            <a href="http://cencalasthma.org" class="navbar-item">CenCalAsthma.org</a>
+        </div>
+    </div>
+</nav>
+
+<div class="main">
+    {% block main %}
+    <div class="content">
+        {% block messages %}
+            {% for message in messages %}
+                <article class="message is-{{ message.tags }}">
+                    <div class="message-header">
+                        <button class="delete" aria-label="delete"></button>
+                    </div>
+                    <div class="message-body">{{ message|safe }}</div>
+                </article>
+            {% endfor %}
+        {% endblock %}
+        {% block content %}{% endblock %}
+    </div>
+    {% endblock %}
+</div>
+
+</body>
+
+{% if settings.SENTRY_DSN_CLIENT %}
+<script type="text/javascript" src="https://cdn.ravenjs.com/3.12.1/raven.min.js"></script>
+<script type="text/javascript">
+    Raven.config('{{ settings.SENTRY_DSN_CLIENT }}', {
+        release: '{{ settings.COMMIT_HASH }}'
+    }).install();
+</script>
+{% endif %}
+
+{% block javascripts %}{% endblock %}
+
+</html>
