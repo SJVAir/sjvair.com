@@ -1,6 +1,6 @@
 import django_heroku
 
-from .common import *
+from .base import *
 
 # django_heroku.settings(locals())
 
