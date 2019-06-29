@@ -168,7 +168,7 @@ STATIC_ROOT = BASE_DIR.child('public', 'static')
 STATIC_URL = '/static/'
 
 STATICFILES_DIRS = [
-    PROJECT_DIR.child('static'),
+    # PROJECT_DIR.child('static'),
     # BASE_DIR.child('dist'),
 ]
 
