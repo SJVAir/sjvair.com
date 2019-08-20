@@ -1,1 +1,12 @@
 {% extends 'base.html' %}
+{% load staticfiles %}
+
+
+{% block content %}
+<div id="map"></div>
+{% endblock %}
+
+{% block javascripts %}
+<script type="text/javascript" src="{% static 'js/lib/vue/dist/vue.min.js' %}"></script>
+<script type="text/javascript" src="{% static 'js/map.umd.min.js' %}"></script>
+{% endblock %}

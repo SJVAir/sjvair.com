@@ -21,12 +21,13 @@ from unipath import Path
 
 # Build paths inside the project like this: BASE_DIR.child(...)
 BASE_DIR = Path(__file__).absolute().ancestor(3)
-
 PROJECT_DIR = Path(__file__).absolute().ancestor(2)
 
 COMMIT_HASH = os.environ.get('HEROKU_SLUG_COMMIT')
 if COMMIT_HASH is None:
-    COMMIT_HASH = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).strip()
+    COMMIT_HASH = subprocess.check_output(
+        ['git', 'rev-parse', '--short', 'HEAD']
+    ).strip()
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.2/howto/deployment/checklist/
@@ -58,6 +59,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'django_filters',
     'huey.contrib.djhuey',
+    'livereload',
     'localflavor',
     'storages',
 
@@ -141,6 +143,7 @@ PASSWORD_HASHERS = [
     'django.contrib.auth.hashers.Argon2PasswordHasher',
 ]
 
+
 # Internationalization
 # https://docs.djangoproject.com/en/2.2/topics/i18n/
 
@@ -160,6 +163,7 @@ LANGUAGES = (
     ('en', gettext_lazy('English')),
 )
 
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/2.2/howto/static-files/
 
@@ -168,19 +172,28 @@ STATIC_ROOT = BASE_DIR.child('public', 'static')
 STATIC_URL = '/static/'
 
 STATICFILES_DIRS = [
-    # PROJECT_DIR.child('static'),
-    # BASE_DIR.child('dist'),
+    BASE_DIR.child('assets'),
+    BASE_DIR.child('dist'),
 ]
 
 STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-    # 'yarn.finders.YarnFinder',
+    'yarn.finders.YarnFinder',
 ]
 
 MEDIA_ROOT = BASE_DIR.child('public', 'media')
 
 MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
+
+
+# django-yarn
+
+YARN_STATIC_FILES_PREFIX = 'js/lib'
+
+YARN_FILE_PATTERNS = {
+    'vue': ['dist/vue.min.js']
+}
 
 
 # django-cors-headers
