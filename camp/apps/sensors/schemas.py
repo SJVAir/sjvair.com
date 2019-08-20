@@ -35,7 +35,7 @@ PAYLOAD_SCHEMA = {
     'properties': {
         'celcius': {'type': 'number'},
         'humidity': {'type': 'number'},
-        'barometric_pressure': {'type': 'number'},
+        'pressure': {'type': 'number'},
         'voc': {'type': 'number'},
         'pm2': {
             'type': 'object',
@@ -49,8 +49,9 @@ PAYLOAD_SCHEMA = {
     'required': [
         'celcius',
         'humidity',
-        # 'barometric_pressue',
-        # 'voc',
+        'altitude',
+        'pressure',
+        'voc',
         'pm2'
     ]
 }

@@ -37,7 +37,7 @@ class SensorData(generics.ListCreateEndpoint):
     model = SensorData
     form_class = PayloadForm
     fields = ['id', 'timestamp', 'position', 'celcius', 'fahrenheit',
-        'humidity', 'pm2']
+        'humidity', 'pressure', 'pm2']
 
     @cached_property
     def sensor(self):

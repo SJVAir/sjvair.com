@@ -4,6 +4,7 @@ from django.contrib.gis.db import models
 from django.contrib.postgres.fields import JSONField
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
+from model_utils import Choices
 from resticus.encoders import JSONEncoder
 
 from camp.utils.validators import JSONSchemaValidator
@@ -13,6 +14,8 @@ from .querysets import SensorQuerySet, SensorDataQuerySet
 
 
 class Sensor(models.Model):
+    PLACEMENT = Choices('indoors', 'outdoors')
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -22,6 +25,11 @@ class Sensor(models.Model):
     )
     name = models.CharField(max_length=250)
     position = models.PointField()
+    placement = models.CharField(
+        max_length=10,
+        choices=PLACEMENT,
+        default=PLACEMENT.outdoor
+    )
 
     objects = SensorQuerySet.as_manager()
 
@@ -41,19 +49,33 @@ class SensorData(models.Model):
     sensor = models.ForeignKey('sensors.Sensor', related_name='data',
         on_delete=models.CASCADE)
     position = models.PointField()
+    placement = models.CharField(
+        max_length=10,
+        choices=Sensor.PLACEMENT,
+        default=Sensor.PLACEMENT.outdoor
+    )
 
     payload = JSONField(encoder=JSONEncoder, validators=[JSONSchemaValidator(PAYLOAD_SCHEMA)])
     is_processed = models.BooleanField(default=False)
 
+    # BME280
     celcius = models.DecimalField(max_digits=4, decimal_places=1, null=True)
     humidity = models.DecimalField(max_digits=4, decimal_places=1, null=True)
-    # Air pressure? Altitude?
+    pressure = models.models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    altitude = models.models.DecimalField(max_digits=5, decimal_places=2, null=True)
 
-    pm2 = JSONField(null=True, encoder=JSONEncoder, validators=[
-        JSONSchemaValidator(PAYLOAD_SCHEMA['properties']['pm2'])
+    # PMS5003
+    pm2_a = JSONField(null=True, encoder=JSONEncoder, validators=[
+        JSONSchemaValidator(PM2_SCHEMA)
+    ])
+    pm2_b = JSONField(null=True, encoder=JSONEncoder, validators=[
+        JSONSchemaValidator(PM2_SCHEMA)
     ])
 
     objects = SensorDataQuerySet.as_manager()
+
+    class Meta:
+        ordering = ('-timestamp',)
 
     def __str__(self):
         return f'timestamp={self.timestamp} position={self.position}'
@@ -68,8 +90,10 @@ class SensorData(models.Model):
     fahrenheit = property(get_fahrenheit, set_fahrenheit)
 
     def process(self):
+        # TODO: What sort of post-processing do we need to do?
         self.celcius = self.payload['celcius']
         self.humidity = self.payload['humidity']
+        self.pressure = self.payload['pressure']
         self.pm2_a = self.payload['pm2']['a']
         self.pm2_b = self.payload['pm2']['b']
         self.is_processed = True

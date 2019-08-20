@@ -27,7 +27,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
     # Configure a synced folder between HOST and GUEST
     config.vm.synced_folder ".", "/vagrant", id: "camp-server", :mount_options => ["dmode=744","fmode=744"]
-    config.vm.synced_folder "../frontend", "/vagrant/frontend", id: "camp-frontend", :mount_options => ["dmode=744","fmode=744"]
+    # config.vm.synced_folder "../frontend", "/vagrant/frontend", id: "camp-frontend", :mount_options => ["dmode=744","fmode=744"]
 
     # Kick off a shell script to install dependencies
     config.vm.provision "shell", privileged: true, path: "./vagrant/provision-root.sh"
