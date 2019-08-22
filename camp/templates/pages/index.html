@@ -1,12 +1,17 @@
 {% extends 'base.html' %}
 {% load staticfiles %}
 
+{% block body-class %}map{% endblock %}
 
-{% block content %}
-<div id="map"></div>
+
+{% block main %}
+<div id="app"></div>
 {% endblock %}
 
 {% block javascripts %}
+<script type="text/javascript">
+    window.GOOGLE_MAPS_API_KEY = '{{ settings.GOOGLE_MAPS_API_KEY }}';
+</script>
 <script type="text/javascript" src="{% static 'js/lib/vue/dist/vue.min.js' %}"></script>
 <script type="text/javascript" src="{% static 'js/map.umd.min.js' %}"></script>
 {% endblock %}

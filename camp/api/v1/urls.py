@@ -1,11 +1,7 @@
-from django.urls import path
-
-from . import endpoints
+from django.urls import include, path
 
 app_name = 'api'
 
 urlpatterns = [
-    path('', endpoints.SensorList.as_view(), name='sensor-list'),
-    path('<str:sensor_id>/', endpoints.SensorDetail.as_view(), name='sensor-detail'),
-    path('<str:sensor_id>/data/', endpoints.SensorData.as_view(), name='sensor-data'),
+    path('sensors/', include('camp.api.v1.sensors.urls', namespace='sensors')),
 ]

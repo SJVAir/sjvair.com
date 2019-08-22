@@ -6,7 +6,7 @@ from django.urls import include, path, re_path
 from camp.utils.views import PageTemplate
 
 urlpatterns = [
-    path('api', include('camp.api.urls', namespace='v1')),
+    path('api/', include('camp.api.urls', namespace='api')),
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),

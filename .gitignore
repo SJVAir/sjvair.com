@@ -105,3 +105,8 @@ venv.bak/
 
 # Vagrant
 .vagrant/
+
+# Node
+node_modules/
+
+public/

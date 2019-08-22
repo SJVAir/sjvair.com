@@ -12,11 +12,17 @@ class SensorFilter(FilterSet):
                 'contains',
                 'icontains'
             ],
+            'altitude': [
+                'exact',
+                'gt', 'gte',
+                'lt', 'lte'
+            ],
             'position': [
                 'exact',
                 'bbcontains',
                 'bboverlaps',
                 'distance_gt',
                 'distance_lt'
-            ]
+            ],
+            'location': ['exact'],
         }

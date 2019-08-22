@@ -55,18 +55,15 @@ def collectstatic(ctx):
 
 
 def vue(ctx, name):
-    ctx.run(
-        command=f'''yarn build \
-            --no-clean \
-            --formats umd-min \
-            --target lib \
-            --name {name} \
-            --dest {dir('./dist/js')} \
-            {assets(f'./{name}/main.js')}
-        ''',
-        pty=True,
-        warn=False,
-    )
+    command = f'''yarn build \
+        --no-clean \
+        --formats umd-min \
+        --target lib \
+        --name {name} \
+        --dest {dir('./dist/js')} \
+        {assets(f'./{name}/main.js')}
+    '''
+    ctx.run(command, pty=True, warn=False)
 
 
 @invoke.task()
