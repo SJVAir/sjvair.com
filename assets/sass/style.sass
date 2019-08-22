@@ -1,3 +1,23 @@
 @charset "utf-8";
 
 @import "bulma/bulma.sass";
+
+html, body
+    height: 100vh
+    width: 100vw
+
+.navbar
+    .navbar-title
+        @extend .navbar-item
+        font-size: $size-5
+
+        .icon
+            margin-right: .5rem
+
+body.map
+    .main
+        height: calc(100% - #{$navbar-height})
+
+    #app, #map, .columns, .column
+        height: 100%
+        width: 100%

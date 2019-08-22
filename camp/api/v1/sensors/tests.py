@@ -61,8 +61,8 @@ def fake_sensor_payload():
     return dict(
         celcius=random.randint(100, 400) / 10, # 10-40C (50-104F)
         humidity=random.randint(300, 700) / 10, # 30-70% RH
-        barometric_pressure=0, # TODO
-        voc=200, # TODO
+        pressure=0, # TODO
+        voc=0, # TODO
         pm2=dict(
             a=dict(pm2_std + pm2_env + particles),
             # Same data, with some slight random variation

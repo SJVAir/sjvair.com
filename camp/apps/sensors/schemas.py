@@ -49,7 +49,6 @@ PAYLOAD_SCHEMA = {
     'required': [
         'celcius',
         'humidity',
-        'altitude',
         'pressure',
         'voc',
         'pm2'

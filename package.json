@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "camp",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,7 +10,8 @@
   "dependencies": {
     "bulma": "^0.7.5",
     "core-js": "^2.6.5",
-    "vue": "^2.6.10"
+    "vue": "^2.6.10",
+    "vue-resource": "^1.5.1"
   },
   "devDependencies": {
     "@vue/cli-plugin-babel": "^3.10.0",
