@@ -9,7 +9,7 @@
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
     "lint": "vue-cli-service lint",
-    "heroku-postbuild": "invoke build collect"
+    "heroku-postbuild": "invoke build"
   },
   "dependencies": {
     "bulma": "^0.7.5",
