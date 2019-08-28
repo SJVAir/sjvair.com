@@ -39,7 +39,6 @@ PAYLOAD_SCHEMA = {
         'voc': {'type': 'number'},
         'pm2_a': PM2_SCHEMA,
         'pm2_b': PM2_SCHEMA,
-        },
     },
     'required': [
         'celcius',
