@@ -206,3 +206,9 @@ CORS_ALLOW_CREDENTIALS = True
 # Google Maps
 
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
+
+# django-resticus
+
+RESTICUS = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
+}
