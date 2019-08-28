@@ -38,6 +38,7 @@ class SensorMixin():
 
 
 class SensorList(SensorMixin, generics.ListEndpoint):
+    # streaming = False
     filter_class = SensorFilter
 
 
