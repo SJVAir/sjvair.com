@@ -17,7 +17,6 @@ class SensorMixin():
         'is_active',
         'position',
         'location',
-        'altitude',
         ('latest', {
             'fields': [
                 'id',
@@ -38,7 +37,7 @@ class SensorMixin():
 
 
 class SensorList(SensorMixin, generics.ListEndpoint):
-    # streaming = False
+    streaming = False
     filter_class = SensorFilter
 
 
