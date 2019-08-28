@@ -118,8 +118,8 @@ class SensorData(models.Model):
         self.celcius = self.payload.get('celcius')
         self.humidity = self.payload.get('humidity')
         self.pressure = self.payload.get('pressure')
-        self.pm2_a = self.payload.get('pm2', {}).get('a')
-        self.pm2_b = self.payload.get('pm2', {}).get('b')
+        self.pm2_a = self.payload.get('pm2_a')
+        self.pm2_b = self.payload.get('pm2_b')
         self.is_processed = True
 
         if commit:
