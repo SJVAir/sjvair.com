@@ -1,5 +1,5 @@
-Community Air Monitoring Project
-================================
+CAMP Server
+===========
 
 California Air Resource Board (CARB)
 
