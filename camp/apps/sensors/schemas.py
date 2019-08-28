@@ -37,13 +37,8 @@ PAYLOAD_SCHEMA = {
         'humidity': {'type': 'number'},
         'pressure': {'type': 'number'},
         'voc': {'type': 'number'},
-        'pm2': {
-            'type': 'object',
-            'properties': {
-                'a': PM2_SCHEMA,
-                'b': PM2_SCHEMA,
-            },
-            'required': ['a', 'b']
+        'pm2_a': PM2_SCHEMA,
+        'pm2_b': PM2_SCHEMA,
         },
     },
     'required': [

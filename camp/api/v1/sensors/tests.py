@@ -92,7 +92,7 @@ class SensorAPITests(TestCase):
         self.sensor = Sensor.objects.get(name='RAHS')
 
     def test_get_sensor_list(self):
-        url = reverse('api:v1:sensor-list')
+        url = reverse('api:v1:sensors:sensor-list')
         request = self.factory.get(url)
         response = sensor_list(request)
         assert response.status_code == 200
@@ -101,7 +101,7 @@ class SensorAPITests(TestCase):
         assert content['data'][0]['id'] == str(self.sensor.pk)
 
     def test_get_sensor_detail(self):
-        url = reverse('api:v1:sensor-detail', kwargs={'sensor_id': self.sensor.pk})
+        url = reverse('api:v1:sensors:sensor-detail', kwargs={'sensor_id': self.sensor.pk})
         request = self.factory.get(url)
         response = sensor_detail(request, sensor_id=self.sensor.pk)
         assert response.status_code == 200
@@ -116,7 +116,7 @@ class SensorAPITests(TestCase):
             data.timestamp = now - timedelta(minutes=10 * x)
             data.save()
 
-        url = reverse('api:v1:sensor-data', kwargs={'sensor_id': self.sensor.pk})
+        url = reverse('api:v1:sensors:sensor-data', kwargs={'sensor_id': self.sensor.pk})
         request = self.factory.get(url)
         response = sensor_data(request, sensor_id=self.sensor.pk)
         assert response.status_code == 200
@@ -126,7 +126,7 @@ class SensorAPITests(TestCase):
 
     def test_create_sensor_data(self):
         payload = fake_sensor_payload()
-        url = reverse('api:v1:sensor-data', kwargs={'sensor_id': self.sensor.pk})
+        url = reverse('api:v1:sensors:sensor-data', kwargs={'sensor_id': self.sensor.pk})
         request = self.factory.post(url, {'payload': payload}, content_type='application/json')
         response = sensor_data(request, sensor_id=self.sensor.pk)
         assert response.status_code == 200
