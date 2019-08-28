@@ -64,7 +64,6 @@ class SensorData(generics.ListCreateEndpoint):
         self.object.sensor = self.sensor
         self.object.position = self.sensor.position
         self.object.location = self.sensor.location
-        self.object.altitude = self.sensor.altitude
         self.object.process()  # TODO: Background task
         self.sensor.update_latest()
         return {'data': self.serialize(self.object, include=['sensor'])}
