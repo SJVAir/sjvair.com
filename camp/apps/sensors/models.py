@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.contrib.gis.db import models
 from django.contrib.postgres.fields import JSONField
+from django.utils import timezone
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
@@ -29,7 +30,6 @@ class Sensor(models.Model):
     # Where is this sensor setup?
     position = models.PointField(null=True)
     location = models.CharField(max_length=10, choices=LOCATION)
-    altitude = models.DecimalField(max_digits=5, decimal_places=2, null=True)
 
     # Maintain a relation to the latest sensor reading
     latest = models.ForeignKey('sensors.SensorData', related_name='sensor_latest', null=True, on_delete=models.SET_NULL)
@@ -82,7 +82,7 @@ class SensorData(models.Model):
     celcius = models.DecimalField(max_digits=4, decimal_places=1, null=True)
     fahrenheit = models.DecimalField(max_digits=4, decimal_places=1, null=True)
     humidity = models.DecimalField(max_digits=4, decimal_places=1, null=True)
-    pressure = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    pressure = models.DecimalField(max_digits=6, decimal_places=2, null=True)
 
     # PMS5003 A/B
     pm2_a = JSONField(null=True, encoder=JSONEncoder, validators=[

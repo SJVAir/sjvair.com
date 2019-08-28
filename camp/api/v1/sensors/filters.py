@@ -12,11 +12,6 @@ class SensorFilter(FilterSet):
                 'contains',
                 'icontains'
             ],
-            'altitude': [
-                'exact',
-                'gt', 'gte',
-                'lt', 'lte'
-            ],
             'position': [
                 'exact',
                 'bbcontains',
