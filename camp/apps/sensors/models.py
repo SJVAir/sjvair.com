@@ -49,16 +49,12 @@ class Sensor(models.Model):
 
     def update_latest(self, commit=True):
         try:
-            self.latest_id = (self.data
-                .filter(is_processed=True)
-                .values_list('pk', flat=True)
-                .latest('timestamp')
-            )
+            self.latest = self.data.filter(is_processed=True).latest('timestamp')
         except SensorData.DoesNotExist:
             return
-
-        if commit:
-            self.save()
+        else:
+            if commit:
+                self.save()
 
 
 class SensorData(models.Model):

@@ -63,11 +63,8 @@ def fake_sensor_payload():
         humidity=random.randint(300, 700) / 10, # 30-70% RH
         pressure=0, # TODO
         voc=0, # TODO
-        pm2=dict(
-            a=dict(pm2_std + pm2_env + particles),
-            # Same data, with some slight random variation
-            b={k: v + random.randint(-10, 10) for k, v in (pm2_std + pm2_env + particles)},
-        )
+        pm2_a=dict(pm2_std + pm2_env + particles),
+        pm2_b={k: v + random.randint(-10, 10) for k, v in (pm2_std + pm2_env + particles)},
     )
 
 
@@ -132,4 +129,7 @@ class SensorAPITests(TestCase):
         assert response.status_code == 200
 
         content = streaming_json(response.streaming_content)
+        sensor = Sensor.objects.get(pk=self.sensor.pk)
+
         assert content['data']['sensor'] == str(self.sensor.pk)
+        assert content['data']['id'] == str(sensor.latest_id)
