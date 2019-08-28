@@ -45,6 +45,7 @@ PAYLOAD_SCHEMA = {
         'humidity',
         'pressure',
         'voc',
-        'pm2'
+        'pm2_a',
+        'pm2_b'
     ]
 }
