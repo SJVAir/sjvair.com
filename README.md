@@ -5,6 +5,7 @@ California Air Resource Board (CARB)
 
 https://oehha.ca.gov/calenviroscreen/report/calenviroscreen-30
 https://ww2.arb.ca.gov/homepage
+https://publiclab.org/questions/samr/04-07-2019/how-to-interpret-pms5003-sensor-values
 
 # Setup guide
 

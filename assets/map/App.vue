@@ -55,6 +55,7 @@ export default {
 
     showSensorDetail(sensorId) {
       console.log('showing sensor', sensorId, this.sensors[sensorId].name);
+      this.activeSensor = null;
       this.activeSensor = this.sensors[sensorId];
       this.map.panTo(this.activeSensor._marker.getPosition())
     },
