@@ -56,6 +56,7 @@ def collectstatic(ctx):
 
 def vue(ctx, name):
     command = f'''yarn build \
+        --mode production \
         --no-clean \
         --formats umd-min \
         --target lib \
