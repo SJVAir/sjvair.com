@@ -4,7 +4,6 @@
     name: Redwood HS
     position: SRID=4326;POINT (-119.3041419816797 36.3290942037944)
     location: outside
-    altitude: null
     latest: null
 - model: sensors.sensor
   pk: me92X47ITFSz8vqCtYZqgg
@@ -12,8 +11,7 @@
     name: Root Access Hackerspace
     position: SRID=4326;POINT (-119.7986823153598 36.76271772474001)
     location: inside
-    altitude: null
-    latest: 5aiAAYm8TiObRwbLnnZkjQ
+    latest: m97jld8hQc6YePbTEO0usw
 - model: sensors.sensordata
   pk: AVN3gRjKSPWC0yumFdxnJg
   fields:
@@ -774,6 +772,82 @@
       pm10_standard: 1
       pm25_env: 2
       pm25_standard: 2
+- model: sensors.sensordata
+  pk: E9uq976gRzG7gn1JQU71XA
+  fields:
+    timestamp: 2019-08-28 22:23:58.139917+00:00
+    sensor: me92X47ITFSz8vqCtYZqgg
+    position: SRID=4326;POINT (-119.7986823153598 36.76271772474001)
+    location: inside
+    altitude: null
+    payload:
+      altitude: 25921.01
+      celcius: 27.42016
+      device:
+        hall: -6
+        rssi: null
+        temperature: 116
+      dew_point: 9.764484
+      humidity: 33.1042
+      pm2_a:
+        particles_03um: 204
+        particles_05um: 62
+        particles_100um: 0
+        particles_10um: 8
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 1
+        pm100_standard: 1
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 1
+        pm25_standard: 1
+      pm2_b:
+        particles_03um: 117
+        particles_05um: 39
+        particles_100um: 0
+        particles_10um: 8
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 0
+        pm100_standard: 0
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 0
+        pm25_standard: 0
+      pressure: 1000.244
+      voc: 0
+    is_processed: true
+    celcius: '27.4'
+    fahrenheit: '81.4'
+    humidity: '33.1'
+    pressure: '1000.24'
+    pm2_a:
+      particles_03um: 204
+      particles_05um: 62
+      particles_100um: 0
+      particles_10um: 8
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 1
+      pm100_standard: 1
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 1
+      pm25_standard: 1
+    pm2_b:
+      particles_03um: 117
+      particles_05um: 39
+      particles_100um: 0
+      particles_10um: 8
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 0
+      pm100_standard: 0
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 0
+      pm25_standard: 0
 - model: sensors.sensordata
   pk: FaQ0D5jlQYejkVoBuzGIJg
   fields:
@@ -7287,6 +7361,82 @@
       pm25_env: 2
       pm25_standard: 2
 - model: sensors.sensordata
+  pk: mosZjmNoTDuW74QZOsZCeg
+  fields:
+    timestamp: 2019-08-28 22:03:30.084932+00:00
+    sensor: me92X47ITFSz8vqCtYZqgg
+    position: SRID=4326;POINT (-119.7986823153598 36.76271772474001)
+    location: inside
+    altitude: null
+    payload:
+      altitude: 25920.05
+      celcius: 27.74781
+      device:
+        hall: -7
+        rssi: null
+        temperature: 116
+      dew_point: 9.984474
+      humidity: 32.95787
+      pm2_a:
+        particles_03um: 222
+        particles_05um: 70
+        particles_100um: 0
+        particles_10um: 12
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 1
+        pm100_standard: 1
+        pm10_env: 1
+        pm10_standard: 1
+        pm25_env: 1
+        pm25_standard: 1
+      pm2_b:
+        particles_03um: 102
+        particles_05um: 34
+        particles_100um: 0
+        particles_10um: 8
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 0
+        pm100_standard: 0
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 0
+        pm25_standard: 0
+      pressure: 1000.517
+      voc: 0
+    is_processed: true
+    celcius: '27.8'
+    fahrenheit: '81.9'
+    humidity: '33.0'
+    pressure: '1000.52'
+    pm2_a:
+      particles_03um: 222
+      particles_05um: 70
+      particles_100um: 0
+      particles_10um: 12
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 1
+      pm100_standard: 1
+      pm10_env: 1
+      pm10_standard: 1
+      pm25_env: 1
+      pm25_standard: 1
+    pm2_b:
+      particles_03um: 102
+      particles_05um: 34
+      particles_100um: 0
+      particles_10um: 8
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 0
+      pm100_standard: 0
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 0
+      pm25_standard: 0
+- model: sensors.sensordata
   pk: m8VOOCTVTBqYMx9bOqGIaQ
   fields:
     timestamp: 2019-08-28 07:44:38.289537+00:00
@@ -7363,6 +7513,82 @@
       pm25_env: 1
       pm25_standard: 1
 - model: sensors.sensordata
+  pk: m97jld8hQc6YePbTEO0usw
+  fields:
+    timestamp: 2019-08-28 22:29:04.723595+00:00
+    sensor: me92X47ITFSz8vqCtYZqgg
+    position: SRID=4326;POINT (-119.7986823153598 36.76271772474001)
+    location: inside
+    altitude: null
+    payload:
+      altitude: 25921.18
+      celcius: 27.57764
+      device:
+        hall: 15
+        rssi: null
+        temperature: 116
+      dew_point: 9.839047
+      humidity: 32.96486
+      pm2_a:
+        particles_03um: 192
+        particles_05um: 58
+        particles_100um: 0
+        particles_10um: 10
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 1
+        pm100_standard: 1
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 1
+        pm25_standard: 1
+      pm2_b:
+        particles_03um: 117
+        particles_05um: 39
+        particles_100um: 0
+        particles_10um: 8
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 0
+        pm100_standard: 0
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 0
+        pm25_standard: 0
+      pressure: 1000.195
+      voc: 0
+    is_processed: true
+    celcius: '27.6'
+    fahrenheit: '81.6'
+    humidity: '33.0'
+    pressure: '1000.20'
+    pm2_a:
+      particles_03um: 192
+      particles_05um: 58
+      particles_100um: 0
+      particles_10um: 10
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 1
+      pm100_standard: 1
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 1
+      pm25_standard: 1
+    pm2_b:
+      particles_03um: 117
+      particles_05um: 39
+      particles_100um: 0
+      particles_10um: 8
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 0
+      pm100_standard: 0
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 0
+      pm25_standard: 0
+- model: sensors.sensordata
   pk: nGOo-lPESzC82MmWZ24FoA
   fields:
     timestamp: 2019-08-28 09:47:32.763803+00:00
@@ -7428,6 +7654,82 @@
     pm2_b:
       particles_03um: 174
       particles_05um: 58
+      particles_100um: 0
+      particles_10um: 8
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 0
+      pm100_standard: 0
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 0
+      pm25_standard: 0
+- model: sensors.sensordata
+  pk: nbIM47xIRLycS5nQoq2jOw
+  fields:
+    timestamp: 2019-08-28 22:13:43.644360+00:00
+    sensor: me92X47ITFSz8vqCtYZqgg
+    position: SRID=4326;POINT (-119.7986823153598 36.76271772474001)
+    location: inside
+    altitude: null
+    payload:
+      altitude: 25920.49
+      celcius: 27.33317
+      device:
+        hall: -2
+        rssi: null
+        temperature: 116
+      dew_point: 9.736546
+      humidity: 33.21102
+      pm2_a:
+        particles_03um: 204
+        particles_05um: 62
+        particles_100um: 0
+        particles_10um: 8
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 1
+        pm100_standard: 1
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 1
+        pm25_standard: 1
+      pm2_b:
+        particles_03um: 102
+        particles_05um: 34
+        particles_100um: 0
+        particles_10um: 8
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 0
+        pm100_standard: 0
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 0
+        pm25_standard: 0
+      pressure: 1000.391
+      voc: 0
+    is_processed: true
+    celcius: '27.3'
+    fahrenheit: '81.2'
+    humidity: '33.2'
+    pressure: '1000.39'
+    pm2_a:
+      particles_03um: 204
+      particles_05um: 62
+      particles_100um: 0
+      particles_10um: 8
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 1
+      pm100_standard: 1
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 1
+      pm25_standard: 1
+    pm2_b:
+      particles_03um: 102
+      particles_05um: 34
       particles_100um: 0
       particles_10um: 8
       particles_25um: 0
@@ -8655,6 +8957,82 @@
       pm25_env: 1
       pm25_standard: 1
 - model: sensors.sensordata
+  pk: rzOk1xc4RNyqR-OWiiY_FA
+  fields:
+    timestamp: 2019-08-28 22:08:36.690816+00:00
+    sensor: me92X47ITFSz8vqCtYZqgg
+    position: SRID=4326;POINT (-119.7986823153598 36.76271772474001)
+    location: inside
+    altitude: null
+    payload:
+      altitude: 25920.36
+      celcius: 27.36556
+      device:
+        hall: -7
+        rssi: null
+        temperature: 115
+      dew_point: 9.690712
+      humidity: 33.04644
+      pm2_a:
+        particles_03um: 222
+        particles_05um: 70
+        particles_100um: 0
+        particles_10um: 12
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 1
+        pm100_standard: 1
+        pm10_env: 1
+        pm10_standard: 1
+        pm25_env: 1
+        pm25_standard: 1
+      pm2_b:
+        particles_03um: 102
+        particles_05um: 34
+        particles_100um: 0
+        particles_10um: 8
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 0
+        pm100_standard: 0
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 0
+        pm25_standard: 0
+      pressure: 1000.427
+      voc: 0
+    is_processed: true
+    celcius: '27.4'
+    fahrenheit: '81.3'
+    humidity: '33.0'
+    pressure: '1000.43'
+    pm2_a:
+      particles_03um: 222
+      particles_05um: 70
+      particles_100um: 0
+      particles_10um: 12
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 1
+      pm100_standard: 1
+      pm10_env: 1
+      pm10_standard: 1
+      pm25_env: 1
+      pm25_standard: 1
+    pm2_b:
+      particles_03um: 102
+      particles_05um: 34
+      particles_100um: 0
+      particles_10um: 8
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 0
+      pm100_standard: 0
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 0
+      pm25_standard: 0
+- model: sensors.sensordata
   pk: sNEQsbtPQgaS6QtMKR247w
   fields:
     timestamp: 2019-08-28 11:09:30.891162+00:00
@@ -8874,6 +9252,82 @@
       particles_05um: 71
       particles_100um: 0
       particles_10um: 12
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 0
+      pm100_standard: 0
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 0
+      pm25_standard: 0
+- model: sensors.sensordata
+  pk: tcxJpJXaTveb7J_wdZ88gw
+  fields:
+    timestamp: 2019-08-28 22:18:51.278828+00:00
+    sensor: me92X47ITFSz8vqCtYZqgg
+    position: SRID=4326;POINT (-119.7986823153598 36.76271772474001)
+    location: inside
+    altitude: null
+    payload:
+      altitude: 25920.68
+      celcius: 27.49192
+      device:
+        hall: -2
+        rssi: null
+        temperature: 116
+      dew_point: 9.781366
+      humidity: 33.0028
+      pm2_a:
+        particles_03um: 204
+        particles_05um: 62
+        particles_100um: 0
+        particles_10um: 8
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 1
+        pm100_standard: 1
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 1
+        pm25_standard: 1
+      pm2_b:
+        particles_03um: 117
+        particles_05um: 39
+        particles_100um: 0
+        particles_10um: 8
+        particles_25um: 0
+        particles_50um: 0
+        pm100_env: 0
+        pm100_standard: 0
+        pm10_env: 0
+        pm10_standard: 0
+        pm25_env: 0
+        pm25_standard: 0
+      pressure: 1000.337
+      voc: 0
+    is_processed: true
+    celcius: '27.5'
+    fahrenheit: '81.5'
+    humidity: '33.0'
+    pressure: '1000.34'
+    pm2_a:
+      particles_03um: 204
+      particles_05um: 62
+      particles_100um: 0
+      particles_10um: 8
+      particles_25um: 0
+      particles_50um: 0
+      pm100_env: 1
+      pm100_standard: 1
+      pm10_env: 0
+      pm10_standard: 0
+      pm25_env: 1
+      pm25_standard: 1
+    pm2_b:
+      particles_03um: 117
+      particles_05um: 39
+      particles_100um: 0
+      particles_10um: 8
       particles_25um: 0
       particles_50um: 0
       pm100_env: 0
