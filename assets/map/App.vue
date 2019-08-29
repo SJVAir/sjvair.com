@@ -65,7 +65,7 @@ export default {
 
     loadSensors() {
       const bounds = new window.google.maps.LatLngBounds();
-      this.$http.get('/api/1.0/sensors/')
+      this.$http.get('sensors/')
         .then(response => response.json(response))
         .then(response => {
           this.sensors = _.keyBy(_.map(response.data, (sensor) => {
