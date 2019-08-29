@@ -24,6 +24,7 @@ class SensorMixin():
                 'celcius',
                 'fahrenheit',
                 'humidity',
+                'pressure',
                 'pm2_a',
                 'pm2_b',
             ]
@@ -39,6 +40,11 @@ class SensorMixin():
 class SensorList(SensorMixin, generics.ListEndpoint):
     streaming = False
     filter_class = SensorFilter
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = queryset.exclude(latest__isnull=True)
+        return queryset
 
 
 class SensorDetail(SensorMixin, generics.DetailUpdateEndpoint):
