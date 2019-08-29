@@ -19,7 +19,7 @@ export default {
   data() {
     return {
         map: null,
-        sensors: [],
+        sensors: {},
     }
   },
 
@@ -37,25 +37,34 @@ export default {
   },
 
   methods: {
+    getSensorLable(sensor){
+      if(!_.isNull(sensor.latest)){
+        return sensor.latest.pm2_a.pm25_env.toString();
+      }
+      return ' ';
+    },
+
     loadSensors() {
       const bounds = new window.google.maps.LatLngBounds();
       this.$http.get('/api/1.0/sensors/')
         .then(response => response.json(response))
         .then(response => {
-          this.sensors = _.map(response.data, (sensor) => {
-            sensor._marker = new google.maps.Marker({
-              position: new google.maps.LatLng(
+          this.sensors = _.keyBy(_.map(response.data, (sensor) => {
+            sensor._marker = new window.google.maps.Marker({
+              position: new window.google.maps.LatLng(
                 sensor.position.coordinates[1],
                 sensor.position.coordinates[0]
               ),
+              label: this.getSensorLable(sensor),
               map: this.map
             });
             bounds.extend(sensor._marker.position);
-            // this.map.fitBounds(bounds);
-          });
+            return sensor;
+          }), 'id');
         })
         .then(() => {
           this.map.fitBounds(bounds);
+          console.log(this.sensors)
         });
     }
   }
