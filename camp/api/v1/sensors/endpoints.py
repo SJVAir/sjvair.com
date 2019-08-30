@@ -17,6 +17,8 @@ class SensorMixin():
         'is_active',
         'position',
         'location',
+        'epa_pm25_aqi',
+        'epa_pm100_aqi',
         ('latest', {
             'fields': [
                 'id',
@@ -62,7 +64,10 @@ class SensorData(generics.ListCreateEndpoint):
         return get_object_or_404(Sensor, pk=self.kwargs['sensor_id'])
 
     def get_queryset(self):
-        return self.model.objects.filter(sensor_id=self.sensor.pk)
+        return self.model.objects.filter(
+            sensor_id=self.sensor.pk,
+            is_processed=True,
+        )
 
     def form_valid(self, form):
         self.object = form.save(commit=False)

@@ -25,7 +25,8 @@ export default {
     return {
         map: null,
         sensors: {},
-        activeSensor: null
+        activeSensor: null,
+        interval: null,
     }
   },
 
@@ -42,11 +43,21 @@ export default {
         fullscreenControl: false
       }
     );
-    this.loadSensors();
+    this.loadSensors()
+      .then(this.setInitialViewport);
+
+    this.interval = setInterval(this.loadSensors, 1000 * 60 * 1);
+  },
+
+  destroyed() {
+    if(this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
   },
 
   methods: {
-    getSensorLable(sensor){
+    getSensorLabel(sensor){
       if(_.isNull(sensor.latest) || !sensor.is_active){
         return ' ';
       }
@@ -54,8 +65,7 @@ export default {
     },
 
     showSensorDetail(sensorId) {
-      console.log('showing sensor', sensorId, this.sensors[sensorId].name);
-      this.activeSensor = null;
+      // this.activeSensor = null;
       this.activeSensor = this.sensors[sensorId];
       this.map.panTo(this.activeSensor._marker.getPosition())
     },
@@ -64,32 +74,51 @@ export default {
       this.activeSensor = null;
     },
 
-    loadSensors() {
+    setInitialViewport() {
       const bounds = new window.google.maps.LatLngBounds();
-      this.$http.get('sensors/')
+      _.forIn(this.sensors, (sensor) => {
+        bounds.extend(sensor._marker.position)
+      })
+      this.map.fitBounds(bounds);
+    },
+
+    loadSensors() {
+      return this.$http.get('sensors/')
         .then(response => response.json(response))
         .then(response => {
-          this.sensors = _.keyBy(_.map(response.data, (sensor) => {
-            sensor._marker = new window.google.maps.Marker({
-              animation: window.google.maps.Animation.DROP,
-              label: this.getSensorLable(sensor),
-              map: this.map,
-              position: new window.google.maps.LatLng(
+          _.map(response.data, (sensor) => {
+            // Ensure we have record of this sensor
+            if(_.isUndefined(this.sensors[sensor.id])){
+              this.sensors[sensor.id] = {}
+            }
+
+            // Update the sensor data
+            _.assign(this.sensors[sensor.id], sensor);
+
+            // Create/update the marker
+            if(_.isUndefined(this.sensors[sensor.id]._marker)){
+              this.sensors[sensor.id]._marker = new window.google.maps.Marker({
+                animation: window.google.maps.Animation.DROP,
+                map: this.map,
+              });
+              this.sensors[sensor.id]._marker.addListener('click', () => {
+              this.showSensorDetail(sensor.id);
+            });
+            }
+
+            this.sensors[sensor.id]._marker.setLabel(
+              this.getSensorLabel(sensor)
+            )
+
+            this.sensors[sensor.id]._marker.setPosition(
+              new window.google.maps.LatLng(
                 sensor.position.coordinates[1],
                 sensor.position.coordinates[0]
               )
-            });
-            sensor._marker.addListener('click', () => {
-              this.showSensorDetail(sensor.id);
-            });
-            bounds.extend(sensor._marker.position);
-            return sensor;
-          }), 'id');
+            )
+
+          });
         })
-        .then(() => {
-          this.map.fitBounds(bounds);
-          console.log(this.sensors)
-        });
     }
   }
 }
