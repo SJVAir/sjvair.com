@@ -40,8 +40,9 @@ class SensorMixin():
 
 
 class SensorList(SensorMixin, generics.ListEndpoint):
-    streaming = False
+    # streaming = False
     filter_class = SensorFilter
+    paginate = False
 
     def get_queryset(self):
         queryset = super().get_queryset()

@@ -9,6 +9,19 @@ from django.db.models.functions import Cast
 from django.utils import timezone
 
 
+def pm_avg(key, field, cutoff):
+    return Avg(
+        Cast(
+            KeyTextTransform(key, field),
+            models.IntegerField()
+        ),
+        filter=Q(
+            data__is_processed=True,
+            data__timestamp__gte=cutoff
+        )
+    )
+
+
 class SensorQuerySet(models.QuerySet):
     @classmethod
     def as_manager(cls):
@@ -17,10 +30,10 @@ class SensorQuerySet(models.QuerySet):
             # of PM2 data for AQI calculations.
             cutoff = timezone.now() - timedelta(hours=24)
             return SensorQuerySet(self.model, using=self._db).annotate(
-                pm25_a_avg=Avg(Cast(KeyTextTransform('pm25_env', 'data__pm2_a'), models.IntegerField()), filter=Q(data__timestamp__gte=cutoff)),
-                pm25_b_avg=Avg(Cast(KeyTextTransform('pm25_env', 'data__pm2_b'), models.IntegerField()), filter=Q(data__timestamp__gte=cutoff)),
-                pm100_a_avg=Avg(Cast(KeyTextTransform('pm100_env', 'data__pm2_a'), models.IntegerField()), filter=Q(data__timestamp__gte=cutoff)),
-                pm100_b_avg=Avg(Cast(KeyTextTransform('pm100_env', 'data__pm2_b'), models.IntegerField()), filter=Q(data__timestamp__gte=cutoff)),
+                pm25_a_avg=pm_avg('pm25_env', 'data__pm2_a', cutoff),
+                pm25_b_avg=pm_avg('pm25_env', 'data__pm2_b', cutoff),
+                pm100_a_avg=pm_avg('pm100_env', 'data__pm2_a', cutoff),
+                pm100_b_avg=pm_avg('pm100_env', 'data__pm2_b', cutoff),
             )
 
         manager = super().as_manager()
