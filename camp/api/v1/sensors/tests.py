@@ -86,7 +86,7 @@ class SensorAPITests(TestCase):
 
     def setUp(self):
         self.factory = RequestFactory()
-        self.sensor = Sensor.objects.get(name='RAHS')
+        self.sensor = Sensor.objects.get(name='Root Access Hackerspace')
 
     def test_get_sensor_list(self):
         url = reverse('api:v1:sensors:sensor-list')
@@ -95,7 +95,7 @@ class SensorAPITests(TestCase):
         assert response.status_code == 200
 
         content = streaming_json(response.streaming_content)
-        assert content['data'][0]['id'] == str(self.sensor.pk)
+        assert str(self.sensor.pk) in [sensor['id'] for sensor in content['data']]
 
     def test_get_sensor_detail(self):
         url = reverse('api:v1:sensors:sensor-detail', kwargs={'sensor_id': self.sensor.pk})
@@ -119,7 +119,7 @@ class SensorAPITests(TestCase):
         assert response.status_code == 200
 
         content = streaming_json(response.streaming_content)
-        assert len(content['data']) == self.sensor.data.count()
+        assert len(content['data']) == 100  # Max page size
 
     def test_create_sensor_data(self):
         payload = fake_sensor_payload()
