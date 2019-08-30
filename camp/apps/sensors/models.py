@@ -1,5 +1,9 @@
+import statistics
+
 from datetime import timedelta
 from decimal import Decimal
+
+import aqi
 
 from django.contrib.gis.db import models
 from django.contrib.postgres.fields import JSONField
@@ -47,9 +51,31 @@ class Sensor(models.Model):
         cutoff = timedelta(seconds=60 * 20)
         return now - self.latest.timestamp < cutoff
 
+    @property
+    def epa_pm25_aqi(self):
+        # CONSIDER: Instead of averaging the two
+        # sensors, should we just pick one?
+        try:
+            pm25 = statistics.mean(filter(bool, (self.pm25_a_avg, self.pm25_b_avg)))
+            return aqi.to_iaqi(aqi.POLLUTANT_PM25, pm25, algo=aqi.ALGO_EPA)
+        except statistics.StatisticsError:
+            pass
+
+    @property
+    def epa_pm100_aqi(self):
+        # CONSIDER: Instead of averaging the two
+        # sensors, should we just pick one?
+        try:
+            pm100 = statistics.mean(filter(bool, (self.pm100_a_avg, self.pm100_b_avg)))
+            return aqi.to_iaqi(aqi.POLLUTANT_PM10, pm100, algo=aqi.ALGO_EPA)
+        except statistics.StatisticsError:
+            pass
+
     def update_latest(self, commit=True):
         try:
-            self.latest = self.data.filter(is_processed=True).latest('timestamp')
+            self.latest = (self.data
+                .filter(is_processed=True)
+                .latest('timestamp'))
         except SensorData.DoesNotExist:
             return
         else:
@@ -109,13 +135,18 @@ class SensorData(models.Model):
 
         return super().save(*args, **kwargs)
 
+    def process_pm2(pm2):
+        pm2['pm2_aqi'] = aqi.to_iaqi(aqi.POLLUTANT_PM25, pm2['pm25_standard'])
+        pm2['pm100_aqi'] = aqi.to_iaqi(aqi.POLLUTANT_PM25, pm2['pm100_standard'])
+        return pm2
+
     def process(self, commit=True):
         # TODO: What sort of post-processing do we need to do?
-        self.celcius = self.payload.get('celcius')
-        self.humidity = self.payload.get('humidity')
-        self.pressure = self.payload.get('pressure')
-        self.pm2_a = self.payload.get('pm2_a')
-        self.pm2_b = self.payload.get('pm2_b')
+        self.celcius = self.payload['celcius']
+        self.humidity = self.payload['humidity']
+        self.pressure = self.payload['pressure']
+        self.pm2_a = self.payload['pm2_a']
+        self.pm2_b = self.payload['pm2_b']
         self.is_processed = True
 
         if commit:
