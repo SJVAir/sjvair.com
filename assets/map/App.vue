@@ -1,23 +1,24 @@
 <template>
-  <div class="columns is-gapless">
-    <div class="column">
+  <div class="interface">
+    <div class="viewport">
       <div class="select field-selector">
         <select id="id_data-selector" name="field-selector" v-on:change="updateSensorLabels" v-model="labelDisplay">
           <option v-for="(label, key) in fields" :value="key">{{ label }}</option>
         </select>
       </div>
-      <div id="map"></div>
+      <div id="map" :class="mapIsMaximised"></div>
     </div>
-    <div v-if="activeSensor" class="column is-one-third">
-      <sensor-detail :sensor="activeSensor" />
-    </div>
+    <sensor-detail v-if="activeSensor" :sensor="activeSensor" />
   </div>
 </template>
 
 <script>
 import _ from 'lodash';
-import GoogleMapsInit from './utils/gmaps';
+import moment from 'moment';
+
 import SensorDetail from './components/SensorDetail.vue'
+import GoogleMapsInit from './utils/gmaps';
+
 
 export default {
   name: 'app',
@@ -79,6 +80,14 @@ export default {
     }
   },
 
+  computed: {
+    mapIsMaximised() {
+      return {
+        'is-maximised': _.isNull(this.activeSensor)
+      };
+    }
+  },
+
   methods: {
     updateSensorLabels() {
       _.forEach(this.sensors, (sensor) => {
@@ -135,6 +144,8 @@ export default {
         .then(response => response.json(response))
         .then(response => {
           _.map(response.data, (sensor) => {
+            sensor.latest.timestamp = moment.utc(sensor.latest.timestamp).local();
+
             // Ensure we have record of this sensor
             if(_.isUndefined(this.sensors[sensor.id])){
               this.sensors[sensor.id] = {}

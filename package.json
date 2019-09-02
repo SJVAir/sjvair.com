@@ -12,10 +12,13 @@
     "heroku-postbuild": "invoke build"
   },
   "dependencies": {
+    "apexcharts": "^3.8.5",
     "bulma": "^0.7.5",
     "core-js": "^2.6.5",
     "moment": "^2.24.0",
     "vue": "^2.6.10",
+    "vue-apexcharts": "^1.4.0",
+    "vue-async-computed": "^3.7.0",
     "vue-resource": "^1.5.1"
   },
   "devDependencies": {
