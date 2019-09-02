@@ -32,7 +32,7 @@ export default {
       sensors: {},
       activeSensor: null,
       interval: null,
-      labelDisplay: 'temperature_f', // 'epa_pm25_aqi',
+      labelDisplay: 'epa_pm25_aqi',
       fields: {
         temperature_f: "Temperature (°Fahrenheit)",
         temperature_c: "Temperature (°Celcius)",
@@ -81,8 +81,7 @@ export default {
 
   methods: {
     updateSensorLabels() {
-      console.log('Update Sensor Labls')
-      _.map(this.sensors, (sensor) => {
+      _.forEach(this.sensors, (sensor) => {
         sensor._marker.setLabel(
           this.getSensorLabel(sensor)
         );
@@ -94,13 +93,13 @@ export default {
         return ' ';
       }
 
-      return {
+      return _.get({
         temperature_f: () => Math.round(sensor.latest.fahrenheit) + "°",
         temperature_c: () => Math.round(sensor.latest.celcius) + "°",
-        humidity: () => sensor.latest.humidity + "%",
-        pressure: () => sensor.latest.pressure + " hPa",
-        epa_pm25_aqi: () => sensor.latest.epa_pm25_aqi,
-        epa_pm100_aqi: () => sensor.latest.epa_pm100_aqi,
+        humidity: () => Math.round(sensor.latest.humidity) + "%",
+        pressure: () => Math.round(sensor.latest.pressure) + " hPa",
+        epa_pm25_aqi: () => sensor.epa_pm25_aqi,
+        epa_pm100_aqi: () => sensor.epa_pm100_aqi,
         pm10: () => sensor.latest.pm2_a.pm10_env,
         pm25: () => sensor.latest.pm2_a.pm25_env,
         pm100: () => sensor.latest.pm2_a.pm100_env,
@@ -110,7 +109,7 @@ export default {
         particles_25: () => sensor.latest.pm2_a.particles_25um,
         particles_50: () => sensor.latest.pm2_a.particles_50um,
         particles_100: () => sensor.latest.pm2_a.particles_100um
-      }[this.labelDisplay]().toString()
+      }, this.labelDisplay)().toString();
     },
 
     showSensorDetail(sensorId) {
@@ -160,7 +159,7 @@ export default {
                 sensor.position.coordinates[1],
                 sensor.position.coordinates[0]
               )
-            )
+            );
 
             this.sensors[sensor.id]._marker.setLabel(
               this.getSensorLabel(sensor)

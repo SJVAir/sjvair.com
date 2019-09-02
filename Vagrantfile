@@ -17,8 +17,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
     # Configure virtual machine specs. Keep it simple, single user.
     config.vm.provider :virtualbox do |p|
-        p.customize ["modifyvm", :id, "--memory", 2048]
-        p.customize ["modifyvm", :id, "--cpus", 2]
+        p.customize ["modifyvm", :id, "--memory", 4096]
+        p.customize ["modifyvm", :id, "--cpus", 4]
         p.customize ["modifyvm", :id, "--cpuexecutioncap", 50]
     end
 
