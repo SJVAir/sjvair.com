@@ -1,6 +1,15 @@
 <template>
 <div class="sensor-graph box">
-  {{ label }}
+  <div class="level">
+    <div class="level-left">
+      <div class="level-item">{{ label }}</div>
+    </div>
+    <div class="level-right">
+      <div class="level-item">
+        <strong>{{ latestValue }}</strong>
+      </div>
+    </div>
+  </div>
   <apexchart type="line" :options="options" :series="series"></apexchart>
 </div>
 </template>
@@ -26,19 +35,45 @@ export default {
   },
 
   computed: {
+    latestValue(){
+      return _.get(this.sensor.latest, this.paths[0]);
+    },
+
     options() {
       return {
         chart: {
           id: `id_chart-${this.paths[0]}`,
-          height: '150px',
+          animations: {
+            enabled: true
+          },
+          height: 150,
           width: '100%',
-          toolbar: {show: false},
+          toolbar: {
+            show: false
+          },
+          zoom: {
+            enabled: false
+          }
         },
         markers: {
           size: 0
         },
+        stroke: {
+          show: true,
+          curve: 'smooth',
+          lineCap: 'round',
+          width: 1,
+          dashArray: 0,
+        },
+        tooltip: {
+          enabled: true
+        },
         xaxis: {
-          type: 'datetime'
+          type: 'datetime',
+          lines: true
+        },
+        yaxis: {
+          lines: true
         }
       };
     },
@@ -49,10 +84,12 @@ export default {
         path => {
           return {
             name: path,
-            data: _.map(this.sensorData, data => [
-              data.timestamp.unix(),
-              _.get(data, path)
-            ])
+            data: _.map(this.sensorData, data => {
+              return {
+                x: data.timestamp,
+                y: _.get(data, path)
+              }
+            })
           }
         }
       );

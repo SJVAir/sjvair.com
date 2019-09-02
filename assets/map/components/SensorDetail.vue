@@ -1,45 +1,19 @@
 <template>
 <div class="sensor-detail container is-fluid">
-  <div class="sensor-header content">
-    <h2>{{ sensor.name }}</h2>
-    <p class="is-size-7">ID: <span class="is-family-monospace">{{ sensor.id }}</span></p>
-    <p class="sensor-status">
-      <span class="icon">
-        <span v-if="sensor.is_active" class="far fa-fw fa-check-circle has-text-success"></span>
-        <span v-else class="far fa-fw fa-times-circle has-text-danger"></span>
-      </span>
-      <span class="sensor-timesince" v-bind:title="sensor.timestamp">{{ timesince }}</span>
-    </p>
-    <p v-if="!sensor.is_active" class="has-text-weight-bold has-text-danger">This sensor is not currently active.</p>
-  </div>
-  <div v-if="sensor.is_active" class="columns">
-    <div class="column is-one-third">
-      <div class="box content">
-        <table class="table is-striped sensor-realtime">
-          <!-- <thead>
-            <tr>
-              <th colspan="2">Current Conditions</th>
-            </tr>
-          </thead> -->
-          <tbody>
-            <tr>
-              <th>Temperature</th>
-              <td>
-                {{ sensor.latest.fahrenheit }}°F <br />
-                <small class="has-text-grey">{{ sensor.latest.celcius }}°C</small>
-              </td>
-            </tr>
-            <tr>
-              <th>Humidity</th>
-              <td>{{ sensor.latest.humidity }}%</td>
-            </tr>
-            <tr>
-              <th>Atmospheric Pressure</th>
-              <td>{{ sensor.latest.pressure }} hPa</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+  <div class="sensor-header columns">
+    <div class="column is-two-thirds content">
+      <h2>{{ sensor.name }}</h2>
+      <p class="is-size-7">ID: <span class="is-family-monospace">{{ sensor.id }}</span></p>
+      <p class="sensor-status">
+        <span class="icon">
+          <span v-if="sensor.is_active" class="far fa-fw fa-check-circle has-text-success"></span>
+          <span v-else class="far fa-fw fa-times-circle has-text-danger"></span>
+        </span>
+        <span class="sensor-timesince" v-bind:title="sensor.timestamp">{{ timesince }}</span>
+      </p>
+      <p v-if="!sensor.is_active" class="has-text-weight-bold has-text-danger">This sensor is not currently active.</p>
+    </div>
+    <div class="column">
       <div class="box content">
         <div class="level is-mobile">
           <div class="level-item has-text-centered">
@@ -55,79 +29,51 @@
             </div>
           </div>
         </div>
-        <table class="table is-striped is-size-7">
-          <thead>
-            <tr>
-              <th></th>
-              <th class="has-text-centered">Sensor A</th>
-              <th class="has-text-centered">Sensor B</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <th>PM 1</th>
-              <td class="has-text-centered">{{ sensor.latest.pm2_a.pm10_env }}</td>
-              <td class="has-text-centered">{{ sensor.latest.pm2_b.pm10_env }}</td>
-            </tr>
-            <tr>
-              <th>PM 2.5</th>
-              <td class="has-text-centered">{{ sensor.latest.pm2_a.pm25_env }}</td>
-              <td class="has-text-centered">{{ sensor.latest.pm2_b.pm25_env }}</td>
-            </tr>
-            <tr>
-              <th>PM 10</th>
-              <td class="has-text-centered">{{ sensor.latest.pm2_a.pm100_env }}</td>
-              <td class="has-text-centered">{{ sensor.latest.pm2_b.pm100_env }}</td>
-            </tr>
-
-            <tr>
-              <th>Particles > 0.3um / 0.1L air</th>
-              <td class="has-text-centered">{{ sensor.latest.pm2_a.particles_03um }}</td>
-              <td class="has-text-centered">{{ sensor.latest.pm2_b.particles_03um }}</td>
-            </tr>
-            <tr>
-              <th>Particles > 0.5um / 0.1L air</th>
-              <td class="has-text-centered">{{ sensor.latest.pm2_a.particles_05um }}</td>
-              <td class="has-text-centered">{{ sensor.latest.pm2_b.particles_05um }}</td>
-            </tr>
-            <tr>
-              <th>Particles > 1.0um / 0.1L air</th>
-              <td class="has-text-centered">{{ sensor.latest.pm2_a.particles_10um }}</td>
-              <td class="has-text-centered">{{ sensor.latest.pm2_b.particles_10um }}</td>
-            </tr>
-            <tr>
-              <th>Particles > 2.5um / 0.1L air</th>
-              <td class="has-text-centered">{{ sensor.latest.pm2_a.particles_25um }}</td>
-              <td class="has-text-centered">{{ sensor.latest.pm2_b.particles_25um }}</td>
-            </tr>
-            <tr>
-              <th>Particles > 5.0um / 0.1L air</th>
-              <td class="has-text-centered">{{ sensor.latest.pm2_a.particles_50um }}</td>
-              <td class="has-text-centered">{{ sensor.latest.pm2_b.particles_50um }}</td>
-            </tr>
-            <tr>
-              <th>Particles > 10.0um / 0.1L air</th>
-              <td class="has-text-centered">{{ sensor.latest.pm2_a.particles_100um }}</td>
-              <td class="has-text-centered">{{ sensor.latest.pm2_b.particles_100um }}</td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </div>
-    <div v-if="sensorData" class="column is-two-thirds">
-      <div class="columns is-multiline">
-        <div class="column is-half">
-          <sensor-graph :paths="['fahrenheit']" label="Temperature (°F)" :sensor="sensor" :sensorData="sensorData">
-        </div>
-        <div class="column is-half">
-          <sensor-graph :paths="['celcius']" label="Temperature (°C)" :sensor="sensor" :sensorData="sensorData">
-        </div>
-        <div class="column is-half">
-          <sensor-graph :paths="['humidity']" label="Humidity" :sensor="sensor" :sensorData="sensorData">
-        </div>
-        <div class="column is-half">
-          <sensor-graph :paths="['pressure']" label="Atmospheric Pressure" :sensor="sensor" :sensorData="sensorData">
-        </div>
+  </div>
+  <div v-if="sensor.is_active">
+    <div v-if="sensorData" class="columns is-multiline">
+      <div class="column is-one-third">
+        <sensor-graph :paths="['fahrenheit']" label="Temperature (°F)" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['humidity']" label="Humidity" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pressure']" label="Atmospheric Pressure" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pm2_a.pm10_env', 'pm2_b.pm10_env']" label="PM 1.0" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pm2_a.pm25_env', 'pm2_b.pm25_env']" label="PM 2.5" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pm2_a.pm100_env', 'pm2_b.pm100_env']" label="PM 10" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pm2_a.particles_03um', 'pm2_b.particles_03um']" label="Particles > 0.3µm / 0.1L air" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pm2_a.particles_05um', 'pm2_b.particles_05um']" label="Particles > 0.5µm / 0.1L air" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pm2_a.particles_10um', 'pm2_b.particles_10um']" label="Particles > 1.0µm / 0.1L air" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pm2_a.particles_25um', 'pm2_b.particles_25um']" label="Particles > 2.5µm / 0.1L air" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pm2_a.particles_50um', 'pm2_b.particles_50um']" label="Particles > 5.0µm / 0.1L air" :sensor="sensor" :sensorData="sensorData">
+      </div>
+      <div class="column is-one-third">
+        <sensor-graph :paths="['pm2_a.particles_100um', 'pm2_b.particles_100um']" label="Particles > 10.0µm / 0.1L air" :sensor="sensor" :sensorData="sensorData">
+      </div>
+    </div>
+    <div v-else class="content has-text-centered">
+      <div class="fa-3x">
+        <i class="fas fa-spinner fa-pulse"></i>
       </div>
     </div>
   </div>
@@ -160,14 +106,6 @@ export default {
     this.sensorData = _.uniqBy(await this.getSensorData(), 'id')
   },
 
-  // asyncComputed: {
-  //   sensorData() {
-  //     return this.$http.get(`sensors/${this.sensor.id}/data/`)
-  //       .then(response => response.json(response))
-  //       .then(response => response.data)
-  //   }
-  // },
-
   computed: {
     timesince() {
       if(!_.isNull(this.sensor.latest)){
@@ -184,7 +122,7 @@ export default {
 
       if(!timestamp){
         timestamp = moment.utc()
-          .subtract(1, 'days')
+          .subtract(3, 'days')
           .format('YYYY-MM-DD HH:mm:ss');
       }
 

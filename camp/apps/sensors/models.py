@@ -48,7 +48,7 @@ class Sensor(models.Model):
         if self.latest_id is None:
             return False
         now = timezone.now()
-        cutoff = timedelta(seconds=60 * 200)
+        cutoff = timedelta(seconds=60 * 20)
         return now - self.latest.timestamp < cutoff
 
     @property
