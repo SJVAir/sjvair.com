@@ -1,6 +1,11 @@
 <template>
   <div class="columns is-gapless">
     <div class="column">
+      <div class="select field-selector">
+        <select id="id_data-selector" name="field-selector" v-on:change="updateSensorLabels" v-model="labelDisplay">
+          <option v-for="(label, key) in fields" :value="key">{{ label }}</option>
+        </select>
+      </div>
       <div id="map"></div>
     </div>
     <div v-if="activeSensor" class="column is-one-third">
@@ -23,10 +28,28 @@ export default {
 
   data() {
     return {
-        map: null,
-        sensors: {},
-        activeSensor: null,
-        interval: null,
+      map: null,
+      sensors: {},
+      activeSensor: null,
+      interval: null,
+      labelDisplay: 'temperature_f', // 'epa_pm25_aqi',
+      fields: {
+        temperature_f: "Temperature (°Fahrenheit)",
+        temperature_c: "Temperature (°Celcius)",
+        humidity: "Humidity",
+        pressure: "Atmospheric Pressure",
+        epa_pm25_aqi: "US EPA PM2.5 AQI",
+        epa_pm100_aqi: "US EPA PM10 AQI",
+        pm25: "PM2.5",
+        pm50: "PM5",
+        pm100: "PM10",
+        particles_3: "Particles > 0.3µm / 0.1L air",
+        particles_5: "Particles > 0.5µm / 0.1L air",
+        particles_10: "Particles > 1.0µm / 0.1L air",
+        particles_25: "Particles > 2.5µm / 0.1L air",
+        particles_50: "Particles > 5.0µm / 0.1L air",
+        particles_100: "Particles > 10.0µm / 0.1L air"
+      }
     }
   },
 
@@ -57,11 +80,37 @@ export default {
   },
 
   methods: {
+    updateSensorLabels() {
+      console.log('Update Sensor Labls')
+      _.map(this.sensors, (sensor) => {
+        sensor._marker.setLabel(
+          this.getSensorLabel(sensor)
+        );
+      });
+    },
+
     getSensorLabel(sensor){
       if(_.isNull(sensor.latest) || !sensor.is_active){
         return ' ';
       }
-      return sensor.latest.pm2_a.pm25_env.toString();
+
+      return {
+        temperature_f: () => Math.round(sensor.latest.fahrenheit) + "°",
+        temperature_c: () => Math.round(sensor.latest.celcius) + "°",
+        humidity: () => sensor.latest.humidity + "%",
+        pressure: () => sensor.latest.pressure + " hPa",
+        epa_pm25_aqi: () => sensor.latest.epa_pm25_aqi,
+        epa_pm100_aqi: () => sensor.latest.epa_pm100_aqi,
+        pm10: () => sensor.latest.pm2_a.pm10_env,
+        pm25: () => sensor.latest.pm2_a.pm25_env,
+        pm100: () => sensor.latest.pm2_a.pm100_env,
+        particles_3: () => sensor.latest.pm2_a.particles_03um,
+        particles_5: () => sensor.latest.pm2_a.particles_05um,
+        particles_10: () => sensor.latest.pm2_a.particles_10um,
+        particles_25: () => sensor.latest.pm2_a.particles_25um,
+        particles_50: () => sensor.latest.pm2_a.particles_50um,
+        particles_100: () => sensor.latest.pm2_a.particles_100um
+      }[this.labelDisplay]().toString()
     },
 
     showSensorDetail(sensorId) {
@@ -106,16 +155,16 @@ export default {
             });
             }
 
-            this.sensors[sensor.id]._marker.setLabel(
-              this.getSensorLabel(sensor)
-            )
-
             this.sensors[sensor.id]._marker.setPosition(
               new window.google.maps.LatLng(
                 sensor.position.coordinates[1],
                 sensor.position.coordinates[0]
               )
             )
+
+            this.sensors[sensor.id]._marker.setLabel(
+              this.getSensorLabel(sensor)
+            );
 
           });
         })

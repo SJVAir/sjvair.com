@@ -10,13 +10,13 @@
     <span class="sensor-timesince" v-bind:title="sensor.timestamp">{{ this.timesince() }}</span>
   </p>
   <p v-if="!sensor.is_active" class="has-text-weight-bold has-text-danger">This sensor is not currently active.</p>
-  <div v-if="sensor.is_active">
+  <div v-if="sensor.is_active" class="box">
     <table class="table is-striped sensor-realtime">
-      <thead>
+      <!-- <thead>
         <tr>
           <th colspan="2">Current Conditions</th>
         </tr>
-      </thead>
+      </thead> -->
       <tbody>
         <tr>
           <th>Temperature</th>
@@ -30,24 +30,30 @@
           <th>Atmospheric Pressure</th>
           <td>{{ sensor.latest.pressure }} hPa</td>
         </tr>
-        <tr>
-          <th>US EPA PM2.5 AQI</th>
-          <td v-if="sensor.epa_pm25_aqi">{{ sensor.epa_pm25_aqi }}</td>
-          <td v-else>-</td>
-        </tr>
-        <tr>
-          <th>US EPA PM10 AQI</th>
-          <td v-if="sensor.epa_pm100_aqi">{{ sensor.epa_pm100_aqi }}</td>
-          <td v-else>-</td>
-        </tr>
       </tbody>
     </table>
+  </div>
+  <div v-if="sensor.is_active" class="box">
+    <div class="level is-mobile">
+      <div class="level-item has-text-centered">
+        <div>
+          <p class="heading">US EPA PM2.5 AQI</p>
+          <p class="title">{{ sensor.epa_pm25_aqi }}</p>
+        </div>
+      </div>
+      <div class="level-item has-text-centered">
+        <div>
+          <p class="heading">US EPA PM10 AQI</p>
+          <p class="title">{{ sensor.epa_pm100_aqi }}</p>
+        </div>
+      </div>
+    </div>
     <table class="table is-striped is-size-7">
       <thead>
         <tr>
-          <th>Air Quality Conditions</th>
-          <td class="has-text-centered">Sensor A</td>
-          <td class="has-text-centered">Sensor B</td>
+          <th></th>
+          <th class="has-text-centered">Sensor A</th>
+          <th class="has-text-centered">Sensor B</th>
         </tr>
       </thead>
       <tbody>
