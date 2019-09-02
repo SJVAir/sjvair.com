@@ -3693,6 +3693,11 @@ fragment-cache@^0.2.1:
   dependencies:
     map-cache "^0.2.2"
 
+frappe-charts@^1.1.0, frappe-charts@^1.2.4:
+  version "1.2.4"
+  resolved "https://registry.yarnpkg.com/frappe-charts/-/frappe-charts-1.2.4.tgz#d9f4bf6eda5a3f270d0707682f6fa14014292326"
+  integrity sha512-aTTOwZ99PTNbBPbujyZnUFwnbcBUksDol8FKXEiUkY7CYKZdvHaRzVrXsw2r48B05xdn+HFMEKfOl5X2zqMYsg==
+
 fresh@0.5.2:
   version "0.5.2"
   resolved "https://registry.yarnpkg.com/fresh/-/fresh-0.5.2.tgz#3d8cadd90d976569fa835ab1f8e4b23a105605a7"
@@ -8270,6 +8275,13 @@ vue-template-es2015-compiler@^1.9.0:
   version "1.9.1"
   resolved "https://registry.yarnpkg.com/vue-template-es2015-compiler/-/vue-template-es2015-compiler-1.9.1.tgz#1ee3bc9a16ecbf5118be334bb15f9c46f82f5825"
   integrity sha512-4gDntzrifFnCEvyoO8PqyJDmguXgVPxKiIxrBKjIowvL9l+N66196+72XVYR8BBf1Uv1Fgt3bGevJ+sEmxfZzw==
+
+vue2-frappe@^1.0.28:
+  version "1.0.28"
+  resolved "https://registry.yarnpkg.com/vue2-frappe/-/vue2-frappe-1.0.28.tgz#73e263bf57c8d2ec05aa44aab49780ae3d626d58"
+  integrity sha512-NDDr84cuBJn4tV4DG92Hzh4tDvvSKEsvIITHTI4H9wDbInJV6/pepMOQf3O07gLoI2Yvt+3rxdaCqjP9UTjIDQ==
+  dependencies:
+    frappe-charts "^1.1.0"
 
 vue@^2.6.10:
   version "2.6.10"
