@@ -1,6 +1,6 @@
 from resticus.filters import FilterSet
 
-from camp.apps.sensors.models import Sensor
+from camp.apps.sensors.models import Sensor, SensorData
 
 
 class SensorFilter(FilterSet):
@@ -20,4 +20,16 @@ class SensorFilter(FilterSet):
                 'distance_lt'
             ],
             'location': ['exact'],
+        }
+
+
+class SensorDataFilter(FilterSet):
+    class Meta:
+        model = SensorData
+        fields = {
+            'timestamp': [
+                'exact',
+                'lt', 'lte',
+                'gt', 'gte',
+            ]
         }

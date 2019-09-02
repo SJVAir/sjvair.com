@@ -7,6 +7,12 @@ https://oehha.ca.gov/calenviroscreen/report/calenviroscreen-30
 https://ww2.arb.ca.gov/homepage
 https://publiclab.org/questions/samr/04-07-2019/how-to-interpret-pms5003-sensor-values
 
+```
+from django.core.management import call_command
+Sensor.objects.all().delete()
+call_command('loaddata', 'fixtures/sensors.yaml')
+```
+
 # Setup guide
 
 ## Environment setup

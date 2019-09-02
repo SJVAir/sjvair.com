@@ -4,7 +4,7 @@ from django.utils.functional import cached_property
 
 from resticus import generics
 
-from .filters import SensorFilter
+from .filters import SensorFilter, SensorDataFilter
 from .forms import PayloadForm
 from camp.apps.sensors.models import Sensor, SensorData
 
@@ -57,8 +57,10 @@ class SensorDetail(SensorMixin, generics.DetailUpdateEndpoint):
 class SensorData(generics.ListCreateEndpoint):
     model = SensorData
     form_class = PayloadForm
-    fields = ['id', 'sensor_id', 'timestamp', 'position', 'location', 'altitude',
+    filter_class = SensorDataFilter
+    fields = ['id', 'timestamp', 'position', 'location', 'altitude',
         'celcius', 'fahrenheit', 'humidity', 'pressure', 'pm2_a', 'pm2_b']
+    page_size = 2880 # 10 days worth of data
 
     @cached_property
     def sensor(self):
@@ -68,7 +70,7 @@ class SensorData(generics.ListCreateEndpoint):
         return self.model.objects.filter(
             sensor_id=self.sensor.pk,
             is_processed=True,
-        )
+        ).order_by('-timestamp')
 
     def form_valid(self, form):
         self.object = form.save(commit=False)
