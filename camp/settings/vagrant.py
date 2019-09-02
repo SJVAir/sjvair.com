@@ -28,7 +28,7 @@ CACHES = {
 
 # Django Debug Toolbar
 
-if DEBUG:
+if DEBUG and False:
     INSTALLED_APPS.extend([
         'debug_toolbar'
     ])
