@@ -44,7 +44,7 @@ export default {
         chart: {
           id: `id_chart-${this.paths[0]}`,
           animations: {
-            enabled: true
+            enabled: false
           },
           height: 150,
           width: '100%',
