@@ -36,7 +36,11 @@ class Sensor(models.Model):
     location = models.CharField(max_length=10, choices=LOCATION)
 
     # Maintain a relation to the latest sensor reading
-    latest = models.ForeignKey('sensors.SensorData', related_name='sensor_latest', null=True, on_delete=models.SET_NULL)
+    latest = models.ForeignKey('sensors.SensorData',
+        related_name='sensor_latest',
+        null=True,
+        on_delete=models.SET_NULL
+    )
 
     objects = SensorQuerySet.as_manager()
 
@@ -135,7 +139,7 @@ class SensorData(models.Model):
 
         return super().save(*args, **kwargs)
 
-    def process_pm2(pm2):
+    def process_pm2(self, pm2):
         pm2['pm2_aqi'] = aqi.to_iaqi(aqi.POLLUTANT_PM25, pm2['pm25_standard'])
         pm2['pm100_aqi'] = aqi.to_iaqi(aqi.POLLUTANT_PM25, pm2['pm100_standard'])
         return pm2
