@@ -7,6 +7,8 @@ import thingspeak
 
 from django import forms
 
+PURPLE_API_URL = 'https://www.purpleair.com/json'
+
 def parse_datetime(dt):
     return (forms.DateTimeField()
         .clean(dt.replace('T', ' ').strip('Z')))
@@ -20,9 +22,21 @@ def round_datetime(dt):
     return dt
 
 
+def floor_datetime(dt):
+    return dt.replace(second=0, microsecond=0)
+
+
+def lookup_device(label):
+    label = label.lower().strip()
+    data = requests.get(PURPLE_API_URL).json()
+    for device in data['results']:
+        if device['Label'].lower().strip() == label:
+            return device
+
+
 def get_devices(device_id):
     try:
-        return requests.get('https://www.purpleair.com/json', {
+        return requests.get(PURPLE_API_URL, {
             'show': device_id
         }).json()['results'] or None
     except (KeyError, json.decoder.JSONDecodeError):
