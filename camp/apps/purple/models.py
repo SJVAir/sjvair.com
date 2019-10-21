@@ -1,8 +1,9 @@
 from decimal import Decimal
 
+from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 from django.contrib.postgres.fields import JSONField
-from django.db import models
+from django.utils.functional import cached_property
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
@@ -14,7 +15,7 @@ from . import api
 from .schemas import PM2_SCHEMA
 
 
-class Device(models.Model):
+class PurpleAir(models.Model):
     LOCATION = Choices('inside', 'outside')
 
     id = SmallUUIDField(
@@ -25,7 +26,7 @@ class Device(models.Model):
         verbose_name='ID'
     )
 
-    device_id = models.IntegerField()
+    purple_id = models.IntegerField()
     label = models.CharField(max_length=250)
     position = models.PointField(null=True)
     location = models.CharField(max_length=10, choices=LOCATION)
@@ -35,7 +36,7 @@ class Device(models.Model):
         default=list
     )
 
-    latest = models.ForeignKey('Purple.PurpleEntry',
+    latest = models.ForeignKey('purple.Entry',
         related_name='device_latest',
         null=True,
         on_delete=models.SET_NULL
@@ -43,12 +44,13 @@ class Device(models.Model):
 
     @cached_property
     def devices(self):
-        self.data = api.get_devices(self.device_id)
-        self.label = self.data['Label']
+        self.data = api.get_devices(self.purple_id)
+        self.label = self.data[0]['Label']
         self.position = Point(
-            float(self.data['Lon']),
-            float(self.data['Lat'])
+            float(self.data[0]['Lon']),
+            float(self.data[0]['Lat'])
         )
+        self.location = self.data[0]['DEVICE_LOCATIONTYPE']
         return self.data
 
     @cached_property
@@ -67,13 +69,13 @@ class Entry(models.Model):
         editable=False,
         verbose_name='ID'
     )
-    device = models.ForeignKey('purple.Device',
-        related_name='device',
+    device = models.ForeignKey('purple.PurpleAir',
+        related_name='entries',
         on_delete=models.CASCADE
     )
     timestamp = models.DateTimeField()
     position = models.PointField(null=True)
-    location = models.CharField(max_length=10, choices=Sensor.LOCATION)
+    location = models.CharField(max_length=10, choices=PurpleAir.LOCATION)
 
     data = JSONField(
         encoder=JSONEncoder,
@@ -97,7 +99,7 @@ class Entry(models.Model):
         if self.fahrenheit is None and self.celcius is not None:
             self.fahrenheit = (Decimal(self.celcius) * (Decimal(9) / Decimal(5))) + 32
         if self.celcius is None and self.fahrenheit is not None:
-            self.celcius = (Decimal(value) - 32) * (Decimal(5) / Decimal(9))
+            self.celcius = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
 
         return super().save(*args, **kwargs)
 
