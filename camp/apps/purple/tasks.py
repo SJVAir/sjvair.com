@@ -60,7 +60,7 @@ def import_purple_device(device_id, options=None, retry=False):
 @db_periodic_task(crontab(minute='*/5'))
 def import_purple_data():
     options = {'end': timezone.now()}
-    options['start'] = options['end'] - timedelta(seconds=60 * 6)
+    options['start'] = options['end'] - timedelta(minutes=6)
     purple_list = PurpleAir.objects.values_list('pk', flat=True)
     for device_id in purple_list:
         import_purple_device(device_id, options)
