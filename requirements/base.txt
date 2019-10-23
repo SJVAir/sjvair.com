@@ -36,7 +36,7 @@ livereload==2.6.1
 nameparser==1.0.2
 newrelic==4.16.1.117
 numpy==1.16.2
-Pillow==6.0.0
+Pillow==6.2.0
 psycopg2==2.8.1 --no-binary psycopg2
 pylibmc==1.6.0
 python-aqi==0.6.1
