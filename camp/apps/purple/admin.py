@@ -13,7 +13,7 @@ from .tasks import import_purple_data
 @admin.register(PurpleAir)
 class PurpleAirAdmin(admin.OSMGeoAdmin):
     list_display = ['label', 'purple_id', 'location', 'entry_count',
-        'temperature', 'humidity', 'pm10', 'pm25', 'pm100']
+        'updated_at', 'temperature', 'humidity', 'pm10', 'pm25', 'pm100']
     fields = ['label', 'purple_id', 'position', 'location']
     readonly_fields = fields
 
@@ -33,6 +33,11 @@ class PurpleAirAdmin(admin.OSMGeoAdmin):
         super().save_model(request, obj, *args, **kwargs)
         print(import_purple_data(obj.pk, {'results': 1}))
 
+    def updated_at(self, instance):
+        if instance.latest:
+            return instance.latest.timestamp
+        return '-'
+
     def entry_count(self, instance):
         return intcomma(instance.entries__count)
     entry_count.short_description = '# Entries'
@@ -40,9 +45,9 @@ class PurpleAirAdmin(admin.OSMGeoAdmin):
     def temperature(self, instance):
         temps = []
         if instance.latest and instance.latest.fahrenheit:
-            temps.append(f'{intcomma(floatformat(instance.latest.fahrenheit, -1))}°F')
+            temps.append(f'{intcomma(floatformat(instance.latest.fahrenheit, 1))}°F')
         if instance.latest and instance.latest.celcius:
-            temps.append(f'{intcomma(floatformat(instance.latest.celcius, -1))}°C')
+            temps.append(f'{intcomma(floatformat(instance.latest.celcius, 1))}°C')
         if temps:
             return ' / '.join(temps)
         return '-'
@@ -59,7 +64,7 @@ class PurpleAirAdmin(admin.OSMGeoAdmin):
                 values.append(Decimal(instance.latest.pm2_a[key]))
             if instance.latest.pm2_b and key in instance.latest.pm2_b:
                 values.append(Decimal(instance.latest.pm2_b[key]))
-            return floatformat(sum(values) / len(values), -2)
+            return floatformat(sum(values) / len(values), 2)
         except (AttributeError, IndexError, KeyError):
             return '-'
 

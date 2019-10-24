@@ -16,16 +16,21 @@ from camp.apps.purple.models import PurpleAir, Entry
 def import_purple_data(device_id, options=None):
     options = options or {}
     device = PurpleAir.objects.get(pk=device_id)
-    print(f'PurpleAir Import: {device.label} ({device.pk})')
+    feed = list(device.feed(**options))
+    print(f'''
+        PurpleAir Import: {device.label} ({device.pk})
+        - {len(feed)} entries
+    ''')
 
-    for items in device.feed(**options):
+
+    for items in feed:
         device.add_entry(items)
 
     device.latest = device.entries.latest('timestamp')
     device.save()
 
 
-@db_periodic_task(crontab(minute='*/5'))
+@db_periodic_task(crontab(minute='*'))
 def periodic_purple_import():
     # options = {'end': timezone.now() - timedelta(minutes=1)}
     # options['start'] = options['end'] - timedelta(minutes=7)
