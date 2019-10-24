@@ -65,6 +65,7 @@ INSTALLED_APPS = [
 
     'camp.api',
     'camp.apps.accounts',
+    'camp.apps.purple',
     'camp.apps.sensors',
 ]
 
@@ -111,6 +112,15 @@ DATABASES = {
         engine='django.contrib.gis.db.backends.postgis'
     )
 }
+
+
+# Redis
+
+REDIS_URL = None
+for var in ["REDIS_URL", "OPENREDIS_URL"]:
+    REDIS_URL = os.environ.get(var)
+    if REDIS_URL is not None:
+        break
 
 
 # Auth
@@ -211,4 +221,13 @@ GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
 
 RESTICUS = {
     'DEFAULT_AUTHENTICATION_CLASSES': [],
+}
+
+
+# huey
+
+HUEY = {
+    "connection": {"url": REDIS_URL},
+    "consumer": {"periodic": True, "workers": 4},
+    "immediate": bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
 }

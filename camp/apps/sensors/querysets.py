@@ -26,9 +26,9 @@ class SensorQuerySet(models.QuerySet):
     @classmethod
     def as_manager(cls):
         def get_queryset(self):
-            # By default, include the last 24 hours
+            # Average the last several minutes
             # of PM2 data for AQI calculations.
-            cutoff = timezone.now() - timedelta(hours=24)
+            cutoff = timezone.now() - timedelta(minutes=15)
             return SensorQuerySet(self.model, using=self._db).annotate(
                 pm25_a_avg=pm_avg('pm25_env', 'data__pm2_a', cutoff),
                 pm25_b_avg=pm_avg('pm25_env', 'data__pm2_b', cutoff),
