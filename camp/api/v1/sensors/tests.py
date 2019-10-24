@@ -12,18 +12,11 @@ from resticus.encoders import JSONEncoder
 
 from . import endpoints
 from camp.apps.sensors.models import Sensor, SensorData
+from camp.utils.test import get_response_data
 
 sensor_list = endpoints.SensorList.as_view()
 sensor_detail = endpoints.SensorDetail.as_view()
 sensor_data = endpoints.SensorData.as_view()
-
-
-def streaming_json(stream):
-    '''
-        Given a JSON stream (StreamingHttpResponse.streaming_content),
-        parse the JSON and return the data structure.
-    '''
-    return json.loads(''.join([b.decode('utf8') for b in stream]))
 
 
 def random_trend(low, high, num, reverse=False):
@@ -94,7 +87,7 @@ class SensorAPITests(TestCase):
         response = sensor_list(request)
         assert response.status_code == 200
 
-        content = streaming_json(response.streaming_content)
+        content = get_response_data(response)
         assert str(self.sensor.pk) in [sensor['id'] for sensor in content['data']]
 
     def test_get_sensor_detail(self):
@@ -103,7 +96,7 @@ class SensorAPITests(TestCase):
         response = sensor_detail(request, sensor_id=self.sensor.pk)
         assert response.status_code == 200
 
-        content = json.loads(response.content)
+        content = get_response_data(response)
         assert content['data']['id'] == str(self.sensor.pk)
 
     def test_get_sensor_data(self):
@@ -118,8 +111,8 @@ class SensorAPITests(TestCase):
         response = sensor_data(request, sensor_id=self.sensor.pk)
         assert response.status_code == 200
 
-        content = streaming_json(response.streaming_content)
-        assert len(content['data']) == 100  # Max page size
+        content = get_response_data(response)
+        assert len(content['data'])
 
     def test_create_sensor_data(self):
         payload = fake_sensor_payload()
@@ -128,7 +121,7 @@ class SensorAPITests(TestCase):
         response = sensor_data(request, sensor_id=self.sensor.pk)
         assert response.status_code == 200
 
-        content = streaming_json(response.streaming_content)
+        content = get_response_data(response)
         sensor = Sensor.objects.get(pk=self.sensor.pk)
 
         assert content['data']['sensor'] == str(self.sensor.pk)
