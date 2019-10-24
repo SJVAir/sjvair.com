@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from camp.apps.purple import api
 from camp.apps.purple.models import PurpleAir
-from camp.apps.purple.tasks import import_purple_data
+from camp.apps.purple.tasks import periodic_purple_import
 
 device_list = {
     '548 Walker': 18659,
@@ -28,4 +28,4 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         for purple_id in device_list.values():
             PurpleAir.objects.get_or_create(purple_id=purple_id)
-        import_purple_data.call_local()
+        periodic_purple_import()

@@ -14,6 +14,13 @@ from camp.utils.validators import JSONSchemaValidator
 from . import api
 from .schemas import PM2_SCHEMA
 
+pm2_keymap = (
+    ('pm25_standard', 'PM2.5 (CF=1)'),
+    ('pm10_env', 'PM1.0 (ATM)'),
+    ('pm25_env', 'PM2.5 (ATM)'),
+    ('pm100_env', 'PM10.0 (ATM)'),
+)
+
 
 class PurpleAir(models.Model):
     LOCATION = Choices('inside', 'outside')
@@ -26,7 +33,7 @@ class PurpleAir(models.Model):
         verbose_name='ID'
     )
 
-    purple_id = models.IntegerField()
+    purple_id = models.IntegerField(unique=True)
     label = models.CharField(max_length=250)
     position = models.PointField(null=True)
     location = models.CharField(max_length=10, choices=LOCATION)
@@ -42,23 +49,51 @@ class PurpleAir(models.Model):
         on_delete=models.SET_NULL
     )
 
-    @cached_property
-    def devices(self):
-        self.data = api.get_devices(self.purple_id)
+    class Meta:
+        ordering = ['label']
+
+    def __str__(self):
+        return self.label
+
+    def update_device_data(self, data=None):
+        self.data = data or api.get_devices(self.purple_id)
         self.label = self.data[0]['Label']
         self.position = Point(
             float(self.data[0]['Lon']),
             float(self.data[0]['Lat'])
         )
         self.location = self.data[0]['DEVICE_LOCATIONTYPE']
-        return self.data
 
     @cached_property
     def channels(self):
-        return api.get_channels(self.devices)
+        return api.get_channels(self.data)
 
     def feed(self, **options):
         return api.get_correlated_feed(self.channels, **options)
+
+    def add_entry(self, items):
+        try:
+            entry = self.entries.get(
+                data__0__entry_id=items[0]['entry_id']
+            )
+        except Entry.DoesNotExist:
+            entry = Entry(device=self)
+
+        entry.timestamp = items[0]['created_at']
+        entry.position = self.position
+        entry.location = self.location
+
+        entry.data = items
+        entry.fahrenheit = items[0].get('Temperature')
+        entry.humidity = items[0].get('Humidity')
+
+        entry.pm2_a = {ck: items[0].get(pk) for ck, pk in pm2_keymap}
+
+        if len(items) == 2:
+            entry.pressure = items[1].get('Pressure')
+            entry.pm2_b = {ck: items[1].get(pk) for ck, pk in pm2_keymap}
+
+        entry.save()
 
 
 class Entry(models.Model):
