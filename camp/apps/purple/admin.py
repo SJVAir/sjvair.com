@@ -15,12 +15,21 @@ class PurpleAirAdmin(admin.OSMGeoAdmin):
     list_display = ['label', 'purple_id', 'location', 'entry_count',
         'updated_at', 'temperature', 'humidity', 'pm10', 'pm25', 'pm100']
     fields = ['label', 'purple_id', 'position', 'location']
-    readonly_fields = fields
 
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
-            return PurpleAirAddForm
-        return super().get_form(request, obj=obj, **kwargs)
+            kwargs['form'] = PurpleAirAddForm
+        return super().get_form(request, obj, **kwargs)
+
+    def get_fields(self, request, obj=None):
+        if obj is None:
+            return PurpleAirAddForm.base_fields.keys()
+        return self.fields
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj is None:
+            return []
+        return self.fields
 
     def get_queryset(self, request):
         return (super()

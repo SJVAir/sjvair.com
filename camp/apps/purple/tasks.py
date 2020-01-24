@@ -32,8 +32,6 @@ def import_purple_data(device_id, options=None):
 
 @db_periodic_task(crontab(minute='*'))
 def periodic_purple_import():
-    # options = {'end': timezone.now() - timedelta(minutes=1)}
-    # options['start'] = options['end'] - timedelta(minutes=7)
     for device in PurpleAir.objects.all():
         device.update_device_data()
         device.save()

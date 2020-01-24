@@ -1,3 +1,5 @@
+import time
+
 from decimal import Decimal
 
 from django.contrib.gis.db import models
@@ -55,8 +57,23 @@ class PurpleAir(models.Model):
     def __str__(self):
         return self.label
 
-    def update_device_data(self, data=None):
-        self.data = data or api.get_devices(self.purple_id)
+    @property
+    def thingspeak_key(self):
+        try:
+            return self.data[0]['THINGSPEAK_PRIMARY_ID_READ_KEY']
+        except (IndexError, KeyError):
+            return None
+
+
+    def update_device_data(self, retries=3):
+        device_data = api.get_devices(self.purple_id, self.thingspeak_key)
+        if device_data is None:
+            if retries:
+                time.sleep(5)
+                return self.update_device_data(retries=retries - 1)
+            return
+
+        self.data = device_data
         self.label = self.data[0]['Label']
         self.position = Point(
             float(self.data[0]['Lon']),
