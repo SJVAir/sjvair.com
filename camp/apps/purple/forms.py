@@ -5,9 +5,11 @@ from .models import PurpleAir
 
 
 class PurpleAirAddForm(forms.ModelForm):
+    thingspeak_key = forms.CharField(required=False)
+
     class Meta:
         model = PurpleAir
-        fields = ['label', 'purple_id']
+        fields = ['label', 'purple_id', 'thingspeak_key']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -18,14 +20,15 @@ class PurpleAirAddForm(forms.ModelForm):
     def clean(self):
         label = self.cleaned_data['label']
         purple_id = self.cleaned_data['purple_id']
+        thingspeak_key = self.cleaned_data['thingspeak_key']
 
         if not label and not purple_id:
             raise forms.ValidationError('You must supply a label or PurpleAir ID', 'missing_data')
 
         if purple_id:
-            self.devices = api.get_devices(purple_id)
+            self.devices = api.get_devices(purple_id, thingspeak_key)
             if self.devices is None:
-                self.add_error('purple_id', 'Invalid PurpleAir ID')
+                self.add_error('purple_id', 'Invalid PurpleAir ID or Thingspeak key')
 
             if self.devices and label and self.devices[0]['Label'] != label:
                 message = 'Label and Purple ID do not match'

@@ -34,11 +34,13 @@ def lookup_device(label):
             return device
 
 
-def get_devices(device_id):
+def get_devices(device_id, thingspeak_key=None):
+    kwargs = {'show': device_id}
+    if thingspeak_key is not None:
+        kwargs['key'] = thingspeak_key
+
     try:
-        return requests.get(PURPLE_API_URL, {
-            'show': device_id
-        }).json()['results'] or None
+        return requests.get(PURPLE_API_URL, kwargs).json()['results'] or None
     except (KeyError, json.decoder.JSONDecodeError):
         return None
 
