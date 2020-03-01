@@ -2,7 +2,6 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils.functional import cached_property
 
-from dpath.util import get as dget
 from resticus import generics
 
 from .filters import PurpleAirFilter, EntryFilter
