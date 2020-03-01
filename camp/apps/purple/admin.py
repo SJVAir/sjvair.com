@@ -8,6 +8,7 @@ from django.template.defaultfilters import floatformat
 from .forms import PurpleAirAddForm
 from .models import PurpleAir, Entry
 from .tasks import import_purple_data
+from camp.utils.forms import DateRangeForm
 
 
 @admin.register(PurpleAir)
@@ -37,6 +38,10 @@ class PurpleAirAdmin(admin.OSMGeoAdmin):
             .select_related('latest')
             .annotate(Count('entries'))
         )
+
+    def render_change_form(self, request, context, *args, **kwargs):
+        context.update({'export_form': DateRangeForm()})
+        return super().render_change_form(request, context, *args, **kwargs)
 
     def save_model(self, request, obj, *args, **kwargs):
         super().save_model(request, obj, *args, **kwargs)
