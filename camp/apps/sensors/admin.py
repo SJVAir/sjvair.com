@@ -1,6 +1,7 @@
 from django.contrib.gis import admin
 
 from .models import Sensor, SensorData
+from camp.utils.forms import DateRangeForm
 
 
 @admin.register(Sensor)
@@ -11,6 +12,10 @@ class SensorAdmin(admin.OSMGeoAdmin):
         queryset = super().get_queryset(request)
         queryset = queryset.select_related('latest')
         return queryset
+
+    def render_change_form(self, request, context, *args, **kwargs):
+        context.update({'export_form': DateRangeForm()})
+        return super().render_change_form(request, context, *args, **kwargs)
 
 
 @admin.register(SensorData)

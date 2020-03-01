@@ -1,0 +1,58 @@
+{% extends "admin/change_form.html" %}
+{% load admin_urls %}
+{% load i18n %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
+{{ export_form.media }}
+
+<style type="text/css">
+    #export-form {
+        background: #f8f8f8;
+        border: #eee 1px solid;
+        border-radius: 4px;
+        padding: 12px 14px;
+    }
+
+    #export-form div.control,
+    #export-form div.field {
+        display: inline-block;
+    }
+
+    #export-form div.control {
+        margin-right: 1rem;
+    }
+
+    #export-form label {
+        color: #666;
+        font-size: 11px;
+        text-transform: uppercase;
+    }
+
+    #export-form .submit-buttons {
+        display: inline-block;
+        /*float: right;*/
+    }
+</style>
+{% endblock %}
+
+{% block object-tools %}
+    {{ block.super }}
+    <div id="export-form">
+        <form action="{% url 'api:v1:purple-air:entry-export' object_id %}" method="get">
+            <div class="control">
+                <label for="{{ export_form.start_date.auto_id }}">{{ export_form.start_date.label }}</label><br />
+                <div class="field">{{ export_form.start_date }}</div>
+            </div>
+            <div class="control">
+                <label for="{{ export_form.end_date.auto_id }}">{{ export_form.end_date.label }}</label><br />
+                <div class="field">{{ export_form.end_date }}</div>
+            </div>
+            <div class="submit-buttons">
+                <input type="submit" value="Export Data" />
+            </div>
+        </form>
+    </div>
+{% endblock %}
