@@ -13,7 +13,7 @@ from camp.utils.forms import DateRangeForm
 
 @admin.register(PurpleAir)
 class PurpleAirAdmin(admin.OSMGeoAdmin):
-    list_display = ['label', 'purple_id', 'location', 'entry_count',
+    list_display = ['label', 'purple_id', 'location', # 'entry_count',
         'updated_at', 'temperature', 'humidity', 'pm10', 'pm25', 'pm100']
     fields = ['label', 'purple_id', 'position', 'location']
 
@@ -36,7 +36,7 @@ class PurpleAirAdmin(admin.OSMGeoAdmin):
         return (super()
             .get_queryset(request)
             .select_related('latest')
-            .annotate(Count('entries'))
+            # .annotate(Count('entries'))
         )
 
     def render_change_form(self, request, context, *args, **kwargs):
