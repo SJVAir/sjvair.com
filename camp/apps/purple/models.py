@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 from django.contrib.postgres.fields import JSONField
+from django.contrib.postgres.indexes import GinIndex
 from django.utils.functional import cached_property
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
@@ -145,6 +146,11 @@ class Entry(models.Model):
     pm2_b = JSONField(null=True, encoder=JSONEncoder, validators=[
         JSONSchemaValidator(PM2_SCHEMA)
     ])
+
+    class Meta:
+        indexes = [
+            GinIndex(fields=['data'])
+        ]
 
     def save(self, *args, **kwargs):
         # Temperature adjustments

@@ -81,10 +81,9 @@ def get_correlated_feed(channel_list, **options):
     feeds = [get_feed(channel, **options) for channel in channel_list]
     for item in feeds[0]:
         entries = [item]
-        rounded = round_datetime(item['created_at'])
         for feed in feeds[1:]:
             try:
-                entries.append(next((item for item in feed if round_datetime(item['created_at']) == rounded)))
+                entries.append(next((i for i in feed if abs((i['created_at'] - item['created_at']).seconds) < 60)))
             except StopIteration:
                 continue
         yield entries
