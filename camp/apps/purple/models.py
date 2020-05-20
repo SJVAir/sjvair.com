@@ -125,7 +125,7 @@ class Entry(models.Model):
         related_name='entries',
         on_delete=models.CASCADE
     )
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField(db_index=True)
     position = models.PointField(null=True)
     location = models.CharField(max_length=10, choices=PurpleAir.LOCATION)
 
