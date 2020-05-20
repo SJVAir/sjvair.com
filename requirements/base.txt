@@ -25,6 +25,7 @@ boto3==1.9.130
 channels==2.1.7
 channels-redis==2.3.3
 delegator.py==0.1.1
+dpath==2.0.1
 geopy==1.19.0
 gunicorn==19.9.0
 hiredis==1.0.0

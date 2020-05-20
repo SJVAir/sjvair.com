@@ -10,7 +10,8 @@ class JSONSchemaValidator:
         self.schema = schema
 
     def __call__(self, value):
-        try:
-            jsonschema.validate(schema=self.schema, instance=value)
-        except jsonschema.ValidationError as err:
-            raise ValidationError(err.message)
+        if value is not None:
+            try:
+                jsonschema.validate(schema=self.schema, instance=value)
+            except jsonschema.ValidationError as err:
+                raise ValidationError(err.message)
