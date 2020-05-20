@@ -218,6 +218,9 @@ RESTICUS = {
 
 HUEY = {
     "connection": {"url": REDIS_URL},
-    "consumer": {"periodic": True, "workers": 4},
+    "consumer": {
+        "periodic": True,
+        "workers": int(os.environ.get('HUEY_WORKERS', 4))
+    },
     "immediate": bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
 }
