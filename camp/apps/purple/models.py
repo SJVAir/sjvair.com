@@ -92,7 +92,7 @@ class PurpleAir(models.Model):
     def add_entry(self, items):
         try:
             entry = self.entries.get(
-                data__0__entry_id=items[0]['entry_id']
+                timestamp=items[0]['created_at']
             )
         except Entry.DoesNotExist:
             entry = Entry(device=self)
@@ -112,6 +112,7 @@ class PurpleAir(models.Model):
             entry.pm2_b = {ck: items[1].get(pk) for ck, pk in pm2_keymap}
 
         entry.save()
+        return entry
 
 
 class Entry(models.Model):

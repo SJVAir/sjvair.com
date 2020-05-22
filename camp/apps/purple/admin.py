@@ -7,7 +7,7 @@ from django.template.defaultfilters import floatformat
 
 from .forms import PurpleAirAddForm
 from .models import PurpleAir, Entry
-from .tasks import import_purple_data
+from .tasks import import_device_data
 from camp.utils.forms import DateRangeForm
 
 
@@ -45,7 +45,7 @@ class PurpleAirAdmin(admin.OSMGeoAdmin):
 
     def save_model(self, request, obj, *args, **kwargs):
         super().save_model(request, obj, *args, **kwargs)
-        print(import_purple_data(obj.pk, {'results': 1}))
+        print(import_device_data(obj.pk, {'results': 1}))
 
     def updated_at(self, instance):
         if instance.latest:
