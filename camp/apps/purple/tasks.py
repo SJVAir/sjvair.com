@@ -59,7 +59,7 @@ def import_device_data(device_id, options=None):
         try:
             options = {'start': device.entries.latest('timestamp').timestamp}
         except Entry.DoesNotExist:
-            options = {'results': 8000}
+            options = {'results': 1}
 
     feed = device.feed(**options)
     for index, items in enumerate(feed):
