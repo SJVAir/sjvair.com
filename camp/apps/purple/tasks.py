@@ -31,13 +31,13 @@ def import_recent_data():
 
 
 @db_task()
-def import_device_history(device_id):
+def import_device_history(device_id, end=None):
     device = PurpleAir.objects.get(pk=device_id)
 
     def get_feed(end):
         return list(device.feed(end=end, results=8000))
 
-    end = timezone.now()
+    end = end or timezone.now()
     feed = get_feed(end)
     while len(feed):
         print(f'[history] {device.label} ({device.pk}) | {end} | {len(feed)}')
