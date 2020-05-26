@@ -65,6 +65,8 @@ INSTALLED_APPS = [
 
     'camp.api',
     'camp.apps.accounts',
+    'camp.apps.monitors',
+    'camp.apps.monitors.purpleair',
     'camp.apps.purple',
     'camp.apps.sensors',
 ]
