@@ -1,5 +1,5 @@
 <template>
-<div class="sensor-graph box">
+<div class="monitor-graph box">
   <div class="level">
     <div class="level-left">
       <div class="level-item">{{ label }}</div>
@@ -23,12 +23,12 @@ import VueApexCharts from 'vue-apexcharts'
 Vue.component('apexchart', VueApexCharts)
 
 export default {
-  name: 'sensor-graph',
+  name: 'monitor-graph',
   props: {
     paths: String,
     label: String,
-    sensor: Object,
-    sensorData: Array,
+    monitor: Object,
+    monitorData: Array,
   },
 
   mounted() {
@@ -36,7 +36,7 @@ export default {
 
   computed: {
     latestValue(){
-      return _.get(this.sensor.latest, this.paths[0]);
+      return _.get(this.monitor.latest, this.paths[0]);
     },
 
     options() {
@@ -84,7 +84,7 @@ export default {
         path => {
           return {
             name: path,
-            data: _.map(this.sensorData, data => {
+            data: _.map(this.monitorData, data => {
               return {
                 x: data.timestamp,
                 y: _.get(data, path)
