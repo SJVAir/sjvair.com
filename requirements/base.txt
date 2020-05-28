@@ -17,7 +17,7 @@ django-model-utils==3.1.2
 django-smalluuid==1.1.1
 django-storages==1.7.1
 django-vanilla-views==1.0.6
-# django-yarn==0.0.2
+django-yarn==0.0.2
 
 argon2-cffi==19.1.0
 asgiref==3.1.1
@@ -52,5 +52,4 @@ Unipath==1.1
 whitenoise==4.1.2
 
 git+https://github.com/dmpayton/django-resticus#develop
-#git+https://github.com/epineda/django-yarn#master
-git+https://github.com/kn-id/django-yarn#master
+git+https://github.com/epineda/django-yarn#master
