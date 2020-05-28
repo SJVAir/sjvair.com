@@ -1,7 +1,8 @@
 import time
 
+from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
-from django.db import models
+from django.contrib.postgres.fields import JSONField
 from django.utils.functional import cached_property
 
 from resticus.encoders import JSONEncoder
@@ -13,6 +14,7 @@ from camp.apps.monitors.purpleair import api
 class PurpleAir(Monitor):
     purple_id = models.IntegerField(unique=True)
     thingspeak_key = models.CharField(max_length=50)
+    data = JSONField(default=dict, encoder=JSONEncoder)
 
     @cached_property
     def channels(self):
