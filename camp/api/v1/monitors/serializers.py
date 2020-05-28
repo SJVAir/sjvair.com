@@ -1,0 +1,44 @@
+from resticus import serializers
+
+from camp.apps.monitors.purpleair.models import PurpleAir
+
+MONITOR_FIELDS = {
+    PurpleAir: ['purple_id'],
+}
+
+
+class MonitorSerializer(serializers.Serializer):
+    fields = [
+        'id',
+        'name',
+        'position',
+        'location',
+        ('latest', {'fields': [
+            'timestamp',
+            'celcius',
+            'fahrenheit',
+            'humidity',
+            'pressure',
+            'pm100_env',
+            'pm10_env',
+            'pm25_env',
+            'pm100_standard',
+            'pm10_standard',
+            'pm25_standard',
+            'particles_03um',
+            'particles_05um',
+            'particles_100um',
+            'particles_10um',
+            'particles_25um',
+            'particles_50um',
+            'epa_pm25_aqi',
+            'epa_pm100_aqi',
+        ]})
+    ]
+
+    def fixup(self, instance, data):
+        fields = MONITOR_FIELDS.get(instance.__class__)
+        if fields is not None:
+            extra = serializers.serialize(instance, MONITOR_FIELDS[instance.__class__])
+            data.update(**extra)
+        return data
