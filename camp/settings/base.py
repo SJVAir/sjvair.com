@@ -192,11 +192,21 @@ STATICFILES_DIRS = [
 STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+    'yarn.finders.YarnFinder',
 ]
 
 MEDIA_ROOT = BASE_DIR.child('public', 'media')
 
 MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
+
+
+# django-yarn
+
+YARN_STATIC_FILES_PREFIX = 'js/lib'
+
+YARN_FILE_PATTERNS = {
+    'vue': ['dist/vue.min.js']
+}
 
 
 # django-cors-headers
