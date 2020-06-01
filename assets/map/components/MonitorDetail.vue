@@ -1,46 +1,65 @@
 <template>
-<div class="monitor-detail container is-fluid">
-  <div class="monitor-header columns">
-    <div class="column is-two-thirds content">
-      <h2>{{ monitor.name }}</h2>
-      <p class="is-size-7">ID: <span class="is-family-monospace">{{ monitor.id }}</span></p>
-      <p class="monitor-status">
-        <span class="icon">
-          <span v-if="monitor.is_active" class="far fa-fw fa-check-circle has-text-success"></span>
-          <span v-else class="far fa-fw fa-times-circle has-text-danger"></span>
-        </span>
-        <span class="monitor-timesince" v-bind:title="monitor.timestamp">{{ timesince }}</span>
-      </p>
-      <p v-if="!monitor.is_active" class="has-text-weight-bold has-text-danger">This monitor is not currently active.</p>
+<div class="monitor-detail">
+  <div class="container">
+    <span class="monitor-close" v-on:click="on_close">
+      <span class="far fa-window-close"></span>
+    </span>
+    <div class="monitor-header">
+      <ul class="is-inline">
+        <li class="monitor-name">{{ monitor.name }}</li>
+        <li>
+          <span class="icon">
+            <span v-if="monitor.is_active" class="far fa-fw fa-check-circle has-text-success"></span>
+            <span v-else class="far fa-fw fa-times-circle has-text-danger"></span>
+          </span>
+          <span class="monitor-timesince" v-bind:title="monitor.timestamp">{{ timesince }}</span>
+        </li>
+        <li class="is-size-7">{{ monitor.device }} <span class="is-family-monospace">{{ monitor.id }}</span></li>
+      </ul>
     </div>
-    <div class="column">
-      <div class="box content">
-        <div class="level is-mobile">
-          <div class="level-item has-text-centered">
-            <div>
-              <p class="heading">US EPA PM2.5 AQI</p>
-              <p class="title">{{ monitor.epa_pm25_aqi }}</p>
-            </div>
-          </div>
-          <div class="level-item has-text-centered">
-            <div>
-              <p class="heading">US EPA PM10 AQI</p>
-              <p class="title">{{ monitor.epa_pm100_aqi }}</p>
+    <div class="columns">
+      <div class="column content">
+        <div v-if="monitor.is_active">
+          <monitor-graph v-if="entries" :field="field" :label="$parent.fields[field]" :monitor="monitor" :entries="entries" />
+          <div v-else class="content has-text-centered">
+            <div class="fa-3x">
+              <i class="fas fa-spinner fa-pulse"></i>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
-  <div v-if="monitor.is_active">
-    <div v-if="monitorData" class="columns is-multiline">
-      <div class="column is-one-third">
-        <monitor-graph :paths="['fahrenheit']" label="Temperature (°F)" :monitor="monitor" :monitorData="monitorData">
-      </div>
-    </div>
-    <div v-else class="content has-text-centered">
-      <div class="fa-3x">
-        <i class="fas fa-spinner fa-pulse"></i>
+      <div class="column">
+        <div class="columns is-multiline is-mobile">
+          <div v-if="monitor.latest.fahrenheit" class="column is-6-mobile is-3-tablet latest-entry">
+            <div class="latest-value">{{ monitor.latest.fahrenheit }}°</div>
+            <div class="latest-label">Temp. (°F)</div>
+          </div>
+          <div v-if="monitor.latest.celcius" class="column is-6-mobile is-3-tablet latest-entry">
+            <div class="latest-value">{{ monitor.latest.celcius }}°</div>
+            <div class="latest-label">Temp. (°C)</div>
+          </div>
+          <div v-if="monitor.latest.humidity" class="column is-6-mobile is-3-tablet latest-entry">
+            <div class="latest-value">{{ monitor.latest.humidity }}%</div>
+            <div class="latest-label">Humidity</div>
+          </div>
+          <div v-if="monitor.latest.pressure" class="column is-6-mobile is-3-tablet latest-entry">
+            <div class="latest-value">{{ monitor.latest.pressure }}</div>
+            <div class="latest-label">Pressure</div>
+          </div>
+
+          <div v-if="monitor.latest.pm10_env" class="column is-6-mobile is-3-tablet latest-entry">
+            <div class="latest-value">{{ monitor.latest.pm10_env }}</div>
+            <div class="latest-label">PM 1.0</div>
+          </div>
+          <div v-if="monitor.latest.pm25_env" class="column is-6-mobile is-3-tablet latest-entry">
+            <div class="latest-value">{{ monitor.latest.pm25_env }}</div>
+            <div class="latest-label">PM 2.5</div>
+          </div>
+          <div v-if="monitor.latest.pm100_env" class="column is-6-mobile is-3-tablet latest-entry">
+            <div class="latest-value">{{ monitor.latest.pm100_env }}</div>
+            <div class="latest-label">PM 10</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -60,41 +79,73 @@ export default {
   },
 
   props: {
-    monitor: Object
+    monitor: Object,
+    field: String
   },
 
   data() {
     return {
-      monitorData: null
+      entries: null,
+      interval: null,
     }
   },
 
+  watch: {
+    field: () => {
+      console.log('field updated')
+      this.entries = null;
+      this.entries = this.loadEntries();
+    },
+    monitor: () => {
+      console.log('monitor updated')
+      this.entries = null;
+      this.entries = this.loadEntries();
+    },
+  },
+
   async mounted(){
-    this.monitorData = _.uniqBy(await this.getMonitorData(), 'id')
+    this.entries = await this.loadEntries();
+    this.interval = setInterval(() => {
+      console.log('reloading entries')
+      this.entries = this.loadEntries
+    }, 1000 * 60 * 1);
+  },
+
+  destroyed() {
+    if(this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
   },
 
   computed: {
     timesince() {
       if(!_.isNull(this.monitor.latest)){
-        return this.monitor.latest.timestamp.fromNow()
+        return this.monitor.latest.timestamp.fromNow();
       }
+      return '';
     }
   },
 
   methods: {
-    async getMonitorData(page, timestamp) {
+    on_close() {
+      this.$parent.hideMonitorDetail();
+    },
+
+    async loadEntries(page, timestamp) {
       if(!page) {
         page = 1;
       }
 
       if(!timestamp){
         timestamp = moment.utc()
-          .subtract(3, 'days')
+          .subtract(1, 'days')
           .format('YYYY-MM-DD HH:mm:ss');
       }
 
-      return await this.$http.get(`monitors/${this.monitor.id}/data/`, {
+      return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
+          field: this.field,
           page: page,
           timestamp__gte: timestamp
         }
@@ -106,10 +157,10 @@ export default {
             return data;
           });
           if(response.has_next_page){
-            let nextPage = await this.getMonitorData(page + 1, timestamp);
+            let nextPage = await this.loadEntries(page + 1, timestamp);
             data.push(...nextPage);
           }
-          return data;
+          return _.uniqBy(data, 'id');
         })
     },
 

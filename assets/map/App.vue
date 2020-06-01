@@ -2,13 +2,13 @@
   <div class="interface">
     <div class="viewport">
       <div class="select field-selector">
-        <select id="id_data-selector" name="field-selector" v-on:change="updateMonitorLabels" v-model="labelDisplay">
+        <select id="id_data-selector" name="field-selector" v-on:change="updateField" v-model="currentField">
           <option v-for="(label, key) in fields" :value="key">{{ label }}</option>
         </select>
       </div>
       <div id="map" :class="mapIsMaximised"></div>
     </div>
-    <monitor-detail v-if="activeMonitor" :monitor="activeMonitor" />
+    <monitor-detail v-if="activeMonitor" :monitor="activeMonitor" :field="currentField" />
   </div>
 </template>
 
@@ -33,23 +33,38 @@ export default {
       monitors: {},
       activeMonitor: null,
       interval: null,
-      labelDisplay: 'epa_pm25_aqi',
+      currentField: 'pm25_env',
       fields: {
-        fahrenheit: "Temperature (°F)",
-        celcius: "Temperature (°C)",
+        fahrenheit: "Temp. (°F)",
+        celcius: "Temp. (°C)",
         humidity: "Humidity",
-        pressure: "Atmospheric Pressure",
+        pressure: "Pressure",
         epa_pm25_aqi: "US EPA PM2.5 AQI",
         epa_pm100_aqi: "US EPA PM10 AQI",
-        pm100_env: "PM 2.5",
-        pm10_env: "PM 5",
-        pm25_env: "PM 10",
+        pm10_env: "PM 1",
+        pm25_env: "PM 2.5",
+        pm100_env: "PM 10",
         particles_03um: "Particles > 0.3µm / 0.1L air",
         particles_05um: "Particles > 0.5µm / 0.1L air",
         particles_100um: "Particles > 1.0µm / 0.1L air",
         particles_10um: "Particles > 2.5µm / 0.1L air",
         particles_25um: "Particles > 5.0µm / 0.1L air",
         particles_50um: "Particles > 10.0µm / 0.1L air"
+      },
+      getLatestValue: {
+        fahrenheit: (monitor) => Math.round(monitor.latest.fahrenheit) + "°",
+        celcius: (monitor) => Math.round(monitor.latest.celcius) + "°",
+        humidity: (monitor) => Math.round(monitor.latest.humidity) + "%",
+        pressure: (monitor) => Math.round(monitor.latest.pressure) + " hPa",
+        pm10_env: (monitor) => monitor.latest.pm10_env,
+        pm25_env: (monitor) => monitor.latest.pm25_env,
+        pm100_env: (monitor) => monitor.latest.pm100_env,
+        particles_3um: (monitor) => monitor.latest.particles_03um,
+        particles_5um: (monitor) => monitor.latest.particles_05um,
+        particles_10um: (monitor) => monitor.latest.particles_10um,
+        particles_25um: (monitor) => monitor.latest.particles_25um,
+        particles_50um: (monitor) => monitor.latest.particles_50um,
+        particles_100um: (monitor) => monitor.latest.particles_100um
       }
     }
   },
@@ -89,7 +104,7 @@ export default {
   },
 
   methods: {
-    updateMonitorLabels() {
+    updateField() {
       _.forEach(this.monitors, (monitor) => {
         monitor._marker.setLabel(
           this.getMonitorLabel(monitor)
@@ -101,28 +116,11 @@ export default {
       if(_.isNull(monitor.latest) || !monitor.is_active){
         return ' ';
       }
-
-      return _.get({
-        temperature_f: () => Math.round(monitor.latest.fahrenheit) + "°",
-        temperature_c: () => Math.round(monitor.latest.celcius) + "°",
-        humidity: () => Math.round(monitor.latest.humidity) + "%",
-        pressure: () => Math.round(monitor.latest.pressure) + " hPa",
-        epa_pm25_aqi: () => monitor.epa_pm25_aqi,
-        epa_pm100_aqi: () => monitor.epa_pm100_aqi,
-        pm10: () => monitor.latest.pm10_env,
-        pm25: () => monitor.latest.pm25_env,
-        pm100: () => monitor.latest.pm100_env,
-        particles_3: () => monitor.latest.particles_03um,
-        particles_5: () => monitor.latest.particles_05um,
-        particles_10: () => monitor.latest.particles_10um,
-        particles_25: () => monitor.latest.particles_25um,
-        particles_50: () => monitor.latest.particles_50um,
-        particles_100: () => monitor.latest.particles_100um
-      }, this.labelDisplay)().toString();
+      return _.get(this.getLatestValue, this.currentField)(monitor).toString();
     },
 
     showMonitorDetail(monitorId) {
-      // this.activeMonitor = null;
+      this.activeMonitor = null;
       this.activeMonitor = this.monitors[monitorId];
       this.map.panTo(this.activeMonitor._marker.getPosition())
     },
@@ -132,8 +130,6 @@ export default {
     },
 
     setInitialViewport() {
-      console.log('Setting Viewport')
-      console.log(this.monitors)
       const bounds = new window.google.maps.LatLngBounds();
       _.forIn(this.monitors, (monitor) => {
         bounds.extend(monitor._marker.position)

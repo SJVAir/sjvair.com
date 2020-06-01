@@ -29,6 +29,7 @@ class Monitor(models.Model):
     )
 
     name = models.CharField(max_length=250)
+    # nickname = models.CharField(max_length=250)
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
 
@@ -49,6 +50,10 @@ class Monitor(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def device(self):
+        return self.__class__.__name__
 
     @property
     def is_active(self):
@@ -122,7 +127,11 @@ class Entry(models.Model):
     epa_pm100_aqi = models.IntegerField(null=True)
 
     class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['monitor', 'timestamp'], name='unique_entry')
+        ]
         ordering = ('-timestamp',)
+
 
     def save(self, *args, **kwargs):
         # Temperature adjustments

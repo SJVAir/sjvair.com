@@ -1,5 +1,6 @@
 from resticus import serializers
 
+from camp.apps.monitors.models import Entry
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 MONITOR_FIELDS = {
@@ -7,33 +8,43 @@ MONITOR_FIELDS = {
 }
 
 
+class EntrySerializer(serializers.Serializer):
+    fields = [
+        'id',
+        'timestamp',
+    ]
+
+    value_fields = [
+        'celcius',
+        'fahrenheit',
+        'humidity',
+        'pressure',
+        'pm100_env',
+        'pm10_env',
+        'pm25_env',
+        'pm100_standard',
+        'pm10_standard',
+        'pm25_standard',
+        'particles_03um',
+        'particles_05um',
+        'particles_100um',
+        'particles_10um',
+        'particles_25um',
+        'particles_50um',
+        # 'epa_pm25_aqi',
+        # 'epa_pm100_aqi',
+    ]
+
+
 class MonitorSerializer(serializers.Serializer):
     fields = [
         'id',
         'name',
+        'device',
+        'is_active',
         'position',
         'location',
-        ('latest', {'fields': [
-            'timestamp',
-            'celcius',
-            'fahrenheit',
-            'humidity',
-            'pressure',
-            'pm100_env',
-            'pm10_env',
-            'pm25_env',
-            'pm100_standard',
-            'pm10_standard',
-            'pm25_standard',
-            'particles_03um',
-            'particles_05um',
-            'particles_100um',
-            'particles_10um',
-            'particles_25um',
-            'particles_50um',
-            'epa_pm25_aqi',
-            'epa_pm100_aqi',
-        ]})
+        ('latest', {'fields': EntrySerializer.fields + EntrySerializer.value_fields})
     ]
 
     def fixup(self, instance, data):

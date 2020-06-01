@@ -7,7 +7,8 @@ from django.db.models import F, OuterRef, Subquery
 from django.utils import timezone
 
 from huey import crontab
-from huey.contrib.djhuey import db_task, db_periodic_task
+from huey.contrib.djhuey import db_task, db_periodic_task, HUEY
+from huey.exceptions import TaskLockedException
 
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.purpleair import api
@@ -60,12 +61,17 @@ def import_monitor_data(monitor_id, options=None):
 
 @db_task()
 def add_monitor_entry(monitor_id, payload):
-    monitor = PurpleAir.objects.select_related('latest').get(pk=monitor_id)
-    print(f'[add_monitor_entry] {monitor.name} ({monitor.pk})')
-    entry = monitor.create_entry(payload)
-    entry = monitor.process_entry(entry)
-    entry.save()
+    key = f'purpleair_entry_{monitor_id}_{payload[0]["created_at"]}'
+    try:
+        with HUEY.lock_task(key):
+            monitor = PurpleAir.objects.select_related('latest').get(pk=monitor_id)
+            print(f'[add_monitor_entry] {monitor.name} ({monitor.pk})')
+            entry = monitor.create_entry(payload)
+            entry = monitor.process_entry(entry)
+            entry.save()
 
-    if monitor.latest is None or (entry.timestamp > monitor.latest.timestamp):
-        monitor.latest = entry
-        monitor.save()
+            if monitor.latest is None or (entry.timestamp > monitor.latest.timestamp):
+                monitor.latest = entry
+                monitor.save()
+    except TaskLockedException:
+        print(f'[LOCKED:add_monitor_entry] {monitor_id} ({payload[0]["created_at"]})')
