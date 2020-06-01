@@ -1,16 +1,18 @@
 <template>
-<div class="monitor-graph box">
+<div class="monitor-graph">
   <div class="level">
     <div class="level-left">
       <div class="level-item">{{ label }}</div>
     </div>
     <div class="level-right">
       <div class="level-item">
-        <strong>{{ latestValue }}</strong>
+        <strong>Current: {{ $parent.$parent.getLatestValue[field](monitor) }}</strong>
       </div>
     </div>
   </div>
-  <apexchart type="line" :options="options" :series="series"></apexchart>
+  <div class="chart">
+    <apexchart type="line" width="100%" height="150px" :options="options" :series="series"></apexchart>
+  </div>
 </div>
 </template>
 
@@ -25,10 +27,10 @@ Vue.component('apexchart', VueApexCharts)
 export default {
   name: 'monitor-graph',
   props: {
-    paths: String,
-    label: String,
     monitor: Object,
-    monitorData: Array,
+    label: String,
+    field: String,
+    entries: Array,
   },
 
   mounted() {
@@ -36,17 +38,17 @@ export default {
 
   computed: {
     latestValue(){
-      return _.get(this.monitor.latest, this.paths[0]);
+      return _.get(this.monitor.latest, this.field);
     },
 
     options() {
       return {
         chart: {
-          id: `id_chart-${this.paths[0]}`,
+          id: `id_chart-${this.field}`,
           animations: {
             enabled: false
           },
-          height: 150,
+          height: '150px',
           width: '100%',
           toolbar: {
             show: false
@@ -79,20 +81,15 @@ export default {
     },
 
     series() {
-      return _.map(
-        this.paths,
-        path => {
+      return [{
+        name: this.label,
+        data: _.map(this.entries, data => {
           return {
-            name: path,
-            data: _.map(this.monitorData, data => {
-              return {
-                x: data.timestamp,
-                y: _.get(data, path)
-              }
-            })
+            x: data.timestamp,
+            y: _.get(data, this.field)
           }
-        }
-      );
+        })
+      }];
     }
   },
 

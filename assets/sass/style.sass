@@ -7,6 +7,21 @@
 
 @import "bulma/bulma.sass";
 
+ul
+    &.is-inline
+        list-style: none
+        margin: 0 0 0 -.25rem !important
+        padding: 0 !important
+
+        > li
+            display: inline-block
+            margin: 0
+            padding: 0 .25rem
+
+    &.is-unstyled
+        list-style: none !important
+        margin-left: 0 !important
+
 .navbar
     .navbar-title
         @extend .navbar-item
@@ -16,12 +31,12 @@
             margin-right: .5rem
 
 body.map
-
     #map
-        height: calc((100vh - #{$navbar-height}) / 3)
+        height: calc(100vh - #{$navbar-height})
+        // height: calc((100vh - #{$navbar-height}) / 2)
 
-        &.is-maximised
-            height: calc(100vh - #{$navbar-height})
+        // &.is-maximised
+        //     height: calc(100vh - #{$navbar-height})
 
     .field-selector
         float: left
@@ -29,9 +44,46 @@ body.map
         margin: 1rem 0 -100% 1rem
         z-index: 9999
 
-    div.sensor-detail
-        padding-bottom: 1rem
-        padding-top: 1rem
+    .monitor-detail
+        background-color: #fff
+        bottom: 0
+        overflow-x: hidden
+        overflow-y: scroll
+        position: absolute
+        width: 100%
+
+    .monitor-close
+        color: $grey-light
+        cursor: pointer
+        float: right
+        margin-top: 1rem
+
+    .monitor-header
+        padding-top: 1rem !important
+        padding-bottom: 1rem !important
+
+        .monitor-name
+            font-size: $size-5
+            font-weight: bold
+
+    .monitor-graph
+        .level
+            margin-bottom: 0
+
+        .chart
+            height: 150px
+
+    .latest-entry
+        font-weight: bold
+        text-align: center
+
+        .latest-value
+            font-size: $size-4
+
+        .latest-label
+            color: $grey
+            font-size: $size-7
+            text-transform: uppercase
 
     .sensor-realtime
         text-align: center
