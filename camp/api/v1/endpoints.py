@@ -78,3 +78,16 @@ class CSVExport(Endpoint):
         print(instance.pk)
         return [func(instance) for name, func in self.columns]
 
+
+class MapMarker(Endpoint):
+    def get(self, request, color):
+        from django.http import HttpResponse
+        from PIL import Image, ImageDraw
+
+        im = Image.new('RGBA', (39, 39), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(im)
+        draw.ellipse((1, 1, 37, 37), fill=f'#{color}', outline=(0, 0, 0), width=2)
+
+        response = HttpResponse(content_type='image/png')
+        im.save(response, 'PNG')
+        return response

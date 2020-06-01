@@ -20,7 +20,7 @@
     <div class="columns">
       <div class="column content">
         <div v-if="monitor.is_active">
-          <monitor-graph v-if="entries" :field="field" :label="$parent.fields[field]" :monitor="monitor" :entries="entries" />
+          <monitor-graph v-if="entries" :field="$parent.fields[field]" :attr="field" :monitor="monitor" :entries="entries" />
           <div v-else class="content has-text-centered">
             <div class="fa-3x">
               <i class="fas fa-spinner fa-pulse"></i>
@@ -30,34 +30,9 @@
       </div>
       <div class="column">
         <div class="columns is-multiline is-mobile">
-          <div v-if="monitor.latest.fahrenheit" class="column is-6-mobile is-3-tablet latest-entry">
-            <div class="latest-value">{{ monitor.latest.fahrenheit }}°</div>
-            <div class="latest-label">Temp. (°F)</div>
-          </div>
-          <div v-if="monitor.latest.celcius" class="column is-6-mobile is-3-tablet latest-entry">
-            <div class="latest-value">{{ monitor.latest.celcius }}°</div>
-            <div class="latest-label">Temp. (°C)</div>
-          </div>
-          <div v-if="monitor.latest.humidity" class="column is-6-mobile is-3-tablet latest-entry">
-            <div class="latest-value">{{ monitor.latest.humidity }}%</div>
-            <div class="latest-label">Humidity</div>
-          </div>
-          <div v-if="monitor.latest.pressure" class="column is-6-mobile is-3-tablet latest-entry">
-            <div class="latest-value">{{ monitor.latest.pressure }}</div>
-            <div class="latest-label">Pressure</div>
-          </div>
-
-          <div v-if="monitor.latest.pm10_env" class="column is-6-mobile is-3-tablet latest-entry">
-            <div class="latest-value">{{ monitor.latest.pm10_env }}</div>
-            <div class="latest-label">PM 1.0</div>
-          </div>
-          <div v-if="monitor.latest.pm25_env" class="column is-6-mobile is-3-tablet latest-entry">
-            <div class="latest-value">{{ monitor.latest.pm25_env }}</div>
-            <div class="latest-label">PM 2.5</div>
-          </div>
-          <div v-if="monitor.latest.pm100_env" class="column is-6-mobile is-3-tablet latest-entry">
-            <div class="latest-value">{{ monitor.latest.pm100_env }}</div>
-            <div class="latest-label">PM 10</div>
+          <div v-for="(field, key) in $parent.fields" class="column is-6-mobile is-3-tablet latest-entry">
+            <div class="latest-value">{{ field.latest(monitor) }}</div>
+            <div class="latest-label">{{ field.label }}</div>
           </div>
         </div>
       </div>
@@ -90,24 +65,12 @@ export default {
     }
   },
 
-  watch: {
-    field: () => {
-      console.log('field updated')
-      this.entries = null;
-      this.entries = this.loadEntries();
-    },
-    monitor: () => {
-      console.log('monitor updated')
-      this.entries = null;
-      this.entries = this.loadEntries();
-    },
-  },
-
   async mounted(){
     this.entries = await this.loadEntries();
+
     this.interval = setInterval(() => {
       console.log('reloading entries')
-      this.entries = this.loadEntries
+      this.entries = this.loadEntries()
     }, 1000 * 60 * 1);
   },
 
