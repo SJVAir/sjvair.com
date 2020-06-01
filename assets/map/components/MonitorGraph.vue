@@ -2,11 +2,11 @@
 <div class="monitor-graph">
   <div class="level">
     <div class="level-left">
-      <div class="level-item">{{ label }}</div>
+      <div class="level-item">{{ field.label }}</div>
     </div>
     <div class="level-right">
       <div class="level-item">
-        <strong>Current: {{ $parent.$parent.getLatestValue[field](monitor) }}</strong>
+        <strong>Current: {{ field.latest(monitor) }}</strong>
       </div>
     </div>
   </div>
@@ -28,23 +28,24 @@ export default {
   name: 'monitor-graph',
   props: {
     monitor: Object,
-    label: String,
-    field: String,
+    field: Object,
+    attr: String,
     entries: Array,
   },
 
   mounted() {
+    console.log('MOUNTED', this.field, this.attr)
   },
 
   computed: {
     latestValue(){
-      return _.get(this.monitor.latest, this.field);
+      return this.field.latest(this.monitor);
     },
 
     options() {
       return {
         chart: {
-          id: `id_chart-${this.field}`,
+          id: `id_chart`,
           animations: {
             enabled: false
           },
@@ -81,12 +82,16 @@ export default {
     },
 
     series() {
+      if(this.entries == null){
+        return [];
+      }
+
       return [{
-        name: this.label,
+        name: this.field.label,
         data: _.map(this.entries, data => {
           return {
             x: data.timestamp,
-            y: _.get(data, this.field)
+            y: _.get(data, this.attr)
           }
         })
       }];
