@@ -1,16 +1,18 @@
 <template>
-<div class="sensor-graph box">
+<div class="monitor-graph">
   <div class="level">
     <div class="level-left">
-      <div class="level-item">{{ label }}</div>
+      <div class="level-item">{{ field.label }}</div>
     </div>
     <div class="level-right">
       <div class="level-item">
-        <strong>{{ latestValue }}</strong>
+        <strong>Current: {{ field.latest(monitor) }}</strong>
       </div>
     </div>
   </div>
-  <apexchart type="line" :options="options" :series="series"></apexchart>
+  <div class="chart">
+    <apexchart type="line" width="100%" height="150px" :options="options" :series="series"></apexchart>
+  </div>
 </div>
 </template>
 
@@ -23,30 +25,31 @@ import VueApexCharts from 'vue-apexcharts'
 Vue.component('apexchart', VueApexCharts)
 
 export default {
-  name: 'sensor-graph',
+  name: 'monitor-graph',
   props: {
-    paths: String,
-    label: String,
-    sensor: Object,
-    sensorData: Array,
+    monitor: Object,
+    field: Object,
+    attr: String,
+    entries: Array,
   },
 
   mounted() {
+    console.log('MOUNTED', this.field, this.attr)
   },
 
   computed: {
     latestValue(){
-      return _.get(this.sensor.latest, this.paths[0]);
+      return this.field.latest(this.monitor);
     },
 
     options() {
       return {
         chart: {
-          id: `id_chart-${this.paths[0]}`,
+          id: `id_chart`,
           animations: {
             enabled: false
           },
-          height: 150,
+          height: '150px',
           width: '100%',
           toolbar: {
             show: false
@@ -79,20 +82,19 @@ export default {
     },
 
     series() {
-      return _.map(
-        this.paths,
-        path => {
+      if(this.entries == null){
+        return [];
+      }
+
+      return [{
+        name: this.field.label,
+        data: _.map(this.entries, data => {
           return {
-            name: path,
-            data: _.map(this.sensorData, data => {
-              return {
-                x: data.timestamp,
-                y: _.get(data, path)
-              }
-            })
+            x: data.timestamp,
+            y: _.get(data, this.attr)
           }
-        }
-      );
+        })
+      }];
     }
   },
 
