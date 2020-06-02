@@ -1,3 +1,6 @@
+
+
+
 import time
 
 from django.contrib.gis.db import models
@@ -34,7 +37,7 @@ class PurpleAir(Monitor):
 
         self.data = device_data
         self.thingspeak_key = self.data[0]['THINGSPEAK_PRIMARY_ID_READ_KEY']
-        self.label = self.data[0]['Label']
+        self.name = self.data[0]['Label']
         self.position = Point(
             float(self.data[0]['Lon']),
             float(self.data[0]['Lat'])
