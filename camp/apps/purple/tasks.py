@@ -13,7 +13,7 @@ from camp.apps.purple import api
 from camp.apps.purple.models import PurpleAir, Entry
 
 
-@db_periodic_task(crontab(minute='*'))
+#@db_periodic_task(crontab(minute='*'))
 def update_latest_entries():
     print('[update_latest_entries]')
     PurpleAir.objects.annotate(
@@ -23,21 +23,21 @@ def update_latest_entries():
     ).update(latest_id=F('latest_entry'))
 
 
-@db_periodic_task(crontab(minute='*/2'))
+#@db_periodic_task(crontab(minute='*/2'))
 def import_recent_data():
     print('[import_recent_data]')
     for device in PurpleAir.objects.all():
         import_device_data(device.pk)
 
 
-@db_task()
-def import_device_history(device_id):
+#@db_task()
+def import_device_history(device_id, end=None):
     device = PurpleAir.objects.get(pk=device_id)
 
     def get_feed(end):
         return list(device.feed(end=end, results=8000))
 
-    end = timezone.now()
+    end = end or timezone.now()
     feed = get_feed(end)
     while len(feed):
         print(f'[history] {device.label} ({device.pk}) | {end} | {len(feed)}')
@@ -48,7 +48,7 @@ def import_device_history(device_id):
         # feed = get_feed(feed[0][0]['created_at'] - timedelta(seconds=1))
 
 
-@db_task()
+#@db_task()
 def import_device_data(device_id, options=None):
     device = PurpleAir.objects.get(pk=device_id)
     print(f'[import_device_data:start] {device.label} ({device.pk})')
@@ -68,7 +68,7 @@ def import_device_data(device_id, options=None):
     print(f'[import_device_data:end] {device.label} ({device.pk}) - {index + 1}')
 
 
-@db_task()
+#@db_task()
 def add_device_entry(device_id, items):
     device = PurpleAir.objects.get(pk=device_id)
     print(f'[add_device_entry] {device.label} ({device.pk})')
