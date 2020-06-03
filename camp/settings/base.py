@@ -237,3 +237,15 @@ HUEY = {
     'huey_class': 'huey.PriorityRedisHuey',
     "immediate": bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
 }
+
+# Sentry
+
+if "SENTRY_DSN" in os.environ:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        integrations=[DjangoIntegration(transaction_style="url")],
+        release=COMMIT_HASH,
+    )
