@@ -15,28 +15,26 @@ from camp.apps.monitors.purpleair import api
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
-@db_periodic_task(crontab(minute='*'))
+@db_periodic_task(crontab(minute='*'), priority=50)
 def import_recent_data():
     print('[import_recent_data]')
     for monitor in PurpleAir.objects.all():
-        import_monitor_data(monitor.pk)
+        print('\n' * 10, '[import_recent_data]', monitor.name, '\n' * 10)
+        import_monitor_data.schedule([monitor.pk], delay=1, priority=30)
 
 
 @db_task()
 def import_monitor_history(monitor_id, end=None):
     monitor = PurpleAir.objects.get(pk=monitor_id)
-
-    def get_feed(end):
-        return list(monitor.feed(end=end, results=8000))
-
     end = end or timezone.now()
-    feed = get_feed(end)
-    while len(feed):
+    feed = list(monitor.feed(end=end, results=8000))
+
+    if len(feed):
         print(f'[history] {monitor.name} ({monitor.pk}) | {end} | {len(feed)}')
         for items in feed:
             add_monitor_entry(monitor.pk, items)
-        end = min([items[0]['created_at'] for items in feed]) - timedelta(seconds=1)
-        feed = get_feed(end)
+        end = min([min([i['created_at'] for i in items]) for items in feed]) - timedelta(seconds=1)
+        import_monitor_history(monitor_id, end)
 
 
 @db_task()
@@ -54,7 +52,7 @@ def import_monitor_data(monitor_id, options=None):
 
     feed = monitor.feed(**options)
     for index, payload in enumerate(feed):
-        add_monitor_entry(monitor.pk, payload)
+        add_monitor_entry.schedule([monitor.pk, payload], delay=1, priority=10)
 
     print(f'[import_monitor_data:end] {monitor.name} ({monitor.pk}) - {index + 1}')
 
