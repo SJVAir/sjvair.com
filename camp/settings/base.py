@@ -234,5 +234,6 @@ HUEY = {
         "periodic": True,
         "workers": int(os.environ.get('HUEY_WORKERS', 4))
     },
+    'huey_class': 'huey.PriorityRedisHuey',
     "immediate": bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
 }
