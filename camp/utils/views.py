@@ -17,8 +17,6 @@ class PageTemplate(generic.TemplateView):
         # Set the template_name based on the URL path and raise a 404 if it doesn't exist.
         self.template_name = 'pages/{0}.html'.format(request.path.strip('/') or 'index')
 
-        print('TEMPLATE:', self.template_name)
-
         try:
             loader.get_template(self.template_name)
         except TemplateDoesNotExist:
