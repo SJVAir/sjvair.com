@@ -108,13 +108,13 @@ class Entry(models.Model):
     humidity = models.DecimalField(max_digits=4, decimal_places=1, null=True)
     pressure = models.DecimalField(max_digits=6, decimal_places=2, null=True)
 
-    pm100_env = models.DecimalField(max_digits=5, decimal_places=2, null=True)
-    pm10_env = models.DecimalField(max_digits=5, decimal_places=2, null=True)
-    pm25_env = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    pm100_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm10_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm25_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
 
-    pm100_standard = models.DecimalField(max_digits=5, decimal_places=2, null=True)
-    pm10_standard = models.DecimalField(max_digits=5, decimal_places=2, null=True)
-    pm25_standard = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    pm100_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm10_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm25_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
 
     particles_03um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
     particles_05um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
