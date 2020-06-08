@@ -47,7 +47,7 @@ export default {
         humidity: {
           label: "Humidity",
           levels: [],
-          latest: (monitor) => Math.round(monitor.latest.celcius) + "%"
+          latest: (monitor) => Math.round(monitor.latest.humidity) + "%"
         },
         pressure: {
           label: "Pressure",
@@ -64,7 +64,7 @@ export default {
             {min: 150, color: '8c1a4b'},
             {min: 250, color: '731425'}
           ],
-          latest: (monitor) => Math.round(monitor.latest.pm10_env)
+          latest: (monitor) => monitor.latest.pm10_env
         },
         pm25_env: {
           label: "PM 2.5",
@@ -76,10 +76,10 @@ export default {
             {min: 150, color: '8c1a4b'},
             {min: 250, color: '731425'}
           ],
-          latest: (monitor) => Math.round(monitor.latest.pm25_env)
+          latest: (monitor) => monitor.latest.pm25_env
         },
         pm100_env: {
-          label: "PM 2.5",
+          label: "PM 10",
           levels: [
             {min: 0, color: '68e143'},
             {min: 12, color: 'ffff55'},
@@ -88,41 +88,9 @@ export default {
             {min: 150, color: '8c1a4b'},
             {min: 250, color: '731425'}
           ],
-          latest: (monitor) => Math.round(monitor.latest.pm100_env)
+          latest: (monitor) => monitor.latest.pm100_env
         }
       }
-      // fields: {
-      //   fahrenheit: "Temp. (°F)",
-      //   celcius: "Temp. (°C)",
-      //   humidity: "Humidity",
-      //   pressure: "Pressure",
-      //   epa_pm25_aqi: "US EPA PM2.5 AQI",
-      //   epa_pm100_aqi: "US EPA PM10 AQI",
-      //   pm10_env: "PM 1",
-      //   pm25_env: "PM 2.5",
-      //   pm100_env: "PM 10",
-      //   particles_03um: "Particles > 0.3µm / 0.1L air",
-      //   particles_05um: "Particles > 0.5µm / 0.1L air",
-      //   particles_100um: "Particles > 1.0µm / 0.1L air",
-      //   particles_10um: "Particles > 2.5µm / 0.1L air",
-      //   particles_25um: "Particles > 5.0µm / 0.1L air",
-      //   particles_50um: "Particles > 10.0µm / 0.1L air"
-      // },
-      // getLatestValue: {
-      //   fahrenheit: ,
-      //   celcius: (monitor) => Math.round(monitor.latest.celcius) + "°",
-      //   humidity: (monitor) => Math.round(monitor.latest.humidity) + "%",
-      //   pressure: (monitor) => Math.round(monitor.latest.pressure) + " hPa",
-      //   pm10_env: (monitor) => monitor.latest.pm10_env,
-      //   pm25_env: (monitor) => monitor.latest.pm25_env,
-      //   pm100_env: (monitor) => monitor.latest.pm100_env,
-      //   particles_3um: (monitor) => monitor.latest.particles_03um,
-      //   particles_5um: (monitor) => monitor.latest.particles_05um,
-      //   particles_10um: (monitor) => monitor.latest.particles_10um,
-      //   particles_25um: (monitor) => monitor.latest.particles_25um,
-      //   particles_50um: (monitor) => monitor.latest.particles_50um,
-      //   particles_100um: (monitor) => monitor.latest.particles_100um
-      // }
     }
   },
 

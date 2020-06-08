@@ -1,5 +1,5 @@
 <template>
-<div class="monitor-graph">
+<div v-if="monitor" class="monitor-graph">
   <div class="level">
     <div class="level-left">
       <div class="level-item">{{ field.label }}</div>
@@ -11,7 +11,7 @@
     </div>
   </div>
   <div class="chart">
-    <apexchart type="line" width="100%" height="150px" :options="options" :series="series"></apexchart>
+    <apexchart ref="chart" type="line" width="100%" height="150px" :options="options"></apexchart>
   </div>
 </div>
 </template>
@@ -30,18 +30,40 @@ export default {
     monitor: Object,
     field: Object,
     attr: String,
-    entries: Array,
   },
 
-  mounted() {
-    console.log('MOUNTED', this.field, this.attr)
+  data() {
+    return {
+      entries: null,
+      interval: null
+    }
+  },
+
+  async mounted() {
+    this.entries = await this.loadEntries();
+    this.interval = setInterval(async () => {
+      this.entries = await this.loadEntries();
+    }, 1000 * 10 * 1);
+  },
+
+  destroyed() {
+    if(this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+  },
+
+  watch: {
+    entries: function() {
+      this.updateChart();
+    },
+    monitor: async function(){
+      this.$refs.chart.updateSeries([]);
+      this.entries = await this.loadEntries();
+    }
   },
 
   computed: {
-    latestValue(){
-      return this.field.latest(this.monitor);
-    },
-
     options() {
       return {
         chart: {
@@ -79,27 +101,60 @@ export default {
           lines: true
         }
       };
-    },
+    }
+  },
 
-    series() {
-      if(this.entries == null){
-        return [];
+  methods: {
+    async loadEntries(page, timestamp) {
+      if(!page) {
+        page = 1;
       }
 
-      return [{
+      if(!timestamp){
+        timestamp = moment.utc()
+          .subtract(1, 'days')
+          .format('YYYY-MM-DD HH:mm:ss');
+      }
+
+      return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
+        params: {
+          field: this.attr,
+          page: page,
+          timestamp__gte: timestamp
+        }
+      })
+        .then(response => response.json(response))
+        .then(async response => {
+          let data = _.map(response.data, data => {
+            data.timestamp = moment.utc(data.timestamp).local();
+            return data;
+          });
+          if(response.has_next_page){
+            let nextPage = await this.loadEntries(page + 1, timestamp);
+            data.push(...nextPage);
+          }
+          return _.uniqBy(data, 'id');
+        })
+    },
+
+    updateChart() {
+      let entries = this.entries;
+      if(entries == null){
+        entries = [];
+      }
+
+      let series = [{
         name: this.field.label,
-        data: _.map(this.entries, data => {
+        data: _.map(entries, data => {
           return {
             x: data.timestamp,
             y: _.get(data, this.attr)
           }
         })
       }];
+
+      this.$refs.chart.updateSeries(series);
     }
-  },
-
-  methods: {
-
   }
 }
 </script>
