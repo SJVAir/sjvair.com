@@ -19,14 +19,7 @@
     </div>
     <div class="columns">
       <div class="column content">
-        <div v-if="monitor.is_active">
-          <monitor-graph v-if="entries" :field="$parent.fields[field]" :attr="field" :monitor="monitor" :entries="entries" />
-          <div v-else class="content has-text-centered">
-            <div class="fa-3x">
-              <i class="fas fa-spinner fa-pulse"></i>
-            </div>
-          </div>
-        </div>
+        <monitor-graph :field="$parent.fields[field]" :attr="field" :monitor="monitor" />
       </div>
       <div class="column">
         <div class="columns is-multiline is-mobile">
@@ -58,26 +51,9 @@ export default {
     field: String
   },
 
-  data() {
-    return {
-      entries: null,
-      interval: null,
-    }
-  },
-
-  async mounted(){
-    this.entries = await this.loadEntries();
-
-    this.interval = setInterval(() => {
-      console.log('reloading entries')
-      this.entries = this.loadEntries()
-    }, 1000 * 60 * 1);
-  },
-
-  destroyed() {
-    if(this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
+  watched: {
+    monitor: async function(monitor) {
+      // this.$refs.chart.updateChart();
     }
   },
 
@@ -93,38 +69,6 @@ export default {
   methods: {
     on_close() {
       this.$parent.hideMonitorDetail();
-    },
-
-    async loadEntries(page, timestamp) {
-      if(!page) {
-        page = 1;
-      }
-
-      if(!timestamp){
-        timestamp = moment.utc()
-          .subtract(1, 'days')
-          .format('YYYY-MM-DD HH:mm:ss');
-      }
-
-      return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
-        params: {
-          field: this.field,
-          page: page,
-          timestamp__gte: timestamp
-        }
-      })
-        .then(response => response.json(response))
-        .then(async response => {
-          let data = _.map(response.data, data => {
-            data.timestamp = moment.utc(data.timestamp).local();
-            return data;
-          });
-          if(response.has_next_page){
-            let nextPage = await this.loadEntries(page + 1, timestamp);
-            data.push(...nextPage);
-          }
-          return _.uniqBy(data, 'id');
-        })
     },
 
     aqi_label(aqi){
