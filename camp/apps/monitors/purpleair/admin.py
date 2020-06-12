@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib.gis import admin
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.template.defaultfilters import floatformat
 
@@ -9,9 +9,10 @@ from camp.utils.forms import DateRangeForm
 
 
 @admin.register(PurpleAir)
-class PurpleAirAdmin(admin.ModelAdmin):
+class PurpleAirAdmin(admin.OSMGeoAdmin):
     list_display = ['name', 'purple_id', 'last_updated', 'temperature', 'humidity', 'pm10', 'pm25', 'pm100']
-    fields = ['name', 'purple_id', 'thingspeak_key']
+    fields = ['name', 'purple_id', 'thingspeak_key', 'location', 'position']
+    # readonly_fields = ['location', 'position']
 
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
