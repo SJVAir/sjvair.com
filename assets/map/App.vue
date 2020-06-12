@@ -1,11 +1,12 @@
 <template>
   <div class="interface">
     <div class="viewport">
-      <!-- <div class="select field-selector">
-        <select id="id_data-selector" name="field-selector" v-on:change="updateField" v-model="activeField">
-          <option v-for="(label, key) in fields" :value="key">{{ label }}</option>
-        </select>
-      </div> -->
+      <div class="display-options">
+        <label class="checkbox">
+            <input type="checkbox" v-model="showInactive" />
+            Show inactive monitors
+        </label>
+      </div>
       <div id="map" :class="mapIsMaximised"></div>
     </div>
     <monitor-detail v-if="activeMonitor" :monitor="activeMonitor" :field="activeField" />
@@ -33,6 +34,7 @@ export default {
       activeMonitor: null,
       monitors: {},
       activeField: 'pm25_env',
+      showInactive: false,
       fields: {
         fahrenheit: {
           label: "Temp. (°F)",
@@ -120,6 +122,18 @@ export default {
     }
   },
 
+  watch: {
+    showInactive: function(value) {
+      _.mapValues(this.monitors, (monitor) => {
+        if(!value && !monitor.is_active) {
+          monitor._marker.setMap(null);
+        } else {
+          monitor._marker.setMap(this.map);
+        }
+      });
+    }
+  },
+
   computed: {
     mapIsMaximised() {
       return {
@@ -163,7 +177,7 @@ export default {
     showMonitorDetail(monitorId) {
       this.hideMonitorDetail()
       this.activeMonitor = this.monitors[monitorId];
-      this.map.panTo(this.activeMonitor._marker.getPosition())
+      this.map.panTo(this.activeMonitor._marker.getPosition());
     },
 
     hideMonitorDetail() {
@@ -196,8 +210,6 @@ export default {
             // Create/update the marker
             if(_.isUndefined(this.monitors[monitor.id]._marker)){
               this.monitors[monitor.id]._marker = new window.google.maps.Marker({
-                animation: window.google.maps.Animation.DROP,
-                map: this.map,
                 size: new window.google.maps.Size(32, 32),
                 origin: window.google.maps.Point(0, 0),
                 anchor: new window.google.maps.Point(16, 16)
@@ -223,6 +235,12 @@ export default {
             this.monitors[monitor.id]._marker.setLabel(
               this.getMonitorLabel(monitor)
             );
+
+            if(!this.showInactive && !this.monitors[monitor.id].is_active){
+              this.monitors[monitor.id]._marker.setMap(null);
+            } else {
+              this.monitors[monitor.id]._marker.setMap(this.map);
+            }
           });
         })
     }
