@@ -11,5 +11,4 @@ urlpatterns = [
 
     # Deprecated.
     path('sensors/', include('camp.api.v1.sensors.urls', namespace='sensors')),
-    path('purple-air/', include('camp.api.v1.purple.urls', namespace='purple-air')),
 ]
