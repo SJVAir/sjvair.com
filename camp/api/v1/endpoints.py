@@ -75,8 +75,11 @@ class CSVExport(Endpoint):
         return [name for name, func in self.columns]
 
     def get_row(self, instance):
-        print(instance.pk)
-        return [func(instance) for name, func in self.columns]
+        row = []
+        for name, func in self.columns:
+            value = func(instance)
+            row.append(value if value is not None else '')
+        return row
 
 
 class MapMarker(Endpoint):

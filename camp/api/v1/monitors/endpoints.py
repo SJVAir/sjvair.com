@@ -1,11 +1,13 @@
 from resticus import generics
 
 from django.http import Http404
+from django.shortcuts import get_object_or_404
 from django.utils.functional import cached_property
 
 from camp.apps.monitors.models import Entry, Monitor
 from .filters import EntryFilter, MonitorFilter
 from .serializers import EntrySerializer, MonitorSerializer
+from ..endpoints import CSVExport
 
 
 class EntryMixin:
@@ -37,6 +39,27 @@ class EntryList(EntryMixin, generics.ListEndpoint):
         else:
             fields.extend(EntrySerializer.value_fields)
         return (entry for entry in queryset.values(*fields))
+
+
+class EntryCSV(EntryMixin, CSVExport):
+    model = Entry
+    filename = "SJVAir_{view.monitor.__class__.__name__}_{view.monitor.pk}_{data[start_date]}_{data[end_date]}.csv"
+    columns = ['monitor_id', 'timestamp', 'celcius', 'fahrenheit', 'humidity', 'pressure',
+        'pm100_env', 'pm10_env', 'pm25_env', 'pm100_standard', 'pm10_standard',
+        'pm25_standard', 'particles_03um', 'particles_05um', 'particles_100um',
+        'particles_10um', 'particles_25um', 'particles_50um',
+    ]
+
+    def get_queryset(self, *args, **kwargs):
+        queryset = super().get_queryset(*args, **kwargs)
+        queryset = queryset.values(*self.columns)
+        return queryset
+
+    def get_header_row(self):
+        return self.columns
+
+    def get_row(self, instance):
+        return [instance[key] for key in self.columns]
 
 
 class MonitorMixin:
