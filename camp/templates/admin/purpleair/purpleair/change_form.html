@@ -42,7 +42,7 @@
     {{ block.super }}
     {% if change %}
     <div id="export-form">
-        <form action="{% url 'api:v1:purple-air:entry-export' object_id %}" method="get">
+        <form action="{% url 'api:v1:monitors:entry-csv' object_id %}" method="get">
             <div class="control">
                 <label for="{{ export_form.start_date.auto_id }}">{{ export_form.start_date.label }}</label><br />
                 <div class="field">{{ export_form.start_date }}</div>
