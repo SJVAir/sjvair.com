@@ -23,53 +23,59 @@ def import_recent_data():
         import_monitor_data.schedule([monitor.pk], delay=1, priority=30)
 
 
-@db_task()
-def import_monitor_history(monitor_id, end=None):
-    monitor = PurpleAir.objects.get(pk=monitor_id)
-    end = end or timezone.now()
-    feed = list(monitor.feed(end=end, results=8000))
+# @db_task()
+# def import_monitor_history(monitor_id, end=None):
+#     monitor = PurpleAir.objects.get(pk=monitor_id)
+#     end = end or timezone.now()
+#     feed = list(monitor.feed(end=end, results=8000))
 
-    if len(feed):
-        print(f'[history] {monitor.name} ({monitor.pk}) | {end} | {len(feed)}')
-        for items in feed:
-            add_monitor_entry(monitor.pk, items)
-        end = min([min([i['created_at'] for i in items]) for items in feed]) - timedelta(seconds=1)
-        import_monitor_history(monitor_id, end)
+#     if len(feed):
+#         print(f'[history] {monitor.name} ({monitor.pk}) | {end} | {len(feed)}')
+#         for items in feed:
+#             add_monitor_entry(monitor.pk, items)
+#         end = min([min([i['created_at'] for i in items]) for items in feed]) - timedelta(seconds=1)
+#         import_monitor_history(monitor_id, end)
 
 
 @db_task()
 def import_monitor_data(monitor_id, options=None):
     monitor = PurpleAir.objects.get(pk=monitor_id)
     print(f'[import_monitor_data:start] {monitor.name} ({monitor.pk})')
-    monitor.update_info()
+    monitor.update_data()
     monitor.save()
 
     if options is None:
         try:
-            options = {'start': monitor.entries.latest('timestamp').timestamp}
+            options = {'start': (monitor.entries
+                .values_list('timestamp', flat=True)
+                .latest('timestamp')
+            )}
         except Entry.DoesNotExist:
             options = {'results': 1}
 
-    feed = monitor.feed(**options)
-    for index, payload in enumerate(feed):
-        add_monitor_entry.schedule([monitor.pk, payload], delay=1, priority=10)
+    feeds = monitor.get_feeds(**options)
+    for sensor, feed in feeds.items():
+        for payload in feed:
+            add_monitor_entry.schedule([monitor.pk, payload, sensor], delay=1, priority=10)
 
-    print(f'[import_monitor_data:end] {monitor.name} ({monitor.pk}) - {index + 1}')
+    print(f'[import_monitor_data:end] {monitor.name} ({monitor.pk})')
 
 
 @db_task()
-def add_monitor_entry(monitor_id, payload):
-    key = f'purpleair_entry_{monitor_id}_{payload[0]["created_at"]}'
+def add_monitor_entry(monitor_id, payload, sensor=None):
+    key = '_'.join([
+        'purpleair.entry',
+        str(monitor_id),
+        sensor if sensor is not None else '',
+        str(payload[0]["created_at"]),
+    ])
+
     try:
         with HUEY.lock_task(key):
-            monitor = PurpleAir.objects.select_related('latest').get(pk=monitor_id)
+            monitor = PurpleAir.objects.get(pk=monitor_id)
             print(f'[add_monitor_entry] {monitor.name} ({monitor.pk})')
-            entry = monitor.create_entry(payload)
+            entry = monitor.create_entry(payload, sensor=sensor)
             entry = monitor.process_entry(entry)
             entry.save()
-
-            if monitor.latest is None or (entry.timestamp > monitor.latest.timestamp):
-                monitor.latest = entry
-                monitor.save()
     except TaskLockedException:
         print(f'[LOCKED:add_monitor_entry] {monitor_id} ({payload[0]["created_at"]})')

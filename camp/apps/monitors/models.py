@@ -63,10 +63,11 @@ class Monitor(models.Model):
         cutoff = timedelta(seconds=60 * 10)
         return (now - self.latest.timestamp) < cutoff
 
-    def create_entry(self, payload):
+    def create_entry(self, payload, sensor=None):
         return Entry(
             monitor=self,
             payload=payload,
+            sensor=sensor,
             position=self.position,
             location=self.location,
             is_processed=False,
@@ -88,6 +89,7 @@ class Entry(models.Model):
     modified = models.DateTimeField(auto_now=True)
     timestamp = models.DateTimeField(default=timezone.now, db_index=True)
     monitor = models.ForeignKey('monitors.Monitor', related_name='entries', on_delete=models.CASCADE)
+    sensor = models.CharField(max_length=50, null=True, db_index=True)
 
     # Where was the monitor when this entry was logged?
     position = models.PointField(null=True, db_index=True)
@@ -108,20 +110,20 @@ class Entry(models.Model):
     humidity = models.DecimalField(max_digits=4, decimal_places=1, null=True)
     pressure = models.DecimalField(max_digits=6, decimal_places=2, null=True)
 
-    pm100_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
     pm10_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
     pm25_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm100_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
 
-    pm100_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
     pm10_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
     pm25_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm100_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
 
     particles_03um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
     particles_05um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    particles_100um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
     particles_10um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
     particles_25um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
     particles_50um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    particles_100um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
 
     epa_pm25_aqi = models.IntegerField(null=True)
     epa_pm100_aqi = models.IntegerField(null=True)

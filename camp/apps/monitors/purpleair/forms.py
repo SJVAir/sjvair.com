@@ -5,15 +5,16 @@ from .models import PurpleAir
 
 
 class PurpleAirAddForm(forms.ModelForm):
+    purple_id = forms.IntegerField(required=False)
+    thingspeak_key = forms.CharField(required=False)
+
     class Meta:
         model = PurpleAir
-        fields = ['name', 'purple_id', 'thingspeak_key']
+        fields = ['name']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['name'].required = False
-        self.fields['purple_id'].required = False
-        self.fields['thingspeak_key'].required = False
 
     def clean(self):
         name = self.cleaned_data['name']
@@ -37,12 +38,8 @@ class PurpleAirAddForm(forms.ModelForm):
 
     def save(self, *args, **kwargs):
         commit = kwargs.pop('commit', True)
-        instance = super().save(commit=False, *args, **kwargs)
-
-        # Accessing the devices property will set
-        # the rest of the attrs.
-        instance.purple_id = self.devices[0]['ID']
-        instance.update_device_data(self.devices)
+        instance = super().save(commit=False)
+        instance.update_data(self.devices)
 
         if commit:
             instance.save()

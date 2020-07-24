@@ -11,19 +11,30 @@ from camp.utils.forms import DateRangeForm
 
 @admin.register(PurpleAir)
 class PurpleAirAdmin(MonitorAdmin):
-    # list_display = ['name', 'purple_id', 'last_updated', 'temperature', 'humidity', 'pm10', 'pm25', 'pm100']
+    add_form = PurpleAirAddForm
     list_display = MonitorAdmin.list_display[:]
     list_display.insert(1, 'purple_id')
 
-    # fields = ['name', 'purple_id', 'thingspeak_key', 'location', 'position']
     fields = MonitorAdmin.fields
-    fields.insert(1, 'purple_id')
-    fields.insert(2, 'thingspeak_key')
+
+    add_fieldsets = (
+        (None, {
+            # 'classes': ('wide',),
+            'fields': ('name', 'purple_id', 'thingspeak_key'),
+        }),
+    )
+
+    def get_fieldsets(self, request, obj=None):
+        if not obj:
+            return self.add_fieldsets
+        return super().get_fieldsets(request, obj)
 
     def get_form(self, request, obj=None, **kwargs):
+        defaults = {}
         if obj is None:
-            kwargs['form'] = PurpleAirAddForm
-        return super().get_form(request, obj, **kwargs)
+            defaults['form'] = self.add_form
+        defaults.update(kwargs)
+        return super().get_form(request, obj, **defaults)
 
     def render_change_form(self, request, context, *args, **kwargs):
         context.update({'export_form': DateRangeForm()})
