@@ -1,4 +1,6 @@
+from django.db.models import Max, Prefetch
 from django.test import TestCase
+
 from . import api
 from .forms import PurpleAirAddForm
 from .models import PurpleAir
@@ -21,7 +23,7 @@ class PurpleAirTests(TestCase):
         assert device.thingspeak_key == form.cleaned_data['thingspeak_key']
         assert 'Root Access' in device.name
 
-    def test_thing(self):
+    def test_create_entry(self):
         feeds = self.monitor.get_feeds(results=1)
         payload = next(feeds['a'])
         entry = self.monitor.create_entry(payload, sensor='a')
@@ -30,3 +32,10 @@ class PurpleAirTests(TestCase):
         assert entry.sensor == 'a'
         assert entry.position == self.monitor.position
         assert entry.fahrenheit == entry.payload[0]['Temperature']
+        assert entry.pm25_aqi is not None
+
+    # def test_thing(self):
+    #     qs = PurpleAir.objects.annotate(
+    #         last_updated=Max('entries__timestamp')
+    #     )
+    #     print(qs.get().last_updated)

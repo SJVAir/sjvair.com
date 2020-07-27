@@ -34,16 +34,14 @@ export default {
 
   data() {
     return {
-      entries: null,
+      entries: {},
       interval: null
     }
   },
 
   async mounted() {
-    this.entries = await this.loadEntries();
-    this.interval = setInterval(async () => {
-      this.entries = await this.loadEntries();
-    }, 1000 * 10 * 1);
+    this.loadAllEntries();
+    this.interval = setInterval(this.loadAllEntries, 1000 * 60 * 2);
   },
 
   destroyed() {
@@ -59,7 +57,7 @@ export default {
     },
     monitor: async function(){
       this.$refs.chart.updateSeries([]);
-      this.entries = await this.loadEntries();
+      this.loadAllEntries();
     }
   },
 
@@ -83,12 +81,18 @@ export default {
         markers: {
           size: 0
         },
+        noData: {
+          text: 'Loading...'
+        },
         stroke: {
           show: true,
           curve: 'smooth',
           lineCap: 'round',
           width: 1,
           dashArray: 0,
+        },
+        theme: {
+          palette: 'palette2'
         },
         tooltip: {
           enabled: true
@@ -105,7 +109,17 @@ export default {
   },
 
   methods: {
-    async loadEntries(page, timestamp) {
+    async loadAllEntries(){
+      let sensors = {
+        PurpleAir: ['a', 'b']
+      };
+
+      _.each(_.get(sensors, this.monitor.device, ['']), sensor => {
+        this.loadEntries(sensor)
+      });
+    },
+
+    async loadEntries(sensor, page, timestamp) {
       if(!page) {
         page = 1;
       }
@@ -120,7 +134,8 @@ export default {
         params: {
           field: this.attr,
           page: page,
-          timestamp__gte: timestamp
+          timestamp__gte: timestamp,
+          sensor: sensor
         }
       })
         .then(response => response.json(response))
@@ -130,30 +145,32 @@ export default {
             return data;
           });
           if(response.has_next_page){
-            let nextPage = await this.loadEntries(page + 1, timestamp);
+            let nextPage = await this.loadEntries(sensor, page + 1, timestamp);
             data.push(...nextPage);
           }
-          return _.uniqBy(data, 'id');
+
+          if(page == 1){
+            this.entries = Object.assign({}, this.entries, _.fromPairs([[sensor, _.uniqBy(data, 'id')]]));
+          } else {
+            return data;
+          }
         })
     },
 
     updateChart() {
-      let entries = this.entries;
-      if(entries == null){
-        entries = [];
-      }
+      let series = _.map(this.entries, (value, key) => {
+        return {
+          name: key,
+          data: _.map(value, data => {
+            return {
+              x: data.timestamp,
+              y: _.get(data, this.attr)
+            }
+          })
+        }
+      })
 
-      let series = [{
-        name: this.field.label,
-        data: _.map(entries, data => {
-          return {
-            x: data.timestamp,
-            y: _.get(data, this.attr)
-          }
-        })
-      }];
-
-      this.$refs.chart.updateSeries(series);
+      this.$refs.chart.updateSeries(series, true);
     }
   }
 }

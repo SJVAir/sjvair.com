@@ -81,3 +81,404 @@
       THINGSPEAK_SECONDARY_ID: '456620'
       THINGSPEAK_PRIMARY_ID_READ_KEY: IS0JYSMZW1IKJFQD
       THINGSPEAK_SECONDARY_ID_READ_KEY: O793XY653V5OYWX2
+- model: monitors.entry
+  pk: EA5G5rgQQs6ea0PvXMjaBQ
+  fields:
+    created: 2020-07-26 20:26:17.001929+00:00
+    modified: 2020-07-26 20:26:29.000045+00:00
+    timestamp: 2020-07-26 20:25:43+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: a
+    position: SRID=4326;POINT (-119.798678 36.762742)
+    location: outside
+    is_processed: true
+    payload:
+    - RSSI: '-49'
+      Uptime: '3831'
+      Humidity: '12'
+      entry_id: 352765
+      created_at: '2020-07-26T20:25:43Z'
+      PM1.0 (ATM): '4.82'
+      PM2.5 (ATM): '7.27'
+      Temperature: '112'
+      PM10.0 (ATM): '7.55'
+      PM2.5 (CF=1): '7.27'
+    - 0.3um: '1182.00'
+      0.5um: '337.00'
+      1.0um: '43.47'
+      2.5um: '3.00'
+      5.0um: '0.18'
+      10.0um: '0.18'
+      entry_id: 352462
+      created_at: '2020-07-26T20:25:44Z'
+      PM1.0 (CF=1): '4.82'
+      PM10.0 (CF=1): '7.55'
+    celcius: '44.4'
+    fahrenheit: '112.0'
+    humidity: '12.0'
+    pressure: null
+    pm10_env: '4.82'
+    pm25_env: '7.27'
+    pm100_env: '7.55'
+    pm10_standard: '4.82'
+    pm25_standard: '7.27'
+    pm100_standard: '7.55'
+    particles_03um: '1182.00'
+    particles_05um: '337.00'
+    particles_10um: '3.00'
+    particles_25um: '0.18'
+    particles_50um: '0.18'
+    particles_100um: '43.47'
+    pm25_aqi: null
+    pm100_aqi: null
+    pm25_calibration_formula: 'pm25_env * .4'
+- model: monitors.entry
+  pk: IwV2ocS6Quy5EoJh5lXQ4Q
+  fields:
+    created: 2020-07-26 20:24:17.012984+00:00
+    modified: 2020-07-26 20:24:29.630686+00:00
+    timestamp: 2020-07-26 20:23:43+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: a
+    position: SRID=4326;POINT (-119.798678 36.762742)
+    location: outside
+    is_processed: true
+    payload:
+    - RSSI: '-50'
+      Uptime: '3829'
+      Humidity: '12'
+      entry_id: 352764
+      created_at: '2020-07-26T20:23:43Z'
+      PM1.0 (ATM): '4.93'
+      PM2.5 (ATM): '7.05'
+      Temperature: '112'
+      PM10.0 (ATM): '8.00'
+      PM2.5 (CF=1): '7.05'
+    - 0.3um: '1139.84'
+      0.5um: '332.16'
+      1.0um: '47.37'
+      2.5um: '4.30'
+      5.0um: '1.00'
+      10.0um: '0.39'
+      entry_id: 352461
+      created_at: '2020-07-26T20:23:44Z'
+      PM1.0 (CF=1): '4.93'
+      PM10.0 (CF=1): '8.00'
+    celcius: '44.4'
+    fahrenheit: '112.0'
+    humidity: '12.0'
+    pressure: null
+    pm10_env: '4.93'
+    pm25_env: '7.05'
+    pm100_env: '8.00'
+    pm10_standard: '4.93'
+    pm25_standard: '7.05'
+    pm100_standard: '8.00'
+    particles_03um: '1139.84'
+    particles_05um: '332.16'
+    particles_10um: '4.30'
+    particles_25um: '1.00'
+    particles_50um: '0.39'
+    particles_100um: '47.37'
+    pm25_aqi: null
+    pm100_aqi: null
+- model: monitors.entry
+  pk: TNcSSB7nR0y3_8JUvsrP5Q
+  fields:
+    created: 2020-07-26 20:24:30.617198+00:00
+    modified: 2020-07-26 20:26:17.619238+00:00
+    timestamp: 2020-07-26 20:23:46+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: b
+    position: SRID=4326;POINT (-119.798678 36.762742)
+    location: outside
+    is_processed: true
+    payload:
+    - Adc: '0.03'
+      Mem: '18424'
+      Unused: null
+      Pressure: '1000.54'
+      entry_id: 352288
+      created_at: '2020-07-26T20:23:46Z'
+      PM1.0 (ATM): '6.53'
+      PM2.5 (ATM): '9.42'
+      PM10.0 (ATM): '10.61'
+      PM2.5 (CF=1): '9.42'
+    - 0.3um: '1244.54'
+      0.5um: '375.69'
+      1.0um: '58.37'
+      2.5um: '4.64'
+      5.0um: '1.63'
+      10.0um: '0.51'
+      entry_id: 352142
+      created_at: '2020-07-26T20:23:47Z'
+      PM1.0 (CF=1): '6.53'
+      PM10.0 (CF=1): '10.61'
+    celcius: null
+    fahrenheit: null
+    humidity: null
+    pressure: '1000.54'
+    pm10_env: '6.53'
+    pm25_env: '9.42'
+    pm100_env: '10.61'
+    pm10_standard: '6.53'
+    pm25_standard: '9.42'
+    pm100_standard: '10.61'
+    particles_03um: '1244.54'
+    particles_05um: '375.69'
+    particles_10um: '4.64'
+    particles_25um: '1.63'
+    particles_50um: '0.51'
+    particles_100um: '58.37'
+    pm25_aqi: null
+    pm100_aqi: null
+- model: monitors.entry
+  pk: ikq6RR4bSW2wcJDDUUFUyg
+  fields:
+    created: 2020-07-26 20:26:29.998270+00:00
+    modified: 2020-07-26 20:28:17.628501+00:00
+    timestamp: 2020-07-26 20:25:45+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: b
+    position: SRID=4326;POINT (-119.798678 36.762742)
+    location: outside
+    is_processed: true
+    payload:
+    - Adc: '0.03'
+      Mem: '18256'
+      Unused: null
+      Pressure: '1000.51'
+      entry_id: 352289
+      created_at: '2020-07-26T20:25:45Z'
+      PM1.0 (ATM): '5.95'
+      PM2.5 (ATM): '8.91'
+      PM10.0 (ATM): '10.05'
+      PM2.5 (CF=1): '8.91'
+    - 0.3um: '1154.95'
+      0.5um: '351.47'
+      1.0um: '52.46'
+      2.5um: '6.28'
+      5.0um: '1.05'
+      10.0um: '0.35'
+      entry_id: 352143
+      created_at: '2020-07-26T20:25:47Z'
+      PM1.0 (CF=1): '5.95'
+      PM10.0 (CF=1): '10.05'
+    celcius: null
+    fahrenheit: null
+    humidity: null
+    pressure: '1000.51'
+    pm10_env: '5.95'
+    pm25_env: '8.91'
+    pm100_env: '10.05'
+    pm10_standard: '5.95'
+    pm25_standard: '8.91'
+    pm100_standard: '10.05'
+    particles_03um: '1154.95'
+    particles_05um: '351.47'
+    particles_10um: '6.28'
+    particles_25um: '1.05'
+    particles_50um: '0.35'
+    particles_100um: '52.46'
+    pm25_aqi: null
+    pm100_aqi: null
+- model: monitors.entry
+  pk: sqdMmRKVTeea9UldUtWeRw
+  fields:
+    created: 2020-07-26 20:28:17.624661+00:00
+    modified: 2020-07-26 20:28:29.623157+00:00
+    timestamp: 2020-07-26 20:27:45+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: b
+    position: SRID=4326;POINT (-119.798678 36.762742)
+    location: outside
+    is_processed: true
+    payload:
+    - Adc: '0.03'
+      Mem: '18256'
+      Unused: null
+      Pressure: '1000.14'
+      entry_id: 352290
+      created_at: '2020-07-26T20:27:45Z'
+      PM1.0 (ATM): '5.95'
+      PM2.5 (ATM): '9.74'
+      PM10.0 (ATM): '10.74'
+      PM2.5 (CF=1): '9.74'
+    - 0.3um: '1169.79'
+      0.5um: '352.18'
+      1.0um: '58.25'
+      2.5um: '5.12'
+      5.0um: '1.86'
+      10.0um: '0.00'
+      entry_id: 352144
+      created_at: '2020-07-26T20:27:47Z'
+      PM1.0 (CF=1): '5.95'
+      PM10.0 (CF=1): '10.74'
+    celcius: null
+    fahrenheit: null
+    humidity: null
+    pressure: '1000.14'
+    pm10_env: '5.95'
+    pm25_env: '9.74'
+    pm100_env: '10.74'
+    pm10_standard: '5.95'
+    pm25_standard: '9.74'
+    pm100_standard: '10.74'
+    particles_03um: '1169.79'
+    particles_05um: '352.18'
+    particles_10um: '5.12'
+    particles_25um: '1.86'
+    particles_50um: '0.00'
+    particles_100um: '58.25'
+    pm25_aqi: null
+    pm100_aqi: null
+- model: monitors.entry
+  pk: vGARJNRxRriwLtDF7stG4Q
+  fields:
+    created: 2020-07-26 20:22:17.003146+00:00
+    modified: 2020-07-26 20:22:17.003180+00:00
+    timestamp: 2020-07-26 20:21:43+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: a
+    position: SRID=4326;POINT (-119.798678 36.762742)
+    location: outside
+    is_processed: true
+    payload:
+    - RSSI: '-50'
+      Uptime: '3827'
+      Humidity: '12'
+      entry_id: 352763
+      created_at: '2020-07-26T20:21:43Z'
+      PM1.0 (ATM): '6.29'
+      PM2.5 (ATM): '8.96'
+      Temperature: '112'
+      PM10.0 (ATM): '9.20'
+      PM2.5 (CF=1): '8.96'
+    - 0.3um: '1356.43'
+      0.5um: '391.02'
+      1.0um: '57.04'
+      2.5um: '3.16'
+      5.0um: '0.23'
+      10.0um: '0.23'
+      entry_id: 352460
+      created_at: '2020-07-26T20:21:44Z'
+      PM1.0 (CF=1): '6.29'
+      PM10.0 (CF=1): '9.20'
+    celcius: '44.4'
+    fahrenheit: '112.0'
+    humidity: '12.0'
+    pressure: null
+    pm10_env: '6.29'
+    pm25_env: '8.96'
+    pm100_env: '9.20'
+    pm10_standard: '6.29'
+    pm25_standard: '8.96'
+    pm100_standard: '9.20'
+    particles_03um: '1356.43'
+    particles_05um: '391.02'
+    particles_10um: '3.16'
+    particles_25um: '0.23'
+    particles_50um: '0.23'
+    particles_100um: '57.04'
+    pm25_aqi: null
+    pm100_aqi: null
+- model: monitors.entry
+  pk: zRL1VgOjRTWIgR0jlUe7yw
+  fields:
+    created: 2020-07-26 20:28:16.622482+00:00
+    modified: 2020-07-26 20:28:16.622501+00:00
+    timestamp: 2020-07-26 20:27:43+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: a
+    position: SRID=4326;POINT (-119.798678 36.762742)
+    location: outside
+    is_processed: true
+    payload:
+    - RSSI: '-47'
+      Uptime: '3833'
+      Humidity: '12'
+      entry_id: 352766
+      created_at: '2020-07-26T20:27:43Z'
+      PM1.0 (ATM): '4.55'
+      PM2.5 (ATM): '6.77'
+      Temperature: '112'
+      PM10.0 (ATM): '7.30'
+      PM2.5 (CF=1): '6.77'
+    - 0.3um: '1070.05'
+      0.5um: '314.32'
+      1.0um: '48.08'
+      2.5um: '2.58'
+      5.0um: '0.45'
+      10.0um: '0.25'
+      entry_id: 352463
+      created_at: '2020-07-26T20:27:44Z'
+      PM1.0 (CF=1): '4.55'
+      PM10.0 (CF=1): '7.30'
+    celcius: '44.4'
+    fahrenheit: '112.0'
+    humidity: '12.0'
+    pressure: null
+    pm10_env: '4.55'
+    pm25_env: '6.77'
+    pm100_env: '7.30'
+    pm10_standard: '4.55'
+    pm25_standard: '6.77'
+    pm100_standard: '7.30'
+    particles_03um: '1070.05'
+    particles_05um: '314.32'
+    particles_10um: '2.58'
+    particles_25um: '0.45'
+    particles_50um: '0.25'
+    particles_100um: '48.08'
+    pm25_aqi: null
+    pm100_aqi: null
+- model: monitors.entry
+  pk: zkUgO1WYRh-n2w1BHQbrkA
+  fields:
+    created: 2020-07-26 20:22:17.620891+00:00
+    modified: 2020-07-26 20:24:18.000697+00:00
+    timestamp: 2020-07-26 20:21:45+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: b
+    position: SRID=4326;POINT (-119.798678 36.762742)
+    location: outside
+    is_processed: true
+    payload:
+    - Adc: '0.03'
+      Mem: '18424'
+      Unused: null
+      Pressure: '1000.58'
+      entry_id: 352287
+      created_at: '2020-07-26T20:21:45Z'
+      PM1.0 (ATM): '6.88'
+      PM2.5 (ATM): '10.14'
+      PM10.0 (ATM): '10.86'
+      PM2.5 (CF=1): '10.14'
+    - 0.3um: '1339.53'
+      0.5um: '404.58'
+      1.0um: '69.80'
+      2.5um: '3.39'
+      5.0um: '1.08'
+      10.0um: '0.51'
+      entry_id: 352141
+      created_at: '2020-07-26T20:21:47Z'
+      PM1.0 (CF=1): '6.88'
+      PM10.0 (CF=1): '10.86'
+    celcius: null
+    fahrenheit: null
+    humidity: null
+    pressure: '1000.58'
+    pm10_env: '6.88'
+    pm25_env: '10.14'
+    pm100_env: '10.86'
+    pm10_standard: '6.88'
+    pm25_standard: '10.14'
+    pm100_standard: '10.86'
+    particles_03um: '1339.53'
+    particles_05um: '404.58'
+    particles_10um: '3.39'
+    particles_25um: '1.08'
+    particles_50um: '0.51'
+    particles_100um: '69.80'
+    pm25_aqi: null
+    pm100_aqi: null

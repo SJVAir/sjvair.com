@@ -101,18 +101,24 @@ export default {
     this.map = new window.google.maps.Map(
       document.getElementById('map'),
       {
-        zoomControl: true,
+        // Initial location: Fresno, CA
+        center: {lat: 36.746841, lng: -119.772591},
+        zoom: 8,
+
+        // Controls
+        fullscreenControl: false,
         mapTypeControl: false,
+        rotateControl: true,
         scaleControl: true,
         streetViewControl: false,
-        rotateControl: true,
-        fullscreenControl: false
+        zoomControl: true
       }
     );
     this.loadMonitors()
       .then(this.setInitialViewport);
 
-    this.interval = setInterval(this.loadMonitors, 1000 * 60 * 1);
+    // Reload the monitors every 2 minutes
+    this.interval = setInterval(this.loadMonitors, 1000 * 60 * 2);
   },
 
   destroyed() {

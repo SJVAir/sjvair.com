@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='entry',
             name='sensor',
-            field=models.CharField(db_index=True, max_length=50, null=True),
+            field=models.CharField(db_index=True, max_length=50, blank=True, default=''),
         ),
     ]

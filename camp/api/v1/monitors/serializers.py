@@ -12,6 +12,7 @@ class EntrySerializer(serializers.Serializer):
     fields = [
         'id',
         'timestamp',
+        'sensor',
     ]
 
     value_fields = [
@@ -25,14 +26,14 @@ class EntrySerializer(serializers.Serializer):
         'pm100_standard',
         'pm10_standard',
         'pm25_standard',
+        'pm25_aqi',
+        'pm100_aqi',
         'particles_03um',
         'particles_05um',
         'particles_100um',
         'particles_10um',
         'particles_25um',
         'particles_50um',
-        # 'epa_pm25_aqi',
-        # 'epa_pm100_aqi',
     ]
 
 

@@ -12,6 +12,8 @@ from camp.apps.monitors.purpleair import api
 
 
 class PurpleAir(Monitor):
+    DEFAULT_SENSOR = 'a'
+
     data = JSONField(default=dict, encoder=JSONEncoder)
 
     @cached_property
@@ -22,12 +24,11 @@ class PurpleAir(Monitor):
     def thingspeak_key(self):
         return self.data[0]['THINGSPEAK_PRIMARY_ID_READ_KEY']
 
-    def get_devices(self):
+    def get_devices(self, retries=3):
         devices = api.get_devices(self.purple_id, self.thingspeak_key)
-        if devices is None:
-            if retries:
-                time.sleep(5 * (4 - retries))
-            return
+        if devices is None and retries:
+            time.sleep(5 * (4 - retries))
+            return self.get_devices(retries - 1)
         return devices
 
     @cached_property
@@ -67,7 +68,6 @@ class PurpleAir(Monitor):
             'fahrenheit': 'Temperature',
             'humidity': 'Humidity',
             'pressure': 'Pressure',
-            'pm25_standard': 'PM2.5 (CF=1)',
             'pm10_env': 'PM1.0 (ATM)',
             'pm25_env': 'PM2.5 (ATM)',
             'pm100_env': 'PM10.0 (ATM)',
@@ -90,6 +90,5 @@ class PurpleAir(Monitor):
         entry.timestamp = api.parse_datetime(entry.payload[0].get('created_at'))
         entry.position = self.position
         entry.location = self.location
-        # TODO: Apply calibration formula
-        entry.is_processed = True
-        return entry
+
+        return super().process_entry(entry)

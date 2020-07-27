@@ -33,7 +33,7 @@ class EntryMixin:
 
 class EntryList(EntryMixin, generics.ListEndpoint):
     def serialize(self, queryset, **kwargs):
-        fields = ['id', 'timestamp']
+        fields = ['id', 'timestamp', 'sensor']
         if self.request.GET.get('field') in EntrySerializer.value_fields:
             fields.append(self.request.GET['field'])
         else:
@@ -66,6 +66,11 @@ class MonitorMixin:
     model = Monitor
     filter_class = MonitorFilter
     serializer_class = MonitorSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = queryset.exclude(is_hidden=True)
+        return queryset
 
 
 class MonitorList(MonitorMixin, generics.ListEndpoint):

@@ -15,7 +15,7 @@ from camp.apps.monitors.purpleair import api
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
-@db_periodic_task(crontab(minute='*'), priority=50)
+@db_periodic_task(crontab(minute='*/2'), priority=50)
 def import_recent_data():
     print('[import_recent_data]')
     for monitor in PurpleAir.objects.all():
@@ -23,18 +23,20 @@ def import_recent_data():
         import_monitor_data.schedule([monitor.pk], delay=1, priority=30)
 
 
-# @db_task()
-# def import_monitor_history(monitor_id, end=None):
-#     monitor = PurpleAir.objects.get(pk=monitor_id)
-#     end = end or timezone.now()
-#     feed = list(monitor.feed(end=end, results=8000))
+@db_task()
+def import_monitor_history(monitor_id, end=None):
+    monitor = PurpleAir.objects.get(pk=monitor_id)
+    end = end or timezone.now()
+    feeds = list(monitor.get_feeds(end=end, results=8000))
 
-#     if len(feed):
-#         print(f'[history] {monitor.name} ({monitor.pk}) | {end} | {len(feed)}')
-#         for items in feed:
-#             add_monitor_entry(monitor.pk, items)
-#         end = min([min([i['created_at'] for i in items]) for items in feed]) - timedelta(seconds=1)
-#         import_monitor_history(monitor_id, end)
+    print(f'[history] {monitor.name} ({monitor.pk}) | {end} | {len(feed)}')
+    for sensor, feed in feeds.items():
+        for payload in feed:
+            add_monitor_entry.schedule([monitor.pk, payload, sensor], delay=1, priority=10)
+
+    # TODO: Flatten feeds to get created_at
+    end = min([min([i['created_at'] for i in items]) for items in feed]) - timedelta(seconds=1)
+    import_monitor_history(monitor_id, end)
 
 
 @db_task()
@@ -53,6 +55,7 @@ def import_monitor_data(monitor_id, options=None):
         except Entry.DoesNotExist:
             options = {'results': 1}
 
+    print('\n' * 5, options, '\n' * 5)
     feeds = monitor.get_feeds(**options)
     for sensor, feed in feeds.items():
         for payload in feed:
@@ -70,6 +73,8 @@ def add_monitor_entry(monitor_id, payload, sensor=None):
         str(payload[0]["created_at"]),
     ])
 
+    print('\n' * 5, key, '\n' * 5)
+
     try:
         with HUEY.lock_task(key):
             monitor = PurpleAir.objects.get(pk=monitor_id)
@@ -77,5 +82,12 @@ def add_monitor_entry(monitor_id, payload, sensor=None):
             entry = monitor.create_entry(payload, sensor=sensor)
             entry = monitor.process_entry(entry)
             entry.save()
+
+            is_latest = monitor.latest is None or (entry.timestamp > monitor.latest.timestamp)
+            sensor_match = monitor.DEFAULT_SENSOR is None or entry.sensor == monitor.DEFAULT_SENSOR
+            print(entry.pk, entry.sensor, monitor.DEFAULT_SENSOR, is_latest, sensor_match)
+            if sensor_match and is_latest:
+                monitor.latest = entry
+                monitor.save()
     except TaskLockedException:
         print(f'[LOCKED:add_monitor_entry] {monitor_id} ({payload[0]["created_at"]})')

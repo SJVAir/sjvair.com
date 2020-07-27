@@ -4,12 +4,14 @@ from decimal import Decimal
 import aqi
 
 from django.contrib.gis.db import models
+from django.db.models import Avg
 from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
 from model_utils.fields import AutoCreatedField, AutoLastModifiedField
+from py_expression_eval import Parser as ExpressionParser
 from resticus.encoders import JSONEncoder
 
 from camp.utils.validators import JSONSchemaValidator
@@ -19,6 +21,7 @@ from camp.utils.managers import InheritanceManager
 class Monitor(models.Model):
     LOCATION = Choices('inside', 'outside')
     PAYLOAD_SCHEMA = None
+    DEFAULT_SENSOR = None
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -29,9 +32,9 @@ class Monitor(models.Model):
     )
 
     name = models.CharField(max_length=250)
-    # nickname = models.CharField(max_length=250)
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
+    is_hidden = models.BooleanField(default=False)
 
     # Where is this sensor setup?
     position = models.PointField(null=True, db_index=True)
@@ -42,6 +45,8 @@ class Monitor(models.Model):
         null=True,
         on_delete=models.SET_NULL
     )
+
+    pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
 
     objects = InheritanceManager()
 
@@ -74,7 +79,10 @@ class Monitor(models.Model):
         )
 
     def process_entry(self, entry):
-        return NotImplemented
+        entry.calculate_aqi()
+        entry.calibrate_pm25(self.pm25_calibration_formula)
+        entry.is_processed = True
+        return entry
 
 
 class Entry(models.Model):
@@ -89,7 +97,7 @@ class Entry(models.Model):
     modified = models.DateTimeField(auto_now=True)
     timestamp = models.DateTimeField(default=timezone.now, db_index=True)
     monitor = models.ForeignKey('monitors.Monitor', related_name='entries', on_delete=models.CASCADE)
-    sensor = models.CharField(max_length=50, null=True, db_index=True)
+    sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
 
     # Where was the monitor when this entry was logged?
     position = models.PointField(null=True, db_index=True)
@@ -103,6 +111,8 @@ class Entry(models.Model):
         encoder=JSONEncoder,
         default=dict
     )
+
+    pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
 
     # Post-processed, calibrated data
     celcius = models.DecimalField(max_digits=4, decimal_places=1, null=True)
@@ -118,6 +128,9 @@ class Entry(models.Model):
     pm25_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
     pm100_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
 
+    pm25_aqi = models.IntegerField(null=True)
+    pm100_aqi = models.IntegerField(null=True)
+
     particles_03um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
     particles_05um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
     particles_10um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
@@ -125,14 +138,53 @@ class Entry(models.Model):
     particles_50um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
     particles_100um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
 
-    epa_pm25_aqi = models.IntegerField(null=True)
-    epa_pm100_aqi = models.IntegerField(null=True)
-
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=['monitor', 'timestamp'], name='unique_entry')
         ]
         ordering = ('-timestamp',)
+
+    def get_calibration_context(self):
+        return {
+            field: float(getattr(self, field, None) or 0)
+            for field in [
+                'celcius', 'fahrenheit', 'humidity', 'pressure',
+                'pm10_env', 'pm25_env', 'pm100_env',
+                'pm10_standard', 'pm25_standard', 'pm100_standard',
+                'particles_03um', 'particles_05um', 'particles_10um',
+                'particles_25um', 'particles_50um', 'particles_100um',
+                'epa_pm25_aqi', 'epa_pm100_aqi',
+            ]
+        }
+
+    def calibrate_pm25(self, formula):
+        if formula:
+            parser = ExpressionParser()
+            expression = parser.parse(formula)
+            context = self.get_calibration_context()
+
+            self.pm25_env = expression.evaluate(context)
+            self.pm25_calibration_formula = formula
+
+    def calculate_aqi(self):
+        avg = (Entry.objects
+            .filter(
+                monitor_id=self.monitor_id,
+                sensor=self.sensor,
+                timestamp__range=(
+                    self.timestamp - timedelta(hours=12),
+                    self.timestamp
+                ),
+                pm25_env__isnull=False,
+            )
+            .aggregate(
+                pm25=Avg('pm25_env'),
+                pm100=Avg('pm100_env')
+            )
+        )
+
+        self.pm25_aqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, avg['pm25'] or 0, algo=aqi.ALGO_EPA)
+        self.pm100_aqi = aqi.to_iaqi(aqi.POLLUTANT_PM10, avg['pm100'] or 0, algo=aqi.ALGO_EPA)
 
 
     def save(self, *args, **kwargs):
