@@ -16,6 +16,7 @@ class PurpleAirAdmin(MonitorAdmin):
     list_display.insert(1, 'purple_id')
 
     fields = MonitorAdmin.fields
+    readonly_fields = ['location', 'position']
 
     add_fieldsets = (
         (None, {

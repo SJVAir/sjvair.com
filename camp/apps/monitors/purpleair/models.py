@@ -1,5 +1,7 @@
 import time
 
+from datetime import timedelta
+
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 from django.contrib.postgres.fields import JSONField
@@ -40,7 +42,6 @@ class PurpleAir(Monitor):
             'a': api.get_feeds(self.channels['a'], **options),
             'b': api.get_feeds(self.channels['b'], **options)
         }
-        return api.get_feeds(self.channels, **options)
 
     def update_data(self, device_data=None, retries=3):
         if device_data is None:
@@ -62,6 +63,31 @@ class PurpleAir(Monitor):
             )
         except Entry.DoesNotExist:
             return super().create_entry(payload, sensor=sensor)
+
+    def copy_fields(self, entry):
+        '''
+            Copy certain envionment fields to both channels
+            so that they each have record of the collected data
+        '''
+        field_list = ['celcius', 'fahrenheit', 'humidity', 'pressure']
+        queryset = Entry.objects.filter(
+            monitor_id=entry.monitor_id,
+            timestamp__range=(
+                entry.timestamp - timedelta(minutes=1),
+                entry.timestamp + timedelta(minutes=1),
+            )
+        ).exclude(sensor=entry.sensor)
+        for sibling in queryset:
+            sibling_updated = False
+            for field in field_list:
+                if getattr(entry, field) is not None and getattr(sibling, field) is None:
+                    sibling_updated = True
+                    setattr(sibling, field, getattr(entry, field))
+                if getattr(sibling, field) is not None and getattr(entry, field) is None:
+                    setattr(entry, field, getattr(sibling, field))
+            if sibling_updated:
+                sibling.save()
+        return entry
 
     def process_entry(self, entry):
         attr_map = {
@@ -91,4 +117,5 @@ class PurpleAir(Monitor):
         entry.position = self.position
         entry.location = self.location
 
+        entry = self.copy_fields(entry)
         return super().process_entry(entry)

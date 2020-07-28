@@ -5,6 +5,7 @@ import aqi
 
 from django.contrib.gis.db import models
 from django.db.models import Avg
+from django.db.models.functions import Least
 from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
 
@@ -72,7 +73,7 @@ class Monitor(models.Model):
         return Entry(
             monitor=self,
             payload=payload,
-            sensor=sensor,
+            sensor=sensor or '',
             position=self.position,
             location=self.location,
             is_processed=False,
@@ -86,6 +87,15 @@ class Monitor(models.Model):
 
 
 class Entry(models.Model):
+    ENVIRONMENT = [
+        'celcius', 'fahrenheit', 'humidity', 'pressure',
+        'pm10_env', 'pm25_env', 'pm100_env',
+        'pm10_standard', 'pm25_standard', 'pm100_standard',
+        'particles_03um', 'particles_05um', 'particles_10um',
+        'particles_25um', 'particles_50um', 'particles_100um',
+        'epa_pm25_aqi', 'epa_pm100_aqi',
+    ]
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -147,14 +157,7 @@ class Entry(models.Model):
     def get_calibration_context(self):
         return {
             field: float(getattr(self, field, None) or 0)
-            for field in [
-                'celcius', 'fahrenheit', 'humidity', 'pressure',
-                'pm10_env', 'pm25_env', 'pm100_env',
-                'pm10_standard', 'pm25_standard', 'pm100_standard',
-                'particles_03um', 'particles_05um', 'particles_10um',
-                'particles_25um', 'particles_50um', 'particles_100um',
-                'epa_pm25_aqi', 'epa_pm100_aqi',
-            ]
+            for field in self.ENVIRONMENT
         }
 
     def calibrate_pm25(self, formula):
@@ -176,10 +179,11 @@ class Entry(models.Model):
                     self.timestamp
                 ),
                 pm25_env__isnull=False,
+                pm100_env__isnull=False,
             )
             .aggregate(
-                pm25=Avg('pm25_env'),
-                pm100=Avg('pm100_env')
+                pm25=Least(Avg('pm25_env'), 500),
+                pm100=Least(Avg('pm100_env'), 604),
             )
         )
 

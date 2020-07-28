@@ -14,7 +14,8 @@ class PurpleAirAddForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['name'].required = False
+        if 'name' in self.fields:
+            self.fields['name'].required = False
 
     def clean(self):
         name = self.cleaned_data['name']
