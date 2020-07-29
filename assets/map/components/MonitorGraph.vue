@@ -1,6 +1,6 @@
 <template>
 <div v-if="monitor" class="monitor-graph">
-  <div class="level">
+  <!-- <div class="level">
     <div class="level-left">
       <div class="level-item">{{ field.label }}</div>
     </div>
@@ -9,7 +9,7 @@
         <strong>Current: {{ field.latest(monitor) }}</strong>
       </div>
     </div>
-  </div>
+  </div> -->
   <div class="chart">
     <apexchart ref="chart" type="line" width="100%" height="150px" :options="options"></apexchart>
   </div>
@@ -18,7 +18,7 @@
 
 <script>
 import _ from 'lodash';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import Vue from 'vue'
 import VueApexCharts from 'vue-apexcharts'
 
@@ -35,7 +35,12 @@ export default {
   data() {
     return {
       entries: {},
-      interval: null
+      interval: null,
+      fields: {
+        'pm25_env': 'PM2.5',
+        'pm25_avg_15': 'PM2.5 (15m)',
+        'pm25_avg_60': 'PM2.5 (1h)'
+      }
     }
   },
 
@@ -69,7 +74,7 @@ export default {
           animations: {
             enabled: false
           },
-          height: '150px',
+          height: '200px',
           width: '100%',
           toolbar: {
             show: false
@@ -91,15 +96,28 @@ export default {
           width: 1,
           dashArray: 0,
         },
-        theme: {
-          palette: 'palette2'
-        },
+        colors: ['#9999cc', '#333399', '#003366'],
+        // theme: {
+        //   // palette: 'palette2',
+        //   monochrome: {
+        //     enabled: true,
+        //     color: '#209cee',
+        //     shadeTo: 'light',
+        //     shadeIntensity: 0.85
+        //   }
+        // },
         tooltip: {
-          enabled: true
+          enabled: true,
+          x: {
+            format: 'MMM d, h:mm'
+          }
         },
         xaxis: {
           type: 'datetime',
-          lines: true
+          lines: true,
+          labels: {
+            datetimeUTC: false
+          }
         },
         yaxis: {
           lines: true
@@ -132,7 +150,7 @@ export default {
 
       return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
-          field: this.attr,
+          fields: this.attrs,
           page: page,
           timestamp__gte: timestamp,
           sensor: sensor
@@ -141,7 +159,9 @@ export default {
         .then(response => response.json(response))
         .then(async response => {
           let data = _.map(response.data, data => {
-            data.timestamp = moment.utc(data.timestamp).local();
+            data.timestamp = moment
+              .utc(data.timestamp)
+              .tz('America/Los_Angeles');
             return data;
           });
           if(response.has_next_page){
@@ -157,18 +177,25 @@ export default {
         })
     },
 
-    updateChart() {
-      let series = _.map(this.entries, (value, key) => {
-        return {
-          name: key,
-          data: _.map(value, data => {
-            return {
-              x: data.timestamp,
-              y: _.get(data, this.attr)
-            }
-          })
-        }
-      })
+    async updateChart() {
+      let series = _.flatten(_.map(this.entries, (entries, sensor) => {
+        return _.map(this.fields, (label, field) => {
+          let name = label;
+          if(sensor) {
+            name += ` (${sensor})`;
+          }
+          return {
+            name: name,
+            data: _.map(entries, data => {
+              return {
+                // TODO: convert to appropriate tz for monitor on the api.
+                x: data.timestamp,
+                y: _.get(data, field)
+              }
+            })
+          }
+        })
+      }));
 
       this.$refs.chart.updateSeries(series, true);
     }

@@ -18,7 +18,7 @@
       </ul>
     </div>
     <div class="columns">
-      <div class="column content">
+      <div class="column">
         <monitor-graph :field="$parent.fields[field]" :attr="field" :monitor="monitor" />
       </div>
       <div class="column">

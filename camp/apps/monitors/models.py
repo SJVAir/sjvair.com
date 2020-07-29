@@ -80,8 +80,10 @@ class Monitor(models.Model):
         )
 
     def process_entry(self, entry):
-        entry.calculate_aqi()
         entry.calibrate_pm25(self.pm25_calibration_formula)
+        entry.calculate_aqi()
+        entry.calculate_average('pm25_env', 'pm25_avg_15', 15)
+        entry.calculate_average('pm25_env', 'pm25_avg_60', 60)
         entry.is_processed = True
         return entry
 
@@ -93,7 +95,6 @@ class Entry(models.Model):
         'pm10_standard', 'pm25_standard', 'pm100_standard',
         'particles_03um', 'particles_05um', 'particles_10um',
         'particles_25um', 'particles_50um', 'particles_100um',
-        'epa_pm25_aqi', 'epa_pm100_aqi',
     ]
 
     id = SmallUUIDField(
@@ -138,6 +139,9 @@ class Entry(models.Model):
     pm25_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
     pm100_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
 
+    pm25_avg_15 = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm25_avg_60 = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+
     pm25_aqi = models.IntegerField(null=True)
     pm100_aqi = models.IntegerField(null=True)
 
@@ -160,14 +164,26 @@ class Entry(models.Model):
             for field in self.ENVIRONMENT
         }
 
-    def calibrate_pm25(self, formula):
-        if formula:
-            parser = ExpressionParser()
-            expression = parser.parse(formula)
-            context = self.get_calibration_context()
+    def calculate_average(self, field, attr, minutes):
+        values = list(Entry.objects
+            .filter(
+                monitor=self.monitor,
+                sensor=self.sensor,
+                timestamp__range=(
+                    self.timestamp - timedelta(minutes=minutes),
+                    self.timestamp,
+                ))
+            .exclude(
+                pk=self.pk,
+                **{f'{field}__isnull': True})
+            .values_list(field, flat=True)
+        )
 
-            self.pm25_env = expression.evaluate(context)
-            self.pm25_calibration_formula = formula
+        if getattr(self, field):
+            values.append(Decimal(getattr(self, field)))
+
+        if values:
+            setattr(self, attr, sum(values) / len(values))
 
     def calculate_aqi(self):
         avg = (Entry.objects
@@ -190,6 +206,14 @@ class Entry(models.Model):
         self.pm25_aqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, avg['pm25'] or 0, algo=aqi.ALGO_EPA)
         self.pm100_aqi = aqi.to_iaqi(aqi.POLLUTANT_PM10, avg['pm100'] or 0, algo=aqi.ALGO_EPA)
 
+    def calibrate_pm25(self, formula):
+        if formula:
+            parser = ExpressionParser()
+            expression = parser.parse(formula)
+            context = self.get_calibration_context()
+
+            self.pm25_env = expression.evaluate(context)
+            self.pm25_calibration_formula = formula
 
     def save(self, *args, **kwargs):
         # Temperature adjustments

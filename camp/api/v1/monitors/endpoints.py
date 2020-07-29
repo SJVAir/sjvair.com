@@ -34,8 +34,10 @@ class EntryMixin:
 class EntryList(EntryMixin, generics.ListEndpoint):
     def serialize(self, queryset, **kwargs):
         fields = ['id', 'timestamp', 'sensor']
-        if self.request.GET.get('field') in EntrySerializer.value_fields:
-            fields.append(self.request.GET['field'])
+        if 'fields' in self.request.GET:
+            for field in self.request.GET['fields'].split(','):
+                if field in EntrySerializer.value_fields:
+                    fields.append(field)
         else:
             fields.extend(EntrySerializer.value_fields)
         return (entry for entry in queryset.values(*fields))
@@ -46,7 +48,8 @@ class EntryCSV(EntryMixin, CSVExport):
     filename = "SJVAir_{view.monitor.__class__.__name__}_{view.monitor.pk}_{data[start_date]}_{data[end_date]}.csv"
     columns = ['timestamp', 'sensor', 'celcius', 'fahrenheit', 'humidity', 'pressure',
         'pm100_env', 'pm10_env', 'pm25_env', 'pm100_standard', 'pm10_standard',
-        'pm25_standard', 'particles_03um', 'particles_05um', 'particles_100um',
+        'pm25_standard', 'pm25_avg_15', 'pm25_avg_60', 'pm25_aqi', 'pm100_aqi',
+        'particles_03um', 'particles_05um', 'particles_100um',
         'particles_10um', 'particles_25um', 'particles_50um',
     ]
 
