@@ -1,9 +1,9 @@
 {
-  "name": "camp",
+  "name": "sjvair",
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": "10.15.3"
+    "node": "12.14.0"
   },
   "scripts": {
     "serve": "vue-cli-service serve",
@@ -16,6 +16,7 @@
     "bulma": "^0.7.5",
     "core-js": "^2.6.5",
     "moment": "^2.24.0",
+    "moment-timezone": "^0.5.31",
     "vue": "^2.6.10",
     "vue-apexcharts": "^1.4.0",
     "vue-async-computed": "^3.7.0",

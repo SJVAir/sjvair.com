@@ -27,6 +27,7 @@ class EntryFilter(FilterSet):
     class Meta:
         model = Entry
         fields = {
+            'sensor': ['exact'],
             'timestamp': [
                 'exact',
                 'lt', 'lte',
