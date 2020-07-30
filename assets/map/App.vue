@@ -51,10 +51,46 @@ export default {
           levels: [],
           latest: (monitor) => Math.round(monitor.latest.humidity) + "%"
         },
-        pressure: {
-          label: "Pressure",
-          levels: [],
-          latest: (monitor) => Math.round(monitor.latest.pressure) + " hPa"
+        // pressure: {
+        //   label: "Pressure",
+        //   levels: [],
+        //   latest: (monitor) => Math.round(monitor.latest.pressure) + " hPa"
+        // },
+        pm25_env: {
+          label: "PM 2.5",
+          levels: [
+            {min: 0, color: '68e143'},
+            {min: 12, color: 'ffff55'},
+            {min: 35, color: 'ef8533'},
+            {min: 55, color: 'ea3324'},
+            {min: 150, color: '8c1a4b'},
+            {min: 250, color: '731425'}
+          ],
+          latest: (monitor) => monitor.latest.pm25_env
+        },
+        pm25_avg_15: {
+          label: "PM 2.5 (15m)",
+          levels: [
+            {min: 0, color: '68e143'},
+            {min: 12, color: 'ffff55'},
+            {min: 35, color: 'ef8533'},
+            {min: 55, color: 'ea3324'},
+            {min: 150, color: '8c1a4b'},
+            {min: 250, color: '731425'}
+          ],
+          latest: (monitor) => monitor.latest.pm25_avg_15
+        },
+        pm25_avg_60: {
+          label: "PM 2.5 (1h)",
+          levels: [
+            {min: 0, color: '68e143'},
+            {min: 12, color: 'ffff55'},
+            {min: 35, color: 'ef8533'},
+            {min: 55, color: 'ea3324'},
+            {min: 150, color: '8c1a4b'},
+            {min: 250, color: '731425'}
+          ],
+          latest: (monitor) => monitor.latest.pm25_avg_60
         },
         pm10_env: {
           label: "PM 1.0",
@@ -67,18 +103,6 @@ export default {
             {min: 250, color: '731425'}
           ],
           latest: (monitor) => monitor.latest.pm10_env
-        },
-        pm25_env: {
-          label: "PM 2.5",
-          levels: [
-            {min: 0, color: '68e143'},
-            {min: 12, color: 'ffff55'},
-            {min: 35, color: 'ef8533'},
-            {min: 55, color: 'ea3324'},
-            {min: 150, color: '8c1a4b'},
-            {min: 250, color: '731425'}
-          ],
-          latest: (monitor) => monitor.latest.pm25_env
         },
         pm100_env: {
           label: "PM 10",

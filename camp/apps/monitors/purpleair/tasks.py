@@ -78,7 +78,7 @@ def add_monitor_entry(monitor_id, payload, sensor=None):
 
     try:
         with HUEY.lock_task(key):
-            monitor = PurpleAir.objects.get(pk=monitor_id)
+            monitor = PurpleAir.objects.select_related('latest').get(pk=monitor_id)
             print(f'[add_monitor_entry] {monitor.name} ({monitor.pk})')
             entry = monitor.create_entry(payload, sensor=sensor)
             entry = monitor.process_entry(entry)
@@ -86,7 +86,6 @@ def add_monitor_entry(monitor_id, payload, sensor=None):
 
             is_latest = monitor.latest is None or (entry.timestamp > monitor.latest.timestamp)
             sensor_match = monitor.DEFAULT_SENSOR is None or entry.sensor == monitor.DEFAULT_SENSOR
-            print(entry.pk, entry.sensor, monitor.DEFAULT_SENSOR, is_latest, sensor_match)
             if sensor_match and is_latest:
                 monitor.latest = entry
                 monitor.save()

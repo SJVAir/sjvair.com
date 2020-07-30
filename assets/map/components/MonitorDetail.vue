@@ -23,7 +23,7 @@
       </div>
       <div class="column">
         <div class="columns is-multiline is-mobile">
-          <div v-for="(field, key) in $parent.fields" class="column is-6-mobile is-3-tablet latest-entry">
+          <div v-for="(field, key) in $parent.fields" class="column is-6-mobile is-3-tablet is-4-desktop latest-entry">
             <div class="latest-value">{{ field.latest(monitor) }}</div>
             <div class="latest-label">{{ field.label }}</div>
           </div>

@@ -11,7 +11,7 @@
     </div>
   </div> -->
   <div class="chart">
-    <apexchart ref="chart" type="line" width="100%" height="150px" :options="options"></apexchart>
+    <apexchart ref="chart" type="line" width="100%" height="250px" :options="options"></apexchart>
   </div>
 </div>
 </template>
@@ -74,7 +74,7 @@ export default {
           animations: {
             enabled: false
           },
-          height: '200px',
+          height: '250px',
           width: '100%',
           toolbar: {
             show: false
@@ -109,7 +109,7 @@ export default {
         tooltip: {
           enabled: true,
           x: {
-            format: 'MMM d, h:mm'
+            format: 'MMM d, h:mmtt'
           }
         },
         xaxis: {
@@ -144,7 +144,7 @@ export default {
 
       if(!timestamp){
         timestamp = moment.utc()
-          .subtract(1, 'days')
+          .subtract(36, 'hours')
           .format('YYYY-MM-DD HH:mm:ss');
       }
 
