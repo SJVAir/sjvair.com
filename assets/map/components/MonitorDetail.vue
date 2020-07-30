@@ -7,6 +7,7 @@
     <div class="monitor-header">
       <ul class="is-inline">
         <li class="monitor-name">{{ monitor.name }}</li>
+        <li>{{ monitor.device }}</li>
         <li>
           <span class="icon">
             <span v-if="monitor.is_active" class="far fa-fw fa-check-circle has-text-success"></span>
@@ -14,16 +15,15 @@
           </span>
           <span class="monitor-timesince" v-bind:title="monitor.timestamp">{{ timesince }}</span>
         </li>
-        <li class="is-size-7">{{ monitor.device }} <span class="is-family-monospace">{{ monitor.id }}</span></li>
       </ul>
     </div>
     <div class="columns">
-      <div class="column content">
+      <div class="column">
         <monitor-graph :field="$parent.fields[field]" :attr="field" :monitor="monitor" />
       </div>
       <div class="column">
         <div class="columns is-multiline is-mobile">
-          <div v-for="(field, key) in $parent.fields" class="column is-6-mobile is-3-tablet latest-entry">
+          <div v-for="(field, key) in $parent.fields" class="column is-6-mobile is-3-tablet is-4-desktop latest-entry">
             <div class="latest-value">{{ field.latest(monitor) }}</div>
             <div class="latest-label">{{ field.label }}</div>
           </div>

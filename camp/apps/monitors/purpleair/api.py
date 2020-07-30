@@ -1,4 +1,5 @@
 import json
+import string
 
 from datetime import datetime, timedelta
 
@@ -15,17 +16,13 @@ def parse_datetime(dt, required=False):
     return (forms.DateTimeField(required=required)
         .clean(dt.replace('T', ' ').strip('Z')))
 
-
-def round_datetime(dt):
-    seconds = dt.second + (dt.microsecond / 1000000)
-    dt = dt.replace(second=0, microsecond=0)
-    if round(seconds * (1. / 60)):
-        dt += timedelta(seconds=60)
-    return dt
-
-
-def floor_datetime(dt):
-    return dt.replace(second=0, microsecond=0)
+def compare_datetimes(dt1, dt2):
+    '''
+        Returns whether or note two datetimes
+        are within 60 seconds of one another.
+    '''
+    dt1, dt2 = sorted((dt1, dt2), reverse=True)
+    return ((dt1 - dt2).seconds) < 60
 
 
 def lookup_device(label):
@@ -48,10 +45,19 @@ def get_devices(device_id, thingspeak_key=None):
 
 
 def get_channels(device_list):
-    return [thingspeak.Channel(
-        id=device['THINGSPEAK_PRIMARY_ID'],
-        api_key=device['THINGSPEAK_PRIMARY_ID_READ_KEY']
-    ) for device in device_list]
+    return {
+        string.ascii_lowercase[idx]: {
+            'primary': thingspeak.Channel(
+                id=device['THINGSPEAK_PRIMARY_ID'],
+                api_key=device['THINGSPEAK_PRIMARY_ID_READ_KEY'],
+            ),
+            'secondary': thingspeak.Channel(
+                id=device['THINGSPEAK_SECONDARY_ID'],
+                api_key=device['THINGSPEAK_SECONDARY_ID_READ_KEY'],
+            )
+        }
+        for idx, device in enumerate(device_list)
+    }
 
 
 def get_feed(channel, **options):
@@ -73,20 +79,8 @@ def get_feed(channel, **options):
         yield data
 
 
-def get_correlated_feed(channel_list, **options):
-    '''
-        Entries are not related to one another across channels, so we round
-        the `created_at` fields to the nearest minute to try and find a
-        correlation between entries from different channels to create a
-        singlular entry.
-    '''
-    feeds = [get_feed(channel, **options) for channel in channel_list]
-    for item in feeds[0]:
-        entries = [item]
-        for feed in feeds[1:]:
-            try:
-                entries.append(next((i for i in feed if abs((i['created_at'] - item['created_at']).seconds) < 60)))
-            except StopIteration:
-                continue
-        yield entries
-
+def get_feeds(channels, **options):
+    return zip(
+        get_feed(channels['primary'], **options),
+        get_feed(channels['secondary'], **options),
+    )

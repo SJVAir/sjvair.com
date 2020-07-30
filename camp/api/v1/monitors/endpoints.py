@@ -33,9 +33,11 @@ class EntryMixin:
 
 class EntryList(EntryMixin, generics.ListEndpoint):
     def serialize(self, queryset, **kwargs):
-        fields = ['id', 'timestamp']
-        if self.request.GET.get('field') in EntrySerializer.value_fields:
-            fields.append(self.request.GET['field'])
+        fields = ['id', 'timestamp', 'sensor']
+        if 'fields' in self.request.GET:
+            for field in self.request.GET['fields'].split(','):
+                if field in EntrySerializer.value_fields:
+                    fields.append(field)
         else:
             fields.extend(EntrySerializer.value_fields)
         return (entry for entry in queryset.values(*fields))
@@ -44,9 +46,10 @@ class EntryList(EntryMixin, generics.ListEndpoint):
 class EntryCSV(EntryMixin, CSVExport):
     model = Entry
     filename = "SJVAir_{view.monitor.__class__.__name__}_{view.monitor.pk}_{data[start_date]}_{data[end_date]}.csv"
-    columns = ['timestamp', 'celcius', 'fahrenheit', 'humidity', 'pressure',
+    columns = ['timestamp', 'sensor', 'celcius', 'fahrenheit', 'humidity', 'pressure',
         'pm100_env', 'pm10_env', 'pm25_env', 'pm100_standard', 'pm10_standard',
-        'pm25_standard', 'particles_03um', 'particles_05um', 'particles_100um',
+        'pm25_standard', 'pm25_avg_15', 'pm25_avg_60', 'pm25_aqi', 'pm100_aqi',
+        'particles_03um', 'particles_05um', 'particles_100um',
         'particles_10um', 'particles_25um', 'particles_50um',
     ]
 
@@ -66,6 +69,11 @@ class MonitorMixin:
     model = Monitor
     filter_class = MonitorFilter
     serializer_class = MonitorSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = queryset.exclude(is_hidden=True)
+        return queryset
 
 
 class MonitorList(MonitorMixin, generics.ListEndpoint):

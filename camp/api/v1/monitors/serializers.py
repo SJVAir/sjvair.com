@@ -9,30 +9,14 @@ MONITOR_FIELDS = {
 
 
 class EntrySerializer(serializers.Serializer):
-    fields = [
-        'id',
-        'timestamp',
-    ]
-
+    fields = ['id', 'timestamp', 'sensor']
     value_fields = [
-        'celcius',
-        'fahrenheit',
-        'humidity',
-        'pressure',
-        'pm100_env',
-        'pm10_env',
-        'pm25_env',
-        'pm100_standard',
-        'pm10_standard',
-        'pm25_standard',
-        'particles_03um',
-        'particles_05um',
-        'particles_100um',
-        'particles_10um',
-        'particles_25um',
-        'particles_50um',
-        # 'epa_pm25_aqi',
-        # 'epa_pm100_aqi',
+        'celcius', 'fahrenheit', 'humidity', 'pressure',
+        'pm10_env', 'pm25_env', 'pm100_env',
+        'pm10_standard', 'pm25_standard', 'pm100_standard',
+        'pm25_avg_15', 'pm25_avg_60', 'pm25_aqi', 'pm100_aqi',
+        'particles_03um', 'particles_05um', 'particles_100um',
+        'particles_10um', 'particles_25um', 'particles_50um',
     ]
 
 

@@ -23,7 +23,7 @@ CACHES = {
 
 # Huey
 
-#  HUEY['always_eager'] = False
+# HUEY['always_eager'] = True
 
 
 # Django Debug Toolbar
