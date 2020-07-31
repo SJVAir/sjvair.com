@@ -35,7 +35,8 @@ class Monitor(models.Model):
     name = models.CharField(max_length=250)
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
-    is_hidden = models.BooleanField(default=False)
+    is_hidden = models.BooleanField(default=False, help_text="Hides the monitor on the map.")
+    is_sjvair = models.BooleanField(default=False, help_text="Is this monitor part of the SJVAir network?")
 
     # Where is this sensor setup?
     position = models.PointField(null=True, db_index=True)

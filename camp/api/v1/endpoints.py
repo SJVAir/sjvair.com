@@ -7,10 +7,12 @@ from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
 from django.utils import timezone
 
+from PIL import Image, ImageDraw
 from resticus.exceptions import ValidationError
 from resticus.views import Endpoint
 
 from camp.utils.forms import DateRangeForm
+from .forms import MarkerForm
 
 
 class CurrentTime(Endpoint):
@@ -83,13 +85,23 @@ class CSVExport(Endpoint):
 
 
 class MapMarker(Endpoint):
-    def get(self, request, color):
-        from django.http import HttpResponse
-        from PIL import Image, ImageDraw
+    form_class = MarkerForm
+
+    def get_form(self):
+        print(self.request.GET)
+        return self.form_class(self.request.GET)
+
+    def get(self, request):
+        data = self.get_form().get_data()
+        print(data)
 
         im = Image.new('RGBA', (39, 39), (0, 0, 0, 0))
         draw = ImageDraw.Draw(im)
-        draw.ellipse((1, 1, 37, 37), fill=f'#{color}', outline=(0, 0, 0), width=2)
+        draw.ellipse((1, 1, 37, 37),
+            fill=f"#{data['fill_color']}",
+            outline=f"#{data['border_color']}",
+            width=data['border_size']
+        )
 
         response = HttpResponse(content_type='image/png')
         im.save(response, 'PNG')

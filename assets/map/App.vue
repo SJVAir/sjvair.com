@@ -2,10 +2,18 @@
   <div class="interface">
     <div class="viewport">
       <div class="display-options">
-        <label class="checkbox">
-            <input type="checkbox" v-model="showInactive" />
-            Show inactive monitors
-        </label>
+        <div>
+          <label class="checkbox">
+              <input type="checkbox" v-model="showInactive" />
+              Show inactive monitors
+          </label>
+        </div>
+        <div>
+          <label class="checkbox">
+              <input type="checkbox" v-model="showSJVAir" />
+              Show <u>only</u> SJVAir monitors
+          </label>
+        </div>
       </div>
       <div id="map" :class="mapIsMaximised"></div>
     </div>
@@ -35,6 +43,7 @@ export default {
       monitors: {},
       activeField: 'pm25_avg_15',
       showInactive: false,
+      showSJVAir: true,
       fields: {
         fahrenheit: {
           label: "Temp. (°F)",
@@ -154,13 +163,11 @@ export default {
 
   watch: {
     showInactive: function(value) {
-      _.mapValues(this.monitors, (monitor) => {
-        if(!value && !monitor.is_active) {
-          monitor._marker.setMap(null);
-        } else {
-          monitor._marker.setMap(this.map);
-        }
-      });
+      _.forEach(this.monitors, this.setMarkerMap);
+    },
+
+    showSJVAir: function(value) {
+      _.forEach(this.monitors, this.setMarkerMap);
     }
   },
 
@@ -173,6 +180,12 @@ export default {
   },
 
   methods: {
+    setMarkerMap(monitor){
+      let checkActive = monitor.is_active || this.showInactive;
+      let checkSJVAir = (monitor.is_sjvair && this.showSJVAir) || !this.showSJVAir
+      monitor._marker.setMap((checkActive && checkSJVAir) ? this.map : null);
+    },
+
     updateField() {
       _.forEach(this.monitors, (monitor) => {
         monitor._marker.setLabel(
@@ -188,20 +201,23 @@ export default {
       return _.get(this.fields, this.activeField).latest(monitor).toString();
     },
 
-    getFieldColor(monitor, field, value){
-      let color = '969696'
+    getMarkerParams(monitor, field, value){
+      let params = {
+        fill_color: '969696',
+        border_color: monitor.is_sjvair ? '000' : '424242'
+      }
 
       if(monitor.is_active && value != null){
         for(let level of this.fields[field].levels){
           if(value > level.min){
-            color = level.color;
+            params['fill_color'] = level.color;
           } else {
             break;
           }
         }
       }
 
-      return color;
+      return params;
     },
 
     showMonitorDetail(monitorId) {
@@ -250,9 +266,9 @@ export default {
               });
             }
 
-            let color = this.getFieldColor(monitor, this.activeField, _.get(monitor.latest, this.activeField))
+            let params = this.getMarkerParams(monitor, this.activeField, _.get(monitor.latest, this.activeField))
             this.monitors[monitor.id]._marker.setIcon(
-              `/api/1.0/marker/${color}.png`
+              `/api/1.0/marker.png?${new URLSearchParams(params).toString()}`
             )
 
             this.monitors[monitor.id]._marker.setPosition(
@@ -266,11 +282,7 @@ export default {
               this.getMonitorLabel(monitor)
             );
 
-            if(!this.showInactive && !this.monitors[monitor.id].is_active){
-              this.monitors[monitor.id]._marker.setMap(null);
-            } else {
-              this.monitors[monitor.id]._marker.setMap(this.map);
-            }
+            this.setMarkerMap(this.monitors[monitor.id]);
           });
         })
     }

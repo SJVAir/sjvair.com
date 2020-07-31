@@ -26,6 +26,7 @@ class MonitorSerializer(serializers.Serializer):
         'name',
         'device',
         'is_active',
+        'is_sjvair',
         'position',
         'location',
         ('latest', {'fields': EntrySerializer.fields + EntrySerializer.value_fields})

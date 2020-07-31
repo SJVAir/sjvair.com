@@ -9,8 +9,9 @@ from .models import Entry
 
 
 class MonitorAdmin(admin.OSMGeoAdmin):
-    list_display = ['name', 'last_updated', 'temperature', 'humidity', 'pm10', 'pm25', 'pm100', 'get_pm25_calibration_formula']
-    fields = ['name', 'is_hidden', 'location', 'position', 'pm25_calibration_formula']
+    list_display = ['name', 'is_hidden', 'is_sjvair', 'last_updated', 'temperature', 'humidity',
+        'pm10', 'pm25', 'pm100', 'get_pm25_calibration_formula']
+    fields = ['name', 'is_hidden', 'is_sjvair', 'location', 'position', 'pm25_calibration_formula']
 
     def get_queryset(self, request):
         return (super()
