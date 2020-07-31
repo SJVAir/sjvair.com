@@ -19,6 +19,7 @@ class MonitorFilter(FilterSet):
                 'distance_gt',
                 'distance_lt'
             ],
+            'is_sjvair': ['exact'],
             'location': ['exact'],
         }
 
