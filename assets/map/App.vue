@@ -33,7 +33,7 @@ export default {
       interval: null,
       activeMonitor: null,
       monitors: {},
-      activeField: 'pm25_env',
+      activeField: 'pm25_avg_15',
       showInactive: false,
       fields: {
         fahrenheit: {
