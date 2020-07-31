@@ -28,8 +28,6 @@ export default {
   name: 'monitor-graph',
   props: {
     monitor: Object,
-    field: Object,
-    attr: String,
   },
 
   data() {
@@ -40,6 +38,9 @@ export default {
         'pm25_env': 'PM2.5',
         'pm25_avg_15': 'PM2.5 (15m)',
         'pm25_avg_60': 'PM2.5 (1h)'
+      },
+      sensors: {
+        PurpleAir: ['a']
       }
     }
   },
@@ -96,7 +97,7 @@ export default {
           width: 1,
           dashArray: 0,
         },
-        colors: ['#9999cc', '#333399', '#003366'],
+        colors: ['#000033', '#006699', '#00ccff'],
         // theme: {
         //   // palette: 'palette2',
         //   monochrome: {
@@ -128,12 +129,8 @@ export default {
 
   methods: {
     async loadAllEntries(){
-      let sensors = {
-        PurpleAir: ['a', 'b']
-      };
-
-      _.each(_.get(sensors, this.monitor.device, ['']), sensor => {
-        this.loadEntries(sensor)
+      _.each(_.get(this.sensors, this.monitor.device, ['']), sensor => {
+          this.loadEntries(sensor)
       });
     },
 
@@ -150,7 +147,7 @@ export default {
 
       return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
-          fields: this.attrs,
+          fields: _.join(_.keys(this.fields), ','),
           page: page,
           timestamp__gte: timestamp,
           sensor: sensor
@@ -178,10 +175,10 @@ export default {
     },
 
     async updateChart() {
-      let series = _.flatten(_.map(this.entries, (entries, sensor) => {
+      let series = _.reverse(_.flatten(_.map(this.entries, (entries, sensor) => {
         return _.map(this.fields, (label, field) => {
           let name = label;
-          if(sensor) {
+          if(_.get(this.sensors, this.monitor.device, ['']).length > 1 && sensor) {
             name += ` (${sensor})`;
           }
           return {
@@ -195,7 +192,7 @@ export default {
             })
           }
         })
-      }));
+      })));
 
       this.$refs.chart.updateSeries(series, true);
     }
