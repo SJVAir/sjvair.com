@@ -155,19 +155,14 @@ export default {
       })
         .then(response => response.json(response))
         .then(async response => {
-          let data = _.map(response.data, data => {
-            data.timestamp = moment
-              .utc(data.timestamp)
-              .tz('America/Los_Angeles');
-            return data;
-          });
+          let data = response.data;
           if(response.has_next_page){
             let nextPage = await this.loadEntries(sensor, page + 1, timestamp);
             data.push(...nextPage);
           }
 
           if(page == 1){
-            this.entries = Object.assign({}, this.entries, _.fromPairs([[sensor, _.uniqBy(data, 'id')]]));
+            this.entries = Object.assign({}, this.entries, _.fromPairs([[sensor, _.uniqBy(data, 'timestamp')]]));
           } else {
             return data;
           }
@@ -185,8 +180,10 @@ export default {
             name: name,
             data: _.map(entries, data => {
               return {
-                // TODO: convert to appropriate tz for monitor on the api.
-                x: data.timestamp,
+                // TODO: convert to appropriate tz for monitor on the api rather than hardcoding
+                x: moment
+                  .utc(data.timestamp)
+                  .tz('America/Los_Angeles'),
                 y: _.get(data, field)
               }
             })

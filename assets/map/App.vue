@@ -4,14 +4,14 @@
       <div class="display-options">
         <div>
           <label class="checkbox">
-              <input type="checkbox" v-model="showInactive" />
-              Show inactive monitors
+              <input type="checkbox" v-model="showActive" />
+              Only active monitors
           </label>
         </div>
         <div>
           <label class="checkbox">
               <input type="checkbox" v-model="showSJVAir" />
-              Show <u>only</u> SJVAir monitors
+              Only SJVAir monitors
           </label>
         </div>
       </div>
@@ -42,7 +42,7 @@ export default {
       activeMonitor: null,
       monitors: {},
       activeField: 'pm25_avg_15',
-      showInactive: false,
+      showActive: true,
       showSJVAir: true,
       fields: {
         fahrenheit: {
@@ -162,12 +162,12 @@ export default {
   },
 
   watch: {
-    showInactive: function(value) {
-      _.forEach(this.monitors, this.setMarkerMap);
+    showActive: function(value) {
+      _.mapValues(this.monitors, this.setMarkerMap);
     },
 
     showSJVAir: function(value) {
-      _.forEach(this.monitors, this.setMarkerMap);
+      _.mapValues(this.monitors, this.setMarkerMap);
     }
   },
 
@@ -181,8 +181,8 @@ export default {
 
   methods: {
     setMarkerMap(monitor){
-      let checkActive = monitor.is_active || this.showInactive;
-      let checkSJVAir = (monitor.is_sjvair && this.showSJVAir) || !this.showSJVAir
+      let checkActive = (this.showActive && monitor.is_active) || !this.showActive;
+      let checkSJVAir = (this.showSJVAir && monitor.is_sjvair) || !this.showSJVAir;
       monitor._marker.setMap((checkActive && checkSJVAir) ? this.map : null);
     },
 
@@ -204,7 +204,7 @@ export default {
     getMarkerParams(monitor, field, value){
       let params = {
         fill_color: '969696',
-        border_color: monitor.is_sjvair ? '000' : '424242'
+        border_color: monitor.is_sjvair ? '000' : '666'
       }
 
       if(monitor.is_active && value != null){
