@@ -14,6 +14,7 @@ class PurpleAirAdmin(MonitorAdmin):
     add_form = PurpleAirAddForm
     list_display = MonitorAdmin.list_display[:]
     list_display.insert(1, 'purple_id')
+    list_display.insert(2, 'get_active_status')
 
     fields = MonitorAdmin.fields
     readonly_fields = ['location', 'position']
@@ -24,6 +25,11 @@ class PurpleAirAdmin(MonitorAdmin):
             'fields': ('name', 'purple_id', 'thingspeak_key'),
         }),
     )
+
+    def get_active_status(self, instance):
+        return instance.is_active
+    get_active_status.boolean = True
+    get_active_status.short_description = 'Is active'
 
     def get_fieldsets(self, request, obj=None):
         if not obj:
