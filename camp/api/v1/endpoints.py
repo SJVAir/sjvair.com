@@ -93,11 +93,16 @@ class MapMarker(Endpoint):
 
     def get(self, request):
         data = self.get_form().get_data()
-        print(data)
 
         im = Image.new('RGBA', (39, 39), (0, 0, 0, 0))
         draw = ImageDraw.Draw(im)
-        draw.ellipse((1, 1, 37, 37),
+
+        shape = {
+            'circle': draw.ellipse,
+            'square': draw.rectangle,
+        }.get(data['shape'])
+
+        shape((1, 1, 37, 37),
             fill=f"#{data['fill_color']}",
             outline=f"#{data['border_color']}",
             width=data['border_size']

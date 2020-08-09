@@ -42,7 +42,7 @@ export default {
       activeMonitor: null,
       monitors: {},
       activeField: 'pm25_avg_15',
-      showActive: true,
+      showActive: false,
       showSJVAir: true,
       fields: {
         fahrenheit: {
@@ -204,7 +204,8 @@ export default {
     getMarkerParams(monitor, field, value){
       let params = {
         fill_color: '969696',
-        border_color: monitor.is_sjvair ? '000' : '666'
+        border_color: '000',
+        shape: monitor.is_sjvair ? 'circle' : 'square'
       }
 
       if(monitor.is_active && value != null){

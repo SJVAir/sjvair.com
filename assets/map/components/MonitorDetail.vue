@@ -7,13 +7,25 @@
     <div class="monitor-header">
       <ul class="is-inline">
         <li class="monitor-name">{{ monitor.name }}</li>
-        <li>{{ monitor.device }}</li>
-        <li>
-          <span class="icon">
-            <span v-if="monitor.is_active" class="far fa-fw fa-check-circle has-text-success"></span>
-            <span v-else class="far fa-fw fa-times-circle has-text-danger"></span>
+        <li v-if="monitor.is_sjvair"><span class="tag is-info is-light">SJVAir</span></li>
+        <li><span class="tag is-light">{{ monitor.device }}</span></li>
+        <li v-if="monitor.is_active">
+          <span class="tag is-light is-success">
+            <span class="icon">
+              <span class="far fa-fw fa-check-circle has-text-success"></span>
+            </span>
+            <span class="monitor-timesince" v-bind:title="monitor.timestamp">{{ timesince }}</span>
           </span>
-          <span class="monitor-timesince" v-bind:title="monitor.timestamp">{{ timesince }}</span>
+          </span>
+        </li>
+        <li v-else>
+          <span class="tag is-light is-danger">
+            <span class="icon">
+              <span class="far fa-fw fa-times-circle has-text-danger"></span>
+            </span>
+            <span class="monitor-timesince" v-bind:title="monitor.timestamp">{{ timesince }}</span>
+          </span>
+          </span>
         </li>
       </ul>
     </div>
