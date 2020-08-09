@@ -7,24 +7,28 @@
     <div class="monitor-header">
       <ul class="is-inline">
         <li class="monitor-name">{{ monitor.name }}</li>
-        <li v-if="monitor.is_sjvair"><span class="tag is-info is-light">SJVAir</span></li>
-        <li><span class="tag is-light">{{ monitor.device }}</span></li>
-        <li v-if="monitor.is_active">
-          <span class="tag is-light is-success">
+        <li v-if="monitor.is_sjvair">
+          <span class="tag is-info is-light">
             <span class="icon">
-              <span class="far fa-fw fa-check-circle has-text-success"></span>
+              <span class="fal fa-lungs has-text-info"></span>
             </span>
-            <span class="monitor-timesince" v-bind:title="monitor.timestamp">{{ timesince }}</span>
-          </span>
+            <span>SJVAir</span>
           </span>
         </li>
-        <li v-else>
-          <span class="tag is-light is-danger">
+        <li>
+          <span class="tag is-light">
             <span class="icon">
-              <span class="far fa-fw fa-times-circle has-text-danger"></span>
+              <span class="fal fa-router has-text-grey"></span>
             </span>
-            <span class="monitor-timesince" v-bind:title="monitor.timestamp">{{ timesince }}</span>
+            <span>{{ monitor.device }}</span>
           </span>
+        </li>
+        <li :title="monitor.timestamp">
+          <span class="tag is-light" :class="monitor.is_active ? 'is-success' : 'is-danger'">
+            <span class="icon">
+              <span class="fal fa-history" :class="monitor.is_active ? 'has-text-success' : 'has-text-danger'"></span>
+            </span>
+            <span class="monitor-timesince">{{ timesince }}</span>
           </span>
         </li>
       </ul>
