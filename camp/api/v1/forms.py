@@ -9,6 +9,9 @@ color_validator = RegexValidator(COLOR_RE, _('Enter a valid color.'), 'invalid')
 
 
 class MarkerForm(forms.Form):
+    shape = forms.ChoiceField(choices=[
+        (x, x) for x in ('square', 'circle')
+        ], initial='circle', required=False)
     fill_color = forms.CharField(validators=[color_validator], initial='777', required=False)
     border_color = forms.CharField(validators=[color_validator], initial='000', required=False)
     border_size = forms.IntegerField(initial=2, required=False)
