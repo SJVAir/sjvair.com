@@ -4,6 +4,7 @@ from decimal import Decimal
 import aqi
 
 from django.contrib.gis.db import models
+from django.contrib.postgres.indexes import BrinIndex
 from django.db.models import Avg
 from django.db.models.functions import Least
 from django.contrib.postgres.fields import JSONField
@@ -107,7 +108,7 @@ class Entry(models.Model):
     )
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
-    timestamp = models.DateTimeField(default=timezone.now, db_index=True)
+    timestamp = models.DateTimeField(default=timezone.now)
     monitor = models.ForeignKey('monitors.Monitor', related_name='entries', on_delete=models.CASCADE)
     sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
 
@@ -154,9 +155,12 @@ class Entry(models.Model):
     particles_100um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
 
     class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=['monitor', 'timestamp'], name='unique_entry')
-        ]
+        constraints = (
+            models.UniqueConstraint(fields=['monitor', 'timestamp'], name='unique_entry'),
+        )
+        indexes = (
+            BrinIndex(fields=['timestamp'], autosummarize=True),
+        )
         ordering = ('-timestamp',)
 
     def get_calibration_context(self):
