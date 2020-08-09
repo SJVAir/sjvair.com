@@ -156,10 +156,10 @@ class Entry(models.Model):
 
     class Meta:
         constraints = (
-            models.UniqueConstraint(fields=['monitor', 'timestamp'], name='unique_entry'),
+            models.UniqueConstraint(fields=['monitor', 'timestamp', 'sensor'], name='unique_entry'),
         )
         indexes = (
-            BrinIndex(fields=['timestamp'], autosummarize=True),
+            BrinIndex(fields=['timestamp', 'sensor'], autosummarize=True),
         )
         ordering = ('-timestamp',)
 
