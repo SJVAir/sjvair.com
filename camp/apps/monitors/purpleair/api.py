@@ -10,11 +10,13 @@ from django import forms
 
 PURPLE_API_URL = 'https://www.purpleair.com/json'
 
+
 def parse_datetime(dt, required=False):
     if isinstance(dt, datetime):
         return dt
     return (forms.DateTimeField(required=required)
         .clean(dt.replace('T', ' ').strip('Z')))
+
 
 def compare_datetimes(dt1, dt2):
     '''
@@ -25,12 +27,16 @@ def compare_datetimes(dt1, dt2):
     return ((dt1 - dt2).seconds) < 60
 
 
+def get_monitors(**kwargs):
+    data = requests.get(PURPLE_API_URL, kwargs).json()
+    return data['results']
+
+
 def lookup_device(label):
     label = label.lower().strip()
-    data = requests.get(PURPLE_API_URL).json()
-    for device in data['results']:
-        if device['Label'].lower().strip() == label:
-            return get_devices(device['ID'], device['THINGSPEAK_PRIMARY_ID_READ_KEY'])
+    for monitor in get_monitors():
+        if monitor['Label'].lower().strip() == label:
+            return get_devices(monitor['ID'], device['THINGSPEAK_PRIMARY_ID_READ_KEY'])
 
 
 def get_devices(device_id, thingspeak_key=None):
@@ -39,7 +45,7 @@ def get_devices(device_id, thingspeak_key=None):
         kwargs['key'] = thingspeak_key
 
     try:
-        return requests.get(PURPLE_API_URL, kwargs).json()['results'] or None
+        return get_monitors(**kwargs) or None
     except (KeyError, json.decoder.JSONDecodeError):
         return None
 
