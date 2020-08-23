@@ -68,7 +68,6 @@ INSTALLED_APPS = [
     'camp.apps.monitors',
     'camp.apps.monitors.bam',
     'camp.apps.monitors.purpleair',
-    'camp.apps.purple',
     'camp.apps.sensors',
 ]
 
