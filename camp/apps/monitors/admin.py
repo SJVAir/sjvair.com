@@ -1,8 +1,11 @@
+from decimal import Decimal
+
 from django.contrib.gis import admin
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.db.models import Max
 from django.template import Template, Context
 from django.template.defaultfilters import floatformat
+from django.utils.dateparse import parse_datetime
 from django.utils.safestring import mark_safe
 
 from .models import Entry
@@ -12,12 +15,6 @@ class MonitorAdmin(admin.OSMGeoAdmin):
     list_display = ['name', 'is_sjvair', 'is_hidden', 'last_updated', 'temperature', 'humidity',
         'pm10', 'pm25', 'pm100', 'get_pm25_calibration_formula']
     fields = ['name', 'is_hidden', 'is_sjvair', 'location', 'position', 'pm25_calibration_formula']
-
-    def get_queryset(self, request):
-        return (super()
-            .get_queryset(request)
-            .select_related('latest')
-        )
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
@@ -37,39 +34,38 @@ class MonitorAdmin(admin.OSMGeoAdmin):
 
     def last_updated(self, instance):
         if instance.latest:
-            return instance.latest.timestamp
+            return parse_datetime(instance.latest['timestamp'])
         return ''
 
     def temperature(self, instance):
-        if instance.latest is None:
-            return ''
-
-        temps = []
-        if instance.latest.fahrenheit:
-            temps.append(f'{intcomma(floatformat(instance.latest.fahrenheit, 1))}°F')
-        if instance.latest.celcius:
-            temps.append(f'{intcomma(floatformat(instance.latest.celcius, 1))}°C')
-        return ' / '.join(temps)
+        if instance.latest:
+            temps = []
+            if instance.latest['fahrenheit']:
+                temps.append(f"{intcomma(floatformat(instance.latest['fahrenheit'], 1))}°F")
+            if instance.latest['celcius']:
+                temps.append(f"{intcomma(floatformat(instance.latest['celcius'], 1))}°C")
+            return ' / '.join(temps)
+        return ''
 
     def humidity(self, instance):
-        if instance.latest and instance.latest.humidity:
-            return f'{int(round(instance.latest.humidity))}%'
+        if instance.latest and instance.latest['humidity']:
+            return f"{round(Decimal(instance.latest['humidity']))}%"
         return ''
 
     def pm10(self, instance):
         if instance.latest:
-            return instance.latest.pm10_env or ''
+            return instance.latest['pm10_env'] or ''
         return ''
     pm10.short_description = 'PM1.0'
 
     def pm25(self, instance):
         if instance.latest:
-            return instance.latest.pm25_env or ''
+            return instance.latest['pm25_env'] or ''
         return ''
     pm25.short_description = 'PM2.5'
 
     def pm100(self, instance):
         if instance.latest:
-            return instance.latest.pm100_env or ''
+            return instance.latest['pm100_env'] or ''
         return ''
     pm100.short_description = 'PM10.0'
