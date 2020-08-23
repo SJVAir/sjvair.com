@@ -4,16 +4,33 @@
       <div class="display-options">
         <div>
           <label class="checkbox">
-              <input type="checkbox" v-model="showActive" />
-              Only active monitors
+              <input type="checkbox" v-model="showInactive" />
+              Show inactive monitors
           </label>
         </div>
         <div>
           <label class="checkbox">
-              <input type="checkbox" v-model="showSJVAir" />
-              Only SJVAir monitors
+              <input type="checkbox" v-model="showPrivate" />
+              Show private monitors
           </label>
         </div>
+        <hr />
+        <ul class="fa-ul legend">
+          <li>
+            <span class="fa-stack fa-li">
+              <span class="fas fa-circle fa-stack-1x has-text-grey-lighter"></span>
+              <span class="fal fa-circle fa-stack-1x"></span>
+            </span>
+            <span>SJVAir monitors</span>
+          </li>
+          <li>
+            <span class="fa-stack fa-li">
+              <span class="fas fa-square-full fa-stack-1x has-text-grey-lighter"></span>
+              <span class="fal fa-square-full fa-stack-1x"></span>
+            </span>
+            <span>Private monitors</span>
+          </li>
+        </ul>
       </div>
       <div id="map" :class="mapIsMaximised"></div>
     </div>
@@ -42,8 +59,8 @@ export default {
       activeMonitor: null,
       monitors: {},
       activeField: 'pm25_avg_15',
-      showActive: true,
-      showSJVAir: false,
+      showInactive: false,
+      showPrivate: true,
       fields: {
         fahrenheit: {
           label: "Temp. (°F)",
@@ -162,11 +179,11 @@ export default {
   },
 
   watch: {
-    showActive: function(value) {
+    showInactive: function(value) {
       _.mapValues(this.monitors, this.setMarkerMap);
     },
 
-    showSJVAir: function(value) {
+    showPrivate: function(value) {
       _.mapValues(this.monitors, this.setMarkerMap);
     }
   },
@@ -181,8 +198,8 @@ export default {
 
   methods: {
     setMarkerMap(monitor){
-      let checkActive = (this.showActive && monitor.is_active) || !this.showActive;
-      let checkSJVAir = (this.showSJVAir && monitor.is_sjvair) || !this.showSJVAir;
+      let checkActive = (this.showInactive && !monitor.is_active) || monitor.is_active;
+      let checkSJVAir = (this.showPrivate && !monitor.is_sjvair) || monitor.is_sjvair;
       monitor._marker.setMap((checkActive && checkSJVAir) ? this.map : null);
     },
 
