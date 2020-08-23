@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}About Us | {{ block.super }}{% endblock %}
+
+{% block body-class %}about{% endblock %}
+
+{% block main %}
+<section class="section has-background-light">
+<div class="container">
+    <div class="content">
+        <h1>About SJVAir</h1>
+        <p class="lead">SJVAir is a program that aims to build a network of useful, low-cost air
+            quality monitors for communities, and to collect and aggregate data from this and
+            other air networks for analysis.</p>
+    </div>
+</div>
+</section>
+
+<section class="section partners">
+    <div class="container">
+        <div class="content has-text-centered">
+            <h1>Who's behind this?</h1>
+        </div>
+        <div class="columns">
+            <div class="column is-half">
+                <div class="partner partner-ccac">
+                    <div class="logo" style="background-image: url('{% static 'img/cencalasthma.png' %}')"></div>
+                    <div class="content">
+                        <p class="description">The Central California Asthma Collaborative works across the
+                            entire San Joaquin Valley to reduce the burden of asthma and related conditions
+                            through education, intervention, policy analysis and advocacy by improving care
+                            and reducing air pollution.</p>
+                        <p class="link">
+                            <a href="http://cencalasthma.org" target="_blank" class="button is-link is-light is-small">
+                                <span class="icon is-small">
+                                    <span class="fas fa-external-link"></span>
+                                </span>
+                                <span>cencalasthma.org</span>
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="column is-half">
+                <div class="partner partner-rootaccess">
+                    <div class="logo" style="background-image: url('{% static 'img/rootaccess.png' %}')"></div>
+                    <div class="content">
+                        <p class="description">Root Access is a community (hacker|maker|work)space that supports
+                            that Fresno's technology and maker scene by providing access to tools and equipment
+                            to the community and by sharing knowledge in a creative and collaborative environment.</p>
+                        <p class="link">
+                            <a href="https://rootaccess.org" target="_blank" class="button is-link is-light is-small">
+                                <span class="icon is-small">
+                                    <span class="fas fa-external-link"></span>
+                                </span>
+                                <span>rootaccess.org</span>
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section has-background-light">
+    <div class="container">
+        <div class="columns is-centered">
+            <div class="column is-10-tablet is-8-desktop content has-text-centered">
+                <h1>Air Monitor Testing &amp; Calibration</h1>
+                <p class="lead">Root Access provides the space for testing and calibration of SJVAir's Purple Air monitors before they're put into the field for data collection.</p>
+            </div>
+        </div>
+        <div class="columns is-centered">
+            <div class="column is-one-third">
+                <div class="card">
+                    <div class="card-image">
+                        <img src="{% static 'img/calibration/purple-configure.jpg' %}" class="is-responsive" alt="">
+                    </div>
+                    <div class="card-content">
+                        <p>Configuring a batch of Purple Air monitors before they're tested and calibrated.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="column is-one-third">
+                <div class="card">
+                    <div class="card-image">
+                        <img src="{% static 'img/calibration/purple-install.jpg' %}" class="is-responsive" alt="">
+                    </div>
+                    <div class="card-content">
+                        <p>Building the air monitor rack on our roof and setting up monitors.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="column is-one-third">
+                <div class="card">
+                    <div class="card-image">
+                        <img src="{% static 'img/calibration/purple-finished.jpg' %}" class="is-responsive" alt="">
+                    </div>
+                    <div class="card-content">
+                        <p>We can test and calibrate up to thirty-six Purple Air monitors at a time.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<section class="section colophon">
+    <div class="container">
+        <div class="content has-text-centered">
+            <h1>Powered by Open Source Technology</h1>
+        </div>
+        <div class="columns is-mobile is-multiline is-vcentered has-text-centered">
+            <div class="column is-one-third is-half-mobile">
+                <a href="https://www.python.org/" taregt="_blank">
+                    <img src="{% static 'img/tech/python.svg' %}" alt="Python" class="is-responsive" />
+                </a>
+            </div>
+            <div class="column is-one-third is-half-mobile">
+                <a href="https://www.djangoproject.com/" taregt="_blank">
+                    <img src="{% static 'img/tech/django.svg' %}" alt="Django" class="is-responsive" />
+                </a>
+            </div>
+            <div class="column is-one-third is-half-mobile">
+                <a href="https://vuejs.org/" taregt="_blank">
+                    <img src="{% static 'img/tech/vuejs.svg' %}" alt="Vue.js" class="is-responsive" />
+                </a>
+            </div>
+            <div class="column is-one-third is-half-mobile">
+                <a href="https://www.postgresql.org/" taregt="_blank">
+                    <img src="{% static 'img/tech/postgresql.svg' %}" alt="PostgreSQL" class="is-responsive" />
+                </a>
+            </div>
+            <div class="column is-one-third is-half-mobile">
+                <a href="http://micropython.org/" taregt="_blank">
+                    <img src="{% static 'img/tech/micropython.svg' %}" alt="MicroPython" class="is-responsive" />
+                </a>
+            </div>
+            <div class="column is-one-third is-half-mobile">
+                <a href="https://www.espressif.com/en/products/socs/esp32/overview" taregt="_blank">
+                    <img src="{% static 'img/tech/esp32.svg' %}" alt="ESP32" class="is-responsive" />
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block javascripts %}
+{% endblock %}

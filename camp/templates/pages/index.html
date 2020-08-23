@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block body-class %}map{% endblock %}
+{% block title %}{{ block.super }}{% endblock %}
 
+{% block body-class %}map{% endblock %}
 
 {% block main %}
 <div id="app"></div>

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   inkscape:version="1.0 (4035a4f, 2020-05-01)"
+   sodipodi:docname="micropython.svg"
+   id="svg2"
+   height="342"
+   width="1143.8618"
+   version="1.1">
+  <metadata
+     id="metadata16">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs14" />
+  <sodipodi:namedview
+     inkscape:current-layer="svg2"
+     inkscape:window-maximized="1"
+     inkscape:window-y="23"
+     inkscape:window-x="0"
+     inkscape:cy="171"
+     inkscape:cx="474.43218"
+     inkscape:zoom="0.71020813"
+     fit-margin-bottom="0"
+     fit-margin-right="0"
+     fit-margin-left="0"
+     fit-margin-top="0"
+     showgrid="false"
+     id="namedview12"
+     inkscape:window-height="873"
+     inkscape:window-width="1536"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0"
+     guidetolerance="10"
+     gridtolerance="10"
+     objecttolerance="10"
+     borderopacity="1"
+     bordercolor="#666666"
+     pagecolor="#ffffff" />
+  <path
+     id="path4"
+     d="m 0,0 h 164 v 267 h 14 V 0 H 342 V 342 H 267 V 75 H 253 V 342 H 89 V 75 L 75,75.5 V 342 H 0 Z m 317,278 h -20 v 34 h 20 z" />
+  <g
+     style="font-style:normal;font-weight:normal;font-size:128px;line-height:1.25;font-family:sans-serif;fill:#000000;fill-opacity:1;stroke:none"
+     id="text20"
+     aria-label="MicroPython">
+    <path
+       id="path22"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 529.22783,203.76801 -2.688,-81.28 h -25.6 l -17.28,57.216 -17.152,-57.216 h -25.728 l -2.56,81.28 h 18.816 l 0.64,-54.912 16.384,54.912 h 18.176 l 16.512,-54.912 0.512,54.912 z" />
+    <path
+       id="path24"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 563.83383,126.32801 c 0,-6.272 -4.608,-10.24 -10.88,-10.24 -6.272,0 -10.88,4.096 -10.88,10.368 0,6.272 4.608,10.24 10.88,10.24 6.272,0 10.88,-4.096 10.88,-10.368 z m -1.024,77.44 v -60.8 h -19.712 v 60.8 z" />
+    <path
+       id="path26"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 621.64783,182.90401 c -0.64,0.64 -6.016,6.016 -14.08,6.016 -8.064,0 -14.976,-5.248 -14.976,-15.872 0,-10.624 7.04,-15.744 14.976,-15.744 7.936,0 13.056,5.504 13.696,6.144 l 7.168,-12.8 c -0.512,-0.768 -7.808,-8.96 -23.808,-8.96 -16,0 -31.744,10.624 -31.744,31.744 0,21.12 15.104,31.616 31.36,31.616 16.256,0 23.168,-7.552 24.448,-8.832 z" />
+    <path
+       id="path28"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 678.44783,142.32801 c 0,0 -1.28,-0.64 -4.864,-0.64 -7.808,0 -14.336,5.632 -17.024,11.264 l -1.152,-9.984 h -18.56 v 60.8 h 19.712 v -30.72 c 1.152,-5.376 3.968,-9.088 7.168,-11.136 2.176,-1.408 4.48,-1.92 7.04,-1.92 3.072,0 5.504,0.896 5.504,0.896 z" />
+    <path
+       id="path30"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 744.26383,173.30401 c 0,-19.84 -12.928,-31.616 -32.256,-31.616 -19.2,0 -32.128,11.904 -32.128,31.616 0,19.84 12.928,31.744 32.256,31.744 19.2,0 32.128,-11.904 32.128,-31.744 z m -20.096,0 c 0,9.472 -3.84,17.152 -12.16,17.152 -8.32,0 -12.032,-7.808 -12.032,-17.152 0,-9.344 3.84,-17.024 12.16,-17.024 8.32,0 12.032,7.68 12.032,17.024 z" />
+    <path
+       id="path32"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 817.70783,149.75201 c 0,-10.112 -3.2,-16.64 -9.216,-21.12 -6.016,-4.48 -14.976,-6.144 -22.656,-6.144 h -30.208 v 81.28 h 20.224 v -26.752 h 9.984 c 6.784,0 16.64,-1.664 22.656,-6.144 6.016,-4.48 9.216,-11.008 9.216,-21.12 z m -20.224,0 c 0,4.736 -1.536,7.552 -4.48,9.728 -2.816,2.048 -5.504,2.304 -10.112,2.304 h -7.04 v -23.936 h 7.04 c 4.608,0 7.296,0.128 10.24,2.304 2.816,2.048 4.352,4.864 4.352,9.6 z" />
+    <path
+       id="path34"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 888.38583,142.96801 h -20.864 l -12.416,41.344 -12.416,-41.344 h -21.12 l 22.656,58.88 -1.28,3.712 c -1.28,3.712 -2.816,4.608 -6.016,4.608 -3.2,0 -7.04,-1.92 -7.04,-1.92 l -4.096,14.464 c 0,0 6.4,3.2 16.768,3.2 10.368,0 15.488,-4.096 21.376,-19.584 z" />
+    <path
+       id="path36"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 931.06583,188.92001 c -1.024,0.384 -3.968,0.896 -6.528,0.896 -2.56,0 -4.48,-0.64 -5.632,-2.048 -1.152,-1.408 -1.28,-3.84 -1.28,-6.912 v -23.68 h 14.848 v -14.208 h -14.848 v -15.232 h -18.56 l -1.152,15.232 h -8.064 v 14.208 h 8.192 v 28.032 c 0,6.784 1.024,11.52 4.992,15.232 3.968,3.84 8.96,4.608 14.72,4.608 5.376,0 11.776,-1.152 15.104,-2.304 z" />
+    <path
+       id="path38"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 1000.6118,203.76801 v -38.4 c 0,-14.336 -5.63197,-23.68 -20.73597,-23.68 -9.216,0 -15.232,5.504 -18.816,10.624 v -32.256 h -19.712 v 83.712 h 19.712 v -35.072 c 0.768,-4.48 4.096,-10.624 11.008,-10.624 6.912,0 8.832,4.48 8.832,11.392 v 34.304 z" />
+    <path
+       id="path40"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 1074.5138,173.30401 c 0,-19.84 -12.928,-31.616 -32.256,-31.616 -19.2,0 -32.128,11.904 -32.128,31.616 0,19.84 12.928,31.744 32.256,31.744 19.2,0 32.128,-11.904 32.128,-31.744 z m -20.096,0 c 0,9.472 -3.84,17.152 -12.16,17.152 -8.32,0 -12.032,-7.808 -12.032,-17.152 0,-9.344 3.84,-17.024 12.16,-17.024 8.32,0 12.032,7.68 12.032,17.024 z" />
+    <path
+       id="path42"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128px;font-family:'Slate Pro';-inkscape-font-specification:'Slate Pro'"
+       d="m 1143.8618,203.76801 v -38.4 c 0,-14.336 -5.632,-23.68 -20.736,-23.68 -9.216,0 -15.232,5.504 -18.816,10.624 l -1.152,-9.344 h -18.56 v 60.8 h 19.712 v -35.072 c 0.768,-4.48 4.096,-10.624 11.008,-10.624 6.912,0 8.832,4.48 8.832,11.392 v 34.304 z" />
+  </g>
+</svg>
