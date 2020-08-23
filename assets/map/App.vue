@@ -42,8 +42,8 @@ export default {
       activeMonitor: null,
       monitors: {},
       activeField: 'pm25_avg_15',
-      showActive: false,
-      showSJVAir: true,
+      showActive: true,
+      showSJVAir: false,
       fields: {
         fahrenheit: {
           label: "Temp. (°F)",
@@ -75,7 +75,7 @@ export default {
             {min: 150, color: '8c1a4b'},
             {min: 250, color: '731425'}
           ],
-          latest: (monitor) => monitor.latest.pm25_env
+          latest: (monitor) => Math.round(monitor.latest.pm25_env)
         },
         pm25_avg_15: {
           label: "PM 2.5 (15m)",
@@ -87,7 +87,7 @@ export default {
             {min: 150, color: '8c1a4b'},
             {min: 250, color: '731425'}
           ],
-          latest: (monitor) => monitor.latest.pm25_avg_15
+          latest: (monitor) => Math.round(monitor.latest.pm25_avg_15)
         },
         pm25_avg_60: {
           label: "PM 2.5 (1h)",
@@ -99,7 +99,7 @@ export default {
             {min: 150, color: '8c1a4b'},
             {min: 250, color: '731425'}
           ],
-          latest: (monitor) => monitor.latest.pm25_avg_60
+          latest: (monitor) => Math.round(monitor.latest.pm25_avg_60)
         },
         pm10_env: {
           label: "PM 1.0",
@@ -111,7 +111,7 @@ export default {
             {min: 150, color: '8c1a4b'},
             {min: 250, color: '731425'}
           ],
-          latest: (monitor) => monitor.latest.pm10_env
+          latest: (monitor) => Math.round(monitor.latest.pm10_env)
         },
         pm100_env: {
           label: "PM 10",
@@ -123,7 +123,7 @@ export default {
             {min: 150, color: '8c1a4b'},
             {min: 250, color: '731425'}
           ],
-          latest: (monitor) => monitor.latest.pm100_env
+          latest: (monitor) => Math.round(monitor.latest.pm100_env)
         }
       }
     }
