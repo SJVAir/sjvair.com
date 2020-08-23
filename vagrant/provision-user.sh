@@ -15,9 +15,8 @@ wget -qO- https://raw.githubusercontent.com/creationix/nvm/v0.33.1/install.sh | 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-nvm install 10.15
+nvm install 12.18.3
 npm install -g yarn
-yarn install
 
 ########
 # Python
@@ -50,6 +49,9 @@ if [ ! -f .env ]; then
     SECRET_KEY=$(python -c "import random; print(''.join(random.SystemRandom().choice('abcdefghijklmnopqrstuvwxyz0123456789\!@#$%^&*(-_=+)') for i in range(50)))")
     sed -i -e "s/<SECRET_KEY>/${SECRET_KEY//&/\\&}/g" .env
 fi
+
+# Node dependencies
+yarn install
 
 # Python dependencies
 pip install -r requirements/develop.txt

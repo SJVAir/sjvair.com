@@ -67,4 +67,7 @@ apt-get install -y memcached libmemcached-dev
 
 echo
 echo "Installing Redis..."
-apt-get install -y redis redis-tools
+
+add-apt-repository ppa:chris-lea/redis-server
+apt-get update
+apt-get install redis redis-server redis-tools
