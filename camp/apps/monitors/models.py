@@ -9,12 +9,14 @@ from django.db.models import Avg
 from django.db.models.functions import Least
 from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
 from model_utils.fields import AutoCreatedField, AutoLastModifiedField
 from py_expression_eval import Parser as ExpressionParser
 from resticus.encoders import JSONEncoder
+from resticus.serializers import serialize
 
 from camp.utils.validators import JSONSchemaValidator
 from camp.utils.managers import InheritanceManager
@@ -43,11 +45,7 @@ class Monitor(models.Model):
     position = models.PointField(null=True, db_index=True)
     location = models.CharField(max_length=10, choices=LOCATION)
 
-    latest = models.ForeignKey('monitors.Entry',
-        related_name='monitor_latest',
-        null=True,
-        on_delete=models.SET_NULL
-    )
+    latest = JSONField(encoder=JSONEncoder, default=dict)
 
     pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
 
@@ -65,11 +63,11 @@ class Monitor(models.Model):
 
     @property
     def is_active(self):
-        if self.latest_id is None:
+        if not self.latest:
             return False
         now = timezone.now()
         cutoff = timedelta(seconds=60 * 10)
-        return (now - self.latest.timestamp) < cutoff
+        return (now - parse_datetime(self.latest['timestamp'])) < cutoff
 
     def create_entry(self, payload, sensor=None):
         return Entry(
@@ -88,6 +86,11 @@ class Monitor(models.Model):
         entry.calculate_average('pm25_env', 'pm25_avg_60', 60)
         entry.is_processed = True
         return entry
+
+    def set_latest(self, entry):
+        from camp.api.v1.monitors.serializers import EntrySerializer
+        fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
+        self.latest = serialize(entry, fields=fields)
 
 
 class Entry(models.Model):
@@ -120,10 +123,7 @@ class Entry(models.Model):
     is_processed = models.BooleanField(default=False, db_index=True)
 
     # Original payload from the device / api
-    payload = JSONField(
-        encoder=JSONEncoder,
-        default=dict
-    )
+    payload = JSONField(encoder=JSONEncoder, default=dict)
 
     pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
 
