@@ -141,7 +141,7 @@ export default {
 
       if(!timestamp){
         timestamp = moment.utc()
-          .subtract(36, 'hours')
+          .subtract(72, 'hours')
           .format('YYYY-MM-DD HH:mm:ss');
       }
 
