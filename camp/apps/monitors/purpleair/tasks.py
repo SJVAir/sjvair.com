@@ -5,6 +5,7 @@ from pprint import pformat
 
 from django.db.models import F, OuterRef, Subquery
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from huey import crontab
 from huey.contrib.djhuey import db_task, db_periodic_task, HUEY
@@ -78,16 +79,16 @@ def add_monitor_entry(monitor_id, payload, sensor=None):
 
     try:
         with HUEY.lock_task(key):
-            monitor = PurpleAir.objects.select_related('latest').get(pk=monitor_id)
+            monitor = PurpleAir.objects.get(pk=monitor_id)
             print(f'[add_monitor_entry] {monitor.name} ({monitor.pk})')
             entry = monitor.create_entry(payload, sensor=sensor)
             entry = monitor.process_entry(entry)
             entry.save()
 
-            is_latest = monitor.latest is None or (entry.timestamp > monitor.latest.timestamp)
+            is_latest = not monitor.latest or (entry.timestamp > parse_datetime(monitor.latest['timestamp']))
             sensor_match = monitor.DEFAULT_SENSOR is None or entry.sensor == monitor.DEFAULT_SENSOR
             if sensor_match and is_latest:
-                monitor.latest = entry
+                monitor.set_latest(Entry.objects.get(pk=entry.pk))
                 monitor.save()
     except TaskLockedException:
         print(f'[LOCKED:add_monitor_entry] {monitor_id} ({payload[0]["created_at"]})')

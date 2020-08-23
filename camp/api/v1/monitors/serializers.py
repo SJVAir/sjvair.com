@@ -29,7 +29,7 @@ class MonitorSerializer(serializers.Serializer):
         'is_sjvair',
         'position',
         'location',
-        ('latest', {'fields': EntrySerializer.fields + EntrySerializer.value_fields})
+        'latest',
     ]
 
     def fixup(self, instance, data):
