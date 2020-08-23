@@ -7,6 +7,11 @@
 
 @import "bulma/bulma.sass";
 
+img
+    &.is-responsive
+        display: inline-block
+        width: 100%
+
 ul
     &.is-inline
         list-style: none
@@ -21,6 +26,9 @@ ul
     &.is-unstyled
         list-style: none !important
         margin-left: 0 !important
+
+.lead
+    @extend .is-size-4
 
 .navbar
     .navbar-title
@@ -102,3 +110,19 @@ body.map
             font-size: $size-7
             font-weight: 700
             text-transform: uppercase
+
+body.about
+    .partner
+        .logo
+            background-position: center center
+            background-repeat: no-repeat
+            background-size: contain
+            display: block
+            height: 200px
+            margin: auto
+            width: 50%
+
+    .colophon
+        img
+            max-height: 150px
+            max-width: 150px

@@ -13,6 +13,9 @@
 
     <title>{% block title %}SJVAir{% endblock %}</title>
 
+    <link rel="icon" href="{% static 'img/favicon.ico' %}" />
+    <!--[if IE]><link rel="shortcut icon" href="{% static 'img/favicon.ico' %}" /><![endif]-->
+
     <link type="text/css" rel="stylesheet" href="{% static 'css/style.css' %}" />
     <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v5.14.0/css/all.css" integrity="sha384-VhBcF/php0Z/P5ZxlxaEx1GwqTQVIBu4G4giRWxTKOCjTxsPFETUDdVL5B6vYvOt" crossorigin="anonymous">
 
@@ -38,7 +41,8 @@
 
     <div id="navbarBasicExample" class="navbar-menu">
         <div class="navbar-end">
-            <a href="http://cencalasthma.org" target="_blank" class="navbar-item">CenCalAsthma.org</a>
+            <a href="/about/" class="navbar-item">About</a>
+            <a href="/api/" class="navbar-item">API</a>
         </div>
     </div>
 </nav>
@@ -72,6 +76,7 @@
 </script>
 {% endif %}
 
+<script type="text/javascript" src="{% static 'js/main.js' %}"></script>
 {% block javascripts %}{% endblock %}
 
 </html>
