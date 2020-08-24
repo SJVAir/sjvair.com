@@ -1,0 +1,23 @@
+- name: Python
+  logo: img/tech/python.svg
+  url: https://www.python.org/
+
+- name: Django
+  logo: img/tech/django.svg
+  url: https://www.djangoproject.com/
+
+- name: Vue.js
+  logo: img/tech/vuejs.svg
+  url: https://vuejs.org/
+
+- name: PostgreSQL
+  logo: img/tech/postgresql.svg
+  url: https://www.postgresql.org/
+
+- name: MicroPython
+  logo: img/tech/micropython.svg
+  url: http://micropython.org/
+
+- name: ESP32
+  logo: img/tech/esp32.svg
+  url: https://www.espressif.com/en/products/socs/esp32/overview

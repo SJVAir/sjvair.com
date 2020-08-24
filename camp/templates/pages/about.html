@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load sjvair %}
 
 {% block title %}About Us | {{ block.super }}{% endblock %}
 
@@ -20,43 +21,34 @@
 <section class="section partners">
     <div class="container">
         <div class="columns">
+            {% load_datafile 'partners.yaml' as partners %}
+            {% for partner in partners %}
             <div class="column is-half">
-                <div class="partner partner-ccac">
-                    <div class="logo" style="background-image: url('{% static 'img/cencalasthma.png' %}')"></div>
+                <div class="partner">
+                    <a href="{{ partner.url }}" target="_blank" class="logo" style="background-image: url('{% static partner.logo %}')"></a>
+                    <!-- <div class="logo has-text-centered">
+                        <a href="{{ partner.url }}" target="_blank">
+                            <img src="{% static partner.logo %}" alt="{{ partner.name }}" />
+                        </a>
+                    </div> -->
                     <div class="content">
-                        <p class="description">The Central California Asthma Collaborative works across the
-                            entire San Joaquin Valley to reduce the burden of asthma and related conditions
-                            through education, intervention, policy analysis and advocacy by improving care
-                            and reducing air pollution.</p>
+                        <p class="description">{{ partner.description }}</p>
                         <p class="link">
-                            <a href="http://cencalasthma.org" target="_blank" class="button is-link is-light is-small">
+                            <a href="{{ partner.url }}" target="_blank" class="button is-link is-light is-small">
                                 <span class="icon is-small">
                                     <span class="fas fa-external-link"></span>
                                 </span>
-                                <span>cencalasthma.org</span>
+                                <span>{{ partner.url|domainify }}</span>
                             </a>
                         </p>
                     </div>
                 </div>
             </div>
-            <div class="column is-half">
-                <div class="partner partner-rootaccess">
-                    <div class="logo" style="background-image: url('{% static 'img/rootaccess.png' %}')"></div>
-                    <div class="content">
-                        <p class="description">Root Access is a community (hacker|maker|work)space that supports
-                            Fresno's technology and maker scene by providing access to tools and equipment to the
-                            community, and by sharing knowledge in a creative and collaborative environment.</p>
-                        <p class="link">
-                            <a href="https://rootaccess.org" target="_blank" class="button is-link is-light is-small">
-                                <span class="icon is-small">
-                                    <span class="fas fa-external-link"></span>
-                                </span>
-                                <span>rootaccess.org</span>
-                            </a>
-                        </p>
-                    </div>
-                </div>
-            </div>
+            {% if forloop.counter|divisibleby:2 and not forloop.last %}
+        </div>
+        <div class="columns is-multiline">
+            {% endif %}
+            {% endfor %}
         </div>
     </div>
 </section>
@@ -66,11 +58,13 @@
         <div class="columns is-centered">
             <div class="column is-10-tablet is-8-desktop content has-text-centered">
                 <h1>Air Monitor Testing &amp; Calibration</h1>
-                <p class="lead">Root Access provides the space for testing and calibration of SJVAir's Purple Air monitors before they're put into the field for data collection.</p>
+                <p class="lead">Root Access provided the space for testing and calibration
+                    of SJVAir's Purple Air monitors before they were put into the field for
+                    data collection.</p>
             </div>
         </div>
-        <div class="columns is-centered">
-            <div class="column is-one-third">
+        <div class="columns is-multiline is-centered">
+            <!-- <div class="column is-one-third">
                 <div class="card">
                     <div class="card-image">
                         <img src="{% static 'img/calibration/purple-configure.jpg' %}" class="is-responsive" alt="">
@@ -79,24 +73,36 @@
                         <p>Configuring a batch of Purple Air monitors before they're tested and calibrated.</p>
                     </div>
                 </div>
-            </div>
-            <div class="column is-one-third">
-                <div class="card">
+            </div> -->
+            <div class="column is-10-tablet is-10-desktop">
+                <div class="card is-horizontal">
                     <div class="card-image">
-                        <img src="{% static 'img/calibration/purple-install.jpg' %}" class="is-responsive" alt="">
+                        <img src="{% static 'img/calibration/purple-install.jpg' %}" class="image" alt="">
                     </div>
                     <div class="card-content">
-                        <p>Building the air monitor rack on our roof and setting up monitors.</p>
+                        <p>Two batches of PurpleAir monitors (60 total) were operated continuously on
+                            the roof at Root Access for 30 days each. During the first test period
+                            (12/10/2019 – 1/9/2020) the average hourly concentration was 36 ug/m3, with a
+                            range of 1-180 ug/m3. During the second test period (1/21/2020 – 2/20/2020),
+                            the average hourly concentration was 35 ug/m3, with a range of 1-85 ug/m3.
+                            The average correlation (R2) for all 60 monitors was 0.96. Only one monitor
+                            had an R2 < 0.90 (this monitor was returned to the manufacturer).</p>
                     </div>
                 </div>
             </div>
-            <div class="column is-one-third">
-                <div class="card">
+            <div class="column is-10-tablet is-10-desktop">
+                <div class="card is-horizontal is-right">
                     <div class="card-image">
-                        <img src="{% static 'img/calibration/purple-finished.jpg' %}" class="is-responsive" alt="">
+                        <img src="{% static 'img/calibration/purple-calibration-graph-visalia.png' %}" class="image" alt="">
                     </div>
                     <div class="card-content">
-                        <p>We can test and calibrate up to thirty-six Purple Air monitors at a time.</p>
+                        <p>Particle count data from collocated PurpleAir monitors is regressed on
+                            regulatory monitor data to generate calibrations (correction equations)
+                            that can be applied to PurpleAir monitor data locally and regionally.
+                            In the example above, the regulatory monitor data is from CARB's Visalia
+                            station (Church St). A collocated PurpleAir at the same location was used
+                            to generate the "local" calibration. A collocated PurpleAir in Fresno
+                            (Garland Ave) was used to generate the "regional" calibration.</p>
                     </div>
                 </div>
             </div>
@@ -115,23 +121,28 @@
 
         <div class="columns is-centered">
             <div class="column is-10-tablet is-8-desktop">
-                <div class="notification">
+                <div class="notification has-background-white-ter">
                     <div class="content">
                         <h3>Open access benefits everyone.</h3>
                         <p>We're strong believers that technology and data should be freely available
                             to the public for the benefit of humanity, which is why we'll be making
-                            our code available on Github and our API's will be open access.</p>
+                            our code available on Github and our API's will be open access. More
+                            information will be available soon.</p>
+                        <p class="has-text-centered">
+                            <a href="https://github.com/sjvair" target="_blank" class="button is-light">
+                                <span class="icon">
+                                    <span class="fab fa-github"></span>
+                                </span>
+                                <span>github.com/sjvair</span>
+                            </a>
+                            <a href="https://www.sjvair.com/api/" class="button is-light">
+                                <span class="icon">
+                                    <span class="fal fa-database"></span>
+                                </span>
+                                <span>sjvair.com/api</span>
+                            </a>
+                        </p>
                     </div>
-                    <ul class="fa-ul">
-                        <li>
-                            <span class="fab fa-github fa-li"></span>
-                            <a href="https://github.com/sjvair" target="_blank">github.com/sjvair</a>
-                        </li>
-                        <li>
-                            <span class="far fa-database fa-li"></span>
-                            <a href="https://www.sjvair.com/api/">sjvair.com/api</a>
-                        </li>
-                    </ul>
                 </div>
             </div>
         </div>
@@ -142,42 +153,21 @@
             <div class="column is-10-tablet is-10-desktop">
                 <div class="content has-text-centered">
                     <p class="lead">SJVAir wouldn't be possible without the thousands of people who have
-                        generously given their time to build these and other Open Source projects.</p>
+                        generously given their time to build and maintain these and other Open Source
+                        projects.</p>
                 </div>
             </div>
         </div>
 
         <div class="columns is-mobile is-multiline is-vcentered has-text-centered">
+            {% load_datafile 'colophon.yaml' as colophon %}
+            {% for project in colophon %}
             <div class="column is-one-third is-half-mobile">
-                <a href="https://www.python.org/" taregt="_blank">
-                    <img src="{% static 'img/tech/python.svg' %}" alt="Python" class="is-responsive" />
+                <a href="{{ project.url }}" taregt="_blank">
+                    <img src="{% static project.logo %}" alt="{{ project.name }}" class="is-responsive" />
                 </a>
             </div>
-            <div class="column is-one-third is-half-mobile">
-                <a href="https://www.djangoproject.com/" taregt="_blank">
-                    <img src="{% static 'img/tech/django.svg' %}" alt="Django" class="is-responsive" />
-                </a>
-            </div>
-            <div class="column is-one-third is-half-mobile">
-                <a href="https://vuejs.org/" taregt="_blank">
-                    <img src="{% static 'img/tech/vuejs.svg' %}" alt="Vue.js" class="is-responsive" />
-                </a>
-            </div>
-            <div class="column is-one-third is-half-mobile">
-                <a href="https://www.postgresql.org/" taregt="_blank">
-                    <img src="{% static 'img/tech/postgresql.svg' %}" alt="PostgreSQL" class="is-responsive" />
-                </a>
-            </div>
-            <div class="column is-one-third is-half-mobile">
-                <a href="http://micropython.org/" taregt="_blank">
-                    <img src="{% static 'img/tech/micropython.svg' %}" alt="MicroPython" class="is-responsive" />
-                </a>
-            </div>
-            <div class="column is-one-third is-half-mobile">
-                <a href="https://www.espressif.com/en/products/socs/esp32/overview" taregt="_blank">
-                    <img src="{% static 'img/tech/esp32.svg' %}" alt="ESP32" class="is-responsive" />
-                </a>
-            </div>
+            {% endfor %}
         </div>
     </div>
 </section>

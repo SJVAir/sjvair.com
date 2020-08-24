@@ -99,6 +99,9 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'camp.context_processors.settings_context',
             ],
+            'libraries': {
+                'sjvair': 'camp.template_tags',
+            }
         },
     },
 ]
