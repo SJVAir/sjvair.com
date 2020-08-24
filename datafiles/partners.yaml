@@ -1,0 +1,51 @@
+- name: Central California Asthma Collaborative
+  logo: img/partners/ccac.png
+  url: http://cencalasthma.org/
+  description: |
+    The Central California Asthma Collaborative works across the entire San Joaquin
+    Valley to reduce the burden of asthma and related conditions through education,
+    intervention, policy analysis and advocacy by improving care and reducing air pollution.
+
+- name: Root Access
+  logo: img/partners/rootaccess.png
+  url: https://rootaccess.org/
+  description: |
+    Root Access is a community (hacker/maker/work)space that supports Fresno's technology
+    and maker scene. They provide the community with access to tools and equipment and a
+    space to share knowledge and experiment in a creative and collaborative environment.
+
+- name: Central California Environmental Justice Network
+  logo: img/partners/ccejn.png
+  url: https://ccejn.org/
+  description: |
+    Central California Environmental Justice Network's mission is to empower our
+    communities and secure our children's future by eliminating negative environmental
+    impacts in low income and communities of color in the Central Valley.
+
+- name: Valley Improvement Projects
+  logo: img/partners/vip.jpg
+  url: https://valleyimprovementprojects.org/
+  description: |
+    Valley Improvement Projects' mission is to improve the quality of life of
+    under-represented and marginalized residents of Stanislaus County and the
+    Central Valley by advocating for social and environmental justice.
+
+- name: Catholic Charities Diocese of Stockton
+  logo: img/partners/ccds.png
+  url: https://stocktondiocese.org/environmental-justice
+  description: |
+    For over 70 years, Catholic Charities of the Diocese of Stockton has provided social
+    services to people in San Joaquin, Stanislaus, Calaveras, Tuolumne, Alpine, and Mono
+    counties. We believe in the inherent dignity of each person and create services that
+    support families and enhance the quality of life for all members of the community
+    regardless of race, age, or religion. Today, Catholic Charities administers direct
+    social services and advocacy through a variety of programs for the most vulnerable
+    and under represented citizens of our communities.
+
+- name: Little Manila Rising
+  logo: img/partners/lmr.jpg
+  url: https://www.littlemanila.org/
+  description: |
+    Little Manila Rising is a social justice organization whose mission is to develop
+    equitable solutions to create a more inclusive and healthy community for all San
+    Joaquin County residents.
