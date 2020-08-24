@@ -16,6 +16,9 @@ def load_datafile(name):
 @register.filter
 def domainify(url):
     parsed = urlparse(url)
+    domain = parsed.netloc
+    if domain.startswith('www.'):
+        domain = domain[4:]
     if parsed.path in ['/', '']:
-        return parsed.netloc
-    return f'{parsed.netloc}{parsed.path}'
+        return domain
+    return f'{domain}{parsed.path}'
