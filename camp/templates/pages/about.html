@@ -53,7 +53,7 @@
     </div>
 </section>
 
-<section class="section has-background-light">
+<section class="section calibration has-background-light">
     <div class="container">
         <div class="columns is-centered">
             <div class="column is-10-tablet is-8-desktop content has-text-centered">
@@ -64,46 +64,87 @@
             </div>
         </div>
         <div class="columns is-multiline is-centered">
-            <!-- <div class="column is-one-third">
-                <div class="card">
+            <div class="column is-10-tablet is-10-desktop">
+                <div class="card is-horizontal is-right">
                     <div class="card-image">
-                        <img src="{% static 'img/calibration/purple-configure.jpg' %}" class="is-responsive" alt="">
+                        <a href="#" class="modal-button" data-target="id_modal-purple-configure">
+                            <img src="{% static 'img/calibration/purple-configure.jpg' %}" class="image" alt="">
+                        </a>
                     </div>
                     <div class="card-content">
-                        <p>Configuring a batch of Purple Air monitors before they're tested and calibrated.</p>
+                        <p>SJVAir Purple Air monitors are assessed for inter-device variability
+                            at Root Access prior to being deployed in the field. Particle count
+                            data from deployed PurpleAir monitors is regressed on collocated
+                            regulatory monitor data to generate correction equations (calibrations).</p>
                     </div>
                 </div>
-            </div> -->
+                <div class="modal" id="id_modal-purple-configure">
+                    <div class="modal-background"></div>
+                    <div class="modal-content">
+                        <p class="image">
+                            <img src="{% static 'img/calibration/purple-configure.jpg' %}" alt="">
+                        </p>
+                    </div>
+                    <button class="modal-close is-large" aria-label="close"></button>
+                </div>
+            </div>
+
             <div class="column is-10-tablet is-10-desktop">
                 <div class="card is-horizontal">
                     <div class="card-image">
-                        <img src="{% static 'img/calibration/purple-install.jpg' %}" class="image" alt="">
+                        <a href="#" class="modal-button" data-target="id_modal-purple-install">
+                            <img src="{% static 'img/calibration/purple-install.jpg' %}" class="image" alt="">
+                        </a>
                     </div>
                     <div class="card-content">
-                        <p>Two batches of PurpleAir monitors (60 total) were operated continuously on
-                            the roof at Root Access for 30 days each. During the first test period
-                            (12/10/2019 – 1/9/2020) the average hourly concentration was 36 ug/m3, with a
-                            range of 1-180 ug/m3. During the second test period (1/21/2020 – 2/20/2020),
-                            the average hourly concentration was 35 ug/m3, with a range of 1-85 ug/m3.
+                        <p>Testing: two batches of PurpleAir monitors were operated continuously on the
+                            roof at Root Access. During the first test period (12/10/2019 – 1/9/2020),
+                            30 monitors were run for 30 days with an average hourly concentration of
+                            36 ug/m3 and a range of 1-180 ug/m3. During the second test period
+                            (1/21/2020 – 2/20/2020), another 30 monitors were run for 31 days with
+                            an average hourly concentration of 35 ug/m3 and a range of 1-85 ug/m3.
                             The average correlation (R2) for all 60 monitors was 0.96. Only one monitor
                             had an R2 < 0.90 (this monitor was returned to the manufacturer).</p>
                     </div>
+                </div>
+                <div class="modal" id="id_modal-purple-install">
+                    <div class="modal-background"></div>
+                    <div class="modal-content">
+                        <p class="image">
+                            <img src="{% static 'img/calibration/purple-install.jpg' %}" alt="">
+                        </p>
+                    </div>
+                    <button class="modal-close is-large" aria-label="close"></button>
                 </div>
             </div>
             <div class="column is-10-tablet is-10-desktop">
                 <div class="card is-horizontal is-right">
                     <div class="card-image">
-                        <img src="{% static 'img/calibration/purple-calibration-graph-visalia.png' %}" class="image" alt="">
+                        <a href="#" class="modal-button" data-target="id_modal-purple-calibration-graph-visalia">
+                            <img src="{% static 'img/calibration/purple-calibration-graph-visalia.png' %}" class="image" alt="">
+                        </a>
                     </div>
                     <div class="card-content">
-                        <p>Particle count data from collocated PurpleAir monitors is regressed on
-                            regulatory monitor data to generate calibrations (correction equations)
-                            that can be applied to PurpleAir monitor data locally and regionally.
-                            In the example above, the regulatory monitor data is from CARB's Visalia
-                            station (Church St). A collocated PurpleAir at the same location was used
-                            to generate the "local" calibration. A collocated PurpleAir in Fresno
-                            (Garland Ave) was used to generate the "regional" calibration.</p>
+                        <p>Calibration: in the example shown here, hourly PM2.5 mass values from
+                            regulatory monitors in Visalia (Church St) and Fresno (Garland Ave)
+                            were regressed on particle counts (0.3-1.0 um/dl and 1.0-2.5 um/dl)
+                            from collocated PurpleAir monitors at each site from Aug 20-22, 2020.
+                            The R2 for these multivariate regressions was 0.992 and 0.990,
+                            respectively. Correlation coefficients for Visalia and Fresno were
+                            applied separately to particle count data from the PurpleAir monitor
+                            in Visalia to generate "locally" (Visalia coefficients) and "regionally"
+                            (Fresno coefficients) calibrated values. Also shown are the uncalibrated
+                            and EPA calibrated (AirNow) values for the Visalia PurpleAir monitor.</p>
                     </div>
+                </div>
+                <div class="modal" id="id_modal-purple-calibration-graph-visalia">
+                    <div class="modal-background"></div>
+                    <div class="modal-content">
+                        <p class="image">
+                            <img src="{% static 'img/calibration/purple-calibration-graph-visalia.png' %}" alt="">
+                        </p>
+                    </div>
+                    <button class="modal-close is-large" aria-label="close"></button>
                 </div>
             </div>
         </div>
