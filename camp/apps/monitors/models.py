@@ -128,21 +128,21 @@ class Entry(models.Model):
     pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
 
     # Post-processed, calibrated data
-    celcius = models.DecimalField(max_digits=4, decimal_places=1, null=True)
-    fahrenheit = models.DecimalField(max_digits=4, decimal_places=1, null=True)
-    humidity = models.DecimalField(max_digits=4, decimal_places=1, null=True)
-    pressure = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    celcius = models.DecimalField(max_digits=5, decimal_places=1, null=True)
+    fahrenheit = models.DecimalField(max_digits=5, decimal_places=1, null=True)
+    humidity = models.DecimalField(max_digits=5, decimal_places=1, null=True)
+    pressure = models.DecimalField(max_digits=7, decimal_places=2, null=True)
 
-    pm10_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
-    pm25_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
-    pm100_env = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm10_env = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    pm25_env = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    pm100_env = models.DecimalField(max_digits=7, decimal_places=2, null=True)
 
-    pm10_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
-    pm25_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
-    pm100_standard = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm10_standard = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    pm25_standard = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    pm100_standard = models.DecimalField(max_digits=7, decimal_places=2, null=True)
 
-    pm25_avg_15 = models.DecimalField(max_digits=6, decimal_places=2, null=True)
-    pm25_avg_60 = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    pm25_avg_15 = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    pm25_avg_60 = models.DecimalField(max_digits=7, decimal_places=2, null=True)
 
     pm25_aqi = models.IntegerField(null=True)
     pm100_aqi = models.IntegerField(null=True)
