@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Page Not Found | {{ block.super }}{% endblock %}
+
+{% block body-class %}404{% endblock %}
+
+{% block main %}
+<section class="section">
+    <div class="container">
+        <div class="content">
+            <h1>Page not found</h1>
+            <p class="lead">We're sorry to say that the page you're looking for doesn't exist.</p>
+            <p><a href="/">Click here to return to the homepage.</a></p>
+        </div>
+    </div>
+</section>
+{% endblock %}
