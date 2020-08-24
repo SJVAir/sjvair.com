@@ -204,7 +204,7 @@
             {% load_datafile 'colophon.yaml' as colophon %}
             {% for project in colophon %}
             <div class="column is-one-third is-half-mobile">
-                <a href="{{ project.url }}" taregt="_blank">
+                <a href="{{ project.url }}" target="_blank">
                     <img src="{% static project.logo %}" alt="{{ project.name }}" class="is-responsive" />
                 </a>
             </div>
