@@ -12,8 +12,8 @@ from .models import Entry
 
 
 class MonitorAdmin(admin.OSMGeoAdmin):
-    list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'temperature', 'humidity',
-        'pm10', 'pm25', 'pm100', 'get_pm25_calibration_formula']
+    list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'pm25_calibration_formula']
+    list_editable = ['is_sjvair', 'is_hidden', 'pm25_calibration_formula']
     list_filter = ['is_sjvair', 'is_hidden', 'county']
     fields = ['name', 'county' 'is_hidden', 'is_sjvair', 'location', 'position', 'pm25_calibration_formula']
 
@@ -29,44 +29,7 @@ class MonitorAdmin(admin.OSMGeoAdmin):
             ''').render(Context({'environment': Entry.ENVIRONMENT})))
         return form
 
-    def get_pm25_calibration_formula(self, instance):
-        return mark_safe(f'<code>{instance.pm25_calibration_formula}</code>')
-    get_pm25_calibration_formula.short_description = 'PM2.5 Calibration Formula'
-
     def last_updated(self, instance):
         if instance.latest:
             return parse_datetime(instance.latest['timestamp'])
         return ''
-
-    def temperature(self, instance):
-        if instance.latest:
-            temps = []
-            if instance.latest['fahrenheit']:
-                temps.append(f"{intcomma(floatformat(instance.latest['fahrenheit'], 1))}°F")
-            if instance.latest['celcius']:
-                temps.append(f"{intcomma(floatformat(instance.latest['celcius'], 1))}°C")
-            return ' / '.join(temps)
-        return ''
-
-    def humidity(self, instance):
-        if instance.latest and instance.latest['humidity']:
-            return f"{round(Decimal(instance.latest['humidity']))}%"
-        return ''
-
-    def pm10(self, instance):
-        if instance.latest:
-            return instance.latest['pm10_env'] or ''
-        return ''
-    pm10.short_description = 'PM1.0'
-
-    def pm25(self, instance):
-        if instance.latest:
-            return instance.latest['pm25_env'] or ''
-        return ''
-    pm25.short_description = 'PM2.5'
-
-    def pm100(self, instance):
-        if instance.latest:
-            return instance.latest['pm100_env'] or ''
-        return ''
-    pm100.short_description = 'PM10.0'
