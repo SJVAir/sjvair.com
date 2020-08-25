@@ -18,12 +18,15 @@ from py_expression_eval import Parser as ExpressionParser
 from resticus.encoders import JSONEncoder
 from resticus.serializers import serialize
 
-from camp.utils.validators import JSONSchemaValidator
+from camp.utils.counties import County
 from camp.utils.managers import InheritanceManager
+from camp.utils.validators import JSONSchemaValidator
 
 
 class Monitor(models.Model):
+    COUNTIES = Choices(*County.names)
     LOCATION = Choices('inside', 'outside')
+
     PAYLOAD_SCHEMA = None
     DEFAULT_SENSOR = None
 
@@ -43,6 +46,7 @@ class Monitor(models.Model):
 
     # Where is this sensor setup?
     position = models.PointField(null=True, db_index=True)
+    county = models.CharField(max_length=20, blank=True, choices=COUNTIES)
     location = models.CharField(max_length=10, choices=LOCATION)
 
     latest = JSONField(encoder=JSONEncoder, default=dict)
@@ -91,6 +95,12 @@ class Monitor(models.Model):
         from camp.api.v1.monitors.serializers import EntrySerializer
         fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
         self.latest = serialize(entry, fields=fields)
+
+    def save(self, *args, **kwargs):
+        if self.position:
+            # TODO: Can we do this only when self.position is updated?
+            self.county = County.lookup(self.position)
+        super().save(*args, **kwargs)
 
 
 class Entry(models.Model):

@@ -21,6 +21,7 @@ class MonitorFilter(FilterSet):
             ],
             'is_sjvair': ['exact'],
             'location': ['exact'],
+            'county': ['exact']
         }
 
 

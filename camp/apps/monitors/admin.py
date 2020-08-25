@@ -12,9 +12,10 @@ from .models import Entry
 
 
 class MonitorAdmin(admin.OSMGeoAdmin):
-    list_display = ['name', 'is_sjvair', 'is_hidden', 'last_updated', 'temperature', 'humidity',
+    list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'temperature', 'humidity',
         'pm10', 'pm25', 'pm100', 'get_pm25_calibration_formula']
-    fields = ['name', 'is_hidden', 'is_sjvair', 'location', 'position', 'pm25_calibration_formula']
+    list_filter = ['is_sjvair', 'is_hidden', 'county']
+    fields = ['name', 'county' 'is_hidden', 'is_sjvair', 'location', 'position', 'pm25_calibration_formula']
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
