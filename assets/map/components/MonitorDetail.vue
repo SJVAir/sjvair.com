@@ -23,6 +23,14 @@
             <span>{{ monitor.device }}</span>
           </span>
         </li>
+        <li>
+          <span class="tag is-light">
+            <span class="icon">
+              <span class="fal fa-location has-text-grey"></span>
+            </span>
+            <span>{{ location }}</span>
+          </span>
+        </li>
         <li :title="monitor.timestamp">
           <span class="tag is-light" :class="monitor.is_active ? 'is-success' : 'is-danger'">
             <span class="icon">
@@ -75,10 +83,14 @@ export default {
 
   computed: {
     timesince() {
-      if(!_.isNull(this.monitor.latest)){
+      if(!_.isEmpty(this.monitor.latest)){
         return this.monitor.latest.timestamp.fromNow();
       }
       return '';
+    },
+
+    location() {
+      return _.capitalize(this.monitor.location)
     }
   },
 
