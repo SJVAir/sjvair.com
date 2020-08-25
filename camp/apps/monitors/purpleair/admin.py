@@ -17,7 +17,7 @@ class PurpleAirAdmin(MonitorAdmin):
     list_display.insert(5, 'get_active_status')
 
     fields = MonitorAdmin.fields
-    readonly_fields = ['location', 'position']
+    readonly_fields = ['location', 'position', 'county']
 
     add_fieldsets = (
         (None, {
