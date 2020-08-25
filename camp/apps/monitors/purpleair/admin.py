@@ -14,7 +14,7 @@ class PurpleAirAdmin(MonitorAdmin):
     add_form = PurpleAirAddForm
     list_display = MonitorAdmin.list_display[:]
     list_display.insert(1, 'purple_id')
-    list_display.insert(2, 'get_active_status')
+    list_display.insert(5, 'get_active_status')
 
     fields = MonitorAdmin.fields
     readonly_fields = ['location', 'position']
