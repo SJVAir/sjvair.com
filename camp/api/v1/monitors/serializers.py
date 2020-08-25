@@ -30,6 +30,7 @@ class MonitorSerializer(serializers.Serializer):
         'position',
         'location',
         'latest',
+        'county'
     ]
 
     def fixup(self, instance, data):

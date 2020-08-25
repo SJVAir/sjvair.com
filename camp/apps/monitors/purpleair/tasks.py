@@ -58,7 +58,7 @@ def import_monitor_data(monitor_id, options=None):
                 .latest('timestamp')
             )}
         except Entry.DoesNotExist:
-            options = {'results': 1000}
+            options = {'results': 1}
 
     feeds = monitor.get_feeds(**options)
     for sensor, feed in feeds.items():
