@@ -23,6 +23,14 @@
             <span>{{ monitor.device }}</span>
           </span>
         </li>
+        <li v-if="monitor.county">
+          <span class="tag is-light">
+            <span class="icon">
+              <span class="fal fa-map-marker-alt has-text-grey"></span>
+            </span>
+            <span>{{ monitor.county }}</span>
+          </span>
+        </li>
         <li>
           <span class="tag is-light">
             <span class="icon">
