@@ -21,6 +21,7 @@
 
         .image
             min-height: 100%
+            object-fit: contain
 
     .card-content
         flex: 1
@@ -31,10 +32,10 @@
 .card
     &.is-horizontal
         +tablet
-        +horizontal-card
+            +horizontal-card
     &.is-mobile
         +mobile
-        +horizontal-card
+            +horizontal-card
 
 img
     &.is-responsive
