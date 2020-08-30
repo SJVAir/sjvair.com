@@ -1,0 +1,13 @@
+- model: monitors.monitor
+  pk: gO9_akFVTVW6mYBifOtoxg
+  fields:
+    name: CCAC
+    created: 2020-08-27 12:18:08.943638+00:00
+    modified: 2020-08-27 12:18:08.943663+00:00
+    access_key: f6d59f1f-c5e7-4260-b1eb-d0bb6531b072
+    position: SRID=4326;POINT (-119.798678 36.762742)
+    location: outside
+    latest: {}
+- model: bam.bam1022
+  pk: gO9_akFVTVW6mYBifOtoxg
+  fields: {}

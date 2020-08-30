@@ -4,9 +4,10 @@
     name: Root Access Hackerspace
     created: 2020-07-24 12:18:08.943638+00:00
     modified: 2020-07-24 12:18:08.943663+00:00
+    access_key: 5b27117b-d224-4967-896c-7013745688bb
     position: SRID=4326;POINT (-119.798678 36.762742)
     location: outside
-    latest: null
+    latest: {}
 - model: purpleair.purpleair
   pk: jLI5fer7S0uyR7eMYNSPpg
   fields:
