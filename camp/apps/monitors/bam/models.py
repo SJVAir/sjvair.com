@@ -26,8 +26,3 @@ class BAM1022(Monitor):
 
     class Meta:
         verbose_name = 'BAM 1022'
-
-    def process_entry(self, entry):
-
-        self.is_processed = True
-        return entry

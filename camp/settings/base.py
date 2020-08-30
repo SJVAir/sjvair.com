@@ -82,6 +82,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'camp.api.middleware.MonitorAccessMiddleware',
 ]
 
 ROOT_URLCONF = 'camp.urls'

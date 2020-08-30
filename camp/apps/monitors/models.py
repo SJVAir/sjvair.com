@@ -1,3 +1,5 @@
+import uuid
+
 from datetime import timedelta
 from decimal import Decimal
 
@@ -41,6 +43,8 @@ class Monitor(models.Model):
     name = models.CharField(max_length=250)
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
+    access_key = models.UUIDField(default=uuid.uuid4)
+
     is_hidden = models.BooleanField(default=False, help_text="Hides the monitor on the map.")
     is_sjvair = models.BooleanField(default=False, help_text="Is this monitor part of the SJVAir network?")
 
@@ -194,7 +198,7 @@ class Entry(models.Model):
             .values_list(field, flat=True)
         )
 
-        if getattr(self, field):
+        if getattr(self, field) is not None:
             values.append(Decimal(getattr(self, field)))
 
         if values:

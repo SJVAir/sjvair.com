@@ -1,5 +1,11 @@
 import json
 
+from django.test.utils import override_settings
+
+
+def debug(fn):
+    return override_settings(DEBUG=True)(fn)
+
 
 def get_response_data(response):
     '''
