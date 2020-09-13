@@ -102,10 +102,10 @@ class PurpleAir(Monitor):
             'pm100_standard': 'PM10.0 (CF=1)',
             'particles_03um': '0.3um',
             'particles_05um': '0.5um',
-            'particles_100um': '1.0um',
-            'particles_10um': '2.5um',
-            'particles_25um': '5.0um',
-            'particles_50um': '10.0um',
+            'particles_10um': '1.0um',
+            'particles_25um': '2.5um',
+            'particles_50um': '5.0um',
+            'particles_100um': '10.0um',
         }
 
         for data in entry.payload:
