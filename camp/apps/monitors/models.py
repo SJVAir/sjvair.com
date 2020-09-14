@@ -90,8 +90,7 @@ class Monitor(models.Model):
     def process_entry(self, entry):
         entry.calibrate_pm25(self.pm25_calibration_formula)
         entry.calculate_aqi()
-        entry.calculate_average('pm25_env', 'pm25_avg_15', 15)
-        entry.calculate_average('pm25_env', 'pm25_avg_60', 60)
+        entry.calculate_averages()
         entry.is_processed = True
         return entry
 
@@ -159,7 +158,6 @@ class Entry(models.Model):
     pm25_avg_60 = models.DecimalField(max_digits=7, decimal_places=2, null=True)
 
     pm25_aqi = models.IntegerField(null=True)
-    pm100_aqi = models.IntegerField(null=True)
 
     particles_03um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
     particles_05um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
@@ -183,7 +181,7 @@ class Entry(models.Model):
             for field in self.ENVIRONMENT
         }
 
-    def calculate_average(self, field, attr, minutes):
+    def get_average(self, field, minutes):
         values = list(Entry.objects
             .filter(
                 monitor=self.monitor,
@@ -202,28 +200,9 @@ class Entry(models.Model):
             values.append(Decimal(getattr(self, field)))
 
         if values:
-            setattr(self, attr, sum(values) / len(values))
+            return sum(values) / len(values)
 
-    def calculate_aqi(self):
-        avg = (Entry.objects
-            .filter(
-                monitor_id=self.monitor_id,
-                sensor=self.sensor,
-                timestamp__range=(
-                    self.timestamp - timedelta(hours=12),
-                    self.timestamp
-                ),
-                pm25_env__isnull=False,
-                pm100_env__isnull=False,
-            )
-            .aggregate(
-                pm25=Least(Avg('pm25_env'), 500),
-                pm100=Least(Avg('pm100_env'), 604),
-            )
-        )
-
-        self.pm25_aqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, avg['pm25'] or 0, algo=aqi.ALGO_EPA)
-        self.pm100_aqi = aqi.to_iaqi(aqi.POLLUTANT_PM10, avg['pm100'] or 0, algo=aqi.ALGO_EPA)
+        return 0
 
     def calibrate_pm25(self, formula):
         if formula:
@@ -233,6 +212,17 @@ class Entry(models.Model):
 
             self.pm25_env = expression.evaluate(context)
             self.pm25_calibration_formula = formula
+
+    def calculate_aqi(self):
+        algo = aqi.get_algo(aqi.ALGO_EPA)
+        self.pm25_aqi = algo.iaqi(aqi.POLLUTANT_PM25, min(
+            self.get_average('pm25_env', 60 * 12),
+            algo.piecewise['bp'][aqi.POLLUTANT_PM25][-1][1])
+        )
+
+    def calculate_averages(self):
+        self.pm25_avg_15 = self.get_average('pm25_env', 15)
+        self.pm25_avg_60 = self.get_average('pm25_env', 60)
 
     def save(self, *args, **kwargs):
         # Temperature adjustments

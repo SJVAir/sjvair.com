@@ -131,7 +131,6 @@
     particles_50um: '0.18'
     particles_100um: '43.47'
     pm25_aqi: null
-    pm100_aqi: null
     pm25_calibration_formula: 'pm25_env * .4'
 - model: monitors.entry
   pk: IwV2ocS6Quy5EoJh5lXQ4Q
@@ -182,7 +181,6 @@
     particles_50um: '0.39'
     particles_100um: '47.37'
     pm25_aqi: null
-    pm100_aqi: null
 - model: monitors.entry
   pk: TNcSSB7nR0y3_8JUvsrP5Q
   fields:
@@ -232,7 +230,6 @@
     particles_50um: '0.51'
     particles_100um: '58.37'
     pm25_aqi: null
-    pm100_aqi: null
 - model: monitors.entry
   pk: ikq6RR4bSW2wcJDDUUFUyg
   fields:
@@ -282,7 +279,6 @@
     particles_50um: '0.35'
     particles_100um: '52.46'
     pm25_aqi: null
-    pm100_aqi: null
 - model: monitors.entry
   pk: sqdMmRKVTeea9UldUtWeRw
   fields:
@@ -332,7 +328,6 @@
     particles_50um: '0.00'
     particles_100um: '58.25'
     pm25_aqi: null
-    pm100_aqi: null
 - model: monitors.entry
   pk: vGARJNRxRriwLtDF7stG4Q
   fields:
@@ -382,7 +377,6 @@
     particles_50um: '0.23'
     particles_100um: '57.04'
     pm25_aqi: null
-    pm100_aqi: null
 - model: monitors.entry
   pk: zRL1VgOjRTWIgR0jlUe7yw
   fields:
@@ -432,7 +426,6 @@
     particles_50um: '0.25'
     particles_100um: '48.08'
     pm25_aqi: null
-    pm100_aqi: null
 - model: monitors.entry
   pk: zkUgO1WYRh-n2w1BHQbrkA
   fields:
@@ -482,4 +475,3 @@
     particles_50um: '0.51'
     particles_100um: '69.80'
     pm25_aqi: null
-    pm100_aqi: null
