@@ -23,8 +23,7 @@ DATA_SCHEMA = {
         'particles_50um': {'oneOf': [{'type': 'number'}, {'type': 'null'}]},
         'particles_100um': {'oneOf': [{'type': 'number'}, {'type': 'null'}]},
 
-        'pm2_aqi': {'oneOf': [{'type': 'number'}, {'type': 'null'}]},
-        'pm100_aqi': {'oneOf': [{'type': 'number'}, {'type': 'null'}]},
+        'pm25_aqi': {'oneOf': [{'type': 'number'}, {'type': 'null'}]},
     },
     'required': [
         'celcius',
@@ -37,7 +36,6 @@ DATA_SCHEMA = {
         'pm10_env',
         'pm25_env',
         'pm100_env',
-        'pm2_aqi',
-        'pm100_aqi',
+        'pm25_aqi',
     ]
 }

@@ -22,18 +22,14 @@ call_command('loaddata', 'fixtures/sensors.yaml')
 2. Get the code
 
 ```
-host:~$ mkdir camp
-host:~$ cd camp
-host:~/camp$
-host:~/camp$ git clone git@github.com:dmpayton/camp-server.git server
-host:~/camp$ git clone git@github.com:dmpayton/camp-frontend.git frontend
-host:~/camp$ cd server
+host:~/dev$ git clone git@github.com:SJVAir/sjvair.com.git
+host:~/dev$ cd sjvair.com
 ```
 
 3. Provision the vagrant box
 
 ```
-host:~/camp/server$ vagrant up
+host:~/dev/sjvair.com$ vagrant up
 ```
 
 This will automatically install Python dependencies and run database migrations.
@@ -41,7 +37,7 @@ This will automatically install Python dependencies and run database migrations.
 4. Shell in and navigate to the project directory
 
 ```
-host:~/camp/server$ vagrant ssh
+host:~/dev/sjvair.com$ vagrant ssh
 vagrant:~$ cd /vagrant
 ```
 
@@ -51,10 +47,22 @@ vagrant:~$ cd /vagrant
 vagrant:/vagrant$ python manage.py createsuperuser
 ```
 
-6. Run the development server
+6a. Build the front-end
+
+```
+vagrant:/vagrant$ invoke build
+```
+
+6b. Run the development server
 
 ```
 vagrant:/vagrant$ python manage.py runserver 0:8000
+```
+
+6c. Run the task workers
+
+```
+vagrant:/vagrant$ python manage.py run_huey
 ```
 
 7. Visit [localhost:8000](http://localhost:8000) in your web browser
@@ -84,13 +92,13 @@ vagrant:/vagrant$ python manage.py migrate
 Suspend the box without fully shutting it down (makes `vagrant up` faster):
 
 ```
-host:~/camp/server$ vagrant suspend
+host:~/dev/sjvair.com$ vagrant suspend
 ```
 
 Fully shut down the box:
 
 ```
-host:~/camp/server$ vagrant halt
+host:~/dev/sjvair.com$ vagrant halt
 ```
 
 ### How do I access Postgres from outside my Vagrant box?
