@@ -44,6 +44,7 @@ import moment from 'moment';
 
 import MonitorDetail from './components/MonitorDetail.vue'
 import GoogleMapsInit from './utils/gmaps';
+import colors from './utils/colors'
 
 export default {
   name: 'app',
@@ -85,60 +86,72 @@ export default {
         pm25_env: {
           label: "PM 2.5",
           levels: [
-            {min: 0, color: '68e143'},
-            {min: 12, color: 'ffff55'},
-            {min: 35, color: 'ef8533'},
-            {min: 55, color: 'ea3324'},
-            {min: 150, color: '8c1a4b'},
-            {min: 250, color: '731425'}
+            {min: 0, color: colors.green},
+            {min: 12, color: colors.yellow},
+            {min: 35, color: colors.orange},
+            {min: 55, color: colors.red},
+            {min: 150, color: colors.purple},
+            {min: 250, color: colors.maroon}
           ],
           latest: (monitor) => Math.round(monitor.latest.pm25_env)
         },
         pm25_avg_15: {
           label: "PM 2.5 (15m)",
           levels: [
-            {min: 0, color: '68e143'},
-            {min: 12, color: 'ffff55'},
-            {min: 35, color: 'ef8533'},
-            {min: 55, color: 'ea3324'},
-            {min: 150, color: '8c1a4b'},
-            {min: 250, color: '731425'}
+            {min: 0, color: colors.green},
+            {min: 12, color: colors.yellow},
+            {min: 35, color: colors.orange},
+            {min: 55, color: colors.red},
+            {min: 150, color: colors.purple},
+            {min: 250, color: colors.maroon}
           ],
           latest: (monitor) => Math.round(monitor.latest.pm25_avg_15)
         },
         pm25_avg_60: {
           label: "PM 2.5 (1h)",
           levels: [
-            {min: 0, color: '68e143'},
-            {min: 12, color: 'ffff55'},
-            {min: 35, color: 'ef8533'},
-            {min: 55, color: 'ea3324'},
-            {min: 150, color: '8c1a4b'},
-            {min: 250, color: '731425'}
+            {min: 0, color: colors.green},
+            {min: 12, color: colors.yellow},
+            {min: 35, color: colors.orange},
+            {min: 55, color: colors.red},
+            {min: 150, color: colors.purple},
+            {min: 250, color: colors.maroon}
           ],
           latest: (monitor) => Math.round(monitor.latest.pm25_avg_60)
         },
         pm10_env: {
           label: "PM 1.0",
           levels: [
-            {min: 0, color: '68e143'},
-            {min: 12, color: 'ffff55'},
-            {min: 35, color: 'ef8533'},
-            {min: 55, color: 'ea3324'},
-            {min: 150, color: '8c1a4b'},
-            {min: 250, color: '731425'}
+            {min: 0, color: colors.green},
+            {min: 12, color: colors.yellow},
+            {min: 35, color: colors.orange},
+            {min: 55, color: colors.red},
+            {min: 150, color: colors.purple},
+            {min: 250, color: colors.maroon}
           ],
           latest: (monitor) => Math.round(monitor.latest.pm10_env)
         },
         pm100_env: {
           label: "PM 10",
           levels: [
-            {min: 0, color: '68e143'},
-            {min: 12, color: 'ffff55'},
-            {min: 35, color: 'ef8533'},
-            {min: 55, color: 'ea3324'},
-            {min: 150, color: '8c1a4b'},
-            {min: 250, color: '731425'}
+            {min: 0, color: colors.green},
+            {min: 12, color: colors.yellow},
+            {min: 35, color: colors.orange},
+            {min: 55, color: colors.red},
+            {min: 150, color: colors.purple},
+            {min: 250, color: colors.maroon}
+          ],
+          latest: (monitor) => Math.round(monitor.latest.pm100_env)
+        },
+        pm25_aqi: {
+          label: "PM 2.5 AQI",
+          levels: [
+            {min: 0, color: colors.green},
+            {min: 51, color: colors.yellow},
+            {min: 101, color: colors.orange},
+            {min: 151, color: colors.red},
+            {min: 201, color: colors.purple},
+            {min: 301, color: colors.maroon}
           ],
           latest: (monitor) => Math.round(monitor.latest.pm100_env)
         }
@@ -203,6 +216,22 @@ export default {
       monitor._marker.setMap((checkActive && checkSJVAir) ? this.map : null);
     },
 
+    getTextColor(color){
+      let textColors = {};
+      textColors[colors.white] = colors.black;
+      textColors[colors.gray] = colors.black;
+      textColors[colors.black] = colors.white;
+
+      textColors[colors.green] = colors.black;
+      textColors[colors.yellow] = colors.black;
+      textColors[colors.orange] = colors.white;
+      textColors[colors.red] = colors.white;
+      textColors[colors.purple] = colors.white;
+      textColors[colors.maroon] = colors.white;
+
+      return _.get(textColors, color, colors.black)
+    },
+
     updateField() {
       _.forEach(this.monitors, (monitor) => {
         monitor._marker.setLabel(
@@ -220,8 +249,8 @@ export default {
 
     getMarkerParams(monitor, field, value){
       let params = {
-        fill_color: '969696',
-        border_color: '000',
+        fill_color: colors.gray,
+        border_color: colors.black,
         shape: monitor.is_sjvair ? 'circle' : 'square'
       }
 
@@ -276,7 +305,11 @@ export default {
               this.monitors[monitor.id]._marker = new window.google.maps.Marker({
                 size: new window.google.maps.Size(32, 32),
                 origin: window.google.maps.Point(0, 0),
-                anchor: new window.google.maps.Point(16, 16)
+                anchor: new window.google.maps.Point(16, 16),
+                label: {
+                  color: colors.black,
+                  text: ''
+                }
               });
               this.monitors[monitor.id]._marker.addListener('click', () => {
                 this.hideMonitorDetail()
@@ -289,15 +322,16 @@ export default {
               `/api/1.0/marker.png?${new URLSearchParams(params).toString()}`
             )
 
+            let label = this.monitors[monitor.id]._marker.getLabel();
+            label.text = this.getMonitorLabel(monitor)
+            label.color = `#${this.getTextColor(params.fill_color)}`
+            this.monitors[monitor.id]._marker.setLabel(label);
+
             this.monitors[monitor.id]._marker.setPosition(
               new window.google.maps.LatLng(
                 monitor.position.coordinates[1],
                 monitor.position.coordinates[0]
               )
-            );
-
-            this.monitors[monitor.id]._marker.setLabel(
-              this.getMonitorLabel(monitor)
             );
 
             this.setMarkerMap(this.monitors[monitor.id]);
