@@ -14,7 +14,7 @@ class MarkerForm(forms.Form):
         ], initial='circle', required=False)
     fill_color = forms.CharField(validators=[color_validator], initial='777', required=False)
     border_color = forms.CharField(validators=[color_validator], initial='000', required=False)
-    border_size = forms.IntegerField(initial=2, required=False)
+    border_size = forms.IntegerField(initial=0, required=False)
 
     def get_defaults(self):
         return {key: field.initial for key, field in self.fields.items()}
