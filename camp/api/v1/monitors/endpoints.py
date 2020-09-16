@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.utils.functional import cached_property
 
 from camp.apps.monitors.models import Entry, Monitor
+from camp.utils.forms import DateRangeForm
 from .filters import EntryFilter, MonitorFilter
 from .forms import EntryForm
 from .serializers import EntrySerializer, MonitorSerializer
@@ -77,8 +78,9 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
 
 
 class EntryCSV(EntryMixin, CSVExport):
+    form_class = DateRangeForm
     model = Entry
-    filename = "SJVAir_{view.monitor.__class__.__name__}_{view.monitor.pk}_{data[start_date]}_{data[end_date]}.csv"
+    filename = "SJVAir_{view.request.monitor.__class__.__name__}_{view.request.monitor.pk}_{data[start_date]}_{data[end_date]}.csv"
     columns = ['timestamp', 'sensor', 'celcius', 'fahrenheit', 'humidity', 'pressure',
         'pm100_env', 'pm10_env', 'pm25_env', 'pm100_standard', 'pm10_standard',
         'pm25_standard', 'pm25_avg_15', 'pm25_avg_60', 'pm25_aqi',
