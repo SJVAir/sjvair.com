@@ -215,10 +215,16 @@ class Entry(models.Model):
 
     def calculate_aqi(self):
         algo = aqi.get_algo(aqi.ALGO_EPA)
-        self.pm25_aqi = algo.iaqi(aqi.POLLUTANT_PM25, min(
-            self.get_average('pm25_env', 60 * 12),
-            algo.piecewise['bp'][aqi.POLLUTANT_PM25][-1][1])
-        )
+        try:
+            self.pm25_aqi = algo.iaqi(aqi.POLLUTANT_PM25, min(
+                self.get_average('pm25_env', 60 * 12),
+                algo.piecewise['bp'][aqi.POLLUTANT_PM25][-1][1])
+            )
+        except Exception:
+            # python-aqi often errors on high numbers because it
+            # doesn't account for calculations above 500. Since AQI
+            # only goes to 500, just set it to the max. (Yikes!)
+            self.pm25_aqi = 500
 
     def calculate_averages(self):
         self.pm25_avg_15 = self.get_average('pm25_env', 15)
