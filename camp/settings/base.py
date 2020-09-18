@@ -223,6 +223,10 @@ CORS_ALLOW_CREDENTIALS = True
 
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
 
+# Google Analytics
+
+GOOGLE_ANALYTICS_ID = os.environ.get('GOOGLE_ANALYTICS_ID')
+
 # django-resticus
 
 RESTICUS = {
