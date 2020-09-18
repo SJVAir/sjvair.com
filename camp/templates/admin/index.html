@@ -1,0 +1,85 @@
+{% extends 'admin/index.html' %}
+{% load i18n static %}
+
+{% block extrahead %}
+{{ block.super }}
+<script type="text/javascript" src="{% static 'admin/js/vendor/jquery/jquery.min.js' %}"></script>
+<script type="text/javascript">
+    (function($){
+        let roundOOM = (n) => {
+            let oom = "1" + Array(n.toString().length - 2).join("0");
+            return Math.round(n / oom) * oom;
+        }
+
+        let fetchStats = () => {
+            $.getJSON('{% url "admin-stats" %}', (data) => {
+                console.log(data)
+                $('#id_timestamp').text(
+                    new Date(Date.parse(data.timestamp))
+                        .toLocaleString('en-us', {timezone: 'America/Los_Angeles'}));
+                $('#id_entry-count').text(roundOOM(data.entry_count).toLocaleString());
+                $('#id_queue-size').text(data.queue_size.toLocaleString());
+            });
+        };
+
+        fetchStats();
+        setInterval(fetchStats, 15 * 1000);
+    })(jQuery);
+</script>
+{% endblock %}
+
+
+{% block sidebar %}
+<div id="content-related">
+    <div class="module" id="internal-links-module">
+        <h2>{% trans 'Server Stats' %}</h2>
+        <table>
+            <tr>
+                <th>Timestamp</th>
+                <td><span id="id_timestamp"></span></td>
+            </tr>
+            <tr>
+                <th>Monitor Entries</th>
+                <td>≈<span id="id_entry-count"></span></td>
+            </tr>
+            <tr>
+                <th>Task Queue</th>
+                <td>
+                    <span id="id_queue-size"></span>
+                    <form action="{% url 'flush-queue' %}" method="POST">
+                        {% csrf_token %}
+                        <button type="submit">Flush queue</button>
+                    </form>
+                </td>
+            </tr>
+        </table>
+    </div>
+    <div class="module" id="recent-actions-module">
+        <h2>{% translate 'Recent actions' %}</h2>
+        <h3>{% translate 'My actions' %}</h3>
+            {% load log %}
+            {% get_admin_log 10 as admin_log for_user user %}
+            {% if not admin_log %}
+            <p>{% translate 'None available' %}</p>
+            {% else %}
+            <ul class="actionlist">
+            {% for entry in admin_log %}
+            <li class="{% if entry.is_addition %}addlink{% endif %}{% if entry.is_change %}changelink{% endif %}{% if entry.is_deletion %}deletelink{% endif %}">
+                {% if entry.is_deletion or not entry.get_admin_url %}
+                    {{ entry.object_repr }}
+                {% else %}
+                    <a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>
+                {% endif %}
+                <br>
+                {% if entry.content_type %}
+                    <span class="mini quiet">{% filter capfirst %}{{ entry.content_type.name }}{% endfilter %}</span>
+                {% else %}
+                    <span class="mini quiet">{% translate 'Unknown content' %}</span>
+                {% endif %}
+            </li>
+            {% endfor %}
+            </ul>
+            {% endif %}
+    </div>
+</div>
+{% endblock %}

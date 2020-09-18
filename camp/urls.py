@@ -3,7 +3,11 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path, re_path
 
-from camp.utils.views import PageTemplate
+from camp.utils.views import PageTemplate, AdminStats, FlushQueue
+
+admin.site.site_title = "SJVAir Admin"
+admin.site.site_header = "SJVAir Admin"
+# admin.site.site_url = None
 
 urlpatterns = [
     path('api/', include('camp.api.urls', namespace='api')),
@@ -11,6 +15,8 @@ urlpatterns = [
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
     path('batcave/', admin.site.urls),
+    path('batcave/stats.json', AdminStats.as_view(), name='admin-stats'),
+    path('batcave/flush-queue/', FlushQueue.as_view(), name='flush-queue'),
 ]
 
 if settings.DEBUG:
