@@ -1,7 +1,7 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
-<head class="has-navbar-fixed-top">
+<head>
     {% if settings.GOOGLE_ANALYTICS_ID %}
     <!-- Global site tag (gtag.js) - Google Analytics -->
     <script async src="https://www.googletagmanager.com/gtag/js?id={{ settings.GOOGLE_ANALYTICS_ID }}"></script>
@@ -30,6 +30,11 @@
     <link type="text/css" rel="stylesheet" href="{% static 'css/style.css' %}" />
     <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v5.14.0/css/all.css" integrity="sha384-VhBcF/php0Z/P5ZxlxaEx1GwqTQVIBu4G4giRWxTKOCjTxsPFETUDdVL5B6vYvOt" crossorigin="anonymous">
 
+    <style type="text/css">
+        .goog-te-banner-frame {display:none !important;}
+        body {top:0 !important;}
+    </style>
+
     {% block extra-head %}{% endblock %}
 </head>
 <body class="{% block body-class %}{% endblock %}">
@@ -55,6 +60,32 @@
             <div class="navbar-end">
                 <a href="/about/" class="navbar-item">About</a>
                 <a href="/api/" class="navbar-item">API</a>
+                <div class="navbar-item">
+                    <div id="google_translate_element"></div>
+                </div>
+                <!-- <div class="navbar-item notranslate" translate="no">
+                    <div class="dropdown is-hoverable">
+                        <div class="dropdown-trigger">
+                            <button class="button is-size-7" aria-haspopup="true" aria-controls="dropdown-language">
+                                <span class="icon is-small">
+                                    <span class="far fa-language has-text-grey-light" aria-hidden="true"></span>
+                                </span>
+                                <span>Select Language</span>
+                                <span class="icon is-small">
+                                    <span class="fas fa-angle-down" aria-hidden="true"></span>
+                                </span>
+                            </button>
+                        </div>
+                        <div class="dropdown-menu" id="dropdown-language" role="menu">
+                            <div class="dropdown-content">
+                                <a href="#" onclick="translatePage('en'); return false;" class="dropdown-item">English</a>
+                                <a href="#" onclick="translatePage('es'); return false;" class="dropdown-item">Spanish</a>
+                                <a href="#" onclick="translatePage('tl'); return false;" class="dropdown-item">Filipino</a>
+                                <a href="#" onclick="translatePage('hmn'); return false;" class="dropdown-item">Hmong</a>
+                            </div>
+                        </div>
+                    </div>
+                </div> -->
             </div>
         </div>
     </div>
@@ -91,5 +122,56 @@
 
 <script type="text/javascript" src="{% static 'js/main.js' %}"></script>
 {% block javascripts %}{% endblock %}
+
+<!-- Translation -->
+<script type="text/javascript">
+function googleTranslateElementInit() {
+    new google.translate.TranslateElement({
+        autoDisplay: false,
+        pageLanguage: 'en',
+        includedLanguages: 'en,es,hmn,tl',
+        layout: google.translate.TranslateElement.InlineLayout.SIMPLE
+    }, 'google_translate_element');
+}
+</script>
+<script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+<script type="text/javascript">
+function FireEvent(element, eventName) {
+    try {
+        if(document.createEvent) {
+            var event = document.createEvent("HTMLEvents");
+            event.initEvent(eventName, true, true);
+            element.dispatchEvent(event);
+        } else {
+            var event = document.createEventObject();
+            element.fireEvent(`on${eventName}`, event)
+        }
+    }
+    catch(e){
+        console.log('FireEvent', e);
+    }
+}
+
+function translatePage(language){
+    if(language.value) language = language.value;
+    // if(language == '') language = 'en';
+    console.log('selected:', language)
+    var combo = document.getElementsByClassName('goog-te-combo')[0];
+    var gte = document.getElementById('google_translate_element');
+
+    if(!gte || !gte.innerHTML.length || !combo.length || !combo.innerHTML.length){
+        setTimeout(() => {
+            translatePage(language);
+        }, 500);
+    } else {
+        if(combo.value == language) {
+            return;
+        }
+        combo.value = language;
+        FireEvent(combo, 'change');
+        // FireEvent(combo, 'change');
+    }
+}
+</script>
 
 </html>

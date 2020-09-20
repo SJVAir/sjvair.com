@@ -59,7 +59,7 @@
           </div>
         </div>
       </div>
-      <div id="map" :class="mapIsMaximised"></div>
+      <div id="map" :class="mapIsMaximised" class="notranslate" translate="no"></div>
     </div>
     <monitor-detail v-if="activeMonitor" :monitor="activeMonitor" :field="activeField" />
   </div>
