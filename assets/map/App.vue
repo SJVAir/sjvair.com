@@ -14,6 +14,12 @@
               Show private monitors
           </label>
         </div>
+        <div>
+          <label class="checkbox">
+              <input type="checkbox" v-model="showInside" />
+              Show indoor monitors
+          </label>
+        </div>
         <hr />
         <ul class="fa-ul legend">
           <li>
@@ -62,6 +68,7 @@ export default {
       activeField: 'pm25_avg_15',
       showInactive: false,
       showPrivate: true,
+      showInside: false,
       fields: {
         fahrenheit: {
           label: "Temp. (°F)",
@@ -198,6 +205,10 @@ export default {
 
     showPrivate: function(value) {
       _.mapValues(this.monitors, this.setMarkerMap);
+    },
+
+    showInside: function(value) {
+      _.mapValues(this.monitors, this.setMarkerMap);
     }
   },
 
@@ -213,7 +224,8 @@ export default {
     setMarkerMap(monitor){
       let checkActive = (this.showInactive && !monitor.is_active) || monitor.is_active;
       let checkSJVAir = (this.showPrivate && !monitor.is_sjvair) || monitor.is_sjvair;
-      monitor._marker.setMap((checkActive && checkSJVAir) ? this.map : null);
+      let checkInside = this.showInside || (monitor.location == 'outside');
+      monitor._marker.setMap((checkActive && checkSJVAir && checkInside) ? this.map : null);
     },
 
     getTextColor(color){
@@ -249,9 +261,14 @@ export default {
 
     getMarkerParams(monitor, field, value){
       let params = {
+        border_size: 0,
         fill_color: colors.gray,
-        border_color: colors.black,
         shape: monitor.is_sjvair ? 'circle' : 'square'
+      }
+
+      if(monitor.location == 'inside'){
+        params.border_color = colors.black;
+        params.border_size = 2;
       }
 
       if(monitor.is_active && value != null){
