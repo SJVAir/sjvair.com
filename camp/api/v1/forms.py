@@ -20,11 +20,9 @@ class MarkerForm(forms.Form):
         return {key: field.initial for key, field in self.fields.items()}
 
     def get_data(self):
-        print(self.data)
         data = self.get_defaults()
         if self.is_valid():
             for key, value in self.cleaned_data.items():
-                print(key, value)
                 if value:
                     data[key] = value
         return data
