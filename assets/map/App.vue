@@ -2,41 +2,62 @@
   <div class="interface">
     <div class="viewport">
       <div class="display-options">
-        <div>
-          <label class="checkbox">
-              <input type="checkbox" v-model="showInactive" />
-              Show inactive monitors
-          </label>
+        <div class="dropdown" :class="displayOptionsActive ? 'is-active' : ''">
+          <div class="dropdown-trigger">
+            <button class="button" aria-haspopup="true" aria-controls="dropdown-display" v-on:click="toggleDisplayOptions">
+              <span class="icon">
+                <span class="fal fa-cog"></span>
+              </span>
+              <span class="is-size-7">Display options</span>
+              <span class="icon is-small">
+                <span class="fas" :class="displayOptionsActive ? 'fa-angle-up' : 'fa-angle-down'" aria-hidden="true"></span>
+              </span>
+            </button>
+          </div>
+          <div class="dropdown-menu" id="dropdown-display" role="menu">
+            <div class="dropdown-content">
+              <div class="dropdown-item">
+                <label class="checkbox">
+                    <input type="checkbox" v-model="showInactive" />
+                    Inactive monitors
+                </label>
+              </div>
+              <div class="dropdown-item">
+                <label class="checkbox">
+                    <input type="checkbox" v-model="showPrivate" />
+                    Private monitors
+                </label>
+              </div>
+              <div class="dropdown-item">
+                <label class="checkbox">
+                    <input type="checkbox" v-model="showInside" />
+                    Indoor monitors
+                </label>
+              </div>
+              <hr class="dropdown-divider" />
+              <div class="dropdown-item">
+                <div>
+                  <span class="icon">
+                    <span class="fas fa-fw fa-circle has-text-grey-light"></span>
+                  </span>
+                  <span>SJVAir monitors</span>
+                </div>
+                <div>
+                  <span class="icon">
+                    <span class="fas fa-fw fa-square-full has-text-grey-light"></span>
+                  </span>
+                  <span>Private monitors</span>
+                </div>
+                <div>
+                  <span class="icon">
+                    <span class="fal fa-fw fa-circle has-text-black"></span>
+                  </span>
+                  <span>Inside monitors</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="checkbox">
-              <input type="checkbox" v-model="showPrivate" />
-              Show private monitors
-          </label>
-        </div>
-        <div>
-          <label class="checkbox">
-              <input type="checkbox" v-model="showInside" />
-              Show indoor monitors
-          </label>
-        </div>
-        <hr />
-        <ul class="fa-ul legend">
-          <li>
-            <span class="fa-stack fa-li">
-              <span class="fas fa-circle fa-stack-1x has-text-grey-lighter"></span>
-              <span class="fal fa-circle fa-stack-1x"></span>
-            </span>
-            <span>SJVAir monitors</span>
-          </li>
-          <li>
-            <span class="fa-stack fa-li">
-              <span class="fas fa-square-full fa-stack-1x has-text-grey-lighter"></span>
-              <span class="fal fa-square-full fa-stack-1x"></span>
-            </span>
-            <span>Private monitors</span>
-          </li>
-        </ul>
       </div>
       <div id="map" :class="mapIsMaximised"></div>
     </div>
@@ -63,6 +84,7 @@ export default {
     return {
       map: null,
       interval: null,
+      displayOptionsActive: false,
       activeMonitor: null,
       monitors: {},
       activeField: 'pm25_avg_15',
@@ -221,6 +243,9 @@ export default {
   },
 
   methods: {
+    toggleDisplayOptions() {
+      this.displayOptionsActive = !this.displayOptionsActive;
+    },
     setMarkerMap(monitor){
       let checkActive = (this.showInactive && !monitor.is_active) || monitor.is_active;
       let checkSJVAir = (this.showPrivate && !monitor.is_sjvair) || monitor.is_sjvair;
