@@ -237,7 +237,7 @@ RESTICUS = {
 
 # huey
 
-MAX_QUEUE_SIZE = int(os.environ.get('MAX_QUEUE_SIZE', 300))
+MAX_QUEUE_SIZE = int(os.environ.get('MAX_QUEUE_SIZE', 500))
 
 HUEY = {
     "connection": {"url": REDIS_URL},

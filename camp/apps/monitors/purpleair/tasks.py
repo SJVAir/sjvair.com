@@ -20,10 +20,12 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 @db_periodic_task(crontab(minute='*/1'), priority=50)
 def import_recent_data():
     print('[import_recent_data]')
-    if HUEY.pending_count() < settings.MAX_QUEUE_SIZE:
-        for monitor in PurpleAir.objects.all():
-            print('\n' * 10, '[import_recent_data]', monitor.name, '\n' * 10)
-            import_monitor_data.schedule([monitor.pk], delay=1, priority=30)
+    if HUEY.pending_count() > settings.MAX_QUEUE_SIZE:
+        return
+
+    for monitor in PurpleAir.objects.all():
+        print('\n' * 10, '[import_recent_data]', monitor.name, '\n' * 10)
+        import_monitor_data.schedule([monitor.pk], delay=1, priority=30)
 
 
 @db_task()
