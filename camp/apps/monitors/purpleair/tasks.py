@@ -17,7 +17,7 @@ from camp.apps.monitors.purpleair import api
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
-@db_periodic_task(crontab(minute='*/1'), priority=50)
+@db_periodic_task(crontab(minute='*/2'), priority=50)
 def import_recent_data():
     print('[import_recent_data]')
     if HUEY.pending_count() > settings.MAX_QUEUE_SIZE:
