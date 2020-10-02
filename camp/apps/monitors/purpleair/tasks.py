@@ -3,6 +3,7 @@ import time
 from datetime import timedelta
 from pprint import pformat
 
+from django.conf import settings
 from django.db.models import F, OuterRef, Subquery
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -19,6 +20,9 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 @db_periodic_task(crontab(minute='*/2'), priority=50)
 def import_recent_data():
     print('[import_recent_data]')
+    if HUEY.pending_count() > settings.MAX_QUEUE_SIZE:
+        return
+
     for monitor in PurpleAir.objects.all():
         print('\n' * 10, '[import_recent_data]', monitor.name, '\n' * 10)
         import_monitor_data.schedule([monitor.pk], delay=1, priority=30)
