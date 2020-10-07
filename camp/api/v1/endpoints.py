@@ -12,6 +12,7 @@ from resticus.exceptions import ValidationError
 from resticus.views import Endpoint
 
 from camp.utils.forms import DateRangeForm
+from camp.utils.polygon import compute_regular_polygon
 from .forms import MarkerForm
 
 
@@ -88,7 +89,6 @@ class MapMarker(Endpoint):
     form_class = MarkerForm
 
     def get_form(self):
-        print(self.request.GET)
         return self.form_class(self.request.GET)
 
     def get(self, request):
@@ -97,16 +97,28 @@ class MapMarker(Endpoint):
         im = Image.new('RGBA', (39, 39), (0, 0, 0, 0))
         draw = ImageDraw.Draw(im)
 
-        shape = {
-            'circle': draw.ellipse,
-            'square': draw.rectangle,
-        }.get(data['shape'])
+        xy = (1, 1, 37, 37)
+        if data['shape'] == 'polygon':
+            xy = [
+                (xy[0] + xy[2]) / 2,
+                (xy[1] + xy[3]) / 2
+            ]
+            draw.polygon(
+                compute_regular_polygon((xy, xy[0] - 1), n_sides=data['sides']),
+                fill=f"#{data['fill_color']}",
+                outline=f"#{data['border_color']}" if data['border_size'] else None,
+            )
+        else:
+            shape = {
+                'circle': draw.ellipse,
+                'square': draw.rectangle,
+            }.get(data['shape'])
 
-        shape((1, 1, 37, 37),
-            fill=f"#{data['fill_color']}",
-            outline=f"#{data['border_color']}",
-            width=data['border_size']
-        )
+            shape(xy,
+                fill=f"#{data['fill_color']}",
+                outline=f"#{data['border_color']}",
+                width=data['border_size'],
+            )
 
         response = HttpResponse(content_type='image/png')
         im.save(response, 'PNG')
