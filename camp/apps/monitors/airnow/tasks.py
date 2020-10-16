@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -13,6 +14,10 @@ from camp.utils.counties import County
 
 @db_periodic_task(crontab(minute='*/15'), priority=50)
 def import_airnow_data(timestamp=None, previous=None):
+    if settings.AIRNOW_API_KEY is None:
+        # Do nothing if we don't have a key.
+        return
+
     timestamp = timestamp or timezone.now()
     previous = previous or 1
 
