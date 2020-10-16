@@ -1,4 +1,5 @@
 from django.contrib.gis.geos import Point
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from huey import crontab
@@ -11,7 +12,9 @@ from camp.utils.counties import County
 
 
 @db_periodic_task(crontab(minute='*/15'), priority=50)
-def import_airnow_data():
+def import_airnow_data(timestamp=None, previous=None):
+    timestamp = timestamp or timezone.now()
+    previous = previous or 1
     for county in County.names:
         data = airnow_api.query(county)
         for site_name, container in data.items():
@@ -46,3 +49,4 @@ def import_airnow_data():
 
                 monitor.process_entry(entry)
                 entry.save()
+                monitor.check_latest(Entry.objects.get(pk=entry.pk))

@@ -88,5 +88,6 @@ def add_monitor_entry(monitor_id, payload, sensor=None):
             entry = monitor.create_entry(payload, sensor=sensor)
             entry = monitor.process_entry(entry)
             entry.save()
+            monitor.check_latest(Entry.objects.get(pk=entry.pk))
     except TaskLockedException:
         print(f'[LOCKED:add_monitor_entry] {monitor_id} ({payload[0]["created_at"]})')
