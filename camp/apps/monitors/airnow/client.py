@@ -86,13 +86,13 @@ class AirNowClient:
         }, **kwargs)
         return self.request(path, method="get", params=params)
 
-    def query(self, county, timestamp=None, **kwargs):
+    def query(self, county, timestamp=None, previous=1, **kwargs):
         if timestamp is None:
             timestamp = timezone.now()
 
         response = self.data(
             bbox=County.counties[county].extent,
-            start_date=timestamp - timedelta(hours=1),
+            start_date=timestamp - timedelta(hours=previous),
             end_date=timestamp,
             **kwargs,
         )

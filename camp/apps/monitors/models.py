@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from datetime import timedelta
@@ -96,10 +97,28 @@ class Monitor(models.Model):
         entry.is_processed = True
         return entry
 
-    def set_latest(self, entry):
+    def check_latest(self, entry):
         from camp.api.v1.monitors.serializers import EntrySerializer
-        fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
-        self.latest = serialize(entry, fields=fields)
+
+        def make_aware(timestamp):
+            if timezone.is_naive(timestamp):
+                return timezone.make_aware(timestamp)
+            return timestamp
+
+        timestamp = self.latest.get('timestamp')
+        if timestamp is None:
+            is_latest = True
+        else:
+            if not isinstance(timestamp, str):
+                import code
+                code.interact(local=locals())
+            timestamp = make_aware(parse_datetime(timestamp))
+            is_latest = make_aware(entry.timestamp) > timestamp
+
+        sensor_match = self.DEFAULT_SENSOR is None or entry.sensor == self.DEFAULT_SENSOR
+        if sensor_match and is_latest:
+            fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
+            self.latest = json.loads(json.dumps(serialize(entry, fields=fields), cls=JSONEncoder))
 
     def save(self, *args, **kwargs):
         if self.position:
@@ -233,6 +252,7 @@ class Entry(models.Model):
         self.pm25_avg_15 = self.get_average('pm25_env', 15)
         self.pm25_avg_60 = self.get_average('pm25_env', 60)
 
+
     def save(self, *args, **kwargs):
         # Temperature adjustments
         if self.fahrenheit is None and self.celcius is not None:
@@ -240,12 +260,4 @@ class Entry(models.Model):
         if self.celcius is None and self.fahrenheit is not None:
             self.celcius = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
 
-        instance = super().save(*args, **kwargs)
-
-        is_latest = not self.monitor.latest or (self.timestamp > parse_datetime(self.monitor.latest['timestamp']))
-        sensor_match = self.monitor.DEFAULT_SENSOR is None or self.sensor == self.monitor.DEFAULT_SENSOR
-        if sensor_match and is_latest:
-            self.monitor.set_latest(Entry.objects.get(pk=self.pk))
-            self.monitor.save()
-
-        return instance
+        return super().save(*args, **kwargs)
