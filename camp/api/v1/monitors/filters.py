@@ -1,9 +1,24 @@
+import django_filters
 from resticus.filters import FilterSet
 
 from camp.apps.monitors.models import Entry, Monitor
 
 
 class MonitorFilter(FilterSet):
+    device = django_filters.CharFilter(method='filter_device')
+
+    def filter_device(self, queryset, name, value):
+        lookup_field = {
+            'PurpleAir': 'purpleair',
+            'AirNow': 'airnow'
+        }.get(value)
+
+        if lookup_field is not None:
+            queryset = queryset.filter(**{
+                f'{lookup_field}__isnull': False
+            })
+        return queryset
+
     class Meta:
         model = Monitor
         fields = {
@@ -21,7 +36,8 @@ class MonitorFilter(FilterSet):
             ],
             'is_sjvair': ['exact'],
             'location': ['exact'],
-            'county': ['exact']
+            'county': ['exact'],
+            # 'device': ['exact'],
         }
 
 
