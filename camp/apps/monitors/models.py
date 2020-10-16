@@ -7,7 +7,7 @@ import aqi
 
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
-from django.db.models import Avg
+from django.db.models import Avg, Q
 from django.db.models.functions import Least
 from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
@@ -31,6 +31,8 @@ class Monitor(models.Model):
 
     PAYLOAD_SCHEMA = None
     DEFAULT_SENSOR = None
+
+    LAST_ACTIVE_LIMIT = 60 * 10
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -74,7 +76,7 @@ class Monitor(models.Model):
         if not self.latest:
             return False
         now = timezone.now()
-        cutoff = timedelta(seconds=60 * 10)
+        cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
         return (now - parse_datetime(self.latest['timestamp'])) < cutoff
 
     def create_entry(self, payload, sensor=None):
@@ -191,8 +193,9 @@ class Entry(models.Model):
                     self.timestamp,
                 ))
             .exclude(
-                pk=self.pk,
-                **{f'{field}__isnull': True})
+                Q(pk=self.pk)
+                | Q(**{f'{field}__isnull': True})
+            )
             .values_list(field, flat=True)
         )
 
@@ -237,4 +240,12 @@ class Entry(models.Model):
         if self.celcius is None and self.fahrenheit is not None:
             self.celcius = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
 
-        return super().save(*args, **kwargs)
+        instance = super().save(*args, **kwargs)
+
+        is_latest = not self.monitor.latest or (self.timestamp > parse_datetime(self.monitor.latest['timestamp']))
+        sensor_match = self.monitor.DEFAULT_SENSOR is None or self.sensor == self.monitor.DEFAULT_SENSOR
+        if sensor_match and is_latest:
+            self.monitor.set_latest(Entry.objects.get(pk=self.pk))
+            self.monitor.save()
+
+        return instance
