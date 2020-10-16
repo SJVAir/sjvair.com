@@ -15,9 +15,18 @@ from camp.utils.counties import County
 def import_airnow_data(timestamp=None, previous=None):
     timestamp = timestamp or timezone.now()
     previous = previous or 1
+
     for county in County.names:
-        data = airnow_api.query(county)
+        # {site_name: {timestamp: [{data}, ...]}}
+        data = airnow_api.query(county, timestamp=timestamp, previous=previous)
         for site_name, container in data.items():
+            if 'PM2.5' not in list(container.values())[0]:
+                # Skip any monitors that don't have PM2.5 data
+                # (Some monitors only report, e.g., ozone.)
+                print('[AirNow] Insufficient data:', site_name)
+                continue
+
+            # Look up the monitor by name. If it doesn't exist, create it.
             try:
                 monitor = AirNow.objects.get(name=site_name)
                 print('[AirNow] Monitor exists:', monitor.name)

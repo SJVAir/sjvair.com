@@ -35,12 +35,18 @@ export default {
       entries: {},
       interval: null,
       fields: {
-        'pm25_env': 'PM2.5',
-        'pm25_avg_15': 'PM2.5 (15m)',
-        'pm25_avg_60': 'PM2.5 (1h)'
+        PurpleAir: {
+          pm25_env: 'PM2.5',
+          pm25_avg_15: 'PM2.5 (15m)',
+          pm25_avg_60: 'PM2.5 (1h)'
+        },
+        AirNow: {
+          pm25_env: 'PM2.5'
+        }
       },
       sensors: {
-        PurpleAir: ['a']
+        PurpleAir: ['a'],
+        AirNow: ['']
       }
     }
   },
@@ -77,6 +83,9 @@ export default {
           },
           height: '250px',
           width: '100%',
+          legend: {
+            show: true
+          },
           toolbar: {
             show: false
           },
@@ -121,7 +130,12 @@ export default {
           }
         },
         yaxis: {
-          lines: true
+          forceNiceScale: true,
+          lines: true,
+          min: 0,
+          labels: {
+            formatter: Math.trunc
+          }
         }
       };
     }
@@ -129,7 +143,8 @@ export default {
 
   methods: {
     async loadAllEntries(){
-      _.each(_.get(this.sensors, this.monitor.device, ['']), sensor => {
+      this.entries = {};
+      _.each(this.sensors[this.monitor.device], sensor => {
           this.loadEntries(sensor)
       });
     },
@@ -147,7 +162,7 @@ export default {
 
       return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
-          fields: _.join(_.keys(this.fields), ','),
+          fields: _.join(_.keys(this.fields[this.monitor.device]), ','),
           page: page,
           timestamp__gte: timestamp,
           sensor: sensor
@@ -171,9 +186,9 @@ export default {
 
     async updateChart() {
       let series = _.reverse(_.flatten(_.map(this.entries, (entries, sensor) => {
-        return _.map(this.fields, (label, field) => {
+        return _.map(this.fields[this.monitor.device], (label, field) => {
           let name = label;
-          if(_.get(this.sensors, this.monitor.device, ['']).length > 1 && sensor) {
+          if(this.sensors[this.monitor.device].length > 1 && sensor) {
             name += ` (${sensor})`;
           }
           return {
