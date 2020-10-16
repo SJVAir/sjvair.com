@@ -37,7 +37,6 @@ class MonitorSerializer(serializers.Serializer):
 
     def fixup(self, instance, data):
         fields = MONITOR_FIELDS.get(instance.__class__)
-        if fields is not None:
-            extra = serializers.serialize(instance, MONITOR_FIELDS[instance.__class__])
-            data.update(**extra)
+        extra = serializers.serialize(instance, MONITOR_FIELDS.get(instance.__class__, []))
+        data.update(**extra)
         return data

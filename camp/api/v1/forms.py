@@ -10,11 +10,12 @@ color_validator = RegexValidator(COLOR_RE, _('Enter a valid color.'), 'invalid')
 
 class MarkerForm(forms.Form):
     shape = forms.ChoiceField(choices=[
-        (x, x) for x in ('square', 'circle')
+        (x, x) for x in ('square', 'circle', 'polygon')
         ], initial='circle', required=False)
     fill_color = forms.CharField(validators=[color_validator], initial='777', required=False)
     border_color = forms.CharField(validators=[color_validator], initial='000', required=False)
     border_size = forms.IntegerField(initial=0, required=False)
+    sides = forms.IntegerField(initial=3, required=False)
 
     def get_defaults(self):
         return {key: field.initial for key, field in self.fields.items()}
