@@ -88,11 +88,6 @@ def add_monitor_entry(monitor_id, payload, sensor=None):
             entry = monitor.create_entry(payload, sensor=sensor)
             entry = monitor.process_entry(entry)
             entry.save()
-
-            is_latest = not monitor.latest or (entry.timestamp > parse_datetime(monitor.latest['timestamp']))
-            sensor_match = monitor.DEFAULT_SENSOR is None or entry.sensor == monitor.DEFAULT_SENSOR
-            if sensor_match and is_latest:
-                monitor.set_latest(Entry.objects.get(pk=entry.pk))
-                monitor.save()
+            monitor.check_latest(Entry.objects.get(pk=entry.pk))
     except TaskLockedException:
         print(f'[LOCKED:add_monitor_entry] {monitor_id} ({payload[0]["created_at"]})')

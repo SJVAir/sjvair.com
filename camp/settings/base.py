@@ -40,7 +40,6 @@ DEBUG = bool(int(os.environ.get('DJANGO_DEBUG', 1)))
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')
 
-
 # Application definition
 
 INSTALLED_APPS = [
@@ -66,6 +65,7 @@ INSTALLED_APPS = [
     'camp.api',
     'camp.apps.accounts',
     'camp.apps.monitors',
+    'camp.apps.monitors.airnow',
     'camp.apps.monitors.bam',
     'camp.apps.monitors.purpleair',
     'camp.apps.sensors',
@@ -84,8 +84,6 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'camp.api.middleware.MonitorAccessMiddleware',
 ]
-
-ROOT_URLCONF = 'camp.urls'
 
 TEMPLATES = [
     {
@@ -106,6 +104,8 @@ TEMPLATES = [
         },
     },
 ]
+
+ROOT_URLCONF = 'camp.urls'
 
 WSGI_APPLICATION = 'camp.wsgi.application'
 
@@ -219,14 +219,6 @@ CORS_ORIGIN_ALLOW_ALL = True
 
 CORS_ALLOW_CREDENTIALS = True
 
-# Google Maps
-
-GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
-
-# Google Analytics
-
-GOOGLE_ANALYTICS_ID = os.environ.get('GOOGLE_ANALYTICS_ID')
-
 # django-resticus
 
 RESTICUS = {
@@ -248,6 +240,18 @@ HUEY = {
     'huey_class': 'huey.PriorityRedisHuey',
     "immediate": bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
 }
+
+# Google Maps
+
+GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
+
+# Google Analytics
+
+GOOGLE_ANALYTICS_ID = os.environ.get('GOOGLE_ANALYTICS_ID')
+
+# Air Now API
+
+AIRNOW_API_KEY = os.environ.get('AIRNOW_API_KEY')
 
 # Sentry
 

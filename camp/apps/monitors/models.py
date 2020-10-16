@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from datetime import timedelta
@@ -7,7 +8,7 @@ import aqi
 
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
-from django.db.models import Avg
+from django.db.models import Avg, Q
 from django.db.models.functions import Least
 from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
@@ -31,6 +32,8 @@ class Monitor(models.Model):
 
     PAYLOAD_SCHEMA = None
     DEFAULT_SENSOR = None
+
+    LAST_ACTIVE_LIMIT = 60 * 10
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -74,7 +77,7 @@ class Monitor(models.Model):
         if not self.latest:
             return False
         now = timezone.now()
-        cutoff = timedelta(seconds=60 * 10)
+        cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
         return (now - parse_datetime(self.latest['timestamp'])) < cutoff
 
     def create_entry(self, payload, sensor=None):
@@ -94,10 +97,30 @@ class Monitor(models.Model):
         entry.is_processed = True
         return entry
 
-    def set_latest(self, entry):
+    def check_latest(self, entry):
         from camp.api.v1.monitors.serializers import EntrySerializer
-        fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
-        self.latest = serialize(entry, fields=fields)
+
+        def make_aware(timestamp):
+            if timezone.is_naive(timestamp):
+                return timezone.make_aware(timestamp)
+            return timestamp
+
+        timestamp = self.latest.get('timestamp')
+        if timestamp is None:
+            is_latest = True
+        else:
+            if not isinstance(timestamp, str):
+                import code
+                code.interact(local=locals())
+            timestamp = make_aware(parse_datetime(timestamp))
+            is_latest = make_aware(entry.timestamp) > timestamp
+
+        sensor_match = self.DEFAULT_SENSOR is None or entry.sensor == self.DEFAULT_SENSOR
+        if sensor_match and is_latest:
+            fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
+            self.latest = json.loads(json.dumps(serialize(entry, fields=fields), cls=JSONEncoder))
+
+        self.save()
 
     def save(self, *args, **kwargs):
         if self.position:
@@ -191,8 +214,9 @@ class Entry(models.Model):
                     self.timestamp,
                 ))
             .exclude(
-                pk=self.pk,
-                **{f'{field}__isnull': True})
+                Q(pk=self.pk)
+                | Q(**{f'{field}__isnull': True})
+            )
             .values_list(field, flat=True)
         )
 
@@ -229,6 +253,7 @@ class Entry(models.Model):
     def calculate_averages(self):
         self.pm25_avg_15 = self.get_average('pm25_env', 15)
         self.pm25_avg_60 = self.get_average('pm25_env', 60)
+
 
     def save(self, *args, **kwargs):
         # Temperature adjustments

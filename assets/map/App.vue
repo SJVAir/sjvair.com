@@ -34,6 +34,12 @@
                     Indoor monitors
                 </label>
               </div>
+              <div class="dropdown-item">
+                <label class="checkbox">
+                    <input type="checkbox" v-model="showAirNow" />
+                    AirNow monitors
+                </label>
+              </div>
               <hr class="dropdown-divider" />
               <div class="dropdown-item">
                 <div>
@@ -53,6 +59,12 @@
                     <span class="fal fa-fw fa-circle has-text-black"></span>
                   </span>
                   <span>Inside monitors</span>
+                </div>
+                <div>
+                  <span class="icon">
+                    <span class="fas fa-fw fa-hexagon has-text-grey-light"></span>
+                  </span>
+                  <span>AirNow monitors</span>
                 </div>
               </div>
             </div>
@@ -87,31 +99,12 @@ export default {
       displayOptionsActive: false,
       activeMonitor: null,
       monitors: {},
-      activeField: 'pm25_avg_15',
+      activeField: 'pm25_avg_60',
       showInactive: false,
       showPrivate: true,
       showInside: false,
+      showAirNow: true,
       fields: {
-        fahrenheit: {
-          label: "Temp. (°F)",
-          levels: [],
-          latest: (monitor) => Math.round(monitor.latest.fahrenheit) + "°"
-        },
-        celcius: {
-          label: "Temp. (°C)",
-          levels: [],
-          latest: (monitor) => Math.round(monitor.latest.celcius) + "°"
-        },
-        humidity: {
-          label: "Humidity",
-          levels: [],
-          latest: (monitor) => Math.round(monitor.latest.humidity) + "%"
-        },
-        // pressure: {
-        //   label: "Pressure",
-        //   levels: [],
-        //   latest: (monitor) => Math.round(monitor.latest.pressure) + " hPa"
-        // },
         pm25_env: {
           label: "PM 2.5",
           levels: [
@@ -171,18 +164,6 @@ export default {
             {min: 250, color: colors.maroon}
           ],
           latest: (monitor) => Math.round(monitor.latest.pm100_env)
-        },
-        pm25_aqi: {
-          label: "PM 2.5 AQI",
-          levels: [
-            {min: 0, color: colors.green},
-            {min: 51, color: colors.yellow},
-            {min: 101, color: colors.orange},
-            {min: 151, color: colors.red},
-            {min: 201, color: colors.purple},
-            {min: 301, color: colors.maroon}
-          ],
-          latest: (monitor) => Math.round(monitor.latest.pm100_env)
         }
       }
     }
@@ -221,15 +202,19 @@ export default {
   },
 
   watch: {
-    showInactive: function(value) {
+    showInactive: function() {
       _.mapValues(this.monitors, this.setMarkerMap);
     },
 
-    showPrivate: function(value) {
+    showPrivate: function() {
       _.mapValues(this.monitors, this.setMarkerMap);
     },
 
-    showInside: function(value) {
+    showInside: function() {
+      _.mapValues(this.monitors, this.setMarkerMap);
+    },
+
+    showAirNow: function() {
       _.mapValues(this.monitors, this.setMarkerMap);
     }
   },
@@ -246,11 +231,16 @@ export default {
     toggleDisplayOptions() {
       this.displayOptionsActive = !this.displayOptionsActive;
     },
+
     setMarkerMap(monitor){
-      let checkActive = (this.showInactive && !monitor.is_active) || monitor.is_active;
-      let checkSJVAir = (this.showPrivate && !monitor.is_sjvair) || monitor.is_sjvair;
-      let checkInside = this.showInside || (monitor.location == 'outside');
-      monitor._marker.setMap((checkActive && checkSJVAir && checkInside) ? this.map : null);
+      // let checkActive = (this.showInactive && !monitor.is_active) || monitor.is_active;
+      let checkActive = this.showInactive || monitor.is_active;
+      // let checkSJVAir = (this.showPrivate && !monitor.is_sjvair) || monitor.is_sjvair;
+      let checkSJVAir = this.showPrivate || monitor.is_sjvair;
+      let checkInside = this.showInside || (monitor.location != 'inside');
+      let checkAirNow = this.showAirNow || (monitor.device != 'AirNow');
+      let checks = [checkActive, checkSJVAir, checkInside, checkAirNow]
+      monitor._marker.setMap(checks.every(Boolean) ? this.map : null);
     },
 
     getTextColor(color){
@@ -288,7 +278,14 @@ export default {
       let params = {
         border_size: 0,
         fill_color: colors.gray,
-        shape: monitor.is_sjvair ? 'circle' : 'square'
+        shape: 'square'
+      }
+
+      if(monitor.device == 'PurpleAir') {
+        params.shape = monitor.is_sjvair ? 'circle' : 'square';
+      } else if(monitor.device == 'AirNow') {
+        params.shape = 'polygon';
+        params.sides = 6;
       }
 
       if(monitor.location == 'inside'){
@@ -298,7 +295,7 @@ export default {
 
       if(monitor.is_active && value != null){
         for(let level of this.fields[field].levels){
-          if(value > level.min){
+          if(value >= level.min){
             params['fill_color'] = level.color;
           } else {
             break;
