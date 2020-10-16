@@ -120,6 +120,8 @@ class Monitor(models.Model):
             fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
             self.latest = json.loads(json.dumps(serialize(entry, fields=fields), cls=JSONEncoder))
 
+        self.save()
+
     def save(self, *args, **kwargs):
         if self.position:
             # TODO: Can we do this only when self.position is updated?
