@@ -1,0 +1,71 @@
+body.map
+    #map
+        height: calc(100vh - #{$navbar-height})
+        // height: calc((100vh - #{$navbar-height}) / 2)
+
+        // &.is-maximised
+        //     height: calc(100vh - #{$navbar-height})
+
+    .display-options
+        float: left
+        position: relative
+        margin: .5rem 0 -100% .5rem
+        padding: .5rem 1rem
+        z-index: 9999
+
+    .monitor-detail
+        background-color: #fff
+        bottom: 0px
+        overflow-x: hidden
+        overflow-y: hidden
+        position: absolute
+        width: 100%
+
+    .monitor-close
+        color: $grey-light
+        cursor: pointer
+        float: right
+        margin-top: 1rem
+
+    .monitor-header
+        padding-top: 1rem !important
+        padding-bottom: 1rem !important
+
+        .monitor-name
+            font-size: $size-5
+            font-weight: bold
+
+    .monitor-graph
+        .level
+            margin-bottom: 0
+
+        .chart
+            height: 250px
+
+    .latest-entry
+        font-weight: bold
+        text-align: center
+
+        .latest-value
+            font-size: $size-4
+
+        .latest-label
+            color: $grey
+            font-size: $size-7
+            text-transform: uppercase
+
+    .sensor-realtime
+        text-align: center
+
+        td
+            text-align: right
+
+        .sensor-value
+            font-size: $size-5
+            font-weight: 600
+
+        .sensor-label
+            color: $grey-light
+            font-size: $size-7
+            font-weight: 700
+            text-transform: uppercase

@@ -19,13 +19,18 @@
 
     <meta name="description" content="SJVAir is a network of low-cost air quality monitors providing real-time PM2.5 data to disadvantaged communities across the San Joaquin Valley. SJVAir is operated by a collaborative of non-profit organizations from Bakersfield to Stockton.">
 
+    <meta name="msapplication-config" content="{% static 'img/favicon/browserconfig.xml' %}">
     <meta name="msapplication-TileColor" content="#3298dc">
     <meta name="theme-color" content="#3298dc">
 
     <title>{% block title %}SJVAir{% endblock %}</title>
 
-    <link rel="icon" href="{% static 'img/favicon.ico' %}" />
-    <!--[if IE]><link rel="shortcut icon" href="{% static 'img/favicon.ico' %}" /><![endif]-->
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'img/favicon/apple-touch-icon.png' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon/favicon-32x32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'img/favicon/favicon-16x16.png' %}">
+    <link rel="manifest" href="{% static 'img/favicon/site.webmanifest' %}">
+    <link rel="icon" href="{% static 'img/favicon/favicon.ico' %}" />
+    <!--[if IE]><link rel="shortcut icon" href="{% static 'img/favicon/favicon.ico' %}" /><![endif]-->
 
     <link type="text/css" rel="stylesheet" href="{% static 'css/style.css' %}" />
     <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v5.14.0/css/all.css" integrity="sha384-VhBcF/php0Z/P5ZxlxaEx1GwqTQVIBu4G4giRWxTKOCjTxsPFETUDdVL5B6vYvOt" crossorigin="anonymous">
@@ -34,14 +39,11 @@
 </head>
 <body class="{% block body-class %}{% endblock %}">
 
-<nav class="navbar is-info" role="navigation" aria-label="main navigation">
+<nav class="navbar is-white" role="navigation" aria-label="main navigation">
     <div class="container">
         <div class="navbar-brand">
-            <a class="navbar-title" href="/">
-                <span class="icon is-medium">
-                    <span class="fal fa-lungs fa-lg"></span>
-                </span>
-                <span>SJVAir</span>
+            <a class="navbar-item" href="/">
+                <img src="{% static 'img/sjvair.svg' %}" alt="SJVAir" />
             </a>
 
             <a role="button" class="navbar-burger burger" aria-label="menu" aria-expanded="false" data-target="id_navbar-menu">
@@ -53,6 +55,7 @@
 
         <div class="navbar-menu" id="id_navbar-menu">
             <div class="navbar-end">
+                <a href="/guidelines/" class="navbar-item">Activity Guidelines</a>
                 <a href="/about/" class="navbar-item">About</a>
                 <a href="/api/" class="navbar-item">API</a>
                 <div class="navbar-item">
