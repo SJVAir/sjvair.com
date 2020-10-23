@@ -8,4 +8,4 @@ export default {
     red: 'ff0000',
     purple: '8f3f97',
     maroon: '7e0023'
-}
+};
