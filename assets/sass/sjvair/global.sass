@@ -1,0 +1,42 @@
+img
+    &.is-responsive
+        display: inline-block
+        width: 100%
+
+ul
+    &.is-inline
+        list-style: none
+        margin: 0 0 0 -.25rem !important
+        padding: 0 !important
+
+        > li
+            display: inline-block
+            margin: 0
+            padding: 0 .25rem
+
+    &.is-unstyled
+        list-style: none !important
+        margin-left: 0 !important
+
+.lead
+    @extend .is-size-4
+
+.navbar
+    border-bottom: $grey-lighter 1px solid
+
+section.hook
+    background-color: $info
+    color: $white
+
+    h1, h2, h3, h4, h5, h6, p
+        color: $white
+
+        &:last-child
+            margin-bottom: 0
+
+// Google Translate widget fixes
+.goog-te-banner-frame
+    display: none !important
+
+body
+    top:0 !important
