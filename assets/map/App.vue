@@ -80,6 +80,7 @@
 <script>
 import _ from 'lodash';
 import moment from 'moment';
+import tinycolor from 'tinycolor2';
 
 import MonitorDetail from './components/MonitorDetail.vue'
 import GoogleMapsInit from './utils/gmaps';
@@ -296,11 +297,16 @@ export default {
       if(monitor.is_active && value != null){
         for(let level of this.fields[field].levels){
           if(value >= level.min){
-            params['fill_color'] = level.color;
+            params.fill_color = level.color;
           } else {
             break;
           }
         }
+      }
+
+      if(params.border_color == undefined){
+        params.border_color = tinycolor(params.fill_color).darken(3).toHex();
+        params.border_size = 1;
       }
 
       return params;
@@ -327,8 +333,11 @@ export default {
     loadMonitors() {
       return this.$http.get('monitors/')
         .then(response => response.json(response))
-        .then(response => {
-          _.map(response.data, (monitor) => {
+        .then(response => _.sortBy(response.data, [(monitor) => {
+          return monitor.device;
+        }]))
+        .then(data => {
+          _.map(data, (monitor) => {
             monitor.latest.timestamp = moment.utc(monitor.latest.timestamp).local();
 
             // Ensure we have record of this monitor
@@ -348,7 +357,8 @@ export default {
                 label: {
                   color: colors.black,
                   text: ''
-                }
+                },
+                title: this.monitors[monitor.id].name
               });
               this.monitors[monitor.id]._marker.addListener('click', () => {
                 this.hideMonitorDetail()
