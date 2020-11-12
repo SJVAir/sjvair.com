@@ -39,27 +39,45 @@
             <span>{{ location }}</span>
           </span>
         </li>
-        <li :title="monitor.timestamp">
-          <span class="tag is-light" :class="monitor.is_active ? 'is-success' : 'is-danger'">
-            <span class="icon">
-              <span class="fal fa-history" :class="monitor.is_active ? 'has-text-success' : 'has-text-danger'"></span>
-            </span>
-            <span class="monitor-timesince">{{ timesince }}</span>
-          </span>
-        </li>
       </ul>
     </div>
     <div class="columns">
       <div class="column">
         <monitor-graph :monitor="monitor" />
       </div>
-      <div class="column">
-        <div class="columns is-multiline is-mobile is-centered">
-          <div v-for="(field, key) in $parent.fields" class="column is-6-mobile is-3-tablet is-4-desktop latest-entry">
-            <div class="latest-value">{{ field.latest(monitor) }}</div>
-            <div class="latest-label">{{ field.label }}</div>
-          </div>
-        </div>
+      <div v-if="monitor.latest" class="column is-one-third">
+        <table class="table is-striped is-fullwidth latest-stats">
+          <thead>
+            <tr>
+              <th>
+                <span :class="monitor.is_active ? 'has-text-success' : 'has-text-danger'">{{ timesince }}</span>
+              </th>
+              <th class="has-text-centered">Latest</th>
+              <th class="has-text-centered">15m</th>
+              <th class="has-text-centered">1h</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="monitor.latest.pm10_env">
+              <th>PM 1.0</th>
+              <td class="has-text-centered">{{ $parent.fields.pm10_env.latest(monitor) }}</td>
+              <td class="has-text-centered"></td>
+              <td class="has-text-centered"></td>
+            </tr>
+            <tr>
+              <th>PM 2.5</th>
+              <td class="has-text-centered">{{ $parent.fields.pm25_env.latest(monitor) }}</td>
+              <td class="has-text-centered">{{ $parent.fields.pm25_avg_15.latest(monitor) }}</td>
+              <td class="has-text-centered">{{ $parent.fields.pm25_avg_60.latest(monitor) }}</td>
+            </tr>
+            <tr v-f="monitor.latest.pm100_env">
+              <th>PM 10.0</th>
+              <td class="has-text-centered">{{ $parent.fields.pm100_env.latest(monitor) }}</td>
+              <td class="has-text-centered"></td>
+              <td class="has-text-centered"></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
