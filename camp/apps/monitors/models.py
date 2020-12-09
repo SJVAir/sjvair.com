@@ -80,6 +80,9 @@ class Monitor(models.Model):
         cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
         return (now - parse_datetime(self.latest['timestamp'])) < cutoff
 
+    def get_pm25_calibration_formula(self):
+        return self.pm25_calibration_formula
+
     def create_entry(self, payload, sensor=None):
         return Entry(
             monitor=self,
@@ -91,7 +94,7 @@ class Monitor(models.Model):
         )
 
     def process_entry(self, entry):
-        entry.calibrate_pm25(self.pm25_calibration_formula)
+        entry.calibrate_pm25(self.get_pm25_calibration_formula())
         entry.calculate_aqi()
         entry.calculate_averages()
         entry.is_processed = True

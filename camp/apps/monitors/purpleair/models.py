@@ -11,6 +11,7 @@ from resticus.encoders import JSONEncoder
 
 from camp.apps.monitors.models import Monitor, Entry
 from camp.apps.monitors.purpleair import api
+from camp.apps.monitors.purpleair.utils import COUNTY_CALIBRATIONS
 
 
 class PurpleAir(Monitor):
@@ -25,6 +26,9 @@ class PurpleAir(Monitor):
     @cached_property
     def thingspeak_key(self):
         return self.data[0]['THINGSPEAK_PRIMARY_ID_READ_KEY']
+
+    def get_pm25_calibration_formula(self):
+        return COUNTY_CALIBRATIONS.get(self.county)
 
     def get_devices(self, retries=3):
         devices = api.get_devices(self.purple_id, self.thingspeak_key)
