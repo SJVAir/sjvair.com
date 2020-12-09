@@ -17,6 +17,8 @@ class MonitorAdmin(admin.OSMGeoAdmin):
     list_filter = ['is_sjvair', 'is_hidden', 'county']
     fields = ['name', 'county', 'is_hidden', 'is_sjvair', 'location', 'position', 'pm25_calibration_formula']
 
+    change_form_template = 'admin/monitors/change_form.html'
+
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
         if 'pm25_calibration_formula' in form.base_fields:
