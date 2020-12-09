@@ -1,0 +1,28 @@
+{% extends "admin/change_list.html" %}
+
+{% block search %}
+<div class="results">
+    <table>
+        <thead>
+            <tr>
+                <th colspan="2">
+                    <div class="text">
+                        <a href="#"
+                            onclick="javascript: django.jQuery(this).parents('thead').siblings('tbody').toggle(); return false;"
+                        >View Calibration Formulas</a>
+                    </div>
+                </th>
+            </tr>
+        </thead>
+        <tbody style="display: none">
+            {% for county, formula in COUNTY_CALIBRATIONS.items %}
+            <tr>
+                <th>{{ county }}</th>
+                <td><code>{{ formula }}</code></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{{ block.super }}
+{% endblock %}
