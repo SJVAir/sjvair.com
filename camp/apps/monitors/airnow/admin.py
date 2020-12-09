@@ -14,7 +14,7 @@ class AirNowAdmin(MonitorAdmin):
     list_editable = []
 
     fields = MonitorAdmin.fields
-    readonly_fields = ['location', 'position', 'county']
+    readonly_fields = ['name', 'location', 'position', 'county']
 
     def has_add_permission(self, request, obj=None):
         return False
