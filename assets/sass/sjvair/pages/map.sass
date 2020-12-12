@@ -20,6 +20,24 @@ body.map
         // position: absolute
         width: 100%
 
+        .date-select
+          @extend .columns
+          align-items: flex-end
+          justify-content: center
+          
+          .date-select-column
+            @extend .column
+            flex: 0 0 auto
+
+          button.date-select-column
+            background-color: $info
+            color: #fff
+            display: flex
+            height: 1.5rem
+            line-height: initial
+            margin: .75rem
+            padding: .5rem 1rem
+
     .monitor-close
         color: $grey-light
         cursor: pointer
