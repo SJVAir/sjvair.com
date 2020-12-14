@@ -1,15 +1,5 @@
 <template>
 <div v-if="monitor" class="monitor-graph">
-  <!-- <div class="level">
-    <div class="level-left">
-      <div class="level-item">{{ field.label }}</div>
-    </div>
-    <div class="level-right">
-      <div class="level-item">
-        <strong>Current: {{ field.latest(monitor) }}</strong>
-      </div>
-    </div>
-  </div> -->
   <div class="date-select columns is-multiline is-mobile">
     <div class="date-select-column">
       <div class="columns">
@@ -182,9 +172,6 @@ export default {
       if(!page) {
         page = 1;
       }
-
-      console.log("startdate: ", this.dateStart);
-      console.log("enddate: ", this.dateEnd);
 
       return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
