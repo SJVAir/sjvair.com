@@ -28,6 +28,7 @@ def compare_datetimes(dt1, dt2):
 
 
 def get_monitors(**kwargs):
+    kwargs.update(tempAccess='sjvair')
     data = requests.get(PURPLE_API_URL, kwargs).json()
     return data['results']
 

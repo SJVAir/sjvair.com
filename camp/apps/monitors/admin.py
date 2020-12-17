@@ -8,7 +8,7 @@ from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
 from django.utils.safestring import mark_safe
 
-from .models import Entry
+from .models import Calibration, Entry
 
 
 class MonitorAdmin(admin.OSMGeoAdmin):
@@ -35,3 +35,15 @@ class MonitorAdmin(admin.OSMGeoAdmin):
         if instance.latest:
             return parse_datetime(instance.latest['timestamp'])
         return ''
+
+
+@admin.register(Calibration)
+class CalibrationAdmin(admin.ModelAdmin):
+    list_display = ('monitor_type', 'county', 'modified', 'get_pm25_formula')
+    list_filter = ('monitor_type', 'county')
+
+    def get_pm25_formula(self, instance):
+        if instance.pm25_formula:
+            return mark_safe(f'<code>{instance.pm25_formula}</code>')
+        return '-'
+    get_pm25_formula.short_description = 'PM2.5 Formula'
