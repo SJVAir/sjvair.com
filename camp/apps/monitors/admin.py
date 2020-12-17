@@ -11,6 +11,16 @@ from django.utils.safestring import mark_safe
 from .models import Calibration, Entry
 
 
+def formula_help_text():
+    return mark_safe(Template('''
+        <p>&#128279; <a href="https://github.com/AxiaCore/py-expression-eval/#available-operators-constants-and-functions">Available operators, constants, and functions.</a></p>
+        <p><b>Available variables:</b></p>
+        <ul>
+            {% for env in environment %}<li>{{ env }}</li>{% endfor %}
+        </ul>
+    ''').render(Context({'environment': Entry.ENVIRONMENT})))
+
+
 class MonitorAdmin(admin.OSMGeoAdmin):
     list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated']
     list_editable = ['is_sjvair', 'is_hidden']
@@ -22,13 +32,7 @@ class MonitorAdmin(admin.OSMGeoAdmin):
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
         if 'pm25_calibration_formula' in form.base_fields:
-            form.base_fields['pm25_calibration_formula'].help_text = mark_safe(Template('''
-                <p><a href="https://github.com/AxiaCore/py-expression-eval/#available-operators-constants-and-functions">Available operators, constants, and functions.</a></p>
-                <p><b>Available variables:</b></p>
-                <ul>
-                    {% for env in environment %}<li>{{ env }}</li>{% endfor %}
-                </ul>
-            ''').render(Context({'environment': Entry.ENVIRONMENT})))
+            form.base_fields['pm25_calibration_formula'].help_text = formula_help_text()
         return form
 
     def last_updated(self, instance):
@@ -47,3 +51,9 @@ class CalibrationAdmin(admin.ModelAdmin):
             return mark_safe(f'<code>{instance.pm25_formula}</code>')
         return '-'
     get_pm25_formula.short_description = 'PM2.5 Formula'
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if 'pm25_formula' in form.base_fields:
+            form.base_fields['pm25_formula'].help_text = formula_help_text()
+        return form
