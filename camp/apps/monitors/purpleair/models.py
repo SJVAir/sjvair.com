@@ -27,9 +27,6 @@ class PurpleAir(Monitor):
     def thingspeak_key(self):
         return self.data[0]['THINGSPEAK_PRIMARY_ID_READ_KEY']
 
-    def get_pm25_calibration_formula(self):
-        return COUNTY_CALIBRATIONS.get(self.county)
-
     def get_devices(self, retries=3):
         devices = api.get_devices(self.purple_id, self.thingspeak_key)
         if devices is None and retries:
