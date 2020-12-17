@@ -40,7 +40,7 @@
 
 {% block object-tools %}
     {{ block.super }}
-    {% if change %}
+    {% if change and export_form %}
     <div id="export-form">
         <form action="{% url 'api:v1:monitors:entry-csv' object_id %}" method="get">
             <div class="control">
