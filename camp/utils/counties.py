@@ -22,7 +22,7 @@ class County:
         ]
     }
 
-    names = list(counties.keys())
+    names = list(sorted(counties.keys()))
 
     @classmethod
     def lookup(cls, point, default=''):
