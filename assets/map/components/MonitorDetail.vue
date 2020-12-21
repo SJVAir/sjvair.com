@@ -101,9 +101,9 @@ export default {
   },
 
   watched: {
-    monitor: async function(monitor) {
+    //monitor: async function(monitor) {
       // this.$refs.chart.updateChart();
-    }
+    //}
   },
 
   computed: {
