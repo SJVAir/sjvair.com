@@ -23,13 +23,18 @@
 
 <script>
 import _ from 'lodash';
-import moment from 'moment-timezone';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import Vue from 'vue'
 import VueApexCharts from 'vue-apexcharts'
 import Datepicker from "vuejs-datepicker/dist/vuejs-datepicker.esm.js";
 
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
 function formatDate(date) {
-  return moment(date).utc().format('YYYY-MM-DD HH:mm:ss');
+  return dayjs.utc(date).format('YYYY-MM-DD HH:mm:ss');
 }
 
 export default {
@@ -45,9 +50,10 @@ export default {
   data() {
     // Set the inital values for the date pickers
     // Default range: last 3 days
-    const dateEnd = Date.now();
-    const dateStart = dateEnd - (60000 * 60 * 24 * 3);
+    const dateEnd = dayjs().endOf('day').toString();
+    const dateStart = dayjs(dateEnd).subtract(3, 'day').startOf('day').toString();
 
+    console.log(dateEnd, dateStart);
     return {
       dateEnd,
       dateStart,
@@ -210,7 +216,7 @@ export default {
             data: _.map(entries, data => {
               return {
                 // TODO: convert to appropriate tz for monitor on the api rather than hardcoding
-                x: moment
+                x: dayjs
                   .utc(data.timestamp)
                   .tz('America/Los_Angeles'),
                 y: _.get(data, field)
