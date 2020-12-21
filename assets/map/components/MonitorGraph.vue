@@ -50,6 +50,7 @@ export default {
   data() {
     // Set the inital values for the date pickers
     // Default range: last 3 days
+<<<<<<< HEAD
     const dateEnd = dayjs().endOf('day').toString();
     const dateStart = dayjs(dateEnd).subtract(3, 'day').startOf('day').toString();
 
