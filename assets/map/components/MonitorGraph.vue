@@ -26,7 +26,6 @@ import _ from 'lodash';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import Vue from 'vue'
 import VueApexCharts from 'vue-apexcharts'
 import Datepicker from "vuejs-datepicker/dist/vuejs-datepicker.esm.js";
 
@@ -53,7 +52,6 @@ export default {
     const dateEnd = dayjs().endOf('day').toString();
     const dateStart = dayjs(dateEnd).subtract(3, 'day').startOf('day').toString();
 
-    console.log(dateEnd, dateStart);
     return {
       dateEnd,
       dateStart,
