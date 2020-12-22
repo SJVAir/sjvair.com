@@ -1,20 +1,31 @@
 <template>
 <div v-if="monitor" class="monitor-graph">
-  <div class="date-select columns is-multiline is-mobile">
-    <div class="date-select-column">
-      <div class="columns">
-        <div class="date-select-column">
-          <label for="startDate">Start Date:</label>
-          <datepicker id="startDate" typeable placeholder="Start Date" v-model="dateStart"></datepicker>
+  <div class="date-select columns is-mobile">
+    <div class="column">
+      <div class="field">
+        <div class="control">
+          <datepicker id="startDate" :disabled-dates="{customPredictor: checkStartDate}" input-class="input is-small" typeable placeholder="Start Date" v-model="dateStart"></datepicker>
         </div>
-        <div class="date-select-column">
-          <label for="endDate">End Date:</label>
-          <datepicker id="endDate" typeable placeholder="Start Date" v-model="dateEnd"></datepicker>
+        <label for="startDate" class="label is-small has-text-weight-normal">Start Date</label>
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <div class="control">
+          <datepicker id="endDate" :disabled-dates="{customPredictor: checkEndDate}" input-class="input is-small" typeable placeholder="End Date" v-model="dateEnd"></datepicker>
+        </div>
+        <label for="endDate" class="label is-small has-text-weight-normal">End Date</label>
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <div class="control">
+          <button class="button is-small is-info" v-on:click="loadAllEntries">Update</button>
         </div>
       </div>
     </div>
-    <button class="button date-select-column" v-on:click="loadAllEntries">View Data!</button>
   </div>
+
   <div class="chart">
     <apexchart ref="chart" type="line" width="100%" height="250px" :options="options"></apexchart>
   </div>
@@ -53,7 +64,6 @@ export default {
     const dateEnd = dayjs().endOf('day').toString();
     const dateStart = dayjs(dateEnd).subtract(3, 'day').startOf('day').toString();
 
-    console.log(dateEnd, dateStart);
     return {
       dateEnd,
       dateStart,
@@ -61,12 +71,12 @@ export default {
       interval: null,
       fields: {
         PurpleAir: {
-          pm25_env: 'PM2.5',
-          pm25_avg_15: 'PM2.5 (15m)',
-          pm25_avg_60: 'PM2.5 (1h)'
+          pm25_env: '2m',
+          pm25_avg_15: '15m',
+          pm25_avg_60: '60m'
         },
         AirNow: {
-          pm25_env: 'PM2.5'
+          pm25_env: '60m'
         }
       },
       sensors: {
@@ -167,6 +177,16 @@ export default {
   },
 
   methods: {
+    checkStartDate(date) {
+      // Date must be lte endDate and lte today.
+      // true means disabled, so not the logic.
+      return !(date <= dayjs(this.dateEnd).endOf('day').toDate() && date <= dayjs().endOf('day').toDate())
+    },
+    checkEndDate(date) {
+      // Date must be gte startDate and lte today.
+      // true means disabled, so not the logic.
+      return !(date >= dayjs(this.dateStart).startOf('day').toDate() && date <= dayjs().endOf('day').toDate())
+    },
     async loadAllEntries(){
       this.entries = {};
       _.each(this.sensors[this.monitor.device], sensor => {
