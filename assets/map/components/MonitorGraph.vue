@@ -3,23 +3,24 @@
   <div class="date-select columns is-mobile">
     <div class="column">
       <div class="field">
+        <label for="startDate" class="label is-small has-text-weight-normal">Start Date</label>
         <div class="control">
           <datepicker id="startDate" :disabled-dates="{customPredictor: checkStartDate}" input-class="input is-small" typeable placeholder="Start Date" v-model="dateStart"></datepicker>
         </div>
-        <label for="startDate" class="label is-small has-text-weight-normal">Start Date</label>
       </div>
     </div>
     <div class="column">
       <div class="field">
+        <label for="endDate" class="label is-small has-text-weight-normal">End Date</label>
         <div class="control">
           <datepicker id="endDate" :disabled-dates="{customPredictor: checkEndDate}" input-class="input is-small" typeable placeholder="End Date" v-model="dateEnd"></datepicker>
         </div>
-        <label for="endDate" class="label is-small has-text-weight-normal">End Date</label>
       </div>
     </div>
     <div class="column">
       <div class="field">
         <div class="control">
+          <br />
           <button class="button is-small is-info" v-on:click="loadAllEntries">Update</button>
         </div>
       </div>
