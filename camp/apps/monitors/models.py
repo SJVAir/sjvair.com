@@ -13,6 +13,7 @@ from django.db.models.functions import Least
 from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.functional import lazy
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
@@ -22,10 +23,10 @@ from py_expression_eval import Parser as ExpressionParser
 from resticus.encoders import JSONEncoder
 from resticus.serializers import serialize
 
+from camp.apps.monitors.validators import validate_formula
 from camp.utils.counties import County
 from camp.utils.managers import InheritanceManager
 from camp.utils.validators import JSONSchemaValidator
-from django.utils.functional import lazy
 
 
 class Monitor(models.Model):
@@ -60,7 +61,8 @@ class Monitor(models.Model):
 
     latest = JSONField(encoder=JSONEncoder, default=dict)
 
-    pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
+    pm25_calibration_formula = models.CharField(max_length=255, blank=True,
+        default='', validators=[validate_formula])
 
     objects = InheritanceManager()
 
@@ -164,7 +166,8 @@ class Calibration(TimeStampedModel):
 
     monitor_type = models.CharField(max_length=20, choices=MONITOR_TYPES)
     county = models.CharField(max_length=20, choices=COUNTIES)
-    pm25_formula = models.CharField(max_length=255, blank=True, default='')
+    pm25_formula = models.CharField(max_length=255, blank=True,
+        default='', validators=[validate_formula])
 
     class Meta:
         indexes = [
