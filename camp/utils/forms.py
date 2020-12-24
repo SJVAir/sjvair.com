@@ -5,8 +5,8 @@ from django.contrib.admin.widgets import AdminDateWidget
 
 
 class DateRangeForm(forms.Form):
-    start_date = forms.DateField(required=True, widget=AdminDateWidget)
-    end_date = forms.DateField(required=True, widget=AdminDateWidget)
+    timestamp__gte = forms.DateField(label='Start Date', required=True, widget=AdminDateWidget)
+    timestamp__lte = forms.DateField(label='End Date', required=True, widget=AdminDateWidget)
 
     # def clean_end_date(self):
     #     # We want the date range to be inclusive for database

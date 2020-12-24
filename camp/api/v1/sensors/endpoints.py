@@ -83,7 +83,7 @@ class SensorData(generics.ListCreateEndpoint):
         return {'data': self.serialize(self.object, include=['sensor'])}
 
 
-class DataExport(CSVExport):
+class DataExport(CSVExport, generics.ListEndpoint):
     columns = [
         ('id', lambda i: i.pk),
         ('device_id', lambda i: i.sensor_id),
