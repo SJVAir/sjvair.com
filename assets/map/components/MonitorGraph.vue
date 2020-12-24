@@ -32,7 +32,7 @@
           <br />
           <button class="button is-small is-success" v-on:click="downloadCSV">
             <span class="icon is-small">
-              <span class="fal fa-file-spreadsheet"></span>
+              <span class="fal fa-download"></span>
             </span>
             <span>Download</span>
           </button>

@@ -58,7 +58,7 @@ class EntryMixin:
 class EntryList(EntryMixin, generics.ListCreateEndpoint):
     def serialize(self, source, **kwargs):
         if isinstance(source, QuerySet):
-            fields = ['timestamp', 'sensor']
+            fields = EntrySerializer.base_fields[::]
             if 'fields' in self.request.GET:
                 for field in self.request.GET['fields'].split(','):
                     if field in EntrySerializer.value_fields:
