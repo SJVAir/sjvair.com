@@ -8,55 +8,30 @@ from django.http import HttpResponse
 from django.utils import timezone
 
 from PIL import Image, ImageDraw
+from resticus import generics
 from resticus.exceptions import ValidationError
-from resticus.views import Endpoint
 
 from camp.utils.forms import DateRangeForm
 from camp.utils.polygon import compute_regular_polygon
 from .forms import MarkerForm
 
 
-class CurrentTime(Endpoint):
+class CurrentTime(generics.Endpoint):
     def get(self, request):
         timestamp = timezone.now().utctimetuple()
         return calendar.timegm(timestamp)
 
 
-class CSVExport(Endpoint):
-    form_class = DateRangeForm
+class CSVExport(generics.ListEndpoint):
+    filter_class = None
     model = None
+
     columns = []
-    filename = "export_{data[start_date]}_{data[end_date]}.csv"
-
-    def get_form(self, data=None):
-        return self.form_class(data)
-
-    def get_queryset(self, queryset=None):
-        if queryset is None:
-            if self.model is None:
-                raise ImproperlyConfigured(
-                    f'{self.__class__.__name__} '
-                    'must define the model attribute or '
-                    'implement get_queryset()'
-                )
-            queryset = self.model.objects.all()
-        return queryset
-
-    def filter_queryset(self, queryset, form):
-        return queryset.filter(timestamp__range=(
-            form.cleaned_data['start_date'],
-            form.cleaned_data['end_date'] + timedelta(days=1)
-        ))
+    filename = "export.csv"
 
     def get(self, request, *args, **kwargs):
-        self.form = self.get_form(request.GET)
-        if self.form.is_valid():
-            return self.form_valid(self.form)
-        return self.form_invalid(self.form)
-
-    def form_valid(self, form):
         queryset = self.get_queryset()
-        queryset = self.filter_queryset(queryset, form)
+        queryset = self.filter_queryset(queryset)
 
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="{self.get_filename()}"'
@@ -67,9 +42,6 @@ class CSVExport(Endpoint):
             writer.writerow(self.get_row(instance))
 
         return response
-
-    def form_invalid(self, form):
-        raise ValidationError(form=form)
 
     def get_filename(self):
         return self.filename.format(data=self.form.cleaned_data, view=self)
@@ -85,7 +57,7 @@ class CSVExport(Endpoint):
         return row
 
 
-class MapMarker(Endpoint):
+class MapMarker(generics.Endpoint):
     form_class = MarkerForm
 
     def get_form(self):

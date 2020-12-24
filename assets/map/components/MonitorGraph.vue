@@ -1,27 +1,41 @@
 <template>
 <div v-if="monitor" class="monitor-graph">
   <div class="date-select columns is-mobile">
-    <div class="column">
+    <div class="column is-3">
       <div class="field">
         <label for="startDate" class="label is-small has-text-weight-normal">Start Date</label>
         <div class="control">
-          <datepicker id="startDate" :disabled-dates="{customPredictor: checkStartDate}" input-class="input is-small" typeable placeholder="Start Date" v-model="dateStart"></datepicker>
+          <datepicker id="startDate" format="yyyy-MM-dd" :disabled-dates="{customPredictor: checkStartDate}" input-class="input is-small" typeable placeholder="Start Date" v-model="dateStart"></datepicker>
         </div>
       </div>
     </div>
-    <div class="column">
+    <div class="column is-3">
       <div class="field">
         <label for="endDate" class="label is-small has-text-weight-normal">End Date</label>
         <div class="control">
-          <datepicker id="endDate" :disabled-dates="{customPredictor: checkEndDate}" input-class="input is-small" typeable placeholder="End Date" v-model="dateEnd"></datepicker>
+          <datepicker id="endDate" format="yyyy-MM-dd" :disabled-dates="{customPredictor: checkEndDate}" input-class="input is-small" typeable placeholder="End Date" v-model="dateEnd"></datepicker>
         </div>
       </div>
     </div>
-    <div class="column">
-      <div class="field">
+    <div class="column is-6">
+      <div class="field is-grouped">
         <div class="control">
           <br />
-          <button class="button is-small is-info" v-on:click="loadAllEntries">Update</button>
+          <button class="button is-small is-info" v-on:click="loadAllEntries">
+            <span class="icon is-small">
+              <span class="fal fa-redo"></span>
+            </span>
+            <span>Update</span>
+          </button>
+        </div>
+        <div class="control">
+          <br />
+          <button class="button is-small is-success" v-on:click="downloadCSV">
+            <span class="icon is-small">
+              <span class="fal fa-file-spreadsheet"></span>
+            </span>
+            <span>Download</span>
+          </button>
         </div>
       </div>
     </div>
@@ -186,6 +200,22 @@ export default {
       // Date must be gte startDate and lte today.
       // true means disabled, so not the logic.
       return !(date >= dayjs(this.dateStart).startOf('day').toDate() && date <= dayjs().endOf('day').toDate())
+    },
+    downloadCSV () {
+      let path = `${this.$http.options.root}monitors/${this.monitor.id}/entries/csv/`,
+        params = {
+          fields: _.join(_.keys(this.fields[this.monitor.device]), ','),
+          timestamp__gte: formatDate(this.dateStart),
+          timestamp__lte: formatDate(this.dateEnd),
+          sensor: ''
+        }
+
+      if(this.sensors[this.monitor.device].length) {
+        params.sensor = this.sensors[this.monitor.device][0]
+      }
+
+      params = new URLSearchParams(params).toString();
+      window.open(`${path}?${params}`)
     },
     async loadAllEntries(){
       this.entries = {};

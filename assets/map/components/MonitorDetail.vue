@@ -1,6 +1,6 @@
 <template>
 <div class="monitor-detail">
-  <div class="container">
+  <div class="container is-fluid">
     <span class="monitor-close" v-on:click="on_close">
       <span class="far fa-window-close"></span>
     </span>
@@ -53,7 +53,7 @@
                 <div class="is-size-7 has-text-grey has-text-weight-normal">Last updated</div>
                 <div :class="monitor.is_active ? 'has-text-success' : 'has-text-danger'">{{ timesince }}</div>
               </th>
-              <th colspan="3" class="is-size-7 has-text-centered">Averages</th>
+              <th colspan="3" class="is-size-7 has-text-centered">Latest Averages</th>
             </tr>
             <tr>
               <th class="is-size-7 has-text-centered">2m</th>
