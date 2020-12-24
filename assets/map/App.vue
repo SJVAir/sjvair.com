@@ -79,12 +79,17 @@
 
 <script>
 import _ from 'lodash';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import relativeTime from 'dayjs/plugin/relativeTime';
 import tinycolor from 'tinycolor2';
 
 import MonitorDetail from './components/MonitorDetail.vue'
 import GoogleMapsInit from './utils/gmaps';
 import colors from './utils/colors'
+
+dayjs.extend(utc);
+dayjs.extend(relativeTime);
 
 export default {
   name: 'app',
@@ -338,7 +343,7 @@ export default {
         }]))
         .then(data => {
           _.map(data, (monitor) => {
-            monitor.latest.timestamp = moment.utc(monitor.latest.timestamp).local();
+            monitor.latest.timestamp = dayjs.utc(monitor.latest.timestamp).local();
 
             // Ensure we have record of this monitor
             if(_.isUndefined(this.monitors[monitor.id])){
