@@ -15,13 +15,13 @@
     "apexcharts": "^3.8.5",
     "bulma": "^0.9.0",
     "core-js": "^2.6.5",
-    "moment": "^2.24.0",
-    "moment-timezone": "^0.5.31",
+    "dayjs": "^1.9.7",
     "tinycolor2": "^1.4.2",
     "vue": "^2.6.10",
     "vue-apexcharts": "^1.4.0",
     "vue-async-computed": "^3.7.0",
-    "vue-resource": "^1.5.1"
+    "vue-resource": "^1.5.1",
+    "vuejs-datepicker": "^1.6.2"
   },
   "devDependencies": {
     "@vue/cli-plugin-babel": "^3.10.0",
