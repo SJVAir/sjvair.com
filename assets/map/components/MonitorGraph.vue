@@ -38,7 +38,6 @@ import _ from 'lodash';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import Vue from 'vue'
 import VueApexCharts from 'vue-apexcharts'
 import Datepicker from "vuejs-datepicker/dist/vuejs-datepicker.esm.js";
 
