@@ -1,15 +1,46 @@
 <template>
 <div v-if="monitor" class="monitor-graph">
-  <!-- <div class="level">
-    <div class="level-left">
-      <div class="level-item">{{ field.label }}</div>
-    </div>
-    <div class="level-right">
-      <div class="level-item">
-        <strong>Current: {{ field.latest(monitor) }}</strong>
+  <div class="date-select columns is-mobile">
+    <div class="column is-3">
+      <div class="field">
+        <label for="startDate" class="label is-small has-text-weight-normal">Start Date</label>
+        <div class="control">
+          <datepicker id="startDate" format="yyyy-MM-dd" :disabled-dates="{customPredictor: checkStartDate}" input-class="input is-small" typeable placeholder="Start Date" v-model="dateStart"></datepicker>
+        </div>
       </div>
     </div>
-  </div> -->
+    <div class="column is-3">
+      <div class="field">
+        <label for="endDate" class="label is-small has-text-weight-normal">End Date</label>
+        <div class="control">
+          <datepicker id="endDate" format="yyyy-MM-dd" :disabled-dates="{customPredictor: checkEndDate}" input-class="input is-small" typeable placeholder="End Date" v-model="dateEnd"></datepicker>
+        </div>
+      </div>
+    </div>
+    <div class="column is-6">
+      <div class="field is-grouped">
+        <div class="control">
+          <br />
+          <button class="button is-small is-info" v-on:click="loadAllEntries">
+            <span class="icon is-small">
+              <span class="fal fa-redo"></span>
+            </span>
+            <span>Update</span>
+          </button>
+        </div>
+        <div class="control">
+          <br />
+          <button class="button is-small is-success" v-on:click="downloadCSV">
+            <span class="icon is-small">
+              <span class="fal fa-download"></span>
+            </span>
+            <span>Download</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="chart">
     <apexchart ref="chart" type="line" width="100%" height="250px" :options="options"></apexchart>
   </div>
@@ -18,30 +49,48 @@
 
 <script>
 import _ from 'lodash';
-import moment from 'moment-timezone';
-import Vue from 'vue'
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import VueApexCharts from 'vue-apexcharts'
+import Datepicker from "vuejs-datepicker/dist/vuejs-datepicker.esm.js";
 
-Vue.component('apexchart', VueApexCharts)
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+function formatDate(date) {
+  return dayjs.utc(date).format('YYYY-MM-DD HH:mm:ss');
+}
 
 export default {
   name: 'monitor-graph',
+  components: {
+    'apexchart': VueApexCharts,
+    Datepicker
+  },
   props: {
     monitor: Object,
   },
 
   data() {
+    // Set the inital values for the date pickers
+    // Default range: last 3 days
+    const dateEnd = dayjs().endOf('day').toString();
+    const dateStart = dayjs(dateEnd).subtract(3, 'day').startOf('day').toString();
+
     return {
+      dateEnd,
+      dateStart,
       entries: {},
       interval: null,
       fields: {
         PurpleAir: {
-          pm25_env: 'PM2.5',
-          pm25_avg_15: 'PM2.5 (15m)',
-          pm25_avg_60: 'PM2.5 (1h)'
+          pm25_env: '2m',
+          pm25_avg_15: '15m',
+          pm25_avg_60: '60m'
         },
         AirNow: {
-          pm25_env: 'PM2.5'
+          pm25_env: '60m'
         }
       },
       sensors: {
@@ -142,6 +191,32 @@ export default {
   },
 
   methods: {
+    checkStartDate(date) {
+      // Date must be lte endDate and lte today.
+      // true means disabled, so not the logic.
+      return !(date <= dayjs(this.dateEnd).endOf('day').toDate() && date <= dayjs().endOf('day').toDate())
+    },
+    checkEndDate(date) {
+      // Date must be gte startDate and lte today.
+      // true means disabled, so not the logic.
+      return !(date >= dayjs(this.dateStart).startOf('day').toDate() && date <= dayjs().endOf('day').toDate())
+    },
+    downloadCSV () {
+      let path = `${this.$http.options.root}monitors/${this.monitor.id}/entries/csv/`,
+        params = {
+          fields: _.join(_.keys(this.fields[this.monitor.device]), ','),
+          timestamp__gte: formatDate(this.dateStart),
+          timestamp__lte: formatDate(this.dateEnd),
+          sensor: ''
+        }
+
+      if(this.sensors[this.monitor.device].length) {
+        params.sensor = this.sensors[this.monitor.device][0]
+      }
+
+      params = new URLSearchParams(params).toString();
+      window.open(`${path}?${params}`)
+    },
     async loadAllEntries(){
       this.entries = {};
       _.each(this.sensors[this.monitor.device], sensor => {
@@ -149,22 +224,17 @@ export default {
       });
     },
 
-    async loadEntries(sensor, page, timestamp) {
+    async loadEntries(sensor, page) {
       if(!page) {
         page = 1;
-      }
-
-      if(!timestamp){
-        timestamp = moment.utc()
-          .subtract(72, 'hours')
-          .format('YYYY-MM-DD HH:mm:ss');
       }
 
       return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
           fields: _.join(_.keys(this.fields[this.monitor.device]), ','),
           page: page,
-          timestamp__gte: timestamp,
+          timestamp__gte: formatDate(this.dateStart),
+          timestamp__lte: formatDate(this.dateEnd),
           sensor: sensor
         }
       })
@@ -172,7 +242,7 @@ export default {
         .then(async response => {
           let data = response.data;
           if(response.has_next_page){
-            let nextPage = await this.loadEntries(sensor, page + 1, timestamp);
+            let nextPage = await this.loadEntries(sensor, page + 1);
             data.push(...nextPage);
           }
 
@@ -196,7 +266,7 @@ export default {
             data: _.map(entries, data => {
               return {
                 // TODO: convert to appropriate tz for monitor on the api rather than hardcoding
-                x: moment
+                x: dayjs
                   .utc(data.timestamp)
                   .tz('America/Los_Angeles'),
                 y: _.get(data, field)

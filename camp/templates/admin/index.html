@@ -13,7 +13,6 @@
 
         let fetchStats = () => {
             $.getJSON('{% url "admin-stats" %}', (data) => {
-                console.log(data)
                 $('#id_timestamp').text(
                     new Date(Date.parse(data.timestamp))
                         .toLocaleString('en-us', {timezone: 'America/Los_Angeles'}));
