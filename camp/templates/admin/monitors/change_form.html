@@ -44,12 +44,12 @@
     <div id="export-form">
         <form action="{% url 'api:v1:monitors:entry-csv' object_id %}" method="get">
             <div class="control">
-                <label for="{{ export_form.start_date.auto_id }}">{{ export_form.start_date.label }}</label><br />
-                <div class="field">{{ export_form.start_date }}</div>
+                <label for="{{ export_form.timestamp__gte.auto_id }}">{{ export_form.timestamp__gte.label }}</label><br />
+                <div class="field">{{ export_form.timestamp__gte }}</div>
             </div>
             <div class="control">
-                <label for="{{ export_form.end_date.auto_id }}">{{ export_form.end_date.label }}</label><br />
-                <div class="field">{{ export_form.end_date }}</div>
+                <label for="{{ export_form.timestamp__lte.auto_id }}">{{ export_form.timestamp__lte.label }}</label><br />
+                <div class="field">{{ export_form.timestamp__lte }}</div>
             </div>
             <div class="submit-buttons">
                 <input type="submit" value="Export Data" />

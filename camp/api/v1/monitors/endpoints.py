@@ -1,5 +1,7 @@
 import uuid
 
+from datetime import datetime
+
 from resticus import generics
 
 from django.db.models import QuerySet
@@ -78,10 +80,6 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
 
 
 class EntryCSV(EntryMixin, CSVExport):
-    form_class = DateRangeForm
-    model = Entry
-    filename = "SJVAir_{view.request.monitor.__class__.__name__}_{view.request.monitor.pk}_{data[start_date]}_{data[end_date]}.csv"
-
     @cached_property
     def columns(self):
         fields = EntrySerializer.base_fields[::]
@@ -92,6 +90,15 @@ class EntryCSV(EntryMixin, CSVExport):
         else:
             fields.extend(EntrySerializer.value_fields)
         return fields
+
+    def get_filename(self):
+        filename = '_'.join([
+            'SJVAir',
+            self.request.monitor.__class__.__name__,
+            str(self.request.monitor.pk),
+            'export'
+        ])
+        return f'{filename}.csv'
 
     def get_queryset(self, *args, **kwargs):
         queryset = super().get_queryset(*args, **kwargs)
