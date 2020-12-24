@@ -17,6 +17,7 @@ from django.utils.dateparse import parse_datetime
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
 from model_utils.fields import AutoCreatedField, AutoLastModifiedField
+from model_utils.models import TimeStampedModel
 from py_expression_eval import Parser as ExpressionParser
 from resticus.encoders import JSONEncoder
 from resticus.serializers import serialize
@@ -24,6 +25,7 @@ from resticus.serializers import serialize
 from camp.utils.counties import County
 from camp.utils.managers import InheritanceManager
 from camp.utils.validators import JSONSchemaValidator
+from django.utils.functional import lazy
 
 
 class Monitor(models.Model):
@@ -68,6 +70,10 @@ class Monitor(models.Model):
     def __str__(self):
         return self.name
 
+    @classmethod
+    def subclasses(cls):
+        return cls.objects.get_queryset()._get_subclasses_recurse(cls)
+
     @property
     def device(self):
         return self.__class__.__name__
@@ -80,6 +86,21 @@ class Monitor(models.Model):
         cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
         return (now - parse_datetime(self.latest['timestamp'])) < cutoff
 
+    def get_pm25_calibration_formula(self):
+        # Check for a formula set on this specific monitor.
+        if self.pm25_calibration_formula:
+            return self.pm25_calibration_formula
+
+        # Fallback to the formula for this kind of monitor in this county.
+        try:
+            return Calibration.objects.values_list('pm25_formula', flat=True).get(
+                county=self.county,
+                monitor_type=self._meta.model_name
+            )
+        except Calibration.DoesNotExist:
+            # Default to an empty string
+            return ''
+
     def create_entry(self, payload, sensor=None):
         return Entry(
             monitor=self,
@@ -91,7 +112,7 @@ class Monitor(models.Model):
         )
 
     def process_entry(self, entry):
-        entry.calibrate_pm25(self.pm25_calibration_formula)
+        entry.calibrate_pm25(self.get_pm25_calibration_formula())
         entry.calculate_aqi()
         entry.calculate_averages()
         entry.is_processed = True
@@ -127,6 +148,35 @@ class Monitor(models.Model):
             # TODO: Can we do this only when self.position is updated?
             self.county = County.lookup(self.position)
         super().save(*args, **kwargs)
+
+
+class Calibration(TimeStampedModel):
+    COUNTIES = Choices(*County.names)
+    MONITOR_TYPES = lazy(lambda: Choices(*Monitor.subclasses()), list)()
+
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+
+    monitor_type = models.CharField(max_length=20, choices=MONITOR_TYPES)
+    county = models.CharField(max_length=20, choices=COUNTIES)
+    pm25_formula = models.CharField(max_length=255, blank=True, default='')
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['monitor_type', 'county'])
+        ]
+
+        unique_together = [
+            ('monitor_type', 'county')
+        ]
+
+    def __str__(self):
+        return f'{self.monitor_type} – {self.county}'
 
 
 class Entry(models.Model):

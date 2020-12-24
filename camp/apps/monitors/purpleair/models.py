@@ -11,6 +11,7 @@ from resticus.encoders import JSONEncoder
 
 from camp.apps.monitors.models import Monitor, Entry
 from camp.apps.monitors.purpleair import api
+from camp.apps.monitors.purpleair.utils import COUNTY_CALIBRATIONS
 
 
 class PurpleAir(Monitor):
