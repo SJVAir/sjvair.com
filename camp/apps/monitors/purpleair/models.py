@@ -12,6 +12,7 @@ from resticus.encoders import JSONEncoder
 from camp.apps.monitors.models import Monitor, Entry
 from camp.apps.monitors.purpleair import api
 from camp.apps.monitors.purpleair.utils import COUNTY_CALIBRATIONS
+from camp.utils.datetime import parse_datetime
 
 
 class PurpleAir(Monitor):
@@ -114,9 +115,7 @@ class PurpleAir(Monitor):
                 if key in data:
                     setattr(entry, attr, data[key])
 
-        entry.timestamp = api.parse_datetime(entry.payload[0].get('created_at'))
-        entry.position = self.position
-        entry.location = self.location
+        entry.timestamp = parse_datetime(entry.payload[0].get('created_at'))
 
         entry = self.copy_fields(entry)
         return super().process_entry(entry)

@@ -1,21 +1,12 @@
 import json
 import string
 
-from datetime import datetime, timedelta
-
 import requests
 import thingspeak
 
-from django import forms
+from camp.utils.datetime import parse_datetime
 
 PURPLE_API_URL = 'https://www.purpleair.com/json'
-
-
-def parse_datetime(dt, required=False):
-    if isinstance(dt, datetime):
-        return dt
-    return (forms.DateTimeField(required=required)
-        .clean(dt.replace('T', ' ').strip('Z')))
 
 
 def compare_datetimes(dt1, dt2):
