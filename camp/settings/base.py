@@ -66,7 +66,7 @@ INSTALLED_APPS = [
     'camp.apps.accounts',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',
-    'camp.apps.monitors.bam',
+    'camp.apps.monitors.bam1022',
     'camp.apps.monitors.purpleair',
     'camp.apps.sensors',
 ]
@@ -232,19 +232,15 @@ HUEY = {
 }
 
 # Google Maps
-
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
 
 # Google Analytics
-
 GOOGLE_ANALYTICS_ID = os.environ.get('GOOGLE_ANALYTICS_ID')
 
 # Air Now API
-
 AIRNOW_API_KEY = os.environ.get('AIRNOW_API_KEY')
 
 # Sentry
-
 if "SENTRY_DSN" in os.environ:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
