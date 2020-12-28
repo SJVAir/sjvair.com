@@ -66,7 +66,7 @@ INSTALLED_APPS = [
     'camp.apps.accounts',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',
-    'camp.apps.monitors.bam1022',
+    'camp.apps.monitors.bam',
     'camp.apps.monitors.purpleair',
     'camp.apps.sensors',
 ]
