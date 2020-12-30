@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.db.models import Max
@@ -28,6 +29,18 @@ class MonitorAdmin(admin.OSMGeoAdmin):
     fields = ['name', 'county', 'is_hidden', 'is_sjvair', 'location', 'position']
 
     change_form_template = 'admin/monitors/change_form.html'
+    change_list_template = 'admin/monitors/change_list.html'
+
+    @csrf_protect_m
+    def changelist_view(self, request, extra_context=None):
+        if extra_context is None:
+            extra_context = {}
+        extra_context.update(CALIBRATIONS=self.get_calibrations())
+        return super().changelist_view(request, extra_context)
+
+    def get_calibrations(self):
+        queryset = Calibration.objects.filter(monitor_type=self.model._meta.app_label)
+        return {calibration.county: calibration.pm25_formula for calibration in queryset}
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)

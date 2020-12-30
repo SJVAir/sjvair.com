@@ -1,6 +1,7 @@
 {% extends "admin/change_list.html" %}
 
 {% block search %}
+{% if CALIBRATIONS %}
 <div class="results">
     <table>
         <thead>
@@ -15,7 +16,7 @@
             </tr>
         </thead>
         <tbody style="display: none">
-            {% for county, formula in COUNTY_CALIBRATIONS.items %}
+            {% for county, formula in CALIBRATIONS.items %}
             <tr>
                 <th>{{ county }}</th>
                 <td><code>{{ formula }}</code></td>
@@ -24,5 +25,6 @@
         </tbody>
     </table>
 </div>
+{% endif %}
 {{ block.super }}
 {% endblock %}
