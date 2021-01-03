@@ -7,7 +7,6 @@ from camp.apps.monitors.admin import MonitorAdmin
 from camp.apps.monitors.purpleair.forms import PurpleAirAddForm
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.purpleair.tasks import import_monitor_data
-from camp.apps.monitors.purpleair.utils import COUNTY_CALIBRATIONS
 from camp.utils.forms import DateRangeForm
 
 
@@ -44,13 +43,6 @@ class PurpleAirAdmin(MonitorAdmin):
             defaults['form'] = self.add_form
         defaults.update(kwargs)
         return super().get_form(request, obj, **defaults)
-
-    @csrf_protect_m
-    def changelist_view(self, request, extra_context=None):
-        if extra_context is None:
-            extra_context = {}
-        extra_context.update(COUNTY_CALIBRATIONS=COUNTY_CALIBRATIONS)
-        return super().changelist_view(request, extra_context)
 
     def render_change_form(self, request, context, *args, **kwargs):
         context.update({'export_form': DateRangeForm()})
