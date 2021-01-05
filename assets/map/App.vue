@@ -55,12 +55,6 @@
               </div>
               <hr class="dropdown-divider" />
               <div class="dropdown-item">
-                <div class="is-size-7 has-text-grey">
-                  <span class="icon">
-                    <span class="far fa-fw fa-shapes"></span>
-                  </span>
-                  <span>Device Symbols</span>
-                </div>
                 <div>
                   <span class="icon">
                     <span class="fas fa-fw fa-circle has-text-success"></span>
