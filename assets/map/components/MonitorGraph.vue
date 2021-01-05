@@ -264,7 +264,7 @@ export default {
     },
 
     stopSync() {
-      if (!!this.interval) {
+      if (this.interval) {
         clearInterval(this.interval);
         this.interval = null;
       }
