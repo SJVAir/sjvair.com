@@ -48,12 +48,12 @@
 </template>
 
 <script>
-import _ from 'lodash';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import VueApexCharts from 'vue-apexcharts'
-import Datepicker from "vuejs-datepicker/dist/vuejs-datepicker.esm.js";
+import Datepicker from 'vuejs-datepicker/dist/vuejs-datepicker.esm.js';
+import GraphData from "../utils/GraphData.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -77,22 +77,22 @@ export default {
     // Default range: last 3 days
     const dateEnd = dayjs().endOf('day').toString();
     const dateStart = dayjs(dateEnd).subtract(3, 'day').startOf('day').toString();
+    const fields = {
+      PurpleAir: {
+        pm25_env: '2m',
+        pm25_avg_15: '15m',
+        pm25_avg_60: '60m'
+      },
+      AirNow: {
+        pm25_env: '60m'
+      }
+    };
 
     return {
       dateEnd,
       dateStart,
-      entries: {},
+      fields,
       interval: null,
-      fields: {
-        PurpleAir: {
-          pm25_env: '2m',
-          pm25_avg_15: '15m',
-          pm25_avg_60: '60m'
-        },
-        AirNow: {
-          pm25_env: '60m'
-        }
-      },
       sensors: {
         PurpleAir: ['a'],
         AirNow: ['']
@@ -113,10 +113,7 @@ export default {
   },
 
   watch: {
-    entries: function() {
-      this.updateChart();
-    },
-    monitor: async function(){
+    monitor: async function() {
       this.$refs.chart.updateSeries([]);
       this.loadAllEntries();
     }
@@ -204,7 +201,7 @@ export default {
     downloadCSV () {
       let path = `${this.$http.options.root}monitors/${this.monitor.id}/entries/csv/`,
         params = {
-          fields: _.join(_.keys(this.fields[this.monitor.device]), ','),
+          fields: Object.keys(this.fields[this.monitor.device]).join(','),
           timestamp__gte: formatDate(this.dateStart),
           timestamp__lte: formatDate(this.dateEnd),
           sensor: ''
@@ -218,10 +215,9 @@ export default {
       window.open(`${path}?${params}`)
     },
     async loadAllEntries(){
-      this.entries = {};
-      _.each(this.sensors[this.monitor.device], sensor => {
-          this.loadEntries(sensor)
-      });
+      for (let sensorGroup of this.sensors[this.monitor.device]) {
+        this.loadEntries(sensorGroup)
+      }
     },
 
     async loadEntries(sensor, page) {
@@ -229,55 +225,29 @@ export default {
         page = 1;
       }
 
-      return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
+      const series = new GraphData(this.fields[this.monitor.device]);
+
+      await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
-          fields: _.join(_.keys(this.fields[this.monitor.device]), ','),
+          fields: Object.keys(this.fields[this.monitor.device]).join(','),
           page: page,
           timestamp__gte: formatDate(this.dateStart),
           timestamp__lte: formatDate(this.dateEnd),
           sensor: sensor
         }
       })
-        .then(response => response.json(response))
         .then(async response => {
-          let data = response.data;
-          if(response.has_next_page){
-            let nextPage = await this.loadEntries(sensor, page + 1);
-            data.push(...nextPage);
-          }
+          response = await response.json();
+          series.addData(response.data);
 
-          if(page == 1){
-            this.entries = Object.assign({}, this.entries, _.fromPairs([[sensor, _.uniqBy(data, 'timestamp')]]));
+          if(response.has_next_page){
+            await this.loadEntries(sensor, page + 1);
+
           } else {
-            return data;
+            this.$refs.chart.updateSeries(series.data, true);
           }
         })
     },
-
-    async updateChart() {
-      let series = _.reverse(_.flatten(_.map(this.entries, (entries, sensor) => {
-        return _.map(this.fields[this.monitor.device], (label, field) => {
-          let name = label;
-          if(this.sensors[this.monitor.device].length > 1 && sensor) {
-            name += ` (${sensor})`;
-          }
-          return {
-            name: name,
-            data: _.map(entries, data => {
-              return {
-                // TODO: convert to appropriate tz for monitor on the api rather than hardcoding
-                x: dayjs
-                  .utc(data.timestamp)
-                  .tz('America/Los_Angeles'),
-                y: _.get(data, field)
-              }
-            })
-          }
-        })
-      })));
-
-      this.$refs.chart.updateSeries(series, true);
-    }
   }
 }
 </script>

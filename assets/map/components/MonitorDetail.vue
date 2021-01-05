@@ -89,7 +89,6 @@
 </template>
 
 <script>
-import _ from 'lodash';
 import MonitorGraph from './MonitorGraph.vue'
 
 export default {
@@ -112,14 +111,14 @@ export default {
 
   computed: {
     timesince() {
-      if(!_.isEmpty(this.monitor.latest)){
+      if(Object.keys(this.monitor.latest).length > 1){
         return this.monitor.latest.timestamp.fromNow();
       }
       return 'Never';
     },
 
     location() {
-      return _.capitalize(this.monitor.location)
+      return this.monitor.location[0].toUpperCase() + this.monitor.location.slice(1).toLowerCase();
     }
   },
 
