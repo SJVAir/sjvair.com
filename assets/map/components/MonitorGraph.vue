@@ -23,7 +23,7 @@
           <br />
           <button class="button is-small is-info" v-on:click="loadAllEntries">
             <span class="icon is-small">
-              <span class="fal fa-redo"></span>
+              <span :class="{ 'fa-spin': loading }" class="fal fa-redo"></span>
             </span>
             <span>Update</span>
           </button>
@@ -93,6 +93,7 @@ export default {
       dateStart,
       fields,
       interval: null,
+      loading: false,
       sensors: {
         PurpleAir: ['a'],
         AirNow: ['']
@@ -102,13 +103,12 @@ export default {
 
   async mounted() {
     this.loadAllEntries();
-    this.interval = setInterval(this.loadAllEntries, 1000 * 60 * 2);
+    this.startSync();
   },
 
   destroyed() {
     if(this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
+      this.stopSync();
     }
   },
 
@@ -221,11 +221,18 @@ export default {
     },
 
     async loadEntries(sensor, page) {
+      const series = new GraphData(this.fields[this.monitor.device]);
+      this.loading = true;
+
+      if (dayjs(this.dateEnd).unix() >= dayjs().startOf("day").unix()) {
+        this.startSync();
+      } else {
+        this.stopSync();
+      }
+
       if(!page) {
         page = 1;
       }
-
-      const series = new GraphData(this.fields[this.monitor.device]);
 
       await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
@@ -244,10 +251,24 @@ export default {
             await this.loadEntries(sensor, page + 1);
 
           } else {
-            this.$refs.chart.updateSeries(series.data, true);
+            await this.$refs.chart.updateSeries(series.data, true);
+            this.loading = false;
           }
         })
     },
+
+    startSync() {
+      if (!this.interval) {
+        this.interval = setInterval(this.loadAllEntries, 1000 * 60 * 2);
+      }
+    },
+
+    stopSync() {
+      if (!!this.interval) {
+        clearInterval(this.interval);
+        this.interval = null;
+      }
+    }
   }
 }
 </script>
