@@ -38,52 +38,52 @@
               <div class="dropdown-item">
                 <label class="checkbox">
                     <input type="checkbox" v-model="showInside" />
-                    Inside monitors
+                    <span class="icon" style="height: auto;">
+                      <span class="far fa-fw fa-circle has-text-dark"></span>
+                    </span>
+                    <span>Inside monitors</span>
                 </label>
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
                     <input type="checkbox" v-model="showInactive" />
-                    Inactive monitors
+                    <span class="icon" style="height: auto;">
+                      <span class="fas fa-fw fa-circle has-text-grey-light"></span>
+                    </span>
+                    <span>Inactive monitors</span>
                 </label>
               </div>
               <hr class="dropdown-divider" />
               <div class="dropdown-item">
                 <div class="is-size-7 has-text-grey">
                   <span class="icon">
-                    <span class="fal fa-fw fa-shapes"></span>
+                    <span class="far fa-fw fa-shapes"></span>
                   </span>
-                  <span>Icon Legend</span>
+                  <span>Device Symbols</span>
                 </div>
                 <div>
                   <span class="icon">
-                    <span class="fas fa-fw fa-circle has-text-grey-light"></span>
+                    <span class="fas fa-fw fa-circle has-text-success"></span>
                   </span>
                   <span>SJVAir (PurpleAir)</span>
                 </div>
                 <div>
                   <span class="icon">
-                    <span class="fas fa-fw fa-octagon has-text-grey-light"></span>
+                    <span class="fas fa-fw fa-triangle has-text-success"></span>
                   </span>
                   <span>SJVAir (BAM1022)</span>
                 </div>
                 <div>
                   <span class="icon">
-                    <span class="fas fa-fw fa-square-full has-text-grey-light"></span>
+                    <span class="fas fa-fw fa-square-full has-text-success"></span>
                   </span>
                   <span>PurpleAir</span>
                 </div>
                 <div>
                   <span class="icon">
-                    <span class="fas fa-fw fa-hexagon has-text-grey-light"></span>
+                    <span class="fas fa-fw fa-hexagon has-text-success"></span>
                   </span>
                   <span>AirNow</span>
-                </div>
-                <div>
-                  <span class="icon">
-                    <span class="fal fa-fw fa-horizontal-rule has-text-black"></span>
-                  </span>
-                  <span>Inside monitors</span>
                 </div>
               </div>
             </div>
@@ -322,7 +322,7 @@ export default {
 
         case 'BAM1022':
           params.shape = 'polygon';
-          params.sides = 8;
+          params.sides = 3;
       }
 
       if(monitor.location == 'inside'){
