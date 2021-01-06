@@ -95,7 +95,8 @@ export default {
       },
       sensors: {
         PurpleAir: ['a'],
-        AirNow: ['']
+        AirNow: [''],
+        BAM1022: ['']
       }
     }
   },
