@@ -21,6 +21,8 @@ from camp.utils.datetime import parse_datetime
 # FRH(%): filter relative humidity
 
 class BAM1022(Monitor):
+    LAST_ACTIVE_LIMIT = int(60 * 60 * 1.5)
+
     class Meta:
         verbose_name = 'BAM 1022'
 
