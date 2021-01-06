@@ -10,7 +10,8 @@ class MonitorFilter(FilterSet):
     def filter_device(self, queryset, name, value):
         lookup_field = {
             'PurpleAir': 'purpleair',
-            'AirNow': 'airnow'
+            'AirNow': 'airnow',
+            'BAM1022': 'bam1022',
         }.get(value)
 
         if lookup_field is not None:
