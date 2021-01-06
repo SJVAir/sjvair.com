@@ -91,6 +91,9 @@ export default {
         },
         AirNow: {
           pm25_env: '60m'
+        },
+        BAM1022: {
+          pm25_env: '60m'
         }
       },
       sensors: {
