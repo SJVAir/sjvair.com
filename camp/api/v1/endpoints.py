@@ -27,6 +27,7 @@ class CSVExport(generics.ListEndpoint):
     model = None
 
     columns = []
+    headers = {}
     filename = "export.csv"
 
     def get(self, request, *args, **kwargs):
@@ -47,7 +48,7 @@ class CSVExport(generics.ListEndpoint):
         return self.filename.format(data=self.form.cleaned_data, view=self)
 
     def get_header_row(self):
-        return [name for name, func in self.columns]
+        return [self.headers.get(name, name) for name, func in self.columns]
 
     def get_row(self, instance):
         row = []

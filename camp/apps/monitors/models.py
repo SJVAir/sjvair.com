@@ -25,6 +25,7 @@ from resticus.serializers import serialize
 
 from camp.apps.monitors.validators import validate_formula
 from camp.utils.counties import County
+from camp.utils.datetime import make_aware
 from camp.utils.managers import InheritanceManager
 from camp.utils.validators import JSONSchemaValidator
 
@@ -114,6 +115,8 @@ class Monitor(models.Model):
         )
 
     def process_entry(self, entry):
+        entry.position = self.position
+        entry.location = self.location
         entry.calibrate_pm25(self.get_pm25_calibration_formula())
         entry.calculate_aqi()
         entry.calculate_averages()
@@ -123,19 +126,11 @@ class Monitor(models.Model):
     def check_latest(self, entry):
         from camp.api.v1.monitors.serializers import EntrySerializer
 
-        def make_aware(timestamp):
-            if timezone.is_naive(timestamp):
-                return timezone.make_aware(timestamp)
-            return timestamp
-
         timestamp = self.latest.get('timestamp')
         if timestamp is None:
             is_latest = True
         else:
-            if not isinstance(timestamp, str):
-                import code
-                code.interact(local=locals())
-            timestamp = make_aware(parse_datetime(timestamp))
+            timestamp = parse_datetime(timestamp)
             is_latest = make_aware(entry.timestamp) > timestamp
 
         sensor_match = self.DEFAULT_SENSOR is None or entry.sensor == self.DEFAULT_SENSOR
@@ -217,30 +212,30 @@ class Entry(models.Model):
     pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
 
     # Post-processed, calibrated data
-    celcius = models.DecimalField(max_digits=5, decimal_places=1, null=True)
-    fahrenheit = models.DecimalField(max_digits=5, decimal_places=1, null=True)
-    humidity = models.DecimalField(max_digits=5, decimal_places=1, null=True)
-    pressure = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    celcius = models.DecimalField(max_digits=8, decimal_places=1, null=True)
+    fahrenheit = models.DecimalField(max_digits=8, decimal_places=1, null=True)
+    humidity = models.DecimalField(max_digits=8, decimal_places=1, null=True)
+    pressure = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
-    pm10_env = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    pm25_env = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    pm100_env = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    pm10_env = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    pm25_env = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    pm100_env = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
-    pm10_standard = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    pm25_standard = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    pm100_standard = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    pm10_standard = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    pm25_standard = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    pm100_standard = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
-    pm25_avg_15 = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    pm25_avg_60 = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    pm25_avg_15 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    pm25_avg_60 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
     pm25_aqi = models.IntegerField(null=True)
 
-    particles_03um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    particles_05um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    particles_10um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    particles_25um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    particles_50um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
-    particles_100um = models.DecimalField(max_digits=7, decimal_places=2, null=True)
+    particles_03um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    particles_05um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    particles_10um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    particles_25um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    particles_50um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    particles_100um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
     class Meta:
         constraints = (
@@ -306,7 +301,6 @@ class Entry(models.Model):
     def calculate_averages(self):
         self.pm25_avg_15 = self.get_average('pm25_env', 15)
         self.pm25_avg_60 = self.get_average('pm25_env', 60)
-
 
     def save(self, *args, **kwargs):
         # Temperature adjustments

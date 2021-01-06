@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
@@ -7,6 +9,7 @@ from . import endpoints
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.utils.datetime import make_aware, parse_datetime
 from camp.utils.test import debug, get_response_data
 
 monitor_list = endpoints.MonitorList.as_view()
@@ -27,6 +30,9 @@ class EndpointTests(TestCase):
         return BAM1022.objects.get(name='CCAC')
 
     def test_monitor_detail(self):
+        '''
+            Test that we can GET the monitor detail endpoint.
+        '''
         monitor = self.get_purple_air()
         url = reverse('api:v1:monitors:monitor-detail', kwargs={
             'monitor_id': monitor.pk
@@ -40,6 +46,9 @@ class EndpointTests(TestCase):
         assert content['data']['id'] == str(monitor.pk)
 
     def test_monitor_list(self):
+        '''
+            Test that we can GET the monitor list endpoint.
+        '''
         url = reverse('api:v1:monitors:monitor-list')
         request = self.factory.get(url)
         response = monitor_list(request)
@@ -47,6 +56,9 @@ class EndpointTests(TestCase):
         assert response.status_code == 200
 
     def test_entry_list(self):
+        '''
+            Test that we can GET the entry list endpoint.
+        '''
         monitor = self.get_purple_air()
         url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
         params = {'sensor': 'a', 'field': 'pm2_env'}
@@ -62,13 +74,16 @@ class EndpointTests(TestCase):
         assert set(e['sensor'] for e in content['data']) == {params['sensor']}
 
     def test_create_entry(self):
+        '''
+            Test that we can create an entry.
+        '''
         monitor = self.get_bam1022()
         payload = {
-            'timestamp': timezone.now().isoformat(),
-            'fahrenheit': '92.6',
-            'pm10_env': '25',
-            'pm25_env': '30',
-            'pm100_env': '35',
+            'Time': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'AT(C)': '30.6',
+            'RH(%)': '25.0',
+            'BP(mmHg)': '764.5',
+            'ConcRT(ug/m3)': '24',
         }
         url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
         request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
@@ -77,8 +92,36 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
 
         assert response.status_code == 200
-        assert content['data']['fahrenheit'] == payload['fahrenheit']
-        assert content['data']['celcius'] is not None
+        assert content['data']['celcius'] == payload['AT(C)']
+        assert content['data']['fahrenheit'] is not None
 
         entry = Entry.objects.latest('timestamp')
         assert entry.is_processed
+
+    def test_duplicate_entry(self):
+        '''
+            Test that duplicate entries by timestamp are not created.
+        '''
+        monitor = self.get_bam1022()
+        payload = {
+            'Time': timezone.now(),
+            'AT(C)': '30.60',
+            'RH(%)': '25.00',
+            'BP(mmHg)': '764.5',
+            'ConcRT(ug/m3)': '24',
+        }
+
+        # Create the initial entry
+        entry = monitor.create_entry(payload)
+        monitor.process_entry(entry)
+        entry.save()
+
+        # Now call the API with the same payload and verify that it fails.
+        url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
+        request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
+        request.monitor = monitor
+        response = entry_list(request, monitor_id=monitor.pk)
+        content = get_response_data(response)
+
+        assert response.status_code == 400
+        assert monitor.entries.filter(timestamp=payload['Time']).count() == 1
