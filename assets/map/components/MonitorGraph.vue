@@ -156,7 +156,7 @@ export default {
           width: 1,
           dashArray: 0,
         },
-        colors: ['#000033', '#006699', '#00ccff'],
+        colors: ['#00ccff', '#006699', '#000033'],
         // theme: {
         //   // palette: 'palette2',
         //   monochrome: {
