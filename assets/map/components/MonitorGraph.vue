@@ -85,6 +85,9 @@ export default {
       },
       AirNow: {
         pm25_env: '60m'
+      },
+      BAM1022: {
+        pm25_env: '60m'
       }
     };
 
@@ -96,7 +99,8 @@ export default {
       loading: false,
       sensors: {
         PurpleAir: ['a'],
-        AirNow: ['']
+        AirNow: [''],
+        BAM1022: ['']
       }
     }
   },

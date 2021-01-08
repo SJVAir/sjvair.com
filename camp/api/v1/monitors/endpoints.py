@@ -2,8 +2,9 @@ import uuid
 
 from datetime import datetime
 
-from resticus import generics
+from resticus import generics, http
 
+from django import forms
 from django.db.models import QuerySet
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -43,7 +44,7 @@ class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
 class EntryMixin:
     model = Entry
     filter_class = EntryFilter
-    form_class = EntryForm
+    form_class = forms.Form
     serializer_class = EntrySerializer
 
     paginate = True
@@ -69,17 +70,20 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
         return super().serialize(source, **kwargs)
 
     def form_valid(self, form):
-        self.object = form.save(commit=False)
-        self.object.data = form.cleaned_data
-        self.object.monitor_id = self.request.monitor.pk
-        self.request.monitor.process_entry(self.object)
-        self.object.save()
-        return {"data": self.serialize(
-            Entry.objects.get(pk=self.object.pk)
-        )}
+        entry = self.request.monitor.create_entry(payload=self.request.data)
+        self.request.monitor.process_entry(entry)
+        entry.save()
+
+        entry = Entry.objects.get(pk=entry.pk)
+        self.request.monitor.check_latest(entry)
+        return {"data": self.serialize(entry)}
 
 
 class EntryCSV(EntryMixin, CSVExport):
+    headers = {
+        'pm25_env': 'pm25_avg_2',
+    }
+
     @cached_property
     def columns(self):
         fields = EntrySerializer.base_fields[::]
@@ -106,7 +110,7 @@ class EntryCSV(EntryMixin, CSVExport):
         return queryset
 
     def get_header_row(self):
-        return self.columns
+        return [self.headers.get(name, name) for name in self.columns]
 
     def get_row(self, instance):
         return [instance[key] for key in self.columns]
