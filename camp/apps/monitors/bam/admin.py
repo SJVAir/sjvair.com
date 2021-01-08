@@ -8,5 +8,4 @@ from camp.apps.monitors.bam.models import BAM1022
 
 @admin.register(BAM1022)
 class BAM1022Admin(MonitorAdmin):
-    fields = MonitorAdmin.fields[:]
-    fields.insert(1, 'auth_key')
+    pass

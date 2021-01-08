@@ -5,7 +5,7 @@ from camp.apps.monitors.models import Monitor, Entry
 
 
 class AirNow(Monitor):
-    LAST_ACTIVE_LIMIT = 60 * 60 * 2
+    LAST_ACTIVE_LIMIT = int(60 * 60 * 1.5)
 
     def process_entry(self, entry):
         entry.timestamp = parse_datetime(

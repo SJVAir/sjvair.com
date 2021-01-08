@@ -18,53 +18,66 @@
             <div class="dropdown-content">
               <div class="dropdown-item">
                 <label class="checkbox">
-                    <input type="checkbox" v-model="showInactive" />
-                    Inactive monitors
+                    <input type="checkbox" v-model="showSJVAir" />
+                    SJVAir network
                 </label>
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                    <input type="checkbox" v-model="showPrivate" />
-                    Private monitors
-                </label>
-              </div>
-              <div class="dropdown-item">
-                <label class="checkbox">
-                    <input type="checkbox" v-model="showInside" />
-                    Indoor monitors
+                    <input type="checkbox" v-model="showPurpleAir" />
+                    PurpleAir network
                 </label>
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
                     <input type="checkbox" v-model="showAirNow" />
-                    AirNow monitors
+                    AirNow network
+                </label>
+              </div>
+              <hr class="dropdown-divider" />
+              <div class="dropdown-item">
+                <label class="checkbox">
+                    <input type="checkbox" v-model="showInside" />
+                    <span class="icon" style="height: auto;">
+                      <span class="far fa-fw fa-circle has-text-dark"></span>
+                    </span>
+                    <span>Inside monitors</span>
+                </label>
+              </div>
+              <div class="dropdown-item">
+                <label class="checkbox">
+                    <input type="checkbox" v-model="showInactive" />
+                    <span class="icon" style="height: auto;">
+                      <span class="fas fa-fw fa-circle has-text-grey-light"></span>
+                    </span>
+                    <span>Inactive monitors</span>
                 </label>
               </div>
               <hr class="dropdown-divider" />
               <div class="dropdown-item">
                 <div>
                   <span class="icon">
-                    <span class="fas fa-fw fa-circle has-text-grey-light"></span>
+                    <span class="fas fa-fw fa-circle has-text-success"></span>
                   </span>
-                  <span>SJVAir monitors</span>
+                  <span>SJVAir (PurpleAir)</span>
                 </div>
                 <div>
                   <span class="icon">
-                    <span class="fas fa-fw fa-square-full has-text-grey-light"></span>
+                    <span class="fas fa-fw fa-triangle has-text-success"></span>
                   </span>
-                  <span>Private monitors</span>
+                  <span>SJVAir (BAM1022)</span>
                 </div>
                 <div>
                   <span class="icon">
-                    <span class="fal fa-fw fa-circle has-text-black"></span>
+                    <span class="fas fa-fw fa-square-full has-text-success"></span>
                   </span>
-                  <span>Inside monitors</span>
+                  <span>PurpleAir</span>
                 </div>
                 <div>
                   <span class="icon">
-                    <span class="fas fa-fw fa-hexagon has-text-grey-light"></span>
+                    <span class="fas fa-fw fa-hexagon has-text-success"></span>
                   </span>
-                  <span>AirNow monitors</span>
+                  <span>AirNow</span>
                 </div>
               </div>
             </div>
@@ -106,10 +119,11 @@ export default {
       activeMonitor: null,
       monitors: {},
       activeField: 'pm25_avg_60',
-      showInactive: false,
-      showPrivate: true,
-      showInside: false,
+      showSJVAir: true,
+      showPurpleAir: true,
       showAirNow: true,
+      showInside: false,
+      showInactive: false,
       fields: {
         pm25_env: {
           label: "PM 2.5",
@@ -208,11 +222,15 @@ export default {
   },
 
   watch: {
-    showInactive: function() {
+    showSJVAir: function() {
       _.mapValues(this.monitors, this.setMarkerMap);
     },
 
-    showPrivate: function() {
+    showPurpleAir: function() {
+      _.mapValues(this.monitors, this.setMarkerMap);
+    },
+
+    showAirNow: function() {
       _.mapValues(this.monitors, this.setMarkerMap);
     },
 
@@ -220,7 +238,7 @@ export default {
       _.mapValues(this.monitors, this.setMarkerMap);
     },
 
-    showAirNow: function() {
+    showInactive: function() {
       _.mapValues(this.monitors, this.setMarkerMap);
     }
   },
@@ -239,13 +257,12 @@ export default {
     },
 
     setMarkerMap(monitor){
-      // let checkActive = (this.showInactive && !monitor.is_active) || monitor.is_active;
-      let checkActive = this.showInactive || monitor.is_active;
-      // let checkSJVAir = (this.showPrivate && !monitor.is_sjvair) || monitor.is_sjvair;
-      let checkSJVAir = this.showPrivate || monitor.is_sjvair;
-      let checkInside = this.showInside || (monitor.location != 'inside');
-      let checkAirNow = this.showAirNow || (monitor.device != 'AirNow');
-      let checks = [checkActive, checkSJVAir, checkInside, checkAirNow]
+      let checkSJVAir = this.showSJVAir || !monitor.is_sjvair,
+        checkPurpleAir = this.showPurpleAir || (monitor.device != 'PurpleAir'),
+        checkAirNow = this.showAirNow || (monitor.device != 'AirNow'),
+        checkInside = this.showInside || (monitor.location != 'inside'),
+        checkActive = this.showInactive || monitor.is_active,
+        checks = [checkSJVAir, checkPurpleAir, checkAirNow, checkInside, checkActive]
       monitor._marker.setMap(checks.every(Boolean) ? this.map : null);
     },
 
@@ -287,11 +304,19 @@ export default {
         shape: 'square'
       }
 
-      if(monitor.device == 'PurpleAir') {
-        params.shape = monitor.is_sjvair ? 'circle' : 'square';
-      } else if(monitor.device == 'AirNow') {
-        params.shape = 'polygon';
-        params.sides = 6;
+      switch (monitor.device) {
+        case 'PurpleAir':
+          params.shape = monitor.is_sjvair ? 'circle' : 'square';
+          break;
+
+        case 'AirNow':
+          params.shape = 'polygon';
+          params.sides = 6;
+          break;
+
+        case 'BAM1022':
+          params.shape = 'polygon';
+          params.sides = 3;
       }
 
       if(monitor.location == 'inside'){
