@@ -23,7 +23,7 @@
           <br />
           <button class="button is-small is-info" v-on:click="loadAllEntries">
             <span class="icon is-small">
-              <span class="fal fa-redo"></span>
+              <span :class="{ 'fa-spin': loading }" class="fal fa-redo"></span>
             </span>
             <span>Update</span>
           </button>
@@ -48,12 +48,12 @@
 </template>
 
 <script>
-import _ from 'lodash';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import VueApexCharts from 'vue-apexcharts'
-import Datepicker from "vuejs-datepicker/dist/vuejs-datepicker.esm.js";
+import Datepicker from 'vuejs-datepicker/dist/vuejs-datepicker.esm.js';
+import GraphData from "../utils/GraphData.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -77,25 +77,26 @@ export default {
     // Default range: last 3 days
     const dateEnd = dayjs().endOf('day').toString();
     const dateStart = dayjs(dateEnd).subtract(3, 'day').startOf('day').toString();
+    const fields = {
+      PurpleAir: {
+        pm25_env: '2m',
+        pm25_avg_15: '15m',
+        pm25_avg_60: '60m'
+      },
+      AirNow: {
+        pm25_env: '60m'
+      },
+      BAM1022: {
+        pm25_env: '60m'
+      }
+    };
 
     return {
       dateEnd,
       dateStart,
-      entries: {},
+      fields,
       interval: null,
-      fields: {
-        PurpleAir: {
-          pm25_env: '2m',
-          pm25_avg_15: '15m',
-          pm25_avg_60: '60m'
-        },
-        AirNow: {
-          pm25_env: '60m'
-        },
-        BAM1022: {
-          pm25_env: '60m'
-        }
-      },
+      loading: false,
       sensors: {
         PurpleAir: ['a'],
         AirNow: [''],
@@ -106,21 +107,17 @@ export default {
 
   async mounted() {
     this.loadAllEntries();
-    this.interval = setInterval(this.loadAllEntries, 1000 * 60 * 2);
+    this.startSync();
   },
 
   destroyed() {
     if(this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
+      this.stopSync();
     }
   },
 
   watch: {
-    entries: function() {
-      this.updateChart();
-    },
-    monitor: async function(){
+    monitor: async function() {
       this.$refs.chart.updateSeries([]);
       this.loadAllEntries();
     }
@@ -208,7 +205,7 @@ export default {
     downloadCSV () {
       let path = `${this.$http.options.root}monitors/${this.monitor.id}/entries/csv/`,
         params = {
-          fields: _.join(_.keys(this.fields[this.monitor.device]), ','),
+          fields: Object.keys(this.fields[this.monitor.device]).join(','),
           timestamp__gte: formatDate(this.dateStart),
           timestamp__lte: formatDate(this.dateEnd),
           sensor: ''
@@ -222,65 +219,59 @@ export default {
       window.open(`${path}?${params}`)
     },
     async loadAllEntries(){
-      this.entries = {};
-      _.each(this.sensors[this.monitor.device], sensor => {
-          this.loadEntries(sensor)
-      });
+      for (let sensorGroup of this.sensors[this.monitor.device]) {
+        this.loadEntries(sensorGroup)
+      }
     },
 
     async loadEntries(sensor, page) {
+      const series = new GraphData(this.fields[this.monitor.device]);
+      this.loading = true;
+
+      if (dayjs(this.dateEnd).unix() >= dayjs().startOf("day").unix()) {
+        this.startSync();
+      } else {
+        this.stopSync();
+      }
+
       if(!page) {
         page = 1;
       }
 
-      return await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
+      await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
-          fields: _.join(_.keys(this.fields[this.monitor.device]), ','),
+          fields: Object.keys(this.fields[this.monitor.device]).join(','),
           page: page,
           timestamp__gte: formatDate(this.dateStart),
           timestamp__lte: formatDate(this.dateEnd),
           sensor: sensor
         }
       })
-        .then(response => response.json(response))
         .then(async response => {
-          let data = response.data;
-          if(response.has_next_page){
-            let nextPage = await this.loadEntries(sensor, page + 1);
-            data.push(...nextPage);
-          }
+          response = await response.json();
+          series.addData(response.data);
 
-          if(page == 1){
-            this.entries = Object.assign({}, this.entries, _.fromPairs([[sensor, _.uniqBy(data, 'timestamp')]]));
+          if(response.has_next_page){
+            await this.loadEntries(sensor, page + 1);
+
           } else {
-            return data;
+            await this.$refs.chart.updateSeries(series.data, true);
+            this.loading = false;
           }
         })
     },
 
-    async updateChart() {
-      let series = _.reverse(_.flatten(_.map(this.entries, (entries, sensor) => {
-        return _.map(this.fields[this.monitor.device], (label, field) => {
-          let name = label;
-          if(this.sensors[this.monitor.device].length > 1 && sensor) {
-            name += ` (${sensor})`;
-          }
-          return {
-            name: name,
-            data: _.map(entries, data => {
-              return {
-                // TODO: convert to appropriate tz for monitor on the api rather than hardcoding
-                x: dayjs
-                  .utc(data.timestamp)
-                  .tz('America/Los_Angeles'),
-                y: _.get(data, field)
-              }
-            })
-          }
-        })
-      })));
+    startSync() {
+      if (!this.interval) {
+        this.interval = setInterval(this.loadAllEntries, 1000 * 60 * 2);
+      }
+    },
 
-      this.$refs.chart.updateSeries(series, true);
+    stopSync() {
+      if (this.interval) {
+        clearInterval(this.interval);
+        this.interval = null;
+      }
     }
   }
 }
