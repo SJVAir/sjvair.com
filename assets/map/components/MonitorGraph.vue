@@ -77,26 +77,25 @@ export default {
     // Default range: last 3 days
     const dateEnd = dayjs().endOf('day').toString();
     const dateStart = dayjs(dateEnd).subtract(3, 'day').startOf('day').toString();
-    const fields = {
-      PurpleAir: {
-        pm25_env: '2m',
-        pm25_avg_15: '15m',
-        pm25_avg_60: '60m'
-      },
-      AirNow: {
-        pm25_env: '60m'
-      },
-      BAM1022: {
-        pm25_env: '60m'
-      }
-    };
 
     return {
       dateEnd,
       dateStart,
-      fields,
       interval: null,
       loading: false,
+      fields: {
+        PurpleAir: {
+          pm25_env: '2m',
+          pm25_avg_15: '15m',
+          pm25_avg_60: '60m'
+        },
+        AirNow: {
+          pm25_env: '60m'
+        },
+        BAM1022: {
+          pm25_env: '60m'
+        }
+      },
       sensors: {
         PurpleAir: ['a'],
         AirNow: [''],
@@ -220,6 +219,7 @@ export default {
     },
     async loadAllEntries(){
       for (let sensorGroup of this.sensors[this.monitor.device]) {
+        GraphData.from(this.fields[this.monitor.device]);
         this.loadEntries(sensorGroup)
       }
     },
@@ -249,13 +249,17 @@ export default {
       })
         .then(async response => {
           response = await response.json();
+          console.log(`Parsing page ${page}`);
           series.addData(response.data);
+          console.log(`Page ${page} parsed`);
 
           if(response.has_next_page){
             await this.loadEntries(sensor, page + 1);
 
           } else {
+            console.log("Passing data to apexcharts");
             await this.$refs.chart.updateSeries(series.data, true);
+            console.log("Apexcharts now has the data");
             this.loading = false;
           }
         })
