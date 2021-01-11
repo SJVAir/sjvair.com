@@ -221,7 +221,7 @@ export default {
     showSJVAirInactive: function() {
       this.filterMonitors();
     },
-    showSJVAirBam: function() {
+    showSJVAirBAM: function() {
       this.filterMonitors();
     },
     showPurpleAir: function() {
@@ -255,7 +255,7 @@ export default {
     getMarkerStatus(monitor){
       // showSJVAirPurple
       // showSJVAirInactive
-      // showSJVAirBam
+      // showSJVAirBAM
       // showPurpleAir
       // showPurpleAirInside
       // showAirNow
