@@ -9,11 +9,9 @@ export default class GraphData {
 
   constructor(sensorFields) {
     if (!GraphData.instance) {
-      console.log("creating new instance");
       Object.assign(this, GraphData.init(sensorFields));
       GraphData.instance = this;
     } else {
-      console.log("reusing instance");
       return GraphData.instance;
     }
   }
