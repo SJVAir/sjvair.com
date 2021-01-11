@@ -36,7 +36,7 @@
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="showSJVAirBam" />
+                  <input type="checkbox" v-model="showSJVAirBAM" />
                   <span class="icon">
                     <span class="fas fa-fw fa-triangle has-text-success"></span>
                   </span>
@@ -112,7 +112,7 @@ export default {
 
       showSJVAirPurple: true,
       showSJVAirInactive: false,
-      showSJVAirBam: true,
+      showSJVAirBAM: true,
       showPurpleAir: true,
       showPurpleAirInside: false,
       showAirNow: true,
