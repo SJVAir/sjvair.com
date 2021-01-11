@@ -266,8 +266,6 @@ export default {
       }
 
       if(monitor.device == 'PurpleAir' && monitor.is_sjvair) {
-        console.log('HIIIII')
-        console.log(this.showSJVAirPurple && (this.showSJVAirInactive || monitor.is_active))
         return this.showSJVAirPurple && (this.showSJVAirInactive || monitor.is_active);
       } else if (monitor.device == 'BAM1022'){
         return this.showSJVAirBAM;
