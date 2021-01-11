@@ -8,31 +8,51 @@ dayjs.extend(timezone);
 export default class GraphData {
 
   constructor(sensorFields) {
+    if (!GraphData.instance) {
+      console.log("creating new instance");
+      Object.assign(this, GraphData.init(sensorFields));
+      GraphData.instance = this;
+    } else {
+      console.log("reusing instance");
+      return GraphData.instance;
+    }
+  }
+
+  static from(sensorFields) {
+    delete GraphData.instance;
+    return new GraphData(sensorFields);
+  }
+
+  static init(sensorFields) {
     // The series apexcharts will bind to
     // Type: Array<Dataset>
-    this.data = [];
+    const data = [];
 
     // The names of the datasets in the series
-    this.datasetFields = Object.keys(sensorFields);
+    const datasetFields = Object.keys(sensorFields);
 
-    // Quick references to specific datasets in the data series
-    this.data = [];
-    this.dataRefs = this.datasetFields.reduce((dataRefs, fieldName) => {
-      // Create dataset for each field
-      dataRefs[fieldName] = [];
+    // Create datasets for each specified sensor field
+    const datasets = datasetFields.reduce((datasets, fieldName) => {
+      // Create dataset
+      datasets[fieldName] = [];
 
-      // Add field reference to data series
-      this.data.push({
+      // Add dataset reference to data series
+      data.push({
         name: fieldName,
-        data: dataRefs[fieldName]
+        data: datasets[fieldName]
       });
 
-      return dataRefs;
+      return datasets;
     }, {});
 
 
-    // Timestamp store to ensure entries are unique
-    this.timestampSet = new Set();
+    return {
+      data,
+      datasetFields,
+      datasets,
+      // Timestamp store to ensure entries are unique
+      timestamps: new Set()
+    };
   }
 
   addData(newData) {
@@ -43,13 +63,13 @@ export default class GraphData {
 
     for (let data of newData) {
       // Only process new entries
-      if (!this.timestampSet.has(data.timestamp)) {
+      if (!this.timestamps.has(data.timestamp)) {
         // Cache current data timestamp
-        this.timestampSet.add(data.timestamp);
+        this.timestamps.add(data.timestamp);
 
         // Add data for each expected dataset
         for (let name of this.datasetFields) {
-          this.dataRefs[name].push({
+          this.datasets[name].push({
             x: dayjs.utc(data.timestamp).tz('America/Los_Angeles'),
             y: data[name]
           });
