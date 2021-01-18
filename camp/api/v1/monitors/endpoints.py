@@ -66,6 +66,7 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
                         fields.append(field)
             else:
                 fields.extend(EntrySerializer.value_fields)
+            fields = [f[0] if isinstance(f, tuple) else f for f in fields]
             return (entry for entry in source.values(*fields))
         return super().serialize(source, **kwargs)
 

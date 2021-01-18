@@ -11,7 +11,13 @@ MONITOR_FIELDS = {
 
 
 class EntrySerializer(serializers.Serializer):
-    base_fields = [('timestamp', lambda entry: entry.timestamp.astimezone(pytz.timezone('America/Los_Angeles'))), 'sensor']
+    base_fields = [
+        (
+            'timestamp',
+            lambda entry: entry.timestamp.astimezone(pytz.timezone('America/Los_Angeles'))
+        ),
+        'sensor'
+    ]
     value_fields = [
         'celcius', 'fahrenheit', 'humidity', 'pressure',
         'pm10_env', 'pm25_env', 'pm100_env',
