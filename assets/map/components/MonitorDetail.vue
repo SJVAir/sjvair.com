@@ -112,6 +112,7 @@ export default {
   computed: {
     timesince() {
       if(Object.keys(this.monitor.latest).length > 1){
+        console.log(this.monitor.latest)
         return this.monitor.latest.timestamp.fromNow();
       }
       return 'Never';

@@ -248,7 +248,6 @@ export default {
         }
       })
         .then(async response => {
-          response = await response.json();
           console.log(`Parsing page ${page}`);
           series.addData(response.data);
           console.log(`Page ${page} parsed`);
