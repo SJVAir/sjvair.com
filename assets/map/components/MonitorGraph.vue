@@ -248,17 +248,13 @@ export default {
         }
       })
         .then(async response => {
-          console.log(`Parsing page ${page}`);
           series.addData(response.data);
-          console.log(`Page ${page} parsed`);
 
           if(response.has_next_page){
             await this.loadEntries(sensor, page + 1);
 
           } else {
-            console.log("Passing data to apexcharts");
             await this.$refs.chart.updateSeries(series.data, true);
-            console.log("Apexcharts now has the data");
             this.loading = false;
           }
         })
