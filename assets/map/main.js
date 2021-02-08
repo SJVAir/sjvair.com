@@ -1,15 +1,20 @@
-import Vue from 'vue'
+import Vue from 'vue';
 // import AsyncComputed from 'vue-async-computed'
-import VueResource from 'vue-resource'
-import App from './App.vue'
+//import VueResource from 'vue-resource';
+import App from './App.vue';
+import http from './utils/http';
 
 // Vue.use(AsyncComputed);
-Vue.use(VueResource);
+//Vue.use(VueResource);
 
-Vue.config.productionTip = false
-Vue.http.options.root = '/api/1.0/';
+//Vue.config.productionTip = false
+//Vue.http.options.root = '/api/1.0/';
 // Vue.http.options.root = 'https://ccac-camp-api.herokuapp.com/api/1.0/';
+
+Vue.prototype.$http = http;
 
 new Vue({
   render: h => h(App),
 }).$mount('#app')
+
+
