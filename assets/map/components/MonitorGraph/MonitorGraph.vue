@@ -41,19 +41,22 @@
     </div>
   </div>
 
-  <div class="chart">
-    <apexchart ref="chart" type="line" width="100%" height="250px" :options="options"></apexchart>
+   <div class="chart">
+    <monitor-chart :dataFields="currentFields"></monitor-chart>
+    <!--<apexchart ref="chart" type="line" width="100%" height="250px" :options="options"></apexchart>-->
   </div>
-</div>
+</div> 
 </template>
 
 <script>
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import VueApexCharts from 'vue-apexcharts'
+//import VueApexCharts from 'vue-apexcharts'
 import Datepicker from 'vuejs-datepicker/dist/vuejs-datepicker.esm.js';
-import GraphData from "../utils/GraphData.js";
+import MonitorChart from './MonitorChart.vue';
+import GraphData from "../../utils/GraphData.js";
+import ChartController from "../../controllers/Chart.controller.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -65,8 +68,9 @@ function formatDate(date) {
 export default {
   name: 'monitor-graph',
   components: {
-    'apexchart': VueApexCharts,
-    Datepicker
+ //   'apexchart': VueApexCharts,
+    Datepicker,
+    MonitorChart
   },
   props: {
     monitor: Object,
@@ -107,6 +111,7 @@ export default {
   async mounted() {
     this.loadAllEntries();
     this.startSync();
+    ChartController.init(Object.keys(this.currentFields));
   },
 
   destroyed() {
@@ -117,12 +122,15 @@ export default {
 
   watch: {
     monitor: async function() {
-      this.$refs.chart.updateSeries([]);
+      //this.$refs.chart.updateSeries([]);
       this.loadAllEntries();
     }
   },
 
   computed: {
+    currentFields() {
+        return this.fields[this.monitor.device];
+    },
     options() {
       return {
         chart: {
@@ -204,7 +212,7 @@ export default {
     downloadCSV () {
       let path = `${this.$http.options.root}monitors/${this.monitor.id}/entries/csv/`,
         params = {
-          fields: Object.keys(this.fields[this.monitor.device]).join(','),
+          fields: Object.keys(this.currentFields).join(','),
           timestamp__gte: formatDate(this.dateStart),
           timestamp__lte: formatDate(this.dateEnd),
           sensor: ''
@@ -219,13 +227,53 @@ export default {
     },
     async loadAllEntries(){
       for (let sensorGroup of this.sensors[this.monitor.device]) {
-        GraphData.from(this.fields[this.monitor.device]);
+        GraphData.from(this.currentFields);
         this.loadEntries(sensorGroup)
       }
     },
 
-    async loadEntries(sensor, page) {
-      const series = new GraphData(this.fields[this.monitor.device]);
+    async loadEntries(sensor, page, data) {
+      this.loading = true;
+
+      if (dayjs(this.dateEnd).unix() >= dayjs().startOf("day").unix()) {
+        this.startSync();
+      } else {
+        this.stopSync();
+      }
+
+      if(!page) {
+        page = 1;
+      }
+
+      if (!data) {
+        data = [];
+      }
+
+      await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
+        params: {
+          fields: Object.keys(this.currentFields).join(','),
+          page: page,
+          timestamp__gte: formatDate(this.dateStart),
+          timestamp__lte: formatDate(this.dateEnd),
+          sensor: sensor
+        }
+      })
+        .then(async response => {
+          data = data.concat(response.data);
+
+          if(response.has_next_page){
+            await this.loadEntries(sensor, page + 1, data);
+
+          } else {
+            //await this.$refs.chart.updateSeries(series.data, true);
+            this.loading = false;
+            ChartController.loadDataset(data);
+          }
+        })
+    },
+
+    async oldLoadEntries(sensor, page) {
+//      const series = new GraphData(this.fields[this.monitor.device]);
       this.loading = true;
 
       if (dayjs(this.dateEnd).unix() >= dayjs().startOf("day").unix()) {
@@ -240,7 +288,7 @@ export default {
 
       await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
         params: {
-          fields: Object.keys(this.fields[this.monitor.device]).join(','),
+          fields: Object.keys(this.currentFields).join(','),
           page: page,
           timestamp__gte: formatDate(this.dateStart),
           timestamp__lte: formatDate(this.dateEnd),
@@ -248,13 +296,13 @@ export default {
         }
       })
         .then(async response => {
-          series.addData(response.data);
+ //         series.addData(response.data);
 
           if(response.has_next_page){
             await this.loadEntries(sensor, page + 1);
 
           } else {
-            await this.$refs.chart.updateSeries(series.data, true);
+            //await this.$refs.chart.updateSeries(series.data, true);
             this.loading = false;
           }
         })
