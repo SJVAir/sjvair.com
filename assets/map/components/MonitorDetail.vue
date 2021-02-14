@@ -89,7 +89,7 @@
 </template>
 
 <script>
-import MonitorGraph from './MonitorGraph.vue'
+import MonitorGraph from './MonitorGraph';
 
 export default {
   name: 'monitor-detail',

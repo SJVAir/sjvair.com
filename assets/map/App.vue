@@ -103,7 +103,7 @@
     async mounted() {
       await this.ctx.init();
       // Reload the monitors every 2 minutes
-      this.interval = setInterval(this.ctx.loadMonitors, 1000 * 60 * 2);
+      this.interval = setInterval(() => this.ctx.loadMonitors(), 1000 * 60 * 2);
     },
 
     destroyed() {
