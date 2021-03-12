@@ -11,9 +11,10 @@ from django.shortcuts import get_object_or_404
 from django.utils.functional import cached_property
 
 from camp.apps.monitors.models import Entry, Monitor
+from camp.apps.monitors.methane.models import Methane
 from camp.utils.forms import DateRangeForm
 from .filters import EntryFilter, MonitorFilter
-from .forms import EntryForm
+from .forms import EntryForm, MethaneDataForm
 from .serializers import EntrySerializer, MonitorSerializer
 from ..endpoints import CSVExport
 
@@ -114,3 +115,39 @@ class EntryCSV(EntryMixin, CSVExport):
 
     def get_row(self, instance):
         return [instance[key] for key in self.columns]
+
+
+class MethaneData(generics.GenericEndpoint):
+    form_class = MethaneDataForm
+
+    def get(self, request, *args, **kwargs):
+        form = self.get_form(request.GET)
+        if form.is_valid():
+            return self.form_valid(form)
+        return self.form_invalid(form)
+
+    def get_monitor(self, methane_id):
+        return Methane.objects.get_or_create(
+            name=methane_id,
+            defaults={
+                'is_hidden': True,
+                'is_sjvair': False,
+                'location': Monitor.LOCATION.outside,
+            })[0]
+
+    def form_valid(self, form):
+        monitor = self.get_monitor(form.cleaned_data['id'])
+
+        entry = monitor.create_entry(payload=form.cleaned_data)
+        monitor.process_entry(entry)
+        entry.save()
+
+        entry = Entry.objects.get(pk=entry.pk)
+        monitor.check_latest(entry)
+        return http.Http200('')
+
+    def form_invalid(self, form):
+        return http.Http400({'errors': form.errors})
+
+
+
