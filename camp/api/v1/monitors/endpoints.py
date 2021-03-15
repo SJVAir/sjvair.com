@@ -117,14 +117,22 @@ class EntryCSV(EntryMixin, CSVExport):
         return [instance[key] for key in self.columns]
 
 
-class MethaneData(generics.GenericEndpoint):
+class MethaneDataUpload(generics.GenericEndpoint):
     form_class = MethaneDataForm
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request, methane_id):
         form = self.get_form(request.GET)
-        if form.is_valid():
+        if self.validate_form(form):
             return self.form_valid(form)
         return self.form_invalid(form)
+
+    def validate_form(self, form):
+        if form.is_valid():
+            import code
+            if self.kwargs['methane_id'] != form.cleaned_data['id']:
+                raise Http404
+            return True
+        return False
 
     def get_monitor(self, methane_id):
         return Methane.objects.get_or_create(
