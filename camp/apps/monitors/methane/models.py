@@ -12,35 +12,6 @@ from resticus.encoders import JSONEncoder
 from camp.apps.monitors.models import Monitor, Entry
 from camp.utils.datetime import parse_datetime
 
-# id
-# bin1
-# bin2
-# bin3
-# bin4
-# temp
-# rh
-# CO_we
-# CO_aux
-# Figaro2600
-# Figaro2602
-# Plantower1_pm1_mass
-# Plantower1_pm2_5_mass
-# Plantower1_pm10_mass
-# Plantower1_pm0_3_count
-# Plantower1_pm0_5_count
-# Plantower1_pm1_count
-# Plantower1_pm2_5_count
-# Plantower1_pm5_count
-# Plantower1_pm10_count
-# Plantower2_pm1_mass
-# Plantower2_pm2_5_mass
-# Plantower2_pm10_mass
-# Plantower2_pm0_3_count
-# Plantower2_pm0_5_count
-# Plantower2_pm1_count
-# Plantower2_pm2_5_count
-# Plantower2_pm5_count
-# Plantower2_pm10_count
 
 class Methane(Monitor):
     LAST_ACTIVE_LIMIT = 60 * 10

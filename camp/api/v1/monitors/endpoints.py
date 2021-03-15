@@ -128,7 +128,6 @@ class MethaneDataUpload(generics.GenericEndpoint):
 
     def validate_form(self, form):
         if form.is_valid():
-            import code
             if self.kwargs['methane_id'] != form.cleaned_data['id']:
                 raise Http404
             return True
