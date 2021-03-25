@@ -21,7 +21,6 @@ from ..endpoints import CSVExport
 
 class MonitorMixin:
     model = Monitor
-    filter_class = MonitorFilter
     serializer_class = MonitorSerializer
 
     def get_object(self):
@@ -29,6 +28,7 @@ class MonitorMixin:
 
 
 class MonitorList(MonitorMixin, generics.ListEndpoint):
+    filter_class = MonitorFilter
     paginate = False
 
     def get_queryset(self):
@@ -115,6 +115,11 @@ class EntryCSV(EntryMixin, CSVExport):
 
     def get_row(self, instance):
         return [instance[key] for key in self.columns]
+
+
+class MethaneData(EntryMixin, generics.ListEndpoint):
+    def serialize(self, queryset):
+        return (entry.payload for entry in queryset)
 
 
 class MethaneDataUpload(generics.GenericEndpoint):

@@ -1,27 +1,55 @@
 {% extends 'base.html' %}
+{% load cache %}
 {% load static %}
+{% load sjvair %}
 
-{% block title %}About Us | {{ block.super }}{% endblock %}
+{% block title %}API | {{ block.super }}{% endblock %}
 
-{% block body-class %}about{% endblock %}
+{% block body-class %}api{% endblock %}
 
 {% block main %}
 <section class="section hook">
     <div class="container">
         <div class="content">
-            <h1>API Documentation</h1>
+            <h1>API Endpoint Reference</h1>
         </div>
     </div>
 </section>
 
 <section class="section">
     <div class="container">
-        <div class="content">
-            <p class="lead">Coming soon, stay tuned!</p>
+        <div class="tabs-with-content">
+            <div class="tabs">
+                <ul>
+                    <li><a>Monitor List</a></li>
+                    <li><a>Monitor Detail</a></li>
+                    <li><a>Entries List</a></li>
+                    <li><a>Entries CSV</a></li>
+                    <li><a>Methane Data</a></li>
+                </ul>
+            </div>
+            <div>
+                <section class="tab-content">
+                    {% api_docs "/api/1.0/monitors/" '{"name__icontains": "Root Access"}' %}
+                </section>
+                <section class="tab-content">
+                    {% api_docs "/api/1.0/monitors/elUAP6FCSYSK8G3F78WUSA/" %}
+                </section>
+                <section class="tab-content">
+                    {% api_docs "/api/1.0/monitors/elUAP6FCSYSK8G3F78WUSA/entries/" %}
+                </section>
+                <section class="tab-content">
+                    {% api_docs "/api/1.0/monitors/elUAP6FCSYSK8G3F78WUSA/entries/csv/" '{"timestamp__gte": "2021-01-18", "timestamp__lte": "2021-01-19"}' %}
+                </section>
+                <section class="tab-content">
+                    {% api_docs "/api/1.0/methane/87/data/" %}
+                </section>
+            </div>
         </div>
     </div>
 </section>
 {% endblock %}
 
 {% block javascripts %}
+    <script type="text/javascript" src="{% static 'js/bulma-tabs.js' %}"></script>
 {% endblock %}
