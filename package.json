@@ -23,6 +23,7 @@
     "vue-apexcharts": "^1.6.0",
     "vue-async-computed": "^3.9.0",
     "vue-resource": "^1.5.1",
+    "vue-router": "^3.5.1",
     "vuejs-datepicker": "^1.6.2"
   },
   "devDependencies": {
