@@ -1,20 +1,27 @@
 import Vue from 'vue';
-// import AsyncComputed from 'vue-async-computed'
-//import VueResource from 'vue-resource';
+import VueRouter from 'vue-router';
 import App from './App.vue';
+import MonitorDetail from './components/MonitorDetail.vue';
+import dateUtil from './utils/date';
 import http from './utils/http';
 
-// Vue.use(AsyncComputed);
-//Vue.use(VueResource);
-
-//Vue.config.productionTip = false
-//Vue.http.options.root = '/api/1.0/';
-// Vue.http.options.root = 'https://ccac-camp-api.herokuapp.com/api/1.0/';
-
+Vue.prototype.$date = dateUtil;
 Vue.prototype.$http = http;
 
+const routes = [
+  {
+    path: '/monitor/:id',
+    name: 'details',
+    component: MonitorDetail,
+    props: true,
+    alias: '/monitor/:id/?timestamp__gte=:timestamp__gte&timestamp__lte=:timestamp__lte'
+  }
+];
+
+const router = new VueRouter({ routes });
+
 new Vue({
+  router,
   render: h => h(App),
 }).$mount('#app')
-
 
