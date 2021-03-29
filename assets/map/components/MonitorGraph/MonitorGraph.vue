@@ -5,7 +5,7 @@
       <div class="field">
         <label for="startDate" class="label is-small has-text-weight-normal">Start Date</label>
         <div class="control">
-          <datepicker id="startDate" format="yyyy-MM-dd" :disabled-dates="{customPredictor: checkStartDate}" input-class="input is-small" typeable placeholder="Start Date" v-model="dateStart"></datepicker>
+          <datepicker id="startDate" format="yyyy-MM-dd" :disabled-dates="{customPredictor: checkStartDate}" input-class="input is-small" typeable placeholder="Start Date" v-model="startDate"></datepicker>
         </div>
       </div>
     </div>
@@ -13,7 +13,7 @@
       <div class="field">
         <label for="endDate" class="label is-small has-text-weight-normal">End Date</label>
         <div class="control">
-          <datepicker id="endDate" format="yyyy-MM-dd" :disabled-dates="{customPredictor: checkEndDate}" input-class="input is-small" typeable placeholder="End Date" v-model="dateEnd"></datepicker>
+          <datepicker id="endDate" format="yyyy-MM-dd" :disabled-dates="{customPredictor: checkEndDate}" input-class="input is-small" typeable placeholder="End Date" v-model="endDate"></datepicker>
         </div>
       </div>
     </div>
@@ -42,33 +42,19 @@
   </div>
 
    <div class="chart">
-    <monitor-chart :dataFields="currentFields"></monitor-chart>
-    <!--<apexchart ref="chart" type="line" width="100%" height="250px" :options="options"></apexchart>-->
+    <monitor-chart :chartData="monitor.chartData" :dataFields="monitor.dataFields"></monitor-chart>
   </div>
 </div> 
 </template>
 
 <script>
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
-//import VueApexCharts from 'vue-apexcharts'
 import Datepicker from 'vuejs-datepicker/dist/vuejs-datepicker.esm.js';
 import MonitorChart from './MonitorChart.vue';
-import GraphData from "../../utils/GraphData.js";
-import ChartController from "../../controllers/Chart.controller.js";
-
-dayjs.extend(utc);
-dayjs.extend(timezone);
-
-function formatDate(date) {
-  return dayjs.utc(date).format('YYYY-MM-DD HH:mm:ss');
-}
+import monitorsService from '../../services/Monitors.service';
 
 export default {
   name: 'monitor-graph',
   components: {
- //   'apexchart': VueApexCharts,
     Datepicker,
     MonitorChart
   },
@@ -77,41 +63,43 @@ export default {
   },
 
   data() {
-    // Set the inital values for the date pickers
-    // Default range: last 3 days
-    const dateEnd = dayjs().endOf('day').toString();
-    const dateStart = dayjs(dateEnd).subtract(3, 'day').startOf('day').toString();
-
+    const navigate = () => {
+      this.$router.push({
+        name: "details",
+        params: {
+          id: monitorsService.activeMonitor.id
+        },
+        query: {
+          timestamp__gte: monitorsService.activeMonitor.dateRange.gte,
+          timestamp__lte: monitorsService.activeMonitor.dateRange.lte
+        }
+      });
+    }
     return {
-      dateEnd,
-      dateStart,
+      ctx: monitorsService,
+      chartData: [],
       interval: null,
       loading: false,
-      fields: {
-        PurpleAir: {
-          pm25_env: '2m',
-          pm25_avg_15: '15m',
-          pm25_avg_60: '60m'
-        },
-        AirNow: {
-          pm25_env: '60m'
-        },
-        BAM1022: {
-          pm25_env: '60m'
-        }
+      get startDate() {
+        return this.ctx.activeMonitor.dateRange.gte;
       },
-      sensors: {
-        PurpleAir: ['a'],
-        AirNow: [''],
-        BAM1022: ['']
-      }
+      set startDate(date) {
+        this.ctx.activeMonitor.dateRange.gte = date;
+        navigate();
+      },
+      get endDate() {
+        return this.ctx.activeMonitor.dateRange.lte;
+      },
+      set endDate(date) {
+        this.ctx.activeMonitor.dateRange.lte = date;
+        navigate();
+      },
     }
   },
 
   async mounted() {
     this.loadAllEntries();
     this.startSync();
-    ChartController.init(Object.keys(this.currentFields));
   },
 
   destroyed() {
@@ -122,99 +110,37 @@ export default {
 
   watch: {
     monitor: async function() {
-      //this.$refs.chart.updateSeries([]);
       this.loadAllEntries();
     }
   },
 
   computed: {
-    currentFields() {
-        return this.fields[this.monitor.device];
+    dataFields() {
+        return this.monitor.datafields;
     },
-    options() {
-      return {
-        chart: {
-          id: `id_chart`,
-          animations: {
-            enabled: false
-          },
-          height: '250px',
-          width: '100%',
-          legend: {
-            show: true
-          },
-          toolbar: {
-            show: false
-          },
-          zoom: {
-            enabled: false
-          }
-        },
-        markers: {
-          size: 0
-        },
-        noData: {
-          text: 'Loading...'
-        },
-        stroke: {
-          show: true,
-          curve: 'smooth',
-          lineCap: 'round',
-          width: 1,
-          dashArray: 0,
-        },
-        colors: ['#00ccff', '#006699', '#000033'],
-        // theme: {
-        //   // palette: 'palette2',
-        //   monochrome: {
-        //     enabled: true,
-        //     color: '#209cee',
-        //     shadeTo: 'light',
-        //     shadeIntensity: 0.85
-        //   }
-        // },
-        tooltip: {
-          enabled: true,
-          x: {
-            format: 'MMM d, h:mmtt'
-          }
-        },
-        xaxis: {
-          type: 'datetime',
-          lines: true,
-          labels: {
-            datetimeUTC: false
-          }
-        },
-        yaxis: {
-          forceNiceScale: true,
-          lines: true,
-          min: 0,
-          labels: {
-            formatter: Math.trunc
-          }
-        }
-      };
-    }
   },
 
   methods: {
     checkStartDate(date) {
       // Date must be lte endDate and lte today.
-      // true means disabled, so not the logic.
-      return !(date <= dayjs(this.dateEnd).endOf('day').toDate() && date <= dayjs().endOf('day').toDate())
+      // true means disabled.
+      const gteEnd = date > this.$date(this.endDate).endOf('day').toDate();
+      const gteTonight = date > this.$date().endOf('day').toDate();
+      return gteEnd || gteTonight;
     },
     checkEndDate(date) {
       // Date must be gte startDate and lte today.
-      // true means disabled, so not the logic.
-      return !(date >= dayjs(this.dateStart).startOf('day').toDate() && date <= dayjs().endOf('day').toDate())
+      // true means disabled.
+      const lteStart = date < this.$date(this.startDate).startOf('day').toDate();
+      const gteTonight = date > this.$date().endOf('day').toDate();
+      return lteStart || gteTonight;
     },
     downloadCSV () {
       let path = `${this.$http.options.root}monitors/${this.monitor.id}/entries/csv/`,
         params = {
-          fields: Object.keys(this.currentFields).join(','),
-          timestamp__gte: formatDate(this.dateStart),
-          timestamp__lte: formatDate(this.dateEnd),
+          fields: Object.keys(this.dataFields).join(','),
+          timestamp__gte: this.$date.$defaultFormat(this.monitor.dateRange.gte),
+          timestamp__lte: this.$date.$defaultFormat(this.monitor.dateRange.lte),
           sensor: ''
         }
 
@@ -226,86 +152,14 @@ export default {
       window.open(`${path}?${params}`)
     },
     async loadAllEntries(){
-      for (let sensorGroup of this.sensors[this.monitor.device]) {
-        GraphData.from(this.currentFields);
-        this.loadEntries(sensorGroup)
-      }
-    },
-
-    async loadEntries(sensor, page, data) {
-      this.loading = true;
-
-      if (dayjs(this.dateEnd).unix() >= dayjs().startOf("day").unix()) {
+      if (this.$date(this.monitor.dateRange.lte).unix() >= this.$date().startOf("day").unix()) {
         this.startSync();
       } else {
         this.stopSync();
       }
-
-      if(!page) {
-        page = 1;
-      }
-
-      if (!data) {
-        data = [];
-      }
-
-      await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
-        params: {
-          fields: Object.keys(this.currentFields).join(','),
-          page: page,
-          timestamp__gte: formatDate(this.dateStart),
-          timestamp__lte: formatDate(this.dateEnd),
-          sensor: sensor
-        }
-      })
-        .then(async response => {
-          data = data.concat(response.data);
-
-          if(response.has_next_page){
-            await this.loadEntries(sensor, page + 1, data);
-
-          } else {
-            //await this.$refs.chart.updateSeries(series.data, true);
-            this.loading = false;
-            ChartController.loadDataset(data);
-          }
-        })
-    },
-
-    async oldLoadEntries(sensor, page) {
-//      const series = new GraphData(this.fields[this.monitor.device]);
       this.loading = true;
-
-      if (dayjs(this.dateEnd).unix() >= dayjs().startOf("day").unix()) {
-        this.startSync();
-      } else {
-        this.stopSync();
-      }
-
-      if(!page) {
-        page = 1;
-      }
-
-      await this.$http.get(`monitors/${this.monitor.id}/entries/`, {
-        params: {
-          fields: Object.keys(this.currentFields).join(','),
-          page: page,
-          timestamp__gte: formatDate(this.dateStart),
-          timestamp__lte: formatDate(this.dateEnd),
-          sensor: sensor
-        }
-      })
-        .then(async response => {
- //         series.addData(response.data);
-
-          if(response.has_next_page){
-            await this.loadEntries(sensor, page + 1);
-
-          } else {
-            //await this.$refs.chart.updateSeries(series.data, true);
-            this.loading = false;
-          }
-        })
+      await this.monitor.loadEntries();
+      this.loading = false;
     },
 
     startSync() {
