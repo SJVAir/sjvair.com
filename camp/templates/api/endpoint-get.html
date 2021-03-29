@@ -1,0 +1,33 @@
+{% load sjvair %}
+<div class="endpoint">
+    <!-- <p class="name">{{ name }}</p> -->
+    <p class="route"><span class="has-text-grey">https://www.sjvair.com</span><b>{{ route }}</b></p>
+    <div class="columns">
+        <div class="column is-7">
+            {% if is_json %}
+                <pre>{{ data|jsonify }}</pre>
+            {% else %}
+                <pre>{{ data }}</pre>
+            {% endif %}
+        </div>
+        {% if filters %}
+            <div class="column is-5">
+                <table class="table is-striped is-fullwidth filter-table">
+                    <thead>
+                        <tr>
+                            <th colspan="2">GET Parameters (filters)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for name, filter in filters %}
+                            <tr>
+                                <td>{{ name }}</td>
+                                <td>{{ filter }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</div>

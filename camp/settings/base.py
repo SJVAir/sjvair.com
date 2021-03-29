@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'huey.contrib.djhuey',
     'livereload',
     'localflavor',
+    'resticus',
     'storages',
 
     'camp.api',
@@ -214,7 +215,8 @@ CORS_ALLOW_CREDENTIALS = True
 
 RESTICUS = {
     'DEFAULT_AUTHENTICATION_CLASSES': [],
-    'STREAMING': []
+    'STREAMING': [],
+    'PAGE_SIZE_QUERY_PARAM': 'page_size',
 }
 
 
