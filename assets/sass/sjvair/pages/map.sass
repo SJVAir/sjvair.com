@@ -25,6 +25,7 @@ body.map
         cursor: pointer
         float: right
         padding: $column-gap
+        font-size: 1.5em
 
     .monitor-header
         padding: $column-gap
@@ -34,9 +35,57 @@ body.map
             font-weight: bold
 
     .monitor-graph
-        .chart
-            height: 250px
+        .chart-line
+          stroke-width: 1
+          fill: none
+          stroke-linejoin: round
+          stroke-linecap: round
+
+        .chart-legend
+          display: flex
+          align-items: center
+          justify-content: space-around
+
+        .chart-legend-marker
+          border-radius: 50%
+          display: inline-block
+          height: 12px
+          margin-right: .5em
+          width: 12px
+
+        .chart-tooltip
+          display: none
+          background-color: rgba(255, 255, 255, 0.96)
+          border-radius: 5px
+          border: 1px solid #e3e3e3
+          box-shadow: 2px 2px 6px -4px #999
+          cursor: default
+          font-size: 14px
+          pointer-events: none
+          position: absolute
+
+          .chart-tooltip-header
+            background-color: #f5f5f5
+            padding: .5em
+
+          .chart-tooltip-value
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            margin: .5em
+
+          &.active
+            display: flex
+            flex-direction: column
+
+        .chart-tooltip-line
+          stroke: none
+
+          &.active
+            stroke: #000000
 
     table.latest-stats
+        margin-top: 5em;
+
         thead th
             vertical-align: center
