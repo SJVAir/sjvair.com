@@ -32,7 +32,6 @@ MonitorField.genMulti = function(...fieldData) {
   return fields;
 }
 
-
 export default class Monitor {
   constructor(monitor) {
     Object.assign(this, monitor);
@@ -165,7 +164,9 @@ export default class Monitor {
 
 }
 
+// Default field to display
 Monitor.displayField = "pm25_avg_60";
+// Assign display labels to fields
 Monitor.fields = MonitorField.genMulti(
   ["pm25_env", "PM 2.5"],
   ["pm25_avg_15", "PM 2.5 (15m)"],
@@ -173,6 +174,8 @@ Monitor.fields = MonitorField.genMulti(
   ["pm10_env", "PM 1.0"],
   ["pm100_env", "PM 10"]
 );
+
+// Specify alternate text colors based on the background color
 Monitor.textColors = new Map()
   .set(colors.white, colors.black)
   .set(colors.gray, colors.black)
