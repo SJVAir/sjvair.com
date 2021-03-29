@@ -76,24 +76,27 @@
       </div>
       <div id="map" :class="mapIsMaximised" class="notranslate" translate="no"></div>
     </div>
-    <monitor-detail v-if="ctx.activeMonitor" :monitor="ctx.activeMonitor" />
+    <!-- <monitor-detail v-if="ctx.activeMonitor" :monitor="ctx.activeMonitor" /> -->
+    <router-view></router-view>
   </div>
 </template>
 
 <script>
-  import MonitorDetail from './components/MonitorDetail.vue';
+  //import MonitorDetail from './components/MonitorDetail.vue';
   import AppController from "./controllers/App.controller";
+  import monitorsService from "./services/Monitors.service";
 
   export default {
     name: 'app',
 
     components: {
-      MonitorDetail
+      //MonitorDetail
     },
 
     data() {
       return {
         ctx: AppController,
+        monitors: monitorsService,
         fields: AppController.monitorFields,
         interval: null,
         displayOptionsActive: false,
@@ -101,7 +104,7 @@
     },
 
     async mounted() {
-      await this.ctx.init();
+      await this.ctx.init(this.$router, this.$routes);
       // Reload the monitors every 2 minutes
       this.interval = setInterval(() => this.ctx.loadMonitors(), 1000 * 60 * 2);
     },
@@ -137,7 +140,7 @@
     computed: {
       mapIsMaximised() {
         return {
-          'is-maximised': (this.ctx.activeMonitor === null)
+          'is-maximised': !this.monitors.activeMonitor
         };
       }
     },
