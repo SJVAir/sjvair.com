@@ -1,9 +1,19 @@
+import json
+
 from datetime import datetime, time
 from urllib.parse import urlparse
 
 from django import template
+from django.template.loader import render_to_string
+from django.test import RequestFactory
+from django.urls import resolve
+from django.urls.exceptions import Resolver404
 
+from resticus import generics
+
+from camp.api.middleware import MonitorAccessMiddleware
 from camp.utils.datafiles import datafile
+from camp.utils.test import get_response_data
 
 register = template.Library()
 
@@ -22,3 +32,83 @@ def domainify(url):
     if parsed.path in ['/', '']:
         return domain
     return f'{domain}{parsed.path}'
+
+
+@register.filter
+def jsonify(data):
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.decoder.JSONDecodeError as err:
+            pass
+    try:
+        return json.dumps(data, indent=4)
+    except Exception:
+        return data
+
+
+@register.simple_tag
+def api_docs(path, json_params=None):
+    try:
+        match = resolve(path)
+    except Resolver404:
+        return f"Invalid path: {path}"
+
+    if json_params is not None:
+        try:
+            params = json.loads(json_params)
+        except Exception:
+            return str(err)
+    else:
+        params = {}
+
+    view = getattr(match.func, 'view_class', None)
+    if not issubclass(view, generics.GenericEndpoint):
+        return f"View is not an API endpoint: {view}"
+
+    middleware = MonitorAccessMiddleware(lambda request: request)
+    factory = RequestFactory()
+    request = factory.get(path, params)
+    middleware.process_view(request, match.func, match.args, match.kwargs)
+    response = match.func(request, **match.kwargs)
+
+    response_data = get_response_data(response)
+
+    # Trim the JSON responses
+    is_json = response.get('Content-Type') == 'application/json'
+    if (is_json
+        and isinstance(response_data, dict)
+        and 'data' in response_data
+        and isinstance(response_data['data'], list)
+    ):
+        response_data['data'] = response_data['data'][:1]
+
+    # Trim the CSV
+    is_csv = response.get('Content-Type') == 'text/csv'
+    if is_csv:
+        response_data = '\n'.join(response_data.splitlines()[:10])
+
+    instance = view()
+
+    filters = None
+    if hasattr(instance, 'get_filter_class'):
+        filter_class = instance.get_filter_class()
+        if filter_class is not None:
+            filters = [(k, f.__class__.__name__) for k, f in filter_class.get_filters().items()]
+
+    context = {
+        'name': match.url_name,
+        'route': f"/{match.route.lstrip('/')}",
+        'filters': filters,
+        'is_json': is_json,
+        'is_csv': is_csv,
+        'is_download': response.get('Content-Disposition', '').startswith('attachment'),
+        'data': response_data,
+    }
+
+    return render_to_string('api/endpoint-get.html', context)
+
+
+
+
+

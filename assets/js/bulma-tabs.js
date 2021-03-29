@@ -4,7 +4,7 @@ let tabsWithContent = (function () {
   let tabs = document.querySelectorAll('.tabs li');
   let tabsContent = document.querySelectorAll('.tab-content');
 
-  let deactvateAllTabs = function () {
+  let deactivateAllTabs = function () {
     tabs.forEach(function (tab) {
       tab.classList.remove('is-active');
     });
@@ -26,7 +26,7 @@ let tabsWithContent = (function () {
 
   tabs.forEach(function (tab) {
     tab.addEventListener('click', function () {
-      deactvateAllTabs();
+      deactivateAllTabs();
       hideTabsContent();
       tab.classList.add('is-active');
       activateTabsContent(tab);

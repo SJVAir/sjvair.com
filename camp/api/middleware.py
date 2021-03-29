@@ -3,6 +3,7 @@ import uuid
 from resticus import http
 
 from camp.apps.monitors.models import Monitor
+from camp.apps.monitors.methane.models import Methane
 
 
 class MonitorAccessMiddleware:
@@ -17,15 +18,25 @@ class MonitorAccessMiddleware:
 
         # We only care about the `monitors` endpoints for now, this should be
         # refactored when `sensors` goes away. Also: account for API versions.
-        if not request.path.startswith('/api/1.0/monitors/'):
+        if not request.path.startswith('/api/1.0/'):
             return None
 
+        print(view_kwargs)
+
+        lookup = None
         if 'monitor_id' in view_kwargs:
-            monitor_id = view_kwargs['monitor_id']
+            lookup = {'pk': view_kwargs['monitor_id']}
+        elif 'methane_id' in view_kwargs:
+            lookup = {
+                'name': view_kwargs['methane_id'],
+                'methane__isnull': False
+            }
+
+        if lookup is not None:
             try:
-                request.monitor = Monitor.objects.get(pk=monitor_id)
+                request.monitor = Monitor.objects.get(**lookup)
             except Monitor.DoesNotExist:
-                return http.Http400(f'No monitor exists with ID "{monitor_id}".')
+                return http.Http404(f'No monitor exists with ID "{monitor_id}".')
 
         if self.authorization_required(request):
             access_key = self.get_access_key(request)
@@ -39,8 +50,8 @@ class MonitorAccessMiddleware:
         if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
             return True
 
-        if request.monitor is not None:
-            return request.monitor.is_hidden
+        # if request.monitor is not None:
+        #     return request.monitor.is_hidden
 
         return False
 

@@ -13,5 +13,13 @@ def get_response_data(response):
         and return the data structure.
     '''
     if hasattr(response, 'streaming_content'):
-        return json.loads(''.join([b.decode('utf8') for b in response.streaming_content]))
-    return json.loads(response.content)
+        content = b''.join(list(response.streaming_content))
+    else:
+        content = response.content
+
+    if isinstance(content, bytes):
+        content = content.decode('utf-8')
+
+    if response.get('Content-Type') == 'application/json':
+        return json.loads(content)
+    return content
