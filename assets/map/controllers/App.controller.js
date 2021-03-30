@@ -61,7 +61,6 @@ class AppController {
 
   selectMonitor(activeMonitor) {
     const range = new DateRange();
-    console.log("moving to details")
     this.$router.push({
       name: "details",
       params: {

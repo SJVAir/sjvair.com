@@ -175,7 +175,6 @@ class MonitorsService {
           this.monitors[monitor.id] = new Monitor(monitor);
 
           this.monitors[monitor.id]._marker.addListener('click', () => {
-            console.log("Monitor selected from map (User Clicked)");
             this.setActiveMonitor(monitor.id);
             this.handleClick(this.activeMonitor);
           });
@@ -190,14 +189,12 @@ class MonitorsService {
     // Check to see if we are still waiting to set the active monitor
     .finally(() => {
       if (!this.activeMonitor && this.monitorExists(this.cachedMon.id)) {
-        console.log("Active Monitor found waiting, setting now")
         this.setActiveMonitor(this.cachedMon.id, this.cachedMon.dateRange);
       }
     });
   }
 
   setActiveMonitor(monitorId, dateRange) {
-    console.log("Provided date range: ", dateRange);
     const noop = this.activeMonitor && (monitorId === this.activeMonitor.id);
     const wait = !(monitorId in this.monitors);
 
