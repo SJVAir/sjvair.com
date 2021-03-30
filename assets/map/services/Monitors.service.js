@@ -49,6 +49,18 @@ class ActiveMonitor {
     return ActiveMonitor.sensors[this.device];
   }
 
+  downloadCSV () {
+    const path = `${ window.location.origin }${ http.defaults.baseURL }monitors/${this.id}/entries/csv`;
+    const params = new URLSearchParams({
+      fields: this.dataFields.join(','),
+      timestamp__gte: dateUtil.$defaultFormat(this.dateRange.gte),
+      timestamp__lte: dateUtil.$defaultFormat(this.dateRange.lte),
+      sensor: this.sensors[0]
+    }).toString();
+
+    window.open(`${ path }/?${ params }`);
+  }
+
   async loadEntries() {
     this.entries = [];
     for (let sensorGroup of this.sensors) {
