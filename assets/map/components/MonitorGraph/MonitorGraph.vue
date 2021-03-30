@@ -117,7 +117,7 @@ export default {
 
   computed: {
     dataFields() {
-        return this.monitor.datafields;
+        return this.monitor.dataFields;
     },
   },
 
@@ -137,20 +137,7 @@ export default {
       return lteStart || gteTonight;
     },
     downloadCSV () {
-      let path = `${this.$http.options.root}monitors/${this.monitor.id}/entries/csv/`,
-        params = {
-          fields: Object.keys(this.dataFields).join(','),
-          timestamp__gte: this.$date.$defaultFormat(this.monitor.dateRange.gte),
-          timestamp__lte: this.$date.$defaultFormat(this.monitor.dateRange.lte),
-          sensor: ''
-        }
-
-      if(this.sensors[this.monitor.device].length) {
-        params.sensor = this.sensors[this.monitor.device][0]
-      }
-
-      params = new URLSearchParams(params).toString();
-      window.open(`${path}?${params}`)
+      this.monitor.downloadCSV();
     },
     async loadAllEntries(){
       if (this.$date(this.monitor.dateRange.lte).unix() >= this.$date().startOf("day").unix()) {
