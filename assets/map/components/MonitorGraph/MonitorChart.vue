@@ -109,10 +109,6 @@ export default {
   },
 
   methods: {
-    tlog(val) {
-      console.log("tlog: ", val);
-      return val;
-    },
     // This is a generic function to be used both for initialization
     //   and for updating the chart. D3's "merge" method is key here.
     loadData() {

@@ -110,8 +110,6 @@ export default {
     params() { return this.$route.params; },
     query() { return this.$route.query; },
     timesince() {
-      console.log("monitor latest: ", this.monitor.latest);
-      console.log("monitor latest timestamp: ", this.monitor.latest.timestamp);
       if(Object.keys(this.monitor.latest).length > 1){
         return this.monitor.latest.timestamp.fromNow();
       }
