@@ -17,6 +17,7 @@ body.map
                 padding-left: $gap
 
     .monitor-detail
+        padding-bottom: 1em;
         background-color: #fff
         width: 100%
 
@@ -35,54 +36,69 @@ body.map
             font-weight: bold
 
     .monitor-graph
-        .chart-line
-          stroke-width: 1
-          fill: none
-          stroke-linejoin: round
-          stroke-linecap: round
+        .chart-container
+          
+          .tick
 
-        .chart-legend
-          display: flex
-          align-items: center
-          justify-content: space-around
+            line
+              //stroke: #b6b6b6
+              stroke: #e0e0e0
 
-        .chart-legend-marker
-          border-radius: 50%
-          display: inline-block
-          height: 12px
-          margin-right: .5em
-          width: 12px
+          .yaxis, .xaxis
 
-        .chart-tooltip
-          display: none
-          background-color: rgba(255, 255, 255, 0.96)
-          border-radius: 5px
-          border: 1px solid #e3e3e3
-          box-shadow: 2px 2px 6px -4px #999
-          cursor: default
-          font-size: 14px
-          pointer-events: none
-          position: absolute
+            .domain
+              opacity: 0;
 
-          .chart-tooltip-header
-            background-color: #f5f5f5
-            padding: .5em
+          .chart-line
+            stroke-width: 1
+            fill: none
+            stroke-linejoin: round
+            stroke-linecap: round
 
-          .chart-tooltip-value
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            margin: .5em
-
-          &.active
+          .chart-legend
             display: flex
-            flex-direction: column
+            align-items: center
+            justify-content: space-around
+            transform: translate(0, -28px)
 
-        .chart-tooltip-line
-          stroke: none
+          .chart-legend-marker
+            border-radius: 50%
+            display: inline-block
+            height: 12px
+            margin-right: .5em
+            width: 12px
 
-          &.active
-            stroke: #000000
+          .chart-tooltip
+            display: none
+            background-color: rgba(255, 255, 255, 0.96)
+            border-radius: 5px
+            border: 1px solid #e3e3e3
+            box-shadow: 2px 2px 6px -4px #999
+            cursor: default
+            font-size: 14px
+            pointer-events: none
+            position: absolute
+
+            .chart-tooltip-header
+              background-color: #f5f5f5
+              padding: .5em
+
+            .chart-tooltip-value
+              display: flex;
+              flex-direction: row;
+              align-items: center;
+              margin: .5em
+
+            &.active
+              display: flex
+              flex-direction: column
+
+          .chart-tooltip-line
+            stroke: none
+
+            &.active
+              stroke: #b6b6b6
+              stroke-dasharray: 3
 
     table.latest-stats
         margin-top: 5em;
