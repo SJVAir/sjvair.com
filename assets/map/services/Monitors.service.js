@@ -92,17 +92,8 @@ class ActiveMonitor {
     for(let i = this.entries.length - 1; i >= 0; i--) {
       // Convert timestamp to dayjs object
       this.entries[i].timestamp = dateUtil.utc(this.entries[i].timestamp).tz('America/Los_Angeles');
-      // Derive chart data
-      //const xData = this.entries[i].timestamp.toISOString();
-      //const yData = Object.fromEntries(this.dataFields.map(f => {
-      //  return [f, {
-      //    color: ActiveMonitor.fieldColors[f],
-      //    fieldName: f,
-      //    value: parseFloat(this.entries[i][f], 10)
-      //  }];
-      //}));
 
-      //chartData.push({ xData, yData });
+      // Derive chart data
       for (let protodata of Object.values(chartData)) {
         const metadata = {
           get color() { return protodata.color; },
