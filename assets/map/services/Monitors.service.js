@@ -153,7 +153,10 @@ ActiveMonitor.fieldColors = {
 class MonitorsService {
   constructor() {
     this.activeMonitor = null;
-    this.routeMonId = null;
+    this.cachedMon = {
+      id: null,
+      dateRange: null
+    };
     this.handleClick = null;
     this.monitors = {};
   }
@@ -164,7 +167,10 @@ class MonitorsService {
 
   clearActiveMonitor() {
     this.activeMonitor = null;
-    this.routeMonId = null;
+    this.cachedMon = {
+      id: null,
+      dateRange: null
+    };
   }
 
   async loadMonitors(monitorCB) {
@@ -178,6 +184,7 @@ class MonitorsService {
           this.monitors[monitor.id] = new Monitor(monitor);
 
           this.monitors[monitor.id]._marker.addListener('click', () => {
+            console.log("Monitor selected from map (User Clicked)");
             this.setActiveMonitor(monitor.id);
             this.handleClick(this.activeMonitor);
           });
@@ -191,20 +198,23 @@ class MonitorsService {
     .catch(e => console.error("Unable to fetch monitors\n", e))
     // Check to see if we are still waiting to set the active monitor
     .finally(() => {
-      if (!this.activeMonitor && this.monitorExists(this.routeMonId)) {
-        this.setActiveMonitor(this.routeMonId);
+      if (!this.activeMonitor && this.monitorExists(this.cachedMon.id)) {
+        console.log("Active Monitor found waiting, setting now")
+        this.setActiveMonitor(this.cachedMon.id, this.cachedMon.dateRange);
       }
     });
   }
 
   setActiveMonitor(monitorId, dateRange) {
+    console.log("Provided date range: ", dateRange);
     const noop = this.activeMonitor && (monitorId === this.activeMonitor.id);
     const wait = !(monitorId in this.monitors);
 
     if (noop) {
       return;
     } else if (wait) {
-        this.routeMonId = monitorId;
+        this.cachedMon.id = monitorId;
+        this.cachedMon.dateRange = dateRange;
     } else {
       this.activeMonitor = new ActiveMonitor(this.monitors[monitorId], dateRange);
     }

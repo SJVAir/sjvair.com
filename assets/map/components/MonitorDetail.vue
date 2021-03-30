@@ -108,6 +108,7 @@ export default {
   computed: {
     monitor() { return this.ctx.activeMonitor; },
     params() { return this.$route.params; },
+    query() { return this.$route.query; },
     timesince() {
       console.log("monitor latest: ", this.monitor.latest);
       console.log("monitor latest timestamp: ", this.monitor.latest.timestamp);
@@ -137,8 +138,8 @@ export default {
   methods: {
     setActiveMonitor() {
       this.ctx.setActiveMonitor(this.params.id, {
-        startDate: this.params.timestamp__gte,
-        endDate: this.params.timestamp__lte
+        startDate: this.query.timestamp__gte,
+        endDate: this.query.timestamp__lte
       });
     },
     on_close() {

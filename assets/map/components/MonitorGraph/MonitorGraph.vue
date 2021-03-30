@@ -63,7 +63,7 @@ export default {
   },
 
   data() {
-    const navigate = () => {
+    const updateURL = () => {
       this.$router.push({
         name: "details",
         params: {
@@ -74,7 +74,8 @@ export default {
           timestamp__lte: monitorsService.activeMonitor.dateRange.lte
         }
       });
-    }
+    };
+
     return {
       ctx: monitorsService,
       chartData: [],
@@ -83,16 +84,16 @@ export default {
       get startDate() {
         return this.ctx.activeMonitor.dateRange.gte;
       },
-      set startDate(date) {
-        this.ctx.activeMonitor.dateRange.gte = date;
-        navigate();
+      set startDate(timestamp) {
+        this.ctx.activeMonitor.dateRange.gte = timestamp;
+        updateURL();
       },
       get endDate() {
         return this.ctx.activeMonitor.dateRange.lte;
       },
-      set endDate(date) {
-        this.ctx.activeMonitor.dateRange.lte = date;
-        navigate();
+      set endDate(timestamp) {
+        this.ctx.activeMonitor.dateRange.lte = timestamp;
+        updateURL();
       },
     }
   },
