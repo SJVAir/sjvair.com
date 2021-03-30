@@ -36,7 +36,7 @@ export default class Monitor {
   constructor(monitor) {
     Object.assign(this, monitor);
 
-    this.latest.timestamp = dayjs.utc(this.latest.timestamp).local();
+    //this.latest.timestamp = dayjs.utc(this.latest.timestamp).local();
 
     this._marker = new window.google.maps.Marker({
       size: new window.google.maps.Size(32, 32),
@@ -59,6 +59,7 @@ export default class Monitor {
       Object.assign(instance, data);
     }
 
+    instance.latest.timestamp = dayjs.utc(instance.latest.timestamp).local();
     instance.updateMapMarker();
   }
 
@@ -135,8 +136,8 @@ export default class Monitor {
     return params;
   }
 
-  update(data) {
-    Monitor.setDynamicData(this, data);
+  update(monitorData) {
+    Monitor.setDynamicData(this, monitorData);
   }
 
   updateMapMarker() {
