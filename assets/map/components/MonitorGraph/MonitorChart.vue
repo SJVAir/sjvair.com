@@ -1,5 +1,5 @@
 <template>
-  <div id="chartContainer"></div>
+  <div id="chartContainer" class="chart-container"></div>
 </template>
 
 <script>
@@ -33,7 +33,7 @@ export default {
       parseTime: d3.utcParse("%Y-%m-%dT%H:%M:%S.%LZ"),
       // Positioning styles
       styles: {
-          height: 350 - margin.top - margin.bottom,
+          height: 300 - margin.top - margin.bottom,
           margin,
           width: null,
         },
@@ -81,11 +81,13 @@ export default {
 
     // Add a group to hold the Y Axis
     this.chart.append("g")
-      .attr("class", "yaxis");
+      .attr("class", "yaxis")
+      .attr("transform", `translate(${ this.styles.width }, 0)`);
 
     // Add text box for legend
     this.legend = this.container.append("div")
         .attr("class", "chart-legend")
+
     // Create tooltip element
     this.tooltip = this.container.append("div").attr("class", "chart-tooltip");
     this.tooltipLine = this.chart.append("line").attr("class", "chart-tooltip-line");
@@ -123,7 +125,7 @@ export default {
       this.y.domain([
         d3.min(flatData, d => parseInt(Math.floor(d.yData), 10)),
         d3.max(flatData, d => parseInt(Math.ceil(d.yData), 10))
-      ]);
+      ]).nice();
 
       // Add the line definitions to the chart
       const lines = this.chart.selectAll(".chart-line")
@@ -152,8 +154,7 @@ export default {
         .attr("class", "chart-legend-marker")
         .style("background-color", d => d.color);
 
-      legendKeyValues.append().text(d => d.fieldName)
-        .attr("dx", "1em")
+      legendKeyValues.append("span").text(d => d.fieldName)
 
       legendKeys.merge(legendKeys);
 
@@ -163,7 +164,7 @@ export default {
 
       // Add the Y Axis
       this.chart.selectAll(".yaxis")
-          .call(d3.axisLeft(this.y));
+          .call(d3.axisLeft(this.y).tickSize(this.styles.width));
     },
 
     renderTooltip(e) {
@@ -189,7 +190,8 @@ export default {
       const lineEl = this.tooltipLine.node();
       const lineStats = lineEl.getBoundingClientRect();
 
-      const tooltip = this.tooltip.html(`<p class="chart-tooltip-header">${ xDate }</p>`)
+      const tooltip = this.tooltip
+        .html(`<p class="chart-tooltip-header">${ xDate }</p>`)
         .classed("active", true)
         .style("left", `${ lineStats.x }px`)
         .style("top", `${ e.layerY }px`)
@@ -197,8 +199,10 @@ export default {
         .data(pointerValues).enter()
         .append("div")
         .attr("class", "chart-tooltip-value");
+
       tooltip.append("span").attr("class", "chart-legend-marker")
         .style("background-color", d => d.color);
+
       tooltip.append("span")
         .text(d => `${ d.fieldName }: `)
         .append("b")
