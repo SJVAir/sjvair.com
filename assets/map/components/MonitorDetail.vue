@@ -1,5 +1,5 @@
 <template>
-<div class="monitor-detail">
+<div v-if="monitor" class="monitor-detail">
   <div class="container is-fluid">
     <span class="monitor-close" v-on:click="on_close">
       <span class="far fa-window-close"></span>
@@ -89,7 +89,8 @@
 </template>
 
 <script>
-import MonitorGraph from './MonitorGraph.vue'
+import MonitorGraph from './MonitorGraph';
+import monitorsService from '../services/Monitors.service';
 
 export default {
   name: 'monitor-detail',
@@ -98,18 +99,16 @@ export default {
     MonitorGraph
   },
 
-  props: {
-    monitor: Object,
-    field: String
-  },
-
-  watched: {
-    //monitor: async function(monitor) {
-      // this.$refs.chart.updateChart();
-    //}
+  data() {
+    return {
+      ctx: monitorsService
+    }
   },
 
   computed: {
+    monitor() { return this.ctx.activeMonitor; },
+    params() { return this.$route.params; },
+    query() { return this.$route.query; },
     timesince() {
       if(Object.keys(this.monitor.latest).length > 1){
         return this.monitor.latest.timestamp.fromNow();
@@ -118,40 +117,60 @@ export default {
     },
 
     location() {
-      return this.monitor.location[0].toUpperCase() + this.monitor.location.slice(1).toLowerCase();
+      return !!this.monitor && this.monitor.location[0].toUpperCase() + this.monitor.location.slice(1).toLowerCase();
+    }
+  },
+
+  watch: {
+    params: function() {
+      this.setActiveMonitor();
+    },
+  },
+
+  mounted() {
+    if (this.params.id) {
+      this.setActiveMonitor();
     }
   },
 
   methods: {
+    setActiveMonitor() {
+      this.ctx.setActiveMonitor(this.params.id, {
+        startDate: this.query.timestamp__gte,
+        endDate: this.query.timestamp__lte
+      });
+    },
     on_close() {
-      this.$parent.hideMonitorDetail();
+      monitorsService.clearActiveMonitor();
+      this.$router.replace("/");
     },
 
-    aqi_label(aqi){
-      aqi = parseFloat(aqi)
-      if (aqi <= 50) {
-        return 'Good';
-      }
-      else if (aqi > 50 && aqi <= 100){
-        return 'Moderate';
-      }
-      else if (aqi > 100 && aqi <= 150){
-        return 'Unhealthy for Sensitive Groups'
-      }
-      else if (aqi > 150 && aqi <= 200){
-        return 'Unhealthy';
-      }
-      else if (aqi > 200 && aqi <= 300){
-        return 'Very Unhealthy';
-      }
-      else if (aqi > 300 && aqi <= 400){
-        return 'Hazardous';
-      }
-      else if (aqi > 400 && aqi <= 500){
-        return 'Hazardous';
-      }
-      return 'Out of Range';
-    }
+    // [ Do we need | How can we use ] this?
+    //aqi_label(aqi){
+    //  aqi = parseFloat(aqi)
+    //  if (aqi <= 50) {
+    //    return 'Good';
+    //  }
+    //  else if (aqi > 50 && aqi <= 100){
+    //    return 'Moderate';
+    //  }
+    //  else if (aqi > 100 && aqi <= 150){
+    //    return 'Unhealthy for Sensitive Groups'
+    //  }
+    //  else if (aqi > 150 && aqi <= 200){
+    //    return 'Unhealthy';
+    //  }
+    //  else if (aqi > 200 && aqi <= 300){
+    //    return 'Very Unhealthy';
+    //  }
+    //  else if (aqi > 300 && aqi <= 400){
+    //    return 'Hazardous';
+    //  }
+    //  else if (aqi > 400 && aqi <= 500){
+    //    return 'Hazardous';
+    //  }
+    //  return 'Out of Range';
+    //}
   }
 }
 </script>
