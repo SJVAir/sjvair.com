@@ -67,7 +67,7 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
                         fields.append(field)
             else:
                 fields.extend(EntrySerializer.value_fields)
-            return (entry for entry in source.values(*fields))
+            return [entry for entry in source.values(*fields)]
         return super().serialize(source, **kwargs)
 
     def form_valid(self, form):
