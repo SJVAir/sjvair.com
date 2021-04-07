@@ -119,7 +119,7 @@ class EntryCSV(EntryMixin, CSVExport):
 
 class MethaneData(EntryMixin, generics.ListEndpoint):
     def serialize(self, queryset):
-        return (entry.payload for entry in queryset)
+        return [entry.payload for entry in queryset]
 
 
 class MethaneDataUpload(generics.GenericEndpoint):
