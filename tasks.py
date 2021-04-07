@@ -54,7 +54,8 @@ def collectstatic(ctx):
     ctx.run('python manage.py collectstatic --noinput', pty=True)
 
 
-def vue(ctx, name):
+def vue(ctx, name, dev_mode):
+    mode = "developement" if dev_mode else "production"
     mkdir('./dist/js/lib')
 
     # Copy vue itself
@@ -66,7 +67,7 @@ def vue(ctx, name):
 
     # Run the build for the map
     command = f'''yarn build \
-        --mode production \
+        --mode {mode} \
         --no-clean \
         --formats umd-min \
         --target lib \
@@ -78,9 +79,9 @@ def vue(ctx, name):
 
 
 @invoke.task()
-def build(ctx):
+def build(ctx, dev=False):
     styles(ctx)
-    vue(ctx, 'map')
+    vue(ctx, 'map', dev)
     collectstatic(ctx)
 
 
@@ -90,6 +91,6 @@ def watch(ctx):
     server.watch(path('./assets/img/'), lambda: collectstatic(ctx))
     server.watch(assets('js/**'), lambda: collectstatic(ctx))
     server.watch(assets('sass/**'), lambda: [styles(ctx), collectstatic(ctx)])
-    server.watch(assets('map/**'), lambda: [vue(ctx, 'map'), collectstatic(ctx)])
+    server.watch(assets('map/**'), lambda: [vue(ctx, 'map', True), collectstatic(ctx)])
     server.watch(path('./dist/lib/'), lambda: collectstatic(ctx))
     server.serve()
