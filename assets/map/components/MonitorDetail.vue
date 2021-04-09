@@ -1,7 +1,7 @@
 <template>
 <div v-if="monitor" class="monitor-detail">
   <div class="container is-fluid">
-    <span class="monitor-close" v-on:click="on_close">
+    <span class="monitor-close" v-on:click="close">
       <span class="far fa-window-close"></span>
     </span>
     <div class="monitor-header">
@@ -145,7 +145,8 @@ export default {
         endDate: this.query.timestamp__lte
       });
     },
-    on_close() {
+
+    close() {
       this.$destroy();
     },
 
