@@ -21,8 +21,6 @@ class MonitorAccessMiddleware:
         if not request.path.startswith('/api/1.0/'):
             return None
 
-        print(view_kwargs)
-
         lookup = None
         if 'monitor_id' in view_kwargs:
             lookup = {'pk': view_kwargs['monitor_id']}
@@ -36,6 +34,7 @@ class MonitorAccessMiddleware:
             try:
                 request.monitor = Monitor.objects.get(**lookup)
             except Monitor.DoesNotExist:
+                monitor_id = lookup.get('pk', lookup.get('name'))
                 return http.Http404(f'No monitor exists with ID "{monitor_id}".')
 
         if self.authorization_required(request):
