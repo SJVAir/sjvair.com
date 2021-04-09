@@ -133,6 +133,11 @@ export default {
     }
   },
 
+  beforeDestroy() {
+    monitorsService.clearActiveMonitor();
+    this.$router.replace("/");
+  },
+
   methods: {
     setActiveMonitor() {
       this.ctx.setActiveMonitor(this.params.id, {
@@ -141,8 +146,7 @@ export default {
       });
     },
     on_close() {
-      monitorsService.clearActiveMonitor();
-      this.$router.replace("/");
+      this.$destroy();
     },
 
     // [ Do we need | How can we use ] this?
