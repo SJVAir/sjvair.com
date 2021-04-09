@@ -1,7 +1,7 @@
 <template>
 <div v-if="monitor" class="monitor-detail">
   <div class="container is-fluid">
-    <span class="monitor-close" v-on:click="on_close">
+    <span class="monitor-close" v-on:click="close">
       <span class="far fa-window-close"></span>
     </span>
     <div class="monitor-header">
@@ -133,6 +133,11 @@ export default {
     }
   },
 
+  beforeDestroy() {
+    monitorsService.clearActiveMonitor();
+    this.$router.replace("/");
+  },
+
   methods: {
     setActiveMonitor() {
       this.ctx.setActiveMonitor(this.params.id, {
@@ -140,9 +145,9 @@ export default {
         endDate: this.query.timestamp__lte
       });
     },
-    on_close() {
-      monitorsService.clearActiveMonitor();
-      this.$router.replace("/");
+
+    close() {
+      this.$destroy();
     },
 
     // [ Do we need | How can we use ] this?
