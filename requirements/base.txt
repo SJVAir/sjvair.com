@@ -6,7 +6,7 @@ dj-static==0.0.6
 django-admin-honeypot==1.1.0
 django-annoying==0.10.6
 django-cors-headers==3.5.0
-django-debug-toolbar==2.2
+django-debug-toolbar==2.2.1
 django-debug-toolbar-force==0.1.8
 django-dirtyfields==1.4
 django-extensions==3.0.5
