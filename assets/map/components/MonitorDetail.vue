@@ -101,7 +101,11 @@ export default {
 
   data() {
     return {
-      ctx: monitorsService
+      ctx: monitorsService,
+      cachedQuery: {
+        timestamp__gte: null,
+        timestamp__lte: null
+      }
     }
   },
 
@@ -125,9 +129,14 @@ export default {
     params: function() {
       this.setActiveMonitor();
     },
+    query: function() {
+      this.cacheQuery();
+    }
   },
 
   mounted() {
+    this.cacheQuery();
+
     if (this.params.id) {
       this.setActiveMonitor();
     }
@@ -139,10 +148,21 @@ export default {
   },
 
   methods: {
+    cacheQuery() {
+      if (this.query) {
+        this.cachedQuery = Object.assign({}, this.query);
+        this.$router.replace({ query: null })
+          .catch(e => {
+            if (e.name !== "NavigationDuplicated") {
+              throw e;
+            }
+          });
+      }
+    },
     setActiveMonitor() {
       this.ctx.setActiveMonitor(this.params.id, {
-        startDate: this.query.timestamp__gte,
-        endDate: this.query.timestamp__lte
+        startDate: this.cachedQuery.timestamp__gte,
+        endDate: this.cachedQuery.timestamp__lte
       });
     },
 
