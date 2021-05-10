@@ -101,6 +101,13 @@ Fully shut down the box:
 host:~/dev/sjvair.com$ vagrant halt
 ```
 
+### Help! I only see sensors on the map the first time I run `vagrant up`
+This happens because of a gap in time and data. The server will try to backfill sensor entries to the last point in time in which it was running. If you have the patience, you can wait for the server to process all of that missing data, and then everything should work as expected. For the rest of us who can't wait, we can start fresh by flushing the task queue and deleting the old sensor entries like so:
+
+```
+host:~dev/sjvair.com$ python manage.py clear_huey_and_entries
+```
+
 ### How do I access Postgres from outside my Vagrant box?
 
 If you're wanting to access the database in your Vagrant box, e.g., with
