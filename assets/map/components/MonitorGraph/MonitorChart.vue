@@ -91,6 +91,7 @@ export default {
     // Create tooltip element
     this.tooltip = this.container.append("div").attr("class", "chart-tooltip");
     this.tooltipLine = this.chart.append("line").attr("class", "chart-tooltip-line");
+    this.tooltipLinePoints = this.chart.append("g")
 
     // Add Overlay to watch for events
     this.tipbox = this.svg.append("rect")
@@ -177,20 +178,35 @@ export default {
         pointerValues.push(dataPoint);
       }
 
+      const tooltipLineX = this.x(this.parseTime(pointerValues[0].xData));
       this.tooltipLine.classed("active", true)
-        .attr("x1", pointerCoords[0])
-        .attr("x2", pointerCoords[0])
+        .attr("x1", tooltipLineX)
+        .attr("x2", tooltipLineX)
         .attr("y1", 0)
         .attr("y2", this.styles.height);
 
-      const lineEl = this.tooltipLine.node();
-      const lineStats = lineEl.getBoundingClientRect();
+      const tooltipLinePoints = this.tooltipLinePoints.selectAll(".tooltip-line-point")
+        .data(pointerValues);
+
+      tooltipLinePoints.exit().remove();
+
+      tooltipLinePoints.enter()
+        .append("circle")
+        .attr("class", "tooltip-line-point")
+        .merge(tooltipLinePoints)
+        .attr("r", 7)
+        .attr("cx", d => `${ this.x(this.parseTime(d.xData)) }px`)
+        .attr("cy", d => `${ this.y(d.yData) }px`)
+        .attr("fill", d => d.color);
+
+      const lineStats = this.tooltipLine.node()
+        .getBoundingClientRect();
 
       const tooltip = this.tooltip
-        .html(`<p class="chart-tooltip-header">${ xDate }</p>`)
+        .html(`<p class="chart-tooltip-header">${ this.$date.$prettyPrint(pointerValues[0].xData) }</p>`)
         .classed("active", true)
-        .style("left", `${ lineStats.x }px`)
-        .style("top", `${ e.layerY }px`)
+        .style("left", `calc(${ lineStats.x }px + 2em)`)
+        .style("top", `calc(${ e.layerY }px + 3.5em)`)
         .selectAll()
         .data(pointerValues).enter()
         .append("div")
@@ -206,14 +222,13 @@ export default {
     },
 
     removeTooltip() {
-      if (this.tooltip) {
+      if (this.tooltip.node().classList.contains("active")) {
         this.tooltip.classed("active", false)
-        //.style("display", "none");
       }
-      if (this.tooltipLine) {
+      if (this.tooltipLine.node().classList.contains("active")) {
         this.tooltipLine.classed("active", false)
-        //.attr("stroke", "none");
       }
+      this.tooltipLinePoints.selectAll(".tooltip-line-point").remove();
     }
   }
 }
