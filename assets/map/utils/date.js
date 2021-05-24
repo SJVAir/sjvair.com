@@ -11,7 +11,10 @@ dayjs.extend(utc);
 // Define custom date utils
 Object.assign(dayjs, {
   $defaultFormat(date) {
-    return dayjs.utc(date).format('YYYY-MM-DD HH:mm:ss');
+    return dayjs.utc(date).format("YYYY-MM-DD HH:mm:ss");
+  },
+  $prettyPrint(date) {
+    return dayjs.utc(date).format("h:mma dddd MMM DD, YYYY")
   }
 });
 
