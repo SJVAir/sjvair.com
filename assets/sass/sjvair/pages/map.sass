@@ -17,7 +17,7 @@ body.map
                 padding-left: $gap
 
     .monitor-detail
-        padding-bottom: 1em;
+        padding-bottom: 1em
         background-color: #fff
         width: 100%
 
@@ -36,6 +36,12 @@ body.map
             font-weight: bold
 
     .monitor-graph
+        .loading-notice
+          font-size: 1.25em
+          font-weight: 800
+          text-align: center
+          margin-top: 5em
+
         .chart-container
           
           .tick
@@ -47,7 +53,7 @@ body.map
           .yaxis, .xaxis
 
             .domain
-              opacity: 0;
+              opacity: 0
 
           .chart-line
             stroke-width: 1
@@ -84,9 +90,9 @@ body.map
               padding: .5em
 
             .chart-tooltip-value
-              display: flex;
-              flex-direction: row;
-              align-items: center;
+              display: flex
+              flex-direction: row
+              align-items: center
               margin: .5em
 
             &.active
@@ -101,7 +107,7 @@ body.map
               stroke-dasharray: 3
 
     table.latest-stats
-        margin-top: 5em;
+        margin-top: 5em
 
         thead th
             vertical-align: center
