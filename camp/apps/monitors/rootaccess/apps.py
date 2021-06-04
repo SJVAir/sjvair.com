@@ -2,4 +2,4 @@ from django.apps import AppConfig
 
 
 class RootaccessConfig(AppConfig):
-    name = 'rootaccess'
+    name = 'camp.apps.monitors.rootaccess'
