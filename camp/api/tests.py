@@ -31,19 +31,6 @@ class MonitorAccessMiddlewareTests(TestCase):
         auth_required = self.middleware.authorization_required(request)
         assert auth_required == False
 
-    def test_auth_required_hidden(self):
-        self.monitor.is_hidden = True
-        self.monitor.save()
-
-        url = reverse('api:v1:monitors:monitor-detail', kwargs={
-            'monitor_id': self.monitor.pk
-        })
-        request = self.factory.get(url)
-        request.monitor = self.monitor
-
-        auth_required = self.middleware.authorization_required(request)
-        assert auth_required == True
-
     def test_access_key_param(self):
         url = reverse('api:v1:monitors:monitor-detail', kwargs={
             'monitor_id': self.monitor.pk
@@ -64,14 +51,11 @@ class MonitorAccessMiddlewareTests(TestCase):
         access_key = self.middleware.get_access_key(request)
         assert access_key == self.monitor.access_key
 
-    def test_monitor_detail_access_granted(self):
-        self.monitor.is_hidden = True
-        self.monitor.save()
-
+    def test_monitor_update_access_granted(self):
         url = reverse('api:v1:monitors:monitor-detail', kwargs={
             'monitor_id': self.monitor.pk
         })
-        request = self.factory.get(url, HTTP_ACCESS_KEY=str(self.monitor.access_key))
+        request = self.factory.post(url, {'name': 'test'}, HTTP_ACCESS_KEY=str(self.monitor.access_key))
         request.monitor = self.monitor
 
         process_view = self.middleware.process_view(
@@ -79,14 +63,11 @@ class MonitorAccessMiddlewareTests(TestCase):
         )
         assert process_view is None
 
-    def test_monitor_detail_access_denied(self):
-        self.monitor.is_hidden = True
-        self.monitor.save()
-
+    def test_monitor_update_access_denied(self):
         url = reverse('api:v1:monitors:monitor-detail', kwargs={
             'monitor_id': self.monitor.pk
         })
-        request = self.factory.get(url)
+        request = self.factory.post(url, {})
         request.monitor = self.monitor
 
         process_view = self.middleware.process_view(
