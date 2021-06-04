@@ -48,10 +48,6 @@ class MonitorAccessMiddleware:
     def authorization_required(self, request):
         if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
             return True
-
-        # if request.monitor is not None:
-        #     return request.monitor.is_hidden
-
         return False
 
     def get_access_key(self, request):
