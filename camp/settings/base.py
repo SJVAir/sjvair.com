@@ -57,11 +57,13 @@ INSTALLED_APPS = [
     'admin_honeypot',
     'django_extensions',
     'django_filters',
+    'form_utils',
     'huey.contrib.djhuey',
     'livereload',
     'localflavor',
     'resticus',
     'storages',
+    'widget_tweaks',
 
     'camp.api',
     'camp.apps.accounts',

@@ -11,6 +11,7 @@ admin.site.site_header = "SJVAir Admin"
 
 urlpatterns = [
     path('api/', include('camp.api.urls', namespace='api')),
+    path('account/', include(('camp.apps.accounts.urls', 'account'), namespace='account')),
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
