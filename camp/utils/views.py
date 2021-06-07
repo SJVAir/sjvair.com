@@ -1,17 +1,47 @@
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.views import SuccessURLAllowedHostsMixin
 from django.db import connection
 from django.http import Http404
-from django.shortcuts import redirect
+from django.shortcuts import redirect, resolve_url
 from django.template import loader, TemplateDoesNotExist
 from django.utils import timezone
 from django.utils.decorators import method_decorator
+from django.utils.http import is_safe_url
 from django.views import generic
 
 from huey.contrib.djhuey import HUEY
 from resticus.http import JSONResponse
 
 from camp.apps.monitors.models import Entry
+
+
+class RedirectViewMixin(SuccessURLAllowedHostsMixin):
+    redirect_field_name = 'next'
+
+    def get_redirect_url(self):
+        redirect_to = self.request.POST.get(
+            self.redirect_field_name,
+            self.request.GET.get(self.redirect_field_name, None)
+        )
+
+        if redirect_to is None:
+            redirect_to = resolve_url(self.success_url)
+
+        url_is_safe = is_safe_url(
+            url=redirect_to,
+            allowed_hosts=self.get_success_url_allowed_hosts(),
+            require_https=self.request.is_secure(),
+        )
+        return redirect_to if url_is_safe else ''
+
+    def get_success_url(self):
+        return self.get_redirect_url()
+
+    def get_context_data(self, **kwargs):
+        context = super(RedirectViewMixin, self).get_context_data(**kwargs)
+        context[self.redirect_field_name] = self.get_redirect_url()
+        return context
 
 
 class PageTemplate(generic.TemplateView):
@@ -53,6 +83,7 @@ class AdminStats(generic.View):
                 WHERE relname=%s;
             """, [Entry._meta.db_table])
             return cursor.fetchone()[0]
+
 
 @method_decorator(staff_member_required, name='dispatch')
 class FlushQueue(generic.View):

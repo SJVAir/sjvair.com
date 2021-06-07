@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Create an account | {{ block.super }}{% endblock %}
+
+{% block page-header-class %}{% endblock %}
+{% block page-heading-title %}Create an account{% endblock %}
+
+{% block content %}
+<section class="section hook">
+    <div class="container">
+        <div class="columns is-centered">
+            <div class="column is-10-tablet is-8-desktop content">
+                <p class="lead text-center">
+                    Creating your account is only the first step.<br />
+                    <span class="is-size-5 has-text-grey">We'll talk about your membership on the next page. :)</span>
+                </p>
+                <form action="{% url 'account:signup' %}" method="post" class="form">
+                    {% csrf_token %}
+                    {% for field in form.hidden_fields %}
+                        {{ field }}
+                    {% endfor %}
+                    <input type="hidden" name="{{ view.redirect_field_name }}" value="{{ view.get_redirect_url }}" />
+
+                    <div class="box">
+                        {% include '_includes/form/field.html' with field=form.full_name icon_left="far fa-user" %}
+                        {% include '_includes/form/field.html' with field=form.email icon_left="far fa-envelope" %}
+                    </div>
+
+                    <div class="box">
+                        {% include '_includes/form/field.html' with field=form.password1 icon_left="far fa-lock" %}
+                        {% include '_includes/form/field.html' with field=form.password2 icon_left="far fa-lock" %}
+                    </div>
+
+                    <div class="box">
+                        <div class="notification is-size-7 is-info is-light">
+                            Our space is full of awesome people doing awesome things, and we want to
+                            help share those things! If you're active on the social media platforms
+                            we use, drop in your usernames so we can follow you back! <i>(Btw, this
+                            is totally optional and we will never use this info for any nefarious purposes.)</i>
+                        </div>
+                        {% include '_includes/form/field.html' with field=form.twitter icon_left="fab fa-twitter" %}
+                        {% include '_includes/form/field.html' with field=form.instagram icon_left="fab fa-instagram" %}
+                        {% include '_includes/form/field.html' with field=form.facebook icon_left="fab fa-facebook" %}
+                    </div>
+
+                    <div class="box">
+                        {% include '_includes/form/field.html' with field=form.coc %}
+                    </div>
+
+                    <div class="columns is-vcentered">
+                        <div class="column is-one-third">
+                            <button type="submit" class="button is-success is-medium">Sign up</button>
+                        </div>
+                        <div class="column is-two-thirds has-text-centered has-text-right-tablet">
+                            <a href="{% url 'account:login' %}" class="button is-text is-small">Log in to an existing account.</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
