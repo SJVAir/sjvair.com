@@ -37,7 +37,7 @@ livereload==2.6.3
 nameparser==1.0.6
 newrelic==5.16.2.147
 numpy==1.19.1
-Pillow==8.1.1
+Pillow==8.2.0
 psycopg2==2.8.5 --no-binary psycopg2
 py-expression-eval==0.3.10
 pylibmc==1.6.1
