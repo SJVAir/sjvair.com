@@ -45,7 +45,7 @@
     <monitor-chart :chartData="monitor.chartData" :dataFields="monitor.dataFields"></monitor-chart>
   </div>
   <h1 v-if="loading" class="loading-notice">Fetching Data...</h1>
-</div> 
+</div>
 </template>
 
 <script>

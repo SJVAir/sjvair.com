@@ -90,7 +90,7 @@
 
 <script>
 import MonitorGraph from './MonitorGraph';
-import monitorsService from '../services/Monitors.service';
+import monitorsService from '../../services/Monitors.service';
 
 export default {
   name: 'monitor-detail',
