@@ -14,7 +14,7 @@ Object.assign(dayjs, {
     return dayjs.utc(date).format("YYYY-MM-DD HH:mm:ss");
   },
   $prettyPrint(date) {
-    return dayjs.utc(date).format("h:mma dddd MMM DD, YYYY")
+    return dayjs.utc(date).tz('America/Los_Angeles').format("h:mma dddd MMM DD, YYYY")
   }
 });
 
