@@ -98,7 +98,7 @@ export default {
       return lteStart || gteTonight;
     },
     downloadCSV() {
-      this.monitor.downloadCSV();
+      this.ctx.activeMonitor.downloadCSV();
     },
     loadAllEntries() {
       this.$emit("loadAll");
