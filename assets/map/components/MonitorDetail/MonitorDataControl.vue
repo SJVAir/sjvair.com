@@ -1,5 +1,4 @@
 <template>
-<div v-if="monitor" class="monitor-graph">
   <div class="date-select columns is-mobile">
     <div class="column is-3">
       <div class="field">
@@ -40,29 +39,17 @@
       </div>
     </div>
   </div>
-
-  <div :class="{ 'is-hidden': loading }" class="chart">
-    <monitor-chart :chartData="monitor.chartData" :dataFields="monitor.dataFields"></monitor-chart>
-  </div>
-  <h1 v-if="loading" class="loading-notice">Fetching Data...</h1>
-</div> 
 </template>
 
 <script>
 import Datepicker from 'vuejs-datepicker/dist/vuejs-datepicker.esm.js';
-import MonitorChart from './MonitorChart.vue';
 import monitorsService from '../../services/Monitors.service';
 
 export default {
-  name: 'monitor-graph',
+  name: "monitor-data-control",
   components: {
-    Datepicker,
-    MonitorChart
+    Datepicker
   },
-  props: {
-    monitor: Object,
-  },
-
   data() {
     const updateURL = () => {
       this.$router.push({
@@ -79,9 +66,6 @@ export default {
 
     return {
       ctx: monitorsService,
-      chartData: [],
-      interval: null,
-      loading: false,
       get startDate() {
         return this.ctx.activeMonitor.dateRange.gte;
       },
@@ -98,30 +82,6 @@ export default {
       },
     }
   },
-
-  async mounted() {
-    this.loadAllEntries();
-    this.startSync();
-  },
-
-  destroyed() {
-    if(this.interval) {
-      this.stopSync();
-    }
-  },
-
-  watch: {
-    monitor: async function() {
-      this.loadAllEntries();
-    }
-  },
-
-  computed: {
-    dataFields() {
-        return this.monitor.dataFields;
-    },
-  },
-
   methods: {
     checkStartDate(date) {
       // Date must be lte endDate and lte today.
@@ -137,31 +97,11 @@ export default {
       const gteTonight = date > this.$date().endOf('day').toDate();
       return lteStart || gteTonight;
     },
-    downloadCSV () {
-      this.monitor.downloadCSV();
+    downloadCSV() {
+      this.ctx.activeMonitor.downloadCSV();
     },
-    async loadAllEntries(){
-      if (this.$date(this.monitor.dateRange.lte).unix() >= this.$date().startOf("day").unix()) {
-        this.startSync();
-      } else {
-        this.stopSync();
-      }
-      this.loading = true;
-      await this.monitor.loadEntries();
-      this.loading = false;
-    },
-
-    startSync() {
-      if (!this.interval) {
-        this.interval = setInterval(this.loadAllEntries, 1000 * 60 * 2);
-      }
-    },
-
-    stopSync() {
-      if (this.interval) {
-        clearInterval(this.interval);
-        this.interval = null;
-      }
+    loadAllEntries() {
+      this.$emit("loadAll");
     }
   }
 }
