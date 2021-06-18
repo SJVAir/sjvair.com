@@ -1,7 +1,7 @@
 import Vue from 'vue';
 import VueRouter from 'vue-router';
 import App from './App.vue';
-import MonitorDetail from './components/MonitorDetail.vue';
+import MonitorDetail from './components/MonitorDetail';
 import dateUtil from './utils/date';
 import http from './utils/http';
 

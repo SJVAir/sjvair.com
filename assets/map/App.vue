@@ -97,7 +97,6 @@
       return {
         ctx: AppController,
         monitors: monitorsService,
-        fields: AppController.monitorFields,
         interval: null,
         displayOptionsActive: false,
       }
