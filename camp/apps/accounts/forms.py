@@ -21,15 +21,6 @@ class UserCreationForm(forms.ModelForm):
         widget=forms.PasswordInput,
         help_text=_('Enter the same password as above, for verification.'))
 
-    coc = forms.BooleanField(label='Code of Conduct', help_text='''
-        By checking this box, you agree to abide by the
-        <a href="/code-of-conduct/">Code of Conduct</a>
-        while participating in events and activities at
-        the hackerspace, within our online spaces, and
-        while representing the hackerspace at external
-        events.
-    ''')
-
     class Meta:
         model = User
         fields = ('email', 'full_name')

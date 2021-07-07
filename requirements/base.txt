@@ -11,14 +11,14 @@ django-debug-toolbar-force==0.1.8
 django-dirtyfields==1.7.0
 django-extensions==3.1.3
 django-filter==2.4.0
-# django-form-utils==1.0.3
 django-heroku==0.3.1
 django-localflavor==3.1
 django-model-utils==4.1.1
+django-phonenumber-field==5.2.0
 django-smalluuid==1.2.0
 django-storages==1.11.1
 django-vanilla-views==3.0.0
-# django-widget-tweaks==1.4.8
+django-widget-tweaks==1.4.8
 
 argon2-cffi==20.1.0
 asgiref==3.3.4
@@ -57,3 +57,4 @@ Unipath==1.1
 whitenoise==5.2.0
 
 git+https://github.com/dmpayton/django-resticus@8cabf31d48
+git+https://github.com/dmpayton/django-form-utils@django-3.x
