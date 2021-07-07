@@ -1,11 +1,9 @@
-import Monitor from "../models/monitor";
 import GoogleMapsInit from '../utils/gmaps';
 import monitorsService, {DateRange} from "../services/Monitors.service";
 
 class AppController {
   constructor() {
     this.flags = AppController.flags;
-    this.monitorFields = Monitor.fields;
     this.monitors = monitorsService.monitors;
     this.map = null;
     this.$router = null;
