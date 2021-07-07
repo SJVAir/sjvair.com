@@ -12,7 +12,7 @@ class SignupView(RedirectViewMixin, vanilla.CreateView):
     template_name = 'account/signup.html'
     form_class = UserCreationForm
     redirect_field_name = 'next'
-    success_url = 'account:membership'
+    success_url = reverse_lazy('account:profile')
 
     def get_context_data(self, **kwargs):
         context = super(SignupView, self).get_context_data(**kwargs)
