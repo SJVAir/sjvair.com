@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.gis',
+    'django.contrib.humanize',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
@@ -65,6 +66,7 @@ INSTALLED_APPS = [
 
     'camp.api',
     'camp.apps.accounts',
+    'camp.apps.calibrations',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.bam',
