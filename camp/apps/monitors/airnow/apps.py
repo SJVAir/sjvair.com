@@ -2,4 +2,4 @@ from django.apps import AppConfig
 
 
 class AirnowConfig(AppConfig):
-    name = 'airnow'
+    name = 'camp.apps.monitors.airnow'
