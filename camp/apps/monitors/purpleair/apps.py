@@ -2,4 +2,4 @@ from django.apps import AppConfig
 
 
 class PurpleairConfig(AppConfig):
-    name = 'purpleair'
+    name = 'camp.apps.monitors.purpleair'
