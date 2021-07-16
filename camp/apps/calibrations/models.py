@@ -60,17 +60,19 @@ class Calibrator(TimeStampedModel):
         # formulas for their calibrations
         formulas = [
             (
-                ['particles_03-10', 'particles_10-25'],
+                ['particles_03-10', 'particles_10-25', 'humidity'],
                 lambda reg: ' + '.join([
                     f"((particles_03um - particles_10um) * {reg.coef_[0]})",
                     f"((particles_10um - particles_25um) * {reg.coef_[1]})",
+                    f"(humidity * {reg.coef_[2]})"
                     f"{reg.intercept_}",
                 ])
             ), (
-                ['particles_03-10', 'particles_25-05'],
+                ['particles_10-25', 'particles_25-05', 'humidity'],
                 lambda reg: ' + '.join([
-                    f"((particles_03um - particles_10um) * {reg.coef_[0]})",
+                    f"((particles_10um - particles_25um) * {reg.coef_[0]})",
                     f"((particles_25um - particles_05um) * {reg.coef_[1]})",
+                    f"(humidity * {reg.coef_[2]})",
                     f"{reg.intercept_}",
                 ])
             )
@@ -84,7 +86,7 @@ class Calibrator(TimeStampedModel):
                 days=days,
             )
             for (coefs, formula), days
-            in itertools.product(formulas, [7, 14])
+            in itertools.product(formulas, [7, 14, 21, 28])
         ]))
 
         print(f'{self.reference.name} / {self.colocated.name} ({self.get_distance().meters} m)')
@@ -124,7 +126,7 @@ class Calibrator(TimeStampedModel):
                 sensor='a', # Assumes PurpleAir
             )
             .annotate(col_pm25=F('pm25_env'))
-            .values('timestamp', 'col_pm25', 'particles_03um',
+            .values('timestamp', 'col_pm25', 'humidity', 'particles_03um',
                 'particles_05um', 'particles_10um', 'particles_25um')
         )
 
