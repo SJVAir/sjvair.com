@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Login | {{ block.super }}{% endblock %}
+
+{% block page-header-class %}{% endblock %}
+{% block page-header-title %}Login{% endblock %}
+
+{% block content %}
+<section class="section">
+    <div class="container">
+        <div class="columns is-centered">
+            <div class="column is-8-tablet is-6-desktop content">
+                <p class="lead">Enter your email and password to log in:</p>
+                <form action="{% url 'account:login' %}" method="post" class="form">
+                    {% csrf_token %}
+                    {% include '_includes/form/form.html' with form=form %}
+                    <div class="columns is-vcentered">
+                        <div class="column is-one-third">
+                            <button type="submit" class="button is-success">Log in</button>
+                        </div>
+                        <div class="column is-two-thirds has-text-centered has-text-right-tablet">
+                            <ul class="list-inline">
+                                <li>
+                                    <a href="{% url 'account:password-reset' %}">Forgot your password?</a>
+                                </li>
+                                <li>
+                                    <a href="{% url 'account:signup' %}">Sign up for an account.</a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

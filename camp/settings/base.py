@@ -58,11 +58,13 @@ INSTALLED_APPS = [
     'admin_honeypot',
     'django_extensions',
     'django_filters',
+    'form_utils',
     'huey.contrib.djhuey',
     'livereload',
     'localflavor',
     'resticus',
     'storages',
+    'widget_tweaks',
 
     'camp.api',
     'camp.apps.accounts',
@@ -140,6 +142,12 @@ AUTHENTICATION_BACKENDS = (
 )
 
 AUTH_USER_MODEL = 'accounts.User'
+
+LOGIN_URL = 'account:login'
+
+LOGIN_REDIRECT_URL = '/'
+
+LOGOUT_REDIRECT_URL = '/'
 
 
 # Password validation

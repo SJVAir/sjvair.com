@@ -1,0 +1,12 @@
+{% csrf_token %}
+{% for field in form.hidden_fields %}
+    {{ field }}
+{% endfor %}
+
+{% for error in form.non_field_errors %}
+    <span class="help is-danger has-text-weight-semibold">{{ error }}</span>
+{% endfor %}
+
+{% for field in form.visible_fields %}
+    {% include '_includes/form/field.html' with field=field %}
+{% endfor %}

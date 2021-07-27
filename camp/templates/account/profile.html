@@ -1,0 +1,21 @@
+{% extends "account/base.html" %}
+
+{% block title %}Profile information | {{ block.super }}{% endblock %}
+
+{% block account-tab-profile %}is-active{% endblock %}
+
+{% block inner-content %}
+    <form class="form" action="{% url 'account:profile' %}" method="post">
+        {% csrf_token %}
+        {% for field in form.hidden_fields %}
+            {{ field }}
+        {% endfor %}
+
+        <div class="box">
+            {% include '_includes/form/field.html' with field=form.full_name icon_left="far fa-user" %}
+            {% include '_includes/form/field.html' with field=form.email icon_left="far fa-envelope" %}
+        </div>
+
+        <button type="submit" class="button is-success">Update profile</button>
+    </form>
+{% endblock %}
