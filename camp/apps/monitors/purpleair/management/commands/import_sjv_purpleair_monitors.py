@@ -43,7 +43,7 @@ class Command(BaseCommand):
             point = shape({'type': 'Point', 'coordinates': [monitor['Lon'], monitor['Lat']]})
             if counties.contains(point).any():
                 try:
-                    PurpleAir.objects.get(name=monitor['Label'])
+                    PurpleAir.objects.get(data__0__ID=monitor['ID'])
                 except PurpleAir.DoesNotExist:
                     print(monitor['Label'])
                     form = PurpleAirAddForm({'purple_id': monitor['ID']})
