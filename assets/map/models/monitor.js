@@ -166,7 +166,7 @@ export default class Monitor {
 }
 
 // Default field to display
-Monitor.displayField = "pm25_avg_60";
+Monitor.displayField = "pm25_avg_15";
 // Assign display labels to fields
 Monitor.fields = MonitorField.genMulti(
   ["pm25_env", "PM 2.5"],
