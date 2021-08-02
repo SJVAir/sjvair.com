@@ -67,10 +67,10 @@ class MapMarker(generics.Endpoint):
     def get(self, request):
         data = self.get_form().get_data()
 
-        im = Image.new('RGBA', (39, 39), (0, 0, 0, 0))
+        im = Image.new('RGBA', (24, 24), (0, 0, 0, 0))
         draw = ImageDraw.Draw(im)
 
-        xy = (1, 1, 37, 37)
+        xy = (1, 1, 22, 22)
         if data['shape'] == 'polygon':
             xy = [
                 (xy[0] + xy[2]) / 2,
