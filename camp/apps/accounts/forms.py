@@ -7,7 +7,7 @@ from .models import User
 
 class ProfileForm(forms.ModelForm):
     class Meta:
-        fields = ('full_name', 'email')
+        fields = ('full_name', 'email', 'phone')
         model = User
 
 
@@ -23,7 +23,7 @@ class UserCreationForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ('email', 'full_name')
+        fields = ('email', 'full_name', 'phone')
 
     def clean_email(self):
         email = User.objects.normalize_email(self.cleaned_data['email'])
@@ -72,3 +72,7 @@ class UserChangeForm(forms.ModelForm):
         # This is done here, rather than on the field, because the
         # field does not have access to the initial value
         return self.initial['password']
+
+
+class PhoneVerificationForm(forms.Form):
+    code = forms.CharField(max_length=4, min_length=4)

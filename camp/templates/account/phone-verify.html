@@ -1,0 +1,20 @@
+{% extends "account/base.html" %}
+
+{% block title %}Verify your phone number | {{ block.super }}{% endblock %}
+
+{% block account-tab-profile %}is-active{% endblock %}
+
+{% block inner-content %}
+    <form class="form" action="{% url 'account:profile' %}" method="post">
+        {% csrf_token %}
+        {% for field in form.hidden_fields %}
+            {{ field }}
+        {% endfor %}
+
+        <div class="box">
+            {% include '_includes/form/field.html' with field=form.code %}
+        </div>
+
+        <button type="submit" class="button is-success">Verify your phone number.</button>
+    </form>
+{% endblock %}
