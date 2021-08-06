@@ -23,7 +23,7 @@ class UserCreationForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ('email', 'full_name', 'phone')
+        fields = ('full_name', 'email', 'phone')
 
     def clean_email(self):
         email = User.objects.normalize_email(self.cleaned_data['email'])
@@ -58,7 +58,7 @@ class UserChangeForm(forms.ModelForm):
                     "using <a href=\"password/\">this form</a>."))
 
     class Meta:
-        fields = ('email', 'full_name', 'password')
+        fields = ('full_name', 'email', 'phone', 'password')
         model = User
 
     def __init__(self, *args, **kwargs):

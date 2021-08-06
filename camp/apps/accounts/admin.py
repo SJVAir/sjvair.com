@@ -10,7 +10,7 @@ class UserAdmin(UserAdmin):
     fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'full_name', 'password', 'last_login', 'date_joined'),
+            'fields': ('full_name', 'email', ('phone', 'phone_verified'), 'password', 'last_login', 'date_joined'),
         }),
         (_('Permissions'), {
             'classes': ('wide', 'collapse',),
