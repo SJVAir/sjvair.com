@@ -208,10 +208,10 @@ export default {
         const segmentsID = `chart-segments-${ i }`;
 
         const segments = computeSegments(data, lineDefined)
-        const gaps = [data.filter(lineDefined)];
+        const gaps = data.filter(lineDefined);
 
         const gapsLine = this.chart.selectAll(`.${ gapsId }`)
-          .data(gaps);
+          .data([gaps]);
 
         const segmentsLine = this.chart.selectAll(`.${ segmentsID }`)
           .data(segments);
@@ -222,7 +222,7 @@ export default {
         gapsLine.enter()
           .append("path")
           .attr("class", segmentsID)
-          .attr("d", this.pathDefinition(gaps.pop()))
+          .attr("d", this.pathDefinition(gaps))
           .attr("fill", "none");
 
         segmentsLine.enter()
