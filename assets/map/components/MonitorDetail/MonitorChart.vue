@@ -4,6 +4,7 @@
 
 <script>
 import * as d3 from "d3";
+import dateUtil from "../../utils/date";
 import monitorsService from "../../services/Monitors.service";
 
 const margin = {
@@ -12,6 +13,72 @@ const margin = {
   bottom: 56,
   left: 24
 };
+
+/**
+ * Helper function to compute the contiguous segments of the data
+ *
+ * Derived from https://github.com/pbeshai/d3-line-chunked/blob/master/src/lineChunked.js
+ *
+ * @param {Array} lineData the line data
+ * @param {Function} defined function that takes a data point and returns true if
+ *    it is defined, false otherwise
+ * @param {Function} isNext function that takes the previous data point and the
+ *    current one and returns true if the current point is the expected one to
+ *    follow the previous, false otherwise.
+ * @return {Array} An array of segments (subarrays) of the line data
+ */
+function computeSegments(lineData, defined, isNext) {
+  defined = defined || function () { return true; };
+  isNext = isNext || function () { return true; };
+  let startNewSegment = true;
+
+  // split into segments of continuous data
+  let segments = lineData.reduce(function (segments, d) {
+    // skip if this point has no data
+    if (!defined(d)) {
+      startNewSegment = true;
+      return segments;
+    }
+
+    // if we are starting a new segment, start it with this point
+    if (startNewSegment) {
+      segments.push([d]);
+      startNewSegment = false;
+
+    // otherwise see if we are adding to the last segment
+    } else {
+      const lastSegment = segments[segments.length - 1];
+      const lastDatum = lastSegment[lastSegment.length - 1];
+      // if we expect this point to come next, add it to the segment
+      if (isNext(lastDatum, d)) {
+        lastSegment.push(d);
+
+      // otherwise create a new segment
+      } else {
+        segments.push([d]);
+      }
+    }
+
+    return segments;
+  }, []);
+
+  return segments;
+}
+
+// Calculate if there should be a line between 2 given points
+function lineDefined(dataPoint) {
+  if (!lineDefined.prevDataPoint) {
+    lineDefined.prevDataPoint = dataPoint;
+    return true;
+  }
+
+  let deltaRaw = dateUtil(dataPoint.xData).diff(dateUtil(lineDefined.prevDataPoint.xData));
+  const deltaAsMin = Math.ceil(deltaRaw / (1000 * 60));
+
+  lineDefined.prevDataPoint = dataPoint;
+  return deltaAsMin < lineDefined.maxDelta;
+}
+lineDefined.maxDelta = 5;
 
 export default {
   name: "monitor-chart",
@@ -29,6 +96,8 @@ export default {
       container: null,
       // Chart legend
       legend: null,
+      // D3 data path definitions
+      pathDefinition: null,
       // Function to tell d3 how to read the date
       parseTime: d3.utcParse("%Y-%m-%dT%H:%M:%S.%LZ"),
       // Positioning styles
@@ -84,6 +153,11 @@ export default {
       .attr("class", "yaxis")
       .attr("transform", `translate(${ this.styles.width }, 0)`);
 
+    // Create path definition, convert data to path
+    this.pathDefinition = d3.line()
+      .x(d => this.x(this.parseTime(d.xData)))
+      .y(d => this.y(d.yData));
+
     // Add text box for legend
     this.legend = this.container.append("div")
         .attr("class", "chart-legend")
@@ -115,6 +189,8 @@ export default {
     loadData() {
       // create a flat copy of the chart data to find min/max values
       const flatData = this.activeMonitor.chartData.flat();
+
+
       // Scale ranges for data, performance assumptions possible
       this.x.domain(
         d3.extent(flatData, d => this.parseTime(d.xData))
@@ -124,18 +200,39 @@ export default {
         d3.max(flatData, d => parseInt(Math.ceil(d.yData), 10))
       ]).nice();
 
-      // Add the line definitions to the chart
-      const lines = this.chart.selectAll(".chart-line")
-        .data(this.activeMonitor.chartData);
 
-      lines.exit().remove();
+      for (let i in this.activeMonitor.chartData) {
+        const data = this.activeMonitor.chartData[i];
+        const color = this.activeMonitor.chartData[i].color;
+        const gapsId = `chart-gaps-${ i }`;
+        const segmentsID = `chart-segments-${ i }`;
 
-      lines.enter()
-        .append("path")
-        .attr("class", "chart-line")
-        .merge(lines)
-        .attr("d", d3.line().x(d => this.x(this.parseTime(d.xData))).y(d => this.y(d.yData)))
-        .attr("stroke", d => d.color)
+        const segments = computeSegments(data, lineDefined)
+        const gaps = [data.filter(lineDefined)];
+
+        const gapsLine = this.chart.selectAll(`.${ gapsId }`)
+          .data(gaps);
+
+        const segmentsLine = this.chart.selectAll(`.${ segmentsID }`)
+          .data(segments);
+
+        gapsLine.exit().remove();
+        segmentsLine.exit().remove();
+
+        gapsLine.enter()
+          .append("path")
+          .attr("class", segmentsID)
+          .attr("d", this.pathDefinition(gaps.pop()))
+          .attr("fill", "none");
+
+        segmentsLine.enter()
+          .append("path")
+          .attr("class", segmentsID)
+          .merge(segmentsLine)
+          .attr("d", this.pathDefinition)
+          .attr("stroke", () => color)
+          .attr("fill", "none");
+      }
 
       // Add the chart legend
       const legendKeys = this.legend.selectAll(".legend-key")
