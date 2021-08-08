@@ -15,9 +15,9 @@ urlpatterns = [
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
-    path('batcave/', admin.site.urls),
     path('batcave/stats.json', AdminStats.as_view(), name='admin-stats'),
     path('batcave/flush-queue/', FlushQueue.as_view(), name='flush-queue'),
+    path('batcave/', admin.site.urls),
 ]
 
 if settings.DEBUG:

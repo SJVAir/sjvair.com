@@ -112,6 +112,7 @@ class Calibrator(TimeStampedModel):
         )
 
         if not ref_qs.exists():
+            print(f'Calibrator {self.pk}: no ref_qs ({start_date} - {end_date})')
             return
 
         ref_df = pd.DataFrame(ref_qs).set_index('timestamp')
@@ -131,6 +132,7 @@ class Calibrator(TimeStampedModel):
         )
 
         if not col_qs.exists():
+            print(f'Calibrator {self.pk}: no col_qs ({start_date} - {end_date})')
             return
 
         col_df = pd.DataFrame(col_qs).set_index('timestamp')
@@ -150,6 +152,7 @@ class Calibrator(TimeStampedModel):
         merged = merged.dropna()
 
         if not len(merged):
+            print(f'Calibrator {self.pk}: no merged ({start_date} - {end_date})')
             return
 
         # Linear Regression time!
