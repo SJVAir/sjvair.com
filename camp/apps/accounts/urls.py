@@ -28,6 +28,7 @@ auth_urlpatterns = [
 
 urlpatterns = [
     url(r'^$', views.ProfileView.as_view(), name='profile'),
+    url(r'^verify-phone/$', views.PhoneVerify.as_view(), name='phone-verify'),
     url(r'^signup/$', views.SignupView.as_view(), name='signup'),
     url(r'^', include(auth_urlpatterns)),
 ]

@@ -221,6 +221,12 @@ CORS_ORIGIN_ALLOW_ALL = True
 
 CORS_ALLOW_CREDENTIALS = True
 
+# django-phonenumber-field
+
+PHONENUMBER_DB_FORMAT = "INTERNATIONAL"
+
+PHONENUMBER_DEFAULT_REGION = "US"
+
 # django-resticus
 
 RESTICUS = {
@@ -243,6 +249,13 @@ HUEY = {
     'huey_class': 'huey.PriorityRedisHuey',
     "immediate": bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
 }
+
+# Twilio
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+
+TWILIO_PHONE_NUMBERS = os.environ.get("TWILIO_PHONE_NUMBERS", "").split(',')
 
 # Google Maps
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')

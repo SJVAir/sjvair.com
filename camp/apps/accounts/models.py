@@ -4,13 +4,16 @@ from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
 
+from dirtyfields import DirtyFieldsMixin
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from nameparser.parser import HumanName
+from phonenumber_field.modelfields import PhoneNumberField
 
 from camp.apps.accounts import managers
+from camp.apps.accounts.tasks import send_sms_message
 
 
-class User(AbstractBaseUser, PermissionsMixin, models.Model):
+class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -20,6 +23,8 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
     )
     full_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True, db_index=True)
+    phone = PhoneNumberField(blank=True, help_text="Your cell phone number for text message air quality notifications.")
+    phone_verified = models.BooleanField(default=False)
 
     # Normally provided by auth.AbstractUser, but we're not using that here.
     date_joined = models.DateTimeField(_('date joined'), default=timezone.now, editable=False)
@@ -65,3 +70,14 @@ class User(AbstractBaseUser, PermissionsMixin, models.Model):
 
     def get_full_name(self):
         return self.name
+
+    def send_sms(self, message, verify=True):
+        if self.phone and (self.phone_verified or not verify):
+            return send_sms_message(self.phone, message)
+        return False
+
+    def save(self, *args, **kwargs):
+        dirty_fields = self.get_dirty_fields()
+        if 'phone' in dirty_fields:
+            self.phone_verified = False
+        return super().save(*args, **kwargs)
