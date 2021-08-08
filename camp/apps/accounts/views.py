@@ -4,7 +4,7 @@ from django.urls import reverse_lazy
 
 import vanilla
 
-from .forms import (UserCreationForm, ProfileForm)
+from .forms import (UserCreationForm, ProfileForm, PhoneVerificationForm)
 from camp.utils.views import RedirectViewMixin
 
 
@@ -33,6 +33,15 @@ class ProfileView(LoginRequiredMixin, vanilla.UpdateView):
     form_class = ProfileForm
     template_name = 'account/profile.html'
     success_url = reverse_lazy('account:profile')
+
+    def get_object(self):
+        return self.request.user
+
+
+class PhoneVerify(LoginRequiredMixin, vanilla.FormView):
+    form_class = PhoneVerificationForm
+    template_name = 'account/phone-verify.html'
+    success_url = reverse_lazy('account:phone-verify')
 
     def get_object(self):
         return self.request.user
