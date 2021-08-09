@@ -66,19 +66,23 @@ function computeSegments(lineData, defined, isNext) {
 }
 
 // Calculate if there should be a line between 2 given points
-function lineDefined(dataPoint) {
-  if (!lineDefined.prevDataPoint) {
-    lineDefined.prevDataPoint = dataPoint;
-    return true;
+function defineLine(monitor) {
+  const maxDelta = monitor.last_active_limit;
+  let prevDataPoint = null;
+
+  return (dataPoint) => {
+    if (!prevDataPoint) {
+      prevDataPoint = dataPoint;
+      return true;
+    }
+
+    const deltaRaw = dateUtil(dataPoint.xData).diff(dateUtil(prevDataPoint.xData));
+    const deltaAsSec = Math.ceil(deltaRaw / 1000);
+
+    prevDataPoint = dataPoint;
+    return deltaAsSec < maxDelta;
   }
-
-  let deltaRaw = dateUtil(dataPoint.xData).diff(dateUtil(lineDefined.prevDataPoint.xData));
-  const deltaAsMin = Math.ceil(deltaRaw / (1000 * 60));
-
-  lineDefined.prevDataPoint = dataPoint;
-  return deltaAsMin < lineDefined.maxDelta;
 }
-lineDefined.maxDelta = 5;
 
 export default {
   name: "monitor-chart",
@@ -96,6 +100,8 @@ export default {
       container: null,
       // Chart legend
       legend: null,
+      // Line/Point calculation
+      lineDefined: null,
       // D3 data path definitions
       pathDefinition: null,
       // Function to tell d3 how to read the date
@@ -179,6 +185,7 @@ export default {
 
   watch: {
     "ctx.activeMonitor.chartData": function() {
+      this.lineDefined = defineLine(this.ctx.activeMonitor);
       this.loadData();
     }
   },
@@ -207,8 +214,8 @@ export default {
         const gapsId = `chart-gaps-${ i }`;
         const segmentsID = `chart-segments-${ i }`;
 
-        const segments = computeSegments(data, lineDefined)
-        const gaps = data.filter(lineDefined);
+        const segments = computeSegments(data, this.lineDefined)
+        const gaps = data.filter(this.lineDefined);
 
         const gapsLine = this.chart.selectAll(`.${ gapsId }`)
           .data([gaps]);
