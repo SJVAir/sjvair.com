@@ -4,12 +4,14 @@ import csv
 from datetime import timedelta
 
 from django.core.exceptions import ImproperlyConfigured
+from django.forms import forms
 from django.http import HttpResponse
 from django.utils import timezone
 
 from PIL import Image, ImageDraw
 from resticus import generics
 from resticus.exceptions import ValidationError
+from resticus.http import Http400
 
 from camp.utils.forms import DateRangeForm
 from camp.utils.polygon import compute_regular_polygon
@@ -96,3 +98,30 @@ class MapMarker(generics.Endpoint):
         response = HttpResponse(content_type='image/png')
         im.save(response, 'PNG')
         return response
+
+
+class FormEndpoint(generics.Endpoint):
+    """
+    A simple endpoint that works with Django forms.
+    """
+
+    form_class = forms.Form
+
+    def get_form_class(self):
+        return self.form_class
+
+    def get_form(self, data=None, files=None, **kwargs):
+        form_class = self.get_form_class()
+        return form_class(data=data, files=files, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        form = self.get_form(data=request.data, files=request.FILES)
+        if form.is_valid():
+            return self.form_valid(form)
+        return self.form_invalid(form)
+
+    def form_valid(self, form):
+        raise NotImplementedError()
+
+    def form_invalid(self, form):
+        return Http400({"errors": form.errors.get_json_data()})
