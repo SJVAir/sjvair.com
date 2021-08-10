@@ -89,6 +89,10 @@ class Monitor(models.Model):
         cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
         return (now - parse_datetime(self.latest['timestamp'])) < cutoff
 
+    @property
+    def last_active_limit(self):
+        return self.LAST_ACTIVE_LIMIT
+
     def get_pm25_calibration_formula(self):
         # Check for a formula set on this specific monitor.
         if self.pm25_calibration_formula:
