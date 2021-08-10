@@ -1,12 +1,14 @@
 from django.urls import include, path
 
 from . import endpoints
+from .alerts.endpoints import SubscriptionList
 from .monitors.endpoints import MethaneData, MethaneDataUpload
 
 app_name = 'api'
 
 urlpatterns = [
     path('time/', endpoints.CurrentTime.as_view(), name='current-time'),
+    path('alerts/subscriptions/', SubscriptionList.as_view(), name='subscription-list'),
     path('monitors/', include('camp.api.v1.monitors.urls', namespace='monitors')),
     path('methane/<int:methane_id>/upload/', MethaneDataUpload.as_view(), name='methane-data-upload'),
     path('methane/<int:methane_id>/data/', MethaneData.as_view(), name='methane-data'),
