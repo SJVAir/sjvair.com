@@ -89,6 +89,9 @@ class Monitor(models.Model):
         cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
         return (now - parse_datetime(self.latest['timestamp'])) < cutoff
 
+    def get_absolute_url(self):
+        return f'/#/monitor/{self.pk}'
+
     def get_pm25_calibration_formula(self):
         # Check for a formula set on this specific monitor.
         if self.pm25_calibration_formula:
