@@ -3,6 +3,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import ugettext_lazy as _
 
 from camp.apps.accounts.models import User
+from camp.apps.alerts.admin import SubscriptionInline
 
 
 @admin.register(User)
@@ -30,6 +31,7 @@ class UserAdmin(UserAdmin):
             'fields': ('password1', 'password2')
         }),
     )
+    inlines = [SubscriptionInline]
     list_display = ('email', 'full_name', 'date_joined', 'is_staff', 'is_active')
     list_filter = ('is_staff', 'is_superuser', 'is_active', 'groups')
     ordering = ('email',)

@@ -28,11 +28,11 @@
                 </a>
             </li>
             <li class="{% block account-tab-alerts %}{% endblock %}">
-                <a href="#">
+                <a href="{% url 'account:alerts' %}">
                     <span class="icon is-size-5 has-text-grey">
-                        <span class="far fa-fw fa-sensor-alert"></span>
+                        <span class="far fa-fw fa-sensor-on"></span>
                     </span>
-                    <span>Configure Alerts</span>
+                    <span>Alerts</span>
                 </a>
             </li>
             <li class="{% block account-tab-password %}{% endblock %}">
@@ -40,7 +40,7 @@
                     <span class="icon is-size-5 has-text-grey">
                         <span class="far fa-fw fa-lock"></span>
                     </span>
-                    <span>Change password</span>
+                    <span>Password</span>
                 </a>
             </li>
         </ul>
