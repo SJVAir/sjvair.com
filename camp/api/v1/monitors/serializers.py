@@ -30,6 +30,7 @@ class MonitorSerializer(serializers.Serializer):
         'is_active',
         'is_sjvair',
         'position',
+        'last_active_limit',
         'location',
         'latest',
         'county'
