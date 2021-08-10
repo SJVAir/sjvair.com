@@ -1,5 +1,6 @@
 from django.db import models
 
+from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
 from model_utils.models import TimeStampedModel
 
@@ -14,6 +15,14 @@ class Subscription(TimeStampedModel):
         # (55, 'unhealthy', 'Unhealthy'),
         # (150, 'very_unhealthy', 'Very Unhealthy'),
         # (250, 'hazardous', 'Hazardous'),
+    )
+
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
     )
 
     user = models.ForeignKey('accounts.User',
