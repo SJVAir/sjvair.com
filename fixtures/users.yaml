@@ -1,0 +1,15 @@
+- model: accounts.user
+  pk: xaJ2lOJtTiqlqpAt3CV_iA
+  fields:
+    password: argon2$argon2id$v=19$m=102400,t=2,p=8$SmtYQ1dYbWpXVlZNU2dVWWRGd2xkZw$h5/hSr5CDUaNkyxeJOG4Qg
+    last_login: null
+    is_superuser: false
+    full_name: Joe Test
+    email: user@sjvair.com
+    phone: ''
+    phone_verified: false
+    date_joined: 2021-08-09 20:11:12.648926+00:00
+    is_active: true
+    is_staff: false
+    groups: []
+    user_permissions: []
