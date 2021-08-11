@@ -1,5 +1,5 @@
-from django.db.models improt Avg, Prefetch
-from django.contrib import timezone
+from django.db.models import Avg, Prefetch
+from django.utils import timezone
 
 from huey import crontab
 from huey.contrib.djhuey import db_task, db_periodic_task
@@ -7,19 +7,20 @@ from huey.contrib.djhuey import db_task, db_periodic_task
 from camp.apps.alerts.models import LEVELS, PM25_LEVELS, Alert
 from camp.apps.monitors.models import Monitor
 
-def get_pm25_status(pm25):
-    for threshold, level in PM25_LEVELS:
-        if pm25 >= theshold:
-            return level
+def get_pm25_level(pm25):
+    if pm25:
+        for threshold, level in PM25_LEVELS:
+            if pm25 >= threshold:
+                return level
 
 
-@db_periodic_task(crontab(minute='*/15'), priorioty=20)
+@db_periodic_task(crontab(minute='*/10'), priority=100)
 def periodic_alerts():
     queryset = Monitor.objects.all()
 
-    for monitor_id in queryset:
+    for monitor in queryset:
         active_alert = Alert.objects.filter(
-            monitor_id=monitor_id,
+            monitor_id=monitor.pk,
             end_time__isnull=True,
         ).exists()
 
@@ -33,11 +34,19 @@ def periodic_alerts():
             check_alert_create(monitor.pk)
 
 
-@db_task()
+@db_task(priority=50)
 def check_alert_create(monitor_id):
     monitor = Monitor.objects.get(pk=monitor_id)
-    average = monitor.get_current_pm2_average(minutes=30)
+    active_alert = monitor.alerts.filter(end_time__isnull=True).exists()
+
+    if active_alert:
+        return
+
+    average = monitor.get_current_pm25_average(minutes=30)
     level = get_pm25_level(average)
+
+    print(average)
+    print(level)
 
     # If there's no returned
     if level is None:
@@ -50,15 +59,15 @@ def check_alert_create(monitor_id):
         pm25_average=average,
         level=level,
     )
-    al
+    alert.send_notifications()
 
 
-@db_task()
-def check_alert_updates(monitor_id):
+@db_task(priority=50)
+def check_alert_update(monitor_id):
     monitor = Monitor.objects.get(pk=monitor_id)
 
     try:
-        alert = active_alert = Alert.objects.filter(
+        alert = Alert.objects.get(
             monitor_id=monitor_id,
             end_time__isnull=True,
         )
@@ -67,18 +76,24 @@ def check_alert_updates(monitor_id):
         return
 
     # Check the average for 1 hour, see if it's ended.
-    average = monitor.get_current_pm2_average(minutes=60)
+    average = monitor.get_current_pm25_average(minutes=60)
+    print(average)
     if get_pm25_level(average) is None:
+        print('ending')
         alert.end_time = timezone.now()
         alert.save()
         return
 
     # Check the average for 30 minutes, see if it's increased.
-    average = monitor.get_current_pm2_average(minutes=30)
+    send_notifications = False
+    average = monitor.get_current_pm25_average(minutes=30)
     level = get_pm25_level(average)
     if average > alert.pm25_average and level != alert.level:
         # It's increased! Save the new level
         alert.level = level
+        send_notifications = True
     alert.pm25_average = average
+    alert.save()
 
-
+    if send_notifications:
+        alert.send_notifications()

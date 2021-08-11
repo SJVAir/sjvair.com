@@ -95,7 +95,7 @@ class Monitor(models.Model):
     def get_current_pm25_average(self, minutes):
         end_time = timezone.now()
         start_time = end_time - timedelta(minutes=minutes)
-        aggregate = (self.monitor.entries
+        aggregate = (self.entries
             .filter(
                 timestamp__range=(start_time, end_time),
                 pm25_env__isnull=False,
