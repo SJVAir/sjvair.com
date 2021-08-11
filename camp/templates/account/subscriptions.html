@@ -1,0 +1,23 @@
+{% extends "account/base.html" %}
+
+{% block title %}Monitor subscriptions | {{ block.super }}{% endblock %}
+
+{% block account-tab-alerts %}is-active{% endblock %}
+
+{% block inner-content %}
+<table class="table is-fullwidth is-striped">
+    <tr>
+        <th>Monitor</th>
+        <th>Alert level</th>
+    </tr>
+    {% for subscription in subscription_list %}
+    <tr>
+        <td>
+            <a href="{{ subscription.monitor.get_absolute_url }}">{{ subscription.monitor.name }}</a><br />
+            <span class="is-size-7">{{ subscription.monitor.county }} County</span>
+        </td>
+        <td>{{ subscription.get_level_display }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
