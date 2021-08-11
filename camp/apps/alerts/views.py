@@ -2,7 +2,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 
 import vanilla
 
-from camp.apps.alerts.models import Subscription
+from camp.apps.alerts.models import Alert, Subscription
 from camp.apps.monitors.models import Monitor
 
 
@@ -26,8 +26,15 @@ class SubscriptionList(LoginRequiredMixin, vanilla.TemplateView):
 
         return subscription_list
 
+    def get_current_alerts(self):
+        alerts = Alert.objects.filter(
+            monitor__subscriptions__user=self.request.user,
+            end_time__isnull=True
+        ).select_related('monitor').distinct()
+        return alerts
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
+        context['alert_list'] = self.get_current_alerts()
         context['subscription_list'] = self.get_subscription_list()
         return context
