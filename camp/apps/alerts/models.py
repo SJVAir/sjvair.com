@@ -80,6 +80,9 @@ class Alert(TimeStampedModel):
     pm25_average = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     level = models.CharField(max_length=25, choices=LEVELS)
 
+    class Meta:
+        ordering = ['-start_time']
+
     def __str__(self):
         return f'{self.monitor_id} : {self.get_level_display()}'
 
