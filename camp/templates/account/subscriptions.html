@@ -12,7 +12,7 @@
         <tr>
             <th>Air monitor</th>
             <th>Start time</th>
-            <th>Current status</th>
+            <th class="has-text-right">Current status</th>
         </tr>
         {% for alert in alert_list %}
         <tr>
@@ -24,7 +24,15 @@
                 <span>{{ alert.start_time|timezone:"America/Los_Angeles" }}</span><br />
                 <span class="is-size-7">{{ alert.start_time|timesince }} ago</span>
             </td>
-            <td>{{ alert.get_level_display }}</td>
+            <td class="has-text-right">
+                <span class="tag air {{ alert.level }}">{{ alert.get_level_display }}</span>
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="3" class="py-6">
+                <p class="has-text-centered has-text-grey is-size-5">There are no active air quality alerts for air monitors that you have subscribed to.</p>
+            </td>
         </tr>
         {% endfor %}
     </table>
@@ -35,7 +43,7 @@
     <table class="table is-fullwidth is-striped">
         <tr>
             <th>Air monitor</th>
-            <th>Notify me when the air is...</th>
+            <th class="has-text-right">Notify me when the air is...</th>
         </tr>
         {% for subscription in subscription_list %}
         <tr>
@@ -43,7 +51,15 @@
                 <a href="{{ subscription.monitor.get_absolute_url }}">{{ subscription.monitor.name }}</a><br />
                 <span class="is-size-7">{{ subscription.monitor.county }} County</span>
             </td>
-            <td>{{ subscription.get_level_display }}</td>
+            <td class="has-text-right">
+                <span class="tag air {{ subscription.level }}">{{ subscription.get_level_display }}</span>
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="2" class="py-6">
+                <p class="has-text-centered has-text-grey is-size-5">You have not subscribed to any air monitors.</p>
+            </td>
         </tr>
         {% endfor %}
     </table>
