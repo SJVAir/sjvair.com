@@ -92,6 +92,18 @@ class Monitor(models.Model):
     def get_absolute_url(self):
         return f'/#/monitor/{self.pk}'
 
+    def get_current_pm25_average(self, minutes):
+        end_time = timezone.now()
+        start_time = end_time - timedelta(minutes=minutes)
+        aggregate = (self.monitor.entries
+            .filter(
+                timestamp__range=(start_time, end_time),
+                pm25_env__isnull=False,
+            )
+            .aggregate(average=Avg('pm25_env'))
+        )
+        return aggregate['average']
+
     def get_pm25_calibration_formula(self):
         # Check for a formula set on this specific monitor.
         if self.pm25_calibration_formula:
