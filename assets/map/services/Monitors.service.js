@@ -191,19 +191,26 @@ class MonitorsService {
             this.handleClick(this.activeMonitor);
           });
         }
-
+        
         if (monitorCB) {
           monitorCB(this.monitors[monitor.id]);
         }
       }
     })
-    .catch(e => console.error("Unable to fetch monitors\n", e))
+    .catch(e => console.error("Unable to fetch monitors", e))
     // Check to see if we are still waiting to set the active monitor
-    .finally(() => {
+    .finally(async () => {
       if (!this.activeMonitor && this.monitorExists(this.cachedMon.id)) {
         this.setActiveMonitor(this.cachedMon.id, this.cachedMon.dateRange);
       }
     });
+  }
+
+  async loadSubscriptions() {
+    const res = await http.get("alerts/subscriptions")
+      .catch(err => console.error("Unable to fetch subscriptions", err));
+
+    return res.data.data;
   }
 
   setActiveMonitor(monitorId, dateRange) {
