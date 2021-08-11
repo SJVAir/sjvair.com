@@ -49,9 +49,6 @@ def check_alert_create(monitor_id):
     average = monitor.get_current_pm25_average(minutes=30)
     level = get_pm25_level(average)
 
-    print(average)
-    print(level)
-
     # If there's no returned
     if level is None:
         return
@@ -81,9 +78,8 @@ def check_alert_update(monitor_id):
 
     # Check the average for 1 hour, see if it's ended.
     average = monitor.get_current_pm25_average(minutes=60)
-    print(average)
     if get_pm25_level(average) is None:
-        print('ending')
+        alert.pm25_average = average
         alert.end_time = timezone.now()
         alert.save()
         return

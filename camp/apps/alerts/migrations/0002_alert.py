@@ -29,6 +29,7 @@ class Migration(migrations.Migration):
             ],
             options={
                 'abstract': False,
+                'ordering': ['-start_time'],
             },
         ),
     ]
