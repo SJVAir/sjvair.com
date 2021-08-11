@@ -95,13 +95,15 @@ class Monitor(models.Model):
     def get_current_pm25_average(self, minutes):
         end_time = timezone.now()
         start_time = end_time - timedelta(minutes=minutes)
-        aggregate = (self.entries
-            .filter(
-                timestamp__range=(start_time, end_time),
-                pm25_env__isnull=False,
-            )
-            .aggregate(average=Avg('pm25_env'))
+        queryset = self.entries.filter(
+            timestamp__range=(start_time, end_time),
+            pm25_env__isnull=False,
         )
+
+        if self.device == "PurpleAir":
+            queryset = queryset.filter(sensor="a")
+
+        aggregate = queryset.aggregate(average=Avg('pm25_env'))
         return aggregate['average']
 
     def get_pm25_calibration_formula(self):

@@ -81,7 +81,7 @@ class Alert(TimeStampedModel):
     level = models.CharField(max_length=25, choices=LEVELS)
 
     def __str__(self):
-        return f'{self.monitor_d} : {self.get_level_display}'
+        return f'{self.monitor_id} : {self.get_level_display()}'
 
     def get_average(self, hours=1):
         end_time = timezone.now()
@@ -98,18 +98,21 @@ class Alert(TimeStampedModel):
         message = '\n'.join([
             f'SJVAir.com - Air Quality Alert in {self.monitor.county} County',
             '',
-            f'Air Monitor: {self.monitor.name}',
-            f'Air Quality: {self.get_level_display()}',
+            f'Air Monitor: {self.monitor.name} ({self.monitor.device})',
+            f'Status: {self.get_level_display()}',
             '',
             f'https://sjvair.com{self.monitor.get_absolute_url()}',
         ])
 
         subscription_list = (Subscription.objects
-            .filter(
-                monitor_id=self.monitor.pk,
-                level__in=notification_levels,
-            )
+            .filter(monitor_id=self.monitor.pk)
             .select_related('user')
         )
+
+        # hazardous means everyone gets it. Evey other
+        # level gets filtered.
+        if self.level != LEVELS.hazardous:
+            queryset = queryset.filter(level=self.level)
+
         for subscription in subscription_list:
             subscription.user.send_sms(message)

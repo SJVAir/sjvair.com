@@ -29,8 +29,12 @@ def periodic_alerts():
             continue
 
         if active_alert:
+            # There's an active alert, so check if we need
+            # to update or end it.
             check_alert_update(monitor.pk)
         else:
+            # No current alert, check to see if we need to
+            # create one.
             check_alert_create(monitor.pk)
 
 
