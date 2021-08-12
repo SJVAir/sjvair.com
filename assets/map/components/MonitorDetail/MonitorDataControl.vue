@@ -36,6 +36,10 @@
             <span>Download</span>
           </button>
         </div>
+        <div class="control">
+          <br />
+          <monitor-subscription></monitor-subscription>
+        </div>
       </div>
     </div>
   </div>
@@ -43,12 +47,14 @@
 
 <script>
 import Datepicker from 'vuejs-datepicker/dist/vuejs-datepicker.esm.js';
+import MonitorSubscription from '../MonitorSubscription';
 import monitorsService from '../../services/Monitors.service';
 
 export default {
   name: "monitor-data-control",
   components: {
-    Datepicker
+    Datepicker,
+    MonitorSubscription
   },
   data() {
     const updateURL = () => {

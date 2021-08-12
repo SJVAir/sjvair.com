@@ -89,9 +89,22 @@ class Monitor(models.Model):
         cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
         return (now - parse_datetime(self.latest['timestamp'])) < cutoff
 
-    @property
-    def last_active_limit(self):
-        return self.LAST_ACTIVE_LIMIT
+    def get_absolute_url(self):
+        return f'/#/monitor/{self.pk}'
+
+    def get_current_pm25_average(self, minutes):
+        end_time = timezone.now()
+        start_time = end_time - timedelta(minutes=minutes)
+        queryset = self.entries.filter(
+            timestamp__range=(start_time, end_time),
+            pm25_env__isnull=False,
+        )
+
+        if self.device == "PurpleAir":
+            queryset = queryset.filter(sensor="a")
+
+        aggregate = queryset.aggregate(average=Avg('pm25_env'))
+        return aggregate['average']
 
     def get_pm25_calibration_formula(self):
         # Check for a formula set on this specific monitor.

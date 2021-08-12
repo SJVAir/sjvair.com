@@ -1,0 +1,52 @@
+{% load widget_tweaks %}
+{% load form_utils %}
+
+<div class="field content">
+    {% if field|is_checkbox %}
+        <div class="control">
+            <label class="checkbox">
+                {% render_field field %}
+                {{ field.label }} {% if not field|optional %}<span class="required">*</span>{% endif %}
+            </label>
+            {% if field.help_text %}
+                <span class="help">{{ field.help_text|safe }}</span>
+            {% endif %}
+            {% for error in field.errors %}
+                <span class="help is-errors">{{ error }}</span>
+            {% endfor %}
+        </div>
+    {% elif field|is_radio %}
+        <!-- ??? -->
+    {% else %}
+        <label class="label" for="{{ field.id_for_label }}">
+            {{ field.label }} {% if not field|optional %}<span class="required">*</span>{% endif %}
+        </label>
+        <div class="control {% if icon_left %}has-icons-left{% endif %} {% if icon_right %}has-icons-right{% endif %}">
+            {% if field|is_select %}
+                <div class="select">
+                    {{ field }}
+                </div>
+            {% elif field.field.widget.input_type %}
+                {% render_field field|add_class:'input' %}
+            {% else %}
+                {% render_field field|add_class:'textarea' %}
+            {% endif %}
+            {% if icon_left %}
+                <span class="icon is-small is-left">
+                    <span class="{{ icon_left }}"></span>
+                </span>
+            {% endif %}
+            {% if icon_right %}
+                <span class="icon is-small is-right">
+                    <span class="{{ icon_right }}"></span>
+                </span>
+            {% endif %}
+            {% if field.help_text %}
+                <span class="help">{{ field.help_text|safe }}</span>
+            {% endif %}
+            {% for error in field.errors %}
+                <span class="help is-danger has-text-weight-semibold">{{ error }}</span>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>

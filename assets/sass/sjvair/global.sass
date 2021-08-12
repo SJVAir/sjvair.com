@@ -40,3 +40,27 @@ section.hook
 
 body
     top:0 !important
+
+.tag
+    &.air
+        font-weight: bold
+        height: auto
+        min-height: 2em
+        white-space: normal
+
+        &.good
+            background-color: $air-green
+        &.moderate
+            background-color: $air-yellow
+        &.unhealthy_sensitive
+            background-color: $air-orange
+            color: $white
+        &.unhealthy
+            background-color: $air-red
+            color: $white
+        &.very_unhealthy
+            background-color: $air-purple
+            color: $white
+        &.hazardous
+            background-color: $air-maroon
+            color: $white

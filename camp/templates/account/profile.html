@@ -1,0 +1,35 @@
+{% extends "account/base.html" %}
+
+{% block title %}Profile information | {{ block.super }}{% endblock %}
+
+{% block account-tab-profile %}is-active{% endblock %}
+
+{% block inner-content %}
+    <form class="form" action="{% url 'account:profile' %}" method="post">
+        {% csrf_token %}
+        {% for field in form.hidden_fields %}
+            {{ field }}
+        {% endfor %}
+
+        <div class="box">
+            {% include '_includes/form/field.html' with field=form.full_name icon_left="far fa-user" %}
+            {% include '_includes/form/field.html' with field=form.email icon_left="far fa-envelope" %}
+            {% include '_includes/form/field.html' with field=form.phone icon_left="far fa-phone" %}
+            {% if user.phone %}
+                {% if user.phone_verified %}
+                    <div class="help has-text-success">
+                        <span class="fa fa-check-circle"></span>
+                        <span>Your phone number is verified.</span>
+                    </div>
+                {% else %}
+                    <div class="help has-text-danger">
+                        <span class="fa fa-times-circle"></span>
+                        <span>Your phone number is not verified.</span>
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        <button type="submit" class="button is-success">Update profile</button>
+    </form>
+{% endblock %}

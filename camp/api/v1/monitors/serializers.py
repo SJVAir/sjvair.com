@@ -30,7 +30,7 @@ class MonitorSerializer(serializers.Serializer):
         'is_active',
         'is_sjvair',
         'position',
-        'last_active_limit',
+        ('last_active_limit', lambda monitor: monitor.LAST_ACTIVE_LIMIT),
         'location',
         'latest',
         'county'
