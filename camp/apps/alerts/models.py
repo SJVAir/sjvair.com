@@ -107,7 +107,7 @@ class Alert(TimeStampedModel):
             f'https://sjvair.com{self.monitor.get_absolute_url()}',
         ])
 
-        subscription_list = (Subscription.objects
+        queryset = (Subscription.objects
             .filter(monitor_id=self.monitor.pk)
             .select_related('user')
         )
@@ -117,5 +117,5 @@ class Alert(TimeStampedModel):
         if self.level != LEVELS.hazardous:
             queryset = queryset.filter(level=self.level)
 
-        for subscription in subscription_list:
+        for subscription in queryset:
             subscription.user.send_sms(message)
