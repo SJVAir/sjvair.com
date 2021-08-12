@@ -110,14 +110,13 @@ export default {
     async loadSubscriptions() {
         const subscriptions = await this.ctx.loadSubscriptions();
 
-        for (let subscription of subscriptions) {
-          if (subscription.monitor === this.activeMonitor.id) {
-            //this.subscribed = true;
-            this.update(subscription.level);
-          } else {
-            //this.subscribed = false;
-            this.update(null);
-          }
+        const subscription = subscriptions.find(s => s.monitor === this.activeMonitor.id);
+
+        if (subscription) {
+          this.update(subscription.level);
+
+        } else {
+          this.update(null);
         }
       },
 
@@ -161,15 +160,16 @@ export default {
     update(rawLevel) {
       this.subscriptionLevels = this.subscriptionLevels.map(level => {
         if (level.raw === rawLevel) {
-
           level.subscribed = !level.subscribed;
-          this.subscribed = level.subscribed;
+
         } else {
           level.subscribed = false;
         }
 
         return level;
       });
+
+      this.subscribed = !this.subscriptionLevels.every(level => level.subscribed === false);
     }
   }
 }
