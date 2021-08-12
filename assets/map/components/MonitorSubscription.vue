@@ -85,6 +85,7 @@ export default {
 
   watch: {
     activeMonitor: function() {
+      this.active = false;
       this.loadSubscriptions();
     }
   },
