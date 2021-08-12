@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block body-class %}account{% endblock %}
+
+{% block title %}Account | {{ block.super }}{% endblock %}
+
+{% block page-header-class %}{% endblock %}
+
+{% block main %}
+<section class="section hook">
+    <div class="container">
+        <div class="content">
+            <h1 class="title">Your Account</h1>
+            <p class="subtitle">{{ user.email }}</p>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="tabs is-centered">
+        <ul>
+            <li class="{% block account-tab-profile %}{% endblock %}">
+                <a href="{% url 'account:profile' %}">
+                    <span class="icon is-size-5 has-text-grey">
+                        <span class="far fa-fw fa-user"></span>
+                    </span>
+                    <span>Profile</span>
+                </a>
+            </li>
+            <li class="{% block account-tab-alerts %}{% endblock %}">
+                <a href="{% url 'account:alerts' %}">
+                    <span class="icon is-size-5 has-text-grey">
+                        <span class="far fa-fw fa-sensor-on"></span>
+                    </span>
+                    <span>Air Alerts</span>
+                </a>
+            </li>
+            <li class="{% block account-tab-password %}{% endblock %}">
+                <a href="{% url 'account:password-change' %}">
+                    <span class="icon is-size-5 has-text-grey">
+                        <span class="far fa-fw fa-lock"></span>
+                    </span>
+                    <span>Password</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <div class="container">
+        <div class="columns is-centered">
+            <div class="column is-10-tablet is-8-desktop">
+                {% block inner-content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

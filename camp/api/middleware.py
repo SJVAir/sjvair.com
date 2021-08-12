@@ -46,9 +46,15 @@ class MonitorAccessMiddleware:
                 return http.Http401('Invalid access key')
 
     def authorization_required(self, request):
-        if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
-            return True
-        return False
+        is_write_endpoint = request.method in ['POST', 'PUT', 'PATCH', 'DELETE']
+
+        # If login is required, let it through – the endpoint will handle it.
+        try:
+            login_required = request.resolver_match.func.view_class.login_required
+        except AttributeError:
+            login_required = False
+
+        return is_write_endpoint and not login_required
 
     def get_access_key(self, request):
         access_key = request.GET.get('access_key')

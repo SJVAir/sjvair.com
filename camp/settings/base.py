@@ -58,14 +58,17 @@ INSTALLED_APPS = [
     'admin_honeypot',
     'django_extensions',
     'django_filters',
+    'form_utils',
     'huey.contrib.djhuey',
     'livereload',
     'localflavor',
     'resticus',
     'storages',
+    'widget_tweaks',
 
     'camp.api',
     'camp.apps.accounts',
+    'camp.apps.alerts',
     'camp.apps.calibrations',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',
@@ -141,6 +144,12 @@ AUTHENTICATION_BACKENDS = (
 
 AUTH_USER_MODEL = 'accounts.User'
 
+LOGIN_URL = 'account:login'
+
+LOGIN_REDIRECT_URL = '/'
+
+LOGOUT_REDIRECT_URL = '/'
+
 
 # Password validation
 # https://docs.djangoproject.com/en/2.2/ref/settings/#auth-password-validators
@@ -213,6 +222,12 @@ CORS_ORIGIN_ALLOW_ALL = True
 
 CORS_ALLOW_CREDENTIALS = True
 
+# django-phonenumber-field
+
+PHONENUMBER_DB_FORMAT = "INTERNATIONAL"
+
+PHONENUMBER_DEFAULT_REGION = "US"
+
 # django-resticus
 
 RESTICUS = {
@@ -235,6 +250,13 @@ HUEY = {
     'huey_class': 'huey.PriorityRedisHuey',
     "immediate": bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
 }
+
+# Twilio
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+
+TWILIO_PHONE_NUMBERS = os.environ.get("TWILIO_PHONE_NUMBERS", "").split(',')
 
 # Google Maps
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
