@@ -10,7 +10,7 @@
     <table class="table is-fullwidth is-striped">
         <tr>
             <th>Air monitor</th>
-            <th class="has-text-right">Notify me when the air is...</th>
+            <th class="has-text-centered">Notify me when the air is...</th>
         </tr>
         {% for subscription in subscription_list %}
         <tr>
@@ -18,7 +18,7 @@
                 <a href="{{ subscription.monitor.get_absolute_url }}">{{ subscription.monitor.name }}</a><br />
                 <span class="is-size-7">{{ subscription.monitor.county }} County</span>
             </td>
-            <td class="has-text-right">
+            <td class="has-text-centered">
                 <span class="tag air {{ subscription.level }}">{{ subscription.get_level_display }}</span>
             </td>
         </tr>

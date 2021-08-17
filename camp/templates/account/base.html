@@ -11,52 +11,53 @@
     <div class="container">
         <div class="content">
             <h1 class="title">Your Account</h1>
-            <p class="subtitle">{{ user.email }}</p>
         </div>
     </div>
 </section>
 
 <section class="section">
-    <div class="tabs is-centered">
-        <ul>
-            <li class="{% block account-tab-profile %}{% endblock %}">
-                <a href="{% url 'account:profile' %}">
-                    <span class="icon is-size-5 has-text-grey">
-                        <span class="far fa-fw fa-user"></span>
-                    </span>
-                    <span>Your Profile</span>
-                </a>
-            </li>
-            <li class="{% block account-tab-alerts %}{% endblock %}">
-                <a href="{% url 'account:alerts' %}">
-                    <span class="icon is-size-5 has-text-grey">
-                        <span class="far fa-fw fa-sensor-alert"></span>
-                    </span>
-                    <span>Air Quality Alerts</span>
-                </a>
-            </li>
-            <li class="{% block account-tab-subscriptions %}{% endblock %}">
-                <a href="{% url 'account:subscriptions' %}">
-                    <span class="icon is-size-5 has-text-grey">
-                        <span class="far fa-fw fa-shield-check"></span>
-                    </span>
-                    <span>Monitor Subscriptions</span>
-                </a>
-            </li>
-            <li class="{% block account-tab-password %}{% endblock %}">
-                <a href="{% url 'account:password-change' %}">
-                    <span class="icon is-size-5 has-text-grey">
-                        <span class="far fa-fw fa-lock"></span>
-                    </span>
-                    <span>Change Password</span>
-                </a>
-            </li>
-        </ul>
-    </div>
-
     <div class="container">
-        <div class="columns is-centered">
-            <div class="column is-10-tablet is-8-desktop">
+        <div class="columns">
+            <div class="column is-5-tablet is-4-desktop">
+                <aside class="menu account-menu">
+                    <p class="menu-label">{{ user.email }}</p>
+                    <ul class="menu-list">
+                        <li>
+                            <a href="{% url 'account:profile' %}" class="{% block account-tab-profile %}{% endblock %}">
+                                <span class="icon is-size-6">
+                                    <span class="far fa-fw fa-user"></span>
+                                </span>
+                                <span>Your Profile</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'account:alerts' %}" class="{% block account-tab-alerts %}{% endblock %}">
+                                <span class="icon is-size-6">
+                                    <span class="far fa-fw fa-sensor-alert"></span>
+                                </span>
+                                <span>Air Quality Alerts</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'account:subscriptions' %}" class="{% block account-tab-subscriptions %}{% endblock %}">
+                                <span class="icon is-size-6">
+                                    <span class="far fa-fw fa-shield-check"></span>
+                                </span>
+                                <span>Monitor Subscriptions</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'account:password-change' %}" class="{% block account-tab-password %}{% endblock %}">
+                                <span class="icon is-size-6">
+                                    <span class="far fa-fw fa-lock"></span>
+                                </span>
+                                <span>Change Password</span>
+                            </a>
+                        </li>
+                    </ul>
+                </aside>
+            </div>
+            <div class="column is-7-tablet is-8-desktop">
                 {% block inner-content %}{% endblock %}
             </div>
         </div>
