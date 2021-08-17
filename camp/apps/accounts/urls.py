@@ -6,7 +6,7 @@ import vanilla
 
 from . import views
 
-from camp.apps.alerts.views import SubscriptionList
+from camp.apps.alerts.views import AlertList, SubscriptionList
 
 
 auth_urlpatterns = [
@@ -31,7 +31,8 @@ auth_urlpatterns = [
 
 urlpatterns = [
     url(r'^$', views.ProfileView.as_view(), name='profile'),
-    url(r'^alerts/$', SubscriptionList.as_view(), name='alerts'),
+    url(r'^alerts/$', AlertList.as_view(), name='alerts'),
+    url(r'^subscriptions/$', SubscriptionList.as_view(), name='subscriptions'),
     url(r'^verify-phone/$', views.PhoneVerify.as_view(), name='phone-verify'),
     url(r'^signup/$', views.SignupView.as_view(), name='signup'),
     url(r'^', include(auth_urlpatterns)),

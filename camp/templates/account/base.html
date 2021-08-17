@@ -24,15 +24,23 @@
                     <span class="icon is-size-5 has-text-grey">
                         <span class="far fa-fw fa-user"></span>
                     </span>
-                    <span>Profile</span>
+                    <span>Your Profile</span>
                 </a>
             </li>
             <li class="{% block account-tab-alerts %}{% endblock %}">
                 <a href="{% url 'account:alerts' %}">
                     <span class="icon is-size-5 has-text-grey">
-                        <span class="far fa-fw fa-sensor-on"></span>
+                        <span class="far fa-fw fa-sensor-alert"></span>
                     </span>
-                    <span>Air Alerts</span>
+                    <span>Air Quality Alerts</span>
+                </a>
+            </li>
+            <li class="{% block account-tab-subscriptions %}{% endblock %}">
+                <a href="{% url 'account:subscriptions' %}">
+                    <span class="icon is-size-5 has-text-grey">
+                        <span class="far fa-fw fa-shield-check"></span>
+                    </span>
+                    <span>Monitor Subscriptions</span>
                 </a>
             </li>
             <li class="{% block account-tab-password %}{% endblock %}">
@@ -40,7 +48,7 @@
                     <span class="icon is-size-5 has-text-grey">
                         <span class="far fa-fw fa-lock"></span>
                     </span>
-                    <span>Password</span>
+                    <span>Change Password</span>
                 </a>
             </li>
         </ul>
