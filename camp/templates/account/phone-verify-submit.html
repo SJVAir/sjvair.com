@@ -1,0 +1,40 @@
+{% extends "account/base.html" %}
+
+{% block title %}Verify your phone number | {{ block.super }}{% endblock %}
+
+{% block inner-content %}
+<div class="box">
+    <form class="form phone-verify-submit" action="{% url 'account:phone-verify-submit' %}" method="post">
+        {% csrf_token %}
+        {% for field in form.hidden_fields %}
+            {{ field }}
+        {% endfor %}
+
+        <div class="content">
+            <h1>Phone Verification</h1>
+            <p>Check your text messages for a verification code and enter it here:</p>
+        </div>
+
+        <div class="columns is-centered">
+            <div class="column is-8">
+                {% include '_includes/form/field.html' with field=form.code icon_left="far fa-hashtag" %}
+                <button type="submit" class="button is-success">Verify your phone number.</button>
+            </div>
+        </div>
+    </form>
+
+    <hr />
+
+    <div class="notification is-light is-info">
+        <p><span class="far fa-question-circle"></span> Need have a verification code? <a href="{% url 'account:phone-verify-send' %}">Click here to get one.</a></p>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script type="text/javascript">
+    window.onload = function() {
+        document.getElementById("id_code").focus();
+    }
+</script>
+{% endblock %}

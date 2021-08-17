@@ -12,7 +12,6 @@
             <div class="column is-8-tablet is-6-desktop content">
                 <p class="lead">Enter your email and password to log in:</p>
                 <form action="{% url 'account:login' %}" method="post" class="form">
-                    {% csrf_token %}
                     {% include '_includes/form/form.html' with form=form %}
                     <div class="columns is-vcentered">
                         <div class="column is-one-third">

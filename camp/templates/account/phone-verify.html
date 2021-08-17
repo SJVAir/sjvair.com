@@ -2,19 +2,35 @@
 
 {% block title %}Verify your phone number | {{ block.super }}{% endblock %}
 
-{% block account-tab-profile %}is-active{% endblock %}
-
 {% block inner-content %}
-    <form class="form" action="{% url 'account:profile' %}" method="post">
+<div class="box">
+    <form class="form" action="{% url 'account:phone-verify-send' %}" method="post">
         {% csrf_token %}
-        {% for field in form.hidden_fields %}
-            {{ field }}
-        {% endfor %}
 
-        <div class="box">
-            {% include '_includes/form/field.html' with field=form.code %}
+        <div class="content">
+            <h1>Phone Verification</h1>
+            <p>To verify your phone number, a 4-digit code will be sent to
+                your phone via text message. You must enter this code on the
+                next screen to verify your phone number. The verification
+                code will expire in {{ form.CODE_EXPIRES }} minute{{ form.CODE_EXPIRES|pluralize }}, after which a new code must
+                be sent.</p>
+
+            {% if form.non_field_errors %}
+                {% for error in form.non_field_errors %}
+                    <p class="has-text-danger has-text-weight-semibold">{{ error }}</p>
+                {% endfor %}
+            {% endif %}
         </div>
 
-        <button type="submit" class="button is-success">Verify your phone number.</button>
+        <div class="has-text-centered">
+            <button type="submit" class="button is-success">Send verification code</button>
+        </div>
     </form>
+
+    <hr />
+
+    <div class="notification is-light is-info">
+        <p><span class="far fa-question-circle"></span> Already have a verification code? <a href="{% url 'account:phone-verify-submit' %}">Click here to submit your code.</a></p>
+    </div>
+</div>
 {% endblock %}
