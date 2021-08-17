@@ -10,6 +10,10 @@ class ProfileForm(forms.ModelForm):
         fields = ('full_name', 'email', 'phone')
         model = User
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['phone'].required = True
+
 
 class UserCreationForm(forms.ModelForm):
     error_messages = {
@@ -24,6 +28,10 @@ class UserCreationForm(forms.ModelForm):
     class Meta:
         model = User
         fields = ('full_name', 'email', 'phone')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['phone'].required = True
 
     def clean_email(self):
         email = User.objects.normalize_email(self.cleaned_data['email'])
