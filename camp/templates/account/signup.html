@@ -8,12 +8,16 @@
 {% block content %}
 <section class="section hook">
     <div class="container">
+        <div class="content">
+            <h1 class="title">Create an account</h1>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
         <div class="columns is-centered">
             <div class="column is-10-tablet is-8-desktop content">
-                <p class="lead text-center">
-                    Creating your account is only the first step.<br />
-                    <span class="is-size-5 has-text-grey">We'll talk about your membership on the next page. :)</span>
-                </p>
                 <form action="{% url 'account:signup' %}" method="post" class="form">
                     {% csrf_token %}
                     {% for field in form.hidden_fields %}
@@ -24,6 +28,7 @@
                     <div class="box">
                         {% include '_includes/form/field.html' with field=form.full_name icon_left="far fa-user" %}
                         {% include '_includes/form/field.html' with field=form.email icon_left="far fa-envelope" %}
+                        {% include '_includes/form/field.html' with field=form.phone icon_left="far fa-phone" %}
                     </div>
 
                     <div class="box">
@@ -33,7 +38,7 @@
 
                     <div class="columns is-vcentered">
                         <div class="column is-one-third">
-                            <button type="submit" class="button is-success">Sign up</button>
+                            <button type="submit" class="button is-success">Create an account</button>
                         </div>
                         <div class="column is-two-thirds has-text-centered has-text-right-tablet">
                             <a href="{% url 'account:login' %}" class="button is-text is-small">Log in to an existing account.</a>
