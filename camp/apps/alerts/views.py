@@ -14,7 +14,7 @@ class AlertList(LoginRequiredMixin, vanilla.ListView):
         queryset = super().get_queryset()
         queryset = (queryset
             .filter(
-                monitor__subscriptions__user=self.request.user,
+                monitor__subscriptions__user_id=self.request.user.pk,
                 end_time__isnull=True
             )
             .select_related('monitor')
@@ -30,7 +30,7 @@ class SubscriptionList(LoginRequiredMixin, vanilla.ListView):
     def get_queryset(self):
         queryset = super().get_queryset()
         queryset = (queryset
-            .filter(user=self.request.user)
+            .filter(user_id=self.request.user.pk)
             .select_related('monitor')
             .distinct()
         )

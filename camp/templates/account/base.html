@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load alerts_tags %}
 
 {% block body-class %}account{% endblock %}
 
@@ -36,6 +37,8 @@
                                     <span class="far fa-fw fa-sensor-alert"></span>
                                 </span>
                                 <span>Air Quality Alerts</span>
+                                {% get_user_alert_count as alert_count %}
+                                {% if alert_count %}<span class="tag is-rounded is-danger">{{ alert_count }}</span>{% endif %}
                             </a>
                         </li>
                         <li>
@@ -44,6 +47,8 @@
                                     <span class="far fa-fw fa-shield-check"></span>
                                 </span>
                                 <span>Monitor Subscriptions</span>
+                                {% get_user_subscription_count as subscription_count %}
+                                {% if subscription_count %}<span class="tag is-rounded is-info">{{ subscription_count }}</span>{% endif %}
                             </a>
                         </li>
                         <li>
