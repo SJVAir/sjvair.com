@@ -23,7 +23,7 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
     )
     full_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True, db_index=True)
-    phone = PhoneNumberField(blank=True, help_text="Your cell phone number for text message air quality notifications.")
+    phone = PhoneNumberField(blank=True, help_text="Your cell phone number to receive air quality alerts via text message.")
     phone_verified = models.BooleanField(default=False)
 
     # Normally provided by auth.AbstractUser, but we're not using that here.

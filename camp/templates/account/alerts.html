@@ -11,7 +11,7 @@
         <tr>
             <th>Air monitor</th>
             <th>Start time</th>
-            <th class="has-text-right">Current status</th>
+            <th class="has-text-centered">Current status</th>
         </tr>
         {% for alert in alert_list %}
         <tr>
@@ -23,7 +23,7 @@
                 <span>{{ alert.start_time|timezone:"America/Los_Angeles" }}</span><br />
                 <span class="is-size-7">{{ alert.start_time|timesince }} ago</span>
             </td>
-            <td class="has-text-right">
+            <td class="has-text-centered">
                 <span class="tag air {{ alert.level }}">{{ alert.get_level_display }}</span>
             </td>
         </tr>
