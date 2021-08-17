@@ -99,7 +99,7 @@ class Alert(TimeStampedModel):
         notification_levels = values[:values.index(self.level) + 1]
 
         message = '\n'.join([
-            f'SJVAir.com - Air Quality Alert in {self.monitor.county} County',
+            f'SJVAir.com – Air Quality Alert in {self.monitor.county} County',
             '',
             f'Air Monitor: {self.monitor.name} ({self.monitor.device})',
             f'Status: {self.get_level_display()}',

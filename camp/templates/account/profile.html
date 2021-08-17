@@ -15,18 +15,16 @@
             {% include '_includes/form/field.html' with field=form.full_name icon_left="far fa-user" %}
             {% include '_includes/form/field.html' with field=form.email icon_left="far fa-envelope" %}
             {% include '_includes/form/field.html' with field=form.phone icon_left="far fa-phone" %}
-            {% if user.phone %}
-                {% if user.phone_verified %}
-                    <div class="help has-text-success">
-                        <span class="fa fa-check-circle"></span>
-                        <span>Your phone number is verified.</span>
+            {% if user.phone and not user.phone_verified %}
+                <div class="notification is-danger is-light">
+                    <div class="content">
+                        <p>
+                            <span class="far fa-exclamation-triangle"></span>
+                            You must verify your phone number before you will receive and air quality alerts.
+                        </p>
+                        <p class="has-text-weight-semibold"><a href="{% url 'account:phone-verify-send' %}">Click here to verify your phone number.</a></p>
                     </div>
-                {% else %}
-                    <div class="help has-text-danger">
-                        <span class="fa fa-times-circle"></span>
-                        <span>Your phone number is not verified.</span>
-                    </div>
-                {% endif %}
+                </div>
             {% endif %}
         </div>
 

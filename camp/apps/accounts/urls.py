@@ -33,7 +33,8 @@ urlpatterns = [
     url(r'^$', views.ProfileView.as_view(), name='profile'),
     url(r'^alerts/$', AlertList.as_view(), name='alerts'),
     url(r'^subscriptions/$', SubscriptionList.as_view(), name='subscriptions'),
-    url(r'^verify-phone/$', views.PhoneVerify.as_view(), name='phone-verify'),
+    url(r'^phone/$', views.SendPhoneVerification.as_view(), name='phone-verify-send'),
+    url(r'^phone/verify/$', views.SubmitPhoneVerification.as_view(), name='phone-verify-submit'),
     url(r'^signup/$', views.SignupView.as_view(), name='signup'),
     url(r'^', include(auth_urlpatterns)),
 ]

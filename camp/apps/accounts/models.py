@@ -23,7 +23,7 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
     )
     full_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True, db_index=True)
-    phone = PhoneNumberField(blank=True, help_text="Your cell phone number to receive air quality alerts via text message.")
+    phone = PhoneNumberField(blank=True, help_text="Your cell phone number for receiving air quality text alerts.")
     phone_verified = models.BooleanField(default=False)
 
     # Normally provided by auth.AbstractUser, but we're not using that here.
@@ -70,6 +70,14 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
 
     def get_full_name(self):
         return self.name
+
+    @property
+    def verify_phone_rate_limit_key(self):
+        return f'phone-rate-limit:{self.phone}'
+
+    @property
+    def verify_phone_code_key(self):
+        return f'phone-code:{self.phone}'
 
     def send_sms(self, message, verify=True):
         if self.phone and (self.phone_verified or not verify):

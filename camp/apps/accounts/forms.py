@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth import forms as auth_forms
+from django.core.cache import cache
 from django.utils.translation import ugettext_lazy as _
 
 from .models import User
@@ -82,5 +83,41 @@ class UserChangeForm(forms.ModelForm):
         return self.initial['password']
 
 
-class PhoneVerificationForm(forms.Form):
+class SendPhoneVerificationForm(forms.Form):
+    RATE_LIMIT = 2  # Number of minutes between sending
+    CODE_EXPIRES = 5 # Number of minutes until the code expires
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user')
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        self.check_rate_limit()
+        return self.cleaned_data
+
+    def check_rate_limit(self):
+        cache_key = self.user.verify_phone_rate_limit_key
+        if cache.get(cache_key):
+            error = 'You have recently been sent a verification code. Please try again shortly.'
+            raise forms.ValidationError(error)
+        cache.set(cache_key, True, self.RATE_LIMIT * 60)
+
+
+class SubmitPhoneVerificationForm(forms.Form):
+    CODE_EXPIRES = SendPhoneVerificationForm.CODE_EXPIRES # hack
+
     code = forms.CharField(max_length=4, min_length=4)
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user')
+        super().__init__(*args, **kwargs)
+
+    def clean_code(self):
+        code = self.cleaned_data.get('code')
+        cached_code = cache.get(self.user.verify_phone_code_key)
+
+        if code != cached_code:
+            raise forms.ValidationError('Invalid code, please try again.')
+
+        return code
+
