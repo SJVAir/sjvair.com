@@ -54,13 +54,56 @@
         </div>
 
         <div class="navbar-menu" id="id_navbar-menu">
-            <div class="navbar-end">
+            <div class="navbar-start">
                 <a href="/guidelines/" class="navbar-item">Activity Guidelines</a>
                 <a href="/about/" class="navbar-item">About</a>
-                <a href="/api/" class="navbar-item">API</a>
+                <!-- <a href="/api/" class="navbar-item">Developers</a> -->
+            </div>
+            <div class="navbar-end">
                 <div class="navbar-item">
                     <div id="google_translate_element"></div>
                 </div>
+                {% if user.is_authenticated %}
+                    <div class="navbar-item has-dropdown is-hoverable">
+                        <a class="navbar-link">{{ user.email }}</a>
+                        <div class="navbar-dropdown">
+                            <a href="{% url 'account:profile' %}" class="navbar-item">
+                                <span class="icon is-small">
+                                    <span class="far fa-fw fa-user"></span>
+                                </span>
+                                <span>&nbsp; Your Profile</span>
+                            </a>
+                            <a href="{% url 'account:alerts' %}" class="navbar-item">
+                                <span class="icon is-small">
+                                    <span class="far fa-fw fa-sensor-alert"></span>
+                                </span>
+                                <span>&nbsp; Air Quality Alerts</span>
+                            </a>
+                            <a href="{% url 'account:subscriptions' %}" class="navbar-item">
+                                <span class="icon is-small">
+                                    <span class="far fa-fw fa-shield-check"></span>
+                                </span>
+                                <span>&nbsp; Monitor Subscriptions</span>
+                            </a>
+                            <a href="{% url 'account:password-change' %}" class="navbar-item">
+                                <span class="icon is-small">
+                                    <span class="muted far fa-fw fa-lock"></span>
+                                </span>
+                                <span>&nbsp; Change password</span>
+                            </a>
+                            <hr class="navbar-divider">
+                            <a href="{% url 'account:logout' %}" class="navbar-item">
+                                <span class="icon is-small">
+                                    <span class="far fa-fw fa-sign-out-alt"></span>
+                                </span>
+                                <span>&nbsp;Logout</span>
+                            </a>
+                        </div>
+                    </div>
+                {% else %}
+                    <a class="navbar-item" href="{% url 'account:login' %}">Login</a>
+                    <a class="navbar-item" href="{% url 'account:signup' %}">Sign up</a>
+                {% endif %}
             </div>
         </div>
     </div>
