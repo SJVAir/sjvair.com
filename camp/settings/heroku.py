@@ -16,6 +16,19 @@ SECURE_SSL_REDIRECT = True
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# Cache
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_bmemcached.memcached.BMemcached",
+        "LOCATION": os.environ.get("MEMCACHEDCLOUD_SERVERS").split(","),
+        "OPTIONS": {
+            "username": os.environ.get("MEMCACHEDCLOUD_USERNAME"),
+            "password": os.environ.get("MEMCACHEDCLOUD_PASSWORD"),
+        },
+    }
+}
+
 # Huey
 
 # HUEY['always_eager'] = False
