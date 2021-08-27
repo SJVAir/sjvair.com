@@ -176,34 +176,21 @@ class MonitorsService {
     };
   }
 
-  async loadMonitors(monitorCB) {
-    await http.get("/monitors")
-    .then(res => {
+  async loadMonitors() {
+    this.monitors = {};
+    const res = await http.get("/monitors")
+      .catch(e => console.error("Unable to fetch monitors: ", e));
+
+    if ("data" in res.data) {
       for (let monitor of res.data.data) {
-        if (monitor.id in this.monitors) {
-          this.monitors[monitor.id].update(monitor);
-
-        } else {
-          this.monitors[monitor.id] = new Monitor(monitor);
-
-          this.monitors[monitor.id]._marker.addListener('click', () => {
-            this.setActiveMonitor(monitor.id);
-            this.handleClick(this.activeMonitor);
-          });
-        }
-        
-        if (monitorCB) {
-          monitorCB(this.monitors[monitor.id]);
-        }
+        this.monitors[monitor.id] = new Monitor(monitor);
       }
-    })
-    .catch(e => console.error("Unable to fetch monitors", e))
-    // Check to see if we are still waiting to set the active monitor
-    .finally(async () => {
-      if (!this.activeMonitor && this.monitorExists(this.cachedMon.id)) {
-        this.setActiveMonitor(this.cachedMon.id, this.cachedMon.dateRange);
-      }
-    });
+    }
+
+    if (!this.activeMonitor && this.monitorExists(this.cachedMon.id)) {
+      this.setActiveMonitor(this.cachedMon.id, this.cachedMon.dateRange);
+    }
+
   }
 
   async loadSubscriptions() {
