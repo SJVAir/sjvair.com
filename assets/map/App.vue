@@ -81,7 +81,6 @@
 </template>
 
 <script>
-  import AppController from "./controllers/App.controller";
   import Monitor from './models/monitor';
 
   import MonitorMap from "./components/MonitorMap";
@@ -95,14 +94,9 @@
 
     data() {
       return {
-        ctx: AppController,
         displayOptionsActive: false,
         visibility: Monitor.visibility,
       }
-    },
-
-    async mounted() {
-      await this.ctx.init(this.$router, this.$routes);
     },
 
     methods: {
