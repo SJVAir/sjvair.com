@@ -18,7 +18,7 @@
             <div class="dropdown-content">
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="ctx.flags.SJVAirPurple" />
+                  <input type="checkbox" v-model="visibility.SJVAirPurple" />
                   <span class="icon">
                     <span class="fas fa-fw fa-circle has-text-success"></span>
                   </span>
@@ -27,7 +27,7 @@
               </div>
               <div class="dropdown-item is-indented">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="ctx.flags.SJVAirInactive" />
+                  <input type="checkbox" v-model="visibility.SJVAirInactive" />
                   <span class="icon">
                     <span class="fas fa-fw fa-circle has-text-grey-light"></span>
                   </span>
@@ -36,7 +36,7 @@
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="ctx.flags.SJVAirBAM" />
+                  <input type="checkbox" v-model="visibility.SJVAirBAM" />
                   <span class="icon">
                     <span class="fas fa-fw fa-triangle has-text-success"></span>
                   </span>
@@ -45,7 +45,7 @@
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="ctx.flags.PurpleAir" />
+                  <input type="checkbox" v-model="visibility.PurpleAir" />
                   <span class="icon">
                     <span class="fas fa-fw fa-square has-text-success"></span>
                   </span>
@@ -54,7 +54,7 @@
               </div>
               <div class="dropdown-item is-indented">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="ctx.flags.PurpleAirInside" />
+                  <input type="checkbox" v-model="visibility.PurpleAirInside" />
                   <span class="icon">
                     <span class="far fa-fw fa-square has-text-dark"></span>
                   </span>
@@ -63,7 +63,7 @@
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="ctx.flags.AirNow" />
+                  <input type="checkbox" v-model="visibility.AirNow" />
                   <span class="icon">
                     <span class="fas fa-fw fa-hexagon has-text-success"></span>
                   </span>
@@ -74,74 +74,35 @@
           </div>
         </div>
       </div>
-      <div id="map" :class="mapIsMaximised" class="notranslate" translate="no"></div>
+      <monitor-map></monitor-map>
     </div>
-    <!-- <monitor-detail v-if="ctx.activeMonitor" :monitor="ctx.activeMonitor" /> -->
     <router-view></router-view>
   </div>
 </template>
 
 <script>
-  //import MonitorDetail from './components/MonitorDetail.vue';
   import AppController from "./controllers/App.controller";
-  import monitorsService from "./services/Monitors.service";
+  import Monitor from './models/monitor';
+
+  import MonitorMap from "./components/MonitorMap";
 
   export default {
     name: 'app',
 
     components: {
-      //MonitorDetail
+      MonitorMap
     },
 
     data() {
       return {
         ctx: AppController,
-        monitors: monitorsService,
-        interval: null,
         displayOptionsActive: false,
+        visibility: Monitor.visibility,
       }
     },
 
     async mounted() {
       await this.ctx.init(this.$router, this.$routes);
-      // Reload the monitors every 2 minutes
-      this.interval = setInterval(() => this.ctx.loadMonitors(), 1000 * 60 * 2);
-    },
-
-    destroyed() {
-      if(this.interval) {
-        clearInterval(this.interval);
-        this.interval = null;
-      }
-    },
-
-    watch: {
-      "ctx.flags.SJVAirPurple": function() {
-        this.ctx.updateVisibility();
-      },
-      "ctx.flags.SJVAirInactive": function() {
-        this.ctx.updateVisibility();
-      },
-      "ctx.flags.SJVAirBAM": function() {
-        this.ctx.updateVisibility();
-      },
-      "ctx.flags.PurpleAir": function() {
-        this.ctx.updateVisibility();
-      },
-      "ctx.flags.PurpleAirInside": function() {
-        this.ctx.updateVisibility();
-      },
-      "ctx.flags.AirNow": function() {
-        this.ctx.updateVisibility();
-      }
-    },
-
-    computed: {
-      mapIsMaximised() {
-        return {
-          'is-maximised': !this.monitors.activeMonitor
-        };
-      }
     },
 
     methods: {
