@@ -166,7 +166,7 @@ export default {
         for (let id in this.monitorService.monitors) {
           const monitor = this.monitorService.monitors[id];
 
-          if ("_marker" in monitor) {
+          if (monitor._marker.getMap()) {
             bounds.extend(this.monitorService.monitors[id]._marker.position);
           }
         }
