@@ -92,7 +92,7 @@ export default {
     await this.loadMonitors();
 
     // Reload the monitors every 2 minutes
-    this.interval = setInterval(async () => await this.loadMonitors(), 1000 * 60 / 2);
+    this.interval = setInterval(async () => await this.loadMonitors(), 1000 * 60 * 2);
   },
 
   destroyed() {
