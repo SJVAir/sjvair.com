@@ -90,6 +90,7 @@ export default {
     this.map = new this.gmaps.Map(this.$refs.map, this.mapSettings);
 
     await this.loadMonitors();
+    this.updateMapBounds();
 
     // Reload the monitors every 2 minutes
     this.interval = setInterval(async () => await this.loadMonitors(), 1000 * 60 * 2);
@@ -190,7 +191,6 @@ export default {
           marker.setMap(this.map);
         }
       }
-      this.updateMapBounds();
     },
 
     updateMapMarkerVisibility() {
