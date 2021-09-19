@@ -258,6 +258,9 @@ TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 
 TWILIO_PHONE_NUMBERS = os.environ.get("TWILIO_PHONE_NUMBERS", "").split(',')
 
+# SMS Alerts
+SEND_SMS_ALERTS = bool(int(os.environ.get('SEND_SMS_ALERTS', 1)))
+
 # Google Maps
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
 

@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import models
 from django.db.models import Avg
 from django.utils import timezone
@@ -95,6 +96,10 @@ class Alert(TimeStampedModel):
         )
 
     def send_notifications(self):
+        # If SMS alerts are disbaled, do nothing.
+        if not settings.SEND_SMS_ALERTS:
+            return
+
         values = [level[0] for level in LEVELS]
         notification_levels = values[:values.index(self.level) + 1]
 
