@@ -3,7 +3,6 @@ import utc from 'dayjs/plugin/utc';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import tinycolor from 'tinycolor2';
 
-import AppController from "../controllers/App.controller";
 import colors from "../utils/colors";
 
 dayjs.extend(utc);
@@ -35,32 +34,11 @@ MonitorField.genMulti = function(...fieldData) {
 export default class Monitor {
   constructor(monitor) {
     Object.assign(this, monitor);
-
-    //this.latest.timestamp = dayjs.utc(this.latest.timestamp).local();
-
-    this._marker = new window.google.maps.Marker({
-      size: new window.google.maps.Size(32, 32),
-      origin: window.google.maps.Point(0, 0),
-      anchor: new window.google.maps.Point(16, 16),
-      label: {
-        color: colors.black,
-        text: ''
-      },
-      title: monitor.name
-    });
-
-    Monitor.setDynamicData(this);
+    this.latest.timestamp = dayjs.utc(this.latest.timestamp).local();
   }
 
-  static setDynamicData(instance, data) {
-    // If new data, update the monitor instance
-    if (data) {
-      (instance.name !== data.name) && instance._marker.setTitle(data.name);
-      Object.assign(instance, data);
-    }
-
-    instance.latest.timestamp = dayjs.utc(instance.latest.timestamp).local();
-    instance.updateMapMarker();
+  get displayField() {
+    return Monitor.displayField;
   }
 
   get isVisible() {
@@ -77,16 +55,16 @@ export default class Monitor {
     }
 
     if(this.device == 'PurpleAir' && this.is_sjvair) {
-      return AppController.flags.SJVAirPurple && (AppController.flags.SJVAirInactive || this.is_active);
+      return Monitor.visibility.SJVAirPurple && (Monitor.visibility.SJVAirInactive || this.is_active);
 
     } else if (this.device == 'BAM1022'){
-      return AppController.flags.SJVAirBAM;
+      return Monitor.visibility.SJVAirBAM;
 
     } else if (this.device == 'PurpleAir') {
-      return AppController.flags.PurpleAir && (AppController.flags.PurpleAirInside || this.location == 'outside');
+      return Monitor.visibility.PurpleAir && (Monitor.visibility.PurpleAirInside || this.location == 'outside');
 
     } else if (this.device == 'AirNow'){
-      return AppController.flags.AirNow;
+      return Monitor.visibility.AirNow;
     }
     return false;
   }
@@ -118,7 +96,7 @@ export default class Monitor {
       params.border_size = 2;
     }
 
-    if(this.is_active && this.latest[Monitor.displayField] != null){
+    if(this.latest[Monitor.displayField] != null){
       for(let level of Monitor.fields[Monitor.displayField].levels){
         if(this.latest[Monitor.displayField] >= level.min){
           params.fill_color = level.color;
@@ -135,34 +113,6 @@ export default class Monitor {
 
     return params;
   }
-
-  update(monitorData) {
-    Monitor.setDynamicData(this, monitorData);
-  }
-
-  updateMapMarker() {
-    const params = this.getMarkerParams();
-
-    this._marker.setIcon(
-      `/api/1.0/marker.png?${ new URLSearchParams(params).toString() }`
-    );
-
-    let label = this._marker.getLabel();
-    label.color = `#${ Monitor.textColors.get(params.fill_color) || colors.black }`;
-    label.text = (this.latest === null || !this.is_active)
-      ? ' '
-      : Math.round(this.latest[Monitor.displayField]).toString();
-
-    this._marker.setLabel(label);
-
-    this._marker.setPosition(
-      new window.google.maps.LatLng(
-        this.position.coordinates[1],
-        this.position.coordinates[0]
-      )
-    );
-  }
-
 }
 
 // Default field to display
@@ -176,14 +126,11 @@ Monitor.fields = MonitorField.genMulti(
   ["pm100_env", "PM 10"]
 );
 
-// Specify alternate text colors based on the background color
-Monitor.textColors = new Map()
-  .set(colors.white, colors.black)
-  .set(colors.gray, colors.black)
-  .set(colors.black, colors.white)
-  .set(colors.green, colors.black)
-  .set(colors.yellow, colors.black)
-  .set(colors.orange, colors.white)
-  .set(colors.red, colors.white)
-  .set(colors.purple, colors.white)
-  .set(colors.maroon, colors.white);
+Monitor.visibility = {
+  SJVAirPurple: true,
+  SJVAirInactive: false,
+  SJVAirBAM: true,
+  PurpleAir: true,
+  PurpleAirInside: false,
+  AirNow: true,
+};
