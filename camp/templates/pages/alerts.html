@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block title %}SMS Alerts | {{ block.super }}{% endblock %}
+
+{% block body-class %}alerts{% endblock %}
+
+{% block main %}
+<section class="section hook">
+    <div class="container">
+        <div class="columns is-vcentered">
+            <div class="column is-7-desktop content">
+                <h1 class="is-size-1">Real-Time Air Quality Alerts</h1>
+                <p class="lead">Get notified when the air is bad in your area with
+                    the only real-time air quality alert system in the Central Valley.</p>
+                {% if not user.is_authenticated %}
+                <p class="buttons">
+                    <a class="button is-white" href="{% url 'account:login' %}">Login to your account</a>
+                    <a class="button is-info" href="{% url 'account:signup' %}">Sign up for air quality alerts</a>
+                </p>
+                {% endif %}
+            </div>
+            <div class="column is-4-tablet is-3-desktop mobile-screenshots">
+                <img src="{% static 'img/text-alert.png' %}" class="is-responsive" alt="" />
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="columns is-centered is-multiline is-variable is-8">
+        <div class="column is-10-tablet is-8-desktop">
+            <div class="content">
+                <h1>How does it work?</h1>
+            </div>
+            {% load_datafile 'alerts-boxes.yaml' as alerts_boxes %}
+            {% for box in alerts_boxes %}
+
+            <div class="card is-horizontal mb-5">
+                <div class="card-image">
+                    <figure class="image is-3by2">
+                        <img src="{% static box.image %}" alt="" />
+                    </figure>
+                </div>
+                <div class="card-content">
+                    <div class="content">
+                        <h3>{{ box.title }}</h3>
+                        {{ box.content|linebreaks }}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block javascripts %}
+{% endblock %}

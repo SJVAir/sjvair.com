@@ -1,0 +1,15 @@
+- image: img/steps/create-account.png
+  title: 1. Sign up for an account
+  content: Creating an account is the first step to getting real-time air quality alerts. You'll need to provide a phone number for air alerts.
+
+- image: img/steps/verify-phone.png
+  title: 2. Confirm your phone number
+  content: We'll text you a short verification code. Once your phone has been verified, you can recieve air alerts via text message.
+
+- image: img/steps/monitor-subscribe.png
+  title: 3. Subscribe to monitors
+  content: You can subscribe to alerts from any air monitor on the map by clicking on the alert level on the subscribe dropdown.
+
+- image: img/steps/monitor-unsubscribe.png
+  title: Change alert level or unsubscribe
+  content: Click on a different level to change your alert setting. You can unsubscribe by clicking on your current alert level (the one with a black border).
