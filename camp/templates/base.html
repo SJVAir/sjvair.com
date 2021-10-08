@@ -55,8 +55,9 @@
 
         <div class="navbar-menu" id="id_navbar-menu">
             <div class="navbar-start">
-                <a href="/guidelines/" class="navbar-item">Activity Guidelines</a>
-                <a href="/about/" class="navbar-item">About</a>
+                <a class="navbar-item" href="/alerts/">SMS Alerts</a>
+                <a class="navbar-item" href="/guidelines/">Activity Guidelines</a>
+                <a class="navbar-item" href="/about/">About Us</a>
                 <!-- <a href="/api/" class="navbar-item">Developers</a> -->
             </div>
             <div class="navbar-end">
@@ -101,8 +102,7 @@
                         </div>
                     </div>
                 {% else %}
-                    <a class="navbar-item" href="{% url 'account:login' %}">Login</a>
-                    <a class="navbar-item" href="{% url 'account:signup' %}">Sign up</a>
+
                 {% endif %}
             </div>
         </div>
