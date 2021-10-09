@@ -25,15 +25,6 @@
                   SJVAir (PurpleAir)
                 </label>
               </div>
-              <div class="dropdown-item is-indented">
-                <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.SJVAirInactive" />
-                  <span class="icon">
-                    <span class="fas fa-fw fa-circle has-text-grey-light"></span>
-                  </span>
-                  <span>Inactive monitors</span>
-                </label>
-              </div>
               <div class="dropdown-item">
                 <label class="checkbox">
                   <input type="checkbox" v-model="visibility.SJVAirBAM" />
@@ -41,6 +32,15 @@
                     <span class="fas fa-fw fa-triangle has-text-success"></span>
                   </span>
                   SJVAir (BAM1022)
+                </label>
+              </div>
+              <div class="dropdown-item">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="visibility.AirNow" />
+                  <span class="icon">
+                    <span class="fas fa-fw fa-triangle has-text-success"></span>
+                  </span>
+                  AirNow network
                 </label>
               </div>
               <div class="dropdown-item">
@@ -63,11 +63,11 @@
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.AirNow" />
+                  <input type="checkbox" v-model="visibility.displayInactive" />
                   <span class="icon">
-                    <span class="fas fa-fw fa-hexagon has-text-success"></span>
+                    <span class="fas fa-fw fa-square has-text-grey-light"></span>
                   </span>
-                  AirNow network
+                  <span>Inactive monitors</span>
                 </label>
               </div>
             </div>

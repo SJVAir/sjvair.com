@@ -67,9 +67,6 @@ export default {
     "visibility.SJVAirPurple": function() {
       this.updateMapMarkerVisibility();
     },
-    "visibility.SJVAirInactive": function() {
-      this.updateMapMarkerVisibility();
-    },
     "visibility.SJVAirBAM": function() {
       this.updateMapMarkerVisibility();
     },
@@ -80,6 +77,9 @@ export default {
       this.updateMapMarkerVisibility();
     },
     "visibility.AirNow": function() {
+      this.updateMapMarkerVisibility();
+    },
+    "visibility.displayInactive": function() {
       this.updateMapMarkerVisibility();
     }
   },
@@ -112,7 +112,7 @@ export default {
       const position = new this.gmaps
         .LatLng(monitor.position.coordinates[1], monitor.position.coordinates[0]);
 
-      const text = (monitor.latest === null)
+      const text = (!monitor.is_active || monitor.latest === null)
         ? ' '
         : Math.round(monitor.latest[monitor.displayField]).toString();
 
