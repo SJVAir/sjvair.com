@@ -49,13 +49,12 @@ export default class Monitor {
     // showPurpleAirInside
     // showAirNow
 
-    // All inactive non-SJVAir monitors are hidden.
-    if(!this.is_active && !this.is_sjvair){
+    if(!Monitor.visibility.displayInactive && !this.is_active){
       return false;
     }
 
     if(this.device == 'PurpleAir' && this.is_sjvair) {
-      return Monitor.visibility.SJVAirPurple && (Monitor.visibility.SJVAirInactive || this.is_active);
+      return Monitor.visibility.SJVAirPurple;
 
     } else if (this.device == 'BAM1022'){
       return Monitor.visibility.SJVAirBAM;
@@ -73,6 +72,7 @@ export default class Monitor {
     let params = {
       border_size: 0,
       fill_color: colors.gray,
+      size: this.is_active ? 24 : 16,
       shape: 'square'
     }
 
@@ -82,13 +82,11 @@ export default class Monitor {
         break;
 
       case 'AirNow':
-        params.shape = 'polygon';
-        params.sides = 6;
-        break;
-
       case 'BAM1022':
         params.shape = 'polygon';
         params.sides = 3;
+        params.size = 32
+        break;
     }
 
     if(this.location == 'inside'){
@@ -96,7 +94,7 @@ export default class Monitor {
       params.border_size = 2;
     }
 
-    if(this.latest[Monitor.displayField] != null){
+    if(this.is_active && this.latest[Monitor.displayField] != null){
       for(let level of Monitor.fields[Monitor.displayField].levels){
         if(this.latest[Monitor.displayField] >= level.min){
           params.fill_color = level.color;
@@ -107,7 +105,7 @@ export default class Monitor {
     }
 
     if(params.border_color == undefined){
-      params.border_color = tinycolor(params.fill_color).darken(3).toHex();
+      params.border_color = tinycolor(params.fill_color).darken(6).toHex();
       params.border_size = 1;
     }
 
