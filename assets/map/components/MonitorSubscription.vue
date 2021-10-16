@@ -109,17 +109,20 @@ export default {
     },
 
     async loadSubscriptions() {
+      let subscription;
+
+      if ("USER" in window && window.USER.is_authenticated) {
         const subscriptions = await this.ctx.loadSubscriptions();
+        subscription = subscriptions.find(s => s.monitor === this.activeMonitor.id);
+      }
 
-        const subscription = subscriptions.find(s => s.monitor === this.activeMonitor.id);
+      if (subscription) {
+        this.update(subscription.level);
 
-        if (subscription) {
-          this.update(subscription.level);
-
-        } else {
-          this.update(null);
-        }
-      },
+      } else {
+        this.update(null);
+      }
+    },
 
     selectOption(target, selectedLevel) {
       this.update(selectedLevel.raw);
