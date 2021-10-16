@@ -4,8 +4,8 @@
 
 <script>
 import * as d3 from "d3";
-import dateUtil from "../../utils/date";
 import monitorsService from "../../services/Monitors.service";
+import BackgroundTaskClient from "../../webworkers/BackgroundTaskClient";
 
 const margin = {
   top: 24,
@@ -14,75 +14,7 @@ const margin = {
   left: 24
 };
 
-/**
- * Helper function to compute the contiguous segments of the data
- *
- * Derived from https://github.com/pbeshai/d3-line-chunked/blob/master/src/lineChunked.js
- *
- * @param {Array} lineData the line data
- * @param {Function} defined function that takes a data point and returns true if
- *    it is defined, false otherwise
- * @param {Function} isNext function that takes the previous data point and the
- *    current one and returns true if the current point is the expected one to
- *    follow the previous, false otherwise.
- * @return {Array} An array of segments (subarrays) of the line data
- */
-function computeSegments(lineData, defined, isNext) {
-  defined = defined || function () { return true; };
-  isNext = isNext || function () { return true; };
-  let startNewSegment = true;
-
-  // split into segments of continuous data
-  let segments = lineData.reduce(function (segments, d) {
-    // skip if this point has no data
-    if (!defined(d)) {
-      startNewSegment = true;
-      return segments;
-    }
-
-    // if we are starting a new segment, start it with this point
-    if (startNewSegment) {
-      segments.push([d]);
-      startNewSegment = false;
-
-    // otherwise see if we are adding to the last segment
-    } else {
-      const lastSegment = segments[segments.length - 1];
-      const lastDatum = lastSegment[lastSegment.length - 1];
-      // if we expect this point to come next, add it to the segment
-      if (isNext(lastDatum, d)) {
-        lastSegment.push(d);
-
-      // otherwise create a new segment
-      } else {
-        segments.push([d]);
-      }
-    }
-
-    return segments;
-  }, []);
-
-  return segments;
-}
-
-// Calculate if there should be a line between 2 given points
-function defineLine(monitor) {
-  const maxDelta = monitor.last_active_limit;
-  let prevDataPoint = null;
-
-  return (dataPoint) => {
-    if (!prevDataPoint) {
-      prevDataPoint = dataPoint;
-      return true;
-    }
-
-    const deltaRaw = dateUtil(dataPoint.xData).diff(dateUtil(prevDataPoint.xData));
-    const deltaAsSec = Math.ceil(deltaRaw / 1000);
-
-    prevDataPoint = dataPoint;
-    return deltaAsSec < maxDelta;
-  }
-}
+const bgtc = new BackgroundTaskClient(new Worker("../../webworkers/ChartDataProcessor.js", { type: "module" }));
 
 export default {
   name: "monitor-chart",
@@ -100,8 +32,6 @@ export default {
       container: null,
       // Chart legend
       legend: null,
-      // Line/Point calculation
-      lineDefined: null,
       // D3 data path definitions
       pathDefinition: null,
       // Function to tell d3 how to read the date
@@ -184,16 +114,16 @@ export default {
   },
 
   watch: {
-    "ctx.activeMonitor.chartData": function() {
-      this.lineDefined = defineLine(this.ctx.activeMonitor);
-      this.loadData();
+    "ctx.activeMonitor.chartData": async function() {
+      await bgtc.run("updateLastActiveLimit", this.ctx.activeMonitor.last_active_limit);
+      await this.loadData();
     }
   },
 
   methods: {
     // This is a generic function to be used both for initialization
     //   and for updating the chart. D3's "merge" method is key here.
-    loadData() {
+    async loadData() {
       // create a flat copy of the chart data to find min/max values
       const flatData = this.activeMonitor.chartData.flat();
 
@@ -214,8 +144,10 @@ export default {
         const gapsId = `chart-gaps-${ i }`;
         const segmentsID = `chart-segments-${ i }`;
 
-        const segments = computeSegments(data, this.lineDefined)
-        const gaps = data.filter(this.lineDefined);
+        const { gaps, segments } = await bgtc.run("computeSegments", data);
+
+        console.log("gaps: ", gaps);
+        console.log("segments: ", segments);
 
         const gapsLine = this.chart.selectAll(`.${ gapsId }`)
           .data([gaps]);
