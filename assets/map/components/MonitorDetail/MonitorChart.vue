@@ -26,8 +26,6 @@ export default {
       ctx: monitorsService,
       // SVG chart
       chart: null,
-      // Colors for datasets
-      colors: ["#00ccff", "#006699", "#000033"],
       // Component container element
       container: null,
       // Chart legend
@@ -127,7 +125,6 @@ export default {
       // create a flat copy of the chart data to find min/max values
       const flatData = this.activeMonitor.chartData.flat();
 
-
       // Scale ranges for data, performance assumptions possible
       this.x.domain(
         d3.extent(flatData, d => this.parseTime(d.xData))
@@ -137,17 +134,14 @@ export default {
         d3.max(flatData, d => parseInt(Math.ceil(d.yData), 10))
       ]).nice();
 
-
       for (let i in this.activeMonitor.chartData) {
         const data = this.activeMonitor.chartData[i];
-        const color = this.activeMonitor.chartData[i].color;
-        const gapsId = `chart-gaps-${ i }`;
-        const segmentsID = `chart-segments-${ i }`;
+        const color = data.color;
+        const field = data.fieldName;
+        const gapsId = `chart-gaps-${ field }`;
+        const segmentsID = `chart-segments-${ field }`;
 
         const { gaps, segments } = await bgtc.run("computeSegments", data);
-
-        console.log("gaps: ", gaps);
-        console.log("segments: ", segments);
 
         const gapsLine = this.chart.selectAll(`.${ gapsId }`)
           .data([gaps]);
