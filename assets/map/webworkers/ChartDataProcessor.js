@@ -1,14 +1,20 @@
 import BackgroundTask from "./BackgroundTask";
 import dateUtil from "../utils/date";
 
+let last_active_limit = null;
+let prevDataPoint = null;
+
+
+
+
 class ChartDataProcessor extends BackgroundTask {
   constructor() {
     super();
-    this.last_active_limit = null;
   }
 
   updateLastActiveLimit(limit) {
-    this.last_active_limit = limit;
+    last_active_limit = limit;
+    return last_active_limit;
   }
 
   /**
@@ -62,7 +68,6 @@ class ChartDataProcessor extends BackgroundTask {
 
   // Calculate if there should be a line between 2 given points
   lineDefined(dataPoint) {
-    let prevDataPoint = null;
 
     if (!prevDataPoint) {
       prevDataPoint = dataPoint;
@@ -73,7 +78,7 @@ class ChartDataProcessor extends BackgroundTask {
     const deltaAsSec = Math.ceil(deltaRaw / 1000);
 
     prevDataPoint = dataPoint;
-    return deltaAsSec < this.last_active_limit;
+    return deltaAsSec < last_active_limit;
   }
 }
 
