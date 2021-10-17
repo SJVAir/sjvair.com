@@ -23,6 +23,8 @@ export default {
 
   data() {
     return {
+      // Current data fields
+      dataFields: [],
       ctx: monitorsService,
       // SVG chart
       chart: null,
@@ -113,8 +115,10 @@ export default {
 
   watch: {
     "ctx.activeMonitor.chartData": async function() {
-      await bgtc.run("updateLastActiveLimit", this.ctx.activeMonitor.last_active_limit);
-      await this.loadData();
+      if (this.ctx.activeMonitor.chartData.length) {
+        await bgtc.run("updateLastActiveLimit", this.ctx.activeMonitor.last_active_limit);
+        await this.loadData();
+      }
     }
   },
 
@@ -134,12 +138,22 @@ export default {
         d3.max(flatData, d => parseInt(Math.ceil(d.yData), 10))
       ]).nice();
 
+      const toRemove = this.dataFields.filter(field => !this.activeMonitor.dataFields.includes(field))
+
       for (let i in this.activeMonitor.chartData) {
         const data = this.activeMonitor.chartData[i];
         const color = data.color;
         const field = data.fieldName;
         const gapsId = `chart-gaps-${ field }`;
         const segmentsID = `chart-segments-${ field }`;
+
+        if (toRemove.length) {
+          for (let i in toRemove) {
+            const field = toRemove[i];
+            this.chart.selectAll(`.chart-gaps-${ field }`).remove();
+            this.chart.selectAll(`.chart-segments-${ field }`).remove();
+          }
+        }
 
         const { gaps, segments } = await bgtc.run("computeSegments", data);
 
@@ -154,18 +168,21 @@ export default {
 
         gapsLine.enter()
           .append("path")
-          .attr("class", segmentsID)
+          .attr("class", `${ gapsId } gap-line`)
           .attr("d", this.pathDefinition(gaps))
           .attr("fill", "none");
 
         segmentsLine.enter()
           .append("path")
-          .attr("class", segmentsID)
+          .attr("class", `${segmentsID} segment-line`)
           .merge(segmentsLine)
           .attr("d", this.pathDefinition)
           .attr("stroke", () => color)
           .attr("fill", "none");
       }
+
+      // Update current data fields
+      this.dataFields = this.activeMonitor.dataFields;
 
       // Add the chart legend
       const legendKeys = this.legend.selectAll(".legend-key")
