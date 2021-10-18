@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "apexcharts": "^3.23.0",
-    "axios": "^0.21.1",
+    "axios": "^0.21.2",
     "bulma": "^0.9.1",
     "caniuse-lite": "^1.0.30001247",
     "core-js": "^3.8.1",
