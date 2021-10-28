@@ -33,7 +33,7 @@
     <!--[if IE]><link rel="shortcut icon" href="{% static 'img/favicon/favicon.ico' %}" /><![endif]-->
 
     <link type="text/css" rel="stylesheet" href="{% static 'css/style.css' %}" />
-    <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v5.14.0/css/all.css" integrity="sha384-VhBcF/php0Z/P5ZxlxaEx1GwqTQVIBu4G4giRWxTKOCjTxsPFETUDdVL5B6vYvOt" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v5.15.4/css/all.css" integrity="sha384-rqn26AG5Pj86AF4SO72RK5fyefcQ/x32DNQfChxWvbXIyXFePlEktwD18fEz+kQU" crossorigin="anonymous">
 
     {% block extra-head %}{% endblock %}
 </head>
@@ -56,7 +56,19 @@
         <div class="navbar-menu" id="id_navbar-menu">
             <div class="navbar-start">
                 <a class="navbar-item" href="/alerts/">Air Alerts</a>
-                <a class="navbar-item" href="/guidelines/">Activity Guidelines</a>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">Resources</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" href="/guidelines/">Activity Guidelines</a>
+
+                        <a class="navbar-item" href="{% static 'docs/Wildfire-Smoke-Preparedness-2021.pdf' %}">
+                            <span>Wildfire Smoke Preparedness</span>
+                            <span class="icon">
+                                <span class="far fa-fw fa-file-pdf"></span>
+                            </span>
+                        </a>
+                    </div>
+                </div>
                 <a class="navbar-item" href="/about/">About Us</a>
                 <!-- <a href="/api/" class="navbar-item">Developers</a> -->
             </div>
