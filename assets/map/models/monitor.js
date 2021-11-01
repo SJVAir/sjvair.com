@@ -12,7 +12,7 @@ class MonitorField {
   constructor(fieldName, label) {
     this.label = label;
     this.levels = [
-      {min: 0, color: colors.green},
+      {min: -Infinity, color: colors.green},
       {min: 12, color: colors.yellow},
       {min: 35, color: colors.orange},
       {min: 55, color: colors.red},
@@ -95,8 +95,6 @@ export default class Monitor {
     }
 
     if(this.is_active && this.latest[Monitor.displayField] != null){
-      params.fill_color = colors.green; // Default to green
-
       for(let level of Monitor.fields[Monitor.displayField].levels){
         if(this.latest[Monitor.displayField] >= level.min){
           params.fill_color = level.color;
