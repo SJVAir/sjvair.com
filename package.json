@@ -12,7 +12,6 @@
     "heroku-postbuild": "invoke build"
   },
   "dependencies": {
-    "apexcharts": "^3.29.0",
     "axios": "^0.24.0",
     "bulma": "^0.9.3",
     "caniuse-lite": "^1.0.30001271",
@@ -21,9 +20,6 @@
     "dayjs": "^1.10.7",
     "tinycolor2": "^1.4.2",
     "vue": "^2.6.12",
-    "vue-apexcharts": "^1.6.2",
-    "vue-async-computed": "^3.9.0",
-    "vue-resource": "^1.5.3",
     "vue-router": "^3.5.2",
     "vuejs-datepicker": "^1.6.2"
   },
