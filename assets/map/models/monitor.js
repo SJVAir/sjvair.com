@@ -94,7 +94,9 @@ export default class Monitor {
       params.border_size = 2;
     }
 
-    if(this.latest[Monitor.displayField] != null){
+    if(this.is_active && this.latest[Monitor.displayField] != null){
+      params.fill_color = colors.green; // Default to green
+
       for(let level of Monitor.fields[Monitor.displayField].levels){
         if(this.latest[Monitor.displayField] >= level.min){
           params.fill_color = level.color;
