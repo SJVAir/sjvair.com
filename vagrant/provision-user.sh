@@ -15,7 +15,7 @@ wget -qO- https://raw.githubusercontent.com/creationix/nvm/v0.33.1/install.sh | 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-nvm install 12.18.3
+nvm install 16.13.0
 npm install -g yarn
 
 ########
