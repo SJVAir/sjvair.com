@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin
 from django.contrib.humanize.templatetags.humanize import intcomma
-from django.db.models import Max
+from django.db.models import F, Max
 from django.template import Template, Context
 from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
@@ -34,6 +34,11 @@ class MonitorAdmin(admin.OSMGeoAdmin):
     change_form_template = 'admin/monitors/change_form.html'
     change_list_template = 'admin/monitors/change_list.html'
 
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        queryset = queryset.annotate(last_updated=F('latest__timestamp'))
+        return queryset
+
     @csrf_protect_m
     def changelist_view(self, request, extra_context=None):
         if extra_context is None:
@@ -56,9 +61,10 @@ class MonitorAdmin(admin.OSMGeoAdmin):
         return super().render_change_form(request, context, *args, **kwargs)
 
     def last_updated(self, instance):
-        if instance.latest:
-            return parse_datetime(instance.latest['timestamp'])
+        if instance.last_updated:
+            return parse_datetime(instance.last_updated)
         return ''
+    last_updated.admin_order_field = 'last_updated'
 
 
 @admin.register(Calibration)
