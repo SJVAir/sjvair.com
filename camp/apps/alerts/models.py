@@ -27,6 +27,20 @@ PM25_LEVELS = (
     (30, LEVELS.unhealthy_sensitive),
 )
 
+# From Yanni:
+# Level Moderate: "Highly sensitive groups should stay indoors and avoid outdoor activities"
+# Level Unhealthy for Sensitive Groups: "Sensitive groups should stay indoors and avoid outdoor activities"
+# Level Unhealthy: "Everyone should reduce prolonged or heavy exertion"
+# Very Healthy: "Everyone should avoid prolonged or heavy exertion"
+# Hazardous: "Everyone should stay indoors and avoid physical outdoor activities"
+
+GUIDANCE = {
+    LEVELS.unhealthy_sensitive: "Sensitive groups should stay indoors and avoid outdoor activities",
+    LEVELS.unhealthy: "Everyone should reduce prolonged or heavy exertion",
+    LEVELS.very_unhealthy: "Everyone should avoid prolonged or heavy exertion",
+    LEVELS.hazardous: "Everyone should stay indoors and avoid physical outdoor activities",
+}
+
 class Subscription(TimeStampedModel):
     LEVELS = LEVELS
 
@@ -104,10 +118,9 @@ class Alert(TimeStampedModel):
         notification_levels = values[:values.index(self.level) + 1]
 
         message = '\n'.join([
-            f'SJVAir.com – Air Quality Alert in {self.monitor.county} County',
+            f'Air Quality Alert in {self.monitor.county} County for {self.monitor.name} ({self.monitor.device})',
             '',
-            f'Air Monitor: {self.monitor.name} ({self.monitor.device})',
-            f'Status: {self.get_level_display()}',
+            f'{self.get_level_display()}: {GUIDANCE[self.level]}',
             '',
             f'https://sjvair.com{self.monitor.get_absolute_url()}',
         ])
