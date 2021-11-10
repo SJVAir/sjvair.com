@@ -9,6 +9,8 @@ from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
 from django.utils.safestring import mark_safe
 
+from camp.utils.forms import DateRangeForm
+
 from .models import Calibration, Entry
 
 
@@ -25,8 +27,9 @@ def formula_help_text():
 class MonitorAdmin(admin.OSMGeoAdmin):
     list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated']
     list_editable = ['is_sjvair', 'is_hidden']
-    list_filter = ['is_sjvair', 'is_hidden', 'county']
+    list_filter = ['is_sjvair', 'is_hidden', 'location', 'county']
     fields = ['name', 'county', 'is_hidden', 'is_sjvair', 'location', 'position', 'pm25_calibration_formula']
+    search_fields = ['name']
 
     change_form_template = 'admin/monitors/change_form.html'
     change_list_template = 'admin/monitors/change_list.html'
@@ -47,6 +50,10 @@ class MonitorAdmin(admin.OSMGeoAdmin):
         if 'pm25_calibration_formula' in form.base_fields:
             form.base_fields['pm25_calibration_formula'].help_text = formula_help_text()
         return form
+
+    def render_change_form(self, request, context, *args, **kwargs):
+        context.update({'export_form': DateRangeForm()})
+        return super().render_change_form(request, context, *args, **kwargs)
 
     def last_updated(self, instance):
         if instance.latest:

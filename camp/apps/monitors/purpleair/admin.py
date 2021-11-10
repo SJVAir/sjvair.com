@@ -7,7 +7,6 @@ from camp.apps.monitors.admin import MonitorAdmin
 from camp.apps.monitors.purpleair.forms import PurpleAirAddForm
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.purpleair.tasks import import_monitor_data
-from camp.utils.forms import DateRangeForm
 
 
 @admin.register(PurpleAir)
@@ -43,10 +42,6 @@ class PurpleAirAdmin(MonitorAdmin):
             defaults['form'] = self.add_form
         defaults.update(kwargs)
         return super().get_form(request, obj, **defaults)
-
-    def render_change_form(self, request, context, *args, **kwargs):
-        context.update({'export_form': DateRangeForm()})
-        return super().render_change_form(request, context, *args, **kwargs)
 
     def save_model(self, request, obj, *args, **kwargs):
         super().save_model(request, obj, *args, **kwargs)
