@@ -28,7 +28,7 @@ class MonitorAdmin(admin.OSMGeoAdmin):
     list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated']
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', 'location', 'county']
-    fields = ['name', 'county', 'is_hidden', 'is_sjvair', 'location', 'position', 'pm25_calibration_formula']
+    fields = ['name', 'county', 'is_hidden', 'is_sjvair', 'location', 'position', 'notes', 'pm25_calibration_formula']
     search_fields = ['name']
 
     change_form_template = 'admin/monitors/change_form.html'

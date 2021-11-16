@@ -60,6 +60,8 @@ class Monitor(models.Model):
     county = models.CharField(max_length=20, blank=True, choices=COUNTIES)
     location = models.CharField(max_length=10, choices=LOCATION)
 
+    notes = models.TextField(blank=True, help_text="Notes for internal use.")
+
     latest = JSONField(encoder=JSONEncoder, default=dict)
 
     pm25_calibration_formula = models.CharField(max_length=255, blank=True,
