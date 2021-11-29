@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.urls import include, path, re_path
 
 from camp.utils.views import PageTemplate, AdminStats, FlushQueue
+from camp.apps.monitors.views import MonitorWidget, MonitorWidgetTest
 
 admin.site.site_title = "SJVAir Admin"
 admin.site.site_header = "SJVAir Admin"
@@ -12,6 +13,8 @@ admin.site.site_header = "SJVAir Admin"
 urlpatterns = [
     path('api/', include('camp.api.urls', namespace='api')),
     path('account/', include(('camp.apps.accounts.urls', 'account'), namespace='account')),
+    path('embed/<monitor_id>/', MonitorWidget.as_view(), name='monitor-widget'),
+    path('embed/<monitor_id>/test/', MonitorWidgetTest.as_view(), name='monitor-widget-test'),
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
