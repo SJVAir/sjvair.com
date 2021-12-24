@@ -34,10 +34,9 @@ class Monitor(models.Model):
     COUNTIES = Choices(*County.names)
     LOCATION = Choices('inside', 'outside')
 
-    PAYLOAD_SCHEMA = None
-    DEFAULT_SENSOR = None
-
     LAST_ACTIVE_LIMIT = 60 * 10
+    PAYLOAD_SCHEMA = None
+    SENSORS = ['']
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -63,6 +62,7 @@ class Monitor(models.Model):
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
 
     latest = JSONField(encoder=JSONEncoder, default=dict)
+    default_sensor = models.CharField(max_length=50, default='', blank=True)
 
     pm25_calibration_formula = models.CharField(max_length=255, blank=True,
         default='', validators=[validate_formula])
@@ -152,8 +152,7 @@ class Monitor(models.Model):
             timestamp = parse_datetime(timestamp)
             is_latest = make_aware(entry.timestamp) > timestamp
 
-        sensor_match = self.DEFAULT_SENSOR is None or entry.sensor == self.DEFAULT_SENSOR
-        if sensor_match and is_latest:
+        if entry.sensor == self.default_sensor and is_latest:
             fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
             self.latest = json.loads(json.dumps(serialize(entry, fields=fields), cls=JSONEncoder))
 
@@ -263,7 +262,7 @@ class Entry(models.Model):
         indexes = (
             BrinIndex(fields=['timestamp', 'sensor'], autosummarize=True),
         )
-        ordering = ('-timestamp',)
+        ordering = ('sensor', '-timestamp',)
 
     def get_calibration_context(self):
         return {
