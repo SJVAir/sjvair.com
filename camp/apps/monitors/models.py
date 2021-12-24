@@ -99,11 +99,9 @@ class Monitor(models.Model):
         start_time = end_time - timedelta(minutes=minutes)
         queryset = self.entries.filter(
             timestamp__range=(start_time, end_time),
+            sensor=self.default_sensor,
             pm25_env__isnull=False,
         )
-
-        if self.device == "PurpleAir":
-            queryset = queryset.filter(sensor="a")
 
         aggregate = queryset.aggregate(average=Avg('pm25_env'))
         return aggregate['average']
