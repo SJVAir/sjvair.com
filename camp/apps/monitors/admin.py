@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django import forms
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin
 from django.contrib.humanize.templatetags.humanize import intcomma
@@ -25,10 +26,10 @@ def formula_help_text():
 
 
 class MonitorAdmin(admin.OSMGeoAdmin):
-    list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated']
+    list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', 'location', 'county']
-    fields = ['name', 'county', 'is_hidden', 'is_sjvair', 'location', 'position', 'notes', 'pm25_calibration_formula']
+    fields = ['name', 'county', 'default_sensor', 'is_hidden', 'is_sjvair', 'location', 'position', 'notes', 'pm25_calibration_formula']
     search_fields = ['name']
 
     change_form_template = 'admin/monitors/change_form.html'
@@ -54,6 +55,11 @@ class MonitorAdmin(admin.OSMGeoAdmin):
         form = super().get_form(request, obj, **kwargs)
         if 'pm25_calibration_formula' in form.base_fields:
             form.base_fields['pm25_calibration_formula'].help_text = formula_help_text()
+
+        sensor_choices = [(sensor, '-----' if sensor == '' else sensor) for sensor in obj.SENSORS]
+        sensor_required = not obj._meta.get_field('default_sensor').blank
+        form.base_fields['default_sensor'] = forms.ChoiceField(choices=sensor_choices, required=sensor_required)
+
         return form
 
     def render_change_form(self, request, context, *args, **kwargs):

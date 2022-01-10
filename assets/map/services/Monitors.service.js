@@ -45,17 +45,12 @@ class ActiveMonitor {
     return ActiveMonitor.monitorFields[this.device];
   }
 
-  get sensors() {
-    return ActiveMonitor.sensors[this.device];
-  }
-
   downloadCSV () {
     const path = `${ window.location.origin }${ http.defaults.baseURL }monitors/${this.id}/entries/csv`;
     const params = new URLSearchParams({
       fields: this.dataFields.join(','),
       timestamp__gte: dateUtil.$defaultFormat(this.dateRange.gte),
       timestamp__lte: dateUtil.$defaultFormat(this.dateRange.lte),
-      sensor: this.sensors[0]
     }).toString();
 
     window.open(`${ path }/?${ params }`);
@@ -63,26 +58,23 @@ class ActiveMonitor {
 
   async loadEntries() {
     this.entries = [];
-    for (let sensorGroup of this.sensors) {
-      await this.fetchEntriesPage(sensorGroup);
-    }
+    await this.fetchEntriesPage();
   }
 
-  async fetchEntriesPage(sensor, page=1) {
+  async fetchEntriesPage(page=1) {
     await http.get(`monitors/${this.id}/entries/`, {
       params: {
         fields: this.dataFields.join(','),
         page: page,
         timestamp__gte: dateUtil.$defaultFormat(this.dateRange.gte),
-        timestamp__lte: dateUtil.$defaultFormat(this.dateRange.lte),
-        sensor: sensor
+        timestamp__lte: dateUtil.$defaultFormat(this.dateRange.lte)
       }
     })
     .then(async res => {
       this.entries.push(...res.data.data);
 
       if(res.data.has_next_page){
-        await this.fetchEntriesPage(sensor, page + 1);
+        await this.fetchEntriesPage(page + 1);
 
       } else {
         this.processEntries();
@@ -137,13 +129,6 @@ ActiveMonitor.monitorFields = {
   BAM1022: {
     pm25_env: '60m'
   }
-};
-
-// Specify the sensors we want for each sensor (empty is default)
-ActiveMonitor.sensors = {
-  PurpleAir: ['a'],
-  AirNow: [''],
-  BAM1022: ['']
 };
 
 // Specify colors to represent each field
