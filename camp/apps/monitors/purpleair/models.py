@@ -15,7 +15,7 @@ from camp.utils.datetime import parse_datetime
 
 
 class PurpleAir(Monitor):
-    DEFAULT_SENSOR = 'a'
+    SENSORS = ['a', 'b']
 
     data = JSONField(default=dict, encoder=JSONEncoder)
 
@@ -55,6 +55,9 @@ class PurpleAir(Monitor):
             float(self.data[0]['Lat'])
         )
         self.location = self.data[0]['DEVICE_LOCATIONTYPE']
+
+        if not self.default_sensor:
+            self.default_sensor = 'a'
 
     def create_entry(self, payload, sensor=None):
         try:
