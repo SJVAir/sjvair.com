@@ -142,6 +142,7 @@ class Monitor(models.Model):
         entry.is_processed = True
         return entry
 
+    # TODO: rename to update_if_latest()
     def check_latest(self, entry):
         from camp.api.v1.monitors.serializers import EntrySerializer
 
@@ -156,8 +157,7 @@ class Monitor(models.Model):
         if sensor_match and is_latest:
             fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
             self.latest = json.loads(json.dumps(serialize(entry, fields=fields), cls=JSONEncoder))
-
-        self.save()
+            self.save() # TODO: Don't save
 
     def save(self, *args, **kwargs):
         if self.position:
