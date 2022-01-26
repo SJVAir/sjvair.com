@@ -58,6 +58,12 @@ class EntryMixin:
 
 
 class EntryList(EntryMixin, generics.ListCreateEndpoint):
+    def get_queryset(self, *args, **kwargs):
+        queryset = super().get_queryset(*args, **kwargs)
+        if self.request.monitor.default_sensor and 'sensor' not in self.request.GET:
+            queryset = queryset.filter(sensor=self.request.monitor.default_sensor)
+        return queryset
+
     def serialize(self, source, **kwargs):
         if isinstance(source, QuerySet):
             fields = EntrySerializer.base_fields[::]
@@ -160,6 +166,3 @@ class MethaneDataUpload(generics.GenericEndpoint):
 
     def form_invalid(self, form):
         return http.Http400({'errors': form.errors})
-
-
-
