@@ -124,7 +124,7 @@ class Calibrator(TimeStampedModel):
         col_qs = (self.colocated.entries
             .filter(
                 timestamp__date__range=(start_date, end_date),
-                sensor='a', # Assumes PurpleAir
+                sensor=self.colocated.default_sensor,
             )
             .annotate(col_pm25=F('pm25_env'))
             .values('timestamp', 'col_pm25', 'humidity', 'particles_03um',

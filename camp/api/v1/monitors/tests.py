@@ -55,6 +55,24 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
         assert response.status_code == 200
 
+    def test_entry_list_default_sensor(self):
+        '''
+            Test that we can GET the entry list endpoint.
+        '''
+        monitor = self.get_purple_air()
+        monitor.default_sensor = 'b'
+        monitor.save()
+
+        url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
+        params = {'field': 'pm2_env'}
+        request = self.factory.get(url, params)
+        request.monitor = monitor
+        response = entry_list(request, monitor_id=monitor.pk)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert set(e['sensor'] for e in content['data']) == {monitor.default_sensor}
+
     def test_entry_list(self):
         '''
             Test that we can GET the entry list endpoint.
