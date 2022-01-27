@@ -32,6 +32,7 @@ def import_recent_data():
 def update_monitor_data():
     for monitor in PurpleAir.objects.all():
         monitor.update_data()
+        monitor.save()
 
 @db_task()
 def import_monitor_history(monitor_id, end=None):
