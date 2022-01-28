@@ -280,3 +280,12 @@ if "SENTRY_DSN" in os.environ:
         integrations=[DjangoIntegration(transaction_style="url")],
         release=COMMIT_HASH,
     )
+
+# Scout APM
+SCOUT_MONITOR = bool(os.environ.get('SCOUT_MONITOR') == 'true')
+SCOUT_KEY = os.environ.get('SCOUT_KEY')
+SCOUT_NAME = os.environ.get('SCOUT_NAME')
+SCOUT_ERRORS_ENABLED = not DEBUG
+
+if SCOUT_KEY is not None:
+    INSTALLED_APPS.insert(0, 'scout_apm.django')
