@@ -40,7 +40,7 @@ livereload==2.6.3
 nameparser==1.0.6
 numpy==1.21.0
 pandas==1.2.4
-Pillow==8.3.2
+Pillow==9.0.0
 psycopg2==2.8.6 --no-binary psycopg2
 py-expression-eval==0.3.13
 pylibmc==1.6.1
