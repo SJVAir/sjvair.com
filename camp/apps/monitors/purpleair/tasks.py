@@ -24,9 +24,15 @@ def import_recent_data():
         return
 
     for monitor in PurpleAir.objects.all():
-        print('\n' * 10, '[import_recent_data]', monitor.name, '\n' * 10)
+        print('[import_recent_data]', monitor.name, '\n')
         import_monitor_data.schedule([monitor.pk], delay=1, priority=30)
 
+
+@db_periodic_task(crontab(hour='23', minute='0'))
+def update_monitor_data():
+    for monitor in PurpleAir.objects.all():
+        monitor.update_data()
+        monitor.save()
 
 @db_task()
 def import_monitor_history(monitor_id, end=None):
@@ -51,8 +57,7 @@ def import_monitor_history(monitor_id, end=None):
 @db_task()
 def import_monitor_data(monitor_id, options=None):
     monitor = PurpleAir.objects.get(pk=monitor_id)
-    print(f'[import_monitor_data:start] {monitor.name} ({monitor.pk})')
-    monitor.update_data()
+    print(f'[import_monitor_data] {monitor.name} ({monitor.pk})')
     monitor.save()
 
     if options is None:
@@ -69,11 +74,11 @@ def import_monitor_data(monitor_id, options=None):
         for payload in feed:
             add_monitor_entry.schedule([monitor.pk, payload, sensor], delay=1, priority=30)
 
-    print(f'[import_monitor_data:end] {monitor.name} ({monitor.pk})')
-
 
 @db_task()
 def add_monitor_entry(monitor_id, payload, sensor=None):
+    # CONSIDER: If we're skipping existing entries, we
+    # probably don't need this lock
     key = '_'.join([
         'purpleair.entry',
         str(monitor_id),
@@ -84,8 +89,14 @@ def add_monitor_entry(monitor_id, payload, sensor=None):
     try:
         with HUEY.lock_task(key):
             monitor = PurpleAir.objects.get(pk=monitor_id)
-            print(f'[add_monitor_entry] {monitor.name} ({monitor.pk})')
             entry = monitor.create_entry(payload, sensor=sensor)
+
+            # If the entry was pulled from the database and is not
+            # a new instance, we can end early since we already have it.
+            if not entry._state.adding:
+                return
+
+            print(f'[add_monitor_entry] {monitor.name} ({monitor.pk})')
             entry = monitor.process_entry(entry)
             entry.save()
             monitor.check_latest(Entry.objects.get(pk=entry.pk))
