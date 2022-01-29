@@ -140,6 +140,7 @@ class Monitor(models.Model):
         entry.is_processed = True
         return entry
 
+    # TODO: rename to update_if_latest()
     def check_latest(self, entry):
         from camp.api.v1.monitors.serializers import EntrySerializer
 
@@ -153,8 +154,7 @@ class Monitor(models.Model):
         if entry.sensor == self.default_sensor and is_latest:
             fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
             self.latest = json.loads(json.dumps(serialize(entry, fields=fields), cls=JSONEncoder))
-
-        self.save()
+            self.save() # TODO: Don't save here.
 
     def save(self, *args, **kwargs):
         if self.position:
@@ -233,10 +233,12 @@ class Entry(models.Model):
     humidity = models.DecimalField(max_digits=8, decimal_places=1, null=True)
     pressure = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
+    # TODO: Rename: Remove _env
     pm10_env = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     pm25_env = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     pm100_env = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
+    # TODO: Remove
     pm10_standard = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     pm25_standard = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     pm100_standard = models.DecimalField(max_digits=8, decimal_places=2, null=True)
@@ -244,6 +246,7 @@ class Entry(models.Model):
     pm25_avg_15 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     pm25_avg_60 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
+    # TODO: Remove
     pm25_aqi = models.IntegerField(null=True)
 
     particles_03um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
