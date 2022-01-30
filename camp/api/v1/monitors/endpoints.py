@@ -87,10 +87,6 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
 
 
 class EntryCSV(EntryMixin, CSVExport):
-    headers = {
-        'pm25': 'pm25_avg_2',
-    }
-
     @cached_property
     def columns(self):
         fields = EntrySerializer.base_fields[::]
@@ -117,7 +113,7 @@ class EntryCSV(EntryMixin, CSVExport):
         return queryset
 
     def get_header_row(self):
-        return [self.headers.get(name, name) for name in self.columns]
+        return self.columns
 
     def get_row(self, instance):
         return [instance[key] for key in self.columns]
