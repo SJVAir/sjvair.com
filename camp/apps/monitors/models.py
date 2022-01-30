@@ -61,7 +61,7 @@ class Monitor(models.Model):
 
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
 
-    latest = JSONField(encoder=JSONEncoder, default=dict)
+    latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
     default_sensor = models.CharField(max_length=50, default='', blank=True)
 
     pm25_calibration_formula = models.CharField(max_length=255, blank=True,
@@ -85,11 +85,11 @@ class Monitor(models.Model):
 
     @property
     def is_active(self):
-        if not self.latest:
+        if not self.latest_id:
             return False
         now = timezone.now()
         cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
-        return (now - parse_datetime(self.latest['timestamp'])) < cutoff
+        return (now - self.latest.timestamp) < cutoff
 
     def get_absolute_url(self):
         return f'/#/monitor/{self.pk}'
@@ -144,16 +144,13 @@ class Monitor(models.Model):
     def check_latest(self, entry):
         from camp.api.v1.monitors.serializers import EntrySerializer
 
-        timestamp = self.latest.get('timestamp')
-        if timestamp is None:
-            is_latest = True
+        if self.latest_id:
+            is_latest = make_aware(entry.timestamp) > self.latest.timestamp
         else:
-            timestamp = parse_datetime(timestamp)
-            is_latest = make_aware(entry.timestamp) > timestamp
+            is_latest = True
 
         if entry.sensor == self.default_sensor and is_latest:
-            fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
-            self.latest = json.loads(json.dumps(serialize(entry, fields=fields), cls=JSONEncoder))
+            self.latest = entry
             self.save() # TODO: Don't save here.
 
     def save(self, *args, **kwargs):
