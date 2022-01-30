@@ -30,7 +30,7 @@ class MonitorSerializer(serializers.Serializer):
         'position',
         ('last_active_limit', lambda monitor: monitor.LAST_ACTIVE_LIMIT),
         'location',
-        'latest',
+        ('latest', EntrySerializer),
         'county'
     ]
 

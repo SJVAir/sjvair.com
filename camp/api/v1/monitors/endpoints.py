@@ -33,6 +33,7 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        queryset = queryset.select_related('latest')
         queryset = queryset.exclude(is_hidden=True)
         return queryset
 
@@ -40,6 +41,11 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = queryset.select_related('latest')
+        return queryset
 
 
 class EntryMixin:
