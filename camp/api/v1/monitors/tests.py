@@ -64,7 +64,7 @@ class EndpointTests(TestCase):
         monitor.save()
 
         url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
-        params = {'field': 'pm2_env'}
+        params = {'field': 'pm2'}
         request = self.factory.get(url, params)
         request.monitor = monitor
         response = entry_list(request, monitor_id=monitor.pk)
@@ -79,7 +79,7 @@ class EndpointTests(TestCase):
         '''
         monitor = self.get_purple_air()
         url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
-        params = {'sensor': 'a', 'field': 'pm2_env'}
+        params = {'sensor': 'a', 'field': 'pm2'}
         request = self.factory.get(url, params)
         request.monitor = monitor
         response = entry_list(request, monitor_id=monitor.pk)

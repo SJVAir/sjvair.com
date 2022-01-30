@@ -29,7 +29,7 @@ class Command(BaseCommand):
             is_failed = False
             is_flagged = False
 
-            results = linear_regression(a_qs, b_qs, ['pm25_env'])
+            results = linear_regression(a_qs, b_qs, ['pm25'])
             if results is None:
                 is_failed = True
                 reason = 'Unknown'
@@ -48,12 +48,12 @@ class Command(BaseCommand):
             else:
                 results['monitor'] = monitor
 
-                results['std_a'] = results['df'].endog_pm25_env.std()
-                results['std_b'] = results['df'].pm25_env.std()
+                results['std_a'] = results['df'].endog_pm25.std()
+                results['std_b'] = results['df'].pm25.std()
                 results['std_diff'] = results['std_a'] - results['std_b']
 
-                results['mean_a'] = results['df'].endog_pm25_env.mean()
-                results['mean_b'] = results['df'].pm25_env.mean()
+                results['mean_a'] = results['df'].endog_pm25.mean()
+                results['mean_b'] = results['df'].pm25.mean()
                 results['mean_diff'] = results['mean_a'] - results['mean_b']
 
                 is_flagged = any((
