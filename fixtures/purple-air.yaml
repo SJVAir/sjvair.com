@@ -118,20 +118,16 @@
     fahrenheit: '112.0'
     humidity: '12.0'
     pressure: null
-    pm10_env: '4.82'
-    pm25_env: '7.27'
-    pm100_env: '7.55'
-    pm10_standard: '4.82'
-    pm25_standard: '7.27'
-    pm100_standard: '7.55'
+    pm10: '4.82'
+    pm25: '7.27'
+    pm100: '7.55'
     particles_03um: '1182.00'
     particles_05um: '337.00'
     particles_10um: '3.00'
     particles_25um: '0.18'
     particles_50um: '0.18'
     particles_100um: '43.47'
-    pm25_aqi: null
-    pm25_calibration_formula: 'pm25_env * .4'
+    pm25_calibration_formula: 'pm25 * .4'
 - model: monitors.entry
   pk: IwV2ocS6Quy5EoJh5lXQ4Q
   fields:
@@ -168,19 +164,15 @@
     fahrenheit: '112.0'
     humidity: '12.0'
     pressure: null
-    pm10_env: '4.93'
-    pm25_env: '7.05'
-    pm100_env: '8.00'
-    pm10_standard: '4.93'
-    pm25_standard: '7.05'
-    pm100_standard: '8.00'
+    pm10: '4.93'
+    pm25: '7.05'
+    pm100: '8.00'
     particles_03um: '1139.84'
     particles_05um: '332.16'
     particles_10um: '4.30'
     particles_25um: '1.00'
     particles_50um: '0.39'
     particles_100um: '47.37'
-    pm25_aqi: null
 - model: monitors.entry
   pk: TNcSSB7nR0y3_8JUvsrP5Q
   fields:
@@ -217,19 +209,15 @@
     fahrenheit: null
     humidity: null
     pressure: '1000.54'
-    pm10_env: '6.53'
-    pm25_env: '9.42'
-    pm100_env: '10.61'
-    pm10_standard: '6.53'
-    pm25_standard: '9.42'
-    pm100_standard: '10.61'
+    pm10: '6.53'
+    pm25: '9.42'
+    pm100: '10.61'
     particles_03um: '1244.54'
     particles_05um: '375.69'
     particles_10um: '4.64'
     particles_25um: '1.63'
     particles_50um: '0.51'
     particles_100um: '58.37'
-    pm25_aqi: null
 - model: monitors.entry
   pk: ikq6RR4bSW2wcJDDUUFUyg
   fields:
@@ -266,19 +254,15 @@
     fahrenheit: null
     humidity: null
     pressure: '1000.51'
-    pm10_env: '5.95'
-    pm25_env: '8.91'
-    pm100_env: '10.05'
-    pm10_standard: '5.95'
-    pm25_standard: '8.91'
-    pm100_standard: '10.05'
+    pm10: '5.95'
+    pm25: '8.91'
+    pm100: '10.05'
     particles_03um: '1154.95'
     particles_05um: '351.47'
     particles_10um: '6.28'
     particles_25um: '1.05'
     particles_50um: '0.35'
     particles_100um: '52.46'
-    pm25_aqi: null
 - model: monitors.entry
   pk: sqdMmRKVTeea9UldUtWeRw
   fields:
@@ -315,19 +299,15 @@
     fahrenheit: null
     humidity: null
     pressure: '1000.14'
-    pm10_env: '5.95'
-    pm25_env: '9.74'
-    pm100_env: '10.74'
-    pm10_standard: '5.95'
-    pm25_standard: '9.74'
-    pm100_standard: '10.74'
+    pm10: '5.95'
+    pm25: '9.74'
+    pm100: '10.74'
     particles_03um: '1169.79'
     particles_05um: '352.18'
     particles_10um: '5.12'
     particles_25um: '1.86'
     particles_50um: '0.00'
     particles_100um: '58.25'
-    pm25_aqi: null
 - model: monitors.entry
   pk: vGARJNRxRriwLtDF7stG4Q
   fields:
@@ -364,19 +344,15 @@
     fahrenheit: '112.0'
     humidity: '12.0'
     pressure: null
-    pm10_env: '6.29'
-    pm25_env: '8.96'
-    pm100_env: '9.20'
-    pm10_standard: '6.29'
-    pm25_standard: '8.96'
-    pm100_standard: '9.20'
+    pm10: '6.29'
+    pm25: '8.96'
+    pm100: '9.20'
     particles_03um: '1356.43'
     particles_05um: '391.02'
     particles_10um: '3.16'
     particles_25um: '0.23'
     particles_50um: '0.23'
     particles_100um: '57.04'
-    pm25_aqi: null
 - model: monitors.entry
   pk: zRL1VgOjRTWIgR0jlUe7yw
   fields:
@@ -413,19 +389,15 @@
     fahrenheit: '112.0'
     humidity: '12.0'
     pressure: null
-    pm10_env: '4.55'
-    pm25_env: '6.77'
-    pm100_env: '7.30'
-    pm10_standard: '4.55'
-    pm25_standard: '6.77'
-    pm100_standard: '7.30'
+    pm10: '4.55'
+    pm25: '6.77'
+    pm100: '7.30'
     particles_03um: '1070.05'
     particles_05um: '314.32'
     particles_10um: '2.58'
     particles_25um: '0.45'
     particles_50um: '0.25'
     particles_100um: '48.08'
-    pm25_aqi: null
 - model: monitors.entry
   pk: zkUgO1WYRh-n2w1BHQbrkA
   fields:
@@ -462,16 +434,12 @@
     fahrenheit: null
     humidity: null
     pressure: '1000.58'
-    pm10_env: '6.88'
-    pm25_env: '10.14'
-    pm100_env: '10.86'
-    pm10_standard: '6.88'
-    pm25_standard: '10.14'
-    pm100_standard: '10.86'
+    pm10: '6.88'
+    pm25: '10.14'
+    pm100: '10.86'
     particles_03um: '1339.53'
     particles_05um: '404.58'
     particles_10um: '3.39'
     particles_25um: '1.08'
     particles_50um: '0.51'
     particles_100um: '69.80'
-    pm25_aqi: null

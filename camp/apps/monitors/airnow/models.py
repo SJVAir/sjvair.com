@@ -12,8 +12,7 @@ class AirNow(Monitor):
             list(entry.payload.values())[0]['UTC']
         )
         if 'PM2.5' in entry.payload:
-            entry.pm25_env = entry.payload['PM2.5']['Value']
-            entry.pm25_aqi = entry.payload['PM2.5']['AQI']
+            entry.pm25 = entry.payload['PM2.5']['Value']
         if 'PM10' in entry.payload:
-            entry.pm100_env = entry.payload['PM10']['Value']
+            entry.pm100 = entry.payload['PM10']['Value']
         return super().process_entry(entry)

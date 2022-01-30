@@ -88,7 +88,7 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
 
 class EntryCSV(EntryMixin, CSVExport):
     headers = {
-        'pm25_env': 'pm25_avg_2',
+        'pm25': 'pm25_avg_2',
     }
 
     @cached_property

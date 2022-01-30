@@ -107,7 +107,7 @@ class Calibrator(TimeStampedModel):
         # Load the reference entries into a DataFrame, sampled hourly.
         ref_qs = (self.reference.entries
             .filter(timestamp__date__range=(start_date, end_date))
-            .annotate(ref_pm25=F('pm25_env'))
+            .annotate(ref_pm25=F('pm25'))
             .values('timestamp', 'ref_pm25')
         )
 
@@ -126,7 +126,7 @@ class Calibrator(TimeStampedModel):
                 timestamp__date__range=(start_date, end_date),
                 sensor=self.colocated.default_sensor,
             )
-            .annotate(col_pm25=F('pm25_env'))
+            .annotate(col_pm25=F('pm25'))
             .values('timestamp', 'col_pm25', 'humidity', 'particles_03um',
                 'particles_05um', 'particles_10um', 'particles_25um')
         )

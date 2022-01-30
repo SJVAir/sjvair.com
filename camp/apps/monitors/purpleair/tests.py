@@ -32,7 +32,6 @@ class PurpleAirTests(TestCase):
         assert entry.sensor == 'a'
         assert entry.position == self.monitor.position
         assert entry.fahrenheit == entry.payload[0]['Temperature']
-        assert entry.pm25_aqi is not None
 
     # def test_thing(self):
     #     qs = PurpleAir.objects.annotate(

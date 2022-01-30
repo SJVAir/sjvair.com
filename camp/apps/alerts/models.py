@@ -106,7 +106,7 @@ class Alert(TimeStampedModel):
         start_time = end_time - timedelta(hours=hours)
         return (self.monitor.entries
             .filter(timestamp__range=(start_time, end_time))
-            .aggregate(average=Avg('pm25_env'))['average']
+            .aggregate(average=Avg('pm25'))['average']
         )
 
     def send_notifications(self):
