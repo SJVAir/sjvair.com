@@ -61,7 +61,7 @@ class Monitor(models.Model):
 
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
 
-    latest = JSONField(encoder=JSONEncoder, default=dict)
+    latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
     default_sensor = models.CharField(max_length=50, default='', blank=True)
 
     pm25_calibration_formula = models.CharField(max_length=255, blank=True,
@@ -85,11 +85,11 @@ class Monitor(models.Model):
 
     @property
     def is_active(self):
-        if not self.latest:
+        if not self.latest_id:
             return False
         now = timezone.now()
         cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
-        return (now - parse_datetime(self.latest['timestamp'])) < cutoff
+        return (now - self.latest.timestamp) < cutoff
 
     def get_absolute_url(self):
         return f'/#/monitor/{self.pk}'
@@ -100,10 +100,10 @@ class Monitor(models.Model):
         queryset = self.entries.filter(
             timestamp__range=(start_time, end_time),
             sensor=self.default_sensor,
-            pm25_env__isnull=False,
+            pm25__isnull=False,
         )
 
-        aggregate = queryset.aggregate(average=Avg('pm25_env'))
+        aggregate = queryset.aggregate(average=Avg('pm25'))
         return aggregate['average']
 
     def get_pm25_calibration_formula(self):
@@ -135,7 +135,7 @@ class Monitor(models.Model):
         entry.position = self.position
         entry.location = self.location
         entry.calibrate_pm25(self.get_pm25_calibration_formula())
-        entry.calculate_aqi()
+        # entry.calculate_aqi()
         entry.calculate_averages()
         entry.is_processed = True
         return entry
@@ -144,16 +144,13 @@ class Monitor(models.Model):
     def check_latest(self, entry):
         from camp.api.v1.monitors.serializers import EntrySerializer
 
-        timestamp = self.latest.get('timestamp')
-        if timestamp is None:
-            is_latest = True
+        if self.latest_id:
+            is_latest = make_aware(entry.timestamp) > self.latest.timestamp
         else:
-            timestamp = parse_datetime(timestamp)
-            is_latest = make_aware(entry.timestamp) > timestamp
+            is_latest = True
 
         if entry.sensor == self.default_sensor and is_latest:
-            fields = ['id'] + EntrySerializer.fields + EntrySerializer.value_fields
-            self.latest = json.loads(json.dumps(serialize(entry, fields=fields), cls=JSONEncoder))
+            self.latest = entry
             self.save() # TODO: Don't save here.
 
     def save(self, *args, **kwargs):
@@ -196,8 +193,7 @@ class Calibration(TimeStampedModel):
 class Entry(models.Model):
     ENVIRONMENT = [
         'celcius', 'fahrenheit', 'humidity', 'pressure',
-        'pm10_env', 'pm25_env', 'pm100_env',
-        'pm10_standard', 'pm25_standard', 'pm100_standard',
+        'pm10', 'pm25', 'pm100',
         'particles_03um', 'particles_05um', 'particles_10um',
         'particles_25um', 'particles_50um', 'particles_100um',
     ]
@@ -227,27 +223,18 @@ class Entry(models.Model):
 
     pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
 
-    # Post-processed, calibrated data
     celcius = models.DecimalField(max_digits=8, decimal_places=1, null=True)
     fahrenheit = models.DecimalField(max_digits=8, decimal_places=1, null=True)
     humidity = models.DecimalField(max_digits=8, decimal_places=1, null=True)
     pressure = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
-    # TODO: Rename: Remove _env
-    pm10_env = models.DecimalField(max_digits=8, decimal_places=2, null=True)
-    pm25_env = models.DecimalField(max_digits=8, decimal_places=2, null=True)
-    pm100_env = models.DecimalField(max_digits=8, decimal_places=2, null=True)
-
-    # TODO: Remove
-    pm10_standard = models.DecimalField(max_digits=8, decimal_places=2, null=True)
-    pm25_standard = models.DecimalField(max_digits=8, decimal_places=2, null=True)
-    pm100_standard = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    # Post-processed, calibrated data
+    pm10 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    pm25 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    pm100 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
     pm25_avg_15 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     pm25_avg_60 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
-
-    # TODO: Remove
-    pm25_aqi = models.IntegerField(null=True)
 
     particles_03um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     particles_05um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
@@ -301,25 +288,25 @@ class Entry(models.Model):
             expression = parser.parse(formula)
             context = self.get_calibration_context()
 
-            self.pm25_env = expression.evaluate(context)
+            self.pm25 = expression.evaluate(context)
             self.pm25_calibration_formula = formula
 
-    def calculate_aqi(self):
-        algo = aqi.get_algo(aqi.ALGO_EPA)
-        try:
-            self.pm25_aqi = algo.iaqi(aqi.POLLUTANT_PM25, min(
-                self.get_average('pm25_env', 60 * 12),
-                algo.piecewise['bp'][aqi.POLLUTANT_PM25][-1][1])
-            )
-        except Exception:
-            # python-aqi often errors on high numbers because it
-            # doesn't account for calculations above 500. Since AQI
-            # only goes to 500, just set it to the max. (Yikes!)
-            self.pm25_aqi = 500
+    # def calculate_aqi(self):
+    #     algo = aqi.get_algo(aqi.ALGO_EPA)
+    #     try:
+    #         self.pm25_aqi = algo.iaqi(aqi.POLLUTANT_PM25, min(
+    #             self.get_average('pm25', 60 * 12),
+    #             algo.piecewise['bp'][aqi.POLLUTANT_PM25][-1][1])
+    #         )
+    #     except Exception:
+    #         # python-aqi often errors on high numbers because it
+    #         # doesn't account for calculations above 500. Since AQI
+    #         # only goes to 500, just set it to the max. (Yikes!)
+    #         self.pm25_aqi = 500
 
     def calculate_averages(self):
-        self.pm25_avg_15 = self.get_average('pm25_env', 15)
-        self.pm25_avg_60 = self.get_average('pm25_env', 60)
+        self.pm25_avg_15 = self.get_average('pm25', 15)
+        self.pm25_avg_60 = self.get_average('pm25', 60)
 
     def save(self, *args, **kwargs):
         # Temperature adjustments
