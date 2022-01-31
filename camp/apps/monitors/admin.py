@@ -37,6 +37,7 @@ class MonitorAdmin(admin.OSMGeoAdmin):
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
+        queryset = queryset.select_related('latest')
         queryset = queryset.annotate(last_updated=F('latest__timestamp'))
         return queryset
 

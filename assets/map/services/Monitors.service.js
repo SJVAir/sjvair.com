@@ -119,21 +119,21 @@ class ActiveMonitor {
 // Specify the fields we want for each monitor
 ActiveMonitor.monitorFields = {
   PurpleAir: {
-    pm25_env: '2m',
+    pm25: '2m',
     pm25_avg_15: '15m',
     pm25_avg_60: '60m'
   },
   AirNow: {
-    pm25_env: '60m'
+    pm25: '60m'
   },
   BAM1022: {
-    pm25_env: '60m'
+    pm25: '60m'
   }
 };
 
 // Specify colors to represent each field
 ActiveMonitor.fieldColors = {
-    pm25_env: "#00ccff",
+    pm25: "#00ccff",
     pm25_avg_15: "#006699",
     pm25_avg_60: "#000033"
 }
