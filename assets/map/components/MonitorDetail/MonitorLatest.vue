@@ -15,21 +15,21 @@
       </tr>
     </thead>
     <tbody>
-      <tr v-if="monitor.latest.pm10_env">
+      <tr v-if="monitor.latest.pm10">
         <th>PM 1.0</th>
-        <td class="has-text-centered">{{ fields.pm10_env.latest(monitor) }}</td>
+        <td class="has-text-centered">{{ fields.pm10.latest(monitor) }}</td>
         <td class="has-text-centered">-</td>
         <td class="has-text-centered">-</td>
       </tr>
       <tr>
         <th>PM 2.5</th>
-        <td class="has-text-centered">{{ fields.pm25_env.latest(monitor) }}</td>
+        <td class="has-text-centered">{{ fields.pm25.latest(monitor) }}</td>
         <td class="has-text-centered">{{ fields.pm25_avg_15.latest(monitor) }}</td>
         <td class="has-text-centered">{{ fields.pm25_avg_60.latest(monitor) }}</td>
       </tr>
-      <tr v-f="monitor.latest.pm100_env">
+      <tr v-f="monitor.latest.pm100">
         <th>PM 10.0</th>
-        <td class="has-text-centered">{{ fields.pm100_env.latest(monitor) }}</td>
+        <td class="has-text-centered">{{ fields.pm100.latest(monitor) }}</td>
         <td class="has-text-centered">-</td>
         <td class="has-text-centered">-</td>
       </tr>
