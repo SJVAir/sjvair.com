@@ -78,10 +78,9 @@
                         <div class="control has-icons-left">
                             <div class="select is-small">
                                 <select id="id_translate" onchange="setLanguage(this.value);">
-                                    <option value="en">English</option>
-                                    <option value="tl">Filipino</option>
-                                    <option value="hmn">Hmong</option>
-                                    <option value="es">Spanish</option>
+                                    {% for code, name in settings.LANGUAGES %}
+                                    <option value="{{ code }}">{{ name }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
                             <span class="icon is-left">
@@ -155,25 +154,6 @@
     </div>
     {% endblock %}
 </div>
-
-<form>
-<div class="field">
-        <div class="control has-icons-left">
-            <div class="select">
-                <select id="id_translate" onchange="setLanguage(this.value);">
-                    <option value="en">English</option>
-                    <option value="tl">Filipino</option>
-                    <option value="hmn">Hmong</option>
-                    <option value="es">Spanish</option>
-                </select>
-            </div>
-            <span class="icon is-left">
-                <span class="fas fa-language"></span>
-            </span>
-        </div>
-    </div>
-</form>
-
 </body>
 
 {% if settings.SENTRY_DSN_CLIENT %}
