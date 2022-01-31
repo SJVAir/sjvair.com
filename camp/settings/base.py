@@ -15,7 +15,7 @@ import subprocess
 
 import dj_database_url
 
-from django.utils.translation import gettext_lazy
+from django.utils.translation import gettext_lazy as _
 
 from unipath import Path
 
@@ -190,7 +190,10 @@ USE_TZ = True
 LANGUAGE_CODE = 'en'
 
 LANGUAGES = (
-    ('en', gettext_lazy('English')),
+    ('en', _('English')),
+    ('tl', _('Filipino')),
+    ('hmn', _('Hmong')),
+    ('es', _('Spanish')),
 )
 
 

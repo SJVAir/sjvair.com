@@ -29,6 +29,7 @@
                         {% include '_includes/form/field.html' with field=form.full_name icon_left="far fa-user" %}
                         {% include '_includes/form/field.html' with field=form.email icon_left="far fa-envelope" %}
                         {% include '_includes/form/field.html' with field=form.phone icon_left="far fa-phone" %}
+                        {% include '_includes/form/field.html' with field=form.language icon_left="far fa-language" %}
                     </div>
 
                     <div class="box">
@@ -49,4 +50,19 @@
         </div>
     </div>
 </section>
+{% endblock %}
+
+{% block javascripts %}
+<script type="text/javascript">
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            let $trans = document.getElementById('id_translate'),
+                $lang = document.getElementById('id_language');
+
+            if($trans.value != 'en' && $lang.value == 'en'){
+                $lang.value = $trans.value
+            }
+        }, 1000);
+    });
+</script>
 {% endblock %}

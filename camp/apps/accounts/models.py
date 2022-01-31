@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone
@@ -6,6 +7,7 @@ from django.utils.translation import ugettext_lazy as _
 
 from dirtyfields import DirtyFieldsMixin
 from django_smalluuid.models import SmallUUIDField, uuid_default
+from model_utils import Choices
 from nameparser.parser import HumanName
 from phonenumber_field.modelfields import PhoneNumberField
 
@@ -14,6 +16,8 @@ from camp.apps.accounts.tasks import send_sms_message
 
 
 class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
+    LANGUAGES = Choices(*settings.LANGUAGES)
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -25,6 +29,7 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
     email = models.EmailField(unique=True, db_index=True)
     phone = PhoneNumberField(blank=True, help_text="Your cell phone number for receiving air quality text alerts.")
     phone_verified = models.BooleanField(default=False)
+    language = models.CharField(_('Preferred Language'), max_length=5, choices=LANGUAGES, default=LANGUAGES.en)
 
     # Normally provided by auth.AbstractUser, but we're not using that here.
     date_joined = models.DateTimeField(_('date joined'), default=timezone.now, editable=False)

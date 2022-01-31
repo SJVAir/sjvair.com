@@ -26,6 +26,8 @@
                     </div>
                 </div>
             {% endif %}
+
+            {% include '_includes/form/field.html' with field=form.language icon_left="far fa-language" %}
         </div>
 
         <button type="submit" class="button is-success">Update profile</button>

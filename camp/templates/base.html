@@ -74,6 +74,23 @@
             </div>
             <div class="navbar-end">
                 <div class="navbar-item">
+                    <div class="field">
+                        <div class="control has-icons-left">
+                            <div class="select is-small">
+                                <select id="id_translate" onchange="setLanguage(this.value);">
+                                    <option value="en">English</option>
+                                    <option value="tl">Filipino</option>
+                                    <option value="hmn">Hmong</option>
+                                    <option value="es">Spanish</option>
+                                </select>
+                            </div>
+                            <span class="icon is-left">
+                                <span class="fas fa-language"></span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="navbar-item is-hidden">
                     <div id="google_translate_element"></div>
                 </div>
                 {% if user.is_authenticated %}
@@ -139,6 +156,24 @@
     {% endblock %}
 </div>
 
+<form>
+<div class="field">
+        <div class="control has-icons-left">
+            <div class="select">
+                <select id="id_translate" onchange="setLanguage(this.value);">
+                    <option value="en">English</option>
+                    <option value="tl">Filipino</option>
+                    <option value="hmn">Hmong</option>
+                    <option value="es">Spanish</option>
+                </select>
+            </div>
+            <span class="icon is-left">
+                <span class="fas fa-language"></span>
+            </span>
+        </div>
+    </div>
+</form>
+
 </body>
 
 {% if settings.SENTRY_DSN_CLIENT %}
@@ -153,17 +188,62 @@
 <script type="text/javascript" src="{% static 'js/main.js' %}"></script>
 {% block javascripts %}{% endblock %}
 
-<!-- Translation -->
 <script type="text/javascript">
-function googleTranslateElementInit() {
-    new google.translate.TranslateElement({
-        autoDisplay: false,
-        pageLanguage: 'en',
-        includedLanguages: 'en,es,hmn,tl',
-        layout: google.translate.TranslateElement.InlineLayout.SIMPLE
-    }, 'google_translate_element');
-}
+    function setLanguage(language){
+        console.log('setLanguage', language);
+
+        let $select = document.getElementById('id_translate'),
+            $goog = document.querySelector('select.goog-te-combo');
+
+        if(language == 'en' && ($goog.value == 'en' || $goog.value == '')){
+            $select.value = 'en';
+            return;
+        }
+
+        if($select.value != language){
+            $select.value = language;
+        }
+        doGTranslate('en|' + language);
+    }
+
+    function googleTranslateElementInit() {
+        new google.translate.TranslateElement({
+            autoDisplay: false,
+            pageLanguage: 'en',
+            includedLanguages: 'en,es,hmn,tl',
+        }, 'google_translate_element');
+
+        let $select = document.getElementById('id_translate'),
+            $goog = document.querySelector('select.goog-te-combo');
+
+        // Keep the select up to date with the google select
+        $goog.addEventListener('change', function(){
+            let $select = document.getElementById('id_translate');
+            console.log('goog.changed', this.value, $select.value);
+            if($select.value != this.value){
+                $select.value = this.value ? this.value : 'en';
+            }
+        });
+
+        setTimeout(function(){
+            let $select = document.getElementById('id_translate'),
+                $goog = document.querySelector('select.goog-te-combo');
+            $select.value = $goog.value ? $goog.value : "en";
+
+            {% if user.is_authenticated %}
+                setLanguage('{{ user.language }}');
+            {% endif %}
+        }, 1000);
+    }
 </script>
+
+<script type="text/javascript">
+// via gtranslate.io
+/* <![CDATA[ */
+eval(function(p,a,c,k,e,r){e=function(c){return(c<a?'':e(parseInt(c/a)))+((c=c%a)>35?String.fromCharCode(c+29):c.toString(36))};if(!''.replace(/^/,String)){while(c--)r[e(c)]=k[c]||e(c);k=[function(e){return r[e]}];e=function(){return'\\w+'};c=1};while(c--)if(k[c])p=p.replace(new RegExp('\\b'+e(c)+'\\b','g'),k[c]);return p}('6 7(a,b){n{4(2.9){3 c=2.9("o");c.p(b,f,f);a.q(c)}g{3 c=2.r();a.s(\'t\'+b,c)}}u(e){}}6 h(a){4(a.8)a=a.8;4(a==\'\')v;3 b=a.w(\'|\')[1];3 c;3 d=2.x(\'y\');z(3 i=0;i<d.5;i++)4(d[i].A==\'B-C-D\')c=d[i];4(2.j(\'k\')==E||2.j(\'k\').l.5==0||c.5==0||c.l.5==0){F(6(){h(a)},G)}g{c.8=b;7(c,\'m\');7(c,\'m\')}}',43,43,'||document|var|if|length|function|GTranslateFireEvent|value|createEvent||||||true|else|doGTranslate||getElementById|google_translate_element|innerHTML|change|try|HTMLEvents|initEvent|dispatchEvent|createEventObject|fireEvent|on|catch|return|split|getElementsByTagName|select|for|className|goog|te|combo|null|setTimeout|500'.split('|'),0,{}))
+/* ]]> */
+</script>
+
 <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 
 </html>
