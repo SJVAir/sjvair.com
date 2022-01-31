@@ -15,7 +15,7 @@ from camp.utils.views import RedirectViewMixin
 
 
 class SignupView(RedirectViewMixin, vanilla.CreateView):
-    template_name = 'account/signup.html'
+    template_name = 'registration/signup.html'
     form_class = UserCreationForm
     redirect_field_name = 'next'
     success_url = reverse_lazy('account:phone-verify-send')
