@@ -15,12 +15,9 @@ class RootAccess(Monitor):
             'particles_10um',
             'particles_25um',
             'particles_50um',
-            'pm100_env',
-            'pm10_env',
-            'pm25_env',
-            'pm100_standard',
-            'pm10_standard',
-            'pm25_standard',
+            'pm100',
+            'pm10',
+            'pm25',
         ]
 
         for attr in env_attrs:

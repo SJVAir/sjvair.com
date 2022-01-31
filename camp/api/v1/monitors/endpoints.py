@@ -33,6 +33,7 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        queryset = queryset.select_related('latest')
         queryset = queryset.exclude(is_hidden=True)
         return queryset
 
@@ -40,6 +41,11 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = queryset.select_related('latest')
+        return queryset
 
 
 class EntryMixin:
@@ -87,10 +93,6 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
 
 
 class EntryCSV(EntryMixin, CSVExport):
-    headers = {
-        'pm25_env': 'pm25_avg_2',
-    }
-
     @cached_property
     def columns(self):
         fields = EntrySerializer.base_fields[::]
@@ -117,7 +119,7 @@ class EntryCSV(EntryMixin, CSVExport):
         return queryset
 
     def get_header_row(self):
-        return [self.headers.get(name, name) for name in self.columns]
+        return self.columns
 
     def get_row(self, instance):
         return [instance[key] for key in self.columns]

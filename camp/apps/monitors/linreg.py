@@ -8,15 +8,15 @@ from sklearn.linear_model import LinearRegression
 def linear_regression(endog_qs, exog_qs, exog_coefs):
     # endog is generally the reference data that we want to fit to
     endog_qs = (endog_qs
-        .annotate(endog_pm25_env=F('pm25_env'))
-        .values('timestamp', 'endog_pm25_env')
+        .annotate(endog_pm25=F('pm25'))
+        .values('timestamp', 'endog_pm25')
     )
 
     if not endog_qs.exists():
         return
 
     endog_df = pd.DataFrame(endog_qs).set_index('timestamp')
-    endog_df = pd.to_numeric(endog_df.endog_pm25_env)
+    endog_df = pd.to_numeric(endog_df.endog_pm25)
     endog_df = endog_df.resample('H').mean()
 
     # exog is the data we want to try to calibrate to the endog
@@ -36,7 +36,7 @@ def linear_regression(endog_qs, exog_qs, exog_coefs):
     if not len(merged):
         return
 
-    endog = merged['endog_pm25_env']
+    endog = merged['endog_pm25']
     exog = merged[exog_coefs]
 
     try:
