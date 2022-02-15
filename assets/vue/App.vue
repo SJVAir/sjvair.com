@@ -1,3 +1,40 @@
+<script setup lang="ts">
+//import MonitorMap from "./components/MonitorMap";
+
+import { reactive, Ref, ref, ToRefs, toRefs } from "vue";
+import { Monitor } from "./models";
+
+import type { IMonitorVisibility } from "./types";
+
+const visibility: ToRefs<IMonitorVisibility> = toRefs(reactive(Monitor.visibility));
+let displayOptionsActive: Ref<boolean> = ref(false);
+
+function toggleDisplayOptions() {
+  displayOptionsActive.value = !displayOptionsActive.value;
+}
+
+//export default {
+//  name: 'app',
+
+//  components: {
+//    MonitorMap
+//  },
+
+//  data() {
+//    return {
+//      displayOptionsActive: false,
+//      visibility: Monitor.visibility,
+//    }
+//  },
+
+//  methods: {
+//    toggleDisplayOptions() {
+//      this.displayOptionsActive = !this.displayOptionsActive;
+//    },
+//  }
+//}
+</script>
+
 <template>
   <div class="interface">
     <div class="viewport">
@@ -18,7 +55,7 @@
             <div class="dropdown-content">
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.SJVAirPurple" />
+                  <input type="checkbox" v-model="visibility.SJVAirPurple.value" />
                   <span class="icon">
                     <span class="fas fa-fw fa-circle has-text-success"></span>
                   </span>
@@ -27,7 +64,7 @@
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.SJVAirBAM" />
+                  <input type="checkbox" v-model="visibility.SJVAirBAM.value" />
                   <span class="icon">
                     <span class="fas fa-fw fa-triangle has-text-success"></span>
                   </span>
@@ -36,7 +73,7 @@
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.AirNow" />
+                  <input type="checkbox" v-model="visibility.AirNow.value" />
                   <span class="icon">
                     <span class="fas fa-fw fa-triangle has-text-success"></span>
                   </span>
@@ -45,7 +82,7 @@
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.PurpleAir" />
+                  <input type="checkbox" v-model="visibility.PurpleAir.value" />
                   <span class="icon">
                     <span class="fas fa-fw fa-square has-text-success"></span>
                   </span>
@@ -54,7 +91,7 @@
               </div>
               <div class="dropdown-item is-indented">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.PurpleAirInside" />
+                  <input type="checkbox" v-model="visibility.PurpleAirInside.value" />
                   <span class="icon">
                     <span class="far fa-fw fa-square has-text-dark"></span>
                   </span>
@@ -63,7 +100,7 @@
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.displayInactive" />
+                  <input type="checkbox" v-model="visibility.displayInactive.value" />
                   <span class="icon">
                     <span class="fas fa-fw fa-square has-text-grey-light"></span>
                   </span>
@@ -79,30 +116,3 @@
     <router-view></router-view>
   </div>
 </template>
-
-<script>
-  import Monitor from './models/monitor';
-
-  import MonitorMap from "./components/MonitorMap";
-
-  export default {
-    name: 'app',
-
-    components: {
-      MonitorMap
-    },
-
-    data() {
-      return {
-        displayOptionsActive: false,
-        visibility: Monitor.visibility,
-      }
-    },
-
-    methods: {
-      toggleDisplayOptions() {
-        this.displayOptionsActive = !this.displayOptionsActive;
-      },
-    }
-  }
-</script>
