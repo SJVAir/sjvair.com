@@ -8,14 +8,12 @@ dayjs.extend(relativeTime);
 dayjs.extend(timezone);
 dayjs.extend(utc);
 
-// Define custom date utils
-Object.assign(dayjs, {
-  $defaultFormat(date) {
+export default {
+  dayjs,
+  $defaultFormat(date: string | Date | dayjs.Dayjs) {
     return dayjs.utc(date).format("YYYY-MM-DD HH:mm:ss");
   },
-  $prettyPrint(date) {
+  $prettyPrint(date: string | Date | dayjs.Dayjs) {
     return dayjs(date).format("h:mma dddd MMM DD, YYYY")
   }
-});
-
-export default dayjs;
+};
