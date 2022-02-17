@@ -1,38 +1,19 @@
 <script setup lang="ts">
 import MonitorMap from "./components/MonitorMap.vue";
 
-import { reactive, Ref, ref, ToRefs, toRefs } from "vue";
+import { computed, reactive, Ref, ref, ToRefs, toRefs } from "vue";
 import { Monitor } from "./models";
 
 import type { IMonitorVisibility } from "./types";
 
-const visibility: ToRefs<IMonitorVisibility> = toRefs(reactive(Monitor.visibility));
+//const visibility: ToRefs<IMonitorVisibility> = toRefs(reactive(Monitor.visibility));
+const visibility = computed(() => Monitor.visibility);
 let displayOptionsActive: Ref<boolean> = ref(false);
 
 function toggleDisplayOptions() {
   displayOptionsActive.value = !displayOptionsActive.value;
 }
 
-//export default {
-//  name: 'app',
-
-//  components: {
-//    MonitorMap
-//  },
-
-//  data() {
-//    return {
-//      displayOptionsActive: false,
-//      visibility: Monitor.visibility,
-//    }
-//  },
-
-//  methods: {
-//    toggleDisplayOptions() {
-//      this.displayOptionsActive = !this.displayOptionsActive;
-//    },
-//  }
-//}
 </script>
 
 <template>
@@ -55,7 +36,7 @@ function toggleDisplayOptions() {
             <div class="dropdown-content">
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.SJVAirPurple.value" />
+                  <input type="checkbox" v-model="visibility.SJVAirPurple" />
                   <span class="icon">
                     <span class="fas fa-fw fa-circle has-text-success"></span>
                   </span>
@@ -64,7 +45,7 @@ function toggleDisplayOptions() {
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.SJVAirBAM.value" />
+                  <input type="checkbox" v-model="visibility.SJVAirBAM" />
                   <span class="icon">
                     <span class="fas fa-fw fa-triangle has-text-success"></span>
                   </span>
@@ -73,7 +54,7 @@ function toggleDisplayOptions() {
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.AirNow.value" />
+                  <input type="checkbox" v-model="visibility.AirNow" />
                   <span class="icon">
                     <span class="fas fa-fw fa-triangle has-text-success"></span>
                   </span>
@@ -82,7 +63,7 @@ function toggleDisplayOptions() {
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.PurpleAir.value" />
+                  <input type="checkbox" v-model="visibility.PurpleAir" />
                   <span class="icon">
                     <span class="fas fa-fw fa-square has-text-success"></span>
                   </span>
@@ -91,7 +72,7 @@ function toggleDisplayOptions() {
               </div>
               <div class="dropdown-item is-indented">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.PurpleAirInside.value" />
+                  <input type="checkbox" v-model="visibility.PurpleAirInside" />
                   <span class="icon">
                     <span class="far fa-fw fa-square has-text-dark"></span>
                   </span>
@@ -100,7 +81,7 @@ function toggleDisplayOptions() {
               </div>
               <div class="dropdown-item">
                 <label class="checkbox">
-                  <input type="checkbox" v-model="visibility.displayInactive.value" />
+                  <input type="checkbox" v-model="visibility.displayInactive" />
                   <span class="icon">
                     <span class="fas fa-fw fa-square has-text-grey-light"></span>
                   </span>
@@ -111,7 +92,7 @@ function toggleDisplayOptions() {
           </div>
         </div>
       </div>
-      <monitor-map></monitor-map>
+      <MonitorMap />
     </div>
     <router-view></router-view>
   </div>
