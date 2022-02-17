@@ -15,7 +15,6 @@ const router = createRouter({
       name: 'details',
       component: MonitorDetail,
       props: true,
-      alias: '/monitor/:id/?timestamp__gte=:timestamp__gte&timestamp__lte=:timestamp__lte'
     }
   ]
 });
