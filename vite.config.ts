@@ -7,6 +7,11 @@ export default defineConfig({
   root: resolve("./assets/vue/"),
   base: "/static/",
   plugins: [vue()],
+  server: {
+    watch: {
+      usePolling: true
+    }
+  },
   resolve: {
     extensions: [".js", ".ts", ".json"],
   },

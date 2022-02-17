@@ -81,10 +81,11 @@ def vue(ctx, name, dev_mode):
 @invoke.task()
 def build(ctx, dev=False):
     styles(ctx)
-    vue(ctx, 'map', dev)
+    ctx.run('yarn build')
     collectstatic(ctx)
 
 
+# Some steps in here are no longer needed
 @invoke.task()
 def watch(ctx):
     server = livereload.Server(watcher=GlobWatcher())
