@@ -1,5 +1,11 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load django_vite %}
+
+
+    
+
+{% block extra-head %}{% vite_hmr_client %}{% endblock %}
 
 {% block title %}{{ block.super }}{% endblock %}
 
@@ -21,6 +27,10 @@
     };
 </script>
 
+{% vite_asset 'main.ts' %}
+
+<!--
 <script type="text/javascript" src="{% static 'js/lib/vue.min.js' %}"></script>
 <script type="text/javascript" src="{% static 'js/map.umd.min.js' %}"></script>
+-->
 {% endblock %}
