@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, reactive, ToRefs, toRefs, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, reactive, watch } from "vue";
 import * as L from "leaflet";
 import { Colors, TextColors } from "../utils";
 import { Monitor } from "../models";
 import type { MonitorsService } from "../services";
-import type { IMonitorVisibility } from "../types";
+//import type { IMonitorVisibility } from "../types";
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
 const markers: Record<Monitor["data"]["id"], L.Marker> = {};
 const markerGroup = new L.FeatureGroup();
 const monitors = reactive(monitorsService.monitors);
-const visibility: ToRefs<IMonitorVisibility> = toRefs(reactive(Monitor.visibility));
-const mapIsMaximised = computed(() => !monitorsService.activeMonitor);
+//const visibility: ToRefs<IMonitorVisibility> = toRefs(reactive(Monitor.visibility));
+const visibility = computed(() => Monitor.visibility);
+const mapIsMaximised = computed(() => ({ "is-maximised": !monitorsService.activeMonitor}));
 const mapSettings = {
   // Initial location: Fresno, CA
   center: new L.LatLng( 36.746841, -119.772591 ),
@@ -20,7 +21,6 @@ const mapSettings = {
 
 let map: L.Map;
 let interval: number = 0;
-
 
 function genMapMarker(monitor: Monitor) {
   //const params = monitor.markerParams;
@@ -128,21 +128,21 @@ function updateMapMarkerVisibility() {
   }
 }
 
-await loadMonitors();
 
 watch(visibility, () => updateMapMarkerVisibility(), {
   deep: true
 });
 
-onMounted(() => {
+onMounted(async () => {
   map = L.map("map", mapSettings);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(map);
 
-  interval = setInterval(loadMonitors, 1000 * 60 * 2);
+  interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
 
+  await loadMonitors();
   updateMapBounds();
 });
 
