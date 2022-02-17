@@ -5,6 +5,7 @@ import vue from "@vitejs/plugin-vue"
 // https://vitejs.dev/config/
 export default defineConfig({
   root: resolve("./assets/vue/"),
+  base: "/static/",
   plugins: [vue()],
   resolve: {
     extensions: [".js", ".ts", ".json"],
