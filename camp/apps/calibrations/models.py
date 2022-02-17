@@ -11,11 +11,9 @@ from django_smalluuid.models import SmallUUIDField, uuid_default
 from geopy.distance import distance as geopy_distance
 from model_utils.models import TimeStampedModel
 
-# data modeling
-import pandas as pd
-from sklearn.linear_model import LinearRegression
-
+from camp.apps.monitors.linreg import linear_regression
 from camp.apps.monitors.validators import validate_formula
+
 
 class Calibrator(TimeStampedModel):
     id = SmallUUIDField(
@@ -61,19 +59,19 @@ class Calibrator(TimeStampedModel):
         formulas = [
             (
                 ['particles_03-10', 'particles_10-25', 'humidity'],
-                lambda reg: ' + '.join([
-                    f"((particles_03um - particles_10um) * {reg.coef_[0]})",
-                    f"((particles_10um - particles_25um) * {reg.coef_[1]})",
-                    f"(humidity * {reg.coef_[2]})"
-                    f"{reg.intercept_}",
+                lambda results: ' + '.join([
+                    f"((particles_03um - particles_10um) * {results.coefs['particles_03-10']})",
+                    f"((particles_10um - particles_25um) * {results.coefs['particles_10-25']})",
+                    f"(humidity * {results.coefs['humidity']})"
+                    f"{results.intercept}",
                 ])
             ), (
                 ['particles_10-25', 'particles_25-05', 'humidity'],
-                lambda reg: ' + '.join([
-                    f"((particles_10um - particles_25um) * {reg.coef_[0]})",
-                    f"((particles_25um - particles_05um) * {reg.coef_[1]})",
-                    f"(humidity * {reg.coef_[2]})",
-                    f"{reg.intercept_}",
+                lambda results: ' + '.join([
+                    f"((particles_10um - particles_25um) * {results.coefs['particles_10-25']})",
+                    f"((particles_25um - particles_05um) * {results.coefs['particles_25-05']})",
+                    f"(humidity * {results.coefs['humidity']})",
+                    f"{results.intercept}",
                 ])
             )
         ]
@@ -103,75 +101,27 @@ class Calibrator(TimeStampedModel):
 
     def generate_calibration(self, coefs, formula, end_date, days):
         start_date = end_date - timedelta(days=days)
-
-        # Load the reference entries into a DataFrame, sampled hourly.
-        ref_qs = (self.reference.entries
-            .filter(timestamp__date__range=(start_date, end_date))
-            .annotate(ref_pm25=F('pm25'))
-            .values('timestamp', 'ref_pm25')
-        )
-
-        if not ref_qs.exists():
-            print(f'Calibrator {self.pk}: no ref_qs ({start_date} - {end_date})')
-            return
-
-        ref_df = pd.DataFrame(ref_qs).set_index('timestamp')
-        ref_df = pd.to_numeric(ref_df.ref_pm25)
-        # ref_df = ref_df.ref_pm25.astype('float')
-        ref_df = ref_df.resample('H').mean()
-
-        # Load the colocated entries into a DataFrame
+        ref_qs = self.reference.entries.filter(timestamp__date__range=(start_date, end_date))
         col_qs = (self.colocated.entries
             .filter(
                 timestamp__date__range=(start_date, end_date),
                 sensor=self.colocated.default_sensor,
             )
-            .annotate(col_pm25=F('pm25'))
-            .values('timestamp', 'col_pm25', 'humidity', 'particles_03um',
-                'particles_05um', 'particles_10um', 'particles_25um')
+            .annotate(**{
+                'particles_03-10': F('particles_03um') - F('particles_10um'),
+                'particles_10-25': F('particles_10um') - F('particles_25um'),
+                'particles_25-05': F('particles_25um') - F('particles_05um'),
+            })
         )
 
-        if not col_qs.exists():
-            print(f'Calibrator {self.pk}: no col_qs ({start_date} - {end_date})')
-            return
-
-        col_df = pd.DataFrame(col_qs).set_index('timestamp')
-
-        # Convert columns to floats
-        # cols = df.columns[df.dtypes.eq('object')]
-        col_df[col_df.columns] = col_df[col_df.columns].apply(pd.to_numeric, errors='coerce')
-
-        # particle count calculations and hourly sample
-        col_df['particles_03-10'] = col_df['particles_03um'] - col_df['particles_10um']
-        col_df['particles_10-25'] = col_df['particles_10um'] - col_df['particles_25um']
-        col_df['particles_25-05'] = col_df['particles_25um'] - col_df['particles_05um']
-        col_df = col_df.resample('H').mean()
-
-        # Merge the dataframes
-        merged = pd.concat([ref_df, col_df], axis=1, join="inner")
-        merged = merged.dropna()
-
-        if not len(merged):
-            print(f'Calibrator {self.pk}: no merged ({start_date} - {end_date})')
-            return
-
-        # Linear Regression time!
-        endog = merged['ref_pm25']
-        exog = merged[coefs]
-
-        try:
-            reg = LinearRegression()
-            reg.fit(exog, endog)
-        except ValueError as err:
-            import code
-            code.interact(local=locals())
-
-        return {
-            'start_date': start_date,
-            'end_date': end_date,
-            'r2': reg.score(exog, endog),
-            'formula': formula(reg),
-        }
+        results = linear_regression(ref_qs, col_qs, coefs)
+        if results is not None:
+            return {
+                'start_date': start_date,
+                'end_date': end_date,
+                'r2': results.r2,
+                'formula': formula(results),
+            }
 
 
 class Calibration(TimeStampedModel):
