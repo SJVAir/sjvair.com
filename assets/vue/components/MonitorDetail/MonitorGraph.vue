@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineProps, inject, onBeforeUnmount, onMounted, toRefs } from "vue";
+import { inject, onBeforeUnmount, onMounted, toRefs } from "vue";
 import MonitorChart from "./MonitorChart.vue";
 import MonitorDataControl from "./MonitorDataControl.vue";
 import { dateUtil } from "../../utils";

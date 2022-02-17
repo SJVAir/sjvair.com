@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineProps, toRefs } from "vue";
+import { computed, toRefs } from "vue";
 import type { Monitor } from "../../models";
 import { dateUtil } from "../../utils";
 

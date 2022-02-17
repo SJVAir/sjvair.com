@@ -3,7 +3,7 @@ import Datepicker from "vue3-date-time-picker";
 import "vue3-date-time-picker/dist/main.css"
 import MonitorSubscription from "../MonitorSubscription.vue";
 
-import { defineEmits, inject, ref, watch } from "vue";
+import { inject, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import type { MonitorsService } from "../../services";
 
