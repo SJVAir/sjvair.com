@@ -1,5 +1,5 @@
 <script setup lang="ts">
-//import MonitorMap from "./components/MonitorMap";
+import MonitorMap from "./components/MonitorMap.vue";
 
 import { reactive, Ref, ref, ToRefs, toRefs } from "vue";
 import { Monitor } from "./models";
