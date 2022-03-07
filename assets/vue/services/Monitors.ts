@@ -1,6 +1,6 @@
 import MonitorsBackgroundService from "./MonitorsBackground?worker";
 import { CachedMonitor, DateRange, Monitor } from "../models";
-import BackgroundServiceClient from "../webworkers/BackgroundServiceClient";
+import { BackgroundServiceClient } from "../webworkers/BackgroundServiceClient";
 import { dateUtil, http } from "../utils";
 import type { MonitorId, IMonitorsBackgroundService, Nullable, ChartDataArray, IMonitorSubscription, IMonitorData } from "../types";
 
@@ -63,8 +63,10 @@ export class MonitorsService extends BackgroundServiceClient<IMonitorsBackground
   async loadMonitors(): Promise<void> {
     this.loadingMonitors = true;
 
+    console.log("starting background task")
     await this.run("fetchMonitors")
       .then(monitors => {
+        console.log("inside then")
         this.monitors = monitors;
         this.loadingMonitors = false;
 

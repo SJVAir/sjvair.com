@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite --host",
     "serve": "vue-cli-service serve",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vue-tsc --noEmit && vite build --emptyOutDir",
     "lint": "vue-cli-service lint",
     "heroku-postbuild": "invoke build"
   },

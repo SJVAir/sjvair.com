@@ -204,8 +204,15 @@ LANGUAGES = (
 # Where ViteJS assets are built
 DJANGO_VITE_ASSETS_PATH = BASE_DIR.child('dist', 'vue')
 
+# Static directory where built assets are collected (/static/vue/)
+DJANGO_VITE_STATIC_URL_PREFIX = "vue"
+
 # If use HMR or not.
 DJANGO_VITE_DEV_MODE = DEBUG
+
+if DJANGO_VITE_DEV_MODE:
+    import mimetypes
+    mimetypes.add_type('application/javascript', '.ts', True)
 
 STATIC_ROOT = BASE_DIR.child('public', 'static')
 

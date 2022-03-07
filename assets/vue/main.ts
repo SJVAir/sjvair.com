@@ -4,8 +4,8 @@ import App from "./App.vue";
 import MonitorDetail from "./components/MonitorDetail";
 import { D3Service, MonitorsService } from "./services";
 
-const monitorService = reactive(new MonitorsService());
 const d3Service = reactive(new D3Service());
+const monitorService = reactive(new MonitorsService());
 
 const router = createRouter({
   history: createWebHistory(),

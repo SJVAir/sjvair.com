@@ -8,7 +8,7 @@ dayjs.extend(relativeTime);
 dayjs.extend(timezone);
 dayjs.extend(utc);
 
-export default {
+export const dateUtil = {
   dayjs,
   $defaultFormat(date: string | Date | dayjs.Dayjs) {
     return dayjs.utc(date).format("YYYY-MM-DD HH:mm:ss");
