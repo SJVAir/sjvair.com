@@ -1,5 +1,5 @@
+import { dateUtil } from "../utils/date";
 import { BackgroundService } from "../webworkers/BackgroundService";
-import dateUtil from "../utils/date";
 
 let last_active_limit: any = null;
 let prevDataPoint: any = null;

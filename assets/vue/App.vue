@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import MonitorMap from "./components/MonitorMap.vue";
 
-import { computed, reactive, Ref, ref, ToRefs, toRefs } from "vue";
+import { computed, Ref, ref } from "vue";
 import { Monitor } from "./models";
 
-import type { IMonitorVisibility } from "./types";
-
-//const visibility: ToRefs<IMonitorVisibility> = toRefs(reactive(Monitor.visibility));
 const visibility = computed(() => Monitor.visibility);
 let displayOptionsActive: Ref<boolean> = ref(false);
 

@@ -1,4 +1,4 @@
-import BackgroundServiceClient from "../webworkers/BackgroundServiceClient";
+import { BackgroundServiceClient } from "../webworkers/BackgroundServiceClient";
 import D3BackgroundService from "./D3Background?worker";
 import type { ID3Service } from "../types";
 

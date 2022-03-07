@@ -2,9 +2,9 @@
 import * as d3 from "d3";
 import { inject, onMounted, watchEffect } from "vue";
 import {ChartDataPoint} from "../../models";
-import { D3Service, MonitorsService } from "../../services";
+import { dateUtil } from "../../utils";
+import type { D3Service, MonitorsService } from "../../services";
 import type { ChartDataArray, ChartDataField } from "../../types";
-import {dateUtil} from "../../utils";
 
 
 const d3Service = inject<D3Service>("D3Service")!;

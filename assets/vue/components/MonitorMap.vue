@@ -140,7 +140,7 @@ onMounted(async () => {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(map);
 
-  interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
+  // interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
 
   await loadMonitors();
   updateMapBounds();

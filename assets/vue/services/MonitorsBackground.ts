@@ -1,5 +1,5 @@
-import { BackgroundService } from "../webworkers/BackgroundService";
 import { Monitor, ChartDataPoint } from "../models";
+import { BackgroundService } from "../webworkers/BackgroundService";
 import { http, dateUtil, MonitorFieldColors } from "../utils";
 
 import type { DateRange } from "../models";
@@ -17,27 +17,7 @@ export const MonitorsBackgroundService = {
         }
 
         return monitors;
-      })
-    //const monitors: MonitorsRecord = {};
-    //const res = await http.get("/monitors").catch(error => error);
-
-    //if (res instanceof Error) {
-    //  return res;
-    //}
-
-    //if ("data" in res.data) {
-    //  for (let monitorData of res.data.data) {
-    //    monitors[monitorData.id] = new Monitor(monitorData);
-    //  }
-    //}
-
-    //return monitors;
-
-    //monitors = newMonitors;
-
-    //if (!activeMonitor && cachedMonitor && monitorExists(cachedMonitor.id)) {
-    //  setActiveMonitor(cachedMonitor.id, cachedMonitor.dateRange);
-    //}
+      });
   },
 
   async fetchEntries(m: Monitor, d: DateRange): Promise<Array<IMonitorEntry>> {
@@ -119,39 +99,11 @@ export const MonitorsBackgroundService = {
 
         return Object.values(chartDataRecord);
       });
-    //const entries = await this.fetchEntries(m, d);
-
-    //if (entries instanceof Error) {
-    //  return entries;
-    //}
-
-    //const chartDataRecord: Record<DataField, Array<ChartDataPoint>> = {} as Record<DataField, Array<ChartDataPoint>>;
-
-    //// TODO-PERF: How to do this in one loop?
-    //for (let fieldName in m.monitorFields) {
-    //  const field = m.monitorFields[fieldName as DataField];
-    //  const chartData: Array<ChartDataPoint> = chartDataRecord[field.name] = [];
-    //  
-    //  for (let i = entries.length - 1; i >= 0; i--) {
-    //    const entry = entries[i];
-
-    //    chartData.push(new ChartDataPoint(field, entry));
-    //  }
-    //}
-    //return Object.values(chartDataRecord);
   },
 
   async loadSubscriptions(): Promise<Array<IMonitorSubscription>> {
     return http.get("alerts/subscriptions")
       .then(res => res.data.data);
-    //const res = await http.get("alerts/subscriptions").catch(error => error);
-
-    //if (res instanceof Error) {
-    //  console.error("Unable to fetch subscriptions", res);
-
-    //} else {
-    //  return res.data.data;
-    //}
   }
 };
 

@@ -80,8 +80,8 @@ def vue(ctx, name, dev_mode):
 
 @invoke.task()
 def build(ctx, dev=False):
-    styles(ctx)
     ctx.run('yarn build')
+    styles(ctx)
     collectstatic(ctx)
 
 
@@ -92,6 +92,6 @@ def watch(ctx):
     server.watch(path('./assets/img/'), lambda: collectstatic(ctx))
     server.watch(assets('js/**'), lambda: collectstatic(ctx))
     server.watch(assets('sass/**'), lambda: [styles(ctx), collectstatic(ctx)])
-    server.watch(assets('map/**'), lambda: [vue(ctx, 'map', True), collectstatic(ctx)])
+    #server.watch(assets('map/**'), lambda: [vue(ctx, 'map', True), collectstatic(ctx)])
     server.watch(path('./dist/lib/'), lambda: collectstatic(ctx))
     server.serve()
