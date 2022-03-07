@@ -210,9 +210,15 @@ DJANGO_VITE_STATIC_URL_PREFIX = "vue"
 # If use HMR or not.
 DJANGO_VITE_DEV_MODE = DEBUG
 
+DJANGO_VITE_DEV_SERVER_PROTOCOL = 'http'
+DJANGO_VITE_DEV_SERVER_HOST = 'localhost'
+DJANGO_VITE_DEV_SERVER_PORT = 3000
+
 if DJANGO_VITE_DEV_MODE:
     import mimetypes
     mimetypes.add_type('application/javascript', '.ts', True)
+
+    MIDDLEWARE.append('camp.utils.middleware.DjangoViteDevMiddelware')
 
 STATIC_ROOT = BASE_DIR.child('public', 'static')
 
