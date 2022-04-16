@@ -11,20 +11,6 @@ const location = computed(() => {
   }
   return "";
 })
-
-//export default {
-//  name: "monitor-info",
-//  props: ["monitor"],
-//  computed: {
-//    location() {
-//      if (this.monitor) {
-//        return this.monitor.location[0].toUpperCase() + this.monitor.location.slice(1).toLowerCase();
-//      } else {
-//        return "";
-//      }
-//    }
-//  }
-//}
 </script>
 
 <template>
