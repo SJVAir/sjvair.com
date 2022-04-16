@@ -20,3 +20,4 @@ export const TextColors = new Map()
   .set(Colors.red, Colors.white)
   .set(Colors.purple, Colors.white)
   .set(Colors.maroon, Colors.white);
+

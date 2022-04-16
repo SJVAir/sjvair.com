@@ -1,5 +1,5 @@
+import { Colors } from "../utils/colors";
 import type { Monitor } from "./Monitor";
-import { Colors } from "../utils";
 import type { MonitorDataField, IPMLevel} from "../types";
 
 export class MonitorField {
@@ -35,7 +35,7 @@ export class MonitorField {
   }
 
   latest(monitor: Monitor): number | void {
-    if (this.name in monitor.data.latest) {
+    if (monitor.data.latest && this.name in monitor.data.latest) {
       return Math.round(parseFloat(monitor.data.latest[this.name]));
     }
   }

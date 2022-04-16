@@ -9,7 +9,8 @@ import type { MonitorsService } from "../../services";
 import type { ChartDataArray } from "../../types";
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
-const { monitor } = toRefs(defineProps<{ monitor: Monitor }>());
+const props = defineProps<{ monitor: Monitor }>();
+const { monitor } = toRefs(props);
 let chartData: ChartDataArray;
 let interval: number = 0;
 let loading: boolean = false;
@@ -127,7 +128,6 @@ onBeforeUnmount(() => {
 <div v-if="monitor" class="monitor-graph">
   <monitor-data-control @loadAll="loadAllEntries"></monitor-data-control>
   <div :class="{ 'is-hidden': loading }" class="chart">
-    <monitor-chart :chartData="chartData" :dataFields="monitor.dataFields"></monitor-chart>
   </div>
   <h1 v-if="loading" class="loading-notice">Fetching Data...</h1>
 </div>

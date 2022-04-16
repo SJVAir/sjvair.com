@@ -6,6 +6,14 @@ export const MonitorFieldColors = {
   pm25_avg_60: "#000033"
 } as const;
 
+export const MonitorFields = MonitorField.genMulti(
+  ["pm10", "PM 1.0", ""],
+  ["pm25", "PM 2.5", "2m"],
+  ["pm25_avg_15", "PM 2.5", "15m"],
+  ["pm25_avg_60", "PM 2.5", "60m"],
+  ["pm100", "PM 10", ""]
+)
+
 export const MonitorTypesMeta = {
   AirNow: {
     monitorFields: MonitorField.genMulti(

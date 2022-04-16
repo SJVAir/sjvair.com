@@ -8,11 +8,11 @@ import type { ChartDataArray, ChartDataField, EntriesPageResponse, MonitorsRecor
 export const MonitorsBackgroundService = {
 
   async fetchMonitors(): Promise<MonitorsRecord> {
-    return http.get<Array<IMonitorData>>("/monitors")
+    return http.get<{ data: Array<IMonitorData> }>("/monitors")
       .then(res => {
         const monitors: MonitorsRecord = {};
 
-        for (let monitorData of res.data) {
+        for (let monitorData of res.data.data) {
           monitors[monitorData.id] = new Monitor(monitorData);
         }
 
