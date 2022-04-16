@@ -55,67 +55,6 @@ watch(
   () => updateURL()
 );
 
-//export default {
-//  name: "monitor-data-control",
-//  components: {
-//    Datepicker,
-//    MonitorSubscription
-//  },
-//  data() {
-//    const updateURL = () => {
-//      this.$router.push({
-//        name: "details",
-//        params: {
-//          id: monitorsService.activeMonitor.id
-//        },
-//        query: {
-//          timestamp__gte: monitorsService.activeMonitor.dateRange.gte,
-//          timestamp__lte: monitorsService.activeMonitor.dateRange.lte
-//        }
-//      });
-//    };
-//
-//    return {
-//      ctx: monitorsService,
-//      get startDate() {
-//        return this.ctx.activeMonitor.dateRange.gte;
-//      },
-//      set startDate(timestamp) {
-//        this.ctx.activeMonitor.dateRange.gte = timestamp;
-//        updateURL();
-//      },
-//      get endDate() {
-//        return this.ctx.activeMonitor.dateRange.lte;
-//      },
-//      set endDate(timestamp) {
-//        this.ctx.activeMonitor.dateRange.lte = timestamp;
-//        updateURL();
-//      },
-//    }
-//  },
-//  methods: {
-//    checkStartDate(date) {
-//      // Date must be lte endDate and lte today.
-//      // true means disabled.
-//      const gteEnd = date > this.$date(this.endDate).endOf('day').toDate();
-//      const gteTonight = date > this.$date().endOf('day').toDate();
-//      return gteEnd || gteTonight;
-//    },
-//    checkEndDate(date) {
-//      // Date must be gte startDate and lte today.
-//      // true means disabled.
-//      const lteStart = date < this.$date(this.startDate).startOf('day').toDate();
-//      const gteTonight = date > this.$date().endOf('day').toDate();
-//      return lteStart || gteTonight;
-//    },
-//    downloadCSV() {
-//      this.ctx.activeMonitor.downloadCSV();
-//    },
-//    loadAllEntries() {
-//      this.$emit("loadAll");
-//    }
-//  }
-//}
 </script>
 
 <template>

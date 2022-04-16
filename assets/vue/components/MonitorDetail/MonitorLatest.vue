@@ -12,23 +12,6 @@ const timesince = computed(() => {
 
   return 'Never';
 });
-//export default {
-//  name: "monitor-latest",
-//  props: ["monitor"],
-//  data() {
-//    return {
-//      fields: Monitor.fields
-//    };
-//  },
-//  computed: {
-//    timesince() {
-//      if(Object.keys(this.monitor.latest).length > 1){
-//        return this.monitor.latest.timestamp.fromNow();
-//      }
-//      return 'Never';
-//    },
-//  }
-//}
 </script>
 
 <template>
