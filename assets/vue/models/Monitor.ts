@@ -1,7 +1,7 @@
 import tinycolor from 'tinycolor2';
 import { MonitorField } from "./MonitorField";
-import { Colors, MonitorTypesMeta } from "../utils";
-import type { ChartDataField, IMarkerParams, IMonitor, IMonitorData, IMonitorVisibility, IMonitorSensorData, MonitorDataField } from "../types";
+import { Colors, MonitorTypesMeta, MonitorFields } from "../utils";
+import type { ChartDataField, IMarkerParams, IMonitor, IMonitorData, IMonitorVisibility, MonitorDataField } from "../types";
 
 export class Monitor implements IMonitor {
   // Default field to display
@@ -61,7 +61,8 @@ export class Monitor implements IMonitor {
   }
 
   get markerParams(){
-    const latest = parseFloat(this.data.latest[(Monitor.displayField as keyof IMonitorSensorData)]!);
+    //const latest = parseFloat(this.data.latest[(Monitor.displayField as keyof IMonitorSensorData)]!);
+    const latest = MonitorFields[Monitor.displayField].latest(this);
     const params: Partial<IMarkerParams> = {
       border_size: 0,
       fill_color: Colors.gray,
@@ -87,8 +88,8 @@ export class Monitor implements IMonitor {
       params.border_size = 2;
     }
 
-    if(this.data.is_active && typeof latest === "number"){
-      for(let level of this.monitorFields[Monitor.displayField].levels){
+    if(this.data.is_active && latest){
+      for(let level of MonitorFields[Monitor.displayField].levels){
         if(latest >= level.min){
           params.fill_color = level.color;
         } else {

@@ -1,11 +1,10 @@
-import MonitorsBackgroundService from "./MonitorsBackground?worker";
+import { MonitorsBackgroundService } from "./MonitorsBackground";
 import { CachedMonitor, DateRange, Monitor } from "../models";
-import { BackgroundServiceClient } from "../webworkers/BackgroundServiceClient";
 import { dateUtil, http } from "../utils";
-import type { MonitorId, IMonitorsBackgroundService, Nullable, ChartDataArray, IMonitorSubscription, IMonitorData } from "../types";
+import type { MonitorId, Nullable, ChartDataArray, IMonitorSubscription, IMonitorData } from "../types";
 
-export class MonitorsService extends BackgroundServiceClient<IMonitorsBackgroundService> {
-  static instance: MonitorsService;
+export class MonitorsServiceMono {
+  static instance: MonitorsServiceMono;
 
 
   activeMonitor: Nullable<Monitor> = null;
@@ -16,13 +15,11 @@ export class MonitorsService extends BackgroundServiceClient<IMonitorsBackground
   monitors: Record<MonitorId, Monitor> = {};
 
   constructor() {
-    if (MonitorsService.instance) {
-      return MonitorsService.instance;
+    if (MonitorsServiceMono.instance) {
+      return MonitorsServiceMono.instance;
     }
 
-    super(new MonitorsBackgroundService());
-
-    MonitorsService.instance = this;
+    MonitorsServiceMono.instance = this;
   }
 
   clearActiveMonitor() {
@@ -52,7 +49,7 @@ export class MonitorsService extends BackgroundServiceClient<IMonitorsBackground
 
     this.loadingEntries = true;
 
-    return await this.run("fetchChartData", this.monitors[id], this.dateRange)
+    return await MonitorsBackgroundService.fetchChartData(this.monitors[id], this.dateRange)
       .then(chartData => {
         this.loadingEntries = false;
         return chartData;
@@ -63,7 +60,7 @@ export class MonitorsService extends BackgroundServiceClient<IMonitorsBackground
   async loadMonitors(): Promise<void> {
     this.loadingMonitors = true;
 
-    await this.run("fetchMonitors")
+    await MonitorsBackgroundService.fetchMonitors()
       .then(monitors => {
         this.monitors = monitors;
         this.loadingMonitors = false;
@@ -76,7 +73,7 @@ export class MonitorsService extends BackgroundServiceClient<IMonitorsBackground
   }
   
   async loadSubscriptions(): Promise<void | Array<IMonitorSubscription>> {
-    return await this.run("loadSubscriptions")
+    return await MonitorsBackgroundService.loadSubscriptions()
       .catch(error => console.error("Error loading subscriptions:\n", error));
   }
 

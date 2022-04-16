@@ -3,7 +3,8 @@ import { computed, toRefs } from "vue";
 import type { Monitor } from "../../models";
 import { dateUtil } from "../../utils";
 
-const { monitor } = toRefs(defineProps<{ monitor: Monitor }>());
+const props = defineProps<{ monitor: Monitor }>();
+const { monitor } = toRefs(props);
 const timesince = computed(() => {
   if (Object.keys(monitor.value.data.latest).length > 1) {
     return dateUtil.dayjs(monitor.value.data.latest.timestamp).fromNow();
@@ -55,11 +56,11 @@ const timesince = computed(() => {
       </tr>
       <tr>
         <th>PM 2.5</th>
-        <td class="has-text-centered">{{ monitor.monitorFields.pm25.latest(monitor) }}</td>
-        <td class="has-text-centered">{{ monitor.monitorFields.pm25_avg_15.latest(monitor) }}</td>
-        <td class="has-text-centered">{{ monitor.monitorFields.pm25_avg_60.latest(monitor) }}</td>
+        <td class="has-text-centered">{{ "pm25" in monitor.monitorFields ? monitor.monitorFields.pm25.latest(monitor) : "" }}</td>
+        <td class="has-text-centered">{{ "pm25_avg_15" in monitor.monitorFields ? monitor.monitorFields.pm25_avg_15.latest(monitor) : "" }}</td>
+        <td class="has-text-centered">{{ "pm25_avg_60" in monitor.monitorFields ? monitor.monitorFields.pm25_avg_60.latest(monitor) : "" }}</td>
       </tr>
-      <tr v-f="monitor.data.latest.pm100">
+      <tr v-if="monitor.data.latest.pm100">
         <th>PM 10.0</th>
         <td class="has-text-centered">{{ monitor.monitorFields.pm100.latest(monitor) }}</td>
         <td class="has-text-centered">-</td>

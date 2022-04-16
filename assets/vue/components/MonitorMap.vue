@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, reactive, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import * as L from "leaflet";
-import { Colors, TextColors } from "../utils";
-import { Monitor } from "../models";
+import { mix, readableColor } from "color2k";
+import { DateRange, MonitorField } from "../models";
+import "leaflet-svg-shape-markers";
+
+import type { Monitor } from "../models";
 import type { MonitorsService } from "../services";
+import {IMonitorVisibility} from "../types";
 //import type { IMonitorVisibility } from "../types";
 
+const windyKey = "EPbmrt2kEQ0vWdTHyuzx3J7uIe1faMkj";
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
+const visibility = inject<IMonitorVisibility>("MonitorVisibility");
+const router = useRouter();
+
 const markers: Record<Monitor["data"]["id"], L.Marker> = {};
 const markerGroup = new L.FeatureGroup();
-const monitors = reactive(monitorsService.monitors);
 //const visibility: ToRefs<IMonitorVisibility> = toRefs(reactive(Monitor.visibility));
-const visibility = computed(() => Monitor.visibility);
 const mapIsMaximised = computed(() => ({ "is-maximised": !monitorsService.activeMonitor}));
 const mapSettings = {
   // Initial location: Fresno, CA
@@ -22,74 +29,73 @@ const mapSettings = {
 let map: L.Map;
 let interval: number = 0;
 
-function genMapMarker(monitor: Monitor) {
-  //const params = monitor.markerParams;
-  const iconUrl = `/api/1.0/marker.png?${ new URLSearchParams(monitor.markerParams as Record<string, string>).toString() }`;
-  const color = `#${ TextColors.get(monitor.markerParams.fill_color) || Colors.black }`;
+function getColor(value: number) {
+  const lastLvl = MonitorField.levels[MonitorField.levels.length - 1];
 
-  const label = (!monitor.data.is_active || monitor.data.latest === null)
-    ? ' '
-    : Math.round(parseInt(monitor.data.latest[monitor.displayField], 10)).toString();
+  if (value >= lastLvl.min) {
+    return `#${lastLvl.color}`;
 
-  const icon = L.divIcon({
-    html: `<div style="display: grid; grid-template-columns: 1fr" data-id="${ monitor.data.id }">
-             <img style="width: 32px; height: 32px; grid-column: 1; grid-row: 1;" src="${ iconUrl }" />
-             <p style="grid-column: 1; grid-row: 1; color: ${ color };">${ label }</p>
-           </div>`
-  })
+  } else if (value <= 0) {
+    return `#${MonitorField.levels[0].color}`;
 
+  } else {
+    for (let i = 0; i <= MonitorField.levels.length - 1; i++) {
+      if (MonitorField.levels[i].min > value) {
+        // Level for current value
+        const min = MonitorField.levels[i-1];
+        // Level threshold for current value
+        const max = MonitorField.levels[i]
+        // Difference between max and min values => total steps in level
+        const lvlDiff = min.min === -Infinity ? max.min : max.min - min.min;
+        // Difference between threshold and current values => steps remaining for current level
+        const valDiff = max.min - value;
+        // Difference between total steps and steps remaining
+        const divisable = lvlDiff - valDiff;
+        // Percent of steps used in level
+        const diff = divisable / lvlDiff;
 
-  const marker = L.marker(monitor.data.position.coordinates as L.LatLngTuple, { icon });
-  return marker;
-  //return new gmaps.Marker({
-  //  size: new gmaps.Size(32, 32),
-  //  origin: new gmaps.Point(0, 0),
-  //  anchor: new gmaps.Point(16, 16),
-  //  title: monitor.name,
-  //  label: { color, text },
-  //  icon,
-  //  position,
-  //});
-};
+        // Color magic
+        return mix(`#${min.color}`, `#${max.color}`, diff);
+      }
+    }
+
+    // Gentle way to signify an error
+    return "#FFFFFF";
+  }
+}
 
 function hideMarkers() {
   //for (let id in markers) {
   //  markers[id].remove();
   //}
-  markerGroup.eachLayer(marker => {
-    marker.remove();
-  })
+  //markerGroup.eachLayer(marker => {
+  //  marker.remove();
+  //})
+  markerGroup.remove();
 }
 
-async function loadMonitors() {
-  hideMarkers();
-  await monitorsService.loadMonitors();
-  updateMapMarkers();
+
+function selectMonitor(marker: L.Marker, monitor: Monitor) {
+  markerGroup.eachLayer(l => l.remove())
+  router.push({
+    name: "details",
+    params: {
+      id: monitor.data.id
+    }
+  });
+
+  map.panTo(marker.getLatLng());
 }
 
-//function selectMonitor(monitor) {
-//  const range = new DateRange();
-//  $router.push({
-//    name: "details",
-//    params: {
-//      id: monitor.id
-//    },
-//    query: {
-//      timestamp__gte: range.gte,
-//      timestamp__lte: range.lte
-//    }
-//  });
-//  map.panTo(monitor._marker.getPosition());
-//}
-
-//function showMarkers() {
-//  //for (let id in markers) {
-//  //  markers[id].addTo(map);
-//  //}
-//  markerGroup.eachLayer(marker => {
-//    marker.addTo(map);
-//  });
-//}
+function showMarkers() {
+  //for (let id in markers) {
+  //  markers[id].addTo(map);
+  //}
+  //markerGroup.eachLayer(marker => {
+  //  marker.addTo(map);
+  //});
+  markerGroup.addTo(map);
+}
 
 function updateMapBounds() {
   if (!monitorsService.activeMonitor) {
@@ -97,15 +103,48 @@ function updateMapBounds() {
   }
 }
 
+function getMarkerShape(m: Monitor) {
+  switch(m.data.device) {
+    case "AirNow": 
+      return "triangle";
+    case "BAM1022":
+      return "triangle";
+    case "PurpleAir":
+      if (m.data.is_sjvair) {
+        return "circle";
+      } else {
+        return "square";
+      }
+    default:
+      console.error(`Unknown device type for monitor ${ m.data.id }`)
+      return "diamond";
+  }
+}
+
 function updateMapMarkers() {
   for (let id in monitorsService.monitors) {
-    const monitor = monitors[id] as Monitor;
-    const marker = genMapMarker(monitor);
+    const monitor = monitorsService.monitors[id];
+
+    if (!monitor.data.latest) {
+      break;
+    }
+
+    const shape = getMarkerShape(monitor);
+    const fillColor = getColor(+monitor.data.latest[monitor.displayField]);
+    const color = readableColor(fillColor);
+    // @ts-ignore: Property 'shapeMarker' does not exist on type Leaflet
+    const marker = L.shapeMarker(monitor.data.position.coordinates.reverse(), {
+      color,
+      fillColor,
+      fillOpacity: 1,
+      radius: 12,
+      shape
+    })
     markerGroup.addLayer(marker);
+    markers[monitor.data.id] = marker;
 
     marker.addEventListener('click', () => {
-      monitorsService.setActiveMonitor(monitor.data.id);
-      //selectMonitor(MonitorsService.activeMonitor);
+      selectMonitor(marker, monitor);
     });
 
     if (monitor.isVisible) {
@@ -114,7 +153,14 @@ function updateMapMarkers() {
   }
 }
 
+async function loadMonitors() {
+  hideMarkers();
+  await monitorsService.loadMonitors();
+  updateMapMarkers();
+}
+
 function updateMapMarkerVisibility() {
+  console.log("updating marker visibility")
   for (let id in markers) {
     const monitor = monitorsService.monitors[id];
     const marker = markers[id];
@@ -129,16 +175,31 @@ function updateMapMarkerVisibility() {
 }
 
 
-watch(visibility, () => updateMapMarkerVisibility(), {
+watch(() => visibility, () => updateMapMarkerVisibility(), {
   deep: true
 });
 
 onMounted(async () => {
   map = L.map("map", mapSettings);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  L.tileLayer("https://api.maptiler.com/maps/topo/{z}/{x}/{y}.png?key=NvYyjimTkUQBEjVebxLV", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(map);
+  // Wind
+  //L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png?appid={apiKey}', {
+  //  maxZoom: 19,
+  //  attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
+  //  apiKey: "09b21cd89a07eaa465d3d9c2b2a6d0c3",
+  //  opacity: 0.5
+  //} as any).addTo(map);
+  // Clouds
+  //L.tileLayer('http://{s}.tile.openweathermap.org/map/clouds/{z}/{x}/{y}.png?appid={apiKey}', {
+  //  maxZoom: 19,
+  //  attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
+  //  apiKey: "09b21cd89a07eaa465d3d9c2b2a6d0c3",
+  //  opacity: 0.5
+  //} as any).addTo(map);
+  markerGroup.addTo(map)
 
   // interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
 
