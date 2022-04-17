@@ -17,7 +17,8 @@ export const MonitorFields = MonitorField.genMulti(
 export const MonitorTypesMeta = {
   AirNow: {
     monitorFields: MonitorField.genMulti(
-      ["pm25", "PM 2.5", "60m"]
+      ["pm25", "PM 2.5", "60m"],
+      ["pm100", "PM 10", ""]
     )
   },
   BAM1022: {
@@ -30,7 +31,8 @@ export const MonitorTypesMeta = {
       ["pm10", "PM 1.0", ""],
       ["pm25", "PM 2.5", "2m"],
       ["pm25_avg_15", "PM 2.5", "15m"],
-      ["pm25_avg_60", "PM 2.5", "60m"]
+      ["pm25_avg_60", "PM 2.5", "60m"],
+      ["pm100", "PM 10", ""]
     )
   }
 } as const;
