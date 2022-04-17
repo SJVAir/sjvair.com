@@ -46,7 +46,7 @@ function close() {
 
 watch(
   () => route.params.id as string,
-  id => monitorsService.setActiveMonitor(id)
+  id => id && monitorsService.setActiveMonitor(id)
 );
 
 onMounted(() => {
