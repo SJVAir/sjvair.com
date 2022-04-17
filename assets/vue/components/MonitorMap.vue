@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, onUpdated, watch } from "vue";
 import { useRouter } from "vue-router";
 import * as L from "leaflet";
 import { mix, readableColor } from "color2k";
-import { DateRange, MonitorField } from "../models";
+import { MonitorField } from "../models";
 import "leaflet-svg-shape-markers";
 
 import type { Monitor } from "../models";
@@ -11,7 +11,6 @@ import type { MonitorsService } from "../services";
 import {IMonitorVisibility} from "../types";
 //import type { IMonitorVisibility } from "../types";
 
-const windyKey = "EPbmrt2kEQ0vWdTHyuzx3J7uIe1faMkj";
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
 const visibility = inject<IMonitorVisibility>("MonitorVisibility");
 const router = useRouter();
@@ -19,7 +18,9 @@ const router = useRouter();
 const markers: Record<Monitor["data"]["id"], L.Marker> = {};
 const markerGroup = new L.FeatureGroup();
 //const visibility: ToRefs<IMonitorVisibility> = toRefs(reactive(Monitor.visibility));
-const mapIsMaximised = computed(() => ({ "is-maximised": !monitorsService.activeMonitor}));
+const mapIsMaximised = computed(() => {
+  return { "is-maximised": !monitorsService.activeMonitor};
+});
 const mapSettings = {
   // Initial location: Fresno, CA
   center: new L.LatLng( 36.746841, -119.772591 ),
@@ -27,6 +28,7 @@ const mapSettings = {
 };
 
 let map: L.Map;
+let centerCoords: L.LatLng = mapSettings.center;
 let interval: number = 0;
 
 function getColor(value: number) {
@@ -76,7 +78,7 @@ function hideMarkers() {
 
 
 function selectMonitor(marker: L.Marker, monitor: Monitor) {
-  markerGroup.eachLayer(l => l.remove())
+
   router.push({
     name: "details",
     params: {
@@ -84,7 +86,7 @@ function selectMonitor(marker: L.Marker, monitor: Monitor) {
     }
   });
 
-  map.panTo(marker.getLatLng());
+  centerCoords = marker.getLatLng();
 }
 
 function showMarkers() {
@@ -160,7 +162,6 @@ async function loadMonitors() {
 }
 
 function updateMapMarkerVisibility() {
-  console.log("updating marker visibility")
   for (let id in markers) {
     const monitor = monitorsService.monitors[id];
     const marker = markers[id];
@@ -180,8 +181,8 @@ watch(() => visibility, () => updateMapMarkerVisibility(), {
 });
 
 onMounted(async () => {
-  console.log(import.meta.env.VITE_MAPTILER_KEY)
-  map = L.map("map", mapSettings);
+  map = L.map("leafletMapContainer", mapSettings);
+  (window as any).map = map;
   L.tileLayer(`https://api.maptiler.com/maps/topo/{z}/{x}/{y}.png?key=${ import.meta.env.VITE_MAPTILER_KEY}`, {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -200,12 +201,18 @@ onMounted(async () => {
   //  apiKey: import.meta.env.VITE_OPENWEATHERMAP_KEY,
   //  opacity: 0.5
   //} as any).addTo(map);
+
   markerGroup.addTo(map)
 
   // interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
 
   await loadMonitors();
   updateMapBounds();
+});
+
+onUpdated(() => {
+  map.invalidateSize();
+  map.panTo(centerCoords);
 });
 
 onBeforeUnmount(() => {
@@ -217,7 +224,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="map" :class="mapIsMaximised"
-    id="map" class="notranslate" translate="no">
+  <div :class="mapIsMaximised" class="notranslate map-container" translate="no">
+    <div id="leafletMapContainer" class="map-el"></div>
   </div>
 </template>

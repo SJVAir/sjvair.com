@@ -1,11 +1,15 @@
 @import "leaflet/dist/leaflet";
 
 body.map
-    #map
+    .map-container
         height: calc((100vh - #{$navbar-height}) / 2)
 
         &.is-maximised
             height: calc(100vh - #{$navbar-height})
+
+        .map-el
+            height: 100%
+            width: 100%
 
     .display-options
         float: left
