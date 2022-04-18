@@ -182,7 +182,6 @@ watch(() => visibility, () => updateMapMarkerVisibility(), {
 
 onMounted(async () => {
   map = L.map("leafletMapContainer", mapSettings);
-  (window as any).map = map;
   L.tileLayer(`https://api.maptiler.com/maps/topo/{z}/{x}/{y}.png?key=${ import.meta.env.VITE_MAPTILER_KEY}`, {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
