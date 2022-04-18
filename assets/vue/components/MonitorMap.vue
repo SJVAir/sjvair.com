@@ -211,7 +211,10 @@ onMounted(async () => {
 
 onUpdated(() => {
   map.invalidateSize();
-  map.panTo(centerCoords);
+
+  if (monitorsService.activeMonitor) {
+    map.setView(centerCoords, 10, { animate: true });
+  }
 });
 
 onBeforeUnmount(() => {
