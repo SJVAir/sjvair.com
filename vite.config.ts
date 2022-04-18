@@ -6,6 +6,7 @@ import vue from "@vitejs/plugin-vue"
 export default defineConfig({
   root: resolve("./assets/vue/"),
   base: "/static/vue/",
+  envDir: resolve("./"),
   plugins: [vue()],
     server: {
     host: 'localhost',
