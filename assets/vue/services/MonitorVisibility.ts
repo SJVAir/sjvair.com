@@ -1,4 +1,4 @@
-import type { Monitor } from "./Monitor";
+import type { Monitor } from "../models";
 import type { IMonitorVisibility } from "../types";
 
 export class MonitorVisibility implements IMonitorVisibility {
