@@ -7,15 +7,6 @@ export class Monitor implements IMonitor {
   // Default field to display
   static displayField: ChartDataField = "pm25_avg_15";
 
-  static visibility: IMonitorVisibility = {
-    SJVAirPurple: true,
-    SJVAirInactive: false,
-    SJVAirBAM: true,
-    PurpleAir: true,
-    PurpleAirInside: false,
-    AirNow: true,
-    displayInactive: false
-  };
 
   data: IMonitorData;
   dataFields: Array<ChartDataField>;
@@ -33,32 +24,6 @@ export class Monitor implements IMonitor {
     return Monitor.displayField;
   }
 
-  get isVisible() {
-    // showSJVAirPurple
-    // showSJVAirInactive
-    // showSJVAirBAM
-    // showPurpleAir
-    // showPurpleAirInside
-    // showAirNow
-
-    if(!Monitor.visibility.displayInactive && !this.data.is_active){
-      return false;
-    }
-
-    if(this.data.device == 'PurpleAir' && this.data.is_sjvair) {
-      return Monitor.visibility.SJVAirPurple;
-
-    } else if (this.data.device == 'BAM1022'){
-      return Monitor.visibility.SJVAirBAM;
-
-    } else if (this.data.device == 'PurpleAir') {
-      return Monitor.visibility.PurpleAir && (Monitor.visibility.PurpleAirInside || this.data.location == 'outside');
-
-    } else if (this.data.device == 'AirNow'){
-      return Monitor.visibility.AirNow;
-    }
-    return false;
-  }
 
   get markerParams(){
     //const latest = parseFloat(this.data.latest[(Monitor.displayField as keyof IMonitorSensorData)]!);
