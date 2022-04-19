@@ -8,16 +8,14 @@ import "leaflet-svg-shape-markers";
 
 import type { Monitor } from "../models";
 import type { MonitorsService } from "../services";
-import {IMonitorVisibility} from "../types";
-//import type { IMonitorVisibility } from "../types";
+import type { MonitorVisibility } from "../services";
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
-const visibility = inject<IMonitorVisibility>("MonitorVisibility");
+const visibility = inject<MonitorVisibility>("MonitorVisibility")!;
 const router = useRouter();
 
 const markers: Record<Monitor["data"]["id"], L.Marker> = {};
 const markerGroup = new L.FeatureGroup();
-//const visibility: ToRefs<IMonitorVisibility> = toRefs(reactive(Monitor.visibility));
 const mapIsMaximised = computed(() => {
   return { "is-maximised": !monitorsService.activeMonitor};
 });
@@ -142,21 +140,20 @@ function updateMapMarkers() {
       radius: 12,
       shape
     })
-    markerGroup.addLayer(marker);
     markers[monitor.data.id] = marker;
 
     marker.addEventListener('click', () => {
       selectMonitor(marker, monitor);
     });
 
-    if (monitor.isVisible) {
-      marker.addTo(map);
+    if (visibility.isVisible(monitor)) {
+      markerGroup.addLayer(marker);
     }
   }
 }
 
 async function loadMonitors() {
-  hideMarkers();
+  //hideMarkers();
   await monitorsService.loadMonitors();
   updateMapMarkers();
 }
@@ -164,28 +161,30 @@ async function loadMonitors() {
 function updateMapMarkerVisibility() {
   for (let id in markers) {
     const monitor = monitorsService.monitors[id];
-    const marker = markers[id];
 
-    if (monitor.isVisible) {
-     marker.addTo(map);
+    if (visibility.isVisible(monitor)) {
+      markerGroup.addLayer(markers[id]);
 
     } else {
-      marker.remove();
+      markerGroup.removeLayer(markers[id]);
     }
   }
 }
 
 
-watch(() => visibility, () => updateMapMarkerVisibility(), {
-  deep: true
-});
+watch(
+  () => visibility,
+  () => updateMapMarkerVisibility(),
+  { deep: true }
+);
 
 onMounted(async () => {
   map = L.map("leafletMapContainer", mapSettings);
-  L.tileLayer(`https://api.maptiler.com/maps/topo/{z}/{x}/{y}.png?key=${ import.meta.env.VITE_MAPTILER_KEY}`, {
+  L.tileLayer(`https://api.maptiler.com/maps/topo/{z}/{x}/{y}.png?key={apiKey}`, {
     maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  }).addTo(map);
+    apiKey: import.meta.env.VITE_MAPTILER_KEY,
+    attribution: 'Map tiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  } as L.TileLayerOptions).addTo(map);
   // Wind
   //L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png?appid={apiKey}', {
   //  maxZoom: 19,
@@ -203,21 +202,24 @@ onMounted(async () => {
 
   markerGroup.addTo(map)
 
-  // interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
+  interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
 
   await loadMonitors();
   updateMapBounds();
 });
 
 onUpdated(() => {
+  // Tell Leaflet to re-evaluate the map container's dimensions
   map.invalidateSize();
 
+  // If there's an active monitor, center it and zoom in
   if (monitorsService.activeMonitor) {
     map.setView(centerCoords, 10, { animate: true });
   }
 });
 
 onBeforeUnmount(() => {
+  // Ensure the monitor update interval is cleared
   if(interval) {
     clearInterval(interval);
     interval = 0;
