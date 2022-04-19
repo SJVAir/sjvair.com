@@ -14,9 +14,10 @@ export type ReplaceReturnType<T extends (...a: any) => any, R> = (...a: Paramete
 // Value types
 export type ChartDataArray = Array<Array<ChartDataPoint>>;
 export type ChartDataField = keyof typeof MonitorFieldColors;
+export type ChartDataRecord = Record<ChartDataField, Array<ChartDataPoint>>;
 export type ID3Service = typeof D3BackgroundService;
 export type Device = keyof typeof MonitorTypesMeta;
-export type EntriesPageResponse = AxiosResponse<any, any> | void;
+export type EntriesPageResponse = AxiosResponse<IEntriesPageResponse, any>;
 export type MonitorDataField = "pm10" | "pm25" | "pm25_avg_15" | "pm25_avg_60" | "pm100";
 export type MonitorFieldColor = ValueOf<typeof MonitorFieldColors>;
 export type MonitorId = Monitor["data"]["id"];
@@ -24,11 +25,6 @@ export type IMonitorsBackgroundService = typeof MonitorsBackgroundService;
 export type MonitorsRecord = Record<MonitorId, Monitor>;
 
 // Interfaces
-export interface IChartDataPoint {
-  xData: any;
-  yData: number;
-}
-
 export interface IActiveMonitor {
   entries: Array<IMonitorEntry>;
   monitor: Monitor;
@@ -38,9 +34,23 @@ export interface IBackgroundService {
   [key: string]: (...input: Array<any>) => any;
 }
 
+export interface IChartDataPoint {
+  xData: any;
+  yData: number;
+}
+
 export interface IDateRange {
   startDate: string | typeof Dayjs;
   endDate: string | typeof Dayjs;
+}
+
+export interface IEntriesPageResponse {
+  count: number;
+  data: Array<any>;
+  has_next_page: boolean;
+  has_previous_page: boolean;
+  page: number;
+  pages: number;
 }
 
 export interface IMarkerParams {
@@ -121,6 +131,13 @@ export interface IMonitorVisibility {
   AirNow: boolean;
   displayInactive: boolean;
 } 
+
+export interface IParsedEntry {
+  timestamp: string | null,
+  data: {
+    [key: string]: string;
+  }
+}
 
 export interface IPMLevel {
   min: number;
