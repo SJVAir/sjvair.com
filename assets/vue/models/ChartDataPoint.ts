@@ -1,5 +1,5 @@
 import { dateUtil } from "../utils";
-import type { ChartDataField, IMonitorEntry, MonitorFieldColor } from "../types";
+import type { ChartDataField, IParsedEntry, MonitorFieldColor } from "../types";
 
 export class ChartDataPoint {
   color: MonitorFieldColor;
@@ -7,11 +7,11 @@ export class ChartDataPoint {
   xData: any;
   yData: number;
 
-  constructor(c: ChartDataPoint["color"], n: ChartDataPoint["fieldName"], e: IMonitorEntry) {
+  constructor(c: ChartDataPoint["color"], n: ChartDataPoint["fieldName"], e: IParsedEntry) {
     // TODO-PERF: How to not convert every date
     this.color = c;
     this.fieldName = n;
     this.xData = dateUtil.dayjs.utc(e.timestamp).tz('America/Los_Angeles').toISOString();
-    this.yData = parseFloat(e[n]);
+    this.yData = parseFloat(e.data[n]);
   }
 }
