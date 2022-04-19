@@ -37,7 +37,7 @@ let chartData: ChartDataArray;
 // Component container element
 let container: d3.Selection<d3.BaseType, unknown, HTMLElement, any>;
 // Current data fields
-let dataFields: Array<ChartDataField>;
+let dataFields: Array<ChartDataField> = [];
 // Chart legend
 let legend: d3.Selection<HTMLDivElement, unknown, HTMLElement, any>;
 // D3 data path definitions
