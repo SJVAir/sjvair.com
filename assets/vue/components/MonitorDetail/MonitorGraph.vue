@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, onBeforeUnmount, onMounted, toRefs } from "vue";
+import { inject, onBeforeUnmount, onMounted, toRefs, watch } from "vue";
 import MonitorChart from "./MonitorChart.vue";
 import MonitorDataControl from "./MonitorDataControl.vue";
 import { dateUtil } from "../../utils";
@@ -29,6 +29,7 @@ async function loadAllEntries(){
     chartData = data;
   }
   loading = false;
+  console.log(data)
 }
 
 function startSync() {
@@ -43,6 +44,14 @@ function stopSync() {
     interval = 0;
   }
 }
+
+watch(
+  () => monitor.value,
+  async () => {
+    console.log("monitor changed, loading entries");
+    await loadAllEntries();
+  }
+);
 
 onMounted(async () => {
   await loadAllEntries();
@@ -60,6 +69,7 @@ onBeforeUnmount(() => {
 <div v-if="monitor" class="monitor-graph">
   <monitor-data-control @loadAll="loadAllEntries"></monitor-data-control>
   <div :class="{ 'is-hidden': loading }" class="chart">
+    <monitor-chart></monitor-chart>
   </div>
   <h1 v-if="loading" class="loading-notice">Fetching Data...</h1>
 </div>
