@@ -1,13 +1,12 @@
 import { createApp, reactive} from "vue";
 import { createRouter, createWebHashHistory } from "vue-router";
-import App from "./App.vue";
-import { Monitor } from "./models";
 import MonitorDetail from "./components/MonitorDetail";
-import { D3ServiceMono, MonitorsServiceMono } from "./services";
+import { D3ServiceMono, MonitorsServiceMono, MonitorVisibility } from "./services";
+import App from "./App.vue";
 
 const d3Service = reactive(new D3ServiceMono());
 const monitorService = reactive(new MonitorsServiceMono());
-const monitorVisibility = reactive(Monitor.visibility);
+const monitorVisibility = reactive(new MonitorVisibility());
 
 const router = createRouter({
   history: createWebHashHistory(),

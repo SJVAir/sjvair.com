@@ -1,10 +1,9 @@
 <script setup lang="ts">
+import { inject, Ref, ref } from "vue";
 import MonitorMap from "./components/MonitorMap.vue";
+import type { IMonitorVisibility } from "./types";
 
-import { computed, Ref, ref } from "vue";
-import { Monitor } from "./models";
-
-const visibility = computed(() => Monitor.visibility);
+const visibility = inject<IMonitorVisibility>("MonitorVisibility")!;
 let displayOptionsActive: Ref<boolean> = ref(false);
 
 function toggleDisplayOptions() {
