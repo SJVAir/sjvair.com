@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, onBeforeUnmount, onMounted, watch } from "vue";
+import { inject, onBeforeUnmount, watchEffect } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import MonitorGraph from "./MonitorGraph.vue";
@@ -44,16 +44,7 @@ function close() {
   router.replace("/");
 }
 
-watch(
-  () => route.params.id as string,
-  id => id && monitorsService.setActiveMonitor(id)
-);
-
-onMounted(() => {
-  if (route.params.id) {
-    monitorsService.setActiveMonitor(route.params.id as string);
-  }
-});
+watchEffect(() => route.params.id && monitorsService.setActiveMonitor(route.params.id as string));
 
 onBeforeUnmount(() => monitorsService.clearActiveMonitor());
 
