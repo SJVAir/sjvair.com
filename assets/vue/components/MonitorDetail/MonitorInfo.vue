@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed } from "@vue/reactivity";
+import { computed, toRefs } from "@vue/reactivity";
 import { Monitor } from "../../models/Monitor";
 
 const props = defineProps<{ monitor: Monitor }>();
-const { monitor } = props;
+const { monitor } = toRefs(props);
 
 const location = computed(() => {
-  if (monitor) {
-    return monitor.data.location[0].toUpperCase() + monitor.data.location.slice(1).toLowerCase();
+  if (monitor.value) {
+    return monitor.value.data.location[0].toUpperCase() + monitor.value.data.location.slice(1).toLowerCase();
   }
   return "";
 })
