@@ -64,19 +64,7 @@ function getColor(value: number) {
   }
 }
 
-function hideMarkers() {
-  //for (let id in markers) {
-  //  markers[id].remove();
-  //}
-  //markerGroup.eachLayer(marker => {
-  //  marker.remove();
-  //})
-  markerGroup.remove();
-}
-
-
 function selectMonitor(marker: L.Marker, monitor: Monitor) {
-
   router.push({
     name: "details",
     params: {
@@ -85,16 +73,6 @@ function selectMonitor(marker: L.Marker, monitor: Monitor) {
   });
 
   centerCoords = marker.getLatLng();
-}
-
-function showMarkers() {
-  //for (let id in markers) {
-  //  markers[id].addTo(map);
-  //}
-  //markerGroup.eachLayer(marker => {
-  //  marker.addTo(map);
-  //});
-  markerGroup.addTo(map);
 }
 
 function updateMapBounds() {
@@ -110,13 +88,9 @@ function getMarkerShape(m: Monitor) {
     case "BAM1022":
       return "triangle";
     case "PurpleAir":
-      if (m.data.is_sjvair) {
-        return "circle";
-      } else {
-        return "square";
-      }
+      return (m.data.is_sjvair) ? "circle" : "square";
     default:
-      console.error(`Unknown device type for monitor ${ m.data.id }`)
+      console.error(`Unknown device type for monitor ${ m.data.id }`);
       return "diamond";
   }
 }
@@ -125,27 +99,30 @@ function updateMapMarkers() {
   for (let id in monitorsService.monitors) {
     const monitor = monitorsService.monitors[id];
 
+    // No marker needed if there's no latest data
     if (!monitor.data.latest) {
       break;
     }
 
     const shape = getMarkerShape(monitor);
     const fillColor = getColor(+monitor.data.latest[monitor.displayField]);
-    const color = readableColor(fillColor);
     // @ts-ignore: Property 'shapeMarker' does not exist on type Leaflet
     const marker = L.shapeMarker(monitor.data.position.coordinates.reverse(), {
-      color,
+      color: "#000000", // background color
       fillColor,
       fillOpacity: 1,
       radius: 12,
       shape
     })
+
+    // Assign/reassign marker to record
     markers[monitor.data.id] = marker;
 
     marker.addEventListener('click', () => {
       selectMonitor(marker, monitor);
     });
 
+    
     if (visibility.isVisible(monitor)) {
       markerGroup.addLayer(marker);
     }
