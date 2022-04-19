@@ -3,7 +3,7 @@ import { BackgroundService } from "../webworkers/BackgroundService";
 import { http, dateUtil, MonitorFieldColors } from "../utils";
 
 import type { DateRange } from "../models";
-import type { ChartDataArray, ChartDataField, EntriesPageResponse, MonitorsRecord, IMonitorData, IMonitorEntry, IMonitorSubscription } from "../types";
+import type { ChartDataArray, ChartDataField, ChartDataRecord, MonitorsRecord, IMonitorData, IMonitorEntry, IMonitorSubscription, IEntriesPageResponse, IParsedEntry } from "../types";
 
 export const MonitorsBackgroundService = {
 
@@ -23,19 +23,15 @@ export const MonitorsBackgroundService = {
   async fetchEntries(m: Monitor, d: DateRange): Promise<Array<IMonitorEntry>> {
     const entries: Array<IMonitorEntry> = [];
     let hasNextPage: boolean = false;
-    let pageNumber = 1;
+    let pageNumber = 0;
 
     do {
-      const page: EntriesPageResponse = await this.fetchEntriesPage(m, d, pageNumber)
-        .catch(error => console.error(`Error fetching entries page ${ page } for monitor ${ m.data.name }`, error));
+      pageNumber++;
+      const page: IEntriesPageResponse = await this.fetchEntriesPage(m, d, pageNumber)
       
-      if (page && "data" in page.data) {
-        entries.push(...page.data.data)
-
-        if (page.data.has_next_page) {
-          pageNumber++;
-          hasNextPage = page.data.has_next_page;
-        }
+      if (page.data.length) {
+        entries.push(...page.data)
+        hasNextPage = page.has_next_page;
       }
 
     } while (hasNextPage);
@@ -43,44 +39,50 @@ export const MonitorsBackgroundService = {
     return entries;
   },
 
-  async fetchEntriesPage(m: Monitor, d: DateRange, page: number = 1): Promise<EntriesPageResponse> {
-    return http.get<EntriesPageResponse>(`monitors/${m.data.id}/entries/`, {
+  async fetchEntriesPage(m: Monitor, d: DateRange, page: number = 1): Promise<IEntriesPageResponse> {
+    return http.get<IEntriesPageResponse>(`monitors/${m.data.id}/entries/`, {
       params: {
         fields: m.dataFields.join(','),
         page: page,
         timestamp__gte: dateUtil.$defaultFormat(d.start),
         timestamp__lte: dateUtil.$defaultFormat(d.end)
       }
-    }).then(res => res.data);
-    //}).catch(error => console.error(`Unable to fetch entries page ${page} for monitor ${activeMonitor!.data.id}`, error));
+    }).then(res => res.data)
+    .catch(_ => {
+      console.error(`Unable to fetch entries page ${page} for monitor ${m.data.id}`);
+      return { count: 0, data: [], has_next_page: false, has_previous_page: false, page: 0, pages: 0 };
+    });
   },
 
   async fetchChartData(m: Monitor, d: DateRange): Promise<ChartDataArray> {
     // TODO-PERF: How to do this in one loop?
     return this.fetchEntries(m, d)
       .then(entries => {
-        const chartDataRecord: Record<ChartDataField, Array<ChartDataPoint>> = {} as Record<ChartDataField, Array<ChartDataPoint>>;
+        console.log("monitor entries aquired: ", entries)
+        let chartDataRecord: ChartDataRecord = {} as ChartDataRecord;
         const parsedEntries = entries.map(e => {
-          const entry: any = {
+          const entry: IParsedEntry = {
             timestamp: null,
             data: {}
           };
 
           for (let key in e) {
-            if (key === "sensor") {
-              continue;
-
-            } else if (key === "timestamp") {
-              entry.timestamp = e.timestamp;
-
-            } else {
-              entry.data.key = e[key];
+            switch (key) {
+              case "sensor":
+                break;
+              case "timestamp":
+                entry.timestamp = e.timestamp;
+                break;
+              default:
+                if (e[key])
+                entry.data[key] = e[key];
             }
           }
 
           return entry;
         });
 
+        console.log(parsedEntries)
         for (let i = parsedEntries.length - 1; i >= 0; i--) {
           const entry = parsedEntries[i];
 
