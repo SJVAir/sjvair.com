@@ -118,6 +118,13 @@ function updateMapMarkers() {
     // Assign/reassign marker to record
     markers[monitor.data.id] = marker;
 
+    marker.bindTooltip(`
+      <div>
+        <p>${ monitor.data.name }</p>
+        <p>${ monitor.data.latest[monitor.displayField] }</p>
+      </div
+    `);
+
     marker.addEventListener('click', () => {
       selectMonitor(marker, monitor);
     });
@@ -191,7 +198,9 @@ onUpdated(() => {
 
   // If there's an active monitor, center it and zoom in
   if (monitorsService.activeMonitor) {
-    map.setView(centerCoords, 10, { animate: true });
+    // Don't adjust the zoom if we're already zoomed in greater than 10
+    const zoom = Math.max(map.getZoom(), 10);
+    map.setView(centerCoords, zoom, { animate: true });
   }
 });
 

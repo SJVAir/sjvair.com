@@ -58,7 +58,6 @@ export const MonitorsBackgroundService = {
     // TODO-PERF: How to do this in one loop?
     return this.fetchEntries(m, d)
       .then(entries => {
-        console.log("monitor entries aquired: ", entries)
         let chartDataRecord: ChartDataRecord = {} as ChartDataRecord;
         const parsedEntries = entries.map(e => {
           const entry: IParsedEntry = {
@@ -82,7 +81,6 @@ export const MonitorsBackgroundService = {
           return entry;
         });
 
-        console.log(parsedEntries)
         for (let i = parsedEntries.length - 1; i >= 0; i--) {
           const entry = parsedEntries[i];
 

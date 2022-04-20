@@ -61,7 +61,6 @@ watchEffect(async () => {
 onMounted(() => {
   // Reference to the svg"s container div
   container = d3.select("#chartContainer");
-  console.log(container)
 
   // Create the SVG element
   //Selection<SVGElement, uknown, HTMLElement, any>

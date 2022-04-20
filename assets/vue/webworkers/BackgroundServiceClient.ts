@@ -28,15 +28,12 @@ export class BackgroundServiceClient<T extends IBackgroundService> {
 
     this.worker.onmessageerror = (ev: MessageEvent<any>) => console.error("worker failed: ", ev);
     this.worker.onmessage = (msg: MessageEvent<BackgroundTaskResponse>) => {
-      console.log("Background task response received")
       const { id, error, payload, success } = msg.data;
 
       if (success && this.resolvers.has(id)) {
-        console.log("Background task success")
         this.resolvers.get(id)!(payload);
 
       } else if (error && this.rejectors.has(id)) {
-        console.log("Background task failed")
         this.rejectors.get(id)!(payload);
 
       } else {
@@ -53,8 +50,6 @@ export class BackgroundServiceClient<T extends IBackgroundService> {
   run<K extends keyof T>(taskName: K, ...parameters: Parameters<T[K]>): Promise<Awaited<ReturnType<T[K]>>> {
     const task = new BackgroundTask<T>(++this.globalTaskID, taskName, parameters);
 
-    console.log("running task: ", task)
-    console.log("worker: ", this.worker)
     return new Promise((resolve, reject) => {
       this.resolvers.set(task.id, resolve);
       this.rejectors.set(task.id, reject);

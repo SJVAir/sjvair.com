@@ -29,7 +29,6 @@ async function loadAllEntries(){
     chartData = data;
   }
   loading = false;
-  console.log(data)
 }
 
 function startSync() {
@@ -47,10 +46,7 @@ function stopSync() {
 
 watch(
   () => monitor.value,
-  async () => {
-    console.log("monitor changed, loading entries");
-    await loadAllEntries();
-  }
+  async () => await loadAllEntries()
 );
 
 onMounted(async () => {
