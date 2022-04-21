@@ -67,7 +67,7 @@ export const D3BackgroundService = {
       return true;
     }
 
-    const deltaRaw = dateUtil.dayjs(dataPoint.xData).diff(dateUtil.dayjs(prevDataPoint.xData));
+    const deltaRaw = dateUtil.dayjs(prevDataPoint.xData).diff(dateUtil.dayjs(dataPoint.xData));
     const deltaAsSec = Math.ceil(deltaRaw / 1000);
 
     prevDataPoint = dataPoint;

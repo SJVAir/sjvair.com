@@ -55,6 +55,7 @@ let y: any = null;
 
 watchEffect(async () => {
   chartData = await monitorsService.fetchChartData(monitorsService.activeMonitor!.data.id) || [];
+  await d3Service.updateLastActiveLimit(monitorsService.activeMonitor!.data.last_active_limit);
   await loadData();
 });
 
@@ -208,7 +209,7 @@ function renderTooltip(e: any) {
   const pointerValues = [];
 
   for (let collection of chartData) {
-    const dataPoint = [...collection].reverse().find((d, i) => {
+    const dataPoint = [...collection].find((d, i) => {
         if (new Date(d.xData) <= xDate) {
           return i;
         }
@@ -224,15 +225,13 @@ function renderTooltip(e: any) {
     .attr("y1", 0)
     .attr("y2", styles.height);
 
-  tooltipLinePoints = tooltipLinePoints.selectAll(".tooltip-line-point")
+  const linePoints = tooltipLinePoints.selectAll(".tooltip-line-point")
     .data(pointerValues);
 
-  tooltipLinePoints.exit().remove();
-
-  tooltipLinePoints.enter()
+  linePoints.enter()
     .append("circle")
     .attr("class", "tooltip-line-point")
-    .merge(tooltipLinePoints as any)
+    .merge(linePoints)
     .attr("r", 7)
     .attr("cx", (d: ChartDataPoint) => `${ x(parseTime(d.xData)) }px`)
     .attr("cy", (d: ChartDataPoint) => `${ y(d.yData) }px`)
@@ -241,20 +240,28 @@ function renderTooltip(e: any) {
   const lineStats = tooltipLine.node()!
     .getBoundingClientRect();
 
-  tooltip = tooltip
+  const tooltipLegend = tooltip
     .html(`<p class="chart-tooltip-header">${ dateUtil.$prettyPrint(pointerValues[0]!.xData) }</p>`)
     .classed("active", true)
     .style("left", `calc(${ lineStats.x }px + 2em)`)
     .style("top", `calc(${ e.layerY }px + 3.5em)`)
-    .selectAll()
-    .data(pointerValues).enter()
     .append("div")
-    .attr("class", "chart-tooltip-value");
+    .attr("class", "chart-tooltip-legend");
 
-  tooltip.append("span").attr("class", "chart-legend-marker")
+  const tooltipLegendItems = tooltipLegend.selectAll(".chart-legend-item")
+    .data(pointerValues)
+
+  const legendItemsDetails = tooltipLegendItems.enter()
+    .append("p")
+    .attr("class", "chart-tooltip-legend-item")
+    .merge(tooltipLegend);
+
+  legendItemsDetails.append("span")
+    .attr("class", "chart-legend-marker")
     .style("background-color", (d: ChartDataPoint) => d.color);
 
-  tooltip.append("span")
+  legendItemsDetails.append("span")
+    .merge(tooltipLegend)
     .text((d: ChartDataPoint) => `${ d.fieldName }: `)
     .append("b")
     .text((d: ChartDataPoint) => `${ Math.round(d.yData) }`);
