@@ -5,10 +5,14 @@ import MonitorSubscription from "../MonitorSubscription.vue";
 
 import { inject } from "vue";
 import type { MonitorsService } from "../../services";
+import {dateUtil} from "../../utils";
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
 const emit = defineEmits<{(e: "loadAll"): void}>();
 
+function disabledDates(d: Date) {
+  return d > dateUtil.dayjs().endOf("day").toDate();
+}
 
 function downloadCSV() {
   monitorsService.downloadCSV();
@@ -26,7 +30,7 @@ function loadAllEntries() {
       <div class="field">
         <label for="startDate" class="label is-small has-text-weight-normal">Date Range</label>
         <div class="control">
-          <Datepicker v-model="monitorsService.dateRange" range />
+          <Datepicker v-model="monitorsService.dateRange" range :disabledDates="disabledDates" />
         </div>
       </div>
     </div>
