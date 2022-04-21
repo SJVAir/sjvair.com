@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import * as d3 from "d3";
-import { inject, onMounted, watchEffect } from "vue";
-import {ChartDataPoint} from "../../models";
+import { inject, onMounted, toRefs, watch } from "vue";
+import { ChartDataPoint } from "../../models";
 import { dateUtil } from "../../utils";
 import type { D3Service, MonitorsService } from "../../services";
 import type { ChartDataArray, ChartDataField } from "../../types";
 
-
 const d3Service = inject<D3Service>("D3Service")!;
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
-//import BackgroundTaskClient from "../../webworkers/BackgroundTaskClient";
-
-//const bgtc = new BackgroundTaskClient(new Worker("../../webworkers/ChartDataProcessor.js", { type: "module" }));
- // props: [ "chartData" ],
+const props = defineProps<{ chartData: ChartDataArray }>();
+const { chartData } = toRefs(props);
 
 const margin = {
   top: 24,
@@ -32,8 +29,6 @@ const styles = {
 };
 // SVG chart
 let chart: d3.Selection<SVGGElement, unknown, HTMLElement, any>;
-// Chart data
-let chartData: ChartDataArray;
 // Component container element
 let container: d3.Selection<d3.BaseType, unknown, HTMLElement, any>;
 // Current data fields
@@ -53,11 +48,13 @@ let tooltipLinePoints: any;
 let x: any = null;
 let y: any = null;
 
-watchEffect(async () => {
-  chartData = await monitorsService.fetchChartData(monitorsService.activeMonitor!.data.id) || [];
-  await d3Service.updateLastActiveLimit(monitorsService.activeMonitor!.data.last_active_limit);
-  await loadData();
-});
+watch(
+  () => chartData.value,
+  async () => {
+    await d3Service.updateLastActiveLimit(monitorsService.activeMonitor!.data.last_active_limit);
+    await loadData();
+  }
+);
 
 onMounted(() => {
   // Reference to the svg"s container div
@@ -119,7 +116,7 @@ onMounted(() => {
 //   and for updating the chart. D3's "merge" method is key here.
 async function loadData() {
   // create a flat copy of the chart data to find min/max values
-  const flatData = chartData.flat();
+  const flatData = chartData.value.flat();
 
   // Scale ranges for data, performance assumptions possible
   x.domain(
@@ -132,8 +129,8 @@ async function loadData() {
 
   const toRemove = dataFields.filter(field => !monitorsService.activeMonitor!.dataFields.includes(field))
 
-  for (let i = 0; i <= chartData.length - 1; i++) {
-    const data = chartData[i];
+  for (let i = 0; i <= chartData.value.length - 1; i++) {
+    const data = chartData.value[i];
     const color = data[0].color;
     const field = data[0].fieldName;
     const gapsId = `chart-gaps-${ field }`;
@@ -178,7 +175,7 @@ async function loadData() {
 
   // Add the chart legend
   const legendKeys = legend.selectAll(".legend-key")
-    .data(chartData);
+    .data(chartData.value);
 
   legendKeys.exit().remove();
 
@@ -208,7 +205,7 @@ function renderTooltip(e: any) {
   const xDate = x.invert(pointerCoords[0]);
   const pointerValues = [];
 
-  for (let collection of chartData) {
+  for (let collection of chartData.value) {
     const dataPoint = [...collection].find((d, i) => {
         if (new Date(d.xData) <= xDate) {
           return i;
