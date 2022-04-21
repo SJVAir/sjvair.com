@@ -18,12 +18,12 @@ const validUser = (window as any).USER.is_authenticated
 
 
 // Change button text if user is subscribed
-const buttonText = computed(() => subscribed ? "Manage Subscription" : "Subscribe To Alerts")
+const buttonText = computed(() => subscribed.value ? "Manage Subscription" : "Subscribe To Alerts")
 
 // Dropdown state
-let active = false;
+let active = ref(false);
 // Subscription status
-let subscribed = false;
+let subscribed = ref(false);
 // Subscription Levels
 let subscriptionLevels = [
   new SubscriptionLevel("unhealthy_sensitive", "#D4712B"),
@@ -81,7 +81,7 @@ function selectOption(target: HTMLElement, selectedLevel: SubscriptionLevel) {
   }
 
   // close dropdown
-  active = false;
+  active.value = false;
 }
 
 function showUnsubscribe(target: HTMLElement, selectedLevel: SubscriptionLevel) {
@@ -97,7 +97,8 @@ function subscribe(level: IMonitorSubscription["level"]) {
 }
 
 function toggleDropdown() {
-  active = !active;
+  active.value = !active.value;
+  console.log("toggled!! ", active)
 }
 
 function unsubscribe(level: IMonitorSubscription["level"]) {
@@ -117,14 +118,14 @@ function update(level: IMonitorSubscription["level"] | null) {
     return sub;
   });
 
-  subscribed = !subscriptionLevels.every(sub => sub.subscribed === false);
+  subscribed.value = !subscriptionLevels.every(sub => sub.subscribed === false);
 }
 
 
 watch(
   () => monitorsService.activeMonitor,
   () => {
-    active = false;
+    active.value = false;
     loadSubscriptions();
   }
 );
