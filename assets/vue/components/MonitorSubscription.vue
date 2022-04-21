@@ -98,7 +98,6 @@ function subscribe(level: IMonitorSubscription["level"]) {
 
 function toggleDropdown() {
   active.value = !active.value;
-  console.log("toggled!! ", active)
 }
 
 function unsubscribe(level: IMonitorSubscription["level"]) {
