@@ -6,8 +6,8 @@ export class DateRange extends Array<string> {
     let start: string = dateUtil.dayjs().subtract(3, "day").startOf("day").toISOString();
     let end: string = dateUtil.dayjs().endOf("day").toISOString();
     if (range) {
-      start = dateUtil.dayjs(range.start).startOf("day").toISOString();
-      end = dateUtil.dayjs(range.end).endOf("day").toISOString();
+      start = dateUtil.dayjs(range[0]).startOf("day").toISOString();
+      end = dateUtil.dayjs(range[1]).endOf("day").toISOString();
     }
     super(start, end);
   }
