@@ -9,6 +9,7 @@ import "leaflet-svg-shape-markers";
 import type { Monitor } from "../models";
 import type { MonitorsService } from "../services";
 import type { MonitorVisibility } from "../services";
+import {dateUtil} from "../utils";
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
 const visibility = inject<MonitorVisibility>("MonitorVisibility")!;
@@ -106,6 +107,7 @@ function updateMapMarkers() {
 
     const shape = getMarkerShape(monitor);
     const fillColor = getColor(+monitor.data.latest[monitor.displayField]);
+    const textColor = readableColor(fillColor);
     // @ts-ignore: Property 'shapeMarker' does not exist on type Leaflet
     const marker = L.shapeMarker(monitor.data.position.coordinates.reverse(), {
       color: "#000000", // background color
@@ -119,13 +121,44 @@ function updateMapMarkers() {
     markers[monitor.data.id] = marker;
 
     marker.bindTooltip(`
-      <div>
-        <p>${ monitor.data.name }</p>
-        <p>${ monitor.data.latest[monitor.displayField] }</p>
+      <div class="monitor-tooltip-container" style="background-color: ${ fillColor }; color: ${ textColor }">
+        <p class="monitor-tooltip-date">${ dateUtil.$prettyPrint(monitor.data.latest.timestamp) }</p>
+        <p class="monitor-tooltip-name">${ monitor.data.name }</p>
+        <ul class="monior-tooltip-details is-inline">
+          <li>
+            <span class="tag is-dark">
+              <span class="icon">
+                <span class="fal fa-router has-text-white"></span>
+              </span>
+              <span>${ monitor.data.device }</span>
+            </span>
+          </li>
+          <li>
+            <span class="tag is-dark">
+              <span class="icon">
+                <span class="fal fa-map-marker-alt has-text-white"></span>
+              </span>
+              <span>${ monitor.data.county }</span>
+            </span>
+          </li>
+          <li>
+            <span class="tag is-dark">
+              <span class="icon">
+                <span class="fal fa-location has-text-white"></span>
+              </span>
+              <span>${ monitor.data.location[0].toUpperCase() + monitor.data.location.slice(1).toLowerCase() }</span>
+            </span>
+          </li>
+        </ul>
+        <p class="mt-2 is-size-7">
+          PM2.5 15 minute average:
+          <span class="is-block is-size-3 has-text-centered">${ Math.round(+monitor.data.latest[monitor.displayField]) }</span>
+        </p>
       </div
-    `);
+    `, { offset: L.point(10, 0)});
 
     marker.addEventListener('click', () => {
+      console.log(monitor)
       selectMonitor(marker, monitor);
     });
 
@@ -174,7 +207,7 @@ onMounted(async () => {
   //  maxZoom: 19,
   //  attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
   //  apiKey: import.meta.env.VITE_OPENWEATHERMAP_KEY,
-  //  opacity: 0.5
+  //  opacity: 0.3
   //} as any).addTo(map);
   // Clouds
   //L.tileLayer('http://{s}.tile.openweathermap.org/map/clouds/{z}/{x}/{y}.png?appid={apiKey}', {
@@ -218,3 +251,40 @@ onBeforeUnmount(() => {
     <div id="leafletMapContainer" class="map-el"></div>
   </div>
 </template>
+
+<style>
+.leaflet-tooltip {
+  font-weight: 600;
+}
+
+.leaflet-tooltip-right:before {
+    margin-left: -1.5em;
+    border-right-color: #000;
+}
+
+.leaflet-tooltip-left:before {
+    margin-right: -1.5em;
+    border-left-color: #000;
+}
+
+.monitor-tooltip-container {
+  border: .3em solid #000;
+  border-radius: 5px;
+  margin: -1em;
+  padding: 1em;
+}
+
+.monitor-tooltip-container .tag {
+  font-weight: 500;
+}
+
+.monitor-tooltip-name {
+  font-size: 1.5em;
+  text-decoration: underline;
+}
+
+.monitor-tooltip-value {
+  font-size: 2em;
+  font-weight: 800;
+}
+</style>
