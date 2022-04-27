@@ -123,7 +123,7 @@ function updateMapMarkers() {
     marker.bindTooltip(`
       <div class="monitor-tooltip-container" style="background-color: ${ fillColor }; color: ${ textColor }">
         <p class="monitor-tooltip-date">${ dateUtil.$prettyPrint(monitor.data.latest.timestamp) }</p>
-        <p class="monitor-tooltip-name">${ monitor.data.name }</p>
+        <p class="is-size-4 is-underlined">${ monitor.data.name }</p>
         <ul class="monior-tooltip-details is-inline">
           <li>
             <span class="tag is-dark">
@@ -150,10 +150,15 @@ function updateMapMarkers() {
             </span>
           </li>
         </ul>
-        <p class="mt-2 is-size-7">
-          PM2.5 15 minute average:
-          <span class="is-block is-size-3 has-text-centered">${ Math.round(+monitor.data.latest[monitor.displayField]) }</span>
-        </p>
+        <div class="mt-1 is-flex is-justify-content-space-between is-align-items-flex-start is-flex-wrap-nowrap">
+          <div class="monitor-tooltip-label is-flex is-justify-content-center is-align-items-center is-flex-direction-column mt-2 is-size-7">
+            <p class="is-size-3">PM 2.5</p>
+            <p class="is-size-8">(15 minute average)</p>
+          </div>
+          <p class="is-size-2 has-text-centered is-flex-grow-1">
+            ${ Math.round(+monitor.data.latest[monitor.displayField]) }
+          </p>
+        </div>
       </div
     `, { offset: L.point(10, 0)});
 
@@ -278,13 +283,11 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 
-.monitor-tooltip-name {
-  font-size: 1.5em;
-  text-decoration: underline;
+.monitor-tooltip-label {
+  line-height: 1;
 }
 
-.monitor-tooltip-value {
-  font-size: 2em;
-  font-weight: 800;
+.monitor-tooltip-label p:last-of-type {
+  font-size: .65rem;
 }
 </style>
