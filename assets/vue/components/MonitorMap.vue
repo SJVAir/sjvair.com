@@ -2,14 +2,12 @@
 import { computed, inject, onBeforeUnmount, onMounted, onUpdated, watch } from "vue";
 import { useRouter } from "vue-router";
 import * as L from "leaflet";
-import { mix, readableColor } from "color2k";
-import { MonitorField } from "../models";
 import "leaflet-svg-shape-markers";
 
 import type { Monitor } from "../models";
 import type { MonitorsService } from "../services";
 import type { MonitorVisibility } from "../services";
-import {dateUtil} from "../utils";
+import { genMarker } from "../utils";
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
 const visibility = inject<MonitorVisibility>("MonitorVisibility")!;
@@ -30,41 +28,6 @@ let map: L.Map;
 let centerCoords: L.LatLng = mapSettings.center;
 let interval: number = 0;
 
-function getColor(value: number) {
-  const lastLvl = MonitorField.levels[MonitorField.levels.length - 1];
-
-  if (value >= lastLvl.min) {
-    return `#${lastLvl.color}`;
-
-  } else if (value <= 0) {
-    return `#${MonitorField.levels[0].color}`;
-
-  } else {
-    for (let i = 0; i <= MonitorField.levels.length - 1; i++) {
-      if (MonitorField.levels[i].min > value) {
-        // Level for current value
-        const min = MonitorField.levels[i-1];
-        // Level threshold for current value
-        const max = MonitorField.levels[i]
-        // Difference between max and min values => total steps in level
-        const lvlDiff = min.min === -Infinity ? max.min : max.min - min.min;
-        // Difference between threshold and current values => steps remaining for current level
-        const valDiff = max.min - value;
-        // Difference between total steps and steps remaining
-        const divisable = lvlDiff - valDiff;
-        // Percent of steps used in level
-        const diff = divisable / lvlDiff;
-
-        // Color magic
-        return mix(`#${min.color}`, `#${max.color}`, diff);
-      }
-    }
-
-    // Gentle way to signify an error
-    return "#FFFFFF";
-  }
-}
-
 function selectMonitor(marker: L.Marker, monitor: Monitor) {
   router.push({
     name: "details",
@@ -82,100 +45,33 @@ function updateMapBounds() {
   }
 }
 
-function getMarkerShape(m: Monitor) {
-  switch(m.data.device) {
-    case "AirNow": 
-      return "triangle";
-    case "BAM1022":
-      return "triangle";
-    case "PurpleAir":
-      return (m.data.is_sjvair) ? "circle" : "square";
-    default:
-      console.error(`Unknown device type for monitor ${ m.data.id }`);
-      return "diamond";
-  }
-}
-
 function updateMapMarkers() {
   for (let id in monitorsService.monitors) {
     const monitor = monitorsService.monitors[id];
+    const marker = genMarker(monitor);
 
-    // No marker needed if there's no latest data
-    if (!monitor.data.latest) {
-      break;
+    if (id in markers) {
+      markerGroup.removeLayer(markers[id].remove());
+      delete markers[id];
     }
 
-    const shape = getMarkerShape(monitor);
-    const fillColor = getColor(+monitor.data.latest[monitor.displayField]);
-    const textColor = readableColor(fillColor);
-    // @ts-ignore: Property 'shapeMarker' does not exist on type Leaflet
-    const marker = L.shapeMarker(monitor.data.position.coordinates.reverse(), {
-      color: "#000000", // background color
-      fillColor,
-      fillOpacity: 1,
-      radius: 12,
-      shape
-    })
+    if (marker) {
+      // Assign/reassign marker to record
+      markers[id] = marker;
 
-    // Assign/reassign marker to record
-    markers[monitor.data.id] = marker;
-
-    marker.bindTooltip(`
-      <div class="monitor-tooltip-container" style="background-color: ${ fillColor }; color: ${ textColor }">
-        <p class="monitor-tooltip-date">${ dateUtil.$prettyPrint(monitor.data.latest.timestamp) }</p>
-        <p class="is-size-4 is-underlined">${ monitor.data.name }</p>
-        <ul class="monior-tooltip-details is-inline">
-          <li>
-            <span class="tag is-dark">
-              <span class="icon">
-                <span class="fal fa-router has-text-white"></span>
-              </span>
-              <span>${ monitor.data.device }</span>
-            </span>
-          </li>
-          <li>
-            <span class="tag is-dark">
-              <span class="icon">
-                <span class="fal fa-map-marker-alt has-text-white"></span>
-              </span>
-              <span>${ monitor.data.county }</span>
-            </span>
-          </li>
-          <li>
-            <span class="tag is-dark">
-              <span class="icon">
-                <span class="fal fa-location has-text-white"></span>
-              </span>
-              <span>${ monitor.data.location[0].toUpperCase() + monitor.data.location.slice(1).toLowerCase() }</span>
-            </span>
-          </li>
-        </ul>
-        <div class="mt-1 is-flex is-justify-content-space-between is-align-items-flex-start is-flex-wrap-nowrap">
-          <div class="monitor-tooltip-label is-flex is-justify-content-center is-align-items-center is-flex-direction-column mt-2 is-size-7">
-            <p class="is-size-3">PM 2.5</p>
-            <p class="is-size-8">(15 minute average)</p>
-          </div>
-          <p class="is-size-2 has-text-centered is-flex-grow-1">
-            ${ Math.round(+monitor.data.latest[monitor.displayField]) }
-          </p>
-        </div>
-      </div
-    `, { offset: L.point(10, 0)});
-
-    marker.addEventListener('click', () => {
-      console.log(monitor)
-      selectMonitor(marker, monitor);
-    });
-
-    
-    if (visibility.isVisible(monitor)) {
-      markerGroup.addLayer(marker);
+      marker.addEventListener('click', () => {
+        console.log(monitor)
+        selectMonitor(marker, monitor);
+      });
+      
+      if (visibility.isVisible(monitor)) {
+        markerGroup.addLayer(marker);
+      }
     }
   }
 }
 
 async function loadMonitors() {
-  //hideMarkers();
   await monitorsService.loadMonitors();
   updateMapMarkers();
 }
@@ -224,7 +120,7 @@ onMounted(async () => {
 
   markerGroup.addTo(map)
 
-  interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
+  interval = setInterval(async () => await loadMonitors(), 1000 * 10);
 
   await loadMonitors();
   updateMapBounds();
