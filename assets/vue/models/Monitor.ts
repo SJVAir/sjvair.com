@@ -1,7 +1,7 @@
-import tinycolor from 'tinycolor2';
+import { darken, toHex } from "color2k";
 import { MonitorField } from "./MonitorField";
 import { Colors, MonitorTypesMeta, MonitorFields } from "../utils";
-import type { ChartDataField, IMarkerParams, IMonitor, IMonitorData, IMonitorVisibility, MonitorDataField } from "../types";
+import type { ChartDataField, IMarkerParams, IMonitor, IMonitorData, MonitorDataField } from "../types";
 
 export class Monitor implements IMonitor {
   // Default field to display
@@ -64,7 +64,7 @@ export class Monitor implements IMonitor {
     }
 
     if(params.border_color == undefined){
-      params.border_color = tinycolor(params.fill_color).darken(6).toHex();
+      params.border_color = toHex(darken(params.fill_color!, 6));
       params.border_size = 1;
     }
 
