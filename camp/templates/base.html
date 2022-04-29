@@ -69,7 +69,14 @@
                         </a>
                     </div>
                 </div>
-                <a class="navbar-item" href="/about/">About Us</a>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">About Us</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" href="/about/">SJVAir Collaborative</a>
+                        <a class="navbar-item" href="/about/process/">Technical Process</a>
+                        <a class="navbar-item" href="/about/technology/">Technology Stack</a>
+                    </div>
+                </div>
                 <!-- <a href="/api/" class="navbar-item">Developers</a> -->
             </div>
             <div class="navbar-end">
@@ -154,6 +161,51 @@
     </div>
     {% endblock %}
 </div>
+
+{% block footer %}
+<footer class="footer">
+    <div class="container">
+        <div class="columns is-multiline">
+            <div class="column nav is-half-tablet is-one-quarter-desktop">
+                <h4>Air Quality</h4>
+                <ul>
+                    <li><a href="/">Live Map</a></li>
+                    <li><a href="/alerts/">Real-Time Alerts</a></li>
+                </ul>
+            </div>
+            <div class="column nav is-half-tablet is-one-quarter-desktop">
+
+                <h4>Resources</h4>
+                <ul>
+                    <li><a href="/guidelines/">Outdoor Activity Guidelines</a></li>
+                    <li><a href="{% static 'docs/Wildfire-Smoke-Preparedness-2021.pdf' %}">
+                        <span>Wildfire Smoke Preparedness</span>
+                        <span class="icon">
+                            <span class="far fa-fw fa-file-pdf"></span>
+                        </span>
+                    </a></li>
+                </ul>
+            </div>
+            <div class="column nav is-half-tablet is-one-quarter-desktop">
+                <h4>About Us</h4>
+                <ul>
+                    <li><a href="/about/">SJVAir Collaborative</a></li>
+                    <li><a href="/about/process/">Technical Process</a></li>
+                    <li><a href="/about/technology/">Technology Stack</a></li>
+                </ul>
+            </div>
+            <div class="column is-half-tablet is-one-quarter-desktop">
+                <a href="/" class="logo image">
+                    <img src="{% static 'img/sjvair-white.svg' %}" alt="SJVAir" />
+                </a>
+
+                <p class="description">SJVAir is a network of low-cost air quality monitors providing real-time PM2.5 data to disadvantaged communities across the San Joaquin Valley.</p>
+            </div>
+        </div>
+    </div>
+</footer>
+{% endblock %}
+
 </body>
 
 {% if settings.SENTRY_DSN_CLIENT %}

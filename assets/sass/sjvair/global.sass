@@ -1,4 +1,4 @@
-img
+img, .image > img
     &.is-responsive
         display: inline-block
         width: 100%
@@ -26,6 +26,9 @@ ul
 
 section.hook
     background-color: $info
+    background-position: center center
+    background-repeat: no-repeat
+    background-size: cover
     color: $white
 
     h1, h2, h3, h4, h5, h6, p
@@ -65,3 +68,62 @@ body
         &.hazardous
             background-color: $air-maroon
             color: $white
+
+footer.footer
+    background-color: #1c4482
+    color: $white-ter
+    padding: 6rem 1.5rem
+    position: relative
+
+    &:before
+        content: ' '
+        display: block
+        position: absolute
+        left: 0
+        top: 0
+        width: 100%
+        height: 100%
+        opacity: 0.42
+        background-image: url('../img/air-curve.png')
+        background-repeat: no-repeat
+        background-position: 50% 0
+        background-size: cover
+
+    .columns
+        @extend .my-0
+
+        .column
+            @extend .py-0
+            @extend .pb-4
+
+    .logo
+        @extend .mb-4
+
+        img
+            height: auto
+            max-width: 12rem
+
+    .description
+        @extend .has-text-white
+        @extend .is-size-7
+
+    .nav
+        h4
+            @extend .has-text-white
+            @extend .has-text-weight-bold
+            @extend .is-size-5
+            @extend .mb-2
+
+        ul
+            @extend .mb-5
+
+            &:last-child
+                @extend .mb-0
+
+        a
+            @extend .has-text-grey-lighter
+            @extend .has-text-weight-medium
+
+            &:hover
+                color: $white !important
+                text-decoration: underline
