@@ -38,6 +38,10 @@ def assets(*paths):
 
 
 @invoke.task()
+def optimize_images(ctx):
+    ctx.run('optimize-images ./public/static/')
+
+@invoke.task()
 def styles(ctx):
     compiled_css = sass.compile(
         filename=assets('sass/style.sass'),
@@ -83,6 +87,7 @@ def build(ctx, dev=False):
     styles(ctx)
     vue(ctx, 'map', dev)
     collectstatic(ctx)
+    optimize_images(ctx)
 
 
 @invoke.task()
