@@ -2,25 +2,23 @@
 {% load static %}
 {% load sjvair %}
 
-{% block title %}About Us | {{ block.super }}{% endblock %}
+{% block title %}SJVAir Collaborative | {{ block.super }}{% endblock %}
 
-{% block body-class %}about{% endblock %}
+{% block body-class %}about collaborative{% endblock %}
 
 {% block main %}
-<section class="section hook">
+<section class="section is-medium hook">
 <div class="container">
     <div class="content">
-        <h1 class="title">About SJVAir</h1>
-        <p class="lead">SJVAir is a network of low-cost air quality monitors providing real-time
-            PM2.5 data to disadvantaged communities across the San Joaquin Valley. SJVAir is
-            operated by a collaborative of non-profit organizations from Bakersfield to Stockton.</p>
+        <h1 class="title">SJVAir Collaborative</h1>
+        <p class="lead">SJVAir is a network of low-cost air quality monitors providing real-time PM2.5 data to disadvantaged communities across the San Joaquin Valley. SJVAir is operated by a collaborative of non-profit organizations from Bakersfield to Stockton.</p>
     </div>
 </div>
 </section>
 
 <section class="section partners">
     <div class="container">
-        <div class="columns">
+        <div class="columns is-multiline is-centered is-variable is-8">
             {% load_datafile 'partners.yaml' as partners %}
             {% for partner in partners %}
             <div class="column is-half">
@@ -38,175 +36,6 @@
                         </p>
                     </div>
                 </div>
-            </div>
-            {% if forloop.counter|divisibleby:2 and not forloop.last %}
-        </div>
-        <div class="columns is-multiline">
-            {% endif %}
-            {% endfor %}
-        </div>
-    </div>
-</section>
-
-<section class="section calibration has-background-light">
-    <div class="container">
-        <div class="columns is-centered">
-            <div class="column is-10-tablet is-8-desktop content has-text-centered">
-                <h1>Air Monitor Testing &amp; Calibration</h1>
-                <p class="lead">Root Access provided the space for testing and calibration
-                    of SJVAir's PurpleAir monitors before they were put into the field for
-                    data collection.</p>
-            </div>
-        </div>
-        <div class="columns is-multiline is-centered">
-            <div class="column is-10-tablet is-10-desktop">
-                <div class="card is-horizontal is-right">
-                    <div class="card-image">
-                        <a href="#" class="modal-button" data-target="id_modal-purple-configure">
-                            <img src="{% static 'img/calibration/purple-configure.jpg' %}" class="image" alt="">
-                        </a>
-                    </div>
-                    <div class="card-content">
-                        <p>SJVAir PurpleAir monitors are assessed for inter-device variability
-                            at Root Access prior to being deployed in the field. Particle count
-                            data from deployed PurpleAir monitors is regressed on collocated
-                            regulatory monitor data to generate correction equations (calibrations).</p>
-                    </div>
-                </div>
-                <div class="modal" id="id_modal-purple-configure">
-                    <div class="modal-background"></div>
-                    <div class="modal-content">
-                        <p class="image">
-                            <img src="{% static 'img/calibration/purple-configure.jpg' %}" alt="">
-                        </p>
-                    </div>
-                    <button class="modal-close is-large" aria-label="close"></button>
-                </div>
-            </div>
-
-            <div class="column is-10-tablet is-10-desktop">
-                <div class="card is-horizontal">
-                    <div class="card-image">
-                        <a href="#" class="modal-button" data-target="id_modal-purple-install">
-                            <img src="{% static 'img/calibration/purple-install.jpg' %}" class="image" alt="">
-                        </a>
-                    </div>
-                    <div class="card-content">
-                        <p>Testing: two batches of PurpleAir monitors were operated continuously on the
-                            roof at Root Access. During the first test period (12/10/2019 – 1/9/2020),
-                            30 monitors were run for 30 days with an average hourly concentration of
-                            36 ug/m3 and a range of 1-180 ug/m3. During the second test period
-                            (1/21/2020 – 2/20/2020), another 30 monitors were run for 31 days with
-                            an average hourly concentration of 35 ug/m3 and a range of 1-85 ug/m3.
-                            The average correlation (R2) for all 60 monitors was 0.96. Only one monitor
-                            had an R2 < 0.90 (this monitor was returned to the manufacturer).</p>
-                    </div>
-                </div>
-                <div class="modal" id="id_modal-purple-install">
-                    <div class="modal-background"></div>
-                    <div class="modal-content">
-                        <p class="image">
-                            <img src="{% static 'img/calibration/purple-install.jpg' %}" alt="">
-                        </p>
-                    </div>
-                    <button class="modal-close is-large" aria-label="close"></button>
-                </div>
-            </div>
-            <div class="column is-10-tablet is-10-desktop">
-                <div class="card is-horizontal is-right">
-                    <div class="card-image">
-                        <a href="#" class="modal-button" data-target="id_modal-purple-calibration-graph-visalia">
-                            <img src="{% static 'img/calibration/purple-calibration-graph-visalia.png' %}" class="image" alt="">
-                        </a>
-                    </div>
-                    <div class="card-content">
-                        <p>Calibration: in the example shown here, hourly PM2.5 mass values from
-                            regulatory monitors in Visalia (Church St) and Fresno (Garland Ave)
-                            were regressed on particle counts (0.3-1.0 um/dl and 1.0-2.5 um/dl)
-                            from collocated PurpleAir monitors at each site from Aug 20-22, 2020.
-                            The R2 for these multivariate regressions was 0.992 and 0.990,
-                            respectively. Correlation coefficients for Visalia and Fresno were
-                            applied separately to particle count data from the PurpleAir monitor
-                            in Visalia to generate "locally" (Visalia coefficients) and "regionally"
-                            (Fresno coefficients) calibrated values. Also shown are the uncalibrated
-                            and EPA calibrated (AirNow) values for the Visalia PurpleAir monitor.</p>
-                    </div>
-                </div>
-                <div class="modal" id="id_modal-purple-calibration-graph-visalia">
-                    <div class="modal-background"></div>
-                    <div class="modal-content">
-                        <p class="image">
-                            <img src="{% static 'img/calibration/purple-calibration-graph-visalia.png' %}" alt="">
-                        </p>
-                    </div>
-                    <button class="modal-close is-large" aria-label="close"></button>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-<section class="section colophon">
-    <div class="container">
-        <div class="columns is-centered">
-            <div class="column is-10-tablet is-10-desktop">
-                <div class="columns is-vcentered">
-                    <div class="column is-4-tablet is-3-desktop has-text-centered">
-                        <div class="content">
-                            <div class="is-size-1">
-                                <span class="fal fa-lungs has-text-info"></span>
-                                <span class="fal fa-heart has-text-danger"></span>
-                                <span class="fab fa-osi has-text-success"></span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="column is-8-tablet is-9-desktop">
-                        <div class="content">
-                            <h1>We believe in Open.</h1>
-                            <p>We subscribe to the ideals of Open Source software, hardware, and data,
-                                and believe that these things should be freely available to the public
-                                for the benefit of everyone. We're making a commitment that the
-                                technology that powers SJVAir will be published on Github and our API
-                                will be documented and freely available for anyone to use. More
-                                information will be available soon.</p>
-                            <p>
-                                <a href="https://github.com/sjvair" target="_blank" class="button is-light">
-                                    <span class="icon">
-                                        <span class="fab fa-github"></span>
-                                    </span>
-                                    <span>github.com/sjvair</span>
-                                </a>
-                                <a href="https://www.sjvair.com/api/" class="button is-light">
-                                    <span class="icon">
-                                        <span class="far fa-cog"></span>
-                                    </span>
-                                    <span>sjvair.com/api</span>
-                                </a>
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <hr />
-
-        <div class="columns is-centered">
-            <div class="column is-10-tablet is-10-desktop">
-                <div class="content has-text-centered">
-                    <p class="is-size-5">SJVAir wouldn't be possible without the thousands of people who have
-                        generously given their time to build and maintain these and other Open Source
-                        projects.</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="columns is-mobile is-multiline is-vcentered has-text-centered">
-            {% load_datafile 'colophon.yaml' as colophon %}
-            {% for project in colophon %}
-            <div class="column is-one-third is-half-mobile">
-                <a href="{{ project.url }}" target="_blank">
-                    <img src="{% static project.logo %}" alt="{{ project.name }}" class="is-responsive" />
-                </a>
             </div>
             {% endfor %}
         </div>

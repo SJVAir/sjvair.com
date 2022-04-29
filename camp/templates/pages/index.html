@@ -9,6 +9,9 @@
 <div id="app"></div>
 {% endblock %}
 
+{# No footer on the homepage #}
+{% block footer %}{% endblock %}
+
 {% block javascripts %}
 <script type="text/javascript">
     window.GOOGLE_MAPS_API_KEY = "{{ settings.GOOGLE_MAPS_API_KEY }}";
