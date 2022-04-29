@@ -39,6 +39,7 @@ libsass==0.21.0
 livereload==2.6.3
 nameparser==1.0.6
 numpy==1.21.0
+optimize-images==1.5.1
 pandas==1.2.4
 Pillow==9.0.0
 psycopg2==2.8.6 --no-binary psycopg2
