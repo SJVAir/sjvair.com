@@ -47,8 +47,8 @@ export class Monitor implements IMonitor {
         params.shape = "diamond";
     }
 
-    if(this.data.location == 'inside'){
-      params.border_color = Colors.black;
+    if (this.data.location === "inside"){
+      params.border_color = `#${ Colors.black }`;
       params.border_size = 2;
     }
 
@@ -57,7 +57,7 @@ export class Monitor implements IMonitor {
     }
 
     if(params.border_color == undefined){
-      params.border_color = toHex(darken(params.fill_color!, .4));
+      params.border_color = toHex(darken(params.fill_color!, .1));
       params.border_size = 1;
     }
 
