@@ -276,6 +276,6 @@ function removeTooltip() {
 </script>
 
 <template>
-  <div id="chartContainer" class="chart-container"></div>
+  <div id="chartContainer" class="chart-container is-flex is-flex-direction-column is-justify-content-center is-align-items-center"></div>
 </template>
 
