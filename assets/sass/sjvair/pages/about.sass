@@ -1,9 +1,11 @@
+@import ../mixins
+
 body.about
     section.partners
         background-color: $white
 
     .partner
-        padding: 2rem
+        padding-bottom: 2rem
 
         .logo
             background-position: center center
@@ -19,3 +21,32 @@ body.about
         img
             max-height: 150px
             max-width: 150px
+
+body.about.collaborative
+    .hook
+        @include header-bg('../img/about/purpleair-testing-3.jpg', .6)
+
+body.about.technology
+    .hook
+        @include header-bg('../img/about/air-monitor-prototype.jpg', .6)
+
+body.about.process
+    .hook
+        @include header-bg('../img/about/delano-bam.jpg', .5)
+
+    .images
+        @extend .mb-6
+        @extend .mt-6
+
+        &:last-child
+            @extend .mb-0
+
+        img
+            width: 100%
+            height: auto
+
+            @include tablet
+                max-height: 15em
+
+            @include desktop
+                max-height: 25em
