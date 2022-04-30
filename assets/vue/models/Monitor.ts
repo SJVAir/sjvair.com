@@ -1,6 +1,6 @@
 import { darken, toHex } from "color2k";
 import { MonitorField } from "./MonitorField";
-import { Colors, MonitorTypesMeta, MonitorFields } from "../utils";
+import { Colors, MonitorTypesMeta, pmValueToColor } from "../utils";
 import type { ChartDataField, IMarkerParams, IMonitor, IMonitorData, MonitorDataField } from "../types";
 
 export class Monitor implements IMonitor {
@@ -26,26 +26,25 @@ export class Monitor implements IMonitor {
 
 
   get markerParams(){
-    //const latest = parseFloat(this.data.latest[(Monitor.displayField as keyof IMonitorSensorData)]!);
-    const latest = MonitorFields[Monitor.displayField].latest(this);
     const params: Partial<IMarkerParams> = {
       border_size: 0,
-      fill_color: Colors.gray,
-      size: this.data.is_active ? 24 : 16,
+      fill_color: `#${Colors.gray}`,
+      size: this.data.is_active ? 12 : 8,
       shape: 'square'
     }
 
-    switch (this.data.device) {
-      case 'PurpleAir':
-        params.shape = this.data.is_sjvair ? 'circle' : 'square';
+    switch(this.data.device) {
+      case "AirNow": 
+      case "BAM1022":
+        params.shape = "triangle";
+        params.size = 16
         break;
-
-      case 'AirNow':
-      case 'BAM1022':
-        params.shape = 'polygon';
-        params.sides = 3;
-        params.size = 32
+      case "PurpleAir":
+        params.shape = (this.data.is_sjvair) ? "circle" : "square";
         break;
+      default:
+        console.error(`Unknown device type for monitor ${ this.data.id }`);
+        params.shape = "diamond";
     }
 
     if(this.data.location == 'inside'){
@@ -53,18 +52,12 @@ export class Monitor implements IMonitor {
       params.border_size = 2;
     }
 
-    if(this.data.is_active && latest){
-      for(let level of MonitorFields[Monitor.displayField].levels){
-        if(latest >= level.min){
-          params.fill_color = level.color;
-        } else {
-          break;
-        }
-      }
+    if(this.data.is_active && this.data.latest){
+      params.fill_color = pmValueToColor(+this.data.latest[this.displayField])
     }
 
     if(params.border_color == undefined){
-      params.border_color = toHex(darken(params.fill_color!, 6));
+      params.border_color = toHex(darken(params.fill_color!, .4));
       params.border_size = 1;
     }
 
