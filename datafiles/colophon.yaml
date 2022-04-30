@@ -10,9 +10,9 @@
   logo: img/tech/vuejs.svg
   url: https://vuejs.org/
 
-- name: Mapbox
-  logo: img/tech/mapbox.svg
-  url: https://www.mapbox.com/
+- name: Leaflet
+  logo: img/tech/leaflet.svg
+  url: https://leafletjs.com/
 
 - name: PostgreSQL
   logo: img/tech/postgresql.svg
