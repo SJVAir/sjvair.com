@@ -8,8 +8,12 @@ import type { Colors, MonitorFieldColors, MonitorTypesMeta } from "./utils";
 // Utility types
 export type Nullable<T> = T | null;
 export type Override<T, U> = Omit<T, keyof U> & U;
-export type ValueOf<T> = T[keyof T];
+export type NonFunctionPropertyNames<T> = {
+  [K in keyof T]: T[K] extends Function ? never : K;
+}[keyof T];
+export type NonFunctionProperties<T> = Pick<T, NonFunctionPropertyNames<T>>;
 export type ReplaceReturnType<T extends (...a: any) => any, R> = (...a: Parameters<T>) => R;
+export type ValueOf<T> = T[keyof T];
 
 // Value types
 export type ChartDataArray = Array<Array<ChartDataPoint>>;
@@ -23,6 +27,7 @@ export type MonitorFieldColor = ValueOf<typeof MonitorFieldColors>;
 export type MonitorId = Monitor["data"]["id"];
 export type IMonitorsBackgroundService = typeof MonitorsBackgroundService;
 export type MonitorsRecord = Record<MonitorId, Monitor>;
+export type MonitorSerachParams = { id: string} | { name: string } | { county: string } | ((m: Monitor) => Monitor);
 
 // Interfaces
 export interface IActiveMonitor {
@@ -56,7 +61,7 @@ export interface IEntriesPageResponse {
 export interface IMarkerParams {
   border_color: string;
   border_size: number;
-  fill_color: ValueOf<typeof Colors>;
+  fill_color: string;
   sides?: number;
   size: number;
   shape: string;
@@ -86,6 +91,16 @@ export interface IMonitorEntry {
   timestamp: string;
   sensor: string;
   [field: string]: string;
+}
+
+export interface IMonitorManager {
+ monitors: MonitorsRecord;
+ sjvAirPurple: MonitorsRecord;
+ sjvAirInactive: MonitorsRecord
+ sjvAirBAM: MonitorsRecord;
+ purpleAir: MonitorsRecord;
+ purpleAirInside: MonitorsRecord;
+ airNow: MonitorsRecord;
 }
 
 export interface IMonitorPosition {
