@@ -28,9 +28,13 @@
             </div>
         </div>
 
-        <div class="images">
-            <img src="{% static 'img/about/purpleair-testing-1.jpg' %}" alt="" />
-            <img src="{% static 'img/about/purpleair-testing-2.jpg' %}" alt="" />
+        <div class="columns is-centered images">
+            <div class="column is-narrow-tablet">
+                <img src="{% static 'img/about/purpleair-testing-1.jpg' %}" alt="" />
+            </div>
+            <div class="column is-narrow-tablet">
+                <img src="{% static 'img/about/purpleair-testing-2.jpg' %}" alt="" />
+            </div>
         </div>
 
         <div class="columns is-centered">
@@ -42,25 +46,31 @@
         </div>
     </div>
 
-    <div class="images">
-        <img src="{% static 'img/about/purpleair-install-1.jpg' %}" alt="" />
-        <img src="{% static 'img/about/purpleair-install-2.jpg' %}" alt="" />
-        <img src="{% static 'img/about/purpleair-install-3.jpg' %}" alt="" />
+    <div class="columns is-centered is-mobile is-multiline images">
+        <div class="column is-narrow-tablet is-full-mobile">
+            <img src="{% static 'img/about/purpleair-install-1.jpg' %}" alt="" />
+        </div>
+        <div class="column is-narrow-tablet is-half-mobile">
+            <img src="{% static 'img/about/purpleair-install-2.jpg' %}" alt="" />
+        </div>
+        <div class="column is-narrow-tablet is-half-mobile">
+            <img src="{% static 'img/about/purpleair-install-3.jpg' %}" alt="" />
+        </div>
     </div>
 </section>
 
-<section class="section">
+<section class="section has-background-white-ter">
     <div class="container">
-        <div class="columns">
-            <div class="column is-one-third">
-                <img src="{% static 'img/about/delano-bam.jpg' %}" class="is-responsive" alt="" />
-            </div>
-            <div class="column is-two-thirds">
+        <div class="columns is-reversed">
+            <div class="column is-three-fifths-tablet is-two-thirds-desktop">
                 <div class="content">
                     <h1>Testing and Installing High Performance Monitors</h1>
 
                     <p>Continuous PM2.5 beta attenuation monitors (BAM) are assembled and tested (leak test, flow calibration, zero calibration) at the school sites. BAMs are installed on a flat roof of a single-story building away from potential sources of PM (exhaust vents, HVAC units). BAMs are hardwired (ethernet) to a network and a Raspberry Pi microcontroller is used to access the BAM interface remotely. BAMs are maintained by SJVAir staff, including bi-monthly flow test, leak test, clean inlets, replace and/or grease O-rings and replace filter tape (tape may be replaced more frequently) with annual recalibration.</p>
                 </div>
+            </div>
+            <div class="column is-two-fifths-tablet is-one-third-desktop">
+                <img src="{% static 'img/about/delano-bam.jpg' %}" class="is-responsive" alt="" />
             </div>
         </div>
     </div>
@@ -88,7 +98,7 @@
     </div>
 </section>
 
-<section class="section">
+<section class="section has-background-white-ter">
     <div class="container">
         <div class="columns is-centered">
             <div class="column is-10-tablet is-8-desktop">
@@ -111,15 +121,15 @@
 <section class="section">
     <div class="container">
         <div class="columns">
-            <div class="column is-one-third">
-                <img src="{% static 'img/about/deusd-map-bam.jpg' %}" class="is-responsive" alt="" />
-            </div>
             <div class="column is-two-thirds">
                 <div class="content">
                     <h1>BAM-anchored School Monitoring Networks</h1>
 
                     <p>SJVAir BAMs are installed at centrally located school sites, with PurpleAir monitors installed at surrounding schools. SJVAir coordinates with school district Facilities and IT directors to install and connect monitors. The map below shows network of BAMs in the SJV. The inset shows the SJVAir monitoring network installed in cooperation with Delano Union School District, including a centrally located BAM (with two collocated PurplAir monitors) at Cecil Ave Middle Schools used to calibrate PurpleAir monitors at ten (10) surrounding schools throughout the community of Delano.</p>
                 </div>
+            </div>
+            <div class="column is-one-third">
+                <img src="{% static 'img/about/deusd-map-bam.jpg' %}" class="is-responsive" alt="" />
             </div>
         </div>
     </div>
