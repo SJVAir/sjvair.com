@@ -35,7 +35,6 @@ body.about.process
         @include header-bg('../img/about/delano-bam.jpg', .5)
 
     .images
-        @extend .has-text-centered
         @extend .mb-6
         @extend .mt-6
 
@@ -43,12 +42,11 @@ body.about.process
             @extend .mb-0
 
         img
-            display: inline-block
-            margin-right: $gap
-            width: auto
-
-            &:last-child
-                margin-right: 0
+            width: 100%
+            height: auto
 
             @include tablet
-                height: 25em
+                max-height: 15em
+
+            @include desktop
+                max-height: 25em
