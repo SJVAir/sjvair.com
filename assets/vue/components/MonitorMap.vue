@@ -48,6 +48,11 @@ function updateMapBounds() {
 function updateMapMarkers() {
   for (let id in monitorsService.monitors) {
     const monitor = monitorsService.monitors[id];
+
+    if (!monitor.data.latest) {
+      continue;
+    }
+
     const marker = genMarker(monitor);
 
     if (id in markers) {
@@ -60,7 +65,6 @@ function updateMapMarkers() {
       markers[id] = marker;
 
       marker.addEventListener('click', () => {
-        console.log(monitor)
         selectMonitor(marker, monitor);
       });
       
