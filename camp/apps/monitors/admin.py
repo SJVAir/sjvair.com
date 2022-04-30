@@ -68,8 +68,8 @@ class MonitorAdmin(admin.OSMGeoAdmin):
         return super().render_change_form(request, context, *args, **kwargs)
 
     def last_updated(self, instance):
-        if instance.last_updated:
-            return parse_datetime(instance.last_updated)
+        if hasattr(instance, 'last_updated'):
+            return instance.last_updated
         return ''
     last_updated.admin_order_field = 'last_updated'
 
