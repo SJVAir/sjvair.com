@@ -213,6 +213,8 @@ DJANGO_VITE_DEV_MODE = DEBUG
 if DJANGO_VITE_DEV_MODE:
     import mimetypes
     mimetypes.add_type('application/javascript', '.ts', True)
+else:
+    DJANGO_VITE_MANIFEST_PATH = BASE_DIR.child('public', 'static', 'manifest.json')
 
 STATIC_ROOT = BASE_DIR.child('public', 'static')
 
