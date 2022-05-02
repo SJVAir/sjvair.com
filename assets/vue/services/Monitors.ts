@@ -8,9 +8,9 @@ export class MonitorsService extends BackgroundServiceClient<IMonitorsBackground
   static instance: MonitorsService;
 
 
+  private _dateRange: DateRange = new DateRange();
   activeMonitor: Nullable<Monitor> = null;
   cachedMonitor: Nullable<CachedMonitor> = null;
-  dateRange: DateRange = new DateRange();
   loadingEntries: boolean = false;
   loadingMonitors: boolean = false;
   monitors: Record<MonitorId, Monitor> = {};
@@ -23,6 +23,14 @@ export class MonitorsService extends BackgroundServiceClient<IMonitorsBackground
     super(new MonitorsBackgroundService());
 
     MonitorsService.instance = this;
+  }
+
+  set dateRange(d: any) {
+    this._dateRange = new DateRange(d);
+  }
+
+  get dateRange() {
+    return this._dateRange;
   }
 
   clearActiveMonitor() {
@@ -45,14 +53,14 @@ export class MonitorsService extends BackgroundServiceClient<IMonitorsBackground
     window.open(`${ path }/?${ params }`);
   }
 
-  async fetchChartData(id: IMonitorData["id"]): Promise<void | ChartDataArray> {
+  async fetchChartData(id: IMonitorData["id"], d: DateRange): Promise<void | ChartDataArray> {
     if (!(id in this.monitors)) {
       return console.error(`Unable to fetch chart data, monitor with id "${ id }" not found.`);
     }
 
     this.loadingEntries = true;
 
-    return await this.run("fetchChartData", this.monitors[id], this.dateRange)
+    return await this.run("fetchChartData", this.monitors[id], d)
       .then(chartData => {
         this.loadingEntries = false;
         return chartData;
