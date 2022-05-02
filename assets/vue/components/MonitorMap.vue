@@ -124,7 +124,7 @@ onMounted(async () => {
 
   markerGroup.addTo(map)
 
-  interval = setInterval(async () => await loadMonitors(), 1000 * 10);
+  interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
 
   await loadMonitors();
   updateMapBounds();
