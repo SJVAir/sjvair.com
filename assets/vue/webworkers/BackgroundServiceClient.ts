@@ -29,6 +29,7 @@ export class BackgroundServiceClient<T extends IBackgroundService> {
     this.worker.onmessageerror = (ev: MessageEvent<any>) => console.error("worker failed: ", ev);
     this.worker.onmessage = (msg: MessageEvent<BackgroundTaskResponse>) => {
       const { id, error, payload, success } = msg.data;
+      console.log(`Completed task with id ${ id }`);
 
       if (success && this.resolvers.has(id)) {
         this.resolvers.get(id)!(payload);
@@ -48,7 +49,8 @@ export class BackgroundServiceClient<T extends IBackgroundService> {
 
 
   run<K extends keyof T>(taskName: K, ...parameters: Parameters<T[K]>): Promise<Awaited<ReturnType<T[K]>>> {
-    const task = new BackgroundTask<T>(++this.globalTaskID, taskName, parameters);
+    const task = new BackgroundTask<T>(++this.globalTaskID, taskName, JSON.parse(JSON.stringify(parameters)));
+    console.log("before: ", task);
 
     return new Promise((resolve, reject) => {
       this.resolvers.set(task.id, resolve);
