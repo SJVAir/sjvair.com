@@ -33,19 +33,19 @@ const timesince = computed(() => {
     <tbody>
       <tr v-if="monitor.data.latest.pm10">
         <th>PM 1.0</th>
-        <td class="has-text-centered">{{ monitor.monitorFields.pm10.latest(monitor) }}</td>
+        <td class="has-text-centered">{{ monitor.monitorFields.pm10.latest }}</td>
         <td class="has-text-centered">-</td>
         <td class="has-text-centered">-</td>
       </tr>
       <tr>
         <th>PM 2.5</th>
-        <td class="has-text-centered">{{ "pm25" in monitor.monitorFields ? monitor.monitorFields.pm25.latest(monitor) : "" }}</td>
-        <td class="has-text-centered">{{ "pm25_avg_15" in monitor.monitorFields ? monitor.monitorFields.pm25_avg_15.latest(monitor) : "" }}</td>
-        <td class="has-text-centered">{{ "pm25_avg_60" in monitor.monitorFields ? monitor.monitorFields.pm25_avg_60.latest(monitor) : "" }}</td>
+        <td class="has-text-centered">{{ "pm25" in monitor.monitorFields ? monitor.monitorFields.pm25.latest : "" }}</td>
+        <td class="has-text-centered">{{ "pm25_avg_15" in monitor.monitorFields ? monitor.monitorFields.pm25_avg_15.latest : "" }}</td>
+        <td class="has-text-centered">{{ "pm25_avg_60" in monitor.monitorFields ? monitor.monitorFields.pm25_avg_60.latest : "" }}</td>
       </tr>
       <tr v-if="monitor.data.latest.pm100">
         <th>PM 10.0</th>
-        <td class="has-text-centered">{{ monitor.monitorFields.pm100.latest(monitor) }}</td>
+        <td class="has-text-centered">{{ monitor.monitorFields.pm100.latest }}</td>
         <td class="has-text-centered">-</td>
         <td class="has-text-centered">-</td>
       </tr>

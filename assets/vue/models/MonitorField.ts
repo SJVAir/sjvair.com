@@ -1,6 +1,5 @@
 import { Colors } from "../utils/colors";
-import type { Monitor } from "./Monitor";
-import type { MonitorDataField, IPMLevel} from "../types";
+import type { MonitorDataField, IPMLevel, IMonitorData} from "../types";
 
 export class MonitorField {
   static genMulti(...fieldDefinitions: Array<ConstructorParameters<typeof MonitorField>>) {
@@ -23,20 +22,19 @@ export class MonitorField {
   ];
 
   label: string;
+  latest?: number;
   levels = MonitorField.levels;
   name: MonitorDataField;
   updateDuration: string;
 
-  constructor(fieldName: MonitorDataField, displayLabel: string, updateDuration: string) {
+  constructor(fieldName: MonitorDataField, displayLabel: string, updateDuration: string, monitorData: IMonitorData) {
 
     this.label = displayLabel;
     this.name = fieldName;
     this.updateDuration = updateDuration;
-  }
 
-  latest(monitor: Monitor): number | void {
-    if (monitor.data.latest && this.name in monitor.data.latest) {
-      return Math.round(parseFloat(monitor.data.latest[this.name]));
+    if (monitorData.latest && this.name in monitorData.latest) {
+      this.latest = Math.round(parseFloat(monitorData.latest[this.name]));
     }
   }
 }

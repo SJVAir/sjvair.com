@@ -1,66 +1,86 @@
 import { darken, toHex } from "color2k";
 import { MonitorField } from "./MonitorField";
-import { Colors, MonitorTypesMeta, pmValueToColor } from "../utils";
+import { Colors, pmValueToColor } from "../utils";
 import type { ChartDataField, IMarkerParams, IMonitor, IMonitorData, MonitorDataField } from "../types";
+
+export const Display_Field = "pm25_avg_15" as const;
+
+function getMarkerParams(monitorData: IMonitorData): IMarkerParams {
+  const fill_color = `#${Colors.gray}`;
+  const params: IMarkerParams = {
+    border_color: toHex(darken(fill_color, .1)),
+    border_size: 1,
+    fill_color,
+    size: monitorData.is_active ? 12 : 8,
+    shape: 'square'
+  }
+
+  switch(monitorData.device) {
+    case "AirNow": 
+    case "BAM1022":
+      params.shape = "triangle";
+      params.size = 16
+      break;
+    case "PurpleAir":
+      params.shape = (monitorData.is_sjvair) ? "circle" : "square";
+      break;
+    default:
+      console.error(`Unknown device type for monitor ${ monitorData.id }`);
+      params.shape = "diamond";
+  }
+
+  if (monitorData.location === "inside"){
+    params.border_color = `#${ Colors.black }`;
+    params.border_size = 2;
+  }
+
+  if(monitorData.is_active && monitorData.latest){
+    params.fill_color = pmValueToColor(+monitorData.latest[Monitor.displayField])
+  }
+
+  return params;
+}
 
 export class Monitor implements IMonitor {
   // Default field to display
-  static displayField: ChartDataField = "pm25_avg_15";
+  static displayField: ChartDataField = Display_Field;
 
 
   data: IMonitorData;
   dataFields: Array<ChartDataField>;
-  monitorFields: Record<MonitorDataField, MonitorField>;
+  displayField: string = Monitor.displayField;
+  markerParams: IMarkerParams;
+  monitorFields!: Record<MonitorDataField, MonitorField>;
 
   constructor(monitorData: IMonitorData) {
-    const meta = MonitorTypesMeta[monitorData.device]
+    switch (monitorData.device) {
+      case "AirNow":
+        this.monitorFields = MonitorField.genMulti(
+          ["pm25", "PM 2.5", "60m", monitorData],
+          ["pm100", "PM 10", "", monitorData]
+        );
+        break;
+
+      case "BAM1022":
+        this.monitorFields = MonitorField.genMulti(
+          ["pm25", "PM 2.5", "60m", monitorData]
+        );
+        break;
+
+      case "PurpleAir":
+        this.monitorFields = MonitorField.genMulti(
+          ["pm10", "PM 1.0", "", monitorData],
+          ["pm25", "PM 2.5", "2m", monitorData],
+          ["pm25_avg_15", "PM 2.5", "15m", monitorData],
+          ["pm25_avg_60", "PM 2.5", "60m", monitorData],
+          ["pm100", "PM 10", "", monitorData]
+        );
+        break;
+    }
 
     this.data = monitorData;
-    this.dataFields = Object.keys(meta.monitorFields) as Array<ChartDataField>;
-    this.monitorFields = meta.monitorFields;
+    this.dataFields = Object.keys(this.monitorFields) as Array<ChartDataField>;
+    this.markerParams = getMarkerParams(monitorData);
   }
 
-  get displayField() {
-    return Monitor.displayField;
-  }
-
-
-  get markerParams(){
-    const params: Partial<IMarkerParams> = {
-      border_size: 0,
-      fill_color: `#${Colors.gray}`,
-      size: this.data.is_active ? 12 : 8,
-      shape: 'square'
-    }
-
-    switch(this.data.device) {
-      case "AirNow": 
-      case "BAM1022":
-        params.shape = "triangle";
-        params.size = 16
-        break;
-      case "PurpleAir":
-        params.shape = (this.data.is_sjvair) ? "circle" : "square";
-        break;
-      default:
-        console.error(`Unknown device type for monitor ${ this.data.id }`);
-        params.shape = "diamond";
-    }
-
-    if (this.data.location === "inside"){
-      params.border_color = `#${ Colors.black }`;
-      params.border_size = 2;
-    }
-
-    if(this.data.is_active && this.data.latest){
-      params.fill_color = pmValueToColor(+this.data.latest[this.displayField])
-    }
-
-    if(params.border_color == undefined){
-      params.border_color = toHex(darken(params.fill_color!, .1));
-      params.border_size = 1;
-    }
-
-    return params;
-  }
 }
