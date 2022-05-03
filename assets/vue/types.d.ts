@@ -3,7 +3,7 @@ import type { Dayjs } from "dayjs";
 //import { Marker } from "leaflet";
 import type { ChartDataPoint, Monitor, MonitorField } from "./models";
 import type { MonitorsBackgroundService, D3BackgroundService } from "./services";
-import type { Colors, MonitorFieldColors, MonitorTypesMeta } from "./utils";
+import type { Colors, MonitorFieldColors } from "./utils";
 
 // Utility types
 export type Nullable<T> = T | null;
@@ -19,8 +19,8 @@ export type ValueOf<T> = T[keyof T];
 export type ChartDataArray = Array<Array<ChartDataPoint>>;
 export type ChartDataField = keyof typeof MonitorFieldColors;
 export type ChartDataRecord = Record<ChartDataField, Array<ChartDataPoint>>;
-export type ID3Service = typeof D3BackgroundService;
-export type Device = keyof typeof MonitorTypesMeta;
+export type ID3BackgroundService = typeof D3BackgroundService;
+export type Device = "AirNow" | "BAM1022" | "PurpleAir";
 export type EntriesPageResponse = AxiosResponse<IEntriesPageResponse, any>;
 export type MonitorDataField = "pm10" | "pm25" | "pm25_avg_15" | "pm25_avg_60" | "pm100";
 export type MonitorFieldColor = ValueOf<typeof MonitorFieldColors>;
@@ -62,7 +62,6 @@ export interface IMarkerParams {
   border_color: string;
   border_size: number;
   fill_color: string;
-  sides?: number;
   size: number;
   shape: string;
 }
@@ -70,6 +69,8 @@ export interface IMarkerParams {
 export interface IMonitor {
   data: IMonitorData;
   dataFields: Array<ChartDataField>;
+  displayField: string;
+  markerParams: Partial<IMarkerParams>;
   monitorFields: Record<ChartDataField, MonitorField>;
 }
 

@@ -1,8 +1,8 @@
 import { BackgroundServiceClient } from "../webworkers/BackgroundServiceClient";
 import D3BackgroundService from "./D3Background?worker";
-import type { ID3Service } from "../types";
+import type { ID3BackgroundService } from "../types";
 
-export class D3Service extends BackgroundServiceClient<ID3Service> {
+export class D3Service extends BackgroundServiceClient<ID3BackgroundService> {
   static instance: D3Service;
 
   constructor() {
