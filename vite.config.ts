@@ -23,10 +23,21 @@ export default defineConfig({
   build: {
     outDir: resolve("./dist/vue"),
     manifest: true,
+    //sourcemap: true,
     rollupOptions: {
       input: {
         main: resolve("./assets/vue/main.ts"),
-      },
+        D3Background: resolve("./assets/vue/services/D3Background.ts"),
+        MonitorsBackground: resolve("assets/vue/services/MonitorsBackground.ts")
+      }
     },
   },
+  worker: {
+    rollupOptions: {
+      external: [
+        "leaflet",
+        "leaflet-svg-shape-markers"
+      ]
+    }
+  }
 })
