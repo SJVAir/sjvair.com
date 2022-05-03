@@ -1,7 +1,8 @@
-import { readableColor, darken } from "color2k";
+import { readableColor } from "color2k";
 import { Point } from "leaflet";
-import { Monitor } from "../models";
-import { dateUtil, pmValueToColor } from ".";
+import { dateUtil } from ".";
+
+import { Display_Field, Monitor } from "../models";
 
 import type { Marker } from "leaflet";
 
@@ -26,7 +27,7 @@ export function genMarker(m: Monitor): Marker | undefined {
           <p class="is-size-8">(15 minute average)</p>
         </div>
         <p class="is-size-2 has-text-centered is-flex-grow-1">
-          ${ Math.round(+m.data.latest[m.displayField]) }
+          ${ Math.round(+m.data.latest[Display_Field]) }
         </p>
       </div>
     </div
