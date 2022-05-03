@@ -84,6 +84,7 @@ def vue(ctx, name, dev_mode):
 
 @invoke.task()
 def build(ctx, dev=False):
+    ctx.run('rm -rf ./public/static/assets')
     ctx.run('yarn build')
     styles(ctx)
     collectstatic(ctx)
