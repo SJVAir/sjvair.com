@@ -84,18 +84,20 @@ def vue(ctx, name, dev_mode):
 
 @invoke.task()
 def build(ctx, dev=False):
+    ctx.run('rm -rf ./public/static/assets')
+    ctx.run('yarn build')
     styles(ctx)
-    vue(ctx, 'map', dev)
     collectstatic(ctx)
     optimize_images(ctx)
 
 
+# Some steps in here are no longer needed
 @invoke.task()
 def watch(ctx):
     server = livereload.Server(watcher=GlobWatcher())
     server.watch(path('./assets/img/'), lambda: collectstatic(ctx))
     server.watch(assets('js/**'), lambda: collectstatic(ctx))
     server.watch(assets('sass/**'), lambda: [styles(ctx), collectstatic(ctx)])
-    server.watch(assets('map/**'), lambda: [vue(ctx, 'map', True), collectstatic(ctx)])
+    #server.watch(assets('map/**'), lambda: [vue(ctx, 'map', True), collectstatic(ctx)])
     server.watch(path('./dist/lib/'), lambda: collectstatic(ctx))
     server.serve()
