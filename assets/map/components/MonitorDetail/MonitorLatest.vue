@@ -1,3 +1,24 @@
+<script setup lang="ts">
+import { Monitor } from "../../models";
+
+export default {
+  name: "monitor-latest",
+  props: ["monitor"],
+  data() {
+    return {
+      fields: Monitor.fields
+    };
+  },
+  computed: {
+    timesince() {
+      if(Object.keys(this.monitor.latest).length > 1){
+        return this.monitor.latest.timestamp.fromNow();
+      }
+      return 'Never';
+    },
+  }
+}
+</script>
 <template>
   <table class="table is-striped is-fullwidth is-bordered latest-stats">
     <thead class="has-background-light">
@@ -36,25 +57,3 @@
     </tbody>
   </table>
 </template>
-
-<script>
-import Monitor from '../../models/monitor';
-
-export default {
-  name: "monitor-latest",
-  props: ["monitor"],
-  data() {
-    return {
-      fields: Monitor.fields
-    };
-  },
-  computed: {
-    timesince() {
-      if(Object.keys(this.monitor.latest).length > 1){
-        return this.monitor.latest.timestamp.fromNow();
-      }
-      return 'Never';
-    },
-  }
-}
-</script>

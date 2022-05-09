@@ -13,6 +13,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     config.vm.network "forwarded_port", guest: 8080, host: 8080 # Web
     config.vm.network "forwarded_port", guest: 8000, host: 8000 # Server
     config.vm.network "forwarded_port", guest: 35729, host: 35729 # LiveReload
+    config.vm.network "forwarded_port", guest: 3000, host: 3000 # Vite HMR server
     # config.vm.network "forwarded_port", guest: 5432, host: 5432 # Postgres
 
     # Configure virtual machine specs. Keep it simple, single user.
