@@ -11,7 +11,7 @@ function getMarkerParams(monitorData: IMonitorData): IMarkerParams {
     border_color: toHex(darken(fill_color, .1)),
     border_size: 1,
     fill_color,
-    size: monitorData.is_active ? 12 : 8,
+    size: 8, //monitorData.is_active ? 16 : 6,
     shape: 'square'
   }
 
@@ -19,23 +19,37 @@ function getMarkerParams(monitorData: IMonitorData): IMarkerParams {
     case "AirNow": 
     case "BAM1022":
       params.shape = "triangle";
-      params.size = 16
       break;
     case "PurpleAir":
-      params.shape = (monitorData.is_sjvair) ? "circle" : "square";
+      (monitorData.is_sjvair) && (params.shape = "circle");
       break;
     default:
       console.error(`Unknown device type for monitor ${ monitorData.id }`);
       params.shape = "diamond";
   }
 
-  if (monitorData.location === "inside"){
-    params.border_color = `#${ Colors.black }`;
-    params.border_size = 2;
-  }
+  if (monitorData.is_active && monitorData.latest) {
+    params.fill_color = pmValueToColor(+monitorData.latest[Monitor.displayField]);
+    params.border_color = toHex(darken(params.fill_color, .1));
 
-  if(monitorData.is_active && monitorData.latest){
-    params.fill_color = pmValueToColor(+monitorData.latest[Monitor.displayField])
+    switch(monitorData.device) {
+      case "AirNow": 
+      case "BAM1022":
+        params.size = 14;
+        break;
+      case "PurpleAir":
+        if (monitorData.is_sjvair) {
+          params.size = 16
+        } else {
+          params.size = 10;
+        }
+        break;
+    }
+
+    if (monitorData.location === "inside"){
+      params.border_color = `#${ Colors.black }`;
+      params.border_size = 2;
+    }
   }
 
   return params;

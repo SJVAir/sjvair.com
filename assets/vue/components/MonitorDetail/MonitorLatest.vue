@@ -53,3 +53,8 @@ const timesince = computed(() => {
   </table>
 </template>
 
+<style scoped>
+.latest-stats thead th {
+  vertical-align: center
+}
+</style>

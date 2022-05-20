@@ -57,3 +57,4 @@ export default {
     </tbody>
   </table>
 </template>
+

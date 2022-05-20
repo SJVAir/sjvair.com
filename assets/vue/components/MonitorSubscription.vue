@@ -164,3 +164,53 @@ onMounted(() => {
   </div>
 </template>
 
+<style scoped>
+.monitor-subscription-container {
+  border-radius: 1em;
+}
+
+.monitor-subscription-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.monitor-subscription-button i {
+  font-size: 1.2em;
+  margin-left: .5em;
+  transition-duration: 75ms;
+}
+
+.monitor-subscription-options {
+  height: 0;
+  visibility: hidden;
+  position: absolute;
+  z-index: 1;
+}
+
+.monitor-subscription-options.active {
+  height: initial;
+  visibility: visible;
+}
+
+.monitor-subscription-option {
+  cursor: pointer;
+  color: #FFF;
+  font-size: .75rem;
+  padding: .5em 1em;
+  white-space: nowrap;
+}
+
+.monitor-subscription-option:first-of-type {
+  border-radius: 2px 2px 0 0;
+}
+
+.monitor-subscription-option:last-of-type {
+  border-radius: 0 0 2px 2px;
+}
+
+.monitor-subscription-option.subscribed {
+  border: 4px solid black;
+}
+</style>

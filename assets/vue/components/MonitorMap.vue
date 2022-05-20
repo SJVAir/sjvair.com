@@ -3,11 +3,12 @@ import { computed, inject, onBeforeUnmount, onMounted, onUpdated, watch } from "
 import { useRouter } from "vue-router";
 import * as L from "leaflet";
 import "leaflet-svg-shape-markers";
+import "leaflet/dist/leaflet.css";
+import { genMarker } from "../utils";
 
 import type { Monitor } from "../models";
 import type { MonitorsService } from "../services";
 import type { MonitorVisibility } from "../services";
-import { genMarker } from "../utils";
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
 const visibility = inject<MonitorVisibility>("MonitorVisibility")!;
@@ -102,7 +103,7 @@ watch(
 
 onMounted(async () => {
   map = L.map("leafletMapContainer", mapSettings);
-  L.tileLayer(`https://api.maptiler.com/maps/topo/{z}/{x}/{y}.png?key={apiKey}`, {
+  L.tileLayer(`https://api.maptiler.com/maps/streets/256/{z}/{x}/{y}.png?key=NvYyjimTkUQBEjVebxLV`, {
     maxZoom: 19,
     apiKey: import.meta.env.VITE_MAPTILER_KEY,
     attribution: 'Map tiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -158,6 +159,25 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+
+</style>
+
+<style>
+.map-container {
+  height: calc((100vh - var(--navbar-height)) / 2);
+}
+
+.map-container.is-maximised {
+  height: calc(100vh - var(--navbar-height));
+}
+
+.map-el {
+  contain: paint;
+  height: 100%;
+  width: 100%;
+  z-index: 0;
+}
+
 .leaflet-tooltip {
   font-weight: 600;
 }
