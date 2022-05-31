@@ -4,8 +4,13 @@ import { useRouter } from "vue-router";
 import * as L from "leaflet";
 import "leaflet-svg-shape-markers";
 import "leaflet/dist/leaflet.css";
-import { genMarker } from "../utils";
+import { darken, readableColor, toHex } from "color2k";
+import { Point } from "leaflet";
+import { Colors, dateUtil, valueToColor } from "../utils";
 
+import { Display_Field, MonitorField } from "../models";
+
+import type { Marker } from "leaflet";
 import type { Monitor } from "../models";
 import type { MonitorsService } from "../services";
 import type { MonitorVisibility } from "../services";
@@ -15,7 +20,7 @@ const visibility = inject<MonitorVisibility>("MonitorVisibility")!;
 const router = useRouter();
 
 const markers: Record<Monitor["data"]["id"], L.Marker> = {};
-const markerGroup = new L.FeatureGroup();
+const markersGroup = new L.FeatureGroup();
 const mapIsMaximised = computed(() => {
   return { "is-maximised": !monitorsService.activeMonitor};
 });
@@ -28,6 +33,77 @@ const mapSettings = {
 let map: L.Map;
 let centerCoords: L.LatLng = mapSettings.center;
 let interval: number = 0;
+
+const tempLevels = [
+  { min: -Infinity, color: Colors.blue },
+  { min: 65, color: Colors.green },
+  { min: 78, color: Colors.yellow },
+  { min: 95, color: Colors.red }
+];
+
+function getMarkerPaneName(m: Monitor): string | undefined {
+    switch(m.data.device) {
+      case "AirNow": 
+        return "airNow";
+      case "BAM1022":
+        return "sjvAirBam";
+      case "PurpleAir":
+        return (m.data.is_sjvair) ? "sjvAirPurpleAir" : "purpleAir";
+      default:
+        return "marker";
+    }
+}
+
+function genMarker(m: Monitor): Marker | undefined {
+  const displayField = m.monitorFields[Display_Field] || new MonitorField(Display_Field, "PM 2.5", "60", m.data);
+  const markerOptions = {
+    offset: new Point(10, 0),
+    opacity: 1
+  };
+  // @ts-ignore: Property 'shapeMarker' does not exist on type Leaflet
+  const marker = L.shapeMarker(m.data.position.coordinates.reverse(), {
+    color: m.markerParams.border_color,
+    weight: m.markerParams.border_size,
+    fillColor: m.markerParams.fill_color,
+    fillOpacity: 1,
+    radius: m.markerParams.size,
+    shape: m.markerParams.shape,
+    pane: getMarkerPaneName(m)
+  });
+
+
+  const tempColor = valueToColor(+m.data.latest.fahrenheit, tempLevels);
+  const temperatureTemplate = (m.data.latest.fahrenheit)
+  ? `
+      <div class="monitor-tooltip-data-box monitor-tooltip-temp" style="background-color: ${ tempColor }; color: ${ readableColor(tempColor) }; border: solid ${ toHex(darken(tempColor, .1))}">
+        <p class="is-size-6 has-text-centered">Current Temp</p>
+        <p class="is-size-2 has-text-centered is-flex-grow-1">
+          ${ +m.data.latest.fahrenheit }&#176;F
+        </p>
+      </div>
+    `
+  : "";
+  marker.bindTooltip(`
+    <div class="monitor-tooltip-container is-flex is-flex-direction-row is-flex-wrap-nowrap">
+      <div class="monitor-tooltip-data-box monitor-tooltip-pmvalue"
+        style="background-color: ${ m.markerParams.value_color }; color: ${ readableColor(m.markerParams.value_color) }; border: solid ${ toHex(darken(m.markerParams.value_color, .1)) }">
+        <p class="is-size-6">PM 2.5</p>
+        <p class="is-size-2 has-text-centered is-flex-grow-1">
+          ${ Math.round(+m.data.latest[Display_Field]) }
+        </p>
+        <p>(${ parseInt(displayField.updateDuration, 10) } minute average)</p>
+      </div>
+      ${ temperatureTemplate }
+      <div class="monitor-tooltip-info is-flex is-flex-direction-column">
+        <p class="monitor-tooltip-date">${ dateUtil.$prettyPrint(m.data.latest.timestamp) }</p>
+        <p class="is-size-5 has-text-weight-bold is-underlined">${ m.data.name }</p>
+        <p class="is-size-6">Last updated:</p>
+        <p class="is-size-6">About ${ m.lastUpdated }</p>
+      </div>
+  `, markerOptions);
+
+  return marker;
+}
 
 function selectMonitor(marker: L.Marker, monitor: Monitor) {
   router.push({
@@ -42,7 +118,7 @@ function selectMonitor(marker: L.Marker, monitor: Monitor) {
 
 function updateMapBounds() {
   if (!monitorsService.activeMonitor) {
-    map.fitBounds(markerGroup.getBounds());
+    map.fitBounds(markersGroup.getBounds());
   }
 }
 
@@ -57,7 +133,7 @@ function updateMapMarkers() {
     const marker = genMarker(monitor);
 
     if (id in markers) {
-      markerGroup.removeLayer(markers[id].remove());
+      markersGroup.removeLayer(markers[id].remove());
       delete markers[id];
     }
 
@@ -70,7 +146,7 @@ function updateMapMarkers() {
       });
       
       if (visibility.isVisible(monitor)) {
-        markerGroup.addLayer(marker);
+        markersGroup.addLayer(marker);
       }
     }
   }
@@ -86,10 +162,10 @@ function updateMapMarkerVisibility() {
     const monitor = monitorsService.monitors[id];
 
     if (visibility.isVisible(monitor)) {
-      markerGroup.addLayer(markers[id]);
+      markersGroup.addLayer(markers[id]);
 
     } else {
-      markerGroup.removeLayer(markers[id]);
+      markersGroup.removeLayer(markers[id]);
     }
   }
 }
@@ -123,7 +199,13 @@ onMounted(async () => {
   //  opacity: 0.5
   //} as any).addTo(map);
 
-  markerGroup.addTo(map)
+  //const pane = map.getPane("markerPane");
+  markersGroup.addTo(map);
+
+  map.createPane("purpleAir").style.zIndex = "601";
+  map.createPane("airNow").style.zIndex = "602";
+  map.createPane("sjvAirPurpleAir").style.zIndex = "603";
+  map.createPane("sjvAirBam").style.zIndex = "604";
 
   interval = setInterval(async () => await loadMonitors(), 1000 * 60 * 2);
 
@@ -155,6 +237,23 @@ onBeforeUnmount(() => {
 <template>
   <div :class="mapIsMaximised" class="notranslate map-container" translate="no">
     <div id="leafletMapContainer" class="map-el"></div>
+    <div class="map-legend-container card is-inline">
+      <p class="has-text-centered has-font-weight-semibold">PM Value Colors</p>
+      <div class="map-legend is-flex is-align-items-center is-flex-wrap-wrap">
+        <div class="good"></div>
+        <div class="moderate"></div>
+        <div class="unhealthy-sensitive"></div>
+        <div class="unhealthy"></div>
+        <div class="very-unhealthy"></div>
+        <div class="hazardous"></div>
+        <span class="good">0</span>
+        <span class="moderate">12</span>
+        <span class="unhealthy-sensitive">35</span>
+        <span class="unhealthy">55</span>
+        <span class="very-unhealthy">150</span>
+        <span class="hazardous">250</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -178,25 +277,17 @@ onBeforeUnmount(() => {
   z-index: 0;
 }
 
-.leaflet-tooltip {
-  font-weight: 600;
+.leaflet-tooltip-right {
+    margin-left: -.4em;
 }
 
-.leaflet-tooltip-right:before {
-    margin-left: -1.5em;
-    border-right-color: #000;
-}
-
-.leaflet-tooltip-left:before {
-    margin-right: -1.5em;
-    border-left-color: #000;
+.leaflet-tooltip-left {
+    margin-left: .4em;
 }
 
 .monitor-tooltip-container {
-  border: .3em solid #000;
-  border-radius: 5px;
   margin: -1em;
-  padding: 1em;
+  padding: 1.5em;
 }
 
 .monitor-tooltip-container .tag {
@@ -207,7 +298,46 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-.monitor-tooltip-label p:last-of-type {
-  font-size: .65rem;
+.monitor-tooltip-data-box {
+  padding: .2em;
+}
+
+.monitor-tooltip-pmvalue {
+  margin-right: 1em;
+}
+
+.monitor-tooltip-info {
+  margin-left: 1em;
+}
+
+.map-legend-container {
+  height: 6em;
+  width: calc(250px + 1em);
+  position: absolute;
+  z-index: 9999;
+  margin: -8rem 0 -100% 2.5rem;
+  padding: .5rem;
+}
+
+.map-legend {
+  background: linear-gradient(90deg, #00e400 0%, #ffff00 16.66%, #ff7e00 33.32%, #ff0000 49.98%, #8f3f97 66.64%, #7e0023 83.3%);
+  width: 100%;
+  height: 1.5em;
+}
+
+.map-legend * {
+  height: 2em;
+  width: calc(100% / 6);
+  min-width: calc(100% / 6);
+}
+
+.map-legend div {
+  border-left: 1px solid black;
+}
+
+.map-legend span {
+  text-align: center;
+  position: relative;
+  right: 1.25em;
 }
 </style>
