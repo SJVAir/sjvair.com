@@ -6,7 +6,7 @@ import MonitorChart from "./MonitorChart.vue";
 import MonitorDataControl from "./MonitorDataControl.vue";
 import MonitorInfo from "./MonitorInfo.vue";
 import MonitorLatest from "./MonitorLatest.vue";
-import { dateUtil } from "../../utils";
+import { dateUtil } from "../../modules";
 
 import type { MonitorsService } from "../../services";
 import type { ChartDataArray } from "../../types";

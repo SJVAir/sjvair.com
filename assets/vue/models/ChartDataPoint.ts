@@ -1,4 +1,4 @@
-import { dateUtil } from "../utils";
+import { dateUtil } from "../modules";
 import type { ChartDataField, IParsedEntry, MonitorFieldColor } from "../types";
 
 export class ChartDataPoint {

@@ -4,7 +4,7 @@ import '@vuepic/vue-datepicker/dist/main.css';
 
 import { inject } from "vue";
 import type { MonitorsService } from "../../services";
-import {dateUtil} from "../../utils";
+import {dateUtil} from "../../modules";
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
 const emit = defineEmits<{(e: "loadAll"): void}>();

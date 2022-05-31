@@ -2,7 +2,7 @@
 import * as d3 from "d3";
 import { inject, onMounted, toRefs, watch } from "vue";
 import { ChartDataPoint } from "../../models";
-import { dateUtil } from "../../utils";
+import { dateUtil } from "../../modules";
 import type { D3Service, MonitorsService } from "../../services";
 import type { ChartDataArray, ChartDataField } from "../../types";
 

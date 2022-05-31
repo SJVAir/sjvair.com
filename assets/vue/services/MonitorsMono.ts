@@ -1,6 +1,6 @@
 import { MonitorsBackgroundService } from "./MonitorsBackground";
 import { CachedMonitor, DateRange, Monitor } from "../models";
-import { dateUtil, http } from "../utils";
+import { dateUtil, http } from "../modules";
 import type { MonitorId, Nullable, ChartDataArray, IMonitorSubscription, IMonitorData } from "../types";
 
 export class MonitorsServiceMono {

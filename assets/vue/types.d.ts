@@ -3,7 +3,7 @@ import type { Dayjs } from "dayjs";
 //import { Marker } from "leaflet";
 import type { ChartDataPoint, Monitor, MonitorField } from "./models";
 import type { MonitorsBackgroundService, D3BackgroundService } from "./services";
-import type { Colors, MonitorFieldColors } from "./utils";
+import type { Colors, MonitorFieldColors } from "./modules";
 
 // Utility types
 export type Nullable<T> = T | null;

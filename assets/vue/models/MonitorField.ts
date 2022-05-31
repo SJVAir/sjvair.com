@@ -1,4 +1,4 @@
-import { Colors } from "../utils/colors";
+import { Colors } from "../modules/colors";
 import type { MonitorDataField, IColorMap, IMonitorData} from "../types";
 
 export class MonitorField {

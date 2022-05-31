@@ -1,6 +1,6 @@
 import { darken, toHex } from "color2k";
 import { MonitorField } from "./MonitorField";
-import { Colors, dateUtil, valueToColor } from "../utils";
+import { Colors, dateUtil, valueToColor } from "../modules";
 import type { ChartDataField, IMarkerParams, IMonitor, IMonitorData, MonitorDataField } from "../types";
 
 export const Display_Field = "pm25_avg_15" as const;

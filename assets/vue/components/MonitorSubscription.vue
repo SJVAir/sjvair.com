@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, Ref, ref, watch } from "vue";
 import { SubscriptionLevel } from "../models";
-import { http } from "../utils"
+import { http } from "../modules"
 import type { IMonitorSubscription } from "../types";
 import type { MonitorsService } from "../services";
 
