@@ -6,7 +6,7 @@ import "leaflet-svg-shape-markers";
 import "leaflet/dist/leaflet.css";
 import { darken, readableColor, toHex } from "color2k";
 import { Point } from "leaflet";
-import { Colors, dateUtil, valueToColor } from "../utils";
+import { Colors, dateUtil, valueToColor } from "../modules";
 
 import { Display_Field, MonitorField } from "../models";
 
@@ -24,6 +24,7 @@ const markersGroup = new L.FeatureGroup();
 const mapIsMaximised = computed(() => {
   return { "is-maximised": !monitorsService.activeMonitor};
 });
+
 const mapSettings = {
   // Initial location: Fresno, CA
   center: new L.LatLng( 36.746841, -119.772591 ),
@@ -42,16 +43,16 @@ const tempLevels = [
 ];
 
 function getMarkerPaneName(m: Monitor): string | undefined {
-    switch(m.data.device) {
-      case "AirNow": 
-        return "airNow";
-      case "BAM1022":
-        return "sjvAirBam";
-      case "PurpleAir":
-        return (m.data.is_sjvair) ? "sjvAirPurpleAir" : "purpleAir";
-      default:
-        return "marker";
-    }
+  switch(m.data.device) {
+    case "AirNow": 
+      return "airNow";
+    case "BAM1022":
+      return "sjvAirBam";
+    case "PurpleAir":
+      return (m.data.is_sjvair) ? "sjvAirPurpleAir" : "purpleAir";
+    default:
+      return "marker";
+  }
 }
 
 function genMarker(m: Monitor): Marker | undefined {
@@ -237,15 +238,18 @@ onBeforeUnmount(() => {
 <template>
   <div :class="mapIsMaximised" class="notranslate map-container" translate="no">
     <div id="leafletMapContainer" class="map-el"></div>
-    <div class="map-legend-container card is-inline">
+    <div class="map-legend-container card is-flex is-flex-direction-column">
       <p class="has-text-centered has-font-weight-semibold">PM Value Colors</p>
-      <div class="map-legend is-flex is-align-items-center is-flex-wrap-wrap">
-        <div class="good"></div>
-        <div class="moderate"></div>
-        <div class="unhealthy-sensitive"></div>
-        <div class="unhealthy"></div>
-        <div class="very-unhealthy"></div>
-        <div class="hazardous"></div>
+      <div class="map-legend">&nbsp;</div>
+      <div class="map-legend-lines is-flex">
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+      </div>
+      <div class="map-legend-labels is-flex">
         <span class="good">0</span>
         <span class="moderate">12</span>
         <span class="unhealthy-sensitive">35</span>
@@ -311,33 +315,42 @@ onBeforeUnmount(() => {
 }
 
 .map-legend-container {
-  height: 6em;
+  height: 6.6em;
   width: calc(250px + 1em);
   position: absolute;
   z-index: 9999;
-  margin: -8rem 0 -100% 2.5rem;
-  padding: .5rem;
+  margin: -14rem 0 -100% -1.5rem;
+  padding: .5em 1em;
+  transform: rotate(-90deg);
 }
 
 .map-legend {
-  background: linear-gradient(90deg, #00e400 0%, #ffff00 16.66%, #ff7e00 33.32%, #ff0000 49.98%, #8f3f97 66.64%, #7e0023 83.3%);
+  background: linear-gradient(90deg, #00e400 0%, #ffff00 20%, #ff7e00 40%, #ff0000 60%, #8f3f97 80%, #7e0023 100%);
+  display: inline-block;
   width: 100%;
   height: 1.5em;
 }
 
-.map-legend * {
-  height: 2em;
-  width: calc(100% / 6);
-  min-width: calc(100% / 6);
+.map-legend-lines *, .map-legend-labels * {
+  width: calc(100% / 5);
+  flex-shrink: 0;
 }
 
-.map-legend div {
+.map-legend-lines *:last-child {
+  position: relative;
+  left: -1px;
+}
+
+.map-legend-lines * {
+  height: .5em;
   border-left: 1px solid black;
 }
 
-.map-legend span {
+.map-legend-labels * {
   text-align: center;
   position: relative;
-  right: 1.25em;
+  right: 1.4em;
+  transform: rotate(90deg);
+  margin-top: .25em;
 }
 </style>
