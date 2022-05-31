@@ -1,17 +1,9 @@
 <script setup lang="ts">
-import { computed, toRefs } from "vue";
+import { toRefs } from "vue";
 import type { Monitor } from "../../models";
-import { dateUtil } from "../../utils";
 
 const props = defineProps<{ monitor: Monitor }>();
 const { monitor } = toRefs(props);
-const timesince = computed(() => {
-  if (Object.keys(monitor.value.data.latest).length > 1) {
-    return dateUtil.dayjs(monitor.value.data.latest.timestamp).fromNow();
-  }
-
-  return 'Never';
-});
 </script>
 
 <template>
@@ -20,7 +12,7 @@ const timesince = computed(() => {
       <tr>
         <th rowspan="2">
           <div class="is-size-7 has-text-grey has-text-weight-normal">Last updated</div>
-          <div :class="monitor.data.is_active ? 'has-text-success' : 'has-text-danger'">{{ timesince }}</div>
+          <div :class="monitor.data.is_active ? 'has-text-success' : 'has-text-danger'">{{ monitor.lastUpdated }}</div>
         </th>
         <th colspan="3" class="is-size-7 has-text-centered">Latest Averages</th>
       </tr>
