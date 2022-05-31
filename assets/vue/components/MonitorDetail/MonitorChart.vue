@@ -243,7 +243,7 @@ function renderTooltip(e: any) {
     .html(`<p class="chart-tooltip-header">${ dateUtil.$prettyPrint(pointerValues[0]!.xData) }</p>`)
     .classed("active", true)
     .style("left", `calc(${ lineStats.x }px + 2em)`)
-    .style("top", `calc(${ e.layerY }px + 3.5em)`)
+    .style("top", `calc(${ e.layerY }px + -3.5em)`)
     .append("div")
     .attr("class", "chart-tooltip-legend");
 
