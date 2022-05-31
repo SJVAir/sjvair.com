@@ -44,6 +44,11 @@ export interface IChartDataPoint {
   yData: number;
 }
 
+export interface IColorMap {
+  min: number;
+  color: string;
+}
+
 export interface IDateRange {
   startDate: string | typeof Dayjs;
   endDate: string | typeof Dayjs;
@@ -62,6 +67,7 @@ export interface IMarkerParams {
   border_color: string;
   border_size: number;
   fill_color: string;
+  value_color: string;
   size: number;
   shape: string;
 }
@@ -70,6 +76,7 @@ export interface IMonitor {
   data: IMonitorData;
   dataFields: Array<ChartDataField>;
   displayField: string;
+  lastUpdated: string;
   markerParams: Partial<IMarkerParams>;
   monitorFields: Record<ChartDataField, MonitorField>;
 }
@@ -153,10 +160,5 @@ export interface IParsedEntry {
   data: {
     [key: string]: string;
   }
-}
-
-export interface IPMLevel {
-  min: number;
-  color: ValueOf<typeof Colors>;
 }
 
