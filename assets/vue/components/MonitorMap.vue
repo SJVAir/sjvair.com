@@ -249,13 +249,13 @@ onBeforeUnmount(() => {
         <div></div>
         <div></div>
       </div>
-      <div class="map-legend-labels is-flex">
-        <span class="good">0</span>
-        <span class="moderate">12</span>
-        <span class="unhealthy-sensitive">35</span>
-        <span class="unhealthy">55</span>
-        <span class="very-unhealthy">150</span>
-        <span class="hazardous">250</span>
+      <div class="map-legend-labels is-flex is-size-7-mobile">
+        <span>0</span>
+        <span>12</span>
+        <span>35</span>
+        <span>55</span>
+        <span>150</span>
+        <span>250</span>
       </div>
     </div>
   </div>
@@ -315,13 +315,10 @@ onBeforeUnmount(() => {
 }
 
 .map-legend-container {
-  height: 6.6em;
-  width: calc(250px + 1em);
+  width: calc(25vw + 1em);
   position: absolute;
-  z-index: 9999;
-  margin: -14rem 0 -100% -1.5rem;
+  margin: -7rem 0 -100% 0.65rem;
   padding: .5em 1em;
-  transform: rotate(-90deg);
 }
 
 .map-legend {
@@ -336,21 +333,15 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.map-legend-lines *:last-child {
-  position: relative;
-  left: -1px;
-}
-
 .map-legend-lines * {
   height: .5em;
   border-left: 1px solid black;
 }
 
-.map-legend-labels * {
+.map-legend-labels {
   text-align: center;
   position: relative;
-  right: 1.4em;
-  transform: rotate(90deg);
+  right: 2.4vw;
   margin-top: .25em;
 }
 </style>
