@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import Datepicker from "@vuepic/vue-datepicker";
 import '@vuepic/vue-datepicker/dist/main.css';
-import MonitorSubscription from "../MonitorSubscription.vue";
 
 import { inject } from "vue";
 import type { MonitorsService } from "../../services";
-import {dateUtil} from "../../utils";
+import {dateUtil} from "../../modules";
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
 const emit = defineEmits<{(e: "loadAll"): void}>();
@@ -30,7 +29,7 @@ function loadAllEntries() {
       <div class="field">
         <label for="startDate" class="label is-small has-text-weight-normal">Date Range</label>
         <div class="control">
-          <Datepicker v-model="monitorsService.dateRange" range :disabledDates="disabledDates" />
+          <Datepicker v-model="monitorsService.dateRange" range :disabledDates="disabledDates" :enableTimePicker="false" autoApply />
         </div>
       </div>
     </div>
@@ -56,7 +55,6 @@ function loadAllEntries() {
         </div>
         <div class="control">
           <br />
-          <monitor-subscription></monitor-subscription>
         </div>
       </div>
     </div>

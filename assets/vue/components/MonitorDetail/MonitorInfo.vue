@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, toRefs } from "@vue/reactivity";
+import MonitorSubscription from "../MonitorSubscription.vue";
 import { Monitor } from "../../models/Monitor";
 
 const props = defineProps<{ monitor: Monitor }>();
@@ -14,9 +15,9 @@ const location = computed(() => {
 </script>
 
 <template>
-  <div class="monitor-header">
-    <ul class="is-inline">
-      <li class="monitor-name">{{ monitor.data.name }}</li>
+  <div class="monitor-header is-flex is-justify-content-space-evenly is-align-items-center is-flex-direction-column">
+    <p class="monitor-name is-flex-grow-1">{{ monitor.data.name }}</p>
+    <ul class="is-flex is-justify-content-space-evenly is-align-items-center">
       <li v-if="monitor.data.is_sjvair">
         <span class="tag is-info is-light">
           <span class="icon">
@@ -50,5 +51,22 @@ const location = computed(() => {
         </span>
       </li>
     </ul>
+    <monitor-subscription></monitor-subscription>
   </div>
 </template>
+
+<style>
+.monitor-header {
+  padding: var(--column-gap);
+}
+
+.monitor-header ul {
+  width: 100%;
+  margin-bottom: .5em;
+}
+
+.monitor-name {
+  font-size: var(--size-5);
+  font-weight: bold;
+}
+</style>

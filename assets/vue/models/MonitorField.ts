@@ -1,5 +1,5 @@
-import { Colors } from "../utils/colors";
-import type { MonitorDataField, IPMLevel, IMonitorData} from "../types";
+import { Colors } from "../modules/colors";
+import type { MonitorDataField, IColorMap, IMonitorData} from "../types";
 
 export class MonitorField {
   static genMulti(...fieldDefinitions: Array<ConstructorParameters<typeof MonitorField>>) {
@@ -12,7 +12,7 @@ export class MonitorField {
     return fields;
   }
 
-  static levels: Array<IPMLevel> = [
+  static levels: Array<IColorMap> = [
     {min: -Infinity, color: Colors.green},
     {min: 12, color: Colors.yellow},
     {min: 35, color: Colors.orange},

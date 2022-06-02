@@ -1,4 +1,4 @@
-import { dateUtil } from "../utils/date";
+import { dateUtil } from "../modules/date";
 import { BackgroundService } from "../webworkers/BackgroundService";
 
 let last_active_limit: any = null;
