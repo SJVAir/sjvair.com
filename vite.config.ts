@@ -7,6 +7,7 @@ export default defineConfig({
   root: resolve("./assets/vue/"),
   base: "/static/vue/",
   envDir: resolve("./"),
+  clearScreen: false,
   plugins: [vue()],
     server: {
     host: 'localhost',

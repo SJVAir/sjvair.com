@@ -93,3 +93,21 @@ function toggleDisplayOptions() {
     <router-view></router-view>
   </div>
 </template>
+
+<style scoped>
+.dropdown-menu {
+  min-width: 15rem;
+}
+
+.display-options {
+  float: left;
+  position: relative;
+  margin: .5rem 0 -100% 2.5rem;
+  padding: .5rem 1rem;
+  z-index: 9999;
+}
+
+.dropdown-item.is-indented {
+  padding-left: var(--gap);
+}
+</style>

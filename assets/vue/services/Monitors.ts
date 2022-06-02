@@ -1,7 +1,7 @@
 import MonitorsBackgroundService from "./MonitorsBackground?worker";
 import { CachedMonitor, DateRange, Monitor } from "../models";
 import { BackgroundServiceClient } from "../webworkers/BackgroundServiceClient";
-import { dateUtil, http } from "../utils";
+import { dateUtil, http } from "../modules";
 import type { MonitorId, IMonitorsBackgroundService, Nullable, ChartDataArray, IMonitorSubscription, IMonitorData } from "../types";
 
 export class MonitorsService extends BackgroundServiceClient<IMonitorsBackgroundService> {

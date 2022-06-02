@@ -2,7 +2,7 @@
 import * as d3 from "d3";
 import { inject, onMounted, toRefs, watch } from "vue";
 import { ChartDataPoint } from "../../models";
-import { dateUtil } from "../../utils";
+import { dateUtil } from "../../modules";
 import type { D3Service, MonitorsService } from "../../services";
 import type { ChartDataArray, ChartDataField } from "../../types";
 
@@ -12,7 +12,7 @@ const props = defineProps<{ chartData: ChartDataArray }>();
 const { chartData } = toRefs(props);
 
 const margin = {
-  top: 24,
+  top: 12,
   right: 24,
   bottom: 56,
   left: 24
@@ -23,7 +23,7 @@ const margin = {
 const parseTime = d3.utcParse("%Y-%m-%dT%H:%M:%S.%LZ");
 // Positioning styles
 const styles = {
-  height: 300 - margin.top - margin.bottom,
+  height: 450 - margin.top - margin.bottom,
   margin,
   width: 0,
 };
@@ -60,15 +60,17 @@ onMounted(() => {
   // Reference to the svg"s container div
   container = d3.select("#chartContainer");
 
+  // Update positioning styles for "100%" width
+  const grandParentRect = (container.node() as HTMLElement).parentElement?.parentElement?.getBoundingClientRect();
+  styles.height = Math.max((grandParentRect?.height! - styles.margin.top - styles.margin.bottom), 300);
+  styles.width = grandParentRect!.width - styles.margin.left - styles.margin.right;
+
   // Create the SVG element
   //Selection<SVGElement, uknown, HTMLElement, any>
   svg = container.append("svg")
     .attr("width", "100%")
     .attr("height", styles.height + styles.margin.top + styles.margin.bottom);
 
-  // Update positioning styles for "100%" width
-  const svgClientRect = svg!.node()!.getBoundingClientRect();
-  styles.width = svgClientRect.width - styles.margin.left - styles.margin.right;
 
   // Set the ranges
   x = d3.scaleTime().range([0, styles.width]);
@@ -241,7 +243,7 @@ function renderTooltip(e: any) {
     .html(`<p class="chart-tooltip-header">${ dateUtil.$prettyPrint(pointerValues[0]!.xData) }</p>`)
     .classed("active", true)
     .style("left", `calc(${ lineStats.x }px + 2em)`)
-    .style("top", `calc(${ e.layerY }px + 3.5em)`)
+    .style("top", `calc(${ e.layerY }px + -3.5em)`)
     .append("div")
     .attr("class", "chart-tooltip-legend");
 
@@ -279,3 +281,77 @@ function removeTooltip() {
   <div id="chartContainer" class="chart-container is-flex is-flex-direction-column is-justify-content-center is-align-items-center"></div>
 </template>
 
+<style>
+.chart-container {
+  margin-top: 1em;
+}
+.chart-container .tick line {
+  stroke: #e0e0e0;
+}
+
+.chart-container .yaxis .domain, .chart-container .xaxis .domain {
+  opacity: 0;
+}
+
+.chart-container .chart-line {
+  stroke-width: 1;
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-container .chart-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  width: 100%;
+  transform: translate(0, -28px);
+}
+
+.chart-container .chart-legend-marker {
+  border-radius: 50%;
+  display: inline-block;
+  height: 12px;
+  margin-right: .5em;
+  width: 12px;
+}
+
+.chart-container .chart-tooltip {
+  display: none;
+  background-color: rgba(255, 255, 255, 0.96);
+  border-radius: 5px;
+  border: 1px solid #e3e3e3;
+  box-shadow: 2px 2px 6px -4px #999;
+  cursor: default;
+  font-size: 14px;
+  pointer-events: none;
+  position: absolute;
+}
+
+.chart-container .chart-tooltip.active {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-container .chart-tooltip .chart-tooltip-header {
+  background-color: #f5f5f5;
+  padding: .5em;
+}
+
+.chart-container .chart-tooltip .chart-tooltip-legend {
+  margin: .5em;
+}
+
+.chart-container .chart-tooltip .chart-tooltip-legend .chart-tooltip-item {
+  margin: .2em 0 .2em .5em;
+}
+
+.chart-container .chart-tooltip-line {
+  stroke: none;
+}
+
+.chart-container .chart-tooltip-line.active {
+  stroke: #b6b6b6;
+  stroke-dasharray: 3;
+}
+</style>

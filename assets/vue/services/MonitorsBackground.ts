@@ -1,6 +1,6 @@
 import { Monitor, ChartDataPoint } from "../models";
 import { BackgroundService } from "../webworkers/BackgroundService";
-import { http, dateUtil, MonitorFieldColors } from "../utils";
+import { http, dateUtil, MonitorFieldColors } from "../modules";
 
 import type { DateRange } from "../models";
 import type { ChartDataArray, ChartDataField, ChartDataRecord, MonitorsRecord, IMonitorData, IMonitorEntry, IMonitorSubscription, IEntriesPageResponse, IParsedEntry } from "../types";

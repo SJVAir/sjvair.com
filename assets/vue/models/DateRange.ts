@@ -1,4 +1,4 @@
-import { dateUtil } from "../utils";
+import { dateUtil } from "../modules";
 
 export class DateRange extends Array<string> {
 

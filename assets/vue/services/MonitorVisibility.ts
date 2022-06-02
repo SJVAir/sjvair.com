@@ -23,9 +23,9 @@ export class MonitorVisibility implements IMonitorVisibility {
     }
 
     if(m.data.device == 'PurpleAir') {
-      return m.data.is_sjvair 
-        ? this.SJVAirPurple
-        : this.PurpleAir && (this.PurpleAirInside || m.data.location == 'outside');
+      return (m.data.is_sjvair 
+        ? this.SJVAirPurple 
+        : this.PurpleAir) && (this.PurpleAirInside || m.data.location == 'outside');
 
     } else if (m.data.device == 'BAM1022'){
       return this.SJVAirBAM;
