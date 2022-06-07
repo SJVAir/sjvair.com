@@ -238,24 +238,28 @@ onBeforeUnmount(() => {
 <template>
   <div :class="mapIsMaximised" class="notranslate map-container" translate="no">
     <div id="leafletMapContainer" class="map-el"></div>
-    <div class="map-legend-container card is-flex is-flex-direction-column">
-      <p class="has-text-centered has-font-weight-semibold">PM Value Colors</p>
+    <div class="map-legend-container card columns column is-half-mobile is-half-tablet is-one-fifth-desktop is-flex is-flex-direction-column">
+      <p class="has-text-centered has-font-weight-semibold">PM 2.5 Concentration</p>
       <div class="map-legend">&nbsp;</div>
       <div class="map-legend-lines is-flex">
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-      </div>
-      <div class="map-legend-labels is-flex is-size-7-mobile">
-        <span>0</span>
-        <span>12</span>
-        <span>35</span>
-        <span>55</span>
-        <span>150</span>
-        <span>250</span>
+        <div>
+          <span>0</span>
+        </div>
+        <div>
+          <span>12</span>
+        </div>
+        <div>
+          <span>35</span>
+        </div>
+        <div>
+          <span>55</span>
+        </div>
+        <div>
+          <span>150</span>
+        </div>
+        <div>
+          <span>250</span>
+        </div>
       </div>
     </div>
   </div>
@@ -315,33 +319,46 @@ onBeforeUnmount(() => {
 }
 
 .map-legend-container {
-  width: calc(25vw + 1em);
+  min-width: 200px;
   position: absolute;
   margin: -7rem 0 -100% 0.65rem;
-  padding: .5em 1em;
+  padding: .5em 1.5em;
 }
 
 .map-legend {
   background: linear-gradient(90deg, #00e400 0%, #ffff00 20%, #ff7e00 40%, #ff0000 60%, #8f3f97 80%, #7e0023 100%);
   display: inline-block;
-  width: 100%;
   height: 1.5em;
 }
 
-.map-legend-lines *, .map-legend-labels * {
-  width: calc(100% / 5);
-  flex-shrink: 0;
+.map-legend-lines {
+  margin-bottom: 1.5em;
 }
 
-.map-legend-lines * {
+.map-legend-lines div {
+  width: calc(100% / 5);
+  flex-shrink: 0;
   height: .5em;
   border-left: 1px solid black;
 }
 
-.map-legend-labels {
-  text-align: center;
+.map-legend-lines div:last-child {
+    position: relative;
+    right: 1px;
+  }
+
+.map-legend-lines span {
   position: relative;
-  right: 2.4vw;
-  margin-top: .25em;
+  top: .5em;
+  right: .3em;
 }
+
+.map-legend-lines div:not(:first-child) span {
+  right: .5em;
+}
+
+.map-legend-lines div:nth-child(n+5) span:first-child {
+  right: .8em;
+}
+
 </style>
