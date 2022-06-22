@@ -39,7 +39,7 @@ jsonschema==3.2.0
 libsass==0.21.0
 livereload==2.6.3
 nameparser==1.0.6
-numpy==1.21.0
+numpy==1.22.0
 optimize-images==1.5.1
 pandas==1.2.4
 Pillow==9.0.1
