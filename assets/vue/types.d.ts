@@ -3,7 +3,7 @@ import type { Dayjs } from "dayjs";
 //import { Marker } from "leaflet";
 import type { ChartDataPoint, Monitor, MonitorField } from "./models";
 import type { MonitorsBackgroundService, D3BackgroundService } from "./services";
-import type { Colors, MonitorFieldColors } from "./modules";
+import type { MonitorFieldColors } from "./modules";
 
 // Utility types
 export type Nullable<T> = T | null;
@@ -54,6 +54,12 @@ export interface IDateRange {
   endDate: string | typeof Dayjs;
 }
 
+export interface IDisplayOptionsExports {
+  mapTileset: ILeafletTileLayer;
+  overlayTilesets: Array<IOverlayTileset>;
+  visibility: IMonitorVisibility;
+}
+
 export interface IEntriesPageResponse {
   count: number;
   data: Array<any>;
@@ -61,6 +67,17 @@ export interface IEntriesPageResponse {
   has_previous_page: boolean;
   page: number;
   pages: number;
+}
+
+export interface ILeafletTileLayer {
+  isDefault?: boolean;
+  label: string;
+  options: ILeafletTileLayerOptions;
+  urlTemplate: string;
+}
+
+export interface ILeafletTileLayerOptions extends L.TileLayerOptions {
+  apiKey?: string;
 }
 
 export interface IMarkerParams {
@@ -146,14 +163,24 @@ export interface IMonitorSubscription {
 }
 
 export interface IMonitorVisibility {
-  SJVAirPurple: boolean;
-  SJVAirInactive: boolean
-  SJVAirBAM: boolean;
-  PurpleAir: boolean;
-  PurpleAirInside: boolean;
-  AirNow: boolean;
-  displayInactive: boolean;
+  SJVAirPurple: IMonitorVisibilityOptions;
+  SJVAirBAM: IMonitorVisibilityOptions;
+  PurpleAir: IMonitorVisibilityOptions;
+  PurpleAirInside: IMonitorVisibilityOptions;
+  AirNow: IMonitorVisibilityOptions;
+  displayInactive: IMonitorVisibilityOptions;
 } 
+
+export interface IMonitorVisibilityOptions {
+  containerClass?: string;
+  icon: string;
+  isChecked: boolean;
+  label: string;
+}
+
+export interface IOverlayTileset extends ILeafletTileLayer, IMonitorVisibilityOptions {
+  isChecked: boolean;
+}
 
 export interface IParsedEntry {
   timestamp: string | null,
