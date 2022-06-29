@@ -1,22 +1,32 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, onUpdated, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, toRefs, watch, watchEffect } from "vue";
 import { useRouter } from "vue-router";
 import * as L from "leaflet";
 import "leaflet-svg-shape-markers";
 import "leaflet/dist/leaflet.css";
 import { darken, readableColor, toHex } from "color2k";
 import { Point } from "leaflet";
-import { Colors, dateUtil, valueToColor } from "../modules";
-
 import { Display_Field, MonitorField } from "../models";
+import { Colors, dateUtil, valueToColor } from "../modules";
 
 import type { Marker } from "leaflet";
 import type { Monitor } from "../models";
 import type { MonitorsService } from "../services";
-import type { MonitorVisibility } from "../services";
+import type { ILeafletTileLayer, IMonitorVisibility, IOverlayTileset } from "../types";
+
+// Props match IDisplayOptionsExports, but defineProps does not currently
+// accept complex types.
+// Relevant issue: https://github.com/vuejs/core/issues/4294#issuecomment-1128852150
+// RFC documentation: https://github.com/vuejs/rfcs/blob/master/active-rfcs/0040-script-setup.md#type-only-propsemit-declarations
+const props = defineProps<{
+  mapTileset?: ILeafletTileLayer;
+  overlayTilesets?: Array<IOverlayTileset>;
+  visibility?: IMonitorVisibility;
+}>();
+
+const { mapTileset, overlayTilesets, visibility } = toRefs(props);
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
-const visibility = inject<MonitorVisibility>("MonitorVisibility")!;
 const router = useRouter();
 
 const markers: Record<Monitor["data"]["id"], L.Marker> = {};
@@ -32,6 +42,8 @@ const mapSettings = {
 };
 
 let map: L.Map;
+let baseLayer: L.TileLayer;
+const overlayLayers: Map<string, L.TileLayer> = new Map();
 let centerCoords: L.LatLng = mapSettings.center;
 let interval: number = 0;
 
@@ -41,6 +53,24 @@ const tempLevels = [
   { min: 78, color: Colors.yellow },
   { min: 95, color: Colors.red }
 ];
+
+function evaluateOverlays() {
+  if (overlayTilesets && overlayTilesets.value?.length) {
+    for (let tileset of overlayTilesets.value) {
+      if (tileset.isChecked && !overlayLayers.has(tileset.label)) {
+        overlayLayers.set(
+          tileset.label,
+          L.tileLayer(tileset.urlTemplate, tileset.options).addTo(map)
+        );
+
+      } else if (!tileset.isChecked && overlayLayers.has(tileset.label)) {
+        overlayLayers.get(tileset.label)!.remove();
+        overlayLayers.delete(tileset.label);
+
+      }
+    }
+  }
+}
 
 function getMarkerPaneName(m: Monitor): string | undefined {
   switch(m.data.device) {
@@ -106,6 +136,33 @@ function genMarker(m: Monitor): Marker | undefined {
   return marker;
 }
 
+function isVisible(m: Monitor): boolean {
+  // showSJVAirPurple
+  // showSJVAirBAM
+  // showPurpleAir
+  // showPurpleAirInside
+  // showAirNow
+
+  if (visibility && visibility.value) {
+    if(!visibility.value.displayInactive.isChecked && !m.data.is_active){
+      return false;
+    }
+
+    if (m.data.device == 'PurpleAir') {
+      return (m.data.is_sjvair 
+        ? visibility.value.SJVAirPurple.isChecked
+        : visibility.value.PurpleAir.isChecked) && (visibility.value.PurpleAirInside.isChecked || m.data.location == 'outside');
+
+    } else if (m.data.device == 'BAM1022'){
+      return visibility.value.SJVAirBAM.isChecked;
+
+    }  else if (m.data.device == 'AirNow'){
+      return visibility.value.AirNow.isChecked;
+    }
+  }
+  return false;
+}
+
 function selectMonitor(marker: L.Marker, monitor: Monitor) {
   router.push({
     name: "details",
@@ -118,7 +175,7 @@ function selectMonitor(marker: L.Marker, monitor: Monitor) {
 }
 
 function updateMapBounds() {
-  if (!monitorsService.activeMonitor) {
+  if (!monitorsService.activeMonitor && Object.keys(markers).length > 0) {
     map.fitBounds(markersGroup.getBounds());
   }
 }
@@ -146,7 +203,7 @@ function updateMapMarkers() {
         selectMonitor(marker, monitor);
       });
       
-      if (visibility.isVisible(monitor)) {
+      if (isVisible(monitor)) {
         markersGroup.addLayer(marker);
       }
     }
@@ -162,7 +219,7 @@ function updateMapMarkerVisibility() {
   for (let id in markers) {
     const monitor = monitorsService.monitors[id];
 
-    if (visibility.isVisible(monitor)) {
+    if (isVisible(monitor)) {
       markersGroup.addLayer(markers[id]);
 
     } else {
@@ -178,13 +235,30 @@ watch(
   { deep: true }
 );
 
+watch(
+  () => overlayTilesets,
+  () => evaluateOverlays(),
+  { deep: true }
+);
+
+watchEffect(() => {
+  if (mapTileset?.value && map) {
+
+    if (baseLayer) {
+      baseLayer.remove();
+    }
+
+    baseLayer = L.tileLayer(mapTileset.value.urlTemplate, mapTileset.value.options).addTo(map);
+    if (overlayLayers.size) {
+      for (let layer of overlayLayers.values()) {
+        layer.redraw();
+      }
+    }
+  }
+});
+
 onMounted(async () => {
   map = L.map("leafletMapContainer", mapSettings);
-  L.tileLayer(`https://api.maptiler.com/maps/streets/256/{z}/{x}/{y}.png?key=NvYyjimTkUQBEjVebxLV`, {
-    maxZoom: 19,
-    apiKey: import.meta.env.VITE_MAPTILER_KEY,
-    attribution: 'Map tiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  } as L.TileLayerOptions).addTo(map);
   // Wind
   //L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png?appid={apiKey}', {
   //  maxZoom: 19,
