@@ -10,7 +10,7 @@ from django.utils.functional import cached_property
 from resticus.encoders import JSONEncoder
 
 from camp.apps.monitors.models import Monitor, Entry
-from camp.apps.monitors.purpleair import api
+from camp.apps.monitors.purpleair.api import purpleair_api
 from camp.utils.datetime import parse_datetime
 
 
@@ -21,40 +21,33 @@ class PurpleAir(Monitor):
 
     @cached_property
     def purple_id(self):
-        return self.data[0]['ID']
+        return self.data['sensor_index']
 
     @cached_property
     def thingspeak_key(self):
-        return self.data[0]['THINGSPEAK_PRIMARY_ID_READ_KEY']
-
-    def get_devices(self, retries=3):
-        devices = api.get_devices(self.purple_id, self.thingspeak_key)
-        if devices is None and retries:
-            time.sleep(5 * (4 - retries))
-            return self.get_devices(retries - 1)
-        return devices
+        return self.data['primary_key_a']
 
     @cached_property
     def channels(self):
-        return api.get_channels(self.data)
+        return purpleair_api.get_channels(self.data)
 
     def get_feeds(self, **options):
         return {
-            'a': api.get_feeds(self.channels['a'], **options),
-            'b': api.get_feeds(self.channels['b'], **options)
+            'a': purpleair_api.get_feeds(self.channels['a'], **options),
+            'b': purpleair_api.get_feeds(self.channels['b'], **options)
         }
 
     def update_data(self, device_data=None, retries=3):
         if device_data is None:
-            device_data = self.get_devices()
+            device_data = purpleair_api.get_monitor(self.purple_id, self.thingspeak_key)
 
         self.data = device_data
-        self.name = self.data[0]['Label']
+        self.name = self.data['name']
         self.position = Point(
-            float(self.data[0]['Lon']),
-            float(self.data[0]['Lat'])
+            float(self.data['longitude']),
+            float(self.data['latitude'])
         )
-        self.location = self.data[0]['DEVICE_LOCATIONTYPE']
+        self.location = self.LOCATION.inside if self.data['location_type'] == 1 else self.LOCATION.outside
 
         if not self.default_sensor:
             self.default_sensor = 'a'
