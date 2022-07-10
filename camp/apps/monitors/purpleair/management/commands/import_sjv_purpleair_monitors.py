@@ -7,7 +7,7 @@ from django.utils import timezone
 import geopandas as gpd
 from shapely.geometry import shape
 
-from camp.apps.monitors.purpleair import api
+from camp.apps.monitors.purpleair.api import purpleair_api
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.purpleair.forms import PurpleAirAddForm
 from camp.utils.datafiles import datafile
@@ -33,19 +33,24 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         counties = self.load_counties()
-        monitors = api.get_monitors()
+        monitors = purpleair_api.get_monitors(
+            fields=['sensor_index', 'name', 'longitude', 'latitude']
+        )
+
         for monitor in monitors:
-            if monitor.get('ParentID'):
-                continue
-            if not monitor.get('Lat') or not monitor.get('Lon'):
+            if not monitor.get('latitude') or not monitor.get('longitude'):
                 continue
 
-            point = shape({'type': 'Point', 'coordinates': [monitor['Lon'], monitor['Lat']]})
+            point = shape({
+                'type': 'Point',
+                'coordinates': [monitor['longitude'], monitor['latitude']]
+            })
+
             if counties.contains(point).any():
                 try:
-                    PurpleAir.objects.get(data__0__ID=monitor['ID'])
+                    PurpleAir.objects.get(data__sensor_index=monitor['sensor_index'])
                 except PurpleAir.DoesNotExist:
-                    print(monitor['Label'])
-                    form = PurpleAirAddForm({'purple_id': monitor['ID']})
+                    print(monitor['name'])
+                    form = PurpleAirAddForm({'purple_id': monitor['sensor_index']})
                     assert form.is_valid()
                     form.save()
