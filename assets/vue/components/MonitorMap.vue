@@ -116,21 +116,24 @@ function genMarker(m: Monitor): Marker | undefined {
   : "";
   marker.bindTooltip(`
     <div class="monitor-tooltip-container is-flex is-flex-direction-row is-flex-wrap-nowrap">
+
       <div class="monitor-tooltip-data-box monitor-tooltip-pmvalue"
         style="background-color: ${ m.markerParams.value_color }; color: ${ readableColor(m.markerParams.value_color) }; border: solid ${ toHex(darken(m.markerParams.value_color, .1)) }">
-        <p class="is-size-6">PM 2.5</p>
-        <p class="is-size-2 has-text-centered is-flex-grow-1">
+        <p class="is-size-6 has-text-centered">PM 2.5</p>
+        <p class="is-size-2 has-text-centered has-text-weight-semibold is-flex-grow-1">
           ${ Math.round(+m.data.latest[Display_Field]) }
         </p>
-        <p>(${ parseInt(displayField.updateDuration, 10) } minute average)</p>
+        <p>(${ parseInt(displayField.updateDuration, 10) } min avg)</p>
       </div>
-      ${ temperatureTemplate }
+
       <div class="monitor-tooltip-info is-flex is-flex-direction-column">
         <p class="monitor-tooltip-date">${ dateUtil.$prettyPrint(m.data.latest.timestamp) }</p>
         <p class="is-size-5 has-text-weight-bold is-underlined">${ m.data.name }</p>
         <p class="is-size-6">Last updated:</p>
         <p class="is-size-6">About ${ m.lastUpdated }</p>
       </div>
+
+    </div>
   `, markerOptions);
 
   return marker;
@@ -381,7 +384,8 @@ onBeforeUnmount(() => {
 }
 
 .monitor-tooltip-data-box {
-  padding: .2em;
+  padding: .75em 1em;
+  border-radius: 5px;
 }
 
 .monitor-tooltip-pmvalue {
