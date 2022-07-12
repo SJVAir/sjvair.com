@@ -13,7 +13,6 @@ from huey.contrib.djhuey import db_task, db_periodic_task, HUEY
 from huey.exceptions import TaskLockedException
 
 from camp.apps.monitors.models import Entry
-from camp.apps.monitors.purpleair import api
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
