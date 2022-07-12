@@ -14,6 +14,15 @@ const mapTilesets: Array<ILeafletTileLayer> = [
     }
   },
   {
+    label: "Satellite Hybrid",
+    urlTemplate: "https://api.maptiler.com/maps/hybrid/{z}/{x}/{y}.jpg?key={apiKey}",
+    options: {
+      maxZoom: 19,
+      apiKey: import.meta.env.VITE_MAPTILER_KEY,
+      attribution: '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>',
+    }
+  },
+  {
     label: "Topographique",
     urlTemplate: "https://api.maptiler.com/maps/topographique/{z}/{x}/{y}.png?key={apiKey}",
     options: {
