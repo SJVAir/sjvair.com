@@ -262,22 +262,7 @@ watchEffect(() => {
 
 onMounted(async () => {
   map = L.map("leafletMapContainer", mapSettings);
-  // Wind
-  //L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png?appid={apiKey}', {
-  //  maxZoom: 19,
-  //  attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
-  //  apiKey: import.meta.env.VITE_OPENWEATHERMAP_KEY,
-  //  opacity: 0.3
-  //} as any).addTo(map);
-  // Clouds
-  //L.tileLayer('http://{s}.tile.openweathermap.org/map/clouds/{z}/{x}/{y}.png?appid={apiKey}', {
-  //  maxZoom: 19,
-  //  attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
-  //  apiKey: import.meta.env.VITE_OPENWEATHERMAP_KEY,
-  //  opacity: 0.5
-  //} as any).addTo(map);
 
-  //const pane = map.getPane("markerPane");
   markersGroup.addTo(map);
 
   map.createPane("purpleAir").style.zIndex = "601";
