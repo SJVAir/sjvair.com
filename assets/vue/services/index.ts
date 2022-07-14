@@ -4,4 +4,3 @@ export * from "./D3Mono";
 export * from "./Monitors";
 export * from "./MonitorsBackground";
 export * from "./MonitorsMono";
-export * from "./MonitorVisibility";

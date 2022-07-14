@@ -1,22 +1,32 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, onUpdated, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, toRefs, watch, watchEffect } from "vue";
 import { useRouter } from "vue-router";
 import * as L from "leaflet";
 import "leaflet-svg-shape-markers";
 import "leaflet/dist/leaflet.css";
 import { darken, readableColor, toHex } from "color2k";
 import { Point } from "leaflet";
-import { Colors, dateUtil, valueToColor } from "../modules";
-
 import { Display_Field, MonitorField } from "../models";
+import { dateUtil } from "../modules";
 
 import type { Marker } from "leaflet";
 import type { Monitor } from "../models";
 import type { MonitorsService } from "../services";
-import type { MonitorVisibility } from "../services";
+import type { ILeafletTileLayer, IMonitorVisibility, IOverlayTileset } from "../types";
+
+// Props match IDisplayOptionsExports, but defineProps does not currently
+// accept complex types.
+// Relevant issue: https://github.com/vuejs/core/issues/4294#issuecomment-1128852150
+// RFC documentation: https://github.com/vuejs/rfcs/blob/master/active-rfcs/0040-script-setup.md#type-only-propsemit-declarations
+const props = defineProps<{
+  mapTileset?: ILeafletTileLayer;
+  overlayTilesets?: Array<IOverlayTileset>;
+  visibility?: IMonitorVisibility;
+}>();
+
+const { mapTileset, overlayTilesets, visibility } = toRefs(props);
 
 const monitorsService = inject<MonitorsService>("MonitorsService")!;
-const visibility = inject<MonitorVisibility>("MonitorVisibility")!;
 const router = useRouter();
 
 const markers: Record<Monitor["data"]["id"], L.Marker> = {};
@@ -31,16 +41,40 @@ const mapSettings = {
   zoom: 8
 };
 
+const zoomPanOptions: L.ZoomPanOptions = {
+  animate: true,
+  duration: .5
+};
+
 let map: L.Map;
-let centerCoords: L.LatLng = mapSettings.center;
+let baseLayer: L.TileLayer;
+const overlayLayers: Map<string, L.TileLayer> = new Map();
 let interval: number = 0;
 
-const tempLevels = [
-  { min: -Infinity, color: Colors.blue },
-  { min: 65, color: Colors.green },
-  { min: 78, color: Colors.yellow },
-  { min: 95, color: Colors.red }
-];
+//const tempLevels = [
+//  { min: -Infinity, color: Colors.blue },
+//  { min: 65, color: Colors.green },
+//  { min: 78, color: Colors.yellow },
+//  { min: 95, color: Colors.red }
+//];
+
+function evaluateOverlays() {
+  if (overlayTilesets && overlayTilesets.value?.length) {
+    for (let tileset of overlayTilesets.value) {
+      if (tileset.isChecked && !overlayLayers.has(tileset.label)) {
+        overlayLayers.set(
+          tileset.label,
+          L.tileLayer(tileset.urlTemplate, tileset.options).addTo(map)
+        );
+
+      } else if (!tileset.isChecked && overlayLayers.has(tileset.label)) {
+        overlayLayers.get(tileset.label)!.remove();
+        overlayLayers.delete(tileset.label);
+
+      }
+    }
+  }
+}
 
 function getMarkerPaneName(m: Monitor): string | undefined {
   switch(m.data.device) {
@@ -73,52 +107,80 @@ function genMarker(m: Monitor): Marker | undefined {
   });
 
 
-  const tempColor = valueToColor(+m.data.latest.fahrenheit, tempLevels);
-  const temperatureTemplate = (m.data.latest.fahrenheit)
-  ? `
-      <div class="monitor-tooltip-data-box monitor-tooltip-temp" style="background-color: ${ tempColor }; color: ${ readableColor(tempColor) }; border: solid ${ toHex(darken(tempColor, .1))}">
-        <p class="is-size-6 has-text-centered">Current Temp</p>
-        <p class="is-size-2 has-text-centered is-flex-grow-1">
-          ${ +m.data.latest.fahrenheit }&#176;F
-        </p>
-      </div>
-    `
-  : "";
+  //const tempColor = valueToColor(+m.data.latest.fahrenheit, tempLevels);
+  //const temperatureTemplate = (m.data.latest.fahrenheit)
+  //? `
+  //    <div class="monitor-tooltip-data-box monitor-tooltip-temp" style="background-color: ${ tempColor }; color: ${ readableColor(tempColor) }; border: solid ${ toHex(darken(tempColor, .1))}">
+  //      <p class="is-size-6 has-text-centered">Current Temp</p>
+  //      <p class="is-size-2 has-text-centered is-flex-grow-1">
+  //        ${ +m.data.latest.fahrenheit }&#176;F
+  //      </p>
+  //    </div>
+  //  `
+  //: "";
   marker.bindTooltip(`
     <div class="monitor-tooltip-container is-flex is-flex-direction-row is-flex-wrap-nowrap">
+
       <div class="monitor-tooltip-data-box monitor-tooltip-pmvalue"
         style="background-color: ${ m.markerParams.value_color }; color: ${ readableColor(m.markerParams.value_color) }; border: solid ${ toHex(darken(m.markerParams.value_color, .1)) }">
-        <p class="is-size-6">PM 2.5</p>
-        <p class="is-size-2 has-text-centered is-flex-grow-1">
+        <p class="is-size-6 has-text-centered">PM 2.5</p>
+        <p class="is-size-2 has-text-centered has-text-weight-semibold is-flex-grow-1">
           ${ Math.round(+m.data.latest[Display_Field]) }
         </p>
-        <p>(${ parseInt(displayField.updateDuration, 10) } minute average)</p>
+        <p>(${ parseInt(displayField.updateDuration, 10) } min avg)</p>
       </div>
-      ${ temperatureTemplate }
+
       <div class="monitor-tooltip-info is-flex is-flex-direction-column">
         <p class="monitor-tooltip-date">${ dateUtil.$prettyPrint(m.data.latest.timestamp) }</p>
         <p class="is-size-5 has-text-weight-bold is-underlined">${ m.data.name }</p>
         <p class="is-size-6">Last updated:</p>
         <p class="is-size-6">About ${ m.lastUpdated }</p>
       </div>
+
+    </div>
   `, markerOptions);
 
   return marker;
 }
 
-function selectMonitor(marker: L.Marker, monitor: Monitor) {
+function isVisible(m: Monitor): boolean {
+  // showSJVAirPurple
+  // showSJVAirBAM
+  // showPurpleAir
+  // showPurpleAirInside
+  // showAirNow
+
+  if (visibility && visibility.value) {
+    if(!visibility.value.displayInactive.isChecked && !m.data.is_active){
+      return false;
+    }
+
+    if (m.data.device == 'PurpleAir') {
+      return (m.data.is_sjvair 
+        ? visibility.value.SJVAirPurple.isChecked
+        : visibility.value.PurpleAir.isChecked) && (visibility.value.PurpleAirInside.isChecked || m.data.location == 'outside');
+
+    } else if (m.data.device == 'BAM1022'){
+      return visibility.value.SJVAirBAM.isChecked;
+
+    }  else if (m.data.device == 'AirNow'){
+      return visibility.value.AirNow.isChecked;
+    }
+  }
+  return false;
+}
+
+function selectMonitor(monitor: Monitor) {
   router.push({
     name: "details",
     params: {
       id: monitor.data.id
     }
   });
-
-  centerCoords = marker.getLatLng();
 }
 
 function updateMapBounds() {
-  if (!monitorsService.activeMonitor) {
+  if (!monitorsService.activeMonitor && Object.keys(markers).length > 0) {
     map.fitBounds(markersGroup.getBounds());
   }
 }
@@ -143,10 +205,10 @@ function updateMapMarkers() {
       markers[id] = marker;
 
       marker.addEventListener('click', () => {
-        selectMonitor(marker, monitor);
+        selectMonitor(monitor);
       });
       
-      if (visibility.isVisible(monitor)) {
+      if (isVisible(monitor)) {
         markersGroup.addLayer(marker);
       }
     }
@@ -162,7 +224,7 @@ function updateMapMarkerVisibility() {
   for (let id in markers) {
     const monitor = monitorsService.monitors[id];
 
-    if (visibility.isVisible(monitor)) {
+    if (isVisible(monitor)) {
       markersGroup.addLayer(markers[id]);
 
     } else {
@@ -178,29 +240,47 @@ watch(
   { deep: true }
 );
 
+watch(
+  () => overlayTilesets,
+  () => evaluateOverlays(),
+  { deep: true }
+);
+
+watch(
+  () => monitorsService.activeMonitor,
+  () => {
+    map.invalidateSize();
+    // If there's an active monitor, center it and zoom in
+    if (monitorsService.activeMonitor) {
+      // Don't adjust the zoom if we're already zoomed in greater than 10
+      const zoom = Math.max(map.getZoom(), 10);
+      const coordinates = monitorsService.activeMonitor.data.position.coordinates;
+      map.flyTo(coordinates, zoom, zoomPanOptions);
+    } else {
+      map.setView(mapSettings.center, mapSettings.zoom, zoomPanOptions);
+    }
+  }
+);
+
+watchEffect(() => {
+  if (mapTileset?.value && map) {
+
+    if (baseLayer) {
+      baseLayer.remove();
+    }
+
+    baseLayer = L.tileLayer(mapTileset.value.urlTemplate, mapTileset.value.options).addTo(map);
+    if (overlayLayers.size) {
+      for (let layer of overlayLayers.values()) {
+        layer.redraw();
+      }
+    }
+  }
+});
+
 onMounted(async () => {
   map = L.map("leafletMapContainer", mapSettings);
-  L.tileLayer(`https://api.maptiler.com/maps/streets/256/{z}/{x}/{y}.png?key=NvYyjimTkUQBEjVebxLV`, {
-    maxZoom: 19,
-    apiKey: import.meta.env.VITE_MAPTILER_KEY,
-    attribution: 'Map tiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  } as L.TileLayerOptions).addTo(map);
-  // Wind
-  //L.tileLayer('http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png?appid={apiKey}', {
-  //  maxZoom: 19,
-  //  attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
-  //  apiKey: import.meta.env.VITE_OPENWEATHERMAP_KEY,
-  //  opacity: 0.3
-  //} as any).addTo(map);
-  // Clouds
-  //L.tileLayer('http://{s}.tile.openweathermap.org/map/clouds/{z}/{x}/{y}.png?appid={apiKey}', {
-  //  maxZoom: 19,
-  //  attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
-  //  apiKey: import.meta.env.VITE_OPENWEATHERMAP_KEY,
-  //  opacity: 0.5
-  //} as any).addTo(map);
 
-  //const pane = map.getPane("markerPane");
   markersGroup.addTo(map);
 
   map.createPane("purpleAir").style.zIndex = "601";
@@ -212,18 +292,6 @@ onMounted(async () => {
 
   await loadMonitors();
   updateMapBounds();
-});
-
-onUpdated(() => {
-  // Tell Leaflet to re-evaluate the map container's dimensions
-  map.invalidateSize();
-
-  // If there's an active monitor, center it and zoom in
-  if (monitorsService.activeMonitor) {
-    // Don't adjust the zoom if we're already zoomed in greater than 10
-    const zoom = Math.max(map.getZoom(), 10);
-    map.setView(centerCoords, zoom, { animate: true });
-  }
 });
 
 onBeforeUnmount(() => {
@@ -238,24 +306,28 @@ onBeforeUnmount(() => {
 <template>
   <div :class="mapIsMaximised" class="notranslate map-container" translate="no">
     <div id="leafletMapContainer" class="map-el"></div>
-    <div class="map-legend-container card is-flex is-flex-direction-column">
-      <p class="has-text-centered has-font-weight-semibold">PM Value Colors</p>
+    <div class="map-legend-container card columns column is-half-mobile is-half-tablet is-one-fifth-desktop is-flex is-flex-direction-column">
+      <p class="has-text-centered has-font-weight-semibold">PM 2.5 Concentration</p>
       <div class="map-legend">&nbsp;</div>
       <div class="map-legend-lines is-flex">
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-      </div>
-      <div class="map-legend-labels is-flex is-size-7-mobile">
-        <span>0</span>
-        <span>12</span>
-        <span>35</span>
-        <span>55</span>
-        <span>150</span>
-        <span>250</span>
+        <div>
+          <span>0</span>
+        </div>
+        <div>
+          <span>12</span>
+        </div>
+        <div>
+          <span>35</span>
+        </div>
+        <div>
+          <span>55</span>
+        </div>
+        <div>
+          <span>150</span>
+        </div>
+        <div>
+          <span>250</span>
+        </div>
       </div>
     </div>
   </div>
@@ -303,7 +375,8 @@ onBeforeUnmount(() => {
 }
 
 .monitor-tooltip-data-box {
-  padding: .2em;
+  padding: .75em 1em;
+  border-radius: 5px;
 }
 
 .monitor-tooltip-pmvalue {
@@ -315,33 +388,46 @@ onBeforeUnmount(() => {
 }
 
 .map-legend-container {
-  width: calc(25vw + 1em);
+  min-width: 200px;
   position: absolute;
   margin: -7rem 0 -100% 0.65rem;
-  padding: .5em 1em;
+  padding: .5em 1.5em;
 }
 
 .map-legend {
   background: linear-gradient(90deg, #00e400 0%, #ffff00 20%, #ff7e00 40%, #ff0000 60%, #8f3f97 80%, #7e0023 100%);
   display: inline-block;
-  width: 100%;
   height: 1.5em;
 }
 
-.map-legend-lines *, .map-legend-labels * {
-  width: calc(100% / 5);
-  flex-shrink: 0;
+.map-legend-lines {
+  margin-bottom: 1.5em;
 }
 
-.map-legend-lines * {
+.map-legend-lines div {
+  width: calc(100% / 5);
+  flex-shrink: 0;
   height: .5em;
   border-left: 1px solid black;
 }
 
-.map-legend-labels {
-  text-align: center;
+.map-legend-lines div:last-child {
+    position: relative;
+    right: 1px;
+  }
+
+.map-legend-lines span {
   position: relative;
-  right: 2.4vw;
-  margin-top: .25em;
+  top: .5em;
+  right: .3em;
 }
+
+.map-legend-lines div:not(:first-child) span {
+  right: .5em;
+}
+
+.map-legend-lines div:nth-child(n+5) span:first-child {
+  right: .8em;
+}
+
 </style>
