@@ -130,7 +130,7 @@ export interface IMonitorManager {
 
 export interface IMonitorPosition {
   type: string;
-  coordinates: Array<number>;
+  coordinates: [number, number];
 }
 
 export interface IMonitorSensorData {
