@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, toRefs, watch, watchEffect } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, toRefs, watch, watchEffect } from "vue";
 import { useRouter } from "vue-router";
 import * as L from "leaflet";
 import "leaflet-svg-shape-markers";
@@ -7,7 +7,7 @@ import "leaflet/dist/leaflet.css";
 import { darken, readableColor, toHex } from "color2k";
 import { Point } from "leaflet";
 import { Display_Field, MonitorField } from "../models";
-import { Colors, dateUtil, valueToColor } from "../modules";
+import { dateUtil } from "../modules";
 
 import type { Marker } from "leaflet";
 import type { Monitor } from "../models";
@@ -41,18 +41,22 @@ const mapSettings = {
   zoom: 8
 };
 
+const zoomPanOptions: L.ZoomPanOptions = {
+  animate: true,
+  duration: .5
+};
+
 let map: L.Map;
 let baseLayer: L.TileLayer;
 const overlayLayers: Map<string, L.TileLayer> = new Map();
-let centerCoords: L.LatLng = mapSettings.center;
 let interval: number = 0;
 
-const tempLevels = [
-  { min: -Infinity, color: Colors.blue },
-  { min: 65, color: Colors.green },
-  { min: 78, color: Colors.yellow },
-  { min: 95, color: Colors.red }
-];
+//const tempLevels = [
+//  { min: -Infinity, color: Colors.blue },
+//  { min: 65, color: Colors.green },
+//  { min: 78, color: Colors.yellow },
+//  { min: 95, color: Colors.red }
+//];
 
 function evaluateOverlays() {
   if (overlayTilesets && overlayTilesets.value?.length) {
@@ -103,17 +107,17 @@ function genMarker(m: Monitor): Marker | undefined {
   });
 
 
-  const tempColor = valueToColor(+m.data.latest.fahrenheit, tempLevels);
-  const temperatureTemplate = (m.data.latest.fahrenheit)
-  ? `
-      <div class="monitor-tooltip-data-box monitor-tooltip-temp" style="background-color: ${ tempColor }; color: ${ readableColor(tempColor) }; border: solid ${ toHex(darken(tempColor, .1))}">
-        <p class="is-size-6 has-text-centered">Current Temp</p>
-        <p class="is-size-2 has-text-centered is-flex-grow-1">
-          ${ +m.data.latest.fahrenheit }&#176;F
-        </p>
-      </div>
-    `
-  : "";
+  //const tempColor = valueToColor(+m.data.latest.fahrenheit, tempLevels);
+  //const temperatureTemplate = (m.data.latest.fahrenheit)
+  //? `
+  //    <div class="monitor-tooltip-data-box monitor-tooltip-temp" style="background-color: ${ tempColor }; color: ${ readableColor(tempColor) }; border: solid ${ toHex(darken(tempColor, .1))}">
+  //      <p class="is-size-6 has-text-centered">Current Temp</p>
+  //      <p class="is-size-2 has-text-centered is-flex-grow-1">
+  //        ${ +m.data.latest.fahrenheit }&#176;F
+  //      </p>
+  //    </div>
+  //  `
+  //: "";
   marker.bindTooltip(`
     <div class="monitor-tooltip-container is-flex is-flex-direction-row is-flex-wrap-nowrap">
 
@@ -166,15 +170,13 @@ function isVisible(m: Monitor): boolean {
   return false;
 }
 
-function selectMonitor(marker: L.Marker, monitor: Monitor) {
+function selectMonitor(monitor: Monitor) {
   router.push({
     name: "details",
     params: {
       id: monitor.data.id
     }
   });
-
-  centerCoords = marker.getLatLng();
 }
 
 function updateMapBounds() {
@@ -203,7 +205,7 @@ function updateMapMarkers() {
       markers[id] = marker;
 
       marker.addEventListener('click', () => {
-        selectMonitor(marker, monitor);
+        selectMonitor(monitor);
       });
       
       if (isVisible(monitor)) {
@@ -244,6 +246,22 @@ watch(
   { deep: true }
 );
 
+watch(
+  () => monitorsService.activeMonitor,
+  () => {
+    map.invalidateSize();
+    // If there's an active monitor, center it and zoom in
+    if (monitorsService.activeMonitor) {
+      // Don't adjust the zoom if we're already zoomed in greater than 10
+      const zoom = Math.max(map.getZoom(), 10);
+      const coordinates = monitorsService.activeMonitor.data.position.coordinates;
+      map.flyTo(coordinates, zoom, zoomPanOptions);
+    } else {
+      map.setView(mapSettings.center, mapSettings.zoom, zoomPanOptions);
+    }
+  }
+);
+
 watchEffect(() => {
   if (mapTileset?.value && map) {
 
@@ -274,18 +292,6 @@ onMounted(async () => {
 
   await loadMonitors();
   updateMapBounds();
-});
-
-onUpdated(() => {
-  // Tell Leaflet to re-evaluate the map container's dimensions
-  map.invalidateSize();
-
-  // If there's an active monitor, center it and zoom in
-  if (monitorsService.activeMonitor) {
-    // Don't adjust the zoom if we're already zoomed in greater than 10
-    const zoom = Math.max(map.getZoom(), 10);
-    map.setView(centerCoords, zoom, { animate: true });
-  }
 });
 
 onBeforeUnmount(() => {
