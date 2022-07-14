@@ -1,6 +1,8 @@
 import { Monitor } from "../models";
 import type { IMonitorData, IMonitorManager, MonitorId, MonitorSerachParams, MonitorsRecord, NonFunctionPropertyNames } from "../types";
 
+// Serach by address
+
 export class MonitorManager implements IMonitorManager {
   private _airNow: MonitorsRecord = {};
   private _monitors: MonitorsRecord = {};
