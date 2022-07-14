@@ -134,8 +134,9 @@ REDIS_URL = None
 for var in ["REDIS_URL", "OPENREDIS_URL"]:
     REDIS_URL = os.environ.get(var)
     if REDIS_URL is not None:
+        if REDIS_URL.startswith('rediss'):
+            REDIS_URL = f"{REDIS_URL}{'&' if '?' in REDIS_URL else '?'}ssl_cert_reqs=none"
         break
-
 
 # Auth
 
