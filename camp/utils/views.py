@@ -1,3 +1,6 @@
+import hashlib
+import urllib
+
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.views import SuccessURLAllowedHostsMixin
@@ -14,6 +17,31 @@ from huey.contrib.djhuey import HUEY
 from resticus.http import JSONResponse
 
 from camp.apps.monitors.models import Entry
+
+
+def get_view_cache_key(view, query=None):
+    '''
+        Given an instance of a class-based view, return
+        a suitable key for caching the response.
+    '''
+    key = f'{view.__class__.__module__}.{view.__class__.__name__}'
+
+    # Encode the kwargs into the key
+    if view.kwargs:
+        encoded = hashlib.sha1(urllib.parse.urlencode(query).encode()).hexdigest()
+        key = f'{key}|kw:{encoded}'
+
+    # Encode the url params into the key
+    # TODO: Account for view.filter_class, so that the cache
+    # isn't polluted with garbage kwargs.
+    params = view.request.GET.copy()
+    params.pop('_cc', None)
+    if params:
+        encoded = hashlib.sha1(urllib.parse.urlencode(params, doseq=True).encode()).hexdigest()
+        key = f'{key}|q:{encoded}'
+
+    print(key, len(key))
+    return key
 
 
 class RedirectViewMixin(SuccessURLAllowedHostsMixin):
