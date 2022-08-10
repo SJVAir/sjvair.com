@@ -43,7 +43,7 @@ const overlayTilesets: Array<IOverlayTileset> = reactive([
     icon: "fa-wind",
     isChecked: false,
     label: "Wind",
-    urlTemplate: "http://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png?appid={apiKey}",
+    urlTemplate: "https://{s}.tile.openweathermap.org/map/wind/{z}/{x}/{y}.png?appid={apiKey}",
     options: {
       maxZoom: 19,
       attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
@@ -56,7 +56,7 @@ const overlayTilesets: Array<IOverlayTileset> = reactive([
     icon: "fa-cloud",
     isChecked: false,
     label: "Clouds",
-    urlTemplate: "http://{s}.tile.openweathermap.org/map/clouds/{z}/{x}/{y}.png?appid={apiKey}",
+    urlTemplate: "https://{s}.tile.openweathermap.org/map/clouds/{z}/{x}/{y}.png?appid={apiKey}",
     options: {
       maxZoom: 19,
       attribution: 'Map data &copy; <a href="http://openweathermap.org">OpenWeatherMap</a>',
