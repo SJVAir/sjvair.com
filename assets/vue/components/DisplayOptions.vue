@@ -36,7 +36,7 @@ const mapTilesets: Array<ILeafletTileLayer> = [
 const displayOptionsActive: Ref<boolean> = ref(false);
 
 // @ts-ignore: Cannot find name 'structuredClone' - typeings included by TS4.8
-let mapTileset: ILeafletTileLayer = reactive(structuredClone(mapTilesets.find(t => t.isDefault)!));
+let mapTileset: ILeafletTileLayer = reactive(Object.assign({}, mapTilesets.find(t => t.isDefault)!));
 
 const overlayTilesets: Array<IOverlayTileset> = reactive([
   {
