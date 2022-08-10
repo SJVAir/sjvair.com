@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 
 from datetime import datetime
@@ -5,6 +6,7 @@ from datetime import datetime
 from resticus import generics, http
 
 from django import forms
+from django.core.cache import cache
 from django.db.models import QuerySet
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -13,6 +15,7 @@ from django.utils.functional import cached_property
 from camp.apps.monitors.models import Entry, Monitor
 from camp.apps.monitors.methane.models import Methane
 from camp.utils.forms import DateRangeForm
+from camp.utils.views import get_view_cache_key
 from .filters import EntryFilter, MonitorFilter
 from .forms import EntryForm, MethaneDataForm
 from .serializers import EntrySerializer, MonitorSerializer
@@ -31,11 +34,33 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
     filter_class = MonitorFilter
     paginate = False
 
+    def get(self, request, *args, **kwargs):
+        cache_key = get_view_cache_key(self)
+
+        clear_cache = '_cc' in request.GET
+        if clear_cache:
+            cache.delete(cache_key)
+        else:
+            data = cache.get(cache_key)
+            if data is not None:
+                return data
+
+        response = super().get(request, *args, **kwargs)
+
+        # cache for 90 seconds, but we have a task to
+        # refresh the cache every 60 seconds
+        cache.set(cache_key, response, 90)
+        return response
+
     def get_queryset(self):
         queryset = super().get_queryset()
         queryset = queryset.select_related('latest')
         queryset = queryset.exclude(is_hidden=True)
         return queryset
+
+    def get_cache_key(self):
+        key = str(self.__class__)
+
 
 
 class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
