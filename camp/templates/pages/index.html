@@ -1,18 +1,17 @@
 {% extends 'base.html' %}
 {% load static %}
-{% load django_vite %}
 
-
-    
-
-{% block extra-head %}{% vite_hmr_client %}{% endblock %}
+{% block extra-head %}
+<link type="text/css" rel="stylesheet" href="{% static 'monitor-map/sjvairMonitorMap.css' %}" />
+<script type="module" src="{% static 'monitor-map/sjvairMonitorMap.js' %}" async defer></script>
+{% endblock %}
 
 {% block title %}{{ block.super }}{% endblock %}
 
 {% block body-class %}map{% endblock %}
 
 {% block main %}
-<div id="app"></div>
+<div id="SJVAirMonitorMap"></div>
 {% endblock %}
 
 {# No footer on the homepage #}
@@ -30,10 +29,5 @@
     };
 </script>
 
-{% vite_asset 'main.ts' %}
 
-<!--
-<script type="text/javascript" src="{% static 'js/lib/vue.min.js' %}"></script>
-<script type="text/javascript" src="{% static 'js/map.umd.min.js' %}"></script>
--->
 {% endblock %}

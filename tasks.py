@@ -58,34 +58,21 @@ def collectstatic(ctx):
     ctx.run('python manage.py collectstatic --noinput', pty=True)
 
 
-def vue(ctx, name, dev_mode):
-    mode = "developement" if dev_mode else "production"
-    mkdir('./dist/js/lib')
-
-    # Copy vue itself
+@invoke.task()
+def import_monitor_map(ctx):
+    # Copy over monitor map
+    ctx.run('rm -rf ./dist/monitor-map')
     ctx.run(f'''
-        cp \
-        {path('node_modules/vue/dist/vue.min.js')} \
-        {path('./dist/js/lib/vue.min.js')}
+        cp -r \
+        {path('node_modules/@sjvair/monitor-map/dist/module')} \
+        {path('./dist/monitor-map')}
     ''')
-
-    # Run the build for the map
-    command = f'''yarn build \
-        --mode {mode} \
-        --no-clean \
-        --formats umd-min \
-        --target lib \
-        --name {name} \
-        --dest {path('./dist/js')} \
-        {assets(f'./{name}/main.js')}
-    '''
-    ctx.run(command, pty=True, warn=False)
 
 
 @invoke.task()
-def build(ctx, dev=False):
-    ctx.run('rm -rf ./public/static/assets')
-    ctx.run('yarn build')
+def build(ctx):
+    ctx.run('rm -rf ./public/static')
+    import_monitor_map(ctx)
     styles(ctx)
     collectstatic(ctx)
     optimize_images(ctx)
@@ -98,6 +85,5 @@ def watch(ctx):
     server.watch(path('./assets/img/'), lambda: collectstatic(ctx))
     server.watch(assets('js/**'), lambda: collectstatic(ctx))
     server.watch(assets('sass/**'), lambda: [styles(ctx), collectstatic(ctx)])
-    #server.watch(assets('map/**'), lambda: [vue(ctx, 'map', True), collectstatic(ctx)])
     server.watch(path('./dist/lib/'), lambda: collectstatic(ctx))
     server.serve()
