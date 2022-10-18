@@ -72,6 +72,7 @@ def import_monitor_map(ctx):
 @invoke.task()
 def build(ctx):
     ctx.run('rm -rf ./public/static')
+    ctx.run('yarn')
     import_monitor_map(ctx)
     styles(ctx)
     collectstatic(ctx)
