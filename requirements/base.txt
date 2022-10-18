@@ -20,7 +20,6 @@ django-smalluuid==1.2.1
 django-storages==1.12.3
 django-vanilla-views==3.0.0
 django-widget-tweaks==1.4.12
-django-vite==2.0.2
 
 argon2-cffi==21.3.0
 asgiref==3.5.2

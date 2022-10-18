@@ -1,9 +1,9 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path, re_path
+from django.urls import include, path, re_path 
 
-from camp.utils.views import PageTemplate, AdminStats, FlushQueue
+from camp.utils.views import PageTemplate, AdminStats, FlushQueue 
 
 admin.site.site_title = "SJVAir Admin"
 admin.site.site_header = "SJVAir Admin"
@@ -12,6 +12,10 @@ admin.site.site_header = "SJVAir Admin"
 urlpatterns = [
     path('api/', include('camp.api.urls', namespace='api')),
     path('account/', include(('camp.apps.accounts.urls', 'account'), namespace='account')),
+
+    # @sjvair/monitor-map specific routes
+    path('monitor/<monitor_id>/', PageTemplate.as_view(template_name='pages/index.html')),
+    path('widget/', PageTemplate.as_view(template_name='pages/widget.html')),
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),

@@ -58,7 +58,6 @@ INSTALLED_APPS = [
     'admin_honeypot',
     'django_extensions',
     'django_filters',
-    'django_vite',
     'form_utils',
     'huey.contrib.djhuey',
     'livereload',
@@ -201,22 +200,6 @@ LANGUAGES = (
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/2.2/howto/static-files/
-
-# Where ViteJS assets are built
-DJANGO_VITE_ASSETS_PATH = BASE_DIR.child('dist', 'vue')
-
-# Static directory where built assets are collected (/static/vue/)
-DJANGO_VITE_STATIC_URL_PREFIX = "vue"
-
-# If use HMR or not.
-DJANGO_VITE_DEV_MODE = DEBUG
-
-if DJANGO_VITE_DEV_MODE:
-    import mimetypes
-    mimetypes.add_type('application/javascript', '.ts', True)
-else:
-    DJANGO_VITE_MANIFEST_PATH = BASE_DIR.child('public', 'static', 'manifest.json')
-
 STATIC_ROOT = BASE_DIR.child('public', 'static')
 
 STATIC_URL = '/static/'
@@ -224,7 +207,6 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     BASE_DIR.child('assets'),
     BASE_DIR.child('dist'),
-    DJANGO_VITE_ASSETS_PATH,
 ]
 
 STATICFILES_FINDERS = [
