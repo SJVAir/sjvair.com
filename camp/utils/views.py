@@ -44,6 +44,7 @@ def get_view_cache_key(view, query=None):
     return key
 
 
+
 class RedirectViewMixin(SuccessURLAllowedHostsMixin):
     redirect_field_name = 'next'
 
@@ -73,6 +74,18 @@ class RedirectViewMixin(SuccessURLAllowedHostsMixin):
 
 
 class PageTemplate(generic.TemplateView):
+    def get_template_names(self):
+        # Do we have a template name override?
+        if self.template_name is not None:
+            return [self.template_name]
+
+        # No override, derive the template from the URL path.
+        path = self.request.path.strip('/')
+        possible_templates = ['pages/{0}.html'.format(path or 'index')]
+        if path:
+            possible_templates.append('pages/{0}/index.html'.format(path))
+        return possible_templates
+
     def get(self, request, *args, **kwargs):
         # Enforce a trailing slash.
         if not request.path.endswith('/'):
@@ -82,11 +95,9 @@ class PageTemplate(generic.TemplateView):
         if request.path.strip('/').split('/')[-1].startswith('_'):
             raise Http404
 
-        # Set the template_name based on the URL path and raise a 404 if it doesn't exist.
-        self.template_name = 'pages/{0}.html'.format(request.path.strip('/') or 'index')
-
+        # If URL path doesn't exist as a template, return 404.
         try:
-            loader.get_template(self.template_name)
+            loader.select_template(self.get_template_names())
         except TemplateDoesNotExist:
             raise Http404
 

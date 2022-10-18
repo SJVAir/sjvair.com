@@ -92,7 +92,7 @@ class Monitor(models.Model):
         return (now - self.latest.timestamp) < cutoff
 
     def get_absolute_url(self):
-        return f'/#/monitor/{self.pk}'
+        return f'/monitor/{self.pk}'
 
     def get_current_pm25_average(self, minutes):
         end_time = timezone.now()
