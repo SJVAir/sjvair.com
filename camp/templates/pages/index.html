@@ -1,8 +1,10 @@
-{% extends 'base.html' %}
+{% extends 'page.html' %}
 {% load static %}
 
+{# @sjvair/monitor-map #}
 {% block extra-head %}
-<link type="text/css" rel="stylesheet" href="{% static 'monitor-map/sjvairMonitorMap.css' %}" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+<link type="text/css" rel="stylesheet" href="{% static 'monitor-map/main.css' %}" />
 <script type="module" src="{% static 'monitor-map/sjvairMonitorMap.js' %}" async defer></script>
 {% endblock %}
 
