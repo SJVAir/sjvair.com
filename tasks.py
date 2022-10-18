@@ -61,11 +61,11 @@ def collectstatic(ctx):
 @invoke.task()
 def import_monitor_map(ctx):
     # Copy over monitor map
-    ctx.run('rm -rf ./dist/monitor-map')
+    ctx.run('rm -rf ./dist/{monitor-map,widget}')
     ctx.run(f'''
         cp -r \
-        {path('node_modules/@sjvair/monitor-map/dist/module')} \
-        {path('./dist/monitor-map')}
+        {path('node_modules/@sjvair/monitor-map/dist/{monitor-map,widget}')} \
+        {path('./dist')}
     ''')
 
 
