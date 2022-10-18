@@ -61,7 +61,7 @@ def collectstatic(ctx):
 @invoke.task()
 def import_monitor_map(ctx):
     # Copy over monitor map
-    ctx.run('rm -rf ./dist/{monitor-map,widget}')
+    ctx.run(f'rm -rf {path("./dist/{monitor-map,widget}")}')
     ctx.run(f'''
         cp -r \
         {path('node_modules/@sjvair/monitor-map/dist/{monitor-map,widget}')} \
@@ -71,8 +71,10 @@ def import_monitor_map(ctx):
 
 @invoke.task()
 def build(ctx):
+    # Directory prep
     ctx.run('rm -rf ./public/static')
-    ctx.run('yarn')
+    mkdir(path('dist'))
+
     import_monitor_map(ctx)
     styles(ctx)
     collectstatic(ctx)
