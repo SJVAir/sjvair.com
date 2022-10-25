@@ -34,7 +34,7 @@ class Monitor(models.Model):
     COUNTIES = Choices(*County.names)
     LOCATION = Choices('inside', 'outside')
 
-    LAST_ACTIVE_LIMIT = 60 * 10
+    LAST_ACTIVE_LIMIT = 60 * 60
     PAYLOAD_SCHEMA = None
     SENSORS = ['']
 
