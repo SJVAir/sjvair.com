@@ -7,7 +7,7 @@
     access_key: f6d59f1f-c5e7-4260-b1eb-d0bb6531b072
     position: SRID=4326;POINT (-119.798678 36.762742)
     location: outside
-    latest: {}
+    latest: null
 - model: bam.bam1022
   pk: gO9_akFVTVW6mYBifOtoxg
   fields: {}
