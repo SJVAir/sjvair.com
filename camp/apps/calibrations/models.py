@@ -43,6 +43,14 @@ class Calibrator(TimeStampedModel):
         blank=True, null=True, related_name='calibrator_current',
         on_delete=models.SET_NULL)
 
+    # manual_calibration = models.OneToOneField('calibrations.Calibration',
+    #     blank=True, null=True, related_name='calibrator_current',
+    #     on_delete=models.SET_NULL)
+
+    # auto_calibration = models.OneToOneField('calibrations.Calibration',
+    #     blank=True, null=True, related_name='calibrator_current',
+    #     on_delete=models.SET_NULL)
+
     def get_distance(self):
         return geopy_distance(
             (self.reference.position.y, self.reference.position.x),

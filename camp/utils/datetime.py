@@ -11,8 +11,16 @@ def make_aware(timestamp):
 
 
 def parse_datetime(value, required=False):
-    if isinstance(value, datetime):
-        return make_aware(value)
-    value = value.replace('T', ' ').strip('Z')
-    value = forms.DateTimeField(required=required).clean(value)
+    if not isinstance(value, datetime):
+        value = value.replace('T', ' ').strip('Z')
+        value = forms.DateTimeField(required=required).clean(value)
+    return make_aware(value)
+
+
+def parse_timestamp(value):
+    if isinstance(value, int):
+        value = datetime.fromtimestamp(value)
+    elif isinstance(value, str):
+        value = value.replace('T', ' ').strip('Z')
+        value = forms.DateTimeField().clean(value)
     return make_aware(value)

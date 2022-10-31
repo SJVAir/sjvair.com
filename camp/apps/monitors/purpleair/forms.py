@@ -26,13 +26,13 @@ class PurpleAirAddForm(forms.ModelForm):
             raise forms.ValidationError('You must supply a name or PurpleAir ID', 'missing_data')
 
         if purple_id:
-            self.monitor_data = purpleair_api.get_monitor(purple_id, thingspeak_key)
+            self.monitor_data = purpleair_api.get_sensor(purple_id, thingspeak_key)
             if self.monitor_data is None:
                 self.add_error('purple_id', 'Invalid PurpleAir ID or Thingspeak key')
                 return
 
         elif name:
-            self.monitor_data = purpleair_api.find_monitor(name)
+            self.monitor_data = purpleair_api.find_sensor(name)
             if self.monitor_data is None:
                 self.add_error('name', 'Invalid PurpleAir name.')
                 return

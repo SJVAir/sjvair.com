@@ -275,6 +275,7 @@ AIRNOW_API_KEY = os.environ.get('AIRNOW_API_KEY')
 # Purple Air
 PURPLEAIR_READ_KEY = os.environ.get('PURPLEAIR_READ_KEY')
 PURPLEAIR_WRITE_KEY = os.environ.get('PURPLEAIR_WRITE_KEY')
+PURPLEAIR_GROUP_ID = os.environ.get('PURPLEAIR_GROUP_ID')
 
 # Sentry
 if "SENTRY_DSN" in os.environ:

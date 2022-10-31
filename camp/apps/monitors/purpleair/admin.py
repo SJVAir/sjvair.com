@@ -6,7 +6,7 @@ from django.template.defaultfilters import floatformat
 from camp.apps.monitors.admin import MonitorAdmin
 from camp.apps.monitors.purpleair.forms import PurpleAirAddForm
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.apps.monitors.purpleair.tasks import import_monitor_data
+# from camp.apps.monitors.purpleair.tasks import import_monitor_data
 
 
 @admin.register(PurpleAir)
@@ -43,6 +43,6 @@ class PurpleAirAdmin(MonitorAdmin):
         defaults.update(kwargs)
         return super().get_form(request, obj, **defaults)
 
-    def save_model(self, request, obj, *args, **kwargs):
-        super().save_model(request, obj, *args, **kwargs)
-        print(import_monitor_data(obj.pk, {'results': 1}))
+    # def save_model(self, request, obj, *args, **kwargs):
+    #     super().save_model(request, obj, *args, **kwargs)
+    #     print(import_monitor_data(obj.pk, {'results': 1}))

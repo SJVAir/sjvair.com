@@ -12,7 +12,6 @@ from django.db.models import Avg, Q
 from django.db.models.functions import Least
 from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 from django.utils.functional import lazy
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
@@ -142,8 +141,6 @@ class Monitor(models.Model):
 
     # TODO: rename to update_if_latest()
     def check_latest(self, entry):
-        from camp.api.v1.monitors.serializers import EntrySerializer
-
         if self.latest_id:
             is_latest = make_aware(entry.timestamp) > self.latest.timestamp
         else:
@@ -151,7 +148,6 @@ class Monitor(models.Model):
 
         if entry.sensor == self.default_sensor and is_latest:
             self.latest = entry
-            self.save() # TODO: Don't save here.
 
     def save(self, *args, **kwargs):
         if self.position:
