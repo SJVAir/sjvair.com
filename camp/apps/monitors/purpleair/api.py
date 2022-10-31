@@ -6,7 +6,6 @@ import urllib.parse
 from pprint import pprint
 
 import requests
-import thingspeak
 
 
 def compare_datetimes(dt1, dt2):
