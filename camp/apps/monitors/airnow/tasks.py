@@ -63,4 +63,6 @@ def import_airnow_data(timestamp=None, previous=None):
 
                 monitor.process_entry(entry)
                 entry.save()
-                monitor.check_latest(Entry.objects.get(pk=entry.pk))
+                monitor.check_latest(entry)
+                if monitor.latest_id == entry.pk:
+                    monitor.save()
