@@ -114,6 +114,10 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
 
         entry = Entry.objects.get(pk=entry.pk)
         self.request.monitor.check_latest(entry)
+
+        if self.request.monitor.latest_id == entry.pk:
+            self.request.monitor.save()
+
         return {"data": self.serialize(entry)}
 
 
