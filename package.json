@@ -9,7 +9,7 @@
     "heroku-postbuild": "invoke build"
   },
   "dependencies": {
-    "@sjvair/monitor-map": "^1.22.0",
+    "@sjvair/monitor-map": "^1.23.0",
     "bulma": "^0.9.4"
   }
 }
