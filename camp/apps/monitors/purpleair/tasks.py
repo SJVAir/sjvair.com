@@ -17,7 +17,7 @@ from camp.apps.monitors.purpleair.api import purpleair_api
 from camp.apps.monitors.purpleair.forms import PurpleAirAddForm
 from camp.apps.monitors.purpleair.models import PurpleAir
 
-@db_periodic_task(crontab(minute='*'), priority=50)
+@db_periodic_task(crontab(minute='*/2'), priority=50)
 def update_realtime():
     print('[update_realtime]')
     if HUEY.pending_count() > settings.MAX_QUEUE_SIZE:
