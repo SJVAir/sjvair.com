@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.methane',
     'camp.apps.monitors.purpleair',
     'camp.apps.sensors',
+    'camp.utils',
 ]
 
 MIDDLEWARE = [
