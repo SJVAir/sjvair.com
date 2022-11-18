@@ -21,6 +21,7 @@ django-storages==1.12.3
 django-vanilla-views==3.0.0
 django-widget-tweaks==1.4.12
 
+asciichartpy==1.5.25
 argon2-cffi==21.3.0
 asgiref==3.5.2
 boto3==1.24.29
