@@ -14,7 +14,6 @@ from huey.exceptions import TaskLockedException
 
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
-from camp.apps.monitors.purpleair.forms import PurpleAirAddForm
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 @db_periodic_task(crontab(minute='*/2'), priority=50)
