@@ -16,6 +16,7 @@ from camp.apps.monitors.models import Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
 from camp.apps.monitors.purpleair.models import PurpleAir
 
+
 @db_periodic_task(crontab(minute='*/2'), priority=50)
 def update_realtime():
     print('[update_realtime]')
@@ -30,10 +31,7 @@ def update_realtime():
 @db_task()
 def process_data(payload):
     try:
-        monitor = (PurpleAir.objects
-            .defer('data') # No need to fetch this whole thing here.
-            .get(purple_id=payload['sensor_index'])
-        )
+        monitor = PurpleAir.objects.get(purple_id=payload['sensor_index'])
     except PurpleAir.DoesNotExist:
         monitor = PurpleAir(purple_id=payload['sensor_index'])
         monitor.update_data()

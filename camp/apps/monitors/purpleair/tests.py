@@ -11,7 +11,7 @@ class PurpleAirTests(TestCase):
         self.monitor = PurpleAir.objects.get(data__sensor_index=8892)
 
     def test_create_entry(self):
-        payload = purpleair_api.get_sensor(self.monitor.data['sensor_index'])
+        payload = purpleair_api.get_sensor(self.monitor.purple_id)
         (a, b) = self.monitor.create_entries(payload)
         self.monitor.process_entry(a)
         self.monitor.process_entry(b)

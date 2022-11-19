@@ -3,10 +3,17 @@
 from django.db import migrations
 
 
-def populate_purple_id(apps, schema_editor):
+def purple_id_to_field(apps, schema_editor):
     PurpleAir = apps.get_model('purpleair', 'PurpleAir')
     for monitor in PurpleAir.objects.all():
         monitor.purple_id = monitor.data['sensor_index']
+        monitor.save()
+
+
+def purple_id_to_data(apps, schema_editor):
+    PurpleAir = apps.get_model('purpleair', 'PurpleAir')
+    for monitor in PurpleAir.objects.all():
+        monitor.data = {'sensor_index': monitor.purple_id}
         monitor.save()
 
 
@@ -17,5 +24,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(populate_purple_id),
+        migrations.RunPython(purple_id_to_field, purple_id_to_data),
     ]
