@@ -32,20 +32,18 @@ class PurpleAir(Monitor):
     SENSOR_ATTRS.extend(CHANNEL_FIELDS.keys())
 
     data = JSONField(default=dict, encoder=JSONEncoder)
-
-    @cached_property
-    def purple_id(self):
-        return self.data['sensor_index']
+    purple_id = models.IntegerField(unique=True)
 
     @cached_property
     def thingspeak_key(self):
-        return self.data['primary_key_a']
+        return self.data.get('primary_key_a')
 
-    def update_data(self, device_data=None, retries=3):
+    def update_data(self, device_data=None):
         if device_data is None:
             device_data = purpleair_api.get_sensor(self.purple_id, self.thingspeak_key)
 
         self.data = device_data
+        self.purple_id = self.data['sensor_index']
         self.name = self.data['name']
         self.position = Point(
             float(self.data['longitude']),
