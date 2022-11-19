@@ -10,7 +10,6 @@ from shapely.geometry import shape
 
 from camp.apps.monitors.purpleair.api import purpleair_api
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.apps.monitors.purpleair.forms import PurpleAirAddForm
 from camp.utils.datafiles import datafile
 
 
