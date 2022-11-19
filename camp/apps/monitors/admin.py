@@ -59,8 +59,12 @@ class MonitorAdmin(admin.OSMGeoAdmin):
         if 'pm25_calibration_formula' in form.base_fields:
             form.base_fields['pm25_calibration_formula'].help_text = formula_help_text()
 
-        sensor_choices = [(sensor, '-----' if sensor == '' else sensor) for sensor in obj.SENSORS]
-        sensor_required = not obj._meta.get_field('default_sensor').blank
+        sensor_choices = [(sensor, '-----' if sensor == '' else sensor) for sensor in self.model.SENSORS]
+
+        sensor_required = False
+        if obj is not None:
+            sensor_required = not obj._meta.get_field('default_sensor').blank
+
         form.base_fields['default_sensor'] = forms.ChoiceField(choices=sensor_choices, required=sensor_required)
 
         return form
