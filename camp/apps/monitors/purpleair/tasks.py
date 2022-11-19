@@ -14,8 +14,8 @@ from huey.exceptions import TaskLockedException
 
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
-from camp.apps.monitors.purpleair.forms import PurpleAirAddForm
 from camp.apps.monitors.purpleair.models import PurpleAir
+
 
 @db_periodic_task(crontab(minute='*/2'), priority=50)
 def update_realtime():
@@ -31,11 +31,10 @@ def update_realtime():
 @db_task()
 def process_data(payload):
     try:
-        monitor = PurpleAir.objects.get(data__sensor_index=payload['sensor_index'])
+        monitor = PurpleAir.objects.get(purple_id=payload['sensor_index'])
     except PurpleAir.DoesNotExist:
-        form = PurpleAirAddForm({'purple_id': payload['sensor_index']})
-        assert form.is_valid()
-        monitor = form.save()
+        monitor = PurpleAir(purple_id=payload['sensor_index'])
+        monitor.update_data()
 
     entries = monitor.create_entries(payload)
     for entry in entries:
@@ -51,11 +50,11 @@ def update_monitor_data():
     sensors = purpleair_api.list_group_members(settings.PURPLEAIR_GROUP_ID)
     for sensor in sensors:
         try:
-            monitor = PurpleAir.objects.get(data__sensor_index=payload['sensor_index'])
+            monitor = PurpleAir.objects.get(purple_id=sensor['sensor_index'])
         except PurpleAir.DoesNotExist:
-            form = PurpleAirAddForm({'purple_id': payload['sensor_index']})
-            assert form.is_valid()
-            monitor = form.save()
+            monitor = PurpleAir(
+                purple_id=sensor['sensor_index']
+            )
 
         monitor.update_data(sensor)
         monitor.save()
