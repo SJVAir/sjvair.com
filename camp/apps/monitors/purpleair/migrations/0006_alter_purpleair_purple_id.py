@@ -15,4 +15,8 @@ class Migration(migrations.Migration):
             name='purple_id',
             field=models.IntegerField(unique=True),
         ),
+        migrations.RemoveField(
+            model_name='purpleair',
+            name='data',
+        ),
     ]
