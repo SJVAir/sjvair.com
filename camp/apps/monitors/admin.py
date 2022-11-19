@@ -4,7 +4,7 @@ from django import forms
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin
 from django.contrib.humanize.templatetags.humanize import intcomma
-from django.db.models import F, Max
+from django.db.models import F, Max, Prefetch
 from django.template import Template, Context
 from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
@@ -37,7 +37,9 @@ class MonitorAdmin(admin.OSMGeoAdmin):
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
-        queryset = queryset.select_related('latest')
+        queryset = queryset.prefetch_related(
+            Prefetch('latest', queryset=Entry.objects.only('timestamp'))
+        )
         queryset = queryset.annotate(last_updated=F('latest__timestamp'))
         return queryset
 
