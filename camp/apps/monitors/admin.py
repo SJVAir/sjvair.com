@@ -4,7 +4,7 @@ from django import forms
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin
 from django.contrib.humanize.templatetags.humanize import intcomma
-from django.db.models import F, Max
+from django.db.models import F, Max, Prefetch
 from django.template import Template, Context
 from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
@@ -37,7 +37,9 @@ class MonitorAdmin(admin.OSMGeoAdmin):
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
-        queryset = queryset.select_related('latest')
+        queryset = queryset.prefetch_related(
+            Prefetch('latest', queryset=Entry.objects.only('timestamp'))
+        )
         queryset = queryset.annotate(last_updated=F('latest__timestamp'))
         return queryset
 
@@ -57,8 +59,12 @@ class MonitorAdmin(admin.OSMGeoAdmin):
         if 'pm25_calibration_formula' in form.base_fields:
             form.base_fields['pm25_calibration_formula'].help_text = formula_help_text()
 
-        sensor_choices = [(sensor, '-----' if sensor == '' else sensor) for sensor in obj.SENSORS]
-        sensor_required = not obj._meta.get_field('default_sensor').blank
+        sensor_choices = [(sensor, '-----' if sensor == '' else sensor) for sensor in self.model.SENSORS]
+
+        sensor_required = False
+        if obj is not None:
+            sensor_required = not obj._meta.get_field('default_sensor').blank
+
         form.base_fields['default_sensor'] = forms.ChoiceField(choices=sensor_choices, required=sensor_required)
 
         return form
