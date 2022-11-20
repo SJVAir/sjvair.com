@@ -24,7 +24,7 @@ class Methane(Monitor):
         payload['timestamp'] = timezone.now()
         return super().create_entry(payload=payload, sensor=sensor)
 
-    def process_entry(self, entry):
+    def process_entry(self, entry, payload):
         attr_map = {
             # TODO: Figure out the rest of these.
             'celcius': 'temp',
@@ -32,7 +32,7 @@ class Methane(Monitor):
         }
 
         for attr, key in attr_map.items():
-            setattr(entry, attr, entry.payload[key])
+            setattr(entry, attr, payload[key])
 
-        entry.timestamp = parse_datetime(entry.payload['timestamp'])
+        entry.timestamp = parse_datetime(payload['timestamp'])
         return super().process_entry(entry)

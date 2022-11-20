@@ -121,21 +121,33 @@ class Monitor(models.Model):
             return ''
 
     def create_entry(self, payload, sensor=None):
-        return Entry(
+        entry = Entry(
             monitor=self,
-            payload=payload,
             sensor=sensor or '',
             position=self.position,
             location=self.location,
             is_processed=False,
         )
 
-    def process_entry(self, entry):
-        entry.position = self.position
-        entry.location = self.location
+        entry = self.process_entry(entry, payload)
+        entry.save()
+        return entry
+
+    def process_entry(self, entry, payload):
+        '''
+            Process the data on an entry, copying data from the monitor and
+            payload, and run the calibrations.
+
+            When overridden by a subclass, the super() method should
+            be called last.
+        '''
+
+        # Calculate the latest averages.
+        entry.pm25_avg_15 = entry.get_average('pm25', 15)
+        entry.pm25_avg_60 = entry.get_average('pm25', 60)
+
+        # Calibrate the PM25
         entry.calibrate_pm25(self.get_pm25_calibration_formula())
-        # entry.calculate_aqi()
-        entry.calculate_averages()
         entry.is_processed = True
         return entry
 
@@ -211,12 +223,15 @@ class Entry(models.Model):
     position = models.PointField(null=True, db_index=True)
     location = models.CharField(max_length=10, choices=Monitor.LOCATION)
 
+    # TODO: drop field
     # Has the raw data been calibrated and processed?
     is_processed = models.BooleanField(default=False, db_index=True)
 
+    # TODO: drop field
     # Original payload from the device / api
     payload = JSONField(encoder=JSONEncoder, default=dict)
 
+    # TODO: TextField
     pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
 
     celcius = models.DecimalField(max_digits=8, decimal_places=1, null=True)
@@ -299,10 +314,6 @@ class Entry(models.Model):
     #         # doesn't account for calculations above 500. Since AQI
     #         # only goes to 500, just set it to the max. (Yikes!)
     #         self.pm25_aqi = 500
-
-    def calculate_averages(self):
-        self.pm25_avg_15 = self.get_average('pm25', 15)
-        self.pm25_avg_60 = self.get_average('pm25', 60)
 
     def save(self, *args, **kwargs):
         # Temperature adjustments
