@@ -108,11 +108,7 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
         return super().serialize(source, **kwargs)
 
     def form_valid(self, form):
-        entry = self.request.monitor.create_entry(payload=self.request.data)
-        self.request.monitor.process_entry(entry)
-        entry.save()
-
-        entry = Entry.objects.get(pk=entry.pk)
+        entry = self.request.monitor.create_entry(self.request.data)
         self.request.monitor.check_latest(entry)
 
         if self.request.monitor.latest_id == entry.pk:
