@@ -35,13 +35,11 @@ def process_data(payload):
     except PurpleAir.DoesNotExist:
         monitor = PurpleAir(purple_id=payload['sensor_index'])
         monitor.update_data()
+        monitor.save()
 
     entries = monitor.create_entries(payload)
     for entry in entries:
-        entry = monitor.process_entry(entry)
-        entry.save()
         monitor.check_latest(entry)
-
     monitor.save()
 
 
