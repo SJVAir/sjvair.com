@@ -114,7 +114,8 @@ class EndpointTests(TestCase):
         assert content['data']['fahrenheit'] is not None
 
         entry = Entry.objects.latest('timestamp')
-        assert entry.is_processed
+        assert entry.celcius = payload['AT(C)']
+        assert entry.humidity = payload['RH(%)']
 
     def test_duplicate_entry(self):
         '''

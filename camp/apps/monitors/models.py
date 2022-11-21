@@ -126,7 +126,6 @@ class Monitor(models.Model):
             sensor=sensor or '',
             position=self.position,
             location=self.location,
-            is_processed=False,
         )
 
         entry = self.process_entry(entry, payload)
@@ -148,7 +147,6 @@ class Monitor(models.Model):
 
         # Calibrate the PM25
         entry.calibrate_pm25(self.get_pm25_calibration_formula())
-        entry.is_processed = True
         return entry
 
     # TODO: rename to update_if_latest()
@@ -222,14 +220,6 @@ class Entry(models.Model):
     # Where was the monitor when this entry was logged?
     position = models.PointField(null=True, db_index=True)
     location = models.CharField(max_length=10, choices=Monitor.LOCATION)
-
-    # TODO: drop field
-    # Has the raw data been calibrated and processed?
-    is_processed = models.BooleanField(default=False, db_index=True)
-
-    # TODO: drop field
-    # Original payload from the device / api
-    payload = JSONField(encoder=JSONEncoder, default=dict)
 
     # TODO: TextField
     pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
