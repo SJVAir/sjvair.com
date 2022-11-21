@@ -110,11 +110,11 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
 
         assert response.status_code == 200
-        assert content['data']['celcius'] == payload['AT(C)']
+        assert content['data']['celsius'] == payload['AT(C)']
         assert content['data']['fahrenheit'] is not None
 
         entry = Entry.objects.latest('timestamp')
-        assert entry.celcius = payload['AT(C)']
+        assert entry.celsius = payload['AT(C)']
         assert entry.humidity = payload['RH(%)']
 
     def test_duplicate_entry(self):
