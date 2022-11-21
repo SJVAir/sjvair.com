@@ -9,14 +9,6 @@ from camp.utils.test import get_response_data
 from .models import Entry, Monitor
 
 
-@db_task()
-def process_entry(entry_id):
-    entry = Entry.objects.get(pk=entry_id)
-    monitor = Monitor.objects.get(pk=entry.monitor_id)
-    monitor.process_entry(entry)
-    entry.save()
-
-
 @db_periodic_task(crontab(minute='*'), priority=100)
 def refresh_monitor_list_cache():
     # We'll use Django's testing framework to directly call the

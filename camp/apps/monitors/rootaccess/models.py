@@ -6,7 +6,7 @@ from camp.apps.monitors.models import Monitor, Entry
 
 
 class RootAccess(Monitor):
-    def process_entry(self, entry):
+    def process_entry(self, entry, payload):
         env_attrs = ['celcius', 'humidity', 'pressure']
         pm_attrs = [
             'particles_03um',
@@ -21,10 +21,9 @@ class RootAccess(Monitor):
         ]
 
         for attr in env_attrs:
-            setattr(entry, attr, entry.payload.get(attr))
+            setattr(entry, attr, payload.get(attr))
 
         for attr in pm_attrs:
-            setattr(entry, attr, entry.payload['pm2_a'].get(attr))
+            setattr(entry, attr, payload['pm2_a'].get(attr))
 
-        self.is_processed = True
-        return entry
+        return super().process_entry(entry, payload)
