@@ -52,6 +52,9 @@ def import_airnow_data(timestamp=None, previous=None):
                 print('[AirNow] Monitor created:', site_name)
 
             for timestamp, data in container.items():
+                if data.get('PM2.5') is None:
+                    continue
+
                 timestamp = parse_datetime(timestamp)
                 try:
                     entry = monitor.entries.get(timestamp=timestamp)
