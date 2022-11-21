@@ -13,3 +13,133 @@
   pk: jLI5fer7S0uyR7eMYNSPpg
   fields:
     purple_id: 8892
+- model: monitors.entry
+  pk: sUvcEE_MT8yrPgBbh1F7zw
+  fields:
+    created: 2022-10-31 07:40:05.795492+00:00
+    modified: 2022-10-31 07:40:05.795507+00:00
+    timestamp: 2022-10-31 07:37:35+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: a
+    position: SRID=4326;POINT (-119.798676 36.76274)
+    location: outside
+    pm25_calibration_formula: ''
+    celsius: '15.6'
+    fahrenheit: '60.0'
+    humidity: '50.0'
+    pressure: '1006.95'
+    pm10: '30.45'
+    pm25: '45.27'
+    pm100: '54.55'
+    pm25_avg_15: '45.27'
+    pm25_avg_60: '45.27'
+    particles_03um: '6001.00'
+    particles_05um: '1737.00'
+    particles_10um: '268.00'
+    particles_25um: '18.00'
+    particles_50um: '3.00'
+    particles_100um: '1.00'
+- model: monitors.entry
+  pk: YLE5dwdXQUCa_Bi0udoHtA
+  fields:
+    created: 2022-10-31 07:40:05.809583+00:00
+    modified: 2022-10-31 07:40:05.809598+00:00
+    timestamp: 2022-10-31 07:37:35+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: b
+    position: SRID=4326;POINT (-119.798676 36.76274)
+    location: outside
+    pm25_calibration_formula: ''
+    celsius: '15.6'
+    fahrenheit: '60.0'
+    humidity: '50.0'
+    pressure: '1006.95'
+    pm10: '3.82'
+    pm25: '5.27'
+    pm100: '7.13'
+    pm25_avg_15: '5.27'
+    pm25_avg_60: '5.27'
+    particles_03um: '6053.00'
+    particles_05um: '1714.00'
+    particles_10um: '205.00'
+    particles_25um: '21.00'
+    particles_50um: '7.00'
+    particles_100um: '2.00'
+- model: monitors.entry
+  pk: bcUrRRF-SkGtSVxBtntSUA
+  fields:
+    created: 2022-10-31 07:41:05.791119+00:00
+    modified: 2022-10-31 07:41:05.791137+00:00
+    timestamp: 2022-10-31 07:39:35+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: a
+    position: SRID=4326;POINT (-119.798676 36.76274)
+    location: outside
+    pm25_calibration_formula: ''
+    celsius: '15.6'
+    fahrenheit: '60.0'
+    humidity: '50.0'
+    pressure: '1006.91'
+    pm10: '29.62'
+    pm25: '43.20'
+    pm100: '52.21'
+    pm25_avg_15: '44.24'
+    pm25_avg_60: '44.24'
+    particles_03um: '5633.00'
+    particles_05um: '1632.00'
+    particles_10um: '254.00'
+    particles_25um: '17.00'
+    particles_50um: '4.00'
+    particles_100um: null
+- model: monitors.entry
+  pk: YrQ_bwdDSBeOIGuBCcArkg
+  fields:
+    created: 2022-10-31 07:41:05.801687+00:00
+    modified: 2022-10-31 07:41:05.801702+00:00
+    timestamp: 2022-10-31 07:39:35+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: b
+    position: SRID=4326;POINT (-119.798676 36.76274)
+    location: outside
+    pm25_calibration_formula: ''
+    celsius: '15.6'
+    fahrenheit: '60.0'
+    humidity: '50.0'
+    pressure: '1006.91'
+    pm10: '3.97'
+    pm25: '6.20'
+    pm100: '7.65'
+    pm25_avg_15: '5.74'
+    pm25_avg_60: '5.74'
+    particles_03um: '6287.00'
+    particles_05um: '1770.00'
+    particles_10um: '231.00'
+    particles_25um: '27.00'
+    particles_50um: '10.00'
+    particles_100um: '3.00'
+- model: monitors.entry
+  pk: v1Moaq2kRE2jny3GLbgzJQ
+  fields:
+    created: 2022-10-31 07:43:19.428974+00:00
+    modified: 2022-10-31 07:43:19.428989+00:00
+    timestamp: 2022-10-31 07:41:35+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    sensor: a
+    position: SRID=4326;POINT (-119.798676 36.76274)
+    location: outside
+    pm25_calibration_formula: ''
+    celsius: '15.6'
+    fahrenheit: '60.0'
+    humidity: '50.0'
+    pressure: '1006.96'
+    pm10: '29.55'
+    pm25: '43.58'
+    pm100: '52.96'
+    pm25_avg_15: '44.02'
+    pm25_avg_60: '44.02'
+    particles_03um: '5729.00'
+    particles_05um: '1656.00'
+    particles_10um: '261.00'
+    particles_25um: '17.00'
+    particles_50um: '3.00'
+    particles_100um: null
