@@ -29,7 +29,7 @@ class BAM1022(Monitor):
     def create_entry(self, payload, sensor=None):
         timestamp = parse_datetime(payload['Time'])
         try:
-            entry = self.entries.filter(
+            entry = self.entries.get(
                 timestamp=timestamp,
                 sensor=sensor
             )
