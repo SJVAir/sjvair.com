@@ -29,10 +29,7 @@ class BAM1022(Monitor):
     def create_entry(self, payload, sensor=None):
         timestamp = parse_datetime(payload['Time'])
         try:
-            entry = self.entries.get(
-                timestamp=timestamp,
-                sensor=sensor
-            )
+            entry = self.entries.get(timestamp=timestamp)
             entry = self.process_entry(entry, payload)
             entry.save()
             return entry
@@ -51,6 +48,6 @@ class BAM1022(Monitor):
             setattr(entry, attr, payload[key])
 
         entry.timestamp = parse_datetime(payload['Time'])
-        return super().process_entry(entry)
+        return super().process_entry(entry, payload)
 
 
