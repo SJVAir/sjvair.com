@@ -28,9 +28,16 @@ class BAM1022(Monitor):
 
     def create_entry(self, payload, sensor=None):
         timestamp = parse_datetime(payload['Time'])
-        if self.entries.filter(timestamp=timestamp).exists():
-            raise ValidationError('An entry for this timestamp has already been recorded.')
-        return super().create_entry(payload=payload, sensor=sensor)
+        try:
+            entry = self.entries.filter(
+                timestamp=timestamp,
+                sensor=sensor
+            )
+            entry = self.process_entry(entry, payload)
+            entry.save()
+            return entry
+        except Entry.DoesNotExist:
+            return super().create_entry(payload, sensor=sensor)
 
     def process_entry(self, entry, payload):
         attr_map = {
