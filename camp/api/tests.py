@@ -16,7 +16,7 @@ class MonitorAccessMiddlewareTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
         self.middleware = MonitorAccessMiddleware(lambda: None)
-        self.monitor = PurpleAir.objects.get(data__0__ID=8892)
+        self.monitor = PurpleAir.objects.get(purple_id=8892)
 
     def test_auth_optional(self):
         self.monitor.is_hidden = False
