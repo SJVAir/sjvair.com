@@ -32,18 +32,18 @@ class BAM1022(Monitor):
             raise ValidationError('An entry for this timestamp has already been recorded.')
         return super().create_entry(payload=payload, sensor=sensor)
 
-    def process_entry(self, entry):
+    def process_entry(self, entry, payload):
         attr_map = {
-            'celcius': 'AT(C)',
+            'celsius': 'AT(C)',
             'humidity': 'RH(%)',
             'pressure': 'BP(mmHg)',
             'pm25': 'ConcRT(ug/m3)',
         }
 
         for attr, key in attr_map.items():
-            setattr(entry, attr, entry.payload[key])
+            setattr(entry, attr, payload[key])
 
-        entry.timestamp = parse_datetime(entry.payload['Time'])
+        entry.timestamp = parse_datetime(payload['Time'])
         return super().process_entry(entry)
 
 
