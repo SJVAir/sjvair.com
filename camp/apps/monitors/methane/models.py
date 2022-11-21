@@ -27,7 +27,7 @@ class Methane(Monitor):
     def process_entry(self, entry, payload):
         attr_map = {
             # TODO: Figure out the rest of these.
-            'celcius': 'temp',
+            'celsius': 'temp',
             'humidity': 'rh',
         }
 

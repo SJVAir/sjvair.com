@@ -198,7 +198,7 @@ class Calibration(TimeStampedModel):
 
 class Entry(models.Model):
     ENVIRONMENT = [
-        'celcius', 'fahrenheit', 'humidity', 'pressure',
+        'celsius', 'fahrenheit', 'humidity', 'pressure',
         'pm10', 'pm25', 'pm100',
         'particles_03um', 'particles_05um', 'particles_10um',
         'particles_25um', 'particles_50um', 'particles_100um',
@@ -224,7 +224,7 @@ class Entry(models.Model):
     # TODO: TextField
     pm25_calibration_formula = models.CharField(max_length=255, blank=True, default='')
 
-    celcius = models.DecimalField(max_digits=8, decimal_places=1, null=True)
+    celsius = models.DecimalField(max_digits=8, decimal_places=1, null=True)
     fahrenheit = models.DecimalField(max_digits=8, decimal_places=1, null=True)
     humidity = models.DecimalField(max_digits=8, decimal_places=1, null=True)
     pressure = models.DecimalField(max_digits=8, decimal_places=2, null=True)
@@ -307,9 +307,9 @@ class Entry(models.Model):
 
     def save(self, *args, **kwargs):
         # Temperature adjustments
-        if self.fahrenheit is None and self.celcius is not None:
-            self.fahrenheit = (Decimal(self.celcius) * (Decimal(9) / Decimal(5))) + 32
-        if self.celcius is None and self.fahrenheit is not None:
-            self.celcius = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
+        if self.fahrenheit is None and self.celsius is not None:
+            self.fahrenheit = (Decimal(self.celsius) * (Decimal(9) / Decimal(5))) + 32
+        if self.celsius is None and self.fahrenheit is not None:
+            self.celsius = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
 
         return super().save(*args, **kwargs)
