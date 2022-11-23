@@ -6,6 +6,9 @@ from datetime import datetime
 from resticus import generics, http
 
 from django import forms
+from django.contrib.gis.db.models.functions import Distance
+from django.contrib.gis.geos import GEOSGeometry, Point
+from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.db.models import QuerySet
 from django.http import Http404
@@ -29,6 +32,20 @@ class MonitorMixin:
 
     def get_object(self):
         return self.request.monitor
+
+
+class MonitorColocate(MonitorMixin, generics.DetailEndpoint):
+
+    def get_object(self):
+        lat, lng = self.kwargs.get('coordinates').split(',')
+        location = GEOSGeometry(f'POINT({lng} {lat})')
+        monitor = self.model.objects.filter(
+            position__distance_lte=(location, D(m=1000), 'spheroid')
+        ).annotate(
+            distance = Distance('position', location, spheroid=True)
+        ).order_by('distance')
+        print(monitor[0].distance.m)
+        return monitor
 
 
 class MonitorList(MonitorMixin, generics.ListEndpoint):
