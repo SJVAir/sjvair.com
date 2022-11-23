@@ -22,7 +22,6 @@ class EntrySerializer(serializers.Serializer):
 
 class MonitorSerializer(serializers.Serializer):
     fields = [
-        ('distance', lambda monitor: monitor.distance.m),
         'id',
         'name',
         'device',

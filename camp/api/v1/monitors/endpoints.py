@@ -18,7 +18,7 @@ from django.utils.text import slugify
 
 from camp.apps.monitors.models import Entry, Monitor
 from camp.apps.monitors.methane.models import Methane
-from camp.utils.forms import DateRangeForm
+from camp.utils.forms import DateRangeForm, LatLonForm
 from camp.utils.views import get_view_cache_key
 from .filters import EntryFilter, MonitorFilter
 from .forms import EntryForm, MethaneDataForm
@@ -30,22 +30,13 @@ class MonitorMixin:
     model = Monitor
     serializer_class = MonitorSerializer
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = queryset.select_related('latest')
+        return queryset
+
     def get_object(self):
         return self.request.monitor
-
-
-class MonitorColocate(MonitorMixin, generics.DetailEndpoint):
-
-    def get_object(self):
-        lat, lng = self.kwargs.get('coordinates').split(',')
-        location = GEOSGeometry(f'POINT({lng} {lat})')
-        monitor = self.model.objects.filter(
-            position__distance_lte=(location, D(m=1000), 'spheroid')
-        ).annotate(
-            distance = Distance('position', location, spheroid=True)
-        ).order_by('distance')
-        print(monitor[0].distance.m)
-        return monitor
 
 
 class MonitorList(MonitorMixin, generics.ListEndpoint):
@@ -72,7 +63,6 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = queryset.select_related('latest')
         queryset = queryset.exclude(is_hidden=True)
         return queryset
 
@@ -80,15 +70,41 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
         key = str(self.__class__)
 
 
-
 class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
 
-    def get_queryset(self):
+
+class ClosestMonitor(MonitorMixin, generics.DetailEndpoint):
+    form_class = LatLonForm
+
+    def get(self, request, *args, **kwargs):
+        form = self.get_form(request.GET)
+        if form.is_valid():
+            return self.form_valid(form)
+        return self.form_invalid(form)
+
+    def get_queryset(self, point):
         queryset = super().get_queryset()
-        queryset = queryset.select_related('latest')
+        queryset = (queryset
+            .exclude(is_hidden=True)
+            .annotate(distance=Distance("position", point))
+            .order_by('distance')
+        )
         return queryset
+
+    def get_object(self, point):
+        queryset = self.get_queryset(point)
+        return queryset.first()
+
+    def form_valid(self, form):
+        monitor = self.get_object(form.point)
+
+        if monitor is None:
+            return {'data': None}
+        return {'data': self.serialize(monitor, include=[
+            ('distance', lambda monitor: monitor.distance.m)
+        ])}
 
 
 class EntryMixin:
