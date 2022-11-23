@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django import forms
 from django.contrib.admin.widgets import AdminDateWidget
-from django.contrib.gis.geos import GEOSGeometry, Point
+from django.contrib.gis.geos import Point
 
 
 class DateRangeForm(forms.Form):
@@ -34,5 +34,4 @@ class OtherLatLonForm(forms.Form):
     def point(self):
         assert self.is_valid()
         data = self.cleaned_data
-        #return Point(data['longitude'], data['latitude'], srid=4326)
-        return GEOSGeometry(f'POINT({data["longitude"]} {data["latitude"]})')
+        return Point(data['longitude'], data['latitude'], srid=4326)
