@@ -120,7 +120,7 @@ class OtherClosestMonitor(MonitorMixin, generics.DetailEndpoint):
         queryset = super().get_queryset()
         queryset = (queryset
             .exclude(is_hidden=True)
-            .filter(position__distance_lte=(point, D(m=1000), 'spheroid'))
+            .filter(position__distance_lte=(point, D(m=1000)))
             .annotate(distance=Distance("position", point, spheroid=True))
             .order_by('distance')
         )
