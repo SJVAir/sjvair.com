@@ -11,6 +11,7 @@ from django.db.models import QuerySet
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils.functional import cached_property
+from django.utils.text import slugify
 
 from camp.apps.monitors.models import Entry, Monitor
 from camp.apps.monitors.methane.models import Methane
@@ -133,6 +134,7 @@ class EntryCSV(EntryMixin, CSVExport):
         filename = '_'.join([
             'SJVAir',
             self.request.monitor.__class__.__name__,
+            slugify(self.request.monitor.name),
             str(self.request.monitor.pk),
             'export'
         ])
