@@ -131,13 +131,14 @@ class EntryCSV(EntryMixin, CSVExport):
         return fields
 
     def get_filename(self):
-        filename = '_'.join([
+        filename = '_'.join(filter(bool, [
             'SJVAir',
             self.request.monitor.__class__.__name__,
             slugify(self.request.monitor.name),
+            self.request.GET.get('sensor'),
             str(self.request.monitor.pk),
             'export'
-        ])
+        ]))
         return f'{filename}.csv'
 
     def get_queryset(self, *args, **kwargs):
