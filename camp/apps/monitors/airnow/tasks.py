@@ -52,15 +52,18 @@ def import_airnow_data(timestamp=None, previous=None):
                 print('[AirNow] Monitor created:', site_name)
 
             for timestamp, data in container.items():
+                if data.get('PM2.5') is None:
+                    continue
+
                 timestamp = parse_datetime(timestamp)
                 try:
                     entry = monitor.entries.get(timestamp=timestamp)
-                    entry.payload.update(data)
+                    entry = monitor.process_entry(entry, data)
                     print('\t[AirNow] Entry updated:', timestamp)
                 except Entry.DoesNotExist:
                     entry = monitor.create_entry(data)
                     print('\t[AirNow] Entry created:', timestamp)
 
-                monitor.process_entry(entry)
-                entry.save()
-                monitor.check_latest(Entry.objects.get(pk=entry.pk))
+                monitor.check_latest(entry)
+                if monitor.latest_id == entry.pk:
+                    monitor.save()

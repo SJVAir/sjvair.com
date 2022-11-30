@@ -17,6 +17,8 @@ class Command(BaseCommand):
                 .order_by('distance')
             ).first()
 
+            # If distance > 1km, continue
+
             calibrator = Calibrator.objects.create(
                 reference=airnow,
                 colocated=purpleair

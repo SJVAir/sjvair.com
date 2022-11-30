@@ -1,3 +1,6 @@
+import hashlib
+import urllib
+
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.views import SuccessURLAllowedHostsMixin
@@ -14,6 +17,32 @@ from huey.contrib.djhuey import HUEY
 from resticus.http import JSONResponse
 
 from camp.apps.monitors.models import Entry
+
+
+def get_view_cache_key(view, query=None):
+    '''
+        Given an instance of a class-based view, return
+        a suitable key for caching the response.
+    '''
+    key = f'{view.__class__.__module__}.{view.__class__.__name__}'
+
+    # Encode the kwargs into the key
+    if view.kwargs:
+        encoded = hashlib.sha1(urllib.parse.urlencode(query).encode()).hexdigest()
+        key = f'{key}|kw:{encoded}'
+
+    # Encode the url params into the key
+    # TODO: Account for view.filter_class, so that the cache
+    # isn't polluted with garbage kwargs.
+    params = view.request.GET.copy()
+    params.pop('_cc', None)
+    if params:
+        encoded = hashlib.sha1(urllib.parse.urlencode(params, doseq=True).encode()).hexdigest()
+        key = f'{key}|q:{encoded}'
+
+    print(key, len(key))
+    return key
+
 
 
 class RedirectViewMixin(SuccessURLAllowedHostsMixin):
@@ -45,6 +74,18 @@ class RedirectViewMixin(SuccessURLAllowedHostsMixin):
 
 
 class PageTemplate(generic.TemplateView):
+    def get_template_names(self):
+        # Do we have a template name override?
+        if self.template_name is not None:
+            return [self.template_name]
+
+        # No override, derive the template from the URL path.
+        path = self.request.path.strip('/')
+        possible_templates = ['pages/{0}.html'.format(path or 'index')]
+        if path:
+            possible_templates.append('pages/{0}/index.html'.format(path))
+        return possible_templates
+
     def get(self, request, *args, **kwargs):
         # Enforce a trailing slash.
         if not request.path.endswith('/'):
@@ -54,11 +95,9 @@ class PageTemplate(generic.TemplateView):
         if request.path.strip('/').split('/')[-1].startswith('_'):
             raise Http404
 
-        # Set the template_name based on the URL path and raise a 404 if it doesn't exist.
-        self.template_name = 'pages/{0}.html'.format(request.path.strip('/') or 'index')
-
+        # If URL path doesn't exist as a template, return 404.
         try:
-            loader.get_template(self.template_name)
+            loader.select_template(self.get_template_names())
         except TemplateDoesNotExist:
             raise Http404
 

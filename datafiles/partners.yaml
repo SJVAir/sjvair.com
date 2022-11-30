@@ -10,9 +10,9 @@
   logo: img/partners/rootaccess.png
   url: https://rootaccess.org/
   description: |
-    Root Access is a community (hacker/maker/work)space that supports Fresno's technology
-    and maker scene. They provide the community with access to tools and equipment and a
-    space to share knowledge and experiment in a creative and collaborative environment.
+    Root Access is a community hackerspace and makerspace that provides Fresno's technology
+    and maker community with access to tools and equipment, as well as space to share
+    knowledge and experiment in a creative and collaborative environment.
 
 - name: Central California Environmental Justice Network
   logo: img/partners/ccejn.png
@@ -36,11 +36,9 @@
   description: |
     For over 70 years, Catholic Charities of the Diocese of Stockton has provided social
     services to people in San Joaquin, Stanislaus, Calaveras, Tuolumne, Alpine, and Mono
-    counties. We believe in the inherent dignity of each person and create services that
-    support families and enhance the quality of life for all members of the community
-    regardless of race, age, or religion. Today, Catholic Charities administers direct
-    social services and advocacy through a variety of programs for the most vulnerable
-    and under represented citizens of our communities.
+    counties. Today, Catholic Charities administers direct social services and advocacy
+    through a variety of programs for the most vulnerable and under represented citizens
+    of our communities.
 
 - name: Little Manila Rising
   logo: img/partners/lmr.jpg
@@ -49,3 +47,12 @@
     Little Manila Rising is a social justice organization whose mission is to develop
     equitable solutions to create a more inclusive and healthy community for all San
     Joaquin County residents.
+
+- name: Madera Coalition for Community Justice
+  logo: img/partners/mccj.jpg
+  url: http://www.maderaccj.org/
+  description: |
+    Madera Coalition for Community Justice is an organization that aims to educate
+    and assist low-income residents of Madera County by working together to obtain
+    appropriate and sufficient food, clothing, health care, educational, and
+    employment opportunities and other fundamental needs.

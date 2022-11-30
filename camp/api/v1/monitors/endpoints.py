@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 
 from datetime import datetime
@@ -5,14 +6,17 @@ from datetime import datetime
 from resticus import generics, http
 
 from django import forms
+from django.core.cache import cache
 from django.db.models import QuerySet
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils.functional import cached_property
+from django.utils.text import slugify
 
 from camp.apps.monitors.models import Entry, Monitor
 from camp.apps.monitors.methane.models import Methane
 from camp.utils.forms import DateRangeForm
+from camp.utils.views import get_view_cache_key
 from .filters import EntryFilter, MonitorFilter
 from .forms import EntryForm, MethaneDataForm
 from .serializers import EntrySerializer, MonitorSerializer
@@ -31,11 +35,33 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
     filter_class = MonitorFilter
     paginate = False
 
+    def get(self, request, *args, **kwargs):
+        cache_key = get_view_cache_key(self)
+
+        clear_cache = '_cc' in request.GET
+        if clear_cache:
+            cache.delete(cache_key)
+        else:
+            data = cache.get(cache_key)
+            if data is not None:
+                return data
+
+        response = super().get(request, *args, **kwargs)
+
+        # cache for 90 seconds, but we have a task to
+        # refresh the cache every 60 seconds
+        cache.set(cache_key, response, 90)
+        return response
+
     def get_queryset(self):
         queryset = super().get_queryset()
         queryset = queryset.select_related('latest')
         queryset = queryset.exclude(is_hidden=True)
         return queryset
+
+    def get_cache_key(self):
+        key = str(self.__class__)
+
 
 
 class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
@@ -65,7 +91,7 @@ class EntryMixin:
 
 class EntryList(EntryMixin, generics.ListCreateEndpoint):
     def get_queryset(self, *args, **kwargs):
-        queryset = super().get_queryset(*args, **kwargs)
+        queryset = super().get_queryset(*args, **kwargs).defer('payload')
         if self.request.monitor.default_sensor and 'sensor' not in self.request.GET:
             queryset = queryset.filter(sensor=self.request.monitor.default_sensor)
         return queryset
@@ -83,12 +109,12 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
         return super().serialize(source, **kwargs)
 
     def form_valid(self, form):
-        entry = self.request.monitor.create_entry(payload=self.request.data)
-        self.request.monitor.process_entry(entry)
-        entry.save()
-
-        entry = Entry.objects.get(pk=entry.pk)
+        entry = self.request.monitor.create_entry(self.request.data)
         self.request.monitor.check_latest(entry)
+
+        if self.request.monitor.latest_id == entry.pk:
+            self.request.monitor.save()
+
         return {"data": self.serialize(entry)}
 
 
@@ -105,12 +131,14 @@ class EntryCSV(EntryMixin, CSVExport):
         return fields
 
     def get_filename(self):
-        filename = '_'.join([
+        filename = '_'.join(filter(bool, [
             'SJVAir',
             self.request.monitor.__class__.__name__,
+            slugify(self.request.monitor.name),
+            self.request.GET.get('sensor'),
             str(self.request.monitor.pk),
             'export'
-        ])
+        ]))
         return f'{filename}.csv'
 
     def get_queryset(self, *args, **kwargs):
@@ -126,8 +154,9 @@ class EntryCSV(EntryMixin, CSVExport):
 
 
 class MethaneData(EntryMixin, generics.ListEndpoint):
-    def serialize(self, queryset):
-        return [entry.payload for entry in queryset]
+    pass
+    # def serialize(self, queryset):
+    #     return [entry.payload for entry in queryset]
 
 
 class MethaneDataUpload(generics.GenericEndpoint):

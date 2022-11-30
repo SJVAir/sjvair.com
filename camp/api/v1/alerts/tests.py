@@ -19,7 +19,7 @@ class EndpointTests(TestCase):
 
     def setUp(self):
         self.factory = RequestFactory()
-        self.monitor = PurpleAir.objects.get(data__0__ID=8892)
+        self.monitor = PurpleAir.objects.get(purple_id=8892)
         self.user = User.objects.get(email='user@sjvair.com')
 
     def test_subscription_list_authenticated(self):

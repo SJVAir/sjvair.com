@@ -10,6 +10,10 @@
   logo: img/tech/vuejs.svg
   url: https://vuejs.org/
 
+- name: Leaflet
+  logo: img/tech/leaflet.svg
+  url: https://leafletjs.com/
+
 - name: PostgreSQL
   logo: img/tech/postgresql.svg
   url: https://www.postgresql.org/
@@ -17,6 +21,10 @@
 - name: MicroPython
   logo: img/tech/micropython.svg
   url: http://micropython.org/
+
+- name: Raspberry Pi
+  logo: img/tech/raspberrypi.svg
+  url: https://www.raspberrypi.com/
 
 - name: ESP32
   logo: img/tech/esp32.svg
