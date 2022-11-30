@@ -52,5 +52,4 @@ class EntryFilter(FilterSet):
                 'lt', 'lte',
                 'gt', 'gte',
             ],
-            'is_processed': ['exact'],
         }

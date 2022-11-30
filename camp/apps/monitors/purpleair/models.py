@@ -10,110 +10,96 @@ from django.utils.functional import cached_property
 from resticus.encoders import JSONEncoder
 
 from camp.apps.monitors.models import Monitor, Entry
-from camp.apps.monitors.purpleair import api
-from camp.utils.datetime import parse_datetime
+from camp.apps.monitors.purpleair.api import purpleair_api
+from camp.utils.datetime import parse_timestamp
 
 
 class PurpleAir(Monitor):
     SENSORS = ['a', 'b']
+    CHANNEL_FIELDS = {
+        'pm10': 'pm1.0_atm',
+        'pm25': 'pm2.5_atm',
+        'pm100': 'pm10.0_atm',
+        'particles_03um': '0.3_um_count',
+        'particles_05um': '0.5_um_count',
+        'particles_10um': '1.0_um_count',
+        'particles_25um': '2.5_um_count',
+        'particles_50um': '5.0_um_count',
+        'particles_100um': '10.0_um_count',
+    }
 
-    data = JSONField(default=dict, encoder=JSONEncoder)
+    SENSOR_ATTRS = ['fahrenheit', 'humidity', 'pressure']
+    SENSOR_ATTRS.extend(CHANNEL_FIELDS.keys())
 
-    @cached_property
-    def purple_id(self):
-        return self.data[0]['ID']
+    purple_id = models.IntegerField(unique=True)
 
-    @cached_property
-    def thingspeak_key(self):
-        return self.data[0]['THINGSPEAK_PRIMARY_ID_READ_KEY']
+    def update_data(self, data=None):
+        if data is None:
+            if self.purple_id is None:
+                raise ValueError(f'Cannot fetch Purple Air data if purple_id is None.')
+            data = purpleair_api.get_sensor(self.purple_id)
 
-    def get_devices(self, retries=3):
-        devices = api.get_devices(self.purple_id, self.thingspeak_key)
-        if devices is None and retries:
-            time.sleep(5 * (4 - retries))
-            return self.get_devices(retries - 1)
-        return devices
-
-    @cached_property
-    def channels(self):
-        return api.get_channels(self.data)
-
-    def get_feeds(self, **options):
-        return {
-            'a': api.get_feeds(self.channels['a'], **options),
-            'b': api.get_feeds(self.channels['b'], **options)
-        }
-
-    def update_data(self, device_data=None, retries=3):
-        if device_data is None:
-            device_data = self.get_devices()
-
-        self.data = device_data
-        self.name = self.data[0]['Label']
+        self.name = data['name']
         self.position = Point(
-            float(self.data[0]['Lon']),
-            float(self.data[0]['Lat'])
+            float(data['longitude']),
+            float(data['latitude'])
         )
-        self.location = self.data[0]['DEVICE_LOCATIONTYPE']
+        self.location = self.LOCATION.inside if data['location_type'] == 1 else self.LOCATION.outside
 
         if not self.default_sensor:
             self.default_sensor = 'a'
 
     def create_entry(self, payload, sensor=None):
         try:
-            return self.entries.get(
+            entry = self.entries.get(
                 sensor=sensor,
-                timestamp=payload[0]['created_at'],
+                timestamp=payload['timestamp'],
             )
+            entry = self.process_entry(entry, payload)
+            entry.save()
+            return entry
         except Entry.DoesNotExist:
             return super().create_entry(payload, sensor=sensor)
 
-    def copy_fields(self, entry):
-        '''
-            Copy certain envionment fields to both channels
-            so that they each have record of the collected data
-        '''
-        field_list = ['celcius', 'fahrenheit', 'humidity', 'pressure']
-        queryset = Entry.objects.filter(
-            monitor_id=entry.monitor_id,
-            timestamp__range=(
-                entry.timestamp - timedelta(minutes=1),
-                entry.timestamp + timedelta(minutes=1),
-            )
-        ).exclude(sensor=entry.sensor)
-        for sibling in queryset:
-            sibling_updated = False
-            for field in field_list:
-                if getattr(entry, field) is not None and getattr(sibling, field) is None:
-                    sibling_updated = True
-                    setattr(sibling, field, getattr(entry, field))
-                if getattr(sibling, field) is not None and getattr(entry, field) is None:
-                    setattr(entry, field, getattr(sibling, field))
-            if sibling_updated:
-                sibling.save()
-        return entry
+    def create_entries(self, payload):
+        return [self.create_entry(data, data['sensor'])
+            for data in self._split_channels(payload)]
 
-    def process_entry(self, entry):
-        attr_map = {
-            'fahrenheit': 'Temperature',
-            'humidity': 'Humidity',
-            'pressure': 'Pressure',
-            'pm10': 'PM1.0 (ATM)',
-            'pm25': 'PM2.5 (ATM)',
-            'pm100': 'PM10.0 (ATM)',
-            'particles_03um': '0.3um',
-            'particles_05um': '0.5um',
-            'particles_10um': '1.0um',
-            'particles_25um': '2.5um',
-            'particles_50um': '5.0um',
-            'particles_100um': '10.0um',
+    def _split_channels(self, payload):
+        '''
+            The Purple Air API returns a single object with data
+            from both channels A and B. This method splits that into
+            two data structures that can be saved independently.
+        '''
+        base_data = {
+            'timestamp': parse_timestamp(payload['last_seen']),
+            'fahrenheit': payload['temperature'],
+            'humidity': payload['humidity'],
+            'pressure': payload['pressure'],
         }
 
-        for data in entry.payload:
-            for attr, key in attr_map.items():
-                if key in data:
-                    setattr(entry, attr, data[key])
+        for sensor in self.SENSORS:
+            # If no PM2.5 data on this channel, skip it.
+            if payload.get(f'{self.CHANNEL_FIELDS["pm25"]}_{sensor}') is None:
+                continue
 
-        entry.timestamp = parse_datetime(entry.payload[0].get('created_at'))
-        entry = self.copy_fields(entry)
-        return super().process_entry(entry)
+            data = base_data.copy()
+            data.update(sensor=sensor, **{
+                target: payload[f'{source}_{sensor}']
+                for target, source in self.CHANNEL_FIELDS.items()
+            })
+
+            yield data
+
+
+    def process_entry(self, entry, payload):
+        # The fields are already correctly mapped in the _split_channels
+        # method, so we just need to copy 'em over.
+
+        for attr in self.SENSOR_ATTRS:
+            if payload.get(attr) is not None:
+                setattr(entry, attr, payload[attr])
+
+        # TODO: can probably nuke this line
+        # entry.timestamp = parse_timestamp(payload.get('timestamp'))
+        return super().process_entry(entry, payload)

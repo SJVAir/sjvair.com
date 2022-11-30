@@ -1,0 +1,32 @@
+{
+  "include": [
+    "assets/vue/**/*.ts",
+    "assets/vue/**/*.d.ts",
+    "assets/vue/**/*.vue"
+  ],
+  "exclude": ["node_modules"],
+
+  "compilerOptions": {
+    "rootDir": "./assets/vue/",
+    "target": "esnext",
+    "module": "esnext",
+    "lib": ["esnext"],
+    "types": ["vite/client"],
+    "strict": true,
+    "alwaysStrict": true,
+    "useDefineForClassFields": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "removeComments": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "sourceMap": true,
+    "jsx": "preserve"
+  }
+}

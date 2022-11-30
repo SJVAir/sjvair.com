@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.methane',
     'camp.apps.monitors.purpleair',
     'camp.apps.sensors',
+    'camp.utils',
 ]
 
 MIDDLEWARE = [
@@ -133,8 +134,9 @@ REDIS_URL = None
 for var in ["REDIS_URL", "OPENREDIS_URL"]:
     REDIS_URL = os.environ.get(var)
     if REDIS_URL is not None:
+        if REDIS_URL.startswith('rediss'):
+            REDIS_URL = f"{REDIS_URL}{'&' if '?' in REDIS_URL else '?'}ssl_cert_reqs=none"
         break
-
 
 # Auth
 
@@ -199,7 +201,6 @@ LANGUAGES = (
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/2.2/howto/static-files/
-
 STATIC_ROOT = BASE_DIR.child('public', 'static')
 
 STATIC_URL = '/static/'
@@ -217,7 +218,6 @@ STATICFILES_FINDERS = [
 MEDIA_ROOT = BASE_DIR.child('public', 'media')
 
 MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
-
 
 # django-cors-headers
 
@@ -272,6 +272,11 @@ GOOGLE_ANALYTICS_ID = os.environ.get('GOOGLE_ANALYTICS_ID')
 
 # Air Now API
 AIRNOW_API_KEY = os.environ.get('AIRNOW_API_KEY')
+
+# Purple Air
+PURPLEAIR_READ_KEY = os.environ.get('PURPLEAIR_READ_KEY')
+PURPLEAIR_WRITE_KEY = os.environ.get('PURPLEAIR_WRITE_KEY')
+PURPLEAIR_GROUP_ID = os.environ.get('PURPLEAIR_GROUP_ID')
 
 # Sentry
 if "SENTRY_DSN" in os.environ:
