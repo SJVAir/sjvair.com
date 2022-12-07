@@ -1,19 +1,19 @@
 from django.contrib import admin
 from django.template import Context, Template
 
-from .models import Calibrator, Calibration
+from .models import Calibrator, AutoCalibration
 
 
-class CalibrationInline(admin.TabularInline):
+class AutoCalibrationInline(admin.TabularInline):
     extra = 0
-    model = Calibration
+    model = AutoCalibration
     fields = ('start_date', 'end_date', 'r2', 'formula')
     readonly_fields = ('start_date', 'end_date', 'r2', 'formula')
 
 
 @admin.register(Calibrator)
 class CalibratorAdmin(admin.ModelAdmin):
-    inlines = (CalibrationInline,)
+    inlines = (AutoCalibrationInline,)
     list_display = ('pk', 'reference', 'colocated', 'format_distance')
     raw_id_fields = ('reference', 'colocated', 'calibration')
 

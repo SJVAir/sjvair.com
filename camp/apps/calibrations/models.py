@@ -1,18 +1,52 @@
 import itertools
 
 from datetime import timedelta
-from pprint import pprint
 
 from django.db import models
 from django.db.models import F
 from django.utils import timezone
+from django.utils.functional import lazy
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from geopy.distance import distance as geopy_distance
+from model_utils import Choices
 from model_utils.models import TimeStampedModel
 
-from camp.apps.monitors.linreg import linear_regression
+from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.validators import validate_formula
+from camp.apps.calibrations.linreg import linear_regression
+from camp.apps.calibrations.querysets import CalibratorQuerySet
+from camp.utils.counties import County
+
+
+class CountyCalibration(TimeStampedModel):
+    COUNTIES = Choices(*County.names)
+    MONITOR_TYPES = lazy(lambda: Choices(*Monitor.subclasses()), list)()
+
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+
+    monitor_type = models.CharField(max_length=20, choices=MONITOR_TYPES)
+    county = models.CharField(max_length=20, choices=COUNTIES)
+    pm25_formula = models.CharField(max_length=255, blank=True,
+        default='', validators=[validate_formula])
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['monitor_type', 'county'])
+        ]
+
+        unique_together = [
+            ('monitor_type', 'county')
+        ]
+
+    def __str__(self):
+        return f'{self.monitor_type} – {self.county}'
 
 
 class Calibrator(TimeStampedModel):
@@ -24,6 +58,7 @@ class Calibrator(TimeStampedModel):
         verbose_name='ID'
     )
 
+    # TODO: What if this has gone inactive?
     reference = models.ForeignKey('monitors.Monitor',
         related_name='reference_calibrator',
         on_delete=models.CASCADE
@@ -37,17 +72,11 @@ class Calibrator(TimeStampedModel):
 
     is_active = models.BooleanField(default=False)
 
-    calibration = models.OneToOneField('calibrations.Calibration',
+    calibration = models.OneToOneField('calibrations.AutoCalibration',
         blank=True, null=True, related_name='calibrator_current',
         on_delete=models.SET_NULL)
 
-    # manual_calibration = models.OneToOneField('calibrations.Calibration',
-    #     blank=True, null=True, related_name='calibrator_current',
-    #     on_delete=models.SET_NULL)
-
-    # auto_calibration = models.OneToOneField('calibrations.Calibration',
-    #     blank=True, null=True, related_name='calibrator_current',
-    #     on_delete=models.SET_NULL)
+    objects = CalibratorQuerySet.as_manager()
 
     def get_distance(self):
         return geopy_distance(
@@ -60,7 +89,7 @@ class Calibrator(TimeStampedModel):
         # assert self.colocated.is_active
 
         if end_date is None:
-            end_date = timezone.now().date()
+            end_date = timezone.now()
 
         # Set of coefficients to test and the
         # formulas for their calibrations
@@ -68,18 +97,18 @@ class Calibrator(TimeStampedModel):
             (
                 ['particles_03-10', 'particles_10-25', 'humidity'],
                 lambda results: ' + '.join([
-                    f"((particles_03um - particles_10um) * {results.coefs['particles_03-10']})",
-                    f"((particles_10um - particles_25um) * {results.coefs['particles_10-25']})",
-                    f"(humidity * {results.coefs['humidity']})"
-                    f"{results.intercept}",
+                    f"((particles_03um - particles_10um) * ({results.coefs['particles_03-10']}))",
+                    f"((particles_10um - particles_25um) * ({results.coefs['particles_10-25']}))",
+                    f"(humidity * ({results.coefs['humidity']}))",
+                    f"({results.intercept})",
                 ])
             ), (
                 ['particles_10-25', 'particles_25-05', 'humidity'],
                 lambda results: ' + '.join([
-                    f"((particles_10um - particles_25um) * {results.coefs['particles_10-25']})",
-                    f"((particles_25um - particles_05um) * {results.coefs['particles_25-05']})",
-                    f"(humidity * {results.coefs['humidity']})",
-                    f"{results.intercept}",
+                    f"((particles_10um - particles_25um) * ({results.coefs['particles_10-25']}))",
+                    f"((particles_25um - particles_05um) * ({results.coefs['particles_25-05']}))",
+                    f"(humidity * ({results.coefs['humidity']}))",
+                    f"({results.intercept})",
                 ])
             )
         ]
@@ -92,28 +121,29 @@ class Calibrator(TimeStampedModel):
                 days=days,
             )
             for (coefs, formula), days
-            in itertools.product(formulas, [7, 14, 21, 28])
+            in itertools.product(formulas, [1, 7, 14, 21, 28])
         ]))
-
-        print(f'{self.reference.name} / {self.colocated.name} ({self.get_distance().meters} m)')
-        pprint(results)
-        print('\n')
 
         if results:
             # Sort by R2 (highest last)...
             results.sort(key=lambda i: i['r2'])
+            # maybe also need to filter out negative coefs?
 
             # ...and save the calibration
-            self.calibrations.create(**results[-1])
-            self.calibration = self.calibrations.order_by('end_date').first()
+            self.calibration = self.calibrations.create(**results[-1])
+            self.save()
 
     def generate_calibration(self, coefs, formula, end_date, days):
         start_date = end_date - timedelta(days=days)
-        ref_qs = self.reference.entries.filter(timestamp__date__range=(start_date, end_date))
+        ref_qs = self.reference.entries.filter(
+            sensor=self.reference.default_sensor,
+            timestamp__date__range=(start_date, end_date),
+        )
+
         col_qs = (self.colocated.entries
             .filter(
-                timestamp__date__range=(start_date, end_date),
                 sensor=self.colocated.default_sensor,
+                timestamp__date__range=(start_date, end_date),
             )
             .annotate(**{
                 'particles_03-10': F('particles_03um') - F('particles_10um'),
@@ -132,7 +162,7 @@ class Calibrator(TimeStampedModel):
             }
 
 
-class Calibration(TimeStampedModel):
+class AutoCalibration(TimeStampedModel):
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -145,12 +175,15 @@ class Calibration(TimeStampedModel):
         on_delete=models.CASCADE
     )
 
-    start_date = models.DateTimeField()
-    end_date = models.DateTimeField(db_index=True)
-
-    r2 = models.FloatField()
     formula = models.CharField(max_length=255, blank=True,
         default='', validators=[validate_formula])
+
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    r2 = models.FloatField()
+
+    class Meta:
+        ordering = ['-end_date', '-r2']
 
     def __str__(self):
         return self.formula
