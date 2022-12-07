@@ -7,8 +7,8 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from camp.apps.calibrations.linreg import linear_regression, RegressionResults
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.apps.monitors.linreg import linear_regression, RegressionResults
 
 
 @dataclass
