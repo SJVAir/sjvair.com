@@ -1,6 +1,24 @@
 {% extends 'admin/index.html' %}
 {% load i18n static %}
 
+{% block extrastyle %}
+    {{ block.super }}
+    <style type="text/css">
+        .admin-advanced {
+            display: none;
+        }
+
+        .admin-toggle {
+            margin: -20px 0 15px 0;
+            text-align: right;
+        }
+
+        .admin-simple .module > table {
+            width: 100%;
+        }
+    </style>
+{% endblock %}
+
 {% block extrahead %}
 {{ block.super }}
 <script type="text/javascript" src="{% static 'admin/js/vendor/jquery/jquery.min.js' %}"></script>
@@ -24,9 +42,41 @@
         fetchStats();
         setInterval(fetchStats, 15 * 1000);
     })(jQuery);
+
+    // Menu toggle.
+    (function($){
+        $(document).ready(function(){
+            $('.admin-toggle a').on('click', function(e){
+                e.preventDefault();
+
+                var $this = $(this),
+                    $tabs = $('.admin-tab'),
+                    $active = $tabs.filter($this.attr('data-tab'));
+
+                $tabs.css('display', 'none');
+                $active.css('display', 'block');
+            });
+        });
+    })(jQuery);
 </script>
 {% endblock %}
 
+{% block content %}
+<div id="content-main">
+    <div class="admin-toggle">
+        <a href="#" data-tab=".admin-simple">[ Simple ]</a>
+        <a href="#" data-tab=".admin-advanced">[ Advanced ]</a>
+    </div>
+
+    <div class="admin-tab admin-simple">
+        {% include "admin/menu.html" %}
+    </div>
+
+    <div class="admin-tab admin-advanced">
+        {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+    </div>
+</div>
+{% endblock %}
 
 {% block sidebar %}
 <div id="content-related">

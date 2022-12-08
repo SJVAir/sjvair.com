@@ -1,0 +1,71 @@
+<div class="module">
+    <table>
+        <caption>User Management</caption>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:accounts_user_changelist' %}">User Accounts</a></h3>
+                <p>Usernames, email addresses, and passwords</p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>PM2.5 Calibrations</caption>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:calibrations_calibrator_changelist' %}">Auto Calibrations</a></h3>
+                <p>Reference and colocated monitors.</p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:calibrations_countycalibration_changelist' %}">County Calibrations</a></h3>
+                <p>Fallback calibrations per county</p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Air Monitors</caption>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:airnow_airnow_changelist' %}">AirNow</a></h3>
+                <p><a href="https://www.airnow.gov/" target="_blank">AirNow.gov</a></p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:bam_bam1022_changelist' %}">BAM1022</a></h3>
+                <p>Our very own network of high-end monitors.</p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:purpleair_purpleair_changelist' %}">Purple Air</a></h3>
+                <p><a href="https://map.purpleair.com/" target="_blank">PurpleAir Real-Time Map</a></p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:methane_methane_changelist' %}">Methane</a></h3>
+                <p>Just an experiment.</p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Air Quality Alerts</caption>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:alerts_alert_changelist' %}">Air Quality Alerts</a></h3>
+                <p>Tracking when the air is bad.</p>
+            </td>
+        </tr>
+    </table>
+</div>
