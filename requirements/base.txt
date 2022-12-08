@@ -4,6 +4,7 @@ dj-database-url==0.5.0
 dj-static==0.0.6
 
 django-admin-honeypot==1.1.0
+django-admin-inline-paginator==0.3.0
 django-annoying==0.10.6
 django-bmemcached==0.3.0
 django-cors-headers==3.13.0

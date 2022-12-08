@@ -1,32 +1,75 @@
 from django.contrib import admin
+from django.db.models import Prefetch
 from django.template import Context, Template
+from django.urls import reverse
+from django.utils.html import format_html
 
-from .models import Calibrator, AutoCalibration
+from django_admin_inline_paginator.admin import TabularInlinePaginated
+
+from camp.apps.calibrations.models import Calibrator, AutoCalibration
+from camp.apps.monitors.models import Monitor
 
 
-class AutoCalibrationInline(admin.TabularInline):
+class AutoCalibrationInline(TabularInlinePaginated):
     extra = 0
     model = AutoCalibration
+    per_page = 30
     fields = ('start_date', 'end_date', 'r2', 'formula')
     readonly_fields = ('start_date', 'end_date', 'r2', 'formula')
+
+    def has_add_permission(self, request, obj):
+        # Calibrations are added automatically.
+        return False
+
+    def has_change_permission(self, request, obj):
+        # Calibrations are added automatically.
+        return False
 
 
 @admin.register(Calibrator)
 class CalibratorAdmin(admin.ModelAdmin):
     inlines = (AutoCalibrationInline,)
-    list_display = ('pk', 'reference', 'colocated', 'format_distance')
+    list_display = ('pk', 'get_reference', 'get_colocated', 'get_distance', 'get_county', 'is_active', 'get_last_updated')
+    list_filter = ('is_active', 'reference__county', 'calibration__end_date',)
     raw_id_fields = ('reference', 'colocated', 'calibration')
 
-    def format_distance(self, instance):
-        distance = instance.get_distance().meters
-        unit = 'm'
-        if distance >= 1000:
-            distance /= 1000
-            unit = 'km'
-        return (Template('{% load humanize %}{{ distance|floatformat|intcomma }} {{ unit }}')
-            .render(Context({
-                'distance': distance,
-                'unit': unit,
-            }))
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        queryset = queryset.select_related('calibration')
+        queryset = queryset.prefetch_related(
+            Prefetch('reference', Monitor.objects.all()),
+            Prefetch('colocated', Monitor.objects.all()),
         )
-    format_distance.short_description = 'Distance'
+        return queryset
+
+    def get_county(self, instance):
+        return instance.reference.county
+    get_county.short_description = 'County'
+
+    def get_distance(self, instance):
+        distance = instance.get_distance()
+        context = {'distance': int(round(distance.feet)), 'unit': 'ft'}
+        if distance.feet > 1000:
+            context = {'distance': distance.miles, 'unit': 'mi'}
+        return (Template('{% load humanize %}{{ distance|floatformat|intcomma }} {{ unit }}')
+            .render(Context(context))
+        )
+    get_distance.short_description = 'Distance'
+
+    def get_last_updated(self, instance):
+        if instance.calibration:
+            return instance.calibration.end_date
+        return '-'
+    get_last_updated.short_description = 'Last Updated'
+
+    def get_monitor_link(self, instance):
+        url = reverse(f'admin:{instance._meta.app_label}_{instance._meta.model_name}_change', args=[str(instance.pk)])
+        return format_html('<a href="{}">{}</a> ({})', url, instance.name, instance.__class__.__name__)
+
+    def get_reference(self, instance):
+        return self.get_monitor_link(instance.reference)
+    get_reference.short_description = 'Reference Monitor'
+
+    def get_colocated(self, instance):
+        return self.get_monitor_link(instance.colocated)
+    get_colocated.short_description = 'Colocated Monitor'

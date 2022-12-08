@@ -69,6 +69,7 @@ class Monitor(models.Model):
     objects = InheritanceManager()
 
     class Meta:
+        base_manager_name = 'objects'
         ordering = ('name',)
 
     def __str__(self):

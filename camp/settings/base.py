@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     # 'channels_redis',
     'corsheaders',
     'admin_honeypot',
+    'django_admin_inline_paginator',
     'django_extensions',
     'django_filters',
     'form_utils',
