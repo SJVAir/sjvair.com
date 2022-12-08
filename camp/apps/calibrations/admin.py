@@ -3,11 +3,12 @@ from django.db.models import Prefetch
 from django.template import Context, Template
 from django.urls import reverse
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 
 from django_admin_inline_paginator.admin import TabularInlinePaginated
 
-from camp.apps.calibrations.models import Calibrator, AutoCalibration
-from camp.apps.monitors.models import Monitor
+from camp.apps.calibrations.models import Calibrator, AutoCalibration, CountyCalibration
+from camp.apps.monitors.models import Monitor, Entry
 
 
 class AutoCalibrationInline(TabularInlinePaginated):
@@ -73,3 +74,30 @@ class CalibratorAdmin(admin.ModelAdmin):
     def get_colocated(self, instance):
         return self.get_monitor_link(instance.colocated)
     get_colocated.short_description = 'Colocated Monitor'
+
+
+@admin.register(CountyCalibration)
+class CountyCalibrationAdmin(admin.ModelAdmin):
+    list_display = ('monitor_type', 'county', 'modified', 'get_pm25_formula')
+    list_filter = ('monitor_type', 'county')
+
+    def get_pm25_formula(self, instance):
+        if instance.pm25_formula:
+            return mark_safe(f'<code>{instance.pm25_formula}</code>')
+        return '-'
+    get_pm25_formula.short_description = 'PM2.5 Formula'
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if 'pm25_formula' in form.base_fields:
+            form.base_fields['pm25_formula'].help_text = self.formula_help_text()
+        return form
+
+    def formula_help_text(self):
+        return mark_safe(Template('''
+            <p>&#128279; <a href="https://github.com/AxiaCore/py-expression-eval/#available-operators-constants-and-functions">Available operators, constants, and functions.</a></p>
+            <p><b>Available variables:</b></p>
+            <ul>
+                {% for env in environment %}<li><code>{{ env }}</code></li>{% endfor %}
+            </ul>
+        ''').render(Context({'environment': Entry.ENVIRONMENT})))
