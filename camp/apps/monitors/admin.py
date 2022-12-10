@@ -8,7 +8,9 @@ from django.db.models import F, Max, Prefetch
 from django.template import Template, Context
 from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
+from django.utils.safestring import mark_safe
 
+from camp.apps.calibrations.admin import formula_help_text
 from camp.utils.forms import DateRangeForm
 
 from .models import Calibration, Entry
@@ -67,3 +69,21 @@ class MonitorAdmin(admin.OSMGeoAdmin):
             return instance.last_updated
         return ''
     last_updated.admin_order_field = 'last_updated'
+
+
+@admin.register(Calibration)
+class CalibrationAdmin(admin.ModelAdmin):
+    list_display = ('monitor_type', 'county', 'modified', 'get_pm25_formula')
+    list_filter = ('monitor_type', 'county')
+
+    def get_pm25_formula(self, instance):
+        if instance.pm25_formula:
+            return mark_safe(f'<code>{instance.pm25_formula}</code>')
+        return '-'
+    get_pm25_formula.short_description = 'PM2.5 Formula'
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if 'pm25_formula' in form.base_fields:
+            form.base_fields['pm25_formula'].help_text = formula_help_text()
+        return form
