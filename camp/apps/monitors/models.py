@@ -115,7 +115,7 @@ class Monitor(models.Model):
 
         # # Distance-based calibrations
         # calibrator = (Calibrator.objects
-        #     .filter(is_active=True)
+        #     .filter(is_enabled=True)
         #     .exclude(calibration__isnull=True)
         #     .select_related('calibration')
         #     .closest(self.position)
