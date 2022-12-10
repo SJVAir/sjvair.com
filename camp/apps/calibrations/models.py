@@ -38,7 +38,7 @@ class Calibrator(TimeStampedModel):
         on_delete=models.CASCADE
     )
 
-    is_active = models.BooleanField(default=False)
+    is_enabled = models.BooleanField(default=False)
 
     calibration = models.OneToOneField('calibrations.AutoCalibration',
         blank=True, null=True, related_name='calibrator_current',
@@ -53,8 +53,8 @@ class Calibrator(TimeStampedModel):
         )
 
     def calibrate(self, end_date=None):
-        # assert self.reference.is_active
-        # assert self.colocated.is_active
+        # assert self.reference.is_enabled
+        # assert self.colocated.is_enabled
 
         if end_date is None:
             end_date = timezone.now()

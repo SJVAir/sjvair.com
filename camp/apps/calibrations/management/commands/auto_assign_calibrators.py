@@ -25,6 +25,6 @@ class Command(BaseCommand):
             calibrator = Calibrator.objects.create(
                 reference=airnow,
                 colocated=purpleair,
-                is_active=True,
+                is_enabled=True,
             )
             calibrator.calibrate()
