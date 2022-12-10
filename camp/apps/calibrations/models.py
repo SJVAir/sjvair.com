@@ -9,44 +9,12 @@ from django.utils.functional import lazy
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from geopy.distance import distance as geopy_distance
-from model_utils import Choices
 from model_utils.models import TimeStampedModel
 
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.validators import validate_formula
-from camp.apps.calibrations.linreg import linear_regression
+from camp.apps.calibrations.linreg import linear_regression, RegressionResults
 from camp.apps.calibrations.querysets import CalibratorQuerySet
-from camp.utils.counties import County
-
-
-class CountyCalibration(TimeStampedModel):
-    COUNTIES = Choices(*County.names)
-    MONITOR_TYPES = lazy(lambda: Choices(*Monitor.subclasses()), list)()
-
-    id = SmallUUIDField(
-        default=uuid_default(),
-        primary_key=True,
-        db_index=True,
-        editable=False,
-        verbose_name='ID'
-    )
-
-    monitor_type = models.CharField(max_length=20, choices=MONITOR_TYPES)
-    county = models.CharField(max_length=20, choices=COUNTIES)
-    pm25_formula = models.CharField(max_length=255, blank=True,
-        default='', validators=[validate_formula])
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['monitor_type', 'county'])
-        ]
-
-        unique_together = [
-            ('monitor_type', 'county')
-        ]
-
-    def __str__(self):
-        return f'{self.monitor_type} – {self.county}'
 
 
 class Calibrator(TimeStampedModel):
@@ -95,9 +63,9 @@ class Calibrator(TimeStampedModel):
         # formulas for their calibrations
         formulas = [
             (
-                ['particles_03-10', 'particles_10-25', 'humidity'],
+                ['particles_05-10', 'particles_10-25', 'humidity'],
                 lambda results: ' + '.join([
-                    f"((particles_03um - particles_10um) * ({results.coefs['particles_03-10']}))",
+                    f"((particles_05um - particles_10um) * ({results.coefs['particles_05-10']}))",
                     f"((particles_10um - particles_25um) * ({results.coefs['particles_10-25']}))",
                     f"(humidity * ({results.coefs['humidity']}))",
                     f"({results.intercept})",
@@ -113,25 +81,42 @@ class Calibrator(TimeStampedModel):
             )
         ]
 
-        results = list(filter(bool, [
-            self.generate_calibration(
-                coefs=coefs,
-                formula=formula,
-                end_date=end_date,
-                days=days,
+        # Generate the full set of calibrations...
+        results = [
+                self.generate_calibration(
+                    coefs=coefs,
+                    formula=formula,
+                    end_date=end_date,
+                    days=days,
+                )
+                for (coefs, formula), days
+                in itertools.product(formulas, [7, 14, 21, 28])
+            ]
+
+        # ...and filter out any bad results
+        results = [res for res in results if
+            # 1. Must have completed successfully.
+            res is not None
+            # 2. Must be sufficiently confident (R2>0.8).
+            and res.r2 > 0.8
+            # 3. Must be no negative coefficients.
+            and not any([coef < 0 for coef in res.coefs.values()])
+        ]
+
+        # Sort by R2 (highest last).
+        results.sort(key=lambda res: res.r2)
+
+        try:
+            self.calibration = self.calibrations.create(
+                start_date=results[-1].start_date,
+                end_date=results[-1].end_date,
+                formula=results[-1].formula,
+                r2=results[-1].r2,
             )
-            for (coefs, formula), days
-            in itertools.product(formulas, [1, 7, 14, 21, 28])
-        ]))
-
-        if results:
-            # Sort by R2 (highest last)...
-            results.sort(key=lambda i: i['r2'])
-            # maybe also need to filter out negative coefs?
-
-            # ...and save the calibration
-            self.calibration = self.calibrations.create(**results[-1])
             self.save()
+            return True
+        except IndexError:
+            return False
 
     def generate_calibration(self, coefs, formula, end_date, days):
         start_date = end_date - timedelta(days=days)
@@ -146,7 +131,7 @@ class Calibrator(TimeStampedModel):
                 timestamp__date__range=(start_date, end_date),
             )
             .annotate(**{
-                'particles_03-10': F('particles_03um') - F('particles_10um'),
+                'particles_05-10': F('particles_05um') - F('particles_10um'),
                 'particles_10-25': F('particles_10um') - F('particles_25um'),
                 'particles_25-05': F('particles_25um') - F('particles_05um'),
             })
@@ -154,12 +139,21 @@ class Calibrator(TimeStampedModel):
 
         results = linear_regression(ref_qs, col_qs, coefs)
         if results is not None:
-            return {
-                'start_date': start_date,
-                'end_date': end_date,
-                'r2': results.r2,
-                'formula': formula(results),
-            }
+
+            print('-' * 25)
+            print(self.reference.name)
+            print('coefs', results.coefs)
+            print('days', days)
+            print('ref_qs', ref_qs.count())
+            print('col_qs', col_qs.count())
+            print('R2', results.r2)
+            print('-' * 25)
+
+            # Tack on some other data we may need later
+            results.start_date = start_date
+            results.end_date = end_date
+            results.formula = formula(results)
+            return results
 
 
 class AutoCalibration(TimeStampedModel):

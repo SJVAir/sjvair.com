@@ -1,4 +1,7 @@
-from dataclasses import dataclass
+import dataclasses
+import types
+
+from datetime import datetime
 
 import pandas as pd
 
@@ -6,7 +9,7 @@ from django.db.models import F
 from sklearn.linear_model import LinearRegression
 
 
-@dataclass
+@dataclasses.dataclass
 class RegressionResults:
     reg: LinearRegression
     endog: pd.DataFrame
@@ -15,6 +18,10 @@ class RegressionResults:
     r2: float
     intercept: int
     coefs: dict
+
+    start_date: datetime = None
+    end_date: datetime = None
+    formula: types.LambdaType = None
 
 
 def linear_regression(endog_qs, exog_qs, exog_coefs):
