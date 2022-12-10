@@ -40,16 +40,18 @@ class AutoCalibrationInline(TabularInlinePaginated):
 @admin.register(Calibrator)
 class CalibratorAdmin(admin.ModelAdmin):
     inlines = (AutoCalibrationInline,)
-    list_display = ('pk', 'get_reference', 'get_colocated', 'get_county', 'get_distance', 'get_r2', 'is_enabled', 'get_last_updated')
+    list_display = ('pk', 'get_reference', 'get_colocated', 'get_county', 'get_distance', 'is_enabled', 'get_r2', 'get_last_updated',)
     list_filter = ('is_enabled', 'reference__county', 'calibration__end_date',)
     raw_id_fields = ('reference', 'colocated', 'calibration')
 
     def get_queryset(self, request):
+        monitor_queryset = Monitor.objects.all().select_related('latest')
+
         queryset = super().get_queryset(request)
         queryset = queryset.select_related('calibration')
         queryset = queryset.prefetch_related(
-            Prefetch('reference', Monitor.objects.all()),
-            Prefetch('colocated', Monitor.objects.all()),
+            Prefetch('reference', monitor_queryset),
+            Prefetch('colocated', monitor_queryset),
         )
         return queryset
 
@@ -80,8 +82,19 @@ class CalibratorAdmin(admin.ModelAdmin):
     get_r2.short_description = 'R2'
 
     def get_monitor_link(self, instance):
-        url = reverse(f'admin:{instance._meta.app_label}_{instance._meta.model_name}_change', args=[str(instance.pk)])
-        return format_html('<a href="{}">{}</a> ({})', url, instance.name, instance.__class__.__name__)
+        return mark_safe(Template('''
+            {% load static %}
+            {% if monitor.is_active %}
+                <img src="{% static 'admin/img/icon-yes.svg' %}" alt="Active">
+            {% else %}
+                <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inctive">
+            {% endif %}
+            <a href="{{ url }}">{{ monitor.name }}</a> ({{ monitor_type }})
+        ''').render(Context({
+            'monitor': instance,
+            'monitor_type': instance.__class__.__name__,
+            'url': reverse(f'admin:{instance._meta.app_label}_{instance._meta.model_name}_change', args=[str(instance.pk)])
+        })))
 
     def get_reference(self, instance):
         return self.get_monitor_link(instance.reference)
