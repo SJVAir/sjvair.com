@@ -1,9 +1,4 @@
-import itertools
-
-from datetime import timedelta
-
 from django.db import models
-from django.db.models import F
 from django.utils import timezone
 from django.utils.functional import lazy
 
@@ -13,7 +8,7 @@ from model_utils.models import TimeStampedModel
 
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.validators import validate_formula
-from camp.apps.calibrations.linreg import linear_regression, RegressionResults
+from camp.apps.calibrations.linreg import LinearRegressions
 from camp.apps.calibrations.querysets import CalibratorQuerySet
 
 
@@ -53,107 +48,29 @@ class Calibrator(TimeStampedModel):
         )
 
     def calibrate(self, end_date=None):
-        # assert self.reference.is_enabled
-        # assert self.colocated.is_enabled
-
         if end_date is None:
             end_date = timezone.now()
 
-        # Set of coefficients to test and the
-        # formulas for their calibrations
-        formulas = [
-            (
-                ['particles_05-10', 'particles_10-25', 'humidity'],
-                lambda results: ' + '.join([
-                    f"((particles_05um - particles_10um) * ({results.coefs['particles_05-10']}))",
-                    f"((particles_10um - particles_25um) * ({results.coefs['particles_10-25']}))",
-                    f"(humidity * ({results.coefs['humidity']}))",
-                    f"({results.intercept})",
-                ])
-            ), (
-                ['particles_10-25', 'particles_25-05', 'humidity'],
-                lambda results: ' + '.join([
-                    f"((particles_10um - particles_25um) * ({results.coefs['particles_10-25']}))",
-                    f"((particles_25um - particles_05um) * ({results.coefs['particles_25-05']}))",
-                    f"(humidity * ({results.coefs['humidity']}))",
-                    f"({results.intercept})",
-                ])
-            )
-        ]
+        linreg = LinearRegressions(calibrator=self, end_date=end_date)
+        linreg.process_regressions()
 
-        # Generate the full set of calibrations...
-        results = [
-                self.generate_calibration(
-                    coefs=coefs,
-                    formula=formula,
-                    end_date=end_date,
-                    days=days,
-                )
-                for (coefs, formula), days
-                in itertools.product(formulas, [7, 14, 21, 28])
-            ]
+        print('----------')
+        print(self.reference.name, '/', self.colocated.name)
+        for reg in linreg.regressions:
+            print(', '.join(map(str, [reg.r2, reg.coefs, (reg.end_date - reg.start_date).days])))
 
-        # ...and filter out any bad results
-        results = [res for res in results if
-            # 1. Must have completed successfully.
-            res is not None
-            # 2. Must be sufficiently confident (R2>0.8).
-            and res.r2 > 0.8
-            # 3. Must be no negative coefficients.
-            and not any([coef < 0 for coef in res.coefs.values()])
-        ]
+        results = linreg.best_fit()
 
-        # Sort by R2 (highest last).
-        results.sort(key=lambda res: res.r2)
-
-        try:
+        if results is not None:
             self.calibration = self.calibrations.create(
-                start_date=results[-1].start_date,
-                end_date=results[-1].end_date,
-                formula=results[-1].formula,
-                r2=results[-1].r2,
+                start_date=results.start_date,
+                end_date=results.end_date,
+                formula=results.formula,
+                r2=results.r2,
             )
             self.save()
             return True
-        except IndexError:
-            return False
-
-    def generate_calibration(self, coefs, formula, end_date, days):
-        start_date = end_date - timedelta(days=days)
-        ref_qs = self.reference.entries.filter(
-            sensor=self.reference.default_sensor,
-            timestamp__date__range=(start_date, end_date),
-        )
-
-        col_qs = (self.colocated.entries
-            .filter(
-                sensor=self.colocated.default_sensor,
-                timestamp__date__range=(start_date, end_date),
-            )
-            .annotate(**{
-                'particles_05-10': F('particles_05um') - F('particles_10um'),
-                'particles_10-25': F('particles_10um') - F('particles_25um'),
-                'particles_25-05': F('particles_25um') - F('particles_05um'),
-            })
-        )
-
-        results = linear_regression(ref_qs, col_qs, coefs)
-        if results is not None:
-
-            print('-' * 25)
-            print(self.reference.name)
-            print('coefs', results.coefs)
-            print('days', days)
-            print('ref_qs', ref_qs.count())
-            print('col_qs', col_qs.count())
-            print('R2', results.r2)
-            print('-' * 25)
-
-            # Tack on some other data we may need later
-            results.start_date = start_date
-            results.end_date = end_date
-            results.formula = formula(results)
-            return results
+        return False
 
 
 class AutoCalibration(TimeStampedModel):
