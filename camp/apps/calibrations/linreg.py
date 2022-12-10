@@ -142,15 +142,9 @@ class LinearRegressions:
         ])))
 
     def generate_regression(self, coefs, formula, days):
+        # Filter the dataframe to the number of days requested.
         start_date = self.end_date - timedelta(days=days)
-        df = self.df[(self.df.index >= start_date) & (self.df.index <= self.end_date)]
-
-        # This may be (much) faster, but need testing.
-        # CONSIDER: t2 will almost always be the last one, right? Would
-        # it be better to just assume -1 for that index?
-        # t1 = self.df['timestamp'].searchsorted(start_date)
-        # t2 = self.df['timestamp'].searchsorted(self.end_date)
-        # df = self.df[t1:t2-1]
+        df = self.df[self.df.index.searchsorted(start_date):-1]
 
         if not len(df):
             print('No data in the dataframe.')
