@@ -10,19 +10,10 @@ from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
 from django.utils.safestring import mark_safe
 
+from camp.apps.calibrations.admin import formula_help_text
 from camp.utils.forms import DateRangeForm
 
 from .models import Calibration, Entry
-
-
-def formula_help_text():
-    return mark_safe(Template('''
-        <p>&#128279; <a href="https://github.com/AxiaCore/py-expression-eval/#available-operators-constants-and-functions">Available operators, constants, and functions.</a></p>
-        <p><b>Available variables:</b></p>
-        <ul>
-            {% for env in environment %}<li>{{ env }}</li>{% endfor %}
-        </ul>
-    ''').render(Context({'environment': Entry.ENVIRONMENT})))
 
 
 class MonitorAdmin(admin.OSMGeoAdmin):

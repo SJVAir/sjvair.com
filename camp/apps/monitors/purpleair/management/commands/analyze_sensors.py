@@ -1,13 +1,31 @@
 import csv
 import io
 
+from dataclasses import dataclass
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from camp.apps.calibrations.linreg import linear_regression, RegressionResults
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.apps.monitors.linreg import linear_regression
+
+
+@dataclass
+class AnalysisResults(RegressionResults):
+    monitor: PurpleAir
+    std_a: float
+    std_b: float
+    mean_a: float
+    mean_b: float
+
+    @property
+    def std_diff(self):
+        return self.std_a - self.std_b
+
+    @property
+    def mean_diff(self):
+        return self.mean_a - self.mean_b
 
 
 class Command(BaseCommand):
@@ -45,20 +63,16 @@ class Command(BaseCommand):
                 failed.append({'monitor': monitor, 'reason': reason})
 
             else:
-                results['monitor'] = monitor
+                results = AnalysisResults(
+                    monitor=monitor,
+                    std_a=results.df.endog_pm25.std(),
+                    std_b=results.df.pm25.std(),
+                    mean_a=results.df.endog_pm25.mean(),
+                    mean_b=results.df.pm25.mean(),
+                    **{key: getattr(results, key) for key in results.__annotations__}
+                )
 
-                results['std_a'] = results['df'].endog_pm25.std()
-                results['std_b'] = results['df'].pm25.std()
-                results['std_diff'] = results['std_a'] - results['std_b']
-
-                results['mean_a'] = results['df'].endog_pm25.mean()
-                results['mean_b'] = results['df'].pm25.mean()
-                results['mean_diff'] = results['mean_a'] - results['mean_b']
-
-                is_flagged = any((
-                    results['r2'] < 0.90,
-                    abs(results['std_diff']) >= 5,
-                ))
+                is_flagged = any((results.r2 < 0.90, abs(results.std_diff) >= 5))
 
                 if is_flagged:
                     flagged.append(results)
@@ -89,20 +103,20 @@ class Command(BaseCommand):
 
         for results in flagged:
             writer.writerow({
-                'id': results['monitor'].pk,
-                'name': results['monitor'].name,
-                'county': results['monitor'].county,
-                'location': results['monitor'].location,
-                'hours': len(results['df']),
-                'r2': results['r2'],
+                'id': results.monitor.pk,
+                'name': results.monitor.name,
+                'county': results.monitor.county,
+                'location': results.monitor.location,
+                'hours': len(results.df),
+                'r2': results.r2,
 
-                'std_a': results['std_a'],
-                'std_b': results['std_b'],
-                'std_diff': results['std_diff'],
+                'std_a': results.std_a,
+                'std_b': results.std_b,
+                'std_diff': results.std_diff,
 
-                'mean_a': results['mean_a'],
-                'mean_b': results['mean_b'],
-                'mean_diff': results['mean_diff'],
+                'mean_a': results.mean_a,
+                'mean_b': results.mean_b,
+                'mean_diff': results.mean_diff,
             })
 
         writer.writerow({})
