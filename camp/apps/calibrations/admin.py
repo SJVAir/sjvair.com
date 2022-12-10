@@ -40,8 +40,8 @@ class AutoCalibrationInline(TabularInlinePaginated):
 @admin.register(Calibrator)
 class CalibratorAdmin(admin.ModelAdmin):
     inlines = (AutoCalibrationInline,)
-    list_display = ('pk', 'get_reference', 'get_colocated', 'get_county', 'get_distance', 'get_r2', 'is_active', 'get_last_updated')
-    list_filter = ('is_active', 'reference__county', 'calibration__end_date',)
+    list_display = ('pk', 'get_reference', 'get_colocated', 'get_county', 'get_distance', 'get_r2', 'is_enabled', 'get_last_updated')
+    list_filter = ('is_enabled', 'reference__county', 'calibration__end_date',)
     raw_id_fields = ('reference', 'colocated', 'calibration')
 
     def get_queryset(self, request):
