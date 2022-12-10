@@ -1,21 +1,21 @@
 import itertools
 
 from datetime import timedelta
-from pprint import pprint
 
 from django.db import models
 from django.db.models import F
 from django.utils import timezone
+from django.utils.functional import lazy
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from geopy.distance import distance as geopy_distance
 from model_utils.models import TimeStampedModel
 
-# data modeling
-import pandas as pd
-from sklearn.linear_model import LinearRegression
-
+from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.validators import validate_formula
+from camp.apps.calibrations.linreg import linear_regression, RegressionResults
+from camp.apps.calibrations.querysets import CalibratorQuerySet
+
 
 class Calibrator(TimeStampedModel):
     id = SmallUUIDField(
@@ -26,6 +26,7 @@ class Calibrator(TimeStampedModel):
         verbose_name='ID'
     )
 
+    # TODO: What if this has gone inactive?
     reference = models.ForeignKey('monitors.Monitor',
         related_name='reference_calibrator',
         on_delete=models.CASCADE
@@ -39,17 +40,11 @@ class Calibrator(TimeStampedModel):
 
     is_active = models.BooleanField(default=False)
 
-    calibration = models.OneToOneField('calibrations.Calibration',
+    calibration = models.OneToOneField('calibrations.AutoCalibration',
         blank=True, null=True, related_name='calibrator_current',
         on_delete=models.SET_NULL)
 
-    # manual_calibration = models.OneToOneField('calibrations.Calibration',
-    #     blank=True, null=True, related_name='calibrator_current',
-    #     on_delete=models.SET_NULL)
-
-    # auto_calibration = models.OneToOneField('calibrations.Calibration',
-    #     blank=True, null=True, related_name='calibrator_current',
-    #     on_delete=models.SET_NULL)
+    objects = CalibratorQuerySet.as_manager()
 
     def get_distance(self):
         return geopy_distance(
@@ -62,127 +57,106 @@ class Calibrator(TimeStampedModel):
         # assert self.colocated.is_active
 
         if end_date is None:
-            end_date = timezone.now().date()
+            end_date = timezone.now()
 
         # Set of coefficients to test and the
         # formulas for their calibrations
         formulas = [
             (
-                ['particles_03-10', 'particles_10-25', 'humidity'],
-                lambda reg: ' + '.join([
-                    f"((particles_03um - particles_10um) * {reg.coef_[0]})",
-                    f"((particles_10um - particles_25um) * {reg.coef_[1]})",
-                    f"(humidity * {reg.coef_[2]})"
-                    f"{reg.intercept_}",
+                ['particles_05-10', 'particles_10-25', 'humidity'],
+                lambda results: ' + '.join([
+                    f"((particles_05um - particles_10um) * ({results.coefs['particles_05-10']}))",
+                    f"((particles_10um - particles_25um) * ({results.coefs['particles_10-25']}))",
+                    f"(humidity * ({results.coefs['humidity']}))",
+                    f"({results.intercept})",
                 ])
             ), (
                 ['particles_10-25', 'particles_25-05', 'humidity'],
-                lambda reg: ' + '.join([
-                    f"((particles_10um - particles_25um) * {reg.coef_[0]})",
-                    f"((particles_25um - particles_05um) * {reg.coef_[1]})",
-                    f"(humidity * {reg.coef_[2]})",
-                    f"{reg.intercept_}",
+                lambda results: ' + '.join([
+                    f"((particles_10um - particles_25um) * ({results.coefs['particles_10-25']}))",
+                    f"((particles_25um - particles_05um) * ({results.coefs['particles_25-05']}))",
+                    f"(humidity * ({results.coefs['humidity']}))",
+                    f"({results.intercept})",
                 ])
             )
         ]
 
-        results = list(filter(bool, [
-            self.generate_calibration(
-                coefs=coefs,
-                formula=formula,
-                end_date=end_date,
-                days=days,
+        # Generate the full set of calibrations...
+        results = [
+                self.generate_calibration(
+                    coefs=coefs,
+                    formula=formula,
+                    end_date=end_date,
+                    days=days,
+                )
+                for (coefs, formula), days
+                in itertools.product(formulas, [7, 14, 21, 28])
+            ]
+
+        # ...and filter out any bad results
+        results = [res for res in results if
+            # 1. Must have completed successfully.
+            res is not None
+            # 2. Must be sufficiently confident (R2>0.8).
+            and res.r2 > 0.8
+            # 3. Must be no negative coefficients.
+            and not any([coef < 0 for coef in res.coefs.values()])
+        ]
+
+        # Sort by R2 (highest last).
+        results.sort(key=lambda res: res.r2)
+
+        try:
+            self.calibration = self.calibrations.create(
+                start_date=results[-1].start_date,
+                end_date=results[-1].end_date,
+                formula=results[-1].formula,
+                r2=results[-1].r2,
             )
-            for (coefs, formula), days
-            in itertools.product(formulas, [7, 14, 21, 28])
-        ]))
-
-        print(f'{self.reference.name} / {self.colocated.name} ({self.get_distance().meters} m)')
-        pprint(results)
-        print('\n')
-
-        if results:
-            # Sort by R2 (highest last)...
-            results.sort(key=lambda i: i['r2'])
-
-            # ...and save the calibration
-            self.calibrations.create(**results[-1])
-            self.calibration = self.calibrations.order_by('end_date').first()
+            self.save()
+            return True
+        except IndexError:
+            return False
 
     def generate_calibration(self, coefs, formula, end_date, days):
         start_date = end_date - timedelta(days=days)
-
-        # Load the reference entries into a DataFrame, sampled hourly.
-        ref_qs = (self.reference.entries
-            .filter(timestamp__date__range=(start_date, end_date))
-            .annotate(ref_pm25=F('pm25'))
-            .values('timestamp', 'ref_pm25')
+        ref_qs = self.reference.entries.filter(
+            sensor=self.reference.default_sensor,
+            timestamp__date__range=(start_date, end_date),
         )
 
-        if not ref_qs.exists():
-            print(f'Calibrator {self.pk}: no ref_qs ({start_date} - {end_date})')
-            return
-
-        ref_df = pd.DataFrame(ref_qs).set_index('timestamp')
-        ref_df = pd.to_numeric(ref_df.ref_pm25)
-        # ref_df = ref_df.ref_pm25.astype('float')
-        ref_df = ref_df.resample('H').mean()
-
-        # Load the colocated entries into a DataFrame
         col_qs = (self.colocated.entries
             .filter(
-                timestamp__date__range=(start_date, end_date),
                 sensor=self.colocated.default_sensor,
+                timestamp__date__range=(start_date, end_date),
             )
-            .annotate(col_pm25=F('pm25'))
-            .values('timestamp', 'col_pm25', 'humidity', 'particles_03um',
-                'particles_05um', 'particles_10um', 'particles_25um')
+            .annotate(**{
+                'particles_05-10': F('particles_05um') - F('particles_10um'),
+                'particles_10-25': F('particles_10um') - F('particles_25um'),
+                'particles_25-05': F('particles_25um') - F('particles_05um'),
+            })
         )
 
-        if not col_qs.exists():
-            print(f'Calibrator {self.pk}: no col_qs ({start_date} - {end_date})')
-            return
+        results = linear_regression(ref_qs, col_qs, coefs)
+        if results is not None:
 
-        col_df = pd.DataFrame(col_qs).set_index('timestamp')
+            print('-' * 25)
+            print(self.reference.name)
+            print('coefs', results.coefs)
+            print('days', days)
+            print('ref_qs', ref_qs.count())
+            print('col_qs', col_qs.count())
+            print('R2', results.r2)
+            print('-' * 25)
 
-        # Convert columns to floats
-        # cols = df.columns[df.dtypes.eq('object')]
-        col_df[col_df.columns] = col_df[col_df.columns].apply(pd.to_numeric, errors='coerce')
-
-        # particle count calculations and hourly sample
-        col_df['particles_03-10'] = col_df['particles_03um'] - col_df['particles_10um']
-        col_df['particles_10-25'] = col_df['particles_10um'] - col_df['particles_25um']
-        col_df['particles_25-05'] = col_df['particles_25um'] - col_df['particles_05um']
-        col_df = col_df.resample('H').mean()
-
-        # Merge the dataframes
-        merged = pd.concat([ref_df, col_df], axis=1, join="inner")
-        merged = merged.dropna()
-
-        if not len(merged):
-            print(f'Calibrator {self.pk}: no merged ({start_date} - {end_date})')
-            return
-
-        # Linear Regression time!
-        endog = merged['ref_pm25']
-        exog = merged[coefs]
-
-        try:
-            reg = LinearRegression()
-            reg.fit(exog, endog)
-        except ValueError as err:
-            import code
-            code.interact(local=locals())
-
-        return {
-            'start_date': start_date,
-            'end_date': end_date,
-            'r2': reg.score(exog, endog),
-            'formula': formula(reg),
-        }
+            # Tack on some other data we may need later
+            results.start_date = start_date
+            results.end_date = end_date
+            results.formula = formula(results)
+            return results
 
 
-class Calibration(TimeStampedModel):
+class AutoCalibration(TimeStampedModel):
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -195,12 +169,15 @@ class Calibration(TimeStampedModel):
         on_delete=models.CASCADE
     )
 
-    start_date = models.DateTimeField()
-    end_date = models.DateTimeField(db_index=True)
-
-    r2 = models.FloatField()
     formula = models.CharField(max_length=255, blank=True,
         default='', validators=[validate_formula])
+
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    r2 = models.FloatField()
+
+    class Meta:
+        ordering = ['-end_date', '-r2']
 
     def __str__(self):
         return self.formula

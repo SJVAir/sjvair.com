@@ -9,4 +9,3 @@ def calibrate_monitors():
     for calibrator in Calibrator.objects.filter(is_active=True):
         print(calibrator.reference.name, '/', calibrator.colocated.name)
         calibrator.calibrate()
-        calibrator.save()

@@ -1,8 +1,27 @@
+import dataclasses
+import types
+
+from datetime import datetime
+
 import pandas as pd
 
 from django.db.models import F
 from sklearn.linear_model import LinearRegression
 
+
+@dataclasses.dataclass
+class RegressionResults:
+    reg: LinearRegression
+    endog: pd.DataFrame
+    exog: pd.DataFrame
+    df: pd.DataFrame
+    r2: float
+    intercept: int
+    coefs: dict
+
+    start_date: datetime = None
+    end_date: datetime = None
+    formula: types.LambdaType = None
 
 
 def linear_regression(endog_qs, exog_qs, exog_coefs):
@@ -27,6 +46,7 @@ def linear_regression(endog_qs, exog_qs, exog_coefs):
 
     exog_df = pd.DataFrame(exog_qs).set_index('timestamp')
     exog_df[exog_df.columns] = exog_df[exog_df.columns].apply(pd.to_numeric, errors='coerce')
+
     exog_df = exog_df.resample('H').mean()
 
     # Merge the dataframes
@@ -48,10 +68,12 @@ def linear_regression(endog_qs, exog_qs, exog_coefs):
         print('Linear Regression Error:', err)
         return
 
-    return {
-        'reg': reg,
-        'df': merged,
-        'r2': reg.score(exog, endog),
-        'intercept': reg.intercept_,
-        'coefs': dict(zip(exog_coefs, reg.coef_)),
-    }
+    return RegressionResults(
+        reg=reg,
+        endog=endog_df,
+        exog=exog_df,
+        df=merged,
+        r2=reg.score(exog, endog),
+        intercept=reg.intercept_,
+        coefs=dict(zip(exog_coefs, reg.coef_)),
+    )

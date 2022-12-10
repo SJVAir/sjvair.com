@@ -17,10 +17,14 @@ class Command(BaseCommand):
                 .order_by('distance')
             ).first()
 
-            # If distance > 1km, continue
+            # If distance > .5mi, continue
+            if purpleair.distance.mi > .5:
+                print(f'Colocated monitor "{purpleair.name}" is too far from reference monitor "{airnow.name}": {purpleair.distance.mi} mi.')
+                continue
 
             calibrator = Calibrator.objects.create(
                 reference=airnow,
-                colocated=purpleair
+                colocated=purpleair,
+                is_active=True,
             )
-            # calibrator.calibrate()
+            calibrator.calibrate()

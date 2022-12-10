@@ -69,6 +69,7 @@ class Monitor(models.Model):
     objects = InheritanceManager()
 
     class Meta:
+        base_manager_name = 'objects'
         ordering = ('name',)
 
     def __str__(self):
@@ -106,11 +107,26 @@ class Monitor(models.Model):
         return aggregate['average']
 
     def get_pm25_calibration_formula(self):
+        from camp.apps.calibrations.models import Calibrator
+
         # Check for a formula set on this specific monitor.
         if self.pm25_calibration_formula:
             return self.pm25_calibration_formula
 
-        # Fallback to the formula for this kind of monitor in this county.
+        # # Distance-based calibrations
+        # calibrator = (Calibrator.objects
+        #     .filter(is_active=True)
+        #     .exclude(calibration__isnull=True)
+        #     .select_related('calibration')
+        #     .closest(self.position)
+        # )
+
+        # if calibrator is not None:
+        #     # CONSIDER: If the calibrator is too far, do we
+        #     # skip and go with county? How far is too far?
+        #     return calibrator.calibration.formula
+
+        # Fallback to county-based calibrations.
         try:
             return Calibration.objects.values_list('pm25_formula', flat=True).get(
                 county=self.county,
@@ -146,10 +162,12 @@ class Monitor(models.Model):
         entry.pm25_avg_60 = entry.get_average('pm25', 60)
 
         # Calibrate the PM25
-        entry.calibrate_pm25(self.get_pm25_calibration_formula())
+        formula = self.get_pm25_calibration_formula()
+        if formula:
+            entry.calibrate_pm25(formula)
+
         return entry
 
-    # TODO: rename to update_if_latest()
     def check_latest(self, entry):
         if self.latest_id:
             is_latest = make_aware(entry.timestamp) > self.latest.timestamp
@@ -291,19 +309,6 @@ class Entry(models.Model):
 
             self.pm25 = expression.evaluate(context)
             self.pm25_calibration_formula = formula
-
-    # def calculate_aqi(self):
-    #     algo = aqi.get_algo(aqi.ALGO_EPA)
-    #     try:
-    #         self.pm25_aqi = algo.iaqi(aqi.POLLUTANT_PM25, min(
-    #             self.get_average('pm25', 60 * 12),
-    #             algo.piecewise['bp'][aqi.POLLUTANT_PM25][-1][1])
-    #         )
-    #     except Exception:
-    #         # python-aqi often errors on high numbers because it
-    #         # doesn't account for calculations above 500. Since AQI
-    #         # only goes to 500, just set it to the max. (Yikes!)
-    #         self.pm25_aqi = 500
 
     def save(self, *args, **kwargs):
         # Temperature adjustments
