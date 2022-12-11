@@ -57,7 +57,7 @@ class Calibrator(TimeStampedModel):
         print('----------')
         print(self.reference.name, '/', self.colocated.name)
         for reg in linreg.regressions:
-            print(', '.join(map(str, [reg.r2, reg.coefs, (reg.end_date - reg.start_date).days])))
+            print(', '.join(map(str, [reg.r2, reg.coefs, reg.intercept, (reg.end_date - reg.start_date).days])))
 
         results = linreg.best_fit()
 

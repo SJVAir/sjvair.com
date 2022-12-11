@@ -25,10 +25,10 @@ class RegressionResults:
     formula: str = None
 
     def is_valid(self):
-        if self.r2 < 0.8:
+        if self.r2 < 0.75:
             return False
-        if any([coef < 0 for coef in self.coefs.values()]):
-            return False
+        # if any([coef < 0 for coef in self.coefs.values()]):
+        #     return False
         return True
 
 
