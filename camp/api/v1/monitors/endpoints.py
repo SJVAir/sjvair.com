@@ -6,16 +6,19 @@ from datetime import datetime
 from resticus import generics, http
 
 from django import forms
+from django.contrib.gis.db.models.functions import Distance
+from django.contrib.gis.geos import GEOSGeometry, Point
+from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.db.models import QuerySet
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.functional import cached_property
 from django.utils.text import slugify
 
 from camp.apps.monitors.models import Entry, Monitor
 from camp.apps.monitors.methane.models import Methane
-from camp.utils.forms import DateRangeForm
+from camp.utils.forms import DateRangeForm, LatLonForm
 from camp.utils.views import get_view_cache_key
 from .filters import EntryFilter, MonitorFilter
 from .forms import EntryForm, MethaneDataForm
@@ -26,6 +29,11 @@ from ..endpoints import CSVExport
 class MonitorMixin:
     model = Monitor
     serializer_class = MonitorSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = queryset.select_related('latest')
+        return queryset
 
     def get_object(self):
         return self.request.monitor
@@ -55,7 +63,6 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = queryset.select_related('latest')
         queryset = queryset.exclude(is_hidden=True)
         return queryset
 
@@ -63,15 +70,31 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
         key = str(self.__class__)
 
 
-
 class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
 
+
+class ClosestMonitor(MonitorMixin, generics.ListEndpoint):
+    form_class = LatLonForm
+
     def get_queryset(self):
+        form = self.get_form(self.request.GET)
+        if not form.is_valid:
+            return self.model.objects.none()
+
         queryset = super().get_queryset()
-        queryset = queryset.select_related('latest')
-        return queryset
+        queryset = (queryset
+            .exclude(is_hidden=True)
+            .annotate(distance=Distance("position", form.point, spheroid=True))
+            .order_by('distance')
+        )
+
+        return queryset[:3]
+
+    def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
+        include = [('distance', lambda monitor: monitor.distance.ft)]
+        return super().serialize(source, fields, include, exclude, fixup)
 
 
 class EntryMixin:
