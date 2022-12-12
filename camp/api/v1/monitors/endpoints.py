@@ -85,7 +85,7 @@ class ClosestMonitor(MonitorMixin, generics.ListEndpoint):
 
         queryset = super().get_queryset()
         queryset = (queryset
-            .exclude(is_hidden=True)
+            .exclude(is_hidden=True, latest__isnull=True)
             .annotate(distance=Distance("position", form.point, spheroid=True))
             .order_by('distance')
         )
