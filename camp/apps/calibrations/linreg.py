@@ -98,20 +98,22 @@ class LinearRegressions:
 
     @cached_property
     def endog_df(self):
-        if not self.endog_qs.exists():
+        df = pd.DataFrame(self.endog_qs)
+        if not len(df):
             return None
 
-        df = pd.DataFrame(self.endog_qs).set_index('timestamp')
+        df = df.set_index('timestamp')
         df = pd.to_numeric(df.endog_pm25)
         df = df.resample('H').mean()
         return df
 
     @cached_property
     def exog_df(self):
-        if not self.exog_qs.exists():
+        df = pd.DataFrame(self.exog_qs)
+        if not len(df):
             return None
 
-        df = pd.DataFrame(self.exog_qs).set_index('timestamp')
+        df = df.set_index('timestamp')
         df[df.columns] = df[df.columns].apply(pd.to_numeric, errors='coerce')
         df = df.resample('H').mean()
         return df
