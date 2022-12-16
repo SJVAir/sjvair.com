@@ -38,7 +38,9 @@ huey==2.4.3
 invoke==1.7.1
 jsonschema==4.7.2
 libsass==0.21.0
+linkify-it-py==2.0.0
 livereload==2.6.3
+markdown-it-py[plugins]==2.1.0
 nameparser==1.1.1
 numpy==1.23.1
 optimize-images==1.5.1

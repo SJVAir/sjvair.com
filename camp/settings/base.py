@@ -29,6 +29,8 @@ if COMMIT_HASH is None:
         ['git', 'rev-parse', '--short', 'HEAD']
     ).strip()
 
+DOMAIN = os.environ.get('DOMAIN', '')
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.2/howto/deployment/checklist/
 
@@ -219,6 +221,10 @@ STATICFILES_FINDERS = [
 MEDIA_ROOT = BASE_DIR.child('public', 'media')
 
 MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
+
+# Email setup
+
+DEFAULT_FROM_EMAIL = 'no-reply@sjvair.com'
 
 # django-cors-headers
 
