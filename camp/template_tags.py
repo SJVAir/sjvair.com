@@ -4,6 +4,8 @@ from datetime import datetime, time
 from urllib.parse import urlparse
 
 from django import template
+from django.conf import settings
+from django.shortcuts import resolve_url
 from django.template.loader import render_to_string
 from django.test import RequestFactory
 from django.urls import resolve
@@ -25,6 +27,7 @@ def load_datafile(name):
 
 @register.filter
 def domainify(url):
+    ''' Parse out the domain of a URL '''
     parsed = urlparse(url)
     domain = parsed.netloc
     if domain.startswith('www.'):
@@ -32,6 +35,12 @@ def domainify(url):
     if parsed.path in ['/', '']:
         return domain
     return f'{domain}{parsed.path}'
+
+
+@register.filter
+def urlify(to, *args, **kwargs):
+    ''' Convert a path into a full URL '''
+    return settings.DOMAIN + resolve_url(to, *args, **kwargs)
 
 
 @register.filter

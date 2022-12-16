@@ -1,8 +1,12 @@
+import os
 import django_heroku
 
 from .base import *
 
-# django_heroku.settings(locals())
+# Domain used to generate URLs.
+DOMAIN = os.environ.get('DOMAIN')
+if DOMAIN is None and 'HEROKU_APP_NAME' in os.environ:
+    DOMAIN = f'https://{os.environ["HEROKU_APP_NAME"]}.herokuapp.com'
 
 # GIS paths
 
