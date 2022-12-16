@@ -61,15 +61,18 @@ def check_monitor_status():
             'inactive_monitors': inactive_monitors,
             'total_inactive': total_inactive
         })
-        message_html = render_markdown(message_md)
 
-        send_mail(
-            subject=f'[Monitor Inactivity] {total_inactive} New Inactive Monitors',
-            message=message_md,
-            html_message=message_html,
-            recipient_list=['derek@rootaccess.org'],
-            from_email=None,
-        )
+        print(message_md)
+
+        # message_html = render_markdown(message_md)
+
+        # send_mail(
+        #     subject=f'[Monitor Inactivity] {total_inactive} New Inactive Monitors',
+        #     message=message_md,
+        #     html_message=message_html,
+        #     recipient_list=['derek@rootaccess.org'],
+        #     from_email=None,
+        # )
 
 
 
