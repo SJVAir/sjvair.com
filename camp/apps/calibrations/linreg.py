@@ -76,7 +76,7 @@ class LinearRegressions:
         queryset = (self.calibrator.reference.entries
             .filter(
                 sensor=self.calibrator.reference.default_sensor,
-                timestamp__date__range=(start_date, self.end_date),
+                timestamp__range=(start_date, self.end_date),
             )
             .annotate(endog_pm25=F('pm25'))
             .values('timestamp', 'endog_pm25')
@@ -89,7 +89,7 @@ class LinearRegressions:
         queryset = (self.calibrator.colocated.entries
             .filter(
                 sensor=self.calibrator.colocated.default_sensor,
-                timestamp__date__range=(start_date, self.end_date),
+                timestamp__range=(start_date, self.end_date),
             )
             .annotate(**self.coefs_computed)
             .values('timestamp', *self.coefs)
