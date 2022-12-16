@@ -231,7 +231,7 @@ class Entry(models.Model):
     )
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
-    timestamp = models.DateTimeField(default=timezone.now)
+    timestamp = models.DateTimeField(default=timezone.now, db_index=True)
     monitor = models.ForeignKey('monitors.Monitor', related_name='entries', on_delete=models.CASCADE)
     sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
 
