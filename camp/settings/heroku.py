@@ -8,16 +8,23 @@ DOMAIN = os.environ.get('DOMAIN')
 if DOMAIN is None and 'HEROKU_APP_NAME' in os.environ:
     DOMAIN = f'https://{os.environ["HEROKU_APP_NAME"]}.herokuapp.com'
 
+# Email via MailerToGo
+
+EMAIL_HOST = os.environ.get('MAILERTOGO_SMTP_HOST')
+EMAIL_PORT = os.environ.get('MAILERTOGO_SMTP_PORT')
+EMAIL_HOST_USER = os.environ.get('MAILERTOGO_SMTP_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('MAILERTOGO_SMTP_PASSWORD')
+# MAILERTOGO_DOMAIN = os.environ.get('MAILERTOGO_DOMAIN') # ???
+
+
 # GIS paths
 
 GDAL_LIBRARY_PATH = os.environ.get('GDAL_LIBRARY_PATH')
-
 GEOS_LIBRARY_PATH = os.environ.get('GEOS_LIBRARY_PATH')
 
 # https
 
 SECURE_SSL_REDIRECT = True
-
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Cache

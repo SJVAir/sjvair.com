@@ -35,16 +35,16 @@ def refresh_monitor_list_cache():
     assert response.status_code == 200
 
 
-# @db_periodic_task(crontab(minute='15'), priority=100)
+# @db_periodic_task(crontab(hour='13', minute='0'), priority=100)
 @db_task()
 def check_monitor_status():
+    # Update to run daily – monitors that have been offline for 24-48 hours
     inactive_monitors = {}
-    this_hour = timezone.now().replace(minute=0, second=0, microsecond=0)
+    upper_bound = timezone.now() - timedelta(hours=24)
+    lower_bound = timezone.now() - timedelta(hours=48)
 
     for subclass in Monitor.subclasses():
         SubMonitor = getattr(Monitor, subclass).related.related_model
-        upper_bound = this_hour - timedelta(hours=1)
-        lower_bound = upper_bound - timedelta(seconds=SubMonitor.LAST_ACTIVE_LIMIT)
         inactive_monitors[SubMonitor.__name__] = list((SubMonitor.objects
             .filter(latest__timestamp__range=(lower_bound, upper_bound))
             .select_related('latest')
