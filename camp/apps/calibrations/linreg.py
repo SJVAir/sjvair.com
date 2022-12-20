@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from django.db.models import F
+from django.utils import timezone
 from django.utils.functional import cached_property
 
 from sklearn.linear_model import LinearRegression as skLinearRegression
@@ -23,13 +24,6 @@ class RegressionResults:
     start_date: datetime
     end_date: datetime
     formula: str = None
-
-    def is_valid(self):
-        if self.r2 < 0.75:
-            return False
-        # if any([coef < 0 for coef in self.coefs.values()]):
-        #     return False
-        return True
 
 
 class LinearRegressions:
@@ -57,7 +51,7 @@ class LinearRegressions:
             lambda coefs, intercept: (
                 f"((particles_10um - particles_25um) * ({coefs['particles_10-25']}))"
                 f" + ((particles_25um - particles_05um) * ({coefs['particles_25-05']}))"
-                f" + (humidity * ({coefs['humidity']})) + ({intercept})",
+                f" + (humidity * ({coefs['humidity']})) + ({intercept})"
             )
         )
     ]
@@ -180,10 +174,23 @@ class LinearRegressions:
         if not hasattr(self, 'regressions'):
             self.process_regressions()
 
-        candidates = [reg for reg in self.regressions if reg.is_valid()]
-        candidates.sort(key=lambda reg: reg.r2)
+        candidates = [reg for reg in self.regressions if self.is_valid(reg)]
+        candidates.sort(reverse=True, key=lambda reg: reg.r2)
+        return next(iter(candidates), None)
 
-        try:
-            return candidates[-1]
-        except IndexError:
-            return None
+    def is_valid(self, reg):
+        if self.calibrator.calibration is not None:
+            timesince = (timezone.now() - self.calibrator.calibration.end_date)
+
+            # Less than 1 month, it's gotta beat the current R2.
+            if timesince < timedelta(days=30):
+                return reg.r2 > self.calibrator.calibration.r2
+
+            # Less than two months, 0.75 is the magic number
+            elif timesince < timedelta(days=60):
+                return reg.r2 > 0.75
+
+        # No previous calibration or last calibration longer
+        # than 2 months ago? Set a low bar of 0.5.
+        return reg.r2 > 0.5
+
