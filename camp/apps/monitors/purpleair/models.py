@@ -15,6 +15,8 @@ from camp.utils.datetime import parse_timestamp
 
 
 class PurpleAir(Monitor):
+    CALIBRATE = True
+
     SENSORS = ['a', 'b']
     CHANNEL_FIELDS = {
         'pm10': 'pm1.0_atm',

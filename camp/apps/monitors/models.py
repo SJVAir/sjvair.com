@@ -33,6 +33,7 @@ class Monitor(models.Model):
     COUNTIES = Choices(*County.names)
     LOCATION = Choices('inside', 'outside')
 
+    CALIBRATE = False
     LAST_ACTIVE_LIMIT = 60 * 60
     PAYLOAD_SCHEMA = None
     SENSORS = ['']
@@ -162,9 +163,10 @@ class Monitor(models.Model):
         entry.pm25_avg_60 = entry.get_average('pm25', 60)
 
         # Calibrate the PM25
-        formula = self.get_pm25_calibration_formula()
-        if formula:
-            entry.calibrate_pm25(formula)
+        if self.CALIBRATE:
+            formula = self.get_pm25_calibration_formula()
+            if formula:
+                entry.calibrate_pm25(formula)
 
         return entry
 
@@ -236,7 +238,7 @@ class Entry(models.Model):
     sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
 
     # Where was the monitor when this entry was logged?
-    position = models.PointField(null=True, db_index=True)
+    position = models.PointField(null=True, db_index=True) # Can we drop this index?
     location = models.CharField(max_length=10, choices=Monitor.LOCATION)
 
     # TODO: TextField
