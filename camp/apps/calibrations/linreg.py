@@ -182,15 +182,15 @@ class LinearRegressions:
         if self.calibrator.calibration is not None:
             timesince = (timezone.now() - self.calibrator.calibration.end_date)
 
-            # Less than 1 month, it's gotta beat the current R2.
-            if timesince < timedelta(days=30):
+            # Less than 1 week, it's gotta beat the current R2.
+            if timesince < timedelta(days=7):
                 return reg.r2 > self.calibrator.calibration.r2
 
-            # Less than two months, 0.75 is the magic number
-            elif timesince < timedelta(days=60):
+            # Less than 1 month, 0.75 is the magic number
+            elif timesince < timedelta(days=30):
                 return reg.r2 > 0.75
 
         # No previous calibration or last calibration longer
-        # than 2 months ago? Set a low bar of 0.5.
+        # than a month ago? Set a low bar of 0.5.
         return reg.r2 > 0.5
 
