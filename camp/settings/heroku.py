@@ -11,9 +11,10 @@ if DOMAIN is None and 'HEROKU_APP_NAME' in os.environ:
 # Email via MailerToGo
 
 EMAIL_HOST = os.environ.get('MAILERTOGO_SMTP_HOST')
-EMAIL_PORT = os.environ.get('MAILERTOGO_SMTP_PORT')
 EMAIL_HOST_USER = os.environ.get('MAILERTOGO_SMTP_USER')
 EMAIL_HOST_PASSWORD = os.environ.get('MAILERTOGO_SMTP_PASSWORD')
+EMAIL_PORT = os.environ.get('MAILERTOGO_SMTP_PORT')
+EMAIL_USE_TLS = True
 # MAILERTOGO_DOMAIN = os.environ.get('MAILERTOGO_DOMAIN') # ???
 
 
