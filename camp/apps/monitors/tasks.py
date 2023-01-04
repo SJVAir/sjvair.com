@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.test import RequestFactory
@@ -35,8 +36,7 @@ def refresh_monitor_list_cache():
     assert response.status_code == 200
 
 
-# @db_periodic_task(crontab(hour='13', minute='0'), priority=100)
-@db_task()
+@db_periodic_task(crontab(hour='13', minute='0'), priority=100)
 def check_monitor_status():
     # Update to run daily – monitors that have been offline for 24-48 hours
     inactive_monitors = {}
@@ -57,22 +57,19 @@ def check_monitor_status():
 
     if any([len(ml) >= 0 for ml in inactive_monitors.values()]):
         total_inactive = sum([len(ml) for ml in inactive_monitors.values()])
-        message_md = render_to_string('email/monitor-alerts.md', {
+        message = render_to_string('email/monitor-alerts.md', {
             'inactive_monitors': inactive_monitors,
             'total_inactive': total_inactive
         })
 
-        print(message_md)
-
-        # message_html = render_markdown(message_md)
-
-        # send_mail(
-        #     subject=f'[Monitor Inactivity] {total_inactive} New Inactive Monitors',
-        #     message=message_md,
-        #     html_message=message_html,
-        #     recipient_list=['derek@rootaccess.org'],
-        #     from_email=None,
-        # )
+        print(message)
+        send_mail(
+            subject=f'[Monitor Inactivity] {total_inactive} New Inactive Monitors',
+            message=message,
+            html_message=render_markdown(message),
+            recipient_list=settings.SJVAIR_INACTIVE_ALERT_EMAILS,
+            from_email=None,
+        )
 
 
 

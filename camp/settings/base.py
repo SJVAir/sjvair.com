@@ -224,7 +224,12 @@ MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
 
 # Email setup
 
-DEFAULT_FROM_EMAIL = 'no-reply@sjvair.com'
+DEFAULT_FROM_EMAIL = 'SJVAir <no-reply@sjvair.com>'
+
+SERVER_EMAIL = 'SJVAir Server <root@sjvair.com>'
+
+SJVAIR_INACTIVE_ALERT_EMAILS = [email.strip() for email in
+    os.environ.get('SJVAIR_INACTIVE_ALERT_EMAILS', SERVER_EMAIL).split(',')]
 
 # django-cors-headers
 
