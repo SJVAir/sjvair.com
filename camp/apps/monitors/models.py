@@ -13,6 +13,7 @@ from django.db.models.functions import Least
 from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
 from django.utils.functional import lazy
+from django.utils.text import slugify
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
@@ -79,6 +80,10 @@ class Monitor(models.Model):
     @classmethod
     def subclasses(cls):
         return cls.objects.get_queryset()._get_subclasses_recurse(cls)
+
+    @property
+    def slug(self):
+        return slugify(self.name)
 
     @property
     def device(self):
@@ -271,7 +276,7 @@ class Entry(models.Model):
         indexes = (
             BrinIndex(fields=['timestamp', 'sensor'], autosummarize=True),
         )
-        ordering = ('sensor', '-timestamp',)
+        ordering = ('-timestamp', 'sensor',)
 
     def get_calibration_context(self):
         return {
