@@ -8,12 +8,13 @@ from camp.apps.monitors.models import Monitor
 
 
 class EntryArchiveQueryset(models.QuerySet):
-    pass
-
-    # def generate(self, monitor, year, month):
-    #     start_date = self.get_start_date(year, month)
-    #     end_date = self.get_end_date(year, month)
-
-    #     print(' - ', monitor, start_date, end_date)
-
-    #     archive =
+    def generate(self, monitor, year, month):
+        # If an archive exists, don't recreate it.
+        try:
+            return self.get(monitor_id=monitor.pk, year=year, month=month)
+        except self.model.DoesNotExist:
+            archive = self.model(monitor=monitor, year=year, month=month)
+            archive.generate()
+            if archive.data:
+                archive.save()
+            return archive

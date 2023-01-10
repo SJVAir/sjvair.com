@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
                 ('year', models.IntegerField(validators=[camp.apps.archive.models.year_validator])),
                 ('month', models.IntegerField(choices=[(1, 'January'), (2, 'February'), (3, 'March'), (4, 'April'), (5, 'May'), (6, 'June'), (7, 'July'), (8, 'August'), (9, 'September'), (10, 'October'), (11, 'November'), (12, 'December')])),
                 ('data', models.FileField(upload_to=camp.apps.archive.models.archive_data_path)),
-                ('monitor', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='archive', to='monitors.monitor')),
+                ('monitor', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='archives', to='monitors.monitor')),
             ],
             options={
                 'ordering': ['year', 'month'],

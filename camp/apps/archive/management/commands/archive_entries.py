@@ -1,4 +1,3 @@
-import calendar
 import re
 
 from datetime import date, timedelta
@@ -22,7 +21,7 @@ class Command(BaseCommand):
     def get_year_month(self, value):
         if value is None:
             # Use the previous month
-            value = timezone.now().date().replace(day=1) - timedelta(hours=24)
+            value = timezone.now().date().replace(day=1) - timedelta(days=1)
             return (value.year, value.month)
 
         # Parse and validate the supplied month
@@ -43,10 +42,5 @@ class Command(BaseCommand):
 
         for monitor in monitor_list:
             print(monitor.name)
-            try:
-                archive = EntryArchive.objects.get(monitor_id=monitor.pk, year=year, month=month)
-            except EntryArchive.DoesNotExist:
-                archive = EntryArchive(monitor=monitor, year=year, month=month)
-            archive.generate()
-            archive.save()
+            archive = EntryArchive.objects.generate(monitor=monitor, year=year, month=month)
             print(f'\t{archive.data.url}')

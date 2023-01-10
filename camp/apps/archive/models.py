@@ -43,7 +43,7 @@ class EntryArchive(models.Model):
     modified = models.DateTimeField(auto_now=True)
 
     monitor = models.ForeignKey('monitors.Monitor',
-        related_name='archive',
+        related_name='archives',
         on_delete=models.CASCADE
     )
 
@@ -91,6 +91,10 @@ class EntryArchive(models.Model):
             'timestamp__gte': self.get_start_date(),
             'timestamp__lt': self.get_end_date(),
         }
+
+        if not self.monitor.entries.filter(**params).exists():
+            return
+
         entry_csv = EntryCSV.as_view()
         factory = RequestFactory()
         url = reverse('api:v1:monitors:entry-csv', kwargs={'monitor_id': self.monitor.pk})
