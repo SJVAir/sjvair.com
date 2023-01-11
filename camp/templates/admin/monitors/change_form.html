@@ -50,11 +50,96 @@
         display: inline-block;
         margin-left: 1em;
     }
+
+    #monitor-status table {
+        width: 100%;
+    }
 </style>
 {% endblock %}
 
 {% block object-tools %}
     {{ block.super }}
+    {% if original %}
+    <fieldset id="monitor-status" class="module aligned wide">
+        <h2>Current Status</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Last Updated</th>
+                    <th>PM2.5</th>
+                    <th>PM2.5 (15m)</th>
+                    <th>PM2.5 (60m)</th>
+                    <th>Temperature</th>
+                    <th>Humidity</th>
+                    <th>Alert</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>
+                        {% if original.latest %}
+                            <span>{{ original.latest.timestamp }}</span>
+                            {% if original.is_active %}
+                                <img src="{% static 'admin/img/icon-yes.svg' %}" alt="Active" />
+                            {% else %}
+                                <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inactive" />
+                            {% endif %}
+                            <br />
+                            <small>({{ original.latest.timestamp|timesince }} ago)</small>
+                        {% else %}
+                            <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inactive" />
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest %}
+                            <span>{{ original.latest.pm25|floatformat:"0" }}</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest.pm25_avg_15 %}
+                            <span>{{ original.latest.pm25_avg_15|floatformat:"0" }}</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest.pm25_avg_60 %}
+                            <span>{{ original.latest.pm25_avg_60|floatformat:"0" }}</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest.fahrenheit %}
+                            <span>{{ original.latest.fahrenheit|floatformat:"0" }}°F</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest.humidity %}
+                            <span>{{ original.latest.humidity|floatformat:"0" }}%</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if alert %}
+                            <span>{{ alert.start_time|timesince }}</span>
+                            <b style="color: red;">⚠</b><br />
+                            <small>({{ alert.start_time|timesince }} ago)</small>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </fieldset>
+    {% endif %}
+
     <fieldset id="data-export" class="module aligned wide collapse">
         <h2>Data Export</h2>
         {% if change and export_form %}

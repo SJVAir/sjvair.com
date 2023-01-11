@@ -82,6 +82,7 @@ class EntryArchive(models.Model):
         ''' Generate the actual archive file and save it to the .data field. This
             works by using Django's RequestFactory to manually call the CSV export
             endpoint for the monitor, filtered to the specified month.
+
             CONSIDER: This is kinda hacky, but, y'know, it works. Should look
             into refactoring the CSV generation later, e.g., using pandas.
         '''
