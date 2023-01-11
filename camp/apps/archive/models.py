@@ -62,6 +62,13 @@ class EntryArchive(models.Model):
         ]
         ordering = ['year', 'month']
 
+    def get_csv_url(self):
+        return reverse('api:v1:monitors:archive:archive-csv', kwargs={
+            'monitor_id': self.monitor.pk,
+            'year': self.year,
+            'month': self.month,
+        })
+
     def get_start_date(self):
         return date(self.year, self.month, 1)
 
