@@ -10,6 +10,7 @@ from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
 from django.utils.safestring import mark_safe
 
+from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
 from camp.apps.calibrations.admin import formula_help_text
 from camp.utils.forms import DateRangeForm
@@ -50,8 +51,17 @@ class MonitorAdmin(admin.OSMGeoAdmin):
         if extra_context is None:
             extra_context = {}
         if object_id is not None:
-            extra_context['entry_archives'] = self.get_entry_archives(object_id)
+            extra_context.update(
+                entry_archives=self.get_entry_archives(object_id),
+                alert=self.get_alert(object_id)
+            )
         return super().changeform_view(request, object_id, form_url, extra_context)
+
+    def get_alert(self, object_id):
+        try:
+            return Alert.objects.get(monitor_id=object_id, end_time__isnull=True)
+        except Alert.DoesNotExist:
+            return None
 
     def get_entry_archives(self, object_id):
         queryset = EntryArchive.objects.filter(monitor_id=object_id)
