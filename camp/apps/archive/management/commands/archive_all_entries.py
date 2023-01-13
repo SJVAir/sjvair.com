@@ -50,5 +50,8 @@ class Command(BaseCommand):
         for monitor in monitor_list:
             print(f'{monitor.name}')
             for year, month in self.get_months(monitor):
+                if monitor.archives.filter(year=year, month=month).exists():
+                    print(f' X {year}-{month}')
+                    continue
                 print(f' - {year}-{month}')
                 create_entry_archive(monitor.pk, year, month)
