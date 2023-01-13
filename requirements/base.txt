@@ -18,14 +18,15 @@ django-localflavor==3.1
 django-model-utils==4.2.0
 django-phonenumber-field[phonenumberslite]==6.3.0
 django-smalluuid==1.2.1
-django-storages==1.12.3
+django-storages==1.13.2
 django-vanilla-views==3.0.0
 django-widget-tweaks==1.4.12
 
 asciichartpy==1.5.25
+awscli==1.27.49
 argon2-cffi==21.3.0
 asgiref==3.5.2
-boto3==1.24.29
+boto3==1.26.49
 channels-redis==3.4.1
 channels==3.0.5
 delegator.py==0.1.1
@@ -53,7 +54,7 @@ python-aqi==0.6.1
 python-binary-memcached==0.31.1
 python-dotenv==0.20.0
 pytz==2022.1
-PyYAML==6.0
+PyYAML==5.4.1
 redis==4.3.4
 requests==2.28.1
 scikit-learn==1.1.1

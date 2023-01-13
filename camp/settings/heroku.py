@@ -8,6 +8,41 @@ DOMAIN = os.environ.get('DOMAIN')
 if DOMAIN is None and 'HEROKU_APP_NAME' in os.environ:
     DOMAIN = f'https://{os.environ["HEROKU_APP_NAME"]}.herokuapp.com'
 
+# AWS S3 Storage
+
+GZIP_CONTENT_TYPES = (
+    'text/css',
+    'text/csv',
+    'text/javascript',
+    'application/javascript',
+    'application/x-javascript',
+    'image/svg+xml',
+)
+
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+
+AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')
+AWS_S3_CUSTOM_DOMAIN = os.environ.get('AWS_S3_CUSTOM_DOMAIN')
+if AWS_S3_CUSTOM_DOMAIN is None:
+    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+
+AWS_AUTO_CREATE_BUCKET = True
+AWS_BUCKET_ACL = 'public-read'
+AWS_DEFAULT_ACL = 'public-read'
+AWS_IS_GZIPPED = True
+AWS_QUERYSTRING_AUTH = False
+
+# We only use S3 for media files. Static files are
+# built locally and manually synced to S3 so that
+# we can, e.g., post-process and compress images.
+DEFAULT_FILE_STORAGE = 'camp.utils.storage.S3UploadStorage'
+DEFAULT_FILE_LOCATION = 'files'
+MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{DEFAULT_FILE_LOCATION}/'
+
+STATICFILES_LOCATION = 'static'
+STATIC_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{STATICFILES_LOCATION}/'
+
 # Email via MailerToGo
 
 EMAIL_HOST = os.environ.get('MAILERTOGO_SMTP_HOST')

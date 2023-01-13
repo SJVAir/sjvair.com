@@ -1,0 +1,39 @@
+- model: archive.entryarchive
+  pk: lyABOgFXQs2-gdWXuvgDxQ
+  fields:
+    created: 2023-01-01 04:00:00+00:00
+    modified: 2023-01-01 04:00:00+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    year: 2022
+    month: 12
+    data: archive/2022/12/PurpleAir_root-access_jLI5fer7S0uyR7eMYNSPpg_2022-12.csv
+
+- model: archive.entryarchive
+  pk: NFcFlIaPTZm2EUwjKE15jw
+  fields:
+    created: 2022-12-01 04:00:00+00:00
+    modified: 2022-12-01 04:00:00+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    year: 2022
+    month: 11
+    data: archive/2022/11/PurpleAir_root-access_jLI5fer7S0uyR7eMYNSPpg_2022-11.csv
+
+- model: archive.entryarchive
+  pk: Ro5DbRZuQyWDmA7oCnAf5Q
+  fields:
+    created: 2022-11-01 04:00:00+00:00
+    modified: 2022-11-01 04:00:00+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    year: 2022
+    month: 10
+    data: archive/2022/10/PurpleAir_root-access_jLI5fer7S0uyR7eMYNSPpg_2022-10.csv
+
+- model: archive.entryarchive
+  pk: nMXocrW-T32M8D0K2tJiUA
+  fields:
+    created: 2022-10-01 04:00:00+00:00
+    modified: 2022-10-01 04:00:00+00:00
+    monitor: jLI5fer7S0uyR7eMYNSPpg
+    year: 2022
+    month: 9
+    data: archive/2022/09/PurpleAir_root-access_jLI5fer7S0uyR7eMYNSPpg_2022-09.csv

@@ -81,6 +81,12 @@ def build(ctx):
     optimize_images(ctx)
 
 
+@invoke.task
+def release(ctx):
+    ctx.run('python manage.py migrate --no-input', pty=True)
+    ctx.run('python manage.py sync_staticfiles_s3', pty=True)
+
+
 # Some steps in here are no longer needed
 @invoke.task()
 def watch(ctx):
