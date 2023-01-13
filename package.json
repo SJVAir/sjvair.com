@@ -6,7 +6,6 @@
     "node": "16.13.0"
   },
   "scripts": {
-    "heroku-postbuild": "invoke build && python manage.py sync_staticfiles_s3 && rm -rf public/static"
   },
   "dependencies": {
     "@sjvair/monitor-map": "^1.32.0",
