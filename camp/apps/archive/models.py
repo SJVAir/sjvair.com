@@ -116,7 +116,7 @@ class EntryArchive(models.Model):
         assert response.headers['Content-Disposition'].startswith('attachment')
 
         content = get_response_data(response)
-        content = ContentFile(content)
+        content = ContentFile(content.encode('utf8'))
 
         self.data.save(
             name=self.get_filename(),
