@@ -54,7 +54,7 @@ python-aqi==0.6.1
 python-binary-memcached==0.31.1
 python-dotenv==0.20.0
 pytz==2022.1
-PyYAML==6.0
+PyYAML==5.4.1
 redis==4.3.4
 requests==2.28.1
 scikit-learn==1.1.1
