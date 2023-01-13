@@ -58,11 +58,6 @@ def collectstatic(ctx):
     ctx.run('python manage.py collectstatic --noinput', pty=True)
 
 
-@invoke.task
-def sync_staticfiles_s3(ctx):
-    ctx.run('python manage.py sync_staticfiles_s3', pty=True)
-
-
 @invoke.task()
 def import_monitor_map(ctx):
     # Copy over monitor map
@@ -88,12 +83,8 @@ def build(ctx):
 
 @invoke.task
 def release(ctx):
-    # Run any necessary migrations
     ctx.run('python manage.py migrate --no-input', pty=True)
-
-    # Build the front-end and upload to S3
-    build(ctx)
-    sync_staticfiles_s3(ctx)
+    ctx.run('python manage.py sync_staticfiles_s3', pty=True)
 
 
 # Some steps in here are no longer needed
