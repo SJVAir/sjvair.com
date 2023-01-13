@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     'camp.api',
     'camp.apps.accounts',
     'camp.apps.alerts',
+    'camp.apps.archive',
     'camp.apps.calibrations',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',

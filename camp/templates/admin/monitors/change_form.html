@@ -16,13 +16,19 @@
         padding: 12px 14px;
     }
 
-    #export-form div.control,
-    #export-form div.field {
-        display: inline-block;
+    #export-form form {
+        display: flex;
+        flex-flow: row wrap;
+        gap: 1em;
+        align-items: stretch;
     }
 
     #export-form div.control {
-        margin-right: 1rem;
+    }
+
+    #export-form div.submit-buttons {
+        display: flex;
+        align-items: flex-end;
     }
 
     #export-form label {
@@ -31,44 +37,161 @@
         text-transform: uppercase;
     }
 
-    #export-form .submit-buttons {
+    #archives {
+        width: 100%;
+    }
+
+    #archives ul {
+        list-style: none;
+        margin-left: 0;
+    }
+
+    #archives ul > li {
         display: inline-block;
-        /*float: right;*/
+        margin-left: 1em;
+    }
+
+    #monitor-status table {
+        width: 100%;
     }
 </style>
 {% endblock %}
 
 {% block object-tools %}
     {{ block.super }}
-    {% if change and export_form %}
-    <div id="export-form">
-        <form action="{% url 'api:v1:monitors:entry-csv' object_id %}" method="get">
-            <div class="control">
-                <label for="{{ export_form.timestamp__gte.auto_id }}">{{ export_form.timestamp__gte.label }}</label><br />
-                <div class="field">{{ export_form.timestamp__gte }}</div>
-            </div>
-            <div class="control">
-                <label for="{{ export_form.timestamp__lte.auto_id }}">{{ export_form.timestamp__lte.label }}</label><br />
-                <div class="field">{{ export_form.timestamp__lte }}</div>
-            </div>
-            {% if not original.SENSORS|length == 1 %}
-            <div class="control">
-                <label for="id_sensors">Sensor</label><br />
-                <div class="field">
-                    <select id="id_sensors" name="sensor">
-                        {% for sensor in original.SENSORS %}
-                        <option value="{{ sensor }}" {% if sensor == original.default_sensor %}selected{% endif %}>{{ sensor }}</option>
-                        {% endfor %}
-                    </select><br />
-                    <span class="help">Download a specific sensor.</span>
-                </div>
-            </div>
-            {% endif %}
-            <div class="submit-buttons">
-                <input type="submit" value="Export Data" />
-            </div>
-        </form>
-    </div>
-    <br /><hr />
+    {% if original %}
+    <fieldset id="monitor-status" class="module aligned wide">
+        <h2>Current Status</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Last Updated</th>
+                    <th>PM2.5</th>
+                    <th>PM2.5 (15m)</th>
+                    <th>PM2.5 (60m)</th>
+                    <th>Temperature</th>
+                    <th>Humidity</th>
+                    <th>Alert</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>
+                        {% if original.latest %}
+                            <span>{{ original.latest.timestamp }}</span>
+                            {% if original.is_active %}
+                                <img src="{% static 'admin/img/icon-yes.svg' %}" alt="Active" />
+                            {% else %}
+                                <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inactive" />
+                            {% endif %}
+                            <br />
+                            <small>({{ original.latest.timestamp|timesince }} ago)</small>
+                        {% else %}
+                            <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inactive" />
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest %}
+                            <span>{{ original.latest.pm25|floatformat:"0" }}</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest.pm25_avg_15 %}
+                            <span>{{ original.latest.pm25_avg_15|floatformat:"0" }}</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest.pm25_avg_60 %}
+                            <span>{{ original.latest.pm25_avg_60|floatformat:"0" }}</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest.fahrenheit %}
+                            <span>{{ original.latest.fahrenheit|floatformat:"0" }}°F</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.latest.humidity %}
+                            <span>{{ original.latest.humidity|floatformat:"0" }}%</span>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if alert %}
+                            <span>{{ alert.start_time|timesince }}</span>
+                            <b style="color: red;">⚠</b><br />
+                            <small>({{ alert.start_time|timesince }} ago)</small>
+                        {% else %}
+                            <span>–</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </fieldset>
     {% endif %}
+
+    <fieldset id="data-export" class="module aligned wide collapse">
+        <h2>Data Export</h2>
+        {% if change and export_form %}
+        <div id="export-form">
+            <form action="{% url 'api:v1:monitors:entry-csv' object_id %}" method="get">
+                <div class="control">
+                    <label for="{{ export_form.timestamp__gte.auto_id }}">{{ export_form.timestamp__gte.label }}</label><br />
+                    <div class="field">{{ export_form.timestamp__gte }}</div>
+                </div>
+                <div class="control">
+                    <label for="{{ export_form.timestamp__lte.auto_id }}">{{ export_form.timestamp__lte.label }}</label><br />
+                    <div class="field">{{ export_form.timestamp__lte }}</div>
+                </div>
+                {% if not original.SENSORS|length == 1 %}
+                <div class="control">
+                    <label for="id_sensors">Sensor</label><br />
+                    <div class="field">
+                        <select id="id_sensors" name="sensor">
+                            {% for sensor in original.SENSORS %}
+                            <option value="{{ sensor }}" {% if sensor == original.default_sensor %}selected{% endif %}>{{ sensor }}</option>
+                            {% endfor %}
+                        </select><br />
+                        <span class="help">Download a specific sensor.</span>
+                    </div>
+                </div>
+                {% endif %}
+                <div class="submit-buttons">
+                    <input type="submit" value="Export Data" />
+                </div>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if change and original %}
+        {% regroup entry_archives by year as year_list %}
+        <table id="archives">
+            <caption>Monthly Archives</caption>
+            <tbody>
+            {% for year in year_list %}
+            <tr>
+                <td>
+                    <h3>{{ year.grouper }}</h3>
+                    <ul>
+                        {% for archive in year.list %}
+                            <li><a href="{{ archive.data.url }}">{{ archive.get_month_display }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </fieldset>
 {% endblock %}
