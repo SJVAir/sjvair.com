@@ -32,7 +32,7 @@ class LinearRegressions:
     coefs_computed = {
         'particles_05-10': F('particles_05um') - F('particles_10um'),
         'particles_10-25': F('particles_10um') - F('particles_25um'),
-        'particles_25-05': F('particles_25um') - F('particles_05um'),
+        'particles_25-50': F('particles_25um') - F('particles_50um'),
     }
 
     # What time periods to test?
