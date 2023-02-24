@@ -25,7 +25,7 @@ def update_realtime():
 
     sensors = purpleair_api.list_group_members(settings.PURPLEAIR_GROUP_ID)
     for sensor in sensors:
-        process_data.schedule([sensor], delay=1, priority=30)
+        process_data.schedule([sensor], delay=1, priority=40)
 
 
 @db_task()
