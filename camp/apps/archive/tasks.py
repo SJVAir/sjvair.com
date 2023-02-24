@@ -16,10 +16,10 @@ def create_entry_archive(monitor_id, year, month):
     EntryArchive.objects.generate(monitor=monitor, year=year, month=month)
 
 
-# In the furst day of the month at 12pm UTC, archive the last month of data.
+# In the first day of the month at 12pm UTC, archive the last month of data.
 @db_periodic_task(crontab(day='1', hour='12', minute='0'), priority=50)
 def archive_last_month_entries():
     last_month = timezone.now().date().replace(day=1) - timedelta(hours=24)
     monitor_list = Monitor.objects.all()
     for monitor in monitor_list:
-        create_entry_archive(monitor.pk, last_month.year, last_month.month)
+        create_entry_archive(monitor.pk, last_month.year, last_month.month, priority=1)
