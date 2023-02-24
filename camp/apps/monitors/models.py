@@ -119,18 +119,18 @@ class Monitor(models.Model):
         if self.pm25_calibration_formula:
             return self.pm25_calibration_formula
 
-        # # Distance-based calibrations
-        # calibrator = (Calibrator.objects
-        #     .filter(is_enabled=True)
-        #     .exclude(calibration__isnull=True)
-        #     .select_related('calibration')
-        #     .closest(self.position)
-        # )
+        # Distance-based calibrations
+        calibrator = (Calibrator.objects
+            .filter(is_enabled=True)
+            .exclude(calibration__isnull=True)
+            .select_related('calibration')
+            .closest(self.position)
+        )
 
-        # if calibrator is not None:
-        #     # CONSIDER: If the calibrator is too far, do we
-        #     # skip and go with county? How far is too far?
-        #     return calibrator.calibration.formula
+        if calibrator is not None:
+            # CONSIDER: If the calibrator is too far, do we
+            # skip and go with county? How far is too far?
+            return calibrator.calibration.formula
 
         # Fallback to county-based calibrations.
         try:
