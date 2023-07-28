@@ -61,13 +61,22 @@ def collectstatic(ctx):
 @invoke.task()
 def import_monitor_map(ctx):
     # Copy over monitor map
-    ctx.run(f'rm -rf {path("./dist/{monitor-map,widget}")}')
+    ctx.run(f'rm -rf {path("./dist/monitor-map")}')
     ctx.run(f'''
         cp -r \
-        {path('node_modules/@sjvair/monitor-map/dist/{monitor-map,widget}')} \
+        {path('node_modules/@sjvair/monitor-map/dist/monitor-map')} \
         {path('./dist')}
     ''')
 
+@invoke.task()
+def import_monitor_widget(ctx):
+    # Copy over monitor map
+    ctx.run(f'rm -rf {path("./dist/widget")}')
+    ctx.run(f'''
+        cp -r \
+        {path('node_modules/@sjvair/web-widget/dist')} \
+        {path('./dist/widget')}
+    ''')
 
 @invoke.task()
 def build(ctx):
@@ -76,6 +85,7 @@ def build(ctx):
     mkdir(path('dist'))
 
     import_monitor_map(ctx)
+    import_monitor_widget(ctx)
     styles(ctx)
     collectstatic(ctx)
     optimize_images(ctx)
