@@ -15,7 +15,6 @@ urlpatterns = [
 
     # @sjvair/monitor-map specific routes
     path('monitor/<monitor_id>/', PageTemplate.as_view(template_name='pages/index.html')),
-    path('widget/', PageTemplate.as_view(template_name='pages/widget.html')),
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
