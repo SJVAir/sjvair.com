@@ -3,7 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path, re_path 
 
-from camp.utils.views import PageTemplate, AdminStats, FlushQueue 
+from camp.utils.views import PageTemplate, AdminStats, FlushQueue, RenderStatic
 
 admin.site.site_title = "SJVAir Admin"
 admin.site.site_header = "SJVAir Admin"
@@ -15,6 +15,7 @@ urlpatterns = [
 
     # @sjvair/monitor-map specific routes
     path('monitor/<monitor_id>/', PageTemplate.as_view(template_name='pages/index.html')),
+    path('widget/', RenderStatic.as_view(static_file='widget/index.html')),
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
