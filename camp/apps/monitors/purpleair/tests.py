@@ -20,8 +20,14 @@ class PurpleAirTests(TestCase):
         assert a.position == self.monitor.position
         assert a.fahrenheit == payload['temperature']
 
-    # def test_thing(self):
-    #     qs = PurpleAir.objects.annotate(
-    #         last_updated=Max('entries__timestamp')
-    #     )
-    #     print(qs.get().last_updated)
+    def test_probable_location_marked_inside(self):
+        payload = {'name': 'test', 'location_type': 1}
+        assert PurpleAir().get_probable_location(payload) == PurpleAir.LOCATION.inside
+
+    def test_probable_location_marked_outside_name_implies_inside(self):
+        payload = {'name': 'test indoor', 'location_type': 0}
+        assert PurpleAir().get_probable_location(payload) == PurpleAir.LOCATION.inside
+
+    def test_probable_location_marked_outside(self):
+        payload = {'name': 'test outdoor', 'location_type': 0}
+        assert PurpleAir().get_probable_location(payload) == PurpleAir.LOCATION.outside

@@ -46,10 +46,24 @@ class PurpleAir(Monitor):
             float(data['longitude']),
             float(data['latitude'])
         )
-        self.location = self.LOCATION.inside if data['location_type'] == 1 else self.LOCATION.outside
+        self.location = self.get_probable_location(data)
 
         if not self.default_sensor:
             self.default_sensor = 'a'
+
+    def get_probable_location(self, data):
+        # Check for an explicit flag
+        if data['location_type'] == 1:
+            return self.LOCATION.inside
+
+        # If the name says it's inside, it probably is
+        name = data['name'].lower()
+        inside_list = ('inside', 'indoor', 'in door', 'in-door')
+        if any(item in name for item in inside_list):
+            return self.LOCATION.inside
+
+        # If we're here, it's probably outside.
+        return self.LOCATION.outside
 
     def create_entry(self, payload, sensor=None):
         try:
