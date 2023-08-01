@@ -28,11 +28,8 @@ class RegressionResults:
 
 class LinearRegressions:
     # Coefficients
-    coefs_base = ['humidity']
+    coefs_base = ['pm25']
     coefs_computed = {
-        'particles_05-10': F('particles_05um') - F('particles_10um'),
-        'particles_10-25': F('particles_10um') - F('particles_25um'),
-        'particles_25-50': F('particles_25um') - F('particles_50um'),
     }
 
     # What time periods to test?
@@ -40,20 +37,11 @@ class LinearRegressions:
 
     formulas = [
         (
-            ['particles_05-10', 'particles_10-25', 'humidity'],
+            ['pm25'],
             lambda coefs, intercept: (
-                f"((particles_05um - particles_10um) * ({coefs['particles_05-10']}))"
-                f" + ((particles_10um - particles_25um) * ({coefs['particles_10-25']}))"
-                f" + (humidity * ({coefs['humidity']})) + ({intercept})"
+                f"((pm25) * ({coefs['pm25']})) + ({intercept})"
             )
-        ), (
-            ['particles_10-25', 'particles_25-05', 'humidity'],
-            lambda coefs, intercept: (
-                f"((particles_10um - particles_25um) * ({coefs['particles_10-25']}))"
-                f" + ((particles_25um - particles_05um) * ({coefs['particles_25-05']}))"
-                f" + (humidity * ({coefs['humidity']})) + ({intercept})"
-            )
-        )
+        ),
     ]
 
     def __init__(self, calibrator, end_date=None):

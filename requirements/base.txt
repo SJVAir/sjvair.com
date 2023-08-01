@@ -1,4 +1,4 @@
-Django==3.2.16
+Django==3.2.20
 
 dj-database-url==0.5.0
 dj-static==0.0.6
@@ -56,10 +56,10 @@ python-dotenv==0.20.0
 pytz==2022.1
 PyYAML==5.4.1
 redis==4.4.4
-requests==2.28.1
+requests==2.31.0
 scikit-learn==1.1.1
 scout-apm==2.25.1
-sentry-sdk==1.7.1
+sentry-sdk==1.14.0
 twilio==7.11.0
 Unipath==1.1
 whitenoise==6.2.0
