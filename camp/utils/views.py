@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.http import is_safe_url
 from django.views import generic
+from django.views.decorators.clickjacking import xframe_options_exempt
 
 from huey.contrib.djhuey import HUEY
 from resticus.http import JSONResponse
@@ -103,6 +104,7 @@ class PageTemplate(generic.TemplateView):
         return self.render_to_response({})
 
 
+@method_decorator(xframe_options_exempt, name='dispatch')
 class RenderStatic(generic.View):
     static_file = None
 
