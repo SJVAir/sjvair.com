@@ -258,10 +258,14 @@ class Entry(models.Model):
     humidity = models.DecimalField(max_digits=8, decimal_places=1, null=True)
     pressure = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
-    # Post-processed, calibrated data
+    # PM 1.0
     pm10 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
-    pm25 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+
+    # PM 10.0
     pm100 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+
+    pm25 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
+    pm25_reported = models.DecimalField(max_digits=8, decimal_places=2, null=True)
 
     pm25_avg_15 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     pm25_avg_60 = models.DecimalField(max_digits=8, decimal_places=2, null=True)
