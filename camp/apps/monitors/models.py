@@ -23,10 +23,10 @@ from py_expression_eval import Parser as ExpressionParser
 from resticus.encoders import JSONEncoder
 from resticus.serializers import serialize
 
+from camp.apps.monitors.managers import MonitorManager
 from camp.apps.monitors.validators import validate_formula
 from camp.utils.counties import County
 from camp.utils.datetime import make_aware
-from camp.utils.managers import InheritanceManager
 from camp.utils.validators import JSONSchemaValidator
 
 
@@ -68,7 +68,7 @@ class Monitor(models.Model):
     pm25_calibration_formula = models.CharField(max_length=255, blank=True,
         default='', validators=[validate_formula])
 
-    objects = InheritanceManager()
+    objects = MonitorManager()
 
     class Meta:
         base_manager_name = 'objects'
