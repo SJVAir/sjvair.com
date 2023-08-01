@@ -1,11 +1,13 @@
 import hashlib
+import mimetypes
 import urllib
 
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.views import SuccessURLAllowedHostsMixin
+from django.contrib.staticfiles.storage import staticfiles_storage
 from django.db import connection
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, resolve_url
 from django.template import loader, TemplateDoesNotExist
 from django.utils import timezone
@@ -39,10 +41,7 @@ def get_view_cache_key(view, query=None):
     if params:
         encoded = hashlib.sha1(urllib.parse.urlencode(params, doseq=True).encode()).hexdigest()
         key = f'{key}|q:{encoded}'
-
-    print(key, len(key))
     return key
-
 
 
 class RedirectViewMixin(SuccessURLAllowedHostsMixin):
@@ -102,6 +101,16 @@ class PageTemplate(generic.TemplateView):
             raise Http404
 
         return self.render_to_response({})
+
+
+class RenderStatic(generic.View):
+    static_file = None
+
+    def get(self, request, *args, **kwargs):
+        content_type = mimetypes.guess_type(self.static_file)[0]
+        file = staticfiles_storage.open(self.static_file)
+        response = HttpResponse(file.read(), content_type=content_type)
+        return response
 
 
 @method_decorator(staff_member_required, name='dispatch')
