@@ -21,6 +21,7 @@ class PurpleAir(Monitor):
     CHANNEL_FIELDS = {
         'pm10': 'pm1.0_atm',
         'pm25': 'pm2.5_atm',
+        'pm25_reported': 'pm2.5_atm',
         'pm100': 'pm10.0_atm',
         'particles_03um': '0.3_um_count',
         'particles_05um': '0.5_um_count',
