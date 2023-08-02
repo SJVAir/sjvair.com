@@ -19,7 +19,6 @@ class Command(BaseCommand):
             {settings.STATIC_ROOT}
             s3://{settings.AWS_STORAGE_BUCKET_NAME}/{settings.STATICFILES_LOCATION}/
             --acl public-read
-            --size-only
         ''')
 
         print(' '.join(command))
