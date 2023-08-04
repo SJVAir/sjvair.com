@@ -28,7 +28,7 @@ class RegressionResults:
 
 class LinearRegressions:
     # Coefficients
-    coefs_base = ['pm25']
+    coefs_base = ['pm25_reported']
     coefs_computed = {
     }
 
@@ -37,9 +37,9 @@ class LinearRegressions:
 
     formulas = [
         (
-            ['pm25'],
+            ['pm25_reported'],
             lambda coefs, intercept: (
-                f"((pm25) * ({coefs['pm25']})) + ({intercept})"
+                f"((pm25_reported) * ({coefs['pm25_reported']})) + ({intercept})"
             )
         ),
     ]
@@ -60,7 +60,7 @@ class LinearRegressions:
                 sensor=self.calibrator.reference.default_sensor,
                 timestamp__range=(start_date, self.end_date),
             )
-            .annotate(endog_pm25=F('pm25'))
+            .annotate(endog_pm25=F('pm25_reported'))
             .values('timestamp', 'endog_pm25')
         )
         return queryset
@@ -87,6 +87,7 @@ class LinearRegressions:
         df = df.set_index('timestamp')
         df = pd.to_numeric(df.endog_pm25)
         df = df.resample('H').mean()
+        # df = df.rename(columns={'pm25_reported': 'pm25'})
         return df
 
     @cached_property
