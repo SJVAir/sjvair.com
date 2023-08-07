@@ -41,8 +41,8 @@ class BAM1022(Monitor):
             'celsius': 'AT(C)',
             'humidity': 'RH(%)',
             'pressure': 'BP(mmHg)',
-            'pm25': 'ConcRT(ug/m3)',
-            'pm25_reported': 'ConcRT(ug/m3)',
+            'pm25': 'ConcHR(ug/m3)',
+            'pm25_reported': 'ConcHR(ug/m3)',
         }
 
         for attr, key in attr_map.items():
