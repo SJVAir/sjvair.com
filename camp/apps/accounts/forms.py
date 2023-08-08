@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth import forms as auth_forms
 from django.core.cache import cache
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from .models import User
 
