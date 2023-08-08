@@ -101,7 +101,7 @@ class EndpointTests(TestCase):
             'AT(C)': '30.6',
             'RH(%)': '25.0',
             'BP(mmHg)': '764.5',
-            'ConcRT(ug/m3)': '24',
+            'ConcHR(ug/m3)': '24',
         }
         url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
         request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
@@ -127,7 +127,7 @@ class EndpointTests(TestCase):
             'AT(C)': '30.60',
             'RH(%)': '25.00',
             'BP(mmHg)': '764.5',
-            'ConcRT(ug/m3)': '24',
+            'ConcHR(ug/m3)': '24',
         }
 
         # Create the initial entry
