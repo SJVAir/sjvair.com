@@ -5,6 +5,9 @@ echo "I am `whoami`."
 ########
 ## Setup
 
+# Add Deadsnakes PPA for lattest version of python
+sudo add-apt-repository ppa:deadsnakes/ppa
+
 # Ensure everything is up to date
 echo
 echo "Updating the system..."
@@ -27,12 +30,12 @@ apt-get install -y binutils libproj-dev libgdal-dev
 
 echo
 echo "Installing Python..."
-apt-get install -y python3 python3-dev
-ln -s /usr/bin/python3 /usr/local/bin/python
+apt-get install -y python3.11-full python3.11-dev
+ln -s /usr/bin/python3.11 /usr/local/bin/python
 
 # pip
 echo "Installing pip..."
-wget https://bootstrap.pypa.io/get-pip.py -O - | python3
+wget https://bootstrap.pypa.io/get-pip.py -O - | python3.11
 
 # virtualenv
 echo "Installing virtualenv + virtualenvwrapper..."
