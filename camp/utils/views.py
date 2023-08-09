@@ -4,7 +4,7 @@ import urllib
 
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib.auth.views import SuccessURLAllowedHostsMixin
+from django.contrib.auth.views import RedirectURLMixin
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.db import connection
 from django.http import Http404, HttpResponse
@@ -12,7 +12,7 @@ from django.shortcuts import redirect, resolve_url
 from django.template import loader, TemplateDoesNotExist
 from django.utils import timezone
 from django.utils.decorators import method_decorator
-from django.utils.http import is_safe_url
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import generic
 from django.views.decorators.clickjacking import xframe_options_exempt
 
@@ -45,7 +45,7 @@ def get_view_cache_key(view, query=None):
     return key
 
 
-class RedirectViewMixin(SuccessURLAllowedHostsMixin):
+class RedirectViewMixin(RedirectURLMixin):
     redirect_field_name = 'next'
 
     def get_redirect_url(self):
@@ -57,7 +57,7 @@ class RedirectViewMixin(SuccessURLAllowedHostsMixin):
         if redirect_to is None:
             redirect_to = resolve_url(self.success_url)
 
-        url_is_safe = is_safe_url(
+        url_is_safe = url_has_allowed_host_and_scheme(
             url=redirect_to,
             allowed_hosts=self.get_success_url_allowed_hosts(),
             require_https=self.request.is_secure(),

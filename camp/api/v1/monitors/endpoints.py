@@ -115,7 +115,7 @@ class EntryMixin:
 
 class EntryList(EntryMixin, generics.ListCreateEndpoint):
     def get_queryset(self, *args, **kwargs):
-        queryset = super().get_queryset(*args, **kwargs).defer('payload')
+        queryset = super().get_queryset(*args, **kwargs)
         if self.request.monitor.default_sensor and 'sensor' not in self.request.GET:
             queryset = queryset.filter(sensor=self.request.monitor.default_sensor)
         return queryset

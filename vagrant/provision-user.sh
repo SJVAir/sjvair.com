@@ -21,16 +21,16 @@ npm install -g yarn
 ########
 # Python
 
-echo "export PYTHONPATH=/usr/lib/python3" >> ~/.bashrc
+echo "export PYTHONPATH=/usr/lib/python3.11" >> ~/.bashrc
 echo "export WORKON_HOME=~/.virtualenvs" >> ~/.bashrc
 echo "export PROJECT_HOME=/vagrant" >> ~/.bashrc
-echo "export VIRTUALENVWRAPPER_PYTHON=/usr/bin/python3" >> ~/.bashrc
+echo "export VIRTUALENVWRAPPER_PYTHON=/usr/bin/python3.11" >> ~/.bashrc
 echo "source /usr/local/bin/virtualenvwrapper.sh" >> ~/.bashrc
 echo "workon venv" >> ~/.bashrc
 
-export PYTHONPATH=/usr/lib/python3
+export PYTHONPATH=/usr/lib/python3.11
 export WORKON_HOME=~/.virtualenvs
-export VIRTUALENVWRAPPER_PYTHON=/usr/bin/python3
+export VIRTUALENVWRAPPER_PYTHON=/usr/bin/python3.11
 source /usr/local/bin/virtualenvwrapper.sh
 mkvirtualenv venv
 

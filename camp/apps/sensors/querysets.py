@@ -2,7 +2,7 @@ import types
 
 from datetime import timedelta
 
-from django.contrib.postgres.fields.jsonb import KeyTextTransform
+from django.db.models.fields.json import KeyTextTransform
 from django.db import models
 from django.db.models import Avg, Q
 from django.db.models.functions import Cast

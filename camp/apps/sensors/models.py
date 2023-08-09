@@ -6,7 +6,7 @@ from decimal import Decimal
 import aqi
 
 from django.contrib.gis.db import models
-from django.contrib.postgres.fields import JSONField
+from django.db.models import JSONField
 from django.utils import timezone
 
 from django_smalluuid.models import SmallUUIDField, uuid_default

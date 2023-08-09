@@ -1,5 +1,4 @@
-from django.conf.urls import include, url
-from django.urls import reverse_lazy
+from django.urls import include, re_path, reverse_lazy
 from django.contrib.auth import views as auth_views
 
 import vanilla
@@ -10,31 +9,31 @@ from camp.apps.alerts.views import AlertList, SubscriptionList
 
 
 auth_urlpatterns = [
-    url(r'^login/$', auth_views.LoginView.as_view(), {
+    re_path(r'^login/$', auth_views.LoginView.as_view(), {
         # 'authentication_form': forms.AuthenticationForm
     }, name='login'),
-    url(r'^logout/$', auth_views.LogoutView.as_view(), name='logout'),
-    url(r'^password/$', auth_views.PasswordChangeView.as_view(
+    re_path(r'^logout/$', auth_views.LogoutView.as_view(), name='logout'),
+    re_path(r'^password/$', auth_views.PasswordChangeView.as_view(
         success_url=reverse_lazy('account:password-change-done'),
     ), name='password-change'),
-    url(r'^password/done/$', auth_views.PasswordChangeDoneView.as_view(), name='password-change-done'),
-    url(r'^password/reset/$', auth_views.PasswordResetView.as_view(
+    re_path(r'^password/done/$', auth_views.PasswordChangeDoneView.as_view(), name='password-change-done'),
+    re_path(r'^password/reset/$', auth_views.PasswordResetView.as_view(
         success_url=reverse_lazy('account:password-reset-done'),
     ), name='password-reset'),
-    url(r'^password/reset/done/$', auth_views.PasswordResetDoneView.as_view(), name='password-reset-done'),
-    url(r'^reset/(?P<uidb64>[0-9A-Za-z-\-]+)/(?P<token>[0-9A-Za-z]{1,13}-[0-9A-Za-z]{1,20})/$',
+    re_path(r'^password/reset/done/$', auth_views.PasswordResetDoneView.as_view(), name='password-reset-done'),
+    re_path(r'^reset/(?P<uidb64>[0-9A-Za-z-\-]+)/(?P<token>[0-9A-Za-z]{1,13}-[0-9A-Za-z]{1,20})/$',
         auth_views.PasswordResetConfirmView.as_view(
             success_url=reverse_lazy('account:password-reset-complete'),
         ), name='password-reset-confirm'),
-    url(r'^reset/done/$', auth_views.PasswordResetCompleteView.as_view(), name='password-reset-complete'),
+    re_path(r'^reset/done/$', auth_views.PasswordResetCompleteView.as_view(), name='password-reset-complete'),
 ]
 
 urlpatterns = [
-    url(r'^$', views.ProfileView.as_view(), name='profile'),
-    url(r'^alerts/$', AlertList.as_view(), name='alerts'),
-    url(r'^subscriptions/$', SubscriptionList.as_view(), name='subscriptions'),
-    url(r'^phone/$', views.SendPhoneVerification.as_view(), name='phone-verify-send'),
-    url(r'^phone/verify/$', views.SubmitPhoneVerification.as_view(), name='phone-verify-submit'),
-    url(r'^signup/$', views.SignupView.as_view(), name='signup'),
-    url(r'^', include(auth_urlpatterns)),
+    re_path(r'^$', views.ProfileView.as_view(), name='profile'),
+    re_path(r'^alerts/$', AlertList.as_view(), name='alerts'),
+    re_path(r'^subscriptions/$', SubscriptionList.as_view(), name='subscriptions'),
+    re_path(r'^phone/$', views.SendPhoneVerification.as_view(), name='phone-verify-send'),
+    re_path(r'^phone/verify/$', views.SubmitPhoneVerification.as_view(), name='phone-verify-submit'),
+    re_path(r'^signup/$', views.SignupView.as_view(), name='signup'),
+    re_path(r'^', include(auth_urlpatterns)),
 ]
