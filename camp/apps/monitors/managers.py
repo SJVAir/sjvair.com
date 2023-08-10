@@ -16,6 +16,9 @@ class MonitorQuerySet(InheritanceQuerySet):
         cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
         return self.filter(Q(latest__isnull=True) | Q(latest__timestamp__lt=cutoff))
 
+    def get_active_multisensor(self):
+        return self.get_active().exclude(default_sensor='')
+
 
 class MonitorManager(InheritanceManager):
     _queryset_class = MonitorQuerySet
@@ -28,3 +31,6 @@ class MonitorManager(InheritanceManager):
 
     def get_inactive(self):
         return self.get_queryset().get_inactive()
+
+    def get_active_multisensor(self):
+        return self.get_queryset().get_multisensor()
