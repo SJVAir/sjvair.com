@@ -2,14 +2,11 @@
   "name": "sjvair",
   "version": "1.0.1",
   "private": true,
-  "engines": {
-    "node": "16.13.0"
-  },
   "scripts": {
     "heroku-postbuild": "invoke build"
   },
   "dependencies": {
-    "@sjvair/monitor-map": "^1.4.5",
+    "@sjvair/monitor-map": "^1.4.6",
     "@sjvair/web-widget": "^1.0.8",
     "bulma": "^0.9.4"
   }
