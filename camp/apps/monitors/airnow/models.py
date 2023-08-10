@@ -17,4 +17,6 @@ class AirNow(Monitor):
             entry.pm25_reported = payload['PM2.5']['Value']
         if 'PM10' in payload:
             entry.pm100 = payload['PM10']['Value']
+        if 'OZONE' in payload:
+            entry.ozone = payload['OZONE']['Value']
         return super().process_entry(entry, payload)
