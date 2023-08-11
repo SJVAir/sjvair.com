@@ -1,7 +1,5 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.monitors.models import Monitor
-from camp.apps.qaqc.sensorlinreg import SensorLinearRegression
 from camp.apps.qaqc.tasks import ab_regression
 
 
