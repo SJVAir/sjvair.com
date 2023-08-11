@@ -17,7 +17,7 @@ class MonitorQuerySet(InheritanceQuerySet):
         return self.filter(Q(latest__isnull=True) | Q(latest__timestamp__lt=cutoff))
 
     def get_active_multisensor(self):
-        return self.get_active().exclude(default_sensor='')
+        return self.get_active().exclude(default_sensor='').exclude(location='inside')
 
 
 class MonitorManager(InheritanceManager):
@@ -33,4 +33,4 @@ class MonitorManager(InheritanceManager):
         return self.get_queryset().get_inactive()
 
     def get_active_multisensor(self):
-        return self.get_queryset().get_multisensor()
+        return self.get_queryset().get_active_multisensor()
