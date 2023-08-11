@@ -10,9 +10,6 @@ from geopy.distance import distance as geopy_distance
 from model_utils.models import TimeStampedModel
 
 from camp.apps.monitors.models import Monitor
-from camp.apps.monitors.validators import validate_formula
-from camp.apps.calibrations.linreg import LinearRegressions
-from camp.apps.calibrations.querysets import CalibratorQuerySet
 
 
 class SensorAnalysis(TimeStampedModel):
@@ -26,9 +23,9 @@ class SensorAnalysis(TimeStampedModel):
 
     monitor = models.ForeignKey('monitors.Monitor', on_delete=models.CASCADE)
 
-    r2 = models.FloatField(required=True)
-    intercept = models.FloatField(required=True)
-    coef = models.FloatField(required=True)
-    start_date = models.DateTimeField(required=True)
-    end_date = models.DateTimeField(required=True)
+    r2 = models.FloatField()
+    intercept = models.FloatField()
+    coef = models.FloatField()
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
 
