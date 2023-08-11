@@ -17,6 +17,7 @@ from .models import SensorAnalysis
 
 class SensorLinearRegression:
     days = 7
+    data_field = 'pm25_reported'
 
     def __init__(self, monitor, end_date=None):
         self.monitor = monitor
@@ -26,8 +27,9 @@ class SensorLinearRegression:
     @cached_property
     def queryset(self):
         queryset = (self.monitor.entries
-            .filter(timestamp__range=(start_date, self.end_date))
-            .values('timestamp', 'sensor', 'pm25_reported')
+            .filter(timestamp__range=(self.start_date, self.end_date))
+            #.exclude(**{ f'{self.data_field}__isnull': True })
+            .values('timestamp', 'sensor', self.data_field)
         )
 
         return queryset
@@ -36,7 +38,7 @@ class SensorLinearRegression:
     def df(self):
         df = pd.DataFrame(self.queryset)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df['pm25_reported'] = pd.to_numeric(df['pm25_reported'])
+        df[self.data_field] = pd.to_numeric(df[self.data_field])
 
         return df
 
@@ -49,6 +51,9 @@ class SensorLinearRegression:
         return self.__get_sensor_group(self.monitor.SENSORS[0])
 
     def generate_regression(self):
+        if self.endog is None or self.exog is None:
+            return None
+
         try:
             linreg = skLinearRegression()
             linreg.fit(self.exog, self.endog)
@@ -67,17 +72,25 @@ class SensorLinearRegression:
             end_date=self.end_date,
         )
 
+        if results.r2 < 0.9:
+            print(f'{self.monitor.name} is possibly bad: {results.r2}')
+
         return results
     
-    def __get_sensor_group(sensor):
+    def __get_sensor_group(self, sensor):
         groups = self.df.groupby('sensor')
-        grp = groups.get_group(sensor)
+
+        try:
+            grp = groups.get_group(sensor).loc[:, ['timestamp', self.data_field]]
+        except KeyError:
+            return None
 
         if not len(grp):
             return None
 
         grp = grp.set_index('timestamp')
         grp = grp.resample('H').mean()
+        grp = grp.dropna()
 
         return grp
 
