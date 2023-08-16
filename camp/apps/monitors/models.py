@@ -62,6 +62,12 @@ class Monitor(models.Model):
 
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
 
+    current_health = models.ForeignKey('qaqc.SensorAnalysis',
+        blank=True,
+        null=True,
+        related_name="current_for",
+        on_delete=models.SET_NULL
+    )
     latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
     default_sensor = models.CharField(max_length=50, default='', blank=True)
 
