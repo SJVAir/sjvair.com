@@ -28,7 +28,6 @@ class SensorLinearRegression:
     def queryset(self):
         queryset = (self.monitor.entries
             .filter(timestamp__range=(self.start_date, self.end_date))
-            #.exclude(**{ f'{self.data_field}__isnull': True })
             .values('timestamp', 'sensor', self.data_field)
         )
 
@@ -58,10 +57,8 @@ class SensorLinearRegression:
             linreg = skLinearRegression()
             linreg.fit(self.exog, self.endog)
         except ValueError as err:
-            # import code
-            # code.interact(local=locals())
             print('QAQC Linear Regression Error:', err)
-            return
+            return None
 
         results = SensorAnalysis(
             monitor=self.monitor,
