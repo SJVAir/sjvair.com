@@ -29,6 +29,7 @@ class SensorAnalysisAdmin(admin.ModelAdmin):
     #inlines = (SensorAnalysisInline,)
     list_display = ('pk', 'get_reference', 'start_date', 'end_date', 'r2', 'coef', 'intercept')
     readonly_fields = ('pk', 'get_reference', 'start_date', 'end_date', 'r2', 'coef', 'intercept')
+    search_fields = ['monitor__name']
     exclude = ['monitor']
 
     def get_monitor_link(self, instance):
