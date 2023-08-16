@@ -11,8 +11,8 @@ def ab_regression():
 
     for monitor in qs:
         linreg = SensorLinearRegression(monitor)
-        report = linreg.generate_regression()
+        analysis = linreg.generate_regression()
 
-        if report != None:
-            report.save()
+        if analysis != None:
+            analysis.save_as_current()
 
