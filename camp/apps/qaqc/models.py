@@ -11,7 +11,6 @@ from model_utils.models import TimeStampedModel
 
 from camp.apps.monitors.models import Monitor
 
-
 class SensorAnalysis(TimeStampedModel):
     id = SmallUUIDField(
         default=uuid_default(),
@@ -72,3 +71,19 @@ class SensorAnalysis(TimeStampedModel):
 
     def __str__(self):
         return "{:.2f}".format(self.r2)
+
+SensorAnalysis.health_grades = {
+    'A+': (0.97, 1.0),
+    'A': (0.93, 0.97),
+    'A-': (0.9, 0.93),
+    'B+': (0.87, 0.9),
+    'B': (0.83, 0.87),
+    'B-': (0.8, 0.83),
+    'C+': (0.77, 0.8),
+    'C': (0.73, 0.77),
+    'C-': (0.7, 0.73),
+    'D+': (0.66, 0.7),
+    'D': (0.63, 0.66),
+    'D-': (0.6, 0.63),
+    'F': (0.0, 0.6)
+}
