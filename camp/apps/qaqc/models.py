@@ -33,6 +33,35 @@ class SensorAnalysis(TimeStampedModel):
     end_date = models.DateTimeField()
 
     @property
+    def grade(self):
+        if self.r2 >= 0.97:
+            return "A+"
+        elif self.r2 >= 0.93:
+            return "A"
+        elif self.r2 >= 0.9:
+            return "A-"
+        elif self.r2 >= 0.87:
+            return "B+"
+        elif self.r2 >= 0.83:
+            return "B"
+        elif self.r2 >= 0.8:
+            return "B-"
+        elif self.r2 >= 0.77:
+            return "C+"
+        elif self.r2 >= 0.73:
+            return "C"
+        elif self.r2 >= 0.7:
+            return "C-"
+        elif self.r2 >= 0.67:
+            return "D+"
+        elif self.r2 >= 0.63:
+            return "D"
+        elif self.r2 >= 0.6:
+            return "D-"
+        else:
+            return "F"
+
+    @property
     def is_under_threshold(self):
         return self.r2 < 0.9
 
