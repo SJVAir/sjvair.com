@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django import forms
+from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin
 from django.contrib.humanize.templatetags.humanize import intcomma
@@ -13,15 +14,44 @@ from django.utils.safestring import mark_safe
 from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
 from camp.apps.calibrations.admin import formula_help_text
+from camp.apps.qaqc.models import SensorAnalysis
 from camp.utils.forms import DateRangeForm
 
 from .models import Calibration, Entry
 
+def key_to_lookup(k):
+    test_str = k * 2
+    temp = len(test_str) // len(str(k))
+    res = [k] * temp
+
+    return tuple(res)
+
+class HealthGradeListFilter(SimpleListFilter):
+    title = "Health Grade"
+    parameter_name = "grade"
+
+    def lookups(self, request, model_admin): 
+        return list(map(key_to_lookup, SensorAnalysis.health_grades.keys()))
+
+    def queryset(self, request, queryset):
+        """
+        Returns the filtered queryset based on the value
+        provided in the query string and retrievable via
+        `self.value()`.
+        """
+        try:
+            (g_min, g_max) = SensorAnalysis.health_grades[self.value()]
+            return queryset.filter(
+                current_health__r2__gte=g_min,
+                current_health__r2__lt=g_max,
+            )
+        except KeyError:
+            return queryset
 
 class MonitorAdmin(admin.OSMGeoAdmin):
     list_display = ['name', 'get_current_health', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
     list_editable = ['is_sjvair', 'is_hidden']
-    list_filter = ['is_sjvair', 'is_hidden', 'location', 'county']
+    list_filter = ['is_sjvair', 'is_hidden', 'location', 'county', HealthGradeListFilter]
     fields = ['name', 'county', 'default_sensor', 'is_hidden', 'is_sjvair', 'location', 'position', 'notes', 'pm25_calibration_formula']
     search_fields = ['county', 'current_health__r2', 'location', 'name']
 
