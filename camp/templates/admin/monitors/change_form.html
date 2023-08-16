@@ -66,6 +66,9 @@
             <thead>
                 <tr>
                     <th>Last Updated</th>
+                    {% if original.current_health %}
+                      <th>Current Health</th>
+                    {% endif %}
                     <th>PM2.5</th>
                     <th>PM2.5 (15m)</th>
                     <th>PM2.5 (60m)</th>
@@ -88,6 +91,14 @@
                             <small>({{ original.latest.timestamp|timesince }} ago)</small>
                         {% else %}
                             <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inactive" />
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.current_health %}
+                            <span>{{ original.current_health }}</span>
+                            {% if original.current_health.is_under_threshold %}
+                                <img src="{% static 'admin/img/icon-alert.svg' %}" alt="Inactive" />
+                            {% endif %}
                         {% endif %}
                     </td>
                     <td>
