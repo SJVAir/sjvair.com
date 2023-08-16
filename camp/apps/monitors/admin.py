@@ -65,7 +65,7 @@ class MonitorAdmin(admin.OSMGeoAdmin):
 
     def get_current_health(self, instance):
         if instance.current_health is None:
-            return ''
+            return 'N/A'
 
         return mark_safe(Template('''
             {% load static %}
