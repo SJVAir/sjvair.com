@@ -78,6 +78,7 @@ class MonitorAdmin(admin.OSMGeoAdmin):
             'monitor': instance,
         })))
     get_current_health.short_description = 'Current Health'
+    get_current_health.admin_order_field = 'current_health__r2'
 
     def get_entry_archives(self, object_id):
         queryset = EntryArchive.objects.filter(monitor_id=object_id)
