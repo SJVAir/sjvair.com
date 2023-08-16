@@ -69,10 +69,10 @@ class MonitorAdmin(admin.OSMGeoAdmin):
 
         return mark_safe(Template('''
             {% load static %}
-            <span>{{ monitor.current_health }}</span>
+            <span title="{{ monitor.current_health.r2 }}">{{ monitor.current_health }}</span>
             &#32;
             {% if monitor.current_health.is_under_threshold %}
-                <img src="{% static 'admin/img/icon-alert.svg' %}" alt="Inctive">
+                <img src="{% static 'admin/img/icon-alert.svg' %}" alt="Below Threshold" title="Below Threshold">
             {% endif %}
         ''').render(Context({
             'monitor': instance,
