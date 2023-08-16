@@ -19,7 +19,7 @@ from .models import Calibration, Entry
 
 
 class MonitorAdmin(admin.OSMGeoAdmin):
-    list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
+    list_display = ['name', 'get_current_health', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', 'location', 'county']
     fields = ['name', 'county', 'default_sensor', 'is_hidden', 'is_sjvair', 'location', 'position', 'notes', 'pm25_calibration_formula']
@@ -62,6 +62,22 @@ class MonitorAdmin(admin.OSMGeoAdmin):
             return Alert.objects.get(monitor_id=object_id, end_time__isnull=True)
         except Alert.DoesNotExist:
             return None
+
+    def get_current_health(self, instance):
+        if instance.current_health is None:
+            return ''
+
+        return mark_safe(Template('''
+            {% load static %}
+            <span>{{ monitor.current_health }}</span>
+            &#32;
+            {% if monitor.current_health.is_under_threshold %}
+                <img src="{% static 'admin/img/icon-alert.svg' %}" alt="Inctive">
+            {% endif %}
+        ''').render(Context({
+            'monitor': instance,
+        })))
+    get_current_health.short_description = 'Current Health'
 
     def get_entry_archives(self, object_id):
         queryset = EntryArchive.objects.filter(monitor_id=object_id)
