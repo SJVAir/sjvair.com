@@ -33,32 +33,10 @@ class SensorAnalysis(TimeStampedModel):
 
     @property
     def grade(self):
-        if self.r2 >= 0.97:
-            return "A+"
-        elif self.r2 >= 0.93:
-            return "A"
-        elif self.r2 >= 0.9:
-            return "A-"
-        elif self.r2 >= 0.87:
-            return "B+"
-        elif self.r2 >= 0.83:
-            return "B"
-        elif self.r2 >= 0.8:
-            return "B-"
-        elif self.r2 >= 0.77:
-            return "C+"
-        elif self.r2 >= 0.73:
-            return "C"
-        elif self.r2 >= 0.7:
-            return "C-"
-        elif self.r2 >= 0.67:
-            return "D+"
-        elif self.r2 >= 0.63:
-            return "D"
-        elif self.r2 >= 0.6:
-            return "D-"
-        else:
-            return "F"
+        for key in SensorAnalysis.health_grades:
+            (g_min, g_max) = SensorAnalysis.health_grades[key]
+            if self.r2 >= g_min and self.r2 <= g_max:
+                return key
 
     @property
     def is_under_threshold(self):
