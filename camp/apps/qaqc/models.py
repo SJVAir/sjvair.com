@@ -47,9 +47,6 @@ class SensorAnalysis(TimeStampedModel):
         self.monitor.current_health = self
         self.monitor.save()
 
-    def __str__(self):
-        return "{:.2f}".format(self.r2)
-
 SensorAnalysis.health_grades = {
     'A+': (0.97, 1.0),
     'A': (0.93, 0.97),
