@@ -99,7 +99,7 @@
                     </td>
                     <td>
                         {% if original.current_health %}
-                            <span>{{ original.current_health }}</span>
+                            <span>{{ original.current_health.grade }}</span>
                             {% if original.current_health.is_under_threshold %}
                                 <img src="{% static 'admin/img/icon-alert.svg' %}" alt="Inactive" />
                             {% endif %}
