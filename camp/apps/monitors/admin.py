@@ -11,10 +11,13 @@ from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
 from django.utils.safestring import mark_safe
 
+from django_admin_inline_paginator.admin import TabularInlinePaginated
+
 from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
 from camp.apps.calibrations.admin import formula_help_text
 from camp.apps.qaqc.models import SensorAnalysis
+from camp.apps.qaqc.admin import SensorAnalysisInline
 from camp.utils.forms import DateRangeForm
 
 from .models import Calibration, Entry
@@ -49,6 +52,7 @@ class HealthGradeListFilter(SimpleListFilter):
             return queryset
 
 class MonitorAdmin(admin.OSMGeoAdmin):
+    inlines = (SensorAnalysisInline,)
     list_display = ['name', 'get_current_health', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', 'location', 'county', HealthGradeListFilter]
