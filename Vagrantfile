@@ -4,7 +4,7 @@
 VAGRANTFILE_API_VERSION = "2"
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
-    config.vm.box = "bento/ubuntu-20.04"
+    config.vm.box = "bento/ubuntu-22.04"
 
     config.ssh.username = "vagrant"
 
@@ -27,9 +27,17 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
     # Configure a synced folder between HOST and GUEST
     config.vm.synced_folder ".", "/vagrant", id: "camp-server", :mount_options => ["dmode=744","fmode=744"]
-    # config.vm.synced_folder "../frontend", "/vagrant/frontend", id: "camp-frontend", :mount_options => ["dmode=744","fmode=744"]
 
     # Kick off a shell script to install dependencies
-    config.vm.provision "shell", privileged: true, path: "./vagrant/provision-root.sh"
-    config.vm.provision "shell", privileged: false, path: "./vagrant/provision-user.sh"
+    config.vm.provision "shell", privileged: true, path: "./provisioning/vagrant.sh"
+    config.vm.provision "shell", privileged: false, inline: <<-SCRIPTEOF
+      cd /vagrant
+
+      ./provisioning/user.sh
+      ./manage.py migrate
+
+      echo -e "\nVagrant setup complete!"
+      echo "Now try logging in:"
+      echo "    $ vagrant ssh"
+    SCRIPTEOF
 end
