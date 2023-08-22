@@ -25,7 +25,7 @@ echo "I am `whoami`."
 ##############
 ## PostgreSQL
 
-echo "Installing PostgreSQL..."
+echo -e "\nInstalling PostgreSQL..."
 sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/pgdg.asc &>/dev/null
 apt-y update
@@ -42,16 +42,14 @@ su postgres "$here/postgresql.sh"
 #############
 ## Memcached
 
-echo
-echo "Installing Memcached..."
+echo -e "\nInstalling Memcached..."
 apt-y install memcached libmemcached-dev
 
 
 ########
 ## Redis
 
-echo
-echo "Installing Redis..."
+echo -e "\nInstalling Redis..."
 
 add-apt-repository ppa:chris-lea/redis-server -y
 apt-y update
