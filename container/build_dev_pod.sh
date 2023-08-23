@@ -7,12 +7,13 @@ here=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 pod="sjvair-dev"
 sjvair_pg_data="sjvair-pg-data"
 sjvair_pg_runtime="sjvair-pg-runtime"
-rm_volume=0
+sjvair_redis_data="sjvair-redis-data"
+rm_volumes=0
 
 while test $# != 0
 do
     case "$1" in
-    --keep-volume) rm_volume=1 ;;
+    --keep-volumes) rm_volumes=1 ;;
     esac
     shift
 done
@@ -21,10 +22,11 @@ if podman pod ls | grep -q $pod; then
   echo -e "\nRemoving old pod..."
   podman pod kill $pod
   podman pod rm $pod
-  if [[ $rm_volume == 0 ]]; then
-    echo -e "\nRemoving old Postgres volumes"
+  if [[ $rm_volumes == 0 ]]; then
+    echo -e "\nRemoving old volumes"
     podman volume rm $sjvair_pg_data
     podman volume rm $sjvair_pg_runtime
+    podman volume rm $sjvair_redis_data
   fi
 fi
 
@@ -50,6 +52,7 @@ podman run -dt \
 podman run -dt \
   --pod $pod \
   --name sjvair-redis-dev \
+  -v $sjvair_redis_data:/data:U \
   docker://redis
 
 # Create/Add sjvair container
