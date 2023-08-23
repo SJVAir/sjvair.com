@@ -3,18 +3,31 @@
 # Exit on error
 set -o errexit
 
+here=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 pod="sjvair-dev"
 pg_volume="sjvair-pg-data"
+rm_volume=0
+
+while test $# != 0
+do
+    case "$1" in
+    --keep-volume) rm_volume=1 ;;
+    esac
+    shift
+done
 
 if podman pod ls | grep -q $pod; then
   echo -e "\nRemoving old pod..."
   podman pod kill $pod
   podman pod rm $pod
-  podman volume rm $pg_volume
+  if [[ $rm_volume == 0 ]]; then
+    echo -e "\nRemoving old Postgres volume"
+    podman volume rm $pg_volume
+  fi
 fi
 
 echo -e "\nCreating dev pod: $pod"
-podman pod create --name $pod -p 8080:8080 -p 8000:8000 -p 35729:35729
+podman pod create --name $pod --userns=keep-id -p 8080:8080 -p 8000:8000 -p 35729:35729
 
 # Create/Add postgres container
 podman run -dt \
@@ -40,9 +53,15 @@ podman run -dt \
 podman run -dt \
   --pod $pod \
   --name sjvair-server-dev \
+  -v "$here/../":/vagrant:Z \
   sjvair-server
 
+echo -e "Restarting pod..."
 podman pod stop $pod
 podman pod start $pod
+
 # Sync the database
-podman exec --tty sjvair-server-dev bash -ilc "./manage.py migrate --no-input"
+if [[ $rm_volume == 0 ]]; then
+  echo -e "Running initial migrations..."
+  podman exec --tty sjvair-server-dev bash -ilc "./manage.py migrate --no-input"
+fi
