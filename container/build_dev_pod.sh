@@ -5,7 +5,8 @@ set -o errexit
 
 here=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 pod="sjvair-dev"
-pg_volume="sjvair-pg-data"
+sjvair_pg_data="sjvair-pg-data"
+sjvair_pg_runtime="sjvair-pg-runtime"
 rm_volume=0
 
 while test $# != 0
@@ -21,19 +22,21 @@ if podman pod ls | grep -q $pod; then
   podman pod kill $pod
   podman pod rm $pod
   if [[ $rm_volume == 0 ]]; then
-    echo -e "\nRemoving old Postgres volume"
-    podman volume rm $pg_volume
+    echo -e "\nRemoving old Postgres volumes"
+    podman volume rm $sjvair_pg_data
+    podman volume rm $sjvair_pg_runtime
   fi
 fi
 
 echo -e "\nCreating dev pod: $pod"
-podman pod create --name $pod --userns=keep-id -p 8080:8080 -p 8000:8000 -p 35729:35729
+podman pod create --name $pod --userns keep-id -p 8080:8080 -p 8000:8000 -p 35729:35729
 
 # Create/Add postgres container
 podman run -dt \
   --pod $pod \
   --name sjvair-pg-dev \
-  -v $pg_volume:/var/lib/postgresql/data \
+  -v $sjvair_pg_data:/var/lib/postgresql/data:U \
+  -v $sjvair_pg_runtime:/var/run/postgresql:U \
   sjvair-pg \
   postgres
 
