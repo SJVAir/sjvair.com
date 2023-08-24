@@ -10,6 +10,10 @@ sjvair_pg_runtime="sjvair-pg-runtime"
 sjvair_redis_data="sjvair-redis-data"
 rm_volumes=0
 
+function check_db() {
+  podman logs sjvair-pg-dev | grep "database system is ready to accept connections"
+}
+
 while test $# != 0
 do
     case "$1" in
@@ -62,12 +66,19 @@ podman run -dt \
   -v "$here/../":/vagrant:Z \
   sjvair-server
 
-echo -e "Restarting pod..."
+echo -e "\nRestarting pod..."
 podman pod stop $pod
 podman pod start $pod
 
 # Sync the database
-if [[ $rm_volume == 0 ]]; then
-  echo -e "Running initial migrations..."
+if [[ $rm_volumes == 0 ]]; then
+  if [ -z "$(check_db)" ]; then
+    printf "\nWaiting for database"
+    while [ -z "$(check_db)" ]; do
+      printf '.'
+    done
+    printf "\n"
+  fi
+  echo -e "\nRunning initial migrations..."
   podman exec --tty sjvair-server-dev bash -ilc "./manage.py migrate --no-input"
 fi
