@@ -28,6 +28,7 @@ class MonitorSerializer(serializers.Serializer):
         'is_active',
         'is_sjvair',
         'position',
+        ('sensors', lambda monitor: monitor.SENSORS),
         ('last_active_limit', lambda monitor: monitor.LAST_ACTIVE_LIMIT),
         'location',
         ('latest', EntrySerializer),
