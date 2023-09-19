@@ -36,10 +36,18 @@ def mkdir(dirname):
 def assets(*paths):
     return path('assets', *paths)
 
+def import_node_module(ctx, target, destination=None):
+    destination = path('dist', destination or os.path.basename(target))
+    target = path('node_modules', target, 'dist')
+
+    ctx.run(f'rm -rf {destination}')
+    ctx.run(f'cp -r {target} {destination}')
+
 
 @invoke.task()
 def optimize_images(ctx):
     ctx.run('optimize-images ./public/static/')
+
 
 @invoke.task()
 def styles(ctx):
@@ -59,28 +67,11 @@ def collectstatic(ctx):
 
 
 @invoke.task()
-def import_monitor_map(ctx):
-    # Copy over monitor map
-    destination = path("./dist/monitor-map")
+def import_npm_assets(ctx):
+    import_node_module(ctx, '@sjvair/monitor-map')
+    import_node_module(ctx, '@sjvair/web-widget', 'widget')
+    import_node_module(ctx, '@sjvair/sensor-scatterplot')
 
-    ctx.run(f'rm -rf {destination}')
-    ctx.run(f'''
-        cp -r \
-        {path('node_modules/@sjvair/monitor-map/dist')} \
-        {destination}
-    ''')
-
-@invoke.task()
-def import_monitor_widget(ctx):
-    # Copy over monitor widget
-    destination = path("./dist/widget")
-
-    ctx.run(f'rm -rf {destination}')
-    ctx.run(f'''
-        cp -r \
-        {path('node_modules/@sjvair/web-widget/dist')} \
-        {destination}
-    ''')
 
 @invoke.task()
 def build(ctx):
@@ -88,8 +79,7 @@ def build(ctx):
     ctx.run('rm -rf ./public/static')
     mkdir(path('dist'))
 
-    import_monitor_map(ctx)
-    import_monitor_widget(ctx)
+    import_npm_assets(ctx)
     styles(ctx)
     collectstatic(ctx)
     optimize_images(ctx)
