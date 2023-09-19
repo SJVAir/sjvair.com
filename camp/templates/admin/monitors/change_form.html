@@ -5,6 +5,24 @@
 
 {% block extrastyle %}
 {{ block.super }}
+<script type="text/javascript" src="{% static 'sensor-scatterplot/sensor-scatterplot.js' %}"></script>
+<script type="module">
+  const chartBtns = document.querySelectorAll("p[monitorId]");
+
+  function appendScatterplot({target}) {
+    const scatterplot = document.createElement('scatter-plot');
+
+    target.getAttributeNames()
+      .map(name => [ name, target.getAttribute(name) ])
+      .forEach(attr => scatterplot.setAttribute(attr[0], attr[1]));
+
+    target.removeEventListener("click", appendScatterplot);
+    target.textContent = "";
+    target.append(scatterplot);
+  }
+  
+  chartBtns.forEach(btn => btn.addEventListener("click", appendScatterplot))
+</script>
 <script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
 {{ export_form.media }}
 
@@ -58,8 +76,19 @@
     #monitor-status table {
         width: 100%;
     }
+
+    .analysis-chart {
+      text-align: center;
+      cursor: pointer;
+    }
+
+    scatter-plot {
+      width: 500px;
+      height: 300px;
+    }
 </style>
 {% endblock %}
+
 
 {% block object-tools %}
     {{ block.super }}
