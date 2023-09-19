@@ -4,12 +4,17 @@
 
 "@sjvair/monitor-map@^1.4.11":
   version "1.4.11"
-  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-1.4.11.tgz#9afa9c53306c6bb72ad2a084a901e23369b20235"
+  resolved "https://registry.npmjs.org/@sjvair/monitor-map/-/monitor-map-1.4.11.tgz"
   integrity sha512-/fQVLJ+Kv0VRiQhxkjJeraLILUOzN+SEDIbH4ba6FwJ19dPiwOioEZOOtipA2Ghm4LLEomg257cLCXd7ZxZ89A==
+
+"@sjvair/sensor-scatterplot@^1.0.12":
+  version "1.0.12"
+  resolved "https://registry.yarnpkg.com/@sjvair/sensor-scatterplot/-/sensor-scatterplot-1.0.12.tgz#200c9874e8bf33c9537a12b84220ce41a68e4b54"
+  integrity sha512-p8j77gnWbnWeAjd1qpjAKA81wRktLaKygz8m0THp+y0Mf7upIweanjyu6YXT8/e/m+iuVCn70GNAbCOgDQ9LEA==
 
 "@sjvair/web-widget@^1.0.8":
   version "1.0.8"
-  resolved "https://registry.yarnpkg.com/@sjvair/web-widget/-/web-widget-1.0.8.tgz#56d11518c22347d4f81ed0e5544074200bfcde34"
+  resolved "https://registry.npmjs.org/@sjvair/web-widget/-/web-widget-1.0.8.tgz"
   integrity sha512-zS3jykdLi7A4AyJzC0y7V/w+LG9V0qwGxV0qsugLBe2dDgaaJXZgiXd90hsukVL2+VVRziSwb3tdx4BR2NLhtQ==
 
 bulma@^0.9.4:
