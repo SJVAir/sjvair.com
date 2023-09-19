@@ -15,9 +15,23 @@ class SensorAnalysisInline(TabularInlinePaginated):
     extra = 0
     model = SensorAnalysis
     per_page = 7
-    fields = ('get_created', 'get_grade', 'r2', 'start_date', 'end_date')
+    fields = ('get_created', 'get_grade', 'r2', 'start_date', 'end_date', 'view_chart')
     readonly_fields = fields
     ordering = ('-created',)
+    can_delete = False
+
+    def view_chart(self, instance):
+        return mark_safe(Template('''
+            <p class="analysis-chart"
+              detectBackground="true"
+              monitorId="{{ analysis.monitor.id }}"
+              timestampGte="{{ analysis.start_date.isoformat }}"
+              timestampLte="{{ analysis.end_date.isoformat }}">
+              View Chart
+            </p>
+        ''').render(Context({
+            'analysis': instance,
+        })))
 
     def get_created(self, instance):
         return (instance.created.astimezone(pytz.timezone('America/Los_Angeles'))
