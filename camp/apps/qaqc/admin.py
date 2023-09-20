@@ -1,7 +1,7 @@
 import pytz
 from django.contrib import admin
 #from django.db.models import Prefetch
-from django.template import Context, Template
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
@@ -21,17 +21,9 @@ class SensorAnalysisInline(TabularInlinePaginated):
     can_delete = False
 
     def view_chart(self, instance):
-        return mark_safe(Template('''
-            <p class="analysis-chart"
-              detectBackground="true"
-              monitorId="{{ analysis.monitor.id }}"
-              timestampGte="{{ analysis.start_date.isoformat }}"
-              timestampLte="{{ analysis.end_date.isoformat }}">
-              View Chart
-            </p>
-        ''').render(Context({
+        return render_to_string("admin/qaqc/analysis-chart.html", {
             'analysis': instance,
-        })))
+        })
 
     def get_created(self, instance):
         return (instance.created.astimezone(pytz.timezone('America/Los_Angeles'))
@@ -57,19 +49,14 @@ class SensorAnalysisAdmin(admin.ModelAdmin):
     exclude = ['monitor']
 
     def get_monitor_link(self, instance):
-        return mark_safe(Template('''
-            {% load static %}
-            {% if monitor.is_active %}
-                <img src="{% static 'admin/img/icon-yes.svg' %}" alt="Active">
-            {% else %}
-                <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inctive">
-            {% endif %}
-            <a href="{{ url }}">{{ monitor.name }}</a> ({{ monitor_type }})
-        ''').render(Context({
+        return render_to_string("admin/qaqc/monitor_link.html", {
             'monitor': instance,
             'monitor_type': instance.__class__.__name__,
-            'url': reverse(f'admin:{instance._meta.app_label}_{instance._meta.model_name}_change', args=[str(instance.pk)])
-        })))
+            'url': reverse(
+                f'admin:{instance._meta.app_label}_{instance._meta.model_name}_change',
+                args=[str(instance.pk)]
+            )
+        })
 
     def get_reference(self, instance):
         return self.get_monitor_link(instance.monitor)
