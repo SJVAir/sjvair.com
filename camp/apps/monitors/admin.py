@@ -6,7 +6,7 @@ from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.db.models import F, Max, Prefetch
-from django.template import Template, Context
+from django.template.loader import render_to_string
 from django.template.defaultfilters import floatformat
 from django.utils.dateparse import parse_datetime
 from django.utils.safestring import mark_safe
@@ -101,16 +101,9 @@ class MonitorAdmin(admin.OSMGeoAdmin):
         if instance.current_health is None:
             return 'N/A'
 
-        return mark_safe(Template('''
-            {% load static %}
-            <span title="{{ monitor.current_health.r2 }}">{{ monitor.current_health.grade }}</span>
-            &#32;
-            {% if monitor.current_health.is_under_threshold %}
-                <img src="{% static 'admin/img/icon-alert.svg' %}" alt="Below Threshold" title="Below Threshold">
-            {% endif %}
-        ''').render(Context({
+        return render_to_string("admin/monitors/current_health.html", {
             'monitor': instance,
-        })))
+        })
     get_current_health.short_description = 'Current Health'
     get_current_health.admin_order_field = 'current_health__r2'
 
