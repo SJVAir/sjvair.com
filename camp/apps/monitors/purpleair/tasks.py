@@ -33,8 +33,13 @@ def process_data(payload):
     try:
         monitor = PurpleAir.objects.get(purple_id=payload['sensor_index'])
     except PurpleAir.DoesNotExist:
+        data = purpleair_api.get_sensor(payload['sensor_index'])
+        if data is None:
+            purpleair_api.delete_group_member(settings.PURPLEAIR_GROUP_ID, payload['sensor_index'])
+            return
+
         monitor = PurpleAir(purple_id=payload['sensor_index'])
-        monitor.update_data()
+        monitor.update_data(data)
         monitor.save()
 
     entries = monitor.create_entries(payload)
@@ -50,9 +55,12 @@ def update_monitor_data():
         try:
             monitor = PurpleAir.objects.get(purple_id=sensor['sensor_index'])
         except PurpleAir.DoesNotExist:
-            monitor = PurpleAir(
-                purple_id=sensor['sensor_index']
-            )
+            monitor = PurpleAir(purple_id=sensor['sensor_index'])
 
-        monitor.update_data(sensor)
+        data = purpleair_api.get_sensor(monitor.purple_id)
+        if data is None:
+            purpleair_api.delete_group_member(settings.PURPLEAIR_GROUP_ID, monitor.purple_id)
+            continue
+
+        monitor.update_data(data)
         monitor.save()

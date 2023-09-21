@@ -111,7 +111,10 @@ class PurpleAirAPI:
         ''' Get a sensor by sensor_index '''
         response = self.get(f'/v1/sensors/{sensor_index}')
         data = response.json()
-        return data['sensor']
+        try:
+            return data['sensor']
+        except KeyError:
+            return None
 
     def find_sensor(self, name):
         ''' Lookup a sensor by name '''
