@@ -1,13 +1,20 @@
+import csv
+
+from datetime import timedelta
 from decimal import Decimal
 
 from django import forms
+
+from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
-from django.contrib.gis import admin
+from django.contrib.gis import admin as gisadmin
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.db.models import F, Max, Prefetch
-from django.template.loader import render_to_string
+from django.http import HttpResponse
 from django.template.defaultfilters import floatformat
+from django.template.loader import render_to_string
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.safestring import mark_safe
 
@@ -22,12 +29,14 @@ from camp.utils.forms import DateRangeForm
 
 from .models import Calibration, Entry
 
+
 def key_to_lookup(k):
     test_str = k * 2
     temp = len(test_str) // len(str(k))
     res = [k] * temp
 
     return tuple(res)
+
 
 class HealthGradeListFilter(SimpleListFilter):
     title = "Health Grade"
@@ -51,11 +60,61 @@ class HealthGradeListFilter(SimpleListFilter):
         except KeyError:
             return queryset
 
-class MonitorAdmin(admin.OSMGeoAdmin):
+
+class MonitorIsActiveFilter(admin.SimpleListFilter):
+    # Human-readable title which will be displayed in the
+    # right admin sidebar just above the filter options.
+    title = 'Is active'
+
+    # Parameter for the filter that will be used in the URL query.
+    parameter_name = 'is_active'
+
+    def lookups(self, request, model_admin):
+        """
+        Returns a list of tuples. The first element in each
+        tuple is the coded value for the option that will
+        appear in the URL query. The second element is the
+        human-readable name for the option that will appear
+        in the right sidebar.
+        """
+        return [
+            (1, 'Yes'),
+            (0, 'No'),
+        ]
+
+    def queryset(self, request, queryset):
+        """
+        Returns the filtered queryset based on the value
+        provided in the query string and retrievable via
+        `self.value()`.
+        """
+        value = self.value()
+        if value is not None:
+            try:
+                value = bool(int(value))
+            except Exception:
+                messages.error(request, f'Invalid value for is_active: {value}')
+            else:
+                cutoff = timezone.now() - timedelta(seconds=queryset.model.LAST_ACTIVE_LIMIT)
+                lookup = {
+                    'latest_id__isnull': False,
+                    'latest__timestamp__gt': cutoff,
+                }
+                queryset = (queryset.filter if value else queryset.exclude)(**lookup)
+
+            print(value, type(value))
+            return queryset
+
+
+class MonitorAdmin(gisadmin.OSMGeoAdmin):
     inlines = (SensorAnalysisInline,)
+    actions = ['export_monitor_list_csv']
+    csv_export_fields = ['id', 'name', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
     list_display = ['name', 'get_current_health', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
     list_editable = ['is_sjvair', 'is_hidden']
-    list_filter = ['is_sjvair', 'is_hidden', 'location', 'county', HealthGradeListFilter]
+    list_filter = ['is_sjvair', 'is_hidden', MonitorIsActiveFilter, 'location', 'county', HealthGradeListFilter]
+
+
     fields = ['name', 'county', 'default_sensor', 'is_hidden', 'is_sjvair', 'location', 'position', 'notes', 'pm25_calibration_formula']
     search_fields = ['county', 'current_health__r2', 'location', 'name']
 
@@ -90,6 +149,16 @@ class MonitorAdmin(admin.OSMGeoAdmin):
                 alert=self.get_alert(object_id)
             )
         return super().changeform_view(request, object_id, form_url, extra_context)
+
+    def export_monitor_list_csv(self, request, queryset):
+        fields = getattr(self, 'csv_export_fields', self.fields)
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="sjvair-monitor-list.csv"'
+        writer = csv.DictWriter(response, fields)
+        writer.writeheader()
+        for row in queryset.values(*fields):
+            writer.writerow(row)
+        return response
 
     def get_alert(self, object_id):
         try:

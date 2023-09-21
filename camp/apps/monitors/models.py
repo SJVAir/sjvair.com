@@ -119,38 +119,34 @@ class Monitor(models.Model):
         return aggregate['average']
 
     def get_pm25_calibration_formula(self):
-        # Disabled until we can verify our calibrations. We'll
-        # just run with raw pm25 for now.
-        return 'pm25'
+        from camp.apps.calibrations.models import Calibrator
 
-        # from camp.apps.calibrations.models import Calibrator
+        # Check for a formula set on this specific monitor.
+        if self.pm25_calibration_formula:
+            return self.pm25_calibration_formula
 
-        # # Check for a formula set on this specific monitor.
-        # if self.pm25_calibration_formula:
-        #     return self.pm25_calibration_formula
+        # Distance-based calibrations
+        calibrator = (Calibrator.objects
+            .filter(is_enabled=True)
+            .exclude(calibration__isnull=True)
+            .select_related('calibration')
+            .closest(self.position)
+        )
 
-        # # Distance-based calibrations
-        # calibrator = (Calibrator.objects
-        #     .filter(is_enabled=True)
-        #     .exclude(calibration__isnull=True)
-        #     .select_related('calibration')
-        #     .closest(self.position)
-        # )
+        if calibrator is not None:
+            # CONSIDER: If the calibrator is too far, do we
+            # skip and go with county? How far is too far?
+            return calibrator.calibration.formula
 
-        # if calibrator is not None:
-        #     # CONSIDER: If the calibrator is too far, do we
-        #     # skip and go with county? How far is too far?
-        #     return calibrator.calibration.formula
-
-        # # Fallback to county-based calibrations.
-        # try:
-        #     return Calibration.objects.values_list('pm25_formula', flat=True).get(
-        #         county=self.county,
-        #         monitor_type=self._meta.model_name
-        #     )
-        # except Calibration.DoesNotExist:
-        #     # Default to an empty string
-        #     return ''
+        # Fallback to county-based calibrations.
+        try:
+            return Calibration.objects.values_list('pm25_formula', flat=True).get(
+                county=self.county,
+                monitor_type=self._meta.model_name
+            )
+        except Calibration.DoesNotExist:
+            # Default to an empty string, which is a noop formula.
+            return ''
 
     def create_entry(self, payload, sensor=None):
         entry = Entry(
@@ -234,7 +230,7 @@ class Calibration(TimeStampedModel):
 class Entry(models.Model):
     ENVIRONMENT = [
         'celsius', 'fahrenheit', 'humidity', 'pressure',
-        'pm10', 'pm25', 'pm100',
+        'pm10', 'pm25', 'pm25_reported', 'pm100',
         'particles_03um', 'particles_05um', 'particles_10um',
         'particles_25um', 'particles_50um', 'particles_100um',
     ]
