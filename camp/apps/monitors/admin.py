@@ -4,24 +4,61 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django import forms
+
 from django.contrib import admin, messages
+from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin as gisadmin
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.db.models import F, Max, Prefetch
 from django.http import HttpResponse
-from django.template import Template, Context
 from django.template.defaultfilters import floatformat
+from django.template.loader import render_to_string
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.safestring import mark_safe
-from django.utils import timezone
+
+from django_admin_inline_paginator.admin import TabularInlinePaginated
 
 from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
 from camp.apps.calibrations.admin import formula_help_text
+from camp.apps.qaqc.models import SensorAnalysis
+from camp.apps.qaqc.admin import SensorAnalysisInline
 from camp.utils.forms import DateRangeForm
 
 from .models import Calibration, Entry
+
+
+def key_to_lookup(k):
+    test_str = k * 2
+    temp = len(test_str) // len(str(k))
+    res = [k] * temp
+
+    return tuple(res)
+
+
+class HealthGradeListFilter(SimpleListFilter):
+    title = "Health Grade"
+    parameter_name = "grade"
+
+    def lookups(self, request, model_admin): 
+        return list(map(key_to_lookup, SensorAnalysis.health_grades.keys()))
+
+    def queryset(self, request, queryset):
+        """
+        Returns the filtered queryset based on the value
+        provided in the query string and retrievable via
+        `self.value()`.
+        """
+        try:
+            (g_min, g_max) = SensorAnalysis.health_grades[self.value()]
+            return queryset.filter(
+                current_health__r2__gte=g_min,
+                current_health__r2__lt=g_max,
+            )
+        except KeyError:
+            return queryset
 
 
 class MonitorIsActiveFilter(admin.SimpleListFilter):
@@ -70,13 +107,16 @@ class MonitorIsActiveFilter(admin.SimpleListFilter):
 
 
 class MonitorAdmin(gisadmin.OSMGeoAdmin):
+    inlines = (SensorAnalysisInline,)
     actions = ['export_monitor_list_csv']
-    csv_export_fields = ['id', 'name', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
-    list_display = ['name', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
+    csv_export_fields = ['id', 'name', 'health_grade', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
+    list_display = ['name', 'get_current_health', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
     list_editable = ['is_sjvair', 'is_hidden']
-    list_filter = ['is_sjvair', 'is_hidden', MonitorIsActiveFilter, 'location', 'county',]
+    list_filter = ['is_sjvair', 'is_hidden', MonitorIsActiveFilter, 'location', 'county', HealthGradeListFilter]
+
+
     fields = ['name', 'county', 'default_sensor', 'is_hidden', 'is_sjvair', 'location', 'position', 'notes', 'pm25_calibration_formula']
-    search_fields = ['name']
+    search_fields = ['county', 'current_health__r2', 'location', 'name']
 
     change_form_template = 'admin/monitors/change_form.html'
     change_list_template = 'admin/monitors/change_list.html'
@@ -86,6 +126,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
+        queryset = queryset.select_related('current_health')
         queryset = queryset.prefetch_related(
             Prefetch('latest', queryset=Entry.objects.only('timestamp')),
         )
@@ -116,7 +157,8 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         response['Content-Disposition'] = f'attachment; filename="sjvair-monitor-list.csv"'
         writer = csv.DictWriter(response, fields)
         writer.writeheader()
-        for row in queryset.values(*fields):
+        for monitor in queryset:
+            row = {field: getattr(monitor, field) for field in fields}
             writer.writerow(row)
         return response
 
@@ -125,6 +167,16 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
             return Alert.objects.get(monitor_id=object_id, end_time__isnull=True)
         except Alert.DoesNotExist:
             return None
+
+    def get_current_health(self, instance):
+        if instance.current_health is None:
+            return 'N/A'
+
+        return render_to_string("admin/monitors/current_health.html", {
+            'monitor': instance,
+        })
+    get_current_health.short_description = 'Current Health'
+    get_current_health.admin_order_field = 'current_health__r2'
 
     def get_entry_archives(self, object_id):
         queryset = EntryArchive.objects.filter(monitor_id=object_id)
