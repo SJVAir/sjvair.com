@@ -109,7 +109,7 @@ class MonitorIsActiveFilter(admin.SimpleListFilter):
 class MonitorAdmin(gisadmin.OSMGeoAdmin):
     inlines = (SensorAnalysisInline,)
     actions = ['export_monitor_list_csv']
-    csv_export_fields = ['id', 'name', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
+    csv_export_fields = ['id', 'name', 'health_grade', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
     list_display = ['name', 'get_current_health', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', MonitorIsActiveFilter, 'location', 'county', HealthGradeListFilter]
@@ -126,6 +126,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
+        queryset = queryset.select_related('current_health')
         queryset = queryset.prefetch_related(
             Prefetch('latest', queryset=Entry.objects.only('timestamp')),
         )
@@ -156,7 +157,8 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         response['Content-Disposition'] = f'attachment; filename="sjvair-monitor-list.csv"'
         writer = csv.DictWriter(response, fields)
         writer.writeheader()
-        for row in queryset.values(*fields):
+        for monitor in queryset:
+            row = {field: getattr(monitor, field) for field in fields}
             writer.writerow(row)
         return response
 
