@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('qaqc', '0004_initial'),
+        ('qaqc', '0001_initial'),
         ('monitors', '0026_entry_ozone'),
     ]
 
