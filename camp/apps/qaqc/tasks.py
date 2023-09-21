@@ -13,6 +13,6 @@ def ab_regression():
         linreg = SensorLinearRegression(monitor)
         analysis = linreg.generate_regression()
 
-        if analysis != None:
+        if analysis is not None:
             analysis.save_as_current()
 
