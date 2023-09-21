@@ -12,7 +12,7 @@ from django.db.models import Avg, Q
 from django.db.models.functions import Least
 from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
-from django.utils.functional import lazy
+from django.utils.functional import cached_property, lazy
 from django.utils.text import slugify
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
@@ -62,6 +62,12 @@ class Monitor(models.Model):
 
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
 
+    current_health = models.ForeignKey('qaqc.SensorAnalysis',
+        blank=True,
+        null=True,
+        related_name="current_for",
+        on_delete=models.SET_NULL
+    )
     latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
     default_sensor = models.CharField(max_length=50, default='', blank=True)
 
@@ -96,6 +102,11 @@ class Monitor(models.Model):
         now = timezone.now()
         cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
         return (now - self.latest.timestamp) < cutoff
+
+    @cached_property
+    def health_grade(self):
+        if self.current_health_id:
+            return self.current_health.grade
 
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'

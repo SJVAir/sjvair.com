@@ -1,0 +1,7 @@
+{% load static %}
+{% if monitor.is_active %}
+    <img src="{% static 'admin/img/icon-yes.svg' %}" alt="Active">
+{% else %}
+    <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inctive">
+{% endif %}
+<a href="{{ url }}">{{ monitor.name }}</a> ({{ monitor_type }})

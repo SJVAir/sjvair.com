@@ -48,10 +48,6 @@ class CalibratorAdmin(admin.ModelAdmin):
         monitor_queryset = Monitor.objects.all().select_related('latest')
 
         queryset = super().get_queryset(request)
-        queryset = queryset.annotate(
-            _r2=F('calibration__r2'),
-            _last_updated=F('calibration__end_date'),
-        )
         queryset = queryset.select_related('calibration')
         queryset = queryset.prefetch_related(
             Prefetch('reference', monitor_queryset),
@@ -78,14 +74,14 @@ class CalibratorAdmin(admin.ModelAdmin):
             return instance.calibration.end_date
         return '-'
     get_last_updated.short_description = 'Last Updated'
-    get_last_updated.admin_order_field = '_last_updated'
+    get_last_updated.admin_order_field = 'calibration__end_date'
 
     def get_r2(self, instance):
         if instance.calibration:
             return instance.calibration.r2
         return '-'
     get_r2.short_description = 'R2'
-    get_r2.admin_order_field = '_r2'
+    get_r2.admin_order_field = 'calibration__r2'
 
     def get_monitor_link(self, instance):
         return mark_safe(Template('''

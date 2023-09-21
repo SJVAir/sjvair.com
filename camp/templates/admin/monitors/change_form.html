@@ -5,10 +5,34 @@
 
 {% block extrastyle %}
 {{ block.super }}
+<script type="text/javascript" src="{% static 'sensor-scatterplot/sensor-scatterplot.js' %}"></script>
+<script type="module">
+    const chartBtns = document.querySelectorAll("a[monitorId]");
+
+    function appendScatterplot(event) {
+        event.preventDefault();
+        const target = event.target;
+        const scatterplot = document.createElement('scatter-plot');
+
+        target.getAttributeNames()
+          .map(name => [ name, target.getAttribute(name) ])
+          .forEach(attr => scatterplot.setAttribute(attr[0], attr[1]));
+
+        // Add the scatterplot as the next element and remove the button.
+        target.parentNode.append(scatterplot);
+        target.remove();
+    }
+
+    chartBtns.forEach(btn => btn.addEventListener("click", appendScatterplot))
+</script>
 <script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
 {{ export_form.media }}
 
 <style type="text/css">
+  td.original p {
+    display: none
+  }
+
     #export-form {
         background: #f8f8f8;
         border: #eee 1px solid;
@@ -54,8 +78,19 @@
     #monitor-status table {
         width: 100%;
     }
+
+    .analysis-chart {
+      text-align: center;
+      cursor: pointer;
+    }
+
+    scatter-plot {
+      width: 500px;
+      height: 300px;
+    }
 </style>
 {% endblock %}
+
 
 {% block object-tools %}
     {{ block.super }}
@@ -66,12 +101,14 @@
             <thead>
                 <tr>
                     <th>Last Updated</th>
+                    <th>Current Health</th>
                     <th>PM2.5</th>
                     <th>PM2.5 (15m)</th>
                     <th>PM2.5 (60m)</th>
                     <th>Temperature</th>
                     <th>Humidity</th>
                     <th>Alert</th>
+                    <th>Sensor Analysis</th>
                 </tr>
             </thead>
             <tbody>
@@ -88,6 +125,13 @@
                             <small>({{ original.latest.timestamp|timesince }} ago)</small>
                         {% else %}
                             <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inactive" />
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.current_health %}
+                            {% include "admin/monitors/current_health.html" with monitor=original %}
+                        {% else %}
+                            <span>-</span>
                         {% endif %}
                     </td>
                     <td>
@@ -132,6 +176,20 @@
                             <small>({{ alert.start_time|timesince }} ago)</small>
                         {% else %}
                             <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.current_health %}
+                            {% with original.current_health as health %}
+                            <a href="#"
+                                detectBackground="true"
+                                monitorId="{{ original.id }}"
+                                timestampGte="{{ health.start_date.isoformat }}"
+                                timestampLte="{{ health.end_date.isoformat }}"
+                            >View Chart</a>
+                            {% endwith %}
+                        {% else %}
+                            <span>-</span>
                         {% endif %}
                     </td>
                 </tr>
