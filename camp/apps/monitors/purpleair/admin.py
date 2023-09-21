@@ -9,6 +9,9 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 
 @admin.register(PurpleAir)
 class PurpleAirAdmin(MonitorAdmin):
+    csv_export_fields = MonitorAdmin.csv_export_fields[:]
+    csv_export_fields.insert(2, 'purple_id')
+
     list_display = MonitorAdmin.list_display[:]
     list_display.insert(1, 'purple_id')
     list_display.insert(5, 'get_active_status')
