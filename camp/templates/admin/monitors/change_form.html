@@ -7,21 +7,23 @@
 {{ block.super }}
 <script type="text/javascript" src="{% static 'sensor-scatterplot/sensor-scatterplot.js' %}"></script>
 <script type="module">
-  const chartBtns = document.querySelectorAll("p[monitorId]");
+    const chartBtns = document.querySelectorAll("a[monitorId]");
 
-  function appendScatterplot({target}) {
-    const scatterplot = document.createElement('scatter-plot');
+    function appendScatterplot(event) {
+        event.preventDefault();
+        const target = event.target;
+        const scatterplot = document.createElement('scatter-plot');
 
-    target.getAttributeNames()
-      .map(name => [ name, target.getAttribute(name) ])
-      .forEach(attr => scatterplot.setAttribute(attr[0], attr[1]));
+        target.getAttributeNames()
+          .map(name => [ name, target.getAttribute(name) ])
+          .forEach(attr => scatterplot.setAttribute(attr[0], attr[1]));
 
-    target.removeEventListener("click", appendScatterplot);
-    target.textContent = "";
-    target.append(scatterplot);
-  }
-  
-  chartBtns.forEach(btn => btn.addEventListener("click", appendScatterplot))
+        // Add the scatterplot as the next element and remove the button.
+        target.parentNode.append(scatterplot);
+        target.remove();
+    }
+
+    chartBtns.forEach(btn => btn.addEventListener("click", appendScatterplot))
 </script>
 <script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
 {{ export_form.media }}
@@ -99,15 +101,14 @@
             <thead>
                 <tr>
                     <th>Last Updated</th>
-                    {% if original.current_health %}
-                      <th>Current Health</th>
-                    {% endif %}
+                    <th>Current Health</th>
                     <th>PM2.5</th>
                     <th>PM2.5 (15m)</th>
                     <th>PM2.5 (60m)</th>
                     <th>Temperature</th>
                     <th>Humidity</th>
                     <th>Alert</th>
+                    <th>Sensor Analysis</th>
                 </tr>
             </thead>
             <tbody>
@@ -128,10 +129,9 @@
                     </td>
                     <td>
                         {% if original.current_health %}
-                            <span>{{ original.current_health.grade }}</span>
-                            {% if original.current_health.is_under_threshold %}
-                                <img src="{% static 'admin/img/icon-alert.svg' %}" alt="Inactive" />
-                            {% endif %}
+                            {% include "admin/monitors/current_health.html" with monitor=original %}
+                        {% else %}
+                            <span>-</span>
                         {% endif %}
                     </td>
                     <td>
@@ -176,6 +176,20 @@
                             <small>({{ alert.start_time|timesince }} ago)</small>
                         {% else %}
                             <span>–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if original.current_health %}
+                            {% with original.current_health as health %}
+                            <a href="#"
+                                detectBackground="true"
+                                monitorId="{{ original.id }}"
+                                timestampGte="{{ health.start_date.isoformat }}"
+                                timestampLte="{{ health.end_date.isoformat }}"
+                            >View Chart</a>
+                            {% endwith %}
+                        {% else %}
+                            <span>-</span>
                         {% endif %}
                     </td>
                 </tr>
