@@ -224,7 +224,7 @@ class Calibration(TimeStampedModel):
 class Entry(models.Model):
     ENVIRONMENT = [
         'celsius', 'fahrenheit', 'humidity', 'pressure',
-        'pm10', 'pm25', 'pm100',
+        'pm10', 'pm25', 'pm25_reported', 'pm100',
         'particles_03um', 'particles_05um', 'particles_10um',
         'particles_25um', 'particles_50um', 'particles_100um',
     ]
