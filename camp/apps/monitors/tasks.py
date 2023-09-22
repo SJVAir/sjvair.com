@@ -72,4 +72,10 @@ def check_monitor_status():
         )
 
 
-
+@db_task(priority=1)
+def recalibrate_entry(entry_id):
+    entry = Entry.objects.get(pk=entry_id)
+    entry.calibrate_pm25()
+    entry.pm25_avg_15 = entry.get_average('pm25', 15)
+    entry.pm25_avg_60 = entry.get_average('pm25', 60)
+    entry.save()
