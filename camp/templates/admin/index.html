@@ -43,7 +43,12 @@
                     new Date(Date.parse(data.timestamp))
                         .toLocaleString('en-us', {timezone: 'America/Los_Angeles'}));
                 $('#id_entry-count').text(roundOOM(data.entry_count).toLocaleString());
-                $('#id_queue-size').text(data.queue_size.toLocaleString());
+
+                for (const key in data.queue_size) {
+                    console.log(`.queue-${key} .size`);
+                    console.log(data.queue_size[key].toLocaleString());
+                    $(`.queue-${key} .size`).text(data.queue_size[key].toLocaleString());
+                }
             });
         };
 
@@ -99,16 +104,18 @@
                 <th>Monitor Entries</th>
                 <td>≈<span id="id_entry-count"></span></td>
             </tr>
-            <tr>
-                <th>Task Queue</th>
+            {% for key in settings.DJANGO_HUEY.queues.keys %}
+            <tr class="queue queue-{{ key }}">
+                <th>Queue: {{ key }}</th>
                 <td>
-                    <span id="id_queue-size"></span>
-                    <form action="{% url 'flush-queue' %}" method="POST">
+                    <div class="size"></div>
+                    <form action="{% url 'flush-queue' key=key %}" method="POST">
                         {% csrf_token %}
                         <button type="submit">Flush queue</button>
                     </form>
                 </td>
             </tr>
+            {% endfor %}
         </table>
     </div>
     <div class="module" id="recent-actions-module">

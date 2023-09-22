@@ -2,8 +2,8 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from django_huey import db_periodic_task, db_task
 from huey import crontab
-from huey.contrib.djhuey import db_periodic_task, db_task
 
 from camp.apps.archive.models import EntryArchive
 from camp.apps.monitors.models import Monitor

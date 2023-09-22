@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'django_admin_inline_paginator',
     'django_extensions',
     'django_filters',
+    'django_huey',
     'form_utils',
     'huey.contrib.djhuey',
     'livereload',
@@ -254,18 +255,38 @@ RESTICUS = {
 }
 
 
-# huey
+# huey / django-huey
 
 MAX_QUEUE_SIZE = int(os.environ.get('MAX_QUEUE_SIZE', 500))
 
+DJANGO_HUEY = {
+    'default': 'primary',
+    'queues': {
+        'primary': {
+            'name': 'primary_tasks',
+            'connection': {'url': f'{REDIS_URL}/0'},
+            'consumer': {
+                'periodic': True,
+                'workers': int(os.environ.get('HUEY_WORKERS', 4))
+            },
+            'huey_class': 'huey.PriorityRedisHuey',
+            'immediate': bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
+        },
+        'secondary': {
+            'name': 'secondary_tasks',
+            'connection': {'url': f'{REDIS_URL}/1'},
+            'consumer': {
+                'periodic': False,
+                'workers': int(os.environ.get('HUEY_WORKERS', 4))
+            },
+            'huey_class': 'huey.PriorityRedisHuey',
+            'immediate': bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
+        },
+    }
+}
+
 HUEY = {
-    "connection": {"url": REDIS_URL},
-    "consumer": {
-        "periodic": True,
-        "workers": int(os.environ.get('HUEY_WORKERS', 4))
-    },
-    'huey_class': 'huey.PriorityRedisHuey',
-    "immediate": bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
+    
 }
 
 # Twilio
