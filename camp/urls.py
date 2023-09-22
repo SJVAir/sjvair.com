@@ -20,7 +20,7 @@ urlpatterns = [
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
     path('batcave/stats.json', AdminStats.as_view(), name='admin-stats'),
-    path('batcave/flush-queue/', FlushQueue.as_view(), name='flush-queue'),
+    path('batcave/flush-queue/<str:key>/', FlushQueue.as_view(), name='flush-queue'),
     path('batcave/', admin.site.urls),
 ]
 

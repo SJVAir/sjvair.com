@@ -7,8 +7,8 @@ from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
+from django_huey import db_task, db_periodic_task
 from huey import crontab
-from huey.contrib.djhuey import db_task, db_periodic_task
 
 from camp.api.v1.monitors.endpoints import MonitorList
 from camp.utils.test import get_response_data
@@ -72,7 +72,7 @@ def check_monitor_status():
         )
 
 
-@db_task(priority=1)
+@db_task(queue='secondary')
 def recalibrate_entry(entry_id):
     entry = Entry.objects.get(pk=entry_id)
     entry.calibrate_pm25()

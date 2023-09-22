@@ -5,10 +5,10 @@ from django.conf import settings
 import twilio.rest
 from twilio.base.exceptions import TwilioRestException
 
-from huey.contrib.djhuey import db_task as task
+from django_huey import db_task
 
 
-@task(priority=100)
+@db_task(priority=100)
 def send_sms_message(phone_number, message):
     twilio_client = twilio.rest.Client(
         settings.TWILIO_ACCOUNT_SID,

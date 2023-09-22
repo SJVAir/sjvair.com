@@ -1,8 +1,8 @@
 from django.db.models import Avg, Prefetch
 from django.utils import timezone
 
+from django_huey import db_task, db_periodic_task
 from huey import crontab
-from huey.contrib.djhuey import db_task, db_periodic_task
 
 from camp.apps.alerts.models import LEVELS, PM25_LEVELS, Alert
 from camp.apps.monitors.models import Monitor

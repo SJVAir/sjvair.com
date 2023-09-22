@@ -3,8 +3,8 @@ from django.contrib.gis.geos import Point
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from django_huey import db_task, db_periodic_task
 from huey import crontab
-from huey.contrib.djhuey import db_task, db_periodic_task, HUEY
 
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.airnow.models import AirNow
