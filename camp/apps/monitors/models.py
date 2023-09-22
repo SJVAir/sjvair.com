@@ -123,36 +123,6 @@ class Monitor(models.Model):
         aggregate = queryset.aggregate(average=Avg('pm25'))
         return aggregate['average']
 
-    def get_pm25_calibration_formula(self):
-        from camp.apps.calibrations.models import Calibrator
-
-        # Check for a formula set on this specific monitor.
-        if self.pm25_calibration_formula:
-            return self.pm25_calibration_formula
-
-        # Distance-based calibrations
-        calibrator = (Calibrator.objects
-            .filter(is_enabled=True)
-            .exclude(calibration__isnull=True)
-            .select_related('calibration')
-            .closest(self.position)
-        )
-
-        if calibrator is not None:
-            # CONSIDER: If the calibrator is too far, do we
-            # skip and go with county? How far is too far?
-            return calibrator.calibration.formula
-
-        # Fallback to county-based calibrations.
-        try:
-            return Calibration.objects.values_list('pm25_formula', flat=True).get(
-                county=self.county,
-                monitor_type=self._meta.model_name
-            )
-        except Calibration.DoesNotExist:
-            # Default to an empty string, which is a noop formula.
-            return ''
-
     def create_entry(self, payload, sensor=None):
         entry = Entry(
             monitor=self,
@@ -180,9 +150,7 @@ class Monitor(models.Model):
 
         # Calibrate the PM25
         if self.CALIBRATE:
-            formula = self.get_pm25_calibration_formula()
-            if formula:
-                entry.calibrate_pm25(formula)
+            entry.calibrate_pm25()
 
         return entry
 
@@ -324,7 +292,41 @@ class Entry(models.Model):
 
         return 0
 
-    def calibrate_pm25(self, formula):
+    def get_pm25_calibration_formula(self):
+        from camp.apps.calibrations.models import Calibrator
+
+        # Check for a formula set on this specific monitor.
+        if self.monitor.pm25_calibration_formula:
+            return self.monitor.pm25_calibration_formula
+
+        # Distance-based calibrations
+        # CONSIDER: If the calibrator is too far, do we
+        # skip and go with county? How far is too far?
+        calibrator = (Calibrator.objects
+            .filter(is_enabled=True)
+            .exclude(calibration__isnull=True)
+            .select_related('calibration')
+            .closest(self.position)
+        )
+
+        if calibrator is not None:
+            calibration = calibrator.calibrations.filter(end_date__lte=self.timestamp).first()
+            if calibration is not None:
+                return calibration.formula
+
+        # Fallback to county-based calibrations.
+        try:
+            return Calibration.objects.values_list('pm25_formula', flat=True).get(
+                county=self.monitor.county,
+                monitor_type=self.monitor._meta.model_name
+            )
+        except Calibration.DoesNotExist:
+            # Default to an empty string, which is a noop formula.
+            return ''
+
+    def calibrate_pm25(self):
+        formula = self.get_pm25_calibration_formula()
+
         if formula:
             parser = ExpressionParser()
             expression = parser.parse(formula)
