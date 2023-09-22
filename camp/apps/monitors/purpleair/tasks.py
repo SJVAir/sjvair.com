@@ -8,9 +8,8 @@ from django.db.models import F, OuterRef, Subquery
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from django_huey import db_task, db_periodic_task
 from huey import crontab
-from huey.contrib.djhuey import db_task, db_periodic_task, HUEY
-from huey.exceptions import TaskLockedException
 
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
@@ -19,10 +18,6 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 
 @db_periodic_task(crontab(minute='*/2'), priority=50)
 def update_realtime():
-    print('[update_realtime]')
-    if HUEY.pending_count() > settings.MAX_QUEUE_SIZE:
-        return
-
     sensors = purpleair_api.list_group_members(settings.PURPLEAIR_GROUP_ID)
     for sensor in sensors:
         process_data.schedule([sensor], delay=1, priority=40)

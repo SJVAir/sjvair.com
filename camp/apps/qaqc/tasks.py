@@ -1,5 +1,5 @@
+from django_huey import db_periodic_task
 from huey import crontab
-from huey.contrib.djhuey import db_periodic_task
 
 from camp.apps.qaqc.sensorlinreg import SensorLinearRegression
 from camp.apps.monitors.models import Monitor

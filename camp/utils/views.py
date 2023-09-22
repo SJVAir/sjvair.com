@@ -2,6 +2,7 @@ import hashlib
 import mimetypes
 import urllib
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.views import RedirectURLMixin
@@ -16,7 +17,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import generic
 from django.views.decorators.clickjacking import xframe_options_exempt
 
-from huey.contrib.djhuey import HUEY
+from django_huey import get_queue
 from resticus.http import JSONResponse
 
 from camp.apps.monitors.models import Entry
@@ -120,7 +121,7 @@ class AdminStats(generic.View):
     def get(self, request):
         return JSONResponse({
             'timestamp': timezone.now(),
-            'queue_size': HUEY.pending_count(),
+            'queue_size': {key: get_queue(key).pending_count() for key in settings.DJANGO_HUEY['queues']},
             'entry_count': self.get_entry_count(),
         })
 
@@ -137,7 +138,13 @@ class AdminStats(generic.View):
 
 @method_decorator(staff_member_required, name='dispatch')
 class FlushQueue(generic.View):
-    def post(self, request):
-        HUEY.flush()
-        messages.success(request, 'The task queue has been flushed.')
+    def post(self, request, key):
+        try:
+            queue = get_queue(key)
+        except KeyError:
+            messages.error(request, f'Invalid queue: {key}')
+            return redirect('admin:index')
+
+        queue.flush()
+        messages.success(request, f'The {key} task queue has been flushed.')
         return redirect('admin:index')
