@@ -17,6 +17,13 @@ class Command(BaseCommand):
             return [key]
         return list(settings.DJANGO_HUEY['queues'].keys())
 
+    def task_rate(self, key):
+        if len(self.tasks[key]) < 3:
+            return 0
+        diffs = [self.tasks[key][i] - self.tasks[key][i - 1] for i in
+            range(len(self.tasks[key]) - 3, len(self.tasks[key]))]
+        return sum(diffs) / len(diffs)
+
     def handle(self, *args, **options):
         self.keys = self.get_keys(options.get('queue'))
         self.queues = {key: get_queue(key) for key in self.keys}
@@ -42,12 +49,13 @@ class Command(BaseCommand):
 
                 print('')
                 for i, key in enumerate(self.keys):
+                    task_rate = int(round(self.task_rate(key)))
                     try:
                         color = colors[i]
                     except IndexError:
                         color = asciichartpy.default
 
-                    print(f'{color}{key}{asciichartpy.reset}: {self.tasks[key][-1]}')
+                    print(f'{color}{key}{asciichartpy.reset}: {self.tasks[key][-1]} {asciichartpy.lightgray}({task_rate} tasks/sec){asciichartpy.reset}')
 
                 time.sleep(1)
         except KeyboardInterrupt:
