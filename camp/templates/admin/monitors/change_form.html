@@ -7,8 +7,6 @@
 {{ block.super }}
 <script type="text/javascript" src="{% static 'sensor-scatterplot/sensor-scatterplot.js' %}"></script>
 <script type="module">
-    const chartBtns = document.querySelectorAll("a[monitorId]");
-
     function appendScatterplot(event) {
         event.preventDefault();
         const target = event.target;
@@ -23,6 +21,15 @@
         target.remove();
     }
 
+    const dataCells = document.querySelectorAll(".field-view_chart");
+    const chartBtns = document.querySelectorAll("a[monitorId]");
+
+    // Lock width on chart table data cells to prevent expansion
+    dataCells.forEach(dc => {
+      dc.style.width = window.getComputedStyle(dc).width;
+    });
+
+    // Append chart on click
     chartBtns.forEach(btn => btn.addEventListener("click", appendScatterplot))
 </script>
 <script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
@@ -129,7 +136,7 @@
                     </td>
                     <td>
                         {% if original.current_health %}
-                            {% include "admin/monitors/current_health.html" with monitor=original %}
+                            {% include "admin/qaqc/letter_grade.html" with analysis=original.current_health %}
                         {% else %}
                             <span>-</span>
                         {% endif %}
