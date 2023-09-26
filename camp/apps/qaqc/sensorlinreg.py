@@ -4,11 +4,12 @@ import types
 
 from datetime import datetime, timedelta
 
-import pandas as pd
-
+from django.conf import settings
 from django.db.models import F
 from django.utils import timezone
 from django.utils.functional import cached_property
+
+import pandas as pd
 
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import explained_variance_score
@@ -66,15 +67,21 @@ class SensorLinearRegression:
                 self.exog['pm25_reported'].values,
                 self.endog['pm25_reported'].values
             )
+
+            grade=((r2 * r2_weight) + (variance * v_weight)) / (r2_weight + v_weight)
+
         except ValueError as err:
             print('QAQC Linear Regression Error:', err)
             return None
 
+        if settings.DEBUG:
+            self.log(r2, variance, grade)
+
         return SensorAnalysis(
             monitor=self.monitor,
             r2=r2,
+            grade=grade,
             variance=variance,
-            grade=((r2 * r2_weight) + (variance * v_weight)) / (r2_weight + v_weight),
             intercept=linreg.intercept_,
             coef=linreg.coef_[0][0],
             start_date=self.start_date,
@@ -98,3 +105,27 @@ class SensorLinearRegression:
 
         return grp
 
+    def log(self, r2, variance, grade):
+        badr2 = r2 < 0.9
+        badV = variance < 0.9
+        badG = grade < 0.9
+
+        print(f'\nResults for {self.monitor.name}')
+        if badr2 or badV or badG:
+            issues = list()
+
+            if badr2:
+                issues.append("Bad R2")
+
+            if badV:
+              issues.append("Bad Variance")
+
+            if badG:
+                issues.append("Bad Grade")
+
+            print('Possible issues detected:')
+            print(", ".join(issues))
+
+        print(f'R2: {r2}')
+        print(f'Variance: {variance}')
+        print(f'Grade: {grade}\n')
