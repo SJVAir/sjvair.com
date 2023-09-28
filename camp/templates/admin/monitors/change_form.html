@@ -7,9 +7,14 @@
 {{ block.super }}
 <script type="text/javascript" src="{% static 'sensor-scatterplot/sensor-scatterplot.js' %}"></script>
 <script type="module">
+    const dataCells = document.querySelectorAll(".field-view_chart");
+    const chartBtns = document.querySelectorAll("a[monitorId]");
+    let linksCentered = false;
+
     function appendScatterplot(event) {
         event.preventDefault();
-        const target = event.target;
+
+        const { target } = event;
         const scatterplot = document.createElement('scatter-plot');
 
         target.getAttributeNames()
@@ -19,14 +24,20 @@
         // Add the scatterplot as the next element and remove the button.
         target.parentNode.append(scatterplot);
         target.remove();
+
+        if (!linksCentered) {
+          dataCells.forEach(cell => { cell.style.textAlign = "center" });
+          linksCentered = true;
+        }
     }
 
-    const dataCells = document.querySelectorAll(".field-view_chart");
-    const chartBtns = document.querySelectorAll("a[monitorId]");
-
     // Lock width on chart table data cells to prevent expansion
-    dataCells.forEach(dc => {
-      dc.style.width = window.getComputedStyle(dc).width;
+    let cellWidth;
+    dataCells.forEach(cell => {
+      if (cellWidth === undefined) {
+        cellWidth = window.getComputedStyle(cell).width;
+      }
+      cell.style.width = cellWidth;
     });
 
     // Append chart on click
