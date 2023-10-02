@@ -7,7 +7,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import explained_variance_score
 
 from .models import SensorAnalysis
-from .sensorqueryset import  SensorAnalysisQueryset
+from .sensoranalysisdata import SensorAnalysisData
 
 @dataclass
 class ABLinearRegressionResult:
@@ -16,7 +16,7 @@ class ABLinearRegressionResult:
     coef: float
 
 
-class ABLinearRegression(SensorAnalysisQueryset):
+class ABLinearRegression(SensorAnalysisData):
     r2_weight = 1
     variance_weight = 1
 
