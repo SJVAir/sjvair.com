@@ -26,13 +26,15 @@ class SensorAnalysis(TimeStampedModel):
     )
 
     r2 = models.FloatField()
+    variance = models.FloatField(null=True, default=None)
+    grade = models.FloatField(null=True, default=None)
     intercept = models.FloatField()
     coef = models.FloatField()
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
 
     @property
-    def grade(self):
+    def letter_grade(self):
         for key in SensorAnalysis.health_grades:
             (g_min, g_max) = SensorAnalysis.health_grades[key]
             if self.r2 >= g_min and self.r2 <= g_max:

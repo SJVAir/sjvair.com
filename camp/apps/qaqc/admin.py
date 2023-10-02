@@ -15,7 +15,7 @@ class SensorAnalysisInline(TabularInlinePaginated):
     extra = 0
     model = SensorAnalysis
     per_page = 7
-    fields = ('get_created', 'get_grade', 'r2', 'start_date', 'end_date', 'view_chart')
+    fields = ('get_created', 'get_letter_grade', 'r2', 'variance', 'start_date', 'end_date', 'view_chart')
     readonly_fields = fields
     ordering = ('-created',)
     can_delete = False
@@ -30,9 +30,12 @@ class SensorAnalysisInline(TabularInlinePaginated):
                 .strftime('%b. %d, %Y, %-I:%M %P'))
     get_created.short_description = "Created"
 
-    def get_grade(self, instance):
-        return instance.grade
-    get_grade.short_description = "Grade"
+    def get_letter_grade(self, instance):
+        return render_to_string('admin/qaqc/letter_grade.html', {
+            'analysis': instance,
+        })
+    get_letter_grade.short_description = 'Letter Grade'
+    get_letter_grade.admin_order_field = 'grade'
 
     def has_add_permission(self, request, obj):
         return False
@@ -43,8 +46,8 @@ class SensorAnalysisInline(TabularInlinePaginated):
 
 @admin.register(SensorAnalysis)
 class SensorAnalysisAdmin(admin.ModelAdmin):
-    list_display = ('pk', 'get_reference', 'start_date', 'end_date', 'r2', 'coef', 'intercept')
-    readonly_fields = ('pk', 'get_reference', 'start_date', 'end_date', 'r2', 'coef', 'intercept')
+    list_display = ('pk', 'get_reference', 'r2', 'variance', 'coef', 'intercept', 'start_date', 'end_date')
+    readonly_fields = ('pk', 'get_reference', 'r2', 'variance', 'coef', 'intercept', 'start_date', 'end_date')
     search_fields = ['monitor__name']
     exclude = ['monitor']
 

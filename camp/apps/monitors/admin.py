@@ -172,8 +172,8 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         if instance.current_health is None:
             return 'N/A'
 
-        return render_to_string("admin/monitors/current_health.html", {
-            'monitor': instance,
+        return render_to_string('admin/qaqc/letter_grade.html', {
+            'analysis': instance.current_health,
         })
     get_current_health.short_description = 'Current Health'
     get_current_health.admin_order_field = 'current_health__r2'

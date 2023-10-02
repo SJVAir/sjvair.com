@@ -1,28 +1,17 @@
-import dataclasses
-import itertools
-import types
+from datetime import timedelta
 
-from datetime import datetime, timedelta
+from django.utils.functional import cached_property
+from django.utils import timezone
 
 import pandas as pd
 
-from django.db.models import F
-from django.utils import timezone
-from django.utils.functional import cached_property
-
-from sklearn.linear_model import LinearRegression as skLinearRegression
-
-from .models import SensorAnalysis
-
-
-class SensorLinearRegression:
-    days = 7
+class SensorAnalysisData:
     data_field = 'pm25_reported'
 
-    def __init__(self, monitor, end_date=None):
+    def __init__(self, monitor, start_date=None, end_date=None, **kwargs):
         self.monitor = monitor
         self.end_date = end_date or timezone.now()
-        self.start_date = self.end_date - timedelta(days=self.days)
+        self.start_date = start_date or self.end_date - timedelta(**kwargs)
 
     @cached_property
     def queryset(self):
@@ -49,31 +38,6 @@ class SensorLinearRegression:
     def exog(self):
         return self.__get_sensor_group(self.monitor.SENSORS[0])
 
-    def generate_regression(self):
-        if self.endog is None or self.exog is None:
-            return None
-
-        try:
-            linreg = skLinearRegression()
-            linreg.fit(self.exog, self.endog)
-        except ValueError as err:
-            print('QAQC Linear Regression Error:', err)
-            return None
-
-        results = SensorAnalysis(
-            monitor=self.monitor,
-            r2=linreg.score(self.exog, self.endog),
-            intercept=linreg.intercept_,
-            coef=linreg.coef_[0][0],
-            start_date=self.start_date,
-            end_date=self.end_date,
-        )
-
-        if results.r2 < 0.9:
-            print(f'{self.monitor.name} is possibly bad: {results.r2}')
-
-        return results
-    
     def __get_sensor_group(self, sensor):
         groups = self.df.groupby('sensor')
 

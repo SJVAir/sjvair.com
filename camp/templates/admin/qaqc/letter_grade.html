@@ -1,0 +1,6 @@
+{% load static %}
+<span title="{{ analysis.grade }}">{{ analysis.letter_grade }}</span>
+&#32;
+{% if analysis.is_under_threshold %}
+    <img src="{% static 'admin/img/icon-alert.svg' %}" alt="Below Threshold" title="Below Threshold">
+{% endif %}
