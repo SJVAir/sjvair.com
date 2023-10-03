@@ -46,7 +46,7 @@ nameparser==1.1.2
 numpy==1.25.2
 optimize-images==1.5.1
 pandas==2.0.3
-Pillow==10.0.0
+Pillow==10.0.1
 psycopg2==2.9.3 --no-binary psycopg2
 py-expression-eval==0.3.14
 pylibmc==1.6.3
