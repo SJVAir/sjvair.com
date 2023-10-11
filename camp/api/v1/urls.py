@@ -10,6 +10,7 @@ urlpatterns = [
     path('time/', endpoints.CurrentTime.as_view(), name='current-time'),
     path('alerts/subscriptions/', SubscriptionList.as_view(), name='subscription-list'),
     path('monitors/', include('camp.api.v1.monitors.urls', namespace='monitors')),
+    path('calibrations/', include('camp.api.v1.calibrations.urls', namespace='calibrations')),
     path('methane/<int:methane_id>/upload/', MethaneDataUpload.as_view(), name='methane-data-upload'),
     path('methane/<int:methane_id>/data/', MethaneData.as_view(), name='methane-data'),
     path('marker.png', endpoints.MapMarker.as_view(), name='marker'),
