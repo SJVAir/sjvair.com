@@ -59,6 +59,7 @@ def import_airnow_data(timestamp=None, previous=None):
                 try:
                     entry = monitor.entries.get(timestamp=timestamp)
                     entry = monitor.process_entry(entry, data)
+                    entry.save()
                     print('\t[AirNow] Entry updated:', timestamp)
                 except Entry.DoesNotExist:
                     entry = monitor.create_entry(data)
