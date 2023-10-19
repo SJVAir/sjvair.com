@@ -22,21 +22,16 @@ AQVIEW_URL = "https://gis.carb.arb.ca.gov/hosting/rest/services/Hosted/carb_aqvi
 def import_aqview_data():
     records = esri2gpd.get(AQVIEW_URL, where=' and '.join([
         "externalmonitorid in ('BAM 1022', 'BAM 1020')",
-        "hourindex = 1",
         "countyname in ({})".format(
             ', '.join([f"'{c}'" for c in County.names])
         ),
     ])).to_dict('records')
 
-    # import code
-    # code.interact(local=locals())
-    # return
-
     for row in records:
         process_aqview_data.call_local(row)
 
 
-@db_task()
+@db_task(priority=50)
 def process_aqview_data(payload):
     if payload['countyname'] not in County.names:
         return False
