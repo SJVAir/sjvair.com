@@ -37,6 +37,7 @@ def process_aqview_data(payload):
     if payload['countyname'] not in County.names:
         return False
 
+    # Get or create the monitor
     try:
         monitor = AQview.objects.get(name=payload['sitename'])
         print('[AQview] Monitor exists:', monitor.name)
@@ -49,11 +50,13 @@ def process_aqview_data(payload):
         )
         print('[AQview] Monitor created:', monitor.name)
 
+    # Calculate the timestamp and make it timezone aware.
     payload['timestamp'] = make_aware(
         datetime.fromtimestamp(payload['maptime'] / 1000) - timedelta(hours=payload['hourindex']),
         pytz.timezone('America/Los_Angeles')
     )
 
+    # Create or update the entry based on the timestamp.
     try:
         entry = monitor.entries.get(timestamp=payload['timestamp'])
         entry = monitor.process_entry(entry, payload)
