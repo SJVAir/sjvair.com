@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import esri2gpd
+import pytz
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
@@ -49,7 +50,8 @@ def process_aqview_data(payload):
         print('[AQview] Monitor created:', monitor.name)
 
     payload['timestamp'] = make_aware(
-        datetime.fromtimestamp(payload['maptime'] / 1000) - timedelta(hours=payload['hourindex'])
+        datetime.fromtimestamp(payload['maptime'] / 1000) - timedelta(hours=payload['hourindex']),
+        pytz.timezone('America/Los_Angeles')
     )
 
     try:

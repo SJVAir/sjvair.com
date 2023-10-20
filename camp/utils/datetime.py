@@ -4,9 +4,9 @@ from django import forms
 from django.utils import timezone
 
 
-def make_aware(timestamp):
+def make_aware(timestamp, tz=None):
     if timezone.is_naive(timestamp):
-        return timezone.make_aware(timestamp)
+        return timezone.make_aware(timestamp, tz)
     return timestamp
 
 
