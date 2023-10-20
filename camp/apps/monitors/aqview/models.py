@@ -8,7 +8,7 @@ from camp.utils.datetime import make_aware
 
 
 class AQview(Monitor):
-    LAST_ACTIVE_LIMIT = int(60 * 60 * 1.5)
+    LAST_ACTIVE_LIMIT = int(60 * 60 * 3)
 
     def process_entry(self, entry, payload):
         entry.timestamp = payload['timestamp']
