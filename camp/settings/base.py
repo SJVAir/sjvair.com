@@ -78,6 +78,7 @@ INSTALLED_APPS = [
     'camp.apps.qaqc',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',
+    'camp.apps.monitors.aqview',
     'camp.apps.monitors.bam',
     'camp.apps.monitors.methane',
     'camp.apps.monitors.purpleair',
