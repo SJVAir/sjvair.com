@@ -1,0 +1,15 @@
+- name: AirNow.gov
+  logo: img/providers/airnow.svg
+  url: https://www.airnow.gov/
+
+- name: California Air Resource Board
+  logo: img/providers/carb.svg
+  url: https://arb.ca.gov/
+
+- name: San Joaquin Valley Air Pollution Control District
+  logo: img/providers/sjvapcd.svg
+  url: https://valleyair.org/
+
+- name: PurpleAir
+  logo: img/providers/purpleair.png
+  url: https://www2.purpleair.com/
