@@ -18,6 +18,10 @@
   logo: img/tech/vuejs.svg
   url: https://vuejs.org/
 
+- name: OpenStreetMap
+  logo: img/tech/openstreetmap.svg
+  url: https://www.openstreetmap.org/
+
 - name: Leaflet
   logo: img/tech/leaflet.svg
   url: https://leafletjs.com/

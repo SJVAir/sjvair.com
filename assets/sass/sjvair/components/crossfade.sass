@@ -1,0 +1,13 @@
+.crossfade
+    // position: relative
+    display: grid
+    z-index: 3
+
+    img
+        // position: absolute
+        grid-area: 1 / 1
+        opacity: 0
+        transition: opacity 1s ease-in-out
+
+        &.current
+            opacity: 1

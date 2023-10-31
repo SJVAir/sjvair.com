@@ -1,0 +1,9 @@
+- name: Delano Union School District
+  slug: deusd
+  logo: img/schools/delano.png
+  url: https://www.duesd.org/
+
+- name: Los Banos Unified School District
+  slug: lbusd
+  logo: img/schools/los-banos.png
+  url: https://www.losbanosusd.org/

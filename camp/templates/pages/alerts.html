@@ -10,8 +10,11 @@
 <section class="section hook">
     <div class="container">
         <div class="columns is-vcentered">
+            <div class="column is-4-tablet is-3-desktop mobile-screenshots">
+                <img src="{% static 'img/text-alert.png' %}" class="is-responsive" alt="" />
+            </div>
             <div class="column is-7-desktop content">
-                <h1 class="is-size-1">Live Air Quality Alerts</h1>
+                <h1 class="is-size-1">Live air quality alerts, straight to your phone.</h1>
                 <p class="lead">Get notified when the air is bad in your area with
                     the only real-time air quality alert system in California.</p>
                 {% if not user.is_authenticated %}
@@ -20,9 +23,6 @@
                     <a class="button is-info" href="{% url 'account:signup' %}">Sign up for air quality alerts</a>
                 </p>
                 {% endif %}
-            </div>
-            <div class="column is-4-tablet is-3-desktop mobile-screenshots">
-                <img src="{% static 'img/text-alert.png' %}" class="is-responsive" alt="" />
             </div>
         </div>
     </div>
