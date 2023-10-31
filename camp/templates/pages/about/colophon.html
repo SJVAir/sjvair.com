@@ -11,15 +11,16 @@
     <div class="container">
         <div class="content">
             <h1 class="title">Colophon</h1>
-            <p class="lead">SJVAir is handmade by <a href="https://cencalasthma.org/">Central California Asthma Collaborative</a> and <a href="https://rootaccess.org/">Root Access</a>, and we would like to thank the people behind the following agencies, organizations, and projects which this website relies upon.</p>
+            <!-- <p class="lead">SJVAir is handmade by <a href="https://cencalasthma.org/">Central California Asthma Collaborative</a> with support from <a href="https://rootaccess.org/">Root Access</a>, and we would like to thank the people behind the following organizations and projects which this website relies upon.</p> -->
+            <p class="lead">The SJVAir team would like to thank the people behind the following organizations and projects which this website relies upon.</p>
         </div>
     </div>
 </section>
 
 <section class="section is-medium data-providers has-background-white">
     <div class="container">
-        <div class="columns is-centered">
-            <div class="column is-10-tablet is-8-desktop has-text-centered">
+        <div class="columns is-centered is-vcentered">
+            <div class="column is-6">
                 <h1 class="title"><span class="has-text-info">Data</span> Providers</h1>
                 <p class="lead">SJVAir integrates with multiple air quality networks to bring data from different groups into one place, and we thank them for generously sharing their data with us.</p>
             </div>
@@ -37,13 +38,32 @@
     </div>
 </section>
 
+<section class="section is-medium school-districts has-background-white-bis">
+    <div class="container">
+        <div class="columns is-centered is-vcentered">
+            <div class="column is-6">
+                <h1 class="title"><span class="has-text-danger">School</span> Districts</h1>
+                <p class="lead">We've partnered with school districts in the San Joaquin Valley to set up air quality networks in communities that previously had limited access to local real-time air quality information.</p>
+            </div>
+            <div class="column is-6">
+                <div class="columns is-mobile is-multiline is-vcentered is-centered has-text-centered is-variable is-8">
+                    {% load_datafile 'school-districts.yaml' as district_list %}
+                    {% for district in district_list %}
+                    <div class="column is-6-mobile is-6-tablet is-4-desktop">
+                        <a href="{{ district.url }}" target="_blank" class="school-{{ district.slug }}">
+                            <img src="{% static district.logo %}" alt="{{ district.name }}" class="is-responsive" />
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
 <section class="section is-medium technology has-background-white-ter">
     <div class="container">
         <div class="columns is-variable is-8">
-            <div class="column is-6">
-                <h1 class="title"><span class="has-text-success">Technology</span> Stack</h1>
-                <p class="lead">SJVAir wouldn't be possible without the thousands of people who have generously given their time to build and maintain these and other Open Source and Maker community projects.</p>
-            </div>
             <div class="column is-6">
                 <div class="columns is-mobile is-multiline is-vcentered is-centered has-text-centered">
                     {% load_datafile 'technologies.yaml' as technology_list %}
@@ -55,6 +75,10 @@
                     </div>
                     {% endfor %}
                 </div>
+            </div>
+            <div class="column is-6">
+                <h1 class="title"><span class="has-text-success">Technology</span> Stack</h1>
+                <p class="lead">SJVAir wouldn't be possible without the thousands of people who have generously given their time to build and maintain these and other Open Source and Maker community projects.</p>
             </div>
         </div>
     </div>
@@ -83,20 +107,20 @@
                                 technology that powers SJVAir will be published on Github and our API
                                 will be documented and freely available for anyone to use. More
                                 information will be available soon.</p>
-                            <p>
-                                <a href="https://github.com/sjvair" target="_blank" class="button is-light">
+                            <ul class="is-inline">
+                                <li><a href="https://github.com/sjvair" target="_blank" class="button is-light">
                                     <span class="icon">
                                         <span class="fab fa-github"></span>
                                     </span>
                                     <span>github.com/sjvair</span>
-                                </a>
-                                <a href="https://www.sjvair.com/api/" class="button is-light">
+                                </a></li>
+                                <li><a href="https://www.sjvair.com/api/" class="button is-light">
                                     <span class="icon">
                                         <span class="far fa-cog"></span>
                                     </span>
                                     <span>sjvair.com/api</span>
-                                </a>
-                            </p>
+                                </a></li>
+                            </ul>
                         </div>
                     </div>
                 </div>

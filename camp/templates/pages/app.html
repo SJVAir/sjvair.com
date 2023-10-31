@@ -1,0 +1,39 @@
+{% extends 'page.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block title %}Get the SJVAir App! | {{ block.super }}{% endblock %}
+
+{% block body-class %}app{% endblock %}
+
+{% block main %}
+<section class="section hook is-medium">
+    <div class="container">
+        <div class="columns is-centered is-vcentered">
+            <div class="column is-6-desktop">
+                <h1 class="title">Get to know the air you're breathing.</h1>
+                <p class="lead">Download the SJVAir app and stay on top of your local air quality and weather. For iPhone and Android.</p>
+                <ul class="badges is-inline">
+                    <li><a href="#">
+                        <img src="{% static 'img/app/apple-app-store-badge.svg' %}" alt="Download for iPhone" />
+                    </a></li>
+                    <li><a href="https://play.google.com/store/apps/details?id=com.sjvair.mobile">
+                        <img src="{% static 'img/app/google-play-store-badge.svg' %}" alt="Download for Android" />
+                    </a></li>
+                </ul>
+            </div>
+            <div class="column is-3-desktop">
+                <div class="crossfade">
+                    <img src="{% static 'img/app/my-air.png' %}" alt="" class="is-responsive current" />
+                    <img src="{% static 'img/app/weather.png' %}" alt="" class="is-responsive" />
+                    <img src="{% static 'img/app/monitor-map.png' %}" alt="" class="is-responsive" />
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block javascripts %}
+<script type="text/javascript" src="{% static 'js/crossfade.js' %}"></script>
+{% endblock %}
