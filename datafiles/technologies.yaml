@@ -6,9 +6,21 @@
   logo: img/tech/django.svg
   url: https://www.djangoproject.com/
 
+- name: pandas
+  logo: img/tech/pandas.svg
+  url: https://pandas.pydata.org/
+
+- name: scikit-learn
+  logo: img/tech/scikit-learn-logo.svg
+  url: https://scikit-learn.org/
+
 - name: Vue.js
   logo: img/tech/vuejs.svg
   url: https://vuejs.org/
+
+- name: OpenStreetMap
+  logo: img/tech/openstreetmap.svg
+  url: https://www.openstreetmap.org/
 
 - name: Leaflet
   logo: img/tech/leaflet.svg
@@ -18,6 +30,10 @@
   logo: img/tech/postgresql.svg
   url: https://www.postgresql.org/
 
+- name: Redis
+  logo: img/tech/redis.svg
+  url: https://redis.io/
+
 - name: MicroPython
   logo: img/tech/micropython.svg
   url: http://micropython.org/
@@ -25,7 +41,3 @@
 - name: Raspberry Pi
   logo: img/tech/raspberrypi.svg
   url: https://www.raspberrypi.com/
-
-- name: ESP32
-  logo: img/tech/esp32.svg
-  url: https://www.espressif.com/en/products/socs/esp32/overview
