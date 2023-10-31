@@ -21,7 +21,7 @@ ul
 @include tablet
     .columns
         &.is-reversed
-            display: flex;
+            display: flex
             flex-direction: row-reverse
 
 .lead
@@ -42,6 +42,12 @@ section.hook
 
         &:last-child
             margin-bottom: 0
+
+    a
+        @extend .has-text-weight-semibold
+        color: $white
+        text-decoration: underline
+
 
 // Google Translate widget fixes
 .goog-te-banner-frame

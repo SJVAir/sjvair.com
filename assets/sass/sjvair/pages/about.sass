@@ -4,31 +4,43 @@ body.about
     section.partners
         background-color: $white
 
-    .partner
-        padding-bottom: 2rem
+        .partner
+            padding-bottom: 2rem
 
-        .logo
-            background-position: center center
-            background-repeat: no-repeat
-            background-size: contain
-            display: block
-            height: 150px
-            margin: auto
-            margin-bottom: 1rem
-            width: 50%
-
-    .colophon
-        img
-            max-height: 150px
-            max-width: 150px
+            .logo
+                background-position: center center
+                background-repeat: no-repeat
+                background-size: contain
+                display: block
+                height: 150px
+                margin: auto
+                margin-bottom: 1rem
+                width: 50%
 
 body.about.collaborative
     .hook
         @include header-bg('../img/about/purpleair-testing-3.jpg', .6)
 
-body.about.technology
+body.about.colophon
     .hook
         @include header-bg('../img/about/air-monitor-prototype.jpg', .6)
+
+    section
+        .title
+            font-size: $size-2
+
+    section.data-providers
+        .lead
+            @extend .mb-6
+    
+        img
+            max-height: 100px
+            max-width: 250px
+
+    section.technology
+        img
+            max-height: 150px
+            max-width: 150px
 
 body.about.testing
     .hook
