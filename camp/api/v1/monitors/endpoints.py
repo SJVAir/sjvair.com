@@ -84,6 +84,7 @@ class ClosestMonitor(MonitorMixin, generics.ListEndpoint):
 
         queryset = super().get_queryset()
         queryset = (queryset
+            .get_active()
             .exclude(is_hidden=True)
             .exclude(latest__isnull=True)
             .exclude(location='inside')
