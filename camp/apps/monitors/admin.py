@@ -10,7 +10,7 @@ from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin as gisadmin
 from django.contrib.humanize.templatetags.humanize import intcomma
-from django.db.models import F, Max, Prefetch
+from django.db.models import Count, F, Max, Prefetch
 from django.http import HttpResponse
 from django.template.defaultfilters import floatformat
 from django.template.loader import render_to_string
@@ -110,7 +110,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     inlines = (SensorAnalysisInline,)
     actions = ['export_monitor_list_csv']
     csv_export_fields = ['id', 'name', 'health_grade', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
-    list_display = ['name', 'get_current_health', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor']
+    list_display = ['name', 'get_current_health', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor', 'get_subscriptions']
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', MonitorIsActiveFilter, 'location', 'county', HealthGradeListFilter]
 
@@ -130,7 +130,10 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         queryset = queryset.prefetch_related(
             Prefetch('latest', queryset=Entry.objects.only('timestamp')),
         )
-        queryset = queryset.annotate(last_updated=F('latest__timestamp'))
+        queryset = queryset.annotate(
+            last_updated=F('latest__timestamp'),
+            subscription_count=Count('subscriptions'),
+        )
         return queryset
 
     @csrf_protect_m
@@ -185,6 +188,11 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     def get_calibrations(self):
         queryset = Calibration.objects.filter(monitor_type=self.model._meta.app_label)
         return {calibration.county: calibration.pm25_formula for calibration in queryset}
+
+    def get_subscriptions(self, instance):
+        return instance.subscription_count
+    get_subscriptions.short_description = 'Subscriptions'
+    get_subscriptions.admin_order_field = 'subscription_count'
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
