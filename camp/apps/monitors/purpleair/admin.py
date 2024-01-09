@@ -14,7 +14,6 @@ class PurpleAirAdmin(MonitorAdmin):
 
     list_display = MonitorAdmin.list_display[:]
     list_display.insert(1, 'purple_id')
-    list_display.insert(5, 'get_active_status')
 
     fields = MonitorAdmin.fields
     readonly_fields = ['location', 'position', 'county']
@@ -24,8 +23,3 @@ class PurpleAirAdmin(MonitorAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
-
-    def get_active_status(self, instance):
-        return instance.is_active
-    get_active_status.boolean = True
-    get_active_status.short_description = 'Is active'

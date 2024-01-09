@@ -110,13 +110,14 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     inlines = (SensorAnalysisInline,)
     actions = ['export_monitor_list_csv']
     csv_export_fields = ['id', 'name', 'health_grade', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
-    list_display = ['name', 'get_current_health', 'county', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor', 'get_subscriptions']
+    list_display = ['name', 'get_current_health', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor', 'get_subscriptions']
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', MonitorIsActiveFilter, 'location', 'county', HealthGradeListFilter]
 
 
     fields = ['name', 'county', 'default_sensor', 'is_hidden', 'is_sjvair', 'location', 'position', 'notes', 'pm25_calibration_formula']
     search_fields = ['county', 'current_health__r2', 'location', 'name']
+    save_on_top = True
 
     change_form_template = 'admin/monitors/change_form.html'
     change_list_template = 'admin/monitors/change_list.html'
@@ -170,6 +171,11 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
             return Alert.objects.get(monitor_id=object_id, end_time__isnull=True)
         except Alert.DoesNotExist:
             return None
+
+    def get_active_status(self, instance):
+        return instance.is_active
+    get_active_status.boolean = True
+    get_active_status.short_description = 'Is active'
 
     def get_current_health(self, instance):
         if instance.current_health is None:
