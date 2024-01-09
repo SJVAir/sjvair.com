@@ -1,0 +1,39 @@
+{% extends 'admin/base_site.html' %}
+{% load humanize %}
+{% load i18n %}
+{% load sjvair %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+    <!-- <pre>{{ stats|jsonify }}</pre> -->
+
+    <table>
+        <thead>
+            <tr>
+                <th>County</th>
+                <th>Total Monitors</th>
+                <th>Monitors with Subscription</th>
+                <th>Total Subscriptions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for county in stats %}
+            <tr>
+                <th>{{ county.name }}</th>
+                <td>{{ county.total_monitors|intcomma }}</td>
+                <td>{{ county.subscription_monitors|intcomma }}</td>
+                <td>{{ county.total_subscriptions|intcomma }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

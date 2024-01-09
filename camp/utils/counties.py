@@ -23,6 +23,7 @@ class County:
     }
 
     names = list(sorted(counties.keys()))
+    keys = {name.lower().replace(' ', '_'): name for name in names}
 
     @classmethod
     def lookup(cls, point, default=''):
