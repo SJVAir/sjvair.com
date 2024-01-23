@@ -27,7 +27,8 @@ from camp.apps.qaqc.models import SensorAnalysis
 from camp.apps.qaqc.admin import SensorAnalysisInline
 from camp.utils.forms import DateRangeForm
 
-from .models import Calibration, Entry
+from .forms import MonitorAdminForm
+from .models import Group, Calibration, Entry
 
 
 def key_to_lookup(k):
@@ -109,18 +110,27 @@ class MonitorIsActiveFilter(admin.SimpleListFilter):
 class MonitorAdmin(gisadmin.OSMGeoAdmin):
     inlines = (SensorAnalysisInline,)
     actions = ['export_monitor_list_csv']
-    csv_export_fields = ['id', 'name', 'health_grade', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
+    form = MonitorAdminForm
+
     list_display = ['name', 'get_current_health', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor', 'get_subscriptions']
     list_editable = ['is_sjvair', 'is_hidden']
-    list_filter = ['is_sjvair', 'is_hidden', MonitorIsActiveFilter, 'location', 'county', HealthGradeListFilter]
+    list_filter = ['is_sjvair', 'is_hidden', MonitorIsActiveFilter, 'groups', 'location', 'county', HealthGradeListFilter]
 
+    # fields = ['', '', '', '', '', '',
+    # '', '', 'pm25_calibration_formula', '']
 
-    fields = ['name', 'county', 'default_sensor', 'is_hidden', 'is_sjvair', 'location', 'position', 'notes', 'pm25_calibration_formula']
+    fieldsets = [
+        (None, {'fields': ['name', 'default_sensor', 'is_hidden', 'is_sjvair']}),
+        ('Location Data', {'fields': ['county', 'location', 'position']}),
+        ('Metadata', {'fields': ['groups', 'notes']}),
+    ]
+
+    csv_export_fields = ['id', 'name', 'health_grade', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
     search_fields = ['county', 'current_health__r2', 'location', 'name']
     save_on_top = True
 
-    change_form_template = 'admin/monitors/change_form.html'
-    change_list_template = 'admin/monitors/change_list.html'
+    change_form_template = 'admin/monitors/monitor/change_form.html'
+    change_list_template = 'admin/monitors/monitor/change_list.html'
 
     class Media:
         js = ['admin/js/collapse.js']
@@ -224,6 +234,15 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
             return instance.last_updated
         return ''
     last_updated.admin_order_field = 'last_updated'
+
+
+@admin.register(Group)
+class GroupAdmin(admin.ModelAdmin):
+    list_display = ('name', 'monitor_count')
+    filter_horizontal = ('monitors',)
+
+    def monitor_count(self, instance):
+        return instance.monitors.count()
 
 
 @admin.register(Calibration)

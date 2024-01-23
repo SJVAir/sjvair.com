@@ -15,7 +15,6 @@ class PurpleAirAdmin(MonitorAdmin):
     list_display = MonitorAdmin.list_display[:]
     list_display.insert(1, 'purple_id')
 
-    fields = MonitorAdmin.fields
     readonly_fields = ['location', 'position', 'county']
 
     def has_add_permission(self, request, obj=None):
