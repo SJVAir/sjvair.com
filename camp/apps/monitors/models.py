@@ -170,6 +170,25 @@ class Monitor(models.Model):
         super().save(*args, **kwargs)
 
 
+class Group(models.Model):
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+
+    name = models.CharField(max_length=100)
+    monitors = models.ManyToManyField('monitors.Monitor', related_name='groups', blank=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['name']
+
+
 class Calibration(TimeStampedModel):
     COUNTIES = Choices(*County.names)
     MONITOR_TYPES = lazy(lambda: Choices(*Monitor.subclasses()), list)()
