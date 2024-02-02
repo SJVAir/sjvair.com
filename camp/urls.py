@@ -12,6 +12,7 @@ admin.site.site_header = "SJVAir Admin"
 urlpatterns = [
     path('api/', include('camp.api.urls', namespace='api')),
     path('account/', include(('camp.apps.accounts.urls', 'account'), namespace='account')),
+    path('contact/', include(('camp.apps.contact.urls', 'contact'), namespace='contact')),
 
     # @sjvair/monitor-map specific routes
     path('monitor/<monitor_id>/', PageTemplate.as_view(template_name='pages/index.html')),
