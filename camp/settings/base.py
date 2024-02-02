@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'camp.apps.alerts',
     'camp.apps.archive',
     'camp.apps.calibrations',
+    'camp.apps.contact',
     'camp.apps.qaqc',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',
@@ -234,6 +235,9 @@ SERVER_EMAIL = 'SJVAir Server <root@sjvair.com>'
 
 SJVAIR_INACTIVE_ALERT_EMAILS = [email.strip() for email in
     os.environ.get('SJVAIR_INACTIVE_ALERT_EMAILS', SERVER_EMAIL).split(',')]
+
+SJVAIR_CONTACT_EMAILS = [email.strip() for email in
+    os.environ.get('SJVAIR_CONTACT_EMAILS', SERVER_EMAIL).split(',')]
 
 # django-cors-headers
 
