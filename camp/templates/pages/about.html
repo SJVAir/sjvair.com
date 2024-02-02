@@ -25,7 +25,9 @@
                 <div class="partner">
                     <a href="{{ partner.url }}" target="_blank" class="logo" style="background-image: url('{% static partner.logo %}')"></a>
                     <div class="content">
-                        <p class="description">{{ partner.description }}</p>
+                        {% if partner.description %}
+                            <p class="description">{{ partner.description }}</p>
+                        {% endif %}
                         <p class="link">
                             <a href="{{ partner.url }}" target="_blank" class="button is-link is-light is-small">
                                 <span class="icon is-small">

@@ -1,0 +1,66 @@
+{% extends 'page.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block title %}Contact Us | {{ block.super }}{% endblock %}
+
+{% block body-class %}contact{% endblock %}
+
+{% block content %}
+<section class="section hook">
+    <div class="container">
+        <div class="content">
+            <h1>Contact Us</h1>
+        </div>
+    </div>
+</section>
+
+<section class="section partners">
+    <div class="container">
+        <div class="columns is-variable is-8">
+            <div class="column is-4-desktop">
+                <div class="content">
+                    <p class="lead">Feel free to send suggestions or feedback, fill us in on how you're using the data, or let us know how SJVAir is helping you.</p>
+                    <p class="lead">
+                        <span class="has-text-weight-semibold">Get in touch!</span><br />
+                        <a href="mailto:sjvair@centralcalasthma.org">
+                            <span class="icon has-text-grey is-size-5">
+                                <span class="fal fa-fw fa-envelope"></span>
+                            </span>
+                            <span>sjvair@centralcalasthma.org</span>
+                        </a>
+                    </p>
+                    <p class="lead">You can also contact CCAC directly at <a href="https://cencalasthma.org/contact/">cencalasthma.org/contact</a>.</p>
+                </div>
+            </div>
+            <div class="column is-8-desktop">
+                <div class="box">
+                    <form action="{{ request.path }}" method="post">
+                        {% csrf_token %}
+                        {% for field in form.hidden_fields %}
+                            {{ field }}
+                        {% endfor %}
+
+                        <div class="columns">
+                            <div class="column">
+                                {% include '_includes/form/field.html' with field=form.name icon_left="far fa-user" %}
+                            </div>
+                            <div class="column">
+                                {% include '_includes/form/field.html' with field=form.email icon_left="far fa-envelope" %}
+                            </div>
+                        </div>
+
+                        {% include '_includes/form/field.html' with field=form.message %}
+                        <div class="control">
+                            <button type="submit" class="button is-success">Submit</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block javascripts %}
+{% endblock %}
