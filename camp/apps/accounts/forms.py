@@ -1,9 +1,70 @@
 from django import forms
-from django.contrib.auth import forms as auth_forms
+from django.contrib.auth import authenticate, forms as auth_forms
+from django.core import validators
 from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 
+from phonenumber_field.validators import validate_international_phonenumber
+
 from .models import User
+
+
+def phone_or_email_validator(value):
+    '''
+        Validate that a value is either an email address or phone number.
+    '''
+    try:
+        validators.validate_email(value)
+    except validators.ValidationError:
+        try:
+            validate_international_phonenumber(value)
+        except (TypeError, validators.ValidationError):
+            raise validators.ValidationError('Invalid email address or phone number')
+
+
+
+class AuthenticationForm(forms.Form):
+    identifier = forms.CharField(
+        label=_("Email or Phone"),
+        help_text=_("You can login with your email address or phone number."),
+        validators=[phone_or_email_validator],
+    )
+    password = forms.CharField(strip=False, widget=forms.PasswordInput)
+
+    error_messages = {
+        "invalid_login": _(
+            "Please enter a correct email/phone and password. Note that both fields may be case-sensitive."
+        ),
+        "inactive": _("This account is inactive."),
+    }
+
+    def __init__(self, *args, **kwargs):
+        self.request = kwargs.pop("request", None)
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        identifier = self.cleaned_data.get("identifier")
+        password = self.cleaned_data.get("password")
+
+        if identifier is not None and password:
+            self.user = authenticate(
+                request=self.request, identifier=identifier, password=password
+            )
+
+            if self.user is None:
+                raise forms.ValidationError(
+                    self.error_messages["invalid_login"], code="invalid_login",
+                )
+
+            elif not self.user.is_active:
+                raise forms.ValidationError(
+                    self.error_messages["inactive"], code="inactive",
+                )
+
+        return self.cleaned_data
+
+    def get_user(self):
+        return self.user
 
 
 class ProfileForm(forms.ModelForm):
@@ -55,10 +116,6 @@ class UserCreationForm(forms.ModelForm):
         user.save()
         return user
 
-# UserCreationForm.base_fields.keyOrder = [
-#     'email', 'full_name', 'password1', 'password2',
-# ]
-
 
 class UserChangeForm(forms.ModelForm):
     password = auth_forms.ReadOnlyPasswordHashField(label=_("Password"),
@@ -85,7 +142,7 @@ class UserChangeForm(forms.ModelForm):
 
 class SendPhoneVerificationForm(forms.Form):
     RATE_LIMIT = 2  # Number of minutes between sending
-    CODE_EXPIRES = 5 # Number of minutes until the code expires
+    CODE_EXPIRES = 5  # Number of minutes until the code expires
 
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user')
