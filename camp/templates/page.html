@@ -50,28 +50,9 @@
                 <!-- <a href="/api/" class="navbar-item">Developers</a> -->
             </div>
             <div class="navbar-end">
-                <div class="navbar-item">
-                    <div class="field">
-                        <div class="control has-icons-left">
-                            <div class="select is-small">
-                                <select id="id_translate" onchange="setLanguage(this.value);">
-                                    {% for code, name in settings.LANGUAGES %}
-                                    <option value="{{ code }}">{{ name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <span class="icon is-left has-text-grey-light">
-                                <span class="fas fa-language"></span>
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                <div class="navbar-item is-hidden">
-                    <div id="google_translate_element"></div>
-                </div>
                 {% if user.is_authenticated %}
                     <div class="navbar-item has-dropdown is-hoverable">
-                        <a class="navbar-link">{{ user.email }}</a>
+                        <a class="navbar-link">{{ user.get_name }}</a>
                         <div class="navbar-dropdown">
                             <a href="{% url 'account:profile' %}" class="navbar-item">
                                 <span class="icon is-small">
@@ -107,8 +88,28 @@
                         </div>
                     </div>
                 {% else %}
-
+                    <a class="navbar-item" href="{% url 'account:login' %}">Login</a>
+                    <a class="navbar-item" href="{% url 'account:signup' %}">Sign up</a>
                 {% endif %}
+                <div class="navbar-item">
+                    <div class="field">
+                        <div class="control has-icons-left">
+                            <div class="select is-small">
+                                <select id="id_translate" onchange="setLanguage(this.value);">
+                                    {% for code, name in settings.LANGUAGES %}
+                                    <option value="{{ code }}">{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <span class="icon is-left has-text-grey-light">
+                                <span class="fas fa-language"></span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="navbar-item is-hidden">
+                    <div id="google_translate_element"></div>
+                </div>
             </div>
         </div>
     </div>
