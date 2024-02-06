@@ -13,6 +13,7 @@ from phonenumber_field.modelfields import PhoneNumberField
 
 from camp.apps.accounts import managers
 from camp.apps.accounts.tasks import send_sms_message
+from camp.utils.fields import NullEmailField
 
 
 class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
@@ -26,8 +27,8 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
         verbose_name='ID'
     )
     full_name = models.CharField(max_length=100)
-    email = models.EmailField(unique=True, db_index=True)
-    phone = PhoneNumberField(blank=True, help_text="Your cell phone number for receiving air quality text alerts.")
+    email = NullEmailField(unique=True, blank=True, null=True, db_index=True)
+    phone = PhoneNumberField(unique=True, db_index=True, help_text="Your cell phone number for receiving air quality text alerts.")
     phone_verified = models.BooleanField(default=False)
     language = models.CharField(_('Preferred Language'), max_length=5, choices=LANGUAGES, default=LANGUAGES.en)
 
