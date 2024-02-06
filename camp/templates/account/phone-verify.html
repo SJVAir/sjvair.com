@@ -15,6 +15,10 @@
                 code will expire in {{ form.CODE_EXPIRES }} minute{{ form.CODE_EXPIRES|pluralize }}, after which a new code must
                 be sent.</p>
 
+            <div class="notification is-light is-info">
+                <p><span class="far fa-question-circle"></span> Already have a verification code? <a href="{% url 'account:phone-verify-submit' %}">Click here to submit your code.</a></p>
+            </div>
+
             {% if form.non_field_errors %}
                 {% for error in form.non_field_errors %}
                     <p class="has-text-danger has-text-weight-semibold">{{ error }}</p>
@@ -26,11 +30,5 @@
             <button type="submit" class="button is-success">Send verification code</button>
         </div>
     </form>
-
-    <hr />
-
-    <div class="notification is-light is-info">
-        <p><span class="far fa-question-circle"></span> Already have a verification code? <a href="{% url 'account:phone-verify-submit' %}">Click here to submit your code.</a></p>
-    </div>
 </div>
 {% endblock %}
