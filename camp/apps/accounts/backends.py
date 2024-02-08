@@ -10,10 +10,13 @@ class AuthenticationBackend(backends.ModelBackend):
         if identifier is None or password is None:
             return
 
+        if not isinstance(identifier, str):
+            identifier = str(identifier)
+
         UserModel = get_user_model()
 
         try:
-            user = UserModel.objects.get(email__iexact=identifier)
+            user = UserModel.objects.get(email__iexact=str(identifier))
         except UserModel.DoesNotExist:
             try:
                 user = UserModel.objects.get(phone=identifier)

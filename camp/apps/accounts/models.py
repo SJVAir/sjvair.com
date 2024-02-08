@@ -1,5 +1,9 @@
+import random
+import string
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from django.core.cache import cache
 from django.db import models
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -51,13 +55,16 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
     )  # Required for Django Admin, for tenant staff/admin see role
 
     EMAIL_FIELD = 'email'
-    USERNAME_FIELD = 'email'
+    USERNAME_FIELD = 'phone'
     REQUIRED_FIELDS = ['full_name']
 
     objects = managers.UserManager()
 
     class Meta:
         ordering = ('-date_joined',)
+
+    def __str__(self):
+        return str(self.name)
 
     def get_name(self):
         name = HumanName(self.full_name)
@@ -78,20 +85,31 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
         return self.name
 
     @property
-    def verify_phone_rate_limit_key(self):
+    def phone_verification_rate_limit_key(self):
         return f'phone-rate-limit:{self.phone}'
 
     @property
-    def verify_phone_code_key(self):
+    def phone_verification_code_key(self):
         return f'phone-code:{self.phone}'
+
+    def send_phone_verification_code(self, expires=300):
+        code = ''.join([random.choice(string.digits) for x in range(4)])
+        cache.set(self.phone_verification_code_key, code, expires)
+        message = f'SJVAir.com – Verification Code: {code}'
+        self.send_sms(message, verify=False)  # Don't do a verification check
+
+    def check_phone_verification_code(self, code):
+        cached_code = cache.get(self.phone_verification_code_key)
+        print(code, cached_code)
+        return code == cached_code
 
     def send_sms(self, message, verify=True):
         if self.phone and (self.phone_verified or not verify):
             return send_sms_message(self.phone, message)
         return False
 
-    def save(self, *args, **kwargs):
-        dirty_fields = self.get_dirty_fields()
-        if 'phone' in dirty_fields:
-            self.phone_verified = False
-        return super().save(*args, **kwargs)
+    # def save(self, *args, **kwargs):
+    #     dirty_fields = self.get_dirty_fields()
+    #     if 'phone' in dirty_fields:
+    #         self.phone_verified = False
+    #     return super().save(*args, **kwargs)
