@@ -11,7 +11,7 @@ class UserAdmin(UserAdmin):
     fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('full_name', 'email', ('phone', 'phone_verified'), 'language', 'password', 'last_login', 'date_joined'),
+            'fields': ('full_name', ('phone', 'phone_verified'), 'email', 'language', 'password', 'last_login', 'date_joined'),
         }),
         (_('Permissions'), {
             'classes': ('wide', 'collapse',),
@@ -24,7 +24,7 @@ class UserAdmin(UserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('full_name', 'email', 'phone', 'language')
+            'fields': ('full_name', 'phone', 'email', 'language')
         }),
         ('Password', {
             'classes': ('wide',),
@@ -32,7 +32,7 @@ class UserAdmin(UserAdmin):
         }),
     )
     inlines = [SubscriptionInline]
-    list_display = ('email', 'full_name', 'date_joined', 'is_staff', 'is_active')
+    list_display = ('full_name', 'phone', 'email', 'date_joined', 'is_staff', 'is_active')
     list_filter = ('is_staff', 'is_superuser', 'is_active', 'language', 'groups')
     ordering = ('email',)
     readonly_fields = ('date_joined', 'last_login')

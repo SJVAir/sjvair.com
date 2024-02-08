@@ -22,7 +22,6 @@ def phone_or_email_validator(value):
             raise validators.ValidationError('Invalid email address or phone number')
 
 
-
 class AuthenticationForm(forms.Form):
     identifier = forms.CharField(
         label=_("Email or Phone"),
@@ -68,18 +67,48 @@ class AuthenticationForm(forms.Form):
 
 
 class ProfileForm(forms.ModelForm):
+    error_messages = {
+        'duplicate_email': _("A user with that email address already exists."),
+        'duplicate_phone': _("A user with that phone number already exists."),
+    }
+
     class Meta:
         fields = ('full_name', 'email', 'phone', 'language')
         model = User
 
     def __init__(self, *args, **kwargs):
+        self.request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
-        self.fields['phone'].required = True
+
+    def clean_email(self):
+        email = User.objects.normalize_email(self.cleaned_data['email'])
+        
+        queryset = User.objects.filter(email__iexact=email)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        
+        if queryset.exists():
+            raise forms.ValidationError(self.error_messages['duplicate_email'])
+
+        return email
+
+    def clean_phone(self):
+        phone = self.cleaned_data['phone']
+
+        queryset = User.objects.filter(phone=phone)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+
+        if queryset.exists():
+            raise forms.ValidationError(self.error_messages['duplicate_phone'])
+
+        return phone
 
 
 class UserCreationForm(forms.ModelForm):
     error_messages = {
         'duplicate_email': _("A user with that email address already exists."),
+        'duplicate_phone': _("A user with that phone number already exists."),
         'password_mismatch': _("The two password fields didn't match."),
     }
     password1 = forms.CharField(label=_('Password'), widget=forms.PasswordInput)
@@ -89,17 +118,22 @@ class UserCreationForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ('full_name', 'email', 'phone', 'language')
+        fields = ('full_name', 'phone', 'email', 'language')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['phone'].required = True
 
     def clean_email(self):
         email = User.objects.normalize_email(self.cleaned_data['email'])
         if User.objects.filter(email__iexact=email).exists():
             raise forms.ValidationError(self.error_messages['duplicate_email'])
         return email
+
+    def clean_phone(self):
+        phone = self.cleaned_data['phone']
+        if User.objects.filter(phone=phone).exists():
+            raise forms.ValidationError(self.error_messages['duplicate_phone'])
+        return phone
 
     def clean_password2(self):
         password1 = self.cleaned_data.get('password1')
@@ -153,9 +187,9 @@ class SendPhoneVerificationForm(forms.Form):
         return self.cleaned_data
 
     def check_rate_limit(self):
-        cache_key = self.user.verify_phone_rate_limit_key
+        cache_key = self.user.phone_verification_rate_limit_key
         if cache.get(cache_key):
-            error = 'You have recently been sent a verification code. Please try again shortly.'
+            error = _('You have recently been sent a verification code. Please try again shortly.')
             raise forms.ValidationError(error)
         cache.set(cache_key, True, self.RATE_LIMIT * 60)
 
@@ -171,10 +205,9 @@ class SubmitPhoneVerificationForm(forms.Form):
 
     def clean_code(self):
         code = self.cleaned_data.get('code')
-        cached_code = cache.get(self.user.verify_phone_code_key)
-
-        if code != cached_code:
-            raise forms.ValidationError('Invalid code, please try again.')
+        verified = self.user.check_phone_verification_code(code)
+        if not verified:
+            raise forms.ValidationError(_('Invalid verification code, please try again.'))
 
         return code
 
