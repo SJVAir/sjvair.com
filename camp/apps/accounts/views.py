@@ -1,19 +1,23 @@
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, views as auth_views
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.tokens import default_token_generator as token_generator
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.shortcuts import redirect
 from django.urls import reverse_lazy
+from django.utils.http import urlsafe_base64_decode
 
 import vanilla
 
-from .forms import (UserCreationForm, ProfileForm,
-    SendPhoneVerificationForm, SubmitPhoneVerificationForm)
 from camp.utils.views import RedirectViewMixin
+
+from . import forms
+from .models import User
 
 
 class SignupView(RedirectViewMixin, vanilla.CreateView):
     template_name = 'registration/signup.html'
-    form_class = UserCreationForm
+    form_class = forms.UserCreationForm
     redirect_field_name = 'next'
     success_url = reverse_lazy('account:phone-verify-submit')
 
@@ -39,7 +43,7 @@ class SignupView(RedirectViewMixin, vanilla.CreateView):
 
 
 class ProfileView(LoginRequiredMixin, vanilla.UpdateView):
-    form_class = ProfileForm
+    form_class = forms.ProfileForm
     template_name = 'account/profile.html'
     success_url = reverse_lazy('account:profile')
 
@@ -62,7 +66,7 @@ class ProfileView(LoginRequiredMixin, vanilla.UpdateView):
 
 
 class SendPhoneVerification(LoginRequiredMixin, vanilla.FormView):
-    form_class = SendPhoneVerificationForm
+    form_class = forms.SendPhoneVerificationForm
     template_name = 'account/phone-verify.html'
     success_url = reverse_lazy('account:phone-verify-submit')
 
@@ -82,7 +86,7 @@ class SendPhoneVerification(LoginRequiredMixin, vanilla.FormView):
         return super().form_valid(form)
 
 class SubmitPhoneVerification(LoginRequiredMixin, vanilla.FormView):
-    form_class = SubmitPhoneVerificationForm
+    form_class = forms.SubmitPhoneVerificationForm
     template_name = 'account/phone-verify-submit.html'
     success_url = reverse_lazy('account:profile')
 
@@ -109,7 +113,57 @@ class SubmitPhoneVerification(LoginRequiredMixin, vanilla.FormView):
 # - PasswordReset sends the text message
 # - PasswordResetConfirm verifies the text code and changes the password
 
-# class PasswordReset(vanilla.FormView):
-#     pass
 
-# class PasswordResetConfirm(vanilla.FormView)
+class PasswordReset(vanilla.FormView):
+    form_class = forms.PasswordResetForm
+    success_url = reverse_lazy('account:password-reset-confirm')
+    template_name = 'registration/password_reset.html'
+
+    def form_valid(self, form):
+        options = form.save()
+        print('PasswordReset:', options)
+        self.request.session['_password-reset'] = options
+        return redirect(self.get_success_url())
+
+
+class PasswordResetConfirm(vanilla.FormView):
+    form_class = forms.SetPasswordForm
+    success_url = reverse_lazy('account:password-reset-complete')
+    template_name = 'registration/password_reset_confirm.html'
+
+    def dispatch(self, *args, **kwargs):
+        options = self.request.session.get('_password-reset')
+
+        try:
+            uidb64 = options['uidb64']
+            token = options['token']
+        except (KeyError, TypeError):
+            return self.invalid_token()
+
+        self.user = self.get_user(uidb64)
+        if self.user and token_generator.check_token(self.user, token):
+            return super().dispatch(*args, **kwargs)
+        return self.invalid_token()
+
+    def invalid_token(self):
+        self.user = None
+        form = self.get_form()
+        context = self.get_context_data(form=form)
+        return self.render_to_response(context)
+
+    def get_user(self, uidb64):
+        try:
+            user_id = urlsafe_base64_decode(uidb64).decode()
+            return User._default_manager.get(pk=user_id)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist, ValidationError):
+            return None
+
+    def get_form(self, *args, **kwargs):
+        return super().get_form(user=self.user, *args, **kwargs)
+
+    def form_valid(self, form):
+        form.save()
+        del self.request.session['_password-reset']
+        return super().form_valid(form)
+
+

@@ -30,14 +30,14 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
         editable=False,
         verbose_name='ID'
     )
-    full_name = models.CharField(max_length=100)
-    email = NullEmailField(unique=True, blank=True, null=True, db_index=True)
-    phone = PhoneNumberField(unique=True, db_index=True, help_text="Your cell phone number for receiving air quality text alerts.")
+    full_name = models.CharField(_('Full name'), max_length=100)
+    email = NullEmailField(_('Email address'), unique=True, blank=True, null=True, db_index=True)
+    phone = PhoneNumberField(_('Phone number'), unique=True, db_index=True, help_text="Your cell phone number for receiving air quality text alerts.")
     phone_verified = models.BooleanField(default=False)
     language = models.CharField(_('Preferred Language'), max_length=5, choices=LANGUAGES, default=LANGUAGES.en)
 
     # Normally provided by auth.AbstractUser, but we're not using that here.
-    date_joined = models.DateTimeField(_('date joined'), default=timezone.now, editable=False)
+    date_joined = models.DateTimeField(_('Date joined'), default=timezone.now, editable=False)
     is_active = models.BooleanField(
         _('active'),
         default=True,
@@ -93,9 +93,9 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
         return f'phone-code:{self.phone}'
 
     def send_phone_verification_code(self, expires=300):
-        code = ''.join([random.choice(string.digits) for x in range(4)])
+        code = ''.join([random.choice(string.digits) for x in range(6)])
         cache.set(self.phone_verification_code_key, code, expires)
-        message = f'SJVAir.com – Verification Code: {code}'
+        message = f'SJVAir – Verification Code: {code}'
         self.send_sms(message, verify=False)  # Don't do a verification check
 
     def check_phone_verification_code(self, code):
@@ -107,9 +107,3 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
         if self.phone and (self.phone_verified or not verify):
             return send_sms_message(self.phone, message)
         return False
-
-    # def save(self, *args, **kwargs):
-    #     dirty_fields = self.get_dirty_fields()
-    #     if 'phone' in dirty_fields:
-    #         self.phone_verified = False
-    #     return super().save(*args, **kwargs)

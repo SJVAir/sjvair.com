@@ -1,4 +1,6 @@
-from django.contrib.auth import backends, get_user_model
+from django.contrib.auth import backends
+
+from .models import User
 
 
 class AuthenticationBackend(backends.ModelBackend):
@@ -13,17 +15,15 @@ class AuthenticationBackend(backends.ModelBackend):
         if not isinstance(identifier, str):
             identifier = str(identifier)
 
-        UserModel = get_user_model()
-
         try:
-            user = UserModel.objects.get(email__iexact=str(identifier))
-        except UserModel.DoesNotExist:
+            user = User.objects.get(email__iexact=str(identifier))
+        except User.DoesNotExist:
             try:
-                user = UserModel.objects.get(phone=identifier)
-            except UserModel.DoesNotExist:
+                user = User.objects.get(phone=identifier)
+            except User.DoesNotExist:
                 # Run the default password hasher once to reduce the timing
                 # difference between an existing and a nonexistent user (#20760).
-                UserModel().set_password(password)
+                User().set_password(password)
                 return
 
         if user.check_password(password):
