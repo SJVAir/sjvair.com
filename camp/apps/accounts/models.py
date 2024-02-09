@@ -92,15 +92,27 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
     def phone_verification_code_key(self):
         return f'phone-code:{self.phone}'
 
-    def send_phone_verification_code(self, expires=300):
-        code = ''.join([random.choice(string.digits) for x in range(6)])
+    def check_phone_verification_rate_limit(self):
+        cache_key = self.phone_verification_rate_limit_key
+        return cache.get(cache_key, default=False)
+
+    def set_phone_verification_rate_limit(self):
+        cache_key = self.phone_verification_rate_limit_key
+        expires = settings.PHONE_VERIFICATION_RATE_LIMIT * 60
+        cache.set(cache_key, True, expires)
+
+    def send_phone_verification_code(self):
+        expires = settings.PHONE_VERIFICATION_CODE_EXPIRES * 60
+        code = ''.join([
+            random.choice(string.digits) for x
+            in range(settings.PHONE_VERIFICATION_CODE_DIGITS)
+        ])
         cache.set(self.phone_verification_code_key, code, expires)
         message = f'SJVAir – Verification Code: {code}'
         self.send_sms(message, verify=False)  # Don't do a verification check
 
     def check_phone_verification_code(self, code):
         cached_code = cache.get(self.phone_verification_code_key)
-        print(code, cached_code)
         return code == cached_code
 
     def send_sms(self, message, verify=True):

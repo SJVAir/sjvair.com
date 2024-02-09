@@ -305,6 +305,15 @@ TWILIO_PHONE_NUMBERS = os.environ.get("TWILIO_PHONE_NUMBERS", "").split(',')
 # SMS Alerts
 SEND_SMS_ALERTS = bool(int(os.environ.get('SEND_SMS_ALERTS', 1)))
 
+# Number of minutes between sending
+PHONE_VERIFICATION_RATE_LIMIT = int(os.environ.get('PHONE_VERIFICATION_RATE_LIMIT', 2))
+
+# Number of minutes until the code expires
+PHONE_VERIFICATION_CODE_EXPIRES = int(os.environ.get('PHONE_VERIFICATION_CODE_EXPIRES', 5))
+
+# Number of digits in the phone verification code
+PHONE_VERIFICATION_CODE_DIGITS = int(os.environ.get('PHONE_VERIFICATION_CODE_DIGITS', 6))
+
 # Google Maps
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
 

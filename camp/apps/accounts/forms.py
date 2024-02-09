@@ -188,9 +188,6 @@ class UserChangeForm(forms.ModelForm):
 
 
 class SendPhoneVerificationForm(forms.Form):
-    RATE_LIMIT = 2  # Number of minutes between sending
-    CODE_EXPIRES = 5  # Number of minutes until the code expires
-
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user')
         super().__init__(*args, **kwargs)
@@ -200,11 +197,10 @@ class SendPhoneVerificationForm(forms.Form):
         return self.cleaned_data
 
     def check_rate_limit(self):
-        cache_key = self.user.phone_verification_rate_limit_key
-        if cache.get(cache_key):
+        if self.user.check_phone_verification_rate_limit():
             error = _('You have recently been sent a verification code. Please try again shortly.')
             raise forms.ValidationError(error)
-        cache.set(cache_key, True, self.RATE_LIMIT * 60)
+        self.user.set_phone_verification_rate_limit()
 
 
 class PhoneVerificationCodeForm(forms.Form):
@@ -224,8 +220,6 @@ class PhoneVerificationCodeForm(forms.Form):
 
 
 class SubmitPhoneVerificationForm(PhoneVerificationCodeForm, forms.Form):
-    CODE_EXPIRES = SendPhoneVerificationForm.CODE_EXPIRES # hack
-
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user')
         super().__init__(*args, **kwargs)
@@ -239,6 +233,16 @@ class PasswordResetForm(forms.Form):
         })
     )
 
+    def clean_phone(self):
+        phone = self.cleaned_data['phone']
+        self.user = self.get_user(phone)
+        if self.user is not None:
+            if self.user.check_phone_verification_rate_limit():
+                error = _('You have recently been sent a verification code. Please try again shortly.')
+                raise forms.ValidationError(error)
+            self.user.set_phone_verification_rate_limit()
+        return phone
+
     def get_user(self, phone):
         try:
             return User.objects.get(
@@ -249,12 +253,11 @@ class PasswordResetForm(forms.Form):
             return None
         
     def save(self, **opts):
-        phone = self.cleaned_data['phone']
-        if user := self.get_user(phone):
-            user.send_phone_verification_code()
+        if self.user:
+            self.user.send_phone_verification_code()
             return {
-                'uidb64': urlsafe_base64_encode(force_bytes(user.pk)),
-                'token': token_generator.make_token(user),
+                'uidb64': urlsafe_base64_encode(force_bytes(self.user.pk)),
+                'token': token_generator.make_token(self.user),
             }
 
 
