@@ -16,13 +16,13 @@
             {% include '_includes/form/field.html' with field=form.email icon_left="far fa-envelope" %}
             {% include '_includes/form/field.html' with field=form.phone icon_left="far fa-phone" %}
             {% if user.phone and not user.phone_verified %}
-                <div class="notification is-danger is-light">
+                <div class="notification is-info is-light">
                     <div class="content">
-                        <p>
+                        <p class="has-text-weight-semibold">
                             <span class="far fa-exclamation-triangle"></span>
                             You must verify your phone number before you will receive and air quality alerts.
                         </p>
-                        <p class="has-text-weight-semibold"><a href="{% url 'account:phone-verify-send' %}">Click here to verify your phone number.</a></p>
+                        <p><a href="{% url 'account:phone-verify-send' %}" class="button is-info">Verify your phone number</a></p>
                     </div>
                 </div>
             {% endif %}
