@@ -1,5 +1,9 @@
+import random
+import string
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from django.core.cache import cache
 from django.db import models
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -13,6 +17,7 @@ from phonenumber_field.modelfields import PhoneNumberField
 
 from camp.apps.accounts import managers
 from camp.apps.accounts.tasks import send_sms_message
+from camp.utils.fields import NullEmailField
 
 
 class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
@@ -25,14 +30,14 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
         editable=False,
         verbose_name='ID'
     )
-    full_name = models.CharField(max_length=100)
-    email = models.EmailField(unique=True, db_index=True)
-    phone = PhoneNumberField(blank=True, help_text="Your cell phone number for receiving air quality text alerts.")
+    full_name = models.CharField(_('Full name'), max_length=100)
+    email = NullEmailField(_('Email address'), unique=True, blank=True, null=True, db_index=True)
+    phone = PhoneNumberField(_('Phone number'), unique=True, db_index=True, help_text="Your cell phone number for receiving air quality text alerts.")
     phone_verified = models.BooleanField(default=False)
     language = models.CharField(_('Preferred Language'), max_length=5, choices=LANGUAGES, default=LANGUAGES.en)
 
     # Normally provided by auth.AbstractUser, but we're not using that here.
-    date_joined = models.DateTimeField(_('date joined'), default=timezone.now, editable=False)
+    date_joined = models.DateTimeField(_('Date joined'), default=timezone.now, editable=False)
     is_active = models.BooleanField(
         _('active'),
         default=True,
@@ -50,13 +55,16 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
     )  # Required for Django Admin, for tenant staff/admin see role
 
     EMAIL_FIELD = 'email'
-    USERNAME_FIELD = 'email'
+    USERNAME_FIELD = 'phone'
     REQUIRED_FIELDS = ['full_name']
 
     objects = managers.UserManager()
 
     class Meta:
         ordering = ('-date_joined',)
+
+    def __str__(self):
+        return str(self.name)
 
     def get_name(self):
         name = HumanName(self.full_name)
@@ -77,20 +85,37 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
         return self.name
 
     @property
-    def verify_phone_rate_limit_key(self):
+    def phone_verification_rate_limit_key(self):
         return f'phone-rate-limit:{self.phone}'
 
     @property
-    def verify_phone_code_key(self):
+    def phone_verification_code_key(self):
         return f'phone-code:{self.phone}'
+
+    def check_phone_verification_rate_limit(self):
+        cache_key = self.phone_verification_rate_limit_key
+        return cache.get(cache_key, default=False)
+
+    def set_phone_verification_rate_limit(self):
+        cache_key = self.phone_verification_rate_limit_key
+        expires = settings.PHONE_VERIFICATION_RATE_LIMIT * 60
+        cache.set(cache_key, True, expires)
+
+    def send_phone_verification_code(self):
+        expires = settings.PHONE_VERIFICATION_CODE_EXPIRES * 60
+        code = ''.join([
+            random.choice(string.digits) for x
+            in range(settings.PHONE_VERIFICATION_CODE_DIGITS)
+        ])
+        cache.set(self.phone_verification_code_key, code, expires)
+        message = f'SJVAir – Verification Code: {code}'
+        self.send_sms(message, verify=False)  # Don't do a verification check
+
+    def check_phone_verification_code(self, code):
+        cached_code = cache.get(self.phone_verification_code_key)
+        return code == cached_code
 
     def send_sms(self, message, verify=True):
         if self.phone and (self.phone_verified or not verify):
             return send_sms_message(self.phone, message)
         return False
-
-    def save(self, *args, **kwargs):
-        dirty_fields = self.get_dirty_fields()
-        if 'phone' in dirty_fields:
-            self.phone_verified = False
-        return super().save(*args, **kwargs)

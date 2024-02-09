@@ -9,11 +9,15 @@
 
         <div class="content">
             <h1>Phone Verification</h1>
-            <p>To verify your phone number, a 4-digit code will be sent to
+            <p>To verify your phone number, a {{ settings.PHONE_VERIFICATION_CODE_DIGITS }}-digit code will be sent to
                 your phone via text message. You must enter this code on the
                 next screen to verify your phone number. The verification
-                code will expire in {{ form.CODE_EXPIRES }} minute{{ form.CODE_EXPIRES|pluralize }}, after which a new code must
+                code will expire in {{ settings.PHONE_VERIFICATION_CODE_EXPIRES }} minute{{ settings.PHONE_VERIFICATION_CODE_EXPIRES|pluralize }}, after which a new code must
                 be sent.</p>
+
+            <div class="notification is-light is-info">
+                <p><span class="far fa-question-circle"></span> Already have a verification code? <a href="{% url 'account:phone-verify-submit' %}">Click here to submit your code.</a></p>
+            </div>
 
             {% if form.non_field_errors %}
                 {% for error in form.non_field_errors %}
@@ -26,11 +30,5 @@
             <button type="submit" class="button is-success">Send verification code</button>
         </div>
     </form>
-
-    <hr />
-
-    <div class="notification is-light is-info">
-        <p><span class="far fa-question-circle"></span> Already have a verification code? <a href="{% url 'account:phone-verify-submit' %}">Click here to submit your code.</a></p>
-    </div>
 </div>
 {% endblock %}

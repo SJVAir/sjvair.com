@@ -19,7 +19,7 @@
         <!-- ??? -->
     {% else %}
         <label class="label" for="{{ field.id_for_label }}">
-            {{ field.label }} {% if not field|optional %}<span class="required">*</span>{% endif %}
+            {{ field.label }}{% if field|optional %} <span class="is-size-7 has-text-grey has-text-weight-normal">(Optional)</span>{% else %}<span class="required">*</span>{% endif %}
         </label>
         <div class="control {% if icon_left %}has-icons-left{% endif %} {% if icon_right %}has-icons-right{% endif %}">
             {% if field|is_select %}

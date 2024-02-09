@@ -15,19 +15,17 @@
             <p>Check your text messages for a verification code and enter it here:</p>
         </div>
 
+        <div class="notification is-light is-info">
+            <p><span class="far fa-question-circle"></span> Need a verification code? <a href="{% url 'account:phone-verify-send' %}">Click here to get one.</a></p>
+        </div>
+
         <div class="columns is-centered">
-            <div class="column is-8">
+            <div class="column is-6">
                 {% include '_includes/form/field.html' with field=form.code icon_left="far fa-hashtag" %}
                 <button type="submit" class="button is-success">Verify your phone number.</button>
             </div>
         </div>
     </form>
-
-    <hr />
-
-    <div class="notification is-light is-info">
-        <p><span class="far fa-question-circle"></span> Need have a verification code? <a href="{% url 'account:phone-verify-send' %}">Click here to get one.</a></p>
-    </div>
 </div>
 {% endblock %}
 

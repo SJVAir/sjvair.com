@@ -1,0 +1,7 @@
+{% if user.phone_verified %}
+    <img src="/static/admin/img/icon-yes.svg" alt="True">
+{% else %}
+    <img src="/static/admin/img/icon-no.svg" alt="False">
+{% endif %}
+
+{{ user.phone.as_national }}
