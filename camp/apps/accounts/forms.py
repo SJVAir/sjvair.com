@@ -1,10 +1,15 @@
 from django import forms
-from django.contrib.auth import authenticate, forms as auth_forms
+from django.contrib.auth import authenticate, forms as auth_forms, password_validation
+from django.contrib.auth.tokens import default_token_generator as token_generator
 from django.core import validators
 from django.core.cache import cache
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from django.utils.translation import gettext_lazy as _
 
+from phonenumber_field.formfields import PhoneNumberField
 from phonenumber_field.validators import validate_international_phonenumber
+from phonenumber_field.widgets import RegionalPhoneNumberWidget
 
 from .models import User
 
@@ -111,10 +116,18 @@ class UserCreationForm(forms.ModelForm):
         'duplicate_phone': _("A user with that phone number already exists."),
         'password_mismatch': _("The two password fields didn't match."),
     }
-    password1 = forms.CharField(label=_('Password'), widget=forms.PasswordInput)
-    password2 = forms.CharField(label=_('Password confirmation'),
+
+    password1 = forms.CharField(
+        label=_('Password'),
+        help_text=password_validation.password_validators_help_text_html(),
         widget=forms.PasswordInput,
-        help_text=_('Enter the same password as above, for verification.'))
+    )
+
+    password2 = forms.CharField(
+        label=_('Password confirmation'),
+        help_text=_('Enter the same password as before, for verification.'),
+        widget=forms.PasswordInput,
+    )
 
     class Meta:
         model = User
@@ -194,20 +207,59 @@ class SendPhoneVerificationForm(forms.Form):
         cache.set(cache_key, True, self.RATE_LIMIT * 60)
 
 
-class SubmitPhoneVerificationForm(forms.Form):
-    CODE_EXPIRES = SendPhoneVerificationForm.CODE_EXPIRES # hack
-
-    code = forms.CharField(max_length=4, min_length=4)
-
-    def __init__(self, *args, **kwargs):
-        self.user = kwargs.pop('user')
-        super().__init__(*args, **kwargs)
+class PhoneVerificationCodeForm(forms.Form):
+    code = forms.CharField(
+        label=_('Verification code'),
+        help_text=_("Check your phone for a verification text from SJVAir."),
+        max_length=6,
+        min_length=6
+    )
 
     def clean_code(self):
         code = self.cleaned_data.get('code')
         verified = self.user.check_phone_verification_code(code)
         if not verified:
             raise forms.ValidationError(_('Invalid verification code, please try again.'))
-
         return code
 
+
+class SubmitPhoneVerificationForm(PhoneVerificationCodeForm, forms.Form):
+    CODE_EXPIRES = SendPhoneVerificationForm.CODE_EXPIRES # hack
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user')
+        super().__init__(*args, **kwargs)
+
+
+class PasswordResetForm(forms.Form):
+    phone = PhoneNumberField(
+        label=_('Phone number'),
+        widget=RegionalPhoneNumberWidget(attrs={
+            "autocomplete": "phone"
+        })
+    )
+
+    def get_user(self, phone):
+        try:
+            return User.objects.get(
+                phone=phone,
+                is_active=True,
+            )
+        except User.DoesNotExist:
+            return None
+        
+    def save(self, **opts):
+        phone = self.cleaned_data['phone']
+        if user := self.get_user(phone):
+            user.send_phone_verification_code()
+            return {
+                'uidb64': urlsafe_base64_encode(force_bytes(user.pk)),
+                'token': token_generator.make_token(user),
+            }
+
+
+class SetPasswordForm(PhoneVerificationCodeForm, auth_forms.SetPasswordForm):
+    def save(self, *args, **kwargs):
+        # The user has defacto verified their phone number, so mark it.
+        self.user.phone_verified = True
+        return super().save(*args, **kwargs)
