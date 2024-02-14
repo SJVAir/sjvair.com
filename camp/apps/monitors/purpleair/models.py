@@ -1,3 +1,4 @@
+import html
 import time
 
 from datetime import timedelta
@@ -42,7 +43,7 @@ class PurpleAir(Monitor):
                 raise ValueError(f'Cannot fetch Purple Air data if purple_id is None.')
             data = purpleair_api.get_sensor(self.purple_id)
 
-        self.name = data['name']
+        self.name = html.unescape(data['name'])
         self.position = Point(
             float(data['longitude']),
             float(data['latitude'])
