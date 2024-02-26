@@ -2,10 +2,10 @@
 # yarn lockfile v1
 
 
-"@sjvair/monitor-map@^1.8.10":
-  version "1.8.10"
-  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-1.8.10.tgz#a78396feaa452268cf38a77f54d2bbe7d110cc0d"
-  integrity sha512-zbNMV3y0YE9U7yyzFuZDNt1moPqcS+Zkdje7NX4JQhUls2Eqr0wkkgtll2gHYMUgBac2DQDLw+cU/wyG3vWusg==
+"@sjvair/monitor-map@^1.8.11":
+  version "1.8.11"
+  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-1.8.11.tgz#a4764070c40cdd83e3094cb3b6fe734a090e691d"
+  integrity sha512-Hzcu0X4c4OWoH/CM8jD5FQkpnDuWjS9dJIlz7+uiAOnqDMctv48peSJpBJsufP7i0rVdMMiThK32BhMMlQqR6Q==
 
 "@sjvair/sensor-scatterplot@^1.0.12":
   version "1.0.12"
