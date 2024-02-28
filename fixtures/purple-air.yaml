@@ -9,6 +9,7 @@
     location: outside
     default_sensor: a
     latest: null
+    device: PA-II
 - model: purpleair.purpleair
   pk: jLI5fer7S0uyR7eMYNSPpg
   fields:

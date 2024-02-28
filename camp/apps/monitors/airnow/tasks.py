@@ -31,12 +31,14 @@ def import_airnow_data(timestamp=None, previous=None):
                 print('[AirNow] Insufficient data:', site_name)
                 continue
 
+            # Get the first entry for updating the monitor info.
+            entry = list(list(container.values())[0].values())[0]
+
             # Look up the monitor by name. If it doesn't exist, create it.
             try:
                 monitor = AirNow.objects.get(name=site_name)
                 print('[AirNow] Monitor exists:', monitor.name)
             except AirNow.DoesNotExist:
-                entry = list(list(container.values())[0].values())[0]
                 latlon = Point(entry['Longitude'], entry['Latitude'], srid=4326)
                 county = County.lookup(latlon)
                 if not county:
@@ -47,9 +49,16 @@ def import_airnow_data(timestamp=None, previous=None):
                     name=site_name,
                     position=latlon,
                     county=county,
+                    data_provider=entry.get('AgencyName', ''),
                     location=AirNow.LOCATION.outside
                 )
                 print('[AirNow] Monitor created:', site_name)
+
+            # This block can be removed at a later date, once
+            # existing monitors have been updated with the AgencyName.
+            if entry.get('AgencyName') and not monitor.data_provider:
+                monitor.data_provider = entry['AgencyName']
+                monitor.save()
 
             for timestamp, data in container.items():
                 if data.get('PM2.5') is None:

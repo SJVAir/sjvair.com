@@ -24,7 +24,7 @@ class MonitorSerializer(serializers.Serializer):
     fields = [
         'id',
         'name',
-        'device',
+        ('device', lambda monitor: monitor.get_device()),
         'is_active',
         'is_sjvair',
         'position',
@@ -32,7 +32,9 @@ class MonitorSerializer(serializers.Serializer):
         ('last_active_limit', lambda monitor: monitor.LAST_ACTIVE_LIMIT),
         'location',
         ('latest', EntrySerializer),
-        'county'
+        'county',
+        'data_source',
+        'data_providers',
     ]
 
     def fixup(self, instance, data):
