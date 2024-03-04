@@ -120,7 +120,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     fieldsets = [
         (None, {'fields': ['name', 'default_sensor', 'is_hidden', 'is_sjvair']}),
         ('Location Data', {'fields': ['county', 'location', 'position']}),
-        ('Metadata', {'fields': ['groups', 'notes']}),
+        ('Metadata', {'fields': ['groups', 'notes', 'data_provider', 'data_provider_url']}),
     ]
 
     csv_export_fields = ['id', 'name', 'get_device', 'health_grade', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
