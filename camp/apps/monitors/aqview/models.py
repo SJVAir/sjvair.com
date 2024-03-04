@@ -19,6 +19,9 @@ class AQview(Monitor):
         'url': 'https://aqview.arb.ca.gov/'
     }
 
+    class Meta:
+        verbose_name = 'AQview'
+
     def process_entry(self, entry, payload):
         entry.timestamp = payload['timestamp']
         entry.pm25 = payload['aobs']

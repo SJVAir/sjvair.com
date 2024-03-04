@@ -16,7 +16,10 @@ class AirNow(Monitor):
         'name': 'AirNow.gov',
         'url': 'https://www.airnow.gov/'
     }
-    DEVICE = 'BAM-1022'
+    DEVICE = 'BAM 1022'
+
+    class Meta:
+        verbose_name = 'Air Now'
 
     def process_entry(self, entry, payload):
         entry.timestamp = make_aware(parse_datetime(

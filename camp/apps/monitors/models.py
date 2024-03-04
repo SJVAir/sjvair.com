@@ -102,7 +102,7 @@ class Monitor(models.Model):
         return slugify(self.name)
 
     def get_device(self):
-        return self.device or self.DEVICE or self.__class__.__name__
+        return self.device or self.DEVICE or self._meta.verbose_name
 
     @property
     def data_providers(self):
