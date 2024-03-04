@@ -23,6 +23,16 @@ from camp.utils.datetime import parse_datetime
 class BAM1022(Monitor):
     LAST_ACTIVE_LIMIT = int(60 * 60 * 1.5)
 
+    DATA_PROVIDERS = [{
+        'name': 'Central California Asthma Collaborative',
+        'url': 'https://cencalasthma.org'
+    }]
+
+    DATA_SOURCE = {
+        'name': 'Central California Asthma Collaborative',
+        'url': 'https://cencalasthma.org'
+    }
+
     class Meta:
         verbose_name = 'BAM 1022'
 
