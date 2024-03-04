@@ -240,6 +240,17 @@ SJVAIR_INACTIVE_ALERT_EMAILS = [email.strip() for email in
 SJVAIR_CONTACT_EMAILS = [email.strip() for email in
     os.environ.get('SJVAIR_CONTACT_EMAILS', SERVER_EMAIL).split(',')]
 
+# App URLs
+
+APP_URL_ANDROID = os.environ.get('APP_URL_ANDROID',
+    'https://play.google.com/store/apps/details?id=com.sjvair.mobile')
+
+APP_URL_IPAD = os.environ.get('APP_URL_IPAD',
+    'https://apps.apple.com/us/app/sjvair/id6448961840?platform=ipad')
+
+APP_URL_IPHONE = os.environ.get('APP_URL_IPHONE',
+    'https://apps.apple.com/us/app/sjvair/id6448961840?platform=iphone')
+
 # django-cors-headers
 
 CORS_ORIGIN_ALLOW_ALL = True
