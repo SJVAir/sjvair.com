@@ -46,6 +46,9 @@ class PurpleAir(Monitor):
 
     purple_id = models.IntegerField(unique=True)
 
+    class Meta:
+        verbose_name = 'PurpleAir'
+
     def update_data(self, data=None):
         if data is None:
             if self.purple_id is None:

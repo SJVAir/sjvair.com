@@ -26,6 +26,9 @@ class BAM1022(Monitor):
     class Meta:
         verbose_name = 'BAM 1022'
 
+    class Meta:
+        verbose_name = 'BAM 1022'
+
     def create_entry(self, payload, sensor=None):
         timestamp = parse_datetime(payload['Time'])
         try:
