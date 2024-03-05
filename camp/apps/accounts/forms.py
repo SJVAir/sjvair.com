@@ -87,15 +87,16 @@ class ProfileForm(forms.ModelForm):
 
     def clean_email(self):
         email = User.objects.normalize_email(self.cleaned_data['email'])
-        
-        queryset = User.objects.filter(email__iexact=email)
-        if self.instance:
-            queryset = queryset.exclude(pk=self.instance.pk)
-        
-        if queryset.exists():
-            raise forms.ValidationError(self.error_messages['duplicate_email'])
 
-        return email
+        if email:
+            queryset = User.objects.filter(email__iexact=email)
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+
+            if queryset.exists():
+                raise forms.ValidationError(self.error_messages['duplicate_email'])
+
+        return email or None
 
     def clean_phone(self):
         phone = self.cleaned_data['phone']
@@ -138,9 +139,9 @@ class UserCreationForm(forms.ModelForm):
 
     def clean_email(self):
         email = User.objects.normalize_email(self.cleaned_data['email'])
-        if User.objects.filter(email__iexact=email).exists():
+        if email and User.objects.filter(email__iexact=email).exists():
             raise forms.ValidationError(self.error_messages['duplicate_email'])
-        return email
+        return email or None
 
     def clean_phone(self):
         phone = self.cleaned_data['phone']
