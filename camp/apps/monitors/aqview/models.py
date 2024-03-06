@@ -10,6 +10,18 @@ from camp.utils.datetime import make_aware
 class AQview(Monitor):
     LAST_ACTIVE_LIMIT = int(60 * 60 * 3)
 
+    DATA_PROVIDERS = [{
+        'name': 'California Air Resources Board',
+        'url': 'https://arb.ca.gov'
+    }]
+    DATA_SOURCE = {
+        'name': 'AQview',
+        'url': 'https://aqview.arb.ca.gov/'
+    }
+
+    class Meta:
+        verbose_name = 'AQview'
+
     def process_entry(self, entry, payload):
         entry.timestamp = payload['timestamp']
         entry.pm25 = payload['aobs']

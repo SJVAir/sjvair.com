@@ -46,9 +46,25 @@ def process_aqview_data(payload):
             name=payload['sitename'],
             position=Point(payload['geometry'].x, payload['geometry'].y, srid=4326),
             county=payload['countyname'],
-            location=AQview.LOCATION.outside
+            location=AQview.LOCATION.outside,
+            device=payload.get('externalmonitorid'),
+            data_provider=payload.get('dataprovidername', ''),
+            data_provider_url=payload.get('dplink', ''),
         )
         print('[AQview] Monitor created:', monitor.name)
+
+    # This block can be removed at a later date, once
+    # existing monitors have been updated with the dataprovidername.
+    if payload.get('dataprovidername') and not monitor.data_provider:
+        monitor.data_provider = payload['dataprovidername']
+        monitor.dplink = payload.get('dplink')
+        monitor.save()
+
+    # This block can be removed at a later date, once
+    # existing monitors have been updated with the externalmonitorid.
+    if payload.get('externalmonitorid') and not monitor.device:
+        monitor.device = payload['externalmonitorid']
+        monitor.save()
 
     # Calculate the timestamp and make it timezone aware.
     payload['timestamp'] = make_aware(

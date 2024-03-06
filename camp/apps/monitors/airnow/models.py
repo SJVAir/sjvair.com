@@ -8,6 +8,19 @@ from camp.utils.datetime import make_aware
 class AirNow(Monitor):
     LAST_ACTIVE_LIMIT = int(60 * 60 * 1.5)
 
+    DATA_PROVIDERS = [{
+        'name': 'AirNow Partners',
+        'url': 'https://www.airnow.gov/partners/'
+    }]
+    DATA_SOURCE = {
+        'name': 'AirNow.gov',
+        'url': 'https://www.airnow.gov/'
+    }
+    DEVICE = 'BAM 1022'
+
+    class Meta:
+        verbose_name = 'Air Now'
+
     def process_entry(self, entry, payload):
         entry.timestamp = make_aware(parse_datetime(
             list(payload.values())[0]['UTC']

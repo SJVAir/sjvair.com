@@ -16,6 +16,7 @@ from django.template.defaultfilters import floatformat
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from django_admin_inline_paginator.admin import TabularInlinePaginated
@@ -112,20 +113,17 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     actions = ['export_monitor_list_csv']
     form = MonitorAdminForm
 
-    list_display = ['name', 'get_current_health', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor', 'get_subscriptions']
+    list_display = ['name', 'get_device', 'get_current_health', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'default_sensor', 'get_subscriptions']
     list_editable = ['is_sjvair', 'is_hidden']
-    list_filter = ['is_sjvair', 'is_hidden', MonitorIsActiveFilter, 'groups', 'location', 'county', HealthGradeListFilter]
-
-    # fields = ['', '', '', '', '', '',
-    # '', '', 'pm25_calibration_formula', '']
+    list_filter = ['is_sjvair', 'is_hidden', 'device', MonitorIsActiveFilter, 'groups', 'location', 'county', HealthGradeListFilter]
 
     fieldsets = [
         (None, {'fields': ['name', 'default_sensor', 'is_hidden', 'is_sjvair']}),
         ('Location Data', {'fields': ['county', 'location', 'position']}),
-        ('Metadata', {'fields': ['groups', 'notes']}),
+        ('Metadata', {'fields': ['groups', 'notes', 'data_provider', 'data_provider_url']}),
     ]
 
-    csv_export_fields = ['id', 'name', 'health_grade', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
+    csv_export_fields = ['id', 'name', 'get_device', 'health_grade', 'last_updated', 'county', 'default_sensor', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
     search_fields = ['county', 'current_health__r2', 'location', 'name']
     save_on_top = True
 
@@ -181,6 +179,29 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
             return Alert.objects.get(monitor_id=object_id, end_time__isnull=True)
         except Alert.DoesNotExist:
             return None
+
+    def get_device(self, instance):
+        return instance.get_device()
+    get_device.short_description = 'Device'
+
+    def _render_partner(self, name, url=None):
+        if url is not None:
+            return f'<a href="{url}">{name}</a>'
+        return name
+
+    def get_data_source(self, instance):
+        content = self._render_partner(**instance.data_source)
+        return mark_safe(content)
+    get_data_source.short_description = 'Data Source'
+
+    def get_data_providers(self, instance):
+        content = '<br />'.join([
+            self._render_partner(**item)
+            for item in instance.data_providers
+        ])
+        return mark_safe(content)
+    get_data_providers.short_description = 'Data Providers'
+
 
     def get_active_status(self, instance):
         return instance.is_active
