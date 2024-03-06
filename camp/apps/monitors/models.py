@@ -1,3 +1,4 @@
+import copy
 import json
 import uuid
 
@@ -39,6 +40,10 @@ class Monitor(models.Model):
     PAYLOAD_SCHEMA = None
     SENSORS = ['']
 
+    DATA_PROVIDERS = []
+    DATA_SOURCE = {}
+    DEVICE = None
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -54,6 +59,11 @@ class Monitor(models.Model):
 
     is_hidden = models.BooleanField(default=False, help_text="Hides the monitor on the map.")
     is_sjvair = models.BooleanField(default=False, help_text="Is this monitor part of the SJVAir network?")
+    device = models.CharField(max_length=50, blank=True)
+
+    # Data provider info
+    data_provider = models.CharField(max_length=100, blank=True)
+    data_provider_url = models.URLField(max_length=100, blank=True)
 
     # Where is this sensor setup?
     position = models.PointField(null=True, db_index=True)
@@ -91,9 +101,21 @@ class Monitor(models.Model):
     def slug(self):
         return slugify(self.name)
 
+    def get_device(self):
+        return self.device or self.DEVICE or self._meta.verbose_name
+
     @property
-    def device(self):
-        return self.__class__.__name__
+    def data_providers(self):
+        providers = copy.deepcopy(self.DATA_PROVIDERS)
+        if self.data_provider:
+            providers.append({'name': self.data_provider})
+            if self.data_provider_url:
+                providers[-1]['url'] = self.data_provider_url
+        return providers
+
+    @property
+    def data_source(self):
+        return self.DATA_SOURCE
 
     @property
     def is_active(self):

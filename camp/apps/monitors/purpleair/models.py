@@ -35,7 +35,19 @@ class PurpleAir(Monitor):
     SENSOR_ATTRS = ['fahrenheit', 'humidity', 'pressure']
     SENSOR_ATTRS.extend(CHANNEL_FIELDS.keys())
 
+    DATA_PROVIDERS = [{
+        'name': 'PurpleAir',
+        'url': 'https://www2.purpleair.com/'
+    }]
+    DATA_SOURCE = {
+        'name': 'PurpleAir',
+        'url': 'https://www2.purpleair.com/'
+    }
+
     purple_id = models.IntegerField(unique=True)
+
+    class Meta:
+        verbose_name = 'PurpleAir'
 
     def update_data(self, data=None):
         if data is None:
@@ -49,6 +61,7 @@ class PurpleAir(Monitor):
             float(data['latitude'])
         )
         self.location = self.get_probable_location(data)
+        self.device = data.get('model', '')
 
         if not self.default_sensor:
             self.default_sensor = 'a'
