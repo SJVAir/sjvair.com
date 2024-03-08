@@ -25,9 +25,9 @@ def import_airnow_data(timestamp=None, previous=None):
         # {site_name: {timestamp: [{data}, ...]}}
         data = airnow_api.query(county, timestamp=timestamp, previous=previous)
         for site_name, container in data.items():
-            if 'PM2.5' not in list(container.values())[0]:
-                # Skip any monitors that don't have PM2.5 data
-                # (Some monitors only report, e.g., ozone.)
+            entry_types = set(list(container.values())[0])
+            if not entry_types.intersection(set(['PM2.5', 'OZONE'])):
+                # Skip any monitors that don't have PM2.5 or OZONE data.
                 print('[AirNow] Insufficient data:', site_name)
                 continue
 

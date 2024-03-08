@@ -15,6 +15,7 @@ class EntrySerializer(serializers.Serializer):
         'pm25', 'pm100', 'pm25_reported', 'pm25_avg_15', 'pm25_avg_60',
         'particles_03um', 'particles_05um', 'particles_100um',
         'particles_10um', 'particles_25um', 'particles_50um',
+        'ozone',
     ]
 
     fields = base_fields + value_fields
