@@ -1,7 +1,7 @@
 - model: accounts.user
   pk: xaJ2lOJtTiqlqpAt3CV_iA
   fields:
-    password: argon2$argon2id$v=19$m=102400,t=2,p=8$SmtYQ1dYbWpXVlZNU2dVWWRGd2xkZw$h5/hSr5CDUaNkyxeJOG4Qg
+    password: argon2$argon2id$v=19$m=102400,t=2,p=8$SnV1bWlZQVkxSzZwOGc1Y1g1d09oNQ$J+GpZqtQsp5QpMIZs/y9hD5p2UJG2NUbroaRHvjwV14
     last_login: null
     is_superuser: false
     full_name: Joe Test
