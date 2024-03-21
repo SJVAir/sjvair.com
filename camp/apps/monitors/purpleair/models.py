@@ -131,6 +131,5 @@ class PurpleAir(Monitor):
             if payload.get(attr) is not None:
                 setattr(entry, attr, payload[attr])
 
-        # TODO: can probably nuke this line
-        # entry.timestamp = parse_timestamp(payload.get('timestamp'))
+        entry.timestamp = payload['timestamp']
         return super().process_entry(entry, payload)
