@@ -52,7 +52,7 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
         help_text=_(
             'Designates whether the user can log into this admin site.'
         )
-    )  # Required for Django Admin, for tenant staff/admin see role
+    )
 
     EMAIL_FIELD = 'email'
     USERNAME_FIELD = 'phone'
