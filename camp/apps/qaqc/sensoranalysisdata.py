@@ -39,9 +39,8 @@ class SensorAnalysisData:
         return self.__get_sensor_group(self.monitor.SENSORS[0])
 
     def __get_sensor_group(self, sensor):
-        groups = self.df.groupby('sensor')
-
         try:
+            groups = self.df.groupby('sensor')
             grp = groups.get_group(sensor).loc[:, ['timestamp', self.data_field]]
         except KeyError:
             return None
