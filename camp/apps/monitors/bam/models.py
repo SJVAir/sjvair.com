@@ -1,7 +1,9 @@
+import statistics
 import time
 import uuid
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -64,4 +66,25 @@ class BAM1022(Monitor):
         entry.timestamp = parse_datetime(payload['Time'])
         return super().process_entry(entry, payload)
 
-
+    def calculate_mass_offset(self, end_time=None):
+        '''
+            This method analyze the previous 72 hours of data for a
+            background determination mass offset. This assumes the
+            BAM has been running with the Zero Filter installed for
+            the duration of the test.
+        '''
+        end_time = end_time or timezone.now()
+        start_time = end_time - timedelta(hours=72)
+        values = list((self.entries
+            .filter(timestamp__range=(start_time, end_time))
+            .values_list(self.data_field, flat=True)
+        ))
+        return {
+            'mass_offset': round((statistics.mean(values) * -1) * Decimal('0.001'), 4),
+            'stdev': statistics.pstdev(values),
+            'variance': statistics.pvariance(values),
+            'len': len(values),
+            'min': min(values),
+            'max': max(values),
+            'data': values,
+        }
