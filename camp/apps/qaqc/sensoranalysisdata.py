@@ -54,4 +54,3 @@ class SensorAnalysisData:
         grp = grp.dropna()
 
         return grp
-

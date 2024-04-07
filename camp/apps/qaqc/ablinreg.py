@@ -69,8 +69,8 @@ class ABLinearRegression(SensorAnalysisData):
 
     def generate_variance(self):
         return explained_variance_score(
-            self.exog['pm25_reported'].values,
-            self.endog['pm25_reported'].values
+            self.exog[self.data_field].values,
+            self.endog[self.data_field].values
         )
 
 
