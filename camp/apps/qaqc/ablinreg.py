@@ -28,6 +28,9 @@ class ABLinearRegression(SensorAnalysisData):
         )
 
     def analyze(self):
+        if self.endog is None or self.exog is None:
+            return None
+            
         linreg = self.generate_regression()
         variance = self.generate_variance()
 
