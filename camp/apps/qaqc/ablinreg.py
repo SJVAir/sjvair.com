@@ -28,6 +28,9 @@ class ABLinearRegression(SensorAnalysisData):
         )
 
     def analyze(self):
+        if self.endog is None or self.exog is None:
+            return None
+            
         linreg = self.generate_regression()
         variance = self.generate_variance()
 
@@ -69,8 +72,8 @@ class ABLinearRegression(SensorAnalysisData):
 
     def generate_variance(self):
         return explained_variance_score(
-            self.exog['pm25_reported'].values,
-            self.endog['pm25_reported'].values
+            self.exog[self.data_field].values,
+            self.endog[self.data_field].values
         )
 
 
