@@ -40,7 +40,6 @@ def process_aqview_data(payload):
     # Get or create the monitor
     try:
         monitor = AQview.objects.get(name=payload['sitename'])
-        print('[AQview] Monitor exists:', monitor.name)
     except AQview.DoesNotExist:
         monitor = AQview.objects.create(
             name=payload['sitename'],
@@ -51,7 +50,6 @@ def process_aqview_data(payload):
             data_provider=payload.get('dataprovidername', ''),
             data_provider_url=payload.get('dplink', ''),
         )
-        print('[AQview] Monitor created:', monitor.name)
 
     # This block can be removed at a later date, once
     # existing monitors have been updated with the dataprovidername.

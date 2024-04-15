@@ -19,7 +19,7 @@ class AirNow(Monitor):
     DEVICE = 'BAM 1022'
 
     class Meta:
-        verbose_name = 'Air Now'
+        verbose_name = 'AirNow'
 
     def process_entry(self, entry, payload):
         entry.timestamp = make_aware(parse_datetime(
