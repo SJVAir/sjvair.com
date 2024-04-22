@@ -3,13 +3,12 @@ from unittest.mock import patch
 
 from django.core import mail
 from django.core.cache import cache
-from django.test import Client
-from django.test import TestCase, RequestFactory
+from django.test import Client, TestCase, RequestFactory
 from django.urls import reverse
 
 from camp.apps.accounts.backends import AuthenticationBackend
 from camp.apps.accounts.models import User
-from camp.utils.test import get_response_data
+from camp.utils.test import debug, get_response_data
 
 from . import endpoints
 
@@ -17,10 +16,10 @@ client = Client()
 
 login = endpoints.LoginEndpoint.as_view()
 register = endpoints.RegisterEndpoint.as_view()
-password_reset = endpoints.PasswordResetEndpoint.as_view()
-password_reset_confirm = endpoints.PasswordResetConfirmEndpoint.as_view()
-phone_validation = endpoints.PhoneValidationEndpoint.as_view()
-phone_validation_confirm = endpoints.PhoneValidationConfirmEndpoint.as_view()
+# password_reset = endpoints.PasswordResetEndpoint.as_view()
+# password_reset_confirm = endpoints.PasswordResetConfirmEndpoint.as_view()
+send_phone_verification = endpoints.SendPhoneVerificationEndpoint.as_view()
+confirm_phone_verification = endpoints.ConfirmPhoneVerificationEndpoint.as_view()
 
 
 class AuthenticationTests(TestCase):
@@ -29,106 +28,139 @@ class AuthenticationTests(TestCase):
     def setUp(self):
         self.user = User.objects.get(email="user@sjvair.com")
         self.factory = RequestFactory()
-        self.login_url = reverse("api:v1:account:login")
-        self.register_url = reverse("api:v1:account:register")
 
     def test_authentication_backend(self):
         backend = AuthenticationBackend()
-        request = self.factory.post(
-            self.login_url,
-            {"email": "user@sjvair.com", "password": "letmein"},
+        url = reverse("api:v1:account:login")
+        request = self.factory.post(url,
+            {
+                "identifier": "user@sjvair.com",
+                "password": "letmein"
+            },
             content_type="application/json",
         )
         user = backend.authenticate(
-            request=request, email=self.user.email, password="letmein",
+            request=request, identifier=self.user.email, password="letmein",
         )
-        import code
-        code.interact(local=locals())
         assert user is not None
         assert user.pk == self.user.pk
 
-    # def test_valid_login(self):
-    #     request = self.factory.post(
-    #         self.login_url,
-    #         {"email": "user@sjvair.com", "password": "letmein"},
-    #         content_type="application/json",
-    #     )
-    #     response = login(request)
-    #     data = json.loads(response.content)
+    def test_valid_login(self):
+        url = reverse("api:v1:account:login")
+        request = self.factory.post(url,
+            {
+                "identifier": "user@sjvair.com",
+                "password": "letmein"
+            },
+            content_type="application/json",
+        )
+        response = login(request)
+        data = json.loads(response.content)
 
-    #     assert response.status_code == 200
-    #     assert "api_token" in data["data"]
-    #     assert "id" in data["data"]
-    #     assert data["data"]["id"] == str(self.user.pk)
+        assert response.status_code == 200
+        assert "api_token" in data["data"]
+        assert "id" in data["data"]
+        assert data["data"]["id"] == str(self.user.pk)
 
-    # def test_invalid_login(self):
-    #     request = self.factory.post(
-    #         self.login_url,
-    #         {"email": "user@sjvair.com", "password": "lolnope"},
-    #         content_type="application/json",
-    #     )
-    #     response = login(request)
-    #     data = json.loads(response.content)
+    def test_invalid_login(self):
+        url = reverse("api:v1:account:login")
+        request = self.factory.post(url,
+            {
+                "identifier": "user@sjvair.com",
+                "password": "lolnope"
+            },
+            content_type="application/json",
+        )
+        response = login(request)
+        data = json.loads(response.content)
 
-    #     assert response.status_code == 401
-    #     assert "errors" in data
+        assert response.status_code == 401
+        assert "errors" in data
 
-    # @patch("camp.apps.accounts.tasks.send_sms_message")
-    # def test_validate_phone(self, mock_send_sms_message):
-    #     self.user.phone = "+15595555555"
-    #     self.user.save()
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_register_new_user(self, send_sms_message):
+        url = reverse("api:v1:account:register")
+        payload = {
+            "full_name": "Alice Test",
+            "email": "alice.test@sjvair.com",
+            "phone": "+15595555555",
+            "password": "t0kenize th!s",
+            "confirm_password": "t0kenize th!s",
+        }
+        request = self.factory.post(url, payload,
+            content_type="application/json")
+        response = register(request)
+        data = json.loads(response.content)
 
-    #     url = reverse(
-    #         "api:v1:phone-validation",
-    #         kwargs={"user_id": self.user.pk},
-    #     )
-    #     request = self.factory.get(url)
-    #     request.user = self.user
-    #     response = phone_validation(
-    #         request, user_id=self.user.pk
-    #     )
+        # Assert we got a valid status code and the correct response data.
+        assert response.status_code == 201
+        assert "api_token" in data["data"]
+        assert data['data']['api_token']['key'] is not None
+        assert "id" in data["data"]
+        assert data["data"]["email"] == payload["email"]
 
-    #     assert response.status_code == 200
-    #     assert mock_send_sms_message.called
+        # Assert the user was created, the password was correctly saved,
+        # and they were sent a text to verify their phone number.
+        user = User.objects.get(pk=data["data"]["id"])
+        assert user.check_password(payload["password"])
+        assert send_sms_message.called
 
-    # def test_register_new_user(self):
-    #     payload = {
-    #         "full_name": "Alice Test",
-    #         "email": "alice.test@sjvair.com",
-    #         "phone": "+15595555555",
-    #         "password": "t0kenize th!s",
-    #         "confirm_password": "t0kenize th!s",
-    #     }
-    #     request = self.factory.post(
-    #         self.register_url, payload, content_type="application/json"
-    #     )
-    #     response = register(request)
-    #     data = json.loads(response.content)
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_validate_phone(self, send_sms_message):
+        self.user.phone = "559-555-5555"
+        self.user.phone_verified = False
+        self.user.save()
 
-    #     assert response.status_code == 201
-    #     assert "api_token" in data["data"]
-    #     assert "id" in data["data"]
-    #     assert data["data"]["email"] == payload["email"]
+        url = reverse("api:v1:account:phone-verify-send")
+        request = self.factory.post(url)
+        request.user = self.user
+        response = send_phone_verification(request)
 
-    #     user = User.objects.get(pk=data["data"]["id"])
-    #     assert user.check_password(payload["password"])
-    #     assert user.role == Role.ROLES.user
+        assert response.status_code == 204
+        assert send_sms_message.called
 
-    # def test_validate_phone_confirm(self):
-    #     """
-    #     Ensure a user can validate their phone number with the code
-    #     """
-    #     code = "123456"
-    #     cache_key = f"phv|user:+15005550006"
-    #     cache.set(cache_key, code, 60 * 15)
-    #     url = reverse("api:v1:phone-validation-confirm")
-    #     payload = {"code": "123456"}
-    #     request = self.factory.post(url, payload, content_type="application/json")
-    #     response = phone_validation_confirm(request)
-    #     data = json.loads(response.content)
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_validate_phone_confirm(self, send_sms_message):
+        """
+        Ensure a user can validate their phone number with the code
+        """
+        self.user.phone = "559-555-5555"
+        self.user.phone_verified = False
+        self.user.save()
 
-    #     assert response.status_code == 200
-    #     assert data["message"] == "Phone number was successfully confirmed."
+        code = '123456'
+        cache.set(self.user.phone_verification_code_key, code, 30)
+
+        url = reverse("api:v1:account:phone-verify-confirm")
+        request = self.factory.post(url, {'code': code})
+        request.user = self.user
+        response = confirm_phone_verification(request)
+
+        assert response.status_code == 200
+
+        updated = User.objects.get(pk=self.user.pk)
+        assert updated.phone_verified == True
+
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_validate_phone_confirm_invalid(self, send_sms_message):
+        """
+        Ensure a user can validate their phone number with the code
+        """
+        self.user.phone = "559-555-5555"
+        self.user.phone_verified = False
+        self.user.save()
+
+        cache.set(self.user.phone_verification_code_key, '123456', 30)
+
+        url = reverse("api:v1:account:phone-verify-confirm")
+        request = self.factory.post(url, {'code': '111111'})
+        request.user = self.user
+        response = confirm_phone_verification(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 400
+        assert 'errors' in data
+        assert User.objects.filter(pk=self.user.pk, phone_verified=False).exists()
 
     # def test_register_invalid_password(self):
     #     payload = {

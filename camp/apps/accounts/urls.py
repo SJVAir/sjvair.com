@@ -17,10 +17,13 @@ urlpatterns = [
 
     # Account management
     path('', views.ProfileView.as_view(), name='profile'),
+
     path('alerts/', AlertList.as_view(), name='alerts'),
     path('subscriptions/', SubscriptionList.as_view(), name='subscriptions'),
+
     path('phone/', views.SendPhoneVerification.as_view(), name='phone-verify-send'),
     path('phone/verify/', views.SubmitPhoneVerification.as_view(), name='phone-verify-submit'),
+
     path('password/', auth_views.PasswordChangeView.as_view(
         success_url=reverse_lazy('account:password-change-done'),
     ), name='password-change'),
