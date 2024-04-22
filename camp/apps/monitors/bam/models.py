@@ -78,7 +78,7 @@ class BAM1022(Monitor):
         start_time = end_time - timedelta(hours=72)
         values = list((self.entries
             .filter(timestamp__range=(start_time, end_time))
-            .values_list(self.data_field, flat=True)
+            .values_list('pm25_reported', flat=True)
         ))
         return {
             'mass_offset': round((statistics.mean(values) * -1) * Decimal('0.001'), 4),
