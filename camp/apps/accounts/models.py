@@ -16,7 +16,7 @@ from nameparser.parser import HumanName
 from phonenumber_field.modelfields import PhoneNumberField
 
 from camp.apps.accounts import managers
-from camp.apps.accounts.tasks import send_sms_message
+from camp.apps.accounts import tasks
 from camp.utils.fields import NullEmailField
 
 
@@ -117,5 +117,5 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
 
     def send_sms(self, message, verify=True):
         if self.phone and (self.phone_verified or not verify):
-            return send_sms_message(self.phone, message)
+            return tasks.send_sms_message(self.phone, message)
         return False

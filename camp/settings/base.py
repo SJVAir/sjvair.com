@@ -266,11 +266,12 @@ PHONENUMBER_DEFAULT_REGION = "US"
 # django-resticus
 
 RESTICUS = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [],
+    "DEFAULT_AUTHENTICATION_CLASSES": ["resticus.auth.TokenAuth"],
+    "TOKEN_MODEL": "resticus.Token",
     'STREAMING': [],
-    'PAGE_SIZE_QUERY_PARAM': 'page_size',
+    "JSON_DECODER": "camp.utils.encoders.RapidJSONDecoder",
+    "JSON_ENCODER": "camp.utils.encoders.RapidJSONEncoder",
 }
-
 
 # huey / django-huey
 
