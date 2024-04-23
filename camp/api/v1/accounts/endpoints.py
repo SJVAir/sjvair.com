@@ -23,6 +23,7 @@ from resticus.views import TokenAuthEndpoint, Endpoint
 from sentry_sdk import capture_exception
 from twilio.base.exceptions import TwilioRestException
 
+from camp.api.v1.endpoints import FormEndpoint
 from camp.apps.accounts.models import User
 
 from . import forms, serializers
@@ -51,7 +52,7 @@ class RegisterEndpoint(generics.CreateEndpoint):
     serializer_class = serializers.UserSerializer
 
 
-class SendPhoneVerificationEndpoint(generics.GenericEndpoint):
+class SendPhoneVerificationEndpoint(FormEndpoint):
     login_required = True
     form_class = forms.SendPhoneVerificationForm
 
@@ -59,40 +60,32 @@ class SendPhoneVerificationEndpoint(generics.GenericEndpoint):
         if request.user.is_authenticated and request.user.phone_verified:
             return http.Http409()
 
-        form = self.get_form(data=request.data)
-        if form.is_valid():
-            return self.form_valid(form)
-        return self.form_invalid(form)
+        return super().post(request)
 
     def get_form(self, *args, **kwargs):
         return super().get_form(user=self.request.user, *args, **kwargs)
-
-    def get_object(self):
-        return self.request.user
 
     def form_valid(self, form):
         self.request.user.send_phone_verification_code()
         return http.Http204()
 
 
-class ConfirmPhoneVerificationEndpoint(generics.GenericEndpoint):
+class ConfirmPhoneVerificationEndpoint(FormEndpoint):
     login_required = True
     form_class = forms.ConfirmPhoneVerificationForm
 
     def post(self, request):
         if request.user.is_authenticated and request.user.phone_verified:
             return http.Http409()
-            
-        form = self.get_form(data=request.data)
-        if form.is_valid():
-            return self.form_valid(form)
-        return self.form_invalid(form)
+
+        return super().post(request)
 
     def get_form(self, *args, **kwargs):
         return super().get_form(user=self.request.user, *args, **kwargs)
 
-    def get_object(self):
-        return self.request.user
+    def form_valid(self, form):
+        form.save()
+        return http.Http204()
 
 
 class UserDetail(generics.DetailUpdateDeleteEndpoint):

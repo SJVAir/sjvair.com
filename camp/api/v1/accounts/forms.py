@@ -76,7 +76,7 @@ class SendPhoneVerificationForm(forms.Form):
         self.user.set_phone_verification_rate_limit()
 
 
-class PhoneVerificationMixin(forms.Form):
+class PhoneVerificationForm(forms.Form):
     code = forms.CharField(
         label=_('Verification code'),
         help_text=_("Check your phone for a verification text from SJVAir."),
@@ -96,7 +96,7 @@ class PhoneVerificationMixin(forms.Form):
         return code
 
 
-class ConfirmPhoneVerificationForm(PhoneVerificationMixin, forms.Form):
+class ConfirmPhoneVerificationForm(PhoneVerificationForm):
     def save(self):
         self.user.phone_verified = True
         self.user.save()
