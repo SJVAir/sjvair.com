@@ -6,7 +6,7 @@
     is_superuser: false
     full_name: Joe Test
     email: user@sjvair.com
-    phone: ''
+    phone: 559-555-5555
     phone_verified: false
     date_joined: 2021-08-09 20:11:12.648926+00:00
     is_active: true
