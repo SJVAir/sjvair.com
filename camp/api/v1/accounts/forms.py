@@ -17,6 +17,12 @@ from camp.apps.accounts.models import User
 
 
 class UserForm(forms.ModelForm):
+    error_messages = {
+        'duplicate_email': _("A user with that email address already exists."),
+        'duplicate_phone': _("A user with that phone number already exists."),
+        'invalid_email_domain': _("Did you mean .com?"),
+    }
+
     password = forms.CharField(strip=False, widget=forms.PasswordInput)
 
     class Meta:
@@ -26,19 +32,48 @@ class UserForm(forms.ModelForm):
     def clean_password(self):
         password = self.cleaned_data.get("password")
         if password:
-            try:
-                password_validation.validate_password(password, user=self.instance)
-            except forms.ValidationError as error:
-                self.add_error("password", error)
+            password_validation.validate_password(password, user=self.instance)
         return password
 
     def clean_email(self):
-        email = User.objects.normalize_email(self.cleaned_data.get("email"))
-        if email.endswith(".con"):
+        email = User.objects.normalize_email(self.cleaned_data['email'])
+
+        if email:
+            # Check for common .com typo
+            if email.endswith(".con"):
+                raise forms.ValidationError(
+                    self.errors['invalid_email_domain'],
+                    code='invalid_email_domain'
+                )
+
+            # Check for duplicate email
+            queryset = User.objects.filter(email__iexact=email)
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+
+            if queryset.exists():
+                raise forms.ValidationError(
+                    self.error_messages['duplicate_email'],
+                    code='duplicate_email'
+                )
+
+        return email or None
+
+    def clean_phone(self):
+        phone = self.cleaned_data['phone']
+
+        # Check for duplicate phone
+        queryset = User.objects.filter(phone=phone)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+
+        if queryset.exists():
             raise forms.ValidationError(
-                "Did you mean .com?", code="invalid_email_domain",
+                self.error_messages['duplicate_phone'],
+                code='duplicate_phone'
             )
-        return email
+
+        return phone
 
     def create_token(self, user):
         TokenModel = TokenAuth.get_token_model()

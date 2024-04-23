@@ -55,7 +55,7 @@ class AuthenticationTests(TestCase):
             content_type="application/json",
         )
         response = login(request)
-        data = json.loads(response.content)
+        data = get_response_data(response)
 
         assert response.status_code == 200
         assert "api_token" in data["data"]
@@ -72,7 +72,7 @@ class AuthenticationTests(TestCase):
             content_type="application/json",
         )
         response = login(request)
-        data = json.loads(response.content)
+        data = get_response_data(response)
 
         assert response.status_code == 401
         assert "errors" in data
@@ -83,14 +83,13 @@ class AuthenticationTests(TestCase):
         payload = {
             "full_name": "Alice Test",
             "email": "alice.test@sjvair.com",
-            "phone": "+15595555555",
+            "phone": "661-555-5555",
             "password": "t0kenize th!s",
             "confirm_password": "t0kenize th!s",
         }
-        request = self.factory.post(url, payload,
-            content_type="application/json")
+        request = self.factory.post(url, payload, content_type="application/json")
         response = register(request)
-        data = json.loads(response.content)
+        data = get_response_data(response)
 
         # Assert we got a valid status code and the correct response data.
         assert response.status_code == 201
@@ -104,6 +103,65 @@ class AuthenticationTests(TestCase):
         user = User.objects.get(pk=data["data"]["id"])
         assert user.check_password(payload["password"])
         assert send_sms_message.called
+
+    def test_register_invalid_password(self):
+        url = reverse("api:v1:account:register")
+        payload = {
+            "full_name": "Bob Test",
+            "email": "bob.test@sjvair.com",
+            "phone": "559-555-5555",
+            "password": "password",
+        }
+        request = self.factory.post(url, payload, content_type="application/json")
+        response = register(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 400
+        assert data["errors"]["password"][0]["code"] == "password_too_common"
+
+    def test_register_duplicate_phone(self):
+        url = reverse("api:v1:account:register")
+        payload = {
+            "full_name": "Duplicate User",
+            "phone": str(self.user.phone),
+            "password": "t0kenize th!s",
+        }
+        request = self.factory.post(url, payload, content_type="application/json")
+        response = register(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 400
+        assert data["errors"]["phone"][0]["code"] == "duplicate_phone"
+
+    def test_register_duplicate_email(self):
+        url = reverse("api:v1:account:register")
+        payload = {
+            "full_name": "Duplicate User",
+            "phone": '818-555-5555',
+            "email": self.user.email,
+            "password": "t0kenize th!s",
+        }
+        request = self.factory.post(url, payload, content_type="application/json")
+        response = register(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 400
+        assert data["errors"]["email"][0]["code"] == "duplicate_email"
+
+    def test_register_duplicate_email_case_sensitive(self):
+        url = reverse("api:v1:account:register")
+        payload = {
+            "full_name": "Duplicate User",
+            "email": self.user.email.upper(),
+            "phone": "818-555-5555",
+            "password": "t0kenize th!s",
+        }
+        request = self.factory.post(url, payload, content_type="application/json")
+        response = register(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 400
+        assert data["errors"]["email"][0]["code"] == "duplicate_email"
 
     @patch("camp.apps.accounts.tasks.send_sms_message")
     def test_validate_phone(self, send_sms_message):
@@ -162,72 +220,6 @@ class AuthenticationTests(TestCase):
         assert 'errors' in data
         assert User.objects.filter(pk=self.user.pk, phone_verified=False).exists()
 
-    # def test_register_invalid_password(self):
-    #     payload = {
-    #         "full_name": "Bob Test",
-    #         "email": "bob.test@sjvair.com",
-    #         "password": "password",
-    #     }
-    #     request = self.factory.post(
-    #         self.register_url, payload, content_type="application/json"
-    #     )
-    #     response = register(request)
-    #     data = json.loads(response.content)
-
-    #     assert response.status_code == 400
-    #     assert data["errors"]["password"][0]["code"] == "password_too_common"
-
-    # def test_register_duplicate_email(self):
-    #     payload = {
-    #         "full_name": "Duplicate User",
-    #         "email": "user@sjvair.com",
-    #         "password": "t0kenize th!s",
-    #         "confirm_password": "t0kenize th!s",
-    #     }
-    #     request = self.factory.post(
-    #         self.register_url, payload, content_type="application/json"
-    #     )
-    #     response = register(request)
-    #     data = json.loads(response.content)
-
-    #     assert response.status_code == 400
-    #     assert data["errors"]["email"][0]["code"] == "duplicate_email"
-
-    # def test_register_duplicate_email_case_sensitive(self):
-    #     payload = {
-    #         "full_name": "Duplicate User",
-    #         "email": "User@sjvair.com",
-    #         "password": "t0kenize th!s",
-    #         "confirm_password": "t0kenize th!s",
-    #     }
-    #     request = self.factory.post(
-    #         self.register_url, payload, content_type="application/json"
-    #     )
-    #     response = register(request)
-    #     data = json.loads(response.content)
-
-    #     assert response.status_code == 400
-    #     assert data["errors"]["email"][0]["code"] == "duplicate_email"
-
-    # def test_register_invalid_email_domain(self):
-    #     """
-    #     Ensure that the form raises an error if a user tries to register an email with invalid domain
-    #     """
-    #     payload = {
-    #         "full_name": "InvalidEmail User",
-    #         "email": "invalidemail@sjvair.con",
-    #         "password": "t0kenize th!s",
-    #         "confirm_password": "t0kenize th!s",
-    #     }
-    #     request = self.factory.post(
-    #         self.register_url, payload, content_type="application/json"
-    #     )
-    #     response = register(request)
-    #     data = json.loads(response.content)
-
-    #     assert response.status_code == 400
-    #     assert data["errors"]["email"][0]["code"] == "invalid_email_domain"
-
     # def test_get_password_reset_code(self):
     #     """
     #     Ensure a user can request a reset password code
@@ -236,7 +228,7 @@ class AuthenticationTests(TestCase):
     #     payload = {"email": "user@sjvair.com"}
     #     request = self.factory.post(url, payload, content_type="application/json")
     #     response = password_reset(request)
-    #     json.loads(response.content)
+    #     get_response_data(response)
 
     #     assert response.status_code == 200
     #     assert len(mail.outbox) == 1
@@ -256,7 +248,7 @@ class AuthenticationTests(TestCase):
     #     }
     #     request = self.factory.post(url, payload, content_type="application/json")
     #     response = password_reset_confirm(request)
-    #     data = json.loads(response.content)
+    #     data = get_response_data(response)
 
     #     assert response.status_code == 200
     #     assert data["message"] == "Password successfully updated."
@@ -276,7 +268,7 @@ class AuthenticationTests(TestCase):
     #     }
     #     request = self.factory.post(url, payload, content_type="application/json")
     #     response = password_reset_confirm(request)
-    #     data = json.loads(response.content)
+    #     data = get_response_data(response)
 
     #     assert response.status_code == 400
     #     assert data["errors"]["__all__"][0]["code"] == "invalid_code"
@@ -296,7 +288,7 @@ class AuthenticationTests(TestCase):
     #     }
     #     request = self.factory.post(url, payload, content_type="application/json")
     #     response = password_reset_confirm(request)
-    #     data = json.loads(response.content)
+    #     data = get_response_data(response)
 
     #     assert response.status_code == 400
     #     assert data["errors"]["__all__"][0]["code"] == "invalid_email"
@@ -316,7 +308,7 @@ class AuthenticationTests(TestCase):
     #     }
     #     request = self.factory.post(url, payload, content_type="application/json")
     #     response = password_reset_confirm(request)
-    #     data = json.loads(response.content)
+    #     data = get_response_data(response)
 
     #     assert response.status_code == 400
     #     assert data["errors"]["__all__"][0]["code"] == "missing_email"
@@ -336,7 +328,7 @@ class AuthenticationTests(TestCase):
     #     }
     #     request = self.factory.post(url, payload, content_type="application/json")
     #     response = password_reset_confirm(request)
-    #     data = json.loads(response.content)
+    #     data = get_response_data(response)
 
     #     assert response.status_code == 400
     #     assert data["errors"]["password"][0]["code"] == "password_too_common"
@@ -356,7 +348,7 @@ class AuthenticationTests(TestCase):
     #     }
     #     request = self.factory.post(url, payload, content_type="application/json")
     #     response = password_reset_confirm(request)
-    #     data = json.loads(response.content)
+    #     data = get_response_data(response)
 
     #     assert response.status_code == 400
     #     assert data["errors"]["password"][0]["code"] == "password_too_similar"
