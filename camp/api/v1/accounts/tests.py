@@ -136,7 +136,7 @@ class AuthenticationTests(TestCase):
         request.user = self.user
         response = confirm_phone_verification(request)
 
-        assert response.status_code == 200
+        assert response.status_code == 204
 
         updated = User.objects.get(pk=self.user.pk)
         assert updated.phone_verified == True
