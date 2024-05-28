@@ -12,10 +12,10 @@ urlpatterns = [
     path('phone/', endpoints.SendPhoneVerificationEndpoint.as_view(), name='phone-verify-send'),
     path('phone/verify/', endpoints.ConfirmPhoneVerificationEndpoint.as_view(), name='phone-verify-confirm'),
 
-    # path("password-reset/", views.PasswordResetView.as_view(), name="password-reset"),
+    path("password-reset/", endpoints.PasswordResetEndpoint.as_view(), name="password-reset"),
     # path(
     #     "password-reset/confirm/",
-    #     views.PasswordResetConfirmView.as_view(),
+    #     views.PasswordResetConfirmEndpoint.as_view(),
     #     name="password-reset-confirm",
     # ),
 ]

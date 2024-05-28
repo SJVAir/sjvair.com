@@ -149,8 +149,8 @@ for var in ["REDIS_URL", "OPENREDIS_URL"]:
 # Auth
 
 AUTHENTICATION_BACKENDS = (
-    # 'django.contrib.auth.backends.ModelBackend',
     'camp.apps.accounts.backends.AuthenticationBackend',
+    'django.contrib.auth.backends.ModelBackend',
 )
 
 AUTH_USER_MODEL = 'accounts.User'

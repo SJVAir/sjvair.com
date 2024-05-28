@@ -52,6 +52,21 @@ class RegisterEndpoint(generics.CreateEndpoint):
     serializer_class = serializers.UserSerializer
 
 
+class UserDetail(generics.DetailUpdateDeleteEndpoint):
+    """
+    Retrieve, update or delete a user
+    """
+
+    form_class = forms.UserForm
+    serializer_class = serializers.UserSerializer
+
+    def get_object(self):
+        return self.request.user
+
+    def get_form(self, **kwargs):
+        return super().get_form(request=self.request, **kwargs)
+
+
 class SendPhoneVerificationEndpoint(FormEndpoint):
     login_required = True
     form_class = forms.SendPhoneVerificationForm
@@ -88,15 +103,11 @@ class ConfirmPhoneVerificationEndpoint(FormEndpoint):
         return http.Http204()
 
 
-class UserDetail(generics.DetailUpdateDeleteEndpoint):
-    """
-    Retrieve, update or delete a user
-    """
+class PasswordResetEndpoint(FormEndpoint):
+    form_class = forms.PasswordResetForm
 
-    form_class = forms.UserForm
-
-    def get_object(self):
-        return self.request.user
-
-    def get_form(self, **kwargs):
-        return super().get_form(request=self.request, **kwargs)
+    def form_valid(self, form):
+        options = form.save()
+        if options is not None:
+            cache.set(f'_password-reset_{form.user.pk}', options)
+        return {'success': True}
