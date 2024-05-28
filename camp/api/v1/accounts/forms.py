@@ -1,7 +1,7 @@
 import re
 
 from django import forms
-from django.contrib.auth import authenticate, password_validation
+from django.contrib.auth import authenticate, forms as auth_forms, password_validation
 from django.contrib.auth.tokens import default_token_generator as token_generator
 from django.core.cache import cache
 from django.utils.encoding import force_bytes
@@ -119,19 +119,19 @@ class PhoneVerificationForm(forms.Form):
         min_length=6
     )
 
-    def __init__(self, *args, **kwargs):
-        self.user = kwargs.pop('user')
-        super().__init__(*args, **kwargs)
-
     def clean_code(self):
         code = self.cleaned_data.get('code')
         verified = self.user.check_phone_verification_code(code)
         if not verified:
-            raise forms.ValidationError(_('Invalid verification code, please try again.'))
+            raise forms.ValidationError(_('Invalid verification code, please try again.'), code='invalid_code')
         return code
 
 
 class ConfirmPhoneVerificationForm(PhoneVerificationForm):
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user')
+        super().__init__(*args, **kwargs)
+
     def save(self):
         self.user.phone_verified = True
         self.user.save()
@@ -171,3 +171,10 @@ class PasswordResetForm(forms.Form):
                 'uidb64': urlsafe_base64_encode(force_bytes(self.user.pk)),
                 'token': token_generator.make_token(self.user),
             }
+
+
+class SetPasswordForm(PhoneVerificationForm, auth_forms.SetPasswordForm):
+    def save(self, *args, **kwargs):
+        # The user has defacto verified their phone number, so mark it.
+        self.user.phone_verified = True
+        return super().save(*args, **kwargs)
