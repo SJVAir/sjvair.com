@@ -121,7 +121,6 @@ class PasswordReset(vanilla.FormView):
 
     def form_valid(self, form):
         options = form.save()
-        print('PasswordReset:', options)
         self.request.session['_password-reset'] = options
         return redirect(self.get_success_url())
 
