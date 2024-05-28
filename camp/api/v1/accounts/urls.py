@@ -13,9 +13,9 @@ urlpatterns = [
     path('phone/verify/', endpoints.ConfirmPhoneVerificationEndpoint.as_view(), name='phone-verify-confirm'),
 
     path("password-reset/", endpoints.PasswordResetEndpoint.as_view(), name="password-reset"),
-    # path(
-    #     "password-reset/confirm/",
-    #     views.PasswordResetConfirmEndpoint.as_view(),
-    #     name="password-reset-confirm",
-    # ),
+    path(
+        "password-reset/<uidb64>/<token>/",
+        endpoints.PasswordResetConfirmEndpoint.as_view(),
+        name="password-reset-confirm",
+    ),
 ]

@@ -8,7 +8,10 @@ import requests
 from django import forms
 from django.conf import settings
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.contrib.auth.tokens import default_token_generator as token_generator
 from django.utils.decorators import method_decorator
+from django.utils.http import urlsafe_base64_decode
 from django.utils.translation import gettext as _
 from django.views.generic.base import TemplateView
 from django.views.decorators.csrf import csrf_exempt
@@ -108,6 +111,40 @@ class PasswordResetEndpoint(FormEndpoint):
 
     def form_valid(self, form):
         options = form.save()
-        if options is not None:
-            cache.set(f'_password-reset_{form.user.pk}', options)
-        return {'success': True}
+        return {'data': options}
+
+
+class PasswordResetConfirmEndpoint(FormEndpoint):
+    form_class = forms.SetPasswordForm
+
+    def dispatch(self, *args, **kwargs):
+        try:
+            uidb64 = kwargs['uidb64']
+            token = kwargs['token']
+        except (KeyError, TypeError):
+            print('args', args)
+            print('kwargs', kwargs)
+            return self.invalid_token()
+
+        self.user = self.get_user(uidb64)
+        if self.user and token_generator.check_token(self.user, token):
+            return super().dispatch(*args, **kwargs)
+        print('the end')
+        return self.invalid_token()
+
+    def invalid_token(self):
+        return http.Http400({'error': 'Invalid token'})
+
+    def get_user(self, uidb64):
+        try:
+            user_id = urlsafe_base64_decode(uidb64).decode()
+            return User._default_manager.get(pk=user_id)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist, ValidationError):
+            return None
+
+    def get_form(self, *args, **kwargs):
+        return super().get_form(user=self.user, *args, **kwargs)
+
+    def form_valid(self, form):
+        form.save()
+        return http.Http204()

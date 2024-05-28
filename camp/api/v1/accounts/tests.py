@@ -10,14 +10,14 @@ from camp.apps.accounts.backends import AuthenticationBackend
 from camp.apps.accounts.models import User
 from camp.utils.test import debug, get_response_data
 
-from . import endpoints
+from . import endpoints, forms
 
 client = Client()
 
 login = endpoints.LoginEndpoint.as_view()
 register = endpoints.RegisterEndpoint.as_view()
 password_reset = endpoints.PasswordResetEndpoint.as_view()
-# password_reset_confirm = endpoints.PasswordResetConfirmEndpoint.as_view()
+password_reset_confirm = endpoints.PasswordResetConfirmEndpoint.as_view()
 send_phone_verification = endpoints.SendPhoneVerificationEndpoint.as_view()
 confirm_phone_verification = endpoints.ConfirmPhoneVerificationEndpoint.as_view()
 
@@ -178,8 +178,6 @@ class AuthenticationTests(TestCase):
         response = send_phone_verification(request)
         data = get_response_data(response)
 
-        print(data)
-
         assert response.status_code == 204
         assert send_sms_message.called
 
@@ -224,7 +222,8 @@ class AuthenticationTests(TestCase):
         assert 'errors' in data
         assert User.objects.filter(pk=self.user.pk, phone_verified=False).exists()
 
-    def test_get_password_reset_code(self):
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_get_password_reset_code(self, send_sms_message):
         """
         Ensure a user can request a reset password code
         """
@@ -235,124 +234,98 @@ class AuthenticationTests(TestCase):
         data = get_response_data(response)
 
         assert response.status_code == 200
-        assert data.get('success') == True
+        assert data.get('data') and data['data'].get('token')
 
-    # def test_reset_password_confirm(self):
-    #     """
-    #     Ensure a user can reset password using the code
-    #     """
-    #     code = "123456"
-    #     cache_key = f"pwr|user:user@sjvair.com"
-    #     cache.set(cache_key, code, 60 * 30)
-    #     url = reverse("api:v1:password-reset-confirm")
-    #     payload = {
-    #         "email": "user@sjvair.com",
-    #         "code": "123456",
-    #         "password": "test11user",
-    #     }
-    #     request = self.factory.post(url, payload, content_type="application/json")
-    #     response = password_reset_confirm(request)
-    #     data = get_response_data(response)
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_reset_password_confirm(self, send_sms_message):
+        """
+        Ensure a user can reset password using the code
+        """
 
-    #     assert response.status_code == 200
-    #     assert data["message"] == "Password successfully updated."
+        form = forms.PasswordResetForm({'phone': self.user.phone})
+        assert form.is_valid()
+        options = form.save()
+        code = cache.get(self.user.phone_verification_code_key)
 
-    # def test_reset_password_invalid_code(self):
-    #     """
-    #     Ensure a user can't reset a password using an invalid code
-    #     """
-    #     code = "123456"
-    #     cache_key = f"pwr|user:user@sjvair.com"
-    #     cache.set(cache_key, code, 60 * 30)
-    #     url = reverse("api:v1:password-reset-confirm")
-    #     payload = {
-    #         "email": "user@sjvair.com",
-    #         "code": "987654",
-    #         "password": "test11user",
-    #     }
-    #     request = self.factory.post(url, payload, content_type="application/json")
-    #     response = password_reset_confirm(request)
-    #     data = get_response_data(response)
+        url = reverse('api:v1:account:password-reset-confirm', kwargs=options)
+        payload = {
+            'code': code,
+            'new_password1': 'test11user',
+            'new_password2': 'test11user',
+        }
+        request = self.factory.post(url, payload, content_type="application/json")
+        response = password_reset_confirm(request=request, **options)
+        data = get_response_data(response)
 
-    #     assert response.status_code == 400
-    #     assert data["errors"]["__all__"][0]["code"] == "invalid_code"
+        assert response.status_code == 204
 
-    # def test_reset_password_invalid_email(self):
-    #     """
-    #     Ensure a user can't reset a password using an invalid code
-    #     """
-    #     code = "123456"
-    #     cache_key = f"pwr|user:user@sjvair.com"
-    #     cache.set(cache_key, code, 60 * 30)
-    #     url = reverse("api:v1:password-reset-confirm")
-    #     payload = {
-    #         "email": "notauser@sjvair.com",
-    #         "code": code,
-    #         "password": "test11user",
-    #     }
-    #     request = self.factory.post(url, payload, content_type="application/json")
-    #     response = password_reset_confirm(request)
-    #     data = get_response_data(response)
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_reset_password_invalid_code(self, send_sms_message):
+        """
+        Ensure a user can't reset a password using an invalid code
+        """
+        form = forms.PasswordResetForm({'phone': self.user.phone})
+        assert form.is_valid()
+        options = form.save()
 
-    #     assert response.status_code == 400
-    #     assert data["errors"]["__all__"][0]["code"] == "invalid_email"
+        # Manually override the verification code.
+        cache.set(self.user.phone_verification_code_key, '111111', 30)
 
-    # def test_reset_password_blank_email(self):
-    #     """
-    #     Ensure a user can't reset a password using an invalid code
-    #     """
-    #     code = "123456"
-    #     cache_key = f"pwr|user:user@sjvair.com"
-    #     cache.set(cache_key, code, 60 * 30)
-    #     url = reverse("api:v1:password-reset-confirm")
-    #     payload = {
-    #         "email": "",
-    #         "code": code,
-    #         "password": "test11user",
-    #     }
-    #     request = self.factory.post(url, payload, content_type="application/json")
-    #     response = password_reset_confirm(request)
-    #     data = get_response_data(response)
+        url = reverse('api:v1:account:password-reset-confirm', kwargs=options)
+        payload = {
+            'code': '123456', # Not the same as above!
+            'new_password1': 'test11user',
+            'new_password2': 'test11user',
+        }
+        request = self.factory.post(url, payload, content_type="application/json")
+        response = password_reset_confirm(request=request, **options)
+        data = get_response_data(response)
 
-    #     assert response.status_code == 400
-    #     assert data["errors"]["__all__"][0]["code"] == "missing_email"
+        assert response.status_code == 400
+        assert data['errors']['code'][0]['code'] == 'invalid_code'
 
-    # def test_reset_password_too_common(self):
-    #     """
-    #     Ensure a user can't reset a password using common password
-    #     """
-    #     code = "123456"
-    #     cache_key = f"pwr|user:user@sjvair.com"
-    #     cache.set(cache_key, code, 60 * 30)
-    #     url = reverse("api:v1:password-reset-confirm")
-    #     payload = {
-    #         "email": "user@sjvair.com",
-    #         "code": code,
-    #         "password": "password",
-    #     }
-    #     request = self.factory.post(url, payload, content_type="application/json")
-    #     response = password_reset_confirm(request)
-    #     data = get_response_data(response)
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_reset_password_too_common(self, send_sms_message):
+        """
+        Ensure a user can't reset a password using common password
+        """
+        form = forms.PasswordResetForm({'phone': self.user.phone})
+        assert form.is_valid()
+        options = form.save()
+        code = cache.get(self.user.phone_verification_code_key)
 
-    #     assert response.status_code == 400
-    #     assert data["errors"]["password"][0]["code"] == "password_too_common"
+        url = reverse('api:v1:account:password-reset-confirm', kwargs=options)
+        payload = {
+            'code': code,
+            'new_password1': 'password',
+            'new_password2': 'password',
+        }
+        request = self.factory.post(url, payload, content_type="application/json")
+        response = password_reset_confirm(request=request, **options)
+        data = get_response_data(response)
 
-    # def test_reset_password_too_similar(self):
-    #     """
-    #     Ensure a user can't reset a password using common password
-    #     """
-    #     code = "123456"
-    #     cache_key = f"pwr|user:user@sjvair.com"
-    #     cache.set(cache_key, code, 60 * 30)
-    #     url = reverse("api:v1:password-reset-confirm")
-    #     payload = {
-    #         "email": "user@sjvair.com",
-    #         "code": code,
-    #         "password": "user@sjvair.com",
-    #     }
-    #     request = self.factory.post(url, payload, content_type="application/json")
-    #     response = password_reset_confirm(request)
-    #     data = get_response_data(response)
+        assert response.status_code == 400
+        assert data['errors']['new_password2'][0]['code'] == 'password_too_common'
 
-    #     assert response.status_code == 400
-    #     assert data["errors"]["password"][0]["code"] == "password_too_similar"
+    @patch("camp.apps.accounts.tasks.send_sms_message")
+    def test_reset_password_too_similar(self, send_sms_message):
+        """
+        Ensure a user can't set their password to their email
+        """
+        form = forms.PasswordResetForm({'phone': self.user.phone})
+        assert form.is_valid()
+        options = form.save()
+        code = cache.get(self.user.phone_verification_code_key)
+
+        url = reverse('api:v1:account:password-reset-confirm', kwargs=options)
+        payload = {
+            'code': code,
+            'new_password1': str(self.user.email),
+            'new_password2': str(self.user.email),
+        }
+        request = self.factory.post(url, payload, content_type="application/json")
+        response = password_reset_confirm(request=request, **options)
+        data = get_response_data(response)
+
+        assert response.status_code == 400
+        assert data['errors']['new_password2'][0]['code'] == 'password_too_similar'
