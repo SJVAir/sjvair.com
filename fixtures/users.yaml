@@ -7,7 +7,7 @@
     full_name: Joe Test
     email: user@sjvair.com
     phone: 559-555-5555
-    phone_verified: false
+    phone_verified: true
     date_joined: 2021-08-09 20:11:12.648926+00:00
     is_active: true
     is_staff: false

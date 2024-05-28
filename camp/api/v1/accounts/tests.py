@@ -16,7 +16,7 @@ client = Client()
 
 login = endpoints.LoginEndpoint.as_view()
 register = endpoints.RegisterEndpoint.as_view()
-# password_reset = endpoints.PasswordResetEndpoint.as_view()
+password_reset = endpoints.PasswordResetEndpoint.as_view()
 # password_reset_confirm = endpoints.PasswordResetConfirmEndpoint.as_view()
 send_phone_verification = endpoints.SendPhoneVerificationEndpoint.as_view()
 confirm_phone_verification = endpoints.ConfirmPhoneVerificationEndpoint.as_view()
@@ -28,6 +28,10 @@ class AuthenticationTests(TestCase):
     def setUp(self):
         self.user = User.objects.get(email="user@sjvair.com")
         self.factory = RequestFactory()
+
+    def tearDown(self):
+        cache.clear()
+        return super().tearDown()
 
     def test_authentication_backend(self):
         backend = AuthenticationBackend()
@@ -165,7 +169,6 @@ class AuthenticationTests(TestCase):
 
     @patch("camp.apps.accounts.tasks.send_sms_message")
     def test_validate_phone(self, send_sms_message):
-        self.user.phone = "559-555-5555"
         self.user.phone_verified = False
         self.user.save()
 
@@ -173,6 +176,9 @@ class AuthenticationTests(TestCase):
         request = self.factory.post(url)
         request.user = self.user
         response = send_phone_verification(request)
+        data = get_response_data(response)
+
+        print(data)
 
         assert response.status_code == 204
         assert send_sms_message.called
@@ -182,7 +188,6 @@ class AuthenticationTests(TestCase):
         """
         Ensure a user can validate their phone number with the code
         """
-        self.user.phone = "559-555-5555"
         self.user.phone_verified = False
         self.user.save()
 
@@ -204,7 +209,6 @@ class AuthenticationTests(TestCase):
         """
         Ensure a user can validate their phone number with the code
         """
-        self.user.phone = "559-555-5555"
         self.user.phone_verified = False
         self.user.save()
 
@@ -220,18 +224,18 @@ class AuthenticationTests(TestCase):
         assert 'errors' in data
         assert User.objects.filter(pk=self.user.pk, phone_verified=False).exists()
 
-    # def test_get_password_reset_code(self):
-    #     """
-    #     Ensure a user can request a reset password code
-    #     """
-    #     url = reverse("api:v1:password-reset")
-    #     payload = {"email": "user@sjvair.com"}
-    #     request = self.factory.post(url, payload, content_type="application/json")
-    #     response = password_reset(request)
-    #     get_response_data(response)
+    def test_get_password_reset_code(self):
+        """
+        Ensure a user can request a reset password code
+        """
+        url = reverse("api:v1:account:password-reset")
+        payload = {"phone": "559-555-5555"}
+        request = self.factory.post(url, payload, content_type="application/json")
+        response = password_reset(request)
+        data = get_response_data(response)
 
-    #     assert response.status_code == 200
-    #     assert len(mail.outbox) == 1
+        assert response.status_code == 200
+        assert data.get('success') == True
 
     # def test_reset_password_confirm(self):
     #     """

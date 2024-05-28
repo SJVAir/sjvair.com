@@ -160,10 +160,7 @@ class PasswordResetForm(forms.Form):
 
     def get_user(self, phone):
         try:
-            return User.objects.get(
-                phone=phone,
-                is_active=True,
-            )
+            return User.objects.get(phone=phone, is_active=True)
         except User.DoesNotExist:
             return None
         
