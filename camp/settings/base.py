@@ -42,6 +42,8 @@ DEBUG = bool(int(os.environ.get('DJANGO_DEBUG', 1)))
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -54,18 +56,18 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # 'channels',
-    # 'channels_redis',
     'corsheaders',
     'admin_honeypot',
     'django_admin_inline_paginator',
     'django_extensions',
     'django_filters',
     'django_huey',
+    'django_jsonform',
     'form_utils',
     'huey.contrib.djhuey',
     'livereload',
     'localflavor',
+    'prose',
     'resticus',
     'storages',
     'widget_tweaks',
@@ -76,7 +78,7 @@ INSTALLED_APPS = [
     'camp.apps.archive',
     'camp.apps.calibrations',
     'camp.apps.contact',
-    'camp.apps.qaqc',
+    'camp.apps.helpdesk',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqview',
@@ -84,6 +86,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.methane',
     'camp.apps.monitors.purpleair',
     'camp.apps.sensors',
+    'camp.apps.qaqc',
     'camp.utils',
 ]
 
