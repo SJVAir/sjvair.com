@@ -28,7 +28,7 @@
         <div class="columns is-mobile is-multiline is-vcentered is-centered has-text-centered is-variable is-8">
             {% load_datafile 'data-providers.yaml' as provider_list %}
             {% for provider in provider_list %}
-            <div class="column is-6-mobile is-6-tablet is-3-desktop">
+            <div class="column is-6-mobile is-6-tablet is-4-desktop">
                 <a href="{{ provider.url }}" target="_blank">
                     <img src="{% static provider.logo %}" alt="{{ provider.name }}" class="is-responsive" />
                 </a>
@@ -40,7 +40,7 @@
 
 <section class="section is-medium school-districts has-background-white-bis">
     <div class="container">
-        <div class="columns is-centered is-vcentered">
+        <div class="columns is-centered is-variable is-8">
             <div class="column is-6">
                 <h1 class="title"><span class="has-text-danger">School</span> Districts</h1>
                 <p class="lead">We've partnered with school districts in the San Joaquin Valley to set up air quality networks in communities that previously had limited access to local real-time air quality information.</p>
