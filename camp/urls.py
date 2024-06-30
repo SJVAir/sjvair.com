@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/', include('camp.api.urls', namespace='api')),
     path('account/', include(('camp.apps.accounts.urls', 'account'), namespace='account')),
     path('contact/', include(('camp.apps.contact.urls', 'contact'), namespace='contact')),
+    path('support/', include(('camp.apps.helpdesk.urls', 'helpdesk'), namespace='helpdesk')),
     path('app/', views.GetTheApp.as_view(), name='app'),
 
     # @sjvair/monitor-map specific routes
