@@ -22,13 +22,36 @@
                 <div class="content">
                     <p class="lead">Feel free to send suggestions or feedback, fill us in on how you're using the data, or let us know how SJVAir is helping you.</p>
                     <p class="lead">
-                        <span class="has-text-weight-semibold">Get in touch!</span><br />
                         <a href="mailto:sjvair@centralcalasthma.org">
                             <span class="icon has-text-grey is-size-5">
                                 <span class="fal fa-fw fa-envelope"></span>
                             </span>
                             <span>sjvair@centralcalasthma.org</span>
                         </a>
+                    </p>
+                    <p>
+                        <span class="buttons are-small p-0 m-0">
+                            <a href="https://www.facebook.com/sjvair" class="button is-facebook" target="_blank" title="Like us on Facebook">
+                                <span class="icon">
+                                    <span class="fab fa-facebook-f fa-lg"></span>
+                                </span>
+                            </a>
+                            <a href="https://twitter.com/sjvair" class="button is-twitter" target="_blank" title="Follow us on Twitter">
+                                <span class="icon">
+                                    <span class="fab fa-twitter fa-lg"></span>
+                                </span>
+                            </a>
+                            <a href="https://www.instagram.com/sjvair_quality" class="button is-instagram" target="_blank" title="Follow us on Instagram">
+                                <span class="icon">
+                                    <span class="fab fa-instagram fa-lg"></span>
+                                </span>
+                            </a>
+                            <a href="https://github.com/SJVAir" class="button is-github" target="_blank" title="Fork us on Github">
+                                <span class="icon">
+                                    <span class="fab fa-github fa-lg"></span>
+                                </span>
+                            </a>
+                        </span>
                     </p>
                     <p class="lead">You can also contact CCAC directly at <a href="https://cencalasthma.org/contact/">cencalasthma.org/contact</a>.</p>
                 </div>
@@ -50,6 +73,8 @@
                             </div>
                         </div>
 
+                        {% include '_includes/form/field.html' with field=form.topic %}
+                        {% include '_includes/form/field.html' with field=form.subject %}
                         {% include '_includes/form/field.html' with field=form.message %}
                         <div class="control">
                             <button type="submit" class="button is-success">Submit</button>
