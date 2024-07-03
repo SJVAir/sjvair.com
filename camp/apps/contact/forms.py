@@ -3,16 +3,27 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
 
+from model_utils import Choices
+
 
 class ContactForm(forms.Form):
-    name = forms.CharField()
+    TOPICS = Choices(
+        ('Bug', 'Bug or Technical Issue'),
+        ('Feedback', 'Feature Suggestion or App Feedback'),
+        ('Media', 'Media Inquiry'),
+        ('General', 'General'),
+    )
+
+    name = forms.CharField(max_length=100)
     email = forms.EmailField()
+    topic = forms.ChoiceField(choices=TOPICS)
+    subject = forms.CharField(max_length=79)
     message = forms.CharField(widget=forms.Textarea)
 
     def send_email(self):
         assert self.is_valid()
 
-        subject = f"SJVAir Contact Form: {self.cleaned_data['name']}"
+        subject = f"[SJVAir - {self.cleaned_data['topic']}] {self.cleaned_data['subject']}"
         message = render_to_string('email/contact-form.md', self.cleaned_data)
 
         email = EmailMessage(
