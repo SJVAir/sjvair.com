@@ -1,0 +1,14 @@
+<div class="card category-list-card">
+    <header class="card-header">
+        <p class="card-header-title">Categories</p>
+    </header>
+    <div class="card-content">
+        <div class="list">
+            {% for category in categories %}
+            <div class="list-item {% if active == category.pk %}is-active{% endif %}">
+                <a href="{{ category.get_absolute_url }}">{{ category.name }}</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

@@ -1,0 +1,7 @@
+<div class="list term-list-inline">
+    {% for term in term_list %}
+    <div class="list-item">
+        <a href="{{ term.get_absolute_url }}">{{ term.name }}</a>
+    </div>
+    {% endfor %}
+</div>

@@ -77,12 +77,12 @@ class Term(TimeStampedModel):
     definition = RichTextField()
     synonyms = ArrayField(models.CharField(max_length=100), blank=True, default=list)
 
-    related_terms = models.ManyToManyField('self', blank=True)
     related_articles = models.ManyToManyField('helpdesk.Article',
         through=Article.related_terms.through,
         related_name='+',
         blank=True
     )
+    related_terms = models.ManyToManyField('self', blank=True)
 
     objects = managers.TermQuerySet.as_manager()
 

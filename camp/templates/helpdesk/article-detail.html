@@ -1,0 +1,67 @@
+{% extends 'helpdesk/base.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block title %}{{ article.title }} | {{ block.super }}{% endblock %}
+
+{% block body-class %}{{ block.super }} article-detail{% endblock %}
+
+{% block breadcrumb-list %}
+    <li>
+        <a href="{{ article.category.get_absolute_url }}">{{ article.category.name }}</a>
+    </li>
+    <li class="is-active">
+        <a href="{{ article.get_absolute_url }}">{{ article.title }}</a>
+    </li>
+{% endblock %}
+
+{% block content %}
+<section class="section">
+    <div class="container">
+        <div class="columns">
+            <div class="column is-full-tablet is-8-desktop">
+                <div class="content">
+                    <h1>{{ article.title }}</h1>
+                    <p class="is-size-7 is-italic">Last updated {{ article.modified|date }}</p>
+                    {{ article.content|safe }}
+                </div>
+                {% if related_articles or related_terms %}
+                <div class="columns">
+                    {% if related_articles %}
+                    <div class="column is-full-tablet is-half-desktop">
+                        <div class="card related-articles">
+                            <header class="card-header">
+                                <p class="card-header-title">Related Articles</p>
+                            </header>
+                            <div class="card-content">
+                                {% include "helpdesk/includes/article-list-inline.html" with article_list=related_articles show_featured=True %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if related_terms %}
+                    <div class="column is-full-tablet is-half-desktop">
+                        <div class="card related-terms">
+                            <header class="card-header">
+                                <p class="card-header-title">Related Terms</p>
+                            </header>
+                            <div class="card-content">
+                                {% include "helpdesk/includes/term-list-inline.html" with term_list=related_terms %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="column is-full-tablet is-4-desktop side-column">
+                {% include 'helpdesk/includes/category-detail-card.html' with category=article.category show_featured=True active=article.pk %}
+
+                {% include 'helpdesk/includes/cta-contact.html' %}
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}

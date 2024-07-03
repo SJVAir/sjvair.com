@@ -10,6 +10,10 @@
   logo: img/providers/sjvapcd.svg
   url: https://valleyair.org/
 
+- name: AirGradient
+  logo: img/providers/airgradient.svg
+  url: https://www.airgradient.com/
+
 - name: PurpleAir
   logo: img/providers/purpleair.png
   url: https://www2.purpleair.com/
