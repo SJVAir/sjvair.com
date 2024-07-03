@@ -1,0 +1,76 @@
+{% extends 'helpdesk/base.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block body-class %}{{ block.super }} home{% endblock %}
+
+{% block breadcrumbs %}{% endblock %}
+
+{% block search_header %}
+    <div class="content has-text-centered">
+        <h1 class="is-size-1">Help Center</h1>
+        <p class="lead">Search our knowledge base or browse the content below</p>
+        <form action="{% url 'helpdesk:search' %}" method="GET" class="form search is-inline-block">
+            <div class="field is-grouped">
+                <p class="control has-icons-left">
+                    <input class="input is-large" type="text" name="q" placeholder="Search...">
+                    <span class="icon is-small is-left">
+                        <span class="fas fa-search"></span>
+                    </span>
+                </p>
+                <p class="control">
+                    <button class="button is-large is-dark">Search</button>
+                </p>
+            </div>
+        </form>
+    </div>
+    {% endblock %}
+
+{% block content %}
+<section class="section faq has-background-white">
+    <div class="container">
+        <h2 class="is-size-4 has-text-weight-semibold">
+            <span class="fas fa-fw fa-question-circle has-text-primary"></span>
+            <span>Frequently Asked Questions</span>
+        </h2>
+        <div class="list masonry is-2-tablet is-2-desktop article-list">
+            {% for article in feature_list %}
+            <div class="list-item masonry-item">
+                <div class="list-item-content">
+                    <a href="{{ article.get_absolute_url }}">
+                        <span class="fal fa-fw fa-file-alt has-text-dark"></span>
+                        <span>{{ article.title }}</span>
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+    </div>
+</section>
+<section class="section has-background-white-bis">
+    <div class="container">
+        <div class="columns">
+            <div class="column is-8-tablet is-9-desktop">
+                <div class="masonry is-1-tablet is-2-desktop">
+                    {% for category in category_list %}
+                    <div class="masonry-item">
+                        {% include 'helpdesk/includes/category-detail-card.html' with category=category show_featured=True %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="column is-4-tablet is-3-desktop">
+                <div class="card glossary">
+                    <div class="card-header">
+                        <a href="{% url 'helpdesk:glossary' %}" class="card-header-title">Glossary</a>
+                    </div>
+                    <div class="card-content">
+                        {% include 'helpdesk/includes/term-list-inline.html' with term_list=glossary %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

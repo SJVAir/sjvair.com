@@ -3,7 +3,22 @@
   logo: img/schools/delano.png
   url: https://www.duesd.org/
 
+- name: Livingston Union School District
+  slug: lusd
+  logo: img/schools/livingston.png
+  url: https://www.livingstonusd.org/
+
 - name: Los Banos Unified School District
   slug: lbusd
   logo: img/schools/los-banos.png
   url: https://www.losbanosusd.org/
+
+- name: Lost Hills Union School District
+  slug: lhusd
+  logo: img/schools/lost-hills.png
+  url: https://www.losthills.k12.ca.us/
+
+- name: Reef-Sunset Union School District
+  slug: rsusd
+  logo: img/schools/reef-sunset.png
+  url: https://www.rsusd.net/

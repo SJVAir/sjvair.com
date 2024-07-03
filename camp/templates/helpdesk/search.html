@@ -1,0 +1,63 @@
+{% extends 'helpdesk/base.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block title %}Search Results for "{{ search_query }}" | {{ block.super }}{% endblock %}
+
+{% block body-class %}{{ block.super }} search{% endblock %}
+
+{% block breadcrumb-list %}
+    <li class="is-active">
+        <a href="{% url 'helpdesk:search' %}">Search</a>
+    </li>
+{% endblock %}
+
+{% block content %}
+<section class="section">
+    <div class="container">
+        <div class="content">
+            <h1>
+                <span>Search results for "{{ search_query }}"</span>
+                <span class="is-italic has-text-grey is-size-5 has-text-weight-normal">({{ article_results|length }} result{{ article_results|length|pluralize }} found)</span>
+            </h1>
+        </div>
+        <div class="columns">
+            <div class="column is-9-desktop">
+                {% if article_results %}
+                <div class="list article-list-inline">
+                    {% for article in article_results %}
+                    <div class="list-item box">
+                        <div class="list-item-image">
+                            <span class="icon">
+                                <span class="fal fa-lg fa-fw fa-file-alt"></span>
+                            </span>
+                        </div>
+                        <div class="list-item-content">
+                            <a href="{{ article.get_absolute_url }}" class="list-item-title">
+                                <span>{{ article.title }}</span>
+                            </a>
+                            <div class="list-item-description">{{ article.headline|safe }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% else %}
+                <div class="box">
+                    <p class="lead">Sorry, we couldn't find anything matching your search query.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="column is-3-desktop">
+                {% if term_results %}
+                <h2 class="is-size-4 has-text-weight-semibold">Glossary Results</h2>
+                {% include 'helpdesk/includes/term-list-inline.html' with term_list=term_results %}
+                {% endif %}
+
+                {% include 'helpdesk/includes/cta-contact.html' %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

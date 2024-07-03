@@ -1,0 +1,37 @@
+body.helpdesk
+    &.home
+        section.faq
+            .article-list
+                display: block
+
+                .list-item
+                    margin: 0
+
+        .glossary
+            margin-top: $gap
+
+    &.search
+        a.list-item-title
+            @extend .has-text-link
+
+        span.highlight
+            @extend .has-background-warning-light
+            @extend .has-text-warning-dark
+            @extend .has-text-weight-medium
+
+    .breadcrumbs
+        background-color: $grey-lightest
+        padding: $size-6 0px
+
+    .term-list-inline
+        .list-item-title
+            @extend .has-text-weight-normal
+
+    .category-detail-card, .category-list-card
+        .list-item
+            &.is-active
+                @extend .has-text-weight-semibold
+
+    .side-column
+        &> :not(:last-child)
+            @extend .mb-5
