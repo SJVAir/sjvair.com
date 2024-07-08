@@ -1,0 +1,11 @@
+- name: US EPA
+  logo: img/logo/epa.svg
+  url: https://www.airnow.gov/
+
+- name: California EPA
+  logo: img/logo/calepa.png
+  url: https://calepa.ca.gov/
+
+- name: California Air Resource Board
+  logo: img/logo/carb.svg
+  url: https://aqview.arb.ca.gov/
