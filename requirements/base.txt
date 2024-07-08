@@ -12,13 +12,17 @@ django-debug-toolbar-force==0.2
 django-dirtyfields==1.9.2
 django-extensions==3.2.3
 django-filter==23.2
+django-recaptcha==4.0.0
 django-heroku==0.3.1
 django-huey==1.1.1
+django-jsonform==2.22.0
 django-localflavor==4.0
 django-model-utils==4.3.1
 django-phonenumber-field[phonenumberslite]==7.1.0
+django-prose==2.0.0
 django-recaptcha==4.0.0
 django-smalluuid==1.2.1
+django-sqids==0.2.0
 django-storages==1.13.2
 django-vanilla-views==3.0.0
 django-widget-tweaks==1.4.12

@@ -12,11 +12,14 @@ urlpatterns = [
     path('api/', include('camp.api.urls', namespace='api')),
     path('account/', include(('camp.apps.accounts.urls', 'account'), namespace='account')),
     path('contact/', include(('camp.apps.contact.urls', 'contact'), namespace='contact')),
+    path('support/', include(('camp.apps.helpdesk.urls', 'helpdesk'), namespace='helpdesk')),
     path('app/', views.GetTheApp.as_view(), name='app'),
 
     # @sjvair/monitor-map specific routes
     path('monitor/<monitor_id>/', views.PageTemplate.as_view(template_name='pages/index.html')),
     path('widget/', views.RenderStatic.as_view(static_file='widget/index.html')),
+
+    path('prose/', include('prose.urls')),
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
@@ -28,7 +31,7 @@ urlpatterns = [
 if settings.DEBUG:
     import debug_toolbar
     urlpatterns += [path('__debug__/', include(debug_toolbar.urls))]
-    # urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # Catch-all to render templates based on the path
 urlpatterns += [re_path('^', views.PageTemplate.as_view())]

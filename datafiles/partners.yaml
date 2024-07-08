@@ -1,63 +1,43 @@
 - name: Central California Asthma Collaborative
-  logo: img/partners/ccac.png
+  logo: img/logo/ccac.png
   url: http://cencalasthma.org/
-  description: |
-    The Central California Asthma Collaborative works across the entire San Joaquin
-    Valley to reduce the burden of asthma and related conditions through education,
-    intervention, policy analysis and advocacy by improving care and reducing air pollution.
-
-- name: Root Access
-  logo: img/partners/rootaccess.png
-  url: https://rootaccess.org/
-  description: |
-    Root Access is a community hackerspace and makerspace that provides Fresno's technology
-    and maker community with access to tools and equipment, as well as space to share
-    knowledge and experiment in a creative and collaborative environment.
 
 - name: Central California Environmental Justice Network
-  logo: img/partners/ccejn.png
+  logo: img/logo/ccejn.png
   url: https://ccejn.org/
-  description: |
-    Central California Environmental Justice Network's mission is to empower our
-    communities and secure our children's future by eliminating negative environmental
-    impacts in low income and communities of color in the Central Valley.
 
 - name: Valley Improvement Projects
-  logo: img/partners/vip.jpg
+  logo: img/logo/vip.jpg
   url: https://valleyimprovementprojects.org/
-  description: |
-    Valley Improvement Projects' mission is to improve the quality of life of
-    under-represented and marginalized residents of Stanislaus County and the
-    Central Valley by advocating for social and environmental justice.
 
 - name: Catholic Charities Diocese of Stockton
-  logo: img/partners/ccds.png
+  logo: img/logo/ccds.png
   url: https://stocktondiocese.org/environmental-justice
-  description: |
-    For over 70 years, Catholic Charities of the Diocese of Stockton has provided social
-    services to people in San Joaquin, Stanislaus, Calaveras, Tuolumne, Alpine, and Mono
-    counties. Today, Catholic Charities administers direct social services and advocacy
-    through a variety of programs for the most vulnerable and under represented citizens
-    of our communities.
-
-- name: Little Manila Rising
-  logo: img/partners/lmr.jpg
-  url: https://www.littlemanila.org/
-  description: |
-    Little Manila Rising is a social justice organization whose mission is to develop
-    equitable solutions to create a more inclusive and healthy community for all San
-    Joaquin County residents.
 
 - name: Madera Coalition for Community Justice
-  logo: img/partners/mccj.jpg
+  logo: img/logo/mccj.jpg
   url: http://www.maderaccj.org/
-  description: |
-    Madera Coalition for Community Justice is an organization that aims to educate
-    and assist low-income residents of Madera County by working together to obtain
-    appropriate and sufficient food, clothing, health care, educational, and
-    employment opportunities and other fundamental needs.
+
+- name: The Center on Race, Poverty & the Environment
+  logo: img/logo/crpe.png
+  url: https://crpe-ej.org/
+
+- name: Valley Onward
+  logo: img/logo/vo.png
+  url: https://www.valleyonward.org/
+
+- name: The LEAP Institute
+  logo: img/logo/leap.png
+  url: https://theleapinstitute.org/
+
+- name: Little Manila Rising
+  logo: img/logo/lmr.jpg
+  url: https://www.littlemanila.org/
+
+- name: Root Access
+  logo: img/logo/rootaccess.svg
+  url: https://rootaccess.org/
 
 - name: University of California, Merced
-  logo: img/partners/ucmerced.png
+  logo: img/logo/ucmerced.png
   url: https://www.ucmerced.edu/
-  description:

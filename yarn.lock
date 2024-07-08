@@ -17,6 +17,11 @@
   resolved "https://registry.yarnpkg.com/@sjvair/web-widget/-/web-widget-1.0.9.tgz#5a76ce290d1509fedc337b43604a5d930477de13"
   integrity sha512-ZQMLJUF0RLt3ozks2DvI71Su8NQOCty0wlrsd5Awl0OI++aRo+EDGPdaEYc07USqZxGiro71/4YEj05aDq9kaA==
 
+bulma-list@^1.2.0:
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/bulma-list/-/bulma-list-1.2.0.tgz#0734b13a8ae8eaa3e5d3d4aca66cb3a0989b0e7c"
+  integrity sha512-hOEVB32dtDyhXS+IqAt1TyRgZFjUTQ2RNXDG7MbvVokjMVeURDIDalGFO8UwjfkpjFMKQzJTlD/rdi3oDtdaHg==
+
 bulma@^0.9.4:
   version "0.9.4"
   resolved "https://registry.npmjs.org/bulma/-/bulma-0.9.4.tgz"

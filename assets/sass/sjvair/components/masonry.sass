@@ -1,0 +1,75 @@
+.masonry
+    column-count: 1
+    margin: $gap 0
+    column-gap: $gap
+
+    .masonry-item
+        margin: 0 0 $gap
+        break-inside: avoid
+
++mobile
+    .masonry
+        column-count: 1
+
+        &.is-2-mobile
+            column-count: 2
+
+        &.is-3-mobile
+            column-count: 3
+
+        &.is-4-mobile
+            column-count: 4
+
+        &.is-5-mobile
+            column-count: 5
+
++tablet
+    .masonry
+        &.is-1-tablet
+            column-count: 1
+
+        &.is-2-tablet
+            column-count: 2
+
+        &.is-3-tablet
+            column-count: 3
+
+        &.is-4-tablet
+            column-count: 4
+
+        &.is-5-tablet
+            column-count: 5
+
++desktop
+    .masonry
+        &.is-1-desktop
+            column-count: 1
+
+        &.is-2-desktop
+            column-count: 2
+
+        &.is-3-desktop
+            column-count: 3
+
+        &.is-4-desktop
+            column-count: 4
+
+        &.is-5-desktop
+            column-count: 5
+
++widescreen
+    .masonry
+        &.is-1-widescreen
+            column-count: 1
+
+        &.is-2-widescreen
+            column-count: 2
+
+        &.is-3-widescreen
+            column-count: 3
+
+        &.is-4-widescreen
+            column-count: 4
+
+        &.is-5-widescreen
+            column-count: 5

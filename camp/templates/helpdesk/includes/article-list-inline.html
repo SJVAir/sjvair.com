@@ -1,0 +1,18 @@
+<div class="list article-list-inline">
+    {% for article in article_list %}
+    <div class="list-item {% if active == article.pk %}is-active{% endif %}">
+        <div class="list-item-image">
+            <span class="icon">
+                {% if show_featured and article.is_featured %}
+                    <span class="fas fa-fw fa-sparkles is-warning has-text-warning"></span>
+                {% else %}
+                    <span class="fal fa-fw fa-file-alt has-text-dark"></span>
+                {% endif %}
+            </span>
+        </div>
+        <div class="list-item-content">
+            <a href="{{ article.get_absolute_url }}">{{ article.title }}</span></a>
+        </div>
+    </div>
+    {% endfor %}
+</div>

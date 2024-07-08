@@ -37,6 +37,10 @@
                         {% include '_includes/form/field.html' with field=form.password2 icon_left="far fa-lock" %}
                     </div>
 
+                    <div class="box">
+                        {% include '_includes/form/field.html' with field=form.captcha %}
+                    </div>
+
                     <div class="columns is-vcentered">
                         <div class="column is-one-third">
                             <button type="submit" class="button is-success">Create an account</button>
