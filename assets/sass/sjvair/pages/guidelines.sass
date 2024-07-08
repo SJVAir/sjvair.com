@@ -1,4 +1,9 @@
 body.guidelines
+
+    &.schools
+        .hook
+            @include header-bg('../img/school-sports.jpg', .4)
+
     .hook
         @include header-bg('../img/park-activity.jpg', .4)
 
@@ -18,6 +23,25 @@ body.guidelines
         tr.guidelines-header
             th
                 text-align: center
+
+    th.guidelines-level
+        &.level-1
+            @extend .is-air-green
+
+        &.level-2
+            @extend .is-air-yellow
+
+        &.level-3
+            @extend .is-air-orange
+
+        &.level-4
+            @extend .is-air-red
+
+        &.level-5
+            @extend .is-air-purple
+
+        &.level-6
+            @extend .is-air-maroon
 
     td.guidelines-level
         &.level-1
