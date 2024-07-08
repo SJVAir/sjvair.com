@@ -1,0 +1,14 @@
+<div class="card category-detail-card">
+    <header class="card-header">
+        <a href="{{ category.get_absolute_url }}" class="card-header-title">{{ category.name }}</a>
+    </header>
+    <div class="card-content">
+        {% include "helpdesk/includes/article-list-inline.html" with article_list=category.articles.all show_featured=show_featured|default:True active=active %}
+
+        {% if category.article_count %}
+            <p class="mt-5">
+                <a href="{{ category.get_absolute_url }}">See all {{ category.article_count }} articles &rarr;</a>
+            </p>
+        {% endif %}
+    </div>
+</div>

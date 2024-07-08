@@ -1,0 +1,33 @@
+{% extends 'helpdesk/base.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block title %}{{ category.name }} | {{ block.super }}{% endblock %}
+
+{% block body-class %}{{ block.super }} category-detail{% endblock %}
+
+{% block breadcrumb-list %}
+    <li class="is-active">
+        <a href="{{ category.get_absolute_url }}" aria-current="page">{{ category.name }}</a>
+    </li>
+{% endblock %}
+
+{% block content %}
+<section class="section">
+    <div class="container">
+        <div class="columns">
+            <div class="column is-8-desktop">
+                <div class="content">
+                    <h1>{{ category.name }}</h1>
+                    {% include "helpdesk/includes/article-list-inline.html" with article_list=articles show_featured=True %}
+                </div>
+            </div>
+            <div class="column is-4-desktop side-column">
+                {% include 'helpdesk/includes/category-list-card.html' with categories=categories active=category.pk %}
+
+                {% include 'helpdesk/includes/cta-contact.html' %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

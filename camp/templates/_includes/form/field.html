@@ -1,9 +1,9 @@
 {% load widget_tweaks %}
 {% load form_utils %}
 
-<div class="field content">
+<div class="field">
     {% if field|is_checkbox %}
-        <div class="control">
+        <div class="control checkboxes">
             <label class="checkbox">
                 {% render_field field %}
                 {{ field.label }} {% if not field|optional %}<span class="required">*</span>{% endif %}
@@ -12,22 +12,54 @@
                 <span class="help">{{ field.help_text|safe }}</span>
             {% endif %}
             {% for error in field.errors %}
-                <span class="help is-errors">{{ error }}</span>
+                <span class="help is-error is-danger has-text-weight-semibold">{{ error }}</span>
             {% endfor %}
         </div>
     {% elif field|is_radio %}
-        <!-- ??? -->
+        <div class="control">
+            <label class="label">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}
+                <span class="help">{{ field.help_text|safe }}</span>
+            {% endif %}
+            {% for error in field.errors %}
+                <span class="help is-error is-danger has-text-weight-semibold">{{ error }}</span>
+            {% endfor %}
+        </div>
     {% else %}
+        {% if field.label %}
         <label class="label" for="{{ field.id_for_label }}">
             {{ field.label }}{% if field|optional %} <span class="is-size-7 has-text-grey has-text-weight-normal">(Optional)</span>{% else %}<span class="required">*</span>{% endif %}
         </label>
+        {% endif %}
         <div class="control {% if icon_left %}has-icons-left{% endif %} {% if icon_right %}has-icons-right{% endif %}">
-            {% if field|is_select %}
+            {% if field|is_multiple %}
+                <div class="has-multiple">
+                    {{ field }}
+                </div>
+            {% elif field|is_select %}
                 <div class="select">
                     {{ field }}
                 </div>
             {% elif field.field.widget.input_type %}
-                {% render_field field|add_class:'input' %}
+                {% if field.field.widget.input_type == 'file' %}
+                    <div class="file">
+                        <label class="file-label">
+                            {% render_field field|add_class:'file-input' %}
+                            <span class="file-cta">
+                                <span class="file-icon">
+                                    <span class="fas fa-upload"></span>
+                                </span>
+                                <span class="file-label">Choose a file…</span>
+                            </span>
+                      </label>
+                    </div>
+                {% else %}
+                    {% render_field field|add_class:'input' %}
+                {% endif %}
+            {% elif field.name == 'captcha' %}
+                {# special edge case #}
+                {% render_field field|add_class:'captcha' %}
             {% else %}
                 {% render_field field|add_class:'textarea' %}
             {% endif %}
