@@ -24,7 +24,7 @@
                     <p class="lead">
                         <a href="mailto:sjvair@centralcalasthma.org">
                             <span class="icon has-text-grey is-size-5">
-                                <span class="fal fa-fw fa-envelope"></span>
+                                <span class="far fa-fw fa-envelope"></span>
                             </span>
                             <span>sjvair@centralcalasthma.org</span>
                         </a>
@@ -73,8 +73,8 @@
                             </div>
                         </div>
 
-                        {% include '_includes/form/field.html' with field=form.topic %}
-                        {% include '_includes/form/field.html' with field=form.subject %}
+                        {% include '_includes/form/field.html' with field=form.topic icon_left="far fa-tag" %}
+                        {% include '_includes/form/field.html' with field=form.subject icon_left="far fa-comment-dots" %}
                         {% include '_includes/form/field.html' with field=form.message %}
                         <div class="control">
                             <button type="submit" class="button is-success">Submit</button>
