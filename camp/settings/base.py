@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'django_filters',
     'django_huey',
     'django_jsonform',
+    'django_recaptcha',
     'form_utils',
     'huey.contrib.djhuey',
     'livereload',
@@ -365,6 +366,13 @@ PURPLEAIR_READ_KEY = os.environ.get('PURPLEAIR_READ_KEY')
 PURPLEAIR_WRITE_KEY = os.environ.get('PURPLEAIR_WRITE_KEY')
 
 PURPLEAIR_GROUP_ID = os.environ.get('PURPLEAIR_GROUP_ID')
+
+
+# reCAPTCHA
+
+RECAPTCHA_PUBLIC_KEY = os.environ.get('RECAPTCHA_PUBLIC_KEY')
+
+RECAPTCHA_PRIVATE_KEY = os.environ.get('RECAPTCHA_PRIVATE_KEY')
 
 
 # Sentry
