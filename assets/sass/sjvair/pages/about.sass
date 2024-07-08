@@ -1,35 +1,16 @@
 @import ../mixins
 
 body.about
-    section.partners
-        background-color: $white
-
-        .partner
-            padding-bottom: 2rem
-
-            .logo
-                background-position: center center
-                background-repeat: no-repeat
-                background-size: contain
-                display: block
-                height: 150px
-                margin: auto
-                margin-bottom: 1rem
-                width: 50%
-
-body.about.collaborative
     .hook
-        @include header-bg('../img/about/purpleair-testing-3.jpg', .6)
-
-body.about.colophon
-    .hook
-        @include header-bg('../img/about/air-monitor-prototype.jpg', .6)
+        @include header-bg('../img/about/delano-bam.jpg', .5)
+        
 
     section
         .title
             font-size: $size-2
 
-    section.data-providers
+    section.data-providers,
+    section.funding-sources
         .lead
             @extend .mb-6
     
@@ -37,14 +18,19 @@ body.about.colophon
             max-height: 100px
             max-width: 250px
 
-    section.technology
+    section.technology-stack
         img
             max-height: 150px
             max-width: 150px
 
+    section.open-source
+        img.sjvair-logo
+            height: 4em
+            vertical-align: top
+
 body.about.testing
     .hook
-        @include header-bg('../img/about/delano-bam.jpg', .5)
+        @include header-bg('../img/about/purpleair-testing-3.jpg', .6)
 
     .images
         @extend .mb-6

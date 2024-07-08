@@ -1,19 +1,19 @@
-- name: US Environmental Protection Agency
-  logo: img/providers/epa.svg
+- name: US EPA
+  logo: img/logo/epa.svg
   url: https://www.airnow.gov/
 
 - name: California Air Resource Board
-  logo: img/providers/carb.svg
+  logo: img/logo/carb.svg
   url: https://aqview.arb.ca.gov/
 
 - name: San Joaquin Valley Air Pollution Control District
-  logo: img/providers/sjvapcd.svg
+  logo: img/logo/sjvapcd.svg
   url: https://valleyair.org/
 
 - name: AirGradient
-  logo: img/providers/airgradient.svg
+  logo: img/logo/airgradient.svg
   url: https://www.airgradient.com/
 
 - name: PurpleAir
-  logo: img/providers/purpleair.png
+  logo: img/logo/purpleair.png
   url: https://www2.purpleair.com/

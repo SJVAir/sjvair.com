@@ -1,0 +1,185 @@
+{% extends 'page.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block title %}Colophon | {{ block.super }}{% endblock %}
+
+{% block body-class %}about colophon{% endblock %}
+
+{% block main %}
+<section class="section is-medium hook">
+    <div class="container">
+        <div class="content">
+            <h1 class="title">About SJVAir</h1>
+            <p class="lead">SJVAir is a network of high-performance (FEM) and low-cost (non-FEM) air quality monitors providing real-time data to disadvantaged communities across the San Joaquin Valley.</p>
+        </div>
+    </div>
+</section>
+
+{% load_datafile 'partners.yaml' as partner_list %}
+<section class="section is-medium has-background-white sjvair-collab">
+    <div class="container">
+        <div class="columns is-centered is-vcentered is-mobile is-multiline">
+            <div class="column is-12-mobile is-12-tablet is-6-desktop">
+                <h1 class="title"><span class="has-text-blue">SJVAir</span> Collaborative</h1>
+                <p class="lead"> SJVAir is operated by the Central California Asthma Collaborative, in coordination with universities and environmental justice organizations across the region.</p>
+            </div>
+            <div class="column is-6-mobile is-8-tablet is-6-desktop">
+                {% with partner_list.0 as partner %}
+                <div class="columns is-mobile is-centered">
+                    <div class="column is-7-tablet has-text-centered">
+                        <a href="{{ partner.url }}" target="_blank">
+                            <img src="{% static partner.logo %}" alt="{{ partner.name }}" class="is-responsive" />
+                        </a>
+                    </div>
+                </div>
+                {% endwith %}
+            </div>
+        </div>
+        <div class="columns is-centered">
+            <div class="column is-10-tablet is-8-desktop">
+                <div class="columns is-mobile is-multiline is-vcentered is-centered has-text-centered is-variable is-8">
+                    {% for partner in partner_list|slice:'1:' %}
+                    <div class="column is-4-mobile is-4-tablet is-3-desktop has-text-centered">
+                        <a href="{{ partner.url }}" target="_blank">
+                            <img src="{% static partner.logo %}" alt="{{ partner.name }}" class="is-responsive" />
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section is-medium has-background-white-ter data-providers">
+    <div class="container">
+        <div class="columns is-centered is-vcentered">
+            <div class="column is-10-tablet is-6-desktop">
+                <h1 class="title"><span class="has-text-turquoise">Data</span> Providers</h1>
+                <p class="lead">SJVAir integrates with multiple air quality networks to bring data from different groups into one place, and we thank them for generously sharing their data with us.</p>
+            </div>
+        </div>
+        <div class="columns is-mobile is-multiline is-vcentered is-centered has-text-centered is-variable is-8">
+            {% load_datafile 'data-providers.yaml' as provider_list %}
+            {% for provider in provider_list %}
+            <div class="column is-6-mobile is-6-tablet is-4-desktop">
+                <a href="{{ provider.url }}" target="_blank">
+                    <img src="{% static provider.logo %}" alt="{{ provider.name }}" class="is-responsive" />
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<section class="section is-medium has-background-white school-districts">
+    <div class="container">
+        <div class="columns is-centered is-vcentered is-multiline is-variable is-8">
+            <div class="column is-10-tablet is-6-desktop">
+                <h1 class="title"><span class="has-text-red">School</span> Districts</h1>
+                <p class="lead">We've partnered with school districts in the San Joaquin Valley to set up air quality networks in communities that previously had limited access to local real-time air quality information.</p>
+            </div>
+            <div class="column is-12-tablet is-6-desktop">
+                <div class="columns is-mobile is-multiline is-vcentered is-centered has-text-centered is-variable is-8">
+                    {% load_datafile 'school-districts.yaml' as district_list %}
+                    {% for district in district_list %}
+                    <div class="column is-5-mobile is-4-tablet is-4-desktop">
+                        <a href="{{ district.url }}" target="_blank" class="school-{{ district.slug }}">
+                            <img src="{% static district.logo %}" alt="{{ district.name }}" class="is-responsive" />
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section is-medium has-background-white-ter funding-sources">
+    <div class="container">
+        <div class="columns is-centered is-vcentered">
+            <div class="column is-10-tablet is-6-desktop">
+                <h1 class="title"><span class="has-text-cyan">Funding</span> Sources</h1>
+                <p class="lead">Funding for SJVAir is provided through AB617 Community Air Grants, as well as other environmental grants through the US EPA and Cal EPA.</p>
+            </div>
+        </div>
+        <div class="columns is-mobile is-multiline is-vcentered is-centered has-text-centered is-variable is-8">
+            {% load_datafile 'funding-sources.yaml' as funder_list %}
+            {% for funder in funder_list %}
+            <div class="column is-6-mobile is-6-tablet is-4-desktop">
+                <a href="{{ funder.url }}" target="_blank">
+                    <img src="{% static funder.logo %}" alt="{{ funder.name }}" class="is-responsive" />
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<section class="section is-medium has-background-white technology-stack">
+    <div class="container">
+        <div class="columns is-reversed is-multiline is-centered is-vcentered is-variable is-8">
+            <div class="column is-10-tablet is-6-desktop">
+                <h1 class="title"><span class="has-text-green">Technology</span> Stack</h1>
+                <p class="lead">SJVAir wouldn't be possible without the thousands of people who have generously given their time to build and maintain these and other Open Source and Maker community projects.</p>
+            </div>
+            <div class="column is-12-tablet is-6-desktop">
+                <div class="columns is-mobile is-multiline is-vcentered is-centered has-text-centered">
+                    {% load_datafile 'technologies.yaml' as technology_list %}
+                    {% for project in technology_list %}
+                    <div class="column is-4-mobile is-3-tablet is-3-desktop">
+                        <a href="{{ project.url }}" target="_blank">
+                            <img src="{% static project.logo %}" alt="{{ project.name }}" class="is-responsive" />
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section is-medium has-background-white-ter open-source">
+    <div class="container">
+        <div class="columns is-centered">
+            <div class="column is-10-tablet is-10-desktop">
+                <div class="columns is-centered is-vcentered is-multiline">
+                    <div class="column is-4-tablet is-3-desktop has-text-centered">
+                        <img src="{% static 'img/sjvair-logo.svg' %}" class="sjvair-logo" alt="" />
+                        <span class="fal fa-4x fa-heart has-text-danger"></span>
+                        <span class="fab fa-4x fa-osi has-text-success"></span>
+                    </div>
+                    <div class="column is-10-tablet is-9-desktop">
+                        <div class="content">
+                            <h1><span class="has-text-purple">Open is better</span> than closed.</h1>
+                            <p>We subscribe to the ideals of Open Source software, hardware, and data,
+                                and believe that these things should be freely available to the public
+                                for the benefit of everyone. We're making a commitment that the
+                                technology that powers SJVAir will be published on Github and our API
+                                will be documented and freely available for anyone to use. More
+                                information will be available soon.</p>
+                            <div class="buttons">
+                                <a href="https://github.com/sjvair" target="_blank" class="button is-github">
+                                    <span class="icon">
+                                        <span class="fab fa-lg fa-github"></span>
+                                    </span>
+                                    <span>github.com/sjvair</span>
+                                </a>
+                                {% comment %}
+                                <a href="https://www.sjvair.com/api/" class="button is-link">
+                                    <span class="icon">
+                                        <span class="far fa-cog"></span>
+                                    </span>
+                                    <span>sjvair.com/api</span>
+                                </a>
+                                {% endcomment %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
