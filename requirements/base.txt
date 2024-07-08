@@ -12,6 +12,7 @@ django-debug-toolbar-force==0.2
 django-dirtyfields==1.9.2
 django-extensions==3.2.3
 django-filter==23.2
+django-recaptcha==4.0.0
 django-heroku==0.3.1
 django-huey==1.1.1
 django-jsonform==2.22.0
