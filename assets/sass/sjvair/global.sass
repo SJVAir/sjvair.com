@@ -10,6 +10,13 @@ img, .image > img
         display: inline-block
         width: 100%
 
+form.form
+    .control
+        .error
+            @extend .has-background-warning-light
+            @extend .has-text-danger-dark
+            @extend .has-text-weight-semibold
+
 ul
     &.is-inline
         list-style: none
