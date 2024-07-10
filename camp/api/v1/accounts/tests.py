@@ -98,7 +98,7 @@ class AuthenticationTests(TestCase):
         # Assert we got a valid status code and the correct response data.
         assert response.status_code == 201
         assert "api_token" in data["data"]
-        assert data['data']['api_token']['key'] is not None
+        assert data['data']['api_token'] is not None
         assert "id" in data["data"]
         assert data["data"]["email"] == payload["email"]
 

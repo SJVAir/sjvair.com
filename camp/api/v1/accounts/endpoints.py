@@ -37,7 +37,11 @@ class LoginEndpoint(TokenAuthEndpoint):
     Logs in a user and gets auth token
     """
     
-    user_fields = ['id', 'name', 'email', 'phone']
+    serializer_class = serializers.UserSerializer
+
+    def get(self, request, **kwargs):
+        data = self.serializer_class(request.user).data
+        return http.Http200({"data": data})
 
     def get_credentials(self, request):
         return {
