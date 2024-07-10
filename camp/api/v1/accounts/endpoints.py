@@ -27,9 +27,27 @@ from sentry_sdk import capture_exception
 from twilio.base.exceptions import TwilioRestException
 
 from camp.api.v1.endpoints import FormEndpoint
+from camp.apps.alerts.models import Alert
 from camp.apps.accounts.models import User
 
 from . import forms, serializers
+
+
+class AlertList(generics.ListEndpoint):
+    model = Alert
+    login_required = True
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        queryset = (queryset
+            .filter(
+                monitor__subscriptions__user_id=self.request.user.pk,
+                end_time__isnull=True
+            )
+            .select_related('monitor')
+            .distinct()
+        )
+        return queryset
 
 
 class LoginEndpoint(TokenAuthEndpoint):
