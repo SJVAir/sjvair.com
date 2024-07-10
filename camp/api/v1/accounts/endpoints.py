@@ -61,13 +61,11 @@ class UserDetail(generics.DetailUpdateDeleteEndpoint):
     """
 
     form_class = forms.UserForm
+    model = User
     serializer_class = serializers.UserSerializer
 
     def get_object(self):
         return self.request.user
-
-    def get_form(self, **kwargs):
-        return super().get_form(request=self.request, **kwargs)
 
 
 class SendPhoneVerificationEndpoint(FormEndpoint):

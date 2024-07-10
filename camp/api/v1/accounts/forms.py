@@ -89,8 +89,8 @@ class UserForm(forms.ModelForm):
         if commit:
             is_created = user._state.adding
             user.save()
+            self.create_token(user)
             if is_created:
-                self.create_token(user)
                 user.send_phone_verification_code()
         return user
 
