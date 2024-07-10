@@ -12,7 +12,7 @@
                 <span class="help">{{ field.help_text|safe }}</span>
             {% endif %}
             {% for error in field.errors %}
-                <span class="help is-error is-danger has-text-weight-semibold">{{ error }}</span>
+                <span class="error">{{ error }}</span>
             {% endfor %}
         </div>
     {% elif field|is_radio %}
@@ -23,7 +23,7 @@
                 <span class="help">{{ field.help_text|safe }}</span>
             {% endif %}
             {% for error in field.errors %}
-                <span class="help is-error is-danger has-text-weight-semibold">{{ error }}</span>
+                <span class="error">{{ error }}</span>
             {% endfor %}
         </div>
     {% else %}
@@ -77,7 +77,7 @@
                 <span class="help">{{ field.help_text|safe }}</span>
             {% endif %}
             {% for error in field.errors %}
-                <span class="help is-danger has-text-weight-semibold">{{ error }}</span>
+                <span class="error">{{ error }}</span>
             {% endfor %}
         </div>
     {% endif %}
