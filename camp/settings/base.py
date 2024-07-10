@@ -42,6 +42,9 @@ DEBUG = bool(int(os.environ.get('DJANGO_DEBUG', 1)))
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -54,18 +57,19 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # 'channels',
-    # 'channels_redis',
     'corsheaders',
     'admin_honeypot',
     'django_admin_inline_paginator',
     'django_extensions',
     'django_filters',
     'django_huey',
+    'django_jsonform',
+    'django_recaptcha',
     'form_utils',
     'huey.contrib.djhuey',
     'livereload',
     'localflavor',
+    'prose',
     'resticus',
     'storages',
     'widget_tweaks',
@@ -76,7 +80,7 @@ INSTALLED_APPS = [
     'camp.apps.archive',
     'camp.apps.calibrations',
     'camp.apps.contact',
-    'camp.apps.qaqc',
+    'camp.apps.helpdesk',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqview',
@@ -84,6 +88,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.methane',
     'camp.apps.monitors.purpleair',
     'camp.apps.sensors',
+    'camp.apps.qaqc',
     'camp.utils',
 ]
 
@@ -145,6 +150,7 @@ for var in ["REDIS_URL", "OPENREDIS_URL"]:
         if REDIS_URL.startswith('rediss'):
             REDIS_URL = f"{REDIS_URL}{'&' if '?' in REDIS_URL else '?'}ssl_cert_reqs=none"
         break
+
 
 # Auth
 
@@ -228,7 +234,8 @@ MEDIA_ROOT = BASE_DIR.child('public', 'media')
 
 MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
 
-# Email setup
+
+# Email
 
 DEFAULT_FROM_EMAIL = 'SJVAir <no-reply@sjvair.com>'
 
@@ -239,6 +246,7 @@ SJVAIR_INACTIVE_ALERT_EMAILS = [email.strip() for email in
 
 SJVAIR_CONTACT_EMAILS = [email.strip() for email in
     os.environ.get('SJVAIR_CONTACT_EMAILS', SERVER_EMAIL).split(',')]
+
 
 # App URLs
 
@@ -251,17 +259,27 @@ APP_URL_IPAD = os.environ.get('APP_URL_IPAD',
 APP_URL_IPHONE = os.environ.get('APP_URL_IPHONE',
     'https://apps.apple.com/us/app/sjvair/id6448961840?platform=iphone')
 
+
+# django-sqids
+
+DJANGO_SQIDS_MIN_LENGTH = 5
+
+DJANGO_SQIDS_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
+
+
 # django-cors-headers
 
 CORS_ORIGIN_ALLOW_ALL = True
 
 CORS_ALLOW_CREDENTIALS = True
 
+
 # django-phonenumber-field
 
 PHONENUMBER_DB_FORMAT = "INTERNATIONAL"
 
 PHONENUMBER_DEFAULT_REGION = "US"
+
 
 # django-resticus
 
@@ -274,8 +292,6 @@ RESTICUS = {
 }
 
 # huey / django-huey
-
-MAX_QUEUE_SIZE = int(os.environ.get('MAX_QUEUE_SIZE', 500))
 
 DJANGO_HUEY = {
     'default': 'primary',
@@ -303,18 +319,20 @@ DJANGO_HUEY = {
     }
 }
 
-HUEY = {
-    
-}
+MAX_QUEUE_SIZE = int(os.environ.get('MAX_QUEUE_SIZE', 500))
+
 
 # Twilio
+
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 
 TWILIO_PHONE_NUMBERS = os.environ.get("TWILIO_PHONE_NUMBERS", "").split(',')
 
+
 # SMS Alerts
+
 SEND_SMS_ALERTS = bool(int(os.environ.get('SEND_SMS_ALERTS', 1)))
 
 # Number of minutes between sending
@@ -326,21 +344,40 @@ PHONE_VERIFICATION_CODE_EXPIRES = int(os.environ.get('PHONE_VERIFICATION_CODE_EX
 # Number of digits in the phone verification code
 PHONE_VERIFICATION_CODE_DIGITS = int(os.environ.get('PHONE_VERIFICATION_CODE_DIGITS', 6))
 
+
 # Google Maps
+
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
 
+
 # Google Analytics
+
 GOOGLE_ANALYTICS_ID = os.environ.get('GOOGLE_ANALYTICS_ID')
 
+
 # Air Now API
+
 AIRNOW_API_KEY = os.environ.get('AIRNOW_API_KEY')
 
+
 # Purple Air
+
 PURPLEAIR_READ_KEY = os.environ.get('PURPLEAIR_READ_KEY')
+
 PURPLEAIR_WRITE_KEY = os.environ.get('PURPLEAIR_WRITE_KEY')
+
 PURPLEAIR_GROUP_ID = os.environ.get('PURPLEAIR_GROUP_ID')
 
+
+# reCAPTCHA
+
+RECAPTCHA_PUBLIC_KEY = os.environ.get('RECAPTCHA_PUBLIC_KEY')
+
+RECAPTCHA_PRIVATE_KEY = os.environ.get('RECAPTCHA_PRIVATE_KEY')
+
+
 # Sentry
+
 if "SENTRY_DSN" in os.environ:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
@@ -351,10 +388,15 @@ if "SENTRY_DSN" in os.environ:
         release=COMMIT_HASH,
     )
 
+
 # Scout APM
+
 SCOUT_MONITOR = bool(os.environ.get('SCOUT_MONITOR') == 'true')
+
 SCOUT_KEY = os.environ.get('SCOUT_KEY')
+
 SCOUT_NAME = os.environ.get('SCOUT_NAME')
+
 SCOUT_ERRORS_ENABLED = not DEBUG
 
 if SCOUT_KEY is not None:

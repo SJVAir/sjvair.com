@@ -76,9 +76,7 @@ CACHES = {
     }
 }
 
-# Huey
-
-# HUEY['always_eager'] = False
+# Debug
 
 if DEBUG:
     INSTALLED_APPS.extend([
@@ -87,6 +85,7 @@ if DEBUG:
 
     MIDDLEWARE.extend([
         'debug_toolbar.middleware.DebugToolbarMiddleware',
+        'debug_toolbar_force.middleware.ForceDebugToolbarMiddleware',
     ])
 
     DEBUG_TOOLBAR_CONFIG = {

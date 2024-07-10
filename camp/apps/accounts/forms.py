@@ -7,6 +7,8 @@ from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from django.utils.translation import gettext_lazy as _
 
+from django_recaptcha.fields import ReCaptchaField
+from django_recaptcha.widgets import ReCaptchaV2Checkbox
 from phonenumber_field.formfields import PhoneNumberField
 from phonenumber_field.validators import validate_international_phonenumber
 from phonenumber_field.widgets import RegionalPhoneNumberWidget
@@ -129,6 +131,8 @@ class UserCreationForm(forms.ModelForm):
         help_text=_('Enter the same password as before, for verification.'),
         widget=forms.PasswordInput,
     )
+
+    captcha = ReCaptchaField(label='')
 
     class Meta:
         model = User

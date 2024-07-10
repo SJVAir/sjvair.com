@@ -1,0 +1,73 @@
+{% extends 'helpdesk/base.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block title %}Glossary | {{ block.super }}{% endblock %}
+
+{% block body-class %}{{ block.super }} glossary{% endblock %}
+
+{% block breadcrumb-list %}
+    <li class="is-active">
+        <a href="{% url 'helpdesk:glossary' %}">Glossary</a>
+    </li>
+{% endblock %}
+
+{% block content %}
+<section class="section">
+    <div class="container">
+        <div class="content">
+            <h1>Glossary</h1>
+
+            {% regroup term_list by slug|slice:":1"|upper as letter_list %}
+            <div class=" content">
+                <!-- <p class="has-text-weight-bold is-size-5">Skip to Letter</p> -->
+                <div class="buttons">
+                    {% for letter in letter_list %}
+                    <a href="#{{ letter.grouper }}" class="button is-white has-text-weight-semibold">{{ letter.grouper }}</a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class="columns">
+            <div class="column is-9-desktop">
+                {% for letter in letter_list %}
+                <div class="columns">
+                    <div class="column is-1">
+                        <a href="#{{ letter.grouper }}" id="{{ letter.grouper }}" class="has-text-weight-bold has-text-dark is-size-3">{{ letter.grouper }}</a>
+                    </div>
+                    <div class="column">
+                        <ul class="list">
+                            {% for term in letter.list %}
+                            <li class="list-item box">
+                                <div class="list-item-content">
+                                    <div class="list-item-title">
+                                        <a href="{{ term.get_absolute_url }}" id="{{ term.slug }}">{{ term.name }}</a>
+                                        {% if term.synonyms %}
+                                            <span class="has-text-grey has-text-weight-medium is-italic">({{ term.synonyms|join:", " }})</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="list-item-description">
+                                        <div class="content">
+                                            {{ term.definition|safe }}
+                                            {% if term.related_terms_count %}
+
+                                            <p class="notification is-size-7 mt-3 p-2">See also: {% for rt in term.related_terms.all %}<a href="{{ rt.get_absolute_url }}" class="has-text-weight-medium">{{ rt.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="column">
+                {% include 'helpdesk/includes/cta-contact.html' %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
