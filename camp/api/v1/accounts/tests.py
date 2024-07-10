@@ -16,6 +16,7 @@ client = Client()
 
 login = endpoints.LoginEndpoint.as_view()
 register = endpoints.RegisterEndpoint.as_view()
+user_detail = endpoints.UserDetail.as_view()
 password_reset = endpoints.PasswordResetEndpoint.as_view()
 password_reset_confirm = endpoints.PasswordResetConfirmEndpoint.as_view()
 send_phone_verification = endpoints.SendPhoneVerificationEndpoint.as_view()
@@ -89,7 +90,6 @@ class AuthenticationTests(TestCase):
             "email": "alice.test@sjvair.com",
             "phone": "661-555-5555",
             "password": "t0kenize th!s",
-            "confirm_password": "t0kenize th!s",
         }
         request = self.factory.post(url, payload, content_type="application/json")
         response = register(request)
@@ -329,3 +329,16 @@ class AuthenticationTests(TestCase):
 
         assert response.status_code == 400
         assert data['errors']['new_password2'][0]['code'] == 'password_too_similar'
+
+    def test_update_user(self):
+        url = reverse('api:v1:account:user-detail')
+        payload = {"full_name": "Updated User"}
+        request = self.factory.patch(url, payload, content_type='application/json')
+        request.user = self.user
+        response = user_detail(request)
+
+        data = get_response_data(response)
+        assert response.status_code == 200
+        updated = User.objects.get(pk=self.user.pk)
+        assert updated.full_name == payload['full_name'] == data['data']['full_name']
+
