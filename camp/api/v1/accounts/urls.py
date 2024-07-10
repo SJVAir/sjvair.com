@@ -6,6 +6,7 @@ app_name = 'accounts'
 
 urlpatterns = [
     path("", endpoints.UserDetail.as_view(), name="user-detail"),
+    path("alerts/", endpoints.AlertList.as_view(), name="user-detail"),
     path("login/", endpoints.LoginEndpoint.as_view(), name="login"),
     path("register/", endpoints.RegisterEndpoint.as_view(), name="register"),
 
