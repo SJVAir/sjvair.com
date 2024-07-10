@@ -1,43 +1,43 @@
 - name: Python
-  logo: img/tech/python.svg
+  logo: img/logo/tech/python.svg
   url: https://www.python.org/
 
 - name: Django
-  logo: img/tech/django.svg
+  logo: img/logo/tech/django.svg
   url: https://www.djangoproject.com/
 
 - name: pandas
-  logo: img/tech/pandas.svg
+  logo: img/logo/tech/pandas.svg
   url: https://pandas.pydata.org/
 
 - name: scikit-learn
-  logo: img/tech/scikit-learn-logo.svg
+  logo: img/logo/tech/scikit-learn-logo.svg
   url: https://scikit-learn.org/
 
 - name: Vue.js
-  logo: img/tech/vuejs.svg
+  logo: img/logo/tech/vuejs.svg
   url: https://vuejs.org/
 
 - name: OpenStreetMap
-  logo: img/tech/openstreetmap.svg
+  logo: img/logo/tech/openstreetmap.svg
   url: https://www.openstreetmap.org/
 
 - name: Leaflet
-  logo: img/tech/leaflet.svg
+  logo: img/logo/tech/leaflet.svg
   url: https://leafletjs.com/
 
 - name: PostgreSQL
-  logo: img/tech/postgresql.svg
+  logo: img/logo/tech/postgresql.svg
   url: https://www.postgresql.org/
 
 - name: Redis
-  logo: img/tech/redis.svg
+  logo: img/logo/tech/redis.svg
   url: https://redis.io/
 
 - name: MicroPython
-  logo: img/tech/micropython.svg
+  logo: img/logo/tech/micropython.svg
   url: http://micropython.org/
 
 - name: Raspberry Pi
-  logo: img/tech/raspberrypi.svg
+  logo: img/logo/tech/raspberrypi.svg
   url: https://www.raspberrypi.com/

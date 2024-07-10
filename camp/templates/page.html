@@ -39,12 +39,13 @@
                     </div>
                 </div>
                 <div class="navbar-item has-dropdown is-hoverable">
-                    <a class="navbar-link">About Us</a>
+                    <a class="navbar-link">About</a>
                     <div class="navbar-dropdown">
-                        <a class="navbar-item" href="/about/">SJVAir Collaborative</a>
-                        <a class="navbar-item" href="/about/testing/">Monitor Testing and Calibration</a>
+                        <a class="navbar-item" href="/about/">About SJVAir</a>
+                        <a class="navbar-item" href="/about/testing/">Monitor Testing</a>
+                        <hr class="dropdown-divider" />
+                        {# <a class="navbar-item" href="{% url 'helpdesk:home' %}">Help Center</a> #}
                         <a class="navbar-item" href="{% url 'contact:form' %}">Contact Us</a>
-                        <a class="navbar-item" href="/about/colophon/">Colophon</a>
                     </div>
                 </div>
                 <!-- <a href="/api/" class="navbar-item">Developers</a> -->
@@ -146,7 +147,6 @@
                 </ul>
             </div>
             <div class="column nav is-half-tablet is-one-quarter-desktop">
-
                 <h4>Resources</h4>
                 <ul>
                     <li><a href="/guidelines/">Outdoor Activity Guidelines</a></li>
@@ -159,12 +159,11 @@
                 </ul>
             </div>
             <div class="column nav is-half-tablet is-one-quarter-desktop">
-                <h4>About Us</h4>
+                <h4>About</h4>
                 <ul>
-                    <li><a href="/about/">SJVAir Collaborative</a></li>
-                    <li><a href="/about/testing/">Monitor Testing and Calibration</a></li>
+                    <li><a href="/about/">About SJVAir</a></li>
+                    <li><a href="/about/testing/">Monitor Testing</a></li>
                     <li><a href="{% url 'contact:form' %}">Contact Us</a></li>
-                    <li><a href="/about/colophon/">Colophon</a></li>
                 </ul>
             </div>
             <div class="column is-half-tablet is-one-quarter-desktop">
@@ -172,7 +171,30 @@
                     <img src="{% static 'img/sjvair-white.svg' %}" alt="SJVAir" />
                 </a>
 
-                <p class="description">SJVAir is a network of low-cost air quality monitors providing real-time PM2.5 data to disadvantaged communities across the San Joaquin Valley.</p>
+                <p class="description">SJVAir is a network of air quality monitors providing real-time data to disadvantaged communities across the San Joaquin Valley.</p>
+
+                <div class="buttons are-small mt-2 mb-0">
+                    <a href="https://www.facebook.com/sjvair" class="button is-facebook" target="_blank" title="Like us on Facebook">
+                        <span class="icon">
+                            <span class="fab fa-facebook-f fa-lg"></span>
+                        </span>
+                    </a>
+                    <a href="https://twitter.com/sjvair" class="button is-twitter" target="_blank" title="Follow us on Twitter">
+                        <span class="icon">
+                            <span class="fab fa-twitter fa-lg"></span>
+                        </span>
+                    </a>
+                    <a href="https://www.instagram.com/sjvair_quality" class="button is-instagram" target="_blank" title="Follow us on Instagram">
+                        <span class="icon">
+                            <span class="fab fa-instagram fa-lg"></span>
+                        </span>
+                    </a>
+                    <a href="https://github.com/SJVAir" class="button is-github" target="_blank" title="Fork us on Github">
+                        <span class="icon">
+                            <span class="fab fa-github fa-lg"></span>
+                        </span>
+                    </a>
+                </div>
             </div>
         </div>
     </div>
