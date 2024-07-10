@@ -18,6 +18,7 @@ class UserSerializer(serializers.Serializer):
         'full_name',
         'email',
         'phone',
+        'phone_verified',
         'language',
         ('api_token', get_token),
     ]
