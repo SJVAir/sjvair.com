@@ -23,17 +23,9 @@ class UserForm(forms.ModelForm):
         'invalid_email_domain': _("Did you mean .com?"),
     }
 
-    password = forms.CharField(strip=False, widget=forms.PasswordInput)
-
     class Meta:
         model = User
-        fields = ("full_name", "email", "phone", "password")
-
-    def clean_password(self):
-        password = self.cleaned_data.get("password")
-        if password:
-            password_validation.validate_password(password, user=self.instance)
-        return password
+        fields = ["full_name", "email", "phone"]
 
     def clean_email(self):
         email = User.objects.normalize_email(self.cleaned_data['email'])
@@ -75,24 +67,57 @@ class UserForm(forms.ModelForm):
 
         return phone
 
-    def create_token(self, user):
-        TokenModel = TokenAuth.get_token_model()
-        token, created = TokenModel.objects.get_or_create(user=user)
-        return token
+    def save(self, *args, **kwargs):
+        commit = kwargs.pop('commit', True)
+        user = super().save(commit=False, *args, **kwargs)
+        if commit:
+            user.save()
+        return user
+
+
+class UserRegistrationForm(UserForm):
+    password = forms.CharField(strip=False, widget=forms.PasswordInput, required=True)
+
+    class Meta(UserForm.Meta):
+        fields = UserForm.Meta.fields + ['password']
+
+    def clean_password(self):
+        password = self.cleaned_data.get("password")
+        if password:
+            password_validation.validate_password(password, user=self.instance)
+        return password
 
     def save(self, *args, **kwargs):
         commit = kwargs.pop('commit', True)
         user = super().save(commit=False, *args, **kwargs)
-        password = self.cleaned_data.get("password")
-        if password:
-            user.set_password(password)
+        user.set_password(self.cleaned_data['password'])
         if commit:
-            is_created = user._state.adding
             user.save()
-            self.create_token(user)
-            if is_created:
-                user.send_phone_verification_code()
+            user.send_phone_verification_code()
         return user
+
+
+
+class PasswordRequiredActionForm(forms.Form):
+    error_messages = {
+        "password_incorrect": _(
+            "Your password was entered incorrectly. Please try again."
+        )
+    }
+
+    password = forms.CharField(strip=False, widget=forms.PasswordInput, required=True)
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user')
+        super().__init__(*args, **kwargs)
+
+    def clean_password(self):
+        password = self.cleaned_data['password']
+        if not self.user.check_password(password):
+            raise forms.ValidationError(
+                self.error_messages['password_incorrect'],
+                code='password_incorrect'
+            )
 
 
 class SendPhoneVerificationForm(forms.Form):

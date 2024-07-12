@@ -73,7 +73,7 @@ class RegisterEndpoint(generics.CreateEndpoint):
     """
     Create a new user and send code for phone number validation.
     """
-    form_class = forms.UserForm
+    form_class = forms.UserRegistrationForm
     model = User
     serializer_class = serializers.UserSerializer
 
@@ -89,6 +89,15 @@ class UserDetail(generics.DetailUpdateDeleteEndpoint):
 
     def get_object(self):
         return self.request.user
+
+    def delete(self, request, *args, **kwargs):
+        form = forms.PasswordRequiredActionForm(
+            user=request.user,
+            data=request.data
+        )
+        if form.is_valid():
+            return super().delete(request, *args, **kwargs)
+        return self.form_invalid(form)
 
 
 class ChangePasswordEndpoint(mixins.UpdateModelMixin, generics.GenericEndpoint):
