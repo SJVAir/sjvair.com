@@ -72,6 +72,6 @@ ua-parser==0.18.0
 Unipath==1.1
 whitenoise==6.5.0
 
-git+https://github.com/dmpayton/django-resticus
+git+https://github.com/dmpayton/django-resticus@develop
 git+https://github.com/dmpayton/django-form-utils@django-3.x
 git+https://github.com/dmpayton/django-admin-honeypot

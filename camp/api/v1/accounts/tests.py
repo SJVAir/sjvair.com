@@ -6,6 +6,8 @@ from django.core.cache import cache
 from django.test import Client, TestCase, RequestFactory
 from django.urls import reverse
 
+import pytest
+
 from camp.apps.accounts.backends import AuthenticationBackend
 from camp.apps.accounts.models import User
 from camp.utils.test import debug, get_response_data
@@ -114,7 +116,7 @@ class AuthenticationTests(TestCase):
         payload = {
             "full_name": "Bob Test",
             "email": "bob.test@sjvair.com",
-            "phone": "559-555-5555",
+            "phone": "661-555-5555",
             "password": "password",
         }
         request = self.factory.post(url, payload, content_type="application/json")
@@ -383,4 +385,33 @@ class AuthenticationTests(TestCase):
         user = User.objects.get(pk=self.user.pk)
         assert user.check_password('letmein') is True
         assert user.check_password(payload['new_password1']) is False
+
+    def test_delete_user(self):
+        url = reverse('api:v1:account:user-detail')
+        payload = {'password': 'letmein'}
+        request = self.factory.delete(url, payload, content_type='application/json')
+        request.user = self.user
+        response = user_detail(request)
+        data = get_response_data(response)
+
+        # We should have an error response
+        assert response.status_code == 204
+
+        # The user should be deleted
+        with pytest.raises(User.DoesNotExist):
+            user = User.objects.get(pk=self.user.pk)
+
+    def test_delete_user_incorrect_password(self):
+        url = reverse('api:v1:account:user-detail')
+        payload = {'password': 'lol nope'}
+        request = self.factory.delete(url, payload, content_type='application/json')
+        request.user = self.user
+        response = user_detail(request)
+        data = get_response_data(response)
+
+        # We should have an error response
+        assert response.status_code == 400
+
+        # The user should not be deleted
+        assert User.objects.filter(pk=self.user.pk).exists()
 
