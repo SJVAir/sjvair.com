@@ -9,6 +9,7 @@ from django import forms
 from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.contrib.auth import forms as auth_forms
 from django.contrib.auth.tokens import default_token_generator as token_generator
 from django.utils.decorators import method_decorator
 from django.utils.http import urlsafe_base64_decode
@@ -16,7 +17,7 @@ from django.utils.translation import gettext as _
 from django.views.generic.base import TemplateView
 from django.views.decorators.csrf import csrf_exempt
 
-from resticus import generics, http
+from resticus import generics, http, mixins
 from resticus.compat import get_user_model
 from resticus.exceptions import AuthenticationFailed
 from resticus.permissions import AllowAny
@@ -88,6 +89,19 @@ class UserDetail(generics.DetailUpdateDeleteEndpoint):
 
     def get_object(self):
         return self.request.user
+
+
+class ChangePasswordEndpoint(mixins.UpdateModelMixin, generics.GenericEndpoint):
+    form_class = auth_forms.PasswordChangeForm
+    model = User
+    serializer_class = serializers.UserSerializer
+
+    def get_object(self):
+        return self.request.user
+
+    def get_form(self, **kwargs):
+        kwargs.update(user=kwargs.pop('instance'))
+        return super().get_form(**kwargs)
 
 
 class SendPhoneVerificationEndpoint(FormEndpoint):
