@@ -17,6 +17,7 @@ client = Client()
 login = endpoints.LoginEndpoint.as_view()
 register = endpoints.RegisterEndpoint.as_view()
 user_detail = endpoints.UserDetail.as_view()
+change_password = endpoints.ChangePasswordEndpoint.as_view()
 password_reset = endpoints.PasswordResetEndpoint.as_view()
 password_reset_confirm = endpoints.PasswordResetConfirmEndpoint.as_view()
 send_phone_verification = endpoints.SendPhoneVerificationEndpoint.as_view()
@@ -339,6 +340,47 @@ class AuthenticationTests(TestCase):
 
         data = get_response_data(response)
         assert response.status_code == 200
-        updated = User.objects.get(pk=self.user.pk)
-        assert updated.full_name == payload['full_name'] == data['data']['full_name']
+        user = User.objects.get(pk=self.user.pk)
+        assert user.full_name == payload['full_name'] == data['data']['full_name']
+
+    @debug
+    def test_change_password(self):
+        url = reverse('api:v1:account:change-password')
+        payload = {
+            'old_password': 'letmein',
+            'new_password1': 't0kenize th!s',
+            'new_password2': 't0kenize th!s',
+        }
+        request = self.factory.put(url, payload, content_type='application/json')
+        request.user = self.user
+        response = change_password(request)
+        data = get_response_data(response)
+
+        # We should have a success response
+        assert response.status_code == 200
+
+        # The password should be updated.
+        user = User.objects.get(pk=self.user.pk)
+        assert user.check_password(payload['old_password']) is False
+        assert user.check_password(payload['new_password1']) is True
+
+    def test_change_password_invalid_password(self):
+        url = reverse('api:v1:account:change-password')
+        payload = {
+            'old_password': 'lol nope',
+            'new_password1': 't0kenize th!s',
+            'new_password2': 't0kenize th!s',
+        }
+        request = self.factory.put(url, payload, content_type='application/json')
+        request.user = self.user
+        response = change_password(request)
+        data = get_response_data(response)
+
+        # We should have an error response
+        assert response.status_code == 400
+
+        # The password should remain unchanged.
+        user = User.objects.get(pk=self.user.pk)
+        assert user.check_password('letmein') is True
+        assert user.check_password(payload['new_password1']) is False
 
