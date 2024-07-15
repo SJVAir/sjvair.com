@@ -160,6 +160,7 @@ class PasswordResetEndpoint(FormEndpoint):
 class PasswordResetConfirmEndpoint(FormEndpoint):
     form_class = forms.SetPasswordForm
 
+    @method_decorator(csrf_exempt)
     def dispatch(self, *args, **kwargs):
         try:
             uidb64 = kwargs['uidb64']
