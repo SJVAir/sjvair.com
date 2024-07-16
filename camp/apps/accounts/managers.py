@@ -26,6 +26,5 @@ class UserManager(BaseUserManager):
         user = self.create_user(email, password, **extra_fields)
         return user
 
-    def get_by_natural_key(self, username, tenant=None):
-        field = '{0}__iexact'.format(self.model.USERNAME_FIELD)
-        return self.get(**{field: username})
+    def get_by_natural_key(self, username):
+        return self.get(**{self.model.USERNAME_FIELD: username})
