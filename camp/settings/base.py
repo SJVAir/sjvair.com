@@ -155,8 +155,8 @@ for var in ["REDIS_URL", "OPENREDIS_URL"]:
 # Auth
 
 AUTHENTICATION_BACKENDS = (
-    # 'django.contrib.auth.backends.ModelBackend',
     'camp.apps.accounts.backends.AuthenticationBackend',
+    'django.contrib.auth.backends.ModelBackend',
 )
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -284,11 +284,12 @@ PHONENUMBER_DEFAULT_REGION = "US"
 # django-resticus
 
 RESTICUS = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [],
+    "DEFAULT_AUTHENTICATION_CLASSES": ["resticus.auth.TokenAuth"],
+    "TOKEN_MODEL": "resticus.Token",
     'STREAMING': [],
-    'PAGE_SIZE_QUERY_PARAM': 'page_size',
+    "JSON_DECODER": "camp.utils.encoders.RapidJSONDecoder",
+    "JSON_ENCODER": "camp.utils.encoders.RapidJSONEncoder",
 }
-
 
 # huey / django-huey
 
@@ -370,9 +371,9 @@ PURPLEAIR_GROUP_ID = os.environ.get('PURPLEAIR_GROUP_ID')
 
 # reCAPTCHA
 
-RECAPTCHA_PUBLIC_KEY = os.environ.get('RECAPTCHA_PUBLIC_KEY')
+RECAPTCHA_PUBLIC_KEY = os.environ.get('RECAPTCHA_PUBLIC_KEY', '')
 
-RECAPTCHA_PRIVATE_KEY = os.environ.get('RECAPTCHA_PRIVATE_KEY')
+RECAPTCHA_PRIVATE_KEY = os.environ.get('RECAPTCHA_PRIVATE_KEY', '')
 
 
 # Sentry

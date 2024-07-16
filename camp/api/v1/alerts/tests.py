@@ -56,7 +56,7 @@ class EndpointTests(TestCase):
         response = subscription_list(request, monitor_id=self.monitor.pk)
         content = get_response_data(response)
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_create_subscription(self):
         '''

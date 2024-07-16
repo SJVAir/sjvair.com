@@ -123,13 +123,15 @@ class UserCreationForm(forms.ModelForm):
     password1 = forms.CharField(
         label=_('Password'),
         help_text=password_validation.password_validators_help_text_html(),
-        widget=forms.PasswordInput,
+        strip=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
     )
 
     password2 = forms.CharField(
         label=_('Password confirmation'),
         help_text=_('Enter the same password as before, for verification.'),
-        widget=forms.PasswordInput,
+        strip=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
     )
 
     captcha = ReCaptchaField(label='')
@@ -158,6 +160,7 @@ class UserCreationForm(forms.ModelForm):
         password2 = self.cleaned_data.get('password2')
         if password1 and password2 and password1 != password2:
             raise forms.ValidationError(self.error_messages['password_mismatch'])
+        password_validation.validate_password(password1)
         return password2
 
     def save(self, **params):

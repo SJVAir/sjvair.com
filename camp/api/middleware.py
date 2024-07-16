@@ -37,13 +37,15 @@ class MonitorAccessMiddleware:
                 monitor_id = lookup.get('pk', lookup.get('name'))
                 return http.Http404(f'No monitor exists with ID "{monitor_id}".')
 
-        if self.authorization_required(request):
-            access_key = self.get_access_key(request)
-            if access_key is None:
-                return http.Http401('Access key required')
+            # Now that we've set the monitor, we need to check for
+            # appropriate authorization via the monitors access key.
+            if self.authorization_required(request):
+                access_key = self.get_access_key(request)
+                if access_key is None:
+                    return http.Http401('Access key required')
 
-            if access_key != request.monitor.access_key:
-                return http.Http401('Invalid access key')
+                if access_key != request.monitor.access_key:
+                    return http.Http401('Invalid access key')
 
     def authorization_required(self, request):
         is_write_endpoint = request.method in ['POST', 'PUT', 'PATCH', 'DELETE']
