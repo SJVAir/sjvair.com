@@ -60,8 +60,10 @@ section.hook
 
     a
         @extend .has-text-weight-semibold
-        color: $white
-        text-decoration: underline
+
+        &:not(.button)
+            color: $white
+            text-decoration: underline
 
 
 // Google Translate widget fixes
