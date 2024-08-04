@@ -27,13 +27,12 @@ class MonitorHealthCheck(BaseHealthCheckBackend):
     def check_status(self):
         try:
             latest = (self.model.objects
+                .exclude(latest__isnull=True)
                 .order_by('-latest__timestamp')
                 .annotate(timestamp=F('latest__timestamp'))
                 .values_list('timestamp', flat=True)
                 .first()
             )
-
-            print(self.model, latest)
 
             if latest is None:
                 raise ServiceWarning(f'No entries in database.')

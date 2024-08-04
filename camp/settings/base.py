@@ -272,7 +272,7 @@ APP_URL_IPHONE = os.environ.get('APP_URL_IPHONE',
 # django-health-check
 
 HEALTH_CHECK = {
-    'DISK_USAGE_MAX': 90,  # percent
+    'DISK_USAGE_MAX': None,  # percent
     'MEMORY_MIN': 100,  # in MB
     'SUBSETS': {
         'air-networks': [
