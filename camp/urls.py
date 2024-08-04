@@ -22,7 +22,7 @@ urlpatterns = [
     path('prose/', include('prose.urls')),
 
     # Admin-y stuff
-    path('ht/', include('health_check.urls')),
+    path('system-status/', include('health_check.urls')),
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
     path('batcave/stats.json', views.AdminStats.as_view(), name='admin-stats'),
     path('batcave/flush-queue/<str:key>/', views.FlushQueue.as_view(), name='flush-queue'),
