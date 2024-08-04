@@ -74,6 +74,15 @@ INSTALLED_APPS = [
     'storages',
     'widget_tweaks',
 
+    'health_check',
+    'health_check.db',
+    'health_check.cache',
+    'health_check.storage',
+    'health_check.contrib.migrations',
+    'health_check.contrib.psutil',
+    'health_check.contrib.s3boto3_storage',
+    'health_check.contrib.redis',
+
     'camp.api',
     'camp.apps.accounts',
     'camp.apps.alerts',
@@ -260,6 +269,22 @@ APP_URL_IPHONE = os.environ.get('APP_URL_IPHONE',
     'https://apps.apple.com/us/app/sjvair/id6448961840?platform=iphone')
 
 
+# django-health-check
+
+HEALTH_CHECK = {
+    'DISK_USAGE_MAX': 90,  # percent
+    'MEMORY_MIN': 100,  # in MB
+    'SUBSETS': {
+        'air-networks': [
+            'Air Network: AirNow',
+            'Air Network: AQview',
+            'Air Network: CCAC BAM-1022',
+            'Air Network: PurpleAir',
+        ]
+    }
+}
+
+
 # django-sqids
 
 DJANGO_SQIDS_MIN_LENGTH = 5
@@ -401,3 +426,8 @@ SCOUT_ERRORS_ENABLED = not DEBUG
 
 if SCOUT_KEY is not None:
     INSTALLED_APPS.insert(0, 'scout_apm.django')
+
+
+# MapTiler
+
+MAPTILER_API_KEY = os.environ.get('MAPTILER_API_KEY')

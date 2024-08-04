@@ -93,8 +93,12 @@
 
 {% block sidebar %}
 <div id="content-related">
-    <div class="module" id="internal-links-module">
-        <h2>{% trans 'Server Stats' %}</h2>
+    <div class="module">
+        <h2>{% trans 'System Status' %}</h2>
+        <ul class="">
+            <li><a href="{% url 'health_check:health_check_home' %}">System Health Checks</a></li>
+            <li><a href="{% url 'health_check:health_check_subset' 'air-networks' %}">Air Network Integrations</a></li>
+        </ul>
         <table>
             <tr>
                 <th>Timestamp</th>
@@ -117,7 +121,9 @@
             </tr>
             {% endfor %}
         </table>
+    </div>
 
+    <div class="module">
         <h2>Quick Links</h2>
         <ul class="">
             <li><a href="{% url 'admin:alerts_subscription_county_stats' %}">Subscription Stats by County</a></li>
