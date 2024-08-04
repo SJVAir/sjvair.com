@@ -12,7 +12,7 @@ django-debug-toolbar-force==0.2
 django-dirtyfields==1.9.2
 django-extensions==3.2.3
 django-filter==23.2
-django-recaptcha==4.0.0
+django-health-check==3.18.3
 django-heroku==0.3.1
 django-huey==1.1.1
 django-jsonform==2.22.0
@@ -52,6 +52,7 @@ numpy==1.25.2
 optimize-images==1.5.1
 pandas==2.0.3
 Pillow==10.3.0
+psutil==6.0.0
 psycopg2==2.9.3 --no-binary psycopg2
 py-expression-eval==0.3.14
 pylibmc==1.6.3
