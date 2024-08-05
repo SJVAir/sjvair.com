@@ -16,7 +16,7 @@ from camp.apps.monitors.aqview.models import AQview
 from camp.utils.counties import County
 from camp.utils.datetime import make_aware
 
-AQVIEW_URL = "https://gis.carb.arb.ca.gov/hosting/rest/services/Hosted/carb_aqview_public/FeatureServer/0"
+AQVIEW_URL = "https://gis.carb.arb.ca.gov/hosting/rest/services/Hosted/AQview_revised_PROD_view/FeatureServer/0"
 
 
 @db_periodic_task(crontab(minute='*/15'), priority=50)
