@@ -280,7 +280,11 @@ HEALTH_CHECK = {
             'Air Network: AQview',
             'Air Network: CCAC BAM-1022',
             'Air Network: PurpleAir',
-        ]
+        ],
+        'integration-airnow': ['Air Network: AirNow'],
+        'integration-aqview': ['Air Network: AQview'],
+        'integration-ccac-bam1022': ['Air Network: CCAC BAM-1022'],
+        'integration-purpleair': ['Air Network: PurpleAir'],
     }
 }
 
