@@ -1,0 +1,77 @@
+{% extends 'page.html' %}
+{% load static %}
+{% load sjvair %}
+
+{% block title %}Data Integrations | {{ block.super }}{% endblock %}
+
+{% block body-class %}about data{% endblock %}
+
+{% block main %}
+<section class="section is-medium hook">
+<div class="container">
+    <div class="content">
+        <h1 class="title">Data Integrations</h1>
+    </div>
+</div>
+</section>
+
+<section class="section">
+<div class="container">
+    <div class="columns">
+        <div class="column is-10-tablet is-8-desktop">
+            <div class="content">
+                <h1>Current Integrations</h1>
+
+                <h3><a href="https://www2.purpleair.com/">PurpleAir</a></h3>
+                <p>PurpleAir is a system of low-cost PM2.5 monitors installed and operated by members of the community. In addition to the PurpleAir monitors that we <a href="/about/testing/">test and verify</a>, we also import the data from every publically accessible PurpleAir monitor in the San Joaquin Valley.</p>
+
+                <h3><a href="https://www.airnow.gov/">AirNow</a></h3>
+                <p>AirNow is a partnership of the U.S. Environmental Protection Agency, National Oceanic and Atmospheric Administration (NOAA), National Park Service, NASA, Centers for Disease Control, and tribal, state, and local air quality agencies.</p>
+
+                <h3><a href="https://aqview.arb.ca.gov/">AQview</a></h3>
+                <p>AQview is the California Air Resources Board's (CARB) data reporting dashboard for FEM PM2.5 monitors in disadvantaged California AB 617 communities. AQview currently has no public API, making SJVAir the only other map to feature AQview data outside of CARB.</p>
+
+                <hr />
+
+                <h1>Future Integrations</h1>
+
+                <h2>Pollutant Data</h2>
+
+                <h3><a href="https://www.airgradient.com/">AirGradient</a></h3>
+                <p>AirGradient is another system of low-cost PM2.5 monitors installed and operated by members of the community. AirGradient takes pride in being an Open Source and Open Science community collaborator.</p>
+
+                <h3><a href="https://tempo.si.edu/">TEMPO Satellite</a></h3>
+                <p>Tropospheric Emissions: Monitoring of Pollution (TEMPO) is a satellite that measured ozone, nitrogen dioxide, and formaldehyde in the atmosphere across greater North America on an hourly-basis. The TEMPO mission is a collaboration between the Smithsonian Astrophysical Observatory and NASA.</p>
+
+                <h3><a href="https://www.cdpr.ca.gov/">California Department of Pesticide Regulation</a></h3>
+                <p>The California Department of Pesticide Regulation (CDPR) maintains a Pesticide Use Reporting (PUR) database that catalogs agricultural and structural pesticide use across the state.</p>
+
+                <h3><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">California Emissions Inventory Data Analysis and Reporting System</a></h3>
+                <p>CARB maintains and annually updates the California Emissions Inventory Data Analysis and Reporting System (CEIDARS), a database developed to track statewide criteria pollutant and air toxic emissions.</p>
+
+                <h2>Atmospheric Data</h2>
+
+                <h3><a href="https://www.ready.noaa.gov/HYSPLIT.php">NOAA HYSPLIT</a></h3>
+                <p>The Hybrid Single-Particle Lagrangian Integrated Trajectory model (HYSPLIT) is a computer model that is used to compute air parcel trajectories to determine how far and in what direction a parcel of air, and subsequently air pollutants, will travel. Integrating wityh HYSPLIT will allow us to track potential sources for high PM events, forecast the trajectory of wildfire smoke plumes, and more.</p>
+
+                <h3><a href="https://www.ospo.noaa.gov/products/land/hms.html">NOAA HMS Fire and Smoke</a></h3>
+                <p>The NOAA Hazard Mapping System (HMS) Fire and Smoke Product provides daily maps of active fires and smoke plumes across North America based on geostationary satellite (<a href="https://science.nasa.gov/mission/goes/">GOES Satellite Network</a>) observations.</p>
+
+                <h2>Mapping Datasets</h2>
+
+                <h3><a href="https://oehha.ca.gov/calenviroscreen">CalEnvironScreen</a></h3>
+                <p>CalEnviroScreen is a mapping tool that uses environmental, health, and socioeconomic data from state and federal government sources to help identify California communities that are most impacted by pollution.</p>
+
+                <h3><a href="https://www.epa.gov/ejscreen">EJScreen</a></h3>
+                <p>EJScreen is US EPA's environmental justice mapping and screening tool that provides EPA with a nationally consistent dataset and approach for combining environmental and socioeconomic indicators.</p>
+
+                <h3><a href="https://www.healthyplacesindex.org/">Healthy Places Index</a></h3>
+                <p>The Healthy Places Index maps data on social conditions that drive health, like education, job opportunities, clean air and water, and other indicators that are positively associated with life expectancy at birth.</p>
+
+            </div>
+        </div>
+    </div>
+</div>
+</section>
+
+{% endblock %}
