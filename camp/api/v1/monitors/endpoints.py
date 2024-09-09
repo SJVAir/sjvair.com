@@ -135,12 +135,15 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
 
     def form_valid(self, form):
         entry = self.request.monitor.create_entry(self.request.data)
-        self.request.monitor.check_latest(entry)
+        if entry:
+            self.request.monitor.check_latest(entry)
 
-        if self.request.monitor.latest_id == entry.pk:
-            self.request.monitor.save()
+            if self.request.monitor.latest_id == entry.pk:
+                self.request.monitor.save()
 
-        return {"data": self.serialize(entry)}
+            return {'data': self.serialize(entry)}
+
+        return {'error': 'Invalid data.'}
 
 
 class EntryCSV(EntryMixin, CSVExport):
