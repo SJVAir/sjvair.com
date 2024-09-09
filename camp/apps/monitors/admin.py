@@ -146,13 +146,6 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         return queryset
 
     @csrf_protect_m
-    def changelist_view(self, request, extra_context=None):
-        if extra_context is None:
-            extra_context = {}
-        extra_context.update(CALIBRATIONS=self.get_calibrations())
-        return super().changelist_view(request, extra_context)
-
-    @csrf_protect_m
     def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
         if extra_context is None:
             extra_context = {}
@@ -221,10 +214,6 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     def get_entry_archives(self, object_id):
         queryset = EntryArchive.objects.filter(monitor_id=object_id)
         return queryset
-
-    def get_calibrations(self):
-        queryset = Calibration.objects.filter(monitor_type=self.model._meta.app_label)
-        return {calibration.county: calibration.pm25_formula for calibration in queryset}
 
     def get_subscriptions(self, instance):
         return instance.subscription_count
