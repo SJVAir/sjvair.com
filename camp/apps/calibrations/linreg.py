@@ -73,6 +73,7 @@ class LinearRegressions:
                 sensor=self.calibrator.colocated.default_sensor,
                 timestamp__range=(start_date, self.end_date),
             )
+            .exclude(pm25==99999)
             .annotate(**self.coefs_computed)
             .values('timestamp', *self.coefs)
         )
@@ -156,6 +157,12 @@ class LinearRegressions:
             start_date=start_date,
             end_date=self.end_date,
         )
+
+        if 'pm25' in results.coefs:
+            # Cap the PM2.5 coefficient at 1 because it's super rare
+            # for plantowers to report low compared to BAMs
+            results.coefs['pm25'] = min(results.coefs['pm25'], 1)
+
         results.formula = formula(coefs=results.coefs, intercept=results.intercept)
         return results
 
