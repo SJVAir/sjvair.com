@@ -81,9 +81,6 @@ class Monitor(models.Model):
     latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
     default_sensor = models.CharField(max_length=50, default='', blank=True)
 
-    pm25_calibration_formula = models.CharField(max_length=255, blank=True,
-        default='', validators=[validate_formula])
-
     objects = MonitorManager()
 
     class Meta:
@@ -212,36 +209,6 @@ class Group(models.Model):
         ordering = ['name']
 
 
-class Calibration(TimeStampedModel):
-    COUNTIES = Choices(*County.names)
-    MONITOR_TYPES = lazy(lambda: Choices(*Monitor.subclasses()), list)()
-
-    id = SmallUUIDField(
-        default=uuid_default(),
-        primary_key=True,
-        db_index=True,
-        editable=False,
-        verbose_name='ID'
-    )
-
-    monitor_type = models.CharField(max_length=20, choices=MONITOR_TYPES)
-    county = models.CharField(max_length=20, choices=COUNTIES)
-    pm25_formula = models.CharField(max_length=255, blank=True,
-        default='', validators=[validate_formula])
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['monitor_type', 'county'])
-        ]
-
-        unique_together = [
-            ('monitor_type', 'county')
-        ]
-
-    def __str__(self):
-        return f'{self.monitor_type} – {self.county}'
-
-
 class Entry(models.Model):
     ENVIRONMENT = [
         'celsius', 'fahrenheit', 'humidity', 'pressure',
@@ -337,11 +304,6 @@ class Entry(models.Model):
     def get_pm25_calibration_formula(self):
         from camp.apps.calibrations.models import Calibrator
 
-        # Check for a formula set on this specific monitor.
-        if self.monitor.pm25_calibration_formula:
-            return self.monitor.pm25_calibration_formula
-
-        # Distance-based calibrations
         # CONSIDER: If the calibrator is too far, do we
         # skip and go with county? How far is too far?
         calibrator = (Calibrator.objects
@@ -355,16 +317,6 @@ class Entry(models.Model):
             calibration = calibrator.calibrations.filter(end_date__lte=self.timestamp).first()
             if calibration is not None:
                 return calibration.formula
-
-        # Fallback to county-based calibrations.
-        try:
-            return Calibration.objects.values_list('pm25_formula', flat=True).get(
-                county=self.monitor.county,
-                monitor_type=self.monitor._meta.model_name
-            )
-        except Calibration.DoesNotExist:
-            # Default to an empty string, which is a noop formula.
-            return ''
 
     def calibrate_pm25(self):
         formula = self.get_pm25_calibration_formula()

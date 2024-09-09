@@ -29,7 +29,7 @@ from camp.apps.qaqc.admin import SensorAnalysisInline
 from camp.utils.forms import DateRangeForm
 
 from .forms import MonitorAdminForm
-from .models import Group, Calibration, Entry
+from .models import Group, Entry
 
 
 def key_to_lookup(k):
@@ -264,21 +264,3 @@ class GroupAdmin(admin.ModelAdmin):
 
     def monitor_count(self, instance):
         return instance.monitors.count()
-
-
-@admin.register(Calibration)
-class CalibrationAdmin(admin.ModelAdmin):
-    list_display = ('monitor_type', 'county', 'modified', 'get_pm25_formula')
-    list_filter = ('monitor_type', 'county')
-
-    def get_pm25_formula(self, instance):
-        if instance.pm25_formula:
-            return mark_safe(f'<code>{instance.pm25_formula}</code>')
-        return '-'
-    get_pm25_formula.short_description = 'PM2.5 Formula'
-
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        if 'pm25_formula' in form.base_fields:
-            form.base_fields['pm25_formula'].help_text = formula_help_text()
-        return form
