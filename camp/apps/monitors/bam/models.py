@@ -65,6 +65,11 @@ class BAM1022(Monitor):
             setattr(entry, attr, payload[key])
 
         entry.timestamp = parse_datetime(payload['Time'])
+
+        if entry.pm25 == 99999:
+            # Bad entry, don't save the error state.
+            return
+
         return super().process_entry(entry, payload)
 
     def calculate_mass_offset(self, end_time=None):

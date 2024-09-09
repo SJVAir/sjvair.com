@@ -154,8 +154,9 @@ class Monitor(models.Model):
         )
 
         entry = self.process_entry(entry, payload)
-        entry.save()
-        return entry
+        if entry is not None:
+            entry.save()
+            return entry
 
     def process_entry(self, entry, payload):
         '''
