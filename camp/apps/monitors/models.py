@@ -72,14 +72,27 @@ class Monitor(models.Model):
 
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
 
+    # Entries - NG
+    pm25 = models.ForeignKey('entries.PM25', related_name='pm25_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    pm10 = models.ForeignKey('entries.PM10', related_name='pm10_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    pm100 = models.ForeignKey('entries.PM100', related_name='pm100_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    temperature = models.ForeignKey('entries.Temperature', related_name='temperature_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    humidity = models.ForeignKey('entries.Humidity', related_name='humidity_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    pressure = models.ForeignKey('entries.Pressure', related_name='pressure_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    ozone = models.ForeignKey('entries.Ozone', related_name='ozone_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+
+    # Entries - Legacy
+    latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
+
+    # TODO: default_pm25_sensor (default_ENTRY_sensor, etc)
+    default_sensor = models.CharField(max_length=50, default='', blank=True)
+
     current_health = models.ForeignKey('qaqc.SensorAnalysis',
         blank=True,
         null=True,
         related_name="current_for",
         on_delete=models.SET_NULL
     )
-    latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
-    default_sensor = models.CharField(max_length=50, default='', blank=True)
 
     objects = MonitorManager()
 
@@ -141,6 +154,13 @@ class Monitor(models.Model):
 
         aggregate = queryset.aggregate(average=Avg('pm25'))
         return aggregate['average']
+
+    def create_entry_ng(self, EntryModel, **data):
+        entry = EntryModel(monitor=self, **data)
+        if entry.validation_check():
+            entry.process()
+            entry.save()
+            return entry
 
     def create_entry(self, payload, sensor=None):
         entry = Entry(
@@ -208,6 +228,8 @@ class Group(models.Model):
     class Meta:
         ordering = ['name']
 
+
+# Deprecated (Old and Busted)
 
 class Entry(models.Model):
     ENVIRONMENT = [

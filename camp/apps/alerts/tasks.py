@@ -87,6 +87,14 @@ def check_alert_update(monitor_id):
     # Check the average for 30 minutes, see if it's increased.
     send_notifications = False
     average = monitor.get_current_pm25_average(minutes=30)
+
+    if average is None:
+        # Monitor is in the middle of an alert, but
+        # hasn't reported anything in a while.
+        # Just return for now, but...
+        # TODO: fixme.
+        return
+
     level = get_pm25_level(average)
     if average > alert.pm25_average and level != alert.level:
         # It's increased! Save the new level

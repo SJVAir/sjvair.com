@@ -36,9 +36,13 @@ def process_data(payload):
         monitor.update_data(data)
         monitor.save()
 
-    entries = monitor.create_entries(payload)
+    monitor.create_entries(payload)
+
+    # Legacy
+    entries = monitor.create_entries_legacy(payload)
     for entry in entries:
         monitor.check_latest(entry)
+
     monitor.save()
 
 
