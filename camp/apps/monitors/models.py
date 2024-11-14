@@ -73,13 +73,21 @@ class Monitor(models.Model):
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
 
     # Entries - NG
+    # Particulate Matter
     pm25 = models.ForeignKey('entries.PM25', related_name='pm25_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
     pm10 = models.ForeignKey('entries.PM10', related_name='pm10_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
     pm100 = models.ForeignKey('entries.PM100', related_name='pm100_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    particulates = models.ForeignKey('entries.Particulates', related_name='particulates_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+
+    # Gases
+    co = models.ForeignKey('entries.CO', related_name='co_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    no2 = models.ForeignKey('entries.NO2', related_name='no2_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    o3 = models.ForeignKey('entries.O3', related_name='o3_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+
+    # Environment
     temperature = models.ForeignKey('entries.Temperature', related_name='temperature_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
     humidity = models.ForeignKey('entries.Humidity', related_name='humidity_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
     pressure = models.ForeignKey('entries.Pressure', related_name='pressure_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
-    ozone = models.ForeignKey('entries.Ozone', related_name='ozone_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
 
     # Entries - Legacy
     latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
@@ -156,12 +164,15 @@ class Monitor(models.Model):
         return aggregate['average']
 
     def create_entry_ng(self, EntryModel, **data):
+        print(f'{self.name}: Monitor.create_entry_ng({EntryModel} with {data})')
         entry = EntryModel(monitor=self, **data)
         if entry.validation_check():
             entry.process()
             entry.save()
             return entry
+        
 
+    # Legacy
     def create_entry(self, payload, sensor=None):
         entry = Entry(
             monitor=self,
