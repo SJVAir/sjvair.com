@@ -44,9 +44,8 @@ class BaseEntry(models.Model):
             timestamp=self.timestamp,
         ).exists()
 
-        # base_fields = [f.attname for f in BaseEntry._meta.fields]
-        # this_fields = [f.attname for f in self._meta.fields if f.attname not in base_fields]
 
+# Particulate Matter
 
 class PM25(BaseEntry):
     monitor_attr = 'pm25'
@@ -123,6 +122,8 @@ class Temperature(BaseEntry):
         return super().save(*args, **kwargs)
 
 
+# Environment
+
 class Humidity(BaseEntry):
     monitor_attr = 'humidity'
     humidity = models.DecimalField(max_digits=4, decimal_places=1)
@@ -133,6 +134,18 @@ class Pressure(BaseEntry):
     pressure = models.DecimalField(max_digits=6, decimal_places=2)
 
 
-class Ozone(BaseEntry):
-    monitor_attr = 'ozone'
-    ozone = models.DecimalField(max_digits=8, decimal_places=2)
+# Gases
+
+class O3(BaseEntry):
+    monitor_attr = 'o3'
+    o3 = models.DecimalField(max_digits=8, decimal_places=2)
+
+
+class NO2(BaseEntry):
+    monitor_attr = 'no2'
+    no2 = models.DecimalField(max_digits=8, decimal_places=2)
+
+
+class CO(BaseEntry):
+    monitor_attr = 'co'
+    co = models.DecimalField(max_digits=8, decimal_places=2)
