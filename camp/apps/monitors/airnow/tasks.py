@@ -25,11 +25,6 @@ def import_airnow_data(timestamp=None, previous=None):
         # {site_name: {timestamp: [{data}, ...]}}
         data = airnow_api.query(county, timestamp=timestamp, previous=previous)
         for site_name, container in data.items():
-            if 'PM2.5' not in list(container.values())[0]:
-                # Skip any monitors that don't have PM2.5 data
-                # (Some monitors only report, e.g., ozone.)
-                continue
-
             # Get the first entry for updating the monitor info.
             entry = list(list(container.values())[0].values())[0]
 
@@ -50,16 +45,18 @@ def import_airnow_data(timestamp=None, previous=None):
                     location=AirNow.LOCATION.outside
                 )
 
-            # This block can be removed at a later date, once
-            # existing monitors have been updated with the AgencyName.
-            if entry.get('AgencyName') and not monitor.data_provider:
-                monitor.data_provider = entry['AgencyName']
-                monitor.save()
-
             for timestamp, data in container.items():
-                if data.get('PM2.5') is None:
-                    continue
+                entries = monitor.create_entries(data)
+                timestamp = parse_datetime(timestamp)
+                try:
+                    entry = monitor.entries.get(timestamp=timestamp)
+                    entry = monitor.process_entry(entry, data)
+                    entry.save()
+                except Entry.DoesNotExist:
+                    entry = monitor.create_entry(data)
 
+            # Legacy
+            for timestamp, data in container.items():
                 timestamp = parse_datetime(timestamp)
                 try:
                     entry = monitor.entries.get(timestamp=timestamp)
@@ -71,3 +68,5 @@ def import_airnow_data(timestamp=None, previous=None):
                 monitor.check_latest(entry)
                 if monitor.latest_id == entry.pk:
                     monitor.save()
+
+            return entries
