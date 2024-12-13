@@ -50,7 +50,7 @@ class AirNow(Monitor):
         return entries
 
 
-
+    # Legacy
     def process_entry(self, entry, payload):
         entry.timestamp = make_aware(parse_datetime(
             list(payload.values())[0]['UTC']
