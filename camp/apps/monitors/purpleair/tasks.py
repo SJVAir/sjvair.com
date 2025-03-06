@@ -73,7 +73,8 @@ def import_monitor_history(monitor_id, start_date=None, end_date=None):
                     timestamp=parse_timestamp(entry['time_stamp']),
                     sensor=sensor,
                 )
-                instance.pm25_reported = entry[f'pm2.5_atm_{sensor}']
-                instance.save()
+                if instance.pm25_reported is None:
+                    instance.pm25_reported = entry[f'pm2.5_atm_{sensor}']
+                    instance.save()
             except Entry.DoesNotExist:
                 monitor.create_entries(entry)
