@@ -13,6 +13,7 @@ from huey import crontab
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.utils.datetime import parse_timestamp
 
 
 @db_periodic_task(crontab(minute='*/2'), priority=50)
@@ -58,3 +59,21 @@ def update_monitor_data():
 
         monitor.update_data(data)
         monitor.save()
+
+
+@db_task()
+def import_monitor_history(monitor_id, start_date=None, end_date=None):
+    monitor = PurpleAir.objects.get(pk=monitor_id)
+    entries = purpleair_api.get_sensor_history(monitor.purple_id, start_date, end_date)
+    for entry in entries:
+        for sensor in PurpleAir.SENSORS:
+            try:
+                instance = Entry.objects.get(
+                    monitor_id=monitor.pk,
+                    timestamp=parse_timestamp(entry['time_stamp']),
+                    sensor=sensor,
+                )
+                instance.pm25_reported = entry[f'pm2.5_atm_{sensor}']
+                instance.save()
+            except Entry.DoesNotExist:
+                monitor.create_entries(entry)
