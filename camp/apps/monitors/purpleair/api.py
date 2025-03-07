@@ -1,9 +1,12 @@
+import datetime
 import json
 import os
-import string
+import time
 import urllib.parse
 
 from pprint import pprint
+
+from django.utils import timezone
 
 import requests
 
@@ -14,6 +17,25 @@ def compare_datetimes(dt1, dt2):
         are within 60 seconds of one another.
     '''
     return abs((dt2 - dt1).total_seconds()) < 60
+
+
+def chunk_date_range(start_date, end_date):
+    '''Splits a date range into chunks, each 28 days long.'''
+
+    chunks = []
+    current_date = start_date
+    while current_date <= end_date:
+        period_end_date = current_date + datetime.timedelta(days=27)
+        chunk_end_date = min(period_end_date, end_date)
+        chunks.append((current_date, chunk_end_date))
+        current_date = chunk_end_date + datetime.timedelta(days=1)
+    
+    chunks = [(
+        datetime.datetime.combine(start_date, datetime.time.min),
+        datetime.datetime.combine(end_date, datetime.time.max),
+    ) for (start_date, end_date) in chunks]
+
+    return chunks
 
 
 class PurpleAirAPI:
@@ -31,6 +53,18 @@ class PurpleAirAPI:
         'primary_id_b', 'primary_key_b', 'secondary_id_b', 'secondary_key_b',
 
         'humidity', 'temperature', 'pressure', 'last_seen',
+
+        'pm1.0_atm_a', 'pm2.5_atm_a', 'pm10.0_atm_a',
+        '0.3_um_count_a', '0.5_um_count_a', '1.0_um_count_a',
+        '2.5_um_count_a', '5.0_um_count_a', '10.0_um_count_a',
+
+        'pm1.0_atm_b', 'pm2.5_atm_b', 'pm10.0_atm_b',
+        '0.3_um_count_b', '0.5_um_count_b', '1.0_um_count_b',
+        '2.5_um_count_b', '5.0_um_count_b', '10.0_um_count_b',
+    ]
+
+    HISTORY_FIELDS = [
+        'humidity', 'temperature', 'pressure',
 
         'pm1.0_atm_a', 'pm2.5_atm_a', 'pm10.0_atm_a',
         '0.3_um_count_a', '0.5_um_count_a', '1.0_um_count_a',
@@ -109,12 +143,42 @@ class PurpleAirAPI:
 
     def get_sensor(self, sensor_index, fields=None):
         ''' Get a sensor by sensor_index '''
-        response = self.get(f'/v1/sensors/{sensor_index}')
+        fields = fields or self.MONITOR_FIELDS
+        response = self.get(f'/v1/sensors/{sensor_index}', params={
+            'fields': ','.join(fields)
+        })
         data = response.json()
         try:
             return data['sensor']
         except KeyError:
             return None
+        
+    def get_sensor_history(self, sensor_index, start_date=None, end_date=None, fields=None):
+        ''' Get a sensor's historical entries, batching the
+            requests and yielding entries as an iterator.
+        '''
+        start_date = start_date or timezone.now().date() - datetime.timedelta(days=28)
+        end_date = end_date or timezone.now().date()
+        timestamp_chunks = chunk_date_range(start_date, end_date)
+
+        for i, (start_timestamp, end_timestamp) in enumerate(timestamp_chunks):
+            response = self.get(f'/v1/sensors/{sensor_index}/history', params={
+                'fields': ','.join(fields or self.HISTORY_FIELDS),
+                'start_timestamp': start_timestamp.timestamp(),
+                'end_timestamp': end_timestamp.timestamp(),
+                'average': 0,
+            })
+            data = response.json()
+
+            # Construct, sort, and yield the results
+            entries = [dict(zip(data['fields'], entry)) for entry in data['data']]
+            entries.sort(key=lambda entry: entry['time_stamp']) # Data comes unsorted
+            for entry in entries:
+                yield entry
+
+            # Avoid rate limiting
+            if i + 1 < len(timestamp_chunks):
+                time.sleep(1)
 
     def find_sensor(self, name):
         ''' Lookup a sensor by name '''

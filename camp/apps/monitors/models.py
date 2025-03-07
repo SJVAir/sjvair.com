@@ -345,7 +345,10 @@ class Entry(models.Model):
         # CONSIDER: If the calibrator is too far, do we
         # skip and go with county? How far is too far?
         calibrator = (Calibrator.objects
-            .filter(is_enabled=True)
+            .filter(
+                is_enabled=True,
+                calibrations__end_date__lte=self.timestamp,
+            )
             .exclude(calibration__isnull=True)
             .select_related('calibration')
             .closest(self.position)

@@ -103,7 +103,7 @@ class PurpleAir(Monitor):
             two data structures that can be saved independently.
         '''
         base_data = {
-            'timestamp': parse_timestamp(payload['last_seen']),
+            'timestamp': parse_timestamp(payload.get('last_seen', payload.get('time_stamp'))),
             'fahrenheit': payload['temperature'],
             'humidity': payload['humidity'],
             'pressure': payload['pressure'],
