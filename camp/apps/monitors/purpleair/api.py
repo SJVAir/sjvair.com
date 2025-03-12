@@ -1,10 +1,9 @@
 import datetime
 import json
 import os
+from random import random
 import time
 import urllib.parse
-
-from pprint import pprint
 
 from django.utils import timezone
 
@@ -170,6 +169,12 @@ class PurpleAirAPI:
             })
             data = response.json()
 
+            if data.get('error') == 'RateLimitExceededError':
+                print('Rate limit exceeded. Waiting a few seconds...')
+                time.sleep(max(1, random() * 10)) # Wait 1-10 seconds
+                yield from self.get_sensor_history(sensor_index, start_date, end_date, fields)
+                return
+
             # Construct, sort, and yield the results
             entries = [dict(zip(data['fields'], entry)) for entry in data['data']]
             entries.sort(key=lambda entry: entry['time_stamp']) # Data comes unsorted
@@ -231,20 +236,6 @@ class PurpleAirAPI:
         if not response.ok:
             return response.json()
         return True
-
-    # XXX: Untestable until the history API is enabled for our API key.
-    # def get_history(self, sensor_index, read_key=None, **options):
-    #     params = options.copy()
-    #     params.setdefault('fields', ','.join(self.ENTRY_FIELDS))
-    #     if read_key is not None:
-    #         params['read_key'] = read_key
-
-    #     response = self.get(f'/v1/sensors/{sensor_index}/history', params=params)
-    #     data = response.json().get('data', [])
-    #     for entry in data:
-    #         a = self._map_fields(entry, 'a')
-    #         b = self._map_fields(entry, 'b')
-    #         yield (a, b)
 
 
 purpleair_api = PurpleAirAPI()
