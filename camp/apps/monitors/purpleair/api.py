@@ -159,6 +159,7 @@ class PurpleAirAPI:
         start_date = start_date or timezone.now().date() - datetime.timedelta(days=28)
         end_date = end_date or timezone.now().date()
         timestamp_chunks = chunk_date_range(start_date, end_date)
+        chunk_count = len(timestamp_chunks)
 
         for i, (start_timestamp, end_timestamp) in enumerate(timestamp_chunks):
             response = self.get(f'/v1/sensors/{sensor_index}/history', params={
@@ -176,13 +177,14 @@ class PurpleAirAPI:
                 return
 
             # Construct, sort, and yield the results
-            entries = [dict(zip(data['fields'], entry)) for entry in data['data']]
-            entries.sort(key=lambda entry: entry['time_stamp']) # Data comes unsorted
+            timestamp_index = data['fields'].index('time_stamp')
+            entries = sorted(data['data'], key=lambda entry: entry[timestamp_index])
             for entry in entries:
-                yield entry
+                yield dict(zip(data['fields'], entry))
 
-            # Avoid rate limiting
-            if i + 1 < len(timestamp_chunks):
+            # Sleep for an extra second between each
+            # request to avoid rate limiting
+            if i + 1 < chunk_count:
                 time.sleep(1)
 
     def find_sensor(self, name):
