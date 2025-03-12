@@ -11,7 +11,7 @@ from django_huey import db_task, db_periodic_task
 from huey import crontab
 
 from camp.apps.monitors.models import Entry
-from camp.apps.monitors.purpleair.api import purpleair_api
+from camp.apps.monitors.purpleair.api import purpleair_api, chunk_date_range
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.datetime import parse_timestamp
 
@@ -61,10 +61,12 @@ def update_monitor_data():
         monitor.save()
 
 
-@db_task()
+@db_task(queue='secondary')
 def import_monitor_history(monitor_id, start_date=None, end_date=None):
+    s = timezone.now()
     monitor = PurpleAir.objects.get(pk=monitor_id)
     entries = purpleair_api.get_sensor_history(monitor.purple_id, start_date, end_date)
+
     for entry in entries:
         for sensor in PurpleAir.SENSORS:
             try:
@@ -73,8 +75,16 @@ def import_monitor_history(monitor_id, start_date=None, end_date=None):
                     timestamp=parse_timestamp(entry['time_stamp']),
                     sensor=sensor,
                 )
-                if instance.pm25_reported is None:
+                if instance.pm25_reported != entry[f'pm2.5_atm_{sensor}']:
                     instance.pm25_reported = entry[f'pm2.5_atm_{sensor}']
                     instance.save()
             except Entry.DoesNotExist:
                 monitor.create_entries(entry)
+
+
+@db_task(queue='secondary')
+def import_monitor_history_batched(monitor_id, start_date=None, end_date=None):
+    chunks = chunk_date_range(start_date, end_date)
+    for start_date, end_date in chunks:
+        import_monitor_history(monitor_id, start_date, end_date)
+        time.sleep(1)
