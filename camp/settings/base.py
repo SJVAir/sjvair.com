@@ -19,28 +19,30 @@ from django.utils.translation import gettext_lazy as _
 
 from unipath import Path
 
+env = os.environ.get
+
 # Build paths inside the project like this: BASE_DIR.child(...)
 BASE_DIR = Path(__file__).absolute().ancestor(3)
 PROJECT_DIR = Path(__file__).absolute().ancestor(2)
 
-COMMIT_HASH = os.environ.get('HEROKU_SLUG_COMMIT')
+COMMIT_HASH = env('HEROKU_SLUG_COMMIT')
 if COMMIT_HASH is None:
     COMMIT_HASH = subprocess.check_output(
         ['git', 'rev-parse', '--short', 'HEAD']
     ).strip()
 
-DOMAIN = os.environ.get('DOMAIN', '')
+DOMAIN = env('DOMAIN', '')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY')
+SECRET_KEY = env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = bool(int(os.environ.get('DJANGO_DEBUG', 1)))
+DEBUG = bool(int(env('DJANGO_DEBUG', 1)))
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')
+ALLOWED_HOSTS = env('ALLOWED_HOSTS', 'localhost').split(',')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -155,7 +157,7 @@ DATABASES = {
 
 REDIS_URL = None
 for var in ["REDIS_URL", "OPENREDIS_URL"]:
-    REDIS_URL = os.environ.get(var)
+    REDIS_URL = env(var)
     if REDIS_URL is not None:
         if REDIS_URL.startswith('rediss'):
             REDIS_URL = f"{REDIS_URL}{'&' if '?' in REDIS_URL else '?'}ssl_cert_reqs=none"
@@ -242,7 +244,7 @@ STATICFILES_FINDERS = [
 
 MEDIA_ROOT = BASE_DIR.child('public', 'media')
 
-MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
+MEDIA_URL = env('MEDIA_URL', '/media/')
 
 
 # Email
@@ -252,21 +254,21 @@ DEFAULT_FROM_EMAIL = 'SJVAir <no-reply@sjvair.com>'
 SERVER_EMAIL = 'SJVAir Server <root@sjvair.com>'
 
 SJVAIR_INACTIVE_ALERT_EMAILS = [email.strip() for email in
-    os.environ.get('SJVAIR_INACTIVE_ALERT_EMAILS', SERVER_EMAIL).split(',')]
+    env('SJVAIR_INACTIVE_ALERT_EMAILS', SERVER_EMAIL).split(',')]
 
 SJVAIR_CONTACT_EMAILS = [email.strip() for email in
-    os.environ.get('SJVAIR_CONTACT_EMAILS', SERVER_EMAIL).split(',')]
+    env('SJVAIR_CONTACT_EMAILS', SERVER_EMAIL).split(',')]
 
 
 # App URLs
 
-APP_URL_ANDROID = os.environ.get('APP_URL_ANDROID',
+APP_URL_ANDROID = env('APP_URL_ANDROID',
     'https://play.google.com/store/apps/details?id=com.sjvair.mobile')
 
-APP_URL_IPAD = os.environ.get('APP_URL_IPAD',
+APP_URL_IPAD = env('APP_URL_IPAD',
     'https://apps.apple.com/us/app/sjvair/id6448961840?platform=ipad')
 
-APP_URL_IPHONE = os.environ.get('APP_URL_IPHONE',
+APP_URL_IPHONE = env('APP_URL_IPHONE',
     'https://apps.apple.com/us/app/sjvair/id6448961840?platform=iphone')
 
 
@@ -331,79 +333,79 @@ DJANGO_HUEY = {
             'connection': {'url': f'{REDIS_URL}/0'},
             'consumer': {
                 'periodic': True,
-                'workers': int(os.environ.get('HUEY_WORKERS', 4))
+                'workers': int(env('HUEY_PRIMARY_WORKERS', env('HUEY_WORKERS', 4)))
             },
             'huey_class': 'huey.PriorityRedisHuey',
-            'immediate': bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
+            'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
         },
         'secondary': {
             'name': 'secondary_tasks',
             'connection': {'url': f'{REDIS_URL}/1'},
             'consumer': {
                 'periodic': False,
-                'workers': int(os.environ.get('HUEY_WORKERS', 4))
+                'workers': int(env('HUEY_SECONDARY_WORKERS', env('HUEY_WORKERS', 4)))
             },
             'huey_class': 'huey.PriorityRedisHuey',
-            'immediate': bool(int(os.environ.get('HUEY_IMMEDIATE', DEBUG)))
+            'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
         },
     }
 }
 
-MAX_QUEUE_SIZE = int(os.environ.get('MAX_QUEUE_SIZE', 500))
+MAX_QUEUE_SIZE = int(env('MAX_QUEUE_SIZE', 500))
 
 
 # Twilio
 
-TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_ACCOUNT_SID = env("TWILIO_ACCOUNT_SID")
 
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_AUTH_TOKEN = env("TWILIO_AUTH_TOKEN")
 
-TWILIO_PHONE_NUMBERS = os.environ.get("TWILIO_PHONE_NUMBERS", "").split(',')
+TWILIO_PHONE_NUMBERS = env("TWILIO_PHONE_NUMBERS", "").split(',')
 
 
 # SMS Alerts
 
-SEND_SMS_ALERTS = bool(int(os.environ.get('SEND_SMS_ALERTS', 1)))
+SEND_SMS_ALERTS = bool(int(env('SEND_SMS_ALERTS', 1)))
 
 # Number of minutes between sending
-PHONE_VERIFICATION_RATE_LIMIT = int(os.environ.get('PHONE_VERIFICATION_RATE_LIMIT', 2))
+PHONE_VERIFICATION_RATE_LIMIT = int(env('PHONE_VERIFICATION_RATE_LIMIT', 2))
 
 # Number of minutes until the code expires
-PHONE_VERIFICATION_CODE_EXPIRES = int(os.environ.get('PHONE_VERIFICATION_CODE_EXPIRES', 5))
+PHONE_VERIFICATION_CODE_EXPIRES = int(env('PHONE_VERIFICATION_CODE_EXPIRES', 5))
 
 # Number of digits in the phone verification code
-PHONE_VERIFICATION_CODE_DIGITS = int(os.environ.get('PHONE_VERIFICATION_CODE_DIGITS', 6))
+PHONE_VERIFICATION_CODE_DIGITS = int(env('PHONE_VERIFICATION_CODE_DIGITS', 6))
 
 
 # Google Maps
 
-GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
+GOOGLE_MAPS_API_KEY = env('GOOGLE_MAPS_API_KEY', '')
 
 
 # Google Analytics
 
-GOOGLE_ANALYTICS_ID = os.environ.get('GOOGLE_ANALYTICS_ID')
+GOOGLE_ANALYTICS_ID = env('GOOGLE_ANALYTICS_ID')
 
 
 # Air Now API
 
-AIRNOW_API_KEY = os.environ.get('AIRNOW_API_KEY')
+AIRNOW_API_KEY = env('AIRNOW_API_KEY')
 
 
 # Purple Air
 
-PURPLEAIR_READ_KEY = os.environ.get('PURPLEAIR_READ_KEY')
+PURPLEAIR_READ_KEY = env('PURPLEAIR_READ_KEY')
 
-PURPLEAIR_WRITE_KEY = os.environ.get('PURPLEAIR_WRITE_KEY')
+PURPLEAIR_WRITE_KEY = env('PURPLEAIR_WRITE_KEY')
 
-PURPLEAIR_GROUP_ID = os.environ.get('PURPLEAIR_GROUP_ID')
+PURPLEAIR_GROUP_ID = env('PURPLEAIR_GROUP_ID')
 
 
 # reCAPTCHA
 
-RECAPTCHA_PUBLIC_KEY = os.environ.get('RECAPTCHA_PUBLIC_KEY', '')
+RECAPTCHA_PUBLIC_KEY = env('RECAPTCHA_PUBLIC_KEY', '')
 
-RECAPTCHA_PRIVATE_KEY = os.environ.get('RECAPTCHA_PRIVATE_KEY', '')
+RECAPTCHA_PRIVATE_KEY = env('RECAPTCHA_PRIVATE_KEY', '')
 
 
 # Sentry
@@ -421,11 +423,11 @@ if "SENTRY_DSN" in os.environ:
 
 # Scout APM
 
-SCOUT_MONITOR = bool(os.environ.get('SCOUT_MONITOR') == 'true')
+SCOUT_MONITOR = bool(env('SCOUT_MONITOR') == 'true')
 
-SCOUT_KEY = os.environ.get('SCOUT_KEY')
+SCOUT_KEY = env('SCOUT_KEY')
 
-SCOUT_NAME = os.environ.get('SCOUT_NAME')
+SCOUT_NAME = env('SCOUT_NAME')
 
 SCOUT_ERRORS_ENABLED = not DEBUG
 
@@ -435,4 +437,4 @@ if SCOUT_KEY is not None:
 
 # MapTiler
 
-MAPTILER_API_KEY = os.environ.get('MAPTILER_API_KEY')
+MAPTILER_API_KEY = env('MAPTILER_API_KEY')
