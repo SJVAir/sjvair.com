@@ -62,8 +62,7 @@ def update_monitor_data():
 
 
 @db_task(queue='secondary')
-def import_monitor_history(monitor_id, start_date=None, end_date=None):
-    s = timezone.now()
+def upsert_monitor_history(monitor_id, start_date=None, end_date=None):
     monitor = PurpleAir.objects.get(pk=monitor_id)
     entries = purpleair_api.get_sensor_history(monitor.purple_id, start_date, end_date)
 
@@ -80,6 +79,23 @@ def import_monitor_history(monitor_id, start_date=None, end_date=None):
                     instance.save()
             except Entry.DoesNotExist:
                 monitor.create_entries(entry)
+
+
+@db_task(queue='secondary')
+def upsert_monitor_history_batched(monitor_id, start_date=None, end_date=None):
+    chunks = chunk_date_range(start_date, end_date)
+    for start_date, end_date in chunks:
+        import_monitor_history(monitor_id, start_date, end_date)
+        time.sleep(1)
+
+
+@db_task(queue='secondary')
+def import_monitor_history(monitor_id, start_date=None, end_date=None):
+    monitor = PurpleAir.objects.get(pk=monitor_id)
+    entries = purpleair_api.get_sensor_history(monitor.purple_id, start_date, end_date)
+
+    for entry in entries:
+        monitor.create_entries(entry)
 
 
 @db_task(queue='secondary')
