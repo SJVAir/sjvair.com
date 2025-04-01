@@ -313,7 +313,7 @@ class Entry(models.Model):
     def get_average(self, field, minutes):
         values = list(Entry.objects
             .filter(
-                monitor=self.monitor,
+                monitor_id=self.monitor_id,
                 sensor=self.sensor,
                 timestamp__range=(
                     self.timestamp - timedelta(minutes=minutes),
