@@ -17,6 +17,7 @@ class EntrySerializer(serializers.Serializer):
         'particles_10um', 'particles_25um', 'particles_50um',
     ]
 
+    available_fields = value_fields + ['pm25_calibration_formula']
     fields = base_fields + value_fields
 
 
