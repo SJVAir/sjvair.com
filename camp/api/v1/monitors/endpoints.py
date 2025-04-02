@@ -126,7 +126,7 @@ class EntryList(EntryMixin, generics.ListCreateEndpoint):
             fields = EntrySerializer.base_fields[::]
             if 'fields' in self.request.GET:
                 for field in self.request.GET['fields'].split(','):
-                    if field in EntrySerializer.value_fields:
+                    if field in EntrySerializer.available_fields:
                         fields.append(field)
             else:
                 fields.extend(EntrySerializer.value_fields)
