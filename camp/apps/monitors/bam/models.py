@@ -5,11 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from django.core.exceptions import ValidationError
-from django.db import models
 from django.utils import timezone
-
-from resticus.encoders import JSONEncoder
 
 from camp.apps.monitors.models import Monitor, Entry
 from camp.utils.datetime import parse_datetime

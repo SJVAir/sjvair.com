@@ -5,8 +5,6 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
-import aqi
-
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db.models import Avg, Q
@@ -44,6 +42,8 @@ class Monitor(models.Model):
     DATA_SOURCE = {}
     DEVICE = None
 
+    CALIBRATIONS = {}
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -72,17 +72,35 @@ class Monitor(models.Model):
 
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
 
+    # # Entries - NG
+    # # Particulate Matter
+    # pm25 = models.ForeignKey('entries.PM25', related_name='pm25_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    # pm10 = models.ForeignKey('entries.PM10', related_name='pm10_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    # pm100 = models.ForeignKey('entries.PM100', related_name='pm100_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    # particulates = models.ForeignKey('entries.Particulates', related_name='particulates_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+
+    # # Gases
+    # co = models.ForeignKey('entries.CO', related_name='co_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    # no2 = models.ForeignKey('entries.NO2', related_name='no2_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    # o3 = models.ForeignKey('entries.O3', related_name='o3_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+
+    # # Environment
+    # temperature = models.ForeignKey('entries.Temperature', related_name='temperature_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    # humidity = models.ForeignKey('entries.Humidity', related_name='humidity_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+    # pressure = models.ForeignKey('entries.Pressure', related_name='pressure_latest_for', blank=True, null=True, on_delete=models.SET_NULL)
+
+    # Entries - Legacy
+    latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
+
+    # TODO: default_pm25_sensor (default_ENTRY_sensor, etc)
+    default_sensor = models.CharField(max_length=50, default='', blank=True)
+
     current_health = models.ForeignKey('qaqc.SensorAnalysis',
         blank=True,
         null=True,
         related_name="current_for",
         on_delete=models.SET_NULL
     )
-    latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
-    default_sensor = models.CharField(max_length=50, default='', blank=True)
-
-    pm25_calibration_formula = models.CharField(max_length=255, blank=True,
-        default='', validators=[validate_formula])
 
     objects = MonitorManager()
 
@@ -144,7 +162,32 @@ class Monitor(models.Model):
 
         aggregate = queryset.aggregate(average=Avg('pm25'))
         return aggregate['average']
+    
+    def initiate_entry(self, EntryModel):
+        return EntryModel(
+            monitor=self,
+            position=self.position,
+            location=self.location,
+        )
 
+    def create_entry_ng(self, EntryModel, **data):
+        print(f'{self.name}: Monitor.create_entry_ng({EntryModel} with {data})')
+        entry = self.initiate_entry(EntryModel)
+
+        for key, value in data.items():
+            setattr(entry, key, value)
+
+        if entry.validation_check():
+            entry.save()
+            self.calibrate_entry(entry)
+            return entry
+        
+    def calibrate_entry(self, entry):
+        for calibrator in self.CALIBRATIONS.get(entry.__class__, []):
+            calibrator.process_entry(entry)
+        
+
+    # Legacy
     def create_entry(self, payload, sensor=None):
         entry = Entry(
             monitor=self,
@@ -212,35 +255,7 @@ class Group(models.Model):
         ordering = ['name']
 
 
-class Calibration(TimeStampedModel):
-    COUNTIES = Choices(*County.names)
-    MONITOR_TYPES = lazy(lambda: Choices(*Monitor.subclasses()), list)()
-
-    id = SmallUUIDField(
-        default=uuid_default(),
-        primary_key=True,
-        db_index=True,
-        editable=False,
-        verbose_name='ID'
-    )
-
-    monitor_type = models.CharField(max_length=20, choices=MONITOR_TYPES)
-    county = models.CharField(max_length=20, choices=COUNTIES)
-    pm25_formula = models.CharField(max_length=255, blank=True,
-        default='', validators=[validate_formula])
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['monitor_type', 'county'])
-        ]
-
-        unique_together = [
-            ('monitor_type', 'county')
-        ]
-
-    def __str__(self):
-        return f'{self.monitor_type} – {self.county}'
-
+# Deprecated (Old and Busted)
 
 class Entry(models.Model):
     ENVIRONMENT = [
@@ -337,11 +352,6 @@ class Entry(models.Model):
     def get_pm25_calibration_formula(self):
         from camp.apps.calibrations.models import Calibrator
 
-        # Check for a formula set on this specific monitor.
-        if self.monitor.pm25_calibration_formula:
-            return self.monitor.pm25_calibration_formula
-
-        # Distance-based calibrations
         # CONSIDER: If the calibrator is too far, do we
         # skip and go with county? How far is too far?
         calibrator = (Calibrator.objects
@@ -358,16 +368,6 @@ class Entry(models.Model):
             calibration = calibrator.calibrations.filter(end_date__lte=self.timestamp).first()
             if calibration is not None:
                 return calibration.formula
-
-        # Fallback to county-based calibrations.
-        try:
-            return Calibration.objects.values_list('pm25_formula', flat=True).get(
-                county=self.monitor.county,
-                monitor_type=self.monitor._meta.model_name
-            )
-        except Calibration.DoesNotExist:
-            # Default to an empty string, which is a noop formula.
-            return ''
 
     def calibrate_pm25(self):
         formula = self.get_pm25_calibration_formula()

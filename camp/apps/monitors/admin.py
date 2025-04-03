@@ -29,7 +29,7 @@ from camp.apps.qaqc.admin import SensorAnalysisInline
 from camp.utils.forms import DateRangeForm
 
 from .forms import MonitorAdminForm
-from .models import Group, Calibration, Entry
+from .models import Group, Entry
 
 
 def key_to_lookup(k):
@@ -146,13 +146,6 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         return queryset
 
     @csrf_protect_m
-    def changelist_view(self, request, extra_context=None):
-        if extra_context is None:
-            extra_context = {}
-        extra_context.update(CALIBRATIONS=self.get_calibrations())
-        return super().changelist_view(request, extra_context)
-
-    @csrf_protect_m
     def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
         if extra_context is None:
             extra_context = {}
@@ -222,10 +215,6 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         queryset = EntryArchive.objects.filter(monitor_id=object_id)
         return queryset
 
-    def get_calibrations(self):
-        queryset = Calibration.objects.filter(monitor_type=self.model._meta.app_label)
-        return {calibration.county: calibration.pm25_formula for calibration in queryset}
-
     def get_subscriptions(self, instance):
         return instance.subscription_count
     get_subscriptions.short_description = 'Subscriptions'
@@ -264,21 +253,3 @@ class GroupAdmin(admin.ModelAdmin):
 
     def monitor_count(self, instance):
         return instance.monitors.count()
-
-
-@admin.register(Calibration)
-class CalibrationAdmin(admin.ModelAdmin):
-    list_display = ('monitor_type', 'county', 'modified', 'get_pm25_formula')
-    list_filter = ('monitor_type', 'county')
-
-    def get_pm25_formula(self, instance):
-        if instance.pm25_formula:
-            return mark_safe(f'<code>{instance.pm25_formula}</code>')
-        return '-'
-    get_pm25_formula.short_description = 'PM2.5 Formula'
-
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        if 'pm25_formula' in form.base_fields:
-            form.base_fields['pm25_formula'].help_text = formula_help_text()
-        return form
