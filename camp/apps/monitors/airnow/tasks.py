@@ -22,6 +22,39 @@ def import_airnow_data(timestamp=None, previous=None):
     previous = previous or 1
 
     for county in County.names:
+        data = airnow_api.query_ng(county, timestamp=timestamp, previous=previous)
+        for entry in data:
+
+            # Look up the monitor by name. If it doesn't exist, create it.
+            try:
+                monitor = AirNow.objects.get(name=entry['SiteName'])
+            except AirNow.DoesNotExist:
+                latlon = Point(entry['Longitude'], entry['Latitude'], srid=4326)
+                county = County.lookup(latlon)
+                if not county:
+                    continue
+
+                monitor = AirNow.objects.create(
+                    name=entry['SiteName'],
+                    position=latlon,
+                    county=county,
+                    data_provider=entry.get('AgencyName', ''),
+                    location=AirNow.LOCATION.outside
+                )
+
+            monitor.create_entry_ng(entry)
+
+
+@db_periodic_task(crontab(minute='*/15'), priority=50)
+def import_airnow_data_legacy(timestamp=None, previous=None):
+    if settings.AIRNOW_API_KEY is None:
+        # Do nothing if we don't have a key.
+        return
+
+    timestamp = timestamp or timezone.now()
+    previous = previous or 1
+
+    for county in County.names:
         # {site_name: {timestamp: [{data}, ...]}}
         data = airnow_api.query(county, timestamp=timestamp, previous=previous)
         for site_name, container in data.items():
@@ -46,17 +79,6 @@ def import_airnow_data(timestamp=None, previous=None):
                 )
 
             for timestamp, data in container.items():
-                entries = monitor.create_entries(data)
-                timestamp = parse_datetime(timestamp)
-                try:
-                    entry = monitor.entries.get(timestamp=timestamp)
-                    entry = monitor.process_entry(entry, data)
-                    entry.save()
-                except Entry.DoesNotExist:
-                    entry = monitor.create_entry(data)
-
-            # Legacy
-            for timestamp, data in container.items():
                 timestamp = parse_datetime(timestamp)
                 try:
                     entry = monitor.entries.get(timestamp=timestamp)
@@ -68,5 +90,3 @@ def import_airnow_data(timestamp=None, previous=None):
                 monitor.check_latest(entry)
                 if monitor.latest_id == entry.pk:
                     monitor.save()
-
-            return entries
