@@ -51,26 +51,15 @@ def process_aqview_data(payload):
             data_provider_url=payload.get('dplink', ''),
         )
 
-    # This block can be removed at a later date, once
-    # existing monitors have been updated with the dataprovidername.
-    if payload.get('dataprovidername') and not monitor.data_provider:
-        monitor.data_provider = payload['dataprovidername']
-        monitor.dplink = payload.get('dplink')
-        monitor.save()
-
-    # This block can be removed at a later date, once
-    # existing monitors have been updated with the externalmonitorid.
-    if payload.get('externalmonitorid') and not monitor.device:
-        monitor.device = payload['externalmonitorid']
-        monitor.save()
-
     # Calculate the timestamp and make it timezone aware.
     payload['timestamp'] = make_aware(
         datetime.fromtimestamp(payload['maptime'] / 1000) - timedelta(hours=payload['hourindex']),
         pytz.timezone('America/Los_Angeles')
     )
 
-    # Create or update the entry based on the timestamp.
+    monitor.create_entries(payload)
+
+    # Legacy
     try:
         entry = monitor.entries.get(timestamp=payload['timestamp'])
         entry = monitor.process_entry(entry, payload)
