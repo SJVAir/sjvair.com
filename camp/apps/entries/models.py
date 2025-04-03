@@ -5,12 +5,11 @@ from django.contrib.postgres.indexes import BrinIndex
 from django.utils import timezone
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
-from py_expression_eval import Parser as ExpressionParser
+
+from camp.apps.monitors.models import Monitor
 
 
 class BaseEntry(models.Model):
-    monitor_attr = None
-
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -21,8 +20,14 @@ class BaseEntry(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
     timestamp = models.DateTimeField(default=timezone.now, db_index=True)
+
     monitor = models.ForeignKey('monitors.Monitor', related_name='%(class)s_entries', on_delete=models.CASCADE)
+    position = models.PointField(null=True, blank=True)
+    location = models.CharField(max_length=10, choices=Monitor.LOCATION)
+
     sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
+    # calibration_type = models.CharField(max_length=50, blank=True, null=True, default='', db_index=True)
+    # calibration_data = models.TextArea(blank=True, null=True, default='')
 
     class Meta:
         abstract = True
@@ -34,73 +39,75 @@ class BaseEntry(models.Model):
         )
         ordering = ('-timestamp', 'sensor',)
 
-    def process(self):
-        pass
-
+    def clone(self):
+        return self.__class__(
+            monitor=self.monitor,
+            timestamp=self.timestamp,
+            position=self.position,
+            location=self.location,
+            sensor=self.sensor,
+        )
+    
+    def process_data(self, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+    
+    def related(self):
+        return self.__class__.objects.filter(
+            monitor=self.monitor,
+            sensor=self.sensor,
+            timestamp=self.timestamp,
+        ).exclude(pk=self.pk)
+    
     def validation_check(self):
         return not self.__class__.objects.filter(
             monitor=self.monitor,
             sensor=self.sensor,
             timestamp=self.timestamp,
+            # TODO: calibration type
         ).exists()
 
 
 # Particulate Matter
 
 class PM25(BaseEntry):
-    monitor_attr = 'pm25'
-    pm25_reported = models.DecimalField(max_digits=6, decimal_places=2)
-    pm25_calibrated = models.DecimalField(max_digits=6, decimal_places=2, null=True)
-    pm25_calibration_formula = models.TextField(blank=True, default='')
-
-    @property
-    def pm25(self):
-        return self.pm25_calibrated or self.pm25_reported
-
-    def get_calibration_formula(self):
-        from camp.apps.calibrations.models import Calibrator
-
-        calibrator = (Calibrator.objects
-            .filter(is_enabled=True)
-            .exclude(calibration__isnull=True)
-            .select_related('calibration')
-            .closest(self.monitor.position)
-        )
-
-        if calibrator is not None:
-            calibration = calibrator.calibrations.filter(end_date__lte=self.timestamp).first()
-            if calibration is not None:
-                return calibration.formula
-
-    def calibrate(self):
-        formula = self.get_calibration_formula()
-
-        if formula:
-            parser = ExpressionParser()
-            expression = parser.parse(formula)
-            context = self.get_calibration_context()
-
-            self.pm25_calibrated = expression.evaluate(context)
-            self.pm25_calibration_formula = formula
-
-    def process(self):
-        if self.monitor.CALIBRATE:
-            self.calibrate()
-        return super().process()
+    value = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        help_text="PM2.5 (µg/m³)",
+    )
 
 
-class PM10(BaseEntry):
-    monitor_attr = 'pm10'
-    pm10 = models.DecimalField(max_digits=6, decimal_places=2)
+    # def get_calibration_formula(self):
+    #     from py_expression_eval import Parser as ExpressionParser
+    #     from camp.apps.calibrations.models import Calibrator
 
+    #     calibrator = (Calibrator.objects
+    #         .filter(is_enabled=True)
+    #         .exclude(calibration__isnull=True)
+    #         .select_related('calibration')
+    #         .closest(self.monitor.position)
+    #     )
 
-class PM100(BaseEntry):
-    monitor_attr = 'pm100'
-    pm100 = models.DecimalField(max_digits=6, decimal_places=2)
+    #     if calibrator is not None:
+    #         calibration = calibrator.calibrations.filter(end_date__lte=self.timestamp).first()
+    #         if calibration is not None:
+    #             return calibration.formula
+
+    # def calibrate_local(self, value):
+    #     formula = self.get_local_calibration_formula()
+
+    #     if formula:
+    #         parser = ExpressionParser()
+    #         expression = parser.parse(formula)
+    #         context = self.get_calibration_context()
+    #         return expression.evaluate(context)
+        
+    # def calibrate_epa(self, value):
+    #     pass
 
 
 class Particulates(BaseEntry):
-    monitor_attr = 'particulates'
     particles_03um = models.DecimalField(max_digits=8, decimal_places=2)
     particles_05um = models.DecimalField(max_digits=8, decimal_places=2)
     particles_10um = models.DecimalField(max_digits=8, decimal_places=2)
@@ -109,43 +116,84 @@ class Particulates(BaseEntry):
     particles_100um = models.DecimalField(max_digits=8, decimal_places=2)
 
 
+class PM10(BaseEntry):
+    value = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        help_text="PM1.0 (µg/m³)"
+    )
+
+
+class PM100(BaseEntry):
+    value = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        help_text="PM10.0 (µg/m³)"
+    )
+
+
+# Meteorological
+
 class Temperature(BaseEntry):
-    monitor_attr = 'temperature'
-    celsius = models.DecimalField(max_digits=5, decimal_places=1)
-    fahrenheit = models.DecimalField(max_digits=5, decimal_places=1)
+    value = models.DecimalField(
+        max_digits=4, decimal_places=1,
+        help_text="Temperature (°F)"
+    )
 
-    def save(self, *args, **kwargs):
-        if self.fahrenheit is None and self.celsius is not None:
-            self.fahrenheit = (Decimal(self.celsius) * (Decimal(9) / Decimal(5))) + 32
-        if self.celsius is None and self.fahrenheit is not None:
-            self.celsius = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
-        return super().save(*args, **kwargs)
+    @property
+    def fahrenheit(self):
+        return self.value
+    
+    @fahrenheit.setter
+    def fahrenheit(self, value):
+        self.value = value
 
-
-# Environment
+    @property
+    def celsius(self):
+        return (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
+    
+    @celsius.setter
+    def celsius(self, value):
+        self.fahrenheit = (Decimal(value) * (Decimal(9) / Decimal(5))) + 32
+    
 
 class Humidity(BaseEntry):
-    monitor_attr = 'humidity'
-    humidity = models.DecimalField(max_digits=4, decimal_places=1)
+    value = models.DecimalField(
+        max_digits=4, decimal_places=1,
+        help_text="Relative humidity (%)"
+    )
 
 
 class Pressure(BaseEntry):
-    monitor_attr = 'pressure'
-    pressure = models.DecimalField(max_digits=6, decimal_places=2)
+    value = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        help_text="Atmospheric pressure (mmHg)",
+    )
 
 
 # Gases
 
 class O3(BaseEntry):
-    monitor_attr = 'o3'
-    o3 = models.DecimalField(max_digits=8, decimal_places=2)
+    value = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        help_text="Ozone (ppb)"
+    )
 
 
 class NO2(BaseEntry):
-    monitor_attr = 'no2'
-    no2 = models.DecimalField(max_digits=8, decimal_places=2)
+    value = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        help_text="Nitrogen dioxide (ppb)",
+    )
 
 
 class CO(BaseEntry):
-    monitor_attr = 'co'
-    co = models.DecimalField(max_digits=8, decimal_places=2)
+    value = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        help_text="Carbon monoxide (ppm)",
+    )
+
+
+class SO2(BaseEntry):
+    value = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        help_text="Sulfer dioxide (ppb)",
+    )

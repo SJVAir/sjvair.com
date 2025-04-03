@@ -37,7 +37,7 @@ def process_data(payload):
         monitor.update_data(data)
         monitor.save()
 
-    monitor.create_entries(payload)
+    monitor.process_payload(payload)
 
     # Legacy
     entries = monitor.create_entries_legacy(payload)
@@ -82,7 +82,7 @@ def upsert_monitor_history(monitor_id, start_date=None, end_date=None):
                     instance.pm25_reported = entry[f'pm2.5_atm_{sensor}']
                     instance.save()
             except Entry.DoesNotExist:
-                monitor.create_entries(entry)
+                monitor.process_payload(entry)
 
 
 @db_task(queue='secondary')
@@ -99,7 +99,7 @@ def import_monitor_history(monitor_id, start_date=None, end_date=None):
     entries = purpleair_api.get_sensor_history(monitor.purple_id, start_date, end_date)
 
     for entry in entries:
-        monitor.create_entries(entry)
+        monitor.process_payload(entry)
 
 
 @db_task(queue='secondary')
