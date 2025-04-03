@@ -106,7 +106,7 @@ class PurpleAir(Monitor):
         # If we're here, it's probably outside.
         return self.LOCATION.outside
 
-    def process_payload(self, payload):
+    def create_entries(self, payload):
         timestamp = parse_timestamp(payload.get('last_seen', payload.get('time_stamp')))
         entries = []
 
