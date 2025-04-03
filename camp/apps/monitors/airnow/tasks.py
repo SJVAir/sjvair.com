@@ -42,7 +42,7 @@ def import_airnow_data(timestamp=None, previous=None):
                     location=AirNow.LOCATION.outside
                 )
 
-            monitor.create_entry_ng(entry)
+            monitor.create_entries(entry)
 
 
 @db_periodic_task(crontab(minute='*/15'), priority=50)

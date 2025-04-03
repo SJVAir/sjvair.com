@@ -31,13 +31,15 @@ class AirNow(Monitor):
     class Meta:
         verbose_name = 'AirNow'
 
-    def create_entry_ng(self, payload):
+    def create_entries(self, payload):
         EntryModel = self.ENTRY_MAP.get(payload['Parameter'])
-        timestamp = make_aware(parse_datetime(payload['UTC']))
-        return super().create_entry_ng(EntryModel,
-            timestamp=timestamp,
-            value=payload['Value']
-        )
+        if EntryModel is not None:
+            if entry := super().create_entry_ng(EntryModel,
+                timestamp=make_aware(parse_datetime(payload['UTC'])),
+                value=payload['Value']
+            ) is not None:
+                return [entry]
+        return []
 
     # def create_entries(self, payload):
     #     entries = []
