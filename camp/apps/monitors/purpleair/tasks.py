@@ -37,7 +37,7 @@ def process_data(payload):
         monitor.update_data(data)
         monitor.save()
 
-    monitor.process_payload(payload)
+    monitor.create_entries(payload)
 
     # Legacy
     entries = monitor.create_entries_legacy(payload)
@@ -66,40 +66,12 @@ def update_monitor_data():
 
 
 @db_task(queue='secondary')
-def upsert_monitor_history(monitor_id, start_date=None, end_date=None):
-    monitor = PurpleAir.objects.get(pk=monitor_id)
-    entries = purpleair_api.get_sensor_history(monitor.purple_id, start_date, end_date)
-
-    for entry in entries:
-        for sensor in PurpleAir.SENSORS:
-            try:
-                instance = Entry.objects.get(
-                    monitor_id=monitor.pk,
-                    timestamp=parse_timestamp(entry['time_stamp']),
-                    sensor=sensor,
-                )
-                if instance.pm25_reported != entry[f'pm2.5_atm_{sensor}']:
-                    instance.pm25_reported = entry[f'pm2.5_atm_{sensor}']
-                    instance.save()
-            except Entry.DoesNotExist:
-                monitor.process_payload(entry)
-
-
-@db_task(queue='secondary')
-def upsert_monitor_history_batched(monitor_id, start_date=None, end_date=None):
-    chunks = chunk_date_range(start_date, end_date)
-    for start_date, end_date in chunks:
-        import_monitor_history(monitor_id, start_date, end_date)
-        time.sleep(1)
-
-
-@db_task(queue='secondary')
 def import_monitor_history(monitor_id, start_date=None, end_date=None):
     monitor = PurpleAir.objects.get(pk=monitor_id)
     entries = purpleair_api.get_sensor_history(monitor.purple_id, start_date, end_date)
 
     for entry in entries:
-        monitor.process_payload(entry)
+        monitor.create_entries(entry)
 
 
 @db_task(queue='secondary')
