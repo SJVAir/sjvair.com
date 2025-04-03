@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor, Entry
 from camp.utils.datetime import parse_datetime
 
@@ -32,11 +33,29 @@ class BAM1022(Monitor):
         'url': 'https://cencalasthma.org'
     }
 
-    class Meta:
-        verbose_name = 'BAM 1022'
+    ENTRY_MAP = {
+        # EntryModel: (src_attr, dest_attr))
+        entry_models.Temperature: ('celcius', 'AT(C)'),
+        entry_models.Humidity: ('value', 'RH(%)'),
+        entry_models.Pressure: ('mmhg', 'BP(mmHg)'),
+        entry_models.PM25: ('value', 'ConcHR(ug/m3)'),
+    }
 
     class Meta:
         verbose_name = 'BAM 1022'
+
+    def create_entries(self, payload):
+        entries = []
+        timestamp = parse_datetime(payload['Time'])
+        for EntryModel, (attr, key) in self.ENTRY_MAP.items():
+            entry = self.create_entry_ng(EntryModel,
+                timestamp=timestamp,
+                **{attr: payload[key]}
+            )
+            if entry is not None:
+                entries.append(entry)
+
+        return entries
 
     def create_entry(self, payload, sensor=None):
         timestamp = parse_datetime(payload['Time'])
