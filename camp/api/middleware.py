@@ -3,7 +3,6 @@ import uuid
 from resticus import http
 
 from camp.apps.monitors.models import Monitor
-from camp.apps.monitors.methane.models import Methane
 
 
 class MonitorAccessMiddleware:
@@ -21,18 +20,9 @@ class MonitorAccessMiddleware:
         if not request.path.startswith('/api/1.0/'):
             return None
 
-        lookup = None
         if 'monitor_id' in view_kwargs:
-            lookup = {'pk': view_kwargs['monitor_id']}
-        elif 'methane_id' in view_kwargs:
-            lookup = {
-                'name': view_kwargs['methane_id'],
-                'methane__isnull': False
-            }
-
-        if lookup is not None:
             try:
-                request.monitor = Monitor.objects.get(**lookup)
+                request.monitor = Monitor.objects.get(pk=view_kwargs['monitor_id'])
             except Monitor.DoesNotExist:
                 monitor_id = lookup.get('pk', lookup.get('name'))
                 return http.Http404(f'No monitor exists with ID "{monitor_id}".')
