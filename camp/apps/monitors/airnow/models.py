@@ -2,7 +2,7 @@ from django.contrib.gis.db import models
 from django.utils.dateparse import parse_datetime
 
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.models import Monitor, Entry
+from camp.apps.monitors.models import Monitor
 from camp.utils.datetime import make_aware
 
 
