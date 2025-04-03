@@ -5,10 +5,6 @@ from datetime import timedelta
 
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
-from django.contrib.postgres.fields import JSONField
-from django.utils.functional import cached_property
-
-from resticus.encoders import JSONEncoder
 
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor, Entry
@@ -17,50 +13,13 @@ from camp.utils.datetime import parse_timestamp
 
 
 class PurpleAir(Monitor):
-    CALIBRATE = True
-
+    CALIBRATE = True  # legacy
     SENSORS = ['a', 'b']
 
-    # ENTRIES_MAP = {
-    #     entry_models.PM10: [
-    #         {'pm10': 'pm1.0_atm_a'},
-    #         {'pm10': 'pm1.0_atm_b'},
-    #     ],
-    #     entry_models.PM25: [
-    #         {'pm25_reported': 'pm2.5_atm_a'},
-    #         {'pm25_reported': 'pm2.5_atm_b'},
-    #     ],
-    #     entry_models.PM100: [
-    #         {'pm100': 'pm10.0_atm_a'},
-    #         {'pm100': 'pm10.0_atm_b'},
-    #     ],
-    #     entry_models.Particulates: [
-    #         {
-    #             'particles_03um': '0.3_um_count_a',
-    #             'particles_05um': '0.5_um_count_a',
-    #             'particles_10um': '1.0_um_count_a',
-    #             'particles_25um': '2.5_um_count_a',
-    #             'particles_50um': '5.0_um_count_a',
-    #             'particles_100um': '10.0_um_count_a',
-    #         },
-    #         {
-    #             'particles_03um': '0.3_um_count_b',
-    #             'particles_05um': '0.5_um_count_b',
-    #             'particles_10um': '1.0_um_count_b',
-    #             'particles_25um': '2.5_um_count_b',
-    #             'particles_50um': '5.0_um_count_b',
-    #             'particles_100um': '10.0_um_count_b',
-    #         }
-    #     ],
-    #     entry_models.Temperature: [{'fahrenheit': 'temperature'}],
-    #     entry_models.Humidity: [{'humidity': 'humidity'}],
-    #     entry_models.Pressure: [{'pressure': 'pressure'}],
-    # }
-
     CHANNEL_FIELDS = {
-        entry_models.PM10: {'pm10': 'pm1.0_atm'},
-        entry_models.PM25: {'pm25_reported': 'pm2.5_atm'},
-        entry_models.PM100: {'pm100': 'pm10.0_atm'},
+        entry_models.PM10: {'value': 'pm1.0_atm'},
+        entry_models.PM25: {'value': 'pm2.5_atm'},
+        entry_models.PM100: {'value': 'pm10.0_atm'},
         entry_models.Particulates: {
             'particles_03um': '0.3_um_count',
             'particles_05um': '0.5_um_count',
@@ -72,10 +31,17 @@ class PurpleAir(Monitor):
     }
 
     SINGLE_FIELDS = {
-        entry_models.Temperature: {'fahrenheit': 'temperature'},
-        entry_models.Humidity: {'humidity': 'humidity'},
-        entry_models.Pressure: {'pressure': 'pressure'},
+        entry_models.Temperature: {'value': 'temperature'},
+        entry_models.Humidity: {'value': 'humidity'},
+        entry_models.Pressure: {'value': 'pressure'},
     }
+
+    # CALIBRATIONS = {
+    #     entry_models.PM25: [
+    #         LocalCalibration,
+    #         EPACalibration,
+    #     ],
+    # }
 
     # Legacy
     CHANNEL_FIELDS_LEGACY = {
@@ -140,10 +106,8 @@ class PurpleAir(Monitor):
         # If we're here, it's probably outside.
         return self.LOCATION.outside
 
-    def create_entries(self, payload):
-        self.create_entries_legacy(payload)
-
-        timestamp = parse_timestamp(payload['last_seen'])
+    def process_payload(self, payload):
+        timestamp = parse_timestamp(payload.get('last_seen', payload.get('time_stamp')))
         entries = []
 
         for sensor in self.SENSORS:
@@ -168,10 +132,7 @@ class PurpleAir(Monitor):
 
     def create_entry_ng(self, EntryModel, **data):
         if data and all(map(lambda x: x is not None, data.values())):
-            return super().create_entry_ng(
-                EntryModel=EntryModel,
-                **data
-            )
+            return super().create_entry_ng(EntryModel, **data)
 
     # Legacy
     def create_entries_legacy(self, payload):
