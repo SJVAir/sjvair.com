@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.apps import apps
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.utils import timezone
@@ -27,7 +28,7 @@ class BaseEntry(models.Model):
 
     sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
     # calibration_type = models.CharField(max_length=50, blank=True, null=True, default='', db_index=True)
-    # calibration_data = models.TextArea(blank=True, null=True, default='')
+    # calibration_data = models.JSONField(default=dict)
 
     class Meta:
         abstract = True
@@ -38,6 +39,72 @@ class BaseEntry(models.Model):
             BrinIndex(fields=['timestamp', 'sensor'], autosummarize=True),
         )
         ordering = ('-timestamp', 'sensor',)
+
+    def declared_fields(self):
+        base_field_names = {
+            f.name for f in BaseEntry._meta.get_fields()
+            if not f.auto_created
+        }
+
+        return [
+            f for f in self.__class__._meta.get_fields()
+            if (f.name not in base_field_names and not f.auto_created)
+        ]
+
+    def declared_data(self):
+        data = {
+            f.name: getattr(self, f.name)
+            for f in self.declared_fields()
+        }
+
+        if len(data) == 1 and "value" in data:
+            key = self.__class__._meta.model_name
+            data[key] = data.pop('value')
+
+        return data
+    
+    def pollutant_context(self) -> dict:
+        """
+        Gathers data from all other BaseEntry subclasses that share
+        (monitor, timestamp, sensor) with this entry.
+        Merges all declared_data() into one dictionary.
+        """
+        # Start with the current entry's data
+        context = self.declared_data()
+
+        # Find all non-abstract models that inherit from BaseEntry
+        EntryModels = [
+            m for m in apps.get_models()
+            if issubclass(m, BaseEntry) and not m._meta.abstract
+        ]
+
+        for EntryModel in EntryModels:
+            # Skip if it's the same model class as self
+            if EntryModel is self.__class__:
+                continue
+
+            # Build lookup dict for (monitor, timestamp, sensor)
+            lookup = {
+                'monitor': self.monitor,
+                'timestamp': self.timestamp
+            }
+            if hasattr(EntryModel, 'sensor') and self.sensor:
+                lookup['sensor'] = self.sensor
+
+            # Attempt to get a single matching entry
+            try:
+                entry = EntryModel.objects.get(**lookup)
+                # Merge the declared data from that entry
+                context.update(entry.declared_data())
+            except EntryModel.DoesNotExist:
+                # No matching entry, skip
+                pass
+            except EntryModel.MultipleObjectsReturned:
+                # If multiple found, decide how to handle 
+                # or just skip
+                pass
+
+        return context
 
     def clone(self):
         return self.__class__(
@@ -76,32 +143,6 @@ class PM25(BaseEntry):
         max_digits=6, decimal_places=2,
         help_text="PM2.5 (µg/m³)",
     )
-
-
-    # def get_calibration_formula(self):
-    #     from py_expression_eval import Parser as ExpressionParser
-    #     from camp.apps.calibrations.models import Calibrator
-
-    #     calibrator = (Calibrator.objects
-    #         .filter(is_enabled=True)
-    #         .exclude(calibration__isnull=True)
-    #         .select_related('calibration')
-    #         .closest(self.monitor.position)
-    #     )
-
-    #     if calibrator is not None:
-    #         calibration = calibrator.calibrations.filter(end_date__lte=self.timestamp).first()
-    #         if calibration is not None:
-    #             return calibration.formula
-
-    # def calibrate_local(self, value):
-    #     formula = self.get_local_calibration_formula()
-
-    #     if formula:
-    #         parser = ExpressionParser()
-    #         expression = parser.parse(formula)
-    #         context = self.get_calibration_context()
-    #         return expression.evaluate(context)
         
     # def calibrate_epa(self, value):
     #     pass

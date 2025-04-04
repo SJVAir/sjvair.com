@@ -29,6 +29,25 @@ from camp.utils.datetime import make_aware
 from camp.utils.validators import JSONSchemaValidator
 
 
+class Group(models.Model):
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+
+    name = models.CharField(max_length=100)
+    monitors = models.ManyToManyField('monitors.Monitor', related_name='groups', blank=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['name']
+
+
 class Monitor(models.Model):
     COUNTIES = Choices(*County.names)
     LOCATION = Choices('inside', 'outside')
@@ -182,9 +201,10 @@ class Monitor(models.Model):
             self.calibrate_entry(entry)
             return entry
         
-    def calibrate_entry(self, entry):
-        for calibrator in self.CALIBRATIONS.get(entry.__class__, []):
-            calibrator.process_entry(entry)
+    def calibrate_entries(self, entries):
+        for entry in entries:
+            for calibrator in self.CALIBRATIONS.get(entry.__class__, []):
+                calibrator.process_entry(entry)
         
 
     # Legacy
@@ -234,25 +254,6 @@ class Monitor(models.Model):
             # TODO: Can we do this only when self.position is updated?
             self.county = County.lookup(self.position)
         super().save(*args, **kwargs)
-
-
-class Group(models.Model):
-    id = SmallUUIDField(
-        default=uuid_default(),
-        primary_key=True,
-        db_index=True,
-        editable=False,
-        verbose_name='ID'
-    )
-
-    name = models.CharField(max_length=100)
-    monitors = models.ManyToManyField('monitors.Monitor', related_name='groups', blank=True)
-
-    def __str__(self):
-        return self.name
-
-    class Meta:
-        ordering = ['name']
 
 
 # Deprecated (Old and Busted)

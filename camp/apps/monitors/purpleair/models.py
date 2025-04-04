@@ -6,6 +6,9 @@ from datetime import timedelta
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 
+from camp.apps.calibrations.metrics.pm25 import ColocLinRegCalibration, EPACalibration
+from camp.apps.calibrations.metrics.humidity import AGHumidityCorrection
+from camp.apps.calibrations.metrics.temperature import AGTemperatureCorrection
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor, Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
@@ -36,12 +39,14 @@ class PurpleAir(Monitor):
         entry_models.Pressure: {'value': 'pressure'},
     }
 
-    # CALIBRATIONS = {
-    #     entry_models.PM25: [
-    #         LocalCalibration,
-    #         EPACalibration,
-    #     ],
-    # }
+    CALIBRATIONS = {
+        entry_models.PM25: [
+            ColocLinRegCalibration,
+            EPACalibration,
+        ],
+        entry_models.Temperature: [AGTemperatureCorrection],
+        entry_models.Humidity: [AGHumidityCorrection],
+    }
 
     # Legacy
     CHANNEL_FIELDS_LEGACY = {
@@ -128,6 +133,7 @@ class PurpleAir(Monitor):
             ) is not None:
                 entries.append(entry)
 
+        self.calibrate_entries(entries)
         return entries
 
     def create_entry_ng(self, EntryModel, **data):
