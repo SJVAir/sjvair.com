@@ -1,8 +1,10 @@
 from camp.apps.entries.models import Temperature
-from camp.apps.calibrations.metrics.base import BaseCalibration
+from camp.apps.calibrations.corrections.base import BaseCalibration
+
+__all__ = ['AirGradientTemperature']
 
 
-class AGTemperatureCorrection(BaseCalibration):
+class AirGradientTemperature(BaseCalibration):
     '''
         AirGradient Temperature Correction Equation
         https://www.airgradient.com/documentation/calibration-algorithms/

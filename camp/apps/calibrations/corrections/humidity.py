@@ -1,8 +1,10 @@
 from camp.apps.entries.models import Humidity
-from camp.apps.calibrations.metrics.base import BaseCalibration
+from camp.apps.calibrations.corrections.base import BaseCalibration
+
+__all__ = ['AirGradientHumidity']
 
 
-class AGHumidityCorrection(BaseCalibration):
+class AirGradientHumidity(BaseCalibration):
     '''
         AirGradient Relative Humidity Correction Equation
         https://www.airgradient.com/documentation/calibration-algorithms/

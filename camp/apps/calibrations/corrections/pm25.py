@@ -3,10 +3,12 @@ from py_expression_eval import Parser as ExpressionParser
 from camp.apps.calibrations.models import Calibrator
 
 from camp.apps.entries.models import PM25
-from camp.apps.calibrations.metrics.base import BaseCalibration
+from camp.apps.calibrations.corrections.base import BaseCalibration
+
+__all__ = ['EPAPM25', 'ColocLinearRegression']
 
 
-class EPAPM25CorrectionCalibration(BaseCalibration):
+class EPAPM25(BaseCalibration):
     '''
         EPA's October 2021 PurpleAir correction algorithm,
         as described in the Fire and Smoke Map documentation.
@@ -93,7 +95,7 @@ class EPAPM25CorrectionCalibration(BaseCalibration):
         return max(corrected, 0.0)
 
 
-class ColocLinRegCalibration(BaseCalibration):
+class ColocLinearRegression(BaseCalibration):
     model_class = PM25
 
     def process_entry(self, entry):
