@@ -6,9 +6,7 @@ from datetime import timedelta
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 
-from camp.apps.calibrations.metrics.pm25 import ColocLinRegCalibration, EPACalibration
-from camp.apps.calibrations.metrics.humidity import AGHumidityCorrection
-from camp.apps.calibrations.metrics.temperature import AGTemperatureCorrection
+from camp.apps.calibrations import corrections
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor, Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
@@ -41,11 +39,11 @@ class PurpleAir(Monitor):
 
     CALIBRATIONS = {
         entry_models.PM25: [
-            ColocLinRegCalibration,
-            EPACalibration,
+            corrections.ColocLinearRegression,
+            corrections.EPAPM25,
         ],
-        entry_models.Temperature: [AGTemperatureCorrection],
-        entry_models.Humidity: [AGHumidityCorrection],
+        entry_models.Temperature: [corrections.AirGradientTemperature],
+        entry_models.Humidity: [corrections.AirGradientHumidity],
     }
 
     # Legacy
