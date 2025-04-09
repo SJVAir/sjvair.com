@@ -24,7 +24,7 @@ class AQview(Monitor):
         verbose_name = 'AQview'
 
     def create_entries(self, payload):
-        if entry := self.create_entry_ng(entry_models.PM25,
+        if entry := self.create_entry(entry_models.PM25,
             timestamp=payload['timestamp'],
             value=payload['aobs'],
         ) is not None:

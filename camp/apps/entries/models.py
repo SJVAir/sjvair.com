@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 from django.apps import apps
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.utils import timezone
@@ -8,9 +10,12 @@ from django.utils import timezone
 from django_smalluuid.models import SmallUUIDField, uuid_default
 
 from camp.apps.monitors.models import Monitor
+from camp.utils import clamp
 
 
 class BaseEntry(models.Model):
+    is_calibratable = False
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -27,11 +32,10 @@ class BaseEntry(models.Model):
     location = models.CharField(max_length=10, choices=Monitor.LOCATION)
 
     sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
-    # calibration_type = models.CharField(max_length=50, blank=True, null=True, default='', db_index=True)
-    # calibration_data = models.JSONField(default=dict)
 
     class Meta:
         abstract = True
+        get_latest_by = 'timestamp'
         constraints = (
             models.UniqueConstraint(fields=['monitor', 'timestamp', 'sensor'], name='unique_entry_%(class)s'),
         )
@@ -41,67 +45,75 @@ class BaseEntry(models.Model):
         ordering = ('-timestamp', 'sensor',)
 
     def declared_fields(self):
-        base_field_names = {
-            f.name for f in BaseEntry._meta.get_fields()
-            if not f.auto_created
-        }
+        # Collect all inherited (non-auto) field names
+        base_field_names = set()
+
+        for base in self.__class__.__bases__:
+            if hasattr(base, "_meta"):
+                base_field_names.update(
+                    f.name for f in base._meta.get_fields() if not f.auto_created
+                )
 
         return [
             f for f in self.__class__._meta.get_fields()
-            if (f.name not in base_field_names and not f.auto_created)
+            if f.name not in base_field_names and not f.auto_created
         ]
 
     def declared_data(self):
-        data = {
-            f.name: getattr(self, f.name)
-            for f in self.declared_fields()
-        }
+        data = {}
 
+        for f in self.declared_fields():
+            if f.name == "value":
+                # Use cleaned value if available/applicable
+                cleaned = (
+                    self.cleaned_value()
+                    if getattr(self, 'is_calibratable', False)
+                    else self.value
+                )
+
+                if cleaned is None:
+                    continue  # skip this entry entirely if value is invalid
+
+                data['value'] = cleaned
+            else:
+                data[f.name] = getattr(self, f.name)
+
+        # Rename 'value' to model_name if it's the only field
         if len(data) == 1 and "value" in data:
             key = self.__class__._meta.model_name
-            data[key] = data.pop('value')
+            data[key] = data.pop("value")
 
         return data
     
-    def pollutant_context(self) -> dict:
-        """
+    def entry_context(self) -> dict:
+        '''
         Gathers data from all other BaseEntry subclasses that share
         (monitor, timestamp, sensor) with this entry.
         Merges all declared_data() into one dictionary.
-        """
-        # Start with the current entry's data
-        context = self.declared_data()
+        '''
+        context = {}
 
-        # Find all non-abstract models that inherit from BaseEntry
-        EntryModels = [
-            m for m in apps.get_models()
-            if issubclass(m, BaseEntry) and not m._meta.abstract
-        ]
-
-        for EntryModel in EntryModels:
-            # Skip if it's the same model class as self
-            if EntryModel is self.__class__:
-                continue
-
-            # Build lookup dict for (monitor, timestamp, sensor)
+        for EntryModel, config in self.monitor.ENTRY_CONFIG.items():
             lookup = {
                 'monitor': self.monitor,
-                'timestamp': self.timestamp
+                'timestamp': self.timestamp,
             }
-            if hasattr(EntryModel, 'sensor') and self.sensor:
+
+            # Only filter by sensor if the entry type supports this sensor
+            if self.sensor in config.get('sensors', []):
                 lookup['sensor'] = self.sensor
 
-            # Attempt to get a single matching entry
+            # Only include uncalibrated entries for calibratable models
+            if getattr(EntryModel, 'is_calibratable', False):
+                lookup['calibration__isnull'] = True
+
             try:
                 entry = EntryModel.objects.get(**lookup)
-                # Merge the declared data from that entry
                 context.update(entry.declared_data())
             except EntryModel.DoesNotExist:
-                # No matching entry, skip
                 pass
             except EntryModel.MultipleObjectsReturned:
-                # If multiple found, decide how to handle 
-                # or just skip
+                # Optional: pick .first(), raise, or log
                 pass
 
         return context
@@ -115,18 +127,6 @@ class BaseEntry(models.Model):
             sensor=self.sensor,
         )
     
-    def process_data(self, **kwargs):
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-    
-    def related(self):
-        return self.__class__.objects.filter(
-            monitor=self.monitor,
-            sensor=self.sensor,
-            timestamp=self.timestamp,
-        ).exclude(pk=self.pk)
-    
     def validation_check(self):
         return not self.__class__.objects.filter(
             monitor=self.monitor,
@@ -136,16 +136,102 @@ class BaseEntry(models.Model):
         ).exists()
 
 
+class BaseCalibratedEntry(BaseEntry):
+    is_calibratable = True
+    min_valid_value = Decimal('0.0')
+    max_valid_value = Decimal('500.0')
+    max_acceptable_value = Decimal('900.0')
+
+    calibration = models.CharField(max_length=50, null=True, db_index=True)
+    calibration_data = models.JSONField(default=dict)
+
+    calibration_content_type = models.ForeignKey(ContentType,
+        null=True, db_index=True, editable=False,
+        on_delete=models.SET_NULL,
+    )
+    calibration_object_id = SmallUUIDField(null=True, db_index=True, editable=False)
+    calibration_object = GenericForeignKey('calibration_content_type', 'calibration_object_id')
+
+    class Meta(BaseEntry.Meta):
+        abstract = True
+        constraints = [
+            models.UniqueConstraint(
+                fields=['monitor', 'timestamp', 'sensor', 'calibration'],
+                name='unique_calibrated_entry_%(class)s',
+            ),
+        ]
+
+    def cleaned_value(self):
+        '''
+        Returns a cleaned version of the raw value for calibration.
+        If the entry is already calibrated, returns self.value as-is.
+        Returns None if the value is missing or exceeds acceptable limits.
+        '''
+        if self.calibration:
+            return self.value  # already calibrated
+
+        if self.value is None:
+            return None
+
+        if self.value > self.max_acceptable_value:
+            return None  # value too high to trust
+
+        return clamp(self.value, self.min_valid_value, self.max_valid_value)
+    
+    def get_calibrated_entries(self):
+        '''
+        Returns all calibrated entries derived from this entry.
+        Uses (monitor, timestamp, sensor) match and requires calibration to be set.
+        '''
+        return self.__class__.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.timestamp,
+            sensor=self.sensor,
+        ).exclude(calibration__isnull=True)
+    
+    def get_raw_entry(self):
+        '''
+        Returns the uncalibrated (raw) version of this entry,
+        based on monitor, timestamp, and sensor match.
+        '''
+        return self.__class__.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.timestamp,
+            sensor=self.sensor,
+            calibration__isnull=True,
+        ).first()
+    
+    def get_readings(self):
+        '''
+        Returns a dictionary of all values recorded for this entry,
+        including the raw value and any calibrated versions.
+
+        Keys are:
+            - "raw" for the original value
+            - calibration name for calibrated values
+        '''
+        data = {}
+
+        if raw := self.get_raw_entry():
+            data['raw'] = raw.cleaned_value()
+
+        for entry in self.get_calibrated_entries():
+            if entry.calibration and (value := entry.cleaned_value()) is not None:
+                data[entry.calibration] = value
+
+        return data
+
+
 # Particulate Matter
 
-class PM25(BaseEntry):
+class PM25(BaseCalibratedEntry):
+    min_valid_value = Decimal('0.0')
+    max_valid_value = Decimal('500.0')
+    
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text="PM2.5 (µg/m³)",
     )
-        
-    # def calibrate_epa(self, value):
-    #     pass
 
 
 class Particulates(BaseEntry):
@@ -173,7 +259,7 @@ class PM100(BaseEntry):
 
 # Meteorological
 
-class Temperature(BaseEntry):
+class Temperature(BaseCalibratedEntry):
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
         help_text="Temperature (°F)"
@@ -196,7 +282,14 @@ class Temperature(BaseEntry):
         self.fahrenheit = (Decimal(value) * (Decimal(9) / Decimal(5))) + 32
     
 
-class Humidity(BaseEntry):
+    def declared_data(self):
+        return {
+            'temperature_f': self.fahrenheit,
+            'temperature_c': self.celsius,
+        }
+
+
+class Humidity(BaseCalibratedEntry):
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
         help_text="Relative humidity (%)"
