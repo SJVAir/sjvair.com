@@ -1,7 +1,6 @@
 import csv
 
 from datetime import timedelta
-from decimal import Decimal
 
 from django import forms
 
@@ -9,17 +8,11 @@ from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin as gisadmin
-from django.contrib.humanize.templatetags.humanize import intcomma
-from django.db.models import Count, F, Max, Prefetch
+from django.db.models import Count, F, Prefetch
 from django.http import HttpResponse
-from django.template.defaultfilters import floatformat
 from django.template.loader import render_to_string
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
-from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-
-from django_admin_inline_paginator.admin import TabularInlinePaginated
 
 from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
@@ -28,8 +21,8 @@ from camp.apps.qaqc.models import SensorAnalysis
 from camp.apps.qaqc.admin import SensorAnalysisInline
 from camp.utils.forms import DateRangeForm
 
-from .forms import MonitorAdminForm
-from .models import Group, Entry
+from .forms import MonitorAdminForm, DefaultSensorForm
+from .models import Group, Entry, DefaultSensor
 
 
 def key_to_lookup(k):
@@ -108,8 +101,26 @@ class MonitorIsActiveFilter(admin.SimpleListFilter):
             return queryset
 
 
+class DefaultSensorInline(admin.TabularInline):
+    model = DefaultSensor
+    form = DefaultSensorForm
+    extra = 0
+
+    def get_formset(self, request, obj=None, **kwargs):
+        formset_class = super().get_formset(request, obj, **kwargs)
+
+        class MonitorAwareFormSet(formset_class):
+            def get_form_kwargs(inner_self, index):
+                kwargs = super().get_form_kwargs(index)
+                kwargs['monitor'] = obj
+                print(f'Injected monitor into form kwargs: {obj}')
+                return kwargs
+
+        return MonitorAwareFormSet
+
+
 class MonitorAdmin(gisadmin.OSMGeoAdmin):
-    inlines = (SensorAnalysisInline,)
+    inlines = (DefaultSensorInline, SensorAnalysisInline,)
     actions = ['export_monitor_list_csv']
     form = MonitorAdminForm
 
@@ -128,7 +139,6 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     save_on_top = True
 
     change_form_template = 'admin/monitors/monitor/change_form.html'
-    change_list_template = 'admin/monitors/monitor/change_list.html'
 
     class Media:
         js = ['admin/js/collapse.js']
@@ -137,6 +147,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         queryset = super().get_queryset(request)
         queryset = queryset.select_related('current_health')
         queryset = queryset.prefetch_related(
+            'default_sensors',
             Prefetch('latest', queryset=Entry.objects.only('timestamp')),
         )
         queryset = queryset.annotate(
@@ -172,6 +183,10 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
             return Alert.objects.get(monitor_id=object_id, end_time__isnull=True)
         except Alert.DoesNotExist:
             return None
+        
+    def get_entry_archives(self, object_id):
+        queryset = EntryArchive.objects.filter(monitor_id=object_id)
+        return queryset
 
     def get_device(self, instance):
         return instance.get_device()
@@ -195,7 +210,6 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         return mark_safe(content)
     get_data_providers.short_description = 'Data Providers'
 
-
     def get_active_status(self, instance):
         return instance.is_active
     get_active_status.boolean = True
@@ -211,10 +225,6 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     get_current_health.short_description = 'Current Health'
     get_current_health.admin_order_field = 'current_health__r2'
 
-    def get_entry_archives(self, object_id):
-        queryset = EntryArchive.objects.filter(monitor_id=object_id)
-        return queryset
-
     def get_subscriptions(self, instance):
         return instance.subscription_count
     get_subscriptions.short_description = 'Subscriptions'
@@ -222,6 +232,8 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
+
+        # Legacy
         if 'pm25_calibration_formula' in form.base_fields:
             form.base_fields['pm25_calibration_formula'].help_text = formula_help_text()
 

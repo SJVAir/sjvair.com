@@ -14,8 +14,15 @@ from camp.utils.datetime import parse_timestamp
 
 
 class PurpleAir(Monitor):
-    CALIBRATE = True  # legacy
-    SENSORS = ['a', 'b'] # legacy?
+    DATA_PROVIDERS = [{
+        'name': 'PurpleAir',
+        'url': 'https://www2.purpleair.com/'
+    }]
+
+    DATA_SOURCE = {
+        'name': 'PurpleAir',
+        'url': 'https://www2.purpleair.com/'
+    }
 
     ENTRY_CONFIG = {
         entry_models.PM10: {
@@ -58,34 +65,9 @@ class PurpleAir(Monitor):
         },
     }
 
-    # MULTISENSOR_ENTRIES = {
-    #     entry_models.PM10: ['a', 'b'],
-    #     entry_models.PM25: ['a', 'b'],
-    #     entry_models.PM100: ['a', 'b'],
-    #     entry_models.Particulates: ['a', 'b'],
-    # } 
-
-    # CHANNEL_FIELDS = {
-    #     entry_models.PM10: {'value': 'pm1.0_atm'},
-    #     entry_models.PM25: {'value': 'pm2.5_atm'},
-    #     entry_models.PM100: {'value': 'pm10.0_atm'},
-    #     entry_models.Particulates: {
-    #         'particles_03um': '0.3_um_count',
-    #         'particles_05um': '0.5_um_count',
-    #         'particles_10um': '1.0_um_count',
-    #         'particles_25um': '2.5_um_count',
-    #         'particles_50um': '5.0_um_count',
-    #         'particles_100um': '10.0_um_count',
-    #     }
-    # }
-
-    # SINGLE_FIELDS = {
-    #     entry_models.Temperature: {'value': 'temperature'},
-    #     entry_models.Humidity: {'value': 'humidity'},
-    #     entry_models.Pressure: {'value': 'pressure'},
-    # }
-
     # Legacy
+    CALIBRATE = True
+    SENSORS = ['a', 'b']
     CHANNEL_FIELDS_LEGACY = {
         'pm10': 'pm1.0_atm',
         'pm25': 'pm2.5_atm',
@@ -99,18 +81,10 @@ class PurpleAir(Monitor):
         'particles_100um': '10.0_um_count',
     }
 
-    # Legacy
     SENSOR_ATTRS = ['fahrenheit', 'humidity', 'pressure']
     SENSOR_ATTRS.extend(CHANNEL_FIELDS_LEGACY.keys())
 
-    DATA_PROVIDERS = [{
-        'name': 'PurpleAir',
-        'url': 'https://www2.purpleair.com/'
-    }]
-    DATA_SOURCE = {
-        'name': 'PurpleAir',
-        'url': 'https://www2.purpleair.com/'
-    }
+    # Legacy - end
 
     purple_id = models.IntegerField(unique=True)
 
