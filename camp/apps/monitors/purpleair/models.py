@@ -15,36 +15,75 @@ from camp.utils.datetime import parse_timestamp
 
 class PurpleAir(Monitor):
     CALIBRATE = True  # legacy
-    SENSORS = ['a', 'b']
+    SENSORS = ['a', 'b'] # legacy?
 
-    CHANNEL_FIELDS = {
-        entry_models.PM10: {'value': 'pm1.0_atm'},
-        entry_models.PM25: {'value': 'pm2.5_atm'},
-        entry_models.PM100: {'value': 'pm10.0_atm'},
+    ENTRY_CONFIG = {
+        entry_models.PM10: {
+            'sensors': ['a', 'b'],
+            'fields': {'value': 'pm1.0_atm'},
+        },
+        entry_models.PM25: {
+            'sensors': ['a', 'b'],
+            'fields': {'value': 'pm2.5_atm'},
+            'calibrations': [
+                corrections.Coloc_PM25_LinearRegression,
+                corrections.EPA_PM25_Oct2021,
+            ]
+        },
+        entry_models.PM100: {
+            'sensors': ['a', 'b'],
+            'fields': {'value': 'pm10.0_atm'},
+        },
         entry_models.Particulates: {
-            'particles_03um': '0.3_um_count',
-            'particles_05um': '0.5_um_count',
-            'particles_10um': '1.0_um_count',
-            'particles_25um': '2.5_um_count',
-            'particles_50um': '5.0_um_count',
-            'particles_100um': '10.0_um_count',
-        }
+            'sensors': ['a', 'b'],
+            'fields': {
+                'particles_03um': '0.3_um_count',
+                'particles_05um': '0.5_um_count',
+                'particles_10um': '1.0_um_count',
+                'particles_25um': '2.5_um_count',
+                'particles_50um': '5.0_um_count',
+                'particles_100um': '10.0_um_count',
+            },
+        },
+        entry_models.Temperature: {
+            'fields': {'value': 'temperature'},
+            'calibrations': [corrections.AirGradientTemperature],
+        },
+        entry_models.Humidity: {
+            'fields': {'value': 'humidity'},
+            'calibrations': [corrections.AirGradientHumidity],
+        },
+        entry_models.Pressure: {
+            'fields': {'value': 'pressure'},
+        },
     }
 
-    SINGLE_FIELDS = {
-        entry_models.Temperature: {'value': 'temperature'},
-        entry_models.Humidity: {'value': 'humidity'},
-        entry_models.Pressure: {'value': 'pressure'},
-    }
+    # MULTISENSOR_ENTRIES = {
+    #     entry_models.PM10: ['a', 'b'],
+    #     entry_models.PM25: ['a', 'b'],
+    #     entry_models.PM100: ['a', 'b'],
+    #     entry_models.Particulates: ['a', 'b'],
+    # } 
 
-    CALIBRATIONS = {
-        entry_models.PM25: [
-            corrections.ColocLinearRegression,
-            corrections.EPAPM25,
-        ],
-        entry_models.Temperature: [corrections.AirGradientTemperature],
-        entry_models.Humidity: [corrections.AirGradientHumidity],
-    }
+    # CHANNEL_FIELDS = {
+    #     entry_models.PM10: {'value': 'pm1.0_atm'},
+    #     entry_models.PM25: {'value': 'pm2.5_atm'},
+    #     entry_models.PM100: {'value': 'pm10.0_atm'},
+    #     entry_models.Particulates: {
+    #         'particles_03um': '0.3_um_count',
+    #         'particles_05um': '0.5_um_count',
+    #         'particles_10um': '1.0_um_count',
+    #         'particles_25um': '2.5_um_count',
+    #         'particles_50um': '5.0_um_count',
+    #         'particles_100um': '10.0_um_count',
+    #     }
+    # }
+
+    # SINGLE_FIELDS = {
+    #     entry_models.Temperature: {'value': 'temperature'},
+    #     entry_models.Humidity: {'value': 'humidity'},
+    #     entry_models.Pressure: {'value': 'pressure'},
+    # }
 
     # Legacy
     CHANNEL_FIELDS_LEGACY = {
@@ -108,35 +147,38 @@ class PurpleAir(Monitor):
 
         # If we're here, it's probably outside.
         return self.LOCATION.outside
-
+    
     def create_entries(self, payload):
         timestamp = parse_timestamp(payload.get('last_seen', payload.get('time_stamp')))
         entries = []
 
-        for sensor in self.SENSORS:
-            for EntryModel, fields in self.CHANNEL_FIELDS.items():
-                if entry := self.create_entry_ng(
+        for EntryModel, spec in self.ENTRY_CONFIG.items():
+            sensors = spec.get('sensors') or ['']
+            fields = spec.get('fields') or {}
+
+            for sensor in sensors:
+                data = {
+                    field_name: payload.get(f"{source_key}_{sensor}" if sensor else source_key)
+                    for field_name, source_key in fields.items()
+                }
+
+                if sensor:
+                    data['sensor'] = sensor
+
+                entry = self.create_entry(
                     EntryModel=EntryModel,
                     timestamp=timestamp,
-                    sensor=sensor,
-                    **{k: payload.get(f'{v}_{sensor}') for k, v in fields.items()}
-                ) is not None:
+                    **data
+                )
+                if entry is not None:
                     entries.append(entry)
-
-        for EntryModel, fields in self.SINGLE_FIELDS.items():
-            if entry := self.create_entry_ng(
-                EntryModel=EntryModel,
-                timestamp=timestamp,
-                **{k: payload.get(v) for k, v in fields.items()}
-            ) is not None:
-                entries.append(entry)
 
         self.calibrate_entries(entries)
         return entries
 
-    def create_entry_ng(self, EntryModel, **data):
+    def create_entry(self, EntryModel, **data):
         if data and all(map(lambda x: x is not None, data.values())):
-            return super().create_entry_ng(EntryModel, **data)
+            return super().create_entry(EntryModel, **data)
 
     # Legacy
     def create_entries_legacy(self, payload):
@@ -153,7 +195,7 @@ class PurpleAir(Monitor):
             entry.save()
             return entry
         except Entry.DoesNotExist:
-            return super().create_entry(payload, sensor=sensor)
+            return super().create_entry_legacy(payload, sensor=sensor)
 
     def _split_channels(self, payload):
         '''

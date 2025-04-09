@@ -1,5 +1,4 @@
 import copy
-import json
 import uuid
 
 from datetime import timedelta
@@ -8,10 +7,8 @@ from decimal import Decimal
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db.models import Avg, Q
-from django.db.models.functions import Least
-from django.contrib.postgres.fields import JSONField
 from django.utils import timezone
-from django.utils.functional import cached_property, lazy
+from django.utils.functional import cached_property
 from django.utils.text import slugify
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
@@ -54,14 +51,14 @@ class Monitor(models.Model):
 
     CALIBRATE = False
     LAST_ACTIVE_LIMIT = 60 * 60
-    PAYLOAD_SCHEMA = None
-    SENSORS = ['']
+
+    SENSORS = [''] # legacy
 
     DATA_PROVIDERS = []
     DATA_SOURCE = {}
     DEVICE = None
 
-    CALIBRATIONS = {}
+    ENTRY_CONFIG = {}
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -189,7 +186,7 @@ class Monitor(models.Model):
             location=self.location,
         )
 
-    def create_entry_ng(self, EntryModel, **data):
+    def create_entry(self, EntryModel, **data):
         print(f'{self.name}: Monitor.create_entry_ng({EntryModel} with {data})')
         entry = self.initiate_entry(EntryModel)
 
@@ -198,17 +195,20 @@ class Monitor(models.Model):
 
         if entry.validation_check():
             entry.save()
-            self.calibrate_entry(entry)
             return entry
         
     def calibrate_entries(self, entries):
         for entry in entries:
-            for calibrator in self.CALIBRATIONS.get(entry.__class__, []):
-                calibrator.process_entry(entry)
+            if not getattr(entry, 'is_calibratable', False):
+                continue
+
+            config = self.ENTRY_CONFIG.get(entry.__class__, {})
+            for calibrator in config.get('calibrations', []):
+                calibrator(entry).run()
         
 
     # Legacy
-    def create_entry(self, payload, sensor=None):
+    def create_entry_legacy(self, payload, sensor=None):
         entry = Entry(
             monitor=self,
             sensor=sensor or '',

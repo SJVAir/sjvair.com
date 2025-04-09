@@ -34,7 +34,7 @@ class AirNow(Monitor):
     def create_entries(self, payload):
         EntryModel = self.ENTRY_MAP.get(payload['Parameter'])
         if EntryModel is not None:
-            if entry := super().create_entry_ng(EntryModel,
+            if entry := super().create_entry(EntryModel,
                 timestamp=make_aware(parse_datetime(payload['UTC'])),
                 value=payload['Value']
             ) is not None:
@@ -62,7 +62,7 @@ class AirNow(Monitor):
 
 
     # Legacy
-    def process_entry(self, entry, payload):
+    def process_entry_legacy(self, entry, payload):
         entry.timestamp = make_aware(parse_datetime(
             list(payload.values())[0]['UTC']
         ))

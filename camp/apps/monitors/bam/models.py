@@ -48,7 +48,7 @@ class BAM1022(Monitor):
         entries = []
         timestamp = parse_datetime(payload['Time'])
         for EntryModel, (attr, key) in self.ENTRY_MAP.items():
-            entry = self.create_entry_ng(EntryModel,
+            entry = self.create_entry(EntryModel,
                 timestamp=timestamp,
                 **{attr: payload[key]}
             )
@@ -57,7 +57,7 @@ class BAM1022(Monitor):
 
         return entries
 
-    def create_entry(self, payload, sensor=None):
+    def create_entry_legacy(self, payload, sensor=None):
         timestamp = parse_datetime(payload['Time'])
         try:
             entry = self.entries.get(timestamp=timestamp)
@@ -65,7 +65,7 @@ class BAM1022(Monitor):
             entry.save()
             return entry
         except Entry.DoesNotExist:
-            return super().create_entry(payload, sensor=sensor)
+            return super().create_entry_legacy(payload, sensor=sensor)
 
     def process_entry(self, entry, payload):
         attr_map = {

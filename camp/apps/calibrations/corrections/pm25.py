@@ -1,31 +1,33 @@
+from decimal import Decimal as D
+
 from py_expression_eval import Parser as ExpressionParser
 
 from camp.apps.calibrations.models import Calibrator
-
-from camp.apps.entries.models import PM25
 from camp.apps.calibrations.corrections.base import BaseCalibration
+from camp.apps.entries.models import PM25
 
-__all__ = ['EPAPM25', 'ColocLinearRegression']
+__all__ = ['EPA_PM25_Oct2021', 'Coloc_PM25_LinearRegression']
 
 
-class EPAPM25(BaseCalibration):
+class EPA_PM25_Oct2021(BaseCalibration):
     '''
-        EPA's October 2021 PurpleAir correction algorithm,
-        as described in the Fire and Smoke Map documentation.
+    EPA's October 2021 PurpleAir correction algorithm,
+    as described in the Fire and Smoke Map documentation.
 
-        https://document.airnow.gov/airnow-fire-and-smoke-map-questions-and-answers.pdf
+    https://document.airnow.gov/airnow-fire-and-smoke-map-questions-and-answers.pdf
     '''
+    requires = ['pm25', 'humidity']
     model_class = PM25
-
-    def process_entry(self, entry):
-        calibrated = self.prepare_calibrated_entry(entry)
-        context = entry.pollutant_context()
-        calibrated.value = self.epa_oct_2021_correction(pm25=context['pm25'], rh=context['humidity'])
-        calibrated.save()
-        return calibrated
     
-    def epa_oct_2021_correction(self, pm25, rh):
-        """
+
+    def apply(self):
+        if value := self.get_correction(pm25=self.context['pm25'], rh=self.context['humidity']):
+            calibrated = self.prepare_calibrated_entry(value=value)
+            calibrated.save()
+            return calibrated
+    
+    def get_correction(self, pm25, rh):
+        '''
         This function applies different formulas based on the raw PM2.5 reading (pm25).
         'rh' is the relative humidity in percent (0–100).
 
@@ -54,77 +56,70 @@ class EPAPM25(BaseCalibration):
             corrected = 2.966 + 0.69*pm25 + 8.84e-4*(pm25^2)
 
         Returns the corrected PM2.5 value, clamped to a minimum of 0.0.
-        """
+        '''
 
         if pm25 < 30:
-            # Region 1
-            corrected = 0.524 * pm25 - 0.0862 * rh + 5.75
+            corrected = D('0.524') * pm25 - D('0.0862') * rh + D('5.75')
 
         elif pm25 < 50:
-            # Region 2
-            fraction = (pm25 / 20) - 1.5
+            fraction = pm25 / D('20') - D('1.5')
             corrected = (
-                (0.786 * fraction + 0.524 * (1 - fraction)) * pm25
-                - 0.0862 * rh
-                + 5.75
+                (D('0.786') * fraction + D('0.524') * (D('1') - fraction)) * pm25
+                - D('0.0862') * rh
+                + D('5.75')
             )
 
         elif pm25 < 210:
-            # Region 3
-            corrected = 0.786 * pm25 - 0.0862 * rh + 5.75
+            corrected = D('0.786') * pm25 - D('0.0862') * rh + D('5.75')
 
         elif pm25 < 260:
-            # Region 4
-            fraction = (pm25 / 50) - 4.2
+            fraction = pm25 / D('50') - D('4.2')
             corrected = (
-                (0.69 * fraction + 0.786 * (1 - fraction)) * pm25
-                - 0.0862 * rh * (1 - fraction)
-                + 2.966 * fraction
-                + 5.75 * (1 - fraction)
-                + 8.84e-4 * (pm25**2) * fraction
+                (D('0.69') * fraction + D('0.786') * (D('1') - fraction)) * pm25
+                - D('0.0862') * rh * (D('1') - fraction)
+                + D('2.966') * fraction
+                + D('5.75') * (D('1') - fraction)
+                + D('0.000884') * (pm25**2) * fraction
             )
 
         else:
-            # Region 5 (pm25 >= 260)
             corrected = (
-                2.966
-                + 0.69 * pm25
-                + 8.84e-4 * (pm25**2)
-            )
+            D('2.966')
+            + D('0.69') * pm25
+            + D('0.000884') * (pm25**2)
+        )
 
-        return max(corrected, 0.0)
+        return max(corrected, D('0.0'))
 
 
-class ColocLinearRegression(BaseCalibration):
+class Coloc_PM25_LinearRegression(BaseCalibration):
     model_class = PM25
+    requires = ['pm25']
+    min_required_value = D('5.0')
 
-    def process_entry(self, entry):
-        calibrated = self.prepare_calibrated_entry(entry)
-        calibrated.value = self.get_calibration_value(entry)
-        calibrated.save()
-        return calibrated
+    def apply(self):
+        if value := self.get_correction():
+            calibrated = self.prepare_calibrated_entry(value=value)
+            calibrated.save()
+            return calibrated
 
-    def get_calibration_value(self, entry):
-        formula = self.get_local_calibration_formula(entry)
+    def get_correction(self):
+        if self.entry.value < self.min_required_value:
+            # There's a minimum threshold to calibrate,
+            # otherwise just return the raw value.
+            return self.entry.value
 
-        if formula:
+        if formula := self.get_calibration_formula():
             parser = ExpressionParser()
             expression = parser.parse(formula)
-            context = entry.pollutant_context()
-            return expression.evaluate(context)
+            return expression.evaluate(self.context)
     
-    def get_calibration_context(self):
-        return {
-            field: float(getattr(self, field, None) or 0)
-            for field in self.ENVIRONMENT
-        }
-    
-    def get_calibration_formula(self, entry):
+    def get_calibration_formula(self):
         calibrator = (Calibrator.objects
             .filter(is_enabled=True)
             .exclude(calibration__isnull=True)
             .select_related('calibration')
-            .closest(entry.monitor.position)
+            .closest(self.entry.monitor.position)
         )
 
         if calibrator is not None:
