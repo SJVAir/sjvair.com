@@ -10,7 +10,7 @@ from django.utils import timezone
 from django_smalluuid.models import SmallUUIDField, uuid_default
 
 from camp.apps.monitors.models import Monitor
-from camp.utils import clamp
+from camp.utils import clamp, classproperty
 
 
 class BaseEntry(models.Model):
@@ -44,12 +44,16 @@ class BaseEntry(models.Model):
         )
         ordering = ('-timestamp', 'sensor',)
 
+    @classproperty
+    def label(cls):
+        return cls.__name__
+
     def declared_fields(self):
         # Collect all inherited (non-auto) field names
         base_field_names = set()
 
         for base in self.__class__.__bases__:
-            if hasattr(base, "_meta"):
+            if hasattr(base, '_meta'):
                 base_field_names.update(
                     f.name for f in base._meta.get_fields() if not f.auto_created
                 )
@@ -63,7 +67,7 @@ class BaseEntry(models.Model):
         data = {}
 
         for f in self.declared_fields():
-            if f.name == "value":
+            if f.name == 'value':
                 # Use cleaned value if available/applicable
                 cleaned = (
                     self.cleaned_value()
@@ -79,9 +83,9 @@ class BaseEntry(models.Model):
                 data[f.name] = getattr(self, f.name)
 
         # Rename 'value' to model_name if it's the only field
-        if len(data) == 1 and "value" in data:
+        if len(data) == 1 and 'value' in data:
             key = self.__class__._meta.model_name
-            data[key] = data.pop("value")
+            data[key] = data.pop('value')
 
         return data
     
@@ -207,7 +211,7 @@ class BaseCalibratedEntry(BaseEntry):
         including the raw value and any calibrated versions.
 
         Keys are:
-            - "raw" for the original value
+            - 'raw' for the original value
             - calibration name for calibrated values
         '''
         data = {}
@@ -225,12 +229,13 @@ class BaseCalibratedEntry(BaseEntry):
 # Particulate Matter
 
 class PM25(BaseCalibratedEntry):
+    label = 'PM2.5'
     min_valid_value = Decimal('0.0')
     max_valid_value = Decimal('500.0')
     
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text="PM2.5 (µg/m³)",
+        help_text='PM2.5 (µg/m³)',
     )
 
 
@@ -244,16 +249,18 @@ class Particulates(BaseEntry):
 
 
 class PM10(BaseEntry):
+    label = 'PM1.0'
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text="PM1.0 (µg/m³)"
+        help_text='PM1.0 (µg/m³)'
     )
 
 
 class PM100(BaseEntry):
+    label = 'PM10.0'
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text="PM10.0 (µg/m³)"
+        help_text='PM10.0 (µg/m³)'
     )
 
 
@@ -262,7 +269,7 @@ class PM100(BaseEntry):
 class Temperature(BaseCalibratedEntry):
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
-        help_text="Temperature (°F)"
+        help_text='Temperature (°F)'
     )
 
     @property
@@ -292,42 +299,46 @@ class Temperature(BaseCalibratedEntry):
 class Humidity(BaseCalibratedEntry):
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
-        help_text="Relative humidity (%)"
+        help_text='Relative humidity (%)'
     )
 
 
 class Pressure(BaseEntry):
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text="Atmospheric pressure (mmHg)",
+        help_text='Atmospheric pressure (mmHg)',
     )
 
 
 # Gases
 
 class O3(BaseEntry):
+    label = 'Ozone'
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text="Ozone (ppb)"
+        help_text='Ozone (ppb)'
     )
 
 
 class NO2(BaseEntry):
+    label = 'Nitrogen Dioxide'
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text="Nitrogen dioxide (ppb)",
+        help_text='Nitrogen dioxide (ppb)',
     )
 
 
 class CO(BaseEntry):
+    label = 'Carbon Monoxide'
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text="Carbon monoxide (ppm)",
+        help_text='Carbon monoxide (ppm)',
     )
 
 
 class SO2(BaseEntry):
+    label = 'Sulfer Dioxide'
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text="Sulfer dioxide (ppb)",
+        help_text='Sulfer dioxide (ppb)',
     )

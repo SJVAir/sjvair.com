@@ -4,6 +4,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from django.apps import apps
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db.models import Avg, Q
@@ -13,17 +14,11 @@ from django.utils.text import slugify
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
-from model_utils.fields import AutoCreatedField, AutoLastModifiedField
-from model_utils.models import TimeStampedModel
 from py_expression_eval import Parser as ExpressionParser
-from resticus.encoders import JSONEncoder
-from resticus.serializers import serialize
 
 from camp.apps.monitors.managers import MonitorManager
-from camp.apps.monitors.validators import validate_formula
 from camp.utils.counties import County
 from camp.utils.datetime import make_aware
-from camp.utils.validators import JSONSchemaValidator
 
 
 class Group(models.Model):
@@ -43,6 +38,25 @@ class Group(models.Model):
 
     class Meta:
         ordering = ['name']
+
+
+class DefaultSensor(models.Model):
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+    monitor = models.ForeignKey('monitors.Monitor', on_delete=models.CASCADE, related_name='default_sensors')
+    content_type = models.ForeignKey('contenttypes.ContentType', on_delete=models.CASCADE)
+    sensor = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        unique_together = ('monitor', 'content_type')
+
+    def __str__(self):
+        return f'{self.monitor.name} → {self.content_type.model} = {self.sensor or "default"}'
 
 
 class Monitor(models.Model):
@@ -137,6 +151,32 @@ class Monitor(models.Model):
 
     def get_device(self):
         return self.device or self.DEVICE or self._meta.verbose_name
+    
+    def get_default_sensor(self, EntryModel):
+        '''
+        Returns the default sensor for this monitor and EntryModel.
+
+        Logic:
+        - If the EntryModel does not support multiple sensors, return None
+        - If a DefaultSensor exists in the DB, return it
+        - Otherwise, return the first defined sensor in ENTRY_CONFIG
+        '''
+        config = self.ENTRY_CONFIG.get(EntryModel, {})
+        sensors = config.get('sensors')
+
+        # Skip lookup entirely if this model has no sensors
+        if not sensors:
+            return None
+
+        # Try saved default first
+        ContentType = apps.get_model('contenttypes', 'ContentType')
+        DefaultSensor = apps.get_model('monitors', 'DefaultSensor')
+        ct = ContentType.objects.get_by_natural_key('entries', EntryModel._meta.model_name)
+
+        try:
+            return self.default_sensors.get(content_type=ct).sensor
+        except DefaultSensor.DoesNotExist:
+            return sensors[0]  # fallback to first defined
 
     @property
     def data_providers(self):

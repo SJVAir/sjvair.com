@@ -21,3 +21,11 @@ def clamp(
         int | float | Decimal: The clamped result.
     """
     return max(min_value, min(value, max_value))
+
+
+class classproperty:
+    def __init__(self, func):
+        self.func = func
+
+    def __get__(self, instance, owner):
+        return self.func(owner)
