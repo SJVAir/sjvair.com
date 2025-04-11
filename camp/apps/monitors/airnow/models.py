@@ -19,13 +19,19 @@ class AirNow(Monitor):
     }
     DEVICE = 'BAM 1022'
 
+    ENTRY_CONFIG = {
+        entry_models.CO: {'fields': {'value': 'CO'}},
+        entry_models.NO2: {'fields': {'value': 'NO2'}},
+        entry_models.O3: {'fields': {'value': 'OZONE'}},
+        entry_models.PM25: {'fields': {'value': 'PM2.5'}},
+        entry_models.PM100: {'fields': {'value': 'PM10'}},
+        entry_models.SO2: {'fields': {'value': 'SO2'}},
+    }
+
     ENTRY_MAP = {
-        'CO': entry_models.CO,
-        'NO2': entry_models.NO2,
-        'OZONE': entry_models.O3,
-        'PM2.5': entry_models.PM25,
-        'PM10': entry_models.PM100,
-        'SO2': entry_models.SO2,
+        config['fields']['value']: EntryModel
+        for EntryModel, config
+        in ENTRY_CONFIG.items()
     }
 
     class Meta:
@@ -40,6 +46,15 @@ class AirNow(Monitor):
             ) is not None:
                 return [entry]
         return []
+    
+    def create_entry(self, payload):
+        EntryModel = self.ENTRY_MAP.get(payload['Parameter'])
+        if EntryModel is not None:
+            timestamp = make_aware(parse_datetime(payload['UTC']))
+            return super().create_entry(EntryModel,
+                timestamp=timestamp,
+                value=payload['Value']
+            )
 
     # def create_entries(self, payload):
     #     entries = []
