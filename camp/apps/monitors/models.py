@@ -4,7 +4,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
-from django.apps import apps
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db.models import Avg, Q
@@ -165,18 +165,27 @@ class Monitor(models.Model):
         sensors = config.get('sensors')
 
         # Skip lookup entirely if this model has no sensors
-        if not sensors:
-            return None
+        if sensors is None:
+            return ''
 
-        # Try saved default first
-        ContentType = apps.get_model('contenttypes', 'ContentType')
-        DefaultSensor = apps.get_model('monitors', 'DefaultSensor')
-        ct = ContentType.objects.get_by_natural_key('entries', EntryModel._meta.model_name)
+        ct = ContentType.objects.get_for_model(EntryModel)
 
-        try:
-            return self.default_sensors.get(content_type=ct).sensor
-        except DefaultSensor.DoesNotExist:
-            return sensors[0]  # fallback to first defined
+        # Use prefetched default_sensors if available
+        for ds in getattr(self, '_prefetched_objects_cache', {}).get('default_sensors', []):
+            if ds.content_type_id == ct.pk:
+                return ds.sensor
+
+        # Fallback to DB query
+        sensor = (self.default_sensors
+            .filter(content_type=ct)
+            .values_list('sensor', flat=True)
+            .first()
+        )
+        if sensor is not None:
+            return sensor
+
+        # Final fallback to first sensor in config
+        return sensors[0]
 
     @property
     def data_providers(self):
