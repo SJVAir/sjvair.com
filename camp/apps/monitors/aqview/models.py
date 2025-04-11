@@ -1,10 +1,9 @@
+import pytz
+
 from datetime import datetime, timedelta
 
-from django.contrib.gis.db import models
-from django.utils.dateparse import parse_datetime
-
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.models import Monitor, Entry
+from camp.apps.monitors.models import Monitor
 from camp.utils.datetime import make_aware
 
 
@@ -20,16 +19,24 @@ class AQview(Monitor):
         'url': 'https://aqview.arb.ca.gov/'
     }
 
+    ENTRY_CONFIG = {
+        entry_models.PM25: {
+            'fields': {'value': 'aobs'}
+        },
+    }
+
     class Meta:
         verbose_name = 'AQview'
-
-    def create_entries(self, payload):
-        if entry := self.create_entry(entry_models.PM25,
-            timestamp=payload['timestamp'],
+    
+    def create_entry(self, payload):
+        timestamp = make_aware(
+            datetime.fromtimestamp(payload['maptime'] / 1000) - timedelta(hours=payload['hourindex']),
+            pytz.timezone('America/Los_Angeles')
+        )
+        return super().create_entry(entry_models.PM25,
+            timestamp=timestamp,
             value=payload['aobs'],
-        ) is not None:
-            return [entry]
-        return []
+        )
 
 
     # Legacy
