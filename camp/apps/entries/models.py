@@ -14,6 +14,7 @@ from camp.utils import clamp, classproperty
 
 
 class BaseEntry(models.Model):
+    epa_aqs_code = None
     is_calibratable = False
 
     id = SmallUUIDField(
@@ -230,6 +231,8 @@ class BaseCalibratedEntry(BaseEntry):
 
 class PM25(BaseCalibratedEntry):
     label = 'PM2.5'
+    epa_aqs_code = 88101
+    
     min_valid_value = Decimal('0.0')
     max_valid_value = Decimal('500.0')
     
@@ -250,6 +253,7 @@ class Particulates(BaseEntry):
 
 class PM10(BaseEntry):
     label = 'PM1.0'
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='PM1.0 (µg/m³)'
@@ -258,6 +262,8 @@ class PM10(BaseEntry):
 
 class PM100(BaseEntry):
     label = 'PM10.0'
+    epa_aqs_code = 81102
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='PM10.0 (µg/m³)'
@@ -267,6 +273,8 @@ class PM100(BaseEntry):
 # Meteorological
 
 class Temperature(BaseCalibratedEntry):
+    epa_aqs_code = 62101
+
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
         help_text='Temperature (°F)'
@@ -297,6 +305,8 @@ class Temperature(BaseCalibratedEntry):
 
 
 class Humidity(BaseCalibratedEntry):
+    epa_aqs_code = 62201
+
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
         help_text='Relative humidity (%)'
@@ -314,6 +324,8 @@ class Pressure(BaseEntry):
 
 class O3(BaseEntry):
     label = 'Ozone'
+    epa_aqs_code = 44201
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Ozone (ppb)'
@@ -322,6 +334,8 @@ class O3(BaseEntry):
 
 class NO2(BaseEntry):
     label = 'Nitrogen Dioxide'
+    epa_aqs_code = 42602
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Nitrogen dioxide (ppb)',
@@ -330,6 +344,8 @@ class NO2(BaseEntry):
 
 class CO(BaseEntry):
     label = 'Carbon Monoxide'
+    epa_aqs_code = 42101
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Carbon monoxide (ppm)',
@@ -338,6 +354,8 @@ class CO(BaseEntry):
 
 class SO2(BaseEntry):
     label = 'Sulfer Dioxide'
+    epa_aqs_code = 42401
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Sulfer dioxide (ppb)',
