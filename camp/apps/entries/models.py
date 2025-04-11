@@ -146,7 +146,7 @@ class BaseCalibratedEntry(BaseEntry):
     max_valid_value = Decimal('500.0')
     max_acceptable_value = Decimal('900.0')
 
-    calibration = models.CharField(max_length=50, null=True, db_index=True)
+    calibration = models.CharField(max_length=50, blank=True, default='', db_index=True)
     calibration_data = models.JSONField(default=dict)
 
     calibration_content_type = models.ForeignKey(ContentType,

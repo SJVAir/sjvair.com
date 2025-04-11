@@ -4,7 +4,9 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db.models import Avg, Q
@@ -57,6 +59,30 @@ class DefaultSensor(models.Model):
 
     def __str__(self):
         return f'{self.monitor.name} → {self.content_type.model} = {self.sensor or "default"}'
+
+
+class LatestEntry(models.Model):
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+
+    monitor = models.ForeignKey('monitors.Monitor', on_delete=models.CASCADE, related_name='latest_entries')
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = SmallUUIDField()
+    entry = GenericForeignKey('content_type', 'object_id')
+
+    calibration = models.CharField(max_length=50, blank=True, default='')
+
+    class Meta:
+        unique_together = ('monitor', 'content_type', 'calibration')
+
+    def __str__(self):
+        return f"{self.monitor.name} latest {self.content_type}"
 
 
 class Monitor(models.Model):
@@ -236,7 +262,7 @@ class Monitor(models.Model):
         )
 
     def create_entry(self, EntryModel, **data):
-        print(f'{self.name}: Monitor.create_entry_ng({EntryModel} with {data})')
+        print(f'{self.name}: Monitor.create_entry({EntryModel} with {data})')
         entry = self.initiate_entry(EntryModel)
 
         for key, value in data.items():
@@ -244,6 +270,7 @@ class Monitor(models.Model):
 
         if entry.validation_check():
             entry.save()
+            self.update_latest_entry(entry)
             return entry
         
     def calibrate_entries(self, entries):
@@ -254,6 +281,66 @@ class Monitor(models.Model):
             config = self.ENTRY_CONFIG.get(entry.__class__, {})
             for calibrator in config.get('calibrations', []):
                 calibrator(entry).run()
+
+    def update_latest_entry(self, entry):
+        content_type = ContentType.objects.get_for_model(entry)
+
+        if entry.sensor != self.get_default_sensor(entry.__class__):
+            return
+
+        lookup = {
+            'monitor_id': self.pk,
+            'content_type_id': content_type.pk,
+        }
+
+        if entry.is_calibratable:
+            lookup['calibration'] = entry.calibration
+
+        try:
+            latest = (LatestEntry.objects
+                .select_related('content_type')
+                .get(**lookup)
+            )
+        except LatestEntry.DoesNotExist:
+            LatestEntry.objects.create(object_id=entry.pk, **lookup)
+            return
+
+        # Manual compare because we can't join through the GFK
+        try:
+            if latest.entry.timestamp >= entry.timestamp:
+                return
+        except ObjectDoesNotExist:
+            # entry was deleted, fallback to updating
+            pass
+
+        latest.object_id = entry.pk
+        latest.save()
+
+    def get_realtime_data(self):
+        '''
+        Returns a dictionary of the most recent entries for each supported
+        entry type on this monitor. Assumes latest_entries are already filtered
+        by calibration (via .with_latest_entries()).
+        '''
+        data = {}
+
+        for latest in self.latest_entries.all():
+            model = latest.content_type.model_class()
+            # if model not in self.ENTRY_CONFIG:
+            #     continue
+
+            # entry = latest.entry
+            # if not isinstance(entry, model):
+            #     continue
+
+            payload = latest.entry.declared_data()
+            payload.update({
+                'sensor': latest.entry.sensor,
+                'timestamp': latest.entry.timestamp,
+            })
+            data[model._meta.model_name] = payload
+
+        return data
         
 
     # Legacy
@@ -289,6 +376,7 @@ class Monitor(models.Model):
 
         return entry
 
+    # Legacy
     def check_latest(self, entry):
         if self.latest_id:
             is_latest = make_aware(entry.timestamp) > self.latest.timestamp
