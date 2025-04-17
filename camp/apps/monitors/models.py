@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db.models import Avg, Q
@@ -161,6 +161,25 @@ class Monitor(models.Model):
     def get_device(self):
         return self.device or self.DEVICE or self._meta.verbose_name
     
+    def set_default_sensor(self, EntryModel, sensor):
+        config = self.ENTRY_CONFIG.get(EntryModel)
+        if config is None:
+            raise ValidationError(f'{EntryModel.__name__} is not configured for this monitor.')
+
+        valid_sensors = config.get('sensors', [])
+        if sensor not in valid_sensors:
+            raise ValidationError(
+                f'"{sensor}" is not a valid sensor for {EntryModel.__name__}. '
+                f'Valid options: {valid_sensors}'
+            )
+
+        content_type = ContentType.objects.get_for_model(EntryModel)
+        DefaultSensor.objects.update_or_create(
+            monitor=self,
+            content_type=content_type,
+            defaults={'sensor': sensor}
+        )
+
     def get_default_sensor(self, EntryModel):
         '''
         Returns the default sensor for this monitor and EntryModel.
@@ -245,7 +264,6 @@ class Monitor(models.Model):
         )
 
     def create_entry(self, EntryModel, **data):
-        print(f'{self.name}: Monitor.create_entry({EntryModel} with {data})')
         entry = self.initiate_entry(EntryModel)
 
         for key, value in data.items():
@@ -258,7 +276,7 @@ class Monitor(models.Model):
         
     def calibrate_entries(self, entries):
         for entry in entries:
-            if not getattr(entry, 'is_calibratable', False):
+            if not entry.is_calibratable:
                 continue
 
             config = self.ENTRY_CONFIG.get(entry.__class__, {})
