@@ -41,7 +41,10 @@ class AQview(Monitor):
 
     # Legacy
     def process_entry(self, entry, payload):
-        entry.timestamp = payload['timestamp']
+        entry.timestamp = make_aware(
+            datetime.fromtimestamp(payload['maptime'] / 1000) - timedelta(hours=payload['hourindex']),
+            pytz.timezone('America/Los_Angeles')
+        )
         entry.pm25 = payload['aobs']
         entry.pm25_reported = payload['aobs']
         return super().process_entry(entry, payload)
