@@ -60,7 +60,6 @@ def get_entry_filterset(EntryModel):
             self.monitor = monitor
 
         def filter_queryset(self, queryset):
-            print(self.data)
             # Default sensor fallback
             if 'sensor' not in self.data and self.monitor is not None:
                 default_sensor = self.monitor.get_default_sensor(EntryModel)
