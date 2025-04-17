@@ -46,14 +46,31 @@ class MonitorFilter(FilterSet):
 def get_entry_filterset(EntryModel):
     fields = {
         'sensor': ['exact'],
-        'timestamp': [
-            'exact',
-            'lt', 'lte',
-            'gt', 'gte',
-        ],
+        'timestamp': ['exact', 'lt', 'lte', 'gt', 'gte'],
     }
     
     if EntryModel.is_calibratable:
         fields['calibration'] = ['exact']
 
-    return filterset_factory(EntryModel, fields)
+    BaseFilterSet = filterset_factory(EntryModel, fields)
+
+    class EntryFilterSet(BaseFilterSet):
+        def __init__(self, *args, monitor=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.monitor = monitor
+
+        def filter_queryset(self, queryset):
+            print(self.data)
+            # Default sensor fallback
+            if 'sensor' not in self.data and self.monitor is not None:
+                default_sensor = self.monitor.get_default_sensor(EntryModel)
+                if default_sensor:
+                    queryset = queryset.filter(sensor=default_sensor)
+
+            # Default calibration fallback
+            if EntryModel.is_calibratable and 'calibration' not in self.data:
+                queryset = queryset.filter(calibration='')
+
+            return super().filter_queryset(queryset)
+
+    return EntryFilterSet

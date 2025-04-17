@@ -131,3 +131,11 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
 class EntryList(EntryMixin, generics.ListEndpoint):
     serializer_class = EntrySerializer
     paginate = True
+
+    # TODO: make this more extensible in resticus.
+    def filter_queryset(self, queryset):
+        FilterClass = self.get_filter_class()
+        if FilterClass is not None:
+            filter = FilterClass(self.request.GET, queryset=queryset, monitor=self.request.monitor)
+            return filter.qs
+        return queryset
