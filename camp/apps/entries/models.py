@@ -104,8 +104,8 @@ class BaseEntry(models.Model):
                 lookup['sensor'] = self.sensor
 
             # Only include uncalibrated entries for calibratable models
-            if getattr(EntryModel, 'is_calibratable', False):
-                lookup['calibration__isnull'] = True
+            if EntryModel.is_calibratable:
+                lookup['calibration'] = ''
 
             try:
                 entry = EntryModel.objects.get(**lookup)
