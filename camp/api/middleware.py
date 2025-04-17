@@ -17,7 +17,7 @@ class MonitorAccessMiddleware:
 
         # We only care about the `monitors` endpoints for now, this should be
         # refactored when `sensors` goes away. Also: account for API versions.
-        if not request.path.startswith('/api/1.0/'):
+        if not request.path.startswith('/api/'):
             return None
 
         if 'monitor_id' in view_kwargs:
