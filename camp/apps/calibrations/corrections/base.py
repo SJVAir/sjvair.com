@@ -4,7 +4,7 @@ class BaseCalibration:
     Subclasses must implement `apply()` and define `requires` and `model_class`.
     '''
 
-    requires = []  # List of required fields from entry.snapshot
+    requires = []  # List of required fields from entry.entry_context
     model_class = None  # Optional: restrict to a specific entry model class
 
     def __init__(self, entry):

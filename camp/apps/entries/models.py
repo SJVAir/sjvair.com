@@ -49,37 +49,32 @@ class BaseEntry(models.Model):
     def label(cls):
         return cls.__name__
 
-    def declared_fields(self):
+    @classproperty
+    def declared_fields(cls):
+        if hasattr(cls, '_declared_fields'):
+            return cls._declared_fields
+        
         # Collect all inherited (non-auto) field names
         base_field_names = set()
-
-        for base in self.__class__.__bases__:
+        for base in cls.__bases__:
             if hasattr(base, '_meta'):
                 base_field_names.update(
                     f.name for f in base._meta.get_fields() if not f.auto_created
                 )
 
-        return [
-            f for f in self.__class__._meta.get_fields()
+        cls._declared_fields = [
+            f for f in cls._meta.get_fields()
             if f.name not in base_field_names and not f.auto_created
         ]
+
+        return cls._declared_fields
 
     def declared_data(self):
         data = {}
 
-        for f in self.declared_fields():
+        for f in self.declared_fields:
             if f.name == 'value':
-                # Use cleaned value if available/applicable
-                cleaned = (
-                    self.cleaned_value()
-                    if getattr(self, 'is_calibratable', False)
-                    else self.value
-                )
-
-                if cleaned is None:
-                    continue  # skip this entry entirely if value is invalid
-
-                data['value'] = cleaned
+                data['value'] = self.value
             else:
                 data[f.name] = getattr(self, f.name)
 
@@ -165,23 +160,6 @@ class BaseCalibratedEntry(BaseEntry):
                 name='unique_calibrated_entry_%(class)s',
             ),
         ]
-
-    def cleaned_value(self):
-        '''
-        Returns a cleaned version of the raw value for calibration.
-        If the entry is already calibrated, returns self.value as-is.
-        Returns None if the value is missing or exceeds acceptable limits.
-        '''
-        if self.calibration:
-            return self.value  # already calibrated
-
-        if self.value is None:
-            return None
-
-        if self.value > self.max_acceptable_value:
-            return None  # value too high to trust
-
-        return clamp(self.value, self.min_valid_value, self.max_valid_value)
     
     def get_calibrated_entries(self):
         '''
@@ -218,11 +196,10 @@ class BaseCalibratedEntry(BaseEntry):
         data = {}
 
         if raw := self.get_raw_entry():
-            data['raw'] = raw.cleaned_value()
+            data['raw'] = raw.declared_data()
 
         for entry in self.get_calibrated_entries():
-            if entry.calibration and (value := entry.cleaned_value()) is not None:
-                data[entry.calibration] = value
+            data[entry.calibration] = entry.declared_data
 
         return data
 
