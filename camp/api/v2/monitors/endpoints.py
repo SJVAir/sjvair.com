@@ -22,7 +22,7 @@ from camp.utils.forms import LatLonForm
 from camp.utils.views import get_view_cache_key
 
 from .filters import MonitorFilter, get_entry_filterset
-from .serializers import EntrySerializer, MonitorSerializer
+from .serializers import EntrySerializer, MonitorSerializer, MonitorLatestSerializer, MonitorDetailSerializer
 from ..endpoints import CSVExport
 
 
@@ -38,6 +38,7 @@ class MonitorMixin:
     def get_object(self):
         return self.request.monitor
 
+
 class EntryTypeMixin:
     @cached_property
     def entry_model(self):
@@ -47,7 +48,13 @@ class EntryTypeMixin:
         return EntryModel
 
 
-class EntryMixin:
+class EntryMixin(EntryTypeMixin):
+    def get_queryset(self):
+        queryset = self.entry_model.objects.all()
+        if hasattr(self.request, 'monitor'):
+            queryset = queryset.filter(monitor_id=self.request.monitor.pk)
+        return queryset
+
     def get_filter_class(self):
         return get_entry_filterset(self.entry_model)
 
@@ -108,11 +115,19 @@ class ClosestMonitor(MonitorMixin, generics.ListEndpoint):
 class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
+    serializer_class = MonitorDetailSerializer
 
 
 class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
+    serializer_class = MonitorLatestSerializer
+
     def get_queryset(self, *args, **kwargs):
         queryset = super().get_queryset(*args, **kwargs)
         queryset = queryset.exclude(is_hidden=True)
         queryset = queryset.with_latest_entry(self.entry_model)
         return queryset
+    
+
+class EntryList(EntryMixin, generics.ListEndpoint):
+    serializer_class = EntrySerializer
+    paginate = True

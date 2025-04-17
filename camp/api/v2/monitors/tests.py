@@ -40,7 +40,6 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
         assert response.status_code == 200
 
-    @debug
     def test_current_data(self):
         '''
             Test that we can GET the current data endpoint.
@@ -51,9 +50,6 @@ class EndpointTests(TestCase):
         request = self.factory.get(url)
         response = monitor_list(request)
         content = get_response_data(response)
-        print('')
-        pprint(content)
-        print('')
         assert response.status_code == 200
 
     def test_monitor_detail(self):
@@ -64,7 +60,6 @@ class EndpointTests(TestCase):
         url = reverse('api:v2:monitors:monitor-detail', kwargs={
             'monitor_id': monitor.pk
         })
-        print(url)
         request = self.factory.get(url)
         request.monitor = monitor
         response = monitor_detail(request, monitor_id=monitor.pk)
