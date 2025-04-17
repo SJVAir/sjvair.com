@@ -43,7 +43,8 @@ class MonitorSerializer(serializers.Serializer):
             data.update(**extra)
 
         try:
-            data['latest'] = EntrySerializer(instance.latest).serialize()
+            data['latest'] = EntrySerializer(instance.latest_entry).serialize()
+            data['latest']['label'] = instance.latest_entry.label
         except AttributeError:
             pass
 
