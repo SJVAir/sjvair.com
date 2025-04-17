@@ -41,11 +41,19 @@ class MonitorSerializer(serializers.Serializer):
         if fields is not None:
             extra = serializers.serialize(instance, fields)
             data.update(**extra)
+        return data
 
-        try:
-            data['latest'] = EntrySerializer(instance.latest_entry).serialize()
-            data['latest']['label'] = instance.latest_entry.label
-        except AttributeError:
-            pass
 
+class MonitorLatestSerializer(MonitorSerializer):
+    def fixup(self, instance, data):
+        data = super().fixup(instance, data)
+        data['latest'] = EntrySerializer(instance.latest_entry).serialize()
+        data['latest']['label'] = instance.latest_entry.label
+        return data
+
+    
+class MonitorDetailSerializer(MonitorSerializer):
+    def fixup(self, instance, data):
+        data = super().fixup(instance, data)
+        data['latest'] = instance.get_latest_data()
         return data
