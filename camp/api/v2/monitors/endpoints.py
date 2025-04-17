@@ -112,7 +112,7 @@ class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
 
 class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     def get_queryset(self, *args, **kwargs):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset(*args, **kwargs)
         queryset = queryset.exclude(is_hidden=True)
-        queryset = queryset.with_latest_entries(self.entry_model)
+        queryset = queryset.with_latest_entry(self.entry_model)
         return queryset
