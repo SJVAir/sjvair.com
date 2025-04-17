@@ -299,7 +299,7 @@ class Monitor(models.Model):
         latest.object_id = entry.pk
         latest.save()
 
-    def get_realtime_data(self):
+    def get_latest_data(self):
         '''
         Returns a dictionary of the most recent entries for each supported
         entry type on this monitor. Assumes latest_entries are already filtered
@@ -309,13 +309,6 @@ class Monitor(models.Model):
 
         for latest in self.latest_entries.all():
             model = latest.content_type.model_class()
-            # if model not in self.ENTRY_CONFIG:
-            #     continue
-
-            # entry = latest.entry
-            # if not isinstance(entry, model):
-            #     continue
-
             payload = latest.entry.declared_data()
             payload.update({
                 'sensor': latest.entry.sensor,
