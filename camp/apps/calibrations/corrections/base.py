@@ -25,8 +25,14 @@ class BaseCalibration:
         if not self.is_valid():
             return None
         return self.apply()
-
+    
     def is_valid(self) -> bool:
+        '''
+        Returns True iof the entry can be properly calibrated.
+        '''
+        return self.entry.is_valid_value() and self.has_required_context()
+
+    def has_required_context(self) -> bool:
         '''
         Returns True if all required fields are present and not None.
         '''

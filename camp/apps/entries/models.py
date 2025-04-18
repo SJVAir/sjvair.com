@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.apps import apps
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -128,19 +128,26 @@ class BaseEntry(models.Model):
         )
     
     def validation_check(self):
-        return not self.__class__.objects.filter(
-            monitor=self.monitor,
-            sensor=self.sensor,
-            timestamp=self.timestamp,
-            # TODO: calibration type
-        ).exists()
+        lookup = {
+            'monitor': self.monitor,
+            'sensor': self.sensor,
+            'timestamp': self.timestamp,
+        }
+
+        if self.is_calibratable:
+            lookup['calibration'] = self.calibration
+
+        return not (self.__class__.objects
+            .filter(**lookup)
+            .exclude(pk=self.pk)
+            .exists()
+        )
 
 
 class BaseCalibratedEntry(BaseEntry):
     is_calibratable = True
     min_valid_value = Decimal('0.0')
-    max_valid_value = Decimal('500.0')
-    max_acceptable_value = Decimal('900.0')
+    max_valid_value = Decimal('1000.0')
 
     calibration = models.CharField(max_length=50, blank=True, default='', db_index=True)
     calibration_data = models.JSONField(default=dict)
@@ -160,6 +167,9 @@ class BaseCalibratedEntry(BaseEntry):
                 name='unique_calibrated_entry_%(class)s',
             ),
         ]
+
+    def is_valid_value(self):
+        return self.value is not None and self.value <= self.max_valid_value
     
     def get_calibrated_entries(self):
         '''
@@ -170,7 +180,7 @@ class BaseCalibratedEntry(BaseEntry):
             monitor=self.monitor,
             timestamp=self.timestamp,
             sensor=self.sensor,
-        ).exclude(calibration__isnull=True)
+        ).exclude(calibration='')
     
     def get_raw_entry(self):
         '''
@@ -181,7 +191,7 @@ class BaseCalibratedEntry(BaseEntry):
             monitor=self.monitor,
             timestamp=self.timestamp,
             sensor=self.sensor,
-            calibration__isnull=True,
+            calibration='',
         ).first()
     
     def get_readings(self):
@@ -199,7 +209,7 @@ class BaseCalibratedEntry(BaseEntry):
             data['raw'] = raw.declared_data()
 
         for entry in self.get_calibrated_entries():
-            data[entry.calibration] = entry.declared_data
+            data[entry.calibration] = entry.declared_data()
 
         return data
 
@@ -210,8 +220,7 @@ class PM25(BaseCalibratedEntry):
     label = 'PM2.5'
     epa_aqs_code = 88101
     
-    min_valid_value = Decimal('0.0')
-    max_valid_value = Decimal('500.0')
+    max_valid_value = Decimal('1000.0')
     
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -220,6 +229,8 @@ class PM25(BaseCalibratedEntry):
 
 
 class Particulates(BaseEntry):
+    max_valid_value = Decimal('500000.0')
+
     particles_03um = models.DecimalField(max_digits=8, decimal_places=2)
     particles_05um = models.DecimalField(max_digits=8, decimal_places=2)
     particles_10um = models.DecimalField(max_digits=8, decimal_places=2)
@@ -231,6 +242,8 @@ class Particulates(BaseEntry):
 class PM10(BaseEntry):
     label = 'PM1.0'
 
+    max_valid_value = Decimal('2000.0')
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='PM1.0 (µg/m³)'
@@ -240,6 +253,8 @@ class PM10(BaseEntry):
 class PM100(BaseEntry):
     label = 'PM10.0'
     epa_aqs_code = 81102
+
+    max_valid_value = Decimal('5000.0')
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -251,6 +266,8 @@ class PM100(BaseEntry):
 
 class Temperature(BaseCalibratedEntry):
     epa_aqs_code = 62101
+
+    max_valid_value = Decimal('140.0')
 
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
@@ -267,11 +284,13 @@ class Temperature(BaseCalibratedEntry):
 
     @property
     def celsius(self):
-        return (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
+        value = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
+        return value.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
     
     @celsius.setter
     def celsius(self, value):
-        self.fahrenheit = (Decimal(value) * (Decimal(9) / Decimal(5))) + 32
+        value = (Decimal(value) * (Decimal(9) / Decimal(5))) + 32
+        self.fahrenheit = value.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
     
 
     def declared_data(self):
@@ -284,6 +303,8 @@ class Temperature(BaseCalibratedEntry):
 class Humidity(BaseCalibratedEntry):
     epa_aqs_code = 62201
 
+    max_valid_value = Decimal('100.0')
+
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
         help_text='Relative humidity (%)'
@@ -291,17 +312,42 @@ class Humidity(BaseCalibratedEntry):
 
 
 class Pressure(BaseEntry):
+    max_valid_value = Decimal('850.0')
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Atmospheric pressure (mmHg)',
     )
 
+    @property
+    def mmhg(self):
+        return self.value
+
+    @mmhg.setter
+    def mmhg(self, value):
+        self.value = Decimal(value).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    @property
+    def hpa(self):
+        return (self.mmhg * Decimal('1.33322')).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+
+    @hpa.setter
+    def hpa(self, value):
+        self.mmhg = Decimal(value) / Decimal('1.33322')
+
+    def declared_data(self):
+        return {
+            'pressure_mmhg': self.mmhg,
+            'pressure_hpa': self.hpa,
+        }
 
 # Gases
 
 class O3(BaseEntry):
     label = 'Ozone'
     epa_aqs_code = 44201
+
+    max_valid_value = Decimal('400.0')
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -313,6 +359,8 @@ class NO2(BaseEntry):
     label = 'Nitrogen Dioxide'
     epa_aqs_code = 42602
 
+    max_valid_value = Decimal('600.0')
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Nitrogen dioxide (ppb)',
@@ -323,6 +371,8 @@ class CO(BaseEntry):
     label = 'Carbon Monoxide'
     epa_aqs_code = 42101
 
+    max_valid_value = Decimal('75.0')
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Carbon monoxide (ppm)',
@@ -332,6 +382,8 @@ class CO(BaseEntry):
 class SO2(BaseEntry):
     label = 'Sulfer Dioxide'
     epa_aqs_code = 42401
+
+    max_valid_value = Decimal('600.0')
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,

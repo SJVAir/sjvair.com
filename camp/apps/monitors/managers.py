@@ -10,7 +10,7 @@ from model_utils.managers import InheritanceManager, InheritanceQuerySet
 class MonitorQuerySet(InheritanceQuerySet):
     def get_active(self):
         cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
-        return self.filter(latest__timestamp__gte=cutoff)
+        return self.filter(latest_entries__timestamp__gte=cutoff)
 
     def get_inactive(self):
         cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)

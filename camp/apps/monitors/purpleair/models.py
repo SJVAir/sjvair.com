@@ -53,7 +53,7 @@ class PurpleAir(Monitor):
             },
         },
         entry_models.Temperature: {
-            'fields': {'value': 'temperature'},
+            'fields': {'fahrenheit': 'temperature'},
             'calibrations': [corrections.AirGradientTemperature],
         },
         entry_models.Humidity: {
@@ -61,7 +61,7 @@ class PurpleAir(Monitor):
             'calibrations': [corrections.AirGradientHumidity],
         },
         entry_models.Pressure: {
-            'fields': {'value': 'pressure'},
+            'fields': {'hpa': 'pressure'},
         },
     }
 
