@@ -96,24 +96,29 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
         return queryset
 
 
-class ClosestMonitor(MonitorMixin, generics.ListEndpoint):
+class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
+    lookup_field = 'pk'
+    lookup_url_kwarg = 'monitor_id'
+    serializer_class = MonitorDetailSerializer
+
+
+class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     form_class = LatLonForm
+    serializer_class = MonitorLatestSerializer
 
     def get_queryset(self):
         form = self.get_form(self.request.GET)
         if not form.is_valid:
             return self.model.objects.none()
 
-        queryset = super().get_queryset()
-        queryset = (queryset
+        queryset = (super()
+            .get_queryset()
             .get_active()
-            .exclude(is_hidden=True)
-            .exclude(latest__isnull=True)
-            .exclude(location='inside')
+            .with_latest_entry(self.entry_model)
+            .exclude(is_hidden=True, latest__isnull=True, location='inside')
             .annotate(distance=Distance('position', form.point, spheroid=True))
             .order_by('distance')
         )
-
         return queryset[:3]
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
@@ -121,19 +126,15 @@ class ClosestMonitor(MonitorMixin, generics.ListEndpoint):
         return super().serialize(source, fields, include, exclude, fixup)
 
 
-class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
-    lookup_field = 'pk'
-    lookup_url_kwarg = 'monitor_id'
-    serializer_class = MonitorDetailSerializer
-
-
 class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     serializer_class = MonitorLatestSerializer
 
     def get_queryset(self, *args, **kwargs):
-        queryset = super().get_queryset(*args, **kwargs)
-        queryset = queryset.exclude(is_hidden=True)
-        queryset = queryset.with_latest_entry(self.entry_model)
+        queryset = (super()
+            .get_queryset(*args, **kwargs)
+            .exclude(is_hidden=True)
+            .with_latest_entry(self.entry_model)
+        )
         return queryset
     
 

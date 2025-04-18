@@ -77,6 +77,7 @@ class LatestEntry(models.Model):
     entry = GenericForeignKey('content_type', 'object_id')
 
     calibration = models.CharField(max_length=50, blank=True, default='')
+    timestamp = models.DateTimeField(db_index=True)
 
     class Meta:
         unique_together = ('monitor', 'content_type', 'calibration')
@@ -303,7 +304,11 @@ class Monitor(models.Model):
                 .get(**lookup)
             )
         except LatestEntry.DoesNotExist:
-            LatestEntry.objects.create(object_id=entry.pk, **lookup)
+            LatestEntry.objects.create(
+                object_id=entry.pk,
+                timestamp=entry.timestamp,
+                **lookup
+            )
             return
 
         # Manual compare because we can't join through the GFK
@@ -315,6 +320,7 @@ class Monitor(models.Model):
             pass
 
         latest.object_id = entry.pk
+        latest.timestamp = entry.timestamp
         latest.save()
 
     def get_latest_data(self):
