@@ -42,18 +42,3 @@ class MonitorSerializer(serializers.Serializer):
             extra = serializers.serialize(instance, fields)
             data.update(**extra)
         return data
-
-
-class MonitorLatestSerializer(MonitorSerializer):
-    def fixup(self, instance, data):
-        data = super().fixup(instance, data)
-        data['latest'] = EntrySerializer(instance.latest_entry).serialize()
-        data['latest']['label'] = instance.latest_entry.label
-        return data
-
-    
-class MonitorDetailSerializer(MonitorSerializer):
-    def fixup(self, instance, data):
-        data = super().fixup(instance, data)
-        data['latest'] = instance.get_latest_data()
-        return data

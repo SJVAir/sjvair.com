@@ -14,6 +14,8 @@ from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.test import debug, get_response_data
 
+closest_monitor = endpoints.ClosestMonitor.as_view()
+current_data = endpoints.CurrentData.as_view()
 monitor_list = endpoints.MonitorList.as_view()
 monitor_detail = endpoints.MonitorDetail.as_view()
 entry_list = endpoints.EntryList.as_view()
@@ -46,13 +48,36 @@ class EndpointTests(TestCase):
         '''
             Test that we can GET the current data endpoint.
         '''
-        url = reverse('api:v2:monitors:current-data', kwargs={
-            'entry_type': 'pm25',
-        })
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:current-data', kwargs=kwargs)
         request = self.factory.get(url)
-        response = monitor_list(request)
+        response = current_data(request, **kwargs)
         content = get_response_data(response)
         assert response.status_code == 200
+
+    def test_closest_monitor(self):
+        '''
+            Test that we can GET the current data endpoint.
+        '''
+        monitor = self.get_purple_air()
+
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:current-data', kwargs=kwargs)
+        params = {
+            'latitude': monitor.position.y,
+            'longitude': monitor.position.x,
+        }
+        request = self.factory.get(url, params)
+        response = closest_monitor(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert isinstance(content['data'], list)
+        assert len(content['data']) <= 3
+
+        for monitor in content['data']:
+            assert 'distance' in monitor
+            assert isinstance(monitor['distance'], (float, int))
 
     def test_monitor_detail(self):
         '''
