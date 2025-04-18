@@ -147,3 +147,36 @@ class EntryList(EntryMixin, generics.ListEndpoint):
             filter = FilterClass(self.request.GET, queryset=queryset, monitor=self.request.monitor)
             return filter.qs
         return queryset
+
+
+class EntryCSV(EntryMixin, CSVExport):
+    @cached_property
+    def columns(self):
+        fields = EntrySerializer.fields[::]
+        for field in self.entry_model.declared_fields:
+            fields.append(field.name)
+        if self.entry_model.is_calibratable:
+            fields.append('calibration')
+        return fields
+
+    def get_filename(self):
+        filename = '_'.join(filter(bool, [
+            'SJVAir',
+            self.request.monitor.__class__.__name__,
+            self.entry_model.__name__,
+            self.request.GET.get('sensor'),
+            str(self.request.monitor.pk),
+            'export'
+        ]))
+        return f'{filename}.csv'
+
+    def get_queryset(self, *args, **kwargs):
+        queryset = super().get_queryset(*args, **kwargs)
+        queryset = queryset.values(*self.columns)
+        return queryset
+
+    def get_header_row(self):
+        return self.columns
+
+    def get_row(self, instance):
+        return [instance[key] for key in self.columns]

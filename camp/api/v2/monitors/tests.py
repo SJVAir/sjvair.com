@@ -1,23 +1,23 @@
-import pytest
+import csv
 
-from decimal import Decimal
-from pprint import pprint
+from io import StringIO
+
+import pytest
 
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
-from django.utils import timezone
 
 from . import endpoints
 
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.utils.datetime import make_aware, parse_datetime
 from camp.utils.test import debug, get_response_data
 
 monitor_list = endpoints.MonitorList.as_view()
 monitor_detail = endpoints.MonitorDetail.as_view()
 entry_list = endpoints.EntryList.as_view()
+entry_csv = endpoints.EntryCSV.as_view()
 
 pytestmark = pytest.mark.usefixtures('purpleair_monitor')
 
@@ -135,6 +135,8 @@ class EndpointTests(TestCase):
         assert {e['sensor'] for e in content['data']} == set(['b'])
         assert {e['calibration'] for e in content['data']} == set([''])
 
+        monitor.set_default_sensor(entry_models.PM25, 'a')
+
     def test_entry_list_calibration(self):
         '''
             Test that we can GET the entry list endpoint.
@@ -156,3 +158,116 @@ class EndpointTests(TestCase):
         assert response.status_code == 200
         assert {e['sensor'] for e in content['data']} == set([monitor.get_default_sensor(entry_models.PM25)])
         assert {e['calibration'] for e in content['data']} == set([params['calibration']])
+
+    def test_entry_csv(self):
+        '''
+            Test that we can GET the entry list endpoint.
+        '''
+        monitor = self.get_purple_air()
+
+        kwargs = {
+            'monitor_id': monitor.pk,
+            'entry_type': 'pm25'
+        }
+
+        url = reverse('api:v2:monitors:entry-csv', kwargs=kwargs)
+        request = self.factory.get(url)
+        request.monitor = monitor
+        response = entry_csv(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'text/csv'
+
+        csv_file = StringIO(content)
+        reader = csv.DictReader(csv_file)
+        rows = list(reader)
+
+        assert {e['sensor'] for e in rows} == set([monitor.get_default_sensor(entry_models.PM25)])
+        assert {e['calibration'] for e in rows} == set([''])
+
+    def test_entry_csv_sensor(self):
+        '''
+            Test that we can GET the entry list endpoint.
+        '''
+        monitor = self.get_purple_air()
+
+        kwargs = {
+            'monitor_id': monitor.pk,
+            'entry_type': 'pm25'
+        }
+
+        url = reverse('api:v2:monitors:entry-csv', kwargs=kwargs)
+        params = {'sensor': 'b'}
+        request = self.factory.get(url, params)
+        request.monitor = monitor
+        response = entry_csv(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'text/csv'
+
+        csv_file = StringIO(content)
+        reader = csv.DictReader(csv_file)
+        rows = list(reader)
+
+        assert {e['sensor'] for e in rows} == set([params['sensor']])
+        assert {e['calibration'] for e in rows} == set([''])
+
+    def test_entry_csv_default_sensor(self):
+        '''
+            Test that the entry list endpoint returns entries with the
+            monitor's default sensor when no sensor is specified.
+        '''
+        monitor = self.get_purple_air()
+        monitor.set_default_sensor(entry_models.PM25, 'b')
+
+        kwargs = {
+            'monitor_id': monitor.pk,
+            'entry_type': 'pm25'
+        }
+        url = reverse('api:v2:monitors:entry-csv', kwargs=kwargs)
+        request = self.factory.get(url)
+        request.monitor = monitor
+        response = entry_csv(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'text/csv'
+
+        csv_file = StringIO(content)
+        reader = csv.DictReader(csv_file)
+        rows = list(reader)
+
+        assert {e['sensor'] for e in rows} == set(['b'])
+        assert {e['calibration'] for e in rows} == set([''])
+
+        monitor.set_default_sensor(entry_models.PM25, 'a')
+
+    def test_entry_csv_calibration(self):
+        '''
+            Test that we can GET the entry list endpoint.
+        '''
+        monitor = self.get_purple_air()
+
+        kwargs = {
+            'monitor_id': monitor.pk,
+            'entry_type': 'pm25'
+        }
+
+        url = reverse('api:v2:monitors:entry-csv', kwargs=kwargs)
+        params = {'calibration': 'EPA_PM25_Oct2021'}
+        request = self.factory.get(url, params)
+        request.monitor = monitor
+        response = entry_csv(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'text/csv'
+
+        csv_file = StringIO(content)
+        reader = csv.DictReader(csv_file)
+        rows = list(reader)
+
+        assert {e['sensor'] for e in rows} == set([monitor.get_default_sensor(entry_models.PM25)])
+        assert {e['calibration'] for e in rows} == set([params['calibration']])
