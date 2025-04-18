@@ -23,6 +23,7 @@ class MonitorQuerySet(InheritanceQuerySet):
         from camp.apps.monitors.models import LatestEntry
 
         content_type = ContentType.objects.get_for_model(entry_model)
+        field_id = f'latest_{entry_model._meta.model_name}_id'
 
         subquery = (LatestEntry.objects
             .filter(
@@ -33,24 +34,18 @@ class MonitorQuerySet(InheritanceQuerySet):
             .values('object_id')[:1]
         )
 
-        latest_entries = LatestEntry.objects.filter(
-            content_type_id=content_type.pk,
-            calibration=calibration or '',
-        )
-
         monitors = (self
-            .annotate(latest_entry_id=Subquery(subquery))
-            .exclude(latest_entry_id__isnull=True)
-            .prefetch_related(
-                Prefetch('latest_entries', queryset=latest_entries, to_attr='filtered_latest_entries')
-            )
+            .annotate(**{field_id: Subquery(subquery)})
+            .exclude(**{f'{field_id}__isnull': True})
         )
 
-        entries = entry_model.objects.filter(pk__in=[m.latest_entry_id for m in monitors])
+        entries = entry_model.objects.filter(pk__in=[getattr(m, field_id) for m in monitors])
         entry_map = {e.pk: e for e in entries}
 
         for monitor in monitors:
-            monitor.latest_entry = entry_map.get(monitor.latest_entry_id)
+            entry = entry_map.get(getattr(monitor, field_id))
+            setattr(monitor, f'latest_{entry_model._meta.model_name}', entry)
+            monitor.latest_entry = entry
 
         return monitors
 
