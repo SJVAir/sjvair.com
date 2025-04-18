@@ -1,3 +1,5 @@
+import pytest
+
 from decimal import Decimal
 from pprint import pprint
 
@@ -17,61 +19,10 @@ monitor_list = endpoints.MonitorList.as_view()
 monitor_detail = endpoints.MonitorDetail.as_view()
 entry_list = endpoints.EntryList.as_view()
 
-
-from datetime import datetime, timedelta
-from decimal import Decimal
-import random
-import pytz
-
-def generate_sensor_value(mean, variance):
-    return Decimal(str(round(random.gauss(mean, variance), 2)))
-
-def create_hourly_data_for_monitor(monitor, start_time=None):
-    if start_time is None:
-        start_time = datetime.now(tz=pytz.UTC) - timedelta(hours=1)
-
-    entry_config = monitor.ENTRY_CONFIG
-    for i in range(60):  # One per minute
-        entries = []
-        timestamp = start_time + timedelta(minutes=i)
-
-        for EntryModel, config in entry_config.items():
-            sensors = config.get('sensors', [''])  # Default to empty string sensor
-            for sensor in sensors:
-                fields = {}
-                for field, api_field in config.get('fields', {}).items():
-                    if 'pm25' in field:
-                        fields[field] = generate_sensor_value(15, 5)
-                    elif 'pm10' in field:
-                        fields[field] = generate_sensor_value(10, 3)
-                    elif 'pm100' in field:
-                        fields[field] = generate_sensor_value(20, 7)
-                    elif 'temperature' in field:
-                        fields[field] = generate_sensor_value(75, 5)
-                    elif 'humidity' in field:
-                        fields[field] = generate_sensor_value(40, 10)
-                    elif 'pressure' in field:
-                        fields[field] = generate_sensor_value(1013, 5)
-                    elif 'particles' in field:
-                        fields[field] = generate_sensor_value(100 * (1 + random.random()), 20)
-                    else:
-                        fields[field] = generate_sensor_value(5, 2)
-
-                entry = monitor.create_entry(
-                    EntryModel,
-                    timestamp=timestamp,
-                    sensor=sensor,
-                    **fields
-                )
-                
-                entries.append(entry)
-
-        monitor.calibrate_entries(entries)
+pytestmark = pytest.mark.usefixtures('purpleair_monitor')
 
 
 class EndpointTests(TestCase):
-    fixtures = ['purple-air.yaml', 'bam1022.yaml']
-
     def setUp(self):
         self.factory = RequestFactory()
 
@@ -124,7 +75,6 @@ class EndpointTests(TestCase):
             Test that we can GET the entry list endpoint.
         '''
         monitor = self.get_purple_air()
-        create_hourly_data_for_monitor(monitor)
 
         kwargs = {
             'monitor_id': monitor.pk,
@@ -141,13 +91,11 @@ class EndpointTests(TestCase):
         assert {e['sensor'] for e in content['data']} == set([monitor.get_default_sensor(entry_models.PM25)])
         assert {e['calibration'] for e in content['data']} == set([''])
 
-
     def test_entry_list_sensor(self):
         '''
             Test that we can GET the entry list endpoint.
         '''
         monitor = self.get_purple_air()
-        create_hourly_data_for_monitor(monitor)
 
         kwargs = {
             'monitor_id': monitor.pk,
@@ -171,7 +119,6 @@ class EndpointTests(TestCase):
             monitor's default sensor when no sensor is specified.
         '''
         monitor = self.get_purple_air()
-        create_hourly_data_for_monitor(monitor)
         monitor.set_default_sensor(entry_models.PM25, 'b')
 
         kwargs = {
@@ -188,13 +135,11 @@ class EndpointTests(TestCase):
         assert {e['sensor'] for e in content['data']} == set(['b'])
         assert {e['calibration'] for e in content['data']} == set([''])
 
-
     def test_entry_list_calibration(self):
         '''
             Test that we can GET the entry list endpoint.
         '''
         monitor = self.get_purple_air()
-        create_hourly_data_for_monitor(monitor)
 
         kwargs = {
             'monitor_id': monitor.pk,
