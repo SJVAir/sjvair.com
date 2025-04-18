@@ -2,7 +2,7 @@ import calendar
 import csv
 
 from django.forms import forms
-from django.http import HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 
 from resticus import generics
@@ -23,19 +23,38 @@ class CSVExport(generics.ListEndpoint):
     headers = {}
     filename = "export.csv"
 
+    class Echo:
+        """
+        An object that implements just the write method of the file-like interface.
+        """
+
+        def write(self, value):
+            """Write the value by returning it, instead of storing in a buffer."""
+            return value
+
     def get(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         queryset = self.filter_queryset(queryset)
 
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{self.get_filename()}"'
-
-        writer = csv.writer(response)
-        writer.writerow(self.get_header_row())
-        for instance in queryset.iterator():
-            writer.writerow(self.get_row(instance))
-
+        writer = csv.writer(self.Echo())
+        response = self.get_response(
+            (writer.writerow(row) for row in self.get_rows(queryset)),
+            content_type='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename="{self.get_filename()}"'
+            }
+        )
         return response
+    
+    def get_response(self, iterable, *args, **kwargs):
+        if self.is_streaming():
+            return StreamingHttpResponse(iterable, *args, **kwargs)
+        return HttpResponse(''.join(iterable), *args, **kwargs)
+    
+    def get_rows(self, queryset):
+        yield self.get_header_row()
+        for instance in queryset.iterator():
+            yield self.get_row(instance)
 
     def get_filename(self):
         return self.filename.format(data=self.form.cleaned_data, view=self)

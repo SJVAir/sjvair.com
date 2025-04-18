@@ -151,6 +151,8 @@ class EntryList(EntryMixin, generics.ListEndpoint):
 
 
 class EntryCSV(EntryMixin, CSVExport):
+    streaming = True
+
     @cached_property
     def columns(self):
         fields = EntrySerializer.fields[::]
