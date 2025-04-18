@@ -49,6 +49,8 @@ class EntryTypeMixin:
 
 
 class EntryMixin(EntryTypeMixin):
+    serializer_class = EntrySerializer
+    
     def get_queryset(self):
         queryset = self.entry_model.objects.all()
         if hasattr(self.request, 'monitor'):
@@ -57,6 +59,13 @@ class EntryMixin(EntryTypeMixin):
 
     def get_filter_class(self):
         return get_entry_filterset(self.entry_model)
+    
+    def filter_queryset(self, queryset):
+        FilterClass = self.get_filter_class()
+        if FilterClass is not None:
+            filter = FilterClass(self.request.GET, queryset=queryset, monitor=self.request.monitor)
+            return filter.qs
+        return queryset
 
 
 class MonitorList(MonitorMixin, generics.ListEndpoint):
@@ -129,7 +138,6 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     
 
 class EntryList(EntryMixin, generics.ListEndpoint):
-    serializer_class = EntrySerializer
     paginate = True
 
     # TODO: make this more extensible in resticus.
