@@ -10,9 +10,9 @@ class PurpleAirTests(TestCase):
     def setUp(self):
         self.monitor = PurpleAir.objects.get(purple_id=8892)
 
-    def test_create_entry(self):
+    def test_create_entry_legacy(self):
         payload = purpleair_api.get_sensor(self.monitor.purple_id)
-        (a, b) = self.monitor.create_entries(payload)
+        (a, b) = self.monitor.create_entries_legacy(payload)
         self.monitor.check_latest(a)
         self.monitor.check_latest(b)
 
