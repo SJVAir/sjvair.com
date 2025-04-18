@@ -22,7 +22,7 @@ from camp.utils.forms import LatLonForm
 from camp.utils.views import get_view_cache_key
 
 from .filters import MonitorFilter, get_entry_filterset
-from .serializers import EntrySerializer, MonitorSerializer, MonitorLatestSerializer, MonitorDetailSerializer
+from .serializers import EntrySerializer, MonitorSerializer
 from ..endpoints import CSVExport
 
 
@@ -99,12 +99,16 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
-    serializer_class = MonitorDetailSerializer
+    serializer_class = MonitorSerializer
+
+    def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
+        include = [('latest', lambda monitor: monitor.get_latest_data())]
+        return super().serialize(source, fields, include, exclude, fixup)
 
 
 class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     form_class = LatLonForm
-    serializer_class = MonitorLatestSerializer
+    serializer_class = MonitorSerializer
 
     def get_queryset(self):
         form = self.get_form(self.request.GET)
@@ -127,7 +131,7 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
 
 
 class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
-    serializer_class = MonitorLatestSerializer
+    serializer_class = MonitorSerializer
 
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
@@ -136,6 +140,10 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             .with_latest_entry(self.entry_model)
         )
         return queryset
+    
+    def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
+        include = [('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize())]
+        return super().serialize(source, fields, include, exclude, fixup)
     
 
 class EntryList(EntryMixin, generics.ListEndpoint):
