@@ -18,6 +18,7 @@ from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
 from py_expression_eval import Parser as ExpressionParser
 
+from camp.apps.entries.fields import EntryTypeField
 from camp.apps.monitors.managers import MonitorManager
 from camp.utils.counties import County
 from camp.utils.datetime import make_aware
@@ -51,14 +52,19 @@ class DefaultSensor(models.Model):
         verbose_name='ID'
     )
     monitor = models.ForeignKey('monitors.Monitor', on_delete=models.CASCADE, related_name='default_sensors')
-    content_type = models.ForeignKey('contenttypes.ContentType', on_delete=models.CASCADE)
+    entry_type = EntryTypeField()
     sensor = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        unique_together = ('monitor', 'content_type')
+        unique_together = ('monitor', 'entry_type')
 
     def __str__(self):
-        return f'{self.monitor.name} → {self.content_type.model} = {self.sensor or "default"}'
+        return f'{self.monitor.name} → {self.entry_type} = {self.sensor or "default"}'
+    
+    @cached_property
+    def entry_model(self):
+        from camp.apps.entries.utils import get_entry_model_by_name
+        return get_entry_model_by_name(self.entry_type)
 
 
 class LatestEntry(models.Model):
@@ -72,18 +78,26 @@ class LatestEntry(models.Model):
 
     monitor = models.ForeignKey('monitors.Monitor', on_delete=models.CASCADE, related_name='latest_entries')
 
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    entry_type = EntryTypeField()
     object_id = SmallUUIDField()
-    entry = GenericForeignKey('content_type', 'object_id')
 
     calibration = models.CharField(max_length=50, blank=True, default='')
     timestamp = models.DateTimeField(db_index=True)
 
     class Meta:
-        unique_together = ('monitor', 'content_type', 'calibration')
+        unique_together = ('monitor', 'entry_type', 'calibration')
 
     def __str__(self):
-        return f"{self.monitor.name} latest {self.content_type}"
+        return f"{self.monitor.name} latest {self.entry_type}"
+    
+    @cached_property
+    def entry_model(self):
+        from camp.apps.entries.utils import get_entry_model_by_name
+        return get_entry_model_by_name(self.entry_type)
+
+    @cached_property
+    def entry(self):
+        return self.entry_model.objects.get(pk=self.object_id)
 
 
 class Monitor(models.Model):
@@ -174,10 +188,10 @@ class Monitor(models.Model):
                 f'Valid options: {valid_sensors}'
             )
 
-        content_type = ContentType.objects.get_for_model(EntryModel)
+        entry_type = EntryModel._meta.model_name
         DefaultSensor.objects.update_or_create(
             monitor=self,
-            content_type=content_type,
+            entry_type=entry_type,
             defaults={'sensor': sensor}
         )
 
@@ -186,27 +200,26 @@ class Monitor(models.Model):
         Returns the default sensor for this monitor and EntryModel.
 
         Logic:
-        - If the EntryModel does not support multiple sensors, return None
-        - If a DefaultSensor exists in the DB, return it
+        - If the EntryModel does not support multiple sensors, return ''
+        - If a DefaultSensor exists in the DB or cache, return it
         - Otherwise, return the first defined sensor in ENTRY_CONFIG
         '''
         config = self.ENTRY_CONFIG.get(EntryModel, {})
         sensors = config.get('sensors')
 
-        # Skip lookup entirely if this model has no sensors
         if sensors is None:
             return ''
 
-        ct = ContentType.objects.get_for_model(EntryModel)
+        entry_type = EntryModel._meta.model_name
 
         # Use prefetched default_sensors if available
         for ds in getattr(self, '_prefetched_objects_cache', {}).get('default_sensors', []):
-            if ds.content_type_id == ct.pk:
+            if ds.entry_type == entry_type:
                 return ds.sensor
 
         # Fallback to DB query
         sensor = (self.default_sensors
-            .filter(content_type=ct)
+            .filter(entry_type=entry_type)
             .values_list('sensor', flat=True)
             .first()
         )
@@ -215,6 +228,7 @@ class Monitor(models.Model):
 
         # Final fallback to first sensor in config
         return sensors[0]
+
 
     @property
     def data_providers(self):
@@ -285,24 +299,21 @@ class Monitor(models.Model):
                 calibrator(entry).run()
 
     def update_latest_entry(self, entry):
-        content_type = ContentType.objects.get_for_model(entry)
-
+        # Skip if not the default sensor
         if entry.sensor != self.get_default_sensor(entry.__class__):
             return
 
+        entry_type = entry._meta.model_name  # this will be stored in entry_type field
+        calibration = entry.calibration if entry.is_calibratable else ''
+
         lookup = {
             'monitor_id': self.pk,
-            'content_type_id': content_type.pk,
+            'entry_type': entry_type,
+            'calibration': calibration,
         }
 
-        if entry.is_calibratable:
-            lookup['calibration'] = entry.calibration
-
         try:
-            latest = (LatestEntry.objects
-                .select_related('content_type')
-                .get(**lookup)
-            )
+            latest = LatestEntry.objects.get(**lookup)
         except LatestEntry.DoesNotExist:
             LatestEntry.objects.create(
                 object_id=entry.pk,
@@ -311,17 +322,18 @@ class Monitor(models.Model):
             )
             return
 
-        # Manual compare because we can't join through the GFK
+        # Manual compare to avoid hitting the DB unless necessary
         try:
             if latest.entry.timestamp >= entry.timestamp:
                 return
         except ObjectDoesNotExist:
-            # entry was deleted, fallback to updating
+            # referenced entry was deleted
             pass
 
         latest.object_id = entry.pk
         latest.timestamp = entry.timestamp
         latest.save()
+
 
     def get_latest_data(self):
         '''
@@ -332,13 +344,12 @@ class Monitor(models.Model):
         data = {}
 
         for latest in self.latest_entries.all():
-            model = latest.content_type.model_class()
             payload = latest.entry.declared_data()
             payload.update({
                 'sensor': latest.entry.sensor,
                 'timestamp': latest.entry.timestamp,
             })
-            data[model._meta.model_name] = payload
+            data[latest.entry_type] = payload
 
         return data
         
