@@ -1,10 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from django import forms
+from django.conf import settings
 from django.utils import timezone
 
 
-def make_aware(timestamp, tz=None):
+def make_aware(timestamp, tz=settings.DEFAULT_TIMEZONE):
     if timezone.is_naive(timestamp):
         return timezone.make_aware(timestamp, tz)
     return timestamp

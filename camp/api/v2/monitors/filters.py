@@ -2,6 +2,7 @@ import django_filters
 from resticus.filters import FilterSet, filterset_factory
 
 from camp.apps.monitors.models import Monitor
+from ..filters import TimezoneDateTimeFilter 
 
 
 class MonitorFilter(FilterSet):
@@ -46,7 +47,7 @@ class MonitorFilter(FilterSet):
 def get_entry_filterset(EntryModel):
     fields = {
         'sensor': ['exact'],
-        'timestamp': ['exact', 'lt', 'lte', 'gt', 'gte'],
+        'timestamp': ['date', 'exact', 'lt', 'lte', 'gt', 'gte'],
     }
     
     if EntryModel.is_calibratable:
@@ -55,6 +56,8 @@ def get_entry_filterset(EntryModel):
     BaseFilterSet = filterset_factory(EntryModel, fields)
 
     class EntryFilterSet(BaseFilterSet):
+        timezone = TimezoneDateTimeFilter()
+
         def __init__(self, *args, monitor=None, **kwargs):
             super().__init__(*args, **kwargs)
             self.monitor = monitor
