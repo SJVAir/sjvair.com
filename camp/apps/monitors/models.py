@@ -4,8 +4,6 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
