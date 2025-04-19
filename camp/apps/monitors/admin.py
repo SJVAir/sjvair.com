@@ -113,7 +113,6 @@ class DefaultSensorInline(admin.TabularInline):
             def get_form_kwargs(inner_self, index):
                 kwargs = super().get_form_kwargs(index)
                 kwargs['monitor'] = obj
-                print(f'Injected monitor into form kwargs: {obj}')
                 return kwargs
 
         return MonitorAwareFormSet

@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.admin.widgets import FilteredSelectMultiple
-from django.contrib.contenttypes.models import ContentType
+
+from camp.apps.entries.fields import EntryTypeField
 
 from .models import Group, DefaultSensor
 
@@ -47,34 +48,38 @@ class DefaultSensorForm(forms.ModelForm):
         if not self.monitor:
             return
 
-        # EntryModels eligible for configuration
-        entry_models = [
-            EntryModel for (EntryModel, config)
-            in self.monitor.ENTRY_CONFIG.items()
+        get_model_map = EntryTypeField.get_model_map()
+        valid_models = [
+            model for model, config in self.monitor.ENTRY_CONFIG.items()
             if config.get('sensors') is not None
         ]
-        valid_cts = list(ContentType.objects.get_for_models(*entry_models).values())
-        self.fields['content_type'].queryset = ContentType.objects.filter(pk__in=[ct.pk for ct in valid_cts])
+        valid_model_names = {model._meta.model_name for model in valid_models}
 
         if not self.instance._state.adding:
-            self.fields['content_type'].disabled = True
-            self.fields['content_type'].queryset = self.fields['content_type'].queryset.filter(pk=self.instance.content_type_id)
+            # Editing existing — freeze entry_type field
+            current_name = self.instance.entry_type
+            self.fields['entry_type'].disabled = True
+            self.fields['entry_type'].choices = [
+                (current_name, get_model_map[current_name].label)
+            ]
         else:
-            used_ct_ids = (DefaultSensor.objects
-                .filter(monitor=self.monitor)
-                .exclude(pk=self.instance.pk)
-                .values_list('content_type_id', flat=True)
-            )
-            self.fields['content_type'].queryset = self.fields['content_type'].queryset.exclude(pk__in=used_ct_ids)
+            # Creating — filter to only unused entry_type types
+            used_names = DefaultSensor.objects.filter(
+                monitor=self.monitor
+            ).exclude(pk=self.instance.pk).values_list('entry_type', flat=True)
 
-        self.fields['content_type'].choices = sorted([
-            (ct.pk, ct.model_class().label)
-            for ct in self.fields['content_type'].queryset
-        ], key=lambda x: x[1].lower())
+            available_names = valid_model_names - set(used_names)
 
-        # If the model has sensors configured, set choices on sensor field
-        model_cls = self.instance.content_type.model_class() if self.instance.content_type_id else None
+            self.fields['entry_type'].choices = sorted([
+                (name, get_model_map[name].label)
+                for name in available_names
+            ], key=lambda x: x[1].lower())
+
+        # Populate sensor field if we know which entry_type it is
+        entry_type_name = self.instance.entry_type if not self.instance._state.adding else None
+        model_cls = get_model_map.get(entry_type_name)
         sensors = self.monitor.ENTRY_CONFIG.get(model_cls, {}).get('sensors', [])
+
         if sensors:
             self.fields['sensor'] = forms.ChoiceField(
                 choices=[(s, s) for s in sensors],
@@ -83,27 +88,29 @@ class DefaultSensorForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        ct = cleaned.get('content_type')
+        model_name = cleaned.get('entry_type')
+        model_cls = EntryTypeField.get_model_map().get(model_name)
 
-        if ct and self.monitor:
-            model_cls = ct.model_class()
+        if model_cls and self.monitor:
             config = self.monitor.ENTRY_CONFIG.get(model_cls)
             if not config or not config.get('sensors'):
-                raise forms.ValidationError(f"{model_cls.label} is not a multi-sensor entry type for this monitor.")
-
+                raise forms.ValidationError(
+                    f'{model_cls.label} is not a multi-sensor entry type for this monitor.'
+                )
         return cleaned
 
     def clean_sensor(self):
         sensor = self.cleaned_data.get('sensor')
-        ct = self.cleaned_data.get('content_type')
+        model_name = self.cleaned_data.get('entry_type')
+        model_cls = EntryTypeField.get_model_map().get(model_name)
 
-        if not ct or not self.monitor:
-            return sensor  # Nothing to validate yet
+        if not model_cls or not self.monitor:
+            return sensor
 
-        model_cls = ct.model_class()
         sensors = self.monitor.ENTRY_CONFIG.get(model_cls, {}).get('sensors', [])
-
         if sensors and sensor not in sensors:
-            raise forms.ValidationError(f"'{sensor}' is not a valid sensor option for {model_cls.label}.")
+            raise forms.ValidationError(
+                f"'{sensor}' is not a valid sensor option for {model_cls.label}."
+            )
 
         return sensor
