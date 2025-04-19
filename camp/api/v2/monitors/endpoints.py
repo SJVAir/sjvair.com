@@ -1,22 +1,11 @@
-import hashlib
-import uuid
+from resticus import generics
 
-from datetime import datetime
-
-from resticus import generics, http
-
-from django import forms
 from django.contrib.gis.db.models.functions import Distance
-from django.contrib.gis.geos import GEOSGeometry, Point
-from django.contrib.gis.measure import D
 from django.core.cache import cache
-from django.db.models import QuerySet
-from django.http import Http404, JsonResponse
-from django.shortcuts import get_object_or_404
+from django.http import Http404
 from django.utils.functional import cached_property
 
 from camp.apps.monitors.models import Monitor
-from camp.apps.entries import models as entry_models
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.utils.forms import LatLonForm
 from camp.utils.views import get_view_cache_key
@@ -163,7 +152,7 @@ class EntryCSV(EntryMixin, CSVExport):
 
     @cached_property
     def columns(self):
-        fields = EntrySerializer.fields[::]
+        fields = ['timestamp', 'sensor']
         for field in self.entry_model.declared_fields:
             fields.append(field.name)
         if self.entry_model.is_calibratable:
@@ -181,13 +170,9 @@ class EntryCSV(EntryMixin, CSVExport):
         ]))
         return f'{filename}.csv'
 
-    def get_queryset(self, *args, **kwargs):
-        queryset = super().get_queryset(*args, **kwargs)
-        queryset = queryset.values(*self.columns)
-        return queryset
-
     def get_header_row(self):
         return self.columns
 
     def get_row(self, instance):
-        return [instance[key] for key in self.columns]
+        serialized = self.serialize(instance)
+        return [serialized.get(key, '') for key in self.columns]

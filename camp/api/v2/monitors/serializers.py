@@ -1,12 +1,11 @@
 from resticus import serializers
 
-from camp.apps.monitors.models import Entry
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
 class EntrySerializer(serializers.Serializer):
     fields = [
-        'timestamp',
+        ('timestamp', lambda entry: entry.timestamp_pst),
         'sensor',
     ]
 

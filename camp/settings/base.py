@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 
 import os
 import subprocess
+import zoneinfo
 
 import dj_database_url
 
@@ -116,6 +117,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'camp.api.middleware.MonitorAccessMiddleware',
+    'camp.utils.middleware.TimezoneMiddleware',
 ]
 
 TEMPLATES = [
@@ -209,6 +211,8 @@ PASSWORD_HASHERS = [
 LANGUAGE_CODE = 'en-us'
 
 TIME_ZONE = 'UTC'
+
+DEFAULT_TIMEZONE = zoneinfo.ZoneInfo('America/Los_Angeles')
 
 USE_I18N = True
 

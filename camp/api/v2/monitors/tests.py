@@ -1,9 +1,11 @@
 import csv
 
+from datetime import datetime, timedelta
 from io import StringIO
 
 import pytest
 
+from django.conf import settings
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
@@ -12,6 +14,7 @@ from . import endpoints
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.utils.datetime import make_aware
 from camp.utils.test import debug, get_response_data
 
 closest_monitor = endpoints.ClosestMonitor.as_view()
@@ -183,6 +186,44 @@ class EndpointTests(TestCase):
         assert response.status_code == 200
         assert {e['sensor'] for e in content['data']} == set([monitor.get_default_sensor(entry_models.PM25)])
         assert {e['calibration'] for e in content['data']} == set([params['calibration']])
+
+    def test_entry_list_timestamp(self):
+        '''
+            Test that we can GET the entry list endpoint.
+        '''
+        monitor = self.get_purple_air()
+
+        pacific_midnight = make_aware(datetime(2024, 7, 24, 0, 0), tz=settings.DEFAULT_TIMEZONE)
+
+        # Create entries just before and after midnight in UTC
+        entry_1 = monitor.create_entry(
+            entry_models.PM25,
+            timestamp=pacific_midnight - timedelta(minutes=1),  # 11:59pm on July 23 PST
+            value=10.0,
+            sensor='a'
+        )
+
+        entry_2 = monitor.create_entry(
+            entry_models.PM25,
+            timestamp=pacific_midnight + timedelta(hours=1),  # 1:00am on July 24 PST
+            value=20.0,
+            sensor='a'
+        )
+
+        kwargs = {
+            'monitor_id': monitor.pk,
+            'entry_type': 'pm25'
+        }
+        url = reverse('api:v2:monitors:entry-list', kwargs=kwargs)
+        params = {'timestamp__date': '2024-07-24'}
+        request = self.factory.get(url, params)
+        request.monitor = monitor
+        response = entry_list(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert len(content['data']) == 1
+        assert content['data'][0]['timestamp'] == '2024-07-24T01:00:00-07:00'  # PST
 
     def test_entry_csv(self):
         '''

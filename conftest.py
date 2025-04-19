@@ -1,12 +1,22 @@
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 import pytest
 
+from django.conf import settings
 from django.core.management import call_command
+from django.utils import timezone
 
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.test.helpers import create_hourly_data_for_monitor
 from camp.utils.test.twilio_test_client import TwilioTestClient
+
+
+@pytest.fixture(autouse=True)
+def set_timezone_pacific():
+    timezone.activate(settings.DEFAULT_TIMEZONE)
+    yield
+    timezone.deactivate()
 
 
 @pytest.fixture(scope='session', autouse=True)

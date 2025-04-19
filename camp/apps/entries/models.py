@@ -1,6 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.apps import apps
+from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.gis.db import models
@@ -68,22 +68,13 @@ class BaseEntry(models.Model):
         ]
 
         return cls._declared_fields
+    
+    @property
+    def timestamp_pst(self):
+        return timezone.localtime(self.timestamp, settings.DEFAULT_TIMEZONE)
 
     def declared_data(self):
-        data = {}
-
-        for f in self.declared_fields:
-            if f.name == 'value':
-                data['value'] = self.value
-            else:
-                data[f.name] = getattr(self, f.name)
-
-        # Rename 'value' to model_name if it's the only field
-        if len(data) == 1 and 'value' in data:
-            key = self.__class__._meta.model_name
-            data[key] = data.pop('value')
-
-        return data
+        return {f.name: getattr(self, f.name) for f in self.declared_fields}
     
     def entry_context(self) -> dict:
         '''
@@ -109,7 +100,10 @@ class BaseEntry(models.Model):
 
             try:
                 entry = EntryModel.objects.get(**lookup)
-                context.update(entry.declared_data())
+                data = entry.declared_data()
+                if len(data) == 1 and 'value' in data:
+                    data[EntryModel._meta.model_name] = data.pop('value')
+                context.update(data)
             except EntryModel.DoesNotExist:
                 pass
             except EntryModel.MultipleObjectsReturned:
@@ -167,6 +161,7 @@ class BaseCalibratedEntry(BaseEntry):
                 name='unique_calibrated_entry_%(class)s',
             ),
         ]
+        ordering = ('-timestamp', 'sensor', 'calibration')
 
     def is_valid_value(self):
         return self.value is not None and self.value <= self.max_valid_value
