@@ -54,10 +54,10 @@ def process_aqview_data(payload):
             entry = monitor.entries.get(timestamp=entry.timestamp)
             entry = monitor.process_entry(entry, payload)
             entry.save()
-            print('\t[AQview] Entry updated:', payload['timestamp'])
+            print('\t[AQview] Entry updated:', entry.timestamp)
         except Entry.DoesNotExist:
             entry = monitor.create_entry_legacy(payload)
-            print('\t[AQview] Entry created:', payload['timestamp'])
+            print('\t[AQview] Entry created:', entry.timestamp)
 
         monitor.check_latest(entry)
         if monitor.latest_id == entry.pk:

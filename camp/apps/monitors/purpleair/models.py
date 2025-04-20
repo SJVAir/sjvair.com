@@ -166,7 +166,7 @@ class PurpleAir(Monitor):
                 entry = self.create_entry(
                     EntryModel=EntryModel,
                     timestamp=timestamp,
-                    stage=EntryModel.Stage.RAW
+                    stage=EntryModel.Stage.RAW,
                     **data
                 )
                 if entry is not None:
