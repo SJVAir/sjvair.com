@@ -1,15 +1,66 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
-from django.utils.functional import lazy
+from django.utils.functional import cached_property
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from geopy.distance import distance as geopy_distance
 from model_utils.models import TimeStampedModel
 
-from camp.apps.monitors.models import Monitor
+from camp.apps.entries.fields import EntryTypeField
+from camp.apps.monitors.fields import MonitorTypeField
 from camp.apps.monitors.validators import validate_formula
 from camp.apps.calibrations.linreg import LinearRegressions
 from camp.apps.calibrations.querysets import CalibratorQuerySet
+
+
+class DefaultCalibration(models.Model):
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+
+    monitor_type = MonitorTypeField()
+    entry_type = EntryTypeField()
+    calibration = models.CharField(max_length=50, blank=True, default='')
+
+    class Meta:
+        unique_together = ('monitor_type', 'entry_type')
+
+    def __str__(self):
+        return f'{self.monitor_type} → {self.entry_type} = {self.calibration}'
+
+    @property
+    def entry_model(self):
+        return EntryTypeField.get_model_map().get(self.entry_type)
+
+    @property
+    def monitor_model(self):
+        return MonitorTypeField.get_model_map().get(self.monitor_type)
+    
+    def clean(self):
+        super().clean()
+
+        if not self.monitor_model or not self.entry_model:
+            raise ValidationError('Invalid monitor or entry type.')
+
+        config = self.monitor_model.ENTRY_CONFIG.get(self.entry_model)
+        if not config:
+            raise ValidationError(
+                f'{self.monitor_type} does not support entry type {self.entry_type}.'
+            )
+
+        calibrations = [c.name for c in config.get('calibrations', [])]
+        if self.calibration and self.calibration not in calibrations:
+            raise ValidationError(
+                f'"{self.calibration}" is not a valid calibration for {self.monitor_type} - {self.entry_type}. '
+                f'Valid options: {calibrations or ["(none)"]}'
+            )
+    
+    
 
 
 class Calibrator(TimeStampedModel):

@@ -16,6 +16,7 @@ from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
 from py_expression_eval import Parser as ExpressionParser
 
+from camp.apps.calibrations.utils import get_default_calibration
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.monitors.managers import MonitorManager
 from camp.utils.counties import County
@@ -61,8 +62,7 @@ class DefaultSensor(models.Model):
     
     @cached_property
     def entry_model(self):
-        from camp.apps.entries.utils import get_entry_model_by_name
-        return get_entry_model_by_name(self.entry_type)
+        return EntryTypeField.get_model_map().get(self.entry_type)
 
 
 class LatestEntry(models.Model):
@@ -90,8 +90,7 @@ class LatestEntry(models.Model):
     
     @cached_property
     def entry_model(self):
-        from camp.apps.entries.utils import get_entry_model_by_name
-        return get_entry_model_by_name(self.entry_type)
+        return EntryTypeField.get_model_map().get(self.entry_type)
 
     @cached_property
     def entry(self):
@@ -226,7 +225,9 @@ class Monitor(models.Model):
 
         # Final fallback to first sensor in config
         return sensors[0]
-
+    
+    def get_default_calibration(self, EntryModel):
+        return get_default_calibration(self.__class__, EntryModel)
 
     @property
     def data_providers(self):
@@ -294,12 +295,18 @@ class Monitor(models.Model):
 
             config = self.ENTRY_CONFIG.get(entry.__class__, {})
             for calibrator in config.get('calibrations', []):
-                calibrator(entry).run()
+                if calibrated := calibrator(entry).run():
+                    self.update_latest_entry(calibrated)
 
     def update_latest_entry(self, entry):
         # Skip if not the default sensor
         if entry.sensor != self.get_default_sensor(entry.__class__):
             return
+        
+        # Skip if not the default calibration
+        if entry.is_calibratable:
+            if entry.calibration != self.get_default_calibration(entry.__class__):
+                return
 
         entry_type = entry._meta.model_name  # this will be stored in entry_type field
         calibration = entry.calibration if entry.is_calibratable else ''
@@ -347,6 +354,8 @@ class Monitor(models.Model):
                 'sensor': latest.entry.sensor,
                 'timestamp': latest.entry.timestamp,
             })
+            if latest.entry.is_calibratable:
+                payload['calibration'] = latest.entry.calibration
             data[latest.entry_type] = payload
 
         return data

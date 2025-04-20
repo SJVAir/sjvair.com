@@ -71,7 +71,8 @@ def get_entry_filterset(EntryModel):
 
             # Default calibration fallback
             if EntryModel.is_calibratable and 'calibration' not in self.data:
-                queryset = queryset.filter(calibration='')
+                calibration = self.monitor.get_default_calibration(EntryModel)
+                queryset = queryset.filter(calibration=calibration)
 
             return super().filter_queryset(queryset)
 
