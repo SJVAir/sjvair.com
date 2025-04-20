@@ -15,6 +15,17 @@ from camp.apps.calibrations.querysets import CalibratorQuerySet
 
 
 class DefaultCalibration(models.Model):
+    '''
+    Stores the default calibration to use for a given monitor type and entry type.
+
+    - `monitor_type` is a string identifier corresponding to a monitor model class (e.g. 'purpleair').
+    - `entry_type` is a string identifier corresponding to an entry model class (e.g. 'pm25').
+    - `calibration` is the name of the calibration method (e.g. 'linear', 'epa-adjusted') or blank for raw.
+
+    Used in calibration logic to determine which calibration should be applied
+    to real-time entries based on monitor type and pollutant.
+    '''
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -42,6 +53,13 @@ class DefaultCalibration(models.Model):
         return MonitorTypeField.get_model_map().get(self.monitor_type)
     
     def clean(self):
+        '''
+        Validates that the selected calibration is allowed for the given monitor type and entry type.
+
+        Raises:
+            ValidationError: If the selected calibration is not listed in the monitor model's
+            ENTRY_CONFIG for the given entry model.
+        '''
         super().clean()
 
         if not self.monitor_model or not self.entry_model:
