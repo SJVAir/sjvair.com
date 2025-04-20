@@ -33,6 +33,29 @@ class BAM1022(Monitor):
         'url': 'https://cencalasthma.org'
     }
 
+    ENTRY_CONFIG = {
+        entry_models.Temperature: {
+            'fields': {'celcius': 'AT(C)'},
+            'allowed_stages': [entry_models.Temperature.Stage.REFERENCE],
+            'default_stage': entry_models.Temperature.Stage.REFERENCE,
+        },
+        entry_models.Humidity: {
+            'fields': {'value': 'RH(%)'},
+            'allowed_stages': [entry_models.Humidity.Stage.REFERENCE],
+            'default_stage': entry_models.Humidity.Stage.REFERENCE,
+        },
+        entry_models.Pressure: {
+            'fields': {'mmhg': 'BP(mmHg)'},
+            'allowed_stages': [entry_models.Pressure.Stage.REFERENCE],
+            'default_stage': entry_models.Pressure.Stage.REFERENCE,
+        },
+        entry_models.PM25: {
+            'fields': {'value': 'ConcHR(ug/m3)'},
+            'allowed_stages': [entry_models.PM25.Stage.REFERENCE],
+            'default_stage': entry_models.PM25.Stage.REFERENCE,
+        },
+    }
+
     ENTRY_MAP = {
         # EntryModel: (src_attr, dest_attr))
         entry_models.Temperature: ('celcius', 'AT(C)'),
@@ -47,11 +70,9 @@ class BAM1022(Monitor):
     def create_entries(self, payload):
         entries = []
         timestamp = parse_datetime(payload['Time'])
-        for EntryModel, (attr, key) in self.ENTRY_MAP.items():
-            entry = self.create_entry(EntryModel,
-                timestamp=timestamp,
-                **{attr: payload[key]}
-            )
+        for EntryModel, config in self.ENTRY_MAP.items():
+            data = {attr: payload[key] for attr, key in config['fields']}
+            entry = self.create_entry(EntryModel, timestamp=timestamp, **data)
             if entry is not None:
                 entries.append(entry)
 

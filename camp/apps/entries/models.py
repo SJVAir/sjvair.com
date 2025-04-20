@@ -6,6 +6,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 
@@ -16,6 +17,18 @@ from camp.utils import clamp, classproperty
 class BaseEntry(models.Model):
     epa_aqs_code = None
     is_calibratable = False
+
+    class Stage(models.TextChoices):
+        REFERENCE = 'reference', _('Reference-grade')
+        RAW = 'raw', _('Raw')
+        CLEANED = 'cleaned', _('Cleaned')
+        CALIBRATED = 'calibrated', _('Calibrated')
+
+    STAGE_ORDER = {
+        'raw': 0,
+        'clean': 1,
+        'calibrated': 2,
+    }
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -34,11 +47,14 @@ class BaseEntry(models.Model):
 
     sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
 
+    stage = models.CharField(max_length=16, choices=Stage.choices, default=Stage.RAW)
+    origin = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='derived_entries')
+
     class Meta:
         abstract = True
         get_latest_by = 'timestamp'
         constraints = (
-            models.UniqueConstraint(fields=['monitor', 'timestamp', 'sensor'], name='unique_entry_%(class)s'),
+            models.UniqueConstraint(fields=['monitor', 'timestamp', 'sensor', 'stage'], name='unique_entry_%(class)s'),
         )
         indexes = (
             BrinIndex(fields=['timestamp', 'sensor'], autosummarize=True),
@@ -79,7 +95,7 @@ class BaseEntry(models.Model):
     def entry_context(self) -> dict:
         '''
         Gathers data from all other BaseEntry subclasses that share
-        (monitor, timestamp, sensor) with this entry.
+        (monitor, timestamp, sensor, stage) with this entry.
         Merges all declared_data() into one dictionary.
         '''
         context = {}
@@ -88,15 +104,12 @@ class BaseEntry(models.Model):
             lookup = {
                 'monitor': self.monitor,
                 'timestamp': self.timestamp,
+                'stage': config.get('default_stage', BaseEntry.Stage.RAW),
             }
 
             # Only filter by sensor if the entry type supports this sensor
             if self.sensor in config.get('sensors', []):
                 lookup['sensor'] = self.sensor
-
-            # Only include uncalibrated entries for calibratable models
-            if EntryModel.is_calibratable:
-                lookup['calibration'] = ''
 
             try:
                 entry = EntryModel.objects.get(**lookup)
@@ -112,20 +125,24 @@ class BaseEntry(models.Model):
 
         return context
 
-    def clone(self):
-        return self.__class__(
-            monitor=self.monitor,
-            timestamp=self.timestamp,
-            position=self.position,
-            location=self.location,
-            sensor=self.sensor,
-        )
+    def clone(self, **kwargs):
+        values = {
+            'monitor': self.monitor,
+            'timestamp': self.timestamp,
+            'position': self.position,
+            'location': self.location,
+            'sensor': self.sensor,
+            'origin_id': self.pk,
+        }
+        values.update(**kwargs)
+        return self.__class__(**values)
     
     def validation_check(self):
         lookup = {
             'monitor': self.monitor,
             'sensor': self.sensor,
             'timestamp': self.timestamp,
+            'stage': self.stage,
         }
 
         if self.is_calibratable:
@@ -136,6 +153,38 @@ class BaseEntry(models.Model):
             .exclude(pk=self.pk)
             .exists()
         )
+    
+    def get_next_entries(self):
+        lookup = {
+            'monitor': self.monitor,
+            'sensor': self.sensor,
+            'timestamp__gt': self.timestamp,
+            'stage': self.stage,
+        }
+
+        if self.is_calibrated and self.stage == self.Stage.CALIBRATED:
+            lookup['calibration'] = self.calibration
+
+        return self.__class__.objects.filter(**lookup).order_by('timestamp')
+    
+    def get_previous_entries(self):
+        lookup = {
+            'monitor': self.monitor,
+            'sensor': self.sensor,
+            'timestamp__lt': self.timestamp,
+            'stage': self.stage,
+        }
+
+        if self.is_calibrated and self.stage == self.Stage.CALIBRATED:
+            lookup['calibration'] = self.calibration
+
+        return self.__class__.objects.filter(**lookup).order_by('-timestamp')
+    
+    def get_next_entry(self):
+        return self.get_next_entries().first()
+    
+    def get_previous_entry(self):
+        return self.get_previous_entries().first()
 
 
 class BaseCalibratedEntry(BaseEntry):
@@ -157,7 +206,7 @@ class BaseCalibratedEntry(BaseEntry):
         abstract = True
         constraints = [
             models.UniqueConstraint(
-                fields=['monitor', 'timestamp', 'sensor', 'calibration'],
+                fields=['monitor', 'timestamp', 'sensor', 'stage', 'calibration'],
                 name='unique_calibrated_entry_%(class)s',
             ),
         ]

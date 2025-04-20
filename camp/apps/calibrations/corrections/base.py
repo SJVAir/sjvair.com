@@ -1,7 +1,9 @@
+from abc import ABC, abstractmethod
+
 from camp.utils import classproperty
 
 
-class BaseCalibration:
+class BaseCalibration(ABC):
     '''
     Base class for calibrating entry models.
     Subclasses must implement `apply()` and define `requires` and `model_class`.
@@ -59,6 +61,7 @@ class BaseCalibration:
             setattr(calibrated, attr, value)
         return calibrated
 
+    @abstractmethod
     def apply(self):
         '''
         Override this method to implement the calibration logic.

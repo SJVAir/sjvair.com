@@ -21,7 +21,9 @@ class AQview(Monitor):
 
     ENTRY_CONFIG = {
         entry_models.PM25: {
-            'fields': {'value': 'aobs'}
+            'fields': {'value': 'aobs'},
+            'allowed_stages': [entry_models.PM25.Stage.REFERENCE],
+            'default_stage': entry_models.PM25.Stage.REFERENCE,
         },
     }
 

@@ -28,10 +28,18 @@ class PurpleAir(Monitor):
         entry_models.PM10: {
             'sensors': ['a', 'b'],
             'fields': {'value': 'pm1.0_atm'},
+            'allowed_stages': [entry_models.PM10.Stage.RAW],
+            'default_stage': entry_models.PM10.Stage.RAW,
         },
         entry_models.PM25: {
             'sensors': ['a', 'b'],
             'fields': {'value': 'pm2.5_atm'},
+            'allowed_stages': [
+                entry_models.PM25.Stage.RAW,
+                entry_models.PM25.Stage.CLEANED,
+                entry_models.PM25.Stage.CALIBRATED
+            ],
+            'default_stage': entry_models.PM25.Stage.CLEANED,
             'calibrations': [
                 corrections.Coloc_PM25_LinearRegression,
                 corrections.EPA_PM25_Oct2021,
@@ -40,6 +48,8 @@ class PurpleAir(Monitor):
         entry_models.PM100: {
             'sensors': ['a', 'b'],
             'fields': {'value': 'pm10.0_atm'},
+            'allowed_stages': [entry_models.PM25.Stage.RAW],
+            'default_stage': entry_models.PM25.Stage.RAW,
         },
         entry_models.Particulates: {
             'sensors': ['a', 'b'],
@@ -51,17 +61,31 @@ class PurpleAir(Monitor):
                 'particles_50um': '5.0_um_count',
                 'particles_100um': '10.0_um_count',
             },
+            'allowed_stages': [entry_models.Particulates.Stage.RAW],
+            'default_stage': entry_models.Particulates.Stage.RAW,
         },
         entry_models.Temperature: {
             'fields': {'fahrenheit': 'temperature'},
             'calibrations': [corrections.AirGradientTemperature],
+            'allowed_stages': [
+                entry_models.Temperature.Stage.RAW,
+                entry_models.Temperature.Stage.CALIBRATED
+            ],
+            'default_stage': entry_models.Temperature.Stage.RAW,
         },
         entry_models.Humidity: {
             'fields': {'value': 'humidity'},
             'calibrations': [corrections.AirGradientHumidity],
+            'allowed_stages': [
+                entry_models.Humidity.Stage.RAW,
+                entry_models.Humidity.Stage.CALIBRATED
+            ],
+            'default_stage': entry_models.Humidity.Stage.RAW,
         },
         entry_models.Pressure: {
             'fields': {'hpa': 'pressure'},
+            'allowed_stages': [entry_models.Pressure.Stage.RAW],
+            'default_stage': entry_models.Pressure.Stage.RAW,
         },
     }
 
@@ -142,6 +166,7 @@ class PurpleAir(Monitor):
                 entry = self.create_entry(
                     EntryModel=EntryModel,
                     timestamp=timestamp,
+                    stage=EntryModel.Stage.RAW
                     **data
                 )
                 if entry is not None:

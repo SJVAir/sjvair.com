@@ -1,4 +1,3 @@
-from django.contrib.gis.db import models
 from django.utils.dateparse import parse_datetime
 
 from camp.apps.entries import models as entry_models
@@ -20,12 +19,36 @@ class AirNow(Monitor):
     DEVICE = 'BAM 1022'
 
     ENTRY_CONFIG = {
-        entry_models.CO: {'fields': {'value': 'CO'}},
-        entry_models.NO2: {'fields': {'value': 'NO2'}},
-        entry_models.O3: {'fields': {'value': 'OZONE'}},
-        entry_models.PM25: {'fields': {'value': 'PM2.5'}},
-        entry_models.PM100: {'fields': {'value': 'PM10'}},
-        entry_models.SO2: {'fields': {'value': 'SO2'}},
+        entry_models.CO: {
+            'fields': {'value': 'CO'},
+            'allowed_stages': [entry_models.CO.Stage.REFERENCE],
+            'default_stage': entry_models.CO.Stage.REFERENCE,
+        },
+        entry_models.NO2: {
+            'fields': {'value': 'NO2'},
+            'allowed_stages': [entry_models.NO2.Stage.REFERENCE],
+            'default_stage': entry_models.NO2.Stage.REFERENCE,
+        },
+        entry_models.O3: {
+            'fields': {'value': 'OZONE'},
+            'allowed_stages': [entry_models.O3.Stage.REFERENCE],
+            'default_stage': entry_models.O3.Stage.REFERENCE,
+        },
+        entry_models.PM25: {
+            'fields': {'value': 'PM2.5'},
+            'allowed_stages': [entry_models.PM25.Stage.REFERENCE],
+            'default_stage': entry_models.PM25.Stage.REFERENCE,
+        },
+        entry_models.PM100: {
+            'fields': {'value': 'PM10'},
+            'allowed_stages': [entry_models.PM100.Stage.REFERENCE],
+            'default_stage': entry_models.PM100.Stage.REFERENCE,
+        },
+        entry_models.SO2: {
+            'fields': {'value': 'SO2'},
+            'allowed_stages': [entry_models.SO2.Stage.REFERENCE],
+            'default_stage': entry_models.SO2.Stage.REFERENCE,
+        },
     }
 
     ENTRY_MAP = {
