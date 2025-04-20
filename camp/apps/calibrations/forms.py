@@ -4,6 +4,14 @@ from .models import DefaultCalibration
 
 
 class DefaultCalibrationForm(forms.ModelForm):
+    '''
+    Admin form for DefaultCalibration.
+
+    - Disables `monitor_type` and `entry_type` fields on edit to prevent changing identity.
+    - Dynamically sets `calibration` choices to match valid options from ENTRY_CONFIG.
+    - Allows blank calibration (representing no calibration).
+    '''
+
     class Meta:
         model = DefaultCalibration
         fields = '__all__'
