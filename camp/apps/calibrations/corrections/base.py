@@ -1,3 +1,6 @@
+from camp.utils import classproperty
+
+
 class BaseCalibration:
     '''
     Base class for calibrating entry models.
@@ -16,6 +19,11 @@ class BaseCalibration:
 
         self.entry = entry
         self.context = entry.entry_context()
+
+
+    @classproperty
+    def name(cls):
+        return cls.__name__
 
     def run(self):
         '''
