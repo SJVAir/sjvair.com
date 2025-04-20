@@ -48,6 +48,7 @@ def get_entry_filterset(EntryModel):
     fields = {
         'sensor': ['exact'],
         'timestamp': ['date', 'exact', 'lt', 'lte', 'gt', 'gte'],
+        'stage': ['exact'],
     }
     
     if EntryModel.is_calibratable:
@@ -63,16 +64,32 @@ def get_entry_filterset(EntryModel):
             self.monitor = monitor
 
         def filter_queryset(self, queryset):
-            # Default sensor fallback
-            if 'sensor' not in self.data and self.monitor is not None:
-                default_sensor = self.monitor.get_default_sensor(EntryModel)
+            calibration = self.data.get('calibration')
+            stage = self.data.get('stage')
+            sensor = self.form.cleaned_data.get('sensor')
+
+            # Sensor fallback
+            if not sensor and self.monitor is not None:
+                default_sensor = self.monitor.get_default_sensor(self._meta.model)
                 if default_sensor:
                     queryset = queryset.filter(sensor=default_sensor)
 
-            # Default calibration fallback
-            if EntryModel.is_calibratable and 'calibration' not in self.data:
+            # If calibration is provided explicitly, force stage=calibrated
+            if calibration:
+                queryset = queryset.filter(
+                    stage=EntryModel.Stage.CALIBRATED,
+                    calibration=calibration
+                )
+
+            # If stage=calibrated is set, but no calibration, use default calibration
+            elif stage == EntryModel.Stage.CALIBRATED and EntryModel.is_calibratable:
                 calibration = self.monitor.get_default_calibration(EntryModel)
-                queryset = queryset.filter(calibration=calibration)
+                queryset = queryset.filter(stage=stage, calibration=calibration)
+
+            # If neither stage nor calibration are specified, apply default stage only
+            elif not stage and self.monitor is not None:
+                stage = self.monitor.get_default_stage(EntryModel)
+                queryset = queryset.filter(stage=stage)
 
             return super().filter_queryset(queryset)
 

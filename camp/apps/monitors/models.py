@@ -226,6 +226,9 @@ class Monitor(models.Model):
         # Final fallback to first sensor in config
         return sensors[0]
     
+    def get_default_stage(self, EntryModel):
+        return self.ENTRY_CONFIG.get(EntryModel, {}).get('default_stage')
+    
     def get_default_calibration(self, EntryModel):
         return get_default_calibration(self.__class__, EntryModel)
 
@@ -270,12 +273,14 @@ class Monitor(models.Model):
         aggregate = queryset.aggregate(average=Avg('pm25'))
         return aggregate['average']
     
-    def initiate_entry(self, EntryModel):
-        return EntryModel(
-            monitor=self,
-            position=self.position,
-            location=self.location,
-        )
+    def initiate_entry(self, EntryModel, **kwargs):
+        defaults = {
+            'monitor': self,
+            'position': self.position,
+            'location': self.location,
+        }
+        defaults.update(**kwargs)
+        return EntryModel(**defaults)
 
     def create_entry(self, EntryModel, **data):
         entry = self.initiate_entry(EntryModel)

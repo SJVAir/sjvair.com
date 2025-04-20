@@ -8,6 +8,7 @@ import pytest
 from django.conf import settings
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
+from django.utils import timezone
 
 from . import endpoints
 
@@ -171,6 +172,15 @@ class EndpointTests(TestCase):
         '''
         monitor = self.get_purple_air()
 
+        monitor.create_entry(
+            entry_models.PM25,
+            timestamp=timezone.now(),
+            value=10.0,
+            sensor='a',
+            stage=entry_models.PM25.Stage.CALIBRATED,
+            calibration='EPA_PM25_Oct2021'
+        )
+
         kwargs = {
             'monitor_id': monitor.pk,
             'entry_type': 'pm25'
@@ -200,14 +210,16 @@ class EndpointTests(TestCase):
             entry_models.PM25,
             timestamp=pacific_midnight - timedelta(minutes=1),  # 11:59pm on July 23 PST
             value=10.0,
-            sensor='a'
+            sensor='a',
+            stage=monitor.get_default_stage(entry_models.PM25),
         )
 
         entry_2 = monitor.create_entry(
             entry_models.PM25,
             timestamp=pacific_midnight + timedelta(hours=1),  # 1:00am on July 24 PST
             value=20.0,
-            sensor='a'
+            sensor='a',
+            stage=monitor.get_default_stage(entry_models.PM25),
         )
 
         kwargs = {
@@ -315,6 +327,15 @@ class EndpointTests(TestCase):
             Test that we can GET the entry list endpoint.
         '''
         monitor = self.get_purple_air()
+
+        monitor.create_entry(
+            entry_models.PM25,
+            timestamp=timezone.now(),
+            value=10.0,
+            sensor='a',
+            stage=entry_models.PM25.Stage.CALIBRATED,
+            calibration='EPA_PM25_Oct2021'
+        )
 
         kwargs = {
             'monitor_id': monitor.pk,

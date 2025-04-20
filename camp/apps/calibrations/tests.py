@@ -25,6 +25,7 @@ class TestEPAPM25Calibration(TestCase):
             value=Decimal('45.0'),
             position=self.monitor.position,
             location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW
         )
 
         pm25 = entry_models.PM25.objects.create(
@@ -34,6 +35,7 @@ class TestEPAPM25Calibration(TestCase):
             value=Decimal('15.0'),
             position=self.monitor.position,
             location=self.monitor.location,
+            stage=entry_models.PM25.Stage.CLEANED
         )
 
         correction = EPA_PM25_Oct2021(pm25)
