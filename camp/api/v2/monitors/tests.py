@@ -25,7 +25,10 @@ monitor_detail = endpoints.MonitorDetail.as_view()
 entry_list = endpoints.EntryList.as_view()
 entry_csv = endpoints.EntryCSV.as_view()
 
-pytestmark = pytest.mark.usefixtures('purpleair_monitor')
+pytestmark = [
+    pytest.mark.usefixtures('purpleair_monitor'),
+    pytest.mark.django_db(transaction=True),
+]
 
 
 class EndpointTests(TestCase):
