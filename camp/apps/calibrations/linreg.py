@@ -73,7 +73,7 @@ class LinearRegressions:
                 sensor=self.calibrator.colocated.default_sensor,
                 timestamp__range=(start_date, self.end_date),
             )
-            .exclude(pm25==99999)
+            .exclude(pm25__gte=1500)
             .annotate(**self.coefs_computed)
             .values('timestamp', *self.coefs)
         )
