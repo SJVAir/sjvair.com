@@ -25,7 +25,7 @@ class BaseCleaner(ABC):
         return cls.__name__
 
     @abstractmethod
-    def apply(self):
+    def clean(self):
         '''
         Apply cleaning logic to a raw entry.
         Must return a new entry instance with stage='clean' and origin=raw_entry,

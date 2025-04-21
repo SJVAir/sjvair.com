@@ -1,8 +1,12 @@
+from decimal import Decimal
+
 from camp.apps.entries.models import PM25
 from .base import BaseCleaner
 
+__all__ = ['PM25LowCostSensor']
 
-class PM25LowCostSensorCleaner(BaseCleaner):
+
+class PM25LowCostSensor(BaseCleaner):
     '''
     Cleans PM2.5 entries from low-cost dual-sensor monitors using
     spike smoothing and repetition filtering.
@@ -23,15 +27,21 @@ class PM25LowCostSensorCleaner(BaseCleaner):
         if self.is_repeated():
             return None  # Filter out repeated sequences
 
-        cleaned_value = self.entry.value()
-
-        prev = entry.get_previous_entry()
-        next_ = entry.get_next_entry()
+        cleaned_value = self.entry.value
+        prev = self.entry.get_previous_entry()
+        next_ = self.entry.get_next_entry()
 
         if prev and next_:
-            cleaned_value = self.apply_spike_logic(entry.value, prev.value, next_.value)
+            cleaned_value = self.apply_spike_logic(
+                current_value=self.entry.value,
+                prev_value=prev.value,
+                next_value=next_.value,
+            )
 
-        return entry.clone(
+        # If the cleaned value is less than 0, set it to 0.
+        cleaned_value = max(cleaned_value, 0)
+
+        return self.entry.clone(
             value=cleaned_value,
             stage=PM25.Stage.CLEANED,
         )

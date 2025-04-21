@@ -229,6 +229,17 @@ class Monitor(models.Model):
     def get_default_stage(self, EntryModel):
         return self.ENTRY_CONFIG.get(EntryModel, {}).get('default_stage')
     
+    def get_initial_stage(self, EntryModel):
+        '''
+        Returns the first allowed stage for this entry type on this monitor.
+        Used when creating new raw entries.
+
+        Falls back to 'raw' if not explicitly configured.
+        '''
+        for stage in self.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages'):
+            return stage
+        return EntryModel.Stage.RAW
+    
     def get_default_calibration(self, EntryModel):
         return get_default_calibration(self.__class__, EntryModel)
 
@@ -273,17 +284,18 @@ class Monitor(models.Model):
         aggregate = queryset.aggregate(average=Avg('pm25'))
         return aggregate['average']
     
-    def initiate_entry(self, EntryModel, **kwargs):
+    def initialize_entry(self, EntryModel, **kwargs):
         defaults = {
             'monitor': self,
             'position': self.position,
             'location': self.location,
+            'stage': self.get_initial_stage(EntryModel)
         }
         defaults.update(**kwargs)
         return EntryModel(**defaults)
 
     def create_entry(self, EntryModel, **data):
-        entry = self.initiate_entry(EntryModel)
+        entry = self.initialize_entry(EntryModel)
 
         for key, value in data.items():
             setattr(entry, key, value)
@@ -292,6 +304,33 @@ class Monitor(models.Model):
             entry.save()
             self.update_latest_entry(entry)
             return entry
+        
+    def clean_entries(self, entries):
+        cleaned_entries = []
+        for entry in entries:
+            if cleaned := self.clean_entry(entry):
+                cleaned_entries.append(cleaned)
+        return cleaned_entries
+        
+    def clean_entry(self, entry):
+        config = self.ENTRY_CONFIG.get(entry.__class__)
+        Cleaner = config.get('cleaner')
+        if not Cleaner:
+            return None
+
+        # Skip if not the initial stage (raw)
+        initial_stage = self.get_initial_stage(entry.__class__)
+        if entry.stage != initial_stage:
+            return None
+
+        cleaned = Cleaner(entry).clean()
+
+        # Sanity check
+        if cleaned and cleaned.value is not None:
+            cleaned.save()
+            return cleaned
+
+        return None
         
     def calibrate_entries(self, entries):
         for entry in entries:
@@ -302,6 +341,12 @@ class Monitor(models.Model):
             for calibrator in config.get('calibrations', []):
                 if calibrated := calibrator(entry).run():
                     self.update_latest_entry(calibrated)
+
+    def calibrate_entry(self, entry):
+        config = self.ENTRY_CONFIG.get(entry.__class__, {})
+        for calibrator in config.get('calibrations', []):
+            if calibrated := calibrator(entry).run():
+                self.update_latest_entry(calibrated)
 
     def update_latest_entry(self, entry):
         # Skip if not the default sensor

@@ -140,8 +140,8 @@ class BaseEntry(models.Model):
     def validation_check(self):
         lookup = {
             'monitor': self.monitor,
-            'sensor': self.sensor,
             'timestamp': self.timestamp,
+            'sensor': self.sensor,
             'stage': self.stage,
         }
 
@@ -162,10 +162,13 @@ class BaseEntry(models.Model):
             'stage': self.stage,
         }
 
-        if self.is_calibrated and self.stage == self.Stage.CALIBRATED:
+        if self.is_calibratable and self.stage == self.Stage.CALIBRATED:
             lookup['calibration'] = self.calibration
 
         return self.__class__.objects.filter(**lookup).order_by('timestamp')
+    
+    def get_next_entry(self):
+        return self.get_next_entries().first()
     
     def get_previous_entries(self):
         lookup = {
@@ -175,13 +178,10 @@ class BaseEntry(models.Model):
             'stage': self.stage,
         }
 
-        if self.is_calibrated and self.stage == self.Stage.CALIBRATED:
+        if self.is_calibratable and self.stage == self.Stage.CALIBRATED:
             lookup['calibration'] = self.calibration
 
         return self.__class__.objects.filter(**lookup).order_by('-timestamp')
-    
-    def get_next_entry(self):
-        return self.get_next_entries().first()
     
     def get_previous_entry(self):
         return self.get_previous_entries().first()
@@ -190,7 +190,7 @@ class BaseEntry(models.Model):
 class BaseCalibratedEntry(BaseEntry):
     is_calibratable = True
     min_valid_value = Decimal('0.0')
-    max_valid_value = Decimal('1000.0')
+    max_valid_value = Decimal('1200.0')
 
     calibration = models.CharField(max_length=50, blank=True, default='', db_index=True)
     calibration_data = models.JSONField(default=dict)
@@ -224,7 +224,8 @@ class BaseCalibratedEntry(BaseEntry):
             monitor=self.monitor,
             timestamp=self.timestamp,
             sensor=self.sensor,
-        ).exclude(calibration='')
+            stage=self.Stage.CALIBRATED
+        )
     
     def get_raw_entry(self):
         '''
@@ -235,27 +236,36 @@ class BaseCalibratedEntry(BaseEntry):
             monitor=self.monitor,
             timestamp=self.timestamp,
             sensor=self.sensor,
-            calibration='',
+            stage=self.Stage.RAW
         ).first()
     
+    def get_related_entries(self):
+        '''
+        Returns a queryset of entries from the same monitor, timestamp, and sensor.
+        This will include the raw, cleaned, and calibrated versions.
+        '''
+        return self.__class__.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.timestamp,
+            sensor=self.sensor,
+        )
+
     def get_readings(self):
         '''
-        Returns a dictionary of all values recorded for this entry,
-        including the raw value and any calibrated versions.
+        Returns a dictionary of all values recorded for this entry.
 
-        Keys are:
-            - 'raw' for the original value
-            - calibration name for calibrated values
+        Keys:
+            - 'raw' for the original unmodified value
+            - 'cleaned' for the cleaned version (if any)
+            - calibration name for each calibrated version
         '''
-        data = {}
+        readings = {}
 
-        if raw := self.get_raw_entry():
-            data['raw'] = raw.declared_data()
+        for entry in self.get_related_entries():
+            key = entry.calibration if entry.stage == entry.Stage.CALIBRATED else entry.stage
+            readings[key] = entry.declared_data()
 
-        for entry in self.get_calibrated_entries():
-            data[entry.calibration] = entry.declared_data()
-
-        return data
+        return readings
 
 
 # Particulate Matter

@@ -20,10 +20,9 @@ class AirGradientTemperature(BaseCalibration):
             return
         
         if value := self.get_correction(self.context['temperature_c']):
-            calibrated = self.prepare_calibrated_entry(value=value)
-            calibrated.value = value
-            calibrated.save()
-            return calibrated      
+            if calibrated := self.prepare_calibrated_entry(value=value):
+                calibrated.save()
+                return calibrated
     
     def get_correction(self, celsius):
         if celsius < 10:

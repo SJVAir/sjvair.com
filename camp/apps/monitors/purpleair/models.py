@@ -6,7 +6,7 @@ from datetime import timedelta
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 
-from camp.apps.calibrations import corrections
+from camp.apps.calibrations import corrections, cleaners
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor, Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
@@ -40,6 +40,7 @@ class PurpleAir(Monitor):
                 entry_models.PM25.Stage.CALIBRATED
             ],
             'default_stage': entry_models.PM25.Stage.CLEANED,
+            'cleaner': cleaners.PM25LowCostSensor,
             'calibrations': [
                 corrections.Coloc_PM25_LinearRegression,
                 corrections.EPA_PM25_Oct2021,
@@ -176,8 +177,33 @@ class PurpleAir(Monitor):
         return entries
 
     def create_entry(self, EntryModel, **data):
-        if data and all(map(lambda x: x is not None, data.values())):
-            return super().create_entry(EntryModel, **data)
+        if not data or any(v is None for v in data.values()):
+            return
+        
+        entry = super().create_entry(EntryModel, **data)
+
+        if entry.stage == self.get_initial_stage(EntryModel):
+            # Only clean entries if cleaner is defined
+            config = self.ENTRY_CONFIG.get(EntryModel, {})
+            Cleaner = config.get('cleaner')
+            if Cleaner:
+                # Cleaning requires the next entry, which means we
+                # can only clean the previous entry.
+                previous = entry.get_previous_entry()
+
+                if previous is not None:
+                    cleaned = Cleaner(previous).clean()
+
+                    if cleaned and cleaned.value is not None:
+                        cleaned.save()
+
+                        # Then calibrate the cleaned entry
+                        if EntryModel.is_calibratable:
+                            for Calibration in config.get('calibrations', []):
+                                calibrated = Calibration(cleaned).run()
+                                if calibrated and calibrated.value is not None:
+                                    calibrated.save()
+        return entry
 
     # Legacy
     def create_entries_legacy(self, payload):

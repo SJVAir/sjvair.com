@@ -22,9 +22,9 @@ class EPA_PM25_Oct2021(BaseCalibration):
 
     def apply(self):
         if value := self.get_correction(pm25=self.context['pm25'], rh=self.context['humidity']):
-            calibrated = self.prepare_calibrated_entry(value=value)
-            calibrated.save()
-            return calibrated
+            if calibrated := self.prepare_calibrated_entry(value=value):
+                calibrated.save()
+                return calibrated
     
     def get_correction(self, pm25, rh):
         '''
@@ -99,9 +99,9 @@ class Coloc_PM25_LinearRegression(BaseCalibration):
 
     def apply(self):
         if value := self.get_correction():
-            calibrated = self.prepare_calibrated_entry(value=value)
-            calibrated.save()
-            return calibrated
+            if calibrated := self.prepare_calibrated_entry(value=value):
+                calibrated.save()
+                return calibrated
 
     def get_correction(self):
         if self.entry.value < self.min_required_value:

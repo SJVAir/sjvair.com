@@ -43,7 +43,7 @@ def create_hourly_data_for_monitor(monitor, start_time=None):
                     EntryModel,
                     timestamp=timestamp,
                     sensor=sensor,
-                    stage=monitor.get_default_stage(EntryModel),
+                    stage=monitor.get_initial_stage(EntryModel),
                     **fields
                 )
                 
