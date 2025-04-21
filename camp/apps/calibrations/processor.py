@@ -45,7 +45,7 @@ class BaseEntryProcessor(ABC):
         '''
         return self.entry.clone(**kwargs)
 
-    def run(self, save=True):
+    def run(self, commit=True):
         '''
         Runs the processor and returns the new entry, or None if no value is produced.
         '''
@@ -54,7 +54,7 @@ class BaseEntryProcessor(ABC):
         
         processed = self.process()
         if processed is not None and processed.validation_check():
-            if save:
+            if commit:
                 processed.save()
             return processed
         return None

@@ -12,11 +12,12 @@ def create_hourly_data_for_monitor(monitor, start_time=None):
     if start_time is None:
         start_time = datetime.now(tz=pytz.UTC) - timedelta(hours=1, minutes=1)
 
-    entry_config = monitor.ENTRY_CONFIG
+    entries = []
     for i in range(60):  # One per minute
+        entries = []
         timestamp = start_time + timedelta(minutes=i)
 
-        for EntryModel, config in entry_config.items():
+        for EntryModel, config in monitor.ENTRY_CONFIG.items():
             sensors = config.get('sensors', [''])  # Default to empty string sensor
             for sensor in sensors:
                 fields = {}
@@ -37,10 +38,17 @@ def create_hourly_data_for_monitor(monitor, start_time=None):
                         fields[field] = generate_sensor_value(100 * (1 + random.random()), 20)
                     else:
                         fields[field] = generate_sensor_value(5, 2)
-                monitor.create_entry(
-                    EntryModel,
+
+                entry = EntryModel.objects.create(
+                    monitor=monitor,
+                    location=monitor.location,
+                    position=monitor.position,
                     timestamp=timestamp,
                     sensor=sensor,
-                    stage=monitor.get_initial_stage(EntryModel),
+                    stage=monitor.get_default_stage(EntryModel),
                     **fields
                 )
+                entries.append(entry)
+    
+    cleaned = monitor.clean_entries(entries)
+    calibrated = monitor.calibrate_entries(cleaned)

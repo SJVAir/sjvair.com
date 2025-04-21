@@ -38,3 +38,7 @@ def purpleair_monitor(django_db_setup, django_db_blocker):
         call_command('loaddata', 'purple-air.yaml', verbosity=0)
         monitor = PurpleAir.objects.get(purple_id=8892)
         create_hourly_data_for_monitor(monitor)
+        try:
+            yield
+        finally:
+            monitor.delete()
