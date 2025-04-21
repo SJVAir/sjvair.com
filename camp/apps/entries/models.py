@@ -185,6 +185,32 @@ class BaseEntry(models.Model):
     
     def get_previous_entry(self):
         return self.get_previous_entries().first()
+    
+    def get_sibling_entries(self):
+        '''
+        Returns a queryset of entries recorded at the same timestamp and stage,
+        with the same monitor and entry type, but from a different sensor.
+        Only applicable to entry types that support multiple sensors.
+        '''
+        if not self.sensor:
+            return self.__class__.objects.none()
+
+        config = self.monitor.ENTRY_CONFIG.get(self.__class__, {})
+        sensors = config.get('sensors')
+        if not sensors or len(sensors) < 2:
+            return self.__class__.objects.none()
+
+        lookup = {
+            'monitor': self.monitor,
+            'timestamp': self.timestamp,
+            'stage': self.stage,
+            'sensor__in': sensors,
+        }
+
+        if self.is_calibratable and self.stage == self.Stage.CALIBRATED:
+            lookup['calibration'] = self.calibration
+
+        return self.__class__.objects.filter(**lookup).exclude(sensor=self.sensor)
 
 
 class BaseCalibratedEntry(BaseEntry):

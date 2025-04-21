@@ -26,14 +26,16 @@ class PM25LowCostSensor(BaseCleaner):
 
         if self.is_repeated():
             return None  # Filter out repeated sequences
+        
+        cleaned_value = self.compute_ab_adjusted_value()
 
-        cleaned_value = self.entry.value
+        # cleaned_value = self.entry.value
         prev = self.entry.get_previous_entry()
         next_ = self.entry.get_next_entry()
 
         if prev and next_:
             cleaned_value = self.apply_spike_logic(
-                current_value=self.entry.value,
+                current_value=cleaned_value,
                 prev_value=prev.value,
                 next_value=next_.value,
             )
@@ -73,6 +75,34 @@ class PM25LowCostSensor(BaseCleaner):
         repeat_count += sum(1 for v in next_values if v == value)
 
         return repeat_count > max_repeat
+    
+    def compute_ab_adjusted_value(self) -> Decimal:
+        '''
+        Computes cleaned value using a/b sensor logic.
+
+        - If both A and B exist:
+            - use average if variance_pct ≤ 10
+            - use min(a, b) if variance_pct > 10
+        - If only one exists, use that value
+        - If neither, return self.entry.value
+        '''
+        current_value = self.entry.value
+        sibling = self.entry.get_sibling_entries().first()
+
+        if not sibling:
+            return current_value
+
+        a = self.entry.value
+        b = sibling.value
+
+        average = (a + b) / 2
+        variance = ((a - b) ** 2) / 2
+        variance_pct = (variance / average) * 100 if average != 0 else Decimal(0)
+
+        if variance_pct <= 10:
+            return average
+        else:
+            return min(a, b)
 
     def apply_spike_logic(self, current_value, prev_value, next_value) -> Decimal:
         '''

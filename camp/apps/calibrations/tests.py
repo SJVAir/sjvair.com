@@ -15,7 +15,7 @@ class CalibrationTests(TestCase):
     def setUp(self):
         self.monitor = PurpleAir.objects.get(purple_id=8892)
 
-    def test_pm25_lcs_cleaner(self):
+    def test_pm25_lcs_cleaner_spike(self):
         base_time = timezone.now() - timedelta(hours=1)
 
         # Create a spike-y raw time series
@@ -49,6 +49,78 @@ class CalibrationTests(TestCase):
             raw_entries[spike_idx + 1].value
         ])
         assert cleaned.value < spike.value, 'Spike was not reduced'
+
+    def test_pm25_lcs_cleaner_ab_high_variance(self):
+        base_time = timezone.now() - timedelta(minutes=5)
+
+        ts = base_time.replace(second=0, microsecond=0)
+
+        # Sensor 'a' has a high value, 'b' has a low value → high variance
+        a_entry = entry_models.PM25.objects.create(
+            monitor=self.monitor,
+            timestamp=ts,
+            sensor='a',
+            value=Decimal('50.0'),
+            position=self.monitor.position,
+            location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW
+        )
+        b_entry = entry_models.PM25.objects.create(
+            monitor=self.monitor,
+            timestamp=ts,
+            sensor='b',
+            value=Decimal('10.0'),
+            position=self.monitor.position,
+            location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW
+        )
+
+        a_entry.refresh_from_db()
+        b_entry.refresh_from_db()
+
+        # Clean the 'a' entry
+        cleaner = cleaners.PM25LowCostSensor(a_entry)
+        cleaned = cleaner.run()
+
+        assert cleaned is not None
+        assert cleaned.stage == entry_models.PM25.Stage.CLEANED
+
+        # Variance pct = ((50-10)^2 / 2) / 30 * 100 = ~26.6%
+        # Should return the **lower** value (min of a/b)
+        assert cleaned.value == b_entry.value
+
+    def test_pm25_lcs_cleaner_ab_low_variance(self):
+        base_time = timezone.now() - timedelta(minutes=5)
+        ts = base_time.replace(second=0, microsecond=0)
+
+        a_entry = entry_models.PM25.objects.create(
+            monitor=self.monitor,
+            timestamp=ts,
+            sensor='a',
+            value=Decimal('25.0'),
+            position=self.monitor.position,
+            location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW
+        )
+        b_entry = entry_models.PM25.objects.create(
+            monitor=self.monitor,
+            timestamp=ts,
+            sensor='b',
+            value=Decimal('26.0'),
+            position=self.monitor.position,
+            location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW
+        )
+
+        a_entry.refresh_from_db()
+        b_entry.refresh_from_db()
+
+        cleaner = cleaners.PM25LowCostSensor(a_entry)
+        cleaned = cleaner.run()
+
+        assert cleaned is not None
+        expected = (a_entry.value + b_entry.value) / 2
+        assert cleaned.value == expected
 
     def test_epa_pm25_calibration(self):
         now = timezone.now()
