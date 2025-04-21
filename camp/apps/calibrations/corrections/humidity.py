@@ -12,14 +12,13 @@ class AirGradientHumidity(BaseCalibration):
         https://www.airgradient.com/documentation/calibration-algorithms/
     '''
 
-    model_class = Humidity
+    entry_model = Humidity
     requires = ['humidity']
-        
-    def apply(self):
-        if value := self.get_correction(self.context['humidity']):
-            if calibrated := self.prepare_calibrated_entry(value=value):
-                calibrated.save()
-                return calibrated
+            
+    def process(self):
+        value = self.get_correction(self.context['humidity'])
+        if value is not None:
+            return self.build_entry(value=value)
     
     def get_correction(self, rh):
         return min(rh * D('1.259') + D('7.34'), D('100'))

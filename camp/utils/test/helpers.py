@@ -10,18 +10,17 @@ def generate_sensor_value(mean, variance):
 
 def create_hourly_data_for_monitor(monitor, start_time=None):
     if start_time is None:
-        start_time = datetime.now(tz=pytz.UTC) - timedelta(hours=1)
+        start_time = datetime.now(tz=pytz.UTC) - timedelta(hours=1, minutes=1)
 
     entry_config = monitor.ENTRY_CONFIG
     for i in range(60):  # One per minute
-        entries = []
         timestamp = start_time + timedelta(minutes=i)
 
         for EntryModel, config in entry_config.items():
             sensors = config.get('sensors', [''])  # Default to empty string sensor
             for sensor in sensors:
                 fields = {}
-                for field, api_field in config.get('fields', {}).items():
+                for field in config.get('fields', {}).keys():
                     if 'pm25' in field:
                         fields[field] = generate_sensor_value(15, 5)
                     elif 'pm10' in field:
@@ -38,15 +37,10 @@ def create_hourly_data_for_monitor(monitor, start_time=None):
                         fields[field] = generate_sensor_value(100 * (1 + random.random()), 20)
                     else:
                         fields[field] = generate_sensor_value(5, 2)
-
-                entry = monitor.create_entry(
+                monitor.create_entry(
                     EntryModel,
                     timestamp=timestamp,
                     sensor=sensor,
                     stage=monitor.get_initial_stage(EntryModel),
                     **fields
                 )
-                
-                entries.append(entry)
-
-        monitor.calibrate_entries(entries)

@@ -12,17 +12,16 @@ class AirGradientTemperature(BaseCalibration):
     https://www.airgradient.com/documentation/calibration-algorithms/
     '''
 
-    model_class = Temperature
+    entry_model = Temperature
     requires = ['temperature_c']
 
-    def apply(self):
+    def process(self):
         if self.entry.monitor.location == self.entry.monitor.LOCATION.inside:
             return
-        
-        if value := self.get_correction(self.context['temperature_c']):
-            if calibrated := self.prepare_calibrated_entry(value=value):
-                calibrated.save()
-                return calibrated
+
+        value = self.get_correction(self.context['temperature_c'])
+        if value is not None:
+            return self.build_entry(value=value)
     
     def get_correction(self, celsius):
         if celsius < 10:

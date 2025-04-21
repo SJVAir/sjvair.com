@@ -44,5 +44,6 @@ class TestEPAPM25Calibration(TestCase):
         calibrated = correction.run()
         assert calibrated is not None
         assert calibrated.value != pm25.value
+        assert calibrated.stage == entry_models.PM25.Stage.CALIBRATED
         assert calibrated.calibration == 'EPA_PM25_Oct2021'
         assert calibrated.monitor == self.monitor
