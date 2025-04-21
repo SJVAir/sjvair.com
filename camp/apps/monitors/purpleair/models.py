@@ -167,42 +167,25 @@ class PurpleAir(Monitor):
                 entry = self.create_entry(
                     EntryModel=EntryModel,
                     timestamp=timestamp,
-                    stage=EntryModel.Stage.RAW,
                     **data
                 )
                 if entry is not None:
                     entries.append(entry)
-
-        self.calibrate_entries(entries)
         return entries
-
+    
     def create_entry(self, EntryModel, **data):
         if not data or any(v is None for v in data.values()):
             return
-        
+
         entry = super().create_entry(EntryModel, **data)
 
-        if entry.stage == self.get_initial_stage(EntryModel):
-            # Only clean entries if cleaner is defined
-            config = self.ENTRY_CONFIG.get(EntryModel, {})
-            Cleaner = config.get('cleaner')
-            if Cleaner:
-                # Cleaning requires the next entry, which means we
-                # can only clean the previous entry.
-                previous = entry.get_previous_entry()
+        # Only run cleaning pipeline on entries at the initial stage (typically RAW)
+        if entry and entry.stage == self.get_initial_stage(EntryModel):
+            if previous := entry.get_previous_entry():
+                if cleaned := self.clean_entry(previous):
+                    self.update_latest_entry(cleaned)
+                    self.calibrate_entry(cleaned)
 
-                if previous is not None:
-                    cleaned = Cleaner(previous).clean()
-
-                    if cleaned and cleaned.value is not None:
-                        cleaned.save()
-
-                        # Then calibrate the cleaned entry
-                        if EntryModel.is_calibratable:
-                            for Calibration in config.get('calibrations', []):
-                                calibrated = Calibration(cleaned).run()
-                                if calibrated and calibrated.value is not None:
-                                    calibrated.save()
         return entry
 
     # Legacy

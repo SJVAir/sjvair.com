@@ -172,7 +172,33 @@ class Monitor(models.Model):
 
     def get_device(self):
         return self.device or self.DEVICE or self._meta.verbose_name
-    
+
+    @property
+    def data_providers(self):
+        providers = copy.deepcopy(self.DATA_PROVIDERS)
+        if self.data_provider:
+            providers.append({'name': self.data_provider})
+            if self.data_provider_url:
+                providers[-1]['url'] = self.data_provider_url
+        return providers
+
+    @property
+    def data_source(self):
+        return self.DATA_SOURCE
+
+    @property
+    def is_active(self):
+        if not self.latest_id:
+            return False
+        now = timezone.now()
+        cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
+        return (now - self.latest.timestamp) < cutoff
+
+    @cached_property
+    def health_grade(self):
+        if self.current_health_id:
+            return self.current_health.grade
+        
     def set_default_sensor(self, EntryModel, sensor):
         config = self.ENTRY_CONFIG.get(EntryModel)
         if config is None:
@@ -243,46 +269,8 @@ class Monitor(models.Model):
     def get_default_calibration(self, EntryModel):
         return get_default_calibration(self.__class__, EntryModel)
 
-    @property
-    def data_providers(self):
-        providers = copy.deepcopy(self.DATA_PROVIDERS)
-        if self.data_provider:
-            providers.append({'name': self.data_provider})
-            if self.data_provider_url:
-                providers[-1]['url'] = self.data_provider_url
-        return providers
-
-    @property
-    def data_source(self):
-        return self.DATA_SOURCE
-
-    @property
-    def is_active(self):
-        if not self.latest_id:
-            return False
-        now = timezone.now()
-        cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
-        return (now - self.latest.timestamp) < cutoff
-
-    @cached_property
-    def health_grade(self):
-        if self.current_health_id:
-            return self.current_health.grade
-
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'
-
-    def get_current_pm25_average(self, minutes):
-        end_time = timezone.now()
-        start_time = end_time - timedelta(minutes=minutes)
-        queryset = self.entries.filter(
-            timestamp__range=(start_time, end_time),
-            sensor=self.default_sensor,
-            pm25__isnull=False,
-        )
-
-        aggregate = queryset.aggregate(average=Avg('pm25'))
-        return aggregate['average']
     
     def initialize_entry(self, EntryModel, **kwargs):
         defaults = {
@@ -318,31 +306,19 @@ class Monitor(models.Model):
         if not Cleaner:
             return None
 
-        # Skip if not the initial stage (raw)
-        initial_stage = self.get_initial_stage(entry.__class__)
-        if entry.stage != initial_stage:
-            return None
-
-        cleaned = Cleaner(entry).clean()
-
-        # Sanity check
-        if cleaned and cleaned.value is not None:
-            cleaned.save()
-            return cleaned
-
-        return None
+        return Cleaner(entry).run()
         
     def calibrate_entries(self, entries):
+        calibrated_entries = []
         for entry in entries:
-            if not entry.is_calibratable:
-                continue
-
-            config = self.ENTRY_CONFIG.get(entry.__class__, {})
-            for calibrator in config.get('calibrations', []):
-                if calibrated := calibrator(entry).run():
-                    self.update_latest_entry(calibrated)
+            if calibrated := self.calibrate_entry(entry):
+                calibrated_entries.append(calibrated)
+        return calibrated_entries
 
     def calibrate_entry(self, entry):
+        if not entry.is_calibratable:
+            return
+        
         config = self.ENTRY_CONFIG.get(entry.__class__, {})
         for calibrator in config.get('calibrations', []):
             if calibrated := calibrator(entry).run():
@@ -353,6 +329,13 @@ class Monitor(models.Model):
         if entry.sensor != self.get_default_sensor(entry.__class__):
             return
         
+        allowed_stages = (
+            self.get_default_stage(entry.__class__),
+            entry.Stage.CALIBRATED
+        )
+        if entry.stage not in allowed_stages:
+            return
+
         # Skip if not the default calibration
         if entry.is_calibratable:
             if entry.calibration != self.get_default_calibration(entry.__class__):
@@ -409,9 +392,15 @@ class Monitor(models.Model):
             data[latest.entry_type] = payload
 
         return data
-        
+    
+    def save(self, *args, **kwargs):
+        if self.position:
+            # TODO: Can we do this only when self.position is updated?
+            self.county = County.lookup(self.position)
+        super().save(*args, **kwargs)
 
     # Legacy
+
     def create_entry_legacy(self, payload, sensor=None):
         entry = Entry(
             monitor=self,
@@ -443,8 +432,19 @@ class Monitor(models.Model):
             entry.calibrate_pm25()
 
         return entry
+    
+    def get_current_pm25_average(self, minutes):
+        end_time = timezone.now()
+        start_time = end_time - timedelta(minutes=minutes)
+        queryset = self.entries.filter(
+            timestamp__range=(start_time, end_time),
+            sensor=self.default_sensor,
+            pm25__isnull=False,
+        )
 
-    # Legacy
+        aggregate = queryset.aggregate(average=Avg('pm25'))
+        return aggregate['average']
+    
     def check_latest(self, entry):
         if self.latest_id:
             is_latest = make_aware(entry.timestamp) > self.latest.timestamp
@@ -453,12 +453,6 @@ class Monitor(models.Model):
 
         if entry.sensor == self.default_sensor and is_latest:
             self.latest = entry
-
-    def save(self, *args, **kwargs):
-        if self.position:
-            # TODO: Can we do this only when self.position is updated?
-            self.county = County.lookup(self.position)
-        super().save(*args, **kwargs)
 
 
 # Deprecated (Old and Busted)

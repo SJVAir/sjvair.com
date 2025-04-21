@@ -17,14 +17,12 @@ class EPA_PM25_Oct2021(BaseCalibration):
     https://document.airnow.gov/airnow-fire-and-smoke-map-questions-and-answers.pdf
     '''
     requires = ['pm25', 'humidity']
-    model_class = PM25
-    
+    entry_model = PM25
 
-    def apply(self):
-        if value := self.get_correction(pm25=self.context['pm25'], rh=self.context['humidity']):
-            if calibrated := self.prepare_calibrated_entry(value=value):
-                calibrated.save()
-                return calibrated
+    def process(self):
+        value = self.get_correction(pm25=self.context['pm25'], rh=self.context['humidity'])
+        if value is not None:
+            return self.build_entry(value=value)
     
     def get_correction(self, pm25, rh):
         '''
@@ -93,15 +91,14 @@ class EPA_PM25_Oct2021(BaseCalibration):
 
 
 class Coloc_PM25_LinearRegression(BaseCalibration):
-    model_class = PM25
+    entry_model = PM25
     requires = ['pm25']
     min_required_value = D('5.0')
-
-    def apply(self):
-        if value := self.get_correction():
-            if calibrated := self.prepare_calibrated_entry(value=value):
-                calibrated.save()
-                return calibrated
+            
+    def process(self):
+        value = self.get_correction()
+        if value is not None:
+            return self.build_entry(value=value)
 
     def get_correction(self):
         if self.entry.value < self.min_required_value:

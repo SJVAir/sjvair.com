@@ -15,9 +15,9 @@ class PM25LowCostSensor(BaseCleaner):
     should be discarded as invalid or repeated.
     '''
 
-    model_class = PM25
+    entry_model = PM25
 
-    def clean(self):
+    def process(self):
         if (self.entry.value is None
             or self.entry.value < -15
             or self.entry.value > 3000
@@ -41,10 +41,7 @@ class PM25LowCostSensor(BaseCleaner):
         # If the cleaned value is less than 0, set it to 0.
         cleaned_value = max(cleaned_value, 0)
 
-        return self.entry.clone(
-            value=cleaned_value,
-            stage=PM25.Stage.CLEANED,
-        )
+        return self.build_entry(value=cleaned_value)
 
     def is_repeated(self, max_repeat=5) -> bool:
         '''
