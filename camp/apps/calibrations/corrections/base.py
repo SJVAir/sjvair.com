@@ -38,7 +38,7 @@ class BaseCalibration(ABC):
     
     def is_valid(self) -> bool:
         '''
-        Returns True iof the entry can be properly calibrated.
+        Returns True if the entry can be properly calibrated.
         '''
         return self.entry.is_valid_value() and self.has_required_context()
 

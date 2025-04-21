@@ -17,10 +17,9 @@ class AirGradientHumidity(BaseCalibration):
         
     def apply(self):
         if value := self.get_correction(self.context['humidity']):
-            calibrated = self.prepare_calibrated_entry(value=value)
-            calibrated.value = value
-            calibrated.save()
-            return calibrated
+            if calibrated := self.prepare_calibrated_entry(value=value):
+                calibrated.save()
+                return calibrated
     
     def get_correction(self, rh):
         return min(rh * D('1.259') + D('7.34'), D('100'))
