@@ -4,7 +4,11 @@ from django.utils.functional import cached_property
 
 from camp.utils import classproperty
 
-class BaseEntryProcessor(ABC):
+
+__all__ = ['BaseProcessor', 'BaseCalibration', 'BaseCleaner']
+
+
+class BaseProcessor(ABC):
     '''
     Abstract base class for entry processing operations, such as cleaning or calibration.
     Subclasses should implement the `process()` method to return a new BaseEntry instance.
@@ -13,6 +17,7 @@ class BaseEntryProcessor(ABC):
     entry_model = None
     required_context = []
     required_stage = None
+    next_stage = None
 
     def __init__(self, entry):
         if self.entry_model is not None:
@@ -73,7 +78,11 @@ class BaseEntryProcessor(ABC):
         '''
         Clones the current entry and applies additional fields.
         '''
-        return self.entry.clone(**kwargs)
+        defaults = {'calibration': self.name}
+        if self.next_stage:
+            defaults['stage'] = self.next_stage
+        defaults.update(**kwargs)
+        return self.entry.clone(**defaults)
 
     def run(self, commit=True):
         '''
