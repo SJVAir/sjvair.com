@@ -1,25 +1,27 @@
 from decimal import Decimal as D
 
 from camp.apps.entries.models import Temperature
-from camp.apps.calibrations.corrections.base import BaseCalibration
+
+from .base import BaseProcessor
 
 __all__ = ['AirGradientTemperature']
 
 
-class AirGradientTemperature(BaseCalibration):
+class AirGradientTemperature(BaseProcessor):
     '''
     AirGradient Temperature Correction Equation
     https://www.airgradient.com/documentation/calibration-algorithms/
     '''
 
     entry_model = Temperature
-    requires = ['temperature_c']
+    required_stage = Temperature.Stage.RAW
+    next_stage = Temperature.Stage.CALIBRATED
 
     def process(self):
         if self.entry.monitor.location == self.entry.monitor.LOCATION.inside:
             return
 
-        value = self.get_correction(self.context['temperature_c'])
+        value = self.get_correction(self.entry.celsius)
         if value is not None:
             return self.build_entry(value=value)
     

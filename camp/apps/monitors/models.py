@@ -292,37 +292,21 @@ class Monitor(models.Model):
             entry.save()
             self.update_latest_entry(entry)
             return entry
-        
-    def clean_entries(self, entries):
-        cleaned_entries = []
-        for entry in entries:
-            if cleaned := self.clean_entry(entry):
-                cleaned_entries.append(cleaned)
-        return cleaned_entries
-        
-    def clean_entry(self, entry):
-        config = self.ENTRY_CONFIG.get(entry.__class__)
-        Cleaner = config.get('cleaner')
-        if not Cleaner:
-            return None
 
-        return Cleaner(entry).run()
-        
-    def calibrate_entries(self, entries):
-        calibrated_entries = []
+    def process_entries_ng(self, entries):
+        processed_entries = []
         for entry in entries:
-            if calibrated := self.calibrate_entry(entry):
-                calibrated_entries.append(calibrated)
-        return calibrated_entries
+            if results := self.process_entry_ng(entry):
+                processed_entries.extend(results)
+        return processed_entries
 
-    def calibrate_entry(self, entry):
-        if not entry.is_calibratable:
-            return
-        
+    def process_entry_ng(self, entry):
         config = self.ENTRY_CONFIG.get(entry.__class__, {})
-        for calibrator in config.get('calibrations', []):
-            if calibrated := calibrator(entry).run():
-                self.update_latest_entry(calibrated)
+        processors = config.get('processors', {}).get(entry.stage, [])
+        return [
+            result for processor in processors
+            if (result := processor(entry).run())
+        ]
 
     def update_latest_entry(self, entry):
         # Skip if not the default sensor
@@ -414,7 +398,7 @@ class Monitor(models.Model):
             entry.save()
             return entry
 
-    def process_entry(self, entry, payload):
+    def process_entry_legacy(self, entry, payload):
         '''
             Process the data on an entry, copying data from the monitor and
             payload, and run the calibrations.

@@ -6,7 +6,7 @@ from datetime import timedelta
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 
-from camp.apps.calibrations import corrections, cleaners
+from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor, Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
@@ -36,15 +36,19 @@ class PurpleAir(Monitor):
             'fields': {'value': 'pm2.5_atm'},
             'allowed_stages': [
                 entry_models.PM25.Stage.RAW,
+                entry_models.PM25.Stage.CORRECTED,
                 entry_models.PM25.Stage.CLEANED,
-                entry_models.PM25.Stage.CALIBRATED
+                entry_models.PM25.Stage.CALIBRATED,
             ],
             'default_stage': entry_models.PM25.Stage.CLEANED,
-            'cleaner': cleaners.PM25LowCostSensor,
-            'calibrations': [
-                corrections.Coloc_PM25_LinearRegression,
-                corrections.EPA_PM25_Oct2021,
-            ]
+            'processors': {
+                entry_models.PM25.Stage.RAW: [processors.PM25_LCS_PreCleaner],
+                entry_models.PM25.Stage.CORRECTED: [processors.PM25_LCS_Cleaner],
+                entry_models.PM25.Stage.CLEANED: [
+                    processors.PM25_Coloc_LinearRegression,
+                    processors.PM25_EPA_Oct2021,
+                ],
+            }
         },
         entry_models.PM100: {
             'sensors': ['a', 'b'],
@@ -67,20 +71,24 @@ class PurpleAir(Monitor):
         },
         entry_models.Temperature: {
             'fields': {'fahrenheit': 'temperature'},
-            'calibrations': [corrections.AirGradientTemperature],
             'allowed_stages': [
                 entry_models.Temperature.Stage.RAW,
                 entry_models.Temperature.Stage.CALIBRATED
             ],
+            'processors': {
+                entry_models.Temperature.Stage.RAW: [processors.AirGradientTemperature],
+            },
             'default_stage': entry_models.Temperature.Stage.RAW,
         },
         entry_models.Humidity: {
             'fields': {'value': 'humidity'},
-            'calibrations': [corrections.AirGradientHumidity],
             'allowed_stages': [
                 entry_models.Humidity.Stage.RAW,
                 entry_models.Humidity.Stage.CALIBRATED
             ],
+            'processors': {
+                entry_models.Humidity.Stage.RAW: [processors.AirGradientHumidity],
+            },
             'default_stage': entry_models.Humidity.Stage.RAW,
         },
         entry_models.Pressure: {
@@ -179,13 +187,23 @@ class PurpleAir(Monitor):
 
         entry = super().create_entry(EntryModel, **data)
 
-        # Only run cleaning pipeline on entries at the initial stage (typically RAW)
         if entry and entry.stage == self.get_initial_stage(EntryModel):
-            if previous := entry.get_previous_entry():
-                if cleaned := self.clean_entry(previous):
-                    self.update_latest_entry(cleaned)
-                    self.calibrate_entry(cleaned)
+            # Stage 1: Correct the raw entry (e.g., A/B variance logic)
+            corrected_entries = self.process_entry_ng(entry)
+            if not corrected_entries:
+                return entry
 
+            for corrected in corrected_entries:
+                if (previous := corrected.get_previous_entry()) is None:
+                    continue
+
+                # Stage 2: Clean the previous corrected entry (e.g., spike detection)
+                for cleaned in self.process_entry_ng(previous):
+                    self.update_latest_entry(cleaned)
+
+                    # Stage 3: Calibrate the cleaned entry (if applicable)
+                    for calibrated in self.process_entry_ng(cleaned):
+                        self.update_latest_entry(calibrated)
         return entry
 
     # Legacy
