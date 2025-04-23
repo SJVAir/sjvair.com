@@ -137,6 +137,7 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
 
 class EntryList(EntryMixin, generics.ListEndpoint):
     paginate = True
+    page_size = 10080
 
     # TODO: make this more extensible in resticus.
     def filter_queryset(self, queryset):
