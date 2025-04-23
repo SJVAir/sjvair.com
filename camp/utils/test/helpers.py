@@ -50,5 +50,6 @@ def create_hourly_data_for_monitor(monitor, start_time=None):
                 )
                 entries.append(entry)
     
-    cleaned = monitor.clean_entries(entries)
-    calibrated = monitor.calibrate_entries(cleaned)
+    corrected = monitor.process_entries_ng(entries)
+    cleaned = monitor.process_entries_ng(corrected)
+    calibrated = monitor.process_entries_ng(cleaned)

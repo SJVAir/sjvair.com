@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.purpleair.models import PurpleAir
-from . import cleaners, corrections
+from . import processors
 
 
 class CalibrationTests(TestCase):
@@ -31,7 +31,7 @@ class CalibrationTests(TestCase):
                 value=Decimal(val),
                 position=self.monitor.position,
                 location=self.monitor.location,
-                stage=entry_models.PM25.Stage.RAW
+                stage=entry_models.PM25.Stage.CORRECTED
             )
             entry.refresh_from_db()
             raw_entries.append(entry)
@@ -39,7 +39,7 @@ class CalibrationTests(TestCase):
         # Run the cleaner on the spiked entry
         spike_idx = values.index(max(values))
         spike = raw_entries[spike_idx]
-        cleaner = cleaners.PM25LowCostSensor(spike)
+        cleaner = processors.PM25_LCS_Cleaner(spike)
         cleaned = cleaner.run()
 
         assert cleaned is not None, 'Cleaner returned no output'
@@ -50,7 +50,7 @@ class CalibrationTests(TestCase):
         ])
         assert cleaned.value < spike.value, 'Spike was not reduced'
 
-    def test_pm25_lcs_cleaner_ab_high_variance(self):
+    def test_pm25_lcs_precleaner_ab_high_variance(self):
         base_time = timezone.now() - timedelta(minutes=5)
 
         ts = base_time.replace(second=0, microsecond=0)
@@ -79,11 +79,11 @@ class CalibrationTests(TestCase):
         b_entry.refresh_from_db()
 
         # Clean the 'a' entry
-        cleaner = cleaners.PM25LowCostSensor(a_entry)
+        cleaner = processors.PM25_LCS_PreCleaner(a_entry)
         cleaned = cleaner.run()
 
         assert cleaned is not None
-        assert cleaned.stage == entry_models.PM25.Stage.CLEANED
+        assert cleaned.stage == entry_models.PM25.Stage.CORRECTED
 
         # Variance pct = ((50-10)^2 / 2) / 30 * 100 = ~26.6%
         # Should return the **lower** value (min of a/b)
@@ -115,7 +115,7 @@ class CalibrationTests(TestCase):
         a_entry.refresh_from_db()
         b_entry.refresh_from_db()
 
-        cleaner = cleaners.PM25LowCostSensor(a_entry)
+        cleaner = processors.PM25_LCS_PreCleaner(a_entry)
         cleaned = cleaner.run()
 
         assert cleaned is not None
@@ -145,7 +145,7 @@ class CalibrationTests(TestCase):
             stage=entry_models.PM25.Stage.CLEANED
         )
 
-        correction = corrections.EPA_PM25_Oct2021(pm25)
+        correction = processors.PM25_EPA_Oct2021(pm25)
         assert correction.is_valid()
 
         calibrated = correction.run()
