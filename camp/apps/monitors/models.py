@@ -398,7 +398,7 @@ class Monitor(models.Model):
             entry.save()
             return entry
 
-    def process_entry_legacy(self, entry, payload):
+    def process_entry(self, entry, payload):
         '''
             Process the data on an entry, copying data from the monitor and
             payload, and run the calibrations.
