@@ -39,7 +39,7 @@ class CalibrationTests(TestCase):
         # Run the cleaner on the spiked entry
         spike_idx = values.index(max(values))
         spike = raw_entries[spike_idx]
-        cleaner = processors.PM25_LCS_Cleaner(spike)
+        cleaner = processors.PM25_LCS_Cleaning(spike)
         cleaned = cleaner.run()
 
         assert cleaned is not None, 'Cleaner returned no output'
@@ -79,7 +79,7 @@ class CalibrationTests(TestCase):
         b_entry.refresh_from_db()
 
         # Clean the 'a' entry
-        cleaner = processors.PM25_LCS_PreCleaner(a_entry)
+        cleaner = processors.PM25_LCS_Correction(a_entry)
         cleaned = cleaner.run()
 
         assert cleaned is not None
@@ -115,7 +115,7 @@ class CalibrationTests(TestCase):
         a_entry.refresh_from_db()
         b_entry.refresh_from_db()
 
-        cleaner = processors.PM25_LCS_PreCleaner(a_entry)
+        cleaner = processors.PM25_LCS_Correction(a_entry)
         cleaned = cleaner.run()
 
         assert cleaned is not None

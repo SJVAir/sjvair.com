@@ -42,8 +42,8 @@ class PurpleAir(Monitor):
             ],
             'default_stage': entry_models.PM25.Stage.CLEANED,
             'processors': {
-                entry_models.PM25.Stage.RAW: [processors.PM25_LCS_PreCleaner],
-                entry_models.PM25.Stage.CORRECTED: [processors.PM25_LCS_Cleaner],
+                entry_models.PM25.Stage.RAW: [processors.PM25_LCS_Correction],
+                entry_models.PM25.Stage.CORRECTED: [processors.PM25_LCS_Cleaning],
                 entry_models.PM25.Stage.CLEANED: [
                     processors.PM25_Coloc_LinearRegression,
                     processors.PM25_EPA_Oct2021,
