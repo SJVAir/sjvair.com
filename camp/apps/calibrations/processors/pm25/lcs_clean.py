@@ -10,11 +10,13 @@ __all__ = ['PM25_LCS_Cleaner']
 
 class PM25_LCS_Cleaner(BaseProcessor):
     '''
-    Cleans PM2.5 entries from low-cost dual-sensor monitors using
-    spike smoothing.
+    Applies spike detection and smoothing to corrected PM2.5 entries 
+    from low-cost dual-sensor monitors (e.g., PurpleAir).
 
-    Returns a cleaned clone of the original entry, or None if the entry
-    should be discarded as invalid or repeated.
+    This processor expects the input entry to be in the 'corrected' stage 
+    (i.e., A/B variance already applied) and returns a new entry in the 
+    'cleaned' stage. If sufficient nearby data is available, it may adjust 
+    the value to smooth out spikes based on AQI-aware thresholds.
     '''
 
     entry_model = PM25
@@ -22,6 +24,18 @@ class PM25_LCS_Cleaner(BaseProcessor):
     next_stage = PM25.Stage.CLEANED
 
     def process(self):
+        '''
+        Applies spike smoothing logic to the current corrected entry.
+
+        If both the previous and next entries are present and occur within 
+        an acceptable time window, the current value is evaluated for spikes 
+        and may be adjusted. If adjacent entries are missing or too far apart, 
+        the value is returned unchanged.
+
+        Returns:
+            A new PM2.5 entry in the CLEANED stage. The value may be adjusted 
+            for spikes or left unchanged if smoothing is not applicable.
+        '''
         cleaned_value = self.entry.value
         prev = self.entry.get_previous_entry()
         next_ = self.entry.get_next_entry()
@@ -38,7 +52,7 @@ class PM25_LCS_Cleaner(BaseProcessor):
 
         return self.build_entry(value=cleaned_value)
 
-    def valid_time_gap(self, entry_a, entry_b, max_gap=timedelta(minutes=5)) -> bool:
+    def valid_time_gap(self, entry_a, entry_b, max_gap=timedelta(minutes=20)) -> bool:
         '''
         Returns True if the time between entry_a and entry_b is within max_gap.
         Used to ensure spike detection isn't applied across unusually large gaps.
