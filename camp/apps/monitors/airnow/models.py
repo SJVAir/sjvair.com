@@ -1,5 +1,6 @@
 from django.utils.dateparse import parse_datetime
 
+from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor
 from camp.utils.datetime import make_aware
@@ -21,33 +22,39 @@ class AirNow(Monitor):
     ENTRY_CONFIG = {
         entry_models.CO: {
             'fields': {'value': 'CO'},
-            'allowed_stages': [entry_models.CO.Stage.REFERENCE],
-            'default_stage': entry_models.CO.Stage.REFERENCE,
+            'allowed_stages': [entry_models.CO.Stage.RAW],
+            'default_stage': entry_models.CO.Stage.RAW,
         },
         entry_models.NO2: {
             'fields': {'value': 'NO2'},
-            'allowed_stages': [entry_models.NO2.Stage.REFERENCE],
-            'default_stage': entry_models.NO2.Stage.REFERENCE,
+            'allowed_stages': [entry_models.NO2.Stage.RAW],
+            'default_stage': entry_models.NO2.Stage.RAW,
         },
         entry_models.O3: {
             'fields': {'value': 'OZONE'},
-            'allowed_stages': [entry_models.O3.Stage.REFERENCE],
-            'default_stage': entry_models.O3.Stage.REFERENCE,
+            'allowed_stages': [entry_models.O3.Stage.RAW],
+            'default_stage': entry_models.O3.Stage.RAW,
         },
         entry_models.PM25: {
             'fields': {'value': 'PM2.5'},
-            'allowed_stages': [entry_models.PM25.Stage.REFERENCE],
-            'default_stage': entry_models.PM25.Stage.REFERENCE,
+            'allowed_stages': [
+                entry_models.PM25.Stage.RAW,
+                entry_models.PM25.Stage.CLEANED,
+            ],
+            'default_stage': entry_models.PM25.Stage.CLEANED,
+            'processors': {
+                entry_models.PM25.Stage.RAW: [processors.PM25_FEM_Cleaner]
+            }
         },
         entry_models.PM100: {
             'fields': {'value': 'PM10'},
-            'allowed_stages': [entry_models.PM100.Stage.REFERENCE],
-            'default_stage': entry_models.PM100.Stage.REFERENCE,
+            'allowed_stages': [entry_models.PM100.Stage.RAW],
+            'default_stage': entry_models.PM100.Stage.RAW,
         },
         entry_models.SO2: {
             'fields': {'value': 'SO2'},
-            'allowed_stages': [entry_models.SO2.Stage.REFERENCE],
-            'default_stage': entry_models.SO2.Stage.REFERENCE,
+            'allowed_stages': [entry_models.SO2.Stage.RAW],
+            'default_stage': entry_models.SO2.Stage.RAW,
         },
     }
 
@@ -60,43 +67,12 @@ class AirNow(Monitor):
     class Meta:
         verbose_name = 'AirNow'
 
-    def create_entries(self, payload):
-        EntryModel = self.ENTRY_MAP.get(payload['Parameter'])
-        if EntryModel is not None:
-            if entry := super().create_entry(EntryModel,
+    def handle_payload(self, payload):
+        if EntryModel := self.ENTRY_MAP.get(payload['Parameter']):
+            return self.create_entry(EntryModel,
                 timestamp=make_aware(parse_datetime(payload['UTC'])),
                 value=payload['Value']
-            ) is not None:
-                return [entry]
-        return []
-    
-    def create_entry(self, payload):
-        EntryModel = self.ENTRY_MAP.get(payload['Parameter'])
-        if EntryModel is not None:
-            timestamp = make_aware(parse_datetime(payload['UTC']))
-            return super().create_entry(EntryModel,
-                timestamp=timestamp,
-                value=payload['Value']
             )
-
-    # def create_entries(self, payload):
-    #     entries = []
-    #     timestamp = make_aware(parse_datetime(
-    #         list(payload.values())[0]['UTC']
-    #     ))
-
-    #     for key, data in payload.items():
-    #         EntryModel = self.ENTRY_MAP.get(key)
-    #         if EntryModel is None:
-    #             continue
-
-    #         if entry := self.create_entry_ng(EntryModel,
-    #             timestamp=timestamp,
-    #             value=data['Value']
-    #         ) is not None:
-    #             entries.append(entry)
-
-    #     return entries
 
 
     # Legacy

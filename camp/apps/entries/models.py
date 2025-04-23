@@ -19,18 +19,10 @@ class BaseEntry(models.Model):
     is_calibratable = False
 
     class Stage(models.TextChoices):
-        REFERENCE = 'reference', _('Reference-grade')
         RAW = 'raw', _('Raw')
         CORRECTED = 'corrected', _('Corrected')
         CLEANED = 'cleaned', _('Cleaned')
         CALIBRATED = 'calibrated', _('Calibrated')
-
-    STAGE_ORDER = {
-        'raw': 0,
-        'corrected': 1,
-        'clean': 2,
-        'calibrated': 3,
-    }
 
     id = SmallUUIDField(
         default=uuid_default(),

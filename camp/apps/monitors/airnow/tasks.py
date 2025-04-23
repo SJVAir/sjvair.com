@@ -23,26 +23,28 @@ def import_airnow_data(timestamp=None, previous=None):
 
     for county in County.names:
         data = airnow_api.query_ng(county, timestamp=timestamp, previous=previous)
-        for entry in data:
+        for item in data:
 
             # Look up the monitor by name. If it doesn't exist, create it.
             try:
-                monitor = AirNow.objects.get(name=entry['SiteName'])
+                monitor = AirNow.objects.get(name=item['SiteName'])
             except AirNow.DoesNotExist:
-                latlon = Point(entry['Longitude'], entry['Latitude'], srid=4326)
+                latlon = Point(item['Longitude'], item['Latitude'], srid=4326)
                 county = County.lookup(latlon)
                 if not county:
                     continue
 
                 monitor = AirNow.objects.create(
-                    name=entry['SiteName'],
+                    name=item['SiteName'],
                     position=latlon,
                     county=county,
-                    data_provider=entry.get('AgencyName', ''),
+                    data_provider=item.get('AgencyName', ''),
                     location=AirNow.LOCATION.outside
                 )
 
-            monitor.create_entries(entry)
+            if entry := monitor.handle_payload(item):
+                cleaned = monitor.process_entry_ng(entry)
+                print('\t[AirNow] Entry created:', entry.timestamp)
 
 
 @db_periodic_task(crontab(minute='*/15'), priority=50)

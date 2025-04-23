@@ -37,7 +37,9 @@ def process_data(payload):
         monitor.update_data(data)
         monitor.save()
 
-    monitor.create_entries(payload)
+    entries = monitor.create_entries(payload)
+    for entry in entries:
+        monitor.process_entry_pipeline(entry)
 
     # Legacy
     entries = monitor.create_entries_legacy(payload)

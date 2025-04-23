@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from camp.apps.entries.models import PM25
@@ -26,13 +27,25 @@ class PM25_LCS_Cleaner(BaseProcessor):
         next_ = self.entry.get_next_entry()
 
         if prev and next_:
-            cleaned_value = self.apply_spike_logic(
-                current_value=cleaned_value,
-                prev_value=prev.value,
-                next_value=next_.value,
-            )
+            prev_gap_valid = self.valid_time_gap(prev, self.entry)
+            next_gap_valid = self.valid_time_gap(self.entry, next_)
+            if prev_gap_valid and next_gap_valid:
+                cleaned_value = self.apply_spike_logic(
+                    current_value=cleaned_value,
+                    prev_value=prev.value,
+                    next_value=next_.value,
+                )
 
         return self.build_entry(value=cleaned_value)
+
+    def valid_time_gap(self, entry_a, entry_b, max_gap=timedelta(minutes=5)) -> bool:
+        '''
+        Returns True if the time between entry_a and entry_b is within max_gap.
+        Used to ensure spike detection isn't applied across unusually large gaps.
+        '''
+        if not entry_a or not entry_b:
+            return False
+        return abs(entry_a.timestamp - entry_b.timestamp) <= max_gap
 
     def apply_spike_logic(self, current_value, prev_value, next_value) -> Decimal:
         '''
