@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor, Entry
 from camp.utils.datetime import parse_datetime
@@ -36,23 +37,29 @@ class BAM1022(Monitor):
     ENTRY_CONFIG = {
         entry_models.Temperature: {
             'fields': {'celcius': 'AT(C)'},
-            'allowed_stages': [entry_models.Temperature.Stage.REFERENCE],
-            'default_stage': entry_models.Temperature.Stage.REFERENCE,
+            'allowed_stages': [entry_models.Temperature.Stage.RAW],
+            'default_stage': entry_models.Temperature.Stage.RAW,
         },
         entry_models.Humidity: {
             'fields': {'value': 'RH(%)'},
-            'allowed_stages': [entry_models.Humidity.Stage.REFERENCE],
-            'default_stage': entry_models.Humidity.Stage.REFERENCE,
+            'allowed_stages': [entry_models.Humidity.Stage.RAW],
+            'default_stage': entry_models.Humidity.Stage.RAW,
         },
         entry_models.Pressure: {
             'fields': {'mmhg': 'BP(mmHg)'},
-            'allowed_stages': [entry_models.Pressure.Stage.REFERENCE],
-            'default_stage': entry_models.Pressure.Stage.REFERENCE,
+            'allowed_stages': [entry_models.Pressure.Stage.RAW],
+            'default_stage': entry_models.Pressure.Stage.RAW,
         },
         entry_models.PM25: {
             'fields': {'value': 'ConcHR(ug/m3)'},
-            'allowed_stages': [entry_models.PM25.Stage.REFERENCE],
-            'default_stage': entry_models.PM25.Stage.REFERENCE,
+            'allowed_stages': [
+                entry_models.PM25.Stage.RAW,
+                entry_models.PM25.Stage.CLEANED,
+            ],
+            'default_stage': entry_models.PM25.Stage.CLEANED,
+            'processors': {
+                entry_models.PM25.Stage.RAW: [processors.PM25_FEM_Cleaner]
+            }
         },
     }
 

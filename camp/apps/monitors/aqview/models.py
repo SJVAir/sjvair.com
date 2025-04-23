@@ -2,6 +2,7 @@ import pytz
 
 from datetime import datetime, timedelta
 
+from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor
 from camp.utils.datetime import make_aware
@@ -22,15 +23,21 @@ class AQview(Monitor):
     ENTRY_CONFIG = {
         entry_models.PM25: {
             'fields': {'value': 'aobs'},
-            'allowed_stages': [entry_models.PM25.Stage.REFERENCE],
-            'default_stage': entry_models.PM25.Stage.REFERENCE,
+            'allowed_stages': [
+                entry_models.PM25.Stage.RAW,
+                entry_models.PM25.Stage.CLEANED,
+            ],
+            'default_stage': entry_models.PM25.Stage.CLEANED,
+            'processors': {
+                entry_models.PM25.Stage.RAW: [processors.PM25_FEM_Cleaner]
+            }
         },
     }
 
     class Meta:
         verbose_name = 'AQview'
     
-    def create_entry(self, payload):
+    def handle_payload(self, payload):
         timestamp = make_aware(
             datetime.fromtimestamp(payload['maptime'] / 1000) - timedelta(hours=payload['hourindex']),
             pytz.timezone('America/Los_Angeles')

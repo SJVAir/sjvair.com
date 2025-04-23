@@ -46,18 +46,19 @@ def process_aqview_data(payload):
             data_provider_url=payload.get('dplink', ''),
         )
 
-    entry = monitor.create_entry(payload)
+    entry = monitor.handle_payload(payload)
 
-    if entry:
+    if entry := monitor.handle_payload(item):
+        cleaned = monitor.process_entry_ng(entry)
+        print('\t[AQview] Entry created:', entry.timestamp)
+        
         # Legacy
         try:
             entry = monitor.entries.get(timestamp=entry.timestamp)
             entry = monitor.process_entry(entry, payload)
             entry.save()
-            print('\t[AQview] Entry updated:', entry.timestamp)
         except Entry.DoesNotExist:
             entry = monitor.create_entry_legacy(payload)
-            print('\t[AQview] Entry created:', entry.timestamp)
 
         monitor.check_latest(entry)
         if monitor.latest_id == entry.pk:

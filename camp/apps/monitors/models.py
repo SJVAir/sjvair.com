@@ -290,6 +290,7 @@ class Monitor(models.Model):
 
         if entry.validation_check():
             entry.save()
+            entry.refresh_from_db()
             self.update_latest_entry(entry)
             return entry
 
@@ -303,10 +304,22 @@ class Monitor(models.Model):
     def process_entry_ng(self, entry):
         config = self.ENTRY_CONFIG.get(entry.__class__, {})
         processors = config.get('processors', {}).get(entry.stage, [])
-        return [
-            result for processor in processors
-            if (result := processor(entry).run())
-        ]
+
+        processed_entries = []
+        for processor in processors:
+            if (processed := processor(entry).run()):
+                self.update_latest_entry(processed)
+                processed_entries.append(processed)
+
+        return processed_entries
+
+    def process_entry_pipeline(self, entry):
+        '''
+        Optional post-processing pipeline after entry creation.
+        Default behavior: no-op.
+        Override in subclasses (e.g. PurpleAir) if needed.
+        '''
+        pass
 
     def update_latest_entry(self, entry):
         # Skip if not the default sensor
