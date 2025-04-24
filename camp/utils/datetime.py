@@ -5,7 +5,7 @@ from django.conf import settings
 from django.utils import timezone
 
 
-def make_aware(timestamp, tz=settings.DEFAULT_TIMEZONE):
+def make_aware(timestamp, tz=timezone.utc):
     if timezone.is_naive(timestamp):
         return timezone.make_aware(timestamp, tz)
     return timestamp
