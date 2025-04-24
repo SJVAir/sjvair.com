@@ -14,12 +14,20 @@ class PM25_EPA_Oct2021(BaseProcessor):
 
     https://document.airnow.gov/airnow-fire-and-smoke-map-questions-and-answers.pdf
     '''
-    requires = ['pm25', 'humidity']
+    required_context = ['pm25', 'humidity']
     entry_model = PM25
     required_stage = PM25.Stage.CLEANED
     next_stage = PM25.Stage.CALIBRATED
 
     def process(self):
+        if 'humidity' not in self.context:
+            print('=====' * 5)
+            print(self.entry.__class__)
+            print(self.entry.pk)
+            print(self.entry.monitor.__class__)
+            print(self.entry.monitor.pk)
+            print(self.entry.monitor.name)
+            print('=====' * 5)
         value = self.get_correction(pm25=self.context['pm25'], rh=self.context['humidity'])
         if value is not None:
             return self.build_entry(value=value)
