@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from camp.apps.entries import models as entry_models
+from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
 from . import processors
 
@@ -154,3 +155,33 @@ class CalibrationTests(TestCase):
         assert calibrated.stage == entry_models.PM25.Stage.CALIBRATED
         assert calibrated.calibration == correction.name
         assert calibrated.monitor == self.monitor
+
+    def test_fem_cleaner_discards_invalid(self):
+        monitor = BAM1022.objects.create(name='Test BAM', position='POINT(0 0)', county='Fresno')
+        now = timezone.now()
+
+        # Should be discarded (< -10)
+        entry = entry_models.PM25.objects.create(monitor=monitor, timestamp=now, value=Decimal('-15'), stage=entry_models.PM25.Stage.RAW)
+        assert processors.PM25_FEM_Cleaner(entry).run() is None
+
+    def test_fem_cleaner_clamps_to_zero(self):
+        monitor = BAM1022.objects.create(name='Test BAM', position='POINT(0 0)', county='Fresno')
+        now = timezone.now()
+
+        # Should be clamped to 0
+        entry = entry_models.PM25.objects.create(monitor=monitor, timestamp=now, value=Decimal('-5'), stage=entry_models.PM25.Stage.RAW)
+        cleaned = processors.PM25_FEM_Cleaner(entry).run()
+        assert cleaned is not None
+        assert cleaned.value == 0
+        assert cleaned.stage == entry_models.PM25.Stage.CLEANED
+
+    def test_fem_cleaner_passes_valid(self):
+        monitor = BAM1022.objects.create(name='Test BAM', position='POINT(0 0)', county='Fresno')
+        now = timezone.now()
+
+        # Should pass through
+        entry = entry_models.PM25.objects.create(monitor=monitor, timestamp=now, value=Decimal('12.5'), stage=entry_models.PM25.Stage.RAW)
+        cleaned = processors.PM25_FEM_Cleaner(entry).run()
+        assert cleaned is not None
+        assert cleaned.value == entry.value
+        assert cleaned.stage == entry_models.PM25.Stage.CLEANED
