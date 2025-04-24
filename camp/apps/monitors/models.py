@@ -307,19 +307,26 @@ class Monitor(models.Model):
 
         processed_entries = []
         for processor in processors:
-            if (processed := processor(entry).run()):
-                self.update_latest_entry(processed)
-                processed_entries.append(processed)
+            if (result := processor(entry).run()):
+                self.update_latest_entry(result)
+                processed_entries.append(result)
 
         return processed_entries
 
     def process_entry_pipeline(self, entry):
         '''
-        Optional post-processing pipeline after entry creation.
-        Default behavior: no-op.
-        Override in subclasses (e.g. PurpleAir) if needed.
+        Recursively processes an entry through its pipeline stages, as defined in ENTRY_CONFIG.
+
+        Returns:
+            List of all new entries created during processing (can include cleaned and calibrated stages).
         '''
-        pass
+        processed = []
+
+        for result in self.process_entry_ng(entry):
+            processed.append(result)
+            processed.extend(self.process_entry_pipeline(result))  # Recursive step
+
+        return processed
 
     def update_latest_entry(self, entry):
         # Skip if not the default sensor
