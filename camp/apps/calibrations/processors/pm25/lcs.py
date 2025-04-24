@@ -111,7 +111,11 @@ class PM25_LCS_Cleaning(BaseProcessor):
 
     def process(self):
         '''
-        Applies spike smoothing logic to the current corrected entry.
+        Applies spike smoothing to a corrected PM2.5 entry if both previous and 
+        next entries are available and occur within a valid time window.
+
+        If the next entry is missing (i.e., this is the latest known entry), 
+        spike detection is deferred and no CLEANED entry is returned yet.
 
         If both the previous and next entries are present and occur within 
         an acceptable time window, the current value is evaluated for spikes 
@@ -119,21 +123,24 @@ class PM25_LCS_Cleaning(BaseProcessor):
         the value is returned unchanged.
 
         Returns:
-            A new PM2.5 entry in the CLEANED stage. The value may be adjusted 
-            for spikes or left unchanged if smoothing is not applicable.
+            A new CLEANED entry with the smoothed or unchanged value, or None if
+            spike detection must be deferred due to missing next entry.
         '''
-        cleaned_value = self.entry.value
-        prev = self.entry.get_previous_entry()
-        next_ = self.entry.get_next_entry()
+        next_entry = self.entry.get_next_entry()
+        if next_entry is None:
+            return
 
-        if prev and next_:
-            prev_gap_valid = self.valid_time_gap(prev, self.entry)
-            next_gap_valid = self.valid_time_gap(self.entry, next_)
+        prev_entry = self.entry.get_previous_entry()
+        cleaned_value = self.entry.value
+
+        if prev_entry and next_entry:
+            prev_gap_valid = self.valid_time_gap(prev_entry, self.entry)
+            next_gap_valid = self.valid_time_gap(self.entry, next_entry)
             if prev_gap_valid and next_gap_valid:
                 cleaned_value = self.apply_spike_logic(
                     current_value=cleaned_value,
-                    prev_value=prev.value,
-                    next_value=next_.value,
+                    prev_value=prev_entry.value,
+                    next_value=next_entry.value,
                 )
 
         return self.build_entry(value=cleaned_value)
