@@ -187,41 +187,41 @@ class PurpleAir(Monitor):
 
         return super().create_entry(EntryModel, **data)
 
-    def process_entry_pipeline(self, entry):
-        '''
-        Executes the 3-stage processor pipeline for PurpleAir PM2.5 entries.
+    # def process_entry_pipeline(self, entry):
+    #     '''
+    #     Executes the 3-stage processor pipeline for PurpleAir PM2.5 entries.
 
-        - Stage 1: Correct raw (e.g., a/b variance)
-        - Stage 2: Clean previous corrected (e.g., spike detection)
-        - Stage 3: Calibrate cleaned
-        '''
-        if entry.stage != self.get_initial_stage(entry.__class__):
-            return
+    #     - Stage 1: Correct raw (e.g., a/b variance)
+    #     - Stage 2: Clean previous corrected (e.g., spike detection)
+    #     - Stage 3: Calibrate cleaned
+    #     '''
+    #     if entry.stage != self.get_initial_stage(entry.__class__):
+    #         return
 
-        # Stage 1: Correct the raw entry
-        corrected_entries = self.process_entry_ng(entry)
-        if not corrected_entries:
-            return
+    #     # Stage 1: Correct the raw entry
+    #     corrected_entries = self.process_entry_ng(entry)
+    #     if not corrected_entries:
+    #         return
 
-        for corrected in corrected_entries:
-            assert corrected.stage == corrected.Stage.CORRECTED, (
-                f'Expected stage CORRECTED, got {corrected.stage}'
-            )
-            if (previous := corrected.get_previous_entry()) is None:
-                continue
+    #     for corrected in corrected_entries:
+    #         assert corrected.stage == corrected.Stage.CORRECTED, (
+    #             f'Expected stage CORRECTED, got {corrected.stage}'
+    #         )
+    #         if (previous := corrected.get_previous_entry()) is None:
+    #             continue
 
-            # Stage 2: Clean the previous corrected entry
-            for cleaned in self.process_entry_ng(previous):
-                assert cleaned.stage == cleaned.Stage.CLEANED, (
-                    f'Expected stage CLEANED, got {cleaned.stage}'
-                )
+    #         # Stage 2: Clean the previous corrected entry
+    #         for cleaned in self.process_entry_ng(previous):
+    #             assert cleaned.stage == cleaned.Stage.CLEANED, (
+    #                 f'Expected stage CLEANED, got {cleaned.stage}'
+    #             )
 
-                # Stage 3: Calibrate the cleaned entry
-                for calibrated in self.process_entry_ng(cleaned):
-                    assert calibrated.stage == calibrated.Stage.CALIBRATED, (
-                        f'Expected stage CALIBRATED, got {calibrated.stage}'
-                    )
-        return entry
+    #             # Stage 3: Calibrate the cleaned entry
+    #             for calibrated in self.process_entry_ng(cleaned):
+    #                 assert calibrated.stage == calibrated.Stage.CALIBRATED, (
+    #                     f'Expected stage CALIBRATED, got {calibrated.stage}'
+    #                 )
+    #     return entry
 
     # Legacy
     def create_entries_legacy(self, payload):
