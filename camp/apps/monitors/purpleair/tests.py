@@ -42,38 +42,22 @@ class PurpleAirTests(TestCase):
     def test_pipeline_runs_all_stages(self):
         now = timezone.now()
 
-        # Create 3 entries, spaced 1 minute apart
+        # Create 3 entries, spaced 1 minute apart, and process them.
         timestamps = [now - timedelta(minutes=(60 - i)) for i in range(-3, 0)]
         for i, ts in enumerate(timestamps):
-            self.monitor.create_entry(
-                entry_models.Humidity,
-                timestamp=ts,
-                value=Decimal('45.0'),
-            )
-            self.monitor.create_entry(
-                entry_models.PM25,
-                timestamp=ts,
-                sensor='a',
-                value=Decimal('10') + (i * randint(-1, 1)),
-            )
-
-        # Run pipeline on each entry
-        for ts in timestamps:
-            raw = entry_models.PM25.objects.get(
-                monitor_id=self.monitor.pk,
-                timestamp=ts,
-                stage=entry_models.PM25.Stage.RAW
-            )
-            self.monitor.process_entry_pipeline(raw)
+            rh = self.monitor.create_entry(entry_models.Humidity, timestamp=ts, value=Decimal('45.0'))
+            pm25 = self.monitor.create_entry(entry_models.PM25, timestamp=ts, sensor='a', value=Decimal('10') + (i * randint(-1, 1)))
+            self.monitor.process_entry_pipeline(rh)
+            self.monitor.process_entry_pipeline(pm25)
 
         entries = entry_models.PM25.objects.filter(monitor_id=self.monitor.pk)
+        stages = list(entries.values_list('stage', flat=True))
 
         # At minimum, expect:
         # - 3 RAW
         # - 3 CORRECTED
         # - 2 CLEANED (only possible for entries 1 and 2)
         # - 2 CALIBRATED (coloc_linreg won't run because we have no sites in the fixtures)
-        stages = list(entries.values_list('stage', flat=True))
         assert stages.count(entry_models.PM25.Stage.RAW) == 3
         assert stages.count(entry_models.PM25.Stage.CORRECTED) == 3
         assert stages.count(entry_models.PM25.Stage.CLEANED) == 2
@@ -105,21 +89,14 @@ class PurpleAirTests(TestCase):
         values = [Decimal('10.0'), Decimal('-999.0'), Decimal('12.0')]  # -999 should be filtered
 
         for ts, val in zip(timestamps, values):
-            self.monitor.create_entry(entry_models.Humidity, timestamp=ts, value=Decimal('45.0'))
-            self.monitor.create_entry(entry_models.PM25, timestamp=ts, sensor='a', value=val)
-
-        # Process all RAW entries
-        for ts in timestamps:
-            raw = entry_models.PM25.objects.get(
-                monitor_id=self.monitor.pk,
-                timestamp=ts,
-                stage=entry_models.PM25.Stage.RAW
-            )
-            self.monitor.process_entry_pipeline(raw)
+            rh = self.monitor.create_entry(entry_models.Humidity, timestamp=ts, value=Decimal('45.0'))
+            pm25 = self.monitor.create_entry(entry_models.PM25, timestamp=ts, sensor='a', value=val)
+            self.monitor.process_entry_pipeline(rh)
+            self.monitor.process_entry_pipeline(pm25)
 
         # Gather all entries
         entries = entry_models.PM25.objects.filter(monitor_id=self.monitor.pk)
-        stage_counts = dict(entries.values_list('stage').annotate(count=Count('stage')))
+        stages = list(entries.values_list('stage', flat=True))
 
         # We expect:
         # - 3 RAW entries
@@ -127,10 +104,10 @@ class PurpleAirTests(TestCase):
         # - 1 CLEANED entry (only the final one can be cleaned using its previous)
         # - 1 CALIBRATED entry (from the cleaned one)
 
-        assert stage_counts.get(entry_models.PM25.Stage.RAW, 0) == 3
-        assert stage_counts.get(entry_models.PM25.Stage.CORRECTED, 0) == 2
-        assert stage_counts.get(entry_models.PM25.Stage.CLEANED, 0) == 1
-        assert stage_counts.get(entry_models.PM25.Stage.CALIBRATED, 0) == 1
+        assert stages.count(entry_models.PM25.Stage.RAW) == 3
+        assert stages.count(entry_models.PM25.Stage.CORRECTED) == 2
+        assert stages.count(entry_models.PM25.Stage.CLEANED) == 1
+        assert stages.count(entry_models.PM25.Stage.CALIBRATED) == 1
 
         # Check lineage
         for e in entries:
