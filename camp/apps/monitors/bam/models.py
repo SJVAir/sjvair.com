@@ -23,6 +23,7 @@ from camp.utils.datetime import parse_datetime
 
 class BAM1022(Monitor):
     LAST_ACTIVE_LIMIT = int(60 * 60 * 1.5)
+    ENTRY_UPLOAD_ENABLED = True
 
     DATA_PROVIDERS = [{
         'name': 'Central California Asthma Collaborative',
@@ -36,7 +37,7 @@ class BAM1022(Monitor):
 
     ENTRY_CONFIG = {
         entry_models.Temperature: {
-            'fields': {'celcius': 'AT(C)'},
+            'fields': {'celsius': 'AT(C)'},
             'allowed_stages': [entry_models.Temperature.Stage.RAW],
             'default_stage': entry_models.Temperature.Stage.RAW,
         },
@@ -63,24 +64,18 @@ class BAM1022(Monitor):
         },
     }
 
-    ENTRY_MAP = {
-        # EntryModel: (src_attr, dest_attr))
-        entry_models.Temperature: ('celcius', 'AT(C)'),
-        entry_models.Humidity: ('value', 'RH(%)'),
-        entry_models.Pressure: ('mmhg', 'BP(mmHg)'),
-        entry_models.PM25: ('value', 'ConcHR(ug/m3)'),
-    }
-
     class Meta:
         verbose_name = 'BAM 1022'
 
-    def create_entries(self, payload):
+    def handle_payload(self, payload):
         entries = []
         timestamp = parse_datetime(payload['Time'])
-        for EntryModel, config in self.ENTRY_MAP.items():
-            data = {attr: payload[key] for attr, key in config['fields']}
-            entry = self.create_entry(EntryModel, timestamp=timestamp, **data)
-            if entry is not None:
+        for EntryModel, config in self.ENTRY_CONFIG.items():
+            data = {attr: payload[key] for attr, key in config['fields'].items() if key in payload}
+            if not data:
+                continue
+
+            if entry := self.create_entry(EntryModel, timestamp=timestamp, **data):
                 entries.append(entry)
 
         return entries

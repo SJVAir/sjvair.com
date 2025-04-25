@@ -1,6 +1,7 @@
 import csv
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 from io import StringIO
 
 import pytest
@@ -13,6 +14,7 @@ from django.utils import timezone
 from . import endpoints
 
 from camp.apps.entries import models as entry_models
+from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.datetime import make_aware
@@ -22,6 +24,7 @@ closest_monitor = endpoints.ClosestMonitor.as_view()
 current_data = endpoints.CurrentData.as_view()
 monitor_list = endpoints.MonitorList.as_view()
 monitor_detail = endpoints.MonitorDetail.as_view()
+create_entry = endpoints.CreateEntry.as_view()
 entry_list = endpoints.EntryList.as_view()
 entry_csv = endpoints.EntryCSV.as_view()
 
@@ -361,3 +364,87 @@ class EndpointTests(TestCase):
 
         assert {e['sensor'] for e in rows} == set([monitor.get_default_sensor(entry_models.PM25)])
         assert {e['calibration'] for e in rows} == set([params['calibration']])
+
+    def test_create_entry(self):
+        '''
+            Test that we can create an entry.
+        '''
+        monitor = self.get_bam1022()
+        payload = {
+            'Time': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'AT(C)': Decimal('30.6'),
+            'RH(%)': Decimal('25.0'),
+            'BP(mmHg)': Decimal('764.5'),
+            'ConcHR(ug/m3)': Decimal('14'),
+        }
+        url = reverse('api:v2:monitors:entry-create', kwargs={'monitor_id': monitor.pk})
+        request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
+        request.monitor = monitor
+        response = create_entry(request, monitor_id=monitor.pk)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert isinstance(content.get('data'), list)
+        assert len(content['data']) == 5
+
+        entries = {}
+        for entry in content['data']:
+            entries.setdefault(entry['label'], [])
+            entries[entry['label']].append(entry)
+
+        # Check that the returned entries match the values submitted
+        # PM2.5: two stages expected
+        pm25_raw, pm25_cleaned = entries['PM2.5']
+        assert Decimal(pm25_raw['value']) == payload['ConcHR(ug/m3)']
+        assert pm25_raw['stage'] == entry_models.PM25.Stage.RAW
+        assert Decimal(pm25_cleaned['value']) == payload['ConcHR(ug/m3)']
+        assert pm25_cleaned['stage'] == entry_models.PM25.Stage.CLEANED
+
+        # Other entries
+        temp = entries['Temperature'][0]
+        humidity = entries['Humidity'][0]
+        pressure = entries['Pressure'][0]
+
+        assert Decimal(temp['temperature_c']) == payload['AT(C)']
+        assert Decimal(humidity['value']) == payload['RH(%)']
+        assert Decimal(pressure['pressure_mmhg']) == payload['BP(mmHg)']
+
+        # Check that the entries actually exist in the database
+        model_map = {Model.label: Model for Model in get_all_entry_models()}
+        for entry in content['data']:
+            EntryModel = model_map[entry['label']]
+            lookup = {
+                'monitor_id': monitor.pk,
+                'timestamp': entry['timestamp'],
+                'stage': entry['stage'],
+            }
+            if 'sensor' in entry:
+                lookup['sensor'] = entry['sensor']
+            if 'value' in entry:
+                lookup['value'] = Decimal(entry['value'])
+            if 'temperature_f' in entry:
+                lookup['value'] = Decimal(entry['temperature_f'])
+            if 'pressure_mmhg' in entry:
+                lookup['value'] = Decimal(entry['pressure_mmhg'])
+
+            assert EntryModel.objects.get(**lookup) is not None
+
+    def test_create_entry_rejected(self):
+        monitor = self.get_purple_air()
+        assert monitor.ENTRY_UPLOAD_ENABLED is False
+
+        payload = {
+            'timestamp': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'pm25': '12.0',
+        }
+
+        url = reverse('api:v2:monitors:entry-create', kwargs={'monitor_id': monitor.pk})
+        request = self.factory.post(url, payload, HTTP_ACCESS_KEY=str(monitor.access_key))
+        request.monitor = monitor
+        response = create_entry(request, monitor_id=monitor.pk)
+        content = get_response_data(response)
+
+        assert response.status_code == 403
+        assert 'errors' in content
+        assert content['errors']['detail'][0]['message'] == endpoints.CreateEntry.upload_not_allowed
+
