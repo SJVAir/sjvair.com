@@ -7,6 +7,7 @@ class EntrySerializer(serializers.Serializer):
     fields = [
         ('timestamp', lambda entry: entry.timestamp_pst),
         'sensor',
+        'stage',
     ]
 
     def fixup(self, instance, data):

@@ -101,16 +101,19 @@ class Monitor(models.Model):
     COUNTIES = Choices(*County.names)
     LOCATION = Choices('inside', 'outside')
 
-    CALIBRATE = False
+    CALIBRATE = False # Legacy
     LAST_ACTIVE_LIMIT = 60 * 60
 
-    SENSORS = [''] # legacy
+    SENSORS = [''] # Legacy
 
     DATA_PROVIDERS = []
     DATA_SOURCE = {}
     DEVICE = None
 
     ENTRY_CONFIG = {}
+    ENTRY_UPLOAD_ENABLED = False
+
+
 
     id = SmallUUIDField(
         default=uuid_default(),

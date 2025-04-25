@@ -1,9 +1,12 @@
-from resticus import generics
+from resticus import generics, http
 
+from django import forms
 from django.contrib.gis.db.models.functions import Distance
 from django.core.cache import cache
 from django.http import Http404
+from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
+from django.views.decorators.csrf import csrf_exempt
 
 from camp.apps.monitors.models import Monitor
 from camp.apps.entries.utils import get_entry_model_by_name
@@ -135,7 +138,40 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         return super().serialize(source, fields, include, exclude, fixup)
     
 
-class EntryList(EntryMixin, generics.ListEndpoint):
+class CreateEntry(EntryMixin, generics.CreateEndpoint):
+    form_class = forms.Form
+    upload_not_allowed = 'Direct entry uploads are not allowed for this monitor.'
+
+    @method_decorator(csrf_exempt)
+    def dispatch(self, request, *args, **kwargs):
+        if not self.request.monitor.ENTRY_UPLOAD_ENABLED:
+            return http.Http403(self.upload_not_allowed)
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        created = self.request.monitor.handle_payload(self.request.data)
+
+        results = []
+        for entry in created:
+            results.append(entry)
+            results.extend(self.request.monitor.process_entry_pipeline(entry))
+
+        # Legacy
+        entry = self.request.monitor.create_entry_legacy(self.request.data)
+        if entry:
+            self.request.monitor.check_latest(entry)
+
+            if self.request.monitor.latest_id == entry.pk:
+                self.request.monitor.save()
+
+        return {'data': self.serialize(results)}
+
+    def serialize(self, *args, **kwargs):
+        kwargs['include'] = kwargs.get('include', []) + ['label']
+        return super().serialize(*args, **kwargs)
+
+
+class EntryList(EntryMixin, generics.ListEndpoint):    
     paginate = True
     page_size = 10080
 

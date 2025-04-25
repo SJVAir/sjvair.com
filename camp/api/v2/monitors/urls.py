@@ -10,6 +10,7 @@ urlpatterns = [
     path('<entry_type>/current/', endpoints.CurrentData.as_view(), name='current-data'),
     
     path('<monitor_id>/', endpoints.MonitorDetail.as_view(), name='monitor-detail'),
+    path('<monitor_id>/entries/', endpoints.CreateEntry.as_view(), name='entry-create'),
     path('<monitor_id>/entries/<entry_type>/', endpoints.EntryList.as_view(), name='entry-list'),
     path('<monitor_id>/entries/<entry_type>/csv/', endpoints.EntryCSV.as_view(), name='entry-csv'),
     
