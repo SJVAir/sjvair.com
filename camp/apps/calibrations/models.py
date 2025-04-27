@@ -1,30 +1,32 @@
+from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
-from django.utils.functional import cached_property
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from geopy.distance import distance as geopy_distance
 from model_utils.models import TimeStampedModel
 
 from camp.apps.entries.fields import EntryTypeField
+from camp.apps.entries.models import BaseEntry
+from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.fields import MonitorTypeField
 from camp.apps.monitors.validators import validate_formula
 from camp.apps.calibrations.linreg import LinearRegressions
 from camp.apps.calibrations.querysets import CalibratorQuerySet
+from camp.apps.calibrations.utils import calibration_model_upload_to
 
 
 class DefaultCalibration(models.Model):
-    '''
-    Stores the default calibration to use for a given monitor type and entry type.
+    """
+    Stores the default calibration processor to use for a given monitor type and entry type.
 
-    - `monitor_type` is a string identifier corresponding to a monitor model class (e.g. 'purpleair').
-    - `entry_type` is a string identifier corresponding to an entry model class (e.g. 'pm25').
-    - `calibration` is the name of the calibration method (e.g. 'linear', 'epa-adjusted') or blank for raw.
+    - `monitor_type` is a string identifier corresponding to a monitor model class (e.g., 'purpleair').
+    - `entry_type` is a string identifier corresponding to an entry model class (e.g., 'pm25').
+    - `calibration` is the name of the calibration processor class to apply for calibrated entries, or blank for raw.
 
-    Used in calibration logic to determine which calibration should be applied
-    to real-time entries based on monitor type and pollutant.
-    '''
+    Used to determine which calibration processor should be the displayed default for real-time entries on the map.
+    """
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -66,20 +68,107 @@ class DefaultCalibration(models.Model):
             raise ValidationError('Invalid monitor or entry type.')
 
         config = self.monitor_model.ENTRY_CONFIG.get(self.entry_model)
-        if not config:
+        if config is None:
             raise ValidationError(
                 f'{self.monitor_type} does not support entry type {self.entry_type}.'
             )
 
-        calibrations = [c.name for c in config.get('calibrations', [])]
-        if self.calibration and self.calibration not in calibrations:
+        processors_config = config.get('processors', {})
+        calibration_processors = processors_config.get(BaseEntry.Stage.CALIBRATED, [])
+        allowed_calibrations = [p.name for p in calibration_processors]
+
+        if self.calibration and self.calibration not in allowed_calibrations:
             raise ValidationError(
                 f'"{self.calibration}" is not a valid calibration for {self.monitor_type} - {self.entry_type}. '
-                f'Valid options: {calibrations or ["(none)"]}'
+                f'Valid options: {allowed_calibrations or ["(none)"]}'
             )
     
-    
 
+class CalibrationPair(TimeStampedModel):
+    """
+    Defines a colocated reference + colocated monitor pair for generating calibrations.
+    """
+
+    reference = models.ForeignKey(
+        'monitors.Monitor',
+        on_delete=models.CASCADE,
+        related_name='reference_pairs'
+    )
+    colocated = models.ForeignKey(
+        'monitors.Monitor',
+        on_delete=models.CASCADE,
+        related_name='colocated_pairs'
+    )
+
+    entry_type = EntryTypeField()
+
+    is_enabled = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, default='')
+
+    def __str__(self):
+        return f'{self.colocated} → {self.reference} ({self.entry_type})'
+
+    @property
+    def entry_model(self):
+        return get_entry_model_by_name(self.entry_type)
+
+    @property
+    def reference_stage(self):
+        return self.reference.get_default_stage()
+
+    @property
+    def colocated_stage(self):
+        return self.colocated.get_default_stage()
+
+
+class Calibration(TimeStampedModel):
+    """
+    A saved calibration model derived from a CalibrationPair.
+    """
+
+    pair = models.ForeignKey(
+        CalibrationPair,
+        on_delete=models.CASCADE,
+        related_name='calibrations'
+    )
+
+    entry_type = EntryTypeField()
+
+    model_name = models.CharField(
+        max_length=255,
+        help_text="Import path of the trainer/model used (e.g., calibrations.trainers.pm25.PM25_UnivariateLinearRegression)"
+    )
+
+    # Model coefficients or formulas
+    formula = models.TextField(blank=True, null=True, help_text="Formula string, if model can be expressed this way (e.g., for linear regression).")
+    intercept = models.FloatField(blank=True, null=True)
+
+    # File for serialized ML model (e.g., .bin, .pt)
+    model_file = models.FileField(
+        upload_to=calibration_model_upload_to,
+        blank=True,
+        null=True,
+        help_text='Trained model file (.bin, .pt, etc.) if not using a simple formula.'
+    )
+
+    # Metrics
+    r2 = models.FloatField(blank=True, null=True)
+    rmse = models.FloatField(blank=True, null=True)
+    mae = models.FloatField(blank=True, null=True)
+
+    # Which features were used
+    features = ArrayField(models.CharField(max_length=50), default=list)
+
+    metadata = models.JSONField(default=dict, blank=True)
+
+    created = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'{self.entry_type} {self.model_name} ({self.created.date()})'
+
+
+
+## ========== LEGACY ========== ##
 
 class Calibrator(TimeStampedModel):
     id = SmallUUIDField(

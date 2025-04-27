@@ -1,7 +1,9 @@
-from camp.apps.entries.models import BaseEntry
+from functools import lru_cache
 
-
-def get_all_entry_models(base_class=BaseEntry):
+@lru_cache
+def get_all_entry_models(base_class=None):
+    from camp.apps.entries.models import BaseEntry
+    base_class = base_class or BaseEntry
     subclasses = set()
 
     def recurse(cls):
@@ -13,10 +15,10 @@ def get_all_entry_models(base_class=BaseEntry):
     recurse(base_class)
     return subclasses
 
-ENTRY_MODEL_LOOKUP = {
-    model._meta.model_name: model
-    for model in get_all_entry_models()
-}
 
+@lru_cache()
 def get_entry_model_by_name(name):
-    return ENTRY_MODEL_LOOKUP.get(name.lower())
+    name = name.lower()
+    for model in get_all_entry_models():
+        if model._meta.model_name == name:
+            return model

@@ -8,12 +8,11 @@ class EntrySerializer(serializers.Serializer):
         ('timestamp', lambda entry: entry.timestamp_pst),
         'sensor',
         'stage',
+        'processor',
     ]
 
     def fixup(self, instance, data):
         data.update(instance.declared_data())
-        if instance.is_calibratable:
-            data['calibration'] = instance.calibration
         return data
     
 
