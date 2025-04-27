@@ -18,20 +18,29 @@ class MonitorQuerySet(InheritanceQuerySet):
 
     def get_active_multisensor(self):
         return self.get_active().exclude(default_sensor='').exclude(location='inside')
-    
-    def with_latest_entry(self, entry_model, calibration=''):
+
+    def with_latest_entry(self, entry_model, stage=None, processor=None):
         from camp.apps.monitors.models import LatestEntry
 
         entry_type = entry_model._meta.model_name
         field_id = f'latest_{entry_type}_id'
 
+        lookup = {
+            'monitor_id': OuterRef('pk'),
+            'entry_type': entry_type,
+        }
+
+        if stage is not None:
+            lookup['stage'] = stage
+            if stage == entry_model.Stage.CALIBRATED:
+                lookup['processor'] = processor or ''
+        elif processor is not None:
+            lookup['stage'] = entry_model.Stage.CALIBRATED
+            lookup['processor'] = processor or ''
+
         subquery = (LatestEntry.objects
-            .filter(
-                monitor_id=OuterRef('pk'),
-                entry_type=entry_type,
-                calibration=calibration
-            )
-            .values('object_id')[:1]
+            .filter(**lookup)
+            .values('entry_id')[:1]
         )
 
         monitors = (self

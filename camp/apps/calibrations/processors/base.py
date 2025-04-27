@@ -5,7 +5,7 @@ from django.utils.functional import cached_property
 from camp.utils import classproperty
 
 
-__all__ = ['BaseProcessor', 'BaseCalibration', 'BaseCleaner']
+__all__ = ['BaseProcessor']
 
 
 class BaseProcessor(ABC):
@@ -78,7 +78,7 @@ class BaseProcessor(ABC):
         '''
         Clones the current entry and applies additional fields.
         '''
-        defaults = {'calibration': self.name}
+        defaults = {'processor': self.name}
         if self.next_stage:
             defaults['stage'] = self.next_stage
         defaults.update(**kwargs)

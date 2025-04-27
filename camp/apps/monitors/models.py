@@ -17,6 +17,7 @@ from model_utils import Choices
 from py_expression_eval import Parser as ExpressionParser
 
 from camp.apps.calibrations.utils import get_default_calibration
+from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.monitors.managers import MonitorManager
 from camp.utils.counties import County
@@ -77,13 +78,14 @@ class LatestEntry(models.Model):
     monitor = models.ForeignKey('monitors.Monitor', on_delete=models.CASCADE, related_name='latest_entries')
 
     entry_type = EntryTypeField()
-    object_id = SmallUUIDField()
+    entry_id = SmallUUIDField()
 
-    calibration = models.CharField(max_length=50, blank=True, default='')
+    stage = models.CharField(max_length=16, choices=stages.Stage.choices, default=stages.Stage.RAW)
+    processor = models.CharField(max_length=50, blank=True, default='')
     timestamp = models.DateTimeField(db_index=True)
 
     class Meta:
-        unique_together = ('monitor', 'entry_type', 'calibration')
+        unique_together = ('monitor', 'entry_type', 'processor')
 
     def __str__(self):
         return f"{self.monitor.name} latest {self.entry_type}"
@@ -92,9 +94,25 @@ class LatestEntry(models.Model):
     def entry_model(self):
         return EntryTypeField.get_model_map().get(self.entry_type)
 
-    @cached_property
+    @property
     def entry(self):
-        return self.entry_model.objects.get(pk=self.object_id)
+        if not hasattr(self, '_entry'):
+            self._entry = self.entry_model.objects.get(pk=self.entry_id)
+        return self._entry
+
+    @entry.setter
+    def entry(self, value):
+        """
+        When setting entry, also update related fields to keep in sync.
+        """
+        self.entry_type = value._meta.model_name
+        self.entry_id = value.pk
+        self.stage = value.stage
+        self.processor = value.processor
+        self.timestamp = value.timestamp
+
+        # Update the cache
+        self._entry = value
 
 
 class Monitor(models.Model):
@@ -256,7 +274,7 @@ class Monitor(models.Model):
         return sensors[0]
     
     def get_default_stage(self, EntryModel):
-        return self.ENTRY_CONFIG.get(EntryModel, {}).get('default_stage')
+        return self.ENTRY_CONFIG.get(EntryModel, {}).get('default_stage', EntryModel.Stage.RAW)
     
     def get_initial_stage(self, EntryModel):
         '''
@@ -344,24 +362,21 @@ class Monitor(models.Model):
             return
 
         # Skip if not the default calibration
-        if entry.is_calibratable:
+        if entry.stage == entry.Stage.CALIBRATED:
             if entry.calibration != self.get_default_calibration(entry.__class__):
                 return
 
-        entry_type = entry._meta.model_name  # this will be stored in entry_type field
-        calibration = entry.calibration if entry.is_calibratable else ''
-
         lookup = {
             'monitor_id': self.pk,
-            'entry_type': entry_type,
-            'calibration': calibration,
+            'entry_type': entry._meta.model_name,
+            'processor': entry.processor,
         }
 
         try:
             latest = LatestEntry.objects.get(**lookup)
         except LatestEntry.DoesNotExist:
             LatestEntry.objects.create(
-                object_id=entry.pk,
+                entry_id=entry.pk,
                 timestamp=entry.timestamp,
                 **lookup
             )
@@ -375,7 +390,7 @@ class Monitor(models.Model):
             # referenced entry was deleted
             pass
 
-        latest.object_id = entry.pk
+        latest.entry_id = entry.pk
         latest.timestamp = entry.timestamp
         latest.save()
 
@@ -393,9 +408,8 @@ class Monitor(models.Model):
             payload.update({
                 'sensor': latest.entry.sensor,
                 'timestamp': latest.entry.timestamp,
+                'calibration': latest.entry.calibration
             })
-            if latest.entry.is_calibratable:
-                payload['calibration'] = latest.entry.calibration
             data[latest.entry_type] = payload
 
         return data

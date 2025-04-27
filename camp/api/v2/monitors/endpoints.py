@@ -189,11 +189,9 @@ class EntryCSV(EntryMixin, CSVExport):
 
     @cached_property
     def columns(self):
-        fields = ['timestamp', 'sensor']
+        fields = ['timestamp', 'sensor', 'stage', 'processor']
         for field in self.entry_model.declared_fields:
             fields.append(field.name)
-        if self.entry_model.is_calibratable:
-            fields.append('calibration')
         return fields
 
     def get_filename(self):

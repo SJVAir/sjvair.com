@@ -16,7 +16,7 @@ class CalibrationTests(TestCase):
     def setUp(self):
         self.monitor = PurpleAir.objects.get(purple_id=8892)
 
-    def test_pm25_lcs_cleaner_spike(self):
+    def test_pm25_lcs_cleaning(self):
         base_time = timezone.now() - timedelta(hours=1)
 
         # Create a spike-y raw time series
@@ -51,7 +51,7 @@ class CalibrationTests(TestCase):
         ])
         assert cleaned.value < spike.value, 'Spike was not reduced'
 
-    def test_pm25_lcs_precleaner_ab_high_variance(self):
+    def test_pm25_lcs_correction_high_variance(self):
         base_time = timezone.now() - timedelta(minutes=5)
 
         ts = base_time.replace(second=0, microsecond=0)
@@ -90,7 +90,7 @@ class CalibrationTests(TestCase):
         # Should return the **lower** value (min of a/b)
         assert cleaned.value == b_entry.value
 
-    def test_pm25_lcs_cleaner_ab_low_variance(self):
+    def test_pm25_lcs_correction_low_variance(self):
         base_time = timezone.now() - timedelta(minutes=5)
         ts = base_time.replace(second=0, microsecond=0)
 
@@ -123,7 +123,7 @@ class CalibrationTests(TestCase):
         expected = (a_entry.value + b_entry.value) / 2
         assert cleaned.value == expected
 
-    def test_epa_pm25_calibration(self):
+    def test_pm25_epa_oct2021(self):
         now = timezone.now()
         
         entry_models.Humidity.objects.create(
@@ -153,7 +153,7 @@ class CalibrationTests(TestCase):
         assert calibrated is not None
         assert calibrated.value != pm25.value
         assert calibrated.stage == entry_models.PM25.Stage.CALIBRATED
-        assert calibrated.calibration == correction.name
+        assert calibrated.processor == correction.name
         assert calibrated.monitor == self.monitor
 
     def test_fem_cleaner_discards_invalid(self):
@@ -161,7 +161,12 @@ class CalibrationTests(TestCase):
         now = timezone.now()
 
         # Should be discarded (< -10)
-        entry = entry_models.PM25.objects.create(monitor=monitor, timestamp=now, value=Decimal('-15'), stage=entry_models.PM25.Stage.RAW)
+        entry = entry_models.PM25.objects.create(
+            monitor=monitor,
+            timestamp=now,
+            value=Decimal('-15'),
+            stage=entry_models.PM25.Stage.RAW
+        )
         assert processors.PM25_FEM_Cleaner(entry).run() is None
 
     def test_fem_cleaner_clamps_to_zero(self):
@@ -169,7 +174,12 @@ class CalibrationTests(TestCase):
         now = timezone.now()
 
         # Should be clamped to 0
-        entry = entry_models.PM25.objects.create(monitor=monitor, timestamp=now, value=Decimal('-5'), stage=entry_models.PM25.Stage.RAW)
+        entry = entry_models.PM25.objects.create(
+            monitor=monitor,
+            timestamp=now,
+            value=Decimal('-5'),
+            stage=entry_models.PM25.Stage.RAW
+        )
         cleaned = processors.PM25_FEM_Cleaner(entry).run()
         assert cleaned is not None
         assert cleaned.value == 0

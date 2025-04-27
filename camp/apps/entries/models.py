@@ -1,28 +1,20 @@
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 
+from camp.apps.entries import stages
 from camp.apps.monitors.models import Monitor
-from camp.utils import clamp, classproperty
+from camp.utils import classproperty
 
 
 class BaseEntry(models.Model):
     epa_aqs_code = None
-    is_calibratable = False
-
-    class Stage(models.TextChoices):
-        RAW = 'raw', _('Raw')
-        CORRECTED = 'corrected', _('Corrected')
-        CLEANED = 'cleaned', _('Cleaned')
-        CALIBRATED = 'calibrated', _('Calibrated')
+    Stage = stages.Stage
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -41,19 +33,39 @@ class BaseEntry(models.Model):
 
     sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
 
-    stage = models.CharField(max_length=16, choices=Stage.choices, default=Stage.RAW)
+    stage = models.CharField(max_length=16, choices=Stage.choices, default=Stage.RAW, help_text='The processing stage for this entry.')
     origin = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='derived_entries')
+
+    processor = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text="The processor class used to generate this entry."
+    )
+
+    calibration = models.ForeignKey(
+        'calibrations.Calibration',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='%(class)s_entries',
+        help_text="The calibration record applied to this entry (if applicable)."
+    )
 
     class Meta:
         abstract = True
         get_latest_by = 'timestamp'
         constraints = (
-            models.UniqueConstraint(fields=['monitor', 'timestamp', 'sensor', 'stage'], name='unique_entry_%(class)s'),
+            models.UniqueConstraint(
+                fields=['monitor', 'timestamp', 'sensor', 'stage', 'processor'],
+                name='unique_entry_%(class)s'
+            ),
         )
         indexes = (
             BrinIndex(fields=['timestamp', 'sensor'], autosummarize=True),
         )
-        ordering = ('-timestamp', 'sensor',)
+        ordering = ('-timestamp', 'sensor', 'processor')
 
     @classproperty
     def label(cls):
@@ -101,9 +113,11 @@ class BaseEntry(models.Model):
                 'stage': config.get('default_stage', BaseEntry.Stage.RAW),
             }
 
-            # Only filter by sensor if the entry type supports this sensor
-            if self.sensor in config.get('sensors', []):
-                lookup['sensor'] = self.sensor
+            if config.get('sensors'):
+                if self.__class__ == EntryModel:
+                    lookup['sensor'] = self.sensor
+                else:
+                    lookup['sensor'] = self.monitor.get_default_sensor(EntryModel)
 
             try:
                 entry = EntryModel.objects.get(**lookup)
@@ -132,50 +146,38 @@ class BaseEntry(models.Model):
         return self.__class__(**values)
     
     def validation_check(self):
-        lookup = {
-            'monitor': self.monitor,
-            'timestamp': self.timestamp,
-            'sensor': self.sensor,
-            'stage': self.stage,
-        }
-
-        if self.is_calibratable:
-            lookup['calibration'] = self.calibration
-
         return not (self.__class__.objects
-            .filter(**lookup)
+            .filter(
+                monitor=self.monitor,
+                timestamp=self.timestamp,
+                sensor=self.sensor,
+                stage=self.stage,
+                processor=self.processor,
+            )
             .exclude(pk=self.pk)
             .exists()
         )
     
     def get_next_entries(self):
-        lookup = {
-            'monitor': self.monitor,
-            'sensor': self.sensor,
-            'timestamp__gt': self.timestamp,
-            'stage': self.stage,
-        }
-
-        if self.is_calibratable and self.stage == self.Stage.CALIBRATED:
-            lookup['calibration'] = self.calibration
-
-        return self.__class__.objects.filter(**lookup).order_by('timestamp')
+        return self.__class__.objects.filter(
+            monitor=self.monitor,
+            sensor=self.sensor,
+            timestamp__gt=self.timestamp,
+            stage=self.stage,
+            processor=self.processor,
+        ).order_by('timestamp')
     
     def get_next_entry(self):
         return self.get_next_entries().first()
     
     def get_previous_entries(self):
-        lookup = {
-            'monitor': self.monitor,
-            'sensor': self.sensor,
-            'timestamp__lt': self.timestamp,
-            'stage': self.stage,
-        }
-
-        if self.is_calibratable and self.stage == self.Stage.CALIBRATED:
-            lookup['calibration'] = self.calibration
-
-        return self.__class__.objects.filter(**lookup).order_by('-timestamp')
+        return self.__class__.objects.filter(
+            monitor=self.monitor,
+            sensor=self.sensor,
+            timestamp__lt=self.timestamp,
+            stage=self.stage,
+            processor=self.processor,
+        ).order_by('-timestamp')
     
     def get_previous_entry(self):
         return self.get_previous_entries().first()
@@ -194,46 +196,13 @@ class BaseEntry(models.Model):
         if not sensors or len(sensors) < 2:
             return self.__class__.objects.none()
 
-        lookup = {
-            'monitor': self.monitor,
-            'timestamp': self.timestamp,
-            'stage': self.stage,
-            'sensor__in': sensors,
-        }
-
-        if self.is_calibratable and self.stage == self.Stage.CALIBRATED:
-            lookup['calibration'] = self.calibration
-
-        return self.__class__.objects.filter(**lookup).exclude(sensor=self.sensor)
-
-
-class BaseCalibratedEntry(BaseEntry):
-    is_calibratable = True
-    min_valid_value = Decimal('0.0')
-    max_valid_value = Decimal('1200.0')
-
-    calibration = models.CharField(max_length=50, blank=True, default='', db_index=True)
-    calibration_data = models.JSONField(default=dict)
-
-    calibration_content_type = models.ForeignKey(ContentType,
-        null=True, db_index=True, editable=False,
-        on_delete=models.SET_NULL,
-    )
-    calibration_object_id = SmallUUIDField(null=True, db_index=True, editable=False)
-    calibration_object = GenericForeignKey('calibration_content_type', 'calibration_object_id')
-
-    class Meta(BaseEntry.Meta):
-        abstract = True
-        constraints = [
-            models.UniqueConstraint(
-                fields=['monitor', 'timestamp', 'sensor', 'stage', 'calibration'],
-                name='unique_calibrated_entry_%(class)s',
-            ),
-        ]
-        ordering = ('-timestamp', 'sensor', 'calibration')
-
-    def is_valid_value(self):
-        return self.value is not None and self.value <= self.max_valid_value
+        return self.__class__.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.timestamp,
+            stage=self.stage,
+            sensor__in=sensors,
+            processor=self.processor,
+        ).exclude(sensor=self.sensor)
     
     def get_calibrated_entries(self):
         '''
@@ -290,11 +259,9 @@ class BaseCalibratedEntry(BaseEntry):
 
 # Particulate Matter
 
-class PM25(BaseCalibratedEntry):
+class PM25(BaseEntry):
     label = 'PM2.5'
     epa_aqs_code = 88101
-    
-    max_valid_value = Decimal('1000.0')
     
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -303,8 +270,6 @@ class PM25(BaseCalibratedEntry):
 
 
 class Particulates(BaseEntry):
-    max_valid_value = Decimal('500000.0')
-
     particles_03um = models.DecimalField(max_digits=8, decimal_places=2)
     particles_05um = models.DecimalField(max_digits=8, decimal_places=2)
     particles_10um = models.DecimalField(max_digits=8, decimal_places=2)
@@ -316,8 +281,6 @@ class Particulates(BaseEntry):
 class PM10(BaseEntry):
     label = 'PM1.0'
 
-    max_valid_value = Decimal('2000.0')
-
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='PM1.0 (µg/m³)'
@@ -328,8 +291,6 @@ class PM100(BaseEntry):
     label = 'PM10.0'
     epa_aqs_code = 81102
 
-    max_valid_value = Decimal('5000.0')
-
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='PM10.0 (µg/m³)'
@@ -338,10 +299,8 @@ class PM100(BaseEntry):
 
 # Meteorological
 
-class Temperature(BaseCalibratedEntry):
+class Temperature(BaseEntry):
     epa_aqs_code = 62101
-
-    max_valid_value = Decimal('140.0')
 
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
@@ -374,10 +333,8 @@ class Temperature(BaseCalibratedEntry):
         }
 
 
-class Humidity(BaseCalibratedEntry):
+class Humidity(BaseEntry):
     epa_aqs_code = 62201
-
-    max_valid_value = Decimal('100.0')
 
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
@@ -386,8 +343,6 @@ class Humidity(BaseCalibratedEntry):
 
 
 class Pressure(BaseEntry):
-    max_valid_value = Decimal('850.0')
-
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Atmospheric pressure (mmHg)',
@@ -421,8 +376,6 @@ class O3(BaseEntry):
     label = 'Ozone'
     epa_aqs_code = 44201
 
-    max_valid_value = Decimal('400.0')
-
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Ozone (ppb)'
@@ -433,33 +386,27 @@ class NO2(BaseEntry):
     label = 'Nitrogen Dioxide'
     epa_aqs_code = 42602
 
-    max_valid_value = Decimal('600.0')
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Nitrogen dioxide (ppb)',
     )
 
-
 class CO(BaseEntry):
     label = 'Carbon Monoxide'
     epa_aqs_code = 42101
 
-    max_valid_value = Decimal('75.0')
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Carbon monoxide (ppm)',
     )
 
-
 class SO2(BaseEntry):
-    label = 'Sulfer Dioxide'
+    label = 'Sulfur Dioxide'
     epa_aqs_code = 42401
-
-    max_valid_value = Decimal('600.0')
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text='Sulfer dioxide (ppb)',
+        help_text='Sulfur dioxide (ppb)',
     )

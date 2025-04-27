@@ -1,8 +1,7 @@
 from django.contrib import admin
-from django.db.models import F, Prefetch
+from django.db.models import Prefetch
 from django.template import Context, Template
 from django.urls import reverse
-from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from django_admin_inline_paginator.admin import TabularInlinePaginated

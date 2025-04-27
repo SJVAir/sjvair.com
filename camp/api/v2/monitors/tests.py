@@ -124,7 +124,7 @@ class EndpointTests(TestCase):
 
         assert response.status_code == 200
         assert {e['sensor'] for e in content['data']} == set([monitor.get_default_sensor(entry_models.PM25)])
-        assert {e['calibration'] for e in content['data']} == set([''])
+        assert {e['processor'] for e in content['data']} == set([''])
 
     def test_entry_list_sensor(self):
         '''
@@ -146,7 +146,7 @@ class EndpointTests(TestCase):
 
         assert response.status_code == 200
         assert {e['sensor'] for e in content['data']} == set([params['sensor']])
-        assert {e['calibration'] for e in content['data']} == set([''])
+        assert {e['processor'] for e in content['data']} == set([''])
 
     def test_entry_list_default_sensor(self):
         '''
@@ -168,11 +168,11 @@ class EndpointTests(TestCase):
 
         assert response.status_code == 200
         assert {e['sensor'] for e in content['data']} == set(['b'])
-        assert {e['calibration'] for e in content['data']} == set([''])
+        assert {e['processor'] for e in content['data']} == set([''])
 
         monitor.set_default_sensor(entry_models.PM25, 'a')
 
-    def test_entry_list_calibration(self):
+    def test_entry_list_processor(self):
         '''
             Test that we can GET the entry list endpoint.
         '''
@@ -184,7 +184,7 @@ class EndpointTests(TestCase):
             value=10.0,
             sensor='a',
             stage=entry_models.PM25.Stage.CALIBRATED,
-            calibration='EPA_PM25_Oct2021'
+            processor='EPA_PM25_Oct2021'
         )
 
         kwargs = {
@@ -193,7 +193,7 @@ class EndpointTests(TestCase):
         }
 
         url = reverse('api:v2:monitors:entry-list', kwargs=kwargs)
-        params = {'calibration': 'EPA_PM25_Oct2021'}
+        params = {'processor': 'EPA_PM25_Oct2021'}
         request = self.factory.get(url, params)
         request.monitor = monitor
         response = entry_list(request, **kwargs)
@@ -201,7 +201,7 @@ class EndpointTests(TestCase):
 
         assert response.status_code == 200
         assert {e['sensor'] for e in content['data']} == set([monitor.get_default_sensor(entry_models.PM25)])
-        assert {e['calibration'] for e in content['data']} == set([params['calibration']])
+        assert {e['processor'] for e in content['data']} == set([params['processor']])
 
     def test_entry_list_timestamp(self):
         '''
@@ -243,6 +243,7 @@ class EndpointTests(TestCase):
         assert len(content['data']) == 1
         assert content['data'][0]['timestamp'] == '2024-07-24T01:00:00-07:00'  # PST
 
+    @debug
     def test_entry_csv(self):
         '''
             Test that we can GET the entry list endpoint.
@@ -268,7 +269,7 @@ class EndpointTests(TestCase):
         rows = list(reader)
 
         assert {e['sensor'] for e in rows} == set([monitor.get_default_sensor(entry_models.PM25)])
-        assert {e['calibration'] for e in rows} == set([''])
+        assert {e['processor'] for e in rows} == set([''])
 
     def test_entry_csv_sensor(self):
         '''
@@ -296,7 +297,7 @@ class EndpointTests(TestCase):
         rows = list(reader)
 
         assert {e['sensor'] for e in rows} == set([params['sensor']])
-        assert {e['calibration'] for e in rows} == set([''])
+        assert {e['processor'] for e in rows} == set([''])
 
     def test_entry_csv_default_sensor(self):
         '''
@@ -324,11 +325,11 @@ class EndpointTests(TestCase):
         rows = list(reader)
 
         assert {e['sensor'] for e in rows} == set(['b'])
-        assert {e['calibration'] for e in rows} == set([''])
+        assert {e['processor'] for e in rows} == set([''])
 
         monitor.set_default_sensor(entry_models.PM25, 'a')
 
-    def test_entry_csv_calibration(self):
+    def test_entry_csv_processor(self):
         '''
             Test that we can GET the entry list endpoint.
         '''
@@ -340,7 +341,7 @@ class EndpointTests(TestCase):
             value=10.0,
             sensor='a',
             stage=entry_models.PM25.Stage.CALIBRATED,
-            calibration='EPA_PM25_Oct2021'
+            processor='EPA_PM25_Oct2021'
         )
 
         kwargs = {
@@ -349,7 +350,7 @@ class EndpointTests(TestCase):
         }
 
         url = reverse('api:v2:monitors:entry-csv', kwargs=kwargs)
-        params = {'calibration': 'EPA_PM25_Oct2021'}
+        params = {'processor': 'EPA_PM25_Oct2021'}
         request = self.factory.get(url, params)
         request.monitor = monitor
         response = entry_csv(request, **kwargs)
@@ -363,7 +364,7 @@ class EndpointTests(TestCase):
         rows = list(reader)
 
         assert {e['sensor'] for e in rows} == set([monitor.get_default_sensor(entry_models.PM25)])
-        assert {e['calibration'] for e in rows} == set([params['calibration']])
+        assert {e['processor'] for e in rows} == set([params['processor']])
 
     def test_create_entry(self):
         '''
