@@ -7,17 +7,17 @@ from camp.apps.entries.models import PM25
 
 from ..base import BaseProcessor
 
-__all__ = ['PM25_Coloc_LinearRegression']
+__all__ = ['PM25_UnivariateLinearRegression']
 
 
-class PM25_Coloc_LinearRegression(BaseProcessor):
+class PM25_UnivariateLinearRegression(BaseProcessor):
     entry_model = PM25
     required_context = ['pm25']
     required_stage = PM25.Stage.CLEANED
     next_stage = PM25.Stage.CALIBRATED
 
     min_required_value = D('5.0')
-            
+
     def process(self):
         value = self.get_correction()
         if value is not None:
@@ -33,7 +33,7 @@ class PM25_Coloc_LinearRegression(BaseProcessor):
             parser = ExpressionParser()
             expression = parser.parse(formula)
             return expression.evaluate(self.context)
-    
+
     def get_calibration_formula(self):
         calibrator = (Calibrator.objects
             .filter(is_enabled=True)

@@ -45,7 +45,7 @@ class PurpleAir(Monitor):
                 entry_models.PM25.Stage.RAW: [processors.PM25_LCS_Correction],
                 entry_models.PM25.Stage.CORRECTED: [processors.PM25_LCS_Cleaning],
                 entry_models.PM25.Stage.CLEANED: [
-                    processors.PM25_Coloc_LinearRegression,
+                    processors.PM25_UnivariateLinearRegression,
                     processors.PM25_EPA_Oct2021,
                 ],
             }
@@ -154,7 +154,7 @@ class PurpleAir(Monitor):
 
         # If we're here, it's probably outside.
         return self.LOCATION.outside
-    
+
     def create_entries(self, payload):
         timestamp = parse_timestamp(payload.get('last_seen', payload.get('time_stamp')))
         entries = []
@@ -180,7 +180,7 @@ class PurpleAir(Monitor):
                 if entry is not None:
                     entries.append(entry)
         return entries
-    
+
     def create_entry(self, EntryModel, **data):
         if not data or any(v is None for v in data.values()):
             return

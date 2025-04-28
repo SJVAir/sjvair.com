@@ -1,40 +1,80 @@
-from dataclasses import dataclass
+import pandas as pd
+
+from django.utils.functional import cached_property
+
 from sklearn.linear_model import LinearRegression as SklearnLinearRegression
+from sklearn.metrics import r2_score, explained_variance_score, mean_absolute_error, root_mean_squared_error
 
-
-@dataclass
-class LinearRegressionResults:
-    r2: float
-    intercept: float
-    # variance: float
-    coefs: dict
+from camp.datasci.results import RegressionResults
 
 
 class LinearRegression:
-    def __init__(self, features, target):
+    def __init__(self, features: pd.DataFrame, target: pd.Series):
         """
         Args:
             features (pd.DataFrame): The feature columns (X)
-            target (pd.Series or pd.DataFrame): The target column (y)
+            target (pd.Series): The target column (y)
         """
-        self.features = features
-        self.target = target
+        self._features = features
+        self._target = target
         self.model = None
 
+    def feature_suffix(self, value=''):
+        return f'{value}_feature'
+
+    def target_suffix(self, value=''):
+        return f'{value}_target'
+
+    def feature_unsuffix(self, name):
+        suffix = self.feature_suffix()
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+        return name
+
+    @cached_property
+    def merged_df(self):
+        return self._features.join(
+            self._target,
+            how='inner',
+            lsuffix=self.feature_suffix(),
+            rsuffix=self.target_suffix()
+        ).dropna()
+
+    @cached_property
+    def features(self):
+        features = [
+            self.feature_suffix(f) if f == self._target.name else f
+            for f in self._features.columns
+        ]
+        return self.merged_df[features]
+
+    @cached_property
+    def target(self):
+        target = (
+            self.target_suffix(self._target.name)
+            if self._target.name in self._features.columns
+            else self._target.name
+        )
+        return self.merged_df[target]
+
     def fit(self):
-        """
-        Fits a linear regression model and returns the results.
-        """
+        if self.features.empty or self.target.empty:
+            return
+
         self.model = SklearnLinearRegression()
         self.model.fit(self.features, self.target)
 
+        predictions = self.model.predict(self.features)
         coefficients = {
-            feature: coef
+            self.feature_unsuffix(feature): coef
             for feature, coef in zip(self.features.columns, self.model.coef_)
         }
 
-        return LinearRegressionResults(
-            r2=self.model.score(self.features, self.target),
+        return RegressionResults(
+            r2=r2_score(self.target, predictions),
+            variance=explained_variance_score(self.target, predictions),
+            rmse=root_mean_squared_error(self.target, predictions),
+            mae=mean_absolute_error(self.target, predictions),
+            coefs=coefficients,
             intercept=self.model.intercept_,
-            coefs=coefficients
         )

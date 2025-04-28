@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 from django.utils import timezone
 
+from camp.apps.calibrations.models import Calibration
 from camp.utils import classproperty
 
 
@@ -50,3 +51,12 @@ class BaseTrainer(ABC):
         Subclasses can override for stricter validation (e.g., minimum R²).
         """
         return result is not None
+
+    def build_calibration(self, **kwargs):
+        defaults = {
+            'pair_id': self.pair.pk,
+            'entry_type': self.pair.entry_type,
+            'trainer': self.name,
+        }
+        defaults.update(kwargs)
+        return Calibration(**defaults)
