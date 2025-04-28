@@ -4,13 +4,13 @@ from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 
+from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
-from . import processors
 
 
-class CalibrationTests(TestCase):
+class ProcessorTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def setUp(self):
@@ -125,7 +125,7 @@ class CalibrationTests(TestCase):
 
     def test_pm25_epa_oct2021(self):
         now = timezone.now()
-        
+
         entry_models.Humidity.objects.create(
             monitor=self.monitor,
             timestamp=now,

@@ -1,7 +1,7 @@
 from datetime import timedelta
 
-from camp.apps.calibrations.models import Calibration
-from camp.datasci.models import LinearRegression
+from camp.apps.calibrations.trainers.base import BaseTrainer
+from camp.datasci.linear import LinearRegression
 
 
 class LinearRegressionTrainer(BaseTrainer):
@@ -16,12 +16,6 @@ class LinearRegressionTrainer(BaseTrainer):
             'timestamp__range': (start_time, self.end_date),
         }
 
-    def feature_suffix(self, value=''):
-        return f'{value}_feature'
-
-    def target_suffix(self, value=''):
-        return f'{value}_target'
-
     def get_feature_dataframe(self, **kwargs):
         defaults = {'stage': self.pair.colocated_stage}
         defaults.update(kwargs)
@@ -32,7 +26,7 @@ class LinearRegressionTrainer(BaseTrainer):
         df = df.resample(self.resample_freq).mean()
         return df
 
-    def get_target_dataframe(self, **kwargs):
+    def get_target_series(self, **kwargs):
         defaults = {'stage': self.pair.reference_stage}
         defaults.update(kwargs)
 
@@ -40,7 +34,7 @@ class LinearRegressionTrainer(BaseTrainer):
 
         df = queryset.to_dataframe(fields=['timestamp', self.target])
         df = df.resample(self.resample_freq).mean()
-        return df
+        return df[self.target]
 
     def process(self):
         best_regression = None
@@ -49,34 +43,11 @@ class LinearRegressionTrainer(BaseTrainer):
             lookup = self.get_common_lookup(days)
 
             feature_df = self.get_feature_dataframe(**lookup)
-            target_df = self.get_target_dataframe(**lookup)
+            target_series = self.get_target_series(**lookup)
 
-            if feature_df.empty or target_df.empty:
-                continue
-
-            df = feature_df.join(
-                target_df,
-                how='inner',
-                lsuffix=self.feature_suffix(),
-                rsuffix=self.target_suffix()
-            ).dropna()
-
-            if df.empty:
-                continue
-
-            features = [
-                self.feature_suffix(f) if f == self.target else f
-                for f in self.features
-            ]
-            target = (
-                self.target_suffix(self.target)
-                if self.target in self.features
-                else self.target
-            )
-
-            model = UnivariateLinearRegression(
-                features=df[features],
-                target=df[target]
+            model = LinearRegression(
+                features=feature_df,
+                target=target_series
             )
 
             results = model.fit()
@@ -84,26 +55,22 @@ class LinearRegressionTrainer(BaseTrainer):
             if best_regression is None or results.r2 > best_regression.r2:
                 best_regression = results
 
-        return best_regression
+        if best_regression:
+            return self.build_calibration(best_regression)
 
     def is_valid(self, result):
         return result.r2 >= self.min_r2
 
-    def to_calibration(self, result):
-        """
-        Takes a regression result and packages it into a Calibration model (unsaved).
-        """
-        return Calibration(
-            pair_id=self.pair.pk,
-            entry_type=self.pair.entry_type,
-            trainer=self.name,
-            formula=result.formula,
-            intercept=result.intercept,
-            r2=result.r2,
-            rmse=None,  # We can calculate this later if we want
-            mae=None,
-            features=list(result.coefs.keys()),
-            metadata={
+    def build_calibration(self, result):
+        defaults = {
+            'r2': result.r2,
+            'rmse': result.rmse,
+            'mae': result.mae,
+            'intercept': result.intercept,
+            'formula': result.formula,
+            'features': list(result.coefs.keys()),
+            'metadata': {
                 'coefs': result.coefs,
             },
-        )
+        }
+        return super().build_calibration(**defaults)

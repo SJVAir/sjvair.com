@@ -114,11 +114,11 @@ class CalibrationPair(TimeStampedModel):
 
     @property
     def reference_stage(self):
-        return self.reference.get_default_stage()
+        return self.reference.get_default_stage(self.entry_model)
 
     @property
     def colocated_stage(self):
-        return self.colocated.get_default_stage()
+        return self.colocated.get_default_stage(self.entry_model)
 
 
 class Calibration(TimeStampedModel):
@@ -160,8 +160,6 @@ class Calibration(TimeStampedModel):
     features = ArrayField(models.CharField(max_length=50), default=list)
 
     metadata = models.JSONField(default=dict, blank=True)
-
-    created = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f'{self.entry_type} {self.trainer} ({self.created.date()})'
