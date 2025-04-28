@@ -7,9 +7,11 @@ from django.utils import timezone
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 
-from camp.apps.entries import stages
 from camp.apps.monitors.models import Monitor
 from camp.utils import classproperty
+
+from . import stages
+from .managers import EntryQuerySet
 
 
 class BaseEntry(models.Model):
@@ -52,6 +54,8 @@ class BaseEntry(models.Model):
         related_name='%(class)s_entries',
         help_text="The calibration record applied to this entry (if applicable)."
     )
+
+    objects = EntryQuerySet.as_manager()
 
     class Meta:
         abstract = True

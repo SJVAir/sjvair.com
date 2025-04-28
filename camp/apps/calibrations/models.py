@@ -53,7 +53,7 @@ class DefaultCalibration(models.Model):
     @property
     def monitor_model(self):
         return MonitorTypeField.get_model_map().get(self.monitor_type)
-    
+
     def clean(self):
         '''
         Validates that the selected calibration is allowed for the given monitor type and entry type.
@@ -82,7 +82,7 @@ class DefaultCalibration(models.Model):
                 f'"{self.calibration}" is not a valid calibration for {self.monitor_type} - {self.entry_type}. '
                 f'Valid options: {allowed_calibrations or ["(none)"]}'
             )
-    
+
 
 class CalibrationPair(TimeStampedModel):
     """
@@ -134,9 +134,9 @@ class Calibration(TimeStampedModel):
 
     entry_type = EntryTypeField()
 
-    model_name = models.CharField(
+    trainer = models.CharField(
         max_length=255,
-        help_text="Import path of the trainer/model used (e.g., calibrations.trainers.pm25.PM25_UnivariateLinearRegression)"
+        help_text="The trainer class used to generate this calibration."
     )
 
     # Model coefficients or formulas
@@ -164,7 +164,7 @@ class Calibration(TimeStampedModel):
     created = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f'{self.entry_type} {self.model_name} ({self.created.date()})'
+        return f'{self.entry_type} {self.trainer} ({self.created.date()})'
 
 
 

@@ -53,7 +53,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, editable=False, verbose_name='modified')),
                 ('entry_type', camp.apps.entries.fields.EntryTypeField(max_length=50)),
-                ('model_name', models.CharField(help_text='Import path of the trainer/model used (e.g., calibrations.trainers.pm25.PM25_UnivariateLinearRegression)', max_length=255)),
+                ('trainer', models.CharField(help_text='The trainer class used to generate this calibration.', max_length=255)),
                 ('formula', models.TextField(blank=True, help_text='Formula string, if model can be expressed this way (e.g., for linear regression).', null=True)),
                 ('intercept', models.FloatField(blank=True, null=True)),
                 ('model_file', models.FileField(blank=True, help_text='Trained model file (.bin, .pt, etc.) if not using a simple formula.', null=True, upload_to=camp.apps.calibrations.utils.calibration_model_upload_to)),
