@@ -99,6 +99,15 @@ class BaseEntry(models.Model):
 
         return cls._declared_fields
 
+    @classproperty
+    def declared_field_names(cls):
+        return [f.name for f in cls.declared_fields]
+
+    @classproperty
+    def projection_fields(cls):
+        core_fields = ['timestamp', 'sensor', 'stage', 'processor']
+        return core_fields + self.declared_field_names
+
     @property
     def timestamp_pst(self):
         return timezone.localtime(self.timestamp, settings.DEFAULT_TIMEZONE)
