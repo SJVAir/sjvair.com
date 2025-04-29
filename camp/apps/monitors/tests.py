@@ -35,7 +35,7 @@ class MonitorTests(TestCase):
         latest.entry = entry  # triggers the setter
 
         # Check that fields synced properly
-        assert latest.entry_type == entry._meta.model_name
+        assert latest.entry_type == entry.entry_type
         assert latest.entry_id == entry.pk
         assert latest.stage == entry.stage
         assert latest.processor == entry.processor

@@ -21,20 +21,22 @@ class LinearRegressionTrainer(BaseTrainer):
         defaults.update(kwargs)
 
         queryset = self.get_feature_queryset(**defaults)
-
         df = queryset.to_dataframe(fields=['timestamp'] + self.features)
-        df = df.resample(self.resample_freq).mean()
-        return df
+
+        if df is not None:
+            df = df.resample(self.resample_freq).mean()
+            return df[self.features]
 
     def get_target_series(self, **kwargs):
         defaults = {'stage': self.pair.reference_stage}
         defaults.update(kwargs)
 
         queryset = self.get_target_queryset(**defaults)
-
         df = queryset.to_dataframe(fields=['timestamp', self.target])
-        df = df.resample(self.resample_freq).mean()
-        return df[self.target]
+
+        if df is not None:
+            df = df.resample(self.resample_freq).mean()
+            return df[self.target]
 
     def process(self):
         best_regression = None
@@ -44,6 +46,9 @@ class LinearRegressionTrainer(BaseTrainer):
 
             feature_df = self.get_feature_dataframe(**lookup)
             target_series = self.get_target_series(**lookup)
+
+            if feature_df is None or target_series is None:
+                continue
 
             model = LinearRegression(
                 features=feature_df,

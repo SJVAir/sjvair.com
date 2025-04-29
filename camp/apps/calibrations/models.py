@@ -13,7 +13,7 @@ from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.fields import MonitorTypeField
 from camp.apps.monitors.validators import validate_formula
 from camp.apps.calibrations.linreg import LinearRegressions
-from camp.apps.calibrations.querysets import CalibratorQuerySet
+from camp.apps.calibrations.querysets import CalibratorQuerySet, CalibrationPairQuerySet, CalibrationQuerySet
 from camp.apps.calibrations.utils import calibration_model_upload_to
 
 
@@ -105,6 +105,8 @@ class CalibrationPair(TimeStampedModel):
     is_enabled = models.BooleanField(default=True)
     notes = models.TextField(blank=True, default='')
 
+    objects = CalibrationPairQuerySet.as_manager()
+
     def __str__(self):
         return f'{self.colocated} → {self.reference} ({self.entry_type})'
 
@@ -160,6 +162,8 @@ class Calibration(TimeStampedModel):
     features = ArrayField(models.CharField(max_length=50), default=list)
 
     metadata = models.JSONField(default=dict, blank=True)
+
+    objects = CalibrationQuerySet.as_manager()
 
     def __str__(self):
         return f'{self.entry_type} {self.trainer} ({self.created.date()})'

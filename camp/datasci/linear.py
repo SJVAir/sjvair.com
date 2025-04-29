@@ -15,15 +15,15 @@ class LinearRegression:
             features (pd.DataFrame): The feature columns (X)
             target (pd.Series): The target column (y)
         """
-        self._features = features
-        self._target = target
+        self.input_features = features
+        self.input_target = target
         self.model = None
 
     def feature_suffix(self, value=''):
         return f'{value}_feature'
 
     def target_suffix(self, value=''):
-        return f'{value}_target'
+        return f'{value}input_target'
 
     def feature_unsuffix(self, name):
         suffix = self.feature_suffix()
@@ -33,8 +33,8 @@ class LinearRegression:
 
     @cached_property
     def merged_df(self):
-        return self._features.join(
-            self._target,
+        return self.input_features.join(
+            self.input_target,
             how='inner',
             lsuffix=self.feature_suffix(),
             rsuffix=self.target_suffix()
@@ -43,17 +43,17 @@ class LinearRegression:
     @cached_property
     def features(self):
         features = [
-            self.feature_suffix(f) if f == self._target.name else f
-            for f in self._features.columns
+            self.feature_suffix(f) if f == self.input_target.name else f
+            for f in self.input_features.columns
         ]
         return self.merged_df[features]
 
     @cached_property
     def target(self):
         target = (
-            self.target_suffix(self._target.name)
-            if self._target.name in self._features.columns
-            else self._target.name
+            self.target_suffix(self.input_target.name)
+            if self.input_target.name in self.input_features.columns
+            else self.input_target.name
         )
         return self.merged_df[target]
 
