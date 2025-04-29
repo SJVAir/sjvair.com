@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from camp.apps.calibrations.trainers.base import BaseTrainer
+from camp.apps.calibrations.core.trainers.base import BaseTrainer
 from camp.apps.entries.fetchers import EntryDataFetcher
 from camp.datasci.linear import LinearRegression
 

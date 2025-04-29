@@ -3,11 +3,13 @@ from decimal import Decimal
 
 from camp.apps.entries.models import PM25
 
+from camp.apps.calibrations import processors
 from ..base import BaseProcessor
 
 __all__ = ['PM25_LCS_Correction', 'PM25_LCS_Cleaning']
 
 
+@processors.register()
 class PM25_LCS_Correction(BaseProcessor):
     '''
     Cleans PM2.5 entries from low-cost dual-sensor monitors using
@@ -30,7 +32,7 @@ class PM25_LCS_Correction(BaseProcessor):
 
         if self.is_repeated():
             return None  # Filter out repeated sequences
-        
+
         cleaned_value = self.compute_ab_adjusted_value()
         cleaned_value = max(cleaned_value, 0)
         return self.build_entry(value=cleaned_value)
@@ -65,7 +67,7 @@ class PM25_LCS_Correction(BaseProcessor):
         repeat_count += sum(1 for v in next_values if v == value)
 
         return repeat_count > max_repeat
-    
+
     def compute_ab_adjusted_value(self) -> Decimal:
         '''
         Computes cleaned value using a/b sensor logic.
@@ -94,14 +96,15 @@ class PM25_LCS_Correction(BaseProcessor):
         return min(a, b)
 
 
+@processors.register()
 class PM25_LCS_Cleaning(BaseProcessor):
     '''
-    Applies spike detection and smoothing to corrected PM2.5 entries 
+    Applies spike detection and smoothing to corrected PM2.5 entries
     from low-cost dual-sensor monitors (e.g., PurpleAir).
 
-    This processor expects the input entry to be in the 'corrected' stage 
-    (i.e., A/B variance already applied) and returns a new entry in the 
-    'cleaned' stage. If sufficient nearby data is available, it may adjust 
+    This processor expects the input entry to be in the 'corrected' stage
+    (i.e., A/B variance already applied) and returns a new entry in the
+    'cleaned' stage. If sufficient nearby data is available, it may adjust
     the value to smooth out spikes based on AQI-aware thresholds.
     '''
 
@@ -111,15 +114,15 @@ class PM25_LCS_Cleaning(BaseProcessor):
 
     def process(self):
         '''
-        Applies spike smoothing to a corrected PM2.5 entry if both previous and 
+        Applies spike smoothing to a corrected PM2.5 entry if both previous and
         next entries are available and occur within a valid time window.
 
-        If the next entry is missing (i.e., this is the latest known entry), 
+        If the next entry is missing (i.e., this is the latest known entry),
         spike detection is deferred and no CLEANED entry is returned yet.
 
-        If both the previous and next entries are present and occur within 
-        an acceptable time window, the current value is evaluated for spikes 
-        and may be adjusted. If adjacent entries are missing or too far apart, 
+        If both the previous and next entries are present and occur within
+        an acceptable time window, the current value is evaluated for spikes
+        and may be adjusted. If adjacent entries are missing or too far apart,
         the value is returned unchanged.
 
         Returns:

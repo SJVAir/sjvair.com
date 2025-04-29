@@ -46,6 +46,7 @@ class PurpleAir(Monitor):
                 entry_models.PM25.Stage.CORRECTED: [processors.PM25_LCS_Cleaning],
                 entry_models.PM25.Stage.CLEANED: [
                     processors.PM25_UnivariateLinearRegression,
+                    processors.PM25_MultivariateLinearRegression,
                     processors.PM25_EPA_Oct2021,
                 ],
             }

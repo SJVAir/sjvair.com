@@ -2,11 +2,13 @@ from decimal import Decimal as D
 
 from camp.apps.entries.models import PM25
 
+from camp.apps.calibrations import processors
 from ..base import BaseProcessor
 
 __all__ = ['PM25_EPA_Oct2021']
 
 
+@processors.register()
 class PM25_EPA_Oct2021(BaseProcessor):
     '''
     EPA's October 2021 PurpleAir correction algorithm,
@@ -31,7 +33,7 @@ class PM25_EPA_Oct2021(BaseProcessor):
         value = self.get_correction(pm25=self.context['pm25'], rh=self.context['humidity'])
         if value is not None:
             return self.build_entry(value=value)
-    
+
     def get_correction(self, pm25, rh):
         '''
         This function applies different formulas based on the raw PM2.5 reading (pm25).

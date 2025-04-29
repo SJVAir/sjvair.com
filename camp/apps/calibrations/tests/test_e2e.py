@@ -6,9 +6,8 @@ from django.utils import timezone
 
 import pandas as pd
 
+from camp.apps.calibrations import trainers, processors
 from camp.apps.calibrations.models import CalibrationPair, Calibration
-from camp.apps.calibrations.trainers.pm25 import PM25_UnivariateLinearRegression as PM25Trainer
-from camp.apps.calibrations.processors.pm25 import PM25_UnivariateLinearRegression as PM25Processor
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.bam.models import BAM1022
@@ -61,7 +60,7 @@ class TestPM25UnivariateLinearRegressionTrainer(TestCase):
             )
 
     def test_process_returns_calibration(self):
-        trainer = PM25Trainer(pair=self.pair)
+        trainer = trainers.PM25_UnivariateLinearRegression(pair=self.pair)
         calibration = trainer.run()
 
         assert calibration is not None
@@ -73,7 +72,7 @@ class TestPM25UnivariateLinearRegressionTrainer(TestCase):
         self.pair.colocated.pm25_entries.all().delete()
         assert self.pair.colocated.pm25_entries.exists() is False
 
-        trainer = PM25Trainer(pair=self.pair)
+        trainer = trainers.PM25_UnivariateLinearRegression(pair=self.pair)
         calibration = trainer.run()
 
         assert calibration is None
@@ -81,7 +80,7 @@ class TestPM25UnivariateLinearRegressionTrainer(TestCase):
     def test_trainer_respects_min_r2(self):
         self.pair.colocated.pm25_entries.update(value=D('100'))
 
-        trainer = PM25Trainer(pair=self.pair)
+        trainer = trainers.PM25_UnivariateLinearRegression(pair=self.pair)
         calibration = trainer.run()
 
         assert calibration is None
@@ -119,7 +118,7 @@ class TestPM25UnivariateLinearRegressionProcessor(TestCase):
         Calibration.objects.create(
             pair_id=pair.pk,
             entry_type=self.entry.entry_type,
-            trainer=PM25Processor.name,
+            trainer=trainers.PM25_UnivariateLinearRegression.name,
             formula='(pm25 * 0.5) + 2',
             intercept=2.0,
             r2=0.99,
@@ -130,7 +129,7 @@ class TestPM25UnivariateLinearRegressionProcessor(TestCase):
             created=self.entry.timestamp - timedelta(hours=1),
         )
 
-        processor = PM25Processor(self.entry)
+        processor = processors.PM25_UnivariateLinearRegression(self.entry)
         processed = processor.run()
 
         assert processed is not None
@@ -140,16 +139,16 @@ class TestPM25UnivariateLinearRegressionProcessor(TestCase):
         self.entry.value = D('3.0')
         self.entry.save()
 
-        processor = PM25Processor(self.entry)
+        processor = processors.PM25_UnivariateLinearRegression(self.entry)
         processor.calibration = type('Calib', (), {'formula': '(pm25 * 0.5) + 2'})()
 
         processed = processor.run()
 
         assert processed is not None
-        assert processed.value == self.entry.value
+        assert processed.value == self.entry.value, processors
 
     def test_processor_ignores_if_no_calibration(self):
-        processor = PM25Processor(self.entry)
+        processor = processors.PM25_UnivariateLinearRegression(self.entry)
         processed = processor.run()
 
         assert processed is None

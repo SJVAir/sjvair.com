@@ -1,19 +1,18 @@
+import pandas as pd
 import pytest
+
 from django.test import TestCase
 from django.utils import timezone
 from datetime import timedelta
+
+from camp.apps.calibrations import trainers
+from camp.apps.calibrations.models import CalibrationPair
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor
-from camp.apps.calibrations.models import CalibrationPair
-from camp.apps.calibrations.trainers.pm25 import (
-    PM25_UnivariateLinearRegression,
-    PM25_MultivariateLinearRegression,
-)
-import pandas as pd
 
 TRAINER_PARAMS = [
-    (PM25_UnivariateLinearRegression, ['pm25']),
-    (PM25_MultivariateLinearRegression, ['pm25', 'temperature', 'humidity']),
+    (trainers.PM25_UnivariateLinearRegression, ['pm25']),
+    (trainers.PM25_MultivariateLinearRegression, ['pm25', 'temperature', 'humidity']),
 ]
 
 
