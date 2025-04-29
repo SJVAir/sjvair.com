@@ -2,7 +2,7 @@ from decimal import Decimal
 
 
 from camp.apps.calibrations.models import Calibration
-from camp.apps.calibrations.processors.base import BaseProcessor
+from camp.apps.calibrations.core.processors.base import BaseProcessor
 from camp.utils.eval import evaluate_formula
 
 

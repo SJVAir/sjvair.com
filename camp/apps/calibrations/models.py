@@ -2,19 +2,21 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from django.utils.functional import cached_property
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from geopy.distance import distance as geopy_distance
 from model_utils.models import TimeStampedModel
 
+from camp.apps.calibrations import trainers
+from camp.apps.calibrations.linreg import LinearRegressions
+from camp.apps.calibrations.querysets import CalibratorQuerySet, CalibrationPairQuerySet, CalibrationQuerySet
+from camp.apps.calibrations.utils import calibration_model_upload_to
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.entries.models import BaseEntry
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.fields import MonitorTypeField
 from camp.apps.monitors.validators import validate_formula
-from camp.apps.calibrations.linreg import LinearRegressions
-from camp.apps.calibrations.querysets import CalibratorQuerySet, CalibrationPairQuerySet, CalibrationQuerySet
-from camp.apps.calibrations.utils import calibration_model_upload_to
 
 
 class DefaultCalibration(models.Model):
@@ -121,6 +123,24 @@ class CalibrationPair(TimeStampedModel):
     @property
     def colocated_stage(self):
         return self.colocated.get_default_stage(self.entry_model)
+
+    def get_trainers(self):
+        trainerMap = {}
+        processor_names = {
+            proc.name for proc in ENTRY_CONFIG[self.entry_model]['processors']
+        }
+
+        trainers = []
+        for attr in dir(pm25_trainers_module):
+            trainer_class = getattr(pm25_trainers_module, attr)
+            if (
+                isinstance(trainer_class, type)
+                and issubclass(trainer_class, BaseTrainer)
+                and trainer_class.name in processor_names
+            ):
+                trainers.append(trainer_class)
+
+        return trainers
 
 
 class Calibration(TimeStampedModel):

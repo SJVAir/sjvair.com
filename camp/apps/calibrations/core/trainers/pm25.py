@@ -1,7 +1,9 @@
-from camp.apps.calibrations.trainers.ml.linear import LinearRegressionTrainer
+from camp.apps.calibrations import trainers
+from camp.apps.calibrations.core.trainers.ml.linear import LinearRegressionTrainer
 from camp.apps.entries import models as entry_models
 
 
+@trainers.register()
 class PM25_UnivariateLinearRegression(LinearRegressionTrainer):
     """
     Simple univariate linear regression for PM2.5 calibration.
@@ -13,6 +15,7 @@ class PM25_UnivariateLinearRegression(LinearRegressionTrainer):
     features = ['pm25']
 
 
+@trainers.register()
 class PM25_MultivariateLinearRegression(LinearRegressionTrainer):
     """
     Multivariate linear regression for PM2.5 calibration.

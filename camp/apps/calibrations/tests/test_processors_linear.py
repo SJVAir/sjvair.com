@@ -4,15 +4,11 @@ from decimal import Decimal as D
 from django.test import TestCase
 from django.utils import timezone
 
+from camp.apps.calibrations import processors
+from camp.apps.calibrations.models import CalibrationPair, Calibration
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.apps.calibrations.models import CalibrationPair, Calibration
-from camp.apps.calibrations.processors.pm25.linear import (
-    PM25_UnivariateLinearRegression,
-    PM25_MultivariateLinearRegression,
-)
-from camp.utils.eval import evaluate_formula
 
 
 class BaseLinearProcessorTest(TestCase):
@@ -64,7 +60,7 @@ class TestPM25UnivariateLinearExpressionProcessor(BaseLinearProcessorTest):
         entry = self.create_pm25_entry(D('10.0'))
         calibration = self.create_calibration('pm25 * 2')
 
-        processor = PM25_UnivariateLinearRegression(entry=entry)
+        processor = processors.PM25_UnivariateLinearRegression(entry=entry)
         result = processor.process()
 
         assert result is not None
@@ -76,7 +72,7 @@ class TestPM25UnivariateLinearExpressionProcessor(BaseLinearProcessorTest):
         calibration = self.create_calibration('pm25 * 2')
         entry = self.create_pm25_entry(D('4.0'))  # Below min_required_value 5.0
 
-        processor = PM25_UnivariateLinearRegression(entry=entry)
+        processor = processors.PM25_UnivariateLinearRegression(entry=entry)
         result = processor.process()
 
         assert result is not None
@@ -88,7 +84,7 @@ class TestPM25MultivariateLinearExpressionProcessor(BaseLinearProcessorTest):
         calibration = self.create_calibration('pm25 + temperature + humidity')
         entry = self.create_pm25_entry(D('10.0'))
 
-        processor = PM25_MultivariateLinearRegression(entry=entry)
+        processor = processors.PM25_MultivariateLinearRegression(entry=entry)
         processor.context = {
             'pm25': D('10.0'),
             'temperature': D('25.0'),
@@ -106,7 +102,7 @@ class TestPM25MultivariateLinearExpressionProcessor(BaseLinearProcessorTest):
         calibration = self.create_calibration('pm25 + temperature + humidity')
         entry = self.create_pm25_entry(D('4.0'))  # Below threshold
 
-        processor = PM25_MultivariateLinearRegression(entry=entry)
+        processor = processors.PM25_MultivariateLinearRegression(entry=entry)
         processor.context = {
             'pm25': D('4.0'),
             'temperature': D('25.0'),
