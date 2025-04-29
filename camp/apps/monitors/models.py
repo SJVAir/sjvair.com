@@ -20,6 +20,7 @@ from camp.apps.calibrations.utils import get_default_calibration
 from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.monitors.managers import MonitorManager
+from camp.utils import classproperty
 from camp.utils.counties import County
 from camp.utils.datetime import make_aware
 
@@ -60,7 +61,7 @@ class DefaultSensor(models.Model):
 
     def __str__(self):
         return f'{self.monitor.name} → {self.entry_type} = {self.sensor or "default"}'
-    
+
     @cached_property
     def entry_model(self):
         return EntryTypeField.get_model_map().get(self.entry_type)
@@ -89,7 +90,7 @@ class LatestEntry(models.Model):
 
     def __str__(self):
         return f"{self.monitor.name} latest {self.entry_type}"
-    
+
     @cached_property
     def entry_model(self):
         return EntryTypeField.get_model_map().get(self.entry_type)
@@ -105,7 +106,7 @@ class LatestEntry(models.Model):
         """
         When setting entry, also update related fields to keep in sync.
         """
-        self.entry_type = value._meta.model_name
+        self.entry_type = value.entry_type
         self.entry_id = value.pk
         self.stage = value.stage
         self.processor = value.processor
@@ -183,6 +184,10 @@ class Monitor(models.Model):
     def __str__(self):
         return self.name
 
+    @classproperty
+    def monitor_type(cls):
+        return cls._meta.model_name
+
     @classmethod
     def subclasses(cls):
         return cls.objects.get_queryset()._get_subclasses_recurse(cls)
@@ -219,7 +224,7 @@ class Monitor(models.Model):
     def health_grade(self):
         if self.current_health_id:
             return self.current_health.grade
-        
+
     def set_default_sensor(self, EntryModel, sensor):
         config = self.ENTRY_CONFIG.get(EntryModel)
         if config is None:
@@ -232,7 +237,7 @@ class Monitor(models.Model):
                 f'Valid options: {valid_sensors}'
             )
 
-        entry_type = EntryModel._meta.model_name
+        entry_type = EntryModel.entry_type
         DefaultSensor.objects.update_or_create(
             monitor=self,
             entry_type=entry_type,
@@ -254,7 +259,7 @@ class Monitor(models.Model):
         if sensors is None:
             return ''
 
-        entry_type = EntryModel._meta.model_name
+        entry_type = EntryModel.entry_type
 
         # Use prefetched default_sensors if available
         for ds in getattr(self, '_prefetched_objects_cache', {}).get('default_sensors', []):
@@ -272,10 +277,10 @@ class Monitor(models.Model):
 
         # Final fallback to first sensor in config
         return sensors[0]
-    
+
     def get_default_stage(self, EntryModel):
         return self.ENTRY_CONFIG.get(EntryModel, {}).get('default_stage', EntryModel.Stage.RAW)
-    
+
     def get_initial_stage(self, EntryModel):
         '''
         Returns the first allowed stage for this entry type on this monitor.
@@ -286,13 +291,13 @@ class Monitor(models.Model):
         for stage in self.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages'):
             return stage
         return EntryModel.Stage.RAW
-    
+
     def get_default_calibration(self, EntryModel):
         return get_default_calibration(self.__class__, EntryModel)
 
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'
-    
+
     def initialize_entry(self, EntryModel, **kwargs):
         defaults = {
             'monitor': self,
@@ -353,7 +358,7 @@ class Monitor(models.Model):
         # Skip if not the default sensor
         if entry.sensor != self.get_default_sensor(entry.__class__):
             return
-        
+
         allowed_stages = (
             self.get_default_stage(entry.__class__),
             entry.Stage.CALIBRATED
@@ -368,7 +373,7 @@ class Monitor(models.Model):
 
         lookup = {
             'monitor_id': self.pk,
-            'entry_type': entry._meta.model_name,
+            'entry_type': entry.entry_type,
             'processor': entry.processor,
         }
 
@@ -413,7 +418,7 @@ class Monitor(models.Model):
             data[latest.entry_type] = payload
 
         return data
-    
+
     def save(self, *args, **kwargs):
         if self.position:
             # TODO: Can we do this only when self.position is updated?
@@ -453,7 +458,7 @@ class Monitor(models.Model):
             entry.calibrate_pm25()
 
         return entry
-    
+
     def get_current_pm25_average(self, minutes):
         end_time = timezone.now()
         start_time = end_time - timedelta(minutes=minutes)
@@ -465,7 +470,7 @@ class Monitor(models.Model):
 
         aggregate = queryset.aggregate(average=Avg('pm25'))
         return aggregate['average']
-    
+
     def check_latest(self, entry):
         if self.latest_id:
             is_latest = make_aware(entry.timestamp) > self.latest.timestamp

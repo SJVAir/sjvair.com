@@ -22,7 +22,7 @@ class MonitorQuerySet(InheritanceQuerySet):
     def with_latest_entry(self, entry_model, stage=None, processor=None):
         from camp.apps.monitors.models import LatestEntry
 
-        entry_type = entry_model._meta.model_name
+        entry_type = entry_model.entry_type
         field_id = f'latest_{entry_type}_id'
 
         lookup = {
@@ -73,6 +73,6 @@ class MonitorManager(InheritanceManager):
 
     def get_active_multisensor(self):
         return self.get_queryset().get_active_multisensor()
-    
+
     def with_filtered_latest_entries(self, *args, **kwargs):
         return self.get_queryset().with_filtered_latest_entries(*args, **kwargs)

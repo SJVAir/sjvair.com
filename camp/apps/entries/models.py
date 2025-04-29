@@ -76,10 +76,14 @@ class BaseEntry(models.Model):
         return cls.__name__
 
     @classproperty
+    def entry_type(cls):
+        return cls._meta.model_name
+
+    @classproperty
     def declared_fields(cls):
         if hasattr(cls, '_declared_fields'):
             return cls._declared_fields
-        
+
         # Collect all inherited (non-auto) field names
         base_field_names = set()
         for base in cls.__bases__:
@@ -94,14 +98,14 @@ class BaseEntry(models.Model):
         ]
 
         return cls._declared_fields
-    
+
     @property
     def timestamp_pst(self):
         return timezone.localtime(self.timestamp, settings.DEFAULT_TIMEZONE)
 
     def declared_data(self):
         return {f.name: getattr(self, f.name) for f in self.declared_fields}
-    
+
     def entry_context(self) -> dict:
         '''
         Gathers data from all other BaseEntry subclasses that share
@@ -148,7 +152,7 @@ class BaseEntry(models.Model):
         }
         values.update(**kwargs)
         return self.__class__(**values)
-    
+
     def validation_check(self):
         return not (self.__class__.objects
             .filter(
@@ -161,7 +165,7 @@ class BaseEntry(models.Model):
             .exclude(pk=self.pk)
             .exists()
         )
-    
+
     def get_next_entries(self):
         return self.__class__.objects.filter(
             monitor=self.monitor,
@@ -170,10 +174,10 @@ class BaseEntry(models.Model):
             stage=self.stage,
             processor=self.processor,
         ).order_by('timestamp')
-    
+
     def get_next_entry(self):
         return self.get_next_entries().first()
-    
+
     def get_previous_entries(self):
         return self.__class__.objects.filter(
             monitor=self.monitor,
@@ -182,10 +186,10 @@ class BaseEntry(models.Model):
             stage=self.stage,
             processor=self.processor,
         ).order_by('-timestamp')
-    
+
     def get_previous_entry(self):
         return self.get_previous_entries().first()
-    
+
     def get_sibling_entries(self):
         '''
         Returns a queryset of entries recorded at the same timestamp and stage,
@@ -207,7 +211,7 @@ class BaseEntry(models.Model):
             sensor__in=sensors,
             processor=self.processor,
         ).exclude(sensor=self.sensor)
-    
+
     def get_calibrated_entries(self):
         '''
         Returns all calibrated entries derived from this entry.
@@ -219,7 +223,7 @@ class BaseEntry(models.Model):
             sensor=self.sensor,
             stage=self.Stage.CALIBRATED
         )
-    
+
     def get_raw_entry(self):
         '''
         Returns the uncalibrated (raw) version of this entry,
@@ -231,7 +235,7 @@ class BaseEntry(models.Model):
             sensor=self.sensor,
             stage=self.Stage.RAW
         ).first()
-    
+
     def get_related_entries(self):
         '''
         Returns a queryset of entries from the same monitor, timestamp, and sensor.
@@ -266,7 +270,7 @@ class BaseEntry(models.Model):
 class PM25(BaseEntry):
     label = 'PM2.5'
     epa_aqs_code = 88101
-    
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='PM2.5 (µg/m³)',
@@ -314,7 +318,7 @@ class Temperature(BaseEntry):
     @property
     def fahrenheit(self):
         return self.value
-    
+
     @fahrenheit.setter
     def fahrenheit(self, value):
         self.value = value
@@ -323,12 +327,12 @@ class Temperature(BaseEntry):
     def celsius(self):
         value = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
         return value.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
-    
+
     @celsius.setter
     def celsius(self, value):
         value = (Decimal(value) * (Decimal(9) / Decimal(5))) + 32
         self.fahrenheit = value.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
-    
+
 
     def declared_data(self):
         return {

@@ -25,17 +25,17 @@ class EntryTypeField(models.CharField):
         )
 
     @staticmethod
-    @lru_cache
     def get_model_map():
         get_models = import_string('camp.apps.entries.utils.get_all_entry_models')
-        return {model._meta.model_name: model for model in get_models()}
+        return {model.entry_type: model for model in get_models()}
 
     @classmethod
     def get_choices(cls, include_blank=True):
         choices = [
-            (name, model.label)
-            for name, model in cls.get_model_map().items()
+            (entry_type, model.label)
+            for entry_type, model in cls.get_model_map().items()
         ]
+
         if include_blank:
             return [('', '---------')] + choices
         return choices

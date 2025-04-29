@@ -8,22 +8,19 @@ class EntryQuerySet(models.QuerySet):
         """
         Serialize the queryset into a DataFrame including core fields and declared pollutant fields.
         """
-        # Core fields always included
-        core_fields = ['timestamp', 'sensor', 'stage', 'processor']
+        if fields is None:
+            core_fields = ['timestamp', 'sensor', 'stage', 'processor']
+            declared_fields = [field.name for field in self.model.declared_fields]
+            fields = core_fields + declared_fields
 
-        # Pull the declared fields from the entry model
-        model_declared_fields = [field.name for field in self.model.declared_fields]
-
-        # Final field list
-        fields = fields or (core_fields + model_declared_fields)
-
-        # Only query the needed fields
         qs = self.values(*fields)
+        if not qs.exists():
+            return None
 
-        # Create the dataframe
         df = pd.DataFrame.from_records(qs)
 
-        if not df.empty and 'timestamp' in df.columns:
+        if 'timestamp' in fields:
+            df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
             df = df.set_index('timestamp')
 
         return df
