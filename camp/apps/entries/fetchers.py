@@ -76,5 +76,10 @@ class EntryDataFetcher:
         for frame in frames[1:]:
             merged = pd.merge(merged, frame, on='timestamp', how='outer')
 
-        merged = merged.sort_values('timestamp')
+        # Set the index on timestamp
+        if 'timestamp' in merged.columns:
+            merged['timestamp'] = pd.to_datetime(merged['timestamp'], utc=True)
+            merged = merged.set_index('timestamp')
+
+        merged = merged.sort_index()
         return merged
