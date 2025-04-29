@@ -1,6 +1,7 @@
-# camp/apps/entries/tests.py
-
 from django.test import TestCase
+
+import pandas as pd
+
 from camp.apps.entries.fetchers import EntryDataFetcher
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.entries.models import PM25, Temperature
@@ -31,10 +32,11 @@ class EntryDataFetcherTest(TestCase):
         df = fetcher.to_dataframe()
 
         assert df is not None
-        assert set(df.columns) == {'timestamp', 'pm25', 'temperature'}
+        assert set(df.columns) == {'pm25', 'temperature'}
+        assert df.index.name == 'timestamp'
         assert len(df) == 3
 
-        row = df[df['timestamp'] == '2025-01-01T00:00:00Z'].iloc[0]
+        row = df.loc[pd.Timestamp('2025-01-01T00:00:00Z', tz='UTC')]
         assert row['pm25'] == 10
         assert row['temperature'] == 65
 
