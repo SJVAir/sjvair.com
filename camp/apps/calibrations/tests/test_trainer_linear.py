@@ -90,3 +90,19 @@ class TestPM25LinearRegressionTrainers(TestCase):
             assert calibration is not None
             assert calibration.trainer == trainer.name
             assert calibration.r2 >= trainer.min_r2
+
+    def test_multivariate_trainer_skips_missing_data(self):
+        # Nuke the Humidity entries created as part of the setup.
+        entry_models.Humidity.objects.all().delete()
+
+        # Initialize trainer
+        trainer = trainers.PM25_MultivariateLinearRegression(pair=self.pair)
+
+        # Fetch feature and target data
+        feature_df = trainer.get_feature_dataframe(days=7)
+        target_series = trainer.get_target_series(days=7)
+
+        # Assert that data is missing and correctly detected.
+        assert 'humidity' in feature_df.columns
+        assert feature_df['humidity'].isna().all()
+        assert trainer.has_required_data(feature_df, target_series) is False

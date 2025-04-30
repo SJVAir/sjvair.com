@@ -16,11 +16,13 @@ class EntryDataFetcherTest(TestCase):
             purple_id=11235,
         )
 
-    def test_to_dataframe_returns_none_if_no_data(self):
+    def test_to_dataframe_returns_empty_df(self):
         fetcher = EntryDataFetcher(monitor=self.monitor, entry_types=[PM25])
         df = fetcher.to_dataframe()
 
-        assert df is None
+        assert isinstance(df, pd.DataFrame)
+        assert df.columns == ['pm25']
+        assert df.empty
 
     def test_to_dataframe_merges_dataframes_correctly(self):
         PM25.objects.create(monitor=self.monitor, timestamp='2025-01-01T00:00:00Z', value=10)

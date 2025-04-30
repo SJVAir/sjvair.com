@@ -53,18 +53,21 @@ class EntryDataFetcher:
         frames = []
 
         for entry_model in self.entry_types:
-            data = (self
-                .get_queryset(entry_model)
+            data = (
+                self.get_queryset(entry_model)
                 .projections(fields=['timestamp'] + entry_model.declared_field_names)
             )
 
             df = pd.DataFrame.from_records(data)
-            if df.empty:
-                continue
-
-            # Rename the fields nicely
             field_map = self.get_field_map(entry_model)
-            df = df.rename(columns=field_map)
+
+            if df.empty:
+                # Create an empty DataFrame with the expected renamed columns
+                renamed_columns = {'timestamp': 'timestamp'}
+                renamed_columns.update(field_map)
+                df = pd.DataFrame(columns=renamed_columns.values())
+            else:
+                df = df.rename(columns=field_map)
 
             frames.append(df)
 
@@ -76,10 +79,8 @@ class EntryDataFetcher:
         for frame in frames[1:]:
             merged = pd.merge(merged, frame, on='timestamp', how='outer')
 
-        # Set the index on timestamp
         if 'timestamp' in merged.columns:
             merged['timestamp'] = pd.to_datetime(merged['timestamp'], utc=True)
             merged = merged.set_index('timestamp')
 
-        merged = merged.sort_index()
-        return merged
+        return merged.sort_index()

@@ -45,6 +45,29 @@ class LinearRegressionTrainer(BaseTrainer):
     def get_target_series(self, days):
         return self.get_sample(self.pair.reference, self.target, days)
 
+    def has_required_data(self, feature_df, target_series):
+        '''
+        Checks whether the features and target contain any usable data.
+        '''
+        if feature_df is None or target_series is None:
+            return False
+
+        if feature_df.empty or target_series.empty:
+            return False
+
+        # Ensure all feature columns exist
+        for col in self.features:
+            if col not in feature_df.columns:
+                return False
+
+            if feature_df[col].dropna().empty:
+                return False
+
+        if target_series.dropna().empty:
+            return False
+
+        return True
+
     def process(self):
         best_regression = None
 
@@ -52,7 +75,7 @@ class LinearRegressionTrainer(BaseTrainer):
             feature_df = self.get_feature_dataframe(days=days)
             target_series = self.get_target_series(days=days)
 
-            if feature_df is None or target_series is None:
+            if not self.has_required_data(feature_df, target_series):
                 continue
 
             model = LinearRegression(
