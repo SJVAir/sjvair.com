@@ -127,7 +127,8 @@ class TestPM25UnivariateLinearRegressionProcessor(TestCase):
             mae=0.1,
             features=['pm25'],
             metadata={},
-            created=self.entry.timestamp - timedelta(hours=1),
+            end_time=self.entry.timestamp - timedelta(hours=1),
+            start_time=self.entry.timestamp - timedelta(hours=168),
         )
 
         processor = processors.PM25_UnivariateLinearRegression(self.entry)

@@ -20,7 +20,7 @@ class CalibrationQuerySet(models.QuerySet):
         return self.filter(
             pair__is_enabled=True,
             entry_type=entry.entry_type,
-            created__lte=entry.timestamp,
+            end_time__lte=entry.timestamp,
             trainer=trainer,
         ).closest(entry.position)
 
