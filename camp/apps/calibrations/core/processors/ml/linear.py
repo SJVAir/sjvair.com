@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.utils.functional import cached_property
 
 from camp.apps.calibrations.models import Calibration
 from camp.apps.calibrations.core.processors.base import BaseProcessor
@@ -11,8 +12,11 @@ class LinearExpressionProcessor(BaseProcessor):
     next_stage = None
     min_required_value = Decimal('5.0')
 
+    @cached_property
+    def calibration(self):
+        return Calibration.objects.get_for_entry(self.entry, self.name)
+
     def process(self):
-        self.calibration = Calibration.objects.get_for_entry(self.entry, self.name)
         value = self.get_correction()
 
         if value is not None:
