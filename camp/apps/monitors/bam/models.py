@@ -35,6 +35,7 @@ class BAM1022(Monitor):
         'url': 'https://cencalasthma.org'
     }
 
+    EXPECTED_INTERVAL = '1h'
     ENTRY_CONFIG = {
         entry_models.Temperature: {
             'fields': {'celsius': 'AT(C)'},

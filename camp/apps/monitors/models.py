@@ -129,10 +129,9 @@ class Monitor(models.Model):
     DATA_SOURCE = {}
     DEVICE = None
 
+    EXPECTED_INTERVAL = '1h'
     ENTRY_CONFIG = {}
     ENTRY_UPLOAD_ENABLED = False
-
-
 
     id = SmallUUIDField(
         default=uuid_default(),
