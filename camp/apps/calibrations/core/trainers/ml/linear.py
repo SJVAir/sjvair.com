@@ -92,27 +92,40 @@ class LinearRegressionTrainer(BaseTrainer):
                 target=target_series
             )
 
-            results = model.fit()
+            regression = model.fit()
 
-            if best_regression is None or results.r2 > best_regression.r2:
-                best_regression = results
+            if best_regression is None or regression.r2 > best_regression.r2:
+                regression.start_time = self.end_time - timedelta(days=days)
+                regression.end_time = self.end_time
+                best_regression = regression
 
         if best_regression:
             return self.build_calibration(best_regression)
 
-    def is_valid(self, result):
-        return result.r2 >= self.min_r2
+    def is_valid(self, regression):
+        current = self.pair.get_current_calibration(self.name)
 
-    def build_calibration(self, result):
+        if current and current.end_time:
+            timesince = self.end_time - current.end_time
+            if timesince < timedelta(days=7):
+                return regression.r2 > current.r2
+            elif timesince < timedelta(days=30):
+                return regression.r2 > 0.75
+
+        return regression.r2 > self.min_r2
+
+    def build_calibration(self, regression):
         defaults = {
-            'r2': result.r2,
-            'rmse': result.rmse,
-            'mae': result.mae,
-            'intercept': result.intercept,
-            'formula': result.formula,
-            'features': list(result.coefs.keys()),
+            'formula': regression.formula,
+            'intercept': regression.intercept,
+            'start_time': getattr(regression, 'start_time', None),
+            'end_time': getattr(regression, 'end_time', None),
+            'r2': regression.r2,
+            'rmse': regression.rmse,
+            'mae': regression.mae,
+            'features': list(regression.coefs.keys()),
             'metadata': {
-                'coefs': result.coefs,
+                'coefs': regression.coefs,
             },
         }
         return super().build_calibration(**defaults)

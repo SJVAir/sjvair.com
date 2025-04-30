@@ -90,13 +90,13 @@ class CalibrationPair(TimeStampedModel):
     Defines a colocated reference + colocated monitor pair for generating calibrations.
     """
 
-    # id = SmallUUIDField(
-    #     default=uuid_default(),
-    #     primary_key=True,
-    #     db_index=True,
-    #     editable=False,
-    #     verbose_name='ID'
-    # )
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
 
     reference = models.ForeignKey(
         'monitors.Monitor',
@@ -131,6 +131,13 @@ class CalibrationPair(TimeStampedModel):
     def colocated_stage(self):
         return self.colocated.get_default_stage(self.entry_model)
 
+    def get_current_calibration(self, trainer_name):
+        return (self.calibrations
+            .filter(trainer=trainer_name)
+            .order_by('-end_time')
+            .first()
+        )
+
     def get_trainers(self):
         return trainers.get_for_entry_type(self.entry_type)
 
@@ -150,13 +157,13 @@ class Calibration(TimeStampedModel):
     A saved calibration model derived from a CalibrationPair.
     """
 
-    # id = SmallUUIDField(
-    #     default=uuid_default(),
-    #     primary_key=True,
-    #     db_index=True,
-    #     editable=False,
-    #     verbose_name='ID'
-    # )
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
 
     pair = models.ForeignKey(
         CalibrationPair,
@@ -182,6 +189,11 @@ class Calibration(TimeStampedModel):
         null=True,
         help_text='Trained model file (.bin, .pt, etc.) if not using a simple formula.'
     )
+
+
+    # Training data window
+    start_time = models.DateTimeField(null=True, blank=True)
+    end_time = models.DateTimeField(null=True, blank=True)
 
     # Metrics
     r2 = models.FloatField(blank=True, null=True)

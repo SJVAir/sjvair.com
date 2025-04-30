@@ -41,7 +41,8 @@ class BaseLinearProcessorTest(TestCase):
             'trainer': 'TestTrainer',
             'r2': 0.99,
             'metadata': {},
-            'created': self.timestamp - timedelta(hours=1)
+            'end_time': self.timestamp - timedelta(hours=1),
+            'start_time': self.timestamp - timedelta(hours=168),
         }
         defaults.update(kwargs)
         return Calibration.objects.create(**defaults)
