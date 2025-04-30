@@ -46,12 +46,10 @@ def process_aqview_data(payload):
             data_provider_url=payload.get('dplink', ''),
         )
 
-    entry = monitor.handle_payload(payload)
-
-    if entry := monitor.handle_payload(item):
+    if entry := monitor.handle_payload(payload):
         cleaned = monitor.process_entry_ng(entry)
         print('\t[AQview] Entry created:', entry.timestamp)
-        
+
         # Legacy
         try:
             entry = monitor.entries.get(timestamp=entry.timestamp)

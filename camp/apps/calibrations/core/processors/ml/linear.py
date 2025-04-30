@@ -12,7 +12,7 @@ class LinearExpressionProcessor(BaseProcessor):
     min_required_value = Decimal('5.0')
 
     def process(self):
-        self.calibration = Calibration.objects.get_for_entry(self.entry)
+        self.calibration = Calibration.objects.get_for_entry(self.entry, self.name)
         value = self.get_correction()
 
         if value is not None:

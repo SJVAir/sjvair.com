@@ -12,9 +12,9 @@ class EntrySerializer(serializers.Serializer):
     ]
 
     def fixup(self, instance, data):
-        data.update(instance.declared_data())
+        data.update(instance.serialized_data())
         return data
-    
+
 
 class MonitorSerializer(serializers.Serializer):
     fields = [
