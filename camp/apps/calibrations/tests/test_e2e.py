@@ -61,6 +61,7 @@ class TestPM25UnivariateLinearRegressionTrainer(TestCase):
 
     def test_process_returns_calibration(self):
         trainer = trainers.PM25_UnivariateLinearRegression(pair=self.pair)
+        trainer.min_completeness = 0.0  # skip filtering
         calibration = trainer.run()
 
         assert calibration is not None

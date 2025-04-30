@@ -74,6 +74,7 @@ class TestPM25LinearRegressionTrainers(TestCase):
     def test_process_returns_valid_result(self):
         for trainer_class, expected_features in TRAINER_PARAMS:
             trainer = trainer_class(pair=self.pair)
+            trainer.min_completeness = 0.0
             result = trainer.process()
 
             assert result is not None
@@ -84,6 +85,7 @@ class TestPM25LinearRegressionTrainers(TestCase):
     def test_run_creates_calibration(self):
         for trainer_class, expected_features in TRAINER_PARAMS:
             trainer = trainer_class(pair=self.pair)
+            trainer.min_completeness = 0.0
             calibration = trainer.run()
             calibration.refresh_from_db()
 

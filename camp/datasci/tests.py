@@ -1,12 +1,15 @@
+from datetime import datetime
+
 from django.test import TestCase
 
 import pandas as pd
 
+from camp.datasci.cleaning import filter_by_completeness
 from camp.datasci.linear import LinearRegression
 from camp.utils.test import is_close
 
 
-class PurpleAirTests(TestCase):
+class DataSciTests(TestCase):
     def test_univariate_regression(self):
         # Simple linear data: y = 2x + 1
         df = pd.DataFrame({
@@ -51,3 +54,18 @@ class PurpleAirTests(TestCase):
         assert is_close(results.intercept, 1.0, 1e-6)
         assert is_close(results.coefs['a'], 3.0, 1e-6)
         assert is_close(results.coefs['b'], 2.0, 1e-6)
+
+    def test_filter_by_completeness_keeps_full_hour(self):
+        index = pd.date_range('2025-01-01 00:00', periods=30, freq='2min')
+        df = pd.DataFrame({'pm25': range(30)}, index=index)
+
+        filtered = filter_by_completeness(df, interval='2min', resample='1h', threshold=0.8)
+        assert not filtered.empty
+        assert filtered.index.floor('1h').nunique() == 1
+
+    def test_filter_by_completeness_skips_incomplete_hour(self):
+        index = pd.date_range('2025-01-01 00:00', periods=10, freq='2min')  # 10 < 80% of 30
+        df = pd.DataFrame({'pm25': range(10)}, index=index)
+
+        filtered = filter_by_completeness(df, interval='2min', resample='1h', threshold=0.8)
+        assert filtered.empty

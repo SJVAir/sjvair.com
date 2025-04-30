@@ -2,13 +2,15 @@ from datetime import timedelta
 
 from camp.apps.calibrations.core.trainers.base import BaseTrainer
 from camp.apps.entries.fetchers import EntryDataFetcher
+from camp.datasci.cleaning import filter_by_completeness
 from camp.datasci.linear import LinearRegression
 
 
 class LinearRegressionTrainer(BaseTrainer):
     days = [7, 14, 21, 28]
 
-    resample_freq = 'h'
+    resample_freq = '1h'
+    min_completeness = 0.8
     min_r2 = 0.6
 
     def get_entry_types(self):
@@ -29,6 +31,13 @@ class LinearRegressionTrainer(BaseTrainer):
         df = fetcher.to_dataframe()
 
         if df is not None:
+            if self.min_completeness:
+                df = filter_by_completeness(df,
+                    interval=monitor.EXPECTED_INTERVAL,
+                    resample=self.resample_freq,
+                    threshold=self.min_completeness,
+                )
+
             df = df.resample(self.resample_freq).mean()
             field_map = fetcher.get_field_map(self.entry_model)
 

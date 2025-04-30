@@ -19,6 +19,7 @@ class AirNow(Monitor):
     }
     DEVICE = 'BAM 1022'
 
+    EXPECTED_INTERVAL = '1h'
     ENTRY_CONFIG = {
         entry_models.CO: {
             'fields': {'value': 'CO'},

@@ -20,6 +20,7 @@ class AQview(Monitor):
         'url': 'https://aqview.arb.ca.gov/'
     }
 
+    EXPECTED_INTERVAL = '1h'
     ENTRY_CONFIG = {
         entry_models.PM25: {
             'fields': {'value': 'aobs'},
@@ -36,7 +37,7 @@ class AQview(Monitor):
 
     class Meta:
         verbose_name = 'AQview'
-    
+
     def handle_payload(self, payload):
         timestamp = make_aware(
             datetime.fromtimestamp(payload['maptime'] / 1000) - timedelta(hours=payload['hourindex']),
