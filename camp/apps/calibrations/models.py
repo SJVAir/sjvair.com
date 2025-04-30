@@ -2,7 +2,6 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
-from django.utils.functional import cached_property
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from geopy.distance import distance as geopy_distance
@@ -91,6 +90,14 @@ class CalibrationPair(TimeStampedModel):
     Defines a colocated reference + colocated monitor pair for generating calibrations.
     """
 
+    # id = SmallUUIDField(
+    #     default=uuid_default(),
+    #     primary_key=True,
+    #     db_index=True,
+    #     editable=False,
+    #     verbose_name='ID'
+    # )
+
     reference = models.ForeignKey(
         'monitors.Monitor',
         on_delete=models.CASCADE,
@@ -125,28 +132,31 @@ class CalibrationPair(TimeStampedModel):
         return self.colocated.get_default_stage(self.entry_model)
 
     def get_trainers(self):
-        trainerMap = {}
-        processor_names = {
-            proc.name for proc in ENTRY_CONFIG[self.entry_model]['processors']
-        }
+        return trainers.get_for_entry_type(self.entry_type)
 
-        trainers = []
-        for attr in dir(pm25_trainers_module):
-            trainer_class = getattr(pm25_trainers_module, attr)
-            if (
-                isinstance(trainer_class, type)
-                and issubclass(trainer_class, BaseTrainer)
-                and trainer_class.name in processor_names
-            ):
-                trainers.append(trainer_class)
+    def train(self, trainer, end_time=None):
+        if isinstance(trainer, str):
+            trainer = trainers[trainer]
 
-        return trainers
+        if trainer not in self.get_trainers():
+            raise ValueError(f'Trainer {trainer} is not valid for this CalibrationPair ({self})')
+
+        return trainer(self, end_time=end_time).run()
+
 
 
 class Calibration(TimeStampedModel):
     """
     A saved calibration model derived from a CalibrationPair.
     """
+
+    # id = SmallUUIDField(
+    #     default=uuid_default(),
+    #     primary_key=True,
+    #     db_index=True,
+    #     editable=False,
+    #     verbose_name='ID'
+    # )
 
     pair = models.ForeignKey(
         CalibrationPair,
