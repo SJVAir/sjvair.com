@@ -16,11 +16,12 @@ class CalibrationPairQuerySet(models.QuerySet):
 
 
 class CalibrationQuerySet(models.QuerySet):
-    def get_for_entry(self, entry):
+    def get_for_entry(self, entry, trainer):
         return self.filter(
             pair__is_enabled=True,
             entry_type=entry.entry_type,
             created__lte=entry.timestamp,
+            trainer=trainer,
         ).closest(entry.position)
 
     def closest(self, point):

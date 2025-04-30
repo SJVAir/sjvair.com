@@ -115,6 +115,9 @@ class BaseEntry(models.Model):
     def declared_data(self):
         return {f.name: getattr(self, f.name) for f in self.declared_fields}
 
+    def serialized_data(self):
+        return self.declared_data()
+
     def entry_context(self) -> dict:
         '''
         Gathers data from all other BaseEntry subclasses that share
@@ -343,7 +346,7 @@ class Temperature(BaseEntry):
         self.fahrenheit = value.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
 
 
-    def declared_data(self):
+    def serialized_data(self):
         return {
             'temperature_f': self.fahrenheit,
             'temperature_c': self.celsius,
@@ -381,7 +384,7 @@ class Pressure(BaseEntry):
     def hpa(self, value):
         self.mmhg = Decimal(value) / Decimal('1.33322')
 
-    def declared_data(self):
+    def serialized_data(self):
         return {
             'pressure_mmhg': self.mmhg,
             'pressure_hpa': self.hpa,

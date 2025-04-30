@@ -73,7 +73,7 @@ class BaseProcessor(ABC):
         if self.required_stage is None:
             return True
         return self.required_stage == self.entry.stage
-    
+
     def build_entry(self, **kwargs):
         '''
         Clones the current entry and applies additional fields.
@@ -90,7 +90,7 @@ class BaseProcessor(ABC):
         '''
         if not self.is_valid():
             return
-        
+
         processed = self.process()
         if processed is not None and processed.validation_check():
             if commit:
