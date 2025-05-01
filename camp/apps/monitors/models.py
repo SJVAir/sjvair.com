@@ -191,6 +191,18 @@ class Monitor(models.Model):
     def subclasses(cls):
         return cls.objects.get_queryset()._get_subclasses_recurse(cls)
 
+    @classmethod
+    def get_subclasses(cls):
+        subclasses = set()
+
+        def recurse(subcls):
+            for sc in subcls.__subclasses__():
+                subclasses.add(sc)
+                recurse(sc)
+
+        recurse(cls)
+        return list(subclasses)
+
     @property
     def slug(self):
         return slugify(self.name)
@@ -277,22 +289,25 @@ class Monitor(models.Model):
         # Final fallback to first sensor in config
         return sensors[0]
 
-    def get_default_stage(self, EntryModel):
-        return self.ENTRY_CONFIG.get(EntryModel, {}).get('default_stage', EntryModel.Stage.RAW)
+    @classmethod
+    def get_default_stage(cls, EntryModel):
+        return cls.ENTRY_CONFIG.get(EntryModel, {}).get('default_stage', EntryModel.Stage.RAW)
 
-    def get_initial_stage(self, EntryModel):
+    @classmethod
+    def get_initial_stage(cls, EntryModel):
         '''
         Returns the first allowed stage for this entry type on this monitor.
         Used when creating new raw entries.
 
         Falls back to 'raw' if not explicitly configured.
         '''
-        for stage in self.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages'):
+        for stage in cls.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages'):
             return stage
         return EntryModel.Stage.RAW
 
-    def get_default_calibration(self, EntryModel):
-        return get_default_calibration(self.__class__, EntryModel)
+    @classmethod
+    def get_default_calibration(cls, EntryModel):
+        return get_default_calibration(cls, EntryModel)
 
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'

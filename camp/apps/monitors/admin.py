@@ -37,7 +37,7 @@ class HealthGradeListFilter(SimpleListFilter):
     title = "Health Grade"
     parameter_name = "grade"
 
-    def lookups(self, request, model_admin): 
+    def lookups(self, request, model_admin):
         return list(map(key_to_lookup, SensorAnalysis.health_grades.keys()))
 
     def queryset(self, request, queryset):
@@ -182,7 +182,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
             return Alert.objects.get(monitor_id=object_id, end_time__isnull=True)
         except Alert.DoesNotExist:
             return None
-        
+
     def get_entry_archives(self, object_id):
         queryset = EntryArchive.objects.filter(monitor_id=object_id)
         return queryset

@@ -1,4 +1,5 @@
 from resticus import generics, http
+from resticus.views import Endpoint
 
 from django import forms
 from django.contrib.gis.db.models.functions import Distance
@@ -42,7 +43,7 @@ class EntryTypeMixin:
 
 class EntryMixin(EntryTypeMixin):
     serializer_class = EntrySerializer
-    
+
     def get_queryset(self):
         queryset = self.entry_model.objects.all()
         if hasattr(self.request, 'monitor'):
@@ -51,7 +52,7 @@ class EntryMixin(EntryTypeMixin):
 
     def get_filter_class(self):
         return get_entry_filterset(self.entry_model)
-    
+
     def filter_queryset(self, queryset):
         FilterClass = self.get_filter_class()
         if FilterClass is not None:
@@ -86,6 +87,40 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
         queryset = super().get_queryset()
         queryset = queryset.exclude(is_hidden=True)
         return queryset
+
+
+class MonitorTypes(Endpoint):
+    def get(self, request, *args, **kwargs):
+        payload = {}
+
+        monitor_subclasses = sorted(Monitor.get_subclasses(), key=lambda c: c.monitor_type)
+        for monitor_model in monitor_subclasses:
+            payload[monitor_model.monitor_type] = {
+                'label': monitor_model._meta.verbose_name,
+                'type': monitor_model.monitor_type,
+                'expected_interval': getattr(monitor_model, 'EXPECTED_INTERVAL', None),
+                'entries': {},
+            }
+
+            config_items = sorted(monitor_model.ENTRY_CONFIG.items(), key=lambda i: i[0].entry_type)
+            for entry_model, config in config_items:
+                payload[monitor_model.monitor_type]['entries'][entry_model.entry_type] = {
+                    'label': entry_model.label,
+                    'type': entry_model.entry_type,
+                    'units': entry_model.units,
+                    'sensors': config.get('sensors'),
+                    'fields': ['timestamp', 'sensor', 'stage', 'processor'] + entry_model.declared_field_names,
+                    'allowed_stages': config.get('allowed_stages', []),
+                    'default_stage': monitor_model.get_default_stage(entry_model),
+                    'default_calibration': monitor_model.get_default_calibration(entry_model),
+                    'processors': {
+                        stage: sorted([proc.name for proc in processors])
+                        for stage, processors
+                        in config.get('processors', {}).items()
+                    }
+                }
+
+        return {'data': payload}
 
 
 class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
@@ -132,11 +167,11 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             .with_latest_entry(self.entry_model)
         )
         return queryset
-    
+
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         include = [('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize())]
         return super().serialize(source, fields, include, exclude, fixup)
-    
+
 
 class CreateEntry(EntryMixin, generics.CreateEndpoint):
     form_class = forms.Form
@@ -171,7 +206,7 @@ class CreateEntry(EntryMixin, generics.CreateEndpoint):
         return super().serialize(*args, **kwargs)
 
 
-class EntryList(EntryMixin, generics.ListEndpoint):    
+class EntryList(EntryMixin, generics.ListEndpoint):
     paginate = True
     page_size = 10080
 
