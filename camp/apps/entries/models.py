@@ -16,6 +16,7 @@ from .managers import EntryQuerySet
 
 class BaseEntry(models.Model):
     epa_aqs_code = None
+    units = None
     Stage = stages.Stage
 
     id = SmallUUIDField(
@@ -282,6 +283,7 @@ class BaseEntry(models.Model):
 class PM25(BaseEntry):
     label = 'PM2.5'
     epa_aqs_code = 88101
+    units = 'µg/m³'
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -300,6 +302,7 @@ class Particulates(BaseEntry):
 
 class PM10(BaseEntry):
     label = 'PM1.0'
+    units = 'µg/m³'
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -310,6 +313,7 @@ class PM10(BaseEntry):
 class PM100(BaseEntry):
     label = 'PM10.0'
     epa_aqs_code = 81102
+    units = 'µg/m³'
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -321,6 +325,7 @@ class PM100(BaseEntry):
 
 class Temperature(BaseEntry):
     epa_aqs_code = 62101
+    units = '°F'
 
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
@@ -355,6 +360,7 @@ class Temperature(BaseEntry):
 
 class Humidity(BaseEntry):
     epa_aqs_code = 62201
+    units = '%'
 
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
@@ -363,6 +369,8 @@ class Humidity(BaseEntry):
 
 
 class Pressure(BaseEntry):
+    units = 'mmHg'
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Atmospheric pressure (mmHg)',
@@ -395,6 +403,7 @@ class Pressure(BaseEntry):
 class O3(BaseEntry):
     label = 'Ozone'
     epa_aqs_code = 44201
+    units = 'ppb'
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -405,6 +414,7 @@ class O3(BaseEntry):
 class NO2(BaseEntry):
     label = 'Nitrogen Dioxide'
     epa_aqs_code = 42602
+    units = 'ppb'
 
 
     value = models.DecimalField(
@@ -415,6 +425,7 @@ class NO2(BaseEntry):
 class CO(BaseEntry):
     label = 'Carbon Monoxide'
     epa_aqs_code = 42101
+    units = 'ppm'
 
 
     value = models.DecimalField(
@@ -425,6 +436,7 @@ class CO(BaseEntry):
 class SO2(BaseEntry):
     label = 'Sulfur Dioxide'
     epa_aqs_code = 42401
+    units = 'ppb'
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
