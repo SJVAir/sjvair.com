@@ -57,15 +57,18 @@ class DefaultCalibration(models.Model):
 
     @property
     def allowed_processors(self):
-        processor_list = []
-        config = self.monitor_model.ENTRY_CONFIG.get(self.entry_model, {})
-        stages = set([
+        target_stages = set([
             self.monitor_model.get_default_stage(self.entry_model),
             BaseEntry.Stage.CALIBRATED,
         ])
-        for stage in stages:
-            processor_list.extend(config.get('processors', {}).get(stage, []))
-        return processor_list
+
+        processors = set()
+        config = self.monitor_model.ENTRY_CONFIG.get(self.entry_model, {})
+        for stage_processors in config.get('processors', {}).values():
+            for processor in stage_processors:
+                if processor.next_stage in target_stages:
+                    processors.add(processor)
+        return sorted(processors, key=lambda p: p.name)
 
 
 class CalibrationPair(TimeStampedModel):
