@@ -55,34 +55,17 @@ class DefaultCalibration(models.Model):
     def monitor_model(self):
         return MonitorTypeField.get_model_map().get(self.monitor_type)
 
-    def clean(self):
-        '''
-        Validates that the selected calibration is allowed for the given monitor type and entry type.
-
-        Raises:
-            ValidationError: If the selected calibration is not listed in the monitor model's
-            ENTRY_CONFIG for the given entry model.
-        '''
-        super().clean()
-
-        if not self.monitor_model or not self.entry_model:
-            raise ValidationError('Invalid monitor or entry type.')
-
-        config = self.monitor_model.ENTRY_CONFIG.get(self.entry_model)
-        if config is None:
-            raise ValidationError(
-                f'{self.monitor_type} does not support entry type {self.entry_type}.'
-            )
-
-        processors_config = config.get('processors', {})
-        calibration_processors = processors_config.get(BaseEntry.Stage.CALIBRATED, [])
-        allowed_calibrations = [p.name for p in calibration_processors]
-
-        if self.calibration and self.calibration not in allowed_calibrations:
-            raise ValidationError(
-                f'"{self.calibration}" is not a valid calibration for {self.monitor_type} - {self.entry_type}. '
-                f'Valid options: {allowed_calibrations or ["(none)"]}'
-            )
+    @property
+    def allowed_processors(self):
+        processor_list = []
+        config = self.monitor_model.ENTRY_CONFIG.get(self.entry_model, {})
+        stages = set([
+            self.monitor_model.get_default_stage(self.entry_model),
+            BaseEntry.Stage.CALIBRATED,
+        ])
+        for stage in stages:
+            processor_list.extend(config.get('processors', {}).get(stage, []))
+        return processor_list
 
 
 class CalibrationPair(TimeStampedModel):

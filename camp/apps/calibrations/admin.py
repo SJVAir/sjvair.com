@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.db.models import Prefetch
 from django.template import Context, Template
@@ -27,6 +28,17 @@ class DefaultCalibrationAdmin(admin.ModelAdmin):
     list_display = ('monitor_type', 'entry_type', 'calibration')
     list_filter = ('monitor_type', 'entry_type')
     search_fields = ('monitor_type', 'entry_type', 'calibration')
+
+    def get_form(self, request, obj=None, **kwargs):
+        request._obj_ = obj  # for formfield_for_dbfield
+        return super().get_form(request, obj=obj, **kwargs)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == 'calibration':
+            if instance := getattr(request, '_obj_', None):
+                kwargs['widget'].choices = self.form.get_calibration_choices(instance)
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
 
 
 class AutoCalibrationInline(TabularInlinePaginated):
