@@ -1,7 +1,7 @@
 from datetime import timedelta
 
-from django.db import models
-from django.db.models import Q
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.utils import timezone
 
 from model_utils.managers import InheritanceManager, InheritanceQuerySet
@@ -10,7 +10,7 @@ from model_utils.managers import InheritanceManager, InheritanceQuerySet
 class MonitorQuerySet(InheritanceQuerySet):
     def get_active(self):
         cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
-        return self.filter(latest__timestamp__gte=cutoff)
+        return self.filter(latest_entries__timestamp__gte=cutoff).distinct()
 
     def get_inactive(self):
         cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
@@ -18,6 +18,45 @@ class MonitorQuerySet(InheritanceQuerySet):
 
     def get_active_multisensor(self):
         return self.get_active().exclude(default_sensor='').exclude(location='inside')
+
+    def with_latest_entry(self, entry_model, stage=None, processor=None):
+        from camp.apps.monitors.models import LatestEntry
+
+        entry_type = entry_model.entry_type
+        field_id = f'latest_{entry_type}_id'
+
+        lookup = {
+            'monitor_id': OuterRef('pk'),
+            'entry_type': entry_type,
+        }
+
+        if stage is not None:
+            lookup['stage'] = stage
+            if stage == entry_model.Stage.CALIBRATED:
+                lookup['processor'] = processor or ''
+        elif processor is not None:
+            lookup['stage'] = entry_model.Stage.CALIBRATED
+            lookup['processor'] = processor or ''
+
+        subquery = (LatestEntry.objects
+            .filter(**lookup)
+            .values('entry_id')[:1]
+        )
+
+        monitors = (self
+            .annotate(**{field_id: Subquery(subquery)})
+            .exclude(**{f'{field_id}__isnull': True})
+        )
+
+        entries = entry_model.objects.filter(pk__in=[getattr(m, field_id) for m in monitors])
+        entry_map = {e.pk: e for e in entries}
+
+        for monitor in monitors:
+            entry = entry_map.get(getattr(monitor, field_id))
+            setattr(monitor, f'latest_{entry_type}', entry)
+            monitor.latest_entry = entry
+
+        return monitors
 
 
 class MonitorManager(InheritanceManager):
@@ -34,3 +73,6 @@ class MonitorManager(InheritanceManager):
 
     def get_active_multisensor(self):
         return self.get_queryset().get_active_multisensor()
+
+    def with_filtered_latest_entries(self, *args, **kwargs):
+        return self.get_queryset().with_filtered_latest_entries(*args, **kwargs)

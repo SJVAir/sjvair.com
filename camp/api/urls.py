@@ -12,6 +12,8 @@ schema_v1_0 = get_schema_view(
 )
 
 urlpatterns = [
+    path('2.0/', include('camp.api.v2.urls', namespace='v2')),
+
     path('1.0/', include('camp.api.v1.urls', namespace='v1')),
     path('1.0/schema/', schema_v1_0, name="schema_v1_0"),
     path('1.0/swagger/',

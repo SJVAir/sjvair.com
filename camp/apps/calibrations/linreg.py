@@ -110,11 +110,6 @@ class LinearRegressions:
         df = pd.concat([self.endog_df, self.exog_df], axis=1, join="inner")
         df = df.dropna()
 
-        if not len(df):
-            return None
-
-        return df
-
     def process_regressions(self):
         self.regressions = []
 
