@@ -398,16 +398,28 @@ class Pressure(BaseEntry):
             'pressure_hpa': self.hpa,
         }
 
+
 # Gases
 
-class O3(BaseEntry):
-    label = 'Ozone'
-    epa_aqs_code = 44201
-    units = 'ppb'
+class CO(BaseEntry):
+    label = 'Carbon Monoxide'
+    epa_aqs_code = 42101
+    units = 'ppm'
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text='Ozone (ppb)'
+        help_text='Carbon monoxide (ppm)',
+    )
+
+
+class CO2(BaseEntry):
+    label = 'Carbon Dioxide'
+    epa_aqs_code = 42102
+    units = 'ppm'
+
+    value = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        help_text='Carbon monoxide (ppm)',
     )
 
 
@@ -422,16 +434,17 @@ class NO2(BaseEntry):
         help_text='Nitrogen dioxide (ppb)',
     )
 
-class CO(BaseEntry):
-    label = 'Carbon Monoxide'
-    epa_aqs_code = 42101
-    units = 'ppm'
 
+class O3(BaseEntry):
+    label = 'Ozone'
+    epa_aqs_code = 44201
+    units = 'ppb'
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text='Carbon monoxide (ppm)',
+        help_text='Ozone (ppb)'
     )
+
 
 class SO2(BaseEntry):
     label = 'Sulfur Dioxide'
