@@ -1,6 +1,5 @@
 from django.apps import AppConfig
 
 
-class AirgradientConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'airgradient'
+class PurpleairConfig(AppConfig):
+    name = 'camp.apps.monitors.airgradient'
