@@ -38,7 +38,9 @@ class AirGradientAPI:
             params['token'] = self.token
             kwargs['params'] = params
 
-        return requests.request(method, url, headers=headers, **kwargs)
+        response = requests.request(method, url, headers=headers, **kwargs)
+        response.raise_for_status()
+        return response
 
     # HTTP Methods
 
@@ -79,6 +81,11 @@ class AirGradientAPI:
     def get_all_current_measures(self):
         '''Gets all current measures of the place'''
         response = self.get('locations/measures/current', auth=True)
+        return response.json()
+
+    def get_all_channel_measures(self):
+        '''Gets all channel measures of the place'''
+        response = self.get('locations/measures/channels', auth=True)
         return response.json()
 
     def get_raw_measures(self, location_id: int, from_time: str = None, to_time: str = None):
