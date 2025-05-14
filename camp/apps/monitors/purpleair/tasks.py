@@ -16,7 +16,7 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.datetime import parse_timestamp
 
 
-@db_periodic_task(crontab(minute='*/2'), priority=50)
+@db_periodic_task(crontab(minute='*'), priority=50)
 def update_realtime():
     sensors = purpleair_api.list_group_members(settings.PURPLEAIR_GROUP_ID)
     for sensor in sensors:

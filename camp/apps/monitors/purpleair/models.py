@@ -55,8 +55,8 @@ class PurpleAir(Monitor):
         entry_models.PM100: {
             'sensors': ['a', 'b'],
             'fields': {'value': 'pm10.0_atm'},
-            'allowed_stages': [entry_models.PM25.Stage.RAW],
-            'default_stage': entry_models.PM25.Stage.RAW,
+            'allowed_stages': [entry_models.PM100.Stage.RAW],
+            'default_stage': entry_models.PM100.Stage.RAW,
         },
         entry_models.Particulates: {
             'sensors': ['a', 'b'],
@@ -150,8 +150,13 @@ class PurpleAir(Monitor):
 
         # If the name says it's inside, it probably is
         name = data['name'].lower()
-        inside_list = ('inside', 'indoor', 'in door', 'in-door')
-        if any(item in name for item in inside_list):
+        inside_keywords = (
+            'inside', 'indoor', 'in door', 'in-door',
+            'classroom', 'lab', 'library', 'office', 'conf room',
+            'meeting room', 'admin', 'nurse', 'staff', 'hallway',
+            'gym', 'cafeteria', 'kitchen', 'reception', 'main building'
+        )
+        if any(item in name for item in inside_keywords):
             return self.LOCATION.inside
 
         # If we're here, it's probably outside.
@@ -162,8 +167,8 @@ class PurpleAir(Monitor):
         entries = []
 
         for EntryModel, spec in self.ENTRY_CONFIG.items():
-            sensors = spec.get('sensors') or ['']
-            fields = spec.get('fields') or {}
+            sensors = spec.get('sensors', [''])
+            fields = spec.get('fields', {})
 
             for sensor in sensors:
                 data = {
