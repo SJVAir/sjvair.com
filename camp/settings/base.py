@@ -95,6 +95,7 @@ INSTALLED_APPS = [
     'camp.apps.entries',
     'camp.apps.helpdesk',
     'camp.apps.monitors',
+    'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqview',
     'camp.apps.monitors.bam',
