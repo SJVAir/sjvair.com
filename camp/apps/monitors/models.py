@@ -427,7 +427,8 @@ class Monitor(models.Model):
             payload.update({
                 'sensor': latest.entry.sensor,
                 'timestamp': latest.entry.timestamp,
-                'calibration': latest.entry.calibration
+                'stage': latest.entry.stage,
+                'processor': latest.entry.processor,
             })
             data[latest.entry_type] = payload
 
