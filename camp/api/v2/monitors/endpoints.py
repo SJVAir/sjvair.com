@@ -142,18 +142,24 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         if not form.is_valid:
             return self.model.objects.none()
 
+        entry_type = self.entry_model.entry_type
+
         queryset = (super()
             .get_queryset()
             .get_active()
-            .with_latest_entry(self.entry_model)
-            .exclude(is_hidden=True, latest__isnull=True, location='inside')
+            .exclude(is_hidden=True, location='inside')
             .annotate(distance=Distance('position', form.point, spheroid=True))
             .order_by('distance')
+            .with_latest_entry(self.entry_model)
         )
         return queryset[:3]
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
-        include = [('distance', lambda monitor: monitor.distance.ft)]
+        entry_type = self.entry_model.entry_type
+        include = [
+            ('distance', lambda monitor: monitor.distance.ft),
+            ('latest', lambda monitor: EntrySerializer(getattr(monitor, f'latest_{entry_type}')).serialize()),
+        ]
         return super().serialize(source, fields, include, exclude, fixup)
 
 

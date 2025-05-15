@@ -72,7 +72,7 @@ class EndpointTests(TestCase):
         monitor = self.get_purple_air()
 
         kwargs = {'entry_type': 'pm25'}
-        url = reverse('api:v2:monitors:current-data', kwargs=kwargs)
+        url = reverse('api:v2:monitors:monitor-closest', kwargs=kwargs)
         params = {
             'latitude': monitor.position.y,
             'longitude': monitor.position.x,

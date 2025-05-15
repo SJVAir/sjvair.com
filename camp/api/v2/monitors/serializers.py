@@ -1,5 +1,6 @@
 from resticus import serializers
 
+from camp.apps.monitors.airgradient.models import AirGradient
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
@@ -20,6 +21,7 @@ class MonitorSerializer(serializers.Serializer):
     fields = [
         'id',
         'name',
+        ('type', lambda monitor: monitor.monitor_type),
         ('device', lambda monitor: monitor.get_device()),
         'is_active',
         'is_sjvair',
@@ -33,6 +35,10 @@ class MonitorSerializer(serializers.Serializer):
 
     monitor_extras = {
         PurpleAir: ['purple_id'],
+        AirGradient: [
+            'location_id',
+            ('dual_channel', lambda monitor: monitor.is_dual_channel)
+        ],
     }
 
     def fixup(self, instance, data):

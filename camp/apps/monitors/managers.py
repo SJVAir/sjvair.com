@@ -2,12 +2,50 @@ from datetime import timedelta
 
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import OuterRef, Prefetch, Q, Subquery
+from django.db.models.query import ModelIterable
 from django.utils import timezone
 
 from model_utils.managers import InheritanceManager, InheritanceQuerySet
 
 
+class InheritanceIterable(ModelIterable):
+    def __iter__(self):
+        queryset = self.queryset
+        base_iter = ModelIterable(queryset)
+
+        if getattr(queryset, 'subclasses', False):
+            extras = tuple(queryset.query.extra.keys())
+            subclasses = sorted(queryset.subclasses, key=len, reverse=True)
+            annotation_names = queryset.query.annotations.keys()
+
+            for obj in base_iter:
+                sub_obj = None
+                for s in subclasses:
+                    sub_obj = queryset._get_sub_obj_recurse(obj, s)
+                    if sub_obj:
+                        break
+                if not sub_obj:
+                    sub_obj = obj
+
+                for k in annotation_names:
+                    try:
+                        setattr(sub_obj, k, getattr(obj, k))
+                    except AttributeError:
+                        pass  # annotation wasn't actually selected in the SQL
+
+                for k in extras:
+                    setattr(sub_obj, k, getattr(obj, k))
+
+                yield sub_obj
+        else:
+            yield from base_iter
+
+
 class MonitorQuerySet(InheritanceQuerySet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._iterable_class = InheritanceIterable
+
     def get_active(self):
         cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
         return self.filter(latest_entries__timestamp__gte=cutoff).distinct()
@@ -74,5 +112,3 @@ class MonitorManager(InheritanceManager):
     def get_active_multisensor(self):
         return self.get_queryset().get_active_multisensor()
 
-    def with_filtered_latest_entries(self, *args, **kwargs):
-        return self.get_queryset().with_filtered_latest_entries(*args, **kwargs)
