@@ -14,7 +14,8 @@ class LinearExpressionProcessor(BaseProcessor):
 
     @cached_property
     def calibration(self):
-        return Calibration.objects.get_for_entry(self.entry, self.name)
+        if self.entry.position:
+            return Calibration.objects.get_for_entry(self.entry, self.name)
 
     def process(self):
         value = self.get_correction()
@@ -26,6 +27,9 @@ class LinearExpressionProcessor(BaseProcessor):
             )
 
     def get_correction(self):
+        if self.calibration is None:
+            return
+
         if self.entry.value < self.min_required_value:
             return self.entry.value
 

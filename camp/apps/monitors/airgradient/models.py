@@ -123,6 +123,10 @@ class AirGradient(Monitor):
     serial = MACAddressField()
 
     @property
+    def is_dual_channel(self):
+        return self.device == 'O-1PP'
+
+    @property
     def data_providers(self):
         providers = super().data_providers
         if self.place:
@@ -226,3 +230,31 @@ class AirGradient(Monitor):
             return
 
         return super().create_entry(EntryModel, **data)
+
+    def process_entry_pipeline(self, entry):
+        '''
+        Executes the full processing pipeline for a given entry,
+        including handling stage-specific behavior for PurpleAir monitors.
+
+        If the entry is at the RAW stage, this method will:
+        - Run all processors for RAW entries (e.g., A/B correction)
+        - Locate the previous CORRECTED entry, if available
+        - Run the processing pipeline on the previous CORRECTED entry
+          to perform spike detection and calibration, if applicable
+
+        This ensures that entries are cleaned and calibrated in the correct order,
+        accounting for the fact that spike detection depends on future (corrected) values.
+
+        Returns:
+            List of newly created entries generated during the processing pipeline.
+        '''
+        results = super().process_entry_pipeline(entry)
+
+        if entry.stage == entry.Stage.RAW:
+            corrected_entries = [e for e in results if e.stage == e.Stage.CORRECTED]
+            for corrected in corrected_entries:
+                if previous := corrected.get_previous_entry():
+                    cleaned_entries = self.process_entry_pipeline(previous)
+                    results.extend(cleaned_entries)
+
+        return results
