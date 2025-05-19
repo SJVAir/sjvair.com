@@ -16,7 +16,7 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.datetime import parse_timestamp
 
 
-@db_periodic_task(crontab(minute='*/2'), priority=50)
+@db_periodic_task(crontab(minute='*'), priority=50)
 def update_realtime():
     sensors = purpleair_api.list_group_members(settings.PURPLEAIR_GROUP_ID)
     for sensor in sensors:
@@ -39,7 +39,13 @@ def process_data(payload):
 
     entries = monitor.create_entries(payload)
     for entry in entries:
+        monitor.process_entry_pipeline(entry)
+
+    # Legacy
+    entries = monitor.create_entries_legacy(payload)
+    for entry in entries:
         monitor.check_latest(entry)
+
     monitor.save()
 
 
@@ -59,34 +65,6 @@ def update_monitor_data():
 
         monitor.update_data(data)
         monitor.save()
-
-
-@db_task(queue='secondary')
-def upsert_monitor_history(monitor_id, start_date=None, end_date=None):
-    monitor = PurpleAir.objects.get(pk=monitor_id)
-    entries = purpleair_api.get_sensor_history(monitor.purple_id, start_date, end_date)
-
-    for entry in entries:
-        for sensor in PurpleAir.SENSORS:
-            try:
-                instance = Entry.objects.get(
-                    monitor_id=monitor.pk,
-                    timestamp=parse_timestamp(entry['time_stamp']),
-                    sensor=sensor,
-                )
-                if instance.pm25_reported != entry[f'pm2.5_atm_{sensor}']:
-                    instance.pm25_reported = entry[f'pm2.5_atm_{sensor}']
-                    instance.save()
-            except Entry.DoesNotExist:
-                monitor.create_entries(entry)
-
-
-@db_task(queue='secondary')
-def upsert_monitor_history_batched(monitor_id, start_date=None, end_date=None):
-    chunks = chunk_date_range(start_date, end_date)
-    for start_date, end_date in chunks:
-        import_monitor_history(monitor_id, start_date, end_date)
-        time.sleep(1)
 
 
 @db_task(queue='secondary')

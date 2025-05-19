@@ -1,14 +1,15 @@
+from django import forms
 from django.contrib import admin
-from django.db.models import F, Prefetch
+from django.db.models import Prefetch
 from django.template import Context, Template
 from django.urls import reverse
-from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from django_admin_inline_paginator.admin import TabularInlinePaginated
 
-from camp.apps.calibrations.models import Calibrator, AutoCalibration
 from camp.apps.monitors.models import Monitor, Entry
+from .forms import DefaultCalibrationForm
+from .models import Calibrator, AutoCalibration, DefaultCalibration
 
 
 def formula_help_text():
@@ -19,6 +20,25 @@ def formula_help_text():
             {% for env in environment %}<li><code>{{ env }}</code></li>{% endfor %}
         </ul>
     ''').render(Context({'environment': Entry.ENVIRONMENT})))
+
+
+@admin.register(DefaultCalibration)
+class DefaultCalibrationAdmin(admin.ModelAdmin):
+    form = DefaultCalibrationForm
+    list_display = ('monitor_type', 'entry_type', 'calibration')
+    list_filter = ('monitor_type', 'entry_type')
+    search_fields = ('monitor_type', 'entry_type', 'calibration')
+
+    def get_form(self, request, obj=None, **kwargs):
+        request._obj_ = obj  # for formfield_for_dbfield
+        return super().get_form(request, obj=obj, **kwargs)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == 'calibration':
+            if instance := getattr(request, '_obj_', None):
+                kwargs['widget'].choices = self.form.get_calibration_choices(instance)
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
 
 
 class AutoCalibrationInline(TabularInlinePaginated):
