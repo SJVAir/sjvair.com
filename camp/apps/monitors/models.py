@@ -223,13 +223,11 @@ class Monitor(models.Model):
     def data_source(self):
         return self.DATA_SOURCE
 
-    @property
+    @cached_property
     def is_active(self):
-        if not self.latest_id:
-            return False
         now = timezone.now()
-        cutoff = timedelta(seconds=self.LAST_ACTIVE_LIMIT)
-        return (now - self.latest.timestamp) < cutoff
+        cutoff = now - timedelta(seconds=self.LAST_ACTIVE_LIMIT)
+        return self.latest_entries.filter(timestamp__gte=cutoff).exists()
 
     @cached_property
     def health_grade(self):
