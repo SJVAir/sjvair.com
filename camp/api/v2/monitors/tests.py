@@ -72,8 +72,6 @@ class EndpointTests(TestCase):
             Test that we can GET the current data endpoint.
         '''
         monitor = self.get_purple_air()
-        monitor.location = PurpleAir.LOCATION.inside
-        monitor.save()
         monitor.create_entry(
             entry_models.PM25,
             timestamp=timezone.now(),
