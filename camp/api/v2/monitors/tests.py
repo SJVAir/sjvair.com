@@ -3,6 +3,7 @@ import csv
 from datetime import datetime, timedelta
 from decimal import Decimal
 from io import StringIO
+from pprint import pprint
 
 import pytest
 
@@ -65,11 +66,21 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
         assert response.status_code == 200
 
+    @debug
     def test_closest_monitor(self):
         '''
             Test that we can GET the current data endpoint.
         '''
         monitor = self.get_purple_air()
+        monitor.location = PurpleAir.LOCATION.inside
+        monitor.save()
+        monitor.create_entry(
+            entry_models.PM25,
+            timestamp=timezone.now(),
+            value=10.0,
+            sensor='a',
+            stage=entry_models.PM25.Stage.CLEANED
+        )
 
         kwargs = {'entry_type': 'pm25'}
         url = reverse('api:v2:monitors:monitor-closest', kwargs=kwargs)
@@ -83,9 +94,12 @@ class EndpointTests(TestCase):
 
         assert response.status_code == 200
         assert isinstance(content['data'], list)
-        assert len(content['data']) <= 3
+        assert 1 <= len(content['data']) <= 3
 
         for monitor in content['data']:
+            assert 'latest' in monitor
+            assert monitor['latest']['entry_type'] == kwargs['entry_type']
+
             assert 'distance' in monitor
             assert isinstance(monitor['distance'], (float, int))
 
