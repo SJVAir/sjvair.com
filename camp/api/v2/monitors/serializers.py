@@ -10,6 +10,7 @@ class EntrySerializer(serializers.Serializer):
         'sensor',
         'stage',
         'processor',
+        'entry_type',
     ]
 
     def fixup(self, instance, data):
