@@ -217,13 +217,20 @@ class BaseEntry(models.Model):
         if not sensors or len(sensors) < 2:
             return self.__class__.objects.none()
 
-        return self.__class__.objects.filter(
-            monitor=self.monitor,
-            timestamp=self.timestamp,
-            stage=self.stage,
-            sensor__in=sensors,
-            processor=self.processor,
-        ).exclude(sensor=self.sensor)
+        return (self.__class__.objects
+            .filter(
+                monitor=self.monitor,
+                timestamp=self.timestamp,
+                stage=self.stage,
+                sensor__in=sensors,
+                processor=self.processor,
+            )
+            .exclude(sensor=self.sensor)
+            .order_by('sensor')
+        )
+
+    def get_sibling_entry(self):
+        return self.get_sibling_entries().first()
 
     def get_calibrated_entries(self):
         '''
@@ -257,7 +264,6 @@ class BaseEntry(models.Model):
         return self.__class__.objects.filter(
             monitor=self.monitor,
             timestamp=self.timestamp,
-            sensor=self.sensor,
         )
 
     def get_readings(self):
@@ -272,7 +278,11 @@ class BaseEntry(models.Model):
         readings = {}
 
         for entry in self.get_related_entries():
-            key = entry.calibration if entry.stage == entry.Stage.CALIBRATED else entry.stage
+            bits = []
+            if entry.sensor:
+                bits.append(entry.sensor)
+            bits.append(entry.processor if entry.stage == entry.Stage.CALIBRATED else entry.stage)
+            key = '_'.join(bits)
             readings[key] = entry.declared_data()
 
         return readings
