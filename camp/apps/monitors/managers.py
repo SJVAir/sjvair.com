@@ -1,7 +1,6 @@
 from datetime import timedelta
 
-from django.contrib.contenttypes.models import ContentType
-from django.db.models import OuterRef, Prefetch, Q, Subquery
+from django.db.models import DateTimeField, OuterRef, Q, Subquery
 from django.db.models.query import ModelIterable
 from django.utils import timezone
 
@@ -56,6 +55,17 @@ class MonitorQuerySet(InheritanceQuerySet):
 
     def get_active_multisensor(self):
         return self.get_active().exclude(default_sensor='').exclude(location='inside')
+
+    def with_last_entry_timestamp(self):
+        from camp.apps.monitors.models import LatestEntry
+
+        subquery = (LatestEntry.objects
+            .filter(monitor=OuterRef('pk'))
+            .order_by('-timestamp')  # just in case
+            .values('timestamp')[:1]
+        )
+
+        return self.annotate(last_entry_timestamp=Subquery(subquery, output_field=DateTimeField()))
 
     def with_latest_entry(self, entry_model, stage=None, processor=None):
         from camp.apps.monitors.models import LatestEntry
