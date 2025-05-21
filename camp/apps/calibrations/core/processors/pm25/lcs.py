@@ -23,19 +23,43 @@ class PM25_LCS_Correction(BaseProcessor):
     required_stage = PM25.Stage.RAW
     next_stage = PM25.Stage.CORRECTED
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sibling = self.entry.get_sibling_entry()
+
+    def is_valid(self):
+        # Standard validation first
+        if not super().is_valid():
+            return False
+
+        if self.sibling:
+            # Use lexical order of sensor names to decide who runs correction
+            my_sensor = self.entry.sensor or ''
+            sib_sensor = self.sibling.sensor or ''
+
+            if sib_sensor < my_sensor:
+                # Let the sibling handle correction
+                return False
+        return True
+
     def process(self):
         if (self.entry.value is None
             or self.entry.value < -15
             or self.entry.value > 3000
         ):
-            return None  # Clearly invalid
+            # Clearly invalid
+            return
 
         if self.is_repeated():
-            return None  # Filter out repeated sequences
+            # Filter out repeated sequences
+            return
 
         cleaned_value = self.compute_ab_adjusted_value()
         cleaned_value = max(cleaned_value, 0)
-        return self.build_entry(value=cleaned_value)
+        return self.build_entry(
+            value=cleaned_value,
+            sensor='', # At this point, A and B are effectively merged.
+        )
 
     def is_repeated(self, max_repeat=5) -> bool:
         '''
@@ -79,13 +103,12 @@ class PM25_LCS_Correction(BaseProcessor):
         - If neither, return self.entry.value
         '''
         current_value = self.entry.value
-        sibling = self.entry.get_sibling_entries().first()
 
-        if not sibling:
+        if not self.sibling:
             return current_value
 
         a = self.entry.value
-        b = sibling.value
+        b = self.sibling.value
 
         average = (a + b) / 2
         variance = ((a - b) ** 2) / 2
