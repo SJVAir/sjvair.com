@@ -227,7 +227,17 @@ class Monitor(models.Model):
     def is_active(self):
         now = timezone.now()
         cutoff = now - timedelta(seconds=self.LAST_ACTIVE_LIMIT)
-        return self.latest_entries.filter(timestamp__gte=cutoff).exists()
+
+        # If annotation is missing or None, fall back to query
+        timestamp = getattr(self, 'last_entry_timestamp', None)
+        if timestamp is None:
+            timestamp = (self.latest_entries
+                .order_by('-timestamp')
+                .values_list('timestamp', flat=True)
+                .first()
+            )
+
+        return timestamp is not None and timestamp >= cutoff
 
     @cached_property
     def health_grade(self):

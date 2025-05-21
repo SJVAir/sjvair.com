@@ -24,8 +24,12 @@ class MonitorMixin:
     serializer_class = MonitorSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        queryset = queryset.prefetch_related('latest_entries')
+        queryset = (super()
+            .get_queryset()
+            .prefetch_related('latest_entries')
+            .with_last_entry_timestamp()
+        )
+
         return queryset
 
     def get_object(self):
