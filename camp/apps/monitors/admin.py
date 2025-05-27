@@ -44,7 +44,7 @@ class HealthGradeListFilter(SimpleListFilter):
     title = "Health Grade"
     parameter_name = "grade"
 
-    def lookups(self, request, model_admin): 
+    def lookups(self, request, model_admin):
         return list(map(key_to_lookup, SensorAnalysis.health_grades.keys()))
 
     def queryset(self, request, queryset):
@@ -167,10 +167,13 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         fields = getattr(self, 'csv_export_fields', self.fields)
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="sjvair-monitor-list.csv"'
-        writer = csv.DictWriter(response, fields)
+        writer = csv.DictWriter(response, fields, quoting=csv.QUOTE_NONNUMERIC)
         writer.writeheader()
         for monitor in queryset:
             row = {field: getattr(monitor, field) for field in fields}
+            # Make sure the ID is quoted
+            if 'id' in row:
+                row['id'] = str(row['id'])
             writer.writerow(row)
         return response
 
