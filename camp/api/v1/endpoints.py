@@ -39,7 +39,7 @@ class CSVExport(generics.ListEndpoint):
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="{self.get_filename()}"'
 
-        writer = csv.writer(response)
+        writer = csv.writer(response, quoting=csv.QUOTE_NONNUMERIC)
         writer.writerow(self.get_header_row())
         for instance in queryset.iterator():
             writer.writerow(self.get_row(instance))
