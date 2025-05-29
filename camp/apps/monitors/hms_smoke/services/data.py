@@ -6,6 +6,7 @@ from ..models import Smoke
 from .helpers import *
 from shapely.wkt import loads as load_wkt
 from django.conf import settings
+from .....utils.counties import County
 
 #get the smokefile associated with today
 def get_todays_smoke_file():
@@ -88,9 +89,14 @@ def add_shapefile_db(curr):
     #converts wkt to django GeosGeometry object, using coordinate system 4326, which was 
     #recovered from the hms file using I believe geofile.crs (after reading it)
     
+    ### ADD LOCATION CHECKER TO HELPER
     
     geometryCheck(curr["geometry"])
     geometry=GEOSGeometry(curr['geometry'].wkt, srid=4326)
+    
+    #If the county is not within the SJV return it does not need to be added
+    if not County.within_SJV(curr['geometry']):
+        return
     
     density = densityCheck(curr["Density"])
     satellite = stringCheck(curr["Satellite"])
