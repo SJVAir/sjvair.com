@@ -26,7 +26,15 @@ def CreateSmokeObjects(density, start, end):
         Smoke Object(
     """
     #Geometry object
-    polygon_wkt = "POLYGON(0 0, 0 1, 1 1, 1 0, 0 0))"
+    polygon_wkt = (
+    "POLYGON(("
+    "-119.860839 36.660399, "
+    "-119.860839 36.905755, "
+    "-119.650879 36.905755, "
+    "-119.650879 36.660399, "
+    "-119.860839 36.660399"
+    "))"
+    )
     geometry = GEOSGeometry(polygon_wkt, srid=4326)
     if start ==-1:
         start = datetime.now(timezone.utc) - timedelta(hours=2)
@@ -40,9 +48,6 @@ def CreateSmokeObjects(density, start, end):
     FID = "0"
     satellite = "TestSatellite"
     observation_time = datetime.now(timezone.utc)
-    print("ObservationTime: ", observation_time)
-    print("Start: ", start)
-    print("End: ", end)
     
     return Smoke.objects.create(density=density,end=end,start=start,FID=FID,satellite=satellite, geometry=geometry, observation_time = observation_time)
 
@@ -67,25 +72,26 @@ class Tests_OngoingSmokeView(TestCase):
         
     def test_OngoingSmokeView(self):
         
-        url = reverse("SmokeTest:ongoing_smoke")
+        url = reverse("api:v1:hms_smoke:ongoing_smoke")
         response = self.client.get(url)
+        print(response.json())
         assert response.status_code == 200
-        assert len(response.data["features"])==1
-        assert response.data['features'][0]['properties']['density'].lower() == 'light'
-        assert response.data['features'][0]["id"] == str(self.smoke1.id)
+        assert len(response.json()["data"])==1
+        assert response.json()['data'][0]['density'].lower() == 'light'
+        assert response.json()['data'][0]["id"] == str(self.smoke1.id)
     def test2_OngoingSmokeView(self):
         ongoing_end = datetime.now(timezone.utc) + timedelta(hours=1)
         self.smoke2.end = ongoing_end
         self.smoke2.save
         
-        url = reverse("SmokeTest:ongoing_smoke")
+        url = reverse("api:v1:hms_smoke:ongoing_smoke")
         response = self.client.get(url)
         assert response.status_code == 200
-        assert len(response.data["features"])==1
-        for feature in response.data["features"]:
-            if feature['properties']['density'].lower() == 'light':
+        assert len(response.json()["data"])==1
+        for feature in response.json()["data"]:
+            if feature['density'].lower() == 'light':
                 assert feature["id"] == str(self.smoke1.id)
-            if feature['properties']['density'].lower() == 'medium':
+            if feature['density'].lower() == 'medium':
                 assert feature["id"] == str(self.smoke2.id)
 #TESTS OngoingSmokeDensityView
 class Tests_OngoingSmokeDensityView(TestCase):
@@ -110,39 +116,39 @@ class Tests_OngoingSmokeDensityView(TestCase):
         self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
     #Query for smoke 1 and 4 (light and medium)
     def test1_OngoingSmokeDensityView(self):
-        url = reverse("SmokeTest:ongoing_smoke_density")
+        url = reverse("api:v1:hms_smoke:ongoing_smoke_density")
         url_with_params = f"{url}?density=light&density=medium"
         response = self.client.get(url_with_params)
     
         assert response.status_code == 200
-        assert len(response.data["features"])==2
-        for feature in response.data['features']:
-            if feature['properties']['density'].lower() =='light':
+        assert len(response.json()["data"])==2
+        for feature in response.json()['data']:
+            if feature['density'].lower() =='light':
                 assert feature["id"] == str(self.smoke1.id)
-            elif feature['properties']['density'].lower() =='medium':
+            elif feature['density'].lower() =='medium':
                 assert feature["id"] == str(self.smoke4.id)
             else:
                 assert 1==2 # A HEAVY DENSITY WAS QUERIED
     
     #Query for heavy densities      
     def test2_OngoingSmokeDensityView(self):
-        url = reverse("SmokeTest:ongoing_smoke_density")
+        url = reverse("api:v1:hms_smoke:ongoing_smoke_density")
         url_with_params = f"{url}?density=heavy"
         response = self.client.get(url_with_params)
         
         
         assert response.status_code == 200
-        assert len(response.data["features"])==1
-        assert response.data['features'][0]['properties']['density'].lower() == ['heavy']
+        assert len(response.json()["data"])==1
+        assert response.json()['data'][0]['density'].lower() == 'heavy'
     
     #No density should return no smokes      
     def test3_OngoingSmokeDensityView(self):
-        url = reverse("SmokeTest:ongoing_smoke_density")
+        url = reverse("api:v1:hms_smoke:ongoing_smoke_density")
         response = self.client.get(url)
         
         
         assert response.status_code == 200
-        assert len(response.data['features'])==0
+        assert len(response.json()['data'])==0
         
 
 class Tests_LatestObeservableSmokeView(TestCase):
@@ -171,17 +177,17 @@ class Tests_LatestObeservableSmokeView(TestCase):
         self.smoke4.save()
         
     def test1_LatestObeservableSmokeView(self):
-        url = reverse("SmokeTest:last_observable_smoke")
+        url = reverse("api:v1:hms_smoke:last_observable_smoke")
         response = self.client.get(url)
         
         assert response.status_code == 200
-        assert len(response.data['features']) == 3
-        for feature in response.data['features']:
-            if feature['properties']['density'].lower() =='light':
+        assert len(response.json()['data']) == 3
+        for feature in response.json()['data']:
+            if feature['density'].lower() =='light':
                 assert feature["id"] == str(self.smoke3.id)
-            if feature['properties']['density'].lower() =='medium':
+            if feature['density'].lower() =='medium':
                 assert feature["id"] == str(self.smoke2.id)
-            if feature['properties']['density'].lower() =='heavy':
+            if feature['density'].lower() =='heavy':
                 assert feature["id"] == str(self.smoke5.id)
 
 class Tests_LatestObeservableSmokeDensityView(TestCase):
@@ -215,38 +221,38 @@ class Tests_LatestObeservableSmokeDensityView(TestCase):
         self.smoke5.save()
         
     def test1_LatestObeservableSmokeDensityView(self):
-        url = reverse("SmokeTest:last_observable_smoke_density")
+        url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
         url_with_params = f"{url}?density=light&density=medium"
         response = self.client.get(url_with_params)
     
         assert response.status_code == 200
-        assert len(response.data["features"])==2
-        for feature in response.data['features']:
-            assert feature['properties']['density'].lower() != 'heavy'
-            if feature['properties']['density'].lower() =='light':
+        assert len(response.json()["data"])==2
+        for feature in response.json()['data']:
+            assert feature['density'].lower() != 'heavy'
+            if feature['density'].lower() =='light':
                 assert feature["id"]== str(self.smoke1.id)
-            if feature['properties']['density'].lower() =='medium':
+            if feature['density'].lower() =='medium':
                 assert feature["id"]== str(self.smoke4.id)
     #Query for heavy densities      
     def test2_LatestObeservableSmokeDensityView(self):
-        url = reverse("SmokeTest:last_observable_smoke_density")
+        url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
         url_with_params = f"{url}?density=heavy"
         response = self.client.get(url_with_params)
         
       
         assert response.status_code == 200
-        assert len(response.data["features"])>0
-        for item in response.data["features"]:
-            assert item["properties"]['density'].lower() == ['heavy']
-        assert response.data["features"][0]["id"] == str(self.smoke3.id)
+        assert len(response.json()["data"])>0
+        for item in response.json()["data"]:
+            assert item['density'].lower() == 'heavy'
+        assert response.json()["data"][0]["id"] == str(self.smoke3.id)
     
     #No density should return no smokes      
     def test3_LatestObeservableSmokeDensityView(self):
-        url = reverse("SmokeTest:last_observable_smoke_density")
+        url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
         response = self.client.get(url)
         
         assert response.status_code == 200
-        assert len(response.data["features"])==0   
+        assert len(response.json()["data"])==0   
         
         
 class Tests_SelectSmokeView(TestCase):
@@ -270,9 +276,9 @@ class Tests_SelectSmokeView(TestCase):
         
     #returns 
     def test1_SelectSmokeView(self):
-        url = reverse("SmokeTest:smoke_by_id", kwargs={'pk':self.smoke1.id})
+        url = reverse("api:v1:hms_smoke:smoke_by_id", kwargs={'pk':self.smoke1.id})
         response = self.client.get(url)
         
         assert response.status_code == 200
-        assert response.data["id"] == str(self.smoke1.id)
+        assert response.json()["data"]["id"] == str(self.smoke1.id)
         
