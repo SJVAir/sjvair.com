@@ -25,7 +25,7 @@ class OngoingSmokeDensityView(generics.ListEndpoint):
     serializer_class = SmokeSerializer
     def get_queryset(self):
         #get densities from query in url
-        densities = self.request.query_params.getlist('density')
+        densities = self.request.params.get('density', [])
         queryset = query_ongoing_density_smoke(env('query_hours'), densities)
         return queryset
     
@@ -41,7 +41,7 @@ class LatestObeservableSmokeDensityView(generics.ListEndpoint):
     model = Smoke
     serializer_class = SmokeSerializer
     def get_queryset(self):
-        densities = self.request.query_params.getlist('density')
+        densities = self.request.params.get('density', [])
         queryset = query_latest_smoke_density(densities)
         return queryset
         
@@ -61,4 +61,13 @@ class SelectSmokeView(generics.Endpoint):
         except Exception as e:
             uuid_str = self.kwargs.get(self.lookup_field)
             raise Http404(f"There was a problem retrieving smoke data for id = {uuid_str}")
+    
+class SmokeByTimestamp(generics.ListEndpoint):
+    model = Smoke
+    serializer_class = SmokeSerializer
+    queryset = Smoke.objects.all()
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.order_by('-observation_time')
     
