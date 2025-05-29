@@ -17,16 +17,15 @@ class OngoingSmokeView(generics.ListEndpoint):
     serializer_class = SmokeSerializer
     
     def get_queryset(self):
-        queryset = query_ongoing_smoke(env('query_hours'))
+        queryset = query_ongoing_smoke(3).order_by('-observation_time')
         return queryset
 
 class OngoingSmokeDensityView(generics.ListEndpoint):
     model = Smoke
     serializer_class = SmokeSerializer
     def get_queryset(self):
-        #get densities from query in url
-        densities = self.request.params.get('density', [])
-        queryset = query_ongoing_density_smoke(env('query_hours'), densities)
+        densities = self.request.GET.getlist('density')
+        queryset = query_ongoing_density_smoke(3, densities).order_by('-observation_time')
         return queryset
     
     
@@ -34,15 +33,15 @@ class LatestObeservableSmokeView(generics.ListEndpoint):
     model = Smoke
     serializer_class = SmokeSerializer
     def get_queryset(self):
-            queryset = query_latest_smoke()
+            queryset = query_latest_smoke().order_by('-observation_time')
             return queryset
 
 class LatestObeservableSmokeDensityView(generics.ListEndpoint):
     model = Smoke
     serializer_class = SmokeSerializer
     def get_queryset(self):
-        densities = self.request.params.get('density', [])
-        queryset = query_latest_smoke_density(densities)
+        densities = self.request.GET.getlist('density')
+        queryset = query_latest_smoke_density(densities).order_by('-observation_time')
         return queryset
         
 
@@ -51,15 +50,15 @@ class SelectSmokeView(generics.Endpoint):
     serializer_class = SmokeSerializer
     queryset = Smoke.objects.all()
 
-    def get_object(self):
+    def get(self, *args, **kwargs):
         try:
-            #get pk from query
-            uuid_str = self.kwargs.get(self.lookup_field)
+            uuid_str = kwargs['pk']
+            print(uuid_str)
             SmallUUID(uuid_str)
             stringCheck(uuid_str)
             return get_object_or_404(Smoke, id=uuid_str)
         except Exception as e:
-            uuid_str = self.kwargs.get(self.lookup_field)
+            uuid_str = self.kwargs.get('pk')
             raise Http404(f"There was a problem retrieving smoke data for id = {uuid_str}")
     
 class SmokeByTimestamp(generics.ListEndpoint):
