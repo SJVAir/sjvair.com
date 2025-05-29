@@ -31,3 +31,10 @@ class County:
             if geometry.contains(point):
                 return name
         return default
+
+    @classmethod
+    def within_SJV(cls, geometry_shape, default=0):
+        for name, geometry in cls.counties.items():
+            if geometry.intersects(geometry_shape):
+                return 1
+        return default
