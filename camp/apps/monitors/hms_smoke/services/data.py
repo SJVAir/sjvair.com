@@ -101,12 +101,10 @@ def add_shapefile_db(curr):
     density = densityCheck(curr["Density"])
     satellite = stringCheck(curr["Satellite"])
     name = stringCheck(str(curr.name))
-    print(1)
     #convert date,time string to datetime object
     start = inputDateCheck(curr["Start"]) 
     end = inputDateCheck(curr["End"])
     observation_time = datetime.now(timezone.utc)
-    print(2)
     newobj = Smoke.objects.create(density = density, start=start, end = end, satellite = satellite, geometry = geometry , FID = name, observation_time = observation_time)
     newobj.save()
     

@@ -2,15 +2,15 @@
 # Create your views here.
 from resticus import generics
 from ....apps.monitors.hms_smoke.models import Smoke
-import environ 
 from .serializers import SmokeSerializer
 from ....apps.monitors.hms_smoke.services.queries import *
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from smalluuid import SmallUUID
+import os
 
-env = environ.Env()
-environ.Env.read_env() 
+env = os.environ.get
+
 class OngoingSmokeView(generics.ListEndpoint):
     model = Smoke
     #TODO CREATE SMOKE SERIALIZER
