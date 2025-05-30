@@ -74,7 +74,6 @@ class Tests_OngoingSmokeView(TestCase):
         
         url = reverse("api:v1:hms_smoke:ongoing_smoke")
         response = self.client.get(url)
-        print(response.json())
         assert response.status_code == 200
         assert len(response.json()["data"])==1
         assert response.json()['data'][0]['density'].lower() == 'light'
@@ -118,8 +117,15 @@ class Tests_OngoingSmokeDensityView(TestCase):
     def test1_OngoingSmokeDensityView(self):
         url = reverse("api:v1:hms_smoke:ongoing_smoke_density")
         url_with_params = f"{url}?density=light&density=medium"
+        #Test to make sure it returns by end time
+        newdate = datetime.now(timezone.utc) + timedelta(hours=3)
+        self.smoke4.end = newdate
+        self.smoke4.save()
         response = self.client.get(url_with_params)
     
+        
+        
+        print(response.json())
         assert response.status_code == 200
         assert len(response.json()["data"])==2
         for feature in response.json()['data']:
@@ -129,6 +135,7 @@ class Tests_OngoingSmokeDensityView(TestCase):
                 assert feature["id"] == str(self.smoke4.id)
             else:
                 assert 1==2 # A HEAVY DENSITY WAS QUERIED
+        
     
     #Query for heavy densities      
     def test2_OngoingSmokeDensityView(self):
@@ -281,4 +288,54 @@ class Tests_SelectSmokeView(TestCase):
         
         assert response.status_code == 200
         assert response.json()["data"]["id"] == str(self.smoke1.id)
+    def test2_SelectSmokeView(self):
+        url = reverse("api:v1:hms_smoke:smoke_by_id", kwargs={'pk':"aaaaaa"})
+        response = self.client.get(url)
+        
+        assert response.status_code == 404
+        
+        
+        
+class Tests_Miscellaneous(TestCase):
+    
+    def setUp(self):
+        self.smoke1 = CreateSmokeObjects("Light", -1, 1)
+        self.smoke2 = CreateSmokeObjects("MEDIUM", -1, -1)
+        self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
+        self.smoke4 = CreateSmokeObjects("MEDIUM", -1, 1)
+        self.smoke5 = CreateSmokeObjects("Heavy", -1, 1)
+      
+    def test_OnlySJVShapes(self):
+        from ....utils.counties import County
+        
+        polygon_wkt = "POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))"
+        geometry = GEOSGeometry(polygon_wkt, srid=4326)
+    
+        #If the county is not within the SJV return it does not need to be added
+        if not County.within_SJV(geometry):
+            assert 1==1
+        else:
+            assert 1==2
+        if County.within_SJV(self.smoke1.geometry):
+            assert 1==1
+        else: 
+            assert 1==2    
+        
+    def test_all_by_timestamp(self):
+        
+        timestampChange = datetime.now() + timedelta(hours=1)
+        self.smoke3.observation_time = timestampChange
+        self.smoke3.save()
+        
+        url = reverse("api:v1:hms_smoke:all_by_timestamp")
+        response = self.client.get(url)
+        
+        assert response.status_code == 200
+        assert len(response.json()["data"])==5
+        assert response.json()["data"][0]['id'] ==str(self.smoke3.id)
+    
+    
+        
+        
+        
         

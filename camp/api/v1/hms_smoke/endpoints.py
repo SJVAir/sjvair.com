@@ -8,6 +8,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from smalluuid import SmallUUID
 import os
+from django.http import JsonResponse
 
 env = os.environ.get
 
@@ -17,7 +18,7 @@ class OngoingSmokeView(generics.ListEndpoint):
     serializer_class = SmokeSerializer
     
     def get_queryset(self):
-        queryset = query_ongoing_smoke(3).order_by('-observation_time')
+        queryset = query_ongoing_smoke(3).order_by('-end')
         return queryset
 
 class OngoingSmokeDensityView(generics.ListEndpoint):
@@ -25,7 +26,7 @@ class OngoingSmokeDensityView(generics.ListEndpoint):
     serializer_class = SmokeSerializer
     def get_queryset(self):
         densities = self.request.GET.getlist('density')
-        queryset = query_ongoing_density_smoke(3, densities).order_by('-observation_time')
+        queryset = query_ongoing_density_smoke(3, densities).order_by('-end')
         return queryset
     
     
@@ -53,10 +54,12 @@ class SelectSmokeView(generics.Endpoint):
     def get(self, *args, **kwargs):
         try:
             uuid_str = kwargs['pk']
-            print(uuid_str)
+            #Error check the uuid_str in the bar
             SmallUUID(uuid_str)
             stringCheck(uuid_str)
-            return get_object_or_404(Smoke, id=uuid_str)
+            smoke = get_object_or_404(Smoke, pk=uuid_str)
+            smoke_serialized = SmokeSerializer(smoke).serialize()
+            return JsonResponse({"data": smoke_serialized})
         except Exception as e:
             uuid_str = self.kwargs.get('pk')
             raise Http404(f"There was a problem retrieving smoke data for id = {uuid_str}")
