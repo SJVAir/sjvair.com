@@ -124,8 +124,6 @@ class Tests_OngoingSmokeDensityView(TestCase):
         response = self.client.get(url_with_params)
     
         
-        
-        print(response.json())
         assert response.status_code == 200
         assert len(response.json()["data"])==2
         for feature in response.json()['data']:
