@@ -321,7 +321,7 @@ class Tests_Miscellaneous(TestCase):
         
     def test_all_by_timestamp(self):
         
-        timestampChange = datetime.now() + timedelta(hours=1)
+        timestampChange = datetime.now(timezone.utc) + timedelta(hours=1)
         self.smoke3.observation_time = timestampChange
         self.smoke3.save()
         
@@ -333,7 +333,84 @@ class Tests_Miscellaneous(TestCase):
         assert response.json()["data"][0]['id'] ==str(self.smoke3.id)
     
     
+
+class Test_TimeFilterQuery(TestCase):
+    
+    def setUp(self):
+        self.smoke1 = CreateSmokeObjects("Light", -1, 1)
+        self.smoke2 = CreateSmokeObjects("MEDIUM", -1, -1)
+        self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
+        self.smoke4 = CreateSmokeObjects("MEDIUM", -1, 1)
+        self.smoke5 = CreateSmokeObjects("Heavy", -1, 1)
+    
+    #returns everything but smoke 3, it queries any smokes active in the range of -2 hr to -1 hr from current. 
+    #So any smoke with -1 as its start value, because this is -2hrs before current, 1 would be -1 hr from current
+    def test1_TimeFilterQuery(self):
         
+        url = reverse("api:v1:hms_smoke:start_end_filter")
+        startTime = datetime.now(timezone.utc) - timedelta(hours=2)
+        endTime = datetime.now(timezone.utc) - timedelta(hours=1)
+        startTime = startTime.strftime("%H%M")
+        endTime = endTime.strftime("%H%M")
+        url+= f"?start={startTime}&end={endTime}"
+        
+        response = self.client.get(url)
+        assert response.status_code == 200
+        assert len(response.json()["data"]) == 4
+        for feature in response.json()["data"]:
+            if feature["id"] == str(self.smoke3.id):
+                assert 1==2
+        
+    #Returns Everything but smoke 2, it queries any smokes active in the range of +1 hr to +2 hr from current. 
+    #so, any value with end value as 1 will return 
+    def test2_TimeFilterQuery(self):
+        url = reverse("api:v1:hms_smoke:start_end_filter")
+        startTime = datetime.now(timezone.utc) + timedelta(hours=1)
+        endTime = datetime.now(timezone.utc) + timedelta(hours=2)
+        startTime = startTime.strftime("%H%M")
+        endTime = endTime.strftime("%H%M")
+        url+= f"?start={startTime}&end={endTime}"
+        
+        response = self.client.get(url)
+        assert response.status_code == 200
+        assert len(response.json()["data"]) == 4
+        for feature in response.json()["data"]:
+            if feature["id"] == str(self.smoke2.id):
+                assert 1==2
+                
+    #Returns only smoke1 because it is changes to extend the duration so it occurs longer for a later time query.
+    def test3_TimeFilterQuery(self):
+        url = reverse("api:v1:hms_smoke:start_end_filter")
+        startTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes =1)
+        endTime = datetime.now(timezone.utc) + timedelta(hours=4)
+        startTime = startTime.strftime("%H%M")
+        endTime = endTime.strftime("%H%M")
+        url+= f"?start={startTime}&end={endTime}"
+        
+        self.smoke1.end = datetime.now(timezone.utc) + timedelta(hours=3)
+        self.smoke1.save()
+        
+        
+        response = self.client.get(url)
+        assert response.status_code == 200
+        assert len(response.json()["data"]) == 1
+        assert response.json()["data"][0]['id'] == str(self.smoke1.id)   
+        
+        
+    #will return 0 smoke objects, added 1 minute to start + 2 hrs because if end is gte start then it will trigger, and end is +2hrs from current
+    def test4_TimeFilterQuery(self):
+        url = reverse("api:v1:hms_smoke:start_end_filter")
+        startTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes =1)
+        endTime = datetime.now(timezone.utc) + timedelta(hours=4)
+        startTime = startTime.strftime("%H%M")
+        endTime = endTime.strftime("%H%M")
+        url+= f"?start={startTime}&end={endTime}"
+            
+        response = self.client.get(url)
+        assert response.status_code == 200
+        assert len(response.json()["data"]) == 0
+        
+
         
         
         

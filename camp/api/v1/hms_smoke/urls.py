@@ -12,6 +12,8 @@ urlpatterns = [
     path("last", LatestObeservableSmokeView.as_view(), name = "last_observable_smoke"),
     path("last/density", LatestObeservableSmokeDensityView.as_view(), name="last_observable_smoke_density"),
     path("<str:pk>", SelectSmokeView.as_view(), name="smoke_by_id"),
-    path("/", SmokeByTimestamp.as_view(), name="all_by_timestamp")
+    path("/", SmokeByTimestamp.as_view(), name="all_by_timestamp"),
+    #EXPECTS UTC TIME INPUT
+    path("time/", StartEndFilter.as_view(), name="start_end_filter")
 
 ]
