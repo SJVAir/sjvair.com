@@ -23,7 +23,7 @@ def get_todays_smoke_file():
     """
     #Clear directory before populating
     try:
-        outputPath = os.path.join(settings.BASE_DIR, 'SmokeTest', 'services', 'smoke_data')
+        outputPath = os.path.join(settings.BASE_DIR,'camp', 'apps','monitors','hms_smoke', 'services', 'smoke_data')
         os.makedirs(outputPath, exist_ok=True)
         clear_directory(outputPath)
         #NOAA data is given in UTC
@@ -36,21 +36,17 @@ def get_todays_smoke_file():
         print("Downloading from URL:", finalUrl)
         
         #get request for zip file
-        
         response = requests.get(finalUrl)
         if response.status_code != 200:
             print("Download failed with status:", response.status_code)
             response.raise_for_status()
-        
         zipfile.ZipFile(io.BytesIO(response.content)).extractall(outputPath)
         
+
         #read_file reads shape file from zip file and uses the other files also
         geo = gpd.read_file(f"{outputPath}/hms_smoke{date.strftime('%Y%m%d')}.shp")
-        
-        
         for i in range(len(geo)):
             add_shapefile_db(geo.iloc[i])
-            print(geo.iloc[i])
     except Exception:
         print(Exception.with_traceback())
         print("Error with data retrieval.")
@@ -90,22 +86,25 @@ def add_shapefile_db(curr):
     #recovered from the hms file using I believe geofile.crs (after reading it)
     
     ### ADD LOCATION CHECKER TO HELPER
-    
-    geometryCheck(curr["geometry"])
-    geometry=GEOSGeometry(curr['geometry'].wkt, srid=4326)
-    
-    #If the county is not within the SJV return it does not need to be added
-    if not County.within_SJV(curr['geometry']):
-        return
-    
-    density = densityCheck(curr["Density"])
-    satellite = stringCheck(curr["Satellite"])
-    name = stringCheck(str(curr.name))
-    #convert date,time string to datetime object
-    start = inputDateCheck(curr["Start"]) 
-    end = inputDateCheck(curr["End"])
-    observation_time = datetime.now(timezone.utc)
-    newobj = Smoke.objects.create(density = density, start=start, end = end, satellite = satellite, geometry = geometry , FID = name, observation_time = observation_time)
-    newobj.save()
+    try:
+        geometryCheck(curr["geometry"])
+        geometry=GEOSGeometry(curr['geometry'].wkt, srid=4326)
+        #If the county is not within the SJV return it does not need to be added
+        if not County.within_SJV(curr.geometry):
+            print("Not in SJV: ", curr.name)
+            return
+        print("In SJV: ", curr.name)
+        density = densityCheck(curr["Density"])
+        satellite = stringCheck(curr["Satellite"])
+        name = stringCheck(str(curr.name))
+        #convert date,time string to datetime object
+        start = inputDateCheck(curr["Start"]) 
+        end = inputDateCheck(curr["End"])
+        observation_time = datetime.now(timezone.utc)
+        newobj = Smoke.objects.create(density = density, start=start, end = end, satellite = satellite, geometry = geometry , FID = name, observation_time = observation_time)
+        newobj.save()
+    except Exception as e:
+        print("Exception: ", e)
+        raise
     
     

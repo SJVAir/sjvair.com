@@ -11,14 +11,14 @@ import os
 from django.http import JsonResponse
 
 env = os.environ.get
-
+query_hours = int(os.environ.get('query_hours', 3))
 class OngoingSmokeView(generics.ListEndpoint):
     model = Smoke
     #TODO CREATE SMOKE SERIALIZER
     serializer_class = SmokeSerializer
     
     def get_queryset(self):
-        queryset = query_ongoing_smoke(3).order_by('-end')
+        queryset = query_ongoing_smoke(query_hours).order_by('-end')
         return queryset
 
 class OngoingSmokeDensityView(generics.ListEndpoint):
@@ -26,7 +26,7 @@ class OngoingSmokeDensityView(generics.ListEndpoint):
     serializer_class = SmokeSerializer
     def get_queryset(self):
         densities = self.request.GET.getlist('density')
-        queryset = query_ongoing_density_smoke(3, densities).order_by('-end')
+        queryset = query_ongoing_density_smoke(query_hours, densities).order_by('-end')
         return queryset
     
     

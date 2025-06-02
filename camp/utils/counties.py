@@ -4,7 +4,7 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.utils.functional import cached_property
 
 from camp.utils.datafiles import datafile
-
+from shapely.wkt import loads as load_wkt
 
 class County:
     counties = {
@@ -32,9 +32,11 @@ class County:
                 return name
         return default
 
+
     @classmethod
     def within_SJV(cls, geometry_shape, default=0):
         for name, geometry in cls.counties.items():
-            if geometry.intersects(geometry_shape):
+            shapely_county = load_wkt(geometry.wkt)
+            if shapely_county.intersects(geometry_shape):
                 return 1
         return default

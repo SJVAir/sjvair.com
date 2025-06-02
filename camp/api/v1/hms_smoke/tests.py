@@ -9,6 +9,7 @@ from ....apps.monitors.hms_smoke.models import Smoke
 from datetime import datetime, timedelta
 from django.contrib.gis.geos import GEOSGeometry
 from datetime import timezone
+from shapely.wkt import loads as load_wkt
 
 #create test objects here
 def CreateSmokeObjects(density, start, end):
@@ -307,14 +308,22 @@ class Tests_Miscellaneous(TestCase):
         from ....utils.counties import County
         
         polygon_wkt = "POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))"
-        geometry = GEOSGeometry(polygon_wkt, srid=4326)
-    
+        #geometry = GEOSGeometry(polygon_wkt, srid=4326)
+        geometry = load_wkt(polygon_wkt)
+        print(type(geometry))
         #If the county is not within the SJV return it does not need to be added
         if not County.within_SJV(geometry):
             assert 1==1
         else:
             assert 1==2
-        if County.within_SJV(self.smoke1.geometry):
+        print(type(self.smoke1.geometry))
+        
+        #Smoke1 format is <class 'django.contrib.gis.geos.polygon.Polygon'>
+        #SRID=4326;POLYGON ((-119.860839 36.660399, -119.860839 36.905755, -119.650879 36.905755, -119.650879 36.660399, -119.860839 36.660399))
+        
+        #Need to convert to shapely to use shapely intersects(), so strip everything before polygon to get a proper str to load_wkt()
+        geoStr = str(self.smoke1.geometry)[10:]
+        if County.within_SJV(load_wkt(geoStr)):
             assert 1==1
         else: 
             assert 1==2    
@@ -334,6 +343,7 @@ class Tests_Miscellaneous(TestCase):
     
     
 
+#THESE TESTS ARE TIME SENSITIVE, IF TOO CLOSE TO 00:00 UTC TESTS WILL FAIL
 class Test_TimeFilterQuery(TestCase):
     
     def setUp(self):
@@ -377,19 +387,19 @@ class Test_TimeFilterQuery(TestCase):
         for feature in response.json()["data"]:
             if feature["id"] == str(self.smoke2.id):
                 assert 1==2
-                
+
     #Returns only smoke1 because it is changes to extend the duration so it occurs longer for a later time query.
     def test3_TimeFilterQuery(self):
         url = reverse("api:v1:hms_smoke:start_end_filter")
         startTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes =1)
-        endTime = datetime.now(timezone.utc) + timedelta(hours=4)
+        endTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes=3)
         startTime = startTime.strftime("%H%M")
         endTime = endTime.strftime("%H%M")
         url+= f"?start={startTime}&end={endTime}"
         
         self.smoke1.end = datetime.now(timezone.utc) + timedelta(hours=3)
         self.smoke1.save()
-        
+        print(url)
         
         response = self.client.get(url)
         assert response.status_code == 200
@@ -401,7 +411,7 @@ class Test_TimeFilterQuery(TestCase):
     def test4_TimeFilterQuery(self):
         url = reverse("api:v1:hms_smoke:start_end_filter")
         startTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes =1)
-        endTime = datetime.now(timezone.utc) + timedelta(hours=4)
+        endTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes=3)
         startTime = startTime.strftime("%H%M")
         endTime = endTime.strftime("%H%M")
         url+= f"?start={startTime}&end={endTime}"
@@ -409,6 +419,14 @@ class Test_TimeFilterQuery(TestCase):
         response = self.client.get(url)
         assert response.status_code == 200
         assert len(response.json()["data"]) == 0
+
+
+
+class FetchFilesTaskTest(TestCase):
+    def test_fetch_files_triggers_file_download(self):
+        from ....apps.monitors.hms_smoke.tasks import fetch_files
+        fetch_files()
+       
         
 
         
