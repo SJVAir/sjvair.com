@@ -147,7 +147,6 @@ def inputDateCheck(str):
         aware_dt: aware date localized to pst time so users (based in ca) can easily understand data
     """
     str = stringCheck(str)
-    print(str)
     if " " not in str:
         raise Exception("Not valid date input.")
     if len(str)>15:
@@ -162,7 +161,6 @@ def inputDateCheck(str):
         raise Exception("This is not a valid hour time combination.")
     
     today = datetime.now(timezone.utc)
-    print(today)
     year = int(date[:4])
     day_of_year = int(date[4:]) 
     
@@ -183,7 +181,6 @@ def inputDateCheck(str):
     
     date = datetime(year, 1, 1) + timedelta(days=day_of_year - 1)
     dt = date.replace(hour=hour, minute=minute, tzinfo=timezone.utc)
-    print(dt)
     
     #dt = dt.replace(tzinfo=ZoneInfo('America/New_York'))
     
