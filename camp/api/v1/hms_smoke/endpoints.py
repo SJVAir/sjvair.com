@@ -73,3 +73,23 @@ class SmokeByTimestamp(generics.ListEndpoint):
         queryset = super().get_queryset()
         return queryset.order_by('-observation_time')
     
+    
+
+
+# Will return today's smokes between times indicated by user according to the most recent observation.
+class StartEndFilter(generics.ListEndpoint):
+    model = Smoke 
+    serializer_class = SmokeSerializer
+    
+    def get_queryset(self):
+        start = self.request.GET.get('start')
+        stringCheck(start)
+        end = self.request.GET.get('end')
+        stringCheck(end)
+        queryset = query_timefilter(start, end)
+        return queryset.order_by("-end")
+        
+        
+        
+    
+    

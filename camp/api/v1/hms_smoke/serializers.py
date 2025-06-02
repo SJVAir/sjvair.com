@@ -11,7 +11,6 @@ def to_pst(time):
 class SmokeSerializer(serializers.Serializer):
     fields = ('id', 'FID', 'satellite','density', ('end', lambda inst: to_pst(inst.end)),
               ('start', lambda inst: to_pst(inst.start)), 
-              ('observation_time', lambda inst: to_pst(inst.observation_time))
-              , 
+              ('observation_time', lambda inst: to_pst(inst.observation_time)), 
               ('geometry')
     )
