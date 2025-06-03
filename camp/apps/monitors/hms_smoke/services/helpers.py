@@ -182,11 +182,6 @@ def inputDateCheck(str):
     date = datetime(year, 1, 1) + timedelta(days=day_of_year - 1)
     dt = date.replace(hour=hour, minute=minute, tzinfo=timezone.utc)
     
-    #dt = dt.replace(tzinfo=ZoneInfo('America/New_York'))
-    
-    # pst = pytz.timezone("US/Pacific")
-    # #Convert the time into Pacific time for CA residents
-    #aware_dt = make_aware(dt, timezone.utc)
     return(dt)
     
 
