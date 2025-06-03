@@ -12,9 +12,9 @@ from django.http import JsonResponse
 
 env = os.environ.get
 query_hours = int(os.environ.get('query_hours', 3))
+
 class OngoingSmokeView(generics.ListEndpoint):
     model = Smoke
-    #TODO CREATE SMOKE SERIALIZER
     serializer_class = SmokeSerializer
     
     def get_queryset(self):
