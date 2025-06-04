@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><metadata>
+    <idinfo>
+        <descript>
+            <abstract>The Office of Environmental Health Hazard Assessment (OEHHA) 
+announces the availability of a new version of the California 
+Communities Environmental Health Screening Tool: CalEnviroScreen 4.0. 
+CalEnviroScreen is a screening methodology that can be used to help 
+identify California communities that are disproportionately burdened by 
+multiple sources of pollution.The CalEnviroScreen 4.0 results are available as a mapping tool. Maps of the CalEnviroScreen 4.0 Indicators are also available.
+
+	This version updates CalEnviroScreen in a variety of ways:
+
+	All indicators contain the most recent available data.There are improvements in the way some indicators are calculated 
+to better reflect environmental conditions or population vulnerability 
+to pollution.One new indicator, Children’s Lead Risk from Housing, accounts for possible lead exposure from paint and other sources in or around the home.</abstract>
+            <purpose>CalEnviroScreen 4.0 Results (October 2021)</purpose>
+        </descript>
+        <keywords>
+            <theme>
+                <themekt>None</themekt>
+                <themekey>CES4FINAL</themekey>
+                <themekey>CalEnviroScreen</themekey>
+                <themekey>CalEnviroScreen 4.0</themekey>
+                <themekey>Environmental Justice</themekey>
+            </theme>
+        </keywords>
+        <accconst>None</accconst>
+        <useconst/>
+        <datacred/>
+    </idinfo>
+    <metainfo>
+        <metstdn>FGDC Content Standard for Digital Geospatial Metadata</metstdn>
+        <metstdv>FGDC-STD-001-1998</metstdv>
+        <mettc>local time</mettc>
+    </metainfo>
+</metadata>

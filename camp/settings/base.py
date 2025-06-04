@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     'camp.apps.sensors',
     'camp.apps.qaqc',
     'camp.utils',
+    'camp.apps.monitors.cal_enviro_screen_4',
 ]
 
 MIDDLEWARE = [
