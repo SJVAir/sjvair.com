@@ -3,7 +3,6 @@ from django_huey import db_periodic_task
 from huey import crontab
 from .services.data import get_todays_smoke_file
 
-
 """ 
     Function will retrieve the zip from HMS NOAA system, and unzip/save new objects
 """
