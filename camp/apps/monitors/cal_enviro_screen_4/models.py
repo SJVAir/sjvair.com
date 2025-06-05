@@ -6,29 +6,29 @@ from django.contrib.gis.db import models as gis_models
 class CalEnviro(models.Model):
     OBJECTID = models.IntegerField(primary_key=True)
     timestamp = models.DateTimeField(null=True)
-    tract = models.IntegerField(max_length=30)
-    ACS2019Tot = models.IntegerField(max_length=20)
+    tract = models.FloatField(max_length=30, null=True)
+    ACS2019Tot = models.FloatField(max_length=20, null=True)
     
-    CIscore = models.IntegerField(max_length=20)
-    CIscoreP = models.IntegerField(max_length=20)
+    CIscore = models.FloatField(max_length=20,null=True)
+    CIscoreP = models.FloatField(max_length=20,null=True)
     
-    ozone = models.IntegerField(max_length=20)
-    ozoneP = models.IntegerField(max_length=20)
+    ozone = models.FloatField(max_length=20,null=True)
+    ozoneP = models.FloatField(max_length=20,null=True)
     
-    pm = models.IntegerField(max_length=20)
-    pmP = models.IntegerField(max_length=20)
+    pm = models.FloatField(max_length=20,null=True)
+    pmP = models.FloatField(max_length=20,null=True)
     
-    diesel = models.IntegerField(max_length=20)
-    dieselP = models.IntegerField(max_length=20)
+    diesel = models.FloatField(max_length=20,null=True)
+    dieselP = models.FloatField(max_length=20,null=True)
     
-    pest = models.IntegerField(max_length=20)
-    pestP = models.IntegerField(max_length=20)
+    pest = models.FloatField(max_length=20,null=True)
+    pestP = models.FloatField(max_length=20,null=True)
     
-    RSEIhaz = models.IntegerField(max_length=20)
-    RSEIhazP = models.IntegerField(max_length=20)
+    RSEIhaz = models.FloatField(max_length=20,null=True)
+    RSEIhazP = models.FloatField(max_length=20,null=True)
     
-    asthma = models.IntegerField(max_length=20)
-    asthmaP = models.IntegerField(max_length=20)
+    asthma = models.FloatField(max_length=20,null=True)
+    asthmaP = models.FloatField(max_length=20,null=True)
     
     geometry = gis_models.GeometryField(srid=4326)
     

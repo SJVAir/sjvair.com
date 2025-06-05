@@ -3,7 +3,7 @@ from resticus import serializers
 
 
 
-class Cal_Enviro_Screen_4_Serializer(serializers.Serializer):
+class Cal_Enviro_Screen_4_ALL_Serializer(serializers.Serializer):
     fields = ('OBJECTID', 'timestamp','tract','ACS2019Tot',
               'CIscore','CIscoreP',
               'ozone','ozoneP',
@@ -14,3 +14,4 @@ class Cal_Enviro_Screen_4_Serializer(serializers.Serializer):
               'asthma','asthmaP',
             ('geometry')
     )
+    
