@@ -14,4 +14,4 @@ class Cal_Enviro_Screen_4_ALL_Serializer(serializers.Serializer):
               'asthma','asthmaP',
             ('geometry')
     )
-    
+
