@@ -28,7 +28,7 @@ class Smoke(models.Model):
     satellite = models.CharField(max_length=100)
     FID = models.CharField(max_length=10, default="0")
     start = models.DateTimeField(null=True)
-    end= models.DateTimeField(null=True) 
+    end = models.DateTimeField(null=True) 
     density = models.CharField(max_length=10)
     observation_time = models.DateTimeField(null=True)
     geometry = gis_models.GeometryField(srid=4326)
