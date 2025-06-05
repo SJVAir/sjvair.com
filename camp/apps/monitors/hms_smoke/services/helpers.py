@@ -5,7 +5,7 @@ from datetime import timezone
 
 
     
-def stringCheck(input_str):
+def strCheck(string):
     """
     general check to prevent html/empty/null strings or non strings
 
@@ -22,20 +22,20 @@ def stringCheck(input_str):
         _type_: string that has been lowercased and stripped of white space on edges
     """
 
-    if input_str is None:
+    if not string:
         raise Exception("String input is null.")
-    if not isinstance(input_str, str):
+    if not isinstance(string, str):
         raise Exception("Input is not a string.")
-    input_str = input_str.lower().strip()
+    string = string.lower().strip()
     
-    if input_str == "":
+    if string == "":
         raise Exception("Input is empty or made of only spaces.")
-    if htmlCheck(input_str):
+    if HTMLCheck(string):
         raise Exception("HTML found in string.")
-    return input_str
+    return string
 
 
-def htmlCheck(str):
+def HTMLCheck(str):
     """
     will be used to confirm string isn't html template
 
@@ -49,7 +49,7 @@ def htmlCheck(str):
     return re.search(pattern, str, re.IGNORECASE) is not None
 
 
-def geometryCheck(geo):
+def geoCheck(geo):
     """
     will be used to prevent null/empty/nonvalid geometry objects
 
@@ -62,7 +62,7 @@ def geometryCheck(geo):
         Exception: invalid obj
         Exception: empty obj
     """
-    if geo is None:
+    if not geo:
         raise Exception("Geometry input is null.")
     if not isinstance(geo, BaseGeometry):
         raise Exception("Not a Shapely geometry object.")
@@ -73,7 +73,7 @@ def geometryCheck(geo):
 
 
 
-def densityArrayCheck(arr):
+def densitiesCheck(arr):
     """
         Confirm the density array has only light, medium, or heavy can return none for no results
         
@@ -112,7 +112,7 @@ def densityArrayCheck(arr):
 
 def densityCheck(str):
     #This will prevent anything but the 3 densities and no densities being sent through
-    str = stringCheck(str)
+    str = strCheck(str)
     densities = ["light", "medium", "heavy"]
     if not str in densities:
         raise Exception("This is not a valid density")
@@ -120,7 +120,7 @@ def densityCheck(str):
 
 
 
-def inputDateCheck(str):
+def dateCheck(str):
     """
     Convert the start/end string to a datetime object.
     Will be done by splitting yearday from hourminute.
@@ -146,7 +146,7 @@ def inputDateCheck(str):
     Returns:
         aware_dt: aware date localized to pst time so users (based in ca) can easily understand data
     """
-    str = stringCheck(str)
+    str = strCheck(str)
     if " " not in str:
         raise Exception("Not valid date input.")
     if len(str)>15:
@@ -155,31 +155,31 @@ def inputDateCheck(str):
     date, time = str.split()
     if not is_int(date) or not is_int(time):
         raise Exception("This is not a integer.")
-    if len(date) <= 4 or len(date) >=8:
+    if len(date) <= 4 or len(date) >= 8:
         raise Exception("This is not a valid year and day count.")
     if len(time) != 4:
         raise Exception("This is not a valid hour time combination.")
     
     today = datetime.now(timezone.utc)
     year = int(date[:4])
-    day_of_year = int(date[4:]) 
+    day = int(date[4:]) 
     
-    if year>today.year+2 or year<2002:
+    if year > today.year+2 or year < 2002:
         raise Exception("This is not a valid year.")
-    if day_of_year < 0 or day_of_year> 365:
+    if day < 0 or day> 365:
         raise Exception("This is not a valid date")
     
     hour = int(time[:2])
     minute = int(time[2:]) 
     
-    if hour <0 or hour >24:
+    if hour < 0 or hour > 24:
         raise Exception("This hour is outside of a valid range.")
-    if minute < 0 or minute>60:
+    if minute < 0 or minute > 60:
         raise  Exception("This minute is outside of a valid range.")
-    if minute > 0 and hour ==24:
+    if minute > 0 and hour == 24:
         raise Exception("This is not a valid hour time combination.")
     
-    date = datetime(year, 1, 1) + timedelta(days=day_of_year - 1)
+    date = datetime(year, 1, 1)+timedelta(days=day-1)
     dt = date.replace(hour=hour, minute=minute, tzinfo=timezone.utc)
     
     return(dt)
