@@ -56,7 +56,7 @@ class SelectSmokeView(generics.Endpoint):
             uuid_str = kwargs['pk']
             #Error check the uuid_str in the bar
             SmallUUID(uuid_str)
-            stringCheck(uuid_str)
+            strCheck(uuid_str)
             smoke = get_object_or_404(Smoke, pk=uuid_str)
             smoke_serialized = SmokeSerializer(smoke).serialize()
             return JsonResponse({"data": smoke_serialized})
@@ -83,9 +83,9 @@ class StartEndFilter(generics.ListEndpoint):
     
     def get_queryset(self):
         start = self.request.GET.get('start')
-        stringCheck(start)
+        strCheck(start)
         end = self.request.GET.get('end')
-        stringCheck(end)
+        strCheck(end)
         queryset = query_timefilter(start, end)
         return queryset.order_by("-end")
         

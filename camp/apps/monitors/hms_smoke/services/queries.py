@@ -40,7 +40,7 @@ def query_ongoing_density_smoke(query_time, densityArr):
     
     #HELPER TO CHECK DENSITY ARR
 
-    densityArr = densityArrayCheck(densityArr)
+    densityArr = densitiesCheck(densityArr)
     if is_int(query_time):
         query_time = int(query_time)
     else:
@@ -91,7 +91,7 @@ def query_latest_smoke_density(densityArr):
     Returns:
         queryset: returns all smokes within 5 minutes of the last query with a density designated by the input
     """
-    densityArr = densityArrayCheck(densityArr)
+    densityArr = densitiesCheck(densityArr)
     latest_time = Smoke.objects.aggregate(Max('observation_time'))['observation_time__max']
     if latest_time:
         five_mins_before_latest = latest_time - timedelta(seconds=10)
@@ -119,8 +119,8 @@ def query_timefilter(start, end):
     """
     
     
-    start = stringCheck(start)
-    end = stringCheck(end)
+    start = strCheck(start)
+    end = strCheck(end)
     if not is_int(start[0:2]) or not is_int(start[3:4]) or not len(start) ==4 or not len(end) ==4:
         raise Exception("Not a valid Hour or Time.")
     if not is_int(end[0:2]) or not is_int(end[3:4]):
