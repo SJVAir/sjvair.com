@@ -60,7 +60,8 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = queryset.exclude(is_hidden=True)
+        queryset = queryset.filter(is_hidden=False)
+        queryset = queryset.exclude(airgradient__isnull=False)
         return queryset
 
     def get_cache_key(self):
