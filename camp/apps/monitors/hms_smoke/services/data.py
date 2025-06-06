@@ -1,4 +1,4 @@
-import requests, zipfile, io, os
+import requests, zipfile, io, os, tempfile
 import geopandas as gpd
 from django.contrib.gis.geos import GEOSGeometry
 from datetime import datetime
@@ -23,13 +23,14 @@ def get_smoke_file():
     """
     #Clear directory before populating
     try:
-        outputPath = os.path.join(
-            settings.BASE_DIR,'camp',
-            'apps','monitors','hms_smoke', 
-            'services','smoke_data'
-            )
-        os.makedirs(outputPath, exist_ok=True)
-        rm_dir(outputPath)                       #clear directory
+        # outputPath = os.path.join(
+        #     settings.BASE_DIR,'camp',
+        #     'apps','monitors','hms_smoke', 
+        #     'services','smoke_data'
+        #     )
+        # os.makedirs(outputPath, exist_ok=True)
+        # rm_dir(outputPath)                       #clear directory
+        
         date = datetime.now(timezone.utc) 
         #Construct download url for NOAA Smoke shapefile 
         baseUrl = "https://satepsanone.nesdis.noaa.gov\
@@ -41,11 +42,12 @@ def get_smoke_file():
         if response.status_code != 200:
             print("Download failed with status:", response.status_code)
             response.raise_for_status()
-        zipfile.ZipFile(io.BytesIO(response.content)).extractall(outputPath)
-        #read_file reads shape file from zip file and uses the other files also
-        geo = gpd.read_file(f"{outputPath}/hms_smoke{date.strftime('%Y%m%d')}.shp")
-        for i in range(len(geo)):
-            to_db(geo.iloc[i])
+        with tempfile.TemporaryDirectory() as temp_dir:     #Should delete itself after inner logic completes
+            zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
+            #read_file reads shape file from zip file and uses the other files also
+            geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")
+            for i in range(len(geo)):
+                to_db(geo.iloc[i])
     except Exception:
         print(Exception.with_traceback())
         print("Error with data retrieval.")
