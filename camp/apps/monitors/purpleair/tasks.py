@@ -18,9 +18,28 @@ from camp.utils.datetime import parse_timestamp
 
 @db_periodic_task(crontab(minute='*'), priority=50)
 def update_realtime():
+    start = timezone.now()
+    print(f'\n=== PurpleAir Import Start: {start.time()}\n')
+
+    seen_ids = []
     sensors = purpleair_api.list_group_members(settings.PURPLEAIR_GROUP_ID)
     for sensor in sensors:
+        seen_ids.append(sensor['sensor_index'])
+        # process_data.call_local(sensor)
         process_data.schedule([sensor], delay=1, priority=40)
+
+    # Any monitors that are active but missing
+    # from the group should be manually retried.
+    missing_monitors = (PurpleAir.objects
+        .exclude(purple_id__in=seen_ids)
+        .get_active()
+    )
+
+    for monitor in missing_monitors:
+        monitor.import_latest()
+
+    end = timezone.now()
+    print(f'\n=== PurpleAir Import Done: {start.time()} - {end.time()} ({end - start})\n')
 
 
 @db_task()
