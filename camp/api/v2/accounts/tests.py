@@ -345,7 +345,6 @@ class AuthenticationTests(TestCase):
         user = User.objects.get(pk=self.user.pk)
         assert user.full_name == payload['full_name'] == data['data']['full_name']
 
-    @debug
     def test_change_password(self):
         url = reverse('api:v1:account:change-password')
         payload = {
