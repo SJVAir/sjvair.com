@@ -143,6 +143,13 @@ class PurpleAir(Monitor):
         if not self.default_sensor:
             self.default_sensor = 'a'
 
+    def import_latest(self):
+        from .tasks import process_data
+        if data := purpleair_api.get_sensor(self.purple_id):
+            process_data.call_local(data)
+            return True
+        return False
+
     def get_probable_location(self, data):
         # Check for an explicit flag
         if data['location_type'] == 1:

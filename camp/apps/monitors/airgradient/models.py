@@ -155,15 +155,17 @@ class AirGradient(Monitor):
         # If we're here, it's an indoor device, so likely inside.
         return self.LOCATION.inside
 
+    def get_current_measure(self):
+        try:
+            return self.place.api.get_world_current_measures_by_location(self.location_id)
+        except requests.HTTPError:
+            return self.place.api.get_current_measures(self.location_id)
+
     def update_data(self, data=None):
         if data is None:
             if self.location_id is None:
                 raise ValueError(f'Cannot fetch AirGradient data if location_id is None.')
-
-            try:
-                data = self.place.api.get_world_current_measures_by_location(self.location_id)
-            except requests.HTTPError:
-                data = self.place.api.get_current_measures(self.location_id)
+            data = self.get_current_measure()
 
         self.name = html.unescape(data['locationName']).strip()
         self.device = data.get('model', self.device)
@@ -176,6 +178,13 @@ class AirGradient(Monitor):
                 float(data['longitude']),
                 float(data['latitude'])
             )
+
+    def import_latest(self):
+        from .tasks import process_data
+        if data := self.get_current_measure():
+            process_data.call_local(data, self.place_id)
+            return True
+        return False
 
     def select_channels(self, payload):
         has_channels = 'channel1' in payload or 'channel2' in payload
