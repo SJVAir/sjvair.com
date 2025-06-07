@@ -1,19 +1,13 @@
 import time
 
-from datetime import timedelta
-
 from django.conf import settings
-from django.db.models import F, OuterRef, Subquery
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
-from camp.apps.monitors.models import Entry
 from camp.apps.monitors.purpleair.api import purpleair_api, chunk_date_range
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.utils.datetime import parse_timestamp
 
 
 @db_periodic_task(crontab(minute='*'), priority=50)
@@ -92,7 +86,7 @@ def import_monitor_history(monitor_id, start_date=None, end_date=None):
     entries = purpleair_api.get_sensor_history(monitor.purple_id, start_date, end_date)
 
     for entry in entries:
-        monitor.create_entries(entry)
+        process_data.call_local(entry)
 
 
 @db_task(queue='secondary')
