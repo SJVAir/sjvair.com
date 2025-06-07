@@ -66,7 +66,6 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
         assert response.status_code == 200
 
-    @debug
     def test_closest_monitor(self):
         '''
             Test that we can GET the current data endpoint.
@@ -255,7 +254,6 @@ class EndpointTests(TestCase):
         assert len(content['data']) == 1
         assert content['data'][0]['timestamp'] == '2024-07-24T01:00:00-07:00'  # PST
 
-    @debug
     def test_entry_csv(self):
         '''
             Test that we can GET the entry list endpoint.
