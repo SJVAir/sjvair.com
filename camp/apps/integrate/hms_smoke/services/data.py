@@ -21,54 +21,33 @@ def get_smoke_file():
         FileNotFoundError: If the expected shapefile is not found after extraction.
     
     """
-    #Clear directory before populating
     try:
-        # outputPath = os.path.join(
-        #     settings.BASE_DIR,'camp',
-        #     'apps','monitors','hms_smoke', 
-        #     'services','smoke_data'
-        #     )
-        # os.makedirs(outputPath, exist_ok=True)
-        # rm_dir(outputPath)                       #clear directory
-        
+       
         date = datetime.now(timezone.utc) 
         #Construct download url for NOAA Smoke shapefile 
         baseUrl = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
-        finalUrl = baseUrl + f"{date.year}/{date.strftime('%m')}/hms_smoke{date.strftime('%Y%m%d')}.zip"  
+        finalUrl = (
+            f"{baseUrl}{date.year}/"
+            f"{date.strftime('%m')}/"
+            f"hms_smoke{date.strftime('%Y%m%d')}.zip"
+            )
+        
         print("HMS Smoke - Downloading from URL:", finalUrl)
+        
         response = requests.get(finalUrl)
         if response.status_code != 200:
             print("HMS Smoke - Download failed with status:", response.status_code)
             response.raise_for_status()
-        with tempfile.TemporaryDirectory() as temp_dir:     #Should delete itself after inner logic completes
+            
+        with tempfile.TemporaryDirectory() as temp_dir:     #create temp_dir for zipfiles, add necessary data, then remove dir
             zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
-            #read_file reads shape file from zip file and uses the other files also
             geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")
             for i in range(len(geo)):
                 to_db(geo.iloc[i])
         print("HMS Smoke - Data extraction successful")
     except Exception as e:
-        print(e)
         print("HMS Smoke - Error with data retrieval.")
-
-
-
-def rm_dir(path):
-    """
-    Takes in a path and clears the directory of files. 
-    Used to clear files to prevent cluttering
-
-    Args:
-        path (str): path of directory that needs to be cleared
-    """
-    dir_path = os.path.join(os.path.dirname(path), "smoke_data")
-    for file in os.listdir(dir_path):
-        #create file path for every file
-        file_path = os.path.join(dir_path, file) 
-        if os.path.isfile(file_path):
-            #Remove file
-            os.remove(file_path)
-            
+        print(e)
             
             
 #Save GeoDataFrame as an object
@@ -90,7 +69,7 @@ def to_db(curr):
         cleaned = totalHelper(
             Density = curr["Density"],
             Satellite = curr["Satellite"],
-            FID = curr["name"], 
+            FID = curr.name, 
             Start = curr["Start"], 
             End = curr["End"], 
             Geometry = curr['geometry'],
@@ -98,13 +77,9 @@ def to_db(curr):
     
         #If the county is not within the SJV return it does not need to be added
         if not County.in_SJV(cleaned['Geometry']):
-            print("Not in SJV: ", cleaned["FID"])
             return
-        print("In SJV: ", cleaned["FID"])
-       
         observation_time = datetime.now(timezone.utc)
         geometry=GEOSGeometry(cleaned['Geometry'].wkt, srid=4326)
-         
         newobj = Smoke.objects.create(
             density=cleaned["Density"],
             start=cleaned["Start"],
