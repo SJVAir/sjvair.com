@@ -11,6 +11,7 @@ from camp.apps.monitors.models import Monitor
 from camp.utils import classproperty
 
 from . import stages
+from .levels import PollutantLevels, AQLvl, Lvl
 from .managers import EntryQuerySet
 
 
@@ -18,6 +19,7 @@ class BaseEntry(models.Model):
     epa_aqs_code = None
     units = None
     Stage = stages.Stage
+    Levels = None
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -108,6 +110,18 @@ class BaseEntry(models.Model):
     def projection_fields(cls):
         core_fields = ['timestamp', 'sensor', 'stage', 'processor']
         return core_fields + self.declared_field_names
+
+    @classmethod
+    def get_subclasses(cls):
+        subclasses = set()
+
+        def recurse(subcls):
+            for sc in subcls.__subclasses__():
+                subclasses.add(sc)
+                recurse(sc)
+
+        recurse(cls)
+        return list(subclasses)
 
     @property
     def timestamp_pst(self):
@@ -295,6 +309,15 @@ class PM25(BaseEntry):
     epa_aqs_code = 88101
     units = 'µg/m³'
 
+    Levels = PollutantLevels.from_aq_levels(
+        AQLvl.HAZARDOUS(250.5),
+        AQLvl.VERY_UNHEALTHY(150.5),
+        AQLvl.UNHEALTHY(55.5),
+        AQLvl.UNHEALTHY_SENSITIVE(35.5),
+        AQLvl.MODERATE(9.1),
+        AQLvl.GOOD(0.0),
+    )
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='PM2.5 (µg/m³)',
@@ -324,6 +347,16 @@ class PM100(BaseEntry):
     label = 'PM10.0'
     epa_aqs_code = 81102
     units = 'µg/m³'
+
+    Levels = PollutantLevels.from_aq_levels(
+        AQLvl.VERY_HAZARDOUS(605),
+        AQLvl.HAZARDOUS(425),
+        AQLvl.VERY_UNHEALTHY(355),
+        AQLvl.UNHEALTHY(255),
+        AQLvl.UNHEALTHY_SENSITIVE(155),
+        AQLvl.MODERATE(55),
+        AQLvl.GOOD(0),
+    )
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -416,6 +449,16 @@ class CO(BaseEntry):
     epa_aqs_code = 42101
     units = 'ppm'
 
+    Levels = PollutantLevels.from_aq_levels(
+        AQLvl.VERY_HAZARDOUS(50.4),
+        AQLvl.HAZARDOUS(30.5),
+        AQLvl.VERY_UNHEALTHY(15.5),
+        AQLvl.UNHEALTHY(12.5),
+        AQLvl.UNHEALTHY_SENSITIVE(9.5),
+        AQLvl.MODERATE(4.5),
+        AQLvl.GOOD(0.0),
+    )
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Carbon monoxide (ppm)',
@@ -438,6 +481,15 @@ class NO2(BaseEntry):
     epa_aqs_code = 42602
     units = 'ppb'
 
+    Levels = PollutantLevels.from_aq_levels(
+        AQLvl.VERY_HAZARDOUS(2050.0),
+        AQLvl.HAZARDOUS(1250.0),
+        AQLvl.VERY_UNHEALTHY(650.0),
+        AQLvl.UNHEALTHY(361.0),
+        AQLvl.UNHEALTHY_SENSITIVE(101.0),
+        AQLvl.MODERATE(54.0),
+        AQLvl.GOOD(0.0),
+    )
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -450,6 +502,15 @@ class O3(BaseEntry):
     epa_aqs_code = 44201
     units = 'ppb'
 
+    Levels = PollutantLevels.from_aq_levels(
+        AQLvl.VERY_HAZARDOUS(605),
+        AQLvl.HAZARDOUS(405),
+        AQLvl.VERY_UNHEALTHY(205),
+        AQLvl.UNHEALTHY(165),
+        AQLvl.UNHEALTHY_SENSITIVE(125),
+        AQLvl.GOOD(0.0),
+    )
+
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
         help_text='Ozone (ppb)'
@@ -460,6 +521,14 @@ class SO2(BaseEntry):
     label = 'Sulfur Dioxide'
     epa_aqs_code = 42401
     units = 'ppb'
+
+    Levels = PollutantLevels.from_aq_levels(
+        AQLvl.VERY_UNHEALTHY(305),
+        AQLvl.UNHEALTHY(186),
+        AQLvl.UNHEALTHY_SENSITIVE(76),
+        AQLvl.MODERATE(36),
+        AQLvl.GOOD(0),
+    )
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,

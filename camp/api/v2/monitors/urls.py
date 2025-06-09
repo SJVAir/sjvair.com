@@ -7,6 +7,7 @@ app_name = 'monitors'
 urlpatterns = [
     path('', endpoints.MonitorList.as_view(), name='monitor-list'),
     path('types/', endpoints.MonitorTypes.as_view(), name='monitor-types'),
+    path('meta/', endpoints.MonitorMetaEndpoint.as_view(), name='monitor-meta'),
     path('<entry_type>/closest/', endpoints.ClosestMonitor.as_view(), name='monitor-closest'),
     path('<entry_type>/current/', endpoints.CurrentData.as_view(), name='current-data'),
 
