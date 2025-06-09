@@ -11,6 +11,7 @@ from django.contrib.gis.geos import GEOSGeometry
 from datetime import timezone
 from shapely.wkt import loads as load_wkt
 
+
 #create test objects here
 def CreateSmokeObjects(density, start, end):
     """
@@ -312,7 +313,7 @@ class Tests_Miscellaneous(TestCase):
         geometry = load_wkt(polygon_wkt)
         print(type(geometry))
         #If the county is not within the SJV return it does not need to be added
-        if not County.within_SJV(geometry):
+        if not County.in_SJV(geometry):
             assert 1==1
         else:
             assert 1==2
@@ -323,7 +324,7 @@ class Tests_Miscellaneous(TestCase):
         
         #Need to convert to shapely to use shapely intersects(), so strip everything before polygon to get a proper str to load_wkt()
         geoStr = str(self.smoke1.geometry)[10:]
-        if County.within_SJV(load_wkt(geoStr)):
+        if County.in_SJV(load_wkt(geoStr)):
             assert 1==1
         else: 
             assert 1==2    
@@ -399,7 +400,6 @@ class Test_TimeFilterQuery(TestCase):
         
         self.smoke1.end = datetime.now(timezone.utc) + timedelta(hours=3)
         self.smoke1.save()
-        print(url)
         
         response = self.client.get(url)
         assert response.status_code == 200
@@ -426,7 +426,42 @@ class FetchFilesTaskTest(TestCase):
     def test_fetch_files_triggers_file_download(self):
         from ....apps.monitors.hms_smoke.tasks import fetch_files
         fetch_files()
-       
+    def test_to_db(self):
+        from ....apps.monitors.hms_smoke.services.data import to_db
+        polygon_wkt = (
+                        "POLYGON(("
+                        "-119.860839 36.660399, "
+                        "-119.860839 36.905755, "
+                        "-119.650879 36.905755, "
+                        "-119.650879 36.660399, "
+                        "-119.860839 36.660399"
+                        "))"
+                    )
+
+        geometry = load_wkt(polygon_wkt) 
+        input = {
+                "geometry": geometry,
+                "Density": "Light",
+                "End":"202515 1440",
+                "Start": "202515 1540",
+                "Satellite": "GOES-WEST",
+                "name": "1",
+                }
+        to_db(input)
+    def test_to_db_notSJV(self):
+         from ....apps.monitors.hms_smoke.services.data import to_db
+         polygon_wkt = ("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))")
+
+         geometry = load_wkt(polygon_wkt) 
+         input = {
+                "geometry": geometry,
+                "Density": "Light",
+                "End":"202515 1440",
+                "Start": "202515 1540",
+                "Satellite": "GOES-WEST",
+                "name": "2",
+                }
+         to_db(input)
         
 
         

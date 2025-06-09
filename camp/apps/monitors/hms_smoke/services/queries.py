@@ -118,28 +118,8 @@ def query_timefilter(start, end):
                 or filled with smokes within the latest observable query that are within the time filter range.
     """
     
-    
-    start = strCheck(start)
-    end = strCheck(end)
-    if not is_int(start[0:2]) or not is_int(start[3:4]) or not len(start) ==4 or not len(end) ==4:
-        raise Exception("Not a valid Hour or Time.")
-    if not is_int(end[0:2]) or not is_int(end[3:4]):
-        raise Exception("Not a valid Hour or Time.")
-    starthr = int(start[:2])
-    startmin = int(start[2:])
-    endhr = int(end[:2])
-    endmin = int(end[2:])
-    if endhr>=24 or endhr<0 or endmin<0 or endmin>=60:
-        raise Exception("Not a valid Hour or Time.")
-    if starthr>=24 or starthr<0 or startmin<0 or startmin>=60:
-        raise Exception("Not a valid Hour or Time.")
-    time = datetime.now(timezone.utc)
-    startTime = time.replace(hour=starthr, minute=startmin, second=0)
-    endTime = time.replace(hour=endhr, minute=endmin, second=0)
-    if endTime < startTime:
-        raise Exception("Start time filter cannot be greater than the end time filter.")
     latest_time = Smoke.objects.aggregate(Max('observation_time'))['observation_time__max']
     if latest_time:
         five_mins_before_latest = latest_time - timedelta(seconds=10)
-        return Smoke.objects.filter(end__gte=startTime, start__lte=endTime, observation_time__gte=five_mins_before_latest, observation_time__lte=latest_time)
+        return Smoke.objects.filter(end__gte=start, start__lte=end, observation_time__gte=five_mins_before_latest, observation_time__lte=latest_time)
     return Smoke.objects.none()

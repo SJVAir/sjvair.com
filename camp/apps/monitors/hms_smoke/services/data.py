@@ -33,14 +33,12 @@ def get_smoke_file():
         
         date = datetime.now(timezone.utc) 
         #Construct download url for NOAA Smoke shapefile 
-        baseUrl = "https://satepsanone.nesdis.noaa.gov\
-                  /pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
-        finalUrl = baseUrl + f"{date.year}/{date.strftime('%m')}\
-                                /hms_smoke{date.strftime('%Y%m%d')}.zip"  
-        print("Downloading from URL:", finalUrl)
+        baseUrl = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
+        finalUrl = baseUrl + f"{date.year}/{date.strftime('%m')}/hms_smoke{date.strftime('%Y%m%d')}.zip"  
+        print("HMS Smoke - Downloading from URL:", finalUrl)
         response = requests.get(finalUrl)
         if response.status_code != 200:
-            print("Download failed with status:", response.status_code)
+            print("HMS Smoke - Download failed with status:", response.status_code)
             response.raise_for_status()
         with tempfile.TemporaryDirectory() as temp_dir:     #Should delete itself after inner logic completes
             zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
@@ -48,9 +46,10 @@ def get_smoke_file():
             geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")
             for i in range(len(geo)):
                 to_db(geo.iloc[i])
-    except Exception:
-        print(Exception.with_traceback())
-        print("Error with data retrieval.")
+        print("HMS Smoke - Data extraction successful")
+    except Exception as e:
+        print(e)
+        print("HMS Smoke - Error with data retrieval.")
 
 
 
@@ -91,18 +90,35 @@ def to_db(curr):
         geoCheck(curr["geometry"])
         geometry=GEOSGeometry(curr['geometry'].wkt, srid=4326)
         #If the county is not within the SJV return it does not need to be added
-        if not County.in_SJV(curr.geometry):
-            print("Not in SJV: ", curr.name)
+        if not County.in_SJV(curr["geometry"]):
+            print("Not in SJV: ", curr["name"])
             return
-        print("In SJV: ", curr.name)
-        density = densityCheck(curr["Density"])
-        satellite = strCheck(curr["Satellite"])
-        name = strCheck(str(curr.name))
-        #convert date,time string to datetime object
-        start = dateCheck(curr["Start"]) 
-        end = dateCheck(curr["End"])
+        print("In SJV: ", curr["name"])
+        # density = densityCheck(curr["Density"])
+        # satellite = strCheck(curr["Satellite"])
+        # name = strCheck(str(curr["name"]))
+        # #convert date,time string to datetime object
+        # start = dateCheck(curr["Start"]) 
+        # end = dateCheck(curr["End"])
+        cleaned = totalHelper(
+            Density = curr["Density"],
+            Satellite = curr["Satellite"],
+            FID = curr["name"], 
+            Start = curr["Start"], 
+            End = curr["End"], 
+            Geometry = geometry,
+        )
         observation_time = datetime.now(timezone.utc)
-        newobj = Smoke.objects.create(density=density, start=start, end=end, satellite=satellite, geometry=geometry , FID=name, observation_time=observation_time)
+        
+        newobj = Smoke.objects.create(
+            density=cleaned["Density"],
+            start=cleaned["Start"],
+            end=cleaned["End"],
+            satellite=cleaned["Satellite"],
+            geometry=cleaned["Geometry"],
+            FID=cleaned["FID"],
+            observation_time=observation_time,
+            )
         newobj.save()
     except Exception as e:
         print("Exception: ", e)
