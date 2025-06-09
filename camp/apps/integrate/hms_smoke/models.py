@@ -26,7 +26,7 @@ class Smoke(models.Model):
         verbose_name='ID'
     )
     satellite = models.CharField(max_length=20)
-    FID = models.IntegerField(max_length=10, default="0")
+    FID = models.IntegerField(default="0")
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True) 
     density = models.CharField(max_length=10)

@@ -11,7 +11,7 @@ def strCheck(string):
     general check to prevent html/empty/null strings or non strings
 
     Args:
-        input_str (str): general string safety
+        string (str): general string safety
 
     Raises:
         Exception: null exception
@@ -36,18 +36,18 @@ def strCheck(string):
     return string
 
 
-def HTMLCheck(str):
+def HTMLCheck(string):
     """
     will be used to confirm string isn't html template
 
     Args:
-        str (str): general string
+        string (str): general string
 
     Returns:
         _type_: boolean, True if there is html match, False otherwise
     """
     pattern = r'</?[a-z][\s\S]*?>'
-    return re.search(pattern, str, re.IGNORECASE) is not None
+    return re.search(pattern, string, re.IGNORECASE) is not None
 
 
 def geoCheck(geo):
@@ -112,17 +112,17 @@ def densitiesCheck(arr):
     return newArr
 
 
-def densityCheck(str):
+def densityCheck(string):
     #This will prevent anything but the 3 densities and no densities being sent through
-    str = strCheck(str)
+    string = strCheck(string)
     densities = ["light", "medium", "heavy"]
-    if not str in densities:
+    if string not in densities:
         raise Exception("This is not a valid density")
-    return str
+    return string
 
 
 
-def dateCheck(str):
+def dateCheck(string):
     """
     Convert the start/end string to a datetime object.
     Will be done by splitting yearday from hourminute.
@@ -148,13 +148,13 @@ def dateCheck(str):
     Returns:
         aware_dt: aware date localized to pst time so users (based in ca) can easily understand data
     """
-    str = strCheck(str)
-    if " " not in str:
+    string = strCheck(string)
+    if " " not in string:
         raise Exception("Not valid date input.")
-    if len(str)>15:
+    if len(string)>15:
         raise Exception("Date string is too large.")
     
-    date, time = str.split()
+    date, time = string.split()
     if not is_int(date) or not is_int(time):
         raise Exception("This is not a integer.")
     if len(date) <= 4 or len(date) >= 8:

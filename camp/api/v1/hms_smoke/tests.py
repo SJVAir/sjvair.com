@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from django.contrib.gis.geos import GEOSGeometry
 from datetime import timezone
 from shapely.wkt import loads as load_wkt
+import geopandas as gpd
 
 
 #create test objects here
@@ -439,29 +440,29 @@ class FetchFilesTaskTest(TestCase):
                     )
 
         geometry = load_wkt(polygon_wkt) 
-        input = {
+        input = [{
                 "geometry": geometry,
                 "Density": "Light",
                 "End":"202515 1440",
                 "Start": "202515 1540",
                 "Satellite": "GOES-WEST",
-                "name": "1",
-                }
-        to_db(input)
+                }]
+        input = gpd.GeoDataFrame(input)
+        to_db(input.iloc[0])
     def test_to_db_notSJV(self):
          from ....apps.integrate.hms_smoke.services.data import to_db
          polygon_wkt = ("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))")
 
          geometry = load_wkt(polygon_wkt) 
-         input = {
+         input = [{
                 "geometry": geometry,
                 "Density": "Light",
                 "End":"202515 1440",
                 "Start": "202515 1540",
                 "Satellite": "GOES-WEST",
-                "name": "2",
-                }
-         to_db(input)
+                }]
+         input = gpd.GeoDataFrame(input)
+         to_db(input.iloc[0])
         
 
         
