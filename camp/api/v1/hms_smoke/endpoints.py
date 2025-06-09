@@ -1,9 +1,9 @@
 
 # Create your views here.
 from resticus import generics
-from ....apps.monitors.hms_smoke.models import Smoke
+from ....apps.integrate.hms_smoke.models import Smoke
 from .serializers import SmokeSerializer
-from ....apps.monitors.hms_smoke.services.queries import *
+from ....apps.integrate.hms_smoke.services.queries import *
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from smalluuid import SmallUUID

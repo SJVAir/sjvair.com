@@ -5,7 +5,7 @@ from django.test import TestCase
 
 from django.test import TestCase
 from django.urls import reverse
-from ....apps.monitors.hms_smoke.models import Smoke
+from ....apps.integrate.hms_smoke.models import Smoke
 from datetime import datetime, timedelta
 from django.contrib.gis.geos import GEOSGeometry
 from datetime import timezone
@@ -424,10 +424,10 @@ class Test_TimeFilterQuery(TestCase):
 
 class FetchFilesTaskTest(TestCase):
     def test_fetch_files_triggers_file_download(self):
-        from ....apps.monitors.hms_smoke.tasks import fetch_files
+        from ....apps.integrate.hms_smoke.tasks import fetch_files
         fetch_files()
     def test_to_db(self):
-        from ....apps.monitors.hms_smoke.services.data import to_db
+        from ....apps.integrate.hms_smoke.services.data import to_db
         polygon_wkt = (
                         "POLYGON(("
                         "-119.860839 36.660399, "
@@ -449,7 +449,7 @@ class FetchFilesTaskTest(TestCase):
                 }
         to_db(input)
     def test_to_db_notSJV(self):
-         from ....apps.monitors.hms_smoke.services.data import to_db
+         from ....apps.integrate.hms_smoke.services.data import to_db
          polygon_wkt = ("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))")
 
          geometry = load_wkt(polygon_wkt) 
