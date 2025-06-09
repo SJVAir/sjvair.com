@@ -2,6 +2,8 @@ import enum
 
 from dataclasses import dataclass
 
+from django.utils.translation import gettext_lazy as _
+
 from camp.utils import classproperty
 
 
@@ -37,13 +39,13 @@ class Lvl:
 
 class AQLvlMeta(type):
     _levels = {
-        'VERY_HAZARDOUS': ('Very Hazardous', '#7e0023'),
-        'HAZARDOUS': ('Hazardous', '#7e0023'),
-        'VERY_UNHEALTHY': ('Very Unhealthy', '#ff0000'),
-        'UNHEALTHY': ('Unhealthy', '#ff7e00'),
-        'UNHEALTHY_SENSITIVE': ('Unhealthy for Sensitive Groups', '#ffff00'),
-        'MODERATE': ('Moderate', '#00e400'),
-        'GOOD': ('Good', '#00ccff'),
+        'VERY_HAZARDOUS': (_('Very Hazardous'), '#7e0023'),
+        'HAZARDOUS': (_('Hazardous'), '#7e0023'),
+        'VERY_UNHEALTHY': (_('Very Unhealthy'), '#ff0000'),
+        'UNHEALTHY': (_('Unhealthy'), '#ff7e00'),
+        'UNHEALTHY_SENSITIVE': (_('Unhealthy for Sensitive Groups'), '#ffff00'),
+        'MODERATE': (_('Moderate'), '#00e400'),
+        'GOOD': (_('Good'), '#00ccff'),
     }
 
     def __getattr__(self, name):
