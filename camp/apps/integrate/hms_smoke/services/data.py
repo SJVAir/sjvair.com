@@ -87,35 +87,30 @@ def to_db(curr):
     
     ### ADD LOCATION CHECKER TO HELPER
     try:
-        geoCheck(curr["geometry"])
-        geometry=GEOSGeometry(curr['geometry'].wkt, srid=4326)
-        #If the county is not within the SJV return it does not need to be added
-        if not County.in_SJV(curr["geometry"]):
-            print("Not in SJV: ", curr["name"])
-            return
-        print("In SJV: ", curr["name"])
-        # density = densityCheck(curr["Density"])
-        # satellite = strCheck(curr["Satellite"])
-        # name = strCheck(str(curr["name"]))
-        # #convert date,time string to datetime object
-        # start = dateCheck(curr["Start"]) 
-        # end = dateCheck(curr["End"])
         cleaned = totalHelper(
             Density = curr["Density"],
             Satellite = curr["Satellite"],
             FID = curr["name"], 
             Start = curr["Start"], 
             End = curr["End"], 
-            Geometry = geometry,
-        )
+            Geometry = curr['geometry'],
+        )  
+    
+        #If the county is not within the SJV return it does not need to be added
+        if not County.in_SJV(cleaned['Geometry']):
+            print("Not in SJV: ", cleaned["FID"])
+            return
+        print("In SJV: ", cleaned["FID"])
+       
         observation_time = datetime.now(timezone.utc)
-        
+        geometry=GEOSGeometry(cleaned['Geometry'].wkt, srid=4326)
+         
         newobj = Smoke.objects.create(
             density=cleaned["Density"],
             start=cleaned["Start"],
             end=cleaned["End"],
             satellite=cleaned["Satellite"],
-            geometry=cleaned["Geometry"],
+            geometry=geometry,
             FID=cleaned["FID"],
             observation_time=observation_time,
             )

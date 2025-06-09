@@ -40,7 +40,10 @@ def query_ongoing_density_smoke(query_time, densityArr):
     
     #HELPER TO CHECK DENSITY ARR
 
-    densityArr = densitiesCheck(densityArr)
+
+    densityArr = totalHelper(
+        Densities=densityArr,
+    )
     if is_int(query_time):
         query_time = int(query_time)
     else:
@@ -51,9 +54,9 @@ def query_ongoing_density_smoke(query_time, densityArr):
     #set an array with the possible densities
 
     # If at least one valid density was provided, build a query
-    if len(densityArr)>=1:
+    if len(densityArr["Densities"])>=1:
         density_query = Q()
-        for d in densityArr:
+        for d in densityArr["Densities"]:
             density_query |= Q(density=d)   
         return Smoke.objects.filter(density_query,end__gte=currentTime, start__lte=currentTime,  observation_time__gte=previous_query)
     #
@@ -91,14 +94,16 @@ def query_latest_smoke_density(densityArr):
     Returns:
         queryset: returns all smokes within 5 minutes of the last query with a density designated by the input
     """
-    densityArr = densitiesCheck(densityArr)
+    densityArr = totalHelper(
+        Densities=densityArr,
+    )
     latest_time = Smoke.objects.aggregate(Max('observation_time'))['observation_time__max']
     if latest_time:
         five_mins_before_latest = latest_time - timedelta(seconds=10)
         density_query=Q()
-        for d in densityArr:
+        for d in densityArr["Densities"]:
             density_query |= Q(density=d)
-        if len(densityArr)>0:
+        if len(densityArr["Densities"])>0:
             return Smoke.objects.filter(density_query, observation_time__gte=five_mins_before_latest, observation_time__lte=latest_time)
     return Smoke.objects.none()
 
