@@ -149,23 +149,12 @@ class BaseEntry(models.Model):
                 'stage': config.get('default_stage', BaseEntry.Stage.RAW),
             }
 
-            if config.get('sensors'):
-                if self.__class__ == EntryModel:
-                    lookup['sensor'] = self.sensor
-                else:
-                    lookup['sensor'] = self.monitor.get_default_sensor(EntryModel)
-
-            try:
-                entry = EntryModel.objects.get(**lookup)
+            entry = EntryModel.objects.filter(**lookup).first()
+            if entry is not None:
                 data = entry.declared_data()
                 if len(data) == 1 and 'value' in data:
                     data[EntryModel._meta.model_name] = data.pop('value')
                 context.update(data)
-            except EntryModel.DoesNotExist:
-                pass
-            except EntryModel.MultipleObjectsReturned:
-                # Optional: pick .first(), raise, or log
-                pass
 
         return context
 

@@ -27,11 +27,6 @@ class TestPM25LinearRegressionTrainers(TestCase):
             entry_type='pm25',
         )
 
-        reference_sensor = self.reference.get_default_sensor(entry_models.PM25)
-        reference_stage = self.reference.get_default_stage(entry_models.PM25)
-        colocated_sensors = {model: self.colocated.get_default_sensor(model) for model in [
-            entry_models.PM25, entry_models.Humidity, entry_models.Temperature
-        ]}
         colocated_stages = {model: self.colocated.get_default_stage(model) for model in [
             entry_models.PM25, entry_models.Humidity, entry_models.Temperature
         ]}
@@ -43,8 +38,8 @@ class TestPM25LinearRegressionTrainers(TestCase):
                 monitor=self.reference,
                 timestamp=ts,
                 value=12 + i * 0.5,
-                stage=reference_stage,
-                sensor=reference_sensor,
+                stage=entry_models.PM25.Stage.CLEANED,
+                sensor='',
             )
 
             entry_models.PM25.objects.create(
@@ -52,7 +47,7 @@ class TestPM25LinearRegressionTrainers(TestCase):
                 timestamp=ts,
                 value=10 + i * 0.5,
                 stage=colocated_stages[entry_models.PM25],
-                sensor=colocated_sensors[entry_models.PM25],
+                sensor='',
             )
 
             entry_models.Temperature.objects.create(
@@ -60,7 +55,7 @@ class TestPM25LinearRegressionTrainers(TestCase):
                 timestamp=ts,
                 value=60 + i * 0.2,
                 stage=colocated_stages[entry_models.Temperature],
-                sensor=colocated_sensors[entry_models.Temperature],
+                sensor='',
             )
 
             entry_models.Humidity.objects.create(
@@ -68,7 +63,7 @@ class TestPM25LinearRegressionTrainers(TestCase):
                 timestamp=ts,
                 value=30 + (i % 10),
                 stage=colocated_stages[entry_models.Humidity],
-                sensor=colocated_sensors[entry_models.Humidity],
+                sensor='',
             )
 
     def test_process_returns_valid_result(self):

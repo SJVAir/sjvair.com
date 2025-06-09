@@ -52,7 +52,7 @@ class BaseLinearProcessorTest(TestCase):
             'monitor_id': self.colocated.pk,
             'timestamp': self.timestamp,
             'position': self.colocated.position,
-            'sensor': self.colocated.get_default_sensor(PM25),
+            'sensor': '',
             'stage': self.colocated.get_default_stage(PM25),
         }
         defaults.update(kwargs)

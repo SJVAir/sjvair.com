@@ -44,27 +44,27 @@ class Group(models.Model):
         ordering = ['name']
 
 
-class DefaultSensor(models.Model):
-    id = SmallUUIDField(
-        default=uuid_default(),
-        primary_key=True,
-        db_index=True,
-        editable=False,
-        verbose_name='ID'
-    )
-    monitor = models.ForeignKey('monitors.Monitor', on_delete=models.CASCADE, related_name='default_sensors')
-    entry_type = EntryTypeField()
-    sensor = models.CharField(max_length=50, blank=True, null=True)
+# class DefaultSensor(models.Model):
+#     id = SmallUUIDField(
+#         default=uuid_default(),
+#         primary_key=True,
+#         db_index=True,
+#         editable=False,
+#         verbose_name='ID'
+#     )
+#     monitor = models.ForeignKey('monitors.Monitor', on_delete=models.CASCADE, related_name='default_sensors')
+#     entry_type = EntryTypeField()
+#     sensor = models.CharField(max_length=50, blank=True, null=True)
 
-    class Meta:
-        unique_together = ('monitor', 'entry_type')
+#     class Meta:
+#         unique_together = ('monitor', 'entry_type')
 
-    def __str__(self):
-        return f'{self.monitor.name} → {self.entry_type} = {self.sensor or "default"}'
+#     def __str__(self):
+#         return f'{self.monitor.name} → {self.entry_type} = {self.sensor or "default"}'
 
-    @cached_property
-    def entry_model(self):
-        return EntryTypeField.get_model_map().get(self.entry_type)
+#     @cached_property
+#     def entry_model(self):
+#         return EntryTypeField.get_model_map().get(self.entry_type)
 
 
 class LatestEntry(models.Model):
@@ -244,59 +244,6 @@ class Monitor(models.Model):
         if self.current_health_id:
             return self.current_health.grade
 
-    def set_default_sensor(self, EntryModel, sensor):
-        config = self.ENTRY_CONFIG.get(EntryModel)
-        if config is None:
-            raise ValidationError(f'{EntryModel.__name__} is not configured for this monitor.')
-
-        valid_sensors = config.get('sensors', [])
-        if sensor not in valid_sensors:
-            raise ValidationError(
-                f'"{sensor}" is not a valid sensor for {EntryModel.__name__}. '
-                f'Valid options: {valid_sensors}'
-            )
-
-        entry_type = EntryModel.entry_type
-        DefaultSensor.objects.update_or_create(
-            monitor=self,
-            entry_type=entry_type,
-            defaults={'sensor': sensor}
-        )
-
-    def get_default_sensor(self, EntryModel):
-        '''
-        Returns the default sensor for this monitor and EntryModel.
-
-        Logic:
-        - If the EntryModel does not support multiple sensors, return ''
-        - If a DefaultSensor exists in the DB or cache, return it
-        - Otherwise, return the first defined sensor in ENTRY_CONFIG
-        '''
-        config = self.ENTRY_CONFIG.get(EntryModel, {})
-        sensors = config.get('sensors')
-
-        if sensors is None:
-            return ''
-
-        entry_type = EntryModel.entry_type
-
-        # Use prefetched default_sensors if available
-        for ds in getattr(self, '_prefetched_objects_cache', {}).get('default_sensors', []):
-            if ds.entry_type == entry_type:
-                return ds.sensor
-
-        # Fallback to DB query
-        sensor = (self.default_sensors
-            .filter(entry_type=entry_type)
-            .values_list('sensor', flat=True)
-            .first()
-        )
-        if sensor is not None:
-            return sensor
-
-        # Final fallback to first sensor in config
-        return sensors[0]
-
     @classmethod
     def get_default_stage(cls, EntryModel):
         return cls.ENTRY_CONFIG.get(EntryModel, {}).get('default_stage', EntryModel.Stage.RAW)
@@ -377,10 +324,6 @@ class Monitor(models.Model):
         return processed
 
     def update_latest_entry(self, entry):
-        # Skip if not the default sensor
-        if entry.sensor != self.get_default_sensor(entry.__class__):
-            return
-
         allowed_stages = (
             self.get_default_stage(entry.__class__),
             entry.Stage.CALIBRATED

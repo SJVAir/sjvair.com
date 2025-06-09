@@ -134,8 +134,7 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
 
         assert response.status_code == 200
-        assert {e['sensor'] for e in content['data']} == set([monitor.get_default_sensor(entry_models.PM25)])
-        assert {e['processor'] for e in content['data']} == set([''])
+        assert {e['stage'] for e in content['data']} == set([monitor.get_default_stage(entry_models.PM25).value])
 
     def test_entry_list_sensor(self):
         '''
@@ -149,7 +148,7 @@ class EndpointTests(TestCase):
         }
 
         url = reverse('api:v2:monitors:entry-list', kwargs=kwargs)
-        params = {'sensor': 'b'}
+        params = {'sensor': 'b', 'stage': 'raw'}
         request = self.factory.get(url, params)
         request.monitor = monitor
         response = entry_list(request, **kwargs)
@@ -158,30 +157,6 @@ class EndpointTests(TestCase):
         assert response.status_code == 200
         assert {e['sensor'] for e in content['data']} == set([params['sensor']])
         assert {e['processor'] for e in content['data']} == set([''])
-
-    def test_entry_list_default_sensor(self):
-        '''
-            Test that the entry list endpoint returns entries with the
-            monitor's default sensor when no sensor is specified.
-        '''
-        monitor = self.get_purple_air()
-        monitor.set_default_sensor(entry_models.PM25, 'b')
-
-        kwargs = {
-            'monitor_id': monitor.pk,
-            'entry_type': 'pm25'
-        }
-        url = reverse('api:v2:monitors:entry-list', kwargs=kwargs)
-        request = self.factory.get(url)
-        request.monitor = monitor
-        response = entry_list(request, **kwargs)
-        content = get_response_data(response)
-
-        assert response.status_code == 200
-        assert {e['sensor'] for e in content['data']} == set(['b'])
-        assert {e['processor'] for e in content['data']} == set([''])
-
-        monitor.set_default_sensor(entry_models.PM25, 'a')
 
     def test_entry_list_processor(self):
         '''
@@ -211,7 +186,7 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
 
         assert response.status_code == 200
-        assert {e['sensor'] for e in content['data']} == set([monitor.get_default_sensor(entry_models.PM25)])
+        assert {e['stage'] for e in content['data']} == set([entry_models.PM25.Stage.CALIBRATED.value])
         assert {e['processor'] for e in content['data']} == set([params['processor']])
 
     def test_entry_list_timestamp(self):
@@ -278,8 +253,7 @@ class EndpointTests(TestCase):
         reader = csv.DictReader(csv_file)
         rows = list(reader)
 
-        assert {e['sensor'] for e in rows} == set([monitor.get_default_sensor(entry_models.PM25)])
-        assert {e['processor'] for e in rows} == set([''])
+        assert {e['stage'] for e in rows} == set([monitor.get_default_stage(entry_models.PM25).value])
 
     def test_entry_csv_sensor(self):
         '''
@@ -293,7 +267,7 @@ class EndpointTests(TestCase):
         }
 
         url = reverse('api:v2:monitors:entry-csv', kwargs=kwargs)
-        params = {'sensor': 'b'}
+        params = {'sensor': 'b', 'stage': 'raw'}
         request = self.factory.get(url, params)
         request.monitor = monitor
         response = entry_csv(request, **kwargs)
@@ -309,36 +283,6 @@ class EndpointTests(TestCase):
         assert {e['sensor'] for e in rows} == set([params['sensor']])
         assert {e['processor'] for e in rows} == set([''])
 
-    def test_entry_csv_default_sensor(self):
-        '''
-            Test that the entry list endpoint returns entries with the
-            monitor's default sensor when no sensor is specified.
-        '''
-        monitor = self.get_purple_air()
-        monitor.set_default_sensor(entry_models.PM25, 'b')
-
-        kwargs = {
-            'monitor_id': monitor.pk,
-            'entry_type': 'pm25'
-        }
-        url = reverse('api:v2:monitors:entry-csv', kwargs=kwargs)
-        request = self.factory.get(url)
-        request.monitor = monitor
-        response = entry_csv(request, **kwargs)
-        content = get_response_data(response)
-
-        assert response.status_code == 200
-        assert response['Content-Type'] == 'text/csv'
-
-        csv_file = StringIO(content)
-        reader = csv.DictReader(csv_file)
-        rows = list(reader)
-
-        assert {e['sensor'] for e in rows} == set(['b'])
-        assert {e['processor'] for e in rows} == set([''])
-
-        monitor.set_default_sensor(entry_models.PM25, 'a')
-
     def test_entry_csv_processor(self):
         '''
             Test that we can GET the entry list endpoint.
@@ -349,7 +293,7 @@ class EndpointTests(TestCase):
             entry_models.PM25,
             timestamp=timezone.now(),
             value=10.0,
-            sensor='a',
+            sensor='',
             stage=entry_models.PM25.Stage.CALIBRATED,
             processor='EPA_PM25_Oct2021'
         )
@@ -373,8 +317,9 @@ class EndpointTests(TestCase):
         reader = csv.DictReader(csv_file)
         rows = list(reader)
 
-        assert {e['sensor'] for e in rows} == set([monitor.get_default_sensor(entry_models.PM25)])
+        assert {e['sensor'] for e in rows} == set([''])
         assert {e['processor'] for e in rows} == set([params['processor']])
+        assert {e['stage'] for e in rows} == set([entry_models.PM25.Stage.CALIBRATED.value])
 
     def test_create_entry(self):
         '''
