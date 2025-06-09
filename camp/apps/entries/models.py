@@ -309,7 +309,7 @@ class PM25(BaseEntry):
     )
 
     value = models.DecimalField(
-        max_digits=6, decimal_places=2,
+        max_digits=7, decimal_places=2,
         help_text=_('PM2.5 (µg/m³)'),
     )
 
