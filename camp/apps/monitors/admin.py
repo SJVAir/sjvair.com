@@ -21,8 +21,8 @@ from camp.apps.qaqc.models import SensorAnalysis
 from camp.apps.qaqc.admin import SensorAnalysisInline
 from camp.utils.forms import DateRangeForm
 
-from .forms import MonitorAdminForm, DefaultSensorForm
-from .models import Group, Entry, DefaultSensor
+from .forms import MonitorAdminForm
+from .models import Group
 
 
 def key_to_lookup(k):
@@ -101,25 +101,8 @@ class MonitorIsActiveFilter(admin.SimpleListFilter):
             return queryset
 
 
-class DefaultSensorInline(admin.TabularInline):
-    model = DefaultSensor
-    form = DefaultSensorForm
-    extra = 0
-
-    def get_formset(self, request, obj=None, **kwargs):
-        formset_class = super().get_formset(request, obj, **kwargs)
-
-        class MonitorAwareFormSet(formset_class):
-            def get_form_kwargs(inner_self, index):
-                kwargs = super().get_form_kwargs(index)
-                kwargs['monitor'] = obj
-                return kwargs
-
-        return MonitorAwareFormSet
-
-
 class MonitorAdmin(gisadmin.OSMGeoAdmin):
-    inlines = (DefaultSensorInline, SensorAnalysisInline,)
+    inlines = [SensorAnalysisInline]
     actions = ['export_monitor_list_csv']
     form = MonitorAdminForm
 

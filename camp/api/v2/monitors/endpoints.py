@@ -146,11 +146,7 @@ class MonitorMetaEndpoint(MonitorTypes):
             config_items = sorted(monitor_model.ENTRY_CONFIG.items(), key=lambda i: i[0].entry_type)
             for entry_model, config in config_items:
                 payload[monitor_model.monitor_type]['entries'][entry_model.entry_type] = {
-                    'label': entry_model.label,
-                    'type': entry_model.entry_type,
-                    'units': entry_model.units,
                     'sensors': config.get('sensors'),
-                    'fields': ['timestamp', 'sensor', 'stage', 'processor'] + entry_model.declared_field_names,
                     'allowed_stages': config.get('allowed_stages', []),
                     'default_stage': monitor_model.get_default_stage(entry_model),
                     'default_calibration': monitor_model.get_default_calibration(entry_model),
@@ -171,6 +167,7 @@ class MonitorMetaEndpoint(MonitorTypes):
                 'units': entry_model.units,
                 'epa_aqs_code': entry_model.epa_aqs_code,
                 'levels': entry_model.Levels.as_dict() if entry_model.Levels else None,
+                'fields': ['timestamp', 'sensor', 'stage', 'processor'] + entry_model.declared_field_names,
             }
         return payload
 
@@ -222,6 +219,7 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
 
 
 class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
+    paginate = False
     serializer_class = MonitorSerializer
 
     def get_queryset(self, *args, **kwargs):

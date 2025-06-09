@@ -45,11 +45,8 @@ def create_hourly_data_for_monitor(monitor, start_time=None):
                     position=monitor.position,
                     timestamp=timestamp,
                     sensor=sensor,
-                    stage=monitor.get_default_stage(EntryModel),
+                    stage=config['allowed_stages'][0],
                     **fields
                 )
+                monitor.process_entry_pipeline(entry)
                 entries.append(entry)
-    
-    corrected = monitor.process_entries_ng(entries)
-    cleaned = monitor.process_entries_ng(corrected)
-    calibrated = monitor.process_entries_ng(cleaned)

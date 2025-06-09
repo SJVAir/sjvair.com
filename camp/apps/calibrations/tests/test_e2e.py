@@ -36,27 +36,23 @@ class TestPM25UnivariateLinearRegressionTrainer(TestCase):
         now = timezone.now()
 
         # Create colocated PM2.5 entries
-        default_stage = self.colocated.get_default_stage(PM25)
-        default_sensor = self.colocated.get_default_sensor(PM25)
         for i in range(24):
             PM25.objects.create(
                 monitor=self.colocated,
                 timestamp=now - timezone.timedelta(hours=i),
                 value=D(10 + i),
-                stage=default_stage,
-                sensor=default_sensor,
+                stage=PM25.Stage.CLEANED,
+                sensor='',
             )
 
         # Create reference PM2.5 entries
-        default_stage = self.reference.get_default_stage(PM25)
-        default_sensor = self.reference.get_default_sensor(PM25)
         for i in range(24):
             PM25.objects.create(
                 monitor=self.reference,
                 timestamp=now - timezone.timedelta(hours=i),
                 value=D(12 + i),
-                stage=default_stage,
-                sensor=default_sensor,
+                stage=PM25.Stage.CLEANED,
+                sensor='',
             )
 
     def test_process_returns_calibration(self):
