@@ -1,5 +1,6 @@
 import re
 from shapely.geometry.base import BaseGeometry
+from django.contrib.gis.geos import GEOSGeometry
 from datetime import datetime, timedelta
 from datetime import timezone
 
@@ -64,13 +65,14 @@ def geoCheck(geo):
     """
     if not geo:
         raise Exception("Geometry input is null.")
-    if not isinstance(geo, BaseGeometry):
-        raise Exception("Not a Shapely geometry object.")
-    if not geo.is_valid:
-        raise Exception("Invalid geometry object.")
-    if geo.is_empty:
-        raise Exception("Geometry object is empty.")
-
+    if not isinstance(geo, (BaseGeometry, GEOSGeometry)):
+        raise Exception("Not a Shapely or GEOS geometry object.")
+    if isinstance(geo, BaseGeometry):
+        if not geo.is_valid:
+            raise Exception("Invalid geometry object.")
+        if geo.is_empty:
+            raise Exception("Geometry object is empty.")
+    return geo
 
 
 def densitiesCheck(arr):
@@ -184,6 +186,33 @@ def dateCheck(str):
     
     return(dt)
     
+#Helper function to check all smoke entry data properties
+def totalHelper(**kwargs):
+    result = {}
+
+    if "Density" in kwargs:
+        result["Density"] = densityCheck(kwargs["Density"])
+        
+    if "Densities" in kwargs:
+        result["Densities"] = densitiesCheck(kwargs["Densities"])
+    
+    if "Satellite" in kwargs:
+        result["Satellite"] = strCheck(kwargs["Satellite"])
+    
+    if "FID" in kwargs:
+        if is_int(kwargs["FID"]):
+            result["FID"] = int(kwargs["FID"])
+
+    if "Start" in kwargs:
+        result["Start"] = dateCheck(kwargs["Start"])
+
+    if "End" in kwargs:
+        result["End"] = dateCheck(kwargs["End"])
+    
+    if "Geometry" in kwargs:
+        result["Geometry"] = geoCheck(kwargs["Geometry"])
+
+    return result
 
 
 def is_int(s):

@@ -83,10 +83,20 @@ class StartEndFilter(generics.ListEndpoint):
     
     def get_queryset(self):
         start = self.request.GET.get('start')
-        strCheck(start)
         end = self.request.GET.get('end')
-        strCheck(end)
-        queryset = query_timefilter(start, end)
+
+        dt = datetime.now(timezone.utc)
+        year = dt.year
+        day = dt.timetuple().tm_yday
+        
+        start = str(year) + str(day) + " " + start
+        end = str(year) + str(day) + " " + end
+        
+        cleaned = totalHelper(
+            Start = start,
+            End = end,
+        )
+        queryset = query_timefilter(cleaned["Start"], cleaned["End"])
         return queryset.order_by("-end")
         
         
