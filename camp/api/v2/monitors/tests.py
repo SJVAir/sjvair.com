@@ -400,21 +400,21 @@ class EndpointTests(TestCase):
 
         entries = {}
         for entry in content['data']:
-            entries.setdefault(entry['label'], [])
-            entries[entry['label']].append(entry)
+            entries.setdefault(entry['entry_type'], [])
+            entries[entry['entry_type']].append(entry)
 
         # Check that the returned entries match the values submitted
         # PM2.5: two stages expected
-        pm25_raw, pm25_cleaned = entries['PM2.5']
+        pm25_raw, pm25_cleaned = entries['pm25']
         assert Decimal(pm25_raw['value']) == payload['ConcHR(ug/m3)']
         assert pm25_raw['stage'] == entry_models.PM25.Stage.RAW
         assert Decimal(pm25_cleaned['value']) == payload['ConcHR(ug/m3)']
         assert pm25_cleaned['stage'] == entry_models.PM25.Stage.CLEANED
 
         # Other entries
-        temp = entries['Temperature'][0]
-        humidity = entries['Humidity'][0]
-        pressure = entries['Pressure'][0]
+        temp = entries['temperature'][0]
+        humidity = entries['humidity'][0]
+        pressure = entries['pressure'][0]
 
         assert Decimal(temp['temperature_c']) == payload['AT(C)']
         assert Decimal(humidity['value']) == payload['RH(%)']

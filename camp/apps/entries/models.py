@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 
@@ -38,7 +39,7 @@ class BaseEntry(models.Model):
 
     sensor = models.CharField(max_length=50, blank=True, default='', db_index=True)
 
-    stage = models.CharField(max_length=16, choices=Stage.choices, default=Stage.RAW, help_text='The processing stage for this entry.')
+    stage = models.CharField(max_length=16, choices=Stage.choices, default=Stage.RAW, help_text=_('The processing stage for this entry.'))
     origin = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='derived_entries')
 
     processor = models.CharField(
@@ -46,7 +47,7 @@ class BaseEntry(models.Model):
         blank=True,
         default='',
         db_index=True,
-        help_text="The processor class used to generate this entry."
+        help_text=_('The processor class used to generate this entry.')
     )
 
     calibration = models.ForeignKey(
@@ -55,7 +56,7 @@ class BaseEntry(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name='%(class)s_entries',
-        help_text="The calibration record applied to this entry (if applicable)."
+        help_text=_('The calibration record applied to this entry (if applicable).')
     )
 
     objects = EntryQuerySet.as_manager()
@@ -305,7 +306,7 @@ class BaseEntry(models.Model):
 # Particulate Matter
 
 class PM25(BaseEntry):
-    label = 'PM2.5'
+    label = _('PM2.5')
     epa_aqs_code = 88101
     units = 'µg/m³'
 
@@ -320,11 +321,12 @@ class PM25(BaseEntry):
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text='PM2.5 (µg/m³)',
+        help_text=_('PM2.5 (µg/m³)'),
     )
 
 
 class Particulates(BaseEntry):
+    label = _('Particulates')
     particles_03um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     particles_05um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     particles_10um = models.DecimalField(max_digits=8, decimal_places=2, null=True)
@@ -334,7 +336,7 @@ class Particulates(BaseEntry):
 
 
 class PM10(BaseEntry):
-    label = 'PM1.0'
+    label = _('PM1.0')
     units = 'µg/m³'
 
     value = models.DecimalField(
@@ -344,7 +346,7 @@ class PM10(BaseEntry):
 
 
 class PM100(BaseEntry):
-    label = 'PM10.0'
+    label = _('PM10.0')
     epa_aqs_code = 81102
     units = 'µg/m³'
 
@@ -367,12 +369,13 @@ class PM100(BaseEntry):
 # Meteorological
 
 class Temperature(BaseEntry):
+    label = _('Temperature')
     epa_aqs_code = 62101
     units = '°F'
 
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
-        help_text='Temperature (°F)'
+        help_text=_('Temperature (°F)')
     )
 
     @property
@@ -402,21 +405,23 @@ class Temperature(BaseEntry):
 
 
 class Humidity(BaseEntry):
+    label = _('Humidity')
     epa_aqs_code = 62201
     units = '%'
 
     value = models.DecimalField(
         max_digits=4, decimal_places=1,
-        help_text='Relative humidity (%)'
+        help_text=_('Relative humidity (%)')
     )
 
 
 class Pressure(BaseEntry):
+    label = _('Atmospheric Pressure')
     units = 'mmHg'
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text='Atmospheric pressure (mmHg)',
+        help_text=_('Atmospheric pressure (mmHg)'),
     )
 
     @property
@@ -445,7 +450,7 @@ class Pressure(BaseEntry):
 # Gases
 
 class CO(BaseEntry):
-    label = 'Carbon Monoxide'
+    label = _('Carbon Monoxide')
     epa_aqs_code = 42101
     units = 'ppm'
 
@@ -466,7 +471,7 @@ class CO(BaseEntry):
 
 
 class CO2(BaseEntry):
-    label = 'Carbon Dioxide'
+    label = _('Carbon Dioxide')
     epa_aqs_code = 42102
     units = 'ppm'
 
@@ -477,7 +482,7 @@ class CO2(BaseEntry):
 
 
 class NO2(BaseEntry):
-    label = 'Nitrogen Dioxide'
+    label = _('Nitrogen Dioxide')
     epa_aqs_code = 42602
     units = 'ppb'
 
@@ -498,7 +503,7 @@ class NO2(BaseEntry):
 
 
 class O3(BaseEntry):
-    label = 'Ozone'
+    label = _('Ozone')
     epa_aqs_code = 44201
     units = 'ppb'
 
@@ -518,7 +523,7 @@ class O3(BaseEntry):
 
 
 class SO2(BaseEntry):
-    label = 'Sulfur Dioxide'
+    label = _('Sulfur Dioxide')
     epa_aqs_code = 42401
     units = 'ppb'
 
@@ -532,5 +537,5 @@ class SO2(BaseEntry):
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text='Sulfur dioxide (ppb)',
+        help_text=_('Sulfur dioxide (ppb)'),
     )
