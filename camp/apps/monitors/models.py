@@ -44,29 +44,6 @@ class Group(models.Model):
         ordering = ['name']
 
 
-# class DefaultSensor(models.Model):
-#     id = SmallUUIDField(
-#         default=uuid_default(),
-#         primary_key=True,
-#         db_index=True,
-#         editable=False,
-#         verbose_name='ID'
-#     )
-#     monitor = models.ForeignKey('monitors.Monitor', on_delete=models.CASCADE, related_name='default_sensors')
-#     entry_type = EntryTypeField()
-#     sensor = models.CharField(max_length=50, blank=True, null=True)
-
-#     class Meta:
-#         unique_together = ('monitor', 'entry_type')
-
-#     def __str__(self):
-#         return f'{self.monitor.name} → {self.entry_type} = {self.sensor or "default"}'
-
-#     @cached_property
-#     def entry_model(self):
-#         return EntryTypeField.get_model_map().get(self.entry_type)
-
-
 class LatestEntry(models.Model):
     id = SmallUUIDField(
         default=uuid_default(),
@@ -190,6 +167,10 @@ class Monitor(models.Model):
     @classmethod
     def subclasses(cls):
         return cls.objects.get_queryset()._get_subclasses_recurse(cls)
+
+    @classproperty
+    def entry_types(self):
+        return list(self.ENTRY_CONFIG.keys())
 
     @classmethod
     def get_subclasses(cls):
