@@ -1,11 +1,12 @@
 import re
 from shapely.geometry.base import BaseGeometry
 from django.contrib.gis.geos import GEOSGeometry
-from datetime import datetime, timedelta
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
+
 
 def currentTime():
      return datetime.now(timezone.utc)
+    
     
 def strCheck(string):
     """
@@ -56,7 +57,7 @@ def geoCheck(geo):
     will be used to prevent null/empty/nonvalid geometry objects
 
     Args:
-        geo (shapely): hms smoke data from geoPandas dataframe
+        geo (shapely/GEOS): hms smoke data from geoPandas dataframe
 
     Raises:
         Exception: null
@@ -102,8 +103,7 @@ def densitiesCheck(arr):
     if len(arr) > 3:
         raise Exception("Too many inputs in density array.")
     
-    newArr = []
-    
+    newArr = []  
     for d in arr:
         d = densityCheck(d)
         if d in newArr:
@@ -122,7 +122,6 @@ def densityCheck(string):
     return string
 
 
-
 def dateCheck(string):
     """
     Convert the start/end string to a datetime object.
@@ -130,7 +129,7 @@ def dateCheck(string):
     Then splitting the two, casting as ints, then creating a datetime object
 
     Args:
-        String_Time (Str): This is entered as "YearDayofYear HourMinute" 
+        string (Str): This is entered as "YearDayofYear HourMinute" 
 
     Raises:
         Exception: the string has a space
@@ -187,6 +186,7 @@ def dateCheck(string):
     
     return(dt)
     
+    
 def is_int(s):
     """
     Checks if the string is an integer
@@ -203,7 +203,9 @@ def is_int(s):
     except (ValueError, TypeError):
         return False    
     
+    
 #Helper function to check all smoke entry data properties
+#takes in variable amount of arguments. 
 def totalHelper(**kwargs):
     result = {}
 
