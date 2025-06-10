@@ -2,11 +2,11 @@ import requests, zipfile, io, tempfile
 import geopandas as gpd
 from django.contrib.gis.geos import GEOSGeometry
 from ..models import Smoke
-from .helpers import *
-from .....utils.counties import County
+#from .helpers import *
+from camp.utils.counties import County
+from .helpers import str_to_time
 
-
-def get_smoke_file():
+def get_smoke_file(date):
     """
     Retrieves smoke file from https://www.ospo.noaa.gov/products/land/hms.html#data
     and converts it into a GeoJSON format
@@ -19,8 +19,9 @@ def get_smoke_file():
     
     """
     try:
+        #rm
+        #date = currentTime() 
        
-        date = currentTime() 
         #Construct download url for NOAA Smoke shapefile 
         baseUrl = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
         finalUrl = (
@@ -44,7 +45,6 @@ def get_smoke_file():
         print("HMS Smoke - Data extraction successful")
     except Exception as e:
         print("HMS Smoke - Error with data retrieval.")
-        print(e)
             
             
 #Save GeoDataFrame as an object
@@ -63,28 +63,34 @@ def to_db(curr):
     
     ### ADD LOCATION CHECKER TO HELPER
     try:
-        cleaned = totalHelper(
-            Density = curr["Density"],
-            Satellite = curr["Satellite"],
-            FID = curr.name, 
-            Start = curr["Start"], 
-            End = curr["End"], 
-            Geometry = curr['geometry'],
-        )  
+        #rm
+        # cleaned = totalHelper(
+        #     Density = curr["Density"],
+        #     Satellite = curr["Satellite"],
+        #     FID = curr.name, 
+        #     Start = curr["Start"], 
+        #     End = curr["End"], 
+        #     Geometry = curr['geometry'],
+        # )  
     
         #If the county is not within the SJV return it does not need to be added
-        if not County.in_SJV(cleaned['Geometry']):
+        if not County.in_SJV(curr.geometry):
             return
-        observation_time = currentTime()
-        geometry=GEOSGeometry(cleaned['Geometry'].wkt, srid=4326)
+        #rm
+        #observation_time = currentTime()
+        
+        geometry=GEOSGeometry(curr.geometry, srid=4326)
+        start = str_to_time(curr.Start)
+        end = str_to_time(curr.End)
         newobj = Smoke.objects.create(
-            density=cleaned["Density"],
-            start=cleaned["Start"],
-            end=cleaned["End"],
-            satellite=cleaned["Satellite"],
+            density=curr.Density,
+            start=start,
+            end=end,
+            satellite=curr.Satellite,
             geometry=geometry,
-            FID=cleaned["FID"],
-            observation_time=observation_time,
+            #rm
+            # FID=cleaned["FID"],
+            # observation_time=observation_time,
             )
         newobj.save()
     except Exception as e:
