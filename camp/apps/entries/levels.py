@@ -68,6 +68,10 @@ class PollutantLevels(enum.Enum):
     def value(self):
         return self._lvl.value
 
+    @property
+    def key(self):
+        return self.name.lower()
+
     def __getattr__(self, name):
         if name in ('_value_', '_lvl', 'value'):
             raise AttributeError(f'{name} is not accessible')
@@ -75,7 +79,7 @@ class PollutantLevels(enum.Enum):
 
     @classproperty
     def choices(cls):
-        return [(l.name, l.label) for l in cls]
+        return [(l.key, l.label) for l in cls]
 
     @classmethod
     def get_level(cls, value):
@@ -97,6 +101,13 @@ class PollutantLevels(enum.Enum):
                 return _blend_hex(level.color, levels[i + 1].color if i + 1 < len(levels) else level.color, ratio)
 
         return levels[0].color
+
+    @classmethod
+    def lookup(cls, key):
+        key = key.lower()
+        for lvl in cls:
+            if lvl.key == key:
+                return lvl
 
     @classmethod
     def as_dict(cls, include_range=True):
