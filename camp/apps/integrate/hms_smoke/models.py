@@ -1,6 +1,7 @@
 from django.db import models
-from django_smalluuid.models import SmallUUIDField, uuid_default
 from django.contrib.gis.db import models as gis_models
+from django_smalluuid.models import SmallUUIDField, uuid_default
+from model_utils.models import TimeStampedModel
 
 """
 Defines the database for holding HMS Wildfire smoke data.
@@ -14,7 +15,7 @@ This includes:
     ID: unique database ID identifier   
 """
 
-class Smoke(models.Model):
+class Smoke(TimeStampedModel):
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -24,9 +25,9 @@ class Smoke(models.Model):
     )
     
     satellite = models.CharField(max_length=20)
-    FID = models.IntegerField(default="0")
+    # FID = models.IntegerField(default="0")
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True) 
     density = models.CharField(max_length=10)
-    observation_time = models.DateTimeField(null=True)
+    # observation_time = models.DateTimeField(null=True)
     geometry = gis_models.GeometryField(srid=4326)
