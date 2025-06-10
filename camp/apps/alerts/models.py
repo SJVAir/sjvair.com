@@ -1,13 +1,18 @@
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Avg
 from django.utils import timezone
+from django.utils.functional import cached_property
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
 from model_utils.models import TimeStampedModel
+
+from camp.apps.entries.fields import EntryTypeField
+
 
 LEVELS = Choices(
     ('unhealthy_sensitive', 'Unhealthy for Sensitive Groups'),
@@ -42,8 +47,6 @@ GUIDANCE = {
 }
 
 class Subscription(TimeStampedModel):
-    LEVELS = LEVELS
-
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -62,12 +65,13 @@ class Subscription(TimeStampedModel):
         on_delete=models.CASCADE,
     )
 
-    level = models.CharField(max_length=25, choices=LEVELS)
+    entry_type = EntryTypeField()
+    level = models.CharField(max_length=25)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['user', 'monitor'],
+                fields=['user', 'monitor', 'entry_type'],
                 name='user_subscriptions'
             )
         ]
@@ -75,7 +79,22 @@ class Subscription(TimeStampedModel):
         ordering = ['monitor__name']
 
     def __str__(self):
-        return f'{self.user_id} : {self.monitor_id} @ {self.level}'
+        return f'{self.user_id} : {self.monitor_id} ({self.entry_type.label}) @ {self.level}'
+
+    @cached_property
+    def entry_model(self):
+        return EntryTypeField.get_model_map().get(self.entry_type)
+
+    def clean(self):
+        if not self.entry_model or not self.entry_model.Levels:
+            raise ValidationError('This entry type does not support alert levels.')
+
+        self.level = self.level.lower()
+        if self.entry_model.Levels.lookup(self.level) is None:
+            raise ValidationError(f'{self.level} is not a valid alert level for {self.entry_model.label}.')
+
+        if self.entry_model not in self.monitor.entry_types:
+            raise ValidationError(f'{self.monitor} does not support {self.entry_model.label}.')
 
 
 class Alert(TimeStampedModel):
