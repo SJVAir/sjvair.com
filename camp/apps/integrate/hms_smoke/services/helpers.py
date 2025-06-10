@@ -4,7 +4,8 @@ from django.contrib.gis.geos import GEOSGeometry
 from datetime import datetime, timedelta
 from datetime import timezone
 
-
+def currentTime():
+     return datetime.now(timezone.utc)
     
 def strCheck(string):
     """
@@ -162,7 +163,7 @@ def dateCheck(string):
     if len(time) != 4:
         raise Exception("This is not a valid hour time combination.")
     
-    today = datetime.now(timezone.utc)
+    today = currentTime()
     year = int(date[:4])
     day = int(date[4:]) 
     
@@ -185,6 +186,22 @@ def dateCheck(string):
     dt = date.replace(hour=hour, minute=minute, tzinfo=timezone.utc)
     
     return(dt)
+    
+def is_int(s):
+    """
+    Checks if the string is an integer
+
+    Args:
+        s (str): string that could be only numbers
+
+    Returns:
+        _type_: Boolean if integer, then True, if not an int False
+    """
+    try:
+        int(s)
+        return True
+    except (ValueError, TypeError):
+        return False    
     
 #Helper function to check all smoke entry data properties
 def totalHelper(**kwargs):
@@ -211,22 +228,12 @@ def totalHelper(**kwargs):
     
     if "Geometry" in kwargs:
         result["Geometry"] = geoCheck(kwargs["Geometry"])
-
+        
+    if "Int" in kwargs:
+        is_int(kwargs["Int"])
+        result["Int"] = int(kwargs["Int"])
+        
     return result
 
 
-def is_int(s):
-    """
-    Checks if the string is an integer
 
-    Args:
-        s (str): string that could be only numbers
-
-    Returns:
-        _type_: Boolean if integer, then True, if not an int False
-    """
-    try:
-        int(s)
-        return True
-    except (ValueError, TypeError):
-        return False

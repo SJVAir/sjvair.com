@@ -11,6 +11,7 @@ from django.contrib.gis.geos import GEOSGeometry
 from datetime import timezone
 from shapely.wkt import loads as load_wkt
 import geopandas as gpd
+from ....apps.integrate.hms_smoke.services.helpers import currentTime
 
 
 #create test objects here
@@ -40,17 +41,17 @@ def CreateSmokeObjects(density, start, end):
     )
     geometry = GEOSGeometry(polygon_wkt, srid=4326)
     if start ==-1:
-        start = datetime.now(timezone.utc) - timedelta(hours=2)
+        start = currentTime() - timedelta(hours=2)
     else:
-        start = datetime.now(timezone.utc) + timedelta(hours=1)
+        start = currentTime() + timedelta(hours=1)
     if end ==-1:
-        end = datetime.now(timezone.utc) - timedelta(hours=1)
+        end = currentTime() - timedelta(hours=1)
     else:
-        end = datetime.now(timezone.utc) + timedelta(hours=2)
+        end = currentTime() + timedelta(hours=2)
     
     FID = "0"
     satellite = "TestSatellite"
-    observation_time = datetime.now(timezone.utc)
+    observation_time = currentTime()
     
     return Smoke.objects.create(density=density,end=end,start=start,FID=FID,satellite=satellite, geometry=geometry, observation_time = observation_time)
 
@@ -82,7 +83,7 @@ class Tests_OngoingSmokeView(TestCase):
         assert response.json()['data'][0]['density'].lower() == 'light'
         assert response.json()['data'][0]["id"] == str(self.smoke1.id)
     def test2_OngoingSmokeView(self):
-        ongoing_end = datetime.now(timezone.utc) + timedelta(hours=1)
+        ongoing_end = currentTime() + timedelta(hours=1)
         self.smoke2.end = ongoing_end
         self.smoke2.save
         
@@ -121,8 +122,7 @@ class Tests_OngoingSmokeDensityView(TestCase):
         url = reverse("api:v1:hms_smoke:ongoing_smoke_density")
         url_with_params = f"{url}?density=light&density=medium"
         #Test to make sure it returns by end time
-        newdate = datetime.now(timezone.utc) + timedelta(hours=3)
-        self.smoke4.end = newdate
+        self.smoke4.end = currentTime() + timedelta(hours=3)
         self.smoke4.save()
         response = self.client.get(url_with_params)
     
@@ -177,7 +177,7 @@ class Tests_LatestObeservableSmokeView(TestCase):
         self.smoke4 = CreateSmokeObjects("medium", -1, 1)
         self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
         
-        pre_obs = datetime.now(timezone.utc) - timedelta(hours=2)
+        pre_obs = currentTime() - timedelta(hours=2)
         
         self.smoke1.observation_time=pre_obs
         self.smoke1.save()
@@ -221,7 +221,7 @@ class Tests_LatestObeservableSmokeDensityView(TestCase):
         self.smoke4 = CreateSmokeObjects("medium", -1, 1)
         self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
         
-        pre_obs = datetime.now(timezone.utc) - timedelta(hours=2)
+        pre_obs = currentTime() - timedelta(hours=2)
         
         self.smoke2.observation_time=pre_obs
         self.smoke2.save()
@@ -312,13 +312,11 @@ class Tests_Miscellaneous(TestCase):
         polygon_wkt = "POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))"
         #geometry = GEOSGeometry(polygon_wkt, srid=4326)
         geometry = load_wkt(polygon_wkt)
-        print(type(geometry))
         #If the county is not within the SJV return it does not need to be added
         if not County.in_SJV(geometry):
             assert 1==1
         else:
             assert 1==2
-        print(type(self.smoke1.geometry))
         
         #Smoke1 format is <class 'django.contrib.gis.geos.polygon.Polygon'>
         #SRID=4326;POLYGON ((-119.860839 36.660399, -119.860839 36.905755, -119.650879 36.905755, -119.650879 36.660399, -119.860839 36.660399))
@@ -332,7 +330,7 @@ class Tests_Miscellaneous(TestCase):
         
     def test_all_by_timestamp(self):
         
-        timestampChange = datetime.now(timezone.utc) + timedelta(hours=1)
+        timestampChange = currentTime() + timedelta(hours=1)
         self.smoke3.observation_time = timestampChange
         self.smoke3.save()
         
@@ -360,8 +358,8 @@ class Test_TimeFilterQuery(TestCase):
     def test1_TimeFilterQuery(self):
         
         url = reverse("api:v1:hms_smoke:start_end_filter")
-        startTime = datetime.now(timezone.utc) - timedelta(hours=2)
-        endTime = datetime.now(timezone.utc) - timedelta(hours=1)
+        startTime = currentTime() - timedelta(hours=2)
+        endTime = currentTime() - timedelta(hours=1)
         startTime = startTime.strftime("%H%M")
         endTime = endTime.strftime("%H%M")
         url+= f"?start={startTime}&end={endTime}"
@@ -377,8 +375,8 @@ class Test_TimeFilterQuery(TestCase):
     #so, any value with end value as 1 will return 
     def test2_TimeFilterQuery(self):
         url = reverse("api:v1:hms_smoke:start_end_filter")
-        startTime = datetime.now(timezone.utc) + timedelta(hours=1)
-        endTime = datetime.now(timezone.utc) + timedelta(hours=2)
+        startTime = currentTime() + timedelta(hours=1)
+        endTime = currentTime() + timedelta(hours=2)
         startTime = startTime.strftime("%H%M")
         endTime = endTime.strftime("%H%M")
         url+= f"?start={startTime}&end={endTime}"
@@ -393,13 +391,13 @@ class Test_TimeFilterQuery(TestCase):
     #Returns only smoke1 because it is changes to extend the duration so it occurs longer for a later time query.
     def test3_TimeFilterQuery(self):
         url = reverse("api:v1:hms_smoke:start_end_filter")
-        startTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes =1)
-        endTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes=3)
+        startTime = currentTime() + timedelta(hours=2, minutes =1)
+        endTime = currentTime() + timedelta(hours=2, minutes=3)
         startTime = startTime.strftime("%H%M")
         endTime = endTime.strftime("%H%M")
         url+= f"?start={startTime}&end={endTime}"
         
-        self.smoke1.end = datetime.now(timezone.utc) + timedelta(hours=3)
+        self.smoke1.end = currentTime() + timedelta(hours=3)
         self.smoke1.save()
         
         response = self.client.get(url)
@@ -411,8 +409,8 @@ class Test_TimeFilterQuery(TestCase):
     #will return 0 smoke objects, added 1 minute to start + 2 hrs because if end is gte start then it will trigger, and end is +2hrs from current
     def test4_TimeFilterQuery(self):
         url = reverse("api:v1:hms_smoke:start_end_filter")
-        startTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes =1)
-        endTime = datetime.now(timezone.utc) + timedelta(hours=2, minutes=3)
+        startTime = currentTime() + timedelta(hours=2, minutes =1)
+        endTime = currentTime() + timedelta(hours=2, minutes=3)
         startTime = startTime.strftime("%H%M")
         endTime = endTime.strftime("%H%M")
         url+= f"?start={startTime}&end={endTime}"
