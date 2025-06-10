@@ -1,17 +1,11 @@
 from django.test import TestCase
-
-# Create your tests here.
-#TODO Rewrite Testcases from APITestCase to TestCase (Test local then add to git)
-
-from django.test import TestCase
 from django.urls import reverse
 from ....apps.integrate.hms_smoke.models import Smoke
-from datetime import datetime, timedelta
+from ....apps.integrate.hms_smoke.services.helpers import currentTime
+from datetime import timedelta
 from django.contrib.gis.geos import GEOSGeometry
-from datetime import timezone
 from shapely.wkt import loads as load_wkt
 import geopandas as gpd
-from ....apps.integrate.hms_smoke.services.helpers import currentTime
 
 
 #create test objects here

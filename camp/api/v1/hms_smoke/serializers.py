@@ -2,7 +2,6 @@ from resticus import serializers
 from pytz import timezone
 
 
-
 def to_pst(time):
     if time and timezone('UTC'):
             time = time.astimezone(timezone('US/Pacific'))
