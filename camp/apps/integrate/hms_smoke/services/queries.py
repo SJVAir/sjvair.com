@@ -1,11 +1,11 @@
 from ..models import Smoke
-from datetime import timedelta, timezone
+from datetime import timedelta
 from django.db.models import Q
 from .helpers import *
 from django.db.models import Max
 
 #Query for smokes that are ongoing, within the most recent query (so outdated/redundant queries dont clog map)
-def query_ongoing_smoke(query_time):
+def ongoing(query_time):
     """
     Query for smokes that are ongoing, within the most recent query 
     (so outdated/redundant queries dont clog map)
@@ -16,17 +16,14 @@ def query_ongoing_smoke(query_time):
     Returns:
         QuerySet: Iterable set of ongoing smokes from the db
     """ 
-    if is_int(query_time):
-        query_time = int(query_time)
-    else:
-        raise Exception('Query time is not an integer, fix in environment variable')
-    currentTime = datetime.now(timezone.utc) 
-    previous_query = currentTime - timedelta(hours=query_time)
-    
-    return Smoke.objects.filter(end__gte=currentTime, start__lte=currentTime, observation_time__gte=previous_query)
+    cleaned = totalHelper(
+        Int=query_time,
+    )
+    previous_query = currentTime() - timedelta(hours=cleaned["Int"])
+    return Smoke.objects.filter(end__gte=currentTime(), start__lte=currentTime(), observation_time__gte=previous_query)
 
 
-def query_ongoing_density_smoke(query_time, densityArr):
+def ongoing_density(query_time, densityArr):
     """
     Returns an iterable list with Two smoke densities
 
@@ -41,31 +38,22 @@ def query_ongoing_density_smoke(query_time, densityArr):
     #HELPER TO CHECK DENSITY ARR
 
 
-    densityArr = totalHelper(
+    cleaned = totalHelper(
         Densities=densityArr,
+        Int=query_time,
     )
-    if is_int(query_time):
-        query_time = int(query_time)
-    else:
-        raise Exception('Query time is not an integer, fix in environment variable')
-    #Previous ongoing smokes
-    currentTime = datetime.now(timezone.utc)
-    previous_query = currentTime - timedelta(hours=query_time)
-    #set an array with the possible densities
-
+    previous_query = currentTime() - timedelta(hours=cleaned["Int"])
     # If at least one valid density was provided, build a query
-    if len(densityArr["Densities"])>=1:
+    if len(cleaned["Densities"])>=1:
         density_query = Q()
-        for d in densityArr["Densities"]:
+        for d in cleaned["Densities"]:
             density_query |= Q(density=d)   
-        return Smoke.objects.filter(density_query,end__gte=currentTime, start__lte=currentTime,  observation_time__gte=previous_query)
-    #
-    #Else return NO Objects aka search for where Density = "NONE"
+        return Smoke.objects.filter(density_query,end__gte=currentTime(), start__lte=currentTime(),  observation_time__gte=previous_query)
     return Smoke.objects.none()
 
 
 
-def query_latest_smoke():
+def latest():
     """
     Uses aggregate max function to find the most recent retrieval of data + uses a range of 5
     minutes before to find the entire query (computations will differ each timedate object by seconds).
@@ -73,15 +61,15 @@ def query_latest_smoke():
     Returns:
         queryset: returns all smokes within 5 minutes of the last query
     """
-    latest_time = Smoke.objects.aggregate(Max('observation_time'))['observation_time__max']
-    if latest_time:
-        five_mins_before_latest = latest_time - timedelta(seconds=10)
-        return Smoke.objects.filter(observation_time__gte=five_mins_before_latest, observation_time__lte=latest_time)
+    latest_max = Smoke.objects.aggregate(Max('observation_time'))['observation_time__max']
+    if latest_max:
+        latest = latest_max - timedelta(seconds=10)
+        return Smoke.objects.filter(observation_time__gte=latest, observation_time__lte=latest_max)
     return Smoke.objects.none()
 
 
 
-def query_latest_smoke_density(densityArr):
+def latest_density(densityArr):
     """
     Uses aggregate max function to find the most recent retrieval of data + uses a range of 5
     minutes before to find the entire query (computations will differ each timedate object by seconds).
@@ -94,21 +82,21 @@ def query_latest_smoke_density(densityArr):
     Returns:
         queryset: returns all smokes within 5 minutes of the last query with a density designated by the input
     """
-    densityArr = totalHelper(
+    cleaned = totalHelper(
         Densities=densityArr,
     )
-    latest_time = Smoke.objects.aggregate(Max('observation_time'))['observation_time__max']
-    if latest_time:
-        five_mins_before_latest = latest_time - timedelta(seconds=10)
+    latest_max = Smoke.objects.aggregate(Max('observation_time'))['observation_time__max']
+    if latest_max:
+        latest = latest_max - timedelta(seconds=10)
         density_query=Q()
-        for d in densityArr["Densities"]:
+        for d in cleaned["Densities"]:
             density_query |= Q(density=d)
-        if len(densityArr["Densities"])>0:
-            return Smoke.objects.filter(density_query, observation_time__gte=five_mins_before_latest, observation_time__lte=latest_time)
+        if len(cleaned["Densities"])>0:
+            return Smoke.objects.filter(density_query, observation_time__gte=latest, observation_time__lte=latest_max)
     return Smoke.objects.none()
 
 
-def query_timefilter(start, end):
+def timefilter(start, end):
     """
     This function will hold the logic for error checking and query operation for the time filter operation.
     This query will be used to filter between the selected hours for the current day in UTC time.
@@ -122,9 +110,8 @@ def query_timefilter(start, end):
         queryset: queryset that is either empty if there is no maximum observable, empty if there are no smokes in recent query within the filter range
                 or filled with smokes within the latest observable query that are within the time filter range.
     """
-    
-    latest_time = Smoke.objects.aggregate(Max('observation_time'))['observation_time__max']
-    if latest_time:
-        five_mins_before_latest = latest_time - timedelta(seconds=10)
-        return Smoke.objects.filter(end__gte=start, start__lte=end, observation_time__gte=five_mins_before_latest, observation_time__lte=latest_time)
+    latest_max = Smoke.objects.aggregate(Max('observation_time'))['observation_time__max']
+    if latest_max:
+        latest = latest_max - timedelta(seconds=10)
+        return Smoke.objects.filter(end__gte=start, start__lte=end, observation_time__gte=latest, observation_time__lte=latest_max)
     return Smoke.objects.none()

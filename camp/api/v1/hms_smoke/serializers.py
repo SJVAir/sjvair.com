@@ -9,8 +9,13 @@ def to_pst(time):
     return time.strftime("%Y-%m-%d %H:%M:%S %Z%z")
 
 class SmokeSerializer(serializers.Serializer):
-    fields = ('id', 'FID', 'satellite','density', ('end', lambda inst: to_pst(inst.end)),
-              ('start', lambda inst: to_pst(inst.start)), 
-              ('observation_time', lambda inst: to_pst(inst.observation_time)), 
-              ('geometry')
+    fields = (
+        'id', 
+        'FID', 
+        'satellite',
+        'density', 
+        ('end', lambda inst: to_pst(inst.end)),
+        ('start', lambda inst: to_pst(inst.start)), 
+        ('observation_time', lambda inst: to_pst(inst.observation_time)), 
+        'geometry',
     )

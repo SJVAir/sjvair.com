@@ -23,7 +23,7 @@ def get_smoke_file():
     """
     try:
        
-        date = datetime.now(timezone.utc) 
+        date = currentTime() 
         #Construct download url for NOAA Smoke shapefile 
         baseUrl = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
         finalUrl = (
@@ -78,7 +78,7 @@ def to_db(curr):
         #If the county is not within the SJV return it does not need to be added
         if not County.in_SJV(cleaned['Geometry']):
             return
-        observation_time = datetime.now(timezone.utc)
+        observation_time = currentTime()
         geometry=GEOSGeometry(cleaned['Geometry'].wkt, srid=4326)
         newobj = Smoke.objects.create(
             density=cleaned["Density"],
