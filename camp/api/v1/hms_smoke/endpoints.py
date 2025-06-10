@@ -1,13 +1,17 @@
 
 # Create your views here.
 from resticus import generics
-from ....apps.integrate.hms_smoke.models import Smoke
-from ....apps.integrate.hms_smoke.services.helpers import *
-from ....apps.integrate.hms_smoke.services.queries import *
+from camp.apps.integrate.hms_smoke.models import Smoke
+#rm
+# from camp.apps.integrate.hms_smoke.services.helpers import *
+# from camp.apps.integrate.hms_smoke.services.queries import *
 from .serializers import SmokeSerializer
-import os
+#rm import os
 from .filters import SmokeFilter
 from django.utils import timezone
+from datetime import timedelta
+
+
 class SmokeMixin:
     model = Smoke
     serializer_class = SmokeSerializer
@@ -23,14 +27,14 @@ class SmokeListOngoing(SmokeMixin, generics.ListCreateEndpoint):
     filter_class = SmokeFilter
     
     def get_queryset(self):
-        
+        prev_query = timezone.now() - timedelta(minutes=59, seconds=59)
         curr_time = timezone.now()
-        queryset = super(SmokeListOngoing, self).get_queryset()
-        queryset = queryset.filter(start__lte=curr_time, end__gte=curr)
+        queryset = super().get_queryset()
+        queryset = queryset.filter(start__lte=curr_time, end__gte=curr_time, created__gte=prev_query)
         return queryset
         
 
-
+#rm
 # env = os.environ.get
 # query_hours = int(os.environ.get('query_hours', 3))
 
