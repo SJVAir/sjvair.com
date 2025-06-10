@@ -4,8 +4,6 @@ from .endpoints import *
 app_name = "hms_smoke"
 
 
-#TODO ADD TO PREEVIOUS URLS.PY TO EXTEND THE URL + CHANGE THESE URLS TO MAKE SENSE ex: camp/api/hms_smoke/ongoing... 
-
 urlpatterns = [
     path("ongoing", OngoingSmokeView.as_view(), name="ongoing_smoke" ),
     path("ongoing/density/", OngoingSmokeDensityView.as_view(), name="ongoing_smoke_density"),

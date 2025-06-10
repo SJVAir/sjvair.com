@@ -1,8 +1,8 @@
 from ..models import Smoke
 from datetime import timedelta
-from django.db.models import Q
+from django.db.models import Q, Max
 from .helpers import *
-from django.db.models import Max
+
 
 #Query for smokes that are ongoing, within the most recent query (so outdated/redundant queries dont clog map)
 def ongoing(query_time):

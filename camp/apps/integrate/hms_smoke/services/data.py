@@ -1,11 +1,8 @@
-import requests, zipfile, io, os, tempfile
+import requests, zipfile, io, tempfile
 import geopandas as gpd
 from django.contrib.gis.geos import GEOSGeometry
-from datetime import datetime
 from ..models import Smoke
 from .helpers import *
-from shapely.wkt import loads as load_wkt
-from django.conf import settings
 from .....utils.counties import County
 
 
