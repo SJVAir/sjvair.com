@@ -5,6 +5,7 @@ from ..models import Smoke
 #from .helpers import *
 from camp.utils.counties import County
 from .helpers import str_to_time
+from ..models import Density
 
 def get_smoke_file(date):
     """
@@ -79,10 +80,13 @@ def to_db(curr):
         #rm
         #observation_time = currentTime()
         
-        geometry=GEOSGeometry(curr.geometry, srid=4326)
+        geometry=GEOSGeometry(curr.geometry.wkt, srid=4326)
         start = str_to_time(curr.Start)
         end = str_to_time(curr.End)
-        newobj = Smoke.objects.create(
+        if curr.Density not in Density.values:
+            curr.Density = Density.LIGHT
+        print(start, end, curr.Density)
+        Smoke.objects.create(
             density=curr.Density,
             start=start,
             end=end,
@@ -92,7 +96,7 @@ def to_db(curr):
             # FID=cleaned["FID"],
             # observation_time=observation_time,
             )
-        newobj.save()
+        
     except Exception as e:
         print("Exception: ", e)
         raise

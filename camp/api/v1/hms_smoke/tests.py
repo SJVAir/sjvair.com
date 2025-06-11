@@ -68,30 +68,58 @@ class Tests_O(TestCase):
         self.smoke2 = CreateSmokeObjects("MEDIUM", -1, -1)
         self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
         
-    def test_SmokeView(self):
+    def test1_SmokeView(self):
         print("ID: ",self.smoke1.id, type(self.smoke1.id))
         self.smoke1.satellite = "TestSatellite1"
         self.smoke1.save()
         url = reverse("api:v1:hms_smoke:smoke-list")
-        url_with_params = f"{url}?satellite__iexact=testSatellite1"
+        url_with_params = f"{url}?satellite=TestSatellite1"
+        
+        response = self.client.get(url_with_params)
+        #print("RESPONSE:", response.status_code, response.content)
+        
+        assert response.status_code == 200
+        assert len(response.json()["data"])==1
+        assert response.json()["data"][0]['id'] == str(self.smoke1.id)
+
+    def test2_SmokeView(self):
+        print("ID: ",self.smoke1.id, type(self.smoke1.id))
+        url = reverse("api:v1:hms_smoke:smoke-list")
+        time = timezone.now().strftime('%Y-%m-%dT%H:%M:%S')
+        url_with_params = f"{url}?start__gte={time}"
+        
+        response = self.client.get(url_with_params)
+        #print("RESPONSE:", response.status_code, response.content)
+        
+        assert response.status_code == 200
+        assert len(response.json()["data"])==1
+        assert response.json()["data"][0]['id'] == str(self.smoke3.id)
+    def test3_SmokeView(self):
+        print("ID: ",self.smoke1.id, type(self.smoke1.id))
+        url = reverse("api:v1:hms_smoke:smoke-list")
+        url_with_params = f"{url}?density__iexact=light"
+        
+        response = self.client.get(url_with_params)
+        #print("RESPONSE:", response.status_code, response.content)
+        
+        assert response.status_code == 200
+        assert len(response.json()["data"])==1
+        assert response.json()["data"][0]['id'] == str(self.smoke1.id)
+
+    def test4_SmokeView(self):
+        print("ID: ",self.smoke1.id, type(self.smoke1.id))
+        url = reverse("api:v1:hms_smoke:smoke-list")
+        #time = timezone.now() + timedelta(hours=2)
+        time = self.smoke2.end.strftime('%Y-%m-%dT%H:%M:%S:%f')
+        url_with_params = f"{url}?end={time}"
         
         response = self.client.get(url_with_params)
         print("RESPONSE:", response.status_code, response.content)
         
         assert response.status_code == 200
         assert len(response.json()["data"])==1
-        for feature in response.json()["data"]:
-            if feature['density'].lower() == 'light':
-                assert feature["id"] == str(self.smoke1.id)
-            if feature['density'].lower() == 'medium':
-                assert feature["id"] == str(self.smoke2.id)
-            if feature['density'] == 'heavy':
-                assert feature["id"] == str(self.smoke3.id)
-
-
-
-
-
+        assert response.json()["data"][0]['id'] == str(self.smoke2.id)
+    
 
 
 
@@ -122,12 +150,12 @@ class Tests_OngoingSmokeView(TestCase):
         print("ID: ",self.smoke1.id, type(self.smoke1.id))
         url = reverse("api:v1:hms_smoke:smoke-ongoing")
         response = self.client.get(url)
-        print("RESPONSE:", response.status_code, response.content)
         
         assert response.status_code == 200
         assert len(response.json()["data"])==1
         assert response.json()['data'][0]['density'].lower() == 'light'
         assert response.json()['data'][0]["id"] == str(self.smoke1.id)
+        
     def test2_OngoingSmokeView(self):
         ongoing_end = timezone.now() + timedelta(hours=1)
         self.smoke2.end = ongoing_end
@@ -135,13 +163,17 @@ class Tests_OngoingSmokeView(TestCase):
         
         url = reverse("api:v1:hms_smoke:smoke-ongoing")
         response = self.client.get(url)
+        
+        
         assert response.status_code == 200
-        assert len(response.json()["data"])==1
+        assert len(response.json()["data"])==2
         for feature in response.json()["data"]:
             if feature['density'].lower() == 'light':
                 assert feature["id"] == str(self.smoke1.id)
             if feature['density'].lower() == 'medium':
                 assert feature["id"] == str(self.smoke2.id)
+                
+                
 #TESTS OngoingSmokeDensityView
 class Tests_OngoingSmokeDensityView(TestCase):
     """
@@ -158,7 +190,7 @@ class Tests_OngoingSmokeDensityView(TestCase):
             returns empty features
     """
     def setUp(self):
-        self.smoke1 = CreateSmokeObjects("light", -1, 1)
+        self.smoke1 = CreateSmokeObjects("LIGHT", -1, 1)
         self.smoke2 = CreateSmokeObjects("medium", -1, -1)
         self.smoke3 = CreateSmokeObjects("heavy", 1, 1)
         self.smoke4 = CreateSmokeObjects("medium", -1, 1)
@@ -166,12 +198,12 @@ class Tests_OngoingSmokeDensityView(TestCase):
     #Query for smoke 1 and 4 (light and medium)
     def test1_OngoingSmokeDensityView(self):
         url = reverse("api:v1:hms_smoke:smoke-ongoing")
-        url_with_params = f"{url}?density=lighT"
+        url_with_params = f"{url}?density__iexact=lighT"
         #Test to make sure it returns by end time
         self.smoke4.end = timezone.now() + timedelta(hours=3)
         self.smoke4.save()
         response = self.client.get(url_with_params)
-    
+        print("RESPONSE:", response.status_code, response.content)
         
         assert response.status_code == 200
         assert len(response.json()["data"])==1
@@ -185,7 +217,7 @@ class Tests_OngoingSmokeDensityView(TestCase):
     #Query for heavy densities      
     def test2_OngoingSmokeDensityView(self):
         url = reverse("api:v1:hms_smoke:smoke-ongoing")
-        url_with_params = f"{url}?density=heavy"
+        url_with_params = f"{url}?density__iexact=heavy"
         response = self.client.get(url_with_params)
         
         
@@ -197,7 +229,7 @@ class Tests_OngoingSmokeDensityView(TestCase):
     #No density should return no smokes      
     def test3_OngoingSmokeDensityView(self):
         url = reverse("api:v1:hms_smoke:smoke-ongoing")
-        url_with_params = f"{url}?density=MEDIUM"
+        url_with_params = f"{url}?density__iexact=MEDIUM"
         
         response = self.client.get(url_with_params)
         
@@ -474,10 +506,16 @@ class Tests_Miscellaneous(TestCase):
 
 class FetchFilesTaskTest(TestCase):
     def test_fetch_files_triggers_file_download(self):
-        from ....apps.integrate.hms_smoke.tasks import fetch_files
+        from camp.apps.integrate.hms_smoke.tasks import fetch_files
         fetch_files(timezone.now())
-    def test_to_db(self):
-        from ....apps.integrate.hms_smoke.services.data import to_db
+        
+    def test_get_smoke_file(self):
+        from camp.apps.integrate.hms_smoke.services.data import get_smoke_file
+        get_smoke_file(timezone.now()-timedelta(days=1))
+        
+        
+    def test_to_db1(self):
+        from camp.apps.integrate.hms_smoke.services.data import to_db
         polygon_wkt = (
                         "POLYGON(("
                         "-119.860839 36.660399, "
@@ -499,7 +537,7 @@ class FetchFilesTaskTest(TestCase):
         input = gpd.GeoDataFrame(input)
         to_db(input.iloc[0])
     def test_to_db_notSJV(self):
-         from ....apps.integrate.hms_smoke.services.data import to_db
+         from camp.apps.integrate.hms_smoke.services.data import to_db
          polygon_wkt = ("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))")
 
          geometry = load_wkt(polygon_wkt) 
