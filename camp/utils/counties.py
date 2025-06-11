@@ -34,9 +34,9 @@ class County:
 
 
     @classmethod
-    def in_SJV(cls, geometry_shape, default=0):
+    def in_SJV(cls, geometry_shape, default=False):
         for name, geometry in cls.counties.items():
             shapely_county = load_wkt(geometry.wkt)
             if shapely_county.intersects(geometry_shape):
-                return 1
+                return True
         return default

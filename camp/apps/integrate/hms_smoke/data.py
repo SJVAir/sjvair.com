@@ -1,9 +1,9 @@
 import requests, zipfile, io, tempfile
 import geopandas as gpd
 from django.contrib.gis.geos import GEOSGeometry
-from ..models import Smoke
+from .models import Smoke
 from camp.utils.counties import County
-from ..models import Density
+from .models import Density
 from django.utils.timezone import make_aware
 from datetime import datetime
 
