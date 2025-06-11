@@ -1,4 +1,3 @@
-import django_filters
 from resticus.filters import FilterSet
 from camp.apps.integrate.hms_smoke.models import Smoke
 
@@ -23,5 +22,6 @@ class SmokeFilter(FilterSet):
             ],
             'satellite': [
                 'iexact',
+                'exact',
             ],
         }

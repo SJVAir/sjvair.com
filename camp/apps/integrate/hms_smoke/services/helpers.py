@@ -5,11 +5,11 @@
 
 #TODO STRING TO STRPTIME date time object
 from django.utils.timezone import make_aware
-from datetime import strptime
+from datetime import datetime
 
 
 def str_to_time(string):
-    time = strptime(string, '%Y%j %H%M')
+    time = datetime.strptime(string, '%Y%j %H%M')
     return make_aware(time)
     
 
