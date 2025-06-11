@@ -241,110 +241,6 @@ class Tests_OngoingSmokeDensityView(TestCase):
             else:
                 assert 1==2 # A HEAVY/LIGHT DENSITY WAS QUERIED
         
-
-# class Tests_LatestObeservableSmokeView(TestCase):
-#     """
-#     setUp - create objects for testing
-#             smoke1,4,5- ongoing
-#             smoke1 - light
-#             smoke2,4 = medium
-#             smoke3,5 =heavy
-#             smoke1,5 = before latest obs
-#     test1 - query for latest observation smokes
-    
-#     """
-#     def setUp(self):
-#         self.smoke1 = CreateSmokeObjects("light", -1, 1)
-#         self.smoke2 = CreateSmokeObjects("medium", -1, -1)
-#         self.smoke3 = CreateSmokeObjects("light", 1, 1)
-#         self.smoke4 = CreateSmokeObjects("medium", -1, 1)
-#         self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
-        
-#         pre_obs = timezone.now() - timedelta(hours=2)
-        
-#         self.smoke1.observation_time=pre_obs
-#         self.smoke1.save()
-#         self.smoke4.observation_time=pre_obs
-#         self.smoke4.save()
-        
-#     def test1_LatestObeservableSmokeView(self):
-#         url = reverse("api:v1:hms_smoke:last_observable_smoke")
-#         response = self.client.get(url)
-        
-#         assert response.status_code == 200
-#         assert len(response.json()['data']) == 3
-#         for feature in response.json()['data']:
-#             if feature['density'].lower() =='light':
-#                 assert feature["id"] == str(self.smoke3.id)
-#             if feature['density'].lower() =='medium':
-#                 assert feature["id"] == str(self.smoke2.id)
-#             if feature['density'].lower() =='heavy':
-#                 assert feature["id"] == str(self.smoke5.id)
-
-# class Tests_LatestObeservableSmokeDensityView(TestCase):
-#     """
-#     setUp - create objects for testing
-#             smoke1,4,5- ongoing
-#             smoke1 - light
-#             smoke2,4 = medium
-#             smoke3,5 =heavy
-#             smoke2,5 = before latest obs
-#     test1 - query for light and medium, that are latest observation
-#             returns only smoke 4, and 1
-#     test2 - query for heavy, latest
-#             returns only smoke 4
-#     test3 - empty query 
-#             returns empty features
-    
-#     """
-#     def setUp(self):
-#         self.smoke1 = CreateSmokeObjects("light", -1, 1)
-#         self.smoke2 = CreateSmokeObjects("medium", -1, -1)
-#         self.smoke3 = CreateSmokeObjects("heavy", 1, 1)
-#         self.smoke4 = CreateSmokeObjects("medium", -1, 1)
-#         self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
-        
-#         pre_obs = timezone.now() - timedelta(hours=2)
-        
-#         self.smoke2.observation_time=pre_obs
-#         self.smoke2.save()
-#         self.smoke5.observation_time=pre_obs
-#         self.smoke5.save()
-        
-#     def test1_LatestObeservableSmokeDensityView(self):
-#         url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
-#         url_with_params = f"{url}?density=light&density=medium"
-#         response = self.client.get(url_with_params)
-    
-#         assert response.status_code == 200
-#         assert len(response.json()["data"])==2
-#         for feature in response.json()['data']:
-#             assert feature['density'].lower() != 'heavy'
-#             if feature['density'].lower() =='light':
-#                 assert feature["id"]== str(self.smoke1.id)
-#             if feature['density'].lower() =='medium':
-#                 assert feature["id"]== str(self.smoke4.id)
-#     #Query for heavy densities      
-#     def test2_LatestObeservableSmokeDensityView(self):
-#         url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
-#         url_with_params = f"{url}?density=heavy"
-#         response = self.client.get(url_with_params)
-        
-      
-#         assert response.status_code == 200
-#         assert len(response.json()["data"])>0
-#         for item in response.json()["data"]:
-#             assert item['density'].lower() == 'heavy'
-#         assert response.json()["data"][0]["id"] == str(self.smoke3.id)
-    
-#     #No density should return no smokes      
-#     def test3_LatestObeservableSmokeDensityView(self):
-#         url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
-#         response = self.client.get(url)
-        
-#         assert response.status_code == 200
-#         assert len(response.json()["data"])==0   
-        
         
 class Tests_SelectSmokeView(TestCase):
     """
@@ -377,8 +273,7 @@ class Tests_SelectSmokeView(TestCase):
         response = self.client.get(url)
         
         assert response.status_code == 404
-        
-        
+           
         
 class Tests_Miscellaneous(TestCase):
     
@@ -393,7 +288,6 @@ class Tests_Miscellaneous(TestCase):
         from ....utils.counties import County
         
         polygon_wkt = "POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))"
-        #geometry = GEOSGeometry(polygon_wkt, srid=4326)
         geometry = load_wkt(polygon_wkt)
         #If the county is not within the SJV return it does not need to be added
         if not County.in_SJV(geometry):
@@ -411,98 +305,6 @@ class Tests_Miscellaneous(TestCase):
         else: 
             assert 1==2    
         
-    # def test_all_by_timestamp(self):
-        
-    #     timestampChange = timezone.now()) + timedelta(hours=1)
-    #     self.smoke3.observation_time = timestampChange
-    #     self.smoke3.save()
-        
-    #     url = reverse("api:v1:hms_smoke:all_by_timestamp")
-    #     response = self.client.get(url)
-        
-    #     assert response.status_code == 200
-    #     assert len(response.json()["data"])==5
-    #     assert response.json()["data"][0]['id'] ==str(self.smoke3.id)
-    
-    
-
-#THESE TESTS ARE TIME SENSITIVE, IF TOO CLOSE TO 00:00 UTC TESTS WILL FAIL
-# class Test_TimeFilterQuery(TestCase):
-    
-#     def setUp(self):
-#         self.smoke1 = CreateSmokeObjects("Light", -1, 1)
-#         self.smoke2 = CreateSmokeObjects("MEDIUM", -1, -1)
-#         self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
-#         self.smoke4 = CreateSmokeObjects("MEDIUM", -1, 1)
-#         self.smoke5 = CreateSmokeObjects("Heavy", -1, 1)
-    
-#     #returns everything but smoke 3, it queries any smokes active in the range of -2 hr to -1 hr from current. 
-#     #So any smoke with -1 as its start value, because this is -2hrs before current, 1 would be -1 hr from current
-#     def test1_TimeFilterQuery(self):
-        
-#         url = reverse("api:v1:hms_smoke:start_end_filter")
-#         startTime = timezone.now() - timedelta(hours=2)
-#         endTime = timezone.now() - timedelta(hours=1)
-#         startTime = startTime.strftime("%H%M")
-#         endTime = endTime.strftime("%H%M")
-#         url+= f"?start={startTime}&end={endTime}"
-        
-#         response = self.client.get(url)
-#         assert response.status_code == 200
-#         assert len(response.json()["data"]) == 4
-#         for feature in response.json()["data"]:
-#             if feature["id"] == str(self.smoke3.id):
-#                 assert 1==2
-        
-#     #Returns Everything but smoke 2, it queries any smokes active in the range of +1 hr to +2 hr from current. 
-#     #so, any value with end value as 1 will return 
-#     def test2_TimeFilterQuery(self):
-#         url = reverse("api:v1:hms_smoke:start_end_filter")
-#         startTime = timezone.now() + timedelta(hours=1)
-#         endTime = timezone.now() + timedelta(hours=2)
-#         startTime = startTime.strftime("%H%M")
-#         endTime = endTime.strftime("%H%M")
-#         url+= f"?start={startTime}&end={endTime}"
-        
-#         response = self.client.get(url)
-#         assert response.status_code == 200
-#         assert len(response.json()["data"]) == 4
-#         for feature in response.json()["data"]:
-#             if feature["id"] == str(self.smoke2.id):
-#                 assert 1==2
-
-#     #Returns only smoke1 because it is changes to extend the duration so it occurs longer for a later time query.
-#     def test3_TimeFilterQuery(self):
-#         url = reverse("api:v1:hms_smoke:start_end_filter")
-#         startTime = timezone.now() + timedelta(hours=2, minutes =1)
-#         endTime = timezone.now() + timedelta(hours=2, minutes=3)
-#         startTime = startTime.strftime("%H%M")
-#         endTime = endTime.strftime("%H%M")
-#         url+= f"?start={startTime}&end={endTime}"
-        
-#         self.smoke1.end = timezone.now() + timedelta(hours=3)
-#         self.smoke1.save()
-        
-#         response = self.client.get(url)
-#         assert response.status_code == 200
-#         assert len(response.json()["data"]) == 1
-#         assert response.json()["data"][0]['id'] == str(self.smoke1.id)   
-        
-        
-#     #will return 0 smoke objects, added 1 minute to start + 2 hrs because if end is gte start then it will trigger, and end is +2hrs from current
-#     def test4_TimeFilterQuery(self):
-#         url = reverse("api:v1:hms_smoke:start_end_filter")
-#         startTime = timezone.now() + timedelta(hours=2, minutes =1)
-#         endTime = timezone.now() + timedelta(hours=2, minutes=3)
-#         startTime = startTime.strftime("%H%M")
-#         endTime = endTime.strftime("%H%M")
-#         url+= f"?start={startTime}&end={endTime}"
-            
-#         response = self.client.get(url)
-#         assert response.status_code == 200
-#         assert len(response.json()["data"]) == 0
-
-
 
 class FetchFilesTaskTest(TestCase):
     def test_fetch_files_triggers_file_download(self):
@@ -510,12 +312,12 @@ class FetchFilesTaskTest(TestCase):
         fetch_files(timezone.now())
         
     def test_get_smoke_file(self):
-        from camp.apps.integrate.hms_smoke.services.data import get_smoke_file
+        from camp.apps.integrate.hms_smoke.data import get_smoke_file
         get_smoke_file(timezone.now()-timedelta(days=1))
         
         
     def test_to_db1(self):
-        from camp.apps.integrate.hms_smoke.services.data import to_db
+        from camp.apps.integrate.hms_smoke.data import to_db
         polygon_wkt = (
                         "POLYGON(("
                         "-119.860839 36.660399, "
@@ -537,7 +339,7 @@ class FetchFilesTaskTest(TestCase):
         input = gpd.GeoDataFrame(input)
         to_db(input.iloc[0])
     def test_to_db_notSJV(self):
-         from camp.apps.integrate.hms_smoke.services.data import to_db
+         from camp.apps.integrate.hms_smoke.data import to_db
          polygon_wkt = ("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))")
 
          geometry = load_wkt(polygon_wkt) 
