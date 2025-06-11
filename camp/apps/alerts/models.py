@@ -98,8 +98,6 @@ class Subscription(TimeStampedModel):
 
 
 class Alert(TimeStampedModel):
-    LEVELS = LEVELS
-
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
