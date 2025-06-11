@@ -32,11 +32,7 @@ class Smoke(TimeStampedModel):
     )
     
     satellite = models.CharField(max_length=20)
-    #rm
-    # FID = models.IntegerField(default="0")
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True) 
     density = models.CharField(max_length=10, choices=Density.choices, default=Density.LIGHT)
-    #rm
-    # observation_time = models.DateTimeField(null=True)
     geometry = gis_models.GeometryField(srid=4326)

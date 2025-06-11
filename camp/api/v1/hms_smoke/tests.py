@@ -1,11 +1,11 @@
 from django.test import TestCase
 from django.urls import reverse
 from ....apps.integrate.hms_smoke.models import Smoke
-from ....apps.integrate.hms_smoke.services.helpers import currentTime
 from datetime import timedelta
 from django.contrib.gis.geos import GEOSGeometry
 from shapely.wkt import loads as load_wkt
 import geopandas as gpd
+from django.utils import timezone
 
 
 #create test objects here
@@ -35,19 +35,69 @@ def CreateSmokeObjects(density, start, end):
     )
     geometry = GEOSGeometry(polygon_wkt, srid=4326)
     if start ==-1:
-        start = currentTime() - timedelta(hours=2)
+        start = timezone.now() - timedelta(hours=2)
     else:
-        start = currentTime() + timedelta(hours=1)
+        start = timezone.now() + timedelta(hours=1)
     if end ==-1:
-        end = currentTime() - timedelta(hours=1)
+        end = timezone.now() - timedelta(hours=1)
     else:
-        end = currentTime() + timedelta(hours=2)
+        end = timezone.now() + timedelta(hours=2)
     
-    FID = "0"
     satellite = "TestSatellite"
-    observation_time = currentTime()
     
-    return Smoke.objects.create(density=density,end=end,start=start,FID=FID,satellite=satellite, geometry=geometry, observation_time = observation_time)
+    
+    return Smoke.objects.create(density=density,end=end,start=start,satellite=satellite, geometry=geometry)
+
+
+
+
+class Tests_O(TestCase):
+    def setUp(self):
+        #ONLY SMOKE1 SHOULD RETURN 
+        """
+    setUp - create objects for testing
+            smoke1- ongoing
+            smoke1 - light
+            smoke2 = medium
+            smoke3 =heavy
+    test1 - query for ongoing, which is only smoke 1
+   
+    
+    """
+        self.smoke1 = CreateSmokeObjects("Light", -1, 1)
+        self.smoke2 = CreateSmokeObjects("MEDIUM", -1, -1)
+        self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
+        
+    def test_SmokeView(self):
+        print("ID: ",self.smoke1.id, type(self.smoke1.id))
+        self.smoke1.satellite = "TestSatellite1"
+        self.smoke1.save()
+        url = reverse("api:v1:hms_smoke:smoke-list")
+        url_with_params = f"{url}?satellite__iexact=testSatellite1"
+        
+        response = self.client.get(url_with_params)
+        print("RESPONSE:", response.status_code, response.content)
+        
+        assert response.status_code == 200
+        assert len(response.json()["data"])==1
+        for feature in response.json()["data"]:
+            if feature['density'].lower() == 'light':
+                assert feature["id"] == str(self.smoke1.id)
+            if feature['density'].lower() == 'medium':
+                assert feature["id"] == str(self.smoke2.id)
+            if feature['density'] == 'heavy':
+                assert feature["id"] == str(self.smoke3.id)
+
+
+
+
+
+
+
+
+
+
+
 
 
 #TESTS OngoingSmokeView
@@ -69,19 +119,21 @@ class Tests_OngoingSmokeView(TestCase):
         self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
         
     def test_OngoingSmokeView(self):
-        
-        url = reverse("api:v1:hms_smoke:ongoing_smoke")
+        print("ID: ",self.smoke1.id, type(self.smoke1.id))
+        url = reverse("api:v1:hms_smoke:smoke-ongoing")
         response = self.client.get(url)
+        print("RESPONSE:", response.status_code, response.content)
+        
         assert response.status_code == 200
         assert len(response.json()["data"])==1
         assert response.json()['data'][0]['density'].lower() == 'light'
         assert response.json()['data'][0]["id"] == str(self.smoke1.id)
     def test2_OngoingSmokeView(self):
-        ongoing_end = currentTime() + timedelta(hours=1)
+        ongoing_end = timezone.now() + timedelta(hours=1)
         self.smoke2.end = ongoing_end
-        self.smoke2.save
+        self.smoke2.save()
         
-        url = reverse("api:v1:hms_smoke:ongoing_smoke")
+        url = reverse("api:v1:hms_smoke:smoke-ongoing")
         response = self.client.get(url)
         assert response.status_code == 200
         assert len(response.json()["data"])==1
@@ -113,28 +165,26 @@ class Tests_OngoingSmokeDensityView(TestCase):
         self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
     #Query for smoke 1 and 4 (light and medium)
     def test1_OngoingSmokeDensityView(self):
-        url = reverse("api:v1:hms_smoke:ongoing_smoke_density")
-        url_with_params = f"{url}?density=light&density=medium"
+        url = reverse("api:v1:hms_smoke:smoke-ongoing")
+        url_with_params = f"{url}?density=lighT"
         #Test to make sure it returns by end time
-        self.smoke4.end = currentTime() + timedelta(hours=3)
+        self.smoke4.end = timezone.now() + timedelta(hours=3)
         self.smoke4.save()
         response = self.client.get(url_with_params)
     
         
         assert response.status_code == 200
-        assert len(response.json()["data"])==2
+        assert len(response.json()["data"])==1
         for feature in response.json()['data']:
             if feature['density'].lower() =='light':
                 assert feature["id"] == str(self.smoke1.id)
-            elif feature['density'].lower() =='medium':
-                assert feature["id"] == str(self.smoke4.id)
             else:
-                assert 1==2 # A HEAVY DENSITY WAS QUERIED
+                assert 1==2 # A HEAVY/MEDIUM DENSITY WAS QUERIED
         
     
     #Query for heavy densities      
     def test2_OngoingSmokeDensityView(self):
-        url = reverse("api:v1:hms_smoke:ongoing_smoke_density")
+        url = reverse("api:v1:hms_smoke:smoke-ongoing")
         url_with_params = f"{url}?density=heavy"
         response = self.client.get(url_with_params)
         
@@ -143,118 +193,125 @@ class Tests_OngoingSmokeDensityView(TestCase):
         assert len(response.json()["data"])==1
         assert response.json()['data'][0]['density'].lower() == 'heavy'
     
+    
     #No density should return no smokes      
     def test3_OngoingSmokeDensityView(self):
-        url = reverse("api:v1:hms_smoke:ongoing_smoke_density")
-        response = self.client.get(url)
+        url = reverse("api:v1:hms_smoke:smoke-ongoing")
+        url_with_params = f"{url}?density=MEDIUM"
         
+        response = self.client.get(url_with_params)
         
         assert response.status_code == 200
-        assert len(response.json()['data'])==0
+        assert len(response.json()["data"])==1
+        for feature in response.json()['data']:
+            if feature['density'] =='medium':
+                assert feature["id"] == str(self.smoke4.id)
+            else:
+                assert 1==2 # A HEAVY/LIGHT DENSITY WAS QUERIED
         
 
-class Tests_LatestObeservableSmokeView(TestCase):
-    """
-    setUp - create objects for testing
-            smoke1,4,5- ongoing
-            smoke1 - light
-            smoke2,4 = medium
-            smoke3,5 =heavy
-            smoke1,5 = before latest obs
-    test1 - query for latest observation smokes
+# class Tests_LatestObeservableSmokeView(TestCase):
+#     """
+#     setUp - create objects for testing
+#             smoke1,4,5- ongoing
+#             smoke1 - light
+#             smoke2,4 = medium
+#             smoke3,5 =heavy
+#             smoke1,5 = before latest obs
+#     test1 - query for latest observation smokes
     
-    """
-    def setUp(self):
-        self.smoke1 = CreateSmokeObjects("light", -1, 1)
-        self.smoke2 = CreateSmokeObjects("medium", -1, -1)
-        self.smoke3 = CreateSmokeObjects("light", 1, 1)
-        self.smoke4 = CreateSmokeObjects("medium", -1, 1)
-        self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
+#     """
+#     def setUp(self):
+#         self.smoke1 = CreateSmokeObjects("light", -1, 1)
+#         self.smoke2 = CreateSmokeObjects("medium", -1, -1)
+#         self.smoke3 = CreateSmokeObjects("light", 1, 1)
+#         self.smoke4 = CreateSmokeObjects("medium", -1, 1)
+#         self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
         
-        pre_obs = currentTime() - timedelta(hours=2)
+#         pre_obs = timezone.now() - timedelta(hours=2)
         
-        self.smoke1.observation_time=pre_obs
-        self.smoke1.save()
-        self.smoke4.observation_time=pre_obs
-        self.smoke4.save()
+#         self.smoke1.observation_time=pre_obs
+#         self.smoke1.save()
+#         self.smoke4.observation_time=pre_obs
+#         self.smoke4.save()
         
-    def test1_LatestObeservableSmokeView(self):
-        url = reverse("api:v1:hms_smoke:last_observable_smoke")
-        response = self.client.get(url)
+#     def test1_LatestObeservableSmokeView(self):
+#         url = reverse("api:v1:hms_smoke:last_observable_smoke")
+#         response = self.client.get(url)
         
-        assert response.status_code == 200
-        assert len(response.json()['data']) == 3
-        for feature in response.json()['data']:
-            if feature['density'].lower() =='light':
-                assert feature["id"] == str(self.smoke3.id)
-            if feature['density'].lower() =='medium':
-                assert feature["id"] == str(self.smoke2.id)
-            if feature['density'].lower() =='heavy':
-                assert feature["id"] == str(self.smoke5.id)
+#         assert response.status_code == 200
+#         assert len(response.json()['data']) == 3
+#         for feature in response.json()['data']:
+#             if feature['density'].lower() =='light':
+#                 assert feature["id"] == str(self.smoke3.id)
+#             if feature['density'].lower() =='medium':
+#                 assert feature["id"] == str(self.smoke2.id)
+#             if feature['density'].lower() =='heavy':
+#                 assert feature["id"] == str(self.smoke5.id)
 
-class Tests_LatestObeservableSmokeDensityView(TestCase):
-    """
-    setUp - create objects for testing
-            smoke1,4,5- ongoing
-            smoke1 - light
-            smoke2,4 = medium
-            smoke3,5 =heavy
-            smoke2,5 = before latest obs
-    test1 - query for light and medium, that are latest observation
-            returns only smoke 4, and 1
-    test2 - query for heavy, latest
-            returns only smoke 4
-    test3 - empty query 
-            returns empty features
+# class Tests_LatestObeservableSmokeDensityView(TestCase):
+#     """
+#     setUp - create objects for testing
+#             smoke1,4,5- ongoing
+#             smoke1 - light
+#             smoke2,4 = medium
+#             smoke3,5 =heavy
+#             smoke2,5 = before latest obs
+#     test1 - query for light and medium, that are latest observation
+#             returns only smoke 4, and 1
+#     test2 - query for heavy, latest
+#             returns only smoke 4
+#     test3 - empty query 
+#             returns empty features
     
-    """
-    def setUp(self):
-        self.smoke1 = CreateSmokeObjects("light", -1, 1)
-        self.smoke2 = CreateSmokeObjects("medium", -1, -1)
-        self.smoke3 = CreateSmokeObjects("heavy", 1, 1)
-        self.smoke4 = CreateSmokeObjects("medium", -1, 1)
-        self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
+#     """
+#     def setUp(self):
+#         self.smoke1 = CreateSmokeObjects("light", -1, 1)
+#         self.smoke2 = CreateSmokeObjects("medium", -1, -1)
+#         self.smoke3 = CreateSmokeObjects("heavy", 1, 1)
+#         self.smoke4 = CreateSmokeObjects("medium", -1, 1)
+#         self.smoke5 = CreateSmokeObjects("heavy", -1, 1)
         
-        pre_obs = currentTime() - timedelta(hours=2)
+#         pre_obs = timezone.now() - timedelta(hours=2)
         
-        self.smoke2.observation_time=pre_obs
-        self.smoke2.save()
-        self.smoke5.observation_time=pre_obs
-        self.smoke5.save()
+#         self.smoke2.observation_time=pre_obs
+#         self.smoke2.save()
+#         self.smoke5.observation_time=pre_obs
+#         self.smoke5.save()
         
-    def test1_LatestObeservableSmokeDensityView(self):
-        url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
-        url_with_params = f"{url}?density=light&density=medium"
-        response = self.client.get(url_with_params)
+#     def test1_LatestObeservableSmokeDensityView(self):
+#         url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
+#         url_with_params = f"{url}?density=light&density=medium"
+#         response = self.client.get(url_with_params)
     
-        assert response.status_code == 200
-        assert len(response.json()["data"])==2
-        for feature in response.json()['data']:
-            assert feature['density'].lower() != 'heavy'
-            if feature['density'].lower() =='light':
-                assert feature["id"]== str(self.smoke1.id)
-            if feature['density'].lower() =='medium':
-                assert feature["id"]== str(self.smoke4.id)
-    #Query for heavy densities      
-    def test2_LatestObeservableSmokeDensityView(self):
-        url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
-        url_with_params = f"{url}?density=heavy"
-        response = self.client.get(url_with_params)
+#         assert response.status_code == 200
+#         assert len(response.json()["data"])==2
+#         for feature in response.json()['data']:
+#             assert feature['density'].lower() != 'heavy'
+#             if feature['density'].lower() =='light':
+#                 assert feature["id"]== str(self.smoke1.id)
+#             if feature['density'].lower() =='medium':
+#                 assert feature["id"]== str(self.smoke4.id)
+#     #Query for heavy densities      
+#     def test2_LatestObeservableSmokeDensityView(self):
+#         url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
+#         url_with_params = f"{url}?density=heavy"
+#         response = self.client.get(url_with_params)
         
       
-        assert response.status_code == 200
-        assert len(response.json()["data"])>0
-        for item in response.json()["data"]:
-            assert item['density'].lower() == 'heavy'
-        assert response.json()["data"][0]["id"] == str(self.smoke3.id)
+#         assert response.status_code == 200
+#         assert len(response.json()["data"])>0
+#         for item in response.json()["data"]:
+#             assert item['density'].lower() == 'heavy'
+#         assert response.json()["data"][0]["id"] == str(self.smoke3.id)
     
-    #No density should return no smokes      
-    def test3_LatestObeservableSmokeDensityView(self):
-        url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
-        response = self.client.get(url)
+#     #No density should return no smokes      
+#     def test3_LatestObeservableSmokeDensityView(self):
+#         url = reverse("api:v1:hms_smoke:last_observable_smoke_density")
+#         response = self.client.get(url)
         
-        assert response.status_code == 200
-        assert len(response.json()["data"])==0   
+#         assert response.status_code == 200
+#         assert len(response.json()["data"])==0   
         
         
 class Tests_SelectSmokeView(TestCase):
@@ -278,13 +335,13 @@ class Tests_SelectSmokeView(TestCase):
         
     #returns 
     def test1_SelectSmokeView(self):
-        url = reverse("api:v1:hms_smoke:smoke_by_id", kwargs={'pk':self.smoke1.id})
+        url = reverse("api:v1:hms_smoke:smoke-detail", kwargs={'smoke_id':self.smoke1.id})
         response = self.client.get(url)
         
         assert response.status_code == 200
         assert response.json()["data"]["id"] == str(self.smoke1.id)
     def test2_SelectSmokeView(self):
-        url = reverse("api:v1:hms_smoke:smoke_by_id", kwargs={'pk':"aaaaaa"})
+        url = reverse("api:v1:hms_smoke:smoke-detail", kwargs={'smoke_id':"gQ7rC18FRKuu15z9m2CsFm"})
         response = self.client.get(url)
         
         assert response.status_code == 404
@@ -322,103 +379,103 @@ class Tests_Miscellaneous(TestCase):
         else: 
             assert 1==2    
         
-    def test_all_by_timestamp(self):
+    # def test_all_by_timestamp(self):
         
-        timestampChange = currentTime() + timedelta(hours=1)
-        self.smoke3.observation_time = timestampChange
-        self.smoke3.save()
+    #     timestampChange = timezone.now()) + timedelta(hours=1)
+    #     self.smoke3.observation_time = timestampChange
+    #     self.smoke3.save()
         
-        url = reverse("api:v1:hms_smoke:all_by_timestamp")
-        response = self.client.get(url)
+    #     url = reverse("api:v1:hms_smoke:all_by_timestamp")
+    #     response = self.client.get(url)
         
-        assert response.status_code == 200
-        assert len(response.json()["data"])==5
-        assert response.json()["data"][0]['id'] ==str(self.smoke3.id)
+    #     assert response.status_code == 200
+    #     assert len(response.json()["data"])==5
+    #     assert response.json()["data"][0]['id'] ==str(self.smoke3.id)
     
     
 
 #THESE TESTS ARE TIME SENSITIVE, IF TOO CLOSE TO 00:00 UTC TESTS WILL FAIL
-class Test_TimeFilterQuery(TestCase):
+# class Test_TimeFilterQuery(TestCase):
     
-    def setUp(self):
-        self.smoke1 = CreateSmokeObjects("Light", -1, 1)
-        self.smoke2 = CreateSmokeObjects("MEDIUM", -1, -1)
-        self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
-        self.smoke4 = CreateSmokeObjects("MEDIUM", -1, 1)
-        self.smoke5 = CreateSmokeObjects("Heavy", -1, 1)
+#     def setUp(self):
+#         self.smoke1 = CreateSmokeObjects("Light", -1, 1)
+#         self.smoke2 = CreateSmokeObjects("MEDIUM", -1, -1)
+#         self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
+#         self.smoke4 = CreateSmokeObjects("MEDIUM", -1, 1)
+#         self.smoke5 = CreateSmokeObjects("Heavy", -1, 1)
     
-    #returns everything but smoke 3, it queries any smokes active in the range of -2 hr to -1 hr from current. 
-    #So any smoke with -1 as its start value, because this is -2hrs before current, 1 would be -1 hr from current
-    def test1_TimeFilterQuery(self):
+#     #returns everything but smoke 3, it queries any smokes active in the range of -2 hr to -1 hr from current. 
+#     #So any smoke with -1 as its start value, because this is -2hrs before current, 1 would be -1 hr from current
+#     def test1_TimeFilterQuery(self):
         
-        url = reverse("api:v1:hms_smoke:start_end_filter")
-        startTime = currentTime() - timedelta(hours=2)
-        endTime = currentTime() - timedelta(hours=1)
-        startTime = startTime.strftime("%H%M")
-        endTime = endTime.strftime("%H%M")
-        url+= f"?start={startTime}&end={endTime}"
+#         url = reverse("api:v1:hms_smoke:start_end_filter")
+#         startTime = timezone.now() - timedelta(hours=2)
+#         endTime = timezone.now() - timedelta(hours=1)
+#         startTime = startTime.strftime("%H%M")
+#         endTime = endTime.strftime("%H%M")
+#         url+= f"?start={startTime}&end={endTime}"
         
-        response = self.client.get(url)
-        assert response.status_code == 200
-        assert len(response.json()["data"]) == 4
-        for feature in response.json()["data"]:
-            if feature["id"] == str(self.smoke3.id):
-                assert 1==2
+#         response = self.client.get(url)
+#         assert response.status_code == 200
+#         assert len(response.json()["data"]) == 4
+#         for feature in response.json()["data"]:
+#             if feature["id"] == str(self.smoke3.id):
+#                 assert 1==2
         
-    #Returns Everything but smoke 2, it queries any smokes active in the range of +1 hr to +2 hr from current. 
-    #so, any value with end value as 1 will return 
-    def test2_TimeFilterQuery(self):
-        url = reverse("api:v1:hms_smoke:start_end_filter")
-        startTime = currentTime() + timedelta(hours=1)
-        endTime = currentTime() + timedelta(hours=2)
-        startTime = startTime.strftime("%H%M")
-        endTime = endTime.strftime("%H%M")
-        url+= f"?start={startTime}&end={endTime}"
+#     #Returns Everything but smoke 2, it queries any smokes active in the range of +1 hr to +2 hr from current. 
+#     #so, any value with end value as 1 will return 
+#     def test2_TimeFilterQuery(self):
+#         url = reverse("api:v1:hms_smoke:start_end_filter")
+#         startTime = timezone.now() + timedelta(hours=1)
+#         endTime = timezone.now() + timedelta(hours=2)
+#         startTime = startTime.strftime("%H%M")
+#         endTime = endTime.strftime("%H%M")
+#         url+= f"?start={startTime}&end={endTime}"
         
-        response = self.client.get(url)
-        assert response.status_code == 200
-        assert len(response.json()["data"]) == 4
-        for feature in response.json()["data"]:
-            if feature["id"] == str(self.smoke2.id):
-                assert 1==2
+#         response = self.client.get(url)
+#         assert response.status_code == 200
+#         assert len(response.json()["data"]) == 4
+#         for feature in response.json()["data"]:
+#             if feature["id"] == str(self.smoke2.id):
+#                 assert 1==2
 
-    #Returns only smoke1 because it is changes to extend the duration so it occurs longer for a later time query.
-    def test3_TimeFilterQuery(self):
-        url = reverse("api:v1:hms_smoke:start_end_filter")
-        startTime = currentTime() + timedelta(hours=2, minutes =1)
-        endTime = currentTime() + timedelta(hours=2, minutes=3)
-        startTime = startTime.strftime("%H%M")
-        endTime = endTime.strftime("%H%M")
-        url+= f"?start={startTime}&end={endTime}"
+#     #Returns only smoke1 because it is changes to extend the duration so it occurs longer for a later time query.
+#     def test3_TimeFilterQuery(self):
+#         url = reverse("api:v1:hms_smoke:start_end_filter")
+#         startTime = timezone.now() + timedelta(hours=2, minutes =1)
+#         endTime = timezone.now() + timedelta(hours=2, minutes=3)
+#         startTime = startTime.strftime("%H%M")
+#         endTime = endTime.strftime("%H%M")
+#         url+= f"?start={startTime}&end={endTime}"
         
-        self.smoke1.end = currentTime() + timedelta(hours=3)
-        self.smoke1.save()
+#         self.smoke1.end = timezone.now() + timedelta(hours=3)
+#         self.smoke1.save()
         
-        response = self.client.get(url)
-        assert response.status_code == 200
-        assert len(response.json()["data"]) == 1
-        assert response.json()["data"][0]['id'] == str(self.smoke1.id)   
+#         response = self.client.get(url)
+#         assert response.status_code == 200
+#         assert len(response.json()["data"]) == 1
+#         assert response.json()["data"][0]['id'] == str(self.smoke1.id)   
         
         
-    #will return 0 smoke objects, added 1 minute to start + 2 hrs because if end is gte start then it will trigger, and end is +2hrs from current
-    def test4_TimeFilterQuery(self):
-        url = reverse("api:v1:hms_smoke:start_end_filter")
-        startTime = currentTime() + timedelta(hours=2, minutes =1)
-        endTime = currentTime() + timedelta(hours=2, minutes=3)
-        startTime = startTime.strftime("%H%M")
-        endTime = endTime.strftime("%H%M")
-        url+= f"?start={startTime}&end={endTime}"
+#     #will return 0 smoke objects, added 1 minute to start + 2 hrs because if end is gte start then it will trigger, and end is +2hrs from current
+#     def test4_TimeFilterQuery(self):
+#         url = reverse("api:v1:hms_smoke:start_end_filter")
+#         startTime = timezone.now() + timedelta(hours=2, minutes =1)
+#         endTime = timezone.now() + timedelta(hours=2, minutes=3)
+#         startTime = startTime.strftime("%H%M")
+#         endTime = endTime.strftime("%H%M")
+#         url+= f"?start={startTime}&end={endTime}"
             
-        response = self.client.get(url)
-        assert response.status_code == 200
-        assert len(response.json()["data"]) == 0
+#         response = self.client.get(url)
+#         assert response.status_code == 200
+#         assert len(response.json()["data"]) == 0
 
 
 
 class FetchFilesTaskTest(TestCase):
     def test_fetch_files_triggers_file_download(self):
         from ....apps.integrate.hms_smoke.tasks import fetch_files
-        fetch_files()
+        fetch_files(timezone.now())
     def test_to_db(self):
         from ....apps.integrate.hms_smoke.services.data import to_db
         polygon_wkt = (

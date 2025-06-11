@@ -10,7 +10,7 @@ from .serializers import SmokeSerializer
 from .filters import SmokeFilter
 from django.utils import timezone
 from datetime import timedelta
-
+from django.db.models import Max
 
 class SmokeMixin:
     model = Smoke
@@ -20,17 +20,21 @@ class SmokeList(SmokeMixin, generics.ListEndpoint):
     filter_class = SmokeFilter
 
 class SmokeDetail(SmokeMixin, generics.DetailEndpoint):
-    lookup_field = 'pk'
-    lookup_url_kwarg = 'pk'
+    lookup_field = 'id'
+    lookup_url_kwarg = 'smoke_id'
 
-class SmokeListOngoing(SmokeMixin, generics.ListCreateEndpoint):
+class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
     filter_class = SmokeFilter
     
     def get_queryset(self):
-        prev_query = timezone.now() - timedelta(minutes=59, seconds=59)
-        curr_time = timezone.now()
         queryset = super().get_queryset()
-        queryset = queryset.filter(start__lte=curr_time, end__gte=curr_time, created__gte=prev_query)
+        #prev_query = timezone.now() - timedelta(minutes=59, seconds=59)
+        curr_time = timezone.now()
+        print("CURR: ",curr_time)
+        #print("PREV: ",prev_query)
+        latest_max = Smoke.objects.aggregate(Max('created'))['created__max']
+        
+        queryset = queryset.filter(start__lte=curr_time, end__gte=curr_time, created=latest_max)
         return queryset
         
 
