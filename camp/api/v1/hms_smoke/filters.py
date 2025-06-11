@@ -22,6 +22,6 @@ class SmokeFilter(FilterSet):
             ],
             'satellite': [
                 'iexact',
-                'exact',
+                'exact'
             ],
         }
