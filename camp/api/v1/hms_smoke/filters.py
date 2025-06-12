@@ -4,12 +4,13 @@ from camp.apps.integrate.hms_smoke.models import Smoke
 
 
 class SmokeFilter(FilterSet):
-    
+
     class Meta: 
         model = Smoke
         fields = {
             'density': [
                 'iexact',
+                'exact',
             ],
             'start':[
                 'exact',
