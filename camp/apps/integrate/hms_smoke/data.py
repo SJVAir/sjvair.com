@@ -30,8 +30,7 @@ def get_smoke_file(date):
         FileNotFoundError: If the expected shapefile is not found after extraction.
     
     """
-    try:
-       
+    try: 
         #Construct download url for NOAA Smoke shapefile 
         base_url = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
         final_url = (
@@ -39,7 +38,6 @@ def get_smoke_file(date):
             f"{date.strftime('%m')}/"
             f"hms_smoke{date.strftime('%Y%m%d')}.zip"
             )
-        
         print("HMS Smoke - Downloading from URL:", final_url)
         
         response = requests.get(final_url)
@@ -55,6 +53,7 @@ def get_smoke_file(date):
         print("HMS Smoke - Data extraction successful")
     except Exception as e:
         print("HMS Smoke - Error with data retrieval.")
+        print("Exception: ", e)
             
             
 #Save GeoDataFrame as an object
@@ -66,26 +65,21 @@ def to_db(curr):
     Args:
         curr (geoDF): this is one row of the geoPandasDF recovered using .iloc[]
     """
-    try:
-        #If the county is not within the SJV return it does not need to be added
-        if not County.in_SJV(curr.geometry):
-            return
-        geometry=GEOSGeometry(curr.geometry.wkt, srid=4326)
-        start = str_to_time(curr.Start)
-        end = str_to_time(curr.End)
-        if curr.Density.lower().strip() not in Density.values:
-            curr.Density = Density.LIGHT
-            
-        Smoke.objects.create(
-            density=curr.Density.lower(),
-            start=start,
-            end=end,
-            satellite=curr.Satellite,
-            geometry=geometry,
-            )
+    #If the county is not within the SJV return it does not need to be added
+    if not County.in_SJV(curr.geometry):
+        return
+    geometry=GEOSGeometry(curr.geometry.wkt, srid=4326)
+    start = str_to_time(curr.Start)
+    end = str_to_time(curr.End)
+    if curr.Density.lower().strip() not in Density.values:
+        curr.Density = Density.LIGHT
         
-    except Exception as e:
-        print("Exception: ", e)
-        raise
-    
+    Smoke.objects.create(
+        density=curr.Density.lower(),
+        start=start,
+        end=end,
+        satellite=curr.Satellite,
+        geometry=geometry,
+        )
+
     
