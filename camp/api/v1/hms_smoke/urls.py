@@ -1,4 +1,5 @@
 from django.urls import path
+
 from . import endpoints
 
 app_name = "hms_smoke"

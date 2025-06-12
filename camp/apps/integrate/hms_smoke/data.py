@@ -1,18 +1,22 @@
-import requests, zipfile, io, tempfile
+from datetime import datetime
 import geopandas as gpd
+import io
+import requests
+import tempfile
+import zipfile
+
 from django.contrib.gis.geos import GEOSGeometry
+from django.utils.timezone import make_aware
+
+from .models import Density
 from .models import Smoke
 from camp.utils.counties import County
-from .models import Density
-from django.utils.timezone import make_aware
-from datetime import datetime
 
 
 def str_to_time(string):
     time = datetime.strptime(string, '%Y%j %H%M')
     return make_aware(time)
     
-
 
 def get_smoke_file(date):
     """
@@ -29,16 +33,16 @@ def get_smoke_file(date):
     try:
        
         #Construct download url for NOAA Smoke shapefile 
-        baseUrl = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
-        finalUrl = (
-            f"{baseUrl}{date.year}/"
+        base_url = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
+        final_url = (
+            f"{base_url}{date.year}/"
             f"{date.strftime('%m')}/"
             f"hms_smoke{date.strftime('%Y%m%d')}.zip"
             )
         
-        print("HMS Smoke - Downloading from URL:", finalUrl)
+        print("HMS Smoke - Downloading from URL:", final_url)
         
-        response = requests.get(finalUrl)
+        response = requests.get(final_url)
         if response.status_code != 200:
             print("HMS Smoke - Download failed with status:", response.status_code)
             response.raise_for_status()
@@ -70,11 +74,11 @@ def to_db(curr):
         start = str_to_time(curr.Start)
         end = str_to_time(curr.End)
         
-        if curr.Density not in Density.values:
+        if curr.Density.lower() not in Density.values:
             curr.Density = Density.LIGHT
             
         Smoke.objects.create(
-            density=curr.Density,
+            density=curr.Density.lower(),
             start=start,
             end=end,
             satellite=curr.Satellite,

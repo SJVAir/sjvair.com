@@ -1,11 +1,13 @@
+import geopandas as gpd
+from datetime import timedelta
+
+from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase
 from django.urls import reverse
-from ....apps.integrate.hms_smoke.models import Smoke
-from datetime import timedelta
-from django.contrib.gis.geos import GEOSGeometry
-from shapely.wkt import loads as load_wkt
-import geopandas as gpd
 from django.utils import timezone
+from shapely.wkt import loads as load_wkt
+
+from camp.apps.integrate.hms_smoke.models import Smoke
 
 
 #create test objects here
@@ -69,52 +71,44 @@ class Tests_O(TestCase):
         self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
         
     def test1_SmokeView(self):
-        print("ID: ",self.smoke1.id, type(self.smoke1.id))
+        print("SMOKE2 DENSITY:", self.smoke2.density)
         self.smoke1.satellite = "TestSatellite1"
         self.smoke1.save()
         url = reverse("api:v1:hms_smoke:smoke-list")
         url_with_params = f"{url}?satellite=TestSatellite1"
         
         response = self.client.get(url_with_params)
-        #print("RESPONSE:", response.status_code, response.content)
         
         assert response.status_code == 200
         assert len(response.json()["data"])==1
         assert response.json()["data"][0]['id'] == str(self.smoke1.id)
 
     def test2_SmokeView(self):
-        print("ID: ",self.smoke1.id, type(self.smoke1.id))
         url = reverse("api:v1:hms_smoke:smoke-list")
         time = timezone.now().strftime('%Y-%m-%dT%H:%M:%S')
         url_with_params = f"{url}?start__gte={time}"
         
         response = self.client.get(url_with_params)
-        #print("RESPONSE:", response.status_code, response.content)
         
         assert response.status_code == 200
         assert len(response.json()["data"])==1
         assert response.json()["data"][0]['id'] == str(self.smoke3.id)
     def test3_SmokeView(self):
-        print("ID: ",self.smoke1.id, type(self.smoke1.id))
         url = reverse("api:v1:hms_smoke:smoke-list")
         url_with_params = f"{url}?density__iexact=light"
         
         response = self.client.get(url_with_params)
-        #print("RESPONSE:", response.status_code, response.content)
-        
+       
         assert response.status_code == 200
         assert len(response.json()["data"])==1
         assert response.json()["data"][0]['id'] == str(self.smoke1.id)
 
     def test4_SmokeView(self):
-        print("ID: ",self.smoke1.id, type(self.smoke1.id))
         url = reverse("api:v1:hms_smoke:smoke-list")
-        #time = timezone.now() + timedelta(hours=2)
         time = self.smoke2.end.strftime('%Y-%m-%dT%H:%M:%S:%f')
         url_with_params = f"{url}?end={time}"
         
         response = self.client.get(url_with_params)
-        print("RESPONSE:", response.status_code, response.content)
         
         assert response.status_code == 200
         assert len(response.json()["data"])==1
@@ -147,7 +141,6 @@ class Tests_OngoingSmokeView(TestCase):
         self.smoke3 = CreateSmokeObjects("Heavy", 1, 1)
         
     def test_OngoingSmokeView(self):
-        print("ID: ",self.smoke1.id, type(self.smoke1.id))
         url = reverse("api:v1:hms_smoke:smoke-ongoing")
         response = self.client.get(url)
         
@@ -203,7 +196,6 @@ class Tests_OngoingSmokeDensityView(TestCase):
         self.smoke4.end = timezone.now() + timedelta(hours=3)
         self.smoke4.save()
         response = self.client.get(url_with_params)
-        print("RESPONSE:", response.status_code, response.content)
         
         assert response.status_code == 200
         assert len(response.json()["data"])==1
