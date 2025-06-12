@@ -1,5 +1,5 @@
-from django.db import models
 from django.contrib.gis.db import models as gis_models
+from django.db import models
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils.models import TimeStampedModel
 
@@ -32,3 +32,12 @@ class Smoke(TimeStampedModel):
     end = models.DateTimeField(null=True) 
     density = models.CharField(max_length=10, choices=Density.choices, default=Density.LIGHT)
     geometry = gis_models.GeometryField(srid=4326)
+    
+    #default save and lower any density inputs for comparison
+    
+    def save(self, *args, **kwargs):
+        if self.density:
+            self.density = self.density.lower()
+            if self.density not in Density.values:
+                self.density = Density.LIGHT
+        super().save(*args, **kwargs)
