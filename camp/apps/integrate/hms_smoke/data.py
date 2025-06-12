@@ -73,8 +73,7 @@ def to_db(curr):
         geometry=GEOSGeometry(curr.geometry.wkt, srid=4326)
         start = str_to_time(curr.Start)
         end = str_to_time(curr.End)
-        
-        if curr.Density.lower() not in Density.values:
+        if curr.Density.lower().strip() not in Density.values:
             curr.Density = Density.LIGHT
             
         Smoke.objects.create(
@@ -84,6 +83,7 @@ def to_db(curr):
             satellite=curr.Satellite,
             geometry=geometry,
             )
+        
     except Exception as e:
         print("Exception: ", e)
         raise
