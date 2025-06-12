@@ -281,9 +281,9 @@ class FetchFilesTaskTest(TestCase):
         Tests gathering data for todays date (use -s to check print statements)
     test_get_smoke_file:
         Tests getting the smoke file, which is the function in the fetch files (just in case logic is needed in fetch files)
-    test_to_db1:
+    test_to_db_SJV:
         valid object, should add
-    test_to_db2:
+    test_to_db_notSJV:
         bad data, polygon not in SJV should return 
 
     """
@@ -293,7 +293,7 @@ class FetchFilesTaskTest(TestCase):
     def test_get_smoke_file(self):
         get_smoke_file(timezone.now()-timedelta(days=1))
         
-    def test_to_db1(self):
+    def test_to_db_SJV(self):
         polygon_wkt = (
                         "POLYGON(("
                         "-119.860839 36.660399, "
