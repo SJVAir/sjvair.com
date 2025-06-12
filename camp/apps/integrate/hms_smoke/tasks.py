@@ -8,7 +8,9 @@ from .data import get_smoke_file
     Function will retrieve the zip from HMS NOAA system, and unzip/save new objects
 """
 
-@db_periodic_task(crontab(minute='0', hour='9-12,15-23'), priority=50)
+#Query every hour from hours 1am-3am and  8am-4pm
+#NOAA data is available from 8-9am to 2-3am the next day PST
+@db_periodic_task(crontab(minute='0', hour='8-10,15-23'), priority=50)
 def fetch_files():
     get_smoke_file(timezone.now())
     
