@@ -16,6 +16,41 @@ class ProcessorTests(TestCase):
     def setUp(self):
         self.monitor = PurpleAir.objects.get(purple_id=8892)
 
+    def test_processor_equality_and_string_repr(self):
+        proc_class = processors.PM25_UnivariateLinearRegression
+        proc_name = 'PM25_UnivariateLinearRegression'
+
+        assert str(proc_class) == proc_name == proc_class.name
+        assert proc_class == proc_name
+        assert proc_class == proc_class
+        assert proc_class != 'SomeOtherProcessor'
+
+    def test_processor_filtering_by_class(self):
+        now = timezone.now()
+        pm25_entry = entry_models.PM25.objects.create(
+            monitor=self.monitor,
+            timestamp=now,
+            value=Decimal('12.5'),
+            stage=entry_models.PM25.Stage.CALIBRATED,
+            processor=processors.PM25_UnivariateLinearRegression
+        )
+
+        pm25_entry.refresh_from_db()
+        assert pm25_entry.processor == processors.PM25_UnivariateLinearRegression
+        assert pm25_entry.processor == processors.PM25_UnivariateLinearRegression.name
+
+        result = entry_models.PM25.objects.filter(
+            stage=entry_models.PM25.Stage.CALIBRATED,
+            processor=processors.PM25_UnivariateLinearRegression
+        )
+        assert pm25_entry in result
+
+        empty = entry_models.PM25.objects.filter(
+            processor=processors.PM25_EPA_Oct2021
+        )
+        assert empty.exists() == False
+
+
     def test_pm25_lcs_cleaning(self):
         base_time = timezone.now() - timedelta(hours=1)
 

@@ -30,7 +30,7 @@ class LinearExpressionProcessor(BaseProcessor):
         if self.calibration is None:
             return
 
-        if self.entry.value < self.min_required_value:
+        if self.entry.value <= self.min_required_value:
             return self.entry.value
 
         if self.calibration:
