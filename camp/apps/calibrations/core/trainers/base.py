@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 
 from django.utils import timezone
 
@@ -6,7 +6,19 @@ from camp.apps.calibrations.models import Calibration
 from camp.utils import classproperty
 
 
-class BaseTrainer(ABC):
+class TrainerMeta(ABCMeta):
+    def __str__(cls):
+        return cls.name
+
+    def __eq__(cls, other):
+        if isinstance(other, str):
+            return cls.name == other
+        if isinstance(other, TrainerMeta):
+            return cls.name == other.name
+        return False
+
+
+class BaseTrainer(ABC, metaclass=TrainerMeta):
     entry_model = None
     features = []
     target = ''
@@ -14,6 +26,9 @@ class BaseTrainer(ABC):
     def __init__(self, pair, end_time=None):
         self.pair = pair
         self.end_time = end_time or timezone.now()
+
+    def __str__(self):
+        return self.name
 
     @classproperty
     def name(cls):

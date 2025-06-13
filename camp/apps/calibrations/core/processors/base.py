@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 
 from django.utils.functional import cached_property
 
@@ -8,7 +8,19 @@ from camp.utils import classproperty
 __all__ = ['BaseProcessor']
 
 
-class BaseProcessor(ABC):
+class ProcessorMeta(ABCMeta):
+    def __str__(cls):
+        return cls.name
+
+    def __eq__(cls, other):
+        if isinstance(other, str):
+            return cls.name == other
+        if isinstance(other, ProcessorMeta):
+            return cls.name == other.name
+        return False
+
+
+class BaseProcessor(ABC, metaclass=ProcessorMeta):
     '''
     Abstract base class for entry processing operations, such as cleaning or calibration.
     Subclasses should implement the `process()` method to return a new BaseEntry instance.
@@ -27,6 +39,9 @@ class BaseProcessor(ABC):
             )
 
         self.entry = entry
+
+    def __str__(self):
+        return self.name
 
     @classproperty
     def name(cls):
