@@ -131,7 +131,7 @@ class EndpointTests(TestCase):
         }
 
         # Create the initial entry
-        entry = monitor.create_entry(payload)
+        entry = monitor.create_entry_legacy(payload)
 
         # Now call the API with the same payload and verify that it fails.
         url = reverse('api:v1:monitors:entry-list', kwargs={'monitor_id': monitor.pk})
