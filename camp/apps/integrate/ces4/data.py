@@ -1,8 +1,7 @@
-from ..models import CalEnviro
+from .models import CalEnviro
 import geopandas as gpd
 import os
 from django.conf import settings
-from .helpers import *
 from datetime import datetime, timezone
 
 def CalEnviroToDB():
@@ -33,17 +32,17 @@ def processDF(geo):
         currDict= {}    
         for i in items:
             try:
-                if not is_number(curr[i]):
-                    raise KeyError
                 currDict[i] = float(curr[i])
-            except KeyError:
+            except Exception:
                 currDict[i] = None
         timestamp = datetime.now(timezone.utc)        
         
-        newobj = CalEnviro.objects.create(OBJECTID=int(currDict['OBJECTID']), timestamp = timestamp,tract=currDict['tract'],ACS2019Tot = currDict['ACS2019Tot'] ,
-                                         CIscore = currDict['CIscore'], CIscoreP= currDict['CIscoreP'], ozone= currDict['ozone'], ozoneP= currDict['ozoneP'],
-                                        pm = currDict['pm'] ,pmP = currDict['pmP'],diesel = currDict['diesel'], dieselP= currDict['dieselP'], pest= currDict['pest'],
-                                        pestP= currDict['pestP'], RSEIhaz= currDict['RSEIhaz'], RSEIhazP= currDict['RSEIhazP'], asthma= currDict['asthma'], asthmaP= currDict['asthmaP'], geometry=curr['geometry'])
+        newobj = CalEnviro.objects.create(
+            OBJECTID=int(currDict['OBJECTID']), timestamp = timestamp,tract=currDict['tract'],ACS2019Tot = currDict['ACS2019Tot'] ,
+            CIscore = currDict['CIscore'], CIscoreP= currDict['CIscoreP'], ozone= currDict['ozone'], ozoneP= currDict['ozoneP'],
+            pm = currDict['pm'] ,pmP = currDict['pmP'],diesel = currDict['diesel'], dieselP= currDict['dieselP'], pest= currDict['pest'],
+            pestP= currDict['pestP'], RSEIhaz= currDict['RSEIhaz'], RSEIhazP= currDict['RSEIhazP'], asthma= currDict['asthma'], asthmaP= currDict['asthmaP'], geometry=curr['geometry']
+        )
     
         newobj.save()  
                 

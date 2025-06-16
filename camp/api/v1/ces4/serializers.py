@@ -1,9 +1,7 @@
 from resticus import serializers
 
 
-
-
-class Cal_Enviro_Screen_4_ALL_Serializer(serializers.Serializer):
+class Ces4_Serializer(serializers.Serializer):
     fields = ('OBJECTID', 'timestamp','tract','ACS2019Tot',
               'CIscore','CIscoreP',
               'ozone','ozoneP',
@@ -12,6 +10,9 @@ class Cal_Enviro_Screen_4_ALL_Serializer(serializers.Serializer):
               'pest','pestP',
               'RSEIhaz','RSEIhazP',
               'asthma','asthmaP',
+              'cvd', 'cvdP',
+              'Pollution', 'PollutionP',
+              'county', 'created'
             ('geometry')
     )
 
