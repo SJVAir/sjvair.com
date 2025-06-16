@@ -2,7 +2,7 @@ from resticus import serializers
 
 
 class Ces4_Serializer(serializers.Serializer):
-    fields = ('OBJECTID', 'timestamp','tract','ACS2019Tot',
+    fields = ('OBJECTID', 'tract','ACS2019Tot',
               'CIscore','CIscoreP',
               'ozone','ozoneP',
               'pm','pmP',
@@ -11,8 +11,8 @@ class Ces4_Serializer(serializers.Serializer):
               'RSEIhaz','RSEIhazP',
               'asthma','asthmaP',
               'cvd', 'cvdP',
-              'Pollution', 'PollutionP',
-              'county', 'created'
-            ('geometry')
+              'pollution', 'pollutionP',
+              'county', 'created',
+            ('geometry'),
     )
 
