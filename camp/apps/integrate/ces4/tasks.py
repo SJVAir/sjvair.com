@@ -1,14 +1,10 @@
-
-#Single task to process shape files into the db
-#huey db_task?
-#create the functions in services.data then import
 from django_huey import db_task
-from .data import CalEnviroToDB
+from .data import Ces4Processing
 
 
 @db_task()
 def CalEnviroScreen4Load():
-    CalEnviroToDB()
+    Ces4Processing.ces4_request_db()
 
   
 

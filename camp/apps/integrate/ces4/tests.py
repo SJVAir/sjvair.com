@@ -1,13 +1,11 @@
-import geopandas as gpd
-
 from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase
 from django.urls import reverse
 from shapely.wkt import loads as load_wkt
 
 from camp.utils.counties import County
+from camp.apps.integrate.ces4.data import Ces4Processing
 from camp.apps.integrate.ces4.models import Ces4
-from camp.apps.integrate.ces4.data import ces4_request_db, ces4_to_db, process_df
 
 def create_test_ces4_obj(id, pm, pmP):
     polygon_wkt = (
@@ -37,17 +35,6 @@ def create_test_ces4_obj(id, pm, pmP):
         county=county, geometry=geometry,
         )
     
-
-
-
-class modelTest(TestCase):
-    def test1(self):
-        geo = gpd.read_file('/vagrant/camp/apps/integrate/ces4/ces4_shp/CalEnviroScreen_4.0_Results.shp')
-        for i in range(len(geo)):
-            for col, val in geo.iloc[i].items():
-                print(f"{col}: {val}") 
-            break
-
 
 class Tests_CES4List(TestCase):
     """
@@ -117,7 +104,6 @@ class Tests_CES4Detail(TestCase):
         assert response.status_code == 404
 
 
-
 class Tests_CES4_Miscellaneous(TestCase):
     """
     inSJV - tests if fresno + tulare polygons are returned with the respective names + not false 
@@ -126,6 +112,7 @@ class Tests_CES4_Miscellaneous(TestCase):
     #     self.ces4_1 = create_test_ces4_obj(1,.1,.1)
         
     def test_inSJV(self):
+        self.ces4_1 = create_test_ces4_obj(1,.1,.1)
         #Test to make sure this function returns Fresno
         shapely_country = load_wkt(self.ces4_1.geometry.wkt)
         county_check = County.in_SJV(shapely_country)
@@ -141,19 +128,38 @@ class Tests_CES4_Miscellaneous(TestCase):
         assert county_check2 == 'Tulare'
     
     def test_static_to_db(self):
-        ces4_to_db()
-        ces = Ces4.objects.first()
-        print(ces.OBJECTID)
-        print(ces.county)
-        count = Ces4.objects.count()
-        print("COUNT: ", count)
+        Ces4Processing.ces4_to_db()
+        count_check = {
+            'fresno': 199,
+            'tulare': 78,
+            'kings': 27,
+            'kern': 151,
+            'san joaquin': 139,
+            'stanislaus': 94,
+            'merced': 49,
+            'madera': 23,            
+        }
+        for county, count in count_check.items():
+            assert count == Ces4.objects.filter(county=county).count()
+        total = Ces4.objects.count()
+        assert 760 == total
         
         
     def test_request_to_db(self):
-        ces4_request_db()
-        ces = Ces4.objects.first()
-        print(ces)
+        Ces4Processing.ces4_request_db()
+        count_check = {
+            'fresno': 199,
+            'tulare': 78,
+            'kings': 27,
+            'kern': 151,
+            'san joaquin': 139,
+            'stanislaus': 94,
+            'merced': 49,
+            'madera': 23,            
+        }
+        for county, count in count_check.items():
+            assert count == Ces4.objects.filter(county=county).count()
+        total = Ces4.objects.count()
+        assert 760 == total
         
-    def test_process_df(self):
-        print("test")
     

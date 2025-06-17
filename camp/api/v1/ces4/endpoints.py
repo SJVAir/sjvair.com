@@ -1,17 +1,17 @@
 from resticus import generics
 
 from camp.apps.integrate.ces4.models import Ces4
-from .serializers import Ces4_Serializer
 from .filter import Ces4Filter
+from .serializers import Ces4_Serializer
 
-class ces4Mixin:
+class Ces4Mixin:
     model = Ces4
     serializer_class = Ces4_Serializer
 
-class Ces4List(ces4Mixin, generics.ListEndpoint):
+class Ces4List(Ces4Mixin, generics.ListEndpoint):
     filter_class = Ces4Filter
     
-class Ces4Detail(ces4Mixin, generics.DetailEndpoint):
+class Ces4Detail(Ces4Mixin, generics.DetailEndpoint):
     lookup_field = 'OBJECTID'
     lookup_url_kwarg = 'pk'
 

@@ -1,7 +1,5 @@
-from django.db import models
-
-from django_smalluuid.models import SmallUUIDField, uuid_default
 from django.contrib.gis.db import models as gis_models
+from django.db import models
 from model_utils.models import TimeStampedModel
 
 
@@ -15,8 +13,6 @@ class Counties(models.TextChoices):
     STANISLAUS = 'stanislaus', 'Stanislaus'
     TULARE = 'tulare', 'Tulare'
     
-
-
 
 class Ces4(TimeStampedModel):
     OBJECTID = models.IntegerField(primary_key=True)

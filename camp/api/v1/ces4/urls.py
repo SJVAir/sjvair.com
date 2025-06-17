@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .endpoints import Ces4List, Ces4Detail
+from .endpoints import Ces4Detail, Ces4List
 
 
 app_name = "ces4"
