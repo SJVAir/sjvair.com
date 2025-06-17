@@ -38,5 +38,5 @@ class County:
         for name, geometry in cls.counties.items():
             shapely_county = load_wkt(geometry.wkt)
             if shapely_county.intersects(geometry_shape):
-                return True
+                return name
         return default
