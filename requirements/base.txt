@@ -72,6 +72,7 @@ ua-parser==0.18.0
 Unipath==1.1
 whitenoise==6.5.0
 pyrsig==0.10.0
+netCDF4==1.7.2
 
 git+https://github.com/dmpayton/django-resticus@develop
 git+https://github.com/dmpayton/django-form-utils@django-3.x
