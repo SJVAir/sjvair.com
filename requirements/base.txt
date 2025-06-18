@@ -50,7 +50,7 @@ markdown-it-py[plugins]==3.0.0
 nameparser==1.1.2
 numpy==1.25.2
 optimize-images==1.5.1
-pandas==2.0.3
+pandas==2.3.0
 Pillow==10.3.0
 psutil==5.9.8
 psycopg2==2.9.3 --no-binary psycopg2
@@ -71,6 +71,7 @@ twilio==8.5.0
 ua-parser==0.18.0
 Unipath==1.1
 whitenoise==6.5.0
+pyrsig==0.10.0
 
 git+https://github.com/dmpayton/django-resticus@develop
 git+https://github.com/dmpayton/django-form-utils@django-3.x
