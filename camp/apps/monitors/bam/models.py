@@ -61,6 +61,10 @@ class BAM1022(Monitor):
             'default_stage': entry_models.PM25.Stage.CLEANED,
             'processors': {
                 entry_models.PM25.Stage.RAW: [processors.PM25_FEM_Cleaner]
+            },
+            'alerts': {
+                'stage': entry_models.PM25.Stage.CLEANED,
+                'processor': processors.PM25_FEM_Cleaner,
             }
         },
     }

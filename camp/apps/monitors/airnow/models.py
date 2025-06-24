@@ -35,6 +35,7 @@ class AirNow(Monitor):
             'fields': {'value': 'OZONE'},
             'allowed_stages': [entry_models.O3.Stage.RAW],
             'default_stage': entry_models.O3.Stage.RAW,
+            'alerts': {'stage': entry_models.O3.Stage.RAW}
         },
         entry_models.PM25: {
             'fields': {'value': 'PM2.5'},
@@ -45,6 +46,10 @@ class AirNow(Monitor):
             'default_stage': entry_models.PM25.Stage.CLEANED,
             'processors': {
                 entry_models.PM25.Stage.RAW: [processors.PM25_FEM_Cleaner]
+            },
+            'alerts': {
+                'stage': entry_models.PM25.Stage.CLEANED,
+                'processor': processors.PM25_FEM_Cleaner,
             }
         },
         entry_models.PM100: {

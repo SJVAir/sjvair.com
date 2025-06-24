@@ -1,6 +1,7 @@
 import enum
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from django.utils.translation import gettext_lazy as _
 
@@ -27,9 +28,10 @@ def _blend_hex(hex1, hex2, ratio):
 
 @dataclass(frozen=True, slots=True)
 class Lvl:
-    value: float
+    value: [float, Decimal]
     label: str
     color: str
+    guidance: [None, str] = None
 
     def __repr__(self):
         return f'Lvl({self.value}, {self.label!r}, {self.color})'
@@ -39,21 +41,56 @@ class Lvl:
 
 class AQLvlMeta(type):
     _levels = {
-        'VERY_HAZARDOUS': (_('Very Hazardous'), '#7e0023'),
-        'HAZARDOUS': (_('Hazardous'), '#7e0023'),
-        'VERY_UNHEALTHY': (_('Very Unhealthy'), '#ff0000'),
-        'UNHEALTHY': (_('Unhealthy'), '#ff7e00'),
-        'UNHEALTHY_SENSITIVE': (_('Unhealthy for Sensitive Groups'), '#ffff00'),
-        'MODERATE': (_('Moderate'), '#00e400'),
-        'GOOD': (_('Good'), '#00ccff'),
+        'VERY_HAZARDOUS': {
+            'label': _('Very Hazardous'),
+            'color': '#7e0023',
+            'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
+        },
+        'HAZARDOUS': {
+            'label': _('Hazardous'),
+            'color': '#7e0023',
+            'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
+        },
+        'VERY_UNHEALTHY': {
+            'label': _('Very Unhealthy'),
+            'color': '#ff0000',
+            'guidance': _('Everyone should avoid prolonged or heavy exertion.'),
+        },
+        'UNHEALTHY': {
+            'label': _('Unhealthy'),
+            'color': '#ff7e00',
+            'guidance': _('Everyone should reduce prolonged or heavy exertion.'),
+        },
+        'UNHEALTHY_SENSITIVE': {
+            'label': _('Unhealthy for Sensitive Groups'),
+            'color': '#ffff00',
+            'guidance': _('Sensitive groups should stay indoors and avoid outdoor activities.'),
+        },
+        'MODERATE': {
+            'label': _('Moderate'),
+            'color': '#00e400',
+            'guidance': _('Highly sensitive groups should stay indoors and avoid outdoor activities.'),
+        },
+        'GOOD': {
+            'label': _('Good'),
+            'color': '#00ccff',
+        },
     }
 
     def __getattr__(self, name):
         if name not in self._levels:
             raise AttributeError(f'{name} is not a valid AQ level')
 
-        label, color = self._levels[name]
-        return lambda value: (name, Lvl(value, label, color))
+        meta = self._levels[name]
+        return lambda value, guidance=None: (
+            name,
+            Lvl(
+                value=value,
+                label=meta['label'],
+                color=meta['color'],
+                guidance=guidance or meta.get('guidance')
+            )
+        )
 
 
 class AQLvl(metaclass=AQLvlMeta):
@@ -110,7 +147,7 @@ class PollutantLevels(enum.Enum):
                 return lvl
 
     @classmethod
-    def as_dict(cls, include_range=True):
+    def as_dict(cls):
         levels = sorted(cls, key=lambda l: l.value)
         result = {}
 
@@ -121,7 +158,8 @@ class PollutantLevels(enum.Enum):
                 'name': level.name,
                 'label': level.label,
                 'color': level.color,
-                'range': (level.value, max_value)
+                'range': (level.value, max_value),
+                'guidance': level.guidance,
             }
 
         return result
