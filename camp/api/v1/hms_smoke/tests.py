@@ -12,7 +12,7 @@ from camp.apps.integrate.hms_smoke.models import Smoke, Density
 from camp.apps.integrate.hms_smoke.tasks import fetch_files
 from camp.utils.counties import County
 
-#create test objects here
+
 def create_smoke_objects(density, start, end):
     """
     create smoke objects for testing, use artificial geometry and a before/after 
@@ -38,11 +38,11 @@ def create_smoke_objects(density, start, end):
         "))"
     )
     geometry = GEOSGeometry(polygon_wkt, srid=4326)
-    if start ==-1:
+    if start == -1:
         start = timezone.now() - timedelta(hours=2)
     else:
         start = timezone.now() + timedelta(hours=1)
-    if end ==-1:
+    if end == -1:
         end = timezone.now() - timedelta(hours=1)
     else:
         end = timezone.now() + timedelta(hours=2)
@@ -55,10 +55,10 @@ def create_smoke_objects(density, start, end):
 class Tests_SmokeFilter(TestCase):
     """
     setUp - create objects for testing
-            smoke1- ongoing
+            smoke1 - ongoing
             smoke1 - light - default from not one of the choice values 
-            smoke2 = medium
-            smoke3 =heavy
+            smoke2 - medium
+            smoke3 - heavy
     test1 - query for satellite__exact = TestSatellite1, returns smoke1
     test2 - query for a start time gte the current time, returns smoke3
     test3 - query for density iexact = LIGHT, returns smoke1
@@ -79,7 +79,7 @@ class Tests_SmokeFilter(TestCase):
         response = self.client.get(url_with_params)
         
         assert response.status_code == 200
-        assert len(response.json()["data"])==1
+        assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]['id'] == str(self.smoke1.id)
         assert response.json()["data"][0]['density'] == Density.LIGHT.value
 
@@ -91,10 +91,9 @@ class Tests_SmokeFilter(TestCase):
         response = self.client.get(url_with_params)
         
         assert response.status_code == 200
-        assert len(response.json()["data"])==1
+        assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]['id'] == str(self.smoke3.id)
-        
-        
+               
     def test3_smoke_filter_view(self):
         url = reverse("api:v1:hms_smoke:smoke-list")
         url_with_params = f"{url}?density__iexact=LIGHT"
@@ -102,7 +101,7 @@ class Tests_SmokeFilter(TestCase):
         response = self.client.get(url_with_params)
        
         assert response.status_code == 200
-        assert len(response.json()["data"])==1
+        assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]['id'] == str(self.smoke1.id)
 
     def test4_smoke_filter_view(self):
@@ -113,7 +112,7 @@ class Tests_SmokeFilter(TestCase):
         response = self.client.get(url_with_params)
         
         assert response.status_code == 200
-        assert len(response.json()["data"])==1
+        assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]['id'] == str(self.smoke2.id)
     
     def test3_smoke_filter_view(self):
@@ -125,24 +124,22 @@ class Tests_SmokeFilter(TestCase):
         response = self.client.get(url_with_params)
        
         assert response.status_code == 200
-        assert len(response.json()["data"])==0
+        assert len(response.json()["data"]) == 0
         
 
 class Tests_OngoingSmoke(TestCase):
-    def setUp(self):
-        #ONLY SMOKE1 SHOULD RETURN 
-        """
+    """
     setUp - create objects for testing
-            smoke1- ongoing
-            smoke1 - light
-            smoke2 = medium
-            smoke3 =heavy
+            smoke1 - light, ongoing
+            smoke2 - medium
+            smoke3 - heavy
+            smoke4 - light, ongoing
     test1 - query for ongoing, which is only smoke 1, set smoke4 to previous query + ongoing so it won't return
     test2 - query for ongoing, add smoke2 to ongoing, returns smoke1 + 2
     test3 - query for ongoing, filtering for medium, returns smoke2
     test4 - query for ongoing, filtering for heavy, returns empty queryset
-    
-    """ 
+    """
+    def setUp(self): 
         self.smoke1 = create_smoke_objects("Light", -1, 1)
         self.smoke2 = create_smoke_objects("MEDIUM", -1, -1)
         self.smoke3 = create_smoke_objects("Heavy", 1, 1)
@@ -155,7 +152,7 @@ class Tests_OngoingSmoke(TestCase):
         url = reverse("api:v1:hms_smoke:smoke-ongoing")
         response = self.client.get(url)
         assert response.status_code == 200
-        assert len(response.json()["data"])==1
+        assert len(response.json()["data"]) == 1
         assert response.json()['data'][0]['density'].lower() == 'light'
         assert response.json()['data'][0]["id"] == str(self.smoke1.id)
         
@@ -167,7 +164,7 @@ class Tests_OngoingSmoke(TestCase):
         response = self.client.get(url)
          
         assert response.status_code == 200
-        assert len(response.json()["data"])==2
+        assert len(response.json()["data"]) == 2
         for feature in response.json()["data"]:
             if feature['density'].lower() == 'light':
                 assert feature["id"] == str(self.smoke1.id)
@@ -182,7 +179,7 @@ class Tests_OngoingSmoke(TestCase):
         final_url = f'{url}?density=medium'
         response = self.client.get(final_url)
         assert response.status_code == 200
-        assert len(response.json()["data"])==1
+        assert len(response.json()["data"]) == 1
         assert response.json()['data'][0]['density'] == 'medium'
         assert response.json()['data'][0]["id"] == str(self.smoke2.id)
         
@@ -191,17 +188,17 @@ class Tests_OngoingSmoke(TestCase):
         final_url = f'{url}?density=heavy'
         response = self.client.get(final_url)
         assert response.status_code == 200
-        assert len(response.json()["data"])==0                
+        assert len(response.json()["data"]) == 0                
        
         
 class Tests_DetailSmoke(TestCase):
     """
     setUp - create objects for testing
-            smoke1,4,5- ongoing
+            smoke1,4,5 - ongoing
             smoke1 - light
-            smoke2,4 = medium
-            smoke3,5 =heavy
-            smoke2,5 = before latest obs
+            smoke2,4 - medium
+            smoke3,5 - heavy
+            smoke2,5 - before latest obs
     test1 - query for smoke by small_uuid, specifically smoke 1
             only returned one object so not a list
     test2 - query for a small_uuid that doesnt exist, returns 404
@@ -230,21 +227,19 @@ class Tests_DetailSmoke(TestCase):
            
         
 class Tests_Miscellaneous(TestCase):
-    
     """
     setUp - create objects for testing
-        smoke1,4,5- ongoing
+        smoke1,4,5 - ongoing
         smoke1 - light
-        smoke2,4 = medium
-        smoke3,5 =heavy
-        smoke2,5 = before latest obs
+        smoke2,4 - medium
+        smoke3,5 - heavy
+        smoke2,5 - before latest obs
     
     test1 - not in SJV so should return false
     test2 - in SJV so should return true
     
     """
-    def setUp(self):
-        
+    def setUp(self):  
         self.smoke1 = create_smoke_objects("Light", -1, 1)
         self.smoke2 = create_smoke_objects("MEDIUM", -1, -1)
         self.smoke3 = create_smoke_objects("Heavy", 1, 1)
@@ -252,31 +247,28 @@ class Tests_Miscellaneous(TestCase):
         self.smoke5 = create_smoke_objects("Heavy", -1, 1)
       
     def test1_only_SJV_counties(self):
-        
         polygon_wkt = "POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))"
         geometry = load_wkt(polygon_wkt)
         #If the county is not within the SJV return it does not need to be added
         if not County.in_SJV(geometry):
-            assert 1==1
+            assert 1 == 1
         else:
-            assert 1==2
+            assert 1 == 2
         
     def test2_only_SJV_counties(self):
         #Smoke1 format is <class 'django.contrib.gis.geos.polygon.Polygon'>
         #SRID=4326;POLYGON ((-119.860839 36.660399, -119.860839 36.905755, -119.650879 36.905755, -119.650879 36.660399, -119.860839 36.660399))
-    
         #Need to convert to shapely to use shapely intersects(), so strip everything before polygon to get a proper str to load_wkt()
         geoStr = str(self.smoke1.geometry)[10:]
         if County.in_SJV(load_wkt(geoStr)):
-            assert 1==1
+            assert 1 == 1
         else: 
-            assert 1==2    
+            assert 1 == 2    
         
-
+        
 class FetchFilesTaskTest(TestCase):
     """
     These Tests should be monitored through print statements
-    
     test_fetch_files_triggers_file_download:
         Tests gathering data for todays date (use -s to check print statements)
     test_get_smoke_file:
@@ -285,7 +277,6 @@ class FetchFilesTaskTest(TestCase):
         valid object, should add
     test_to_db_notSJV:
         bad data, polygon not in SJV should return 
-
     """
     def test_fetch_files_triggers_file_download(self):
         fetch_files(timezone.now())
@@ -328,8 +319,4 @@ class FetchFilesTaskTest(TestCase):
                 }]
          input = gpd.GeoDataFrame(input)
          to_db(input.iloc[0])
-        
-
-        
-        
         
