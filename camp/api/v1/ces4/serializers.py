@@ -13,6 +13,5 @@ class Ces4_Serializer(serializers.Serializer):
               'cvd', 'cvdP',
               'pollution', 'pollutionP',
               'county', 'created',
-            ('geometry'),
+              'geometry',
     )
-

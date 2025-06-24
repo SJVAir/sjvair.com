@@ -2,8 +2,8 @@ from resticus.filters import FilterSet
 
 from camp.apps.integrate.ces4.models import Ces4
 
+
 class Ces4Filter(FilterSet):
-    
     class Meta:
         model = Ces4
         num_fields = dict.fromkeys(
@@ -29,5 +29,6 @@ class Ces4Filter(FilterSet):
                 'iexact', 'exact',
             ]
         }
+        
         fields = num_fields | county_field
         

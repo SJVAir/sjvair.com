@@ -7,6 +7,7 @@ from camp.utils.counties import County
 from camp.apps.integrate.ces4.data import Ces4Processing
 from camp.apps.integrate.ces4.models import Ces4
 
+
 def create_test_ces4_obj(id, pm, pmP):
     polygon_wkt = (
         "POLYGON(("
@@ -18,7 +19,6 @@ def create_test_ces4_obj(id, pm, pmP):
         "))"
     )
     geometry = GEOSGeometry(polygon_wkt, srid=4326)
-    
     county = County.in_SJV(load_wkt(geometry.wkt))
     
     return Ces4.objects.create(
@@ -35,7 +35,6 @@ def create_test_ces4_obj(id, pm, pmP):
         county=county, geometry=geometry,
         )
     
-
 class Tests_CES4List(TestCase):
     """
     test1 - get all data points, returns all 3 objects
@@ -43,7 +42,6 @@ class Tests_CES4List(TestCase):
     test3 - query all objects with pmP equal to .3, returns object 2
     test4 - query all objects with ozone gt 0, returns empty list
     """
-    
     def setUp(self):
         self.ces4_1 = create_test_ces4_obj(1, 2.1, .65)
         self.ces4_2 = create_test_ces4_obj(2, .89, .3)
@@ -108,9 +106,6 @@ class Tests_CES4_Miscellaneous(TestCase):
     """
     inSJV - tests if fresno + tulare polygons are returned with the respective names + not false 
     """
-    # def setUp(self):
-    #     self.ces4_1 = create_test_ces4_obj(1,.1,.1)
-        
     def test_inSJV(self):
         self.ces4_1 = create_test_ces4_obj(1,.1,.1)
         #Test to make sure this function returns Fresno
@@ -162,4 +157,3 @@ class Tests_CES4_Miscellaneous(TestCase):
         total = Ces4.objects.count()
         assert 760 == total
         
-    

@@ -13,20 +13,19 @@ from .models import Ces4
 class Ces4Processing:
     def county_mapping(geo):
         ca_fips = {
-            "019":"fresno",
-            "029":"kern",
-            "031": "Kings",
-            "039": "Madera",
-            "047": "Merced",
-            "077": "San Joaquin",
-            "099": "Stanislaus",
-            "107": "Tulare",
+            "019": "fresno",
+            "029": "kern",
+            "031": "kings",
+            "039": "madera",
+            "047": "merced",
+            "077": "san joaquin",
+            "099": "stanislaus",
+            "107": "tulare",
                 }
         geo['county_fips'] = geo['TractTXT'].str[1:4]
         geo['county_name'] = geo['county_fips'].map(ca_fips)
         geo = geo[geo['county_name'].notna()]
         return geo
-
 
     def ces4_to_db():
         data_path = os.path.join(settings.BASE_DIR,'camp', 'apps','integrate','ces4', 'ces4_shp', 'CalEnviroScreen_4.0_Results.shp')
@@ -34,8 +33,7 @@ class Ces4Processing:
         geo = geo.to_crs(epsg=4326)
         mapped_geo = Ces4Processing.county_mapping(geo)            
         Ces4Processing.process_df(mapped_geo)
-        
-        
+              
     def ces4_request_db():
         try: 
             url = 'https://gis.data.ca.gov/api/download/v1/items/b6e0a01c423b489f8d98af641445da28/shapefile?layers=0'
@@ -55,7 +53,6 @@ class Ces4Processing:
         except Exception as e:
             print(e)
             raise Exception("CES4 - Error with data retrieval.")
-
 
     def process_df(geo):
         for x in range(len(geo)):
@@ -82,5 +79,4 @@ class Ces4Processing:
                 pollution=curr_dict['Pollution'], pollutionP=curr_dict['PollutionP'], 
                 county=curr.county_name.lower(), geometry=geometry
             ) 
-                    
-                
+                          
