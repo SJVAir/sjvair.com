@@ -1,6 +1,5 @@
 
 from resticus import generics
-from datetime import timedelta
 
 from django.db.models import Max
 from django.utils import timezone
@@ -27,14 +26,12 @@ class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
         #Gets from the latest smoke data + ongoing smokes
         queryset = super().get_queryset()
         curr_time = timezone.now()
-        latest_max = Smoke.objects.aggregate(Max('created'))['created__max'] 
-        latest_range = latest_max - timedelta(minutes=1)    #latest smoke data added within a minute of the last data entry
+        latest_max = Smoke.objects.aggregate(Max('timestamp'))['timestamp__max'] 
         queryset = queryset.filter(
             start__lte=curr_time,
             end__gte=curr_time,
-            created__lte=latest_max,
-            created__gte=latest_range
-            ).order_by('-created')
+            timestamp=latest_max,
+            ).order_by('end')
         return queryset
 
 

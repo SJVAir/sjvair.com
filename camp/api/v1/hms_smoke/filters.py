@@ -23,7 +23,12 @@ class SmokeFilter(FilterSet):
             ],
             'satellite': [
                 'iexact',
-                'exact'
+                'exact',
+            ],
+            'timestamp': [
+                'exact',
+                'lt', 'lte',
+                'gt', 'gte',
             ],
         }
         
