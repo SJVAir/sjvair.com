@@ -3,7 +3,9 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
+from django.core.exceptions import FieldDoesNotExist
 from django.utils import timezone
+from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
@@ -110,7 +112,7 @@ class BaseEntry(models.Model):
     @classproperty
     def projection_fields(cls):
         core_fields = ['timestamp', 'sensor', 'stage', 'processor']
-        return core_fields + self.declared_field_names
+        return core_fields + cls.declared_field_names
 
     @classmethod
     def get_subclasses(cls):
@@ -123,6 +125,11 @@ class BaseEntry(models.Model):
 
         recurse(cls)
         return list(subclasses)
+
+    @cached_property
+    def level(self):
+        if self.Levels and getattr(self, 'value', None) is not None:
+            return self.Levels.get_level(self.value)
 
     @property
     def timestamp_pst(self):
@@ -312,6 +319,7 @@ class PM25(BaseEntry):
         max_digits=7, decimal_places=2,
         help_text=_('PM2.5 (µg/m³)'),
     )
+
 
 
 class Particulates(BaseEntry):

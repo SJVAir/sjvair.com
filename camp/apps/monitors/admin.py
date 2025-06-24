@@ -128,7 +128,6 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
         queryset = queryset.select_related('current_health')
-        queryset = queryset.prefetch_related('default_sensors')
         queryset = queryset.with_last_entry_timestamp()
         queryset = queryset.annotate(
             last_updated=F('last_entry_timestamp'),

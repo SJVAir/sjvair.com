@@ -76,6 +76,10 @@ class AirGradient(Monitor):
                     processors.PM25_MultivariateLinearRegression,
                     processors.PM25_EPA_Oct2021,
                 ],
+            },
+            'alerts': {
+                'stage': entry_models.PM25.Stage.CALIBRATED,
+                'processor': processors.PM25_UnivariateLinearRegression,
             }
         },
         entry_models.PM100: {

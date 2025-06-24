@@ -47,6 +47,8 @@ GUIDANCE = {
 }
 
 class Subscription(TimeStampedModel):
+    LEVELS = LEVELS # Legacy
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -65,13 +67,12 @@ class Subscription(TimeStampedModel):
         on_delete=models.CASCADE,
     )
 
-    entry_type = EntryTypeField()
     level = models.CharField(max_length=25)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['user', 'monitor', 'entry_type'],
+                fields=['user', 'monitor'],
                 name='user_subscriptions'
             )
         ]
@@ -79,22 +80,7 @@ class Subscription(TimeStampedModel):
         ordering = ['monitor__name']
 
     def __str__(self):
-        return f'{self.user_id} : {self.monitor_id} ({self.entry_type.label}) @ {self.level}'
-
-    @cached_property
-    def entry_model(self):
-        return EntryTypeField.get_model_map().get(self.entry_type)
-
-    def clean(self):
-        if not self.entry_model or not self.entry_model.Levels:
-            raise ValidationError('This entry type does not support alert levels.')
-
-        self.level = self.level.lower()
-        if self.entry_model.Levels.lookup(self.level) is None:
-            raise ValidationError(f'{self.level} is not a valid alert level for {self.entry_model.label}.')
-
-        if self.entry_model not in self.monitor.entry_types:
-            raise ValidationError(f'{self.monitor} does not support {self.entry_model.label}.')
+        return f'{self.user_id} : {self.monitor_id} @ {self.level}'
 
 
 class Alert(TimeStampedModel):
@@ -106,9 +92,13 @@ class Alert(TimeStampedModel):
         verbose_name='ID'
     )
 
+    monitor = models.ForeignKey('monitors.Monitor', related_name='alerts', on_delete=models.CASCADE)
+    entry_type = EntryTypeField()
+
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(blank=True, null=True)
-    monitor = models.ForeignKey('monitors.Monitor', related_name='alerts', on_delete=models.CASCADE)
+
+    # Deprecated
     pm25_average = models.DecimalField(max_digits=8, decimal_places=2, null=True)
     level = models.CharField(max_length=25, choices=LEVELS)
 
@@ -116,7 +106,11 @@ class Alert(TimeStampedModel):
         ordering = ['-start_time']
 
     def __str__(self):
-        return f'{self.monitor_id} : {self.get_level_display()}'
+        return f'{self.monitor_id} {self.entry_type.label}'
+
+    @cached_property
+    def entry_model(self):
+        return EntryTypeField.get_model_map().get(self.entry_type)
 
     def get_average(self, hours=1):
         end_time = timezone.now()
@@ -154,3 +148,22 @@ class Alert(TimeStampedModel):
 
         for subscription in queryset:
             subscription.user.send_sms(message)
+
+class AlertUpdate(TimeStampedModel):
+    alert = models.ForeignKey('alerts.Alert', related_name='updates', on_delete=models.CASCADE)
+    timestamp = models.DateTimeField()
+    level = models.CharField(max_length=25)
+    average = models.DecimalField(max_digits=8, decimal_places=2)
+
+    class Meta:
+        ordering = ['timestamp']
+
+    def __str__(self):
+        return f'{self.alert} @ {self.timestamp} => {self.level} ({self.average})'
+
+    def clean(self):
+        if not self.alert.entry_model or not self.alert.entry_model.Levels:
+            raise ValidationError('This alert entry type does not support alert levels.')
+
+        if self.alert.entry_model.Levels.lookup(self.level) is None:
+            raise ValidationError(f'{self.level} is not a valid alert level for {self.alert.entry_type.label}.')

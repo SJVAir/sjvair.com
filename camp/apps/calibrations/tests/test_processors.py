@@ -50,6 +50,24 @@ class ProcessorTests(TestCase):
         )
         assert empty.exists() == False
 
+    def test_processor_filter_via_entry_config_alerts(self):
+        now = timezone.now()
+
+        # import code
+        # code.interact(local=locals())
+
+        # Create a calibrated entry using the expected processor
+        entry = entry_models.PM25.objects.create(
+            monitor=self.monitor,
+            timestamp=now,
+            value=Decimal('35.2'),
+            stage=self.monitor.ENTRY_CONFIG[entry_models.PM25]['alerts']['stage'],
+            processor=self.monitor.ENTRY_CONFIG[entry_models.PM25]['alerts']['processor']
+        )
+
+        # Now use the alert config to filter for that entry
+        qs = entry_models.PM25.objects.filter(**self.monitor.ENTRY_CONFIG[entry_models.PM25]['alerts'])
+        assert entry in qs
 
     def test_pm25_lcs_cleaning(self):
         base_time = timezone.now() - timedelta(hours=1)
