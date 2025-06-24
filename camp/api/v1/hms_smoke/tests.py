@@ -6,9 +6,10 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from shapely.wkt import loads as load_wkt
+from django.core.exceptions import ValidationError
 
 from camp.apps.integrate.hms_smoke.data import get_smoke_file, to_db
-from camp.apps.integrate.hms_smoke.models import Smoke, Density
+from camp.apps.integrate.hms_smoke.models import Smoke
 from camp.apps.integrate.hms_smoke.tasks import fetch_files
 from camp.utils.counties import County
 
@@ -48,8 +49,12 @@ def create_smoke_objects(density, start, end):
         end = timezone.now() + timedelta(hours=2)
     
     satellite = "TestSatellite"
+    timestamp = timezone.now().replace(minute=0, second=0, microsecond=0)
+    smoke = Smoke(density=density.lower().strip(),end=end,start=start,satellite=satellite, geometry=geometry, timestamp=timestamp)
+    smoke.full_clean()
+    smoke.save()
+    return smoke
     
-    return Smoke.objects.create(density=density,end=end,start=start,satellite=satellite, geometry=geometry)
 
 
 class Tests_SmokeFilter(TestCase):
@@ -58,7 +63,7 @@ class Tests_SmokeFilter(TestCase):
             smoke1 - ongoing
             smoke1 - light - default from not one of the choice values 
             smoke2 - medium
-            smoke3 - heavy
+            smoke3 - 
     test1 - query for satellite__exact = TestSatellite1, returns smoke1
     test2 - query for a start time gte the current time, returns smoke3
     test3 - query for density iexact = LIGHT, returns smoke1
@@ -66,7 +71,7 @@ class Tests_SmokeFilter(TestCase):
     test5 - query for heavy, but remove heavy from smoke 3 - returns empty
     """
     def setUp(self):
-        self.smoke1 = create_smoke_objects("Light1", -1, 1) #This will default to 'light'
+        self.smoke1 = create_smoke_objects("Light", -1, 1) #This will default to 'light'
         self.smoke2 = create_smoke_objects("MEDIUM", -1, -1)
         self.smoke3 = create_smoke_objects("Heavy", 1, 1)
         
@@ -81,7 +86,7 @@ class Tests_SmokeFilter(TestCase):
         assert response.status_code == 200
         assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]['id'] == str(self.smoke1.id)
-        assert response.json()["data"][0]['density'] == Density.LIGHT.value
+        assert response.json()["data"][0]['density'] == 'light'
 
     def test2_smoke_filter_view(self):
         url = reverse("api:v1:hms_smoke:smoke-list")
@@ -101,6 +106,7 @@ class Tests_SmokeFilter(TestCase):
         response = self.client.get(url_with_params)
        
         assert response.status_code == 200
+        print(response.json())
         assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]['id'] == str(self.smoke1.id)
 
@@ -145,7 +151,7 @@ class Tests_OngoingSmoke(TestCase):
         self.smoke3 = create_smoke_objects("Heavy", 1, 1)
         self.smoke4 = create_smoke_objects("light", -1, 1)
         
-        self.smoke4.created = timezone.now() - timedelta(hours=1)
+        self.smoke4.timestamp = timezone.now() - timedelta(hours=1)
         self.smoke4.save()
         
     def test1_ongoing_smoke(self):
@@ -235,10 +241,12 @@ class Tests_Miscellaneous(TestCase):
         smoke3,5 - heavy
         smoke2,5 - before latest obs
     
+    test  - full_clean() from TextChoiceModel throws error from wrong input
     test1 - not in SJV so should return false
     test2 - in SJV so should return true
     
     """
+        
     def setUp(self):  
         self.smoke1 = create_smoke_objects("Light", -1, 1)
         self.smoke2 = create_smoke_objects("MEDIUM", -1, -1)
@@ -246,6 +254,11 @@ class Tests_Miscellaneous(TestCase):
         self.smoke4 = create_smoke_objects("MEDIUM", -1, 1)
         self.smoke5 = create_smoke_objects("Heavy", -1, 1)
       
+    def test_full_clean_test(self):
+        #confirms that a validation error from smoke.full_clean() occurs
+        with self.assertRaises(ValidationError):
+            create_smoke_objects('Light1',-1,-1)
+            
     def test1_only_SJV_counties(self):
         polygon_wkt = "POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))"
         geometry = load_wkt(polygon_wkt)
@@ -304,7 +317,7 @@ class FetchFilesTaskTest(TestCase):
                 "Satellite": "GOES-WEST",
                 }]
         input = gpd.GeoDataFrame(input)
-        to_db(input.iloc[0])
+        to_db(input.iloc[0], timezone.now())
         
     def test_to_db_notSJV(self):
          polygon_wkt = ("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))")
@@ -318,5 +331,5 @@ class FetchFilesTaskTest(TestCase):
                 "Satellite": "GOES-WEST",
                 }]
          input = gpd.GeoDataFrame(input)
-         to_db(input.iloc[0])
+         to_db(input.iloc[0], timezone.now())
         

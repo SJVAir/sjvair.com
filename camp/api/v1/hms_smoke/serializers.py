@@ -8,7 +8,7 @@ class SmokeSerializer(serializers.Serializer):
         'density', 
         'end', 
         'start', 
-        'created',
+        'timestamp',
         'geometry',
     )
     

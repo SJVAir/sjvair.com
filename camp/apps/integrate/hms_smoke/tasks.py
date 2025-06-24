@@ -12,5 +12,5 @@ from .data import get_smoke_file
 #NOAA data is available from 8-9am to 2-3am the next day PST
 @db_periodic_task(crontab(minute='0', hour='8-10,15-23'), priority=50)
 def fetch_files():
-    get_smoke_file(timezone.now())
+    get_smoke_file(timezone.now().replace(minute=0, second=0, microsecond=0))
     
