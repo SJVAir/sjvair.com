@@ -138,6 +138,7 @@ class Tests_OngoingSmoke(TestCase):
     test2 - query for ongoing, add smoke2 to ongoing, returns smoke1 + 2
     test3 - query for ongoing, filtering for medium, returns smoke2
     test4 - query for ongoing, filtering for heavy, returns empty queryset
+    test5 - query for ongoing, give smoke2 an old time query (not from most recent query), returns smoke1
     """
     def setUp(self): 
         self.smoke1 = create_smoke_objects("Light", -1, 1)
@@ -188,8 +189,21 @@ class Tests_OngoingSmoke(TestCase):
         final_url = f'{url}?density=heavy'
         response = self.client.get(final_url)
         assert response.status_code == 200
-        assert len(response.json()["data"]) == 0                
-       
+        assert len(response.json()["data"]) == 0   
+                 
+    def test5_ongoing_smoke(self):
+        old_query = timezone.now() - timedelta(hours=1)
+        self.smoke2.timestamp = old_query
+        self.smoke2.save()
+        url = reverse("api:v1:hms_smoke:smoke-ongoing")
+        response = self.client.get(url)
+         
+        assert response.status_code == 200
+        assert len(response.json()["data"]) == 1
+        for feature in response.json()["data"]:
+            if feature['density'].lower() == 'light':
+                assert feature["id"] == str(self.smoke1.id)
+        
         
 class Tests_DetailSmoke(TestCase):
     """
