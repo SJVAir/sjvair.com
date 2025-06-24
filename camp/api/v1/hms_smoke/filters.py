@@ -4,7 +4,6 @@ from camp.apps.integrate.hms_smoke.models import Smoke
 
 
 class SmokeFilter(FilterSet):
-
     class Meta: 
         model = Smoke
         fields = {
@@ -12,12 +11,12 @@ class SmokeFilter(FilterSet):
                 'iexact',
                 'exact',
             ],
-            'start':[
+            'start': [
                 'exact',
                 'lt', 'lte',
                 'gt', 'gte',
             ],
-            'end':[
+            'end': [
                 'exact',
                 'lt', 'lte',
                 'gt', 'gte',
@@ -27,3 +26,4 @@ class SmokeFilter(FilterSet):
                 'exact'
             ],
         }
+        

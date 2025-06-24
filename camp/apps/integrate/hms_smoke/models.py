@@ -3,6 +3,7 @@ from django.db import models
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils.models import TimeStampedModel
 
+
 """
 Defines the database for holding HMS Wildfire smoke data.
 This includes:
@@ -12,6 +13,8 @@ This includes:
     geometry: polygonal smoke region in standard GPS coordinates (srid = 4326)
     ID: unique database ID identifier   
 """
+
+
 class Density(models.TextChoices):
     LIGHT = 'light', 'Light'
     MEDIUM = 'medium', 'Medium'
@@ -41,3 +44,4 @@ class Smoke(TimeStampedModel):
             if self.density not in Density.values:
                 self.density = Density.LIGHT
         super().save(*args, **kwargs)
+        

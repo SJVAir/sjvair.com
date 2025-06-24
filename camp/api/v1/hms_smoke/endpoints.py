@@ -9,12 +9,15 @@ from .filters import SmokeFilter
 from .serializers import SmokeSerializer
 from camp.apps.integrate.hms_smoke.models import Smoke
 
+
 class SmokeMixin:
     model = Smoke
     serializer_class = SmokeSerializer
 
+
 class SmokeList(SmokeMixin, generics.ListEndpoint):
     filter_class = SmokeFilter
+    paginate = False
     
     
 class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
@@ -31,7 +34,7 @@ class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
             end__gte=curr_time,
             created__lte=latest_max,
             created__gte=latest_range
-            )
+            ).order_by('-created')
         return queryset
 
 
@@ -39,5 +42,3 @@ class SmokeDetail(SmokeMixin, generics.DetailEndpoint):
     lookup_field = 'id'
     lookup_url_kwarg = 'smoke_id'
         
-    
-    

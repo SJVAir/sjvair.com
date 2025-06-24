@@ -11,3 +11,4 @@ class SmokeSerializer(serializers.Serializer):
         'created',
         'geometry',
     )
+    

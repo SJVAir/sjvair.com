@@ -28,7 +28,6 @@ def get_smoke_file(date):
     Raises:
         requests.HTTPError: If the HTTP request for the ZIP file fails.
         FileNotFoundError: If the expected shapefile is not found after extraction.
-    
     """
     try: 
         #Construct download url for NOAA Smoke shapefile 
@@ -75,11 +74,9 @@ def to_db(curr):
         curr.Density = Density.LIGHT
         
     Smoke.objects.create(
-        density=curr.Density.lower(),
+        density=curr.Density,
         start=start,
         end=end,
         satellite=curr.Satellite,
         geometry=geometry,
         )
-
-    
