@@ -1,13 +1,15 @@
 import geopandas as gpd
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
 from shapely.wkt import loads as load_wkt
 from django.core.exceptions import ValidationError
+from django.utils.timezone import make_aware
 
 from camp.api.v1.hms_smoke.tests import create_smoke_objects
 from camp.apps.integrate.hms_smoke.data import get_smoke_file, to_db
+from camp.apps.integrate.hms_smoke.models import Smoke
 from camp.apps.integrate.hms_smoke.tasks import fetch_files
 from camp.utils.counties import County
 
@@ -77,9 +79,54 @@ class FetchFilesTaskTest(TestCase):
         fetch_files(timezone.now())
         
     def test_get_smoke_file(self):
-        get_smoke_file(timezone.now()-timedelta(days=1))
+        get_smoke_file(make_aware(datetime(2025, 6, 25)))
+        count = Smoke.objects.all().count()
+        get_smoke_file(make_aware(datetime(2025, 6, 25)))
+        assert Smoke.objects.all().count() == count #entry not added to db
         
     def test_to_db_SJV(self):
+        count = Smoke.objects.all().count()
+        polygon_wkt = (
+                        "POLYGON(("
+                        "-119.860839 36.660399, "
+                        "-119.860839 36.905755, "
+                        "-119.650879 36.905755, "
+                        "-119.650879 36.660399, "
+                        "-119.860839 36.660399"
+                        "))"
+                    )
+        geometry = load_wkt(polygon_wkt) 
+        input = [{
+                "geometry": geometry,
+                "Density": "Light",
+                "End":"202515 1440",
+                "Start": "202515 1540",
+                "Satellite": "Satellite1",
+                }]
+        input = gpd.GeoDataFrame(input)
+        to_db(input.iloc[0], timezone.now())
+        assert Smoke.objects.all().count() == count + 1 #entry added to db
+        
+    def test_to_db_notSJV(self):
+        count = Smoke.objects.all().count()
+        polygon_wkt = ("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))")
+        geometry = load_wkt(polygon_wkt) 
+        input = [{
+                "geometry": geometry,
+                "Density": "Light",
+                "End":"202515 1440",
+                "Start": "202515 1540",
+                "Satellite": "Satellite1",
+                }]
+        input = gpd.GeoDataFrame(input)
+        to_db(input.iloc[0], timezone.now())
+        assert Smoke.objects.all().count() == count #entry not added to db
+    
+    def test_to_db_date_tested(self):
+        self.smoke1 = create_smoke_objects('light', 1, 1)
+        self.smoke1.timestamp = make_aware(datetime(2020, 1, 1))
+        self.smoke1.save()
+        count = Smoke.objects.all().count()
         polygon_wkt = (
                         "POLYGON(("
                         "-119.860839 36.660399, "
@@ -96,22 +143,9 @@ class FetchFilesTaskTest(TestCase):
                 "Density": "Light",
                 "End":"202515 1440",
                 "Start": "202515 1540",
-                "Satellite": "GOES-WEST",
+                "Satellite": "Satellite1",
                 }]
         input = gpd.GeoDataFrame(input)
-        to_db(input.iloc[0], timezone.now())
+        to_db(input.iloc[0], make_aware(datetime(2020, 1, 1)))
         
-    def test_to_db_notSJV(self):
-         polygon_wkt = ("POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))")
-
-         geometry = load_wkt(polygon_wkt) 
-         input = [{
-                "geometry": geometry,
-                "Density": "Light",
-                "End":"202515 1440",
-                "Start": "202515 1540",
-                "Satellite": "GOES-WEST",
-                }]
-         input = gpd.GeoDataFrame(input)
-         to_db(input.iloc[0], timezone.now())
-        
+        assert Smoke.objects.all().count() == count #entry not added to db

@@ -24,15 +24,12 @@ class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
     
     def get_queryset(self):
         #Gets from the latest smoke data + ongoing smokes
-        queryset = super().get_queryset()
         curr_time = timezone.now()
         latest_max = Smoke.objects.aggregate(Max('timestamp'))['timestamp__max'] 
-        queryset = queryset.filter(
-            start__lte=curr_time,
-            end__gte=curr_time,
-            timestamp=latest_max,
-            ).order_by('end')
-        return queryset
+        return (super().getqueryset()
+                .filter(start__lte=curr_time, end__gte=curr_time, timestamp=latest_max,)
+                .order_by('end')
+        )
 
 
 class SmokeDetail(SmokeMixin, generics.DetailEndpoint):
