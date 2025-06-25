@@ -37,10 +37,8 @@ def get_smoke_file(date):
         f"{date.strftime('%m')}/"
         f"hms_smoke{date.strftime('%Y%m%d')}.zip"
         )
-    
     response = requests.get(final_url)
     if response.status_code != 200:
-        print("HMS Smoke - Download failed with status:", response.status_code)
         response.raise_for_status()
         
     with tempfile.TemporaryDirectory() as temp_dir:     #create temp_dir for zipfiles, add necessary data, then remove dir
