@@ -26,7 +26,8 @@ class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
         #Gets from the latest smoke data + ongoing smokes
         curr_time = timezone.now()
         latest_max = Smoke.objects.aggregate(Max('timestamp'))['timestamp__max'] 
-        return (super().getqueryset()
+        return (
+            super().getqueryset()
                 .filter(start__lte=curr_time, end__gte=curr_time, timestamp=latest_max,)
                 .order_by('end')
         )
