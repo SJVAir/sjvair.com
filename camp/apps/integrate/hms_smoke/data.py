@@ -17,8 +17,8 @@ from camp.utils.counties import County
 def parse_timestamp(string):
     time = datetime.strptime(string, '%Y%j %H%M')
     return make_aware(time)
+   
     
-
 def get_smoke_file(date):
     """
     Retrieves smoke file from https://www.ospo.noaa.gov/products/land/hms.html#data
@@ -39,8 +39,8 @@ def get_smoke_file(date):
         )
     response = requests.get(final_url)
     if response.status_code != 200:
-        response.raise_for_status()
-        
+        response.raise_for_status()    
+         
     with tempfile.TemporaryDirectory() as temp_dir:     #create temp_dir for zipfiles, add necessary data, then remove dir
         zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
         geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")
@@ -60,11 +60,10 @@ def to_db(curr, date):
         curr (geoDF): this is one row of the geoPandasDF recovered using .iloc[]
     """
     #If the county is not within the SJV return it does not need to be added
-    if not County.in_SJV(curr.geometry):
+    if (not County.in_SJV(curr.geometry) or 
+        date.date() != timezone.now().date() and 
+        Smoke.objects.filter(timestamp__date=date.date()).exists()):
         return
-    if date.date() != timezone.now().date(): 
-        if Smoke.objects.filter(timestamp__date=date.date()).exists():
-            return
     geometry = GEOSGeometry(curr.geometry.wkt, srid=4326)
     start = parse_timestamp(curr.Start)
     end = parse_timestamp(curr.End)

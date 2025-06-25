@@ -50,7 +50,6 @@ def create_smoke_objects(density, start, end):
     return smoke
     
 
-
 class Tests_SmokeFilter(TestCase):
     """
     setUp - create objects for testing
@@ -115,7 +114,7 @@ class Tests_SmokeFilter(TestCase):
         assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]['id'] == str(self.smoke2.id)
     
-    def test3_smoke_filter_view(self):
+    def test5_smoke_filter_view(self):
         self.smoke3.density ='NotHeavy'
         self.smoke3.save()
         url = reverse("api:v1:hms_smoke:smoke-list")
