@@ -27,7 +27,7 @@ class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
         curr_time = timezone.now()
         latest_max = Smoke.objects.aggregate(Max('timestamp'))['timestamp__max'] 
         return (
-            super().getqueryset()
+            super().get_queryset()
                 .filter(start__lte=curr_time, end__gte=curr_time, timestamp=latest_max,)
                 .order_by('end')
         )
