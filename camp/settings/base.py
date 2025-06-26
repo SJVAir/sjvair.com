@@ -92,6 +92,7 @@ INSTALLED_APPS = [
     'camp.apps.calibrations',
     'camp.apps.contact',
     'camp.apps.helpdesk',
+    'camp.apps.integrate.ces4',
     'camp.apps.monitors',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqview',
@@ -101,7 +102,6 @@ INSTALLED_APPS = [
     'camp.apps.sensors',
     'camp.apps.qaqc',
     'camp.utils',
-    'camp.apps.integrate.ces4',
 ]
 
 MIDDLEWARE = [
