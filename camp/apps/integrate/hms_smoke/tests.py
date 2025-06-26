@@ -76,7 +76,7 @@ class FetchFilesTaskTest(TestCase):
         bad data, polygon not in SJV should return 
     """
     def test_fetch_files_triggers_file_download(self):
-        fetch_files()
+        fetch_files.call_local()
         
     def test_get_smoke_file(self):
         get_smoke_file(make_aware(datetime(2025, 6, 25)))
