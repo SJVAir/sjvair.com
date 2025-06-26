@@ -53,9 +53,6 @@ class ProcessorTests(TestCase):
     def test_processor_filter_via_entry_config_alerts(self):
         now = timezone.now()
 
-        # import code
-        # code.interact(local=locals())
-
         # Create a calibrated entry using the expected processor
         entry = entry_models.PM25.objects.create(
             monitor=self.monitor,

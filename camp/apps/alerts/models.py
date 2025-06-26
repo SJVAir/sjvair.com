@@ -12,6 +12,7 @@ from model_utils import Choices
 from model_utils.models import TimeStampedModel
 
 from camp.apps.entries.fields import EntryTypeField
+from camp.apps.entries.levels import AQLvl
 
 
 LEVELS = Choices(
@@ -67,7 +68,7 @@ class Subscription(TimeStampedModel):
         on_delete=models.CASCADE,
     )
 
-    level = models.CharField(max_length=25)
+    level = models.CharField(max_length=25, choices=AQLvl.choices)
 
     class Meta:
         constraints = [
@@ -81,6 +82,10 @@ class Subscription(TimeStampedModel):
 
     def __str__(self):
         return f'{self.user_id} : {self.monitor_id} @ {self.level}'
+
+    def clean(self):
+        super().clean()
+        self.level = self.level.lower()
 
 
 class Alert(TimeStampedModel):
