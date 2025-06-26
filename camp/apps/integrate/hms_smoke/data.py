@@ -30,6 +30,11 @@ def get_smoke_file(date):
         requests.HTTPError: If the HTTP request for the ZIP file fails.
         FileNotFoundError: If the expected shapefile is not found after extraction.
     """
+    #prevent multiple requests + standardizes the time of historical data
+    if date.date() != timezone.now().date():
+        if Smoke.objects.filter(timestamp__date=date.date()).exists():
+            return
+        date = date.replace(hour=0, minute=0, second=0, microsecond=0)
     #Construct download url for NOAA Smoke shapefile 
     base_url = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
     final_url = (
@@ -44,8 +49,6 @@ def get_smoke_file(date):
     with tempfile.TemporaryDirectory() as temp_dir:     #create temp_dir for zipfiles, add necessary data, then remove dir
         zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
         geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")
-        if date.date() != timezone.now().date():        #If this smoke file is historical data, set the time to 0
-            date = date.replace(hour=0, minute=0, second=0, microsecond=0)
         for i in range(len(geo)):
             to_db(geo.iloc[i], date)
             
@@ -60,23 +63,20 @@ def to_db(curr, date):
         curr (geoDF): this is one row of the geoPandasDF recovered using .iloc[]
     """
     #If the county is not within the SJV return it does not need to be added
-    if (not County.in_SJV(curr.geometry) or 
-        date.date() != timezone.now().date() and 
-        Smoke.objects.filter(timestamp__date=date.date()).exists()):
-        return
-    geometry = GEOSGeometry(curr.geometry.wkt, srid=4326)
-    start = parse_timestamp(curr.Start)
-    end = parse_timestamp(curr.End)
-    smoke = Smoke(
-        timestamp=date,
-        density=curr.Density.lower().strip(),
-        start=start,
-        end=end,
-        satellite=curr.Satellite,
-        geometry=geometry,
-        )
-    try:
-        smoke.full_clean()
-        smoke.save()
-    except ValidationError:
-        return 
+    if County.in_SJV(curr.geometry):
+        geometry = GEOSGeometry(curr.geometry.wkt, srid=4326)
+        start = parse_timestamp(curr.Start)
+        end = parse_timestamp(curr.End)
+        smoke = Smoke(
+            timestamp=date,
+            density=curr.Density.lower().strip(),
+            start=start,
+            end=end,
+            satellite=curr.Satellite,
+            geometry=geometry,
+            )
+        try:
+            smoke.full_clean()
+            smoke.save()
+        except ValidationError:
+            return 
