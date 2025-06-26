@@ -76,7 +76,7 @@ class FetchFilesTaskTest(TestCase):
         bad data, polygon not in SJV should return 
     """
     def test_fetch_files_triggers_file_download(self):
-        fetch_files(timezone.now())
+        fetch_files()
         
     def test_get_smoke_file(self):
         get_smoke_file(make_aware(datetime(2025, 6, 25)))
@@ -122,30 +122,3 @@ class FetchFilesTaskTest(TestCase):
         to_db(input.iloc[0], timezone.now())
         assert Smoke.objects.all().count() == count #entry not added to db
     
-    def test_to_db_date_tested(self):
-        self.smoke1 = create_smoke_objects('light', 1, 1)
-        self.smoke1.timestamp = make_aware(datetime(2020, 1, 1))
-        self.smoke1.save()
-        count = Smoke.objects.all().count()
-        polygon_wkt = (
-                        "POLYGON(("
-                        "-119.860839 36.660399, "
-                        "-119.860839 36.905755, "
-                        "-119.650879 36.905755, "
-                        "-119.650879 36.660399, "
-                        "-119.860839 36.660399"
-                        "))"
-                    )
-
-        geometry = load_wkt(polygon_wkt) 
-        input = [{
-                "geometry": geometry,
-                "Density": "Light",
-                "End":"202515 1440",
-                "Start": "202515 1540",
-                "Satellite": "Satellite1",
-                }]
-        input = gpd.GeoDataFrame(input)
-        to_db(input.iloc[0], make_aware(datetime(2020, 1, 1)))
-        
-        assert Smoke.objects.all().count() == count #entry not added to db

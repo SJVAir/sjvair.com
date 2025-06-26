@@ -99,7 +99,6 @@ class Tests_SmokeFilter(TestCase):
         response = self.client.get(url_with_params)
        
         assert response.status_code == 200
-        print(response.json())
         assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]['id'] == str(self.smoke1.id)
 

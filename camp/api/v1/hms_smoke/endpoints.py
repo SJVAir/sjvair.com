@@ -12,6 +12,10 @@ from camp.apps.integrate.hms_smoke.models import Smoke
 class SmokeMixin:
     model = Smoke
     serializer_class = SmokeSerializer
+    def get_queryset(self):    
+        return (
+            super().get_queryset().order_by('-timestamp')
+        )
 
 
 class SmokeList(SmokeMixin, generics.ListEndpoint):
