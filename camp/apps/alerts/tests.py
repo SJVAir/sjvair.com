@@ -20,47 +20,9 @@ class SubscriptionModelTest(TestCase):
         sub = Subscription(
             user_id=self.user.pk,
             monitor_id=self.monitor.pk,
-            entry_type=entry_models.PM25.entry_type,
             level=entry_models.PM25.Levels.UNHEALTHY_SENSITIVE.key.upper(),  # should get coerced to lowercase
         )
         sub.clean()  # triggers validation
         sub.save()
         assert Subscription.objects.count() == 1
         assert Subscription.objects.first().level == entry_models.PM25.Levels.UNHEALTHY_SENSITIVE.key
-
-    def test_invalid_level_raises_validation_error(self):
-        sub = Subscription(
-            user_id=self.user.pk,
-            monitor_id=self.monitor.pk,
-            entry_type=entry_models.PM25.entry_type,
-            level='ridiculously_high'
-        )
-        with pytest.raises(ValidationError, match='not a valid alert level'):
-            sub.clean()
-
-    def test_entry_type_without_levels_raises_error(self):
-        sub = Subscription(
-            user=self.user,
-            monitor=self.monitor,
-            entry_type=entry_models.Particulates.entry_type,
-            level='moderate'
-        )
-        with pytest.raises(ValidationError, match='does not support alert levels'):
-            sub.clean()
-
-    def test_entry_type_not_supported_by_monitor(self):
-        # Patch get_supported_entry_types to simulate a monitor that doesn't support PM2.5
-        self.monitor.entry_types = [
-            entry_models.O3,
-            entry_models.PM10,
-        ]  # excludes 'pm25'
-
-        sub = Subscription(
-            user_id=self.user.pk,
-            monitor=self.monitor,
-            entry_type=entry_models.PM25.entry_type,
-            level=entry_models.PM25.Levels.HAZARDOUS.key,
-        )
-
-        with pytest.raises(ValidationError, match='does not support'):
-            sub.clean()

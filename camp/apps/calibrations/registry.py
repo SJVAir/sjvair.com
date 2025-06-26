@@ -11,8 +11,14 @@ class LazyClassProxy:
     def __call__(self, *args, **kwargs):
         return self._resolve()(*args, **kwargs)
 
+    def __eq__(self, other):
+        return self._resolve() == other
+
     def __getattr__(self, attr):
         return getattr(self._resolve(), attr)
+
+    def __hash__(self):
+        return hash(self._resolve())
 
     def __repr__(self):
         try:
@@ -20,6 +26,9 @@ class LazyClassProxy:
             return f"<Lazy[{self._name}] => {real_cls.__module__}.{real_cls.__name__}>"
         except Exception:
             return f"<Lazy[{self._name}] (unresolved)>"
+
+    def __str__(self):
+        return str(self._resolve())
 
     def _resolve(self):
         if self._resolved is not None:

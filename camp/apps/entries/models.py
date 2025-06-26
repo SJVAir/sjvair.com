@@ -3,7 +3,6 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
-from django.core.exceptions import FieldDoesNotExist
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
@@ -14,7 +13,7 @@ from camp.apps.monitors.models import Monitor
 from camp.utils import classproperty
 
 from . import stages
-from .levels import PollutantLevels, AQLvl, Lvl
+from .levels import PollutantLevels, AQLvl
 from .managers import EntryQuerySet
 
 

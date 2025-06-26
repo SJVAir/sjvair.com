@@ -94,7 +94,12 @@ class AQLvlMeta(type):
 
 
 class AQLvl(metaclass=AQLvlMeta):
-    pass
+    @classproperty
+    def choices(cls):
+        return [
+            (key.lower(), meta['label'])
+            for key, meta in cls._levels.items()
+        ]
 
 
 class PollutantLevels(enum.Enum):

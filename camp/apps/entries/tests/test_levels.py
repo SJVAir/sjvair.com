@@ -71,12 +71,12 @@ class LevelsTests(TestCase):
 
     def test_choices_are_correct(self):
         assert PM25Levels.choices == [
-            ('HAZARDOUS', 'Hazardous'),
-            ('VERY_UNHEALTHY', 'Very Unhealthy'),
-            ('UNHEALTHY', 'Unhealthy'),
-            ('UNHEALTHY_SENSITIVE', 'Unhealthy for Sensitive Groups'),
-            ('MODERATE', 'Moderate'),
-            ('GOOD', 'Good'),
+            ('hazardous', 'Hazardous'),
+            ('very_unhealthy', 'Very Unhealthy'),
+            ('unhealthy', 'Unhealthy'),
+            ('unhealthy_sensitive', 'Unhealthy for Sensitive Groups'),
+            ('moderate', 'Moderate'),
+            ('good', 'Good'),
         ]
 
     def test_level_lookup(self):
