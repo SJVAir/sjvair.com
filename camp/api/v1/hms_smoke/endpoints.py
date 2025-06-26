@@ -28,11 +28,11 @@ class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
     
     def get_queryset(self):
         #Gets from the latest smoke data + ongoing smokes
-        curr_time = timezone.now()
-        latest_max = Smoke.objects.aggregate(Max('timestamp'))['timestamp__max'] 
+        now = timezone.now()
+        latest = Smoke.objects.aggregate(Max('timestamp'))['timestamp__max'] 
         return (
             super().get_queryset()
-                .filter(start__lte=curr_time, end__gte=curr_time, timestamp=latest_max,)
+                .filter(start__lte=now, end__gte=now, timestamp=latest,)
                 .order_by('end')
         )
 
