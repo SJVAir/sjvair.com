@@ -13,7 +13,7 @@ from camp.apps.monitors.models import Monitor
 from camp.utils import classproperty
 
 from . import stages
-from .levels import PollutantLevels, AQLvl
+from .levels import LevelSet, AQLevel
 from .managers import EntryQuerySet
 
 
@@ -305,13 +305,13 @@ class PM25(BaseEntry):
     epa_aqs_code = 88101
     units = 'µg/m³'
 
-    Levels = PollutantLevels.from_aq_levels(
-        AQLvl.HAZARDOUS(250.5),
-        AQLvl.VERY_UNHEALTHY(150.5),
-        AQLvl.UNHEALTHY(55.5),
-        AQLvl.UNHEALTHY_SENSITIVE(35.5),
-        AQLvl.MODERATE(9.1),
-        AQLvl.GOOD(0.0),
+    Levels = LevelSet(
+        AQLevel.GOOD(0.0),
+        AQLevel.MODERATE(9.1),
+        AQLevel.UNHEALTHY_SENSITIVE(35.5),
+        AQLevel.UNHEALTHY(55.5),
+        AQLevel.VERY_UNHEALTHY(150.5),
+        AQLevel.HAZARDOUS(250.5),
     )
 
     value = models.DecimalField(
@@ -346,14 +346,14 @@ class PM100(BaseEntry):
     epa_aqs_code = 81102
     units = 'µg/m³'
 
-    Levels = PollutantLevels.from_aq_levels(
-        AQLvl.VERY_HAZARDOUS(605),
-        AQLvl.HAZARDOUS(425),
-        AQLvl.VERY_UNHEALTHY(355),
-        AQLvl.UNHEALTHY(255),
-        AQLvl.UNHEALTHY_SENSITIVE(155),
-        AQLvl.MODERATE(55),
-        AQLvl.GOOD(0),
+    Levels = LevelSet(
+        AQLevel.GOOD(0),
+        AQLevel.MODERATE(55),
+        AQLevel.UNHEALTHY_SENSITIVE(155),
+        AQLevel.UNHEALTHY(255),
+        AQLevel.VERY_UNHEALTHY(355),
+        AQLevel.HAZARDOUS(425),
+        AQLevel.VERY_HAZARDOUS(605),
     )
 
     value = models.DecimalField(
@@ -450,14 +450,14 @@ class CO(BaseEntry):
     epa_aqs_code = 42101
     units = 'ppm'
 
-    Levels = PollutantLevels.from_aq_levels(
-        AQLvl.VERY_HAZARDOUS(50.4),
-        AQLvl.HAZARDOUS(30.5),
-        AQLvl.VERY_UNHEALTHY(15.5),
-        AQLvl.UNHEALTHY(12.5),
-        AQLvl.UNHEALTHY_SENSITIVE(9.5),
-        AQLvl.MODERATE(4.5),
-        AQLvl.GOOD(0.0),
+    Levels = LevelSet(
+        AQLevel.GOOD(0.0),
+        AQLevel.MODERATE(4.5),
+        AQLevel.UNHEALTHY_SENSITIVE(9.5),
+        AQLevel.UNHEALTHY(12.5),
+        AQLevel.VERY_UNHEALTHY(15.5),
+        AQLevel.HAZARDOUS(30.5),
+        AQLevel.VERY_HAZARDOUS(50.4),
     )
 
     value = models.DecimalField(
@@ -482,14 +482,14 @@ class NO2(BaseEntry):
     epa_aqs_code = 42602
     units = 'ppb'
 
-    Levels = PollutantLevels.from_aq_levels(
-        AQLvl.VERY_HAZARDOUS(2050.0),
-        AQLvl.HAZARDOUS(1250.0),
-        AQLvl.VERY_UNHEALTHY(650.0),
-        AQLvl.UNHEALTHY(361.0),
-        AQLvl.UNHEALTHY_SENSITIVE(101.0),
-        AQLvl.MODERATE(54.0),
-        AQLvl.GOOD(0.0),
+    Levels = LevelSet(
+        AQLevel.GOOD(0.0),
+        AQLevel.MODERATE(54.0),
+        AQLevel.UNHEALTHY_SENSITIVE(101.0),
+        AQLevel.UNHEALTHY(361.0),
+        AQLevel.VERY_UNHEALTHY(650.0),
+        AQLevel.HAZARDOUS(1250.0),
+        AQLevel.VERY_HAZARDOUS(2050.0),
     )
 
     value = models.DecimalField(
@@ -503,13 +503,13 @@ class O3(BaseEntry):
     epa_aqs_code = 44201
     units = 'ppb'
 
-    Levels = PollutantLevels.from_aq_levels(
-        AQLvl.VERY_HAZARDOUS(605),
-        AQLvl.HAZARDOUS(405),
-        AQLvl.VERY_UNHEALTHY(205),
-        AQLvl.UNHEALTHY(165),
-        AQLvl.UNHEALTHY_SENSITIVE(125),
-        AQLvl.GOOD(0.0),
+    Levels = LevelSet(
+        AQLevel.GOOD(0.0),
+        AQLevel.UNHEALTHY_SENSITIVE(125),
+        AQLevel.UNHEALTHY(165),
+        AQLevel.VERY_UNHEALTHY(205),
+        AQLevel.HAZARDOUS(405),
+        AQLevel.VERY_HAZARDOUS(605),
     )
 
     value = models.DecimalField(
@@ -523,12 +523,12 @@ class SO2(BaseEntry):
     epa_aqs_code = 42401
     units = 'ppb'
 
-    Levels = PollutantLevels.from_aq_levels(
-        AQLvl.VERY_UNHEALTHY(305),
-        AQLvl.UNHEALTHY(186),
-        AQLvl.UNHEALTHY_SENSITIVE(76),
-        AQLvl.MODERATE(36),
-        AQLvl.GOOD(0),
+    Levels = LevelSet(
+        AQLevel.GOOD(0),
+        AQLevel.MODERATE(36),
+        AQLevel.UNHEALTHY_SENSITIVE(76),
+        AQLevel.UNHEALTHY(186),
+        AQLevel.VERY_UNHEALTHY(305),
     )
 
     value = models.DecimalField(
