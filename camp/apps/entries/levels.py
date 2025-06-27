@@ -1,7 +1,6 @@
-import enum
-
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Optional, Union, List, Dict, Tuple
 
 from django.utils.translation import gettext_lazy as _
 
@@ -27,73 +26,95 @@ def _blend_hex(hex1, hex2, ratio):
 
 
 @dataclass(frozen=True, slots=True)
-class Lvl:
-    value: [float, Decimal]
+class Level:
+    value: Union[float, Decimal]
     label: str
     color: str
-    guidance: [None, str] = None
+    guidance: Optional[str] = None
+    key: Optional[str] = None
+    rank: int = field(init=False)
 
     def __repr__(self):
-        return f'Lvl({self.value}, {self.label!r}, {self.color})'
+        return f'Level({self.value}, {self.label!r}, {self.color})'
+
+    def __lt__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self.rank < other.rank
+
+    def __le__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self.rank <= other.rank
+
+    def __gt__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self.rank > other.rank
+
+    def __ge__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self.rank >= other.rank
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self.rank == other.rank
 
 
-# Shortcut for common EPA Air Quality Levels.
-
-class AQLvlMeta(type):
+class AQLevelMeta(type):
     _levels = {
-        'VERY_HAZARDOUS': {
-            'label': _('Very Hazardous'),
-            'color': '#7e0023',
-            'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
-        },
-        'HAZARDOUS': {
-            'label': _('Hazardous'),
-            'color': '#7e0023',
-            'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
-        },
-        'VERY_UNHEALTHY': {
-            'label': _('Very Unhealthy'),
-            'color': '#ff0000',
-            'guidance': _('Everyone should avoid prolonged or heavy exertion.'),
-        },
-        'UNHEALTHY': {
-            'label': _('Unhealthy'),
-            'color': '#ff7e00',
-            'guidance': _('Everyone should reduce prolonged or heavy exertion.'),
-        },
-        'UNHEALTHY_SENSITIVE': {
-            'label': _('Unhealthy for Sensitive Groups'),
-            'color': '#ffff00',
-            'guidance': _('Sensitive groups should stay indoors and avoid outdoor activities.'),
+        'GOOD': {
+            'label': _('Good'),
+            'color': '#00ccff',
         },
         'MODERATE': {
             'label': _('Moderate'),
             'color': '#00e400',
             'guidance': _('Highly sensitive groups should stay indoors and avoid outdoor activities.'),
         },
-        'GOOD': {
-            'label': _('Good'),
-            'color': '#00ccff',
+        'UNHEALTHY_SENSITIVE': {
+            'label': _('Unhealthy for Sensitive Groups'),
+            'color': '#ffff00',
+            'guidance': _('Sensitive groups should stay indoors and avoid outdoor activities.'),
+        },
+        'UNHEALTHY': {
+            'label': _('Unhealthy'),
+            'color': '#ff7e00',
+            'guidance': _('Everyone should reduce prolonged or heavy exertion.'),
+        },
+        'VERY_UNHEALTHY': {
+            'label': _('Very Unhealthy'),
+            'color': '#ff0000',
+            'guidance': _('Everyone should avoid prolonged or heavy exertion.'),
+        },
+        'HAZARDOUS': {
+            'label': _('Hazardous'),
+            'color': '#7e0023',
+            'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
+        },
+        'VERY_HAZARDOUS': {
+            'label': _('Very Hazardous'),
+            'color': '#7e0023',
+            'guidance': _('Everyone should stay indoors and avoid physical outdoor activities.'),
         },
     }
 
-    def __getattr__(self, name):
-        if name not in self._levels:
+    def __getattr__(cls, name):
+        if name not in cls._levels:
             raise AttributeError(f'{name} is not a valid AQ level')
 
-        meta = self._levels[name]
-        return lambda value, guidance=None: (
-            name,
-            Lvl(
-                value=value,
-                label=meta['label'],
-                color=meta['color'],
-                guidance=guidance or meta.get('guidance')
-            )
+        meta = cls._levels[name]
+        return lambda value, guidance=None: Level(
+            value=value,
+            label=meta['label'],
+            color=meta['color'],
+            guidance=guidance or meta.get('guidance'),
+            key=name
         )
 
-
-class AQLvl(metaclass=AQLvlMeta):
+class AQLevel(metaclass=AQLevelMeta):
     @classproperty
     def choices(cls):
         return [
@@ -102,73 +123,66 @@ class AQLvl(metaclass=AQLvlMeta):
         ]
 
 
-class PollutantLevels(enum.Enum):
-    def __init__(self, lvl: Lvl):
-        self._lvl = lvl
+class LevelSet:
+    def __init__(self, *args: Level, **kwargs: Level):
+        self._levels: List[Level] = []
+        self._by_key: Dict[str, Level] = {}
+
+        for idx, lvl in enumerate(args):
+            key = lvl.key or lvl.label.upper().replace(' ', '_')
+            if key in self._by_key:
+                raise ValueError(f'Duplicate level key: {key}')
+            object.__setattr__(lvl, 'rank', idx)
+            object.__setattr__(lvl, 'key', key)
+            self._levels.append(lvl)
+            self._by_key[key] = lvl
+
+        for idx, (key, lvl) in enumerate(kwargs.items(), start=len(self._levels)):
+            if key in self._by_key:
+                raise ValueError(f'Duplicate level key: {key}')
+            object.__setattr__(lvl, 'rank', idx)
+            object.__setattr__(lvl, 'key', key)
+            self._levels.append(lvl)
+            self._by_key[key] = lvl
+
+    def __getattr__(self, name: str) -> Level:
+        if name in self._by_key:
+            return self._by_key[name]
+        raise AttributeError(f"No such level: {name}")
 
     @property
-    def value(self):
-        return self._lvl.value
+    def choices(self) -> List[Tuple[str, str]]:
+        return [(lvl.key.lower(), lvl.label) for lvl in self._levels]
 
-    @property
-    def key(self):
-        return self.name.lower()
+    def get_level(self, value) -> Level:
+        for lvl in reversed(self._levels):
+            if value >= lvl.value:
+                return lvl
+        return self._levels[0]
 
-    def __getattr__(self, name):
-        if name in ('_value_', '_lvl', 'value'):
-            raise AttributeError(f'{name} is not accessible')
-        return getattr(self._lvl, name)
-
-    @classproperty
-    def choices(cls):
-        return [(l.key, l.label) for l in cls]
-
-    @classmethod
-    def get_level(cls, value):
-        levels = sorted(cls, key=lambda l: l.value, reverse=True)
-        for level in levels:
-            if value >= level.value:
-                return level
-        return levels[-1]
-
-    @classmethod
-    def get_color(cls, value):
-        levels = sorted(cls, key=lambda l: l.value)
+    def get_color(self, value: Union[int, float]) -> str:
+        levels = sorted(self._levels, key=lambda l: l.value)
         for i, level in enumerate(levels):
             min_val = level.value
             max_val = levels[i + 1].value if i + 1 < len(levels) else float('inf')
-
             if min_val <= value < max_val:
                 ratio = (value - min_val) / (max_val - min_val) if max_val != float('inf') else 0
                 return _blend_hex(level.color, levels[i + 1].color if i + 1 < len(levels) else level.color, ratio)
-
         return levels[0].color
 
-    @classmethod
-    def lookup(cls, key):
-        key = key.lower()
-        for lvl in cls:
-            if lvl.key == key:
-                return lvl
+    def lookup(self, key: str) -> Level:
+        return self._by_key[key.upper()]
 
-    @classmethod
-    def as_dict(cls):
-        levels = sorted(cls, key=lambda l: l.value)
+    def as_dict(self) -> Dict[str, Dict[str, any]]:
         result = {}
-
+        levels = sorted(self._levels, key=lambda l: l.value)
         for i, level in enumerate(levels):
             max_value = (levels[i + 1].value - 0.1) if i + 1 < len(levels) else 99999
-
-            result[level.name] = {
-                'name': level.name,
+            result[level.key] = {
+                'name': level.key,
                 'label': level.label,
                 'color': level.color,
                 'range': (level.value, max_value),
                 'guidance': level.guidance,
             }
-
         return result
-
-    @classmethod
-    def from_aq_levels(cls, *levels: tuple[str, Lvl]):
-        return PollutantLevels('AQLevels', names=levels)

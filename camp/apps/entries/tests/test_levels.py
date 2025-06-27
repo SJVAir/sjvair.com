@@ -1,82 +1,77 @@
-import enum
+import pytest
 
 from django.test import TestCase
 
-from camp.apps.entries.levels import PollutantLevels, Lvl, AQLvl
+from camp.apps.entries.levels import LevelSet, Level, AQLevel
 
-class PM25Levels(PollutantLevels):
-    HAZARDOUS = Lvl(
-        value=250.5,
-        label='Hazardous',
-        color='#7e0023'
-    )
-
-    VERY_UNHEALTHY = Lvl(
-        value=150.5,
-        label='Very Unhealthy',
-        color='#ff0000'
-    )
-
-    UNHEALTHY = Lvl(
-        value=55.5,
-        label='Unhealthy',
-        color='#ff7e00'
-    )
-
-    UNHEALTHY_SENSITIVE = Lvl(
-        value=35.5,
-        label='Unhealthy for Sensitive Groups',
-        color='#ffff00'
-    )
-
-    MODERATE = Lvl(
-        value=9.1,
-        label='Moderate',
-        color='#00e400'
-    )
-
-    GOOD = Lvl(
+PM25Levels = LevelSet(
+    GOOD = Level(
         value=0,
         label='Good',
         color='#00ccff'
-    )
+    ),
+    MODERATE = Level(
+        value=9.1,
+        label='Moderate',
+        color='#00e400'
+    ),
+    UNHEALTHY_SENSITIVE = Level(
+        value=35.5,
+        label='Unhealthy for Sensitive Groups',
+        color='#ffff00'
+    ),
+    UNHEALTHY = Level(
+        value=55.5,
+        label='Unhealthy',
+        color='#ff7e00'
+    ),
+    VERY_UNHEALTHY = Level(
+        value=150.5,
+        label='Very Unhealthy',
+        color='#ff0000'
+    ),
+    HAZARDOUS = Level(
+        value=250.5,
+        label='Hazardous',
+        color='#7e0023'
+    ),
+)
 
 
-class ColorLevels(PollutantLevels):
-    WHITE = Lvl(255, 'White', '#ffffff')
-    BLACK = Lvl(0, 'Black', '#000000')
+ColorLevels = LevelSet(
+    WHITE=Level(value=255, label='White', color='#ffffff'),
+    BLACK=Level(value=0, label='Black', color='#000000'),
+)
 
 
 class LevelsTests(TestCase):
     def test_from_aq_levels(self):
-        AQLevels = PollutantLevels.from_aq_levels(
-            AQLvl.HAZARDOUS(PM25Levels.HAZARDOUS.value),
-            AQLvl.VERY_UNHEALTHY(PM25Levels.VERY_UNHEALTHY.value),
-            AQLvl.UNHEALTHY(PM25Levels.UNHEALTHY.value),
-            AQLvl.UNHEALTHY_SENSITIVE(PM25Levels.UNHEALTHY_SENSITIVE.value),
-            AQLvl.MODERATE(PM25Levels.MODERATE.value),
-            AQLvl.GOOD(PM25Levels.GOOD.value),
+        AQLevels = LevelSet(
+            AQLevel.GOOD(PM25Levels.GOOD.value),
+            AQLevel.MODERATE(PM25Levels.MODERATE.value),
+            AQLevel.UNHEALTHY_SENSITIVE(PM25Levels.UNHEALTHY_SENSITIVE.value),
+            AQLevel.UNHEALTHY(PM25Levels.UNHEALTHY.value),
+            AQLevel.VERY_UNHEALTHY(PM25Levels.VERY_UNHEALTHY.value),
+            AQLevel.HAZARDOUS(PM25Levels.HAZARDOUS.value),
         )
 
-        assert isinstance(AQLevels, enum.EnumType)
-        assert AQLevels.GOOD.name == PM25Levels.GOOD.name
+        assert AQLevels.GOOD.key == PM25Levels.GOOD.key
         assert AQLevels.GOOD.value == PM25Levels.GOOD.value
         assert AQLevels.GOOD.label == PM25Levels.GOOD.label
 
-
     def test_enum_fields(self):
         assert PM25Levels.MODERATE.value == 9.1
-        assert PM25Levels.MODERATE.name == 'MODERATE'
+        assert PM25Levels.MODERATE.key == 'MODERATE'
         assert PM25Levels.MODERATE.label == 'Moderate'
 
     def test_choices_are_correct(self):
         assert PM25Levels.choices == [
-            ('hazardous', 'Hazardous'),
-            ('very_unhealthy', 'Very Unhealthy'),
-            ('unhealthy', 'Unhealthy'),
-            ('unhealthy_sensitive', 'Unhealthy for Sensitive Groups'),
-            ('moderate', 'Moderate'),
             ('good', 'Good'),
+            ('moderate', 'Moderate'),
+            ('unhealthy_sensitive', 'Unhealthy for Sensitive Groups'),
+            ('unhealthy', 'Unhealthy'),
+            ('very_unhealthy', 'Very Unhealthy'),
+            ('hazardous', 'Hazardous'),
         ]
 
     def test_level_lookup(self):
@@ -126,3 +121,43 @@ class LevelsTests(TestCase):
             assert g >= prev[1]
             assert b >= prev[2]
             prev = (r, g, b)
+
+
+class AQLevelComparisonTests(TestCase):
+    def setUp(self):
+        self.levels = LevelSet(
+            AQLevel.GOOD(PM25Levels.GOOD.value),
+            AQLevel.MODERATE(PM25Levels.MODERATE.value),
+            AQLevel.UNHEALTHY_SENSITIVE(PM25Levels.UNHEALTHY_SENSITIVE.value),
+            AQLevel.UNHEALTHY(PM25Levels.UNHEALTHY.value),
+            AQLevel.VERY_UNHEALTHY(PM25Levels.VERY_UNHEALTHY.value),
+            AQLevel.HAZARDOUS(PM25Levels.HAZARDOUS.value),
+        )
+
+    def test_ordering(self):
+        assert self.levels.GOOD < self.levels.MODERATE
+        assert self.levels.MODERATE < self.levels.UNHEALTHY
+        assert self.levels.UNHEALTHY < self.levels.HAZARDOUS
+
+        assert self.levels.HAZARDOUS > self.levels.UNHEALTHY
+        assert self.levels.UNHEALTHY > self.levels.MODERATE
+        assert self.levels.MODERATE > self.levels.GOOD
+
+    def test_equality_by_rank(self):
+        other_levels = LevelSet(
+            AQLevel.GOOD('42')
+        )
+        assert self.levels.GOOD == other_levels.GOOD  # rank match despite different value
+
+    def test_self_comparison(self):
+        assert self.levels.GOOD <= self.levels.GOOD
+        assert self.levels.GOOD >= self.levels.GOOD
+        assert not self.levels.GOOD != self.levels.GOOD
+
+    def test_type_mismatch(self):
+        assert self.levels.GOOD != object()
+        with pytest.raises(TypeError):
+            _ = self.levels.GOOD < 'moderate'
+
+        with pytest.raises(TypeError):
+            _ = self.levels.GOOD > 123
