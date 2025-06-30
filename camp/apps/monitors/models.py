@@ -140,8 +140,6 @@ class Monitor(models.Model):
 
     # Entries - Legacy
     latest = models.ForeignKey('monitors.Entry', blank=True, null=True, related_name='latest_for', on_delete=models.SET_NULL)
-
-    # TODO: default_pm25_sensor (default_ENTRY_sensor, etc)
     default_sensor = models.CharField(max_length=50, default='', blank=True)
 
     current_health = models.ForeignKey('qaqc.SensorAnalysis',
@@ -171,6 +169,14 @@ class Monitor(models.Model):
     @classproperty
     def entry_types(self):
         return list(self.ENTRY_CONFIG.keys())
+
+    @classproperty
+    def alertable_entry_types(cls):
+        return {
+            model: config['alerts']
+            for model, config in cls.ENTRY_CONFIG.items()
+            if 'alerts' in config
+        }
 
     @classmethod
     def get_subclasses(cls):
