@@ -32,7 +32,7 @@ class Level:
     color: str
     guidance: Optional[str] = None
     key: Optional[str] = None
-    rank: int = field(init=False)
+    rank: int = 0
 
     def __repr__(self):
         return f'Level({self.value}, {self.label!r}, {self.color})'
@@ -105,13 +105,15 @@ class AQLevelMeta(type):
         if name not in cls._levels:
             raise AttributeError(f'{name} is not a valid AQ level')
 
+        rank = list(cls._levels).index(name)
         meta = cls._levels[name]
         return lambda value, guidance=None: Level(
             value=value,
             label=meta['label'],
             color=meta['color'],
             guidance=guidance or meta.get('guidance'),
-            key=name
+            key=name,
+            rank=rank,
         )
 
 class AQLevel(metaclass=AQLevelMeta):
@@ -121,6 +123,14 @@ class AQLevel(metaclass=AQLevelMeta):
             (key.lower(), meta['label'])
             for key, meta in cls._levels.items()
         ]
+
+    @classproperty
+    def scale(cls):
+        if not hasattr(cls, '_scale'):
+            cls._scale = LevelSet(*[
+                getattr(cls, key)(i) for i, key in enumerate(cls._levels.keys())
+            ])
+        return cls._scale
 
 
 class LevelSet:
@@ -132,7 +142,6 @@ class LevelSet:
             key = lvl.key or lvl.label.upper().replace(' ', '_')
             if key in self._by_key:
                 raise ValueError(f'Duplicate level key: {key}')
-            object.__setattr__(lvl, 'rank', idx)
             object.__setattr__(lvl, 'key', key)
             self._levels.append(lvl)
             self._by_key[key] = lvl
@@ -140,7 +149,6 @@ class LevelSet:
         for idx, (key, lvl) in enumerate(kwargs.items(), start=len(self._levels)):
             if key in self._by_key:
                 raise ValueError(f'Duplicate level key: {key}')
-            object.__setattr__(lvl, 'rank', idx)
             object.__setattr__(lvl, 'key', key)
             self._levels.append(lvl)
             self._by_key[key] = lvl
@@ -149,6 +157,12 @@ class LevelSet:
         if name in self._by_key:
             return self._by_key[name]
         raise AttributeError(f"No such level: {name}")
+
+    def __getitem__(self, key: str) -> Level:
+        try:
+            return self._by_key[key.upper()]
+        except KeyError:
+            raise KeyError(f"No such level: {key}")
 
     @property
     def choices(self) -> List[Tuple[str, str]]:

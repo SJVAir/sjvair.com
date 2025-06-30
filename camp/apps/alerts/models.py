@@ -103,15 +103,11 @@ class Alert(TimeStampedModel):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(blank=True, null=True)
 
-    # Deprecated
-    pm25_average = models.DecimalField(max_digits=8, decimal_places=2, null=True)
-    level = models.CharField(max_length=25, choices=LEVELS)
-
     class Meta:
         ordering = ['-start_time']
 
     def __str__(self):
-        return f'{self.monitor_id} {self.entry_type.label}'
+        return f'Alert for {self.monitor_id} ({self.entry_type}) @ {self.start_time}'
 
     @cached_property
     def entry_model(self):
@@ -125,46 +121,65 @@ class Alert(TimeStampedModel):
             .aggregate(average=Avg('pm25'))['average']
         )
 
-    def send_notifications(self):
-        # If SMS alerts are disbaled, do nothing.
-        if not settings.SEND_SMS_ALERTS:
-            return
-
-        values = [level[0] for level in LEVELS]
-        notification_levels = values[:values.index(self.level) + 1]
-
-        message = '\n'.join([
-            f'Air Quality Alert in {self.monitor.county} County for {self.monitor.name} ({self.monitor.device})',
-            '',
-            f'{self.get_level_display()}: {GUIDANCE[self.level]}',
-            '',
-            f'https://sjvair.com{self.monitor.get_absolute_url()}',
-        ])
-
-        queryset = (Subscription.objects
-            .filter(monitor_id=self.monitor.pk)
-            .select_related('user')
+    def create_update(self, level, **kwargs):
+        update = AlertUpdate.objects.create(
+            alert_id=self.pk,
+            level=level.key,
+            **kwargs,
         )
+        self.send_notifications(update)
+        return update
 
-        # hazardous means everyone gets it. Evey other
-        # level gets filtered.
-        if self.level != LEVELS.hazardous:
-            queryset = queryset.filter(level=self.level)
+    def send_notifications(self, level):
+        # placehodler, tbd
+        pass
 
-        for subscription in queryset:
-            subscription.user.send_sms(message)
+
+    # LEGACY
+
+    # def send_notifications(self):
+    #     # If SMS alerts are disbaled, do nothing.
+    #     if not settings.SEND_SMS_ALERTS:
+    #         return
+
+    #     values = [level[0] for level in LEVELS]
+    #     notification_levels = values[:values.index(self.level) + 1]
+
+    #     message = '\n'.join([
+    #         f'Air Quality Alert in {self.monitor.county} County for {self.monitor.name} ({self.monitor.device})',
+    #         '',
+    #         f'{self.get_level_display()}: {GUIDANCE[self.level]}',
+    #         '',
+    #         f'https://sjvair.com{self.monitor.get_absolute_url()}',
+    #     ])
+
+    #     queryset = (Subscription.objects
+    #         .filter(monitor_id=self.monitor.pk)
+    #         .select_related('user')
+    #     )
+
+    #     # hazardous means everyone gets it. Evey other
+    #     # level gets filtered.
+    #     if self.level != LEVELS.hazardous:
+    #         queryset = queryset.filter(level=self.level)
+
+    #     for subscription in queryset:
+    #         subscription.user.send_sms(message)
 
 class AlertUpdate(TimeStampedModel):
     alert = models.ForeignKey('alerts.Alert', related_name='updates', on_delete=models.CASCADE)
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField(default=timezone.now)
     level = models.CharField(max_length=25)
-    average = models.DecimalField(max_digits=8, decimal_places=2)
 
     class Meta:
+        get_latest_by = 'timestamp'
         ordering = ['timestamp']
 
     def __str__(self):
-        return f'{self.alert} @ {self.timestamp} => {self.level} ({self.average})'
+        return f'AlertUpdate for {self.alert_id} @ {self.timestamp} => {self.level}'
+
+    def get_level(self):
+        return self.alert.entry_model.Levels[self.level]
 
     def clean(self):
         if not self.alert.entry_model or not self.alert.entry_model.Levels:
