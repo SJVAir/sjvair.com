@@ -101,7 +101,7 @@ class Alert(TimeStampedModel):
             level=level.key,
             **kwargs,
         )
-        self.send_notifications(update)
+        self.send_notifications(update.get_level())
         return update
 
     def send_notifications(self, level):

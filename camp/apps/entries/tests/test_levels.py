@@ -61,7 +61,7 @@ class LevelsTests(TestCase):
 
     def test_enum_fields(self):
         assert PM25Levels.MODERATE.value == 9.1
-        assert PM25Levels.MODERATE.key == 'MODERATE'
+        assert PM25Levels.MODERATE.key == 'moderate'
         assert PM25Levels.MODERATE.label == 'Moderate'
 
     def test_choices_are_correct(self):
