@@ -4,5 +4,5 @@ from .data import Ces4Data
 
 
 @db_task()
-def CalEnviroScreen4Load():
+def ces4_load():
     Ces4Data.ces4_request()

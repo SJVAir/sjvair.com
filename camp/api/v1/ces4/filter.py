@@ -19,7 +19,7 @@ class Ces4Filter(FilterSet):
             'popchar', 'popcharSco', 'popcharP',
             'asthma', 'asthmaP', 'cvd', 'cvdP',
             'lbw', 'lbwP', 'edu', 'eduP',
-            'ling','lingP', 'pov', 'povP',
+            'ling', 'lingP', 'pov', 'povP',
             'unemp', 'unempP', 'housingB', 'housingBP',
              ],
             [
