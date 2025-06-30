@@ -109,8 +109,7 @@ class Alert(TimeStampedModel):
         if not settings.SEND_SMS_ALERTS:
             return
 
-        icon = '⚠️' if level != AQLevel.scale.GOOD else '✅'
-
+        icon = '✅' if level == AQLevel.scale.GOOD else '⚠️'
         message = '\n'.join([
             _('{icon} Air Quality Alert for {name} in {county} County').format(
                 icon=icon,

@@ -24,6 +24,7 @@ class PM25_EPA_Oct2021(BaseProcessor):
     def process(self):
         if 'humidity' not in self.context:
             print('=====' * 5)
+            print('HUMIDITY MISSING:')
             print(self.entry.__class__)
             print(self.entry.pk)
             print(self.entry.monitor.__class__)

@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 import pandas as pd
 
 from django.db.models import Avg, Count
@@ -10,7 +8,9 @@ from camp.apps.entries.levels import AQLevel
 
 
 class AlertEvaluator:
-    MINIMUM_DURATION = timedelta(minutes=60)
+    CREATION_WINDOW = pd.to_timedelta('30m')
+    UPDATE_WINDOW = pd.to_timedelta('60m')
+    MINIMUM_DURATION = pd.to_timedelta('60m')
 
     def __init__(self, monitor):
         self.monitor = monitor
@@ -38,10 +38,9 @@ class AlertEvaluator:
                 self.creation_check(entry_model, lookup)
 
     def get_level(self, entry_model, lookup, window):
-        window_delta = pd.to_timedelta(window)
         interval_delta = pd.to_timedelta(self.monitor.EXPECTED_INTERVAL)
 
-        if interval_delta >= window_delta:
+        if interval_delta >= window:
             return self.get_current_level(entry_model, lookup)
         return self.get_average_level(entry_model, lookup, window)
 
@@ -57,9 +56,7 @@ class AlertEvaluator:
             A Level instance corresponding to the averaged value, or None if no data is available.
         '''
 
-        now = timezone.now()
-        start = now - pd.to_timedelta(window)
-
+        start = timezone.now() - window
         queryset = entry_model.objects.filter(
             monitor_id=self.monitor.pk,
             timestamp__gte=start,
@@ -96,7 +93,7 @@ class AlertEvaluator:
         return entry_model.Levels.get_level(entry.value)
 
     def creation_check(self, entry_model, lookup):
-        level = self.get_level(entry_model, lookup, window='30m')
+        level = self.get_level(entry_model, lookup, window=self.CREATION_WINDOW)
         if not level or level < AQLevel.scale.MODERATE:
             # Below moderate (good) so no alert needed.
             return
@@ -114,7 +111,7 @@ class AlertEvaluator:
         Update an active alert if the level has changed,
         or close it out if the level has dropped to GOOD.
         """
-        level = self.get_level(entry_model, lookup, window='60m')
+        level = self.get_level(entry_model, lookup, window=self.UPDATE_WINDOW)
         if level is None:
             return
 
