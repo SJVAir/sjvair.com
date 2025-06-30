@@ -1,8 +1,8 @@
 from django_huey import db_task
 
-from .data import Ces4Processing
+from .data import Ces4Data
 
 
 @db_task()
 def CalEnviroScreen4Load():
-    Ces4Processing.ces4_request_db()
+    Ces4Data.ces4_request()
