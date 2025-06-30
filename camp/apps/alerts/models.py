@@ -6,6 +6,7 @@ from django.db import models
 from django.db.models import Avg
 from django.utils import timezone
 from django.utils.functional import cached_property
+from django.utils.translation import gettext as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
@@ -15,40 +16,13 @@ from camp.apps.entries.fields import EntryTypeField
 from camp.apps.entries.levels import AQLevel
 
 
-LEVELS = Choices(
-    ('unhealthy_sensitive', 'Unhealthy for Sensitive Groups'),
-    ('unhealthy', 'Unhealthy'),
-    ('very_unhealthy', 'Very Unhealthy'),
-    ('hazardous', 'Hazardous'),
-    # (35, 'unhealthy_sensitive', 'Unhealthy for Sensitive Groups'),
-    # (55, 'unhealthy', 'Unhealthy'),
-    # (150, 'very_unhealthy', 'Very Unhealthy'),
-    # (250, 'hazardous', 'Hazardous'),
-)
-
-PM25_LEVELS = (
-    (250, LEVELS.hazardous),
-    (150, LEVELS.very_unhealthy),
-    (55, LEVELS.unhealthy),
-    (30, LEVELS.unhealthy_sensitive),
-)
-
-# From Yanni:
-# Level Moderate: "Highly sensitive groups should stay indoors and avoid outdoor activities"
-# Level Unhealthy for Sensitive Groups: "Sensitive groups should stay indoors and avoid outdoor activities"
-# Level Unhealthy: "Everyone should reduce prolonged or heavy exertion"
-# Very Healthy: "Everyone should avoid prolonged or heavy exertion"
-# Hazardous: "Everyone should stay indoors and avoid physical outdoor activities"
-
-GUIDANCE = {
-    LEVELS.unhealthy_sensitive: "Sensitive groups should stay indoors and avoid outdoor activities",
-    LEVELS.unhealthy: "Everyone should reduce prolonged or heavy exertion",
-    LEVELS.very_unhealthy: "Everyone should avoid prolonged or heavy exertion",
-    LEVELS.hazardous: "Everyone should stay indoors and avoid physical outdoor activities",
-}
-
 class Subscription(TimeStampedModel):
-    LEVELS = LEVELS # Legacy
+    LEVELS = Choices(  # Legacy
+        ('unhealthy_sensitive', 'Unhealthy for Sensitive Groups'),
+        ('unhealthy', 'Unhealthy'),
+        ('very_unhealthy', 'Very Unhealthy'),
+        ('hazardous', 'Hazardous'),
+    )
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -131,40 +105,33 @@ class Alert(TimeStampedModel):
         return update
 
     def send_notifications(self, level):
-        # placehodler, tbd
-        pass
+        # If SMS alerts are disbaled, do nothing.
+        if not settings.SEND_SMS_ALERTS:
+            return
 
+        icon = '⚠️' if level != AQLevel.scale.GOOD else '✅'
 
-    # LEGACY
+        message = '\n'.join([
+            _('{icon} Air Quality Alert for {name} in {county} County').format(
+                icon=icon,
+                name=self.monitor.name,
+                county=self.monitor.county,
+            ),
+            f'{self.entry_model.label}: {level.label}',
+            f'{level.guidance}\n' or '',
+            f'🔗 https://sjvair.com{self.monitor.get_absolute_url()}',
+        ])
 
-    # def send_notifications(self):
-    #     # If SMS alerts are disbaled, do nothing.
-    #     if not settings.SEND_SMS_ALERTS:
-    #         return
+        queryset = (Subscription.objects
+            .filter(monitor_id=self.monitor.pk)
+            .select_related('user')
+        )
 
-    #     values = [level[0] for level in LEVELS]
-    #     notification_levels = values[:values.index(self.level) + 1]
+        for sub in queryset:
+            sub_level = AQLevel.scale[sub.level.upper()]
+            if level >= sub_level:
+                sub.user.send_sms(message)
 
-    #     message = '\n'.join([
-    #         f'Air Quality Alert in {self.monitor.county} County for {self.monitor.name} ({self.monitor.device})',
-    #         '',
-    #         f'{self.get_level_display()}: {GUIDANCE[self.level]}',
-    #         '',
-    #         f'https://sjvair.com{self.monitor.get_absolute_url()}',
-    #     ])
-
-    #     queryset = (Subscription.objects
-    #         .filter(monitor_id=self.monitor.pk)
-    #         .select_related('user')
-    #     )
-
-    #     # hazardous means everyone gets it. Evey other
-    #     # level gets filtered.
-    #     if self.level != LEVELS.hazardous:
-    #         queryset = queryset.filter(level=self.level)
-
-    #     for subscription in queryset:
-    #         subscription.user.send_sms(message)
 
 class AlertUpdate(TimeStampedModel):
     alert = models.ForeignKey('alerts.Alert', related_name='updates', on_delete=models.CASCADE)
