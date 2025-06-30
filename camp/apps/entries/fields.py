@@ -2,8 +2,6 @@ from django import forms
 from django.db import models
 from django.utils.module_loading import import_string
 
-from functools import lru_cache
-
 
 class EntryTypeField(models.CharField):
     description = 'Stores an entry type as a model name and resolves it to a class.'

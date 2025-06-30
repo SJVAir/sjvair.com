@@ -6,6 +6,7 @@ from . import endpoints
 
 from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Subscription
+from camp.apps.entries.models import PM25
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.test import debug, get_response_data
 
@@ -29,10 +30,10 @@ class EndpointTests(TestCase):
         Subscription.objects.create(
             user=self.user,
             monitor=self.monitor,
-            level=Subscription.LEVELS.unhealthy
+            level='unhealthy'
         )
 
-        url = reverse('api:v1:subscription-list')
+        url = reverse('api:v2:subscription-list')
         request = self.factory.get(url)
         request.monitor = self.monitor
         request.user = self.user
@@ -48,7 +49,7 @@ class EndpointTests(TestCase):
             Test that we can GET the monitor detail endpoint.
         '''
 
-        url = reverse('api:v1:subscription-list')
+        url = reverse('api:v2:subscription-list')
         request = self.factory.get(url)
         request.monitor = self.monitor
         request.user = AnonymousUser()
@@ -62,9 +63,9 @@ class EndpointTests(TestCase):
         '''
             Test that we can GET the monitor detail endpoint.
         '''
-        payload = {'level': Subscription.LEVELS.unhealthy}
+        payload = {'level': PM25.Levels.UNHEALTHY.key}
 
-        url = reverse('api:v1:monitors:alerts:subscribe', kwargs={
+        url = reverse('api:v2:monitors:alerts:subscribe', kwargs={
             'monitor_id': self.monitor.pk
         })
         request = self.factory.post(url, payload)
@@ -78,7 +79,7 @@ class EndpointTests(TestCase):
         assert content['data']['monitor'] == str(self.monitor.pk)
         assert self.user.subscriptions.filter(
             monitor_id=self.monitor.pk,
-            level=Subscription.LEVELS.unhealthy,
+            level=payload['level'],
         ).exists()
 
 
@@ -89,12 +90,12 @@ class EndpointTests(TestCase):
         Subscription.objects.create(
             user=self.user,
             monitor=self.monitor,
-            level=Subscription.LEVELS.unhealthy
+            level=PM25.Levels.UNHEALTHY.key
         )
 
-        payload = {'level': Subscription.LEVELS.hazardous}
+        payload = {'level': PM25.Levels.HAZARDOUS.key}
 
-        url = reverse('api:v1:monitors:alerts:subscribe', kwargs={
+        url = reverse('api:v2:monitors:alerts:subscribe', kwargs={
             'monitor_id': self.monitor.pk
         })
         request = self.factory.post(url, payload)
@@ -108,7 +109,7 @@ class EndpointTests(TestCase):
         assert content['data']['monitor'] == str(self.monitor.pk)
         assert self.user.subscriptions.filter(
             monitor_id=self.monitor.pk,
-            level=Subscription.LEVELS.hazardous,
+            level=PM25.Levels.HAZARDOUS.key,
         ).exists()
 
     def test_unsubscribe(self):
@@ -118,10 +119,10 @@ class EndpointTests(TestCase):
         Subscription.objects.create(
             user=self.user,
             monitor=self.monitor,
-            level=Subscription.LEVELS.unhealthy
+            level=PM25.Levels.UNHEALTHY.key
         )
 
-        url = reverse('api:v1:monitors:alerts:subscribe', kwargs={
+        url = reverse('api:v2:monitors:alerts:subscribe', kwargs={
             'monitor_id': self.monitor.pk
         })
         request = self.factory.post(url)

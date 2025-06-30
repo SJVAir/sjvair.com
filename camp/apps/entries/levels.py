@@ -101,19 +101,19 @@ class AQLevelMeta(type):
         },
     }
 
-    def __getattr__(cls, name):
-        if name not in cls._levels:
-            raise AttributeError(f'{name} is not a valid AQ level')
+    def __getattr__(cls, key):
+        if key not in cls._levels:
+            raise AttributeError(f'{key} is not a valid AQ level')
 
-        rank = list(cls._levels).index(name)
-        meta = cls._levels[name]
+        rank = list(cls._levels).index(key)
+        meta = cls._levels[key]
         return lambda value, guidance=None: Level(
-            value=value,
+            key=key.lower(),
             label=meta['label'],
+            value=value,
+            rank=rank,
             color=meta['color'],
             guidance=guidance or meta.get('guidance'),
-            key=name,
-            rank=rank,
         )
 
 class AQLevel(metaclass=AQLevelMeta):
@@ -136,31 +136,32 @@ class AQLevel(metaclass=AQLevelMeta):
 class LevelSet:
     def __init__(self, *args: Level, **kwargs: Level):
         self._levels: List[Level] = []
-        self._by_key: Dict[str, Level] = {}
+        self._map: Dict[str, Level] = {}
 
         for idx, lvl in enumerate(args):
-            key = lvl.key or lvl.label.upper().replace(' ', '_')
-            if key in self._by_key:
+            key = (lvl.key or lvl.label.replace(' ', '_')).lower()
+            if key in self._map:
                 raise ValueError(f'Duplicate level key: {key}')
             object.__setattr__(lvl, 'key', key)
             self._levels.append(lvl)
-            self._by_key[key] = lvl
+            self._map[key.upper()] = lvl
 
-        for idx, (key, lvl) in enumerate(kwargs.items(), start=len(self._levels)):
-            if key in self._by_key:
-                raise ValueError(f'Duplicate level key: {key}')
-            object.__setattr__(lvl, 'key', key)
+        for idx, (attr, lvl) in enumerate(kwargs.items(), start=len(self._levels)):
+            if attr in self._map:
+                raise ValueError(f'Duplicate level key: {attr}')
+            object.__setattr__(lvl, 'key', attr.lower())
             self._levels.append(lvl)
-            self._by_key[key] = lvl
+            self._map[attr] = lvl
 
-    def __getattr__(self, name: str) -> Level:
-        if name in self._by_key:
-            return self._by_key[name]
-        raise AttributeError(f"No such level: {name}")
+    def __getattr__(self, attr: str) -> Level:
+        try:
+            return self._map[attr.upper()]
+        except KeyError:
+            raise AttributeError(f"No such level: {attr}")
 
     def __getitem__(self, key: str) -> Level:
         try:
-            return self._by_key[key.upper()]
+            return self._map[key.upper()]
         except KeyError:
             raise KeyError(f"No such level: {key}")
 
@@ -185,14 +186,14 @@ class LevelSet:
         return levels[0].color
 
     def lookup(self, key: str) -> Level:
-        return self._by_key[key.upper()]
+        return self._map[key.upper()]
 
     def as_dict(self) -> Dict[str, Dict[str, any]]:
         result = {}
         levels = sorted(self._levels, key=lambda l: l.value)
         for i, level in enumerate(levels):
             max_value = (levels[i + 1].value - 0.1) if i + 1 < len(levels) else 99999
-            result[level.key] = {
+            result[level.key.upper()] = {
                 'name': level.key,
                 'label': level.label,
                 'color': level.color,
