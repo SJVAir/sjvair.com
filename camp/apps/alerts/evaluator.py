@@ -8,9 +8,9 @@ from camp.apps.entries.levels import AQLevel
 
 
 class AlertEvaluator:
-    CREATION_WINDOW = pd.to_timedelta('30m')
-    UPDATE_WINDOW = pd.to_timedelta('60m')
-    MINIMUM_DURATION = pd.to_timedelta('60m')
+    CREATION_WINDOW = pd.Timedelta('30m')
+    UPDATE_WINDOW = pd.Timedelta('60m')
+    MINIMUM_DURATION = pd.Timedelta('60m')
 
     def __init__(self, monitor):
         self.monitor = monitor
