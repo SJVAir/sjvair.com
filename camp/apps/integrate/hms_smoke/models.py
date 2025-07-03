@@ -27,10 +27,10 @@ class Smoke(models.Model):
         editable=False,
         verbose_name='ID'
     )
-    timestamp = models.DateTimeField(null=True)
+    date = models.DateField(null=True)
     satellite = models.CharField(max_length=20)
-    start = models.DateTimeField(null=True)
-    end = models.DateTimeField(null=True) 
+    start = models.TimeField(null=True)
+    end = models.TimeField(null=True) 
     density = models.CharField(max_length=10, choices=Density.choices, default=Density.LIGHT)
-    geometry = gis_models.GeometryField(srid=4326)
-    
+    geometry = gis_models.PolygonField(srid=4326)
+    is_final = models.BooleanField(default=False)

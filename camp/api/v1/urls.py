@@ -16,7 +16,7 @@ urlpatterns = [
     path('methane/<int:methane_id>/upload/', MethaneDataUpload.as_view(), name='methane-data-upload'),
     path('methane/<int:methane_id>/data/', MethaneData.as_view(), name='methane-data'),
     path('marker.png', endpoints.MapMarker.as_view(), name='marker'),
-    path('hms_smoke/', include('camp.api.v1.hms_smoke.urls', namespace='hms_smoke')),
+    path('hms-smoke/', include('camp.api.v1.hms_smoke.urls', namespace='hms-smoke')),
     # Deprecated.
     path('sensors/', include('camp.api.v1.sensors.urls', namespace='sensors')),
 ]

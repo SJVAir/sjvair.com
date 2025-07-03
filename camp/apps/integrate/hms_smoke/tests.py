@@ -77,11 +77,14 @@ class FetchFilesTaskTest(TestCase):
     """
     def test_fetch_files_triggers_file_download(self):
         fetch_files.call_local()
-        
+        print(Smoke.objects.all().count())    
+    
+    
     def test_get_smoke_file(self):
-        get_smoke_file(make_aware(datetime(2025, 6, 25)))
+        get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
         count = Smoke.objects.all().count()
-        get_smoke_file(make_aware(datetime(2025, 6, 25)))
+        assert count > 0
+        get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
         assert Smoke.objects.all().count() == count #entry not added to db
         
     def test_to_db_SJV(self):
@@ -104,7 +107,7 @@ class FetchFilesTaskTest(TestCase):
                 "Satellite": "Satellite1",
                 }]
         input = gpd.GeoDataFrame(input)
-        to_db(input.iloc[0], timezone.now())
+        to_db(input.iloc[0], timezone.now(), True)
         assert Smoke.objects.all().count() == count + 1 #entry added to db
         
     def test_to_db_notSJV(self):
@@ -119,6 +122,6 @@ class FetchFilesTaskTest(TestCase):
                 "Satellite": "Satellite1",
                 }]
         input = gpd.GeoDataFrame(input)
-        to_db(input.iloc[0], timezone.now())
+        to_db(input.iloc[0], timezone.now(), True)
         assert Smoke.objects.all().count() == count #entry not added to db
     
