@@ -25,7 +25,7 @@ class SmokeFilter(FilterSet):
                 'iexact',
                 'exact',
             ],
-            'timestamp': [
+            'date': [
                 'exact',
                 'lt', 'lte',
                 'gt', 'gte',

@@ -16,7 +16,7 @@ from camp.utils.counties import County
 
 def parse_timestamp(string):
     time = datetime.strptime(string, '%Y%j %H%M')
-    return make_aware(time)
+    return make_aware(time).time()
    
     
 def get_smoke_file(date):
@@ -24,17 +24,22 @@ def get_smoke_file(date):
     Retrieves smoke file from https://www.ospo.noaa.gov/products/land/hms.html#data
     and converts it into a GeoJSON format
     
+    date - a datetime.date object
+    
     Returns:
         GeoJSON with hms smoke data
     Raises:
         requests.HTTPError: If the HTTP request for the ZIP file fails.
         FileNotFoundError: If the expected shapefile is not found after extraction.
     """
-    #prevent multiple requests + standardizes the time of historical data
-    if date.date() != timezone.now().date():
-        if Smoke.objects.filter(timestamp__date=date.date()).exists():
+    #prevent multiple requests + delete queries from earlier that day
+    is_final = False
+    if date != timezone.now().date():
+        is_final = True
+        if Smoke.objects.filter(date=date, is_final=True).exists():
             return
-        date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+    Smoke.objects.filter(date=date).delete()
+        
     #Construct download url for NOAA Smoke shapefile 
     base_url = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
     final_url = (
@@ -50,11 +55,11 @@ def get_smoke_file(date):
         zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
         geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")
         for i in range(len(geo)):
-            to_db(geo.iloc[i], date)
+            to_db(geo.iloc[i], date, is_final)
             
             
 #Save GeoDataFrame as an object
-def to_db(curr, date):
+def to_db(curr, date, is_final):
     """
     Used to add hms smoke data into the database.
     Converts start and end times into datetime objects so they are easily comparable
@@ -68,15 +73,16 @@ def to_db(curr, date):
         start = parse_timestamp(curr.Start)
         end = parse_timestamp(curr.End)
         smoke = Smoke(
-            timestamp=date,
+            date=date,
             density=curr.Density.lower().strip(),
             start=start,
             end=end,
             satellite=curr.Satellite,
             geometry=geometry,
+            is_final=is_final,
             )
         try:
             smoke.full_clean()
             smoke.save()
-        except ValidationError:
+        except ValidationError as e:
             return 

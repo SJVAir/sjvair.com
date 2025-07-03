@@ -14,7 +14,7 @@ class SmokeMixin:
     serializer_class = SmokeSerializer
     def get_queryset(self):    
         return (
-            super().get_queryset().order_by('-timestamp')
+            super().get_queryset().order_by('-date')
         )
 
 
@@ -29,10 +29,9 @@ class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
     def get_queryset(self):
         #Gets from the latest smoke data + ongoing smokes
         now = timezone.now()
-        latest = Smoke.objects.aggregate(Max('timestamp'))['timestamp__max'] 
         return (
             super().get_queryset()
-                .filter(start__lte=now, end__gte=now, timestamp=latest,)
+                .filter(start__lte=now.time(), end__gte=now.time(), date=now.date(),)
                 .order_by('end')
         )
 
