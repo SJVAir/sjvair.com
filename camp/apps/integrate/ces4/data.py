@@ -38,6 +38,9 @@ class Ces4Data:
             geo = Ces4Data.map_tracts(geo)
             Ces4Data.to_db(geo, params)
 
+#geo = geodf, params is a dict like {modelnames.lower():modelName,...} 
+#This function creates a dictionary using params[modelname.lower()] -> modelName:value
+#This is so we can use capitalized letters for Percentile = P + other small differences
     def to_db(geo, params):
         for x in range(len(geo)):
             curr = geo.iloc[x]       
@@ -48,4 +51,4 @@ class Ces4Data:
                 }
             inputs['geometry'] = GEOSGeometry(inputs['geometry'].wkt, srid=4326) 
             Ces4.objects.create(**inputs) 
-                          
+            
