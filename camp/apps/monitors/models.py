@@ -20,6 +20,7 @@ from camp.apps.calibrations.utils import get_default_calibration
 from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.monitors.managers import MonitorManager
+from camp.apps.qaqc.models import HealthCheck
 from camp.utils import classproperty
 from camp.utils.counties import County
 from camp.utils.datetime import make_aware
@@ -371,6 +372,29 @@ class Monitor(models.Model):
             data[latest.entry_type] = payload
 
         return data
+
+    @classmethod
+    def supports_health_checks(cls):
+        from camp.apps.entries.models import PM25
+        config = cls.ENTRY_CONFIG.get(PM25)
+        if not config:
+            return False
+
+        sensors = config.get('sensors', [])
+        return len(sensors) >= 2
+
+
+    def run_health_check(self, hour):
+        """
+        Convenience method to run a HealthCheck for this monitor at a given hour.
+
+        Args:
+            hour (datetime): The start of the hour to evaluate
+
+        Returns:
+            HealthCheck instance (created or updated)
+        """
+        return HealthCheck.objects.evaluate(monitor=self, hour=hour)
 
     def save(self, *args, **kwargs):
         if self.position:

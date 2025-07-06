@@ -1,15 +1,49 @@
-from django.db import models
+from datetime import timedelta
 
-# Create your models here.
 from django.db import models
-from django.utils import timezone
-from django.utils.functional import lazy
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
-from geopy.distance import distance as geopy_distance
 from model_utils.models import TimeStampedModel
 
-from camp.apps.monitors.models import Monitor
+from camp.apps.qaqc.evaluator import HealthCheckEvaluator
+from camp.apps.qaqc.managers import HealthCheckManager
+
+
+class HealthCheck(TimeStampedModel):
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+
+    monitor = models.ForeignKey('monitors.Monitor',
+        related_name='health_checks',
+        on_delete=models.CASCADE
+    )
+    hour = models.DateTimeField()
+
+    score = models.PositiveSmallIntegerField()
+    variance = models.FloatField(null=True, blank=True)
+    correlation = models.FloatField(null=True, blank=True)
+
+    objects = HealthCheckManager()
+
+    class Meta:
+        unique_together = ('monitor', 'hour')
+        indexes = [models.Index(fields=['monitor', 'hour'])]
+
+    @property
+    def grade(self) -> str:
+        return {2: 'A', 1: 'B', 0: 'F'}.get(self.score, 'F')
+
+    def evaluate(self):
+        result = HealthCheckEvaluator(self.monitor, self.hour).evaluate()
+        self.score = result.score
+        self.variance = result.variance
+        self.correlation = result.correlation
+
 
 class SensorAnalysis(TimeStampedModel):
     id = SmallUUIDField(
