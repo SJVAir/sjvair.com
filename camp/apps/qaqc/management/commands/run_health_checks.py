@@ -1,12 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils.timezone import make_aware, now
 
-from camp.apps.entries.models import PM25
 from camp.apps.monitors.models import Monitor
-from camp.apps.qaqc import tasks
-from camp.apps.qaqc.models import HealthCheck
 
 
 class Command(BaseCommand):
@@ -29,22 +26,25 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        if not options['monitor_id'] and not options['all']:
+            self.stderr.write('Error: must specify --monitor_id or --all')
+            self.stderr.write('Use `--help` for more info.')
+            return
+
         hour = self.parse_hour(options['date'])
+        queryset = Monitor.objects.get_for_health_checks()
 
         if options['monitor_id']:
-            tasks.monitor_health_check.call_local(options['monitor_id'], hour)
-            self.stdout.write(f'✓ Evaluated {monitor} @ {hour:%Y-%m-%d %H:00}')
-            return
+            queryset = queryset.filter(monitor_id=options['monitor_id'])
 
-        if options['all']:
-            count = 0
-            tasks.hourly_health_checks(hour, call_local=True)
+        count = queryset.count()
+        self.stdout.write(f'Evaluating {count} monitor{"s" if count > 1 else ""} @ {hour:%Y-%m-%d %H:00}')
 
-            self.stdout.write(f'✓ Evaluated {count} monitors @ {hour:%Y-%m-%d %H:00}')
-            return
-
-        self.stderr.write('Error: must specify --monitor_id or --all')
-        self.stderr.write('Use `--help` for more info.')
+        for i, monitor in enumerate(queryset):
+            self.stdout.write(
+                self.style.SUCCESS('✓')
+                + f' {i} {monitor.monitor_type} | {monitor.name}'
+            )
 
     def parse_hour(self, date_str):
         if not date_str:

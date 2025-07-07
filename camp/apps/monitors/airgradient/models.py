@@ -50,7 +50,7 @@ class AirGradient(Monitor):
         'url': 'https://www.airgradient.com/'
     }
 
-    EXPECTED_INTERVAL = '2min'
+    EXPECTED_INTERVAL = '1 min'
     ENTRY_CONFIG = {
         entry_models.PM10: {
             'sensors': ['1', '2'],

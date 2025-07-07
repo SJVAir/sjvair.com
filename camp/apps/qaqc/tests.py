@@ -7,7 +7,7 @@ from django.test import TestCase
 
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.entries.models import PM25
-# from camp.apps.qaqc.models import HealthCheck
+from camp.apps.qaqc.models import HealthCheck
 # from camp.apps.qaqc.evaluator import HealthCheckResult
 
 
@@ -85,3 +85,23 @@ class HealthCheckTests(TestCase):
 
         assert hc.grade == 'F'
         assert hc.score == 0
+
+    def test_monitor_health_grade_updated(self):
+        # Create an old health check
+        HealthCheck.objects.create(
+            monitor=self.monitor,
+            hour=self.hour - timedelta(hours=2),
+            score=2,
+            variance=.1,
+            correlation=.98
+        )
+
+        # Create some valid data and re-run the health check
+        values_a = [10 + (i % 3) * 0.1 for i in range(self.samples)]
+        values_b = [v + 0.5 for v in values_a]
+        self.create_entries(values_a=values_a, values_b=values_b)
+        hc = self.monitor.run_health_check(self.hour)
+
+        # Ensure the monitors health object has been updated.
+        self.monitor.refresh_from_db()
+        assert self.monitor.health_id == hc.pk

@@ -18,6 +18,16 @@ class EntrySerializer(serializers.Serializer):
         return data
 
 
+class HealthCheckSerializer(serializers.Serializer):
+    fields = [
+        'hour',
+        'score',
+        'variance',
+        'correlation',
+        'grade',
+    ]
+
+
 class MonitorSerializer(serializers.Serializer):
     fields = [
         'id',
@@ -47,4 +57,6 @@ class MonitorSerializer(serializers.Serializer):
         if fields is not None:
             extra = serializers.serialize(instance, fields)
             data.update(**extra)
+        if instance.supports_health_checks() and instance.health:
+            data['health'] = HealthCheckSerializer(instance.health).serialize()
         return data

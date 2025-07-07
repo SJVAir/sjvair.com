@@ -53,6 +53,25 @@ class MonitorQuerySet(InheritanceQuerySet):
         cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
         return self.filter(Q(latest_entries__isnull=True) | Q(latest__timestamp__lt=cutoff))
 
+    def get_for_health_checks(self):
+        """
+        Return a queryset of all monitors whose class supports health checks
+        for the given entry model.
+        """
+        if self.model._meta.model_name == 'monitor':
+            lookup = Q()
+            for subclass in self.model.get_subclasses():
+                if subclass.supports_health_checks():
+                    lookup |= Q(**{f'{subclass.monitor_type}__isnull': False})
+
+            if lookup:
+                return self.filter(lookup)
+
+        elif self.model.supports_health_checks():
+            return self.all()
+
+        return self.none()
+
     def get_active_multisensor(self):
         return self.get_active().exclude(default_sensor='').exclude(location='inside')
 
@@ -121,4 +140,7 @@ class MonitorManager(InheritanceManager):
 
     def get_active_multisensor(self):
         return self.get_queryset().get_active_multisensor()
+
+    def get_for_health_checks(self):
+        return self.get_queryset().get_for_health_checks()
 

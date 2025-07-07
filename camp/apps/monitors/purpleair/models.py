@@ -24,7 +24,7 @@ class PurpleAir(Monitor):
         'url': 'https://www2.purpleair.com/'
     }
 
-    EXPECTED_INTERVAL = '80s'
+    EXPECTED_INTERVAL = '2 min'
     ENTRY_CONFIG = {
         entry_models.PM10: {
             'sensors': ['a', 'b'],
