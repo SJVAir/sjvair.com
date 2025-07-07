@@ -3,7 +3,7 @@ from huey import crontab
 from django.utils import timezone
 from django.db.models import Q
 
-from camp.apps.alerts.logic.evaluator import AlertEvaluator
+from camp.apps.alerts.evaluator import AlertEvaluator
 from camp.apps.alerts.models import Alert
 from camp.apps.monitors.models import Monitor
 

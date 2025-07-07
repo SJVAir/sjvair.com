@@ -33,7 +33,12 @@ class AlertEvaluatorTests(TestCase):
 
         alerts = Alert.objects.filter(monitor=self.monitor)
         assert alerts.count() == 1
-        assert alerts.first().entry_type == self.entry_model.entry_type
+
+        alert = alerts.first()
+        assert alert.entry_type == self.entry_model.entry_type
+        assert alert.updates.count() == 1
+        assert alert.latest_id is not None
+        assert alert.latest == alert.updates.first()
 
     def test_creation_check_skips_below_threshold(self):
         self.create_pm25_entry(5, minutes_ago=5)

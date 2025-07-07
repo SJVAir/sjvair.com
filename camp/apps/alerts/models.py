@@ -77,6 +77,14 @@ class Alert(TimeStampedModel):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(blank=True, null=True)
 
+    latest = models.OneToOneField(
+        'alerts.AlertUpdate',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+'
+    )
+
     class Meta:
         ordering = ['-start_time']
 
@@ -153,3 +161,9 @@ class AlertUpdate(TimeStampedModel):
 
         if self.alert.entry_model.Levels.lookup(self.level) is None:
             raise ValidationError(f'{self.level} is not a valid alert level for {self.alert.entry_type.label}.')
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.alert.latest or self.alert.latest.timestamp < self.timestamp:
+            self.alert.latest_id = self.pk
+            self.alert.save(update_fields=['latest_id'])
