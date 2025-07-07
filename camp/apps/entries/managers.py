@@ -16,7 +16,8 @@ class EntryQuerySet(models.QuerySet):
 
     def to_dataframe(self, fields=None):
         """
-        Serialize the queryset into a DataFrame including core fields and declared pollutant fields.
+        Serialize the queryset into a DataFrame including core fields
+        and declared pollutant fields.
         """
 
         if not self.exists():
@@ -28,5 +29,8 @@ class EntryQuerySet(models.QuerySet):
         if 'timestamp' in df.columns:
             df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
             df = df.set_index('timestamp')
+
+        if 'value' in df.columns:
+            df['value'] = df['value'].astype(float)
 
         return df
