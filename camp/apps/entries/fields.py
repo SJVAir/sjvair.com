@@ -29,10 +29,11 @@ class EntryTypeField(models.CharField):
 
     @classmethod
     def get_choices(cls, include_blank=True):
-        choices = [
+        choices = sorted([
             (entry_type, model.label)
             for entry_type, model in cls.get_model_map().items()
-        ]
+        ], key=lambda x: x[1])
+
 
         if include_blank:
             return [('', '---------')] + choices

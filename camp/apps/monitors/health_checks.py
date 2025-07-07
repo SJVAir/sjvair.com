@@ -8,6 +8,7 @@ from health_check.backends import BaseHealthCheckBackend
 from health_check.exceptions import ServiceWarning, ServiceReturnedUnexpectedResult
 
 from camp.apps.monitors.models import Monitor
+from camp.apps.monitors.airgradient.models import AirGradient, Place
 from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.aqview.models import AQview
 from camp.apps.monitors.bam.models import BAM1022
@@ -26,25 +27,37 @@ class MonitorHealthCheck(BaseHealthCheckBackend):
 
     def check_status(self):
         try:
-            latest = (self.model.objects
-                .exclude(latest__isnull=True)
-                .order_by('-latest__timestamp')
-                .annotate(timestamp=F('latest__timestamp'))
-                .values_list('timestamp', flat=True)
+            monitor = (self.model.objects
+                .get_active()
+                .with_last_entry_timestamp()
+                .order_by('-last_entry_timestamp')
                 .first()
             )
 
-            if latest is None:
-                raise ServiceWarning(f'No entries in database.')
+            if monitor is None:
+                raise ServiceWarning('No entries in database.')
+
+            timestamp = monitor.last_entry_timestamp
 
             now = timezone.now()
-            if now - latest > self.limit:
-                raise ServiceWarning(f'Last entry was {timesince(latest)} ago.')
+            if now - timestamp > self.limit:
+                raise ServiceWarning(f'Last entry was {timesince(timestamp)} ago.')
         except Exception as e:
             if isinstance(e, ServiceWarning):
                 raise e
             self.add_error(ServiceReturnedUnexpectedResult(e.__class__.__name__), e)
 
+
+class AirGradientHealthCheck(MonitorHealthCheck):
+    network = 'AirGradient'
+    model = AirGradient
+    limit = timedelta(minutes=10)
+
+    def check_status(self):
+        # Only return
+        if not Place.objects.exists():
+            raise ServiceWarning('No API tokens are configured.')
+        return super().check_status()
 
 
 class AirNowHealthCheck(MonitorHealthCheck):
