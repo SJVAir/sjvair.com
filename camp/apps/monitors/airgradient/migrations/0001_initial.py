@@ -37,7 +37,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('monitor_ptr', models.OneToOneField(auto_created=True, on_delete=django.db.models.deletion.CASCADE, parent_link=True, primary_key=True, serialize=False, to='monitors.monitor')),
                 ('location_id', models.IntegerField(unique=True)),
-                ('serial', camp.utils.fields.mac_addr.MACAddressField(max_length=17, validators=[camp.utils.fields.mac_addr.validate_macaddr, camp.utils.fields.mac_addr.validate_macaddr])),
+                ('serial', camp.utils.fields.mac_addr.MACAddressField()),
                 ('place', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='monitors', to='airgradient.place')),
             ],
             bases=('monitors.monitor',),
