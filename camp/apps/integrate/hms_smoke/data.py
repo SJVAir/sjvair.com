@@ -16,7 +16,7 @@ from camp.utils.counties import County
 
 def parse_timestamp(string):
     time = datetime.strptime(string, '%Y%j %H%M')
-    return make_aware(time).time()
+    return make_aware(time)
    
     
 def get_smoke_file(date):
@@ -50,7 +50,6 @@ def get_smoke_file(date):
     response = requests.get(final_url)
     if response.status_code != 200:
         response.raise_for_status()    
-         
     with tempfile.TemporaryDirectory() as temp_dir:     #create temp_dir for zipfiles, add necessary data, then remove dir
         zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
         geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")

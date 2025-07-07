@@ -1,7 +1,6 @@
 
 from resticus import generics
 
-from django.db.models import Max
 from django.utils import timezone
 
 from .filters import SmokeFilter
@@ -31,7 +30,7 @@ class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
         now = timezone.now()
         return (
             super().get_queryset()
-                .filter(start__lte=now.time(), end__gte=now.time(), date=now.date(),)
+                .filter(start__lte=now, end__gte=now, date=now.date(),)
                 .order_by('end')
         )
 
