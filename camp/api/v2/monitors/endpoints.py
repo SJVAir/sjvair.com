@@ -95,42 +95,6 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
         return queryset
 
 
-class MonitorTypes(Endpoint):
-    def get_monitors(self):
-        payload = {}
-
-        monitor_subclasses = sorted(Monitor.get_subclasses(), key=lambda c: c.monitor_type)
-        for monitor_model in monitor_subclasses:
-            payload[monitor_model.monitor_type] = {
-                'label': monitor_model._meta.verbose_name,
-                'type': monitor_model.monitor_type,
-                'expected_interval': getattr(monitor_model, 'EXPECTED_INTERVAL', None),
-                'entries': {},
-            }
-
-            config_items = sorted(monitor_model.ENTRY_CONFIG.items(), key=lambda i: i[0].entry_type)
-            for entry_model, config in config_items:
-                payload[monitor_model.monitor_type]['entries'][entry_model.entry_type] = {
-                    'label': entry_model.label,
-                    'type': entry_model.entry_type,
-                    'units': entry_model.units,
-                    'sensors': config.get('sensors'),
-                    'fields': ['timestamp', 'sensor', 'stage', 'processor'] + entry_model.declared_field_names,
-                    'allowed_stages': config.get('allowed_stages', []),
-                    'default_stage': monitor_model.get_default_stage(entry_model),
-                    'default_calibration': monitor_model.get_default_calibration(entry_model),
-                    'processors': {
-                        stage: sorted([proc.name for proc in processors])
-                        for stage, processors
-                        in config.get('processors', {}).items()
-                    }
-                }
-        return payload
-
-    def get(self, request, *args, **kwargs):
-        return {'data': self.get_monitors()}
-
-
 class MonitorMetaEndpoint(Endpoint):
     def get_monitors(self):
         payload = {}
