@@ -1,12 +1,12 @@
 from resticus import generics
 
-from camp.apps.integrate.ces4.models import Ces4
+from camp.apps.integrate.ces4.models import Tract
 from .filter import Ces4Filter
 from .serializers import Ces4_Serializer
 
 
 class Ces4Mixin:
-    model = Ces4
+    model = Tract
     serializer_class = Ces4_Serializer
 
 
@@ -16,5 +16,5 @@ class Ces4List(Ces4Mixin, generics.ListEndpoint):
     
     
 class Ces4Detail(Ces4Mixin, generics.DetailEndpoint):
-    lookup_field = 'OBJECTID'
+    lookup_field = 'objectid'
     lookup_url_kwarg = 'pk'

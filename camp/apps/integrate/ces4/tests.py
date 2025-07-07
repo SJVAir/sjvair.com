@@ -1,43 +1,11 @@
-from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase
 from shapely.wkt import loads as load_wkt
 
 from camp.utils.counties import County
+from camp.api.v1.ces4.tests import create_test_ces4_obj
 from camp.apps.integrate.ces4.data import Ces4Data
-from camp.apps.integrate.ces4.models import Ces4
+from camp.apps.integrate.ces4.models import Tract
 from camp.apps.integrate.ces4.tasks import ces4_load
-
-def create_test_ces4_obj(id, pm, pmP):
-    polygon_wkt = (
-        "POLYGON(("
-        "-119.860839 36.660399, "
-        "-119.860839 36.905755, "
-        "-119.650879 36.905755, "
-        "-119.650879 36.660399, "
-        "-119.860839 36.660399"
-        "))"
-    )
-    geometry = GEOSGeometry(polygon_wkt, srid=4326)
-    county = County.in_SJV(load_wkt(geometry.wkt))
-     
-    return Ces4.objects.create(
-        OBJECTID=id, tract=0, ACS2019Tot=0,
-        CIscore=0, CIscoreP=0,
-        pollution=0, pollutionP=0, pollutionS=0,
-        ozone=0, ozoneP=0, pm=pm, pmP=pmP,
-        diesel=0, dieselP=0, pest=0, pestP=0,
-        RSEIhaz=0, RSEIhazP=0, asthma=0, asthmaP=0,
-        cvd=0, cvdP=0, traffic=0, trafficP=0,
-        drink=0, drinkP=0, lead=0, leadP=0,
-        cleanups=0, cleanupsP=0, gwthreats=0, gwthreatsP=0,
-        iwb=0, iwbP=0, swis=0, swisP=0,
-        popchar=0, popcharSco=0, popcharP=0,
-        lbw=0, lbwP=0, edu=0, eduP=0,
-        ling=0, lingP=0, pov=0, povP=0,
-        unemp=0, unempP=0, housingB=0, housingBP=0,
-        county=county, geometry=geometry,
-        )
-    
 
 
 class Tests_CES4_App(TestCase):
@@ -75,9 +43,10 @@ class Tests_CES4_App(TestCase):
             'merced': 49,
             'madera': 23,            
         }
+        #print(Ces4.objects.first().__dict__)
         for county, count in tract_count.items():
-            assert count == Ces4.objects.filter(county=county).count()
-        assert 760 == Ces4.objects.count()
+            assert count == Tract.objects.filter(county=county).count()
+        assert 760 == Tract.objects.count()
         
     def test_tract_map(self):
         import pandas as pd
@@ -101,5 +70,5 @@ class Tests_CES4_App(TestCase):
         
     def test_task(self):
         ces4_load.call_local()
-        assert 760 == Ces4.objects.count()
+        assert 760 == Tract.objects.count()
         

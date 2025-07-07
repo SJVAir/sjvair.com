@@ -1,15 +1,27 @@
 import io
 import geopandas as gpd
+import re
 import requests
 import tempfile
 import zipfile
 
+
 from django.contrib.gis.geos import GEOSGeometry
 
-from camp.apps.integrate.ces4.models import Ces4
+from camp.apps.integrate.ces4.models import Tract
 
 
 class Ces4Data:
+    def normalize(name):
+        name = re.sub('_pct', '_p', name)
+        name = re.sub('A_1', '_am_p', name)
+        name = re.sub('_1', '_p', name)
+        name = re.sub('Sco', '_s', name)
+        name = re.sub('Amer', '_am', name)
+        name = re.sub('Ame', '_am', name)
+        name = re.sub('_', '', name)
+        return name.lower()
+    
     def map_tracts(geo):
         fips = {
             "019": "fresno",
@@ -34,7 +46,7 @@ class Ces4Data:
         with tempfile.TemporaryDirectory() as temp_dir:
             zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
             geo = gpd.read_file(f"{temp_dir}/CalEnviroScreen_4.0_Results.shp").to_crs(epsg=4326)
-            params = {f.name.lower(): f.name for f in Ces4._meta.get_fields()}
+            params = {Ces4Data.normalize(f.name): f.name for f in Tract._meta.get_fields()}
             geo = Ces4Data.map_tracts(geo)
             Ces4Data.to_db(geo, params)
 
@@ -45,10 +57,11 @@ class Ces4Data:
         for x in range(len(geo)):
             curr = geo.iloc[x]       
             inputs = {
-                params[col.lower()]:curr[col] 
+                params[Ces4Data.normalize(col)]:curr[col] 
                 for col in geo.columns 
-                if col.lower() in params
+                if Ces4Data.normalize(col) in params
                 }
-            inputs['geometry'] = GEOSGeometry(inputs['geometry'].wkt, srid=4326) 
-            Ces4.objects.create(**inputs) 
+            inputs['population'] = curr['ACS2019Tot']
+            inputs['geometry'] = GEOSGeometry(inputs['geometry'].wkt, srid=4326)
+            Tract.objects.create(**inputs) 
             
