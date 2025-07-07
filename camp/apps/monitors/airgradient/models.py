@@ -126,6 +126,9 @@ class AirGradient(Monitor):
     location_id = models.IntegerField(unique=True)
     serial = MACAddressField()
 
+    class Meta:
+        verbose_name = 'AirGradient'
+
     @property
     def is_dual_channel(self):
         return self.device == 'O-1PP'

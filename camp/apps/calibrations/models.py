@@ -1,5 +1,4 @@
 from django.contrib.postgres.fields import ArrayField
-from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -116,6 +115,12 @@ class CalibrationPair(TimeStampedModel):
     @property
     def colocated_stage(self):
         return self.colocated.get_default_stage(self.entry_model)
+
+    def get_distance(self):
+        return geopy_distance(
+            (self.reference.position.y, self.reference.position.x),
+            (self.colocated.position.y, self.colocated.position.x),
+        )
 
     def get_current_calibration(self, trainer_name):
         return (self.calibrations

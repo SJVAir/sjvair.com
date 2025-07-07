@@ -19,6 +19,9 @@ class ProcessorMeta(ABCMeta):
             return cls.name == other.name
         return False
 
+    def __hash__(cls):
+        return hash(str(cls))
+
 
 class BaseProcessor(ABC, metaclass=ProcessorMeta):
     '''

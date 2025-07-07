@@ -284,6 +284,7 @@ HEALTH_CHECK = {
     'MEMORY_MIN': 100,  # in MB
     'SUBSETS': {
         'air-networks': [
+            'Air Network: AirGradient',
             'Air Network: AirNow',
             'Air Network: AQview',
             'Air Network: CCAC BAM-1022',

@@ -9,7 +9,7 @@ from django_admin_inline_paginator.admin import TabularInlinePaginated
 
 from camp.apps.monitors.models import Monitor, Entry
 from .forms import DefaultCalibrationForm
-from .models import Calibrator, AutoCalibration, DefaultCalibration
+from .models import CalibrationPair, Calibration, DefaultCalibration
 
 
 def formula_help_text():
@@ -41,12 +41,12 @@ class DefaultCalibrationAdmin(admin.ModelAdmin):
 
 
 
-class AutoCalibrationInline(TabularInlinePaginated):
+class CalibrationInline(TabularInlinePaginated):
     extra = 0
-    model = AutoCalibration
-    per_page = 30
-    fields = ('start_date', 'end_date', 'r2', 'formula')
-    readonly_fields = ('start_date', 'end_date', 'r2', 'formula')
+    model = Calibration
+    per_page = 10
+    fields = ('start_time', 'end_time', 'trainer', 'r2', 'rmse', 'mae', 'formula')
+    readonly_fields = ('start_time', 'end_time', 'trainer', 'r2', 'rmse', 'mae', 'formula')
 
     def has_add_permission(self, request, obj):
         # Calibrations are added automatically.
@@ -57,23 +57,23 @@ class AutoCalibrationInline(TabularInlinePaginated):
         return False
 
 
-@admin.register(Calibrator)
+@admin.register(CalibrationPair)
 class CalibratorAdmin(admin.ModelAdmin):
-    inlines = (AutoCalibrationInline,)
-    list_display = ('pk', 'get_reference', 'get_colocated', 'get_county', 'get_distance', 'is_enabled', 'get_r2', 'get_last_updated',)
-    list_filter = ('is_enabled', 'reference__county', 'calibration__end_date',)
-    raw_id_fields = ('reference', 'colocated', 'calibration')
+    inlines = (CalibrationInline,)
+    list_display = ('pk', 'get_reference', 'get_colocated', 'get_county', 'get_distance', 'is_enabled')
+    list_filter = ('is_enabled', 'reference__county', 'calibrations__end_time',)
+    raw_id_fields = ('reference', 'colocated')
 
-    def get_queryset(self, request):
-        monitor_queryset = Monitor.objects.all().select_related('latest')
+    # def get_queryset(self, request):
+    #     monitor_queryset = Monitor.objects.all().select_related('latest')
 
-        queryset = super().get_queryset(request)
-        queryset = queryset.select_related('calibration')
-        queryset = queryset.prefetch_related(
-            Prefetch('reference', monitor_queryset),
-            Prefetch('colocated', monitor_queryset),
-        )
-        return queryset
+    #     queryset = super().get_queryset(request)
+    #     # queryset = queryset.select_related('reference', 'colocated')
+    #     # queryset = queryset.prefetch_related(
+    #     #     Prefetch('reference', monitor_queryset),
+    #     #     Prefetch('colocated', monitor_queryset),
+    #     # )
+    #     return queryset
 
     def get_county(self, instance):
         return instance.reference.county
@@ -89,19 +89,19 @@ class CalibratorAdmin(admin.ModelAdmin):
         )
     get_distance.short_description = 'Distance'
 
-    def get_last_updated(self, instance):
-        if instance.calibration:
-            return instance.calibration.end_date
-        return '-'
-    get_last_updated.short_description = 'Last Updated'
-    get_last_updated.admin_order_field = 'calibration__end_date'
+    # def get_last_updated(self, instance):
+    #     if instance.calibration:
+    #         return instance.calibration.end_date
+    #     return '-'
+    # get_last_updated.short_description = 'Last Updated'
+    # get_last_updated.admin_order_field = 'calibration__end_date'
 
-    def get_r2(self, instance):
-        if instance.calibration:
-            return instance.calibration.r2
-        return '-'
-    get_r2.short_description = 'R2'
-    get_r2.admin_order_field = 'calibration__r2'
+    # def get_r2(self, instance):
+    #     if instance.calibration:
+    #         return instance.calibration.r2
+    #     return '-'
+    # get_r2.short_description = 'R2'
+    # get_r2.admin_order_field = 'calibration__r2'
 
     def get_monitor_link(self, instance):
         return mark_safe(Template('''

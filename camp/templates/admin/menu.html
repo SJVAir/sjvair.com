@@ -15,8 +15,14 @@
         <caption>Air Quality</caption>
         <tr>
             <td colspan="2">
-                <h3><a href="{% url 'admin:calibrations_calibrator_changelist' %}">Calibrations</a></h3>
+                <h3><a href="{% url 'admin:calibrations_calibrationpair_changelist' %}">Calibration Pairs</a></h3>
                 <p>Reference and colocated monitors.</p>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <h3><a href="{% url 'admin:calibrations_defaultcalibration_changelist' %}">Default Calibrations</a></h3>
+                <p>Set the default display calibration by monitor and entry type.</p>
             </td>
         </tr>
         <tr>
@@ -46,7 +52,8 @@
                 <p>Low-cost PM2.5 monitors.</p>
             </td>
             <td class="links">
-                <p><a href="https://www.airgradient.com/map/" target="_blank">🔗 AirGradient Map</a></p>
+                <p><a href="https://www.airgradient.com/map/" target="_blank">📍 AirGradient Map</a></p>
+                <p><a href="{% url 'admin:airgradient_place_changelist' %}">🔑 Places (API Config)</a></p>
             </td>
         </tr>
         <tr>
@@ -55,7 +62,7 @@
                 <p>AB617 monitors, operated by the CARB.</p>
             </td>
             <td class="links">
-                <p><a href="https://aqview.arb.ca.gov/map" target="_blank">🔗 AQview Map</a></p>
+                <p><a href="https://aqview.arb.ca.gov/map" target="_blank">📍 AQview Map</a></p>
             </td>
         </tr>
         <tr>
@@ -70,7 +77,7 @@
                 <p>Low-cost PM2.5 monitors.</p>
             </td>
             <td class="links">
-                <p><a href="https://map.purpleair.com/" target="_blank">🔗 PurpleAir Map</a></p>
+                <p><a href="https://map.purpleair.com/" target="_blank">📍 PurpleAir Map</a></p>
             </td>
         </tr>
     </table>

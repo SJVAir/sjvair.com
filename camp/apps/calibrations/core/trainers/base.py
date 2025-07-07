@@ -17,6 +17,9 @@ class TrainerMeta(ABCMeta):
             return cls.name == other.name
         return False
 
+    def __hash__(cls):
+        return hash(str(cls))
+
 
 class BaseTrainer(ABC, metaclass=TrainerMeta):
     entry_model = None
