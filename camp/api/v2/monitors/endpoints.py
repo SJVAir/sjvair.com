@@ -27,6 +27,7 @@ class MonitorMixin:
     def get_queryset(self):
         queryset = (super()
             .get_queryset()
+            .select_related('health')
             .prefetch_related('latest_entries')
             .with_last_entry_timestamp()
         )
@@ -130,7 +131,7 @@ class MonitorTypes(Endpoint):
         return {'data': self.get_monitors()}
 
 
-class MonitorMetaEndpoint(MonitorTypes):
+class MonitorMetaEndpoint(Endpoint):
     def get_monitors(self):
         payload = {}
 

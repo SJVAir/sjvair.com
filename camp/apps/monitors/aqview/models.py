@@ -20,7 +20,7 @@ class AQview(Monitor):
         'url': 'https://aqview.arb.ca.gov/'
     }
 
-    EXPECTED_INTERVAL = '1h'
+    EXPECTED_INTERVAL = '1 hour'
     ENTRY_CONFIG = {
         entry_models.PM25: {
             'fields': {'value': 'aobs'},
