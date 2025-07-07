@@ -1,5 +1,5 @@
 import geopandas as gpd
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from django.test import TestCase
 from django.utils import timezone
@@ -10,7 +10,7 @@ from django.utils.timezone import make_aware
 from camp.api.v1.hms_smoke.tests import create_smoke_objects
 from camp.apps.integrate.hms_smoke.data import get_smoke_file, to_db
 from camp.apps.integrate.hms_smoke.models import Smoke
-from camp.apps.integrate.hms_smoke.tasks import fetch_files
+from camp.apps.integrate.hms_smoke.tasks import fetch_files, final_file
 from camp.utils.counties import County
 
 
@@ -75,15 +75,31 @@ class FetchFilesTaskTest(TestCase):
     test_to_db_notSJV:
         bad data, polygon not in SJV should return 
     """
-    def test_fetch_files_triggers_file_download(self):
-        fetch_files.call_local()
-        print(Smoke.objects.all().count())    
-    
+    def test_clearing_old_data(self):
+        get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
+        Smoke.objects.first().is_final = False
+        Smoke.objects.first().save()
+        count = Smoke.objects.all().count()
+        assert count > 0
+        get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
+        assert Smoke.objects.first().is_final == True
+        assert Smoke.objects.all().count() == count 
+        
+    def test_fetch_files(self):
+        fetch_files.call_local()  
+        
+    def test_final_files(self):
+        final_file.call_local()  
     
     def test_get_smoke_file(self):
+        assert Smoke.objects.all().count() == 0
         get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
         count = Smoke.objects.all().count()
         assert count > 0
+        assert Smoke.objects.first().is_final == True
+        assert Smoke.objects.first().date == datetime(2025, 7, 2).date()
+        assert Smoke.objects.first().density == 'light'
+        
         get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
         assert Smoke.objects.all().count() == count #entry not added to db
         

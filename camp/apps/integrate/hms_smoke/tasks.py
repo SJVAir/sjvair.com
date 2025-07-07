@@ -15,7 +15,9 @@ from .data import get_smoke_file
 def fetch_files():
     get_smoke_file(timezone.now().date())
     
-#Query 9am est for the previous days data 
-@db_periodic_task(crontab(minute='0', hour='4'), priority=50)
+#Query 1pm pst for the previous days final data 
+#data usually available around 8am pst, but just in case the data is late
+@db_periodic_task(crontab(minute='0', hour='20'), priority=50)
 def final_file():
     get_smoke_file(timezone.now().date() - timedelta(days=1))
+    

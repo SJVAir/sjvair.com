@@ -4,7 +4,6 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.timezone import make_aware
 
 from camp.apps.integrate.hms_smoke.models import Smoke
 
@@ -45,7 +44,7 @@ def create_smoke_objects(density, start, end):
     
     satellite = "TestSatellite"
     date = timezone.now().date()
-    smoke = Smoke(density=density.lower().strip(),end=make_aware(end.time()),start=make_aware(start.time()), satellite=satellite, geometry=geometry, date=date)
+    smoke = Smoke(density=density.lower().strip(),end=end,start=start, satellite=satellite, geometry=geometry, date=date)
     smoke.full_clean()
     smoke.save()
     return smoke
@@ -79,19 +78,19 @@ class Tests_SmokeFilter(TestCase):
         
         assert response.status_code == 200
         assert len(response.json()["data"]) == 1
-        assert response.json()["data"][0]['id'] == str(self.smoke1.id)
+        assert response.json()["data"][0]['id'] == str(self.smoke1.pk)
         assert response.json()["data"][0]['density'] == 'light'
 
     def test2_smoke_filter_view(self):
         url = reverse("api:v1:hms-smoke:smoke-list")
-        time = timezone.now().strftime('%H:%M:%S')
+        time = timezone.now().strftime('%Y-%m-%dT%H:%M:%S:%f')
         url_with_params = f"{url}?start__gte={time}"
         
         response = self.client.get(url_with_params)
         
         assert response.status_code == 200
         assert len(response.json()["data"]) == 1
-        assert response.json()["data"][0]['id'] == str(self.smoke3.id)
+        assert response.json()["data"][0]['id'] == str(self.smoke3.pk)
                
     def test3_smoke_filter_view(self):
         url = reverse("api:v1:hms-smoke:smoke-list")
@@ -101,18 +100,18 @@ class Tests_SmokeFilter(TestCase):
        
         assert response.status_code == 200
         assert len(response.json()["data"]) == 1
-        assert response.json()["data"][0]['id'] == str(self.smoke1.id)
+        assert response.json()["data"][0]['id'] == str(self.smoke1.pk)
 
     def test4_smoke_filter_view(self):
         url = reverse("api:v1:hms-smoke:smoke-list")
-        time = self.smoke2.end.strftime('%H:%M:%S.%f')
+        time = self.smoke2.end.strftime('%Y-%m-%dT%H:%M:%S:%f')
         url_with_params = f"{url}?end={time}"
         
         response = self.client.get(url_with_params)
         
         assert response.status_code == 200
         assert len(response.json()["data"]) == 1
-        assert response.json()["data"][0]['id'] == str(self.smoke2.id)
+        assert response.json()["data"][0]['id'] == str(self.smoke2.pk)
     
     def test5_smoke_filter_view(self):
         self.smoke3.density ='NotHeavy'
@@ -151,7 +150,7 @@ class Tests_OngoingSmoke(TestCase):
         assert response.status_code == 200
         assert len(response.json()["data"]) == 2
         assert response.json()['data'][0]['density'].lower() == 'light'
-        assert response.json()['data'][0]["id"] == str(self.smoke1.id)
+        assert response.json()['data'][0]["id"] == str(self.smoke1.pk)
         
     def test2_ongoing_smoke(self):
         self.smoke4.date = timezone.now().date() - timedelta(days=1)
@@ -166,9 +165,9 @@ class Tests_OngoingSmoke(TestCase):
         assert len(response.json()["data"]) == 2
         for feature in response.json()["data"]:
             if feature['density'].lower() == 'light':
-                assert feature["id"] == str(self.smoke1.id)
+                assert feature["id"] == str(self.smoke1.pk)
             if feature['density'].lower() == 'medium':
-                assert feature["id"] == str(self.smoke2.id)
+                assert feature["id"] == str(self.smoke2.pk)
                 
     def test3_ongoing_smoke(self):
         ongoing_end = timezone.now() + timedelta(hours=1)
@@ -180,7 +179,7 @@ class Tests_OngoingSmoke(TestCase):
         assert response.status_code == 200
         assert len(response.json()["data"]) == 1
         assert response.json()['data'][0]['density'] == 'medium'
-        assert response.json()['data'][0]["id"] == str(self.smoke2.id)
+        assert response.json()['data'][0]["id"] == str(self.smoke2.pk)
         
     def test4_ongoing_smoke(self):
         url = reverse("api:v1:hms-smoke:smoke-ongoing")
@@ -199,7 +198,7 @@ class Tests_OngoingSmoke(TestCase):
         assert len(response.json()["data"]) == 1
         for feature in response.json()["data"]:
             if feature['density'].lower() == 'light':
-                assert feature["id"] == str(self.smoke1.id)
+                assert feature["id"] == str(self.smoke1.pk)
         
         
 class Tests_DetailSmoke(TestCase):
@@ -224,11 +223,11 @@ class Tests_DetailSmoke(TestCase):
         
     #returns 
     def test1_detail_smoke(self):
-        url = reverse("api:v1:hms-smoke:smoke-detail", kwargs={'smoke_id':self.smoke1.id})
+        url = reverse("api:v1:hms-smoke:smoke-detail", kwargs={'smoke_id':self.smoke1.pk})
         response = self.client.get(url)
         
         assert response.status_code == 200
-        assert response.json()["data"]["id"] == str(self.smoke1.id)
+        assert response.json()["data"]["id"] == str(self.smoke1.pk)
         
     def test2_detail_smoke(self):
         url = reverse("api:v1:hms-smoke:smoke-detail", kwargs={'smoke_id':"gQ7rC18FRKuu15z9m2CsFm"})
