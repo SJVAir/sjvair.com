@@ -17,13 +17,10 @@ class Ces4_Serializer(serializers.Serializer):
         'lbw', 'lbw_p', 'edu', 'edu_p',
         'ling', 'ling_p', 'pov', 'pov_p',
         'unemp', 'unemp_p', 'housingb', 'housing_bp',
-        'children_u','children_p',
-        'pop_10_64', 'pop_10_6_p', 'elderly_65', 'elderly_p',
+        'children','children_p',
+        'pop_10_64', 'pop_10_64_p', 'elderly', 'elderly_p',
         'hispanic', 'hispanic_p', 'white', 'white_p',
         'african_am', 'african_p', 'native_am', 'native_am_p',
         'asian_am', 'asian_am_p', 'other_mult', 'other_mu_p',
         'county', 'geometry',
-        
-        
-        
     )

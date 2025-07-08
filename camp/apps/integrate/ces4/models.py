@@ -187,15 +187,15 @@ class Tract(models.Model):
     housing_bp = models.FloatField(null=True)
     
     # percent per census tract of children under 10 years old
-    children_u = models.IntegerField(null=True)
+    children = models.IntegerField(null=True)
     children_p = models.FloatField(null=True)
     
     # percent per census tract of people between 10 and 64 years old
     pop_10_64 = models.IntegerField(null=True)
-    pop_10_6_p = models.FloatField(null=True)
+    pop_10_64_p = models.FloatField(null=True)
     
     # percent per census tract of elderly 65 years and older
-    elderly_65 = models.IntegerField(null=True)
+    elderly = models.IntegerField(null=True)
     elderly_p = models.FloatField(null=True)
     
     # percent per census tract of those who identify as Hispanic or Latino

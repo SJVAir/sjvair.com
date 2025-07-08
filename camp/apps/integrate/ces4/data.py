@@ -12,14 +12,22 @@ from camp.apps.integrate.ces4.models import Tract
 
 
 class Ces4Data:
+    #Normalizes input data columns and Tract class variables to be comparable for seemless db entry
     def normalize(name):
-        name = re.sub('_pct', '_p', name)
-        name = re.sub('A_1', '_am_p', name)
-        name = re.sub('_1', '_p', name)
-        name = re.sub('Sco', '_s', name)
-        name = re.sub('Amer', '_am', name)
-        name = re.sub('Ame', '_am', name)
-        name = re.sub('_', '', name)
+        sub = {
+            '_pct': '_p', 
+            'A_1': '_am_p', 
+            '_1': '_p',
+            'Sco': '_s',
+            'Amer': '_am',
+            'Ame': '_am',
+            '_u': '',
+            '_65': '',
+            '10_6_': '10_64_',
+            '_': '', 
+        }
+        for key, value in sub.items():
+            name = re.sub(key, value, name)
         return name.lower()
     
     def map_tracts(geo):
