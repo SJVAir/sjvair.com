@@ -10,10 +10,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
     # Forward a port from the guest to the host, which allows for outside
     # computers to access the VM, whereas host only networking does not.
-    config.vm.network "forwarded_port", guest: 8080, host: 8080 # Web
-    config.vm.network "forwarded_port", guest: 8000, host: 8000 # Server
-    config.vm.network "forwarded_port", guest: 35729, host: 35729 # LiveReload
-    # config.vm.network "forwarded_port", guest: 5432, host: 5432 # Postgres
+    config.vm.network "forwarded_port", guest: 8080, host: 8080 #, auto_correct: true # Web
+    config.vm.network "forwarded_port", guest: 8000, host: 8000 #, auto_correct: true # Server
+    config.vm.network "forwarded_port", guest: 35729, host: 35729 #, auto_correct: true # LiveReload
+    # config.vm.network "forwarded_port", guest: 5432, host: 5432, auto_correct: true # Postgres
 
     # Configure virtual machine specs. Keep it simple, single user.
     config.vm.provider :virtualbox do |p|

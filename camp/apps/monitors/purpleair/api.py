@@ -28,7 +28,7 @@ def chunk_date_range(start_date, end_date):
         chunk_end_date = min(period_end_date, end_date)
         chunks.append((current_date, chunk_end_date))
         current_date = chunk_end_date + datetime.timedelta(days=1)
-    
+
     chunks = [(
         datetime.datetime.combine(start_date, datetime.time.min),
         datetime.datetime.combine(end_date, datetime.time.max),
@@ -151,12 +151,12 @@ class PurpleAirAPI:
             return data['sensor']
         except KeyError:
             return None
-        
+
     def get_sensor_history(self, sensor_index, start_date=None, end_date=None, fields=None):
         ''' Get a sensor's historical entries, batching the
             requests and yielding entries as an iterator.
         '''
-        start_date = start_date or timezone.now().date() - datetime.timedelta(days=28)
+        start_date = start_date or (timezone.now().date() - datetime.timedelta(days=28))
         end_date = end_date or timezone.now().date()
         timestamp_chunks = chunk_date_range(start_date, end_date)
         chunk_count = len(timestamp_chunks)
@@ -164,8 +164,8 @@ class PurpleAirAPI:
         for i, (start_timestamp, end_timestamp) in enumerate(timestamp_chunks):
             response = self.get(f'/v1/sensors/{sensor_index}/history', params={
                 'fields': ','.join(fields or self.HISTORY_FIELDS),
-                'start_timestamp': start_timestamp.timestamp(),
-                'end_timestamp': end_timestamp.timestamp(),
+                'start_timestamp': int(start_timestamp.timestamp()),
+                'end_timestamp': int(end_timestamp.timestamp()),
                 'average': 0,
             })
             data = response.json()
@@ -175,12 +175,20 @@ class PurpleAirAPI:
                 time.sleep(max(1, random() * 10)) # Wait 1-10 seconds
                 yield from self.get_sensor_history(sensor_index, start_date, end_date, fields)
                 return
+            elif data.get('error'):
+                print('\n'.join([
+                    f'[ERROR] purpleair_api.get_sensor_history({sensor_index}, {start_date}, {end_date}, {fields})',
+                    f'\t -> {data}'
+                ]))
+                return
 
             # Construct, sort, and yield the results
             timestamp_index = data['fields'].index('time_stamp')
             entries = sorted(data['data'], key=lambda entry: entry[timestamp_index])
             for entry in entries:
-                yield dict(zip(data['fields'], entry))
+                payload = dict(zip(data['fields'], entry))
+                payload['sensor_index'] = sensor_index
+                yield payload
 
             # Sleep for an extra second between each
             # request to avoid rate limiting
