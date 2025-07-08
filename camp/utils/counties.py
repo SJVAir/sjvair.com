@@ -1,6 +1,6 @@
 import json
 
-from django.contrib.gis.geos import GEOSGeometry
+from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.utils.functional import cached_property
 
 from camp.utils.datafiles import datafile
@@ -32,7 +32,6 @@ class County:
                 return name
         return default
 
-
     @classmethod
     def in_SJV(cls, geometry_shape, default=False):
         for name, geometry in cls.counties.items():
@@ -40,4 +39,10 @@ class County:
             if shapely_county.intersects(geometry_shape):
                 return name
         return default
-    
+
+    @classmethod
+    def get_multipolygon(cls):
+        multipoly = MultiPolygon()
+        for poly in cls.counties.values():
+            multipoly = multipoly.union(poly)
+        return multipoly 
