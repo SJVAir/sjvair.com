@@ -5,6 +5,7 @@ import requests
 import tempfile
 import zipfile
 
+from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry
 from django.forms import ValidationError
 from django.utils import timezone
@@ -34,7 +35,8 @@ def get_smoke_file(date):
     """
     #prevent multiple requests + delete queries from earlier that day
     is_final = False
-    if date != timezone.now().date():
+    today = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
+    if date != today:
         is_final = True
         if Smoke.objects.filter(date=date, is_final=True).exists():
             return

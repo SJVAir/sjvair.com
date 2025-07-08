@@ -7,7 +7,7 @@ from shapely.wkt import loads as load_wkt
 from django.core.exceptions import ValidationError
 from django.utils.timezone import make_aware
 
-from camp.api.v1.hms_smoke.tests import create_smoke_objects
+from camp.api.v2.hms_smoke.tests import create_smoke_objects
 from camp.apps.integrate.hms_smoke.data import get_smoke_file, to_db
 from camp.apps.integrate.hms_smoke.models import Smoke
 from camp.apps.integrate.hms_smoke.tasks import fetch_files, final_file
