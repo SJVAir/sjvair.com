@@ -45,12 +45,14 @@ class MonitorQuerySet(InheritanceQuerySet):
         super().__init__(*args, **kwargs)
         self._iterable_class = InheritanceIterable
 
-    def get_active(self):
-        cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
+    def get_active(self, seconds=None):
+        seconds = seconds or self.model.LAST_ACTIVE_LIMIT
+        cutoff = timezone.now() - timedelta(seconds=seconds)
         return self.filter(latest_entries__timestamp__gte=cutoff).distinct()
 
-    def get_inactive(self):
-        cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
+    def get_inactive(self, seconds=None):
+        seconds = seconds or self.model.LAST_ACTIVE_LIMIT
+        cutoff = timezone.now() - timedelta(seconds=seconds)
         return self.filter(Q(latest_entries__isnull=True) | Q(latest__timestamp__lt=cutoff))
 
     def get_for_health_checks(self):

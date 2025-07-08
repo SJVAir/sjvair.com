@@ -1,30 +1,96 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
 import pandas as pd
 
-from camp.datasci.cleaning import has_sufficient_data
+from camp.datasci import series
+from camp.apps.monitors.models import Monitor
+
+
+@dataclass
+class SanityChecks:
+    summary: series.SeriesSummary
+    monitor: Monitor
+    results: dict[str, Optional[bool]] = field(init=False)
+
+    def __post_init__(self):
+        self.results = {
+            'max': self.check_max(),
+            'flatline': self.check_flatline(),
+            'completeness': self.check_completeness(),
+        }
+
+    @property
+    def ok(self) -> bool:
+        return all(self.results.values())
+
+    def as_dict(self, suffix, flat: bool = True) -> dict:
+        if not flat:
+            return {f'sanity_{suffix}': self.results}
+        return {
+            f'sanity_{k}_{suffix}': v for k, v in self.results.items()
+        }
+
+    def check_max(self) -> bool:
+        """
+        Check if all values fall within a plausible range.
+
+        Why:
+            Values outside 0–2000 µg/m³ are usually invalid or hardware noise.
+        """
+        if self.summary.max is None or pd.isna(self.summary.max):
+            return None
+        return self.summary.max < 2000
+
+    def check_flatline(self) -> bool:
+        """
+        Detect flatlining - all values being the same or nearly the same.
+
+        Why:
+            Stuck or unresponsive sensors often emit a fixed value repeatedly.
+        """
+        if self.summary.flatline is None or pd.isna(self.summary.flatline):
+            return None
+        return self.summary.flatline < 75
+
+    def check_completeness(self) -> bool:
+        """
+        Ensure the sensor reported enough values during the time window.
+
+        Why:
+            Incomplete data may hide faults or cause misleading stats.
+        """
+        if self.summary.count is None or pd.isna(self.summary.count):
+            return None
+        expected = self.monitor.expected_hourly_entries
+        return (self.summary.count / expected) >= .8
 
 
 @dataclass
 class HealthCheckResult:
     score: int = 0
-    variance: Optional[float] = None
-    correlation: Optional[float] = None
+    summary: Optional[series.SeriesComparison] = None
+    sanity_a: Optional[SanityChecks] = None
+    sanity_b: Optional[SanityChecks] = None
 
     @property
     def grade(self) -> str:
         return {2: 'A', 1: 'B', 0: 'F'}.get(self.score, 'F')
 
+    def as_dict(self, flat: bool = True) -> dict:
+        data = {'score': self.score, 'grade': self.grade}
+        if self.summary:
+            data.update(self.summary.to_dict(flat=flat))
+        if self.sanity_a:
+            data.update(self.sanity_a.to_dict('a', flat=flat))
+        if self.sanity_b:
+            data.update(self.sanity_b.to_dict('b', flat=flat))
+        return data
+
 
 class HealthCheckEvaluator:
     def __init__(self, monitor, hour: datetime):
-        """
-        Args:
-            dfs (dict): A mapping of sensor name to its hourly dataframe,
-                        e.g. {'a': df_a, 'b': df_b} or {'1': df_1, '2': df_2}
-        """
         from camp.apps.entries.models import PM25
         self.entry_model = PM25
 
@@ -41,94 +107,10 @@ class HealthCheckEvaluator:
         )
         return queryset.to_dataframe()
 
-    def run_sanity_check(self, df: pd.DataFrame) -> bool:
-        """
-        Return True if this sensor passes all sanity checks.
-
-        Why:
-            Sane sensors must be within range, actively reporting, non-flat,
-            non-noisy, and sufficiently complete.
-        """
-        return all([
-            self.sensor_in_valid_range(df),
-            self.sensor_is_not_flatlined(df),
-            self.sensor_is_not_too_noisy(df),
-            self.sensor_has_enough_data(df),
-        ])
-
-    def sensor_in_valid_range(self, df: pd.DataFrame) -> bool:
-        """
-        Check if all values fall within a plausible range.
-
-        Why:
-            Values outside 0–2000 µg/m³ are usually invalid or hardware noise.
-        """
-        return not df.empty and df['value'].between(0, 2000).all()
-
-    def sensor_is_not_flatlined(self, df: pd.DataFrame) -> bool:
-        """
-        Detect flatlining - all values being the same or nearly the same.
-
-        Why:
-            Stuck or unresponsive sensors often emit a fixed value repeatedly.
-        """
-        return df['value'].nunique() > 1
-
-    def sensor_is_not_too_noisy(self, df: pd.DataFrame, max_cv=1.0) -> bool:
-        """
-        Check if signal is excessively noisy (high coefficient of variation).
-
-        Why:
-            Very high variability may indicate interference or hardware instability.
-        """
-        if df.empty:
-            return False
-        mean = df['value'].mean()
-        std = df['value'].std()
-        if mean == 0:
-            return False
-        return (std / mean) <= max_cv
-
-    def sensor_has_enough_data(self, df: pd.DataFrame) -> bool:
-        """
-        Ensure the sensor reported enough values during the time window.
-
-        Why:
-            Incomplete data may hide faults or cause misleading stats.
-        """
-        return has_sufficient_data(df,
-            interval=self.monitor.EXPECTED_INTERVAL,
-            window='1h',
-            threshold=0.8
-        )
-
-    def get_variance(self) -> Optional[float]:
-        """
-        Calculate the relative difference between A and B means.
-
-        Why:
-            Low variance suggests close agreement; high variance suggests a mismatch.
-        """
-        mean_a = self.df_a['value'].mean()
-        mean_b = self.df_b['value'].mean()
-        if mean_a + mean_b == 0:
-            return None
-        return abs(mean_a - mean_b) / ((mean_a + mean_b) / 2)
-
-    def get_correlation(self) -> Optional[float]:
-        """
-        Calculate the Pearson correlation between A and B values.
-
-        Why:
-            Correlation captures whether both sensors move together over time.
-            Helps detect flatlining or misalignment even if averages match.
-        """
-        if len(self.df_a) < 2 or len(self.df_b) < 2:
-            return None
-        try:
-            return self.df_a['value'].corr(self.df_b['value'])
-        except Exception:
-            return None
+    def get_score(self) -> int:
+        if self.sanity_a.ok and self.sanity_b.ok:
+            return 2 if self.summary.rpd_pairwise <= 20 else 1
+        return 1 if self.sanity_a.ok or self.sanity_b.ok else 0
 
     def evaluate(self) -> HealthCheckResult:
         """
@@ -147,21 +129,14 @@ class HealthCheckEvaluator:
             for sensor in self.monitor.ENTRY_CONFIG[self.entry_model]['sensors']
         ]
 
-        a_ok = self.run_sanity_check(self.df_a)
-        b_ok = self.run_sanity_check(self.df_b)
+        self.summary = series.compare(self.df_a['value'], self.df_b['value'])
+        self.sanity_a = SanityChecks(summary=self.summary.a, monitor=self.monitor)
+        self.sanity_b = SanityChecks(summary=self.summary.b, monitor=self.monitor)
+        score = self.get_score()
 
-        variance = None
-        correlation = None
-
-        if a_ok and b_ok:
-            variance = self.get_variance()
-            correlation = self.get_correlation()
-            score = 2 if (
-                variance is not None and variance <= 0.10
-                # and correlation is not None and correlation >= 0.6
-            ) else 1
-
-            return HealthCheckResult(score=score, variance=variance, correlation=correlation)
-
-        score = 1 if a_ok or b_ok else 0
-        return HealthCheckResult(score=score)
+        return HealthCheckResult(
+            score=score,
+            summary=self.summary,
+            sanity_a=self.sanity_a,
+            sanity_b=self.sanity_b,
+        )
