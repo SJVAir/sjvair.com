@@ -71,8 +71,8 @@ class Tests_SmokeFilter(TestCase):
     def test1_smoke_filter_view(self):
         self.smoke1.satellite = "TestSatellite1"
         self.smoke1.save()
-        url = reverse("api:v1:hms-smoke:smoke-list")
-        url_with_params = f"{url}?satellite=TestSatellite1"
+        url = reverse("api:v2:hms-smoke:smoke-list")
+        url_with_params = f"{url}?satellite__iexact=TestSatellite1"
         
         response = self.client.get(url_with_params)
         
@@ -82,10 +82,13 @@ class Tests_SmokeFilter(TestCase):
         assert response.json()["data"][0]['density'] == 'light'
 
     def test2_smoke_filter_view(self):
-        url = reverse("api:v1:hms-smoke:smoke-list")
+        url = reverse("api:v2:hms-smoke:smoke-list")
         time = timezone.now().strftime('%Y-%m-%dT%H:%M:%S:%f')
+        print(time)
+        print(Smoke.objects.filter(start__gte=time))
         url_with_params = f"{url}?start__gte={time}"
-        
+        print(url_with_params)
+        print(Smoke.objects.filter(id=self.smoke3.pk)[0].start)
         response = self.client.get(url_with_params)
         
         assert response.status_code == 200
@@ -93,17 +96,17 @@ class Tests_SmokeFilter(TestCase):
         assert response.json()["data"][0]['id'] == str(self.smoke3.pk)
                
     def test3_smoke_filter_view(self):
-        url = reverse("api:v1:hms-smoke:smoke-list")
+        url = reverse("api:v2:hms-smoke:smoke-list")
         url_with_params = f"{url}?density__iexact=LIGHT"
         
         response = self.client.get(url_with_params)
-       
+    
         assert response.status_code == 200
         assert len(response.json()["data"]) == 1
         assert response.json()["data"][0]['id'] == str(self.smoke1.pk)
 
     def test4_smoke_filter_view(self):
-        url = reverse("api:v1:hms-smoke:smoke-list")
+        url = reverse("api:v2:hms-smoke:smoke-list")
         time = self.smoke2.end.strftime('%Y-%m-%dT%H:%M:%S:%f')
         url_with_params = f"{url}?end={time}"
         
@@ -116,7 +119,7 @@ class Tests_SmokeFilter(TestCase):
     def test5_smoke_filter_view(self):
         self.smoke3.density ='NotHeavy'
         self.smoke3.save()
-        url = reverse("api:v1:hms-smoke:smoke-list")
+        url = reverse("api:v2:hms-smoke:smoke-list")
         url_with_params = f"{url}?density__iexact=heavy"
         
         response = self.client.get(url_with_params)
@@ -145,7 +148,7 @@ class Tests_OngoingSmoke(TestCase):
         self.smoke4 = create_smoke_objects("light", -1, 1)
         
     def test1_ongoing_smoke(self):
-        url = reverse("api:v1:hms-smoke:smoke-ongoing")
+        url = reverse("api:v2:hms-smoke:smoke-ongoing")
         response = self.client.get(url)
         assert response.status_code == 200
         assert len(response.json()["data"]) == 2
@@ -158,7 +161,7 @@ class Tests_OngoingSmoke(TestCase):
         ongoing_end = timezone.now() + timedelta(hours=1)
         self.smoke2.end = ongoing_end
         self.smoke2.save()
-        url = reverse("api:v1:hms-smoke:smoke-ongoing")
+        url = reverse("api:v2:hms-smoke:smoke-ongoing")
         response = self.client.get(url)
          
         assert response.status_code == 200
@@ -173,7 +176,7 @@ class Tests_OngoingSmoke(TestCase):
         ongoing_end = timezone.now() + timedelta(hours=1)
         self.smoke2.end = ongoing_end
         self.smoke2.save()
-        url = reverse("api:v1:hms-smoke:smoke-ongoing")
+        url = reverse("api:v2:hms-smoke:smoke-ongoing")
         final_url = f'{url}?density=medium'
         response = self.client.get(final_url)
         assert response.status_code == 200
@@ -182,7 +185,7 @@ class Tests_OngoingSmoke(TestCase):
         assert response.json()['data'][0]["id"] == str(self.smoke2.pk)
         
     def test4_ongoing_smoke(self):
-        url = reverse("api:v1:hms-smoke:smoke-ongoing")
+        url = reverse("api:v2:hms-smoke:smoke-ongoing")
         final_url = f'{url}?density=heavy'
         response = self.client.get(final_url)
         assert response.status_code == 200
@@ -191,7 +194,7 @@ class Tests_OngoingSmoke(TestCase):
     def test5_ongoing_smoke(self):
         self.smoke4.date = timezone.now().date() - timedelta(days=1)
         self.smoke4.save()
-        url = reverse("api:v1:hms-smoke:smoke-ongoing")
+        url = reverse("api:v2:hms-smoke:smoke-ongoing")
         response = self.client.get(url)
          
         assert response.status_code == 200
@@ -223,14 +226,14 @@ class Tests_DetailSmoke(TestCase):
         
     #returns 
     def test1_detail_smoke(self):
-        url = reverse("api:v1:hms-smoke:smoke-detail", kwargs={'smoke_id':self.smoke1.pk})
+        url = reverse("api:v2:hms-smoke:smoke-detail", kwargs={'smoke_id':self.smoke1.pk})
         response = self.client.get(url)
         
         assert response.status_code == 200
         assert response.json()["data"]["id"] == str(self.smoke1.pk)
         
     def test2_detail_smoke(self):
-        url = reverse("api:v1:hms-smoke:smoke-detail", kwargs={'smoke_id':"gQ7rC18FRKuu15z9m2CsFm"})
+        url = reverse("api:v2:hms-smoke:smoke-detail", kwargs={'smoke_id':"gQ7rC18FRKuu15z9m2CsFm"})
         response = self.client.get(url)
         
         assert response.status_code == 404
