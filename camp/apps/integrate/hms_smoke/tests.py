@@ -77,12 +77,11 @@ class FetchFilesTaskTest(TestCase):
     """
     def test_clearing_old_data(self):
         get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
-        Smoke.objects.first().is_final = False
-        Smoke.objects.first().save()
+        Smoke.objects.all().update(is_final=False)
         count = Smoke.objects.all().count()
         assert count > 0
         get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
-        assert Smoke.objects.first().is_final == True
+        assert Smoke.objects.filter(is_final=True).count() == count
         assert Smoke.objects.all().count() == count 
         
     def test_fetch_files(self):

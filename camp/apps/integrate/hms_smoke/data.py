@@ -39,7 +39,6 @@ def get_smoke_file(date):
         if Smoke.objects.filter(date=date, is_final=True).exists():
             return
     Smoke.objects.filter(date=date).delete()
-        
     #Construct download url for NOAA Smoke shapefile 
     base_url = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
     final_url = (
@@ -65,6 +64,8 @@ def to_db(curr, date, is_final):
     
     Args:
         curr (geoDF): this is one row of the geoPandasDF recovered using .iloc[]
+        date: date of this smoke file
+        is_final: boolean if this data is the final noaa smoke product for the given date
     """
     #If the county is not within the SJV return it does not need to be added
     if County.in_SJV(curr.geometry):
@@ -83,5 +84,5 @@ def to_db(curr, date, is_final):
         try:
             smoke.full_clean()
             smoke.save()
-        except ValidationError as e:
+        except ValidationError:
             return 
