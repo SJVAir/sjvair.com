@@ -17,8 +17,7 @@ def hourly_health_checks(hour=None):
         this_hour = timezone.now().replace(minute=0, second=0, microsecond=0)
         hour = this_hour - timedelta(hours=1)
 
-    # TODO: Only get monitors that have data in this hour
-    queryset = Monitor.objects.get_for_health_checks()
+    queryset = Monitor.objects.get_for_health_checks(hour)
     for monitor in queryset:
         monitor_health_check(monitor.pk, hour)
 
