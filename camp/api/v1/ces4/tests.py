@@ -20,8 +20,8 @@ def create_test_ces4_obj(id, pm, pm_p):
     county = County.in_SJV(load_wkt(geometry.wkt))
     params = {f.name: 0 for f in Tract._meta.get_fields()}
     params['objectid'] = id
-    params['pm'] = pm
-    params['pm_p'] = pm_p
+    params['pol_pm'] = pm
+    params['pol_pm_p'] = pm_p
     params['county'] = county
     params['geometry'] = geometry
     return Tract.objects.create(**params)
@@ -47,25 +47,25 @@ class Tests_CES4List(TestCase):
     
     def test2_list(self):
         url = reverse("api:v1:ces4:ces4-list")
-        url += "?pm__gt=1.111"
+        url += "?pol_pm__gt=1.111"
         response = self.client.get(url)
         assert response.status_code == 200
         assert len(response.json()['data']) == 1
         assert response.json()['data'][0]['objectid'] == self.ces4_1.pk
-        assert response.json()['data'][0]['pm'] == self.ces4_1.pm
+        assert response.json()['data'][0]['pol_pm'] == self.ces4_1.pol_pm
         
     def test3_list(self):
         url = reverse("api:v1:ces4:ces4-list")
-        url += "?pm_p=.3"
+        url += "?pol_pm_p=.3"
         response = self.client.get(url)
         assert response.status_code == 200
         assert len(response.json()['data']) == 1
         assert response.json()['data'][0]['objectid'] == self.ces4_2.pk
-        assert response.json()['data'][0]['pm_p'] == self.ces4_2.pm_p
+        assert response.json()['data'][0]['pol_pm_p'] == self.ces4_2.pol_pm_p
         
     def test4_list(self):
         url = reverse("api:v1:ces4:ces4-list")
-        url += "?ozone__gt=0"
+        url += "?pol_ozone__gt=0"
         response = self.client.get(url)
         assert response.status_code == 200
         assert len(response.json()['data']) == 0
@@ -86,7 +86,7 @@ class Tests_CES4Detail(TestCase):
         response = self.client.get(url)
         assert response.status_code == 200
         assert response.json()['data']['objectid'] == self.ces4_1.pk
-        assert response.json()['data']['pm'] == self.ces4_1.pm
+        assert response.json()['data']['pol_pm'] == self.ces4_1.pol_pm
         
     def test2_detail(self):
         url = reverse("api:v1:ces4:ces4-detail", kwargs={'pk':5})
