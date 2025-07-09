@@ -4,6 +4,7 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.timezone import make_aware
 
 from camp.apps.integrate.hms_smoke.models import Smoke
 
@@ -67,6 +68,9 @@ class Tests_SmokeFilter(TestCase):
         self.smoke1 = create_smoke_objects("Light", -1, 1) #This will default to 'light'
         self.smoke2 = create_smoke_objects("MEDIUM", -1, -1)
         self.smoke3 = create_smoke_objects("Heavy", 1, 1)
+        # print('1',self.smoke1.start)
+        # print('2',self.smoke2.start)
+        # print('3',self.smoke3.start)
         
     def test1_smoke_filter_view(self):
         self.smoke1.satellite = "TestSatellite1"
@@ -83,12 +87,9 @@ class Tests_SmokeFilter(TestCase):
 
     def test2_smoke_filter_view(self):
         url = reverse("api:v2:hms-smoke:smoke-list")
-        time = timezone.now().strftime('%Y-%m-%dT%H:%M:%S:%f')
-        print(time)
-        print(Smoke.objects.filter(start__gte=time))
+        time = timezone.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         url_with_params = f"{url}?start__gte={time}"
-        print(url_with_params)
-        print(Smoke.objects.filter(id=self.smoke3.pk)[0].start)
+
         response = self.client.get(url_with_params)
         
         assert response.status_code == 200
@@ -107,7 +108,7 @@ class Tests_SmokeFilter(TestCase):
 
     def test4_smoke_filter_view(self):
         url = reverse("api:v2:hms-smoke:smoke-list")
-        time = self.smoke2.end.strftime('%Y-%m-%dT%H:%M:%S:%f')
+        time = self.smoke2.end.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         url_with_params = f"{url}?end={time}"
         
         response = self.client.get(url_with_params)
@@ -117,13 +118,14 @@ class Tests_SmokeFilter(TestCase):
         assert response.json()["data"][0]['id'] == str(self.smoke2.pk)
     
     def test5_smoke_filter_view(self):
-        self.smoke3.density ='NotHeavy'
+        self.smoke3.density ='light'
+        self.smoke3.full_clean()
         self.smoke3.save()
         url = reverse("api:v2:hms-smoke:smoke-list")
         url_with_params = f"{url}?density__iexact=heavy"
         
         response = self.client.get(url_with_params)
-       
+        
         assert response.status_code == 200
         assert len(response.json()["data"]) == 0
         
