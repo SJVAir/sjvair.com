@@ -26,7 +26,7 @@ def correlation(a: pd.Series, b: pd.Series, method: str = 'spearman') -> Optiona
 
 def flatline_ratio(series: pd.Series) -> float:
     """Return the percent of repeated (flatlined) values in the series."""
-    return (series.diff().dropna() == 0).mean() * 100
+    return (series.diff().dropna() == 0).mean()
 
 
 def mad(series: pd.Series) -> float:
@@ -43,7 +43,7 @@ def rmse(a_values: pd.Series, b_values: pd.Series) -> float:
 def rpd(a: float, b: float) -> float:
     """Return the Relative Percent Difference (RPD) between two values."""
     mean = (a + b) / 2
-    return abs(a - b) / mean * 100 if mean else 0.0
+    return (abs(a - b) / mean) if mean else 0.0
 
 
 def rpd_means(a: pd.Series, b: pd.Series) -> float:
@@ -53,7 +53,7 @@ def rpd_means(a: pd.Series, b: pd.Series) -> float:
 
 def rpd_pairwise(a: pd.Series, b: pd.Series) -> float:
     """Return the mean RPD across all paired values in two Series."""
-    return ((a - b).abs() / ((a + b) / 2) * 100).mean()
+    return ((a - b).abs() / ((a + b) / 2)).mean()
 
 
 def signal_range(series: pd.Series) -> float:

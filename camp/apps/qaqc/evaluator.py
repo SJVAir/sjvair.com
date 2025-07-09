@@ -41,7 +41,7 @@ class SanityChecks:
         """
         if self.summary.max is None or pd.isna(self.summary.max):
             return None
-        return self.summary.max < 2000
+        return self.summary.max < 1500
 
     def check_flatline(self) -> bool:
         """
@@ -52,7 +52,7 @@ class SanityChecks:
         """
         if self.summary.flatline is None or pd.isna(self.summary.flatline):
             return None
-        return self.summary.flatline < 75
+        return self.summary.flatline < .75
 
     def check_completeness(self) -> bool:
         """
