@@ -94,7 +94,7 @@ class HealthCheck(TimeStampedModel):
     def calculate_completeness(self, count):
         expected = self.monitor.expected_hourly_entries
         if count is not None:
-            return (count / expected) * 100
+            return count / expected
 
     def _set_attrs(self, data):
         for key, value in data.items():

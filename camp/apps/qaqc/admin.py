@@ -10,7 +10,7 @@ from camp.datasci import series
 
 # TODO: move into utils for re-use elsewhere?
 def format_percent(value, decimals=2):
-    return f'{value:.{decimals}f}%' if value is not None else '-'
+    return f'{value * 100:.{decimals}f}%' if value is not None else '-'
 
 def format_float(value, decimals=2):
     return f'{value:.{decimals}f}' if value is not None else '-'
