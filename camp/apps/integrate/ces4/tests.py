@@ -67,7 +67,7 @@ class Tests_CES4_App(TestCase):
         assert df.loc[df['county'] == 'fresno', 'county'].count().sum() == 3
         assert df.loc[df['county'] == 'tulare', 'county'].count().sum() == 2
         assert df.loc[df['county'] == 'kings', 'county'].count().sum() == 1
-        
+
     def test_task(self):
         ces4_load.call_local()
         assert 760 == Tract.objects.count()

@@ -244,5 +244,5 @@ class Tract(models.Model):
         ) 
     
     #geometric shape of tract
-    geometry = gis_models.GeometryField(_('Tract Shape'), srid=4326, help_text=('Geometric shape of this tract'))
+    geometry = gis_models.MultiPolygonField(_('Tract Shape'), srid=4326, help_text=('Geometric shape of this tract'))
     

@@ -8,13 +8,13 @@ from camp.apps.integrate.ces4.models import Tract
 
 def create_test_ces4_obj(id, pm, pm_p):
     polygon_wkt = (
-        "POLYGON(("
+        "MULTIPOLYGON((("
         "-119.860839 36.660399, "
         "-119.860839 36.905755, "
         "-119.650879 36.905755, "
         "-119.650879 36.660399, "
         "-119.860839 36.660399"
-        "))"
+        ")))"
     )
     geometry = GEOSGeometry(polygon_wkt, srid=4326)
     county = County.in_SJV(load_wkt(geometry.wkt))

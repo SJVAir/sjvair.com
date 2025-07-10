@@ -6,7 +6,7 @@ import tempfile
 import zipfile
 
 
-from django.contrib.gis.geos import GEOSGeometry
+from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 
 from camp.apps.integrate.ces4.models import Tract
 
@@ -17,6 +17,7 @@ class Ces4Data:
     #Normalizes input data columns and Tract class variables to be comparable for seemless db entry
     def normalize(name):
         sub = {
+            'ACS2019Tot': 'population', # convert to a readable variable
             '_pct': '_p', # 'White_pct' -> _p
             'A_1': '_p', # 'Native_A_1' -> native_p
             '10_6_': '10_64_', #'Pop_10_6_1' -> pop_10_64
@@ -84,7 +85,9 @@ class Ces4Data:
                 for col in geo.columns 
                 if Ces4Data.normalize(col) in params
                 }
-            inputs['population'] = curr['ACS2019Tot']
-            inputs['geometry'] = GEOSGeometry(inputs['geometry'].wkt, srid=4326)
+            geometry = GEOSGeometry(inputs['geometry'].wkt, srid=4326)
+            if geometry.geom_type == 'Polygon':
+                geometry = MultiPolygon(geometry)
+            inputs['geometry'] = geometry
             Tract.objects.create(**inputs) 
             
