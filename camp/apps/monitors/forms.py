@@ -1,13 +1,14 @@
 from django import forms
-from django.contrib import admin
 from django.contrib.admin.widgets import FilteredSelectMultiple
 
-from .models import Group, Monitor
+from camp.apps.entries.fields import EntryTypeField
+
+from .models import Group
 
 
 class MonitorAdminForm(forms.ModelForm):
     groups = forms.ModelMultipleChoiceField(
-        queryset=Group.objects.all(), 
+        queryset=Group.objects.all(),
         required=False,
         widget=FilteredSelectMultiple(
             verbose_name='Groups',

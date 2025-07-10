@@ -25,7 +25,7 @@
                     <span class="is-size-7">{{ alert.start_time|timesince }} ago</span>
                 </td>
                 <td class="has-text-centered">
-                    <span class="tag air {{ alert.level }}">{{ alert.get_level_display }}</span>
+                    <span class="tag air {{ alert.latest.level }}">{{ alert.latest.get_level.label }}</span>
                 </td>
             </tr>
             {% empty %}

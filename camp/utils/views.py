@@ -23,7 +23,7 @@ from django_huey import get_queue
 from resticus.http import JSONResponse
 from ua_parser import user_agent_parser
 
-from camp.apps.monitors.models import Entry
+from camp.apps.entries.models import PM25
 
 
 def get_view_cache_key(view, query=None):
@@ -152,7 +152,7 @@ class AdminStats(generic.View):
                     AS estimate
                 FROM pg_class
                 WHERE relname=%s;
-            """, [Entry._meta.db_table])
+            """, [PM25._meta.db_table])
             return cursor.fetchone()[0]
 
 

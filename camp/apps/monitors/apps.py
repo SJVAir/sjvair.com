@@ -8,6 +8,7 @@ class MonitorsConfig(AppConfig):
 
     def ready(self):
         from . import health_checks
+        plugin_dir.register(health_checks.AirGradientHealthCheck)
         plugin_dir.register(health_checks.AirNowHealthCheck)
         plugin_dir.register(health_checks.AQviewHealthCheck)
         plugin_dir.register(health_checks.CCACBAMHealthCheck)

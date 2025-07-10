@@ -5,12 +5,10 @@ import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from django.core.exceptions import ValidationError
-from django.db import models
 from django.utils import timezone
 
-from resticus.encoders import JSONEncoder
-
+from camp.apps.calibrations import processors
+from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor, Entry
 from camp.utils.datetime import parse_datetime
 
@@ -25,6 +23,7 @@ from camp.utils.datetime import parse_datetime
 
 class BAM1022(Monitor):
     LAST_ACTIVE_LIMIT = int(60 * 60 * 1.5)
+    ENTRY_UPLOAD_ENABLED = True
 
     DATA_PROVIDERS = [{
         'name': 'Central California Asthma Collaborative',
@@ -36,13 +35,57 @@ class BAM1022(Monitor):
         'url': 'https://cencalasthma.org'
     }
 
-    class Meta:
-        verbose_name = 'BAM 1022'
+    EXPECTED_INTERVAL = '1 hour'
+    ENTRY_CONFIG = {
+        entry_models.Temperature: {
+            'fields': {'celsius': 'AT(C)'},
+            'allowed_stages': [entry_models.Temperature.Stage.RAW],
+            'default_stage': entry_models.Temperature.Stage.RAW,
+        },
+        entry_models.Humidity: {
+            'fields': {'value': 'RH(%)'},
+            'allowed_stages': [entry_models.Humidity.Stage.RAW],
+            'default_stage': entry_models.Humidity.Stage.RAW,
+        },
+        entry_models.Pressure: {
+            'fields': {'mmhg': 'BP(mmHg)'},
+            'allowed_stages': [entry_models.Pressure.Stage.RAW],
+            'default_stage': entry_models.Pressure.Stage.RAW,
+        },
+        entry_models.PM25: {
+            'fields': {'value': 'ConcHR(ug/m3)'},
+            'allowed_stages': [
+                entry_models.PM25.Stage.RAW,
+                entry_models.PM25.Stage.CLEANED,
+            ],
+            'default_stage': entry_models.PM25.Stage.CLEANED,
+            'processors': {
+                entry_models.PM25.Stage.RAW: [processors.PM25_FEM_Cleaner]
+            },
+            'alerts': {
+                'stage': entry_models.PM25.Stage.CLEANED,
+                'processor': processors.PM25_FEM_Cleaner,
+            }
+        },
+    }
 
     class Meta:
         verbose_name = 'BAM 1022'
 
-    def create_entry(self, payload, sensor=None):
+    def handle_payload(self, payload):
+        entries = []
+        timestamp = parse_datetime(payload['Time'])
+        for EntryModel, config in self.ENTRY_CONFIG.items():
+            data = {attr: payload[key] for attr, key in config['fields'].items() if key in payload}
+            if not data:
+                continue
+
+            if entry := self.create_entry(EntryModel, timestamp=timestamp, **data):
+                entries.append(entry)
+
+        return entries
+
+    def create_entry_legacy(self, payload, sensor=None):
         timestamp = parse_datetime(payload['Time'])
         try:
             entry = self.entries.get(timestamp=timestamp)
@@ -50,7 +93,7 @@ class BAM1022(Monitor):
             entry.save()
             return entry
         except Entry.DoesNotExist:
-            return super().create_entry(payload, sensor=sensor)
+            return super().create_entry_legacy(payload, sensor=sensor)
 
     def process_entry(self, entry, payload):
         attr_map = {
