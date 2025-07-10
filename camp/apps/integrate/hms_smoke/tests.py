@@ -105,13 +105,13 @@ class FetchFilesTaskTest(TestCase):
     def test_to_db_SJV(self):
         count = Smoke.objects.all().count()
         polygon_wkt = (
-                        "POLYGON(("
+                        "MULTIPOLYGON((("
                         "-119.860839 36.660399, "
                         "-119.860839 36.905755, "
                         "-119.650879 36.905755, "
                         "-119.650879 36.660399, "
                         "-119.860839 36.660399"
-                        "))"
+                        ")))"
                     )
         geometry = load_wkt(polygon_wkt) 
         input = [{

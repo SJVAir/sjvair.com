@@ -6,7 +6,7 @@ import tempfile
 import zipfile
 
 from django.conf import settings
-from django.contrib.gis.geos import GEOSGeometry
+from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.forms import ValidationError
 from django.utils import timezone
 from django.utils.timezone import make_aware
@@ -72,6 +72,8 @@ def to_db(curr, date, is_final):
     #If the county is not within the SJV return it does not need to be added
     if County.in_SJV(curr.geometry):
         geometry = GEOSGeometry(curr.geometry.wkt, srid=4326)
+        if geometry.geom_type == 'Polygon':
+            geometry = MultiPolygon(geometry)     
         start = parse_timestamp(curr.Start)
         end = parse_timestamp(curr.End)
         smoke = Smoke(

@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.contrib.gis.geos import GEOSGeometry
+from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -34,6 +34,7 @@ def create_smoke_objects(density, start, end):
         "))"
     )
     geometry = GEOSGeometry(polygon_wkt, srid=4326)
+    geometry = MultiPolygon(geometry)
     if start == -1:
         start = timezone.now() - timedelta(hours=2)
     else:
@@ -68,9 +69,6 @@ class Tests_SmokeFilter(TestCase):
         self.smoke1 = create_smoke_objects("Light", -1, 1) #This will default to 'light'
         self.smoke2 = create_smoke_objects("MEDIUM", -1, -1)
         self.smoke3 = create_smoke_objects("Heavy", 1, 1)
-        # print('1',self.smoke1.start)
-        # print('2',self.smoke2.start)
-        # print('3',self.smoke3.start)
         
     def test1_smoke_filter_view(self):
         self.smoke1.satellite = "TestSatellite1"
