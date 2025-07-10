@@ -13,7 +13,7 @@ from camp.utils.test import is_close
 class DataSciTests(TestCase):
     def test_rpd(self):
         assert stats.rpd(10, 10) == 0
-        assert round(stats.rpd(10, 12), 1) == 18.2  # ~18.18%
+        assert round(stats.rpd(10, 12), 4) == 0.1818  # ~18.18%
 
     def test_compare_series_agreement(self):
         s1 = pd.Series([1, 2, 3])

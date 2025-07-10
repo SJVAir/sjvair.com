@@ -109,7 +109,7 @@ class HealthCheckEvaluator:
 
     def get_score(self) -> int:
         if self.sanity_a.ok and self.sanity_b.ok:
-            return 2 if self.summary.rpd_pairwise <= 20 else 1
+            return 2 if self.summary.rpd_pairwise <= .2 else 1
         return 1 if self.sanity_a.ok or self.sanity_b.ok else 0
 
     def evaluate(self) -> HealthCheckResult:
