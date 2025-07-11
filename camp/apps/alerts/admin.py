@@ -30,8 +30,8 @@ class SubscriptionAdmin(admin.ModelAdmin):
 
 @admin.register(Alert)
 class AlertAdmin(admin.ModelAdmin):
-    list_display = ['monitor', 'county', 'level', 'start_time', 'end_time']
-    list_filter = ['start_time', 'level', 'monitor__county']
+    list_display = ['monitor', 'county', 'start_time', 'end_time']
+    list_filter = ['start_time', 'monitor__county']
 
     def county(self, instance):
         return instance.monitor.county

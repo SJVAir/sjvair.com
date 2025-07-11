@@ -4,7 +4,7 @@ from camp.apps.monitors.aqview.tasks import import_aqview_data
 
 
 class Command(BaseCommand):
-    help = 'Check for newly inactive monitors'
+    help = 'Import data from AQview'
 
     def handle(self, *args, **options):
         import_aqview_data.call_local()
