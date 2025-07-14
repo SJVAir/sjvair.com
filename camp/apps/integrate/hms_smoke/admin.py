@@ -8,7 +8,6 @@ class SmokeAdmin(admin.ModelAdmin):
     # date_hierarchy = 'date'
     list_display =['satellite', 'density', 'date', 'start', 'end', 'is_final',]
     list_filter = ['satellite', 'density', ('date', DateRangeFilterBuilder()), 'is_final', ]
-    readonly_fields = ['id', 'satellite', 'density', 'is_final', 'start', 'end', 'geometry', ]
     ordering = ('-date', )
     
     def has_add_permission(self, request, obj=None):
