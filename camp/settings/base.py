@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 
 import os
 import subprocess
+import zoneinfo
 
 import dj_database_url
 
@@ -72,6 +73,7 @@ INSTALLED_APPS = [
     'livereload',
     'localflavor',
     'prose',
+    'rangefilter',
     'resticus',
     'storages',
     'widget_tweaks',
@@ -91,9 +93,12 @@ INSTALLED_APPS = [
     'camp.apps.archive',
     'camp.apps.calibrations',
     'camp.apps.contact',
+    'camp.apps.entries',
     'camp.apps.helpdesk',
     'camp.apps.integrate.ces4',
+    'camp.apps.integrate.hms_smoke',
     'camp.apps.monitors',
+    'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqview',
     'camp.apps.monitors.bam',
@@ -116,6 +121,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'camp.api.middleware.MonitorAccessMiddleware',
+    'camp.utils.middleware.TimezoneMiddleware',
 ]
 
 TEMPLATES = [
@@ -210,6 +216,8 @@ LANGUAGE_CODE = 'en-us'
 
 TIME_ZONE = 'UTC'
 
+DEFAULT_TIMEZONE = zoneinfo.ZoneInfo('America/Los_Angeles')
+
 USE_I18N = True
 
 USE_L10N = True
@@ -279,6 +287,7 @@ HEALTH_CHECK = {
     'MEMORY_MIN': 100,  # in MB
     'SUBSETS': {
         'air-networks': [
+            'Air Network: AirGradient',
             'Air Network: AirNow',
             'Air Network: AQview',
             'Air Network: CCAC BAM-1022',

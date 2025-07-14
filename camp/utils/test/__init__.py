@@ -23,3 +23,18 @@ def get_response_data(response):
     if response.get('Content-Type') == 'application/json':
         return json.loads(content)
     return content
+
+
+def is_close(actual, expected, tol=1e-6):
+    """
+    Returns True if two floating point numbers are close within a tolerance.
+
+    Args:
+        actual (float): The value you got.
+        expected (float): The value you expected.
+        tol (float): Acceptable difference (default: 1e-6).
+
+    Raises:
+        AssertionError: if values are not within tolerance.
+    """
+    return abs(actual - expected) < tol

@@ -1,14 +1,15 @@
+from django import forms
 from django.contrib import admin
-from django.db.models import F, Prefetch
+from django.db.models import Prefetch
 from django.template import Context, Template
 from django.urls import reverse
-from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from django_admin_inline_paginator.admin import TabularInlinePaginated
 
-from camp.apps.calibrations.models import Calibrator, AutoCalibration
 from camp.apps.monitors.models import Monitor, Entry
+from .forms import DefaultCalibrationForm
+from .models import CalibrationPair, Calibration, DefaultCalibration
 
 
 def formula_help_text():
@@ -21,12 +22,31 @@ def formula_help_text():
     ''').render(Context({'environment': Entry.ENVIRONMENT})))
 
 
-class AutoCalibrationInline(TabularInlinePaginated):
+@admin.register(DefaultCalibration)
+class DefaultCalibrationAdmin(admin.ModelAdmin):
+    form = DefaultCalibrationForm
+    list_display = ('monitor_type', 'entry_type', 'calibration')
+    list_filter = ('monitor_type', 'entry_type')
+    search_fields = ('monitor_type', 'entry_type', 'calibration')
+
+    def get_form(self, request, obj=None, **kwargs):
+        request._obj_ = obj  # for formfield_for_dbfield
+        return super().get_form(request, obj=obj, **kwargs)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == 'calibration':
+            if instance := getattr(request, '_obj_', None):
+                kwargs['widget'].choices = self.form.get_calibration_choices(instance)
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
+
+
+class CalibrationInline(TabularInlinePaginated):
     extra = 0
-    model = AutoCalibration
-    per_page = 30
-    fields = ('start_date', 'end_date', 'r2', 'formula')
-    readonly_fields = ('start_date', 'end_date', 'r2', 'formula')
+    model = Calibration
+    per_page = 10
+    fields = ('start_time', 'end_time', 'trainer', 'r2', 'rmse', 'mae', 'formula')
+    readonly_fields = ('start_time', 'end_time', 'trainer', 'r2', 'rmse', 'mae', 'formula')
 
     def has_add_permission(self, request, obj):
         # Calibrations are added automatically.
@@ -37,23 +57,23 @@ class AutoCalibrationInline(TabularInlinePaginated):
         return False
 
 
-@admin.register(Calibrator)
+@admin.register(CalibrationPair)
 class CalibratorAdmin(admin.ModelAdmin):
-    inlines = (AutoCalibrationInline,)
-    list_display = ('pk', 'get_reference', 'get_colocated', 'get_county', 'get_distance', 'is_enabled', 'get_r2', 'get_last_updated',)
-    list_filter = ('is_enabled', 'reference__county', 'calibration__end_date',)
-    raw_id_fields = ('reference', 'colocated', 'calibration')
+    inlines = (CalibrationInline,)
+    list_display = ('pk', 'get_reference', 'get_colocated', 'get_county', 'get_distance', 'is_enabled')
+    list_filter = ('is_enabled', 'reference__county', 'calibrations__end_time',)
+    raw_id_fields = ('reference', 'colocated')
 
-    def get_queryset(self, request):
-        monitor_queryset = Monitor.objects.all().select_related('latest')
+    # def get_queryset(self, request):
+    #     monitor_queryset = Monitor.objects.all().select_related('latest')
 
-        queryset = super().get_queryset(request)
-        queryset = queryset.select_related('calibration')
-        queryset = queryset.prefetch_related(
-            Prefetch('reference', monitor_queryset),
-            Prefetch('colocated', monitor_queryset),
-        )
-        return queryset
+    #     queryset = super().get_queryset(request)
+    #     # queryset = queryset.select_related('reference', 'colocated')
+    #     # queryset = queryset.prefetch_related(
+    #     #     Prefetch('reference', monitor_queryset),
+    #     #     Prefetch('colocated', monitor_queryset),
+    #     # )
+    #     return queryset
 
     def get_county(self, instance):
         return instance.reference.county
@@ -69,19 +89,19 @@ class CalibratorAdmin(admin.ModelAdmin):
         )
     get_distance.short_description = 'Distance'
 
-    def get_last_updated(self, instance):
-        if instance.calibration:
-            return instance.calibration.end_date
-        return '-'
-    get_last_updated.short_description = 'Last Updated'
-    get_last_updated.admin_order_field = 'calibration__end_date'
+    # def get_last_updated(self, instance):
+    #     if instance.calibration:
+    #         return instance.calibration.end_date
+    #     return '-'
+    # get_last_updated.short_description = 'Last Updated'
+    # get_last_updated.admin_order_field = 'calibration__end_date'
 
-    def get_r2(self, instance):
-        if instance.calibration:
-            return instance.calibration.r2
-        return '-'
-    get_r2.short_description = 'R2'
-    get_r2.admin_order_field = 'calibration__r2'
+    # def get_r2(self, instance):
+    #     if instance.calibration:
+    #         return instance.calibration.r2
+    #     return '-'
+    # get_r2.short_description = 'R2'
+    # get_r2.admin_order_field = 'calibration__r2'
 
     def get_monitor_link(self, instance):
         return mark_safe(Template('''
