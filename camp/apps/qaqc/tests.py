@@ -47,12 +47,8 @@ class HealthCheckTests(TestCase):
         self.create_entries(values_a=values_a, values_b=values_b)
         hc = self.monitor.run_health_check(self.hour)
 
-        print('A:', values_a)
-        print('B:', values_b)
-        print(f'correlation: {hc.correlation}, rpd_means: {hc.rpd_means:.3f}, rpd_pairwise: {hc.rpd_pairwise:.3f}')
-
         assert hc.grade == 'A'
-        assert hc.score == 2
+        assert hc.score == 3
         assert hc.rpd_means is not None
         assert hc.rpd_pairwise is not None
         assert hc.correlation is not None
@@ -64,7 +60,7 @@ class HealthCheckTests(TestCase):
         hc = self.monitor.run_health_check(self.hour)
 
         assert hc.grade == 'B'
-        assert hc.score == 1
+        assert hc.score == 2
 
     def test_grade_f_when_both_flatline(self):
         self.create_entries([14.0] * self.samples, [14.0] * self.samples)
@@ -80,7 +76,7 @@ class HealthCheckTests(TestCase):
         self.create_entries(values_a=values_a, values_b=values_b)
 
         hc = self.monitor.run_health_check(self.hour)
-        assert hc.grade == 'B'
+        assert hc.grade == 'C'
         assert hc.score == 1
 
     def test_grade_f_when_data_is_missing(self):

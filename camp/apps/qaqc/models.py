@@ -76,7 +76,12 @@ class HealthCheck(TimeStampedModel):
 
     @property
     def grade(self) -> str:
-        return {2: 'A', 1: 'B', 0: 'F'}.get(self.score, 'F')
+        return {
+            3: 'A',
+            2: 'B',
+            1: 'C',
+            0: 'F'
+        }.get(self.score, 'F')
 
     @cached_property
     def evaluator(self):
@@ -95,6 +100,22 @@ class HealthCheck(TimeStampedModel):
         expected = self.monitor.expected_hourly_entries
         if count is not None:
             return count / expected
+
+    @property
+    def channel_a_sanity(self):
+        return self.channel_sanity('a')
+
+    @property
+    def channel_b_sanity(self):
+        return self.channel_sanity('b')
+
+    def channel_sanity(self, channel):
+        return all(
+            getattr(self, field.name)
+            for field in self._meta.fields
+            if field.name.startswith('sanity_')
+            and field.name.endswith(f'_{channel}')
+        )
 
     def _set_attrs(self, data):
         for key, value in data.items():

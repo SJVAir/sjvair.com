@@ -76,7 +76,12 @@ class HealthCheckResult:
 
     @property
     def grade(self) -> str:
-        return {2: 'A', 1: 'B', 0: 'F'}.get(self.score, 'F')
+        return {
+            3: 'A',
+            2: 'B',
+            1: 'C',
+            0: 'F'
+        }.get(self.score, 'F')
 
     def as_dict(self, flat: bool = True) -> dict:
         data = {'score': self.score, 'grade': self.grade}
@@ -109,8 +114,12 @@ class HealthCheckEvaluator:
 
     def get_score(self) -> int:
         if self.sanity_a.ok and self.sanity_b.ok:
-            return 2 if self.summary.rpd_pairwise <= .2 else 1
-        return 1 if self.sanity_a.ok or self.sanity_b.ok else 0
+            if self.summary.rpd_pairwise <= .2:
+                return 3
+            return 2
+        if self.sanity_a.ok or self.sanity_b.ok:
+            return 1
+        return 0
 
     def evaluate(self) -> HealthCheckResult:
         """
