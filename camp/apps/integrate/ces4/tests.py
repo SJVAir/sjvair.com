@@ -2,7 +2,7 @@ from django.test import TestCase
 from shapely.wkt import loads as load_wkt
 
 from camp.utils.counties import County
-from camp.api.v1.ces4.tests import create_test_ces4_obj
+from camp.api.v2.ces4.tests import create_test_ces4_obj
 from camp.apps.integrate.ces4.data import Ces4Data
 from camp.apps.integrate.ces4.models import Tract
 from camp.apps.integrate.ces4.tasks import ces4_load

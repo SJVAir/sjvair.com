@@ -13,6 +13,5 @@ urlpatterns = [
     path('monitors/', include('camp.api.v1.monitors.urls', namespace='monitors')),
     path('calibrations/', include('camp.api.v1.calibrations.urls', namespace='calibrations')),
     path('marker.png', endpoints.MapMarker.as_view(), name='marker'),
-    path('ces4/', include('camp.api.v1.ces4.urls', namespace='ces4')),
 
 ]

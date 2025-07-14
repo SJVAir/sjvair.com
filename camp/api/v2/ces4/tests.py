@@ -40,13 +40,13 @@ class Tests_CES4List(TestCase):
         self.ces4_3 = create_test_ces4_obj(3, .1, .05)
     
     def test1_list(self):
-        url = reverse("api:v1:ces4:ces4-list")
+        url = reverse("api:v2:ces4:ces4-list")
         response = self.client.get(url)
         assert response.status_code == 200
         assert len(response.json()['data']) == 3
     
     def test2_list(self):
-        url = reverse("api:v1:ces4:ces4-list")
+        url = reverse("api:v2:ces4:ces4-list")
         url += "?pol_pm__gt=1.111"
         response = self.client.get(url)
         assert response.status_code == 200
@@ -55,7 +55,7 @@ class Tests_CES4List(TestCase):
         assert response.json()['data'][0]['pol_pm'] == self.ces4_1.pol_pm
         
     def test3_list(self):
-        url = reverse("api:v1:ces4:ces4-list")
+        url = reverse("api:v2:ces4:ces4-list")
         url += "?pol_pm_p=.3"
         response = self.client.get(url)
         assert response.status_code == 200
@@ -64,7 +64,7 @@ class Tests_CES4List(TestCase):
         assert response.json()['data'][0]['pol_pm_p'] == self.ces4_2.pol_pm_p
         
     def test4_list(self):
-        url = reverse("api:v1:ces4:ces4-list")
+        url = reverse("api:v2:ces4:ces4-list")
         url += "?pol_ozone__gt=0"
         response = self.client.get(url)
         assert response.status_code == 200
@@ -82,13 +82,13 @@ class Tests_CES4Detail(TestCase):
         self.ces4_3 = create_test_ces4_obj(3, .1, .05)
         
     def test1_detail(self):
-        url = reverse("api:v1:ces4:ces4-detail", kwargs={'pk':self.ces4_1.pk})
+        url = reverse("api:v2:ces4:ces4-detail", kwargs={'pk':self.ces4_1.pk})
         response = self.client.get(url)
         assert response.status_code == 200
         assert response.json()['data']['objectid'] == self.ces4_1.pk
         assert response.json()['data']['pol_pm'] == self.ces4_1.pol_pm
         
     def test2_detail(self):
-        url = reverse("api:v1:ces4:ces4-detail", kwargs={'pk':5})
+        url = reverse("api:v2:ces4:ces4-detail", kwargs={'pk':5})
         response = self.client.get(url)
         assert response.status_code == 404

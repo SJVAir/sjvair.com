@@ -6,6 +6,14 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    def load_data(apps, schema_editor):
+        from camp.apps.integrate.ces4.data import Ces4Data 
+        Ces4Data.ces4_request()
+        
+    def unload_data(apps, schema_editor):
+        from camp.apps.integrate.ces4.models import Tract
+        Tract.objects.all().delete()
+        
     initial = True
 
     dependencies = [
@@ -90,4 +98,5 @@ class Migration(migrations.Migration):
                 ('geometry', django.contrib.gis.db.models.fields.MultiPolygonField(help_text='Geometric shape of this tract', srid=4326, verbose_name='Tract Shape')),
             ],
         ),
+        migrations.RunPython(load_data, reverse_code=unload_data)
     ]

@@ -51,6 +51,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Application definition
 
 INSTALLED_APPS = [
+    
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -62,6 +63,7 @@ INSTALLED_APPS = [
 
     'corsheaders',
     'admin_honeypot',
+    'admin_numeric_filter',
     'django_admin_inline_paginator',
     'django_extensions',
     'django_filters',
