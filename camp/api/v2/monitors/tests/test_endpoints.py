@@ -12,8 +12,7 @@ from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
-from . import endpoints
-
+from camp.api.v2.monitors import endpoints
 from camp.apps.entries import models as entry_models
 from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.bam.models import BAM1022

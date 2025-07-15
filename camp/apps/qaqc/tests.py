@@ -8,7 +8,6 @@ from django.test import TestCase
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.entries.models import PM25
 from camp.apps.qaqc.models import HealthCheck
-# from camp.apps.qaqc.evaluator import HealthCheckResult
 
 
 class HealthCheckTests(TestCase):
@@ -49,8 +48,9 @@ class HealthCheckTests(TestCase):
         hc = self.monitor.run_health_check(self.hour)
 
         assert hc.grade == 'A'
-        assert hc.score == 2
-        assert hc.variance is not None
+        assert hc.score == 3
+        assert hc.rpd_means is not None
+        assert hc.rpd_pairwise is not None
         assert hc.correlation is not None
 
     def test_grade_b_when_sensors_diverge(self):
@@ -60,7 +60,7 @@ class HealthCheckTests(TestCase):
         hc = self.monitor.run_health_check(self.hour)
 
         assert hc.grade == 'B'
-        assert hc.score == 1
+        assert hc.score == 2
 
     def test_grade_f_when_both_flatline(self):
         self.create_entries([14.0] * self.samples, [14.0] * self.samples)
@@ -71,12 +71,12 @@ class HealthCheckTests(TestCase):
 
     def test_grade_b_when_one_sensor_fails(self):
         values_a = [10 + (i % 3) * 0.1 for i in range(self.samples)]
-        values_b = [3000 for v in range(self.samples)]
+        values_b = [3000 for _ in range(self.samples)]
 
         self.create_entries(values_a=values_a, values_b=values_b)
 
         hc = self.monitor.run_health_check(self.hour)
-        assert hc.grade == 'B'
+        assert hc.grade == 'C'
         assert hc.score == 1
 
     def test_grade_f_when_data_is_missing(self):
@@ -92,8 +92,9 @@ class HealthCheckTests(TestCase):
             monitor=self.monitor,
             hour=self.hour - timedelta(hours=2),
             score=2,
-            variance=.1,
-            correlation=.98
+            rpd_means=0.08,
+            rpd_pairwise=0.15,
+            correlation=0.98
         )
 
         # Create some valid data and re-run the health check
@@ -102,6 +103,6 @@ class HealthCheckTests(TestCase):
         self.create_entries(values_a=values_a, values_b=values_b)
         hc = self.monitor.run_health_check(self.hour)
 
-        # Ensure the monitors health object has been updated.
+        # Ensure the monitor's health object has been updated
         self.monitor.refresh_from_db()
         assert self.monitor.health_id == hc.pk

@@ -1,8 +1,11 @@
 import copy
+import math
 import uuid
 
 from datetime import timedelta
 from decimal import Decimal
+
+import pandas as pd
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.contrib.gis.db import models
@@ -178,6 +181,13 @@ class Monitor(models.Model):
             for model, config in cls.ENTRY_CONFIG.items()
             if 'alerts' in config
         }
+
+    @classproperty
+    def expected_hourly_entries(self, entry_model=None) -> int:
+        interval = pd.to_timedelta(self.EXPECTED_INTERVAL)
+        if not interval or interval.total_seconds() == 0:
+            return 0
+        return math.floor(3600 / interval.total_seconds())
 
     @classmethod
     def get_subclasses(cls):
