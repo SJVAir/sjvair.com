@@ -88,7 +88,7 @@ class Tract(models.Model):
     
     # CalEnviroScreen Score, Pollution Score multiplied by Population Characteristics Score
     ci_score = models.FloatField(_('CalEnviroScreen Score'), null=True, help_text=_('Pollution Score multiplied by Population Characteristics Score'))
-    ci_score_p = models.FloatField(_('CalEnviroScreen Score Percentile'), null=True)
+    ci_score_p = models.FloatField(_('CES Score Percentile'), null=True)
     
     # Pollution Burden Variables
     # Average of percentiles from the Pollution Burden indicators (with a half 
@@ -98,33 +98,33 @@ class Tract(models.Model):
     pollution_p = models.FloatField(_('Pollution Burden Percentile'), null=True)
 
     # Amount of daily maximum 8 hour Ozone concentration
-    pol_ozone = models.FloatField(_('Ozone Concentration'), null=True, help_text=_('Amount of daily maximum 8 hour Ozone concentration'))
-    pol_ozone_p = models.FloatField(_('Ozone Concentration Percentile'), null=True)
+    pol_ozone = models.FloatField(_('Ozone (ppm)'), null=True, help_text=_('Amount of daily maximum 8 hour Ozone concentration'))
+    pol_ozone_p = models.FloatField(_('Ozone Percentile'), null=True)
     
     # Annual mean PM2.5 concentrations
-    pol_pm = models.FloatField(_('PM2.5 Concentration'), null=True, help_text=_('Annual mean PM2.5 concentrations'))
-    pol_pm_p = models.FloatField(_('PM2.5 Concentration Percentile'), null=True)
+    pol_pm = models.FloatField(_('PM2.5 (µg/m³)'), null=True, help_text=_('Annual mean PM2.5 concentrations'))
+    pol_pm_p = models.FloatField(_('PM2.5 Percentile'), null=True)
     
     # Diesel PM emissions from on-road and non-road sources
-    pol_diesel = models.FloatField(_('Diesel PM emissions'), null=True, help_text=_('Diesel PM emissions from on-road and non-road sources'))
+    pol_diesel = models.FloatField(_('Diesel PM emissions (tons per year)'), null=True, help_text=_('Diesel PM emissions from on-road and non-road sources'))
     pol_diesel_p = models.FloatField(_('Diesel PM emissions Percentile'), null=True)
     
     # Total pounds of selected active pesticide ingredients
-    pol_pest = models.FloatField(_('Pesticides'), null=True, help_text=_('Total pounds of selected active pesticide ingredients'))
+    pol_pest = models.FloatField(_('Pesticides (lb/mi²)'), null=True, help_text=_('Total pounds of selected active pesticide ingredients'))
     pol_pest_p = models.FloatField(_('Pesticides Percentile'), null=True)
     
     # Toxicity-weighted concentrations of modeled chemical releases to air 
     # from facility emissions and off-site incineration
-    pol_rsei_haz = models.FloatField(_('Chemical Releases'), null=True, help_text=_('Toxicity-weighted concentrations of modeled chemical releases to air from facility emissions and off-site incineration'))
+    pol_rsei_haz = models.FloatField(_('Chemical Release Score'), null=True, help_text=_('Toxicity-weighted concentrations of modeled chemical releases to air from facility emissions and off-site incineration'))
     pol_rsei_haz_p = models.FloatField(_('Chemical Releases Percentile'), null=True)
     
     # Traffic density in vehicle-kilometers per hour per road length, within 
     # 150 meters of the census tract boundary
-    pol_traffic = models.FloatField(_('Traffic'), null=True, help_text=_('Traffic density in vehicle-kilometers per hour per road length, within 150 meters of the census tract boundary'))
+    pol_traffic = models.FloatField(_('Traffic (vehicle-km/hour/km²)'), null=True, help_text=_('Traffic density in vehicle-kilometers per hour per road length, within 150 meters of the census tract boundary'))
     pol_traffic_p = models.FloatField(_('Traffic Percentile'), null=True)
     
     # Drinking water contaminant index for selected contaminants
-    pol_drink = models.FloatField(_('Drinking Water Contaminant'), null=True, help_text=_('Drinking water contaminant index for selected contaminants'))
+    pol_drink = models.FloatField(_('Drinking Water Contaminant Score'), null=True, help_text=_('Drinking water contaminant index for selected contaminants'))
     pol_drink_p = models.FloatField(_('Drinking Water Contaminant Percentile'), null=True)
     
     # Sum of weighted hazardous waste facilities and large quantity 
@@ -134,7 +134,7 @@ class Tract(models.Model):
     
     # Potential risk for lead exposure in children living in low-income 
     # communities with older housing
-    pol_lead = models.FloatField(_('Lead Exposure'), null=True, help_text=_('Potential risk for lead exposure in children living in low-income communities with older housing'))
+    pol_lead = models.FloatField(_('Lead Exposure Score'), null=True, help_text=_('Potential risk for lead exposure in children living in low-income communities with older housing'))
     pol_lead_p = models.FloatField(_('Lead Exposure Percentile'), null=True)
     
     # Sum of weighted EnviroStor cleanup sites within buffered distances to 
@@ -164,11 +164,11 @@ class Tract(models.Model):
     popchar_p = models.FloatField(_('Population Percentile'), null=True)
     
     # Age-adjusted rate of emergency department visits for asthma
-    char_asthma = models.FloatField(_('Asthma Emergencies'), null=True, help_text=_('Age-adjusted rate of emergency department visits for asthma'))
+    char_asthma = models.FloatField(_('Asthma Emergencies (per/10,000)'), null=True, help_text=_('Age-adjusted rate of emergency department visits for asthma'))
     char_asthma_p = models.FloatField(_('Asthma Emergencies Percentile'), null=True)
     
     # Age-adjusted rate of emergency department visits for heart attacks per 10,000
-    char_cvd = models.FloatField(_('Heart Attack Emergencies'), null=True, help_text=_('Age-adjusted rate of emergency department visits for heart attacks per 10,000'))
+    char_cvd = models.FloatField(_('Heart Attack Emergencies (per/10,000)'), null=True, help_text=_('Age-adjusted rate of emergency department visits for heart attacks per 10,000'))
     char_cvd_p = models.FloatField(_('Heart Attack Emergencies Percentile'), null=True)
     
     # Percent low birth weight
@@ -235,7 +235,7 @@ class Tract(models.Model):
     
     #county this tract is in according to fips number
     county = models.CharField(
-        _('San Joaquin Valley County'),
+        _('County'),
         choices=Counties.choices,
         default=None,
         null=False,

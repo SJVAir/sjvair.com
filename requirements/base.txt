@@ -5,7 +5,6 @@ dj-static==0.0.6
 
 django-admin-inline-paginator==0.4.0
 django-admin-rangefilter==0.13.3
-django-admin-numeric-filter==0.1.9
 django-annoying==0.10.6
 django-bmemcached==0.3.0
 django-cors-headers==4.2.0

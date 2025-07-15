@@ -63,7 +63,6 @@ INSTALLED_APPS = [
 
     'corsheaders',
     'admin_honeypot',
-    'admin_numeric_filter',
     'django_admin_inline_paginator',
     'django_extensions',
     'django_filters',
