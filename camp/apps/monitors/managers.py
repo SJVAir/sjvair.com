@@ -1,6 +1,7 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Optional
 
-from django.db.models import DateTimeField, OuterRef, Q, Subquery
+from django.db.models import DateTimeField, Exists, OuterRef, Q, Subquery
 from django.db.models.query import ModelIterable
 from django.utils import timezone
 
@@ -45,19 +46,23 @@ class MonitorQuerySet(InheritanceQuerySet):
         super().__init__(*args, **kwargs)
         self._iterable_class = InheritanceIterable
 
-    def get_active(self):
-        cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
+    def get_active(self, seconds=None):
+        seconds = seconds or self.model.LAST_ACTIVE_LIMIT
+        cutoff = timezone.now() - timedelta(seconds=seconds)
         return self.filter(latest_entries__timestamp__gte=cutoff).distinct()
 
-    def get_inactive(self):
-        cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
+    def get_inactive(self, seconds=None):
+        seconds = seconds or self.model.LAST_ACTIVE_LIMIT
+        cutoff = timezone.now() - timedelta(seconds=seconds)
         return self.filter(Q(latest_entries__isnull=True) | Q(latest__timestamp__lt=cutoff))
 
-    def get_for_health_checks(self):
+    def get_for_health_checks(self, hour: Optional[datetime] = None):
         """
         Return a queryset of all monitors whose class supports health checks
         for the given entry model.
         """
+        queryset = self.none()
+
         if self.model._meta.model_name == 'monitor':
             lookup = Q()
             for subclass in self.model.get_subclasses():
@@ -65,12 +70,25 @@ class MonitorQuerySet(InheritanceQuerySet):
                     lookup |= Q(**{f'{subclass.monitor_type}__isnull': False})
 
             if lookup:
-                return self.filter(lookup)
+                queryset = self.filter(lookup)
 
         elif self.model.supports_health_checks():
-            return self.all()
+            queryset = self.all()
 
-        return self.none()
+        if hour:
+            from camp.apps.entries.models import PM25
+            entry_qs = PM25.objects.filter(
+                monitor=OuterRef('pk'),
+                timestamp__gte=hour,
+                timestamp__lt=hour + timedelta(hours=1),
+                stage=PM25.Stage.RAW,
+            )
+            queryset = (queryset
+                .annotate(has_entries=Exists(entry_qs))
+                .filter(has_entries=True)
+            )
+
+        return queryset
 
     def get_active_multisensor(self):
         return self.get_active().exclude(default_sensor='').exclude(location='inside')
@@ -141,6 +159,5 @@ class MonitorManager(InheritanceManager):
     def get_active_multisensor(self):
         return self.get_queryset().get_active_multisensor()
 
-    def get_for_health_checks(self):
-        return self.get_queryset().get_for_health_checks()
-
+    def get_for_health_checks(self, hour: Optional[datetime] = None):
+        return self.get_queryset().get_for_health_checks(hour)

@@ -4,12 +4,24 @@ from django.test import TestCase
 
 import pandas as pd
 
+from camp.datasci import stats, series
 from camp.datasci.cleaning import filter_by_completeness
 from camp.datasci.linear import LinearRegression
 from camp.utils.test import is_close
 
 
 class DataSciTests(TestCase):
+    def test_rpd(self):
+        assert stats.rpd(10, 10) == 0
+        assert round(stats.rpd(10, 12), 4) == 0.1818  # ~18.18%
+
+    def test_compare_series_agreement(self):
+        s1 = pd.Series([1, 2, 3])
+        s2 = pd.Series([1, 2, 3])
+        result = series.compare(s1, s2)
+        assert result.rpd_means == 0
+        assert result.rmse == 0
+
     def test_univariate_regression(self):
         # Simple linear data: y = 2x + 1
         df = pd.DataFrame({

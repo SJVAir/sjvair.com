@@ -1,7 +1,7 @@
 import json
+import math
 
-from decimal import Decimal
-
+import numpy as np
 import rapidjson
 
 from django.contrib.gis.geos import GEOSGeometry
@@ -16,8 +16,11 @@ class JSONEncoder(ResticusJSONEncoder):
         if isinstance(obj, (HumanName, PhoneNumber)):
             return str(obj)
 
-        elif isinstance(obj, GEOSGeometry):
+        if isinstance(obj, GEOSGeometry):
             return json.loads(obj.geojson)
+
+        if isinstance(obj, (float, np.floating)) and (math.isnan(obj) or math.isinf(obj)):
+            return None
 
         return super().default(obj)
 
@@ -45,8 +48,17 @@ class RapidJSONEncoder(rapidjson.Encoder):
     def default(self, obj):
         return self._encoder.default(obj)
 
-    def encode(self, *args, **kwargs):
-        return self(*args, **kwargs)
+    def encode(self, obj):
+        return self(self._clean_floats(obj))
+
+    def _clean_floats(self, obj):
+        if isinstance(obj, dict):
+            return {k: self._clean_floats(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._clean_floats(v) for v in obj]
+        elif isinstance(obj, (float, np.floating)) and not math.isfinite(obj):
+            return None
+        return obj
 
     def iterencode(self, data):
         stream = IterStream()
