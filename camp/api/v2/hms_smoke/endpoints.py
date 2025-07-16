@@ -11,6 +11,7 @@ from camp.apps.integrate.hms_smoke.models import Smoke
 class SmokeMixin:
     model = Smoke
     serializer_class = SmokeSerializer
+    paginate = True  #defaults to page_size = 100
     def get_queryset(self):    
         return (
             super().get_queryset().order_by('-date')
@@ -19,7 +20,6 @@ class SmokeMixin:
 
 class SmokeList(SmokeMixin, generics.ListEndpoint):
     filter_class = SmokeFilter
-    paginate = False
     
     
 class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
