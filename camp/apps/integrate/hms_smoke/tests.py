@@ -14,8 +14,6 @@ from camp.apps.integrate.hms_smoke.tasks import fetch_files, final_file
 from camp.utils.counties import County
 
 
-
-
 class Tests_Miscellaneous(TestCase):
     """
     setUp - create objects for testing
