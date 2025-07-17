@@ -4,7 +4,7 @@
 VAGRANTFILE_API_VERSION = "2"
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
-    config.vm.box = "sjvair/ubuntu-20.04"
+    config.vm.box = "bento/ubuntu-20.04"
 
     config.ssh.username = "vagrant"
 
@@ -16,18 +16,18 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     # config.vm.network "forwarded_port", guest: 5432, host: 5432, auto_correct: true # Postgres
 
     # Configure virtual machine specs. Keep it simple, single user.
-    config.vm.provider :libvirt do |vm|
-        vm.driver = "kvm"
-        vm.disk_bus = "virtio"
-        vm.memory = 4096
-        vm.cpus = 4
+    config.vm.provider :virtualbox do |p|
+        p.customize ["modifyvm", :id, "--memory", 4096]
+        p.customize ["modifyvm", :id, "--cpus", 4]
+        p.customize ["modifyvm", :id, "--cpuexecutioncap", 50]
     end
 
     # Config hostname and IP address so entry can be added to HOSTS file
     config.vm.hostname = "camp-vagrant"
 
     # Configure a synced folder between HOST and GUEST
-    config.vm.synced_folder ".", "/vagrant", type: "nfs", nfs_version: 4, id: "camp-server"
+    config.vm.synced_folder ".", "/vagrant", id: "camp-server", :mount_options => ["dmode=744","fmode=744"]
+    # config.vm.synced_folder "../frontend", "/vagrant/frontend", id: "camp-frontend", :mount_options => ["dmode=744","fmode=744"]
 
     # Kick off a shell script to install dependencies
     config.vm.provision "shell", privileged: true, path: "./vagrant/provision-root.sh"
