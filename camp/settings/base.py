@@ -74,7 +74,6 @@ INSTALLED_APPS = [
     'livereload',
     'localflavor',
     'prose',
-    'rangefilter',
     'resticus',
     'storages',
     'widget_tweaks',

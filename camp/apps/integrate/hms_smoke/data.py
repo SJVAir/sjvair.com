@@ -1,9 +1,11 @@
 from datetime import datetime
 import geopandas as gpd
 import io
+
 import requests
 import tempfile
 import zipfile
+
 
 from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
@@ -17,7 +19,7 @@ from camp.utils.counties import County
 
 def parse_timestamp(string):
     time = datetime.strptime(string, '%Y%j %H%M')
-    return make_aware(time)
+    return make_aware(time, timezone=timezone.now().tzinfo)
    
     
 def get_smoke_file(date):

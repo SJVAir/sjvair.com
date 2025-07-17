@@ -22,8 +22,10 @@ class HealthCheckSerializer(serializers.Serializer):
     fields = [
         'hour',
         'score',
-        'variance',
+        'rpd_pairwise',
         'correlation',
+        'channel_a_sanity',
+        'channel_b_sanity',
         'grade',
     ]
 
