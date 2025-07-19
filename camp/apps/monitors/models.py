@@ -22,6 +22,7 @@ from py_expression_eval import Parser as ExpressionParser
 from camp.apps.calibrations.utils import get_default_calibration
 from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
+from camp.apps.entries.utils import to_multi_entry_wide_dataframe
 from camp.apps.monitors.managers import MonitorManager
 from camp.apps.qaqc.models import HealthCheck
 from camp.utils import classproperty
@@ -264,6 +265,23 @@ class Monitor(models.Model):
 
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'
+
+    def fetch_entries(self, start_time, end_time):
+        from camp.apps.entries.fetchers import EntryDataFetcher
+        return EntryDataFetcher(
+            monitor=self,
+            entry_types=self.entry_types,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+    def get_entry_data_table(self, entry_models=None, start=None, end=None):
+        """
+        Returns a wide-format DataFrame of entry values for this monitor across the given entry models.
+        Each row is (timestamp, sensor), with columns for each stage/processor.
+        """
+        entry_models = entry_models or self.entry_types
+        return to_multi_entry_wide_dataframe(entry_models, self, start, end)
 
     def initialize_entry(self, EntryModel, **kwargs):
         defaults = {
