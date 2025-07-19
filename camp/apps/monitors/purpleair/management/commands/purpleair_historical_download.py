@@ -43,6 +43,13 @@ class Command(BaseCommand):
         if self.output_path is None:
             self.output_path = self.get_default_path()
 
+        output_dir = os.path.dirname(self.output_path)
+        if not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+            except OSError as e:
+                raise CommandError(f'Could not create output directory: {output_dir}\n{e}')
+
         self.print_summary()
         self.download_and_save()
         self.print_summary()
@@ -60,7 +67,7 @@ class Command(BaseCommand):
     def get_default_path(self):
         base = f'{self.purple_id}_{self.start_date_str}_to_{self.end_date_str}.csv'
         prefix = slugify(self.monitor.name) if self.monitor else 'purpleair'
-        return f'{prefix}_{base}'
+        return os.path.abspath(f'purpleair-export/{prefix}_{base}')
 
     def download_and_save(self):
         self.stdout.write(f'Downloading data for PurpleAir ID {self.purple_id} from {self.start_date_str} to {self.end_date_str}')
