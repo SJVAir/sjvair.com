@@ -97,8 +97,9 @@ class FetchFilesTaskTest(TestCase):
         assert Smoke.objects.first().date == datetime(2025, 7, 2).date()
         assert Smoke.objects.first().density == 'light'
         
-        get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
+        smokes = get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
         assert Smoke.objects.all().count() == count #entry not added to db
+        assert len(smokes) == count
         
     def test_to_db_SJV(self):
         count = Smoke.objects.all().count()
