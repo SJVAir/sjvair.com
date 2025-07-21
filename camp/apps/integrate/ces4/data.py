@@ -5,14 +5,16 @@ import requests
 import tempfile
 import zipfile
 
-
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 
 from camp.apps.integrate.ces4.models import Tract
 
+
 pol_fields = [f.name[4:] for f in Tract._meta.fields if f.name.startswith('pol_')]
 char_fields = [f.name[4:] for f in Tract._meta.fields if f.name.startswith('char_')]
 pop_fields = [f.name[4:] for f in Tract._meta.fields if f.name.startswith('pop_')]
+
+
 class Ces4Data:
     #Normalizes input data columns and Tract class variables to be comparable for seemless db entry
     def normalize(name):
@@ -42,8 +44,7 @@ class Ces4Data:
             '_': '', #strip all '_'
         }
         for key, value in sub.items():
-            name = re.sub(key, value, name)
-            
+            name = re.sub(key, value, name)     
         return name.lower() # lower all bc some input columns have captialization.
     
     def map_tracts(geo):
@@ -72,12 +73,13 @@ class Ces4Data:
             geo = gpd.read_file(f"{temp_dir}/CalEnviroScreen_4.0_Results.shp").to_crs(epsg=4326)
             params = {Ces4Data.normalize(f.name): f.name for f in Tract._meta.get_fields()}
             geo = Ces4Data.map_tracts(geo)
-            Ces4Data.to_db(geo, params)
+            return Ces4Data.to_db(geo, params)
 
 #geo = geodf, params is a dict like {modelnames.lower():modelName,...} 
 #This function creates a dictionary using params[modelname.lower()] -> modelName:value
 #This is so we can use capitalized letters for Percentile = P + other small differences
     def to_db(geo, params):
+        tracts = []
         for x in range(len(geo)):
             curr = geo.iloc[x]       
             inputs = {
@@ -89,5 +91,9 @@ class Ces4Data:
             if geometry.geom_type == 'Polygon':
                 geometry = MultiPolygon(geometry)
             inputs['geometry'] = geometry
-            Tract.objects.create(**inputs) 
-            
+            tract, created = Tract.objects.update_or_create(
+                objectid=inputs['objectid'],
+                defaults=inputs
+            )
+            tracts.append(tract)
+        return tracts

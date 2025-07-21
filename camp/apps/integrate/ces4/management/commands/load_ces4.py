@@ -5,5 +5,4 @@ from camp.apps.integrate.ces4.models import Tract
 
 class Command(BaseCommand):
     def handle(self, *args, **options):
-        Tract.objects.all().delete()
         Ces4Data.ces4_request()

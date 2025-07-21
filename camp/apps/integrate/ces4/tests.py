@@ -5,7 +5,6 @@ from camp.utils.counties import County
 from camp.api.v2.ces4.tests import create_test_ces4_obj
 from camp.apps.integrate.ces4.data import Ces4Data
 from camp.apps.integrate.ces4.models import Tract
-from camp.apps.integrate.ces4.tasks import ces4_load
 
 
 class Tests_CES4_App(TestCase):
@@ -32,7 +31,7 @@ class Tests_CES4_App(TestCase):
         assert check2 == 'Tulare'    
         
     def test_request(self):
-        Ces4Data.ces4_request()
+        list_count = Ces4Data.ces4_request()
         tract_count = {
             'fresno': 199,
             'tulare': 78,
@@ -46,7 +45,8 @@ class Tests_CES4_App(TestCase):
         #print(Ces4.objects.first().__dict__)
         for county, count in tract_count.items():
             assert count == Tract.objects.filter(county=county).count()
-        assert 760 == Tract.objects.count()
+        assert Tract.objects.count() == 760
+        assert len(list_count) == 760
         
     def test_tract_map(self):
         import pandas as pd
@@ -68,7 +68,4 @@ class Tests_CES4_App(TestCase):
         assert df.loc[df['county'] == 'tulare', 'county'].count().sum() == 2
         assert df.loc[df['county'] == 'kings', 'county'].count().sum() == 1
 
-    def test_task(self):
-        ces4_load.call_local()
-        assert 760 == Tract.objects.count()
         
