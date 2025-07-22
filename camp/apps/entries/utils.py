@@ -1,4 +1,8 @@
+import secrets
+
+from datetime import datetime
 from functools import lru_cache
+from uuid import uuid4
 
 import pandas as pd
 
@@ -29,7 +33,20 @@ def get_entry_model_by_name(name):
             return model
 
 
-def to_multi_entry_wide_dataframe(entry_models, monitor, start=None, end=None):
+def generate_export_path(monitor, start_date, end_date, ext='csv'):
+    """
+    Generates a timestamped export path for storing monitor data exports.
+
+    Example:
+        exports/2025/07/1234_2025-01-01_2025-06-30_abcd1234.csv
+    """
+    now = datetime.utcnow()
+    timestamp_path = now.strftime('%Y/%m')
+    filename = f'{monitor.pk.hex_grouped}_{start_date}_{end_date}.{ext}'
+    return f'exports/{timestamp_path}/{filename}'
+
+
+def to_multi_entry_wide_dataframe(entry_models, monitor, start_date=None, end_date=None):
     """
     Returns a wide-format DataFrame of entry values for a given monitor across multiple entry models.
     Each row is a unique (timestamp, sensor) pair.
@@ -40,10 +57,10 @@ def to_multi_entry_wide_dataframe(entry_models, monitor, start=None, end=None):
 
     for model in entry_models:
         lookup = {'monitor_id': monitor.pk}
-        if start:
-            lookup['timestamp__gte'] = start
-        if end:
-            lookup['timestamp__lt'] = end
+        if start_date:
+            lookup['timestamp__gte'] = start_date
+        if end_date:
+            lookup['timestamp__lt'] = end_date
 
         qs = model.objects.filter(**lookup)
         df = qs.to_dataframe()

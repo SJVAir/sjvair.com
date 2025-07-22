@@ -11,13 +11,15 @@ from django.views.decorators.csrf import csrf_exempt
 
 from camp.apps.entries.models import BaseEntry
 from camp.apps.monitors.models import Monitor
+from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.utils.forms import LatLonForm
 from camp.utils.views import get_view_cache_key
 
 from .filters import MonitorFilter, get_entry_filterset
+from .forms import EntryExportForm
 from .serializers import EntrySerializer, MonitorSerializer
-from ..endpoints import CSVExport
+from ..endpoints import CSVExport, FormEndpoint
 
 
 class MonitorMixin:
@@ -152,6 +154,21 @@ class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         include = [('latest', lambda monitor: monitor.get_latest_data())]
         return super().serialize(source, fields, include, exclude, fixup)
+
+
+class EntryExport(FormEndpoint):
+    form_class = EntryExportForm
+
+    def get_email(self):
+        if self.request.user.is_authenticated:
+            return self.request.user.email or None
+        return None
+
+    def form_valid(self, form):
+        email = self.get_email()
+        task = data_export(self.request.monitor.pk, email=email, **form.cleaned_data)
+        return http.JSONResponse({'task_id': str(task.id)}, status=202)
+
 
 
 class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):

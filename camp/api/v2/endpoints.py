@@ -1,18 +1,33 @@
 import calendar
 import csv
 
+from django.conf import settings
 from django.forms import forms
 from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 
+from django_huey import get_queue
+
 from resticus import generics
-from resticus.http import Http400
+from resticus.http import Http400, JSONResponse
+from resticus.serializers import serialize
 
 
 class CurrentTime(generics.Endpoint):
     def get(self, request):
         timestamp = timezone.now().utctimetuple()
         return calendar.timegm(timestamp)
+
+
+class TaskStatus(generics.Endpoint):
+    """
+    Gets status of specific Huey task
+    """
+
+    def get(self, request, task_id):
+        queue = get_queue(settings.DJANGO_HUEY.get('default'))
+        result = serialize(queue.result(task_id, preserve=True))
+        return JSONResponse({'data': result})
 
 
 class CSVExport(generics.ListEndpoint):
@@ -45,12 +60,12 @@ class CSVExport(generics.ListEndpoint):
             }
         )
         return response
-    
+
     def get_response(self, iterable, *args, **kwargs):
         if self.is_streaming():
             return StreamingHttpResponse(iterable, *args, **kwargs)
         return HttpResponse(''.join(iterable), *args, **kwargs)
-    
+
     def get_rows(self, queryset):
         yield self.get_header_row()
         for instance in queryset.iterator():
