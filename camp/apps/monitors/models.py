@@ -275,13 +275,13 @@ class Monitor(models.Model):
             end_time=end_time,
         )
 
-    def get_entry_data_table(self, entry_models=None, start=None, end=None):
+    def get_entry_data_table(self, entry_models=None, start_date=None, end_date=None):
         """
         Returns a wide-format DataFrame of entry values for this monitor across the given entry models.
         Each row is (timestamp, sensor), with columns for each stage/processor.
         """
         entry_models = entry_models or self.entry_types
-        return to_multi_entry_wide_dataframe(entry_models, self, start, end)
+        return to_multi_entry_wide_dataframe(entry_models, self, start_date, end_date)
 
     def initialize_entry(self, EntryModel, **kwargs):
         defaults = {

@@ -1,7 +1,11 @@
+import pytz
+import random
+
 from datetime import datetime, timedelta
 from decimal import Decimal
-import random
-import pytz
+from functools import wraps
+
+from django_huey import get_queue
 
 
 def generate_sensor_value(mean, variance):
@@ -50,3 +54,21 @@ def create_hourly_data_for_monitor(monitor, start_time=None):
                 )
                 monitor.process_entry_pipeline(entry)
                 entries.append(entry)
+
+
+def queue_immediate_mode(enabled: bool, queue_name='primary'):
+    """
+    Decorator to temporarily set immediate mode on a Huey queue during a test.
+    """
+    def decorator(test_func):
+        @wraps(test_func)
+        def wrapper(*args, **kwargs):
+            queue = get_queue(queue_name)
+            original_immediate = queue.immediate
+            queue.immediate = enabled
+            try:
+                return test_func(*args, **kwargs)
+            finally:
+                queue.immediate = original_immediate
+        return wrapper
+    return decorator
