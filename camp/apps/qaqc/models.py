@@ -1,17 +1,15 @@
-from django.db import models
+from datetime import timedelta
 
-# Create your models here.
 from django.db import models
-from django.utils import timezone
-from django.utils.functional import lazy
+from django.utils.functional import cached_property
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
-from geopy.distance import distance as geopy_distance
 from model_utils.models import TimeStampedModel
 
-from camp.apps.monitors.models import Monitor
+from camp.apps.qaqc.managers import HealthCheckManager
 
-class SensorAnalysis(TimeStampedModel):
+
+class HealthCheck(TimeStampedModel):
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -21,46 +19,124 @@ class SensorAnalysis(TimeStampedModel):
     )
 
     monitor = models.ForeignKey('monitors.Monitor',
-        related_name='sensor_analysis',
+        related_name='health_checks',
         on_delete=models.CASCADE
     )
+    hour = models.DateTimeField()
 
-    r2 = models.FloatField()
-    variance = models.FloatField(null=True, default=None)
-    grade = models.FloatField(null=True, default=None)
-    intercept = models.FloatField()
-    coef = models.FloatField()
-    start_date = models.DateTimeField()
-    end_date = models.DateTimeField()
+    score = models.PositiveSmallIntegerField()
+
+    # Comparison stats between the A|1/B|2 channels
+    correlation = models.FloatField(blank=True, null=True)
+    rpd_means = models.FloatField(blank=True, null=True)
+    rpd_pairwise = models.FloatField(blank=True, null=True)
+    rmse = models.FloatField(blank=True, null=True)
+
+    # Summary stats for A|1 channel
+    min_a = models.FloatField(blank=True, null=True)
+    max_a = models.FloatField(blank=True, null=True)
+    count_a = models.IntegerField(blank=True, null=True)
+    mean_a = models.FloatField(blank=True, null=True)
+    stdev_a = models.FloatField(blank=True, null=True)
+    variance_a = models.FloatField(blank=True, null=True)
+    mad_a = models.FloatField(blank=True, null=True)
+    range_a = models.FloatField(blank=True, null=True)
+    flatline_a = models.FloatField(blank=True, null=True)
+
+    # Summary stats for the B|2 channel
+    min_b = models.FloatField(blank=True, null=True)
+    max_b = models.FloatField(blank=True, null=True)
+    count_b = models.IntegerField(blank=True, null=True)
+    mean_b = models.FloatField(blank=True, null=True)
+    stdev_b = models.FloatField(blank=True, null=True)
+    variance_b = models.FloatField(blank=True, null=True)
+    mad_b = models.FloatField(blank=True, null=True)
+    range_b = models.FloatField(blank=True, null=True)
+    flatline_b = models.FloatField(blank=True, null=True)
+
+    # Sanity checks for the A|1 channel
+    sanity_completeness_a = models.BooleanField(null=True)
+    sanity_max_a = models.BooleanField(null=True)
+    sanity_flatline_a = models.BooleanField(null=True)
+
+    # Sanity checks for the B|2 channel
+    sanity_completeness_b = models.BooleanField(null=True)
+    sanity_max_b = models.BooleanField(null=True)
+    sanity_flatline_b = models.BooleanField(null=True)
+
+    objects = HealthCheckManager()
+
+    class Meta:
+        indexes = [models.Index(fields=['monitor', 'hour'])]
+        ordering = ['-hour', 'monitor']
+        unique_together = ('monitor', 'hour')
+
+    def __str__(self):
+        return str(self.pk)
 
     @property
-    def letter_grade(self):
-        for key in SensorAnalysis.health_grades:
-            (g_min, g_max) = SensorAnalysis.health_grades[key]
-            if self.r2 >= g_min and self.r2 <= g_max:
-                return key
+    def grade(self) -> str:
+        return {
+            3: 'A',
+            2: 'B',
+            1: 'C',
+            0: 'F'
+        }.get(self.score, 'F')
+
+    @cached_property
+    def evaluator(self):
+        from camp.apps.qaqc.evaluator import HealthCheckEvaluator
+        return HealthCheckEvaluator(self.monitor, self.hour)
 
     @property
-    def is_under_threshold(self):
-        return self.r2 < 0.9
+    def completeness_a(self):
+        return self.calculate_completeness(self.count_a)
 
-    def save_as_current(self):
-        self.save()
-        self.monitor.current_health = self
-        self.monitor.save()
+    @property
+    def completeness_b(self):
+        return self.calculate_completeness(self.count_b)
 
-SensorAnalysis.health_grades = {
-    'A+': (0.97, 1.0),
-    'A': (0.93, 0.97),
-    'A-': (0.9, 0.93),
-    'B+': (0.87, 0.9),
-    'B': (0.83, 0.87),
-    'B-': (0.8, 0.83),
-    'C+': (0.77, 0.8),
-    'C': (0.73, 0.77),
-    'C-': (0.7, 0.73),
-    'D+': (0.66, 0.7),
-    'D': (0.63, 0.66),
-    'D-': (0.6, 0.63),
-    'F': (0.0, 0.6)
-}
+    def calculate_completeness(self, count):
+        expected = self.monitor.expected_hourly_entries
+        if count is not None:
+            return count / expected
+
+    @property
+    def channel_a_sanity(self):
+        return self.channel_sanity('a')
+
+    @property
+    def channel_b_sanity(self):
+        return self.channel_sanity('b')
+
+    def channel_sanity(self, channel):
+        return all(
+            getattr(self, field.name)
+            for field in self._meta.fields
+            if field.name.startswith('sanity_')
+            and field.name.endswith(f'_{channel}')
+        )
+
+    def _set_attrs(self, data):
+        for key, value in data.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+    def evaluate(self):
+        results = self.evaluator.evaluate()
+        self.score = results.score
+
+        if results.summary:
+            self._set_attrs(results.summary.as_dict(flat=True))
+
+        if results.sanity_a:
+            self._set_attrs(results.sanity_a.as_dict('a'))
+
+        if results.sanity_b:
+            self._set_attrs(results.sanity_b.as_dict('b'))
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.monitor.health or self.monitor.health.hour < self.hour:
+            self.monitor.health_id = self.pk
+            self.monitor.save(update_fields=['health_id'])

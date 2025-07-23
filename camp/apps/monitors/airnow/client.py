@@ -104,6 +104,13 @@ class AirNowClient:
             data[entry['SiteName']][entry['UTC']][entry['Parameter']] = entry
 
         return data
+    
+    def query_ng(self, county, timestamp=None, previous=1, **kwargs):
+        results = self.query(county, timestamp=timestamp, previous=previous, **kwargs)
+        for container in results.values():
+            for timestamp, data in container.items():
+                for item in data.values():
+                    yield item
 
 
 airnow_api = AirNowClient(settings.AIRNOW_API_KEY)

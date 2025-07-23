@@ -1,23 +1,147 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Optional
 
-from django.db import models
-from django.db.models import Q
+from django.db.models import DateTimeField, Exists, OuterRef, Q, Subquery
+from django.db.models.query import ModelIterable
 from django.utils import timezone
 
 from model_utils.managers import InheritanceManager, InheritanceQuerySet
 
 
-class MonitorQuerySet(InheritanceQuerySet):
-    def get_active(self):
-        cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
-        return self.filter(latest__timestamp__gte=cutoff)
+class InheritanceIterable(ModelIterable):
+    def __iter__(self):
+        queryset = self.queryset
+        base_iter = ModelIterable(queryset)
 
-    def get_inactive(self):
-        cutoff = timezone.now() - timedelta(seconds=self.model.LAST_ACTIVE_LIMIT)
-        return self.filter(Q(latest__isnull=True) | Q(latest__timestamp__lt=cutoff))
+        if getattr(queryset, 'subclasses', False):
+            extras = tuple(queryset.query.extra.keys())
+            subclasses = sorted(queryset.subclasses, key=len, reverse=True)
+            annotation_names = queryset.query.annotations.keys()
+
+            for obj in base_iter:
+                sub_obj = None
+                for s in subclasses:
+                    sub_obj = queryset._get_sub_obj_recurse(obj, s)
+                    if sub_obj:
+                        break
+                if not sub_obj:
+                    sub_obj = obj
+
+                for k in annotation_names:
+                    try:
+                        setattr(sub_obj, k, getattr(obj, k))
+                    except AttributeError:
+                        pass  # annotation wasn't actually selected in the SQL
+
+                for k in extras:
+                    setattr(sub_obj, k, getattr(obj, k))
+
+                yield sub_obj
+        else:
+            yield from base_iter
+
+
+class MonitorQuerySet(InheritanceQuerySet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._iterable_class = InheritanceIterable
+
+    def get_active(self, seconds=None):
+        seconds = seconds or self.model.LAST_ACTIVE_LIMIT
+        cutoff = timezone.now() - timedelta(seconds=seconds)
+        return self.filter(latest_entries__timestamp__gte=cutoff).distinct()
+
+    def get_inactive(self, seconds=None):
+        seconds = seconds or self.model.LAST_ACTIVE_LIMIT
+        cutoff = timezone.now() - timedelta(seconds=seconds)
+        return self.filter(Q(latest_entries__isnull=True) | Q(latest__timestamp__lt=cutoff))
+
+    def get_for_health_checks(self, hour: Optional[datetime] = None):
+        """
+        Return a queryset of all monitors whose class supports health checks
+        for the given entry model.
+        """
+        queryset = self.none()
+
+        if self.model._meta.model_name == 'monitor':
+            lookup = Q()
+            for subclass in self.model.get_subclasses():
+                if subclass.supports_health_checks():
+                    lookup |= Q(**{f'{subclass.monitor_type}__isnull': False})
+
+            if lookup:
+                queryset = self.filter(lookup)
+
+        elif self.model.supports_health_checks():
+            queryset = self.all()
+
+        if hour:
+            from camp.apps.entries.models import PM25
+            entry_qs = PM25.objects.filter(
+                monitor=OuterRef('pk'),
+                timestamp__gte=hour,
+                timestamp__lt=hour + timedelta(hours=1),
+                stage=PM25.Stage.RAW,
+            )
+            queryset = (queryset
+                .annotate(has_entries=Exists(entry_qs))
+                .filter(has_entries=True)
+            )
+
+        return queryset
 
     def get_active_multisensor(self):
         return self.get_active().exclude(default_sensor='').exclude(location='inside')
+
+    def with_last_entry_timestamp(self):
+        from camp.apps.monitors.models import LatestEntry
+
+        subquery = (LatestEntry.objects
+            .filter(monitor=OuterRef('pk'))
+            .order_by('-timestamp')  # just in case
+            .values('timestamp')[:1]
+        )
+
+        return self.annotate(last_entry_timestamp=Subquery(subquery, output_field=DateTimeField()))
+
+    def with_latest_entry(self, entry_model, stage=None, processor=None):
+        from camp.apps.monitors.models import LatestEntry
+
+        entry_type = entry_model.entry_type
+        field_id = f'latest_{entry_type}_id'
+
+        lookup = {
+            'monitor_id': OuterRef('pk'),
+            'entry_type': entry_type,
+        }
+
+        if stage is not None:
+            lookup['stage'] = stage
+            if stage == entry_model.Stage.CALIBRATED:
+                lookup['processor'] = processor or ''
+        elif processor is not None:
+            lookup['stage'] = entry_model.Stage.CALIBRATED
+            lookup['processor'] = processor or ''
+
+        subquery = (LatestEntry.objects
+            .filter(**lookup)
+            .values('entry_id')[:1]
+        )
+
+        monitors = (self
+            .annotate(**{field_id: Subquery(subquery)})
+            .exclude(**{f'{field_id}__isnull': True})
+        )
+
+        entries = entry_model.objects.filter(pk__in=[getattr(m, field_id) for m in monitors])
+        entry_map = {e.pk: e for e in entries}
+
+        for monitor in monitors:
+            entry = entry_map.get(getattr(monitor, field_id))
+            setattr(monitor, f'latest_{entry_type}', entry)
+            monitor.latest_entry = entry
+
+        return monitors
 
 
 class MonitorManager(InheritanceManager):
@@ -34,3 +158,6 @@ class MonitorManager(InheritanceManager):
 
     def get_active_multisensor(self):
         return self.get_queryset().get_active_multisensor()
+
+    def get_for_health_checks(self, hour: Optional[datetime] = None):
+        return self.get_queryset().get_for_health_checks(hour)

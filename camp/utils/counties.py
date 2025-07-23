@@ -1,6 +1,6 @@
 import json
 
-from django.contrib.gis.geos import GEOSGeometry
+from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.utils.functional import cached_property
 
 from camp.utils.datafiles import datafile
@@ -31,3 +31,10 @@ class County:
             if geometry.contains(point):
                 return name
         return default
+
+    @classmethod
+    def get_multipolygon(cls):
+        multipoly = MultiPolygon()
+        for poly in cls.counties.values():
+            multipoly = multipoly.union(poly)
+        return multipoly 

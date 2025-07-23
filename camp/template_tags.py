@@ -1,6 +1,5 @@
 import json
 
-from datetime import datetime, time
 from urllib.parse import urlparse
 
 from django import template

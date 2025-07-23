@@ -1,5 +1,9 @@
 import os
+import pickle
+import sys
 import time
+
+from collections import Counter
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -24,6 +28,14 @@ class Command(BaseCommand):
             range(len(self.tasks[key]) - 3, len(self.tasks[key]))]
         return sum(diffs) / len(diffs)
 
+    def queue_counter(self, queue_name):
+        queue = self.queues[queue_name]
+        counter = Counter()
+        for raw in queue.storage.enqueued_items():
+            message = pickle.loads(raw)
+            counter[message.name] += 1
+        return counter
+
     def handle(self, *args, **options):
         self.keys = self.get_keys(options.get('queue'))
         self.queues = {key: get_queue(key) for key in self.keys}
@@ -32,31 +44,42 @@ class Command(BaseCommand):
 
         try:
             while True:
+                print('\033[?25l', end='')  # hide cursor
+
+                buffer = []
+
                 terminal_size = os.get_terminal_size()
 
-                for key in self.keys:
-                    self.tasks[key].append(self.queues[key].pending_count())
-                    self.tasks[key] = self.tasks[key][-(terminal_size.columns - 15):]
-
-                os.system('clear')
-
-                print(asciichartpy.plot([self.tasks[key] for key in self.keys], {
-                    'min': 0,
-                    'height': max(10, terminal_size.lines - 10),
-                    'format': '{:8.0f}',
-                    'colors': colors,
-                }))
-
-                print('')
                 for i, key in enumerate(self.keys):
+                    counter = self.queue_counter(key)
+                    self.tasks[key].append(counter.total())
+                    self.tasks[key] = self.tasks[key][-(terminal_size.columns - 9):]
+
                     task_rate = int(round(self.task_rate(key)))
                     try:
                         color = colors[i]
                     except IndexError:
                         color = asciichartpy.default
 
-                    print(f'{color}{key}{asciichartpy.reset}: {self.tasks[key][-1]} {asciichartpy.lightgray}({task_rate} tasks/sec){asciichartpy.reset}')
+                    buffer.append(f'{color}{key}{asciichartpy.reset}: {self.tasks[key][-1]} {asciichartpy.lightgray}({task_rate} tasks/sec){asciichartpy.reset}')
+                    for task, count in counter.most_common():
+                        buffer.append(f' ├ {color}{task}{asciichartpy.reset}: {count}{asciichartpy.reset}')
 
+                buffer.append('─' * terminal_size.columns)
+                buffer.append(asciichartpy.plot([self.tasks[key] for key in self.keys], {
+                    'min': 0,
+                    'height': max(10, terminal_size.lines - len(buffer) - 3),
+                    'format': '{:8.0f}',
+                    'colors': colors,
+                }))
+                buffer.append('─' * terminal_size.columns)
+
+                # os.system('clear')
+                sys.stdout.write('\033[H\033[J')  # Move cursor to top-left and clear screen
+                sys.stdout.flush()
+                print('\n'.join(buffer))
                 time.sleep(1)
         except KeyboardInterrupt:
             print('\nCtrl+C detected, stopping...')
+        finally:
+            print('\033[?25h', end='')  # show cursor again

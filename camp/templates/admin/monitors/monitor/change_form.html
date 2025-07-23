@@ -113,6 +113,7 @@
 {% block object-tools %}
     {{ block.super }}
     {% if original %}
+    {% with original.get_latest_data as data %}
     <fieldset id="monitor-status" class="module aligned wide">
         <h2>Current Status</h2>
         <table>
@@ -121,8 +122,6 @@
                     <th>Last Updated</th>
                     <th>Current Health</th>
                     <th>PM2.5</th>
-                    <th>PM2.5 (15m)</th>
-                    <th>PM2.5 (60m)</th>
                     <th>Temperature</th>
                     <th>Humidity</th>
                     <th>Alert</th>
@@ -132,80 +131,48 @@
             <tbody>
                 <tr>
                     <td>
-                        {% if original.latest %}
-                            <span>{{ original.latest.timestamp }}</span>
+                        {% if original.last_entry_timestamp %}
+                            <span>{{ original.last_entry_timestamp }}</span>
                             {% if original.is_active %}
                                 <img src="{% static 'admin/img/icon-yes.svg' %}" alt="Active" />
                             {% else %}
                                 <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inactive" />
                             {% endif %}
                             <br />
-                            <small>({{ original.latest.timestamp|timesince }} ago)</small>
+                            <small>({{ original.last_entry_timestamp|timesince }} ago)</small>
                         {% else %}
                             <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inactive" />
                         {% endif %}
                     </td>
                     <td>
-                        {% if original.current_health %}
-                            {% include "admin/qaqc/letter_grade.html" with analysis=original.current_health %}
-                        {% else %}
-                            <span>-</span>
-                        {% endif %}
+                        <span>{{ original.health.grade|default_if_none:'-' }}</span>
                     </td>
                     <td>
-                        {% if original.latest %}
-                            <span>{{ original.latest.pm25|floatformat:"0" }}</span>
-                        {% else %}
-                            <span>–</span>
-                        {% endif %}
+                        <span>{{ data.pm25.value|floatformat:"0"|default_if_none:'-' }}</span>
                     </td>
                     <td>
-                        {% if original.latest.pm25_avg_15 %}
-                            <span>{{ original.latest.pm25_avg_15|floatformat:"0" }}</span>
-                        {% else %}
-                            <span>–</span>
-                        {% endif %}
+                        <span>{{ data.temperature.value|floatformat:"0"|default_if_none:'-' }}°F</span>
                     </td>
                     <td>
-                        {% if original.latest.pm25_avg_60 %}
-                            <span>{{ original.latest.pm25_avg_60|floatformat:"0" }}</span>
-                        {% else %}
-                            <span>–</span>
-                        {% endif %}
+                        <span>{{ data.humidity.value|floatformat:"0"|default_if_none:'-' }}%</span>
                     </td>
                     <td>
-                        {% if original.latest.fahrenheit %}
-                            <span>{{ original.latest.fahrenheit|floatformat:"0" }}°F</span>
-                        {% else %}
-                            <span>–</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if original.latest.humidity %}
-                            <span>{{ original.latest.humidity|floatformat:"0" }}%</span>
-                        {% else %}
-                            <span>–</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if alert %}
-                            <span>{{ alert.start_time|timesince }}</span>
-                            <b style="color: red;">⚠</b><br />
+                        {% for alert in alerts %}
+                            <span><b style="color: red;">⚠</b> {{ alert.entry_type.label }}: {{ alert.latest.get_level }}</span>
                             <small>({{ alert.start_time|timesince }} ago)</small>
-                        {% else %}
+                            {% if not forloop.last %}<hr />{% endif %}
+                        {% empty %}
                             <span>–</span>
-                        {% endif %}
+                        {% endfor %}
                     </td>
                     <td>
-                        {% if original.current_health %}
-                            {% with original.current_health as health %}
+                        {% if original.health %}
                             <a href="#"
                                 detectBackground="true"
-                                monitorId="{{ original.id }}"
-                                timestampGte="{{ health.start_date.isoformat }}"
-                                timestampLte="{{ health.end_date.isoformat }}"
+                                monitorId="{{ original.pk }}"
+                                timestampGte="{{ original.health.hour.isoformat }}"
+                                timestampLte="{{ original.health.hour.isoformat }}"
                             >View Chart</a>
-                            {% endwith %}
                         {% else %}
                             <span>-</span>
                         {% endif %}
@@ -214,6 +181,7 @@
             </tbody>
         </table>
     </fieldset>
+    {% endwith %}
     {% endif %}
 
     <fieldset id="data-export" class="module aligned wide collapse">
