@@ -2,12 +2,15 @@ import pyrsig
 import tempfile
 import zipfile
 import io
+import os
 from datetime import timedelta
 from django.utils import timezone
-from shapely  import Polygon
+from shapely  import Polygon, MultiPolygon
 import geopandas as gpd
 from django.contrib.gis.geos import GEOSGeometry
-from camp.apps.integrate.tempo.models import PollutantPoint
+from django.core.files import File
+from camp.apps.integrate.tempo.models import O3TOT_Points, NO2_Points, HCHO_Points
+
 #bounding boxes 
 '''
 San joaquin  = -121.585078	37.481783	-120.917007	38.300252
@@ -22,22 +25,20 @@ Merced = -121.248647	36.740381	-120.052055	37.633364
 Final bounding box = (-121.585078, 34.788655, -117.616517, 38.300252)
 
 '''
+#THIS IS USED TO MAKE THE RETRIEVING DATA FUNCTION MODULAR FOR ALL POLLUTANT TYPES
+keys = {
+        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', NO2_Points], 
+        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', O3TOT_Points],
+        'hcho':['tempo.l3.hcho.vertical_column','vertical_column', HCHO_Points],
+        }
 
-
-def tempo_data(key):
+def tempo_data(key, bdate):
+    global keys
+    print("START TIME OF THIS ITERATION: ", timezone.now())
     token = 'anonymous' #PUT API ENV TOKEN HERE
     token_dict = {"api_key":token}
-    #bbox = (-74.8, 40.32, -71.43, 41.4)
     SJV_bbox = (-121.585078, 34.788655, -117.616517, 38.300252) #San Joaquin Valley Boundary Box
-    keys = {
-        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere'], 
-        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3'],
-        'hcho':['tempo.l3.hcho.vertical_column','vertical_colum'],
-        }
-    
-    #Initial data between 12 - 2pm and ends 1-2am
-    bdate = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    edate = timezone.now()
+    edate = timezone.now() 
     coordkeys = [
         'Longitude_SW', 'Latitude_SW',
         'Longitude_SE', 'Latitude_SE',
@@ -46,22 +47,52 @@ def tempo_data(key):
         'Longitude_SW', 'Latitude_SW',
         ]
     
+    #QUERY FOR TEMPO DATA FROM PYRSIG
     with tempfile.TemporaryDirectory() as temp_dir:
         api = pyrsig.RsigApi(workdir=temp_dir, tempo_kw=token_dict, bdate=bdate, gridfit=True, bbox=SJV_bbox, edate=edate) 
         tempokey = keys[key][0]
         tempodf = api.to_dataframe(
-            tempokey, unit_keys=False, parse_dates=True, backend='xdr'
+            tempokey, unit_keys=False, parse_dates=True, 
         )
-        for i in range(len(tempodf)):
-            geom = Polygon(tempodf[coordkeys].iloc[i].values.reshape(5, 2))
-            geometry = GEOSGeometry(geom.wkt, srid=4326)
-            curr = tempodf.iloc[i]
-            point = PollutantPoint(  
-                timestamp=curr.time,
-                geometry=geometry,
-                amount=curr[keys[key][1]],
-                pollutant=key,
             
-            )
-            point.full_clean()
-            point.save()
+        if len(tempodf) ==0:
+            return 
+        tempodf['row_index'] = tempodf.index
+        print(tempodf.groupby('time')['row_index'].agg(['min', 'max']))
+        for timestamp, group in tempodf.groupby('time'):
+            if keys[key][2].objects.filter(timestamp=timestamp).exists():
+                print("Timestamp: ", timestamp, ' EXISTS')
+                continue
+            else:
+                print("Timestamp: ", timestamp, 'ADDED')
+            geometries = []
+            values = []   
+            for x in range(len(group)):
+                geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
+                geometries.append(geom)
+                values.append(group.iloc[x][keys[key][1]])
+                if x%10000 == 0:
+                    print(x, ' ', group.iloc[x].time)
+            gdf = gpd.GeoDataFrame({keys[key][1]: values}, geometry=geometries, crs="EPSG:4326")
+            stamp = timestamp.to_pydatetime()
+            filename = key.upper() + stamp.strftime("%Y%m%d:%H:%M:%S")
+            shp_path = os.path.join(temp_dir, f"{filename}.shp")
+            gdf.to_file(shp_path, driver="ESRI Shapefile")
+            zip_path = os.path.join(temp_dir, f"{filename}.shp")
+            
+            #CONVERT SHP FILES INTO A ZIP 
+            with zipfile.ZipFile(zip_path, 'w') as zf:
+                for ext in [".shp", ".shx", ".dbf", ".prj", ".cpg"]:
+                    filepath = os.path.join(temp_dir, f"{filename}{ext}")
+                if os.path.exists(filepath):
+                    zf.write(filepath, arcname=f"{filename}{ext}")
+                    
+            #STORE THE ZIP FILES AS A FILEFIELD IN THE PARTICULAR OBJECT TYPE
+            with open(zip_path, 'rb') as f:
+                obj = keys[key][2]()
+                print("HERE")
+                obj.file.save(f"{filename}.zip", File(f))
+                obj.timestamp = stamp
+                obj.save()
+            
+            

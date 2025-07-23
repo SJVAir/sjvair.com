@@ -3,12 +3,7 @@ from django.contrib.gis.db import models as gis_models
 from django_smalluuid.models import SmallUUIDField, uuid_default
 
 
-class PollutantPoint(models.Model):
-    class VerticalColumn(models.TextChoices):
-        O3TOT = 'o3tot', 'O3Tot'
-        NO2 = 'no2', 'NO2'
-        HCHO = 'hcho', 'HCHO'
-    
+class NO2_Points(models.Model):
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -16,8 +11,30 @@ class PollutantPoint(models.Model):
         editable=False,
         verbose_name='ID'
     )
-     
     timestamp = models.DateTimeField(null=True)
-    amount = models.FloatField()
-    pollutant = models.CharField(max_length=5, choices=VerticalColumn.choices)
-    geometry = gis_models.GeometryField(srid=4326)
+    file = models.FileField(upload_to='observations/NO2/', null=True)
+    
+    
+class HCHO_Points(models.Model):
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+    timestamp = models.DateTimeField(null=True)
+    file = models.FileField(upload_to='observations/HCHO/', null=True)
+    
+    
+class O3TOT_Points(models.Model):
+    id = SmallUUIDField(
+        default=uuid_default(),
+        primary_key=True,
+        db_index=True,
+        editable=False,
+        verbose_name='ID'
+    )
+    timestamp = models.DateTimeField(null=True)
+    file = models.FileField(upload_to='observations/O3TOT/', null=True)
+    
