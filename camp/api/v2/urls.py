@@ -12,5 +12,6 @@ urlpatterns = [
     path('account/', include('camp.api.v2.accounts.urls', namespace='account')),
     path('monitors/', include('camp.api.v2.monitors.urls', namespace='monitors')),
     path('calibrations/', include('camp.api.v2.calibrations.urls', namespace='calibrations')),
-    path('task/<task_id>/', endpoints.TaskStatus.as_view(), name='task-status')
+    path('task/<task_id>/', endpoints.TaskStatus.as_view(), name='task-status'),
+    path('tempo/', include('camp.api.v2.tempo.urls', namespace='tempo')),
 ]

@@ -3,7 +3,7 @@ from django.contrib.gis.db import models as gis_models
 from django_smalluuid.models import SmallUUIDField, uuid_default
 
 
-class NO2_Points(models.Model):
+class No2File(models.Model):
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -15,7 +15,7 @@ class NO2_Points(models.Model):
     file = models.FileField(upload_to='observations/NO2/', null=True)
     
     
-class HCHO_Points(models.Model):
+class HchoFile(models.Model):
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -27,7 +27,7 @@ class HCHO_Points(models.Model):
     file = models.FileField(upload_to='observations/HCHO/', null=True)
     
     
-class O3TOT_Points(models.Model):
+class O3totFile(models.Model):
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,

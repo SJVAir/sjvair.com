@@ -9,7 +9,7 @@ from shapely  import Polygon, MultiPolygon
 import geopandas as gpd
 from django.contrib.gis.geos import GEOSGeometry
 from django.core.files import File
-from camp.apps.integrate.tempo.models import O3TOT_Points, NO2_Points, HCHO_Points
+from camp.apps.integrate.tempo.models import O3totPoints, No2Points, HchoPoints
 
 #bounding boxes 
 '''
@@ -27,9 +27,9 @@ Final bounding box = (-121.585078, 34.788655, -117.616517, 38.300252)
 '''
 #THIS IS USED TO MAKE THE RETRIEVING DATA FUNCTION MODULAR FOR ALL POLLUTANT TYPES
 keys = {
-        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', NO2_Points], 
-        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', O3TOT_Points],
-        'hcho':['tempo.l3.hcho.vertical_column','vertical_column', HCHO_Points],
+        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', No2Points], 
+        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', O3totPoints],
+        'hcho':['tempo.l3.hcho.vertical_column','vertical_column', HchoPoints],
         }
 
 def tempo_data(key, bdate):
@@ -79,14 +79,16 @@ def tempo_data(key, bdate):
             shp_path = os.path.join(temp_dir, f"{filename}.shp")
             gdf.to_file(shp_path, driver="ESRI Shapefile")
             zip_path = os.path.join(temp_dir, f"{filename}.shp")
+            print(zip_path)
             
             #CONVERT SHP FILES INTO A ZIP 
             with zipfile.ZipFile(zip_path, 'w') as zf:
                 for ext in [".shp", ".shx", ".dbf", ".prj", ".cpg"]:
                     filepath = os.path.join(temp_dir, f"{filename}{ext}")
-                if os.path.exists(filepath):
-                    zf.write(filepath, arcname=f"{filename}{ext}")
-                    
+                    if os.path.exists(filepath):
+                        print(filepath)
+                        zf.write(filepath, arcname=f"{filename}{ext}")
+                        
             #STORE THE ZIP FILES AS A FILEFIELD IN THE PARTICULAR OBJECT TYPE
             with open(zip_path, 'rb') as f:
                 obj = keys[key][2]()

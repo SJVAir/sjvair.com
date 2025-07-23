@@ -1,11 +1,11 @@
 from resticus import generics
 
-from camp.apps.integrate.tempo.models import O3TOT_Points, HCHO_Points, NO2_Points
+from camp.apps.integrate.tempo.models import O3totFile, HchoFile, No2File
 from .serializer import O3totSerializer, HchoSerializer, No2Serializer
 from .filters import O3totFilter, HchoFilter, No2Filter
 
 class O3totMixin:
-    model = O3TOT_Points
+    model = O3totFile
     serializer_class = O3totSerializer
     paginate = True  #defaults to page_size = 100
     def get_queryset(self):    
@@ -14,7 +14,7 @@ class O3totMixin:
         )
     
 class HchoMixin:
-    model = HCHO_Points
+    model = HchoFile
     serializer_class = HchoSerializer
     paginate = True  #defaults to page_size = 100
     def get_queryset(self):    
@@ -23,7 +23,7 @@ class HchoMixin:
         )
     
 class No2Mixin:
-    model = NO2_Points
+    model = No2File
     serializer_class = No2Serializer
     paginate = True  #defaults to page_size = 100
     def get_queryset(self):    
@@ -33,7 +33,7 @@ class No2Mixin:
         
 class O3totList(O3totMixin, generics.ListEndpoint): #Maybe not list endpoint because we need to return shapefiles not a queryset
     filter_class = O3totFilter
-    
+
     
 class HchoList(HchoMixin, generics.ListEndpoint): #Maybe not list endpoint because we need to return shapefiles not a queryset
     filter_class = HchoFilter
@@ -41,7 +41,3 @@ class HchoList(HchoMixin, generics.ListEndpoint): #Maybe not list endpoint becau
 
 class No2List(No2Mixin, generics.ListEndpoint): #Maybe not list endpoint because we need to return shapefiles not a queryset
     filter_class = No2Filter
-
-
-
-

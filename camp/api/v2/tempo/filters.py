@@ -1,10 +1,10 @@
 from resticus.filters import FilterSet
 
-from camp.apps.integrate.tempo.models import O3TOT_Points, HCHO_Points, NO2_Points
+from camp.apps.integrate.tempo.models import O3totFile, HchoFile, No2File
 
 
 class O3totFilter(FilterSet):
-    model = O3TOT_Points
+    model = O3totFile
     fields = {
         'timestamp': [
             'exact', 
@@ -15,7 +15,7 @@ class O3totFilter(FilterSet):
     
     
 class HchoFilter(FilterSet):
-    model = HCHO_Points
+    model = HchoFile
     fields = {
         'timestamp': [
             'exact', 
@@ -26,7 +26,7 @@ class HchoFilter(FilterSet):
     
     
 class No2Filter(FilterSet):
-    model = NO2_Points
+    model = No2File
     fields = {
         'timestamp': [
             'exact', 
