@@ -1,22 +1,18 @@
 import csv
 
-from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin as gisadmin
 from django.db.models import Count, F
 from django.http import HttpResponse
-from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
 from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
-from camp.apps.calibrations.admin import formula_help_text
 from camp.apps.qaqc.admin import HealthCheckInline
-from camp.utils.forms import DateRangeForm
 
-from .forms import MonitorAdminForm
+from .forms import MonitorAdminForm, EntryExportForm
 from .models import Group
 
 
@@ -188,7 +184,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     get_subscriptions.admin_order_field = 'subscription_count'
 
     def render_change_form(self, request, context, *args, **kwargs):
-        context.update({'export_form': DateRangeForm()})
+        context.update({'export_form': EntryExportForm()})
         return super().render_change_form(request, context, *args, **kwargs)
 
     def last_updated(self, instance):
