@@ -188,28 +188,15 @@
         <h2>Data Export</h2>
         {% if change and export_form %}
         <div id="export-form">
-            <form action="{% url 'api:v1:monitors:entry-csv' object_id %}" method="get">
+            <form action="{% url 'api:v2:monitors:entry-export' object_id %}" method="post">
                 <div class="control">
-                    <label for="{{ export_form.timestamp__gte.auto_id }}">{{ export_form.timestamp__gte.label }}</label><br />
-                    <div class="field">{{ export_form.timestamp__gte }}</div>
+                    <label for="{{ export_form.start_date.auto_id }}">{{ export_form.start_date.label }}</label><br />
+                    <div class="field">{{ export_form.start_date }}</div>
                 </div>
                 <div class="control">
-                    <label for="{{ export_form.timestamp__lte.auto_id }}">{{ export_form.timestamp__lte.label }}</label><br />
-                    <div class="field">{{ export_form.timestamp__lte }}</div>
+                    <label for="{{ export_form.end_date.auto_id }}">{{ export_form.end_date.label }}</label><br />
+                    <div class="field">{{ export_form.end_date }}</div>
                 </div>
-                {% if not original.SENSORS|length == 1 %}
-                <div class="control">
-                    <label for="id_sensors">Sensor</label><br />
-                    <div class="field">
-                        <select id="id_sensors" name="sensor">
-                            {% for sensor in original.SENSORS %}
-                            <option value="{{ sensor }}" {% if sensor == original.default_sensor %}selected{% endif %}>{{ sensor }}</option>
-                            {% endfor %}
-                        </select><br />
-                        <span class="help">Download a specific sensor.</span>
-                    </div>
-                </div>
-                {% endif %}
                 <div class="submit-buttons">
                     <input type="submit" value="Export Data" />
                 </div>

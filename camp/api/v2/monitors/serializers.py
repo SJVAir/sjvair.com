@@ -6,7 +6,7 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 
 class EntrySerializer(serializers.Serializer):
     fields = [
-        ('timestamp', lambda entry: entry.timestamp_pst),
+        ('timestamp', lambda entry: entry.timestamp_local),
         'sensor',
         'stage',
         'processor',
