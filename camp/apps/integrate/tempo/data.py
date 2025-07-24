@@ -67,16 +67,18 @@ def tempo_data(key, bdate, edate):
             ]   
             for x in range(len(group)):
                 geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
+                # print(group)
                 geometries.append(geom)
                 values.append(group.iloc[x][column])
-            
+                # print(group.iloc[x][column])
+            # print(values)
             #CONSTRUCT SHAPE FILES
             gdf = gpd.GeoDataFrame({column: values}, geometry=geometries, crs="EPSG:4326")
             stamp = timestamp.to_pydatetime()
-            filename = f"{key}{stamp.strftime('%Y%m%d:%H:%M:%S')}"
+            filename = f"{key}{stamp.strftime('%Y%m%d%H%M%S')}"
             shp_path = os.path.join(temp_dir, f"{filename}.shp")
             gdf.to_file(shp_path, driver="ESRI Shapefile")
-            zip_path = os.path.join(temp_dir, f"{filename}.shp")
+            zip_path = os.path.join(temp_dir, f"{filename}.zip")
             
             #CONVERT SHP FILES INTO A ZIP 
             with zipfile.ZipFile(zip_path, 'w') as zf:
@@ -84,12 +86,11 @@ def tempo_data(key, bdate, edate):
                     filepath = os.path.join(temp_dir, f"{filename}{ext}")
                     if os.path.exists(filepath):
                         zf.write(filepath, arcname=f"{filename}{ext}")
-                        
+            
             #STORE THE ZIP FILES AS A FILEFIELD IN THE PARTICULAR OBJECT TYPE
             with open(zip_path, 'rb') as f:
                 obj = model(timestamp=stamp)
                 obj.file.save(f"{filename}.zip", File(f))
                 obj.save()
                 obj_list.append(obj)
-            
     return obj_list

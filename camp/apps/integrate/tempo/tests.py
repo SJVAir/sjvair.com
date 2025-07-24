@@ -15,11 +15,11 @@ class Test(TestCase):
         self.bdate = bdate
     
     def test1(self):
-        tempo_data('no2', self.bdate)
+        tempo_data('o3tot', self.bdate, timezone.now())
         print("COUNT: ", O3totFile.objects.all().count())
         
   
-    def test2(self):
-        tempo_data('hcho', self.bdate)
-        print("COUNT: ", HchoFile.objects.all().count())
+    # def test2(self):
+    #     tempo_data('hcho', self.bdate)
+    #     print("COUNT: ", HchoFile.objects.all().count())
  
