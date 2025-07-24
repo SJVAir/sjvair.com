@@ -12,7 +12,7 @@ class No2File(models.Model):
         verbose_name='ID'
     )
     timestamp = models.DateTimeField(null=True)
-    file = models.FileField(upload_to='observations/NO2/', null=True)
+    file = models.FileField(upload_to='observations/no2/', null=True)
     
     
 class HchoFile(models.Model):
@@ -24,7 +24,7 @@ class HchoFile(models.Model):
         verbose_name='ID'
     )
     timestamp = models.DateTimeField(null=True)
-    file = models.FileField(upload_to='observations/HCHO/', null=True)
+    file = models.FileField(upload_to='observations/hcho/', null=True)
     
     
 class O3totFile(models.Model):
@@ -36,5 +36,5 @@ class O3totFile(models.Model):
         verbose_name='ID'
     )
     timestamp = models.DateTimeField(null=True)
-    file = models.FileField(upload_to='observations/O3TOT/', null=True)
+    file = models.FileField(upload_to='observations/o3tot/', null=True)
     
