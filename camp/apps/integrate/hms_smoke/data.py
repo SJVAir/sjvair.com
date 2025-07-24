@@ -40,7 +40,7 @@ def get_smoke_file(date):
     if date != today:
         is_final = True
         queryset = Smoke.objects.filter(date=date, is_final=True)
-        if queryset:
+        if queryset.exists():
             return queryset
     Smoke.objects.filter(date=date).delete()
     #Construct download url for NOAA Smoke shapefile 
