@@ -71,9 +71,10 @@ def to_multi_entry_wide_dataframe(entry_models, monitor, start_date=None, end_da
         df = df.reset_index()
 
         def label_row(row):
-            bits = [model.entry_type, row['processor'] if row['stage'] == model.Stage.CALIBRATED else row['stage']]
+            bits = [model.entry_type]
             if row['sensor']:
                 bits.append(row['sensor'])
+            bits.append(row['processor'] if row['stage'] == model.Stage.CALIBRATED else row['stage'])
             return '_'.join(bits)
 
         df['column_key'] = df.apply(label_row, axis=1)

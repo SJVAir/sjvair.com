@@ -158,6 +158,7 @@ class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
 
 class EntryExport(FormEndpoint):
     form_class = EntryExportForm
+    login_required = True
 
     def get_email(self):
         if self.request.user.is_authenticated:
@@ -168,7 +169,6 @@ class EntryExport(FormEndpoint):
         email = self.get_email()
         task = data_export(self.request.monitor.pk, email=email, **form.cleaned_data)
         return http.JSONResponse({'task_id': str(task.id)}, status=202)
-
 
 
 class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):

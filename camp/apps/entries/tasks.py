@@ -2,12 +2,12 @@ import os
 
 from django.conf import settings
 from django.core.files.storage import default_storage, FileSystemStorage
-from django.core.mail import send_mail
 
 from django_huey import db_task
 
 from camp.apps.entries.utils import generate_export_path
 from camp.apps.monitors.models import Monitor
+from camp.utils.email import send_email
 
 
 @db_task()
@@ -42,11 +42,16 @@ def data_export(monitor_id, start_date, end_date, email=None):
     url = default_storage.url(path)
 
     if email:
-        send_mail(
-            subject='Your SJVAir data export is ready',
-            message=f'Your requested data export is ready. Download it here:\n\n{url}',
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
+        send_email(
+            subject=f'Your SJVAir data export for "{monitor.name}" is ready',
+            template='email/entry-export-download.md',
+            context={
+                'url': url,
+                'monitor': monitor,
+                'start_date': start_date,
+                'end_date': end_date,
+            },
+            to=email,
         )
 
     return {
