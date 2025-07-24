@@ -4,7 +4,7 @@ from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.utils.functional import cached_property
 
 from camp.utils.datafiles import datafile
-
+from shapely.wkt import loads as load_wkt
 
 class County:
     counties = {
@@ -29,6 +29,14 @@ class County:
     def lookup(cls, point, default=''):
         for name, geometry in cls.counties.items():
             if geometry.contains(point):
+                return name
+        return default
+
+    @classmethod
+    def in_SJV(cls, geometry_shape, default=False):
+        for name, geometry in cls.counties.items():
+            shapely_county = load_wkt(geometry.wkt)
+            if shapely_county.intersects(geometry_shape):
                 return name
         return default
 
