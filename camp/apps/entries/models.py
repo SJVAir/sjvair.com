@@ -131,7 +131,7 @@ class BaseEntry(models.Model):
             return self.Levels.get_level(self.value)
 
     @property
-    def timestamp_pst(self):
+    def timestamp_local(self):
         return timezone.localtime(self.timestamp, settings.DEFAULT_TIMEZONE)
 
     def declared_data(self):
