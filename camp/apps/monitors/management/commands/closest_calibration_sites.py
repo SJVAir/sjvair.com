@@ -17,10 +17,10 @@ class Command(BaseCommand):
 
         writer = csv.writer(self.stdout)
         writer.writerow([
-            'monitor_id', 'monitor_name', 'purple_id', 'monitor_lat', 'monitor_lon',
-            'ref_1_id', 'ref_1_name', 'ref_1_lat', 'ref_1_lon',
-            'ref_2_id', 'ref_2_name', 'ref_2_lat', 'ref_2_lon',
-            'ref_3_id', 'ref_3_name', 'ref_3_lat', 'ref_3_lon',
+            'monitor_id', 'monitor_name', 'location_id', 'monitor_lat', 'monitor_lon',
+            'ref_1_id', 'ref_1_name', 'ref_1_lat', 'ref_1_lon', 'ref_1_distance',
+            'ref_2_id', 'ref_2_name', 'ref_2_lat', 'ref_2_lon', 'ref_2_distance',
+            'ref_3_id', 'ref_3_name', 'ref_3_lat', 'ref_3_lon', 'ref_3_distance',
         ])
         writer.writerows(self.csv)
 
@@ -34,10 +34,12 @@ class Command(BaseCommand):
                 .order_by('dist')[:3]
             )
 
+            location_id = getattr(monitor, 'purple_id', None) or getattr(monitor, 'location_id', None)
+
             row = [
                 monitor.id,
                 monitor.name,
-                monitor.slug,
+                location_id,
                 monitor.position.y,
                 monitor.position.x,
             ]
@@ -48,9 +50,10 @@ class Command(BaseCommand):
                     pair.reference.name,
                     pair.reference.position.y,
                     pair.reference.position.x,
+                    round(pair.dist.mi, 2),
                 ])
 
-            while len(row) < 20:
-                row.extend(['', '', '', ''])
+            while len(row) < 24:
+                row.extend(['', '', '', '', ''])
 
             self.csv.append(row)
