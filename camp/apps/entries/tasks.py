@@ -11,6 +11,69 @@ from camp.apps.monitors.models import Monitor
 from camp.utils.email import send_email
 
 
+def migrate_legacy_entry(monitor, entry):
+    entry_map = [
+        (entry_models.PM25, {'pm25_reported': 'value'}),
+        (entry_models.PM10, {'pm10': 'value'}),
+        (entry_models.PM100, {'pm100': 'value'}),
+
+        (entry_models.Particulates, {
+            'particles_03um': 'particles_03um',
+            'particles_05um': 'particles_05um',
+            'particles_10um': 'particles_10um',
+            'particles_25um': 'particles_25um',
+            'particles_50um': 'particles_50um',
+            'particles_100um': 'particles_100um',
+        }),
+
+        (entry_models.Temperature, {'fahrenheit': 'value'}),
+        (entry_models.Humidity, {'humidity': 'value'}),
+        (entry_models.Pressure, {'pressure': 'value'}),
+        (entry_models.O3, {'ozone': 'value'}),
+    ]
+
+    new_entries = []
+
+    for model, field_map in entry_map:
+        if model not in monitor.ENTRY_CONFIG:
+            continue
+
+        data = {'timestamp': entry.timestamp}
+        missing_data = False
+
+        for old_field, new_field in field_map.items():
+            value = getattr(entry, old_field, None)
+            if value is None:
+                missing_data = True
+                break
+            data[new_field] = value
+
+        if missing_data:
+            continue
+
+        entry_config = monitor.ENTRY_CONFIG.get(model, {})
+        sensor_config = entry_config.get('sensors')
+        sensor_allowed = True
+
+        if sensor_config:
+            if entry.sensor in sensor_config:
+                data['sensor'] = entry.sensor
+            else:
+                sensor_allowed = False
+        else:
+            pm25_sensors = monitor.ENTRY_CONFIG.get(entry_models.PM25, {}).get('sensors') or []
+            if pm25_sensors and entry.sensor != pm25_sensors[0]:
+                sensor_allowed = False
+
+        if not sensor_allowed:
+            continue
+
+        if new := monitor.create_entry(model, **data):
+            new_entries.append(new)
+
+    return monitor.process_entries_ng(new_entries)
+
+
 @db_task(queue='secondary')
 def copy_legacy_entries(monitor_id):
     monitor = Monitor.objects.get(pk=monitor_id)
@@ -22,39 +85,8 @@ def copy_legacy_entries(monitor_id):
     except entry_models.PM25.DoesNotExist:
         pass
 
-    for i, entry in enumerate(queryset.iterator()):
-        print(i, entry.timestamp)
-        new_entries = []
-
-        if entry.pm25 is not None:
-            if new := monitor.create_entry(entry_models.PM25,
-                value=entry.pm25,
-                timestamp=entry.timestamp
-            ):
-                new_entries.append(new)
-
-        if entry.fahrenheit is not None:
-            if new := monitor.create_entry(entry_models.Temperature,
-                value=entry.fahrenheit,
-                timestamp=entry.timestamp
-            ):
-                new_entries.append(new)
-
-        if entry.humidity is not None:
-            if new := monitor.create_entry(entry_models.Humidity,
-                value=entry.humidity,
-                timestamp=entry.timestamp
-            ):
-                new_entries.append(new)
-
-        if entry.ozone is not None:
-            if new := monitor.create_entry(entry_models.O3,
-                value=entry.ozone,
-                timestamp=entry.timestamp
-            ):
-                new_entries.append(new)
-
-        monitor.process_entries_ng(new_entries)
+    for entry in queryset.iterator():
+        migrate_legacy_entry(monitor, entry)
 
 
 @db_task()
