@@ -173,8 +173,10 @@ class BaseEntry(models.Model):
             'sensor': self.sensor,
             'origin_id': self.pk,
         }
-        values.update(**kwargs)
-        return self.__class__(**values)
+        entry = self.__class__(**values)
+        for key, value in kwargs.items():
+            setattr(entry, key, value)
+        return entry
 
     def validation_check(self):
         return not (self.__class__.objects
