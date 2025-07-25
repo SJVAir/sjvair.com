@@ -9,7 +9,8 @@ from django.utils.text import slugify
 from django.utils.timezone import make_aware
 
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.apps.monitors.purpleair.api import purpleair_api, chunk_date_range
+from camp.apps.monitors.purpleair.api import purpleair_api
+from camp.utils.datetime import chunk_date_range
 
 
 class Command(BaseCommand):
