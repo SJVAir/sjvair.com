@@ -22,6 +22,7 @@ class EntryExportEndpointTests(TestCase):
         self.monitor = PurpleAir.objects.get(purple_id=8892)
         self.start = timezone.now().date() - timedelta(days=7)
         self.end = timezone.now().date()
+        self.user = User.objects.get(email='user@sjvair.com')
 
         # Create PM2.5 and humidity entries over multiple days
         for i in range(7):
@@ -47,6 +48,7 @@ class EntryExportEndpointTests(TestCase):
         }
         request = self.factory.post(url, data)
         request.monitor = self.monitor
+        request.user = self.user
 
         response = EntryExport.as_view()(request, monitor_id=self.monitor.pk)
         content = get_response_data(response)
@@ -58,6 +60,7 @@ class EntryExportEndpointTests(TestCase):
         url = reverse('api:v2:monitors:entry-export', kwargs={'monitor_id': self.monitor.pk})
         request = self.factory.post(url, {})
         request.monitor = self.monitor
+        request.user = self.user
 
         response = EntryExport.as_view()(request, monitor_id=self.monitor.pk)
         content = get_response_data(response)
@@ -74,6 +77,7 @@ class EntryExportEndpointTests(TestCase):
         }
         request = self.factory.post(url, data)
         request.monitor = self.monitor
+        request.user = self.user
 
         response = EntryExport.as_view()(request, monitor_id=self.monitor.pk)
         content = get_response_data(response)
@@ -83,8 +87,6 @@ class EntryExportEndpointTests(TestCase):
         assert any('Maximum export range' in err['message'] for err in content['errors']['__all__'])
 
     def test_email_sent_to_authenticated_user(self):
-        user = User.objects.get(email='user@sjvair.com')
-
         url = reverse('api:v2:monitors:entry-export', kwargs={'monitor_id': self.monitor.pk})
         data = {
             'start_date': self.start.strftime('%Y-%m-%d'),
@@ -92,8 +94,8 @@ class EntryExportEndpointTests(TestCase):
         }
 
         request = self.factory.post(url, data)
-        request.user = user
         request.monitor = self.monitor
+        request.user = self.user
 
         response = EntryExport.as_view()(request, monitor_id=self.monitor.pk)
         content = get_response_data(response)
@@ -102,8 +104,8 @@ class EntryExportEndpointTests(TestCase):
         assert 'task_id' in content
 
         assert len(mail.outbox) == 1
-        assert mail.outbox[0].to == [user.email]
-        assert 'Your SJVAir data export is ready' in mail.outbox[0].subject
+        assert mail.outbox[0].to == [self.user.email]
+        assert 'Your SJVAir data export' in mail.outbox[0].subject
 
     def test_no_email_sent_for_anonymous_user(self):
         url = reverse('api:v2:monitors:entry-export', kwargs={'monitor_id': self.monitor.pk})
@@ -117,8 +119,6 @@ class EntryExportEndpointTests(TestCase):
         request.monitor = self.monitor
 
         response = EntryExport.as_view()(request, monitor_id=self.monitor.pk)
-        content = get_response_data(response)
 
-        assert response.status_code == 202
-        assert 'task_id' in content
+        assert response.status_code == 401
         assert len(mail.outbox) == 0

@@ -67,13 +67,13 @@ class ToMultiEntryWideDataFrameTests(TestCase):
         assert len(df) == 1
         assert 'timestamp' in df.columns
         assert 'timestamp_local' in df.columns
-        assert 'pm25_raw_a' in df.columns
-        assert 'pm25_cleaned_a' in df.columns
-        assert 'pm25_linear_a' in df.columns
+        assert 'pm25_a_raw' in df.columns
+        assert 'pm25_a_cleaned' in df.columns
+        assert 'pm25_a_linear' in df.columns
         assert 'humidity_raw' in df.columns
 
         row = df.iloc[0]
-        assert row['pm25_raw_a'] == 10.0
-        assert row['pm25_cleaned_a'] == 9.5
-        assert row['pm25_linear_a'] == 8.7
+        assert row['pm25_a_raw'] == 10.0
+        assert row['pm25_a_cleaned'] == 9.5
+        assert row['pm25_a_linear'] == 8.7
         assert row['humidity_raw'] == 54.3
