@@ -72,7 +72,8 @@ def migrate_legacy_entry(monitor, entry):
         if new := monitor.create_entry(model, **data):
             new_entries.append(new)
 
-    return monitor.process_entries_ng(new_entries)
+    for entry in new_entries:
+        monitor.process_entry_pipeline(entry, entry_models.PM25.Stage.CALIBRATED)
 
 
 @db_task(queue='secondary')
@@ -97,7 +98,7 @@ def copy_legacy_entries(monitor_id):
     except entry_models.PM25.DoesNotExist:
         end = timezone.now()
 
-    chunks = chunk_date_range(start, end, days=7)
+    chunks = chunk_date_range(start, end, days=3)
 
     for chunk_start, chunk_end in chunks:
         copy_legacy_entries_range(monitor.pk, chunk_start, chunk_end)
