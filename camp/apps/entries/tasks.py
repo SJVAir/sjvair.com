@@ -5,9 +5,56 @@ from django.core.files.storage import default_storage, FileSystemStorage
 
 from django_huey import db_task
 
+from camp.apps.entries import models as entry_models
 from camp.apps.entries.utils import generate_export_path
 from camp.apps.monitors.models import Monitor
 from camp.utils.email import send_email
+
+
+@db_task(queue='secondary')
+def copy_legacy_entries(monitor_id):
+    monitor = Monitor.objects.get(pk=monitor_id)
+
+    queryset = monitor.entries.all()
+    try:
+        earliest = monitor.pm25_entries.earliest().timestamp
+        queryset = queryset.filter(timestamp__lt=earliest)
+    except entry_models.PM25.DoesNotExist:
+        pass
+
+    for i, entry in enumerate(queryset.iterator()):
+        print(i, entry.timestamp)
+        new_entries = []
+
+        if entry.pm25 is not None:
+            if new := monitor.create_entry(entry_models.PM25,
+                value=entry.pm25,
+                timestamp=entry.timestamp
+            ):
+                new_entries.append(new)
+
+        if entry.fahrenheit is not None:
+            if new := monitor.create_entry(entry_models.Temperature,
+                value=entry.fahrenheit,
+                timestamp=entry.timestamp
+            ):
+                new_entries.append(new)
+
+        if entry.humidity is not None:
+            if new := monitor.create_entry(entry_models.Humidity,
+                value=entry.humidity,
+                timestamp=entry.timestamp
+            ):
+                new_entries.append(new)
+
+        if entry.ozone is not None:
+            if new := monitor.create_entry(entry_models.O3,
+                value=entry.ozone,
+                timestamp=entry.timestamp
+            ):
+                new_entries.append(new)
+
+        monitor.process_entries_ng(new_entries)
 
 
 @db_task()

@@ -84,7 +84,7 @@ def import_airnow_data_legacy(timestamp=None, previous=None):
                 timestamp = parse_datetime(timestamp)
                 try:
                     entry = monitor.entries.get(timestamp=timestamp)
-                    entry = monitor.process_entry_legacy(entry, data)
+                    entry = monitor.process_entry(entry, data)
                     entry.save()
                 except Entry.DoesNotExist:
                     entry = monitor.create_entry_legacy(data)
