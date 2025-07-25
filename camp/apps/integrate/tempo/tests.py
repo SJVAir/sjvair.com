@@ -1,6 +1,6 @@
 from django.test import TestCase
 from .data import tempo_data
-from camp.apps.integrate.tempo.models import O3totFile, HchoFile, No2File
+from camp.apps.integrate.tempo.models import TempoGrid
 from django.utils import timezone
 from datetime import timedelta
 from datetime import datetime
@@ -16,7 +16,7 @@ class Test(TestCase):
     
     def test1(self):
         tempo_data('o3tot', self.bdate, timezone.now())
-        print("COUNT: ", O3totFile.objects.all().count())
+        print("COUNT: ", TempoGrid.objects.all().count())
         
   
     # def test2(self):

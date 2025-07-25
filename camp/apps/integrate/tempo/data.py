@@ -9,7 +9,7 @@ from shapely  import Polygon, MultiPolygon
 import geopandas as gpd
 from django.contrib.gis.geos import GEOSGeometry
 from django.core.files import File
-from camp.apps.integrate.tempo.models import O3totFile, No2File, HchoFile
+from camp.apps.integrate.tempo.models import TempoGrid
 
 #bounding boxes 
 '''
@@ -27,9 +27,9 @@ Final bounding box = (-121.585078, 34.788655, -117.616517, 38.300252)
 '''
 #THIS IS USED TO MAKE THE RETRIEVING DATA FUNCTION MODULAR FOR ALL POLLUTANT TYPES
 keys = {
-        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', No2File], 
-        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', O3totFile],
-        'hcho':['tempo.l3.hcho.vertical_column','vertical_column', HchoFile],
+        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', TempoGrid], 
+        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', TempoGrid],
+        'hcho':['tempo.l3.hcho.vertical_column','vertical_column', TempoGrid],
         }
 
 def tempo_data(key, bdate, edate):
@@ -54,7 +54,7 @@ def tempo_data(key, bdate, edate):
         #ORGANIZE DATA BY TIMESTAMP
         print(tempodf.groupby('time')['row_index'].agg(['min', 'max']))
         for timestamp, group in tempodf.groupby('time'):
-            if model.objects.filter(timestamp=timestamp).exists():
+            if model.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
                 continue
             geometries = []
             values = []
@@ -76,21 +76,23 @@ def tempo_data(key, bdate, edate):
             gdf = gpd.GeoDataFrame({column: values}, geometry=geometries, crs="EPSG:4326")
             stamp = timestamp.to_pydatetime()
             filename = f"{key}{stamp.strftime('%Y%m%d%H%M%S')}"
-            shp_path = os.path.join(temp_dir, f"{filename}.shp")
+            shp_path = os.path.join(temp_dir, f"{filename}")
             gdf.to_file(shp_path, driver="ESRI Shapefile")
-            zip_path = os.path.join(temp_dir, f"{filename}.zip")
             
-            #CONVERT SHP FILES INTO A ZIP 
-            with zipfile.ZipFile(zip_path, 'w') as zf:
-                for ext in [".shp", ".shx", ".dbf", ".prj", ".cpg"]:
-                    filepath = os.path.join(temp_dir, f"{filename}{ext}")
-                    if os.path.exists(filepath):
-                        zf.write(filepath, arcname=f"{filename}{ext}")
+            # #CONVERT SHP FILES INTO A ZIP 
+            # with zipfile.ZipFile(zip_path, 'w') as zf:
+            #     for ext in [".shp", ".shx", ".dbf", ".prj", ".cpg"]:
+            #         filepath = os.path.join(temp_dir, f"{filename}{ext}")
+            #         if os.path.exists(filepath):
+            #             zf.write(filepath, arcname=f"{filename}{ext}")
             
             #STORE THE ZIP FILES AS A FILEFIELD IN THE PARTICULAR OBJECT TYPE
-            with open(zip_path, 'rb') as f:
-                obj = model(timestamp=stamp)
-                obj.file.save(f"{filename}.zip", File(f))
-                obj.save()
-                obj_list.append(obj)
+            
+            obj = model(timestamp=stamp, pollutant=key,)
+            for ext in ["shp", "shx", "dbf", "prj", "cpg"]:
+                path = os.path.join(shp_path, f"{filename}.{ext}")
+                with open(path, "rb") as f:
+                    getattr(obj, ext).save(f"{filename}.{ext}", File(f), save=False) 
+            obj.save()
+            obj_list.append(obj)
     return obj_list

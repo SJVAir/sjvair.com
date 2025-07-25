@@ -1,11 +1,11 @@
 from resticus import generics
 
-from camp.apps.integrate.tempo.models import O3totFile, HchoFile, No2File
+from camp.apps.integrate.tempo.models import TempoGrid
 from .serializer import O3totSerializer, HchoSerializer, No2Serializer
 from .filters import O3totFilter, HchoFilter, No2Filter
 
 class O3totMixin:
-    model = O3totFile
+    model = TempoGrid
     serializer_class = O3totSerializer
     paginate = True  #defaults to page_size = 100
     def get_queryset(self):    
@@ -14,7 +14,7 @@ class O3totMixin:
         )
     
 class HchoMixin:
-    model = HchoFile
+    model = TempoGrid
     serializer_class = HchoSerializer
     paginate = True  #defaults to page_size = 100
     def get_queryset(self):    
@@ -23,7 +23,7 @@ class HchoMixin:
         )
     
 class No2Mixin:
-    model = No2File
+    model = TempoGrid
     serializer_class = No2Serializer
     paginate = True  #defaults to page_size = 100
     def get_queryset(self):    

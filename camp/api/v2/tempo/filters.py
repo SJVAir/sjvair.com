@@ -1,10 +1,10 @@
 from resticus.filters import FilterSet
 
-from camp.apps.integrate.tempo.models import O3totFile, HchoFile, No2File
+from camp.apps.integrate.tempo.models import TempoGrid
 
 
 class O3totFilter(FilterSet):
-    model = O3totFile
+    model = TempoGrid
     fields = {
         'timestamp': [
             'exact', 
@@ -15,7 +15,7 @@ class O3totFilter(FilterSet):
     
     
 class HchoFilter(FilterSet):
-    model = HchoFile
+    model = TempoGrid
     fields = {
         'timestamp': [
             'exact', 
@@ -26,7 +26,7 @@ class HchoFilter(FilterSet):
     
     
 class No2Filter(FilterSet):
-    model = No2File
+    model = TempoGrid
     fields = {
         'timestamp': [
             'exact', 
