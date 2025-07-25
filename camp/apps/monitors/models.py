@@ -312,30 +312,37 @@ class Monitor(models.Model):
                 processed_entries.extend(results)
         return processed_entries
 
-    def process_entry_ng(self, entry):
+    def process_entry_ng(self, entry, cutoff_stage=None):
         config = self.ENTRY_CONFIG.get(entry.__class__, {})
         processors = config.get('processors', {}).get(entry.stage, [])
 
         processed_entries = []
         for processor in processors:
+            if cutoff_stage and processor.next_stage == cutoff_stage:
+                continue
+
             if (result := processor(entry).run()):
                 self.update_latest_entry(result)
                 processed_entries.append(result)
 
         return processed_entries
 
-    def process_entry_pipeline(self, entry):
+    def process_entry_pipeline(self, entry, cutoff_stage=None):
         '''
         Recursively processes an entry through its pipeline stages, as defined in ENTRY_CONFIG.
 
+        Args:
+            entry: The BaseEntry instance to process.
+            cutoff_stage: Optional. If provided, processing will stop before this stage.
+
         Returns:
-            List of all new entries created during processing (can include cleaned and calibrated stages).
+            List of all new entries created during processing.
         '''
         processed = []
 
-        for result in self.process_entry_ng(entry):
+        for result in self.process_entry_ng(entry, cutoff_stage):
             processed.append(result)
-            processed.extend(self.process_entry_pipeline(result))  # Recursive step
+            processed.extend(self.process_entry_pipeline(result, cutoff_stage))
 
         return processed
 
