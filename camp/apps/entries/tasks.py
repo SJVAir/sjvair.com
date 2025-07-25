@@ -1,13 +1,14 @@
 import os
 
-from django.conf import settings
 from django.core.files.storage import default_storage, FileSystemStorage
+from django.utils import timezone
 
 from django_huey import db_task
 
 from camp.apps.entries import models as entry_models
 from camp.apps.entries.utils import generate_export_path
 from camp.apps.monitors.models import Monitor
+from camp.utils.datetime import chunk_date_range
 from camp.utils.email import send_email
 
 
@@ -75,18 +76,31 @@ def migrate_legacy_entry(monitor, entry):
 
 
 @db_task(queue='secondary')
+def copy_legacy_entries_range(monitor_id, start, end):
+    monitor = Monitor.objects.get(pk=monitor_id)
+    queryset = monitor.entries.filter(timestamp__range=(start, end))
+    for entry in queryset.iterator():
+        migrate_legacy_entry(monitor, entry)
+
+
+@db_task(queue='secondary')
 def copy_legacy_entries(monitor_id):
     monitor = Monitor.objects.get(pk=monitor_id)
 
-    queryset = monitor.entries.all()
     try:
-        earliest = monitor.pm25_entries.earliest().timestamp
-        queryset = queryset.filter(timestamp__lt=earliest)
-    except entry_models.PM25.DoesNotExist:
-        pass
+        start = monitor.entries.earliest('timestamp').timestamp
+    except monitor.entries.model.DoesNotExist:
+        return  # no legacy entries at all
 
-    for entry in queryset.iterator():
-        migrate_legacy_entry(monitor, entry)
+    try:
+        end = monitor.pm25_entries.earliest().timestamp
+    except entry_models.PM25.DoesNotExist:
+        end = timezone.now()
+
+    chunks = chunk_date_range(start, end, days=7)
+
+    for chunk_start, chunk_end in chunks:
+        copy_legacy_entries_range(monitor.pk, chunk_start, chunk_end)
 
 
 @db_task()
