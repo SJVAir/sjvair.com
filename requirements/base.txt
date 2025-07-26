@@ -22,7 +22,7 @@ django-phonenumber-field[phonenumberslite]==7.1.0
 django-prose==2.0.0
 django-recaptcha==4.0.0
 django-smalluuid==1.2.1
-django-sqids==0.2.0
+django-sqids==0.2.2
 django-storages==1.13.2
 django-vanilla-views==3.0.0
 django-widget-tweaks==1.4.12
