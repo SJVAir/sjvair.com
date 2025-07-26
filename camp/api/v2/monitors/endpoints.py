@@ -207,7 +207,10 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
             .get_queryset(*args, **kwargs)
-            .exclude(is_hidden=True)
+            .exclude(
+                is_hidden=True,
+                position__isnull=True,
+            )
             .with_latest_entry(self.entry_model)
         )
         return queryset
