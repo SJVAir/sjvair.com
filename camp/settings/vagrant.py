@@ -16,7 +16,7 @@ EMAIL_FILE_PATH = BASE_DIR.child('outbox')
 CACHES = {
     'default': {
         'BACKEND': 'django_bmemcached.memcached.BMemcached',
-        'LOCATION': 'localhost:11211',
+        'LOCATION': env('MEMCACHED'),
     }
 }
 
