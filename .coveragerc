@@ -1,0 +1,35 @@
+[run]
+branch = True
+source =
+    camp
+omit =
+    */migrations/*
+    */management/commands/*
+    */tests/*
+    */__init__.py
+    */admin.py
+    */apps.py
+    */wsgi.py
+    */asgi.py
+    */settings/*
+    */urls.py
+    */manage.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __str__
+    def __repr__
+    if self\.debug
+    if settings\.DEBUG
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    @abstractmethod
+
+show_missing = True
+skip_covered = True
+precision = 2
+
+[html]
+directory = htmlcov
+title = SJVAir Coverage Report

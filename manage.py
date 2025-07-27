@@ -5,7 +5,7 @@ import pprint
 import sys
 import zoneinfo
 
-import dotenv
+# import dotenv
 
 from django.utils import timezone
 
@@ -13,8 +13,8 @@ def main():
     # Run output through the pretty printer.
     sys.displayhook = pprint.pprint
 
-    # Load our .env
-    dotenv.load_dotenv(dotenv.find_dotenv())
+    # # Load our .env
+    # dotenv.load_dotenv(dotenv.find_dotenv())
 
     # Set PST globally, since that's where we operate.
     timezone.activate(zoneinfo.ZoneInfo('America/Los_Angeles'))
