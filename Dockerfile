@@ -1,5 +1,5 @@
 # Use the official slim Python 3.11 image as base
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
 # Enable colored terminal output
 ENV FORCE_COLOR=1
@@ -14,10 +14,6 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Install system dependencies
-# - Build tools for compiling Python packages with C extensions
-# - GDAL/Proj/PostGIS support for geospatial libraries
-# - Node.js & Yarn for frontend assets
-# - PostgreSQL & Redis clients for dev/debugging
 RUN apt-get update && apt-get install -y \
     binutils \
     build-essential \
@@ -30,31 +26,31 @@ RUN apt-get update && apt-get install -y \
     libproj-dev \
     libssl-dev \
     libtiff5-dev \
-    netcat-openbsd \
-    postgresql-client \
-    redis-tools \
-    zlib1g-dev \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
-    && npm install --global yarn \
+    zlib1g-dev\
     && rm -rf /var/lib/apt/lists/*
-
-# Copy helper script and make it executable
-COPY scripts/wait-for-services.sh /usr/local/bin/wait-for-services.sh
-RUN chmod +x /usr/local/bin/wait-for-services.sh
 
 # Silence Git's safe directory warning (for volume mounts as root)
 RUN git config --global --add safe.directory /app
 
 # Install Python dependencies
 COPY requirements ./requirements/
-RUN pip install --upgrade pip \
-    && pip install setuptools==70.3.0 wheel packaging \
-    && pip install --no-cache-dir -r requirements/base.txt \
-    && pip install --no-cache-dir -r requirements/develop.txt
+RUN pip install --upgrade pip
+RUN pip install setuptools==70.3.0 wheel packaging
+RUN pip install --no-cache-dir -r requirements/base.txt
+RUN pip install --no-cache-dir -r requirements/develop.txt
 
 # Copy the full project into the container
 COPY . .
 
 # Start with a bash shell (overridden in most services)
 CMD ["bash"]
+
+
+# Web stage: Adds Node/Yarn for frontend builds
+FROM base AS web
+
+# Install Node 18.x and Yarn
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get update && apt-get install -y nodejs \
+    && npm install --global yarn \
+    && rm -rf /var/lib/apt/lists/*

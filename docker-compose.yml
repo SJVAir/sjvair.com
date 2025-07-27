@@ -1,9 +1,22 @@
+x-build-base: &build-base
+  build:
+    context: .
+    target: base
+  volumes:
+    - .:/app
+  env_file:
+    - .env
+  depends_on:
+    db:
+      condition: service_healthy
+    queue:
+      condition: service_healthy
+    cache:
+      condition: service_healthy
 
 services:
   db:
-    image: docker.io/postgis/postgis:17-3.5
-    container_name: db
-    restart: unless-stopped
+    image: postgis/postgis:17-3.5
     environment:
       POSTGRES_DB: sjvair
       POSTGRES_USER: sjvair
@@ -12,76 +25,60 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sjvair"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  redis:
-    image: docker.io/library/redis:8
-    container_name: redis
-    restart: unless-stopped
+  queue:
+    image: redis:8-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-  memcached:
-    image: docker.io/library/memcached:1.6
-    container_name: memcached
-    restart: unless-stopped
+  cache:
+    image: memcached:1.6-alpine
     ports:
       - "11211:11211"
+    healthcheck:
+      test: ["CMD", "pidof", "memcached"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   web:
-    build: .
-    container_name: web
-    command: wait-for-services.sh python manage.py runserver 0:8000
-    volumes:
-      - .:/app
+    <<: *build-base
+    build:
+      context: .
+      target: web
+    command: python manage.py runserver 0:8000
     ports:
       - "8000:8000"
-    env_file:
-      - .env
-    depends_on:
-      - db
-      - memcached
-      - redis
-    profiles: ["web"]
+    profiles: ["default", "web"]
 
-  huey-primary:
-    build: .
-    container_name: huey-primary
-    command: wait-for-services.sh python manage.py djangohuey --simple --queue primary
-    volumes:
-      - .:/app
-    env_file:
-      - .env
-    depends_on:
-      - db
-      - memcached
-      - redis
-    profiles: ["queue"]
+  worker-primary:
+    <<: *build-base
+    command: python manage.py djangohuey --simple --queue primary
+    profiles: ["default", "worker-primary", "workers"]
 
-  huey-secondary:
-    build: .
-    container_name: huey-secondary
-    command: wait-for-services.sh python manage.py djangohuey --simple --queue secondary
-    volumes:
-      - .:/app
-    env_file:
-      - .env
-    depends_on:
-      - db
-      - memcached
-      - redis
-    profiles: ["queue"]
+  worker-secondary:
+    <<: *build-base
+    command: python manage.py djangohuey --simple --queue secondary
+    profiles: ["worker-secondary", "workers"]
 
   test:
-    build: .
+    <<: *build-base
     command: pytest
-    volumes:
-      - .:/app
     env_file:
       - .env.test
     depends_on:
-      - db
-      - redis
-      - memcached
+      db:
+        condition: service_healthy
     profiles: ["test"]
 
 volumes:
