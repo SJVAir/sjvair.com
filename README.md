@@ -36,7 +36,7 @@ San Joaquin Valley Air Quality Monitoring Platform
 2. **Build and start the dev environment**
 
    ```bash
-   docker compose --profile dev up --build
+   docker compose --profile web up
    ```
 
    This will spin up the following services:
@@ -45,7 +45,7 @@ San Joaquin Valley Air Quality Monitoring Platform
    - Redis
    - Memcached
    - Django web server
-   - Huey task queues (`primary` and `secondary`)
+   - Primary task queue
 
 3. **Create a superuser**
 
@@ -130,15 +130,7 @@ docker compose down
 Start up again later:
 
 ```bash
-docker compose --profile dev up
-```
-
----
-
-## 🧰 Optional: Clear task queue and entries
-
-```bash
-docker compose exec web python manage.py clear_huey_and_entries
+docker compose --profile web up
 ```
 
 ---
@@ -150,7 +142,7 @@ docker compose exec web python manage.py clear_huey_and_entries
 
   ```bash
   # Start dev environment
-  docker compose --profile dev up
+  docker compose --profile web up
 
   # Run tests in isolation
   docker compose --profile test run --rm test
