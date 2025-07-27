@@ -1,0 +1,41 @@
+# Python cache and virtualenvs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Editor and tooling configs
+.idea/
+.vscode/
+*.swp
+*.swo
+.editorconfig
+
+# Git-related
+.git/
+.gitattributes
+.gitignore
+.github/
+.gitlab-ci.yml
+
+# Python environment
+.env
+.envs/
+
+# CI/CD and build systems
+.travis.yml
+.readthedocs.yml
+.pre-commit-config.yaml
+
+# Exported data, build outputs, and other junk
+*.log
+*.bak
+*.coverage
+*.egg-info/
+dist/
+build/
+
+# App-specific temporary or export folders
+app/export/
