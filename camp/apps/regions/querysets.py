@@ -1,3 +1,5 @@
+from django.contrib.gis.db.models import Union
+from django.contrib.gis.geos import GEOSGeometry
 from django.db import models
 
 import geopandas as gpd
@@ -16,3 +18,15 @@ class RegionQuerySet(models.QuerySet):
 
         df = gpd.GeoDataFrame(records, geometry='geometry', crs=crs)
         return df
+
+    def intersects(self, geometry: GEOSGeometry):
+        """
+        Filters regions that intersect the given geometry.
+        """
+        return self.filter(geometry__intersects=geometry)
+
+    def combined_geometry(self) -> GEOSGeometry:
+        """
+        Returns a MultiPolygon representing the union of all geometries in the queryset.
+        """
+        return self.aggregate(combined=Union('geometry'))['combined']
