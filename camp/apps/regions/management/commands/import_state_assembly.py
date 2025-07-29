@@ -1,32 +1,31 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils.text import slugify
 
 from camp.apps.regions.models import Region
 from camp.utils import geodata
 from camp.utils.gis import to_multipolygon
 
-DATASET_URL = "https://www2.census.gov/geo/tiger/TIGER2020/ZCTA5/tl_2020_us_zcta510.zip"
-
 
 class Command(BaseCommand):
-    help = 'Import ZIP Code Tabulation Areas (ZCTAs) into Region table, limited to SJV counties'
+    help = 'Import California cities (places) into the Region table (limited to those within SJV counties)'
 
     def handle(self, *args, **options):
-        Region.objects.filter(type=Region.Type.ZIPCODE).delete()
+        Region.objects.filter(type__in=[Region.Type.STATE_ASSEMBLY]).delete()
 
         counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
-        gdf = geodata.gdf_from_zip(DATASET_URL, verify=False)
+        gdf = geodata.gdf_from_ckan('assembly-districts')
         gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                zip_code = str(row['ZCTA5CE10']).zfill(5)
+                external_id = f"ad-{row['GEOID']}"
                 region = Region.objects.create(
-                    name=zip_code,
-                    slug=zip_code,
-                    type=Region.Type.ZIPCODE,
-                    external_id=zip_code,
+                    name=row['AssemblyDi'],
+                    slug=external_id,
+                    type=Region.Type.STATE_ASSEMBLY,
+                    external_id=external_id,
                     geometry=to_multipolygon(row.geometry),
                     metadata={}
                 )
-                self.stdout.write(f'Imported ZIP: {region.name}')
+                self.stdout.write(f'Imported: {region.name}')
