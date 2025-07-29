@@ -34,6 +34,7 @@ asgiref==3.7.2
 boto3==1.28.22
 channels-redis==4.1.0
 channels==4.0.0
+ckanapi==4.8
 delegator.py==0.1.1
 dpath==2.0.6
 geopandas==1.0.1
