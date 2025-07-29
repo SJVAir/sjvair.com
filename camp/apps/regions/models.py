@@ -24,10 +24,10 @@ class Region(TimeStampedModel):
 
     name = models.CharField(max_length=128)
     slug = models.SlugField(max_length=128)
+    external_id = models.CharField(max_length=64, unique=True, blank=True, null=True)
     type = models.CharField(max_length=32, choices=Type.choices, db_index=True)
     geometry = models.MultiPolygonField()
     metadata = models.JSONField(blank=True, default=dict)
-    external_id = models.CharField(max_length=64, unique=True, blank=True, null=True)
 
     objects = RegionQuerySet.as_manager()
 
