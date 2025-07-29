@@ -46,40 +46,82 @@ def tempo_data(key, bdate, edate):
         )  
         if len(tempodf) ==0:
             return obj_list
-        
-        #ORGANIZE DATA BY TIMESTAMP
+        tempodf = tempodf.sort_values(by='time', ascending=True)
         tempodf['row_index'] = tempodf.index
         print(tempodf.groupby('time')['row_index'].agg(['min', 'max']))
-        for timestamp, group in tempodf.groupby('time'):
-            if TempoGrid.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
-                continue
-            geometries, values = [], []
-            coordkeys = [
-                'Longitude_SW', 'Latitude_SW',
-                'Longitude_SE', 'Latitude_SE',
-                'Longitude_NE', 'Latitude_NE',
-                'Longitude_NW', 'Latitude_NW',
-                'Longitude_SW', 'Latitude_SW',
-            ]   
-            for x in range(len(group)):
-                geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
-                geometries.append(geom)
-                values.append(group.iloc[x][column])
-                
-            #CONSTRUCT SHAPE FILES
-            gdf = gpd.GeoDataFrame({shp_col: values}, geometry=geometries, crs="EPSG:4326")
-            stamp = timestamp.to_pydatetime()
-            filename = f"{key}{stamp.strftime('%Y%m%d%H%M%S')}"
-            shp_path = os.path.join(temp_dir, f"{filename}")
-            gdf.to_file(shp_path, driver="ESRI Shapefile")
-            
-            #STORE THE ZIP FILES AS A FILEFIELD IN THE PARTICULAR OBJECT TYPE
-            obj = TempoGrid(timestamp=stamp, pollutant=key,)
-            for ext in ["shp", "shx", "dbf", "prj", "cpg"]:
-                path = os.path.join(shp_path, f"{filename}.{ext}")
-                with open(path, "rb") as f:
-                    getattr(obj, ext).save(f"{filename}.{ext}", File(f), save=False) 
-            obj.save()
-            obj_list.append(obj)
-    return obj_list
+        
+        if key == 'no2':
+            obj_list.append(no2_data(tempodf, column, shp_col, key, temp_dir))
+        #ORGANIZE DATA BY TIMESTAMP
+        else:
+            for timestamp, group in tempodf.groupby('time'):
+                if TempoGrid.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
+                    continue
+                geometries, values = [], []
+                coordkeys = [
+                    'Longitude_SW', 'Latitude_SW',
+                    'Longitude_SE', 'Latitude_SE',
+                    'Longitude_NE', 'Latitude_NE',
+                    'Longitude_NW', 'Latitude_NW',
+                    'Longitude_SW', 'Latitude_SW',
+                ]   
+                for x in range(len(group)):
+                    geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
+                    geometries.append(geom)
+                    values.append(group.iloc[x][column])
+                    
+                obj_list.append(df_to_shp(geometries, values, [timestamp], key, shp_col, temp_dir, True))
+        return obj_list
 
+
+#COMBINES THE 2 NO2 SCANS INTO ONE SHAPEFILE/OBJECT
+def no2_data(tempodf, column, shp_col, key, temp_dir):
+    obj_list = []
+    geometries, values, timestamps= [], [], []
+    all_timestamps = tempodf['time'].unique()
+    all_timestamps.to_pydatetime().sort()
+    final_stamp = all_timestamps[-1]
+    for timestamp, group in tempodf.groupby('time'):
+        timestamp = timestamp.to_pydatetime()
+        if TempoGrid.objects.filter(timestamp=timestamp, pollutant='no2', final=True).exists() or TempoGrid.objects.filter(timestamp_2=timestamp, pollutant='no2', final=True).exists():
+            continue
+        elif len(timestamps) == 1 and not (abs(timestamps[0] - timestamp) <= timedelta(minutes=15)):
+            obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, False))
+            geometries, values, timestamps = [], [], []
+        timestamps.append(timestamp)
+        coordkeys = [
+            'Longitude_SW', 'Latitude_SW',
+            'Longitude_SE', 'Latitude_SE',
+            'Longitude_NE', 'Latitude_NE',
+            'Longitude_NW', 'Latitude_NW',
+            'Longitude_SW', 'Latitude_SW',
+        ]   
+        for x in range(len(group)):
+            geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
+            geometries.append(geom)
+            values.append(group.iloc[x][column])        
+        if len(timestamps) == 2:  
+            obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, True))
+            geometries, values, timestamps = [], [], []
+        elif timestamp == final_stamp:
+            obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, False))
+    return obj_list
+    
+#CREATES SHAPEFILE AND ADDS TO DB
+def df_to_shp(geometries, values, stamp, key, shp_col, temp_dir, final):
+    #CONSTRUCT SHAPE FILES
+    gdf = gpd.GeoDataFrame({shp_col: values}, geometry=geometries, crs="EPSG:4326")
+    filename = f"{key}{stamp[0].strftime('%Y%m%d%H%M%S')}"
+    shp_path = os.path.join(temp_dir, f"{filename}")
+    gdf.to_file(shp_path, driver="ESRI Shapefile")
+    
+    #STORE THE ZIP FILES AS A FILEFIELD IN THE PARTICULAR OBJECT TYPE
+    obj = TempoGrid(timestamp=stamp[0], pollutant=key, final=final)
+    if len(stamp) == 2: 
+        obj.timestamp_2 = stamp[1]
+    for ext in ["shp", "shx", "dbf", "prj", "cpg"]:
+        path = os.path.join(shp_path, f"{filename}.{ext}")
+        with open(path, "rb") as f:
+            getattr(obj, ext).save(f"{filename}.{ext}", File(f), save=False) 
+    obj.save()
+    return obj

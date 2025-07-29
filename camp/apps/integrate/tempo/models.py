@@ -34,3 +34,4 @@ class TempoGrid(models.Model):
     cpg = models.FileField(upload_to=file_path, null=True, blank=True)
     shx = models.FileField(upload_to=file_path, null=True, blank=True)
     
+    final = models.BooleanField()
