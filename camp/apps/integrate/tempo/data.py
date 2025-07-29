@@ -26,20 +26,17 @@ Final bounding box = (-121.585078, 34.788655, -117.616517, 38.300252)
 
 '''
 #THIS IS USED TO MAKE THE RETRIEVING DATA FUNCTION MODULAR FOR ALL POLLUTANT TYPES
-keys = {
-        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', TempoGrid], 
-        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', TempoGrid],
-        'hcho':['tempo.l3.hcho.vertical_column','vertical_column', TempoGrid],
-        }
 
 def tempo_data(key, bdate, edate):
-    global keys
+    keys = {
+        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', 'no2_col'], 
+        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', 'o3_col'],
+        'hcho':['tempo.l3.hcho.vertical_column','vertical_column', 'hcho_col'],
+        }
     obj_list = []
-    token = 'anonymous' #PUT API ENV TOKEN HERE
-    token_dict = {"api_key":token}
+    token_dict = {"api_key":'anonymous'}
     SJV_bbox = (-121.585078, 34.788655, -117.616517, 38.300252) #San Joaquin Valley Boundary Box
-    
-    tempokey, column, model = keys[key]
+    tempokey, column, shp_col = keys[key]
 
     #QUERY FOR TEMPO DATA FROM PYRSIG
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -49,15 +46,14 @@ def tempo_data(key, bdate, edate):
         )  
         if len(tempodf) ==0:
             return obj_list
-        tempodf['row_index'] = tempodf.index
         
         #ORGANIZE DATA BY TIMESTAMP
+        tempodf['row_index'] = tempodf.index
         print(tempodf.groupby('time')['row_index'].agg(['min', 'max']))
         for timestamp, group in tempodf.groupby('time'):
-            if model.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
+            if TempoGrid.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
                 continue
-            geometries = []
-            values = []
+            geometries, values = [], []
             coordkeys = [
                 'Longitude_SW', 'Latitude_SW',
                 'Longitude_SE', 'Latitude_SE',
@@ -67,28 +63,18 @@ def tempo_data(key, bdate, edate):
             ]   
             for x in range(len(group)):
                 geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
-                # print(group)
                 geometries.append(geom)
                 values.append(group.iloc[x][column])
-                # print(group.iloc[x][column])
-            # print(values)
+                
             #CONSTRUCT SHAPE FILES
-            gdf = gpd.GeoDataFrame({column: values}, geometry=geometries, crs="EPSG:4326")
+            gdf = gpd.GeoDataFrame({shp_col: values}, geometry=geometries, crs="EPSG:4326")
             stamp = timestamp.to_pydatetime()
             filename = f"{key}{stamp.strftime('%Y%m%d%H%M%S')}"
             shp_path = os.path.join(temp_dir, f"{filename}")
             gdf.to_file(shp_path, driver="ESRI Shapefile")
             
-            # #CONVERT SHP FILES INTO A ZIP 
-            # with zipfile.ZipFile(zip_path, 'w') as zf:
-            #     for ext in [".shp", ".shx", ".dbf", ".prj", ".cpg"]:
-            #         filepath = os.path.join(temp_dir, f"{filename}{ext}")
-            #         if os.path.exists(filepath):
-            #             zf.write(filepath, arcname=f"{filename}{ext}")
-            
             #STORE THE ZIP FILES AS A FILEFIELD IN THE PARTICULAR OBJECT TYPE
-            
-            obj = model(timestamp=stamp, pollutant=key,)
+            obj = TempoGrid(timestamp=stamp, pollutant=key,)
             for ext in ["shp", "shx", "dbf", "prj", "cpg"]:
                 path = os.path.join(shp_path, f"{filename}.{ext}")
                 with open(path, "rb") as f:
@@ -96,3 +82,4 @@ def tempo_data(key, bdate, edate):
             obj.save()
             obj_list.append(obj)
     return obj_list
+

@@ -8,8 +8,7 @@ from django_smalluuid.models import SmallUUIDField, uuid_default
 
 
 def file_path(instance, filename):
-    unique_id = uuid.uuid4().hex[:8]
-    return f"observations/{instance.pollutant}/{instance.timestamp:%Y%m%d%H%M%S}_{unique_id}/{filename}"
+    return f"observations/{instance.pollutant}/{instance.timestamp:%Y%m%d%H%M%S}/{filename}"
 
 class TempoGrid(models.Model):
     class Pollutant(models.TextChoices):
@@ -27,6 +26,7 @@ class TempoGrid(models.Model):
     
     pollutant = models.CharField(max_length=5, choices=Pollutant.choices,)
     timestamp = models.DateTimeField(null=True)
+    timestamp_2 = models.DateTimeField(null=True, blank=True)
     
     shp = models.FileField(upload_to=file_path, null=True, blank=True)
     dbf = models.FileField(upload_to=file_path, null=True, blank=True)
