@@ -71,13 +71,13 @@ San Joaquin Valley Air Quality Monitoring Platform
 ## 🧪 Running Tests
 
 ```bash
-docker compose --profile test run --rm test
+docker compose run --rm test
 ```
 
 Or with flags:
 
 ```bash
-docker compose --profile test run --rm test pytest -s -x -k "test_something"
+docker compose run --rm test pytest -s -x -k "test_something"
 ```
 
 ---

@@ -18,17 +18,19 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                region = Region.objects.create(
-                    name=row['GEOID'],
-                    slug=row['GEOID'],
-                    type=Region.Type.TRACT,
+                region, created = Region.objects.update_or_create(
                     external_id=row['GEOID'],
-                    geometry=to_multipolygon(row.geometry),
-                    metadata={
-                        'geoid': row['GEOID'],
-                        'countyfp': row['COUNTYFP'],
-                        'namelsad': row.get('NAMELSAD', ''),
-                        'statefp': row.get('STATEFP', '06'),
+                    type=Region.Type.TRACT,
+                    defaults={
+                        'name': row['GEOID'],
+                        'slug': row['GEOID'],
+                        'geometry': to_multipolygon(row.geometry),
+                        'metadata': {
+                            'geoid': row['GEOID'],
+                            'countyfp': row['COUNTYFP'],
+                            'namelsad': row.get('NAMELSAD', ''),
+                            'statefp': row.get('STATEFP', '06'),
+                        }
                     }
                 )
-                self.stdout.write(f'Imported: {region.name}')
+                self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')

@@ -12,8 +12,6 @@ class Command(BaseCommand):
     help = 'Import ZIP Code Tabulation Areas (ZCTAs) into Region table, limited to SJV counties'
 
     def handle(self, *args, **options):
-        Region.objects.filter(type=Region.Type.ZIPCODE).delete()
-
         counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
         gdf = geodata.gdf_from_zip(DATASET_URL, verify=False)
         gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
@@ -21,12 +19,14 @@ class Command(BaseCommand):
         with transaction.atomic():
             for _, row in gdf.iterrows():
                 zip_code = str(row['ZCTA5CE10']).zfill(5)
-                region = Region.objects.create(
-                    name=zip_code,
-                    slug=zip_code,
-                    type=Region.Type.ZIPCODE,
+                region, created = Region.objects.update_or_create(
                     external_id=zip_code,
-                    geometry=to_multipolygon(row.geometry),
-                    metadata={}
+                    type=Region.Type.ZIPCODE,
+                    defaults={
+                        'name': zip_code,
+                        'slug': zip_code,
+                        'geometry': to_multipolygon(row.geometry),
+                        'metadata': {}
+                    }
                 )
-                self.stdout.write(f'Imported ZIP: {region.name}')
+                self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')
