@@ -117,6 +117,19 @@ docker compose exec web python manage.py migrate
 docker compose exec web bash
 ```
 
+### Import all regional data
+
+```bash
+docker compose run --rm web python manage.py import_counties \
+&& docker compose run --rm web python manage.py import_cities \
+&& docker compose run --rm web python manage.py import_census_tracts \
+&& docker compose run --rm web python manage.py import_school_districts \
+&& docker compose run --rm web python manage.py import_zipcodes \
+&& docker compose run --rm web python manage.py import_congressional_districts \
+&& docker compose run --rm web python manage.py import_state_assembly \
+&& docker compose run --rm web python manage.py import_state_senate
+```
+
 ---
 
 ## 🧹 Cleaning Up
