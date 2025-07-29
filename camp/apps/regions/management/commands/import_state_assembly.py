@@ -11,8 +11,6 @@ class Command(BaseCommand):
     help = 'Import California cities (places) into the Region table (limited to those within SJV counties)'
 
     def handle(self, *args, **options):
-        Region.objects.filter(type__in=[Region.Type.STATE_ASSEMBLY]).delete()
-
         counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
         gdf = geodata.gdf_from_ckan('assembly-districts')
         gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
@@ -20,12 +18,14 @@ class Command(BaseCommand):
         with transaction.atomic():
             for _, row in gdf.iterrows():
                 external_id = f"ad-{row['GEOID']}"
-                region = Region.objects.create(
-                    name=row['AssemblyDi'],
-                    slug=external_id,
-                    type=Region.Type.STATE_ASSEMBLY,
+                region, created = Region.objects.update_or_create(
                     external_id=external_id,
-                    geometry=to_multipolygon(row.geometry),
-                    metadata={}
+                    type=Region.Type.STATE_ASSEMBLY,
+                    defaults={
+                        'name': row['AssemblyDi'],
+                        'slug': external_id,
+                        'geometry': to_multipolygon(row.geometry),
+                        'metadata': {}
+                    }
                 )
-                self.stdout.write(f'Imported: {region.name}')
+                self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')

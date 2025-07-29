@@ -21,25 +21,25 @@ class Command(BaseCommand):
     help = 'Import California counties into the Region table (limited to SJV)'
 
     def handle(self, *args, **options):
-        Region.objects.filter(type__in=[Region.Type.COUNTY]).delete()
-
         gdf = geodata.gdf_from_ckan('ca-geographic-boundaries', resource_name='CA County Boundaries')
         gdf = gdf[gdf['NAME'].isin(SJV_COUNTIES)].copy()
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                region = Region.objects.create(
-                    name=row['NAMELSAD'],
-                    slug=slugify(row['NAME']),
+                region, created = Region.objects.update_or_create(
                     type=Region.Type.COUNTY,
                     external_id=row['GEOID'],
-                    geometry=to_multipolygon(row.geometry),
-                    metadata={
-                        'geoid': row['GEOID'],
-                        'countyfp': row.get('COUNTYFP'),
-                        'statefp': row.get('STATEFP'),
-                        'name': row['NAME'],
-                        'namelsad': row['NAMELSAD'],
+                    defaults={
+                        'name': row['NAMELSAD'],
+                        'slug': slugify(row['NAME']),
+                        'geometry': to_multipolygon(row.geometry),
+                        'metadata': {
+                            'geoid': row['GEOID'],
+                            'countyfp': row.get('COUNTYFP'),
+                            'statefp': row.get('STATEFP'),
+                            'name': row['NAME'],
+                            'namelsad': row['NAMELSAD'],
+                        }
                     }
                 )
-                self.stdout.write(f'Imported: {region.name}')
+                self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')
