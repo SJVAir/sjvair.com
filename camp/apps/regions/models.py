@@ -4,6 +4,8 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
+from camp.apps.regions.querysets import RegionQuerySet
+
 
 class Region(TimeStampedModel):
     class Type(models.TextChoices):
@@ -22,17 +24,15 @@ class Region(TimeStampedModel):
 
     name = models.CharField(max_length=128)
     slug = models.SlugField(max_length=128)
-    type = models.CharField(max_length=32, choices=Type.choices)
-    geom = models.MultiPolygonField()
+    type = models.CharField(max_length=32, choices=Type.choices, db_index=True)
+    geometry = models.MultiPolygonField()
     metadata = models.JSONField(blank=True, default=dict)
+    external_id = models.CharField(max_length=64, unique=True, blank=True, null=True)
+
+    objects = RegionQuerySet.as_manager()
 
     class Meta:
-        unique_together = ('name', 'type')
-        indexes = [
-            models.Index(fields=['type']),
-            models.Index(fields=['name']),
-            models.Index(fields=['type', 'name']),
-        ]
+        ordering = ['type', 'name']
 
     def __str__(self):
         return f'{self.name} ({self.get_type_display()})'
