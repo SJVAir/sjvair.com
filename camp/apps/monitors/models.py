@@ -163,13 +163,13 @@ class Monitor(models.Model):
     def __str__(self):
         return self.name
 
-    @classproperty
-    def monitor_type(cls):
-        return cls._meta.model_name
-
     @classmethod
     def subclasses(cls):
         return cls.objects.get_queryset()._get_subclasses_recurse(cls)
+
+    @classproperty
+    def monitor_type(cls):
+        return cls._meta.model_name
 
     @classproperty
     def entry_types(self):
@@ -206,9 +206,6 @@ class Monitor(models.Model):
     def slug(self):
         return slugify(self.name)
 
-    def get_device(self):
-        return self.device or self.DEVICE or self._meta.verbose_name
-
     @property
     def data_providers(self):
         providers = copy.deepcopy(self.DATA_PROVIDERS)
@@ -221,6 +218,17 @@ class Monitor(models.Model):
     @property
     def data_source(self):
         return self.DATA_SOURCE
+
+    @property
+    def regions(self):
+        """
+        Returns a queryset of all regions that contain this monitor's location.
+        """
+        from camp.apps.regions.models import Region
+        if not self.position:
+            return Region.objects.none()
+
+        return Region.objects.filter(geometry__contains=self.position)
 
     @cached_property
     def is_active(self):
@@ -262,6 +270,9 @@ class Monitor(models.Model):
     @classmethod
     def get_default_calibration(cls, EntryModel):
         return get_default_calibration(cls, EntryModel)
+
+    def get_device(self):
+        return self.device or self.DEVICE or self._meta.verbose_name
 
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'

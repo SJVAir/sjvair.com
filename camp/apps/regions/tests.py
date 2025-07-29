@@ -20,6 +20,17 @@ class RegionTests(TestCase):
         assert region.name == 'Test Tract'
         assert region.type == Region.Type.TRACT
 
+    def test_region_monitors(self):
+        monitor = PurpleAir.objects.get(purple_id=8892)
+        fresno = Region.objects.get(name='Fresno County')
+        kern = Region.objects.get(name='Kern County')
+
+        assert fresno.pk in monitor.regions.values_list('pk', flat=True)
+        assert monitor.pk in fresno.monitors.values_list('pk', flat=True)
+
+        assert kern.pk not in monitor.regions.values_list('pk', flat=True)
+        assert monitor.pk not in kern.monitors.values_list('pk', flat=True)
+
     def test_intersects_point(self):
         monitor = PurpleAir.objects.get(purple_id=8892)
         result = Region.objects.intersects(monitor.position)

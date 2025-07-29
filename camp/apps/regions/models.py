@@ -36,3 +36,11 @@ class Region(TimeStampedModel):
 
     def __str__(self):
         return f'{self.name} ({self.get_type_display()})'
+
+    @property
+    def monitors(self):
+        """
+        Returns a queryset of all monitors located within this region.
+        """
+        from camp.apps.monitors.models import Monitor
+        return Monitor.objects.filter(position__within=self.geometry)
