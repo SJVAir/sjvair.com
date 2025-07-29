@@ -26,8 +26,6 @@ class Command(BaseCommand):
     help = 'Import California counties into the Region table (limited to SJV)'
 
     def handle(self, *args, **options):
-        Region.objects.filter(type=Region.Type.COUNTY).delete()
-
         ckan = ckanapi.RemoteCKAN('https://data.ca.gov')
         package = ckan.action.package_show(id='ca-geographic-boundaries')
 
@@ -62,6 +60,7 @@ class Command(BaseCommand):
                         name=row['NAMELSAD'],
                         slug=slugify(row['NAME']),
                         type=Region.Type.COUNTY,
+                        external_id=row['GEOID'],
                         geometry=to_multipolygon(row.geometry),
                         metadata={
                             'geoid': row['GEOID'],
