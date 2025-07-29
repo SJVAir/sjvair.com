@@ -21,6 +21,8 @@ class Command(BaseCommand):
     help = 'Import California counties into the Region table (limited to SJV)'
 
     def handle(self, *args, **options):
+        Region.objects.filter(type__in=[Region.Type.COUNTY]).delete()
+
         gdf = geodata.gdf_from_ckan('ca-geographic-boundaries', resource_name='CA County Boundaries')
         gdf = gdf[gdf['NAME'].isin(SJV_COUNTIES)].copy()
 
