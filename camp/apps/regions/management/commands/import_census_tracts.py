@@ -26,7 +26,6 @@ class Command(BaseCommand):
     help = 'Import 2020 Census Tracts for San Joaquin Valley into the Region table'
 
     def handle(self, *args, **options):
-        Region.objects.filter(type=Region.Type.TRACT).delete()
         with tempfile.NamedTemporaryFile(suffix='.zip') as tmpfile:
             self.stdout.write('Downloading 2020 Census Tracts ZIP...')
             try:
@@ -39,9 +38,9 @@ class Command(BaseCommand):
             tmpfile.write(r.content)
             tmpfile.flush()
 
+            counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
             gdf = gpd.read_file(f'zip://{tmpfile.name}').to_crs('EPSG:4326')
-            gdf = gdf[gdf['COUNTYFP'].isin(SJV_COUNTIES.keys())].copy()
-            gdf['county_name'] = gdf['COUNTYFP'].map(SJV_COUNTIES)
+            gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
 
             with transaction.atomic():
                 for _, row in gdf.iterrows():
@@ -49,6 +48,7 @@ class Command(BaseCommand):
                         name=row['GEOID'],
                         slug=row['GEOID'],
                         type=Region.Type.TRACT,
+                        external_id=row['GEOID'],
                         geometry=to_multipolygon(row.geometry),
                         metadata={
                             'geoid': row['GEOID'],

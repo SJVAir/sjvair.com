@@ -43,6 +43,7 @@ class Command(BaseCommand):
                         name=zip_code,
                         slug=zip_code,
                         type=Region.Type.ZIPCODE,
+                        external_id=zip_code,
                         geometry=to_multipolygon(row.geometry),
                         metadata={}
                     )

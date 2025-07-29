@@ -55,6 +55,7 @@ class Command(BaseCommand):
                         name=row['DistrictNa'],
                         slug=slugify(row['DistrictNa']),
                         type=Region.Type.SCHOOL_DISTRICT,
+                        external_id=row['CDSCode'],
                         geometry=to_multipolygon(row.geometry),
                         metadata={
                             # Identifiers

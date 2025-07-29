@@ -65,6 +65,7 @@ class Command(BaseCommand):
                         name=row['NAME'],
                         slug=slugify(row['NAME']),
                         type=region_type,
+                        external_id=row['GEOID'],
                         geometry=to_multipolygon(row.geometry),
                         metadata={
                             'geoid': row['GEOID'],
