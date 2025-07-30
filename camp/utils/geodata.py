@@ -1,4 +1,5 @@
 import tempfile
+import time
 
 import ckanapi
 import geopandas as gpd
@@ -45,7 +46,9 @@ def gdf_from_ckan(
 def gdf_from_zip(
     zipfile: str,
     crs: str = 'EPSG:4326',
-    verify: bool = True
+    verify: bool = True,
+    retries: int = 3,
+    delay: float = 1
 ) -> gpd.GeoDataFrame:
     """
     Loads a GeoDataFrame from a zipfile path or URL.
@@ -63,29 +66,34 @@ def gdf_from_zip(
         ValueError: If reading the shapefile fails.
     """
     if zipfile.startswith('http'):
-        with tempfile.NamedTemporaryFile(suffix='.zip') as tmpfile:
-            session = requests.Session()
-            retries = requests.adapters.Retry(
-                total=5,
-                backoff_factor=1,
-                status_forcelist=[500, 502, 503, 504, 429, 404, 400],
-                allowed_methods=['GET']
-            )
-            adapter = requests.adapters.HTTPAdapter(max_retries=retries)
-            session.mount('http://', adapter)
-            session.mount('https://', adapter)
-
-            print(f'Downloading shapefile from:\n{zipfile}\n')
+        for attempt in range(retries):
             try:
-                response = session.get(zipfile, verify=verify)
-                response.raise_for_status()
-            except requests.RequestException as e:
-                error_msg = e.response.json() if e.response and 'application/json' in e.response.headers.get('Content-Type', '') else str(e)
-                raise FileNotFoundError(f'Failed to download shapefile: {error_msg}') from e
+                with tempfile.NamedTemporaryFile(suffix='.zip') as tmpfile:
+                    session = requests.Session()
+                    retries = requests.adapters.Retry(
+                        total=5,
+                        backoff_factor=1,
+                        status_forcelist=[500, 502, 503, 504, 429, 404, 400],
+                        allowed_methods=['GET']
+                    )
+                    adapter = requests.adapters.HTTPAdapter(max_retries=retries)
+                    session.mount('http://', adapter)
+                    session.mount('https://', adapter)
 
-            tmpfile.write(response.content)
-            tmpfile.flush()
-            return gdf_from_zip(tmpfile.name)
+                    print(f'Downloading shapefile from:\n{zipfile}\n')
+                    response = session.get(zipfile, verify=verify)
+                    response.raise_for_status()
+
+                    tmpfile.write(response.content)
+                    tmpfile.flush()
+                    return gdf_from_zip(tmpfile.name)
+            except requests.RequestException as e:
+                msg = e.response.json() if e.response and 'application/json' in e.response.headers.get('Content-Type', '') else str(e)
+                print(f'[Attempt {attempt + 1}/{retries}] Download error: {msg}')
+            except OSError as e:
+                print(f'[Attempt {attempt + 1}/{retries}] Download error: {e}')
+            except (ValueError, Exception) as e:
+                print(f'[Attempt {attempt + 1}/{retries}] Read error: {e}')
 
     try:
         return gpd.read_file(f'zip://{zipfile}').to_crs(crs)
