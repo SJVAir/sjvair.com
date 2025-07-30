@@ -17,7 +17,7 @@ class BoundaryInline(admin.TabularInline):
     show_change_link = True
 
     def get_fields(self, request, obj=None):
-        return ['get_info', 'get_map']
+        return self.readonly_fields
 
     def get_info(self, instance):
         return mark_safe(f'''
@@ -33,9 +33,9 @@ class BoundaryInline(admin.TabularInline):
     get_info.short_description = 'Boundary Information'
 
     def get_map(self, instance):
-        img = maps.from_geometries(instance.geometry, format='png')
+        img = maps.from_geometries(instance.geometry, format='png', buffer=0.5)
         content = b64encode(img.getvalue()).decode()
-        return mark_safe(f'<img src="data:image/png;base64,{content}" alt="v{instance.version} Map" />')
+        return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="v{instance.version} Map" />')
     get_map.short_description = 'Map'
 
 

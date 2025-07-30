@@ -136,9 +136,9 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         return response
 
     def get_map(self, instance):
-        img = maps.from_geometries(instance.position, format='png')
+        img = maps.from_geometries(instance.position, format='png', buffer=2500)
         content = b64encode(img.getvalue()).decode()
-        return mark_safe(f'<img src="data:image/png;base64,{content}" alt="Position" />')
+        return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="Position" />')
     get_map.short_description = 'Map'
 
     def get_alerts(self, object_id):
