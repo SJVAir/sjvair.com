@@ -136,8 +136,21 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         return response
 
     def get_map(self, instance):
-        img = maps.from_geometries(instance.position, format='png', buffer=2500)
-        content = b64encode(img.getvalue()).decode()
+        if not instance or not instance.position:
+            return '-'
+
+        image = maps.from_geometries(
+            instance.position,
+            marker_size=350,
+            marker_shape='*',
+            marker_fill_color='dodgerblue',
+            marker_shadow=True,
+            height=400,
+            width=600,
+            buffer=1500,
+            format='png',
+        )
+        content = b64encode(image).decode()
         return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="Position" />')
     get_map.short_description = 'Map'
 

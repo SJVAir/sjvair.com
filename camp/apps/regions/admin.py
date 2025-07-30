@@ -33,8 +33,20 @@ class BoundaryInline(admin.TabularInline):
     get_info.short_description = 'Boundary Information'
 
     def get_map(self, instance):
-        img = maps.from_geometries(instance.geometry, format='png', buffer=0.5)
-        content = b64encode(img.getvalue()).decode()
+        if not instance or not instance.geometry:
+            return '-'
+
+        static_map = maps.StaticMap(
+            width=600,
+            height=400,
+            buffer=0.3
+        )
+        static_map.add(maps.Area(
+            geometry=instance.geometry,
+            fill_color='dodgerblue',
+            border_color='dodgerblue',
+        ))
+        content = b64encode(static_map.render(format='png')).decode()
         return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="v{instance.version} Map" />')
     get_map.short_description = 'Map'
 
