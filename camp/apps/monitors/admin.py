@@ -1,5 +1,7 @@
 import csv
 
+from base64 import b64encode
+
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
@@ -11,6 +13,7 @@ from django.utils.safestring import mark_safe
 from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
 from camp.apps.qaqc.admin import HealthCheckInline
+from camp.utils import maps
 
 from .forms import MonitorAdminForm, EntryExportForm
 from .models import Group
@@ -81,9 +84,10 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', 'device', MonitorIsActiveFilter, 'groups', 'location', 'county', HealthCheckFilter]
 
+    readonly_fields = ['get_map']
     fieldsets = [
         (None, {'fields': ['name', 'is_hidden', 'is_sjvair']}),
-        ('Location Data', {'fields': ['county', 'location', 'position']}),
+        ('Location Data', {'fields': ['county', 'location', 'get_map']}),
         ('Metadata', {'fields': ['groups', 'notes', 'data_provider', 'data_provider_url']}),
     ]
 
@@ -130,6 +134,12 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
                 row['id'] = str(row['id'])
             writer.writerow(row)
         return response
+
+    def get_map(self, instance):
+        img = maps.from_geometries(instance.position, format='png')
+        content = b64encode(img.getvalue()).decode()
+        return mark_safe(f'<img src="data:image/png;base64,{content}" alt="Position" />')
+    get_map.short_description = 'Map'
 
     def get_alerts(self, object_id):
         return (Alert.objects

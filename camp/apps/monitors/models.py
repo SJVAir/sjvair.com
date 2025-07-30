@@ -228,7 +228,7 @@ class Monitor(models.Model):
         if not self.position:
             return Region.objects.none()
 
-        return Region.objects.filter(geometry__contains=self.position)
+        return Region.objects.intersects(self.position)
 
     @cached_property
     def is_active(self):

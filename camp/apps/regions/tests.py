@@ -2,11 +2,11 @@ from django.contrib.gis.geos import Polygon, MultiPolygon
 from django.test import TestCase
 
 from camp.apps.monitors.purpleair.models import PurpleAir
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Region, Boundary
 
 
 class RegionTests(TestCase):
-    fixtures = ['regions', 'purple-air']
+    fixtures = ['regions_split', 'purple-air']
 
     def test_create_region(self):
         geom = MultiPolygon(Polygon((
@@ -15,10 +15,18 @@ class RegionTests(TestCase):
         region = Region.objects.create(
             name='Test Tract',
             type=Region.Type.TRACT,
-            geometry=geom
         )
+        boundary = Boundary.objects.create(
+            region=region,
+            version='test',
+            geometry=geom,
+        )
+        region.boundary = boundary
+        region.save()
+
         assert region.name == 'Test Tract'
         assert region.type == Region.Type.TRACT
+        assert region.boundary.geometry.equals(geom)
 
     def test_region_monitors(self):
         monitor = PurpleAir.objects.get(purple_id=8892)
@@ -60,4 +68,4 @@ class RegionTests(TestCase):
 
         # Quick reality check: Fresno centroid should fall inside
         fresno = Region.objects.get(name='Fresno County', type=Region.Type.COUNTY)
-        assert combined.contains(fresno.geometry.centroid)
+        assert combined.contains(fresno.boundary.geometry.centroid)

@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Region, Boundary
 from camp.utils import geodata
 from camp.utils.gis import to_multipolygon
 
@@ -25,8 +25,19 @@ class Command(BaseCommand):
                     defaults={
                         'name': zip_code,
                         'slug': zip_code,
+                    }
+                )
+
+                boundary, created = Boundary.objects.update_or_create(
+                    region_id=region.pk,
+                    version='2020',
+                    defaults={
                         'geometry': to_multipolygon(row.geometry),
                         'metadata': {}
                     }
                 )
+
+                region.boundary = boundary
+                region.save()
+
                 self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')
