@@ -64,15 +64,18 @@ services:
   worker-primary:
     <<: *build-base
     command: python manage.py djangohuey --simple --queue primary
-    profiles: ["default", "worker-primary", "workers"]
+    profiles: ["default", "workers"]
 
   worker-secondary:
     <<: *build-base
     command: python manage.py djangohuey --simple --queue secondary
-    profiles: ["worker-secondary", "workers"]
+    profiles: ["workers"]
 
   test:
     <<: *build-base
+    build:
+      context: .
+      target: test
     command: pytest
     env_file:
       - .env.test
