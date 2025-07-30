@@ -6,7 +6,7 @@ from camp.apps.regions.models import Region, Boundary
 
 
 class RegionTests(TestCase):
-    fixtures = ['regions_split', 'purple-air']
+    fixtures = ['regions', 'purple-air']
 
     def test_create_region(self):
         geom = MultiPolygon(Polygon((
