@@ -30,7 +30,7 @@ def from_gdf(
     gdf: gpd.GeoDataFrame,
     width: int = 800,
     height: int = 600,
-    zoom: Union[int, Literal['auto']] = 'auto',
+    buffer: Optional[float] = None,
     out_path: Optional[str] = None,
     format: Optional[str] = None,
     dpi: int = 100,
@@ -68,15 +68,15 @@ def from_gdf(
     points_gdf = gdf[gdf.geometry.type == 'Point']
     if not points_gdf.empty:
         points_gdf.plot(
-            ax=ax, color=point_color, markersize=20, zorder=3
+            ax=ax, color=point_color, markersize=100, zorder=3
         )
 
     # if len(gdf) == 1 and gdf.geometry.iloc[0].geom_type == 'Point':
-    extent = adjust_bounds_to_aspect(get_bounds_with_buffer(gdf), width, height)
+    extent = adjust_bounds_to_aspect(get_bounds_with_buffer(gdf, buffer=buffer), width, height)
     ax.set_xlim(extent[0], extent[2])
     ax.set_ylim(extent[1], extent[3])
 
-    ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik, attribution=False, zoom=zoom)
+    ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik, attribution=False)
     ax.axis('off')
 
     if out_path and not format:
@@ -117,27 +117,41 @@ def adjust_bounds_to_aspect(bounds, width, height):
     return (minx, miny, maxx, maxy)
 
 
-def get_bounds_with_buffer(gdf, buffer_m=500):
+def get_bounds_with_buffer(gdf, buffer: Optional[float] = None) -> tuple[float, float, float, float]:
     """
     Return appropriate extent bounds for contextily basemap rendering.
 
-    If the GeoDataFrame contains a single point, pad with a buffer.
-    Otherwise, use total bounds.
+    If the GeoDataFrame contains a single point, apply a fixed buffer in map units.
+    Otherwise, apply a percentage-based padding to the total bounds.
+
+    Args:
+        gdf: GeoDataFrame with projected geometry column.
+        buffer:
+            - If None, auto-selects:
+                • 500 meters for single points
+                • 10% padding for other geometries
+            - If >= 1.0: interpreted as fixed buffer in map units (meters)
+            - If < 1.0: interpreted as percentage of bounding box size
+
+    Returns:
+        Tuple (minx, miny, maxx, maxy) with padded bounds.
     """
     if len(gdf) == 1 and gdf.geometry.iloc[0].geom_type == 'Point':
+        buf = buffer if buffer is not None else 500  # meters
         x, y = gdf.geometry.iloc[0].x, gdf.geometry.iloc[0].y
-        return box(x - buffer_m, y - buffer_m, x + buffer_m, y + buffer_m).bounds
-    # return gdf.total_bounds
+        return box(x - buf, y - buf, x + buf, y + buf).bounds
 
+    # Multi-feature or polygon-based
     minx, miny, maxx, maxy = gdf.total_bounds
 
-    # Add 5% padding on each side
-    pad_x = (maxx - minx) * 0.05
-    pad_y = (maxy - miny) * 0.05
+    if buffer is None:
+        buffer = 0.10  # 10% default
 
-    minx -= pad_x
-    maxx += pad_x
-    miny -= pad_y
-    maxy += pad_y
+    if buffer <= 1.0:
+        pad_x = (maxx - minx) * buffer
+        pad_y = (maxy - miny) * buffer
+    else:
+        pad_x = pad_y = buffer
 
-    return (minx, miny, maxx, maxy)
+    return (minx - pad_x, miny - pad_y, maxx + pad_x, maxy + pad_y)
+
