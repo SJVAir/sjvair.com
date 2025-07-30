@@ -13,7 +13,9 @@ from django.utils import timezone
 from django.utils.timezone import make_aware
 
 from .models import Smoke
+from camp.utils.geodata import gdf_from_zip
 from camp.utils.counties import County
+
 
 
 def parse_timestamp(string):
@@ -50,17 +52,12 @@ def get_smoke_file(date):
         f"{date.strftime('%m')}/"
         f"hms_smoke{date.strftime('%Y%m%d')}.zip"
         )
-    response = requests.get(final_url)
-    if response.status_code != 200:
-        response.raise_for_status()    
-    with tempfile.TemporaryDirectory() as temp_dir:     #create temp_dir for zipfiles, add necessary data, then remove dir
-        zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
-        geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")
-        smokes = []
-        for i in range(len(geo)):
-            if smoke := to_db(geo.iloc[i], date, is_final):
-                smokes.append(smoke)
-        return smokes
+    gdf = gdf_from_zip(final_url)
+    smokes = []
+    for i in range(len(gdf)):
+        if smoke := to_db(gdf.iloc[i], date, is_final):
+            smokes.append(smoke)
+    return smokes
             
             
 #Save GeoDataFrame as an object
