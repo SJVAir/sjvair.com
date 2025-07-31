@@ -46,6 +46,8 @@ def tempo_data(key, bdate, edate):
         )  
         if len(tempodf) ==0:
             return obj_list
+        if key == 'no2' or key =='hcho':
+            tempodf[column] = tempodf[column]/1000000000
         tempodf = tempodf.sort_values(by='time', ascending=True)
         tempodf['row_index'] = tempodf.index
         print(tempodf.groupby('time')['row_index'].agg(['min', 'max']))
@@ -107,21 +109,27 @@ def no2_data(tempodf, column, shp_col, key, temp_dir):
             obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, False))
     return obj_list
     
+    
 #CREATES SHAPEFILE AND ADDS TO DB
 def df_to_shp(geometries, values, stamp, key, shp_col, temp_dir, final):
     #CONSTRUCT SHAPE FILES
     gdf = gpd.GeoDataFrame({shp_col: values}, geometry=geometries, crs="EPSG:4326")
     filename = f"{key}{stamp[0].strftime('%Y%m%d%H%M%S')}"
-    shp_path = os.path.join(temp_dir, f"{filename}")
+    shp_path = os.path.join(temp_dir, f"{filename}.shp")
     gdf.to_file(shp_path, driver="ESRI Shapefile")
+    zip_path = os.path.join(temp_dir, f"{filename}.zip")
+    
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        for ext in [".shp", ".shx", ".dbf", ".prj", ".cpg"]:
+            filepath = os.path.join(temp_dir, f"{filename}{ext}")
+            if os.path.exists(filepath):
+                zf.write(filepath, arcname=f"{filename}{ext}")
     
     #STORE THE ZIP FILES AS A FILEFIELD IN THE PARTICULAR OBJECT TYPE
-    obj = TempoGrid(timestamp=stamp[0], pollutant=key, final=final)
-    if len(stamp) == 2: 
-        obj.timestamp_2 = stamp[1]
-    for ext in ["shp", "shx", "dbf", "prj", "cpg"]:
-        path = os.path.join(shp_path, f"{filename}.{ext}")
-        with open(path, "rb") as f:
-            getattr(obj, ext).save(f"{filename}.{ext}", File(f), save=False) 
-    obj.save()
+    with open(zip_path, "rb") as f:
+        obj = TempoGrid(timestamp=stamp[0], pollutant=key, final=final)
+        if len(stamp) == 2: 
+            obj.timestamp_2 = stamp[1]
+        obj.file.save(f"{filename}.zip", File(f)) 
+        obj.save()
     return obj

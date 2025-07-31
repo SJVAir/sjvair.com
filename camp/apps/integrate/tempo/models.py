@@ -12,9 +12,9 @@ def file_path(instance, filename):
 
 class TempoGrid(models.Model):
     class Pollutant(models.TextChoices):
-        O3TOT = 'o3tot', 'Ozone'
-        HCHO = 'hcho', 'Formaldehyde'
-        NO2 = 'no2', 'Nitrogen Dioxide'
+        O3TOT = 'o3tot', 'Ozone' #measured in Dobson Units
+        HCHO = 'hcho', 'Formaldehyde' #measured in molecules/cm2
+        NO2 = 'no2', 'Nitrogen Dioxide' #measured in molecules/cm2
         
     id = SmallUUIDField(
         default=uuid_default(),
@@ -24,14 +24,11 @@ class TempoGrid(models.Model):
         verbose_name='ID'
     )
     
+    
     pollutant = models.CharField(max_length=5, choices=Pollutant.choices,)
     timestamp = models.DateTimeField(null=True)
     timestamp_2 = models.DateTimeField(null=True, blank=True)
     
-    shp = models.FileField(upload_to=file_path, null=True, blank=True)
-    dbf = models.FileField(upload_to=file_path, null=True, blank=True)
-    prj = models.FileField(upload_to=file_path, null=True, blank=True)
-    cpg = models.FileField(upload_to=file_path, null=True, blank=True)
-    shx = models.FileField(upload_to=file_path, null=True, blank=True)
+    file = models.FileField(upload_to=file_path, null=True, blank=True)
     
     final = models.BooleanField()
