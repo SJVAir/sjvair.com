@@ -14,7 +14,7 @@ import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 
 from shapely.geometry.base import BaseGeometry
-from shapely.geometry import box, shape, Point, Polygon, MultiPolygon
+from shapely.geometry import box, mapping, shape, Point, Polygon, MultiPolygon
 
 
 from io import BytesIO
@@ -61,6 +61,7 @@ class Marker(MapElement):
 class Area(MapElement):
     fill_color: Optional[str] = 'lightgray'
     border_color: Optional[str] = 'black'
+    border_width: float = 1
     alpha: Optional[float] = 0.4
 
     outline_color: str = 'white'
@@ -149,7 +150,7 @@ class StaticMap:
                 facecolor=area.fill_color or 'gray',
                 edgecolor=area.border_color or 'black',
                 path_effects=self.get_path_effects(area),
-                linewidth=1,
+                linewidth=area.border_width,
             )
 
             if area.label:
@@ -265,6 +266,26 @@ def to_shape(geometry):
     return gpd.GeoSeries([geometry], crs=CRS_LATLON).to_crs(CRS_WEBMERCATOR).iloc[0]
 
 
+def to_geos(geometry):
+    """
+    Convert a Shapely geometry or GEOSGeometry into a GEOSGeometry,
+    ensuring it's in EPSG:4326 (WGS84).
+
+    Args:
+        geometry: A Shapely or GEOS geometry object.
+
+    Returns:
+        A GEOSGeometry object in EPSG:4326.
+    """
+    if isinstance(geometry, GEOSGeometry):
+        return geometry
+
+    if isinstance(geometry, BaseGeometry):
+        return GEOSGeometry(json.dumps(mapping(geometry)), srid=4326)
+
+    raise TypeError(f'Unsupported geometry type: {type(geometry)}')
+
+
 def from_geometries(
     *geometries: Union[GEOSGeometry, BaseGeometry],
 
@@ -284,6 +305,7 @@ def from_geometries(
 
     area_fill_color: Optional[str] = Area.fill_color,
     area_border_color: Optional[str] = Area.border_color,
+    area_border_width: float = Area.border_width,
     area_alpha: Optional[float] = Area.alpha,
     area_outline: bool = Area.outline,
     area_shadow: bool = Area.shadow,
@@ -334,6 +356,7 @@ def from_geometries(
 
                 fill_color=area_fill_color,
                 border_color=area_border_color,
+                border_width=area_border_width,
                 alpha=area_alpha,
 
                 outline=area_outline,

@@ -1,9 +1,50 @@
+import hashlib
 import tempfile
 import time
+
+from pathlib import Path
+from typing import Optional, Sequence, Union
 
 import ckanapi
 import geopandas as gpd
 import requests
+
+GEODATA_CACHE_DIR = Path(tempfile.gettempdir()) / 'geodata-cache'
+GEODATA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def stringify_gdf_fields(
+    gdf: gpd.GeoDataFrame,
+    columns: Optional[Sequence[str]] = None
+) -> gpd.GeoDataFrame:
+    """
+    Converts specified columns in a GeoDataFrame to strings, preserving the original geometry.
+
+    Args:
+        gdf: The input GeoDataFrame.
+        columns: Optional list of column names to convert. If None, all non-geometry columns are converted.
+
+    Returns:
+        A copy of the GeoDataFrame with specified columns converted to strings.
+
+    Notes:
+        - Missing values (NaN) are preserved as empty strings.
+        - Geometry column is left unmodified.
+    """
+
+    def clean_value(val):
+        if isinstance(val, float) and val.is_integer():
+            return str(int(val))
+        return str(val)
+
+    gdf = gdf.copy()
+
+    if columns is None:
+        columns = [col for col in gdf.columns if col != gdf.geometry.name]
+
+    for col in columns:
+        gdf[col] = gdf[col].map(clean_value)
+    return gdf
 
 
 def gdf_from_ckan(
@@ -11,7 +52,8 @@ def gdf_from_ckan(
     server: str = 'data.ca.gov',
     resource_name: str = 'Shapefile',
     crs: str = 'EPSG:4326',
-    verify: bool = True
+    verify: bool = True,
+    string_fields: Union[bool, Sequence[str]] = False,
 ) -> gpd.GeoDataFrame:
     """
     Fetch a GeoDataFrame from a CKAN-backed open data portal.
@@ -40,7 +82,7 @@ def gdf_from_ckan(
     resource = next((r for r in package['resources'] if r['name'] == resource_name), None)
     if not resource:
         raise ValueError(f'Resource not found: {resource_name}')
-    return gdf_from_zip(resource['url'], crs=crs, verify=verify)
+    return gdf_from_zip(resource['url'], crs=crs, verify=verify, string_fields=string_fields)
 
 
 def gdf_from_zip(
@@ -48,7 +90,8 @@ def gdf_from_zip(
     crs: str = 'EPSG:4326',
     verify: bool = True,
     retries: int = 3,
-    delay: float = 1
+    delay: float = 1,
+    string_fields: Union[bool, Sequence[str]] = False
 ) -> gpd.GeoDataFrame:
     """
     Loads a GeoDataFrame from a zipfile path or URL.
@@ -66,27 +109,33 @@ def gdf_from_zip(
         ValueError: If reading the shapefile fails.
     """
     if zipfile.startswith('http'):
+        # Generate safe cache filename using SHA256 hash of the URL
+        url_hash = hashlib.sha256(zipfile.encode()).hexdigest()[:16]
+        cache_path = GEODATA_CACHE_DIR / f'{url_hash}.zip'
+
+        if cache_path.exists():
+            print(f'Using cached shapefile: {cache_path}')
+            return gdf_from_zip(str(cache_path), crs=crs, string_fields=string_fields)
+
         for attempt in range(retries):
             try:
-                with tempfile.NamedTemporaryFile(suffix='.zip') as tmpfile:
-                    session = requests.Session()
-                    retries = requests.adapters.Retry(
-                        total=5,
-                        backoff_factor=1,
-                        status_forcelist=[500, 502, 503, 504, 429, 404, 400],
-                        allowed_methods=['GET']
-                    )
-                    adapter = requests.adapters.HTTPAdapter(max_retries=retries)
-                    session.mount('http://', adapter)
-                    session.mount('https://', adapter)
+                session = requests.Session()
+                retries = requests.adapters.Retry(
+                    total=5,
+                    backoff_factor=1,
+                    status_forcelist=[500, 502, 503, 504, 429, 404, 400],
+                    allowed_methods=['GET']
+                )
+                adapter = requests.adapters.HTTPAdapter(max_retries=retries)
+                session.mount('http://', adapter)
+                session.mount('https://', adapter)
 
-                    print(f'Downloading shapefile from:\n{zipfile}\n')
-                    response = session.get(zipfile, verify=verify)
-                    response.raise_for_status()
+                print(f'Downloading shapefile from:\n{zipfile}\n')
+                response = session.get(zipfile, verify=verify)
+                response.raise_for_status()
 
-                    tmpfile.write(response.content)
-                    tmpfile.flush()
-                    return gdf_from_zip(tmpfile.name)
+                cache_path.write_bytes(response.content)
+                return gdf_from_zip(str(cache_path), crs=crs, string_fields=string_fields)
             except requests.RequestException as e:
                 msg = e.response.json() if e.response and 'application/json' in e.response.headers.get('Content-Type', '') else str(e)
                 print(f'[Attempt {attempt + 1}/{retries}] Download error: {msg}')
@@ -95,7 +144,11 @@ def gdf_from_zip(
             except (ValueError, Exception) as e:
                 print(f'[Attempt {attempt + 1}/{retries}] Read error: {e}')
 
-    try:
-        return gpd.read_file(f'zip://{zipfile}').to_crs(crs)
-    except Exception as e:
-        raise ValueError(f'Failed to load geodata from zipfile: {zipfile}') from e
+    gdf = gpd.read_file(f'zip://{zipfile}').to_crs(crs)
+
+    if string_fields is True:
+        gdf = stringify_gdf_fields(gdf)
+    elif isinstance(string_fields, (list, tuple)):
+        gdf = stringify_gdf_fields(gdf, string_fields)
+
+    return gdf
