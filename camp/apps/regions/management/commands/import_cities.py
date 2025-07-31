@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.text import slugify
 
-from camp.apps.regions.models import Region, Boundary
+from camp.apps.regions.models import Region
 from camp.utils import geodata
 from camp.utils.gis import to_multipolygon
 
@@ -16,7 +16,6 @@ class Command(BaseCommand):
         counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
         gdf = geodata.gdf_from_ckan('ca-geographic-boundaries', resource_name='CA Places Boundaries')
         gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
-        gdf = gdf.drop_duplicates(subset=['GEOID', 'NAMELSAD', 'CLASSFP', 'geometry'])
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
@@ -27,30 +26,22 @@ class Command(BaseCommand):
                 else:
                     continue
 
-                region, created = Region.objects.update_or_create(
-                    external_id=row['GEOID'],
+                region, created = Region.objects.import_or_update(
+                    name=row['NAME'],
+                    slug=slugify(row['NAME']),
                     type=region_type,
-                    defaults={
-                        'name': row['NAME'],
-                        'slug': slugify(row['NAME']),
-                    }
-                )
-
-                boundary, created = Boundary.objects.update_or_create(
-                    region_id=region.pk,
+                    external_id=row['GEOID'],
                     version='2023',
-                    defaults={
-                        'geometry': to_multipolygon(row.geometry),
-                        'metadata': {
-                            'geoid': row['GEOID'],
-                            'name': row['NAME'],
-                            'namelsad': row['NAMELSAD'],
-                            'classfp': row['CLASSFP']
-                        }
+                    geometry=to_multipolygon(row.geometry),
+                    metadata={
+                        'geoid': row['GEOID'],
+                        'statefp': row['STATEFP'],
+                        'placefp': row['PLACEFP'],
+                        'name': row['NAME'],
+                        'namelsad': row['NAMELSAD'],
+                        'aland': row['ALAND'],
+                        'awater': row['AWATER'],
                     }
                 )
-
-                region.boundary = boundary
-                region.save()
 
                 self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')

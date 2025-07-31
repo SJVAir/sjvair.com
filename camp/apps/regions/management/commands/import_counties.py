@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.text import slugify
 
-from camp.apps.regions.models import Region, Boundary
+from camp.apps.regions.models import Region
 from camp.utils import geodata
 from camp.utils.gis import to_multipolygon
 
@@ -26,31 +26,22 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                region, created = Region.objects.update_or_create(
+                region, created = Region.objects.import_or_update(
+                    name=row['NAMELSAD'],
+                    slug=slugify(row['NAME']),
                     type=Region.Type.COUNTY,
                     external_id=row['GEOID'],
-                    defaults={
-                        'name': row['NAMELSAD'],
-                        'slug': slugify(row['NAME']),
-                    }
-                )
-
-                boundary, created = Boundary.objects.update_or_create(
-                    region_id=region.pk,
                     version='2023',
-                    defaults={
-                        'geometry': to_multipolygon(row.geometry),
-                        'metadata': {
-                            'geoid': row['GEOID'],
-                            'countyfp': row.get('COUNTYFP'),
-                            'statefp': row.get('STATEFP'),
-                            'name': row['NAME'],
-                            'namelsad': row['NAMELSAD'],
-                        }
+                    geometry=to_multipolygon(row.geometry),
+                    metadata={
+                        'geoid': row['GEOID'],
+                        'statefp': row['STATEFP'],
+                        'countyfp': row['COUNTYFP'],
+                        'name': row['NAME'],
+                        'namelsad': row['NAMELSAD'],
+                        'aland': row['ALAND'],
+                        'awater': row['AWATER'],
                     }
                 )
-
-                region.boundary = boundary
-                region.save()
 
                 self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')
