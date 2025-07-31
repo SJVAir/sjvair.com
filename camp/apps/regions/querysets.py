@@ -10,11 +10,7 @@ from camp.utils import maps
 
 class RegionQuerySet(models.QuerySet):
     def render_map(self, **kwargs):
-        geometries = [
-            region.boundary.geometry
-            for region in self.select_related('boundary')
-            if region.boundary and region.boundary.geometry
-        ]
+        geometries = [region.boundary.geometry for region in self.select_related('boundary')]
         return maps.from_geometries(*geometries, **kwargs)
 
     def to_dataframe(self, fields=None, crs='EPSG:4326'):
@@ -43,3 +39,9 @@ class RegionQuerySet(models.QuerySet):
         Returns a MultiPolygon representing the union of all geometries in the queryset.
         """
         return self.aggregate(combined=Union('boundary__geometry'))['combined']
+
+
+class BoundaryQuerySet(models.QuerySet):
+    def render_map(self, **kwargs):
+        geometries = [boundary.geometry for boundary in self]
+        return maps.from_geometries(*geometries, **kwargs)

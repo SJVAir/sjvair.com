@@ -8,6 +8,7 @@ from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
 from camp.apps.regions.managers import RegionManager
+from camp.apps.regions.querysets import BoundaryQuerySet
 
 # Common EPSG codes
 EPSG_LATLON = 4326
@@ -67,6 +68,8 @@ class Boundary(TimeStampedModel):
     version = models.CharField(max_length=32)  # e.g. '2020', '2023-2024', etc
     geometry = models.MultiPolygonField()
     metadata = models.JSONField(blank=True, default=dict)
+
+    objects = BoundaryQuerySet.as_manager()
 
     class Meta:
         unique_together = ('region', 'version')
