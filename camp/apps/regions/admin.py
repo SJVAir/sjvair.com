@@ -4,6 +4,7 @@ import yaml
 
 from django.contrib import admin, messages
 from django.contrib.gis.admin import OSMGeoAdmin
+from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
 from camp.apps.regions.models import Region, Boundary
@@ -20,16 +21,11 @@ class BoundaryInline(admin.TabularInline):
         return self.readonly_fields
 
     def get_info(self, instance):
-        return mark_safe(f'''
-            <dl>
-                <dt>Version</dt>
-                <dd>{instance.version}</dd>
-                <dt>Created</dt>
-                <dd>{instance.created}</dd>
-                <dt>Metadata</dt>
-                <dd><pre>{yaml.dump(instance.metadata).strip()}</pre></dd>
-            </dl>
-        ''')
+        content = render_to_string('admin/regions/boundary-info.html', {
+            'instance': instance,
+            'metadata': yaml.dump(instance.metadata).strip()
+        })
+        return mark_safe(content)
     get_info.short_description = 'Boundary Information'
 
     def get_map(self, instance):

@@ -1,10 +1,18 @@
+from typing import Optional
+
 from django.contrib.gis.db import models
+from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
-from camp.apps.regions.querysets import RegionQuerySet
+from camp.apps.regions.managers import RegionManager
+
+# Common EPSG codes
+EPSG_LATLON = 4326
+EPSG_WEBMERCATOR = 3857
+EPSG_CALIFORNIA_ALBERS = 3310
 
 
 class Region(TimeStampedModel):
@@ -29,7 +37,7 @@ class Region(TimeStampedModel):
 
     boundary = models.OneToOneField('Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='current_for',)
 
-    objects = RegionQuerySet.as_manager()
+    objects = RegionManager()
 
     class Meta:
         indexes = [
@@ -62,9 +70,39 @@ class Boundary(TimeStampedModel):
 
     class Meta:
         unique_together = ('region', 'version')
+        ordering = ['region', '-version']
 
     def __str__(self):
         return f'{self.region.name} ({self.region.get_type_display()}, v{self.version})'
+
+    @cached_property
+    def geom_latlon(self):
+        """Geometry in WGS 84 (EPSG:4326) - for display or GPS comparisons"""
+        clone = self.geometry.clone()
+        clone.transform(EPSG_LATLON)
+        return clone
+
+    @cached_property
+    def geom_web_mercator(self):
+        """Geometry in Web Mercator (EPSG:3857) - for use with tile maps"""
+        clone = self.geometry.clone()
+        clone.transform(EPSG_WEBMERCATOR)
+        return clone
+
+    @cached_property
+    def geom_california_albers(self):
+        """Geometry in California Albers (EPSG:3310) - for area and length calculations"""
+        clone = self.geometry.clone()
+        clone.transform(EPSG_CALIFORNIA_ALBERS)
+        return clone
+
+    @property
+    def area(self):
+        return self.geom_california_albers.area / 2.59e+6
+
+    @property
+    def perimeter(self):
+        return self.geom_california_albers.length / 1609.34
 
     @property
     def monitors(self):

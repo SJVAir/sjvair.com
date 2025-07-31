@@ -183,7 +183,7 @@ class StaticMap:
         ax.set_xlim(extent[0], extent[2])
         ax.set_ylim(extent[1], extent[3])
 
-        ctx.add_basemap(ax, source=self.basemap, zoom_adjust=-1)
+        ctx.add_basemap(ax, source=self.basemap, attribution=False, zoom_adjust=-1)
         ax.axis('off')
 
         if out_path and not format:
