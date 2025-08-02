@@ -22,6 +22,7 @@ from py_expression_eval import Parser as ExpressionParser
 from camp.apps.calibrations.utils import get_default_calibration
 from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
+from camp.apps.entries.utils import to_multi_entry_wide_dataframe
 from camp.apps.monitors.managers import MonitorManager
 from camp.apps.qaqc.models import HealthCheck
 from camp.utils import classproperty
@@ -162,13 +163,13 @@ class Monitor(models.Model):
     def __str__(self):
         return self.name
 
-    @classproperty
-    def monitor_type(cls):
-        return cls._meta.model_name
-
     @classmethod
     def subclasses(cls):
         return cls.objects.get_queryset()._get_subclasses_recurse(cls)
+
+    @classproperty
+    def monitor_type(cls):
+        return cls._meta.model_name
 
     @classproperty
     def entry_types(self):
@@ -205,9 +206,6 @@ class Monitor(models.Model):
     def slug(self):
         return slugify(self.name)
 
-    def get_device(self):
-        return self.device or self.DEVICE or self._meta.verbose_name
-
     @property
     def data_providers(self):
         providers = copy.deepcopy(self.DATA_PROVIDERS)
@@ -220,6 +218,17 @@ class Monitor(models.Model):
     @property
     def data_source(self):
         return self.DATA_SOURCE
+
+    @property
+    def regions(self):
+        """
+        Returns a queryset of all regions that contain this monitor's location.
+        """
+        from camp.apps.regions.models import Region
+        if not self.position:
+            return Region.objects.none()
+
+        return Region.objects.intersects(self.position)
 
     @cached_property
     def is_active(self):
@@ -262,8 +271,28 @@ class Monitor(models.Model):
     def get_default_calibration(cls, EntryModel):
         return get_default_calibration(cls, EntryModel)
 
+    def get_device(self):
+        return self.device or self.DEVICE or self._meta.verbose_name
+
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'
+
+    def fetch_entries(self, start_time, end_time):
+        from camp.apps.entries.fetchers import EntryDataFetcher
+        return EntryDataFetcher(
+            monitor=self,
+            entry_types=self.entry_types,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+    def get_entry_data_table(self, entry_models=None, start_date=None, end_date=None):
+        """
+        Returns a wide-format DataFrame of entry values for this monitor across the given entry models.
+        Each row is (timestamp, sensor), with columns for each stage/processor.
+        """
+        entry_models = entry_models or self.entry_types
+        return to_multi_entry_wide_dataframe(entry_models, self, start_date, end_date)
 
     def initialize_entry(self, EntryModel, **kwargs):
         defaults = {
@@ -294,30 +323,37 @@ class Monitor(models.Model):
                 processed_entries.extend(results)
         return processed_entries
 
-    def process_entry_ng(self, entry):
+    def process_entry_ng(self, entry, cutoff_stage=None):
         config = self.ENTRY_CONFIG.get(entry.__class__, {})
         processors = config.get('processors', {}).get(entry.stage, [])
 
         processed_entries = []
         for processor in processors:
+            if cutoff_stage and processor.next_stage == cutoff_stage:
+                continue
+
             if (result := processor(entry).run()):
                 self.update_latest_entry(result)
                 processed_entries.append(result)
 
         return processed_entries
 
-    def process_entry_pipeline(self, entry):
+    def process_entry_pipeline(self, entry, cutoff_stage=None):
         '''
         Recursively processes an entry through its pipeline stages, as defined in ENTRY_CONFIG.
 
+        Args:
+            entry: The BaseEntry instance to process.
+            cutoff_stage: Optional. If provided, processing will stop before this stage.
+
         Returns:
-            List of all new entries created during processing (can include cleaned and calibrated stages).
+            List of all new entries created during processing.
         '''
         processed = []
 
-        for result in self.process_entry_ng(entry):
+        for result in self.process_entry_ng(entry, cutoff_stage):
             processed.append(result)
-            processed.extend(self.process_entry_pipeline(result))  # Recursive step
+            processed.extend(self.process_entry_pipeline(result, cutoff_stage))
 
         return processed
 

@@ -131,7 +131,7 @@ class BaseEntry(models.Model):
             return self.Levels.get_level(self.value)
 
     @property
-    def timestamp_pst(self):
+    def timestamp_local(self):
         return timezone.localtime(self.timestamp, settings.DEFAULT_TIMEZONE)
 
     def declared_data(self):
@@ -173,8 +173,10 @@ class BaseEntry(models.Model):
             'sensor': self.sensor,
             'origin_id': self.pk,
         }
-        values.update(**kwargs)
-        return self.__class__(**values)
+        entry = self.__class__(**values)
+        for key, value in kwargs.items():
+            setattr(entry, key, value)
+        return entry
 
     def validation_check(self):
         return not (self.__class__.objects

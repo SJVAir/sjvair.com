@@ -1,4 +1,3 @@
-
 from resticus import generics
 
 from django.utils import timezone
@@ -11,7 +10,7 @@ from camp.apps.integrate.hms_smoke.models import Smoke
 class SmokeMixin:
     model = Smoke
     serializer_class = SmokeSerializer
-    paginate = True  #defaults to page_size = 100
+    paginate = True  #defaults to page_size=100
     def get_queryset(self):    
         return (
             super().get_queryset().order_by('-date')

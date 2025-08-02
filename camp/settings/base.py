@@ -28,9 +28,12 @@ PROJECT_DIR = Path(__file__).absolute().ancestor(2)
 
 COMMIT_HASH = env('HEROKU_SLUG_COMMIT')
 if COMMIT_HASH is None:
-    COMMIT_HASH = subprocess.check_output(
-        ['git', 'rev-parse', '--short', 'HEAD']
-    ).strip()
+    try:
+        COMMIT_HASH = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD']
+        ).strip()
+    except subprocess.CalledProcessError:
+        COMMIT_HASH = 'unknown'
 
 DOMAIN = env('DOMAIN', '')
 
@@ -105,6 +108,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.bam',
     'camp.apps.monitors.methane',
     'camp.apps.monitors.purpleair',
+    'camp.apps.regions',
     'camp.apps.sensors',
     'camp.apps.qaqc',
     'camp.utils',

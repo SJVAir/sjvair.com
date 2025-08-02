@@ -25,7 +25,7 @@ class AirGradientTemperature(BaseProcessor):
 
         value = self.get_correction(self.entry.celsius)
         if value is not None:
-            return self.build_entry(value=value)
+            return self.build_entry(celsius=value)
 
     def get_correction(self, celsius):
         if celsius < 10:

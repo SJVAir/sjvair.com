@@ -6,8 +6,9 @@ from django.utils import timezone
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
-from camp.apps.monitors.purpleair.api import purpleair_api, chunk_date_range
+from camp.apps.monitors.purpleair.api import purpleair_api
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.utils.datetime import chunk_date_range
 
 
 @db_periodic_task(crontab(minute='*'), priority=50)

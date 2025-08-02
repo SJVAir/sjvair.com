@@ -1,0 +1,21 @@
+{% load humanize %}
+
+<dl>
+    <dt>Version</dt>
+    <dd>{{ instance.version }}</dd>
+
+    <dt>Created</dt>
+    <dd>{{ instance.created }}</dd>
+
+    <dt>Geometry Type</dt>
+    <dd>{{ instance.geometry.geom_type }}</dd>
+
+    <dt>Area</dt>
+    <dd>{{ instance.area|floatformat:2|intcomma }} mi²</dd>
+
+    <dt>Perimeter</dt>
+    <dd>{{ instance.perimeter|floatformat:2|intcomma }} mi</dd>
+
+    <dt>Metadata</dt>
+    <dd><pre>{{ metadata|default_if_none:"n/a" }}</pre></dd>
+</dl>

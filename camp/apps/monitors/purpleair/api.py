@@ -1,13 +1,16 @@
 import datetime
 import json
 import os
-from random import random
 import time
 import urllib.parse
 
-from django.utils import timezone
+from random import random
 
 import requests
+
+from django.utils import timezone
+
+from camp.utils.datetime import chunk_date_range
 
 
 def compare_datetimes(dt1, dt2):
@@ -16,25 +19,6 @@ def compare_datetimes(dt1, dt2):
         are within 60 seconds of one another.
     '''
     return abs((dt2 - dt1).total_seconds()) < 60
-
-
-def chunk_date_range(start_date, end_date):
-    '''Splits a date range into chunks, each 28 days long.'''
-
-    chunks = []
-    current_date = start_date
-    while current_date <= end_date:
-        period_end_date = current_date + datetime.timedelta(days=27)
-        chunk_end_date = min(period_end_date, end_date)
-        chunks.append((current_date, chunk_end_date))
-        current_date = chunk_end_date + datetime.timedelta(days=1)
-
-    chunks = [(
-        datetime.datetime.combine(start_date, datetime.time.min),
-        datetime.datetime.combine(end_date, datetime.time.max),
-    ) for (start_date, end_date) in chunks]
-
-    return chunks
 
 
 class PurpleAirAPI:

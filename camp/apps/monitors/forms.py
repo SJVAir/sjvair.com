@@ -1,9 +1,12 @@
 from django import forms
-from django.contrib.admin.widgets import FilteredSelectMultiple
-
-from camp.apps.entries.fields import EntryTypeField
+from django.contrib.admin.widgets import AdminDateWidget, FilteredSelectMultiple
 
 from .models import Group
+
+
+class EntryExportForm(forms.Form):
+    start_date = forms.DateField(label='Start Date', required=True, widget=AdminDateWidget)
+    end_date = forms.DateField(label='End Date', required=True, widget=AdminDateWidget)
 
 
 class MonitorAdminForm(forms.ModelForm):
@@ -20,7 +23,6 @@ class MonitorAdminForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         if self.instance and self.instance.pk:
-            print(self.instance.groups.all())
             self.fields['groups'].initial = self.instance.groups.all()
 
     def save(self, commit=True):

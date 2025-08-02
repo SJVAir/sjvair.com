@@ -1,11 +1,10 @@
 from datetime import datetime
 import geopandas as gpd
 import io
-
 import requests
 import tempfile
 import zipfile
-
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
@@ -19,7 +18,7 @@ from camp.utils.counties import County
 
 def parse_timestamp(string):
     time = datetime.strptime(string, '%Y%j %H%M')
-    return make_aware(time, timezone=timezone.now().tzinfo)
+    return make_aware(time, timezone=ZoneInfo(settings.TIME_ZONE))
    
     
 def get_smoke_file(date):
@@ -40,8 +39,9 @@ def get_smoke_file(date):
     today = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
     if date != today:
         is_final = True
-        if Smoke.objects.filter(date=date, is_final=True).exists():
-            return
+        queryset = Smoke.objects.filter(date=date, is_final=True)
+        if queryset.exists():
+            return queryset
     Smoke.objects.filter(date=date).delete()
     #Construct download url for NOAA Smoke shapefile 
     base_url = "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/Shapefile/"
@@ -56,8 +56,11 @@ def get_smoke_file(date):
     with tempfile.TemporaryDirectory() as temp_dir:     #create temp_dir for zipfiles, add necessary data, then remove dir
         zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
         geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")
+        smokes = []
         for i in range(len(geo)):
-            to_db(geo.iloc[i], date, is_final)
+            if smoke := to_db(geo.iloc[i], date, is_final):
+                smokes.append(smoke)
+        return smokes
             
             
 #Save GeoDataFrame as an object
@@ -90,5 +93,6 @@ def to_db(curr, date, is_final):
         try:
             smoke.full_clean()
             smoke.save()
+            return smoke
         except ValidationError:
             return 
