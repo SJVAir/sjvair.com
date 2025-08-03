@@ -12,9 +12,11 @@ class Command(BaseCommand):
     help = 'Import Census Tracts for the San Joaquin Valley'
 
     def handle(self, *args, **options):
+        print('\n--- Importing Census Tracts (2020) ---')
+        # Load the data and filter by tracts that are atleast 50% inside the counties
         counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
         gdf = geodata.gdf_from_zip(DATASET_URL, verify=False)
-        gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
+        gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.50)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
