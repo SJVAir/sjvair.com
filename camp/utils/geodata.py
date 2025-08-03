@@ -1,6 +1,5 @@
 import hashlib
 import tempfile
-import time
 
 from pathlib import Path
 from typing import Optional, Sequence, Union
@@ -9,8 +8,37 @@ import ckanapi
 import geopandas as gpd
 import requests
 
+from shapely.geometry.base import BaseGeometry
+
 GEODATA_CACHE_DIR = Path(tempfile.gettempdir()) / 'geodata-cache'
 GEODATA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def filter_by_overlap(
+    gdf: gpd.GeoDataFrame,
+    reference_geom: BaseGeometry,
+    threshold: float = 0.5
+) -> gpd.GeoDataFrame:
+    """
+    Filters rows in a GeoDataFrame where the geometry overlaps with a reference geometry
+    by at least the given fraction of their own area.
+
+    Args:
+        gdf: The GeoDataFrame to filter.
+        reference_geom: A base geometry (e.g., a unary_union of other geometries) to compare against.
+        threshold: Minimum fraction of each geometry’s area that must overlap with reference_geom.
+
+    Returns:
+        A filtered GeoDataFrame containing only geometries meeting the threshold.
+    """
+    def sufficient_overlap(geom):
+        if not geom.intersects(reference_geom):
+            return False
+        intersection_area = geom.intersection(reference_geom).area
+        return (intersection_area / geom.area) >= threshold
+
+    mask = gdf.geometry.apply(sufficient_overlap)
+    return gdf[mask].copy()
 
 
 def stringify_gdf_fields(
@@ -87,10 +115,8 @@ def gdf_from_ckan(
 
 def gdf_from_zip(
     zipfile: str,
-    crs: str = 'EPSG:4326',
     verify: bool = True,
-    retries: int = 3,
-    delay: float = 1,
+    crs: str = 'EPSG:4326',
     string_fields: Union[bool, Sequence[str]] = False
 ) -> gpd.GeoDataFrame:
     """
@@ -115,34 +141,32 @@ def gdf_from_zip(
 
         if cache_path.exists():
             print(f'Using cached shapefile: {cache_path}')
-            return gdf_from_zip(str(cache_path), crs=crs, string_fields=string_fields)
+            return cache_path
 
-        for attempt in range(retries):
-            try:
-                session = requests.Session()
-                retries = requests.adapters.Retry(
-                    total=5,
-                    backoff_factor=1,
-                    status_forcelist=[500, 502, 503, 504, 429, 404, 400],
-                    allowed_methods=['GET']
-                )
-                adapter = requests.adapters.HTTPAdapter(max_retries=retries)
-                session.mount('http://', adapter)
-                session.mount('https://', adapter)
+        retries = requests.adapters.Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[500, 502, 503, 504, 429, 404, 400, 202],
+            allowed_methods=['GET']
+        )
+        adapter = requests.adapters.HTTPAdapter(max_retries=retries)
+        session = requests.Session()
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
 
-                print(f'Downloading shapefile from:\n{zipfile}\n')
-                response = session.get(zipfile, verify=verify)
-                response.raise_for_status()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (compatible; SJVAir Downloader)',
+            'Accept': '*/*',
+        }
 
-                cache_path.write_bytes(response.content)
-                return gdf_from_zip(str(cache_path), crs=crs, string_fields=string_fields)
-            except requests.RequestException as e:
-                msg = e.response.json() if e.response and 'application/json' in e.response.headers.get('Content-Type', '') else str(e)
-                print(f'[Attempt {attempt + 1}/{retries}] Download error: {msg}')
-            except OSError as e:
-                print(f'[Attempt {attempt + 1}/{retries}] Download error: {e}')
-            except (ValueError, Exception) as e:
-                print(f'[Attempt {attempt + 1}/{retries}] Read error: {e}')
+        print('Downloading file:')
+        print(f'-> URL: {zipfile}')
+        print(f'-> Dest: {cache_path}\n')
+        response = session.get(zipfile, verify=verify, headers=headers)
+        response.raise_for_status()
+
+        cache_path.write_bytes(response.content)
+        return gdf_from_zip(str(cache_path), crs=crs, string_fields=string_fields)
 
     gdf = gpd.read_file(f'zip://{zipfile}').to_crs(crs)
 

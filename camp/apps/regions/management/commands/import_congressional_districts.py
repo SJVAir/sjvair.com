@@ -12,9 +12,10 @@ class Command(BaseCommand):
     help = 'Import 116th Congressional Districts (2020) that intersect with San Joaquin Valley counties.'
 
     def handle(self, *args, **options):
+        print('\n--- Importing Congressional Districts ---')
         counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
         gdf = geodata.gdf_from_zip(DATASET_URL, verify=False)
-        gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
+        gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.50)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():

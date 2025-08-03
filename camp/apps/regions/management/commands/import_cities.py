@@ -13,9 +13,10 @@ class Command(BaseCommand):
     help = 'Import California cities (places) into the Region table (limited to those within SJV counties)'
 
     def handle(self, *args, **options):
+        print('\n--- Importing Cities / CDPs ---')
         counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
         gdf = geodata.gdf_from_ckan('ca-geographic-boundaries', resource_name='CA Places Boundaries')
-        gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
+        gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.50)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
