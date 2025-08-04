@@ -260,6 +260,49 @@ class StaticMap:
         return self._adjust_bounds_to_aspect(bounds)
 
 
+def plot_overlay_map(
+    overlays: list,
+    base_layers: list = None,
+    out_path: str = None,
+    width: int = 3600,
+    height: int = 3600,
+    buffer: float = 0.3,
+):
+    """
+    Render a static map with translucent overlay geometries and bold base outlines.
+
+    Parameters:
+        overlays (list): List of geometries to render with fill + thin border
+        base_layers (list): Optional list of geometries to render with thick border only
+        out_path (str): File path to save the output image
+        width (int): Image width in pixels
+        height (int): Image height in pixels
+        buffer (float): Geometry buffer to pad around map extent
+    """
+    static_map = StaticMap(width=width, height=height, buffer=buffer)
+
+    for geometry in overlays:
+        static_map.add(Area(
+            geometry=geometry,
+            fill_color='red',
+            border_color='dimgray',
+            border_width=1,
+            alpha=0.4,
+        ))
+
+    if base_layers:
+        for geometry in base_layers:
+            static_map.add(Area(
+                geometry=geometry,
+                fill_color='none',
+                border_color='black',
+                border_width=4,
+            ))
+
+    static_map.render(out_path)
+    return static_map
+
+
 def to_shape(geometry):
     if isinstance(geometry, GEOSGeometry):
         geometry = shape(json.loads(geometry.geojson))
