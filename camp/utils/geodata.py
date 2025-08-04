@@ -141,7 +141,7 @@ def gdf_from_zip(
 
         if cache_path.exists():
             print(f'Using cached shapefile: {cache_path}')
-            return cache_path
+            return gdf_from_zip(str(cache_path), crs=crs, string_fields=string_fields)
 
         retries = requests.adapters.Retry(
             total=3,
