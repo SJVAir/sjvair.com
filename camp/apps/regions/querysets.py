@@ -45,3 +45,20 @@ class BoundaryQuerySet(models.QuerySet):
     def render_map(self, **kwargs):
         geometries = [boundary.geometry for boundary in self]
         return maps.from_geometries(*geometries, **kwargs)
+
+    def to_dataframe(self, fields=None, crs='EPSG:4326') -> gpd.GeoDataFrame:
+        """
+        Convert the queryset to a GeoDataFrame.
+        Assumes 'geometry' is a GEOSGeometry field and uses WGS84 (EPSG:4326) by default.
+        """
+        fields = fields or [
+            'id', 'region_id', 'region__external_id', 'region__name',
+            'version', 'created', 'metadata', 'geometry'
+        ]
+
+        records = []
+        for row in self.values(*fields):
+            row['geometry'] = load_wkt(row['geometry'].wkt)
+            records.append(row)
+
+        return gpd.GeoDataFrame(records, geometry='geometry', crs=crs)
