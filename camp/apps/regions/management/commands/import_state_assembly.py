@@ -11,15 +11,13 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         print('\n--- Importing State Assembly Districts ---')
-        counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
-        gdf = geodata.gdf_from_ckan('assembly-districts')
-        gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.50)
+        gdf = geodata.gdf_from_ckan('assembly-districts', limit_to_counties=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                external_id = f"ad-{row['GEOID']}"
+                external_id = f"ad-{row.GEOID}"
                 region, created = Region.objects.import_or_update(
-                    name=row['AssemblyDi'],
+                    name=row.AssemblyDi,
                     slug=external_id,
                     type=Region.Type.STATE_ASSEMBLY,
                     external_id=external_id,

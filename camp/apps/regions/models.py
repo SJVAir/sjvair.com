@@ -18,15 +18,27 @@ EPSG_CALIFORNIA_ALBERS = 3310
 
 class Region(TimeStampedModel):
     class Type(models.TextChoices):
-        CITY = 'city', _('City')
+        # Administrative / political boundaries
         COUNTY = 'county', _('County')
+        CITY = 'city', _('City')
         ZIPCODE = 'zipcode', _('ZIP Code')
+
+        # Census-based geography
         TRACT = 'tract', _('Census Tract')
         CDP = 'cdp', _('Census Designated Place')
-        SCHOOL_DISTRICT = 'school_district', _('School District')
+
+        # Governmental districts
         CONGRESSIONAL_DISTRICT = 'congressional_district', _('Congressional District')
         STATE_ASSEMBLY = 'state_assembly', _('State Assembly District')
         STATE_SENATE = 'state_senate', _('State Senate District')
+        SCHOOL_DISTRICT = 'school_district', _('School District')
+
+        # Environmental / land context
+        URBAN_AREA = 'urban_area', _('Urban Area')
+        LAND_USE = 'land_use', _('Land Use')
+        PROTECTED = 'protected', _('Protected Area')
+
+        # Catch-all for user-defined regions
         CUSTOM = 'custom', _('Custom Region')
 
     sqid = SqidsField(alphabet=shuffle_alphabet('regions.Region'))

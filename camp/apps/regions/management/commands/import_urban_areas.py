@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils.text import slugify
 
 from camp.apps.regions.models import Region
 from camp.utils import geodata
@@ -12,27 +13,25 @@ class Command(BaseCommand):
     help = 'Import Census Tracts for the San Joaquin Valley'
 
     def handle(self, *args, **options):
-        print('\n--- Importing Census Tracts (2010) ---')
-        gdf = geodata.gdf_from_zip(DATASET_URL, verify=False, limit_to_counties=True)
+        print('\n--- Importing Urban Areas ---')
+        gdf = geodata.gdf_from_ckan('2020-adjusted-urban-area', limit_to_counties=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
                 region, created = Region.objects.import_or_update(
-                    name=row.GEOID10,
-                    slug=row.GEOID10,
-                    type=Region.Type.TRACT,
-                    external_id=row.GEOID10,
-                    version='2010',
+                    name=row.NAME,
+                    slug=slugify(row.NAME),
+                    type=Region.Type.URBAN_AREA,
+                    external_id=row.UACE20,
+                    version='2020',
                     geometry=to_multipolygon(row.geometry),
                     metadata={
-                        'geoid': row.GEOID10,
-                        'statefp': row.STATEFP10,
-                        'countyfp': row.COUNTYFP10,
-                        'tractce': row.TRACTCE10,
-                        'name': row.NAME10,
-                        'namelsad': row.NAMELSAD10,
-                        'aland': row.ALAND10,
-                        'awater': row.AWATER10
+                        'uace10': row.UACE10,
+                        'uace20': row.UACE20,
+                        'population': row.Population,
+                        'area_sqm': row.Area_sqm,
+                        'urban_area_type': 'urbanized' if row.UrbanAreas == 2 else 'small_urban',
+                        'urban_area_code': row.UrbanAreas
                     }
                 )
 
