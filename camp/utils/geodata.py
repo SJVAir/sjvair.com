@@ -6,6 +6,7 @@ from typing import Optional, Sequence, Union
 
 import ckanapi
 import geopandas as gpd
+import pandas as pd
 import requests
 
 from shapely.geometry.base import BaseGeometry
@@ -21,7 +22,7 @@ def filter_by_overlap(
 ) -> gpd.GeoDataFrame:
     """
     Filters rows in a GeoDataFrame where the geometry overlaps with a reference geometry
-    by at least the given fraction of their own area.
+    by at least the given fraction of its own area.
 
     Args:
         gdf: The GeoDataFrame to filter.
@@ -32,13 +33,22 @@ def filter_by_overlap(
         A filtered GeoDataFrame containing only geometries meeting the threshold.
     """
     def sufficient_overlap(geom):
-        if not geom.intersects(reference_geom):
+        if geom.is_empty or geom.area == 0 or not geom.intersects(reference_geom):
             return False
         intersection_area = geom.intersection(reference_geom).area
         return (intersection_area / geom.area) >= threshold
 
     mask = gdf.geometry.apply(sufficient_overlap)
-    return gdf[mask].copy()
+    return gdf[mask].copy().reset_index(drop=True)
+
+def filter_by_counties(
+    gdf: gpd.GeoDataFrame,
+    threshold: float = 0.5
+) -> gpd.GeoDataFrame:
+    from camp.apps.regions.models import Region
+    counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
+    gdf = filter_by_overlap(gdf, counties_gdf.unary_union, threshold=threshold)
+    return gdf
 
 
 def stringify_gdf_fields(
@@ -61,6 +71,8 @@ def stringify_gdf_fields(
     """
 
     def clean_value(val):
+        if pd.isnull(val):
+            return ''
         if isinstance(val, float) and val.is_integer():
             return str(int(val))
         return str(val)
@@ -79,9 +91,12 @@ def gdf_from_ckan(
     dataset_id: str,
     server: str = 'data.ca.gov',
     resource_name: str = 'Shapefile',
+    encoding: str = 'utf-8',
     crs: str = 'EPSG:4326',
     verify: bool = True,
     string_fields: Union[bool, Sequence[str]] = False,
+    limit_to_counties: bool = False,
+    threshold: float = 0.5
 ) -> gpd.GeoDataFrame:
     """
     Fetch a GeoDataFrame from a CKAN-backed open data portal.
@@ -110,14 +125,25 @@ def gdf_from_ckan(
     resource = next((r for r in package['resources'] if r['name'] == resource_name), None)
     if not resource:
         raise ValueError(f'Resource not found: {resource_name}')
-    return gdf_from_zip(resource['url'], crs=crs, verify=verify, string_fields=string_fields)
+    return gdf_from_zip(
+        zipfile=resource['url'],
+        encoding=encoding,
+        crs=crs,
+        verify=verify,
+        string_fields=string_fields,
+        limit_to_counties=limit_to_counties,
+        threshold=threshold,
+    )
 
 
 def gdf_from_zip(
     zipfile: str,
     verify: bool = True,
+    encoding: str = 'utf-8',
     crs: str = 'EPSG:4326',
-    string_fields: Union[bool, Sequence[str]] = False
+    string_fields: Union[bool, Sequence[str]] = False,
+    limit_to_counties: bool = False,
+    threshold: float = 0.5
 ) -> gpd.GeoDataFrame:
     """
     Loads a GeoDataFrame from a zipfile path or URL.
@@ -141,7 +167,14 @@ def gdf_from_zip(
 
         if cache_path.exists():
             print(f'Using cached shapefile: {cache_path}')
-            return gdf_from_zip(str(cache_path), crs=crs, string_fields=string_fields)
+            return gdf_from_zip(
+                zipfile=str(cache_path),
+                encoding=encoding,
+                crs=crs,
+                string_fields=string_fields,
+                limit_to_counties=limit_to_counties,
+                threshold=threshold,
+            )
 
         retries = requests.adapters.Retry(
             total=3,
@@ -166,13 +199,23 @@ def gdf_from_zip(
         response.raise_for_status()
 
         cache_path.write_bytes(response.content)
-        return gdf_from_zip(str(cache_path), crs=crs, string_fields=string_fields)
+        return gdf_from_zip(
+            zipfile=str(cache_path),
+            encoding=encoding,
+            crs=crs,
+            string_fields=string_fields,
+            limit_to_counties=limit_to_counties,
+            threshold=threshold,
+        )
 
-    gdf = gpd.read_file(f'zip://{zipfile}').to_crs(crs)
+    gdf = gpd.read_file(f'zip://{zipfile}', encoding=encoding).to_crs(crs)
 
     if string_fields is True:
         gdf = stringify_gdf_fields(gdf)
     elif isinstance(string_fields, (list, tuple)):
         gdf = stringify_gdf_fields(gdf, string_fields)
+
+    if limit_to_counties:
+        gdf = filter_by_counties(gdf, threshold=threshold)
 
     return gdf

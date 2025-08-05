@@ -13,27 +13,25 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         print('\n--- Importing Congressional Districts ---')
-        counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
-        gdf = geodata.gdf_from_zip(DATASET_URL, verify=False)
-        gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.50)
+        gdf = geodata.gdf_from_zip(DATASET_URL, verify=False, limit_to_counties=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
                 region, created = Region.objects.import_or_update(
-                    name=row['NAMELSAD20'],
+                    name=row.NAMELSAD20,
                     slug=f'cd-{row["CD118FP"]}',
                     type=Region.Type.CONGRESSIONAL_DISTRICT,
-                    external_id=row['GEOID20'],
+                    external_id=row.GEOID20,
                     version='2022',
                     geometry=to_multipolygon(row.geometry),
                     metadata={
-                        'geoid': row['GEOID20'],
-                        'statefp': row['STATEFP20'],
-                        'district': row['CD118FP'],
-                        'namelsad': row['NAMELSAD20'],
-                        'session': row['CDSESSN'],
-                        'aland': row['ALAND20'],
-                        'awater': row['AWATER20'],
+                        'geoid': row.GEOID20,
+                        'statefp': row.STATEFP20,
+                        'district': row.CD118FP,
+                        'namelsad': row.NAMELSAD20,
+                        'session': row.CDSESSN,
+                        'aland': row.ALAND20,
+                        'awater': row.AWATER20,
                     },
                 )
 
