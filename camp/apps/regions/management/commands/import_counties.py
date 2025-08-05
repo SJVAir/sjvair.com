@@ -21,26 +21,27 @@ class Command(BaseCommand):
     help = 'Import California counties into the Region table (limited to SJV)'
 
     def handle(self, *args, **options):
+        print('\n--- Importing Counties ---')
         gdf = geodata.gdf_from_ckan('ca-geographic-boundaries', resource_name='CA County Boundaries')
         gdf = gdf[gdf['NAME'].isin(SJV_COUNTIES)].copy()
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
                 region, created = Region.objects.import_or_update(
-                    name=row['NAMELSAD'],
-                    slug=slugify(row['NAME']),
+                    name=row.NAMELSAD,
+                    slug=slugify(row.NAME),
                     type=Region.Type.COUNTY,
-                    external_id=row['GEOID'],
+                    external_id=row.GEOID,
                     version='2023',
                     geometry=to_multipolygon(row.geometry),
                     metadata={
-                        'geoid': row['GEOID'],
-                        'statefp': row['STATEFP'],
-                        'countyfp': row['COUNTYFP'],
-                        'name': row['NAME'],
-                        'namelsad': row['NAMELSAD'],
-                        'aland': row['ALAND'],
-                        'awater': row['AWATER'],
+                        'geoid': row.GEOID,
+                        'statefp': row.STATEFP,
+                        'countyfp': row.COUNTYFP,
+                        'name': row.NAME,
+                        'namelsad': row.NAMELSAD,
+                        'aland': row.ALAND,
+                        'awater': row.AWATER,
                     }
                 )
 

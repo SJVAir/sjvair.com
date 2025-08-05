@@ -13,34 +13,36 @@ class Command(BaseCommand):
     help = 'Import California cities (places) into the Region table (limited to those within SJV counties)'
 
     def handle(self, *args, **options):
-        counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
-        gdf = geodata.gdf_from_ckan('ca-geographic-boundaries', resource_name='CA Places Boundaries')
-        gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
+        print('\n--- Importing Cities / CDPs ---')
+        gdf = geodata.gdf_from_ckan('ca-geographic-boundaries',
+            resource_name='CA Places Boundaries',
+            limit_to_counties=True
+        )
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                if row['CLASSFP'] == 'C1':
+                if row.CLASSFP == 'C1':
                     region_type = Region.Type.CITY
-                elif row['CLASSFP'] in {'U1', 'U2'}:
+                elif row.CLASSFP in {'U1', 'U2'}:
                     region_type = Region.Type.CDP
                 else:
                     continue
 
                 region, created = Region.objects.import_or_update(
-                    name=row['NAME'],
-                    slug=slugify(row['NAME']),
+                    name=row.NAME,
+                    slug=slugify(row.NAME),
                     type=region_type,
-                    external_id=row['GEOID'],
+                    external_id=row.GEOID,
                     version='2023',
                     geometry=to_multipolygon(row.geometry),
                     metadata={
-                        'geoid': row['GEOID'],
-                        'statefp': row['STATEFP'],
-                        'placefp': row['PLACEFP'],
-                        'name': row['NAME'],
-                        'namelsad': row['NAMELSAD'],
-                        'aland': row['ALAND'],
-                        'awater': row['AWATER'],
+                        'geoid': row.GEOID,
+                        'statefp': row.STATEFP,
+                        'placefp': row.PLACEFP,
+                        'name': row.NAME,
+                        'namelsad': row.NAMELSAD,
+                        'aland': row.ALAND,
+                        'awater': row.AWATER,
                     }
                 )
 

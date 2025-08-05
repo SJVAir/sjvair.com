@@ -10,15 +10,14 @@ class Command(BaseCommand):
     help = 'Import California cities (places) into the Region table (limited to those within SJV counties)'
 
     def handle(self, *args, **options):
-        counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
-        gdf = geodata.gdf_from_ckan('senate-districts')
-        gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
+        print('\n--- Importing State Senate Districts ---')
+        gdf = geodata.gdf_from_ckan('senate-districts', limit_to_counties=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                external_id = f"sd-{row['GEOID']}"
+                external_id = f"sd-{row.GEOID}"
                 region, created = Region.objects.import_or_update(
-                    name=row['SenateDist'],
+                    name=row.SenateDist,
                     slug=external_id,
                     type=Region.Type.STATE_SENATE,
                     external_id=external_id,
