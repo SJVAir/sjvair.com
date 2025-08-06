@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from django.contrib.gis.db import models
 from django.utils.functional import cached_property
@@ -110,6 +110,20 @@ class Boundary(TimeStampedModel):
         clone = self.geometry.clone()
         clone.transform(EPSG_CALIFORNIA_ALBERS)
         return clone
+
+    @cached_property
+    def orientation(self) -> Literal['landscape', 'portrait']:
+        """
+        Determines if a geometry is better suited to a landscape or portrait map size.
+        (width, height): Size tuple for static map rendering.
+        """
+        minx, miny, maxx, maxy = self.geometry.extent
+        width = maxx - minx
+        height = maxy - miny
+
+        if width >= height:
+            return 'landscape'
+        return 'portrait'
 
     @property
     def area(self):

@@ -15,6 +15,78 @@ GEODATA_CACHE_DIR = Path(tempfile.gettempdir()) / 'geodata-cache'
 GEODATA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def remap_gdf_boundaries(
+    source: pd.DataFrame,
+    target: gpd.GeoDataFrame,
+    rel: pd.DataFrame,
+    source_geoid_col: str = 'geoid',
+    target_geoid_col: str = 'geoid',
+    rel_source_col: Optional[str] = None,
+    rel_target_col: Optional[str] = None,
+    area_field: str = 'AREALAND_PART',
+    include_fields: Optional[list[str]] = None,
+) -> gpd.GeoDataFrame:
+    """
+    Remap metadata from source tracts to target geometries using area-based weighting.
+
+    Parameters:
+        source: DataFrame with metadata, keyed by source_geoid_col
+        target: GeoDataFrame with target geometries
+        rel: Census relationship file with GEOID_TRACT_10, GEOID_TRACT_20, and AREALAND_PART
+        source_geoid_col: Name of GEOID column in `source`
+        target_geoid_col: Name of GEOID column in `target`
+        area_field: Column in `rel` to use for weighting (usually 'AREALAND_PART')
+        include_fields: Columns from source to include; if None, include all (except geometry and geoid)
+
+    Returns:
+        GeoDataFrame shaped like `target`, with remapped metadata attached
+    """
+    rel = rel.copy()
+
+    if rel_source_col is None or rel_target_col is None:
+        raise ValueError('You must explicitly provide rel_source_col and rel_target_col')
+
+    rel['GEOID_SOURCE'] = rel[rel_source_col].astype(str).str.zfill(11)
+    rel['GEOID_TARGET'] = rel[rel_target_col].astype(str).str.zfill(11)
+
+    # Merge rel with source metadata
+    merged = rel.merge(source, left_on='GEOID_SOURCE', right_on=source_geoid_col, how='inner')
+
+    # Compute weights
+    merged[area_field] = pd.to_numeric(merged[area_field], errors='coerce')
+    merged['weight'] = merged[area_field] / merged.groupby('GEOID_SOURCE')[area_field].transform('sum')
+
+    # Warn if mappings are partial
+    check = merged.groupby('GEOID_SOURCE')['weight'].sum().reset_index()
+    bad = check[check['weight'] < 0.99]
+    print(f'{"⚠️" if len(bad) else "✅"} {len(bad)} tracts have weights summing to less than 0.99')
+
+    # Determine columns to carry forward
+    if include_fields is None:
+        include_fields = [col for col in source.columns if col not in (source_geoid_col, 'geometry')]
+
+    numeric_cols = [col for col in include_fields if pd.api.types.is_numeric_dtype(source[col])]
+    non_numeric_cols = [col for col in include_fields if col not in numeric_cols]
+
+    # Weighted numeric aggregation
+    for col in numeric_cols:
+        merged[col] = pd.to_numeric(merged[col], errors='coerce') * merged['weight']
+    aggregated = merged.groupby('GEOID_TARGET')[numeric_cols].sum().reset_index()
+
+    # Non-numeric from dominant row
+    merged['rank'] = merged.groupby('GEOID_TARGET')['weight'].rank(ascending=False, method='first')
+    dominant_rows = merged.loc[merged['rank'] == 1, ['GEOID_TARGET'] + non_numeric_cols]
+
+    # Merge both sets of data
+    result = aggregated.merge(dominant_rows, on='GEOID_TARGET', how='left')
+
+    # Attach geometry
+    out = target[[target_geoid_col, 'geometry']].rename(columns={target_geoid_col: 'GEOID_TARGET'})
+    out = out.merge(result, on='GEOID_TARGET', how='left')
+
+    return gpd.GeoDataFrame(out, geometry='geometry', crs=target.crs).rename(columns={'GEOID_TARGET': source_geoid_col})
+
+
 def filter_by_overlap(
     gdf: gpd.GeoDataFrame,
     reference_geom: BaseGeometry,
@@ -124,7 +196,7 @@ def gdf_from_ckan(
     package = ckan.action.package_show(id=dataset_id)
     resource = next((r for r in package['resources'] if r['name'] == resource_name), None)
     if not resource:
-        raise ValueError(f'Resource not found: {resource_name}')
+        raise ValueError(f'\nResource not found: {resource_name}')
     return gdf_from_zip(
         zipfile=resource['url'],
         encoding=encoding,
@@ -166,7 +238,8 @@ def gdf_from_zip(
         cache_path = GEODATA_CACHE_DIR / f'{url_hash}.zip'
 
         if cache_path.exists():
-            print(f'Using cached shapefile: {cache_path}')
+            print(f'\nUsing cached shapefile...')
+            print(f'-> {cache_path}')
             return gdf_from_zip(
                 zipfile=str(cache_path),
                 encoding=encoding,
@@ -192,7 +265,7 @@ def gdf_from_zip(
             'Accept': '*/*',
         }
 
-        print('Downloading file:')
+        print('\nDownloading file:')
         print(f'-> URL: {zipfile}')
         print(f'-> Dest: {cache_path}\n')
         response = session.get(zipfile, verify=verify, headers=headers)

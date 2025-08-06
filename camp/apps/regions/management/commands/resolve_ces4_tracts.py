@@ -82,7 +82,7 @@ def build_ces4_2020(ces4: pd.DataFrame, rel: pd.DataFrame, tracts_2020: pd.DataF
     # Warn about partial mappings
     check = merged.groupby('GEOID_TRACT_10')['weight'].sum().reset_index()
     bad = check[check['weight'] < 0.99]
-    print(f'⚠️ {len(bad)} tracts have weights summing to less than 0.99')
+    print(f'{"⚠️" if len(bad) else "✅"} {len(bad)} tracts have weights summing to less than 0.99')
 
     # Weighted numeric aggregation
     exclude_cols = ['Tract', 'ZIP', 'County', 'ApproxLoc', 'geometry', 'dac_category']
