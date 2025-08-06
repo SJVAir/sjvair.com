@@ -32,15 +32,20 @@ class BoundaryInline(admin.TabularInline):
         if not instance or not instance.geometry:
             return '-'
 
+        width, height = {
+            'landscape': (600, 400),
+            'portrait': (400, 600),
+        }[instance.orientation]
+
         static_map = maps.StaticMap(
-            width=600,
-            height=400,
+            width=width,
+            height=height,
             buffer=0.3
         )
         static_map.add(maps.Area(
             geometry=instance.geometry,
             fill_color='dodgerblue',
-            border_color='dodgerblue',
+            border_color='royalblue',
         ))
         content = b64encode(static_map.render(format='png')).decode()
         return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="v{instance.version} Map" />')
@@ -51,15 +56,21 @@ class BoundaryInline(admin.TabularInline):
 class RegionAdmin(OSMGeoAdmin):
     inlines = [BoundaryInline]
     list_display = ['name', 'type', 'external_id', 'current_version']
-    list_filter = ['type']
-    readonly_fields = ['name', 'slug', 'external_id', 'type', 'boundary']
+    list_filter = ['type', 'boundary__version']
+    readonly_fields = ['name', 'slug', 'external_id', 'type', 'boundary', 'get_county_map']
     search_fields = ['name', 'external_id']
+
+    def get_fields(self, request, obj=None):
+        return self.readonly_fields
 
     def current_version(self, instance):
         return instance.boundary.version if instance.boundary else '-'
     current_version.short_description = 'Version'
 
     def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
         return False
 
     def has_delete_permission(self, request, obj=None):
@@ -71,3 +82,54 @@ class RegionAdmin(OSMGeoAdmin):
 
     def save_formset(self, request, form, formset, change):
         pass
+
+    def get_county_map(self, instance):
+        if not instance or not instance.boundary:
+            return 'n/a'
+
+        try:
+            county = Region.objects.get_county_region(instance)
+            width, height = {
+                'landscape': (300, 200),
+                'portrait': (200, 300),
+            }[county.boundary.orientation]
+
+            static_map = maps.StaticMap(
+                width=width,
+                height=height,
+                buffer=0.1,
+                # basemap=None,
+            )
+            static_map.add(maps.Area(
+                geometry=county.boundary.geometry,
+                fill_color='white',
+                border_color='black',
+                # label=f'{instance.name}\n{instance.get_type_display()} in\n{county.name}',
+                # label_position='bottom',
+                # label_outline=True,
+                alpha=.85,
+            ))
+            static_map.add(maps.Area(
+                geometry=instance.boundary.geometry,
+                fill_color='dodgerblue',
+                border_color='royalblue',
+                border_width=1,
+                alpha=1,
+            ))
+            # static_map.add(maps.Marker(
+            #     geometry=instance.boundary.geometry.centroid,
+            #     fill_color='yellow',
+            #     border_color='yellow',
+            #     outline_width=3,
+            #     outline_color='orange',
+            #     outline=True,
+            #     shape='*',
+            #     # alpha=1,
+            # ))
+
+            content = b64encode(static_map.render(format='png')).decode()
+            return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="v{instance.boundary.version} Map" />')
+        except Exception:
+            import traceback
+            traceback.print_exc()
+    get_county_map.short_description = 'Map'

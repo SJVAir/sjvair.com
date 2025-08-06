@@ -42,10 +42,12 @@ class Command(BaseCommand):
                     version='2020',
                     geometry=to_multipolygon(row.geometry),
                     metadata={
-                        'primary': row.PrimaryRUCA,
-                        'secondary': row.SecondaryRUCA,
-                        'type': row.ZIPCodeType,
-                        'post_office': row.POName,
+                        'ruca': {
+                            'primary': row.PrimaryRUCA,
+                            'secondary': row.SecondaryRUCA,
+                            'type': row.ZIPCodeType,
+                            'post_office': row.POName,
+                        }
                     }
                 )
 

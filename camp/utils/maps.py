@@ -2,7 +2,7 @@ import json
 import tempfile
 
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry
@@ -30,10 +30,21 @@ CRS_WEBMERCATOR = 'EPSG:3857'
 @dataclass
 class MapElement:
     geometry: BaseGeometry
-    label: Optional[str] = None
+
     fill_color: Optional[str] = None
-    border_color: Optional[str] = None
     alpha: Optional[float] = None
+
+    border_color: Optional[str] = None
+    border_width: float = 1.5
+
+    label: Optional[str] = None
+    label_position: Optional[str] = 'center'
+    label_color: str = 'black'
+    label_size: int = 10
+    label_weight: str = 'normal'  # or 'bold'
+    label_outline: bool = False  # If True, render white outline for visibility
+    label_ha: str = 'center'        # 'left', 'center', 'right'
+    label_va: str = 'center'        # 'top', 'center', 'bottom'
 
     outline: bool = False
     shadow: bool = False
@@ -44,9 +55,14 @@ class Marker(MapElement):
     size: int = 100
     shape: str = 'o'  # default: circle
     fill_color: Optional[str] = 'blue'
+    alpha: Optional[float] = 1.0
+
     border_color: Optional[str] = 'white'
     border_width: float = 1.5
-    alpha: Optional[float] = 1.0
+
+    label_position: Optional[Literal[
+        'above', 'below', 'left', 'right'
+    ]] = 'center'
 
     outline_color: str = 'black'
     outline_alpha: float = 0.3
@@ -56,13 +72,50 @@ class Marker(MapElement):
     shadow_alpha: float = 0.2
     shadow_offset: tuple[float, float] = (1, -1)
 
+    def get_label_position(self) -> tuple[str, str, float, float]:
+        """
+        Returns ha (horizontalalignment), va (verticalalignment), dx, dy offsets for a given label position.
+
+        Returns:
+            (ha, va, dx, dy): tuple of alignment strings and float offsets
+        """
+        ha = 'center'
+        va = 'center'
+        dx = 0.0
+        dy = 0.0
+
+        OFFSET = 0.002
+        match self.label_position:
+            case 'above':
+                va = 'bottom'
+                dy = OFFSET
+            case 'below':
+                va = 'top'
+                dy = -OFFSET
+            case 'left':
+                ha = 'right'
+                dx = -OFFSET
+            case 'right':
+                ha = 'left'
+                dx = OFFSET
+            case _:
+                ha, va = 'center', 'center'
+
+        return ha, va, self.geometry.x + dx, self.geometry.y + dy
+
 
 @dataclass
 class Area(MapElement):
     fill_color: Optional[str] = 'lightgray'
+    alpha: Optional[float] = 0.4
+
     border_color: Optional[str] = 'black'
     border_width: float = 1
-    alpha: Optional[float] = 0.4
+
+    label_position: Optional[Literal[
+        'top-left', 'top', 'top-right', 'left', 'center',
+        'right', 'bottom-left', 'bottom', 'bottom-right'
+    ]] = 'center'
 
     outline_color: str = 'white'
     outline_width: float = 2.0
@@ -71,6 +124,49 @@ class Area(MapElement):
     shadow_color: str = 'black'
     shadow_alpha: float = 0.2
     shadow_offset: tuple[float, float] = (2, -2)
+
+    def get_label_position(self) -> tuple[str, str, float, float]:
+        """
+        Returns ha (horizontalalignment), va (verticalalignment), dx, dy offsets for a given label position.
+
+        Returns:
+            (ha, va, dx, dy): tuple of alignment strings and float offsets
+        """
+        minx, miny, maxx, maxy = self.geometry.bounds
+
+        match self.label_position:
+            case 'top-left':
+                x, y = (minx, maxy)
+                ha, va = 'left', 'top'
+            case 'top':
+                x, y = ((minx + maxx) / 2, maxy)
+                ha, va = 'center', 'top'
+            case 'top-right':
+                x, y = (maxx, maxy)
+                ha, va = 'right', 'top'
+            case 'left':
+                x, y = (minx, (miny + maxy) / 2)
+                ha, va = 'left', 'center'
+            case 'center':
+                x, y = ((minx + maxx) / 2, (miny + maxy) / 2)
+                ha, va = 'center', 'center'
+            case 'right':
+                x, y = (maxx, (miny + maxy) / 2)
+                ha, va = 'right', 'center'
+            case 'bottom-left':
+                x, y = (minx, miny)
+                ha, va = 'left', 'bottom'
+            case 'bottom':
+                x, y = ((minx + maxx) / 2, miny)
+                ha, va = 'center', 'bottom'
+            case 'bottom-right':
+                x, y = (maxx, miny)
+                ha, va = 'right', 'bottom'
+            case _:
+                x, y = self.geometry.centroid.x, self.geometry.centroid.y
+                ha, va = 'center', 'center'
+
+        return ha, va, x, y
 
 
 class StaticMap:
@@ -90,7 +186,7 @@ class StaticMap:
         self.buffer = buffer
 
         self.basemap = basemap
-        if self.basemap.get('name', '').startswith('MapTiler'):
+        if self.basemap and self.basemap.get('name', '').startswith('MapTiler'):
             self.basemap['key'] = settings.MAPTILER_API_KEY
         # self.basemap['zoomOffset'] = 0
 
@@ -108,6 +204,42 @@ class StaticMap:
     def add(self, element: MapElement):
         element.geometry = to_shape(element.geometry)
         self.elements.append(element)
+
+    def add_area_label(self, ax, area):
+        ha, va, x, y = area.get_label_position()
+
+        text_obj = ax.text(
+            x, y, area.label,
+            fontsize=area.label_size,
+            color=area.label_color,
+            weight=area.label_weight,
+            ha=ha, va=va,
+            zorder=6,
+        )
+
+        if area.label_outline:
+            text_obj.set_path_effects([
+                pe.Stroke(linewidth=3, foreground='white'),
+                pe.Normal(),
+            ])
+
+    def add_marker_label(self, ax, marker):
+        ha, va, x, y = marker.get_label_position()
+
+        text_obj = ax.text(
+            x, y, marker.label,
+            fontsize=marker.label_size,
+            color=marker.label_color,
+            weight=marker.label_weight,
+            ha=ha, va=va,
+            zorder=6,
+        )
+
+        if marker.label_outline:
+            text_obj.set_path_effects([
+                pe.Stroke(linewidth=3, foreground='white'),
+                pe.Normal(),
+            ])
 
     def get_path_effects(self, element: MapElement):
         effects = []
@@ -154,8 +286,7 @@ class StaticMap:
             )
 
             if area.label:
-                center = area.geometry.centroid
-                ax.text(center.x, center.y, area.label, ha='center', va='center', fontsize=10)
+                self.add_area_label(ax, area)
 
         # Plot points
         for marker in self.markers:
@@ -172,7 +303,7 @@ class StaticMap:
             )
 
             if marker.label:
-                ax.text(x, y, marker.label, ha='left', va='bottom', fontsize=9)
+                self.add_marker_label(ax, marker)
 
         # Set map bounds
         geometries = [e.geometry for e in self.elements if e.geometry and not e.geometry.is_empty]
@@ -183,9 +314,10 @@ class StaticMap:
         extent = self._compute_extent(series, buffer=self.buffer)
         ax.set_xlim(extent[0], extent[2])
         ax.set_ylim(extent[1], extent[3])
-
-        ctx.add_basemap(ax, source=self.basemap, attribution=False, zoom_adjust=-1)
         ax.axis('off')
+
+        if self.basemap:
+            ctx.add_basemap(ax, source=self.basemap, attribution=False, zoom_adjust=-1)
 
         if out_path and not format:
             format = out_path.split('.')[-1]
