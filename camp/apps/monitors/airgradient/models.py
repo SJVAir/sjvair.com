@@ -122,6 +122,8 @@ class AirGradient(Monitor):
         },
     }
 
+    grade = Monitor.Grade.LCS
+
     place = models.ForeignKey('airgradient.Place', related_name='monitors', blank=True, null=True, on_delete=models.SET_NULL)
     location_id = models.IntegerField(unique=True)
     serial = MACAddressField()
