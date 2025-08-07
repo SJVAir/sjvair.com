@@ -260,8 +260,8 @@ class Monitor(models.Model):
 
     @cached_property
     def health_grade(self):
-        if self.current_health_id:
-            return self.current_health.grade
+        if self.health_id:
+            return self.health.grade
 
     @classmethod
     def get_default_stage(cls, EntryModel):
