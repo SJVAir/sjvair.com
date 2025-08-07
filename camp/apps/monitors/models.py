@@ -7,13 +7,14 @@ from decimal import Decimal
 
 import pandas as pd
 
-from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db.models import Avg, Q
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.text import slugify
+from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
@@ -114,6 +115,13 @@ class Monitor(models.Model):
     EXPECTED_INTERVAL = '1h'
     ENTRY_CONFIG = {}
     ENTRY_UPLOAD_ENABLED = False
+
+    class Grade(models.TextChoices):
+        FEM = 'fem', _('Federal Equivalent Method')
+        FRM = 'frm', _('Federal Reference Method')
+        LCS = 'lcs', _('Low-Cost Sensor')
+
+    grade = None
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -228,7 +236,11 @@ class Monitor(models.Model):
         if not self.position:
             return Region.objects.none()
 
-        return Region.objects.filter(geometry__contains=self.position)
+        return Region.objects.intersects(self.position)
+
+    @property
+    def is_regulatory(self):
+        return self.grade in {self.Grade.FEM, self.Grade.FRM}
 
     @cached_property
     def is_active(self):
@@ -248,8 +260,8 @@ class Monitor(models.Model):
 
     @cached_property
     def health_grade(self):
-        if self.current_health_id:
-            return self.current_health.grade
+        if self.health_id:
+            return self.health.grade
 
     @classmethod
     def get_default_stage(cls, EntryModel):

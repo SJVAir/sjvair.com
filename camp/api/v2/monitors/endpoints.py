@@ -93,7 +93,7 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = queryset.exclude(is_hidden=True)
+        queryset = queryset.filter(is_hidden=False)
         return queryset
 
 
@@ -207,9 +207,9 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
             .get_queryset(*args, **kwargs)
-            .exclude(
-                is_hidden=True,
-                position__isnull=True,
+            .filter(
+                is_hidden=False,
+                position__isnull=False,
             )
             .with_latest_entry(self.entry_model)
         )

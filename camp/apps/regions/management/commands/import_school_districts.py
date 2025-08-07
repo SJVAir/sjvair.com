@@ -11,57 +11,72 @@ class Command(BaseCommand):
     help = 'Import California cities (places) into the Region table (limited to those within SJV counties)'
 
     def handle(self, *args, **options):
-        Region.objects.filter(type__in=[Region.Type.SCHOOL_DISTRICT]).delete()
-
-        counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
-        gdf = geodata.gdf_from_ckan('california-school-district-areas-2023-24')
-        gdf = gdf[gdf.geometry.intersects(counties_gdf.unary_union)].copy()
+        print('\n--- Importing School Districts ---')
+        gdf = geodata.gdf_from_ckan('california-school-district-areas-2023-24', limit_to_counties=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
-                region = Region.objects.create(
-                    name=row['DistrictNa'],
-                    slug=slugify(row['DistrictNa']),
+                region, created = Region.objects.import_or_update(
+                    name=row.DistrictNa,
+                    slug=slugify(row.DistrictNa),
                     type=Region.Type.SCHOOL_DISTRICT,
-                    external_id=row['CDSCode'],
+                    external_id=row.CDSCode,
+                    version='2023-2024',
                     geometry=to_multipolygon(row.geometry),
-                    metadata={
+                    metadata = {
                         # Identifiers
-                        'fed_id': row['FedID'],  # Federal District ID
-                        'cd_code': row['CDCode'],  # County-District code
-                        'cds_code': row['CDSCode'],  # 14-digit CDS code
+                        'fed_id': row.FedID,
+                        'cd_code': row.CDCode,
+                        'cds_code': row.CDSCode,
 
-                        # Geography & classification
-                        'county_name': row['CountyName'],  # Name of the county
-                        'district_type': row['DistrictTy'],  # Unified, Elementary, High, etc.
-                        'grade_low': row['GradeLow'],  # Lowest grade served (e.g. KG)
-                        'grade_high': row['GradeHigh'],  # Highest grade served (e.g. 12)
+                        # Geography & Classification
+                        'district_name': row.DistrictNa,
+                        'county_name': row.CountyName,
+                        'district_type': row.DistrictTy,
+                        'grade_low': row.GradeLow,
+                        'grade_high': row.GradeHigh,
+                        'locale': row.LocaleDist,  # NCES locale code
 
-                        # Support status
-                        'assistance_status': row['AssistStat'],  # Differentiated Assistance status
+                        # Enrollment
+                        'enrollment': {
+                            'total': row.EnrollTota,
+                            'charter': row.EnrollChar,
+                            'non_charter': row.EnrollNonC,
+                        },
 
-                        # Political representation
-                        'congress_us': row['CongressUS'],  # US Congressional District(s)
-                        'senate_ca': row['SenateCA'],  # California State Senate District(s)
-                        'assembly_ca': row['AssemblyCA'],  # California State Assembly District(s)
+                        # Representation
+                        'representation': {
+                            'congress_us': row.CongressUS,
+                            'senate_ca': row.SenateCA,
+                            'assembly_ca': row.AssemblyCA,
+                        },
 
-                        # Locale classification
-                        'locale': row['LocaleDist'],  # NCES locale code (e.g. "11 - City, Large")
+                        # Assistance
+                        'assistance_status': row.AssistStat,
 
-                        # Enrollment totals
-                        'enrollment_total': row['EnrollTota'],  # Total enrollment
-                        'enrollment_charter': row['EnrollChar'],  # Charter enrollment
-                        'enrollment_noncharter': row['EnrollNonC'],  # Non-charter enrollment
+                        # Demographics: Race / Ethnicity
+                        'demographics': {
+                            'african_american': {'count': row.AAcount, 'pct': row.AApct},
+                            'american_indian': {'count': row.AIcount, 'pct': row.AIpct},
+                            'asian': {'count': row.AScount, 'pct': row.ASpct},
+                            'filipino': {'count': row.FIcount, 'pct': row.FIpct},
+                            'hispanic_latino': {'count': row.HIcount, 'pct': row.HIpct},
+                            'pacific_islander': {'count': row.PIcount, 'pct': row.PIpct},
+                            'white': {'count': row.WHcount, 'pct': row.WHpct},
+                            'multiracial': {'count': row.MRcount, 'pct': row.MRpct},
+                            'not_reported': {'count': row.NRcount, 'pct': row.NRpct},
+                        },
 
-                        # Selected demographics (%)
-                        'pct_hispanic': row['HIpct'],  # Percent Hispanic/Latino
-                        'pct_white': row['WHpct'],  # Percent White
-                        'pct_asian': row['ASpct'],  # Percent Asian
-                        'pct_black': row['AApct'],  # Percent African American
-                        'pct_multiracial': row['MRpct'],  # Percent Multi-Race
-                        'pct_el': row['ELpct'],  # Percent English Learners
-                        'pct_swd': row['SWDpct'],  # Percent Students with Disabilities
-                        'pct_sed': row['SEDpct'],  # Percent Socioeconomically Disadvantaged
+                        # Student Subgroups
+                        'subgroups': {
+                            'english_learners': {'count': row.ELcount, 'pct': row.ELpct},
+                            'foster_youth': {'count': row.FOScount, 'pct': row.FOSpct},
+                            'homeless': {'count': row.HOMcount, 'pct': row.HOMpct},
+                            'migrant': {'count': row.MIGcount, 'pct': row.MIGpct},
+                            'students_with_disabilities': {'count': row.SWDcount, 'pct': row.SWDpct},
+                            'socioeconomically_disadvantaged': {'count': row.SEDcount, 'pct': row.SEDpct},
+                        },
                     }
                 )
-                self.stdout.write(f'Imported: {region.name}')
+
+                self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')
