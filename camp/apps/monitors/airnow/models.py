@@ -64,6 +64,8 @@ class AirNow(Monitor):
         },
     }
 
+    grade = Monitor.Grade.FEM
+
     ENTRY_MAP = {
         config['fields']['value']: EntryModel
         for EntryModel, config
