@@ -18,9 +18,12 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
+                name = row.NAME
+                if name.endswith(', CA'):
+                    name = name[:-4]
                 region, created = Region.objects.import_or_update(
-                    name=row.NAME,
-                    slug=slugify(row.NAME),
+                    name=name,
+                    slug=slugify(name),
                     type=Region.Type.URBAN_AREA,
                     external_id=row.UACE20,
                     version='2020',

@@ -176,8 +176,7 @@ class StaticMap:
         height: int = 600,
         dpi: int = 100,
         buffer: Optional[float] = None,
-        # basemap=ctx.providers.OpenStreetMap.Mapnik,
-        basemap=ctx.providers.MapTiler.Bright,
+        basemap=ctx.providers.MapTiler.Basic,
         crs: str = CRS_WEBMERCATOR,
     ):
         self.width = width

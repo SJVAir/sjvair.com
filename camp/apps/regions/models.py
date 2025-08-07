@@ -69,7 +69,7 @@ class Region(TimeStampedModel):
         """
         from camp.apps.monitors.models import Monitor
         if self.boundary:
-            return Monitor.objects.filter(position__within=self.boundary.geometry)
+            return Monitor.objects.filter(position__intersects=self.boundary.geometry)
         return Monitor.objects.none()
 
 
