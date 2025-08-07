@@ -46,7 +46,7 @@ class SmokeAdmin(OSMGeoAdmin):
         static_map.add(maps.Area(
             geometry=instance.geometry,
             fill_color=color,
-            border_color=color,
+            border_color='black',
         ))
         content = b64encode(static_map.render(format='png')).decode()
         return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk} "Map" />')
