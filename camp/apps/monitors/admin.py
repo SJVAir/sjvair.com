@@ -77,7 +77,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     actions = ['export_monitor_list_csv']
     form = MonitorAdminForm
 
-    list_display = ['name', 'get_device', 'get_health_grade', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'get_subscriptions']
+    list_display = ['name', 'get_device', 'get_health_grade', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'legacy_last_updated', 'get_subscriptions']
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', 'device', MonitorIsActiveFilter, 'groups', 'location', 'county', HealthCheckFilter]
 
@@ -98,7 +98,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
-        queryset = queryset.select_related('health')
+        queryset = queryset.select_related('health', 'latest')
         queryset = queryset.with_last_entry_timestamp()
         queryset = queryset.annotate(
             last_updated=F('last_entry_timestamp'),
@@ -195,6 +195,13 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
             return instance.last_updated
         return ''
     last_updated.admin_order_field = 'last_updated'
+
+    def legacy_last_updated(self, instance):
+        if instance.latest:
+            return instance.latest.timestamp
+        return ''
+    legacy_last_updated.admin_order_field = 'latest__timestamp'
+    legacy_last_updated.short_description = 'Last Updated (Legacy)'
 
 
 @admin.register(Group)
