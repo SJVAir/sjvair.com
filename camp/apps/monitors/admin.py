@@ -1,22 +1,21 @@
 import csv
 
-from django import forms
+from base64 import b64encode
+
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
 from django.contrib.gis import admin as gisadmin
 from django.db.models import Count, F
 from django.http import HttpResponse
-from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
 from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
-from camp.apps.calibrations.admin import formula_help_text
 from camp.apps.qaqc.admin import HealthCheckInline
-from camp.utils.forms import DateRangeForm
+from camp.utils import maps
 
-from .forms import MonitorAdminForm
+from .forms import MonitorAdminForm, EntryExportForm
 from .models import Group
 
 
@@ -85,9 +84,10 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', 'device', MonitorIsActiveFilter, 'groups', 'location', 'county', HealthCheckFilter]
 
+    readonly_fields = ['get_map']
     fieldsets = [
         (None, {'fields': ['name', 'is_hidden', 'is_sjvair']}),
-        ('Location Data', {'fields': ['county', 'location', 'position']}),
+        ('Location Data', {'fields': ['county', 'location', 'get_map']}),
         ('Metadata', {'fields': ['groups', 'notes', 'data_provider', 'data_provider_url']}),
     ]
 
@@ -128,12 +128,34 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         writer = csv.DictWriter(response, fields, quoting=csv.QUOTE_NONNUMERIC)
         writer.writeheader()
         for monitor in queryset:
-            row = {field: getattr(monitor, field) for field in fields}
+            row = {}
+            for field in fields:
+                value = getattr(monitor, field)
+                row[field] = value() if callable(value) else value
             # Make sure the ID is quoted
             if 'id' in row:
                 row['id'] = str(row['id'])
             writer.writerow(row)
         return response
+
+    def get_map(self, instance):
+        if not instance or not instance.position:
+            return '-'
+
+        image = maps.from_geometries(
+            instance.position,
+            marker_size=350,
+            marker_shape='*',
+            marker_fill_color='dodgerblue',
+            marker_shadow=True,
+            height=400,
+            width=600,
+            buffer=1500,
+            format='png',
+        )
+        content = b64encode(image).decode()
+        return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="Position" />')
+    get_map.short_description = 'Map'
 
     def get_alerts(self, object_id):
         return (Alert.objects
@@ -188,7 +210,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     get_subscriptions.admin_order_field = 'subscription_count'
 
     def render_change_form(self, request, context, *args, **kwargs):
-        context.update({'export_form': DateRangeForm()})
+        context.update({'export_form': EntryExportForm()})
         return super().render_change_form(request, context, *args, **kwargs)
 
     def last_updated(self, instance):

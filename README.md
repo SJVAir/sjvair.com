@@ -1,125 +1,173 @@
-CAMP Server
-===========
+# SJVAir
 
-California Air Resource Board (CARB)
+San Joaquin Valley Air Quality Monitoring Platform
 
-https://oehha.ca.gov/calenviroscreen/report/calenviroscreen-30
-https://ww2.arb.ca.gov/homepage
-https://publiclab.org/questions/samr/04-07-2019/how-to-interpret-pms5003-sensor-values
+---
 
-```
-from django.core.management import call_command
-Sensor.objects.all().delete()
-call_command('loaddata', 'fixtures/sensors.yaml')
-```
+## 🛠 Tech Stack
 
-# Setup guide
+- **Platform:** Python, Django
+- **Database:** PostgreSQL with PostGIS
+- **Cache:** Memcached
+- **Task Queue:** Huey with Redis backend
+- **Containerization:** Docker (via `docker compose`)
+- **Testing:** pytest, Django test framework
 
-## Environment setup
+---
 
-1. Install [VirtualBox](https://www.virtualbox.org/) and [Vagrant](https://www.vagrantup.com/).
+## 🚀 Getting Started (with Docker)
 
-2. Get the code
+### Prerequisites
 
-```
-host:~/dev$ git clone git@github.com:SJVAir/sjvair.com.git
-host:~/dev$ cd sjvair.com
-```
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+- Git and Python 3.11+ installed on your host (only needed for optional local scripts).
 
-3. Provision the vagrant box
+---
 
-```
-host:~/dev/sjvair.com$ vagrant up
-```
+### 🔧 Setup Instructions
 
-This will automatically install Python dependencies and run database migrations.
+1. **Clone the repository**
 
-4. Shell in and navigate to the project directory
+   ```bash
+   git clone git@github.com:SJVAir/sjvair.com.git
+   cd sjvair.com
+   ```
 
-```
-host:~/dev/sjvair.com$ vagrant ssh
-vagrant:~$ cd /vagrant
-```
+2. **Build and start the dev environment**
 
-5. Create an admin user
+   ```bash
+   docker compose --profile web up
+   ```
 
-```
-vagrant:/vagrant$ python manage.py createsuperuser
-```
+   This will spin up the following services:
 
-6a. Build the front-end
+   - PostGIS (PostgreSQL + spatial extensions)
+   - Redis
+   - Memcached
+   - Django web server
+   - Primary task queue
 
-```
-vagrant:/vagrant$ invoke build
-```
+3. **Create a superuser**
 
-6b. Run the development server
+   Once the containers are up:
 
-```
-vagrant:/vagrant$ python manage.py runserver 0:8000
-```
+   ```bash
+   docker compose exec web python manage.py createsuperuser
+   ```
 
-6c. Run the task workers
+4. **Build frontend assets**
 
-```
-vagrant:/vagrant$ python manage.py run_huey
-```
+   ```bash
+   docker compose exec web yarn install
+   docker compose exec web invoke build
+   ```
 
-7. Visit [localhost:8000](http://localhost:8000) in your web browser
+5. **Visit the app**
 
-## Other useful commands
+   [http://localhost:8000](http://localhost:8000)
 
-### Running the tests
+---
 
-```
-vagrant:/vagrant$ pytest
-```
+## 🧪 Running Tests
 
-### Installing Python dependencies
-
-```
-vagrant:/vagrant$ pip install -r requirements/develop.txt
+```bash
+docker compose run --rm test
 ```
 
-### Migrate the database
+Or with flags:
 
-```
-vagrant:/vagrant$ python manage.py migrate
-```
-
-### Shutting down the vagrant box
-
-Suspend the box without fully shutting it down (makes `vagrant up` faster):
-
-```
-host:~/dev/sjvair.com$ vagrant suspend
+```bash
+docker compose run --rm test pytest -s -x -k "test_something"
 ```
 
-Fully shut down the box:
+---
 
+## 📦 Managing Dependencies
+
+### Python dependencies
+
+Install a new Python dependency:
+
+```bash
+# Add it to requirements/base.txt or requirements/develop.txt first
+docker compose exec web pip install new-lib-name
 ```
-host:~/dev/sjvair.com$ vagrant halt
+
+### Frontend packages
+
+Install frontend packages:
+
+```bash
+docker compose exec web yarn add new-js-lib
 ```
 
-### Help! I only see sensors on the map the first time I run `vagrant up`
-This happens because of a gap in time and data. The server will try to backfill sensor entries to the last point in time in which it was running. If you have the patience, you can wait for the server to process all of that missing data, and then everything should work as expected. For the rest of us who can't wait, we can start fresh by flushing the task queue and deleting the old sensor entries like so:
+---
 
+## 🛠️ Useful Commands
+
+### Run migrations
+
+```bash
+docker compose exec web python manage.py migrate
 ```
-host:~dev/sjvair.com$ python manage.py clear_huey_and_entries
+
+### Open a shell in the web container
+
+```bash
+docker compose exec web bash
 ```
 
-### How do I access Postgres from outside my Vagrant box?
+### Import all regional data
 
-If you're wanting to access the database in your Vagrant box, e.g., with
-[PgAdmin](https://www.pgadmin.org/) on your host machine, you'll need
-to tell Postgres to accept external connections.
+```bash
+docker compose exec web bash -c "
+  python manage.py migrate regions zero &&
+  python manage.py migrate regions &&
+  python manage.py import_counties &&
+  python manage.py import_census_tracts &&
+  python manage.py import_cities &&
+  python manage.py import_school_districts &&
+  python manage.py import_zipcodes &&
+  python manage.py import_congressional_districts &&
+  python manage.py import_state_assembly &&
+  python manage.py import_state_senate &&
+  python manage.py import_urban_areas &&
+  python manage.py import_land_use &&
+  python manage.py import_protected_areas
+"
+```
 
-1. Tell Postgress to listen on all interfaces
+---
 
-    ```
-    sudo sed -i "s/listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/10/main/postgresql.conf
-    ```
-2. Tell Postgress to accept connections from all interfaces
-    ```
-    echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/10/main/pg_hba.conf
-    ```
+## 🧹 Cleaning Up
+
+Stop and remove all containers:
+
+```bash
+docker compose down
+```
+
+Start up again later:
+
+```bash
+docker compose --profile web up
+```
+
+---
+
+## 🧠 Notes
+
+- `.env` and `.env.test` control environment-specific settings.
+- Profiles let you selectively spin up only needed services:
+
+  ```bash
+  # Start dev environment
+  docker compose --profile web up
+
+  # Run tests in isolation
+  docker compose --profile test run --rm test
+  ```
+
+- The database persists between sessions in the `pgdata` volume.
+
+---

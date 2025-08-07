@@ -93,7 +93,7 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = queryset.exclude(is_hidden=True)
+        queryset = queryset.filter(is_hidden=False)
         return queryset
 
 
@@ -158,6 +158,7 @@ class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
 
 class EntryExport(FormEndpoint):
     form_class = EntryExportForm
+    login_required = True
 
     def get_email(self):
         if self.request.user.is_authenticated:
@@ -168,7 +169,6 @@ class EntryExport(FormEndpoint):
         email = self.get_email()
         task = data_export(self.request.monitor.pk, email=email, **form.cleaned_data)
         return http.JSONResponse({'task_id': str(task.id)}, status=202)
-
 
 
 class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
@@ -207,7 +207,10 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
             .get_queryset(*args, **kwargs)
-            .exclude(is_hidden=True)
+            .filter(
+                is_hidden=False,
+                position__isnull=False,
+            )
             .with_latest_entry(self.entry_model)
         )
         return queryset

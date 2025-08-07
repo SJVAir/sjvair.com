@@ -21,10 +21,10 @@ class MonitorAccessMiddleware:
             return None
 
         if 'monitor_id' in view_kwargs:
+            monitor_id = view_kwargs['monitor_id']
             try:
-                request.monitor = Monitor.objects.get(pk=view_kwargs['monitor_id'])
+                request.monitor = Monitor.objects.get(pk=monitor_id)
             except Monitor.DoesNotExist:
-                monitor_id = lookup.get('pk', lookup.get('name'))
                 return http.Http404(f'No monitor exists with ID "{monitor_id}".')
 
             # Now that we've set the monitor, we need to check for
@@ -55,5 +55,5 @@ class MonitorAccessMiddleware:
 
         try:
             return uuid.UUID(access_key)
-        except Exception as err:
+        except Exception:
             return None

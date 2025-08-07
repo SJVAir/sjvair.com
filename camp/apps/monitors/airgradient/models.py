@@ -122,6 +122,8 @@ class AirGradient(Monitor):
         },
     }
 
+    grade = Monitor.Grade.LCS
+
     place = models.ForeignKey('airgradient.Place', related_name='monitors', blank=True, null=True, on_delete=models.SET_NULL)
     location_id = models.IntegerField(unique=True)
     serial = MACAddressField()
@@ -247,7 +249,7 @@ class AirGradient(Monitor):
 
         return super().create_entry(EntryModel, **data)
 
-    def process_entry_pipeline(self, entry):
+    def process_entry_pipeline(self, entry, cutoff_stage=None):
         '''
         Executes the full processing pipeline for a given entry,
         including handling stage-specific behavior for PurpleAir monitors.
@@ -264,13 +266,13 @@ class AirGradient(Monitor):
         Returns:
             List of newly created entries generated during the processing pipeline.
         '''
-        results = super().process_entry_pipeline(entry)
+        results = super().process_entry_pipeline(entry, cutoff_stage)
 
         if entry.stage == entry.Stage.RAW:
             corrected_entries = [e for e in results if e.stage == e.Stage.CORRECTED]
             for corrected in corrected_entries:
                 if previous := corrected.get_previous_entry():
-                    cleaned_entries = self.process_entry_pipeline(previous)
+                    cleaned_entries = self.process_entry_pipeline(previous, cutoff_stage)
                     results.extend(cleaned_entries)
 
         return results

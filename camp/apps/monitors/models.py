@@ -7,13 +7,14 @@ from decimal import Decimal
 
 import pandas as pd
 
-from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
 from django.db.models import Avg, Q
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.text import slugify
+from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
@@ -115,6 +116,13 @@ class Monitor(models.Model):
     ENTRY_CONFIG = {}
     ENTRY_UPLOAD_ENABLED = False
 
+    class Grade(models.TextChoices):
+        FEM = 'fem', _('Federal Equivalent Method')
+        FRM = 'frm', _('Federal Reference Method')
+        LCS = 'lcs', _('Low-Cost Sensor')
+
+    grade = None
+
     id = SmallUUIDField(
         default=uuid_default(),
         primary_key=True,
@@ -163,13 +171,13 @@ class Monitor(models.Model):
     def __str__(self):
         return self.name
 
-    @classproperty
-    def monitor_type(cls):
-        return cls._meta.model_name
-
     @classmethod
     def subclasses(cls):
         return cls.objects.get_queryset()._get_subclasses_recurse(cls)
+
+    @classproperty
+    def monitor_type(cls):
+        return cls._meta.model_name
 
     @classproperty
     def entry_types(self):
@@ -206,9 +214,6 @@ class Monitor(models.Model):
     def slug(self):
         return slugify(self.name)
 
-    def get_device(self):
-        return self.device or self.DEVICE or self._meta.verbose_name
-
     @property
     def data_providers(self):
         providers = copy.deepcopy(self.DATA_PROVIDERS)
@@ -221,6 +226,21 @@ class Monitor(models.Model):
     @property
     def data_source(self):
         return self.DATA_SOURCE
+
+    @property
+    def regions(self):
+        """
+        Returns a queryset of all regions that contain this monitor's location.
+        """
+        from camp.apps.regions.models import Region
+        if not self.position:
+            return Region.objects.none()
+
+        return Region.objects.intersects(self.position)
+
+    @property
+    def is_regulatory(self):
+        return self.grade in {self.Grade.FEM, self.Grade.FRM}
 
     @cached_property
     def is_active(self):
@@ -240,8 +260,8 @@ class Monitor(models.Model):
 
     @cached_property
     def health_grade(self):
-        if self.current_health_id:
-            return self.current_health.grade
+        if self.health_id:
+            return self.health.grade
 
     @classmethod
     def get_default_stage(cls, EntryModel):
@@ -262,6 +282,9 @@ class Monitor(models.Model):
     @classmethod
     def get_default_calibration(cls, EntryModel):
         return get_default_calibration(cls, EntryModel)
+
+    def get_device(self):
+        return self.device or self.DEVICE or self._meta.verbose_name
 
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'
@@ -312,30 +335,37 @@ class Monitor(models.Model):
                 processed_entries.extend(results)
         return processed_entries
 
-    def process_entry_ng(self, entry):
+    def process_entry_ng(self, entry, cutoff_stage=None):
         config = self.ENTRY_CONFIG.get(entry.__class__, {})
         processors = config.get('processors', {}).get(entry.stage, [])
 
         processed_entries = []
         for processor in processors:
+            if cutoff_stage and processor.next_stage == cutoff_stage:
+                continue
+
             if (result := processor(entry).run()):
                 self.update_latest_entry(result)
                 processed_entries.append(result)
 
         return processed_entries
 
-    def process_entry_pipeline(self, entry):
+    def process_entry_pipeline(self, entry, cutoff_stage=None):
         '''
         Recursively processes an entry through its pipeline stages, as defined in ENTRY_CONFIG.
 
+        Args:
+            entry: The BaseEntry instance to process.
+            cutoff_stage: Optional. If provided, processing will stop before this stage.
+
         Returns:
-            List of all new entries created during processing (can include cleaned and calibrated stages).
+            List of all new entries created during processing.
         '''
         processed = []
 
-        for result in self.process_entry_ng(entry):
+        for result in self.process_entry_ng(entry, cutoff_stage):
             processed.append(result)
-            processed.extend(self.process_entry_pipeline(result))  # Recursive step
+            processed.extend(self.process_entry_pipeline(result, cutoff_stage))
 
         return processed
 
