@@ -124,7 +124,10 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         writer = csv.DictWriter(response, fields, quoting=csv.QUOTE_NONNUMERIC)
         writer.writeheader()
         for monitor in queryset:
-            row = {field: getattr(monitor, field) for field in fields}
+            row = {}
+            for field in fields:
+                value = getattr(monitor, field)
+                row[field] = value() if callable(value) else value
             # Make sure the ID is quoted
             if 'id' in row:
                 row['id'] = str(row['id'])
