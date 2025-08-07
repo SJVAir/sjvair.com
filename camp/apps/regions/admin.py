@@ -175,12 +175,14 @@ class RegionAdmin(OSMGeoAdmin):
             active = 0
             for monitor in monitor_list:
                 if monitor.is_active:
-                    active += 0
-                # fill_color = monitor.latest_entry.level.color if monitor.is_active else 'darkgray'
+                    active += 1
+
                 fill_color = monitor.latest_entry.Levels.get_color(
                     monitor.latest_entry.level.value
                 ) if monitor.is_active else 'darkgray'
+
                 border_color = _blend_hex(fill_color, '#000000', .2) if monitor.is_active else 'dimgray'
+
                 static_map.add(maps.Marker(
                     geometry=monitor.position,
                     size=100 if monitor.is_active else 50,
