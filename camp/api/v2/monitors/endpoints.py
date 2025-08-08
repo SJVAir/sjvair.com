@@ -1,18 +1,23 @@
+from datetime import timedelta
+
 from resticus import generics, http
 from resticus.views import Endpoint
 
 from django import forms
 from django.contrib.gis.db.models.functions import Distance
 from django.core.cache import cache
+from django.db.models import FloatField, OuterRef, Subquery
 from django.http import Http404
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from camp.apps.entries.models import BaseEntry
-from camp.apps.monitors.models import Monitor
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
+from camp.apps.monitors.models import Monitor
+from camp.apps.qaqc.models import HealthCheck
 from camp.utils.forms import LatLonForm
 from camp.utils.views import get_view_cache_key
 
@@ -209,10 +214,17 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             .get_queryset(*args, **kwargs)
             .filter(
                 is_hidden=False,
-                position__isnull=False,
+                position__isnull=False
             )
-            .with_latest_entry(self.entry_model)
         )
+
+        # Only monitors active in the last 90 days
+        queryset = queryset.get_active(timedelta(days=90).seconds)
+
+        # Only monitors that are healthy in the last 24 hours
+        queryset = queryset.filter_healthy(hours=24)
+
+        queryset = queryset.with_latest_entry(self.entry_model)
         return queryset
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):

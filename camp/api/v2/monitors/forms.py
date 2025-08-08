@@ -23,7 +23,4 @@ class EntryExportForm(forms.Form):
         if end_date - start_date > self.MAX_EXPORT_RANGE:
             raise forms.ValidationError('Maximum export range is 180 days.')
 
-        if end_date > timezone.now().date():
-            raise forms.ValidationError('End date cannot be in the future.')
-
         return cleaned_data
