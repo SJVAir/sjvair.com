@@ -54,6 +54,7 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
         assert response.status_code == 200
 
+    @debug
     def test_current_data(self):
         '''
             Test that we can GET the current data endpoint.
@@ -63,6 +64,7 @@ class EndpointTests(TestCase):
         request = self.factory.get(url)
         response = current_data(request, **kwargs)
         content = get_response_data(response)
+        print(content)
         assert response.status_code == 200
 
     def test_closest_monitor(self):

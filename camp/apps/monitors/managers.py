@@ -1,7 +1,12 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from django.db.models import DateTimeField, Exists, OuterRef, Q, Subquery
+from django.db.models import (
+    BooleanField, DateTimeField, IntegerField,
+    ExpressionWrapper, F, Q,
+    Case, Count, Exists, Value, When,
+    OuterRef, Subquery,
+)
 from django.db.models.query import ModelIterable
 from django.utils import timezone
 
@@ -142,6 +147,61 @@ class MonitorQuerySet(InheritanceQuerySet):
             monitor.latest_entry = entry
 
         return monitors
+
+    def select_health(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8):
+        from camp.apps.monitors.models import Monitor
+        from camp.apps.qaqc.models import HealthCheck
+
+        cutoff = timezone.now() - timedelta(hours=hours)
+        required_passing = int(hours * threshold)
+
+        passing_count = (
+            HealthCheck.objects
+            .filter(
+                monitor=OuterRef('pk'),
+                hour__gte=cutoff,
+                score__gte=min_score
+            )
+            .values('monitor')
+            .annotate(count=Count('id'))
+            .values('count')[:1]
+        )
+
+        whens = []
+        for subclass in Monitor.get_subclasses():
+            model_name = subclass._meta.model_name
+            if subclass.grade == Monitor.Grade.LCS:
+                whens.append(
+                    When(**{
+                        f'{model_name}__isnull': False,
+                        'passing_health_checks__gte': required_passing,
+                    }, then=Value(True))
+                )
+            else:
+                # FEM/FRM monitors
+                whens.append(
+                    When(**{
+                        f'{model_name}__isnull': False
+                    }, then=Value(True))
+                )
+
+        queryset = self.annotate(
+            passing_health_checks=Subquery(passing_count, output_field=IntegerField()),
+            is_healthy=Case(
+                *whens,
+                default=Value(False),
+                output_field=BooleanField(),
+            )
+        )
+
+        return queryset
+
+    def filter_healthy(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8):
+        return self.select_health(
+            hours=hours,
+            min_score=min_score,
+            threshold=threshold,
+        ).filter(is_healthy=True)
 
 
 class MonitorManager(InheritanceManager):
