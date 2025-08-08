@@ -35,11 +35,8 @@ def get_relationships(refresh: bool = False) -> pd.DataFrame:
 
 def get_ces4() -> pd.DataFrame:
     counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
-    gdf = geodata.gdf_from_ckan(
-        dataset_id='calenviroscreen-4-0',
-        resource_name='CalEnviroScreen 4.0 Results Shapefile',
-        string_fields=['Tract'],
-    )
+    gdf = geodata.gdf_from_zip('https://gis.data.ca.gov/api/download/v1/items/b6e0a01c423b489f8d98af641445da28/shapefile?layers=0')
+    gdf['Tract'] = gdf['tract']
     gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.25)
     gdf['Tract'] = gdf['Tract'].astype(str).str.zfill(11)
 
@@ -168,6 +165,15 @@ class Command(BaseCommand):
         reverse_counts = rel['GEOID_TRACT_20'].value_counts()
         many_to_one = reverse_counts[reverse_counts > 1].count()
 
+        from camp.apps.integrate.ces4.models import Tract
+        from camp.apps.integrate.ces4.data import Ces4Data
+        params = {Ces4Data.normalize(f.name): f.name for f in Tract._meta.get_fields()}
+        ces4 = get_ces4()
+        ces4_2020 = build_ces4_2020(ces4, rel, tracts_2020)
+        q = Ces4Data.to_db(ces4, params, 2010)
+        r = Ces4Data.to_db(ces4_2020, params, 2020)
+        
+
         print('\n--- Mapping Summary ---')
         print(f'CES4 tracts: {len(ces4)}')
         print(f'2020 tracts: {len(ces4_2020)}')
@@ -178,5 +184,5 @@ class Command(BaseCommand):
         print('\n--- Split Example ---')
         show_split_example(ces4, ces4_2020, rel)
 
-        import code
-        code.interact(local=locals())
+        # import code
+        # code.interact(local=locals())

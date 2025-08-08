@@ -2,6 +2,7 @@ from django.contrib.gis.db import models as gis_models
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+
 """
 Descriptions quoted from ces4 data dictionary
 
@@ -72,18 +73,8 @@ Population Characteristics
 
 """
 class Tract(models.Model):
-    class Counties(models.TextChoices):
-        FRESNO = 'fresno', 'Fresno'
-        KERN = 'kern', 'Kern'
-        KINGS = 'kings', 'Kings'
-        MADERA = 'madera', 'Madera'
-        MERCED = 'merced', 'Merced'
-        SAN_JOAQUIN = 'san joaquin', 'San Joaquin'
-        STANISLAUS = 'stanislaus', 'Stanislaus'
-        TULARE = 'tulare', 'Tulare'
-        
-    objectid = models.IntegerField(primary_key=True)
-    tract = models.CharField(_('Tract GEOID'), max_length=12, null=True, help_text=_('Given Tract GEOID from the 2010 Census'))
+    objectid = models.CharField(_('Tract GEOID + version'), primary_key=True, max_length=20, help_text=_('Given Tract GEOID and census year'))
+    tract = models.CharField(_('Tract GEOID'), max_length=12, help_text=_('Given Tract GEOID'))
     population = models.IntegerField(_('Tract Population Size'), null=True, help_text=_('Number of individuals living within the tract'))
     
     # CalEnviroScreen Score, Pollution Score multiplied by Population Characteristics Score
@@ -129,7 +120,7 @@ class Tract(models.Model):
     
     # Sum of weighted hazardous waste facilities and large quantity 
     # generators within buffered distances to populated blocks of census tracts
-    pol_haz = models.IntegerField(_('Hazardous Waste Facilities'), null=True, help_text=_('Sum of weighted hazardous waste facilities and large quantity generators within buffered distances to populated blocks of census tracts'))
+    pol_haz = models.FloatField(_('Hazardous Waste Facilities'), null=True, help_text=_('Sum of weighted hazardous waste facilities and large quantity generators within buffered distances to populated blocks of census tracts'))
     pol_haz_p = models.FloatField(_('Hazardous Waste Facilities Percentile'), null=True)
     
     # Potential risk for lead exposure in children living in low-income 
@@ -149,7 +140,7 @@ class Tract(models.Model):
     
     # Sum of number of pollutants across all impaired water bodies within 
     # buffered distances to populated blocks of census tracts
-    pol_iwb = models.IntegerField(_('Impaired Water Bodies'), null=True, help_text=_('Sum of number of pollutants across all impaired water bodies within buffered distances to populated blocks of census tracts'))
+    pol_iwb = models.FloatField(_('Impaired Water Bodies'), null=True, help_text=_('Sum of number of pollutants across all impaired water bodies within buffered distances to populated blocks of census tracts'))
     pol_iwb_p = models.FloatField(_('Impaired Water Bodies Percentile'), null=True)
     
     # Sum of weighted and facilities (SWIS) within  buffered 
@@ -233,16 +224,8 @@ class Tract(models.Model):
     pop_other = models.IntegerField(_('Other Ethnicity'), null=True, help_text=_('Number of people per census tract of those who identify as non-Hispanic "other" or as multiple races'))
     pop_other_p = models.FloatField(_('Other Ethnicity Percentile'), null=True)
     
-    #county this tract is in according to fips number
-    county = models.CharField(
-        _('County'),
-        choices=Counties.choices,
-        default=None,
-        null=False,
-        blank=False,
-        help_text=_('County this tract is in according to fips number'),
-        ) 
+    # #geometric shape of tract
+    # geometry = gis_models.MultiPolygonField(_('Tract Shape'), srid=4326, help_text=('Geometric shape of this tract'))
     
-    #geometric shape of tract
-    geometry = gis_models.MultiPolygonField(_('Tract Shape'), srid=4326, help_text=('Geometric shape of this tract'))
+    boundary = models.ManyToManyField('regions.Boundary', blank=True,)
     

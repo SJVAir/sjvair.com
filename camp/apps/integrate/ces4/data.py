@@ -75,10 +75,22 @@ class Ces4Data:
             geo = Ces4Data.map_tracts(geo)
             return Ces4Data.to_db(geo, params)
 
+
+    def data_matches(inputs, obj):
+        for key, val in inputs.items():
+            obj_val = getattr(obj, key)
+            if val != obj_val:
+                import numpy as np
+                if (np.isnan(val) or val == 0) and (np.isnan(obj_val) or obj_val == 0):
+                    continue
+                else:
+                    return False
+        return True
+
 #geo = geodf, params is a dict like {modelnames.lower():modelName,...} 
 #This function creates a dictionary using params[modelname.lower()] -> modelName:value
 #This is so we can use capitalized letters for Percentile = P + other small differences
-    def to_db(geo, params):
+    def to_db(geo, params, version):
         tracts = []
         for x in range(len(geo)):
             curr = geo.iloc[x]       
@@ -87,13 +99,35 @@ class Ces4Data:
                 for col in geo.columns 
                 if Ces4Data.normalize(col) in params
                 }
-            geometry = GEOSGeometry(inputs['geometry'].wkt, srid=4326)
-            if geometry.geom_type == 'Polygon':
-                geometry = MultiPolygon(geometry)
-            inputs['geometry'] = geometry
+            inputs.pop('objectid')
+            from camp.apps.regions.models import Region
+            if version == 2020:
+                external_id = str(curr['GEOID_TRACT_20'])
+                inputs['tract'] = curr['GEOID_TRACT_20']
+            else:
+                external_id = str(curr['Tract'])
+
+            region = Region.objects.get(type=Region.Type.TRACT,
+            external_id=external_id,
+            boundaries__version=version)
+            boundary = region.boundaries.get(version=version)
+            try:
+                obj = Tract.objects.get(
+                    tract=external_id,
+                ) 
+                if Ces4Data.data_matches(inputs, obj) and version not in obj.boundary.values_list('version', flat=True):
+                    obj.boundary.add(boundary)
+                    obj.save()
+                    continue
+                
+            except Exception as e:
+                pass            
             tract, created = Tract.objects.update_or_create(
-                objectid=inputs['objectid'],
-                defaults=inputs
+                objectid=external_id + '_' + str(version),
+                defaults=inputs,
             )
+            tract.boundary.add(boundary)
+            tract.save()
             tracts.append(tract)
         return tracts
+        

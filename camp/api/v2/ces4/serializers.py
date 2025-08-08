@@ -3,7 +3,7 @@ from resticus import serializers
 
 class Ces4_Serializer(serializers.Serializer):
     fields = (
-        'objectid', 'tract', 'population',
+        'tract', 'population',
         'pollution', 'pollution_p', 'pollution_s',
         'ci_score', 'ci_score_p',
         'pol_ozone', 'pol_ozone_p', 'pol_pm', 'pol_pm_p',
@@ -21,5 +21,5 @@ class Ces4_Serializer(serializers.Serializer):
         'pop_65', 'pop_65_p', 'pop_hispanic', 'pop_hispanic_p',
         'pop_white', 'pop_white_p', 'pop_black', 'pop_black_p',
         'pop_native', 'pop_native_p', 'pop_asian','pop_asian_p',
-        'pop_other', 'pop_other_p', 'county', 'geometry',
+        'pop_other', 'pop_other_p', 'region_id',
     )

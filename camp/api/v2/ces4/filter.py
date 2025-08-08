@@ -6,9 +6,9 @@ from camp.apps.integrate.ces4.models import Tract
 class Ces4Filter(FilterSet):
     class Meta:
         model = Tract
-        num_fields = dict.fromkeys(
+        fields = dict.fromkeys(
             [
-        'objectid', 'tract', 'population',
+        'tract', 'population',
         'pollution', 'pollution_p', 'pollution_s',
         'ci_score', 'ci_score_p',
         'pol_ozone', 'pol_ozone_p', 'pol_pm', 'pol_pm_p',
@@ -34,12 +34,4 @@ class Ces4Filter(FilterSet):
                 'gt', 'gte',
             ]
         )
-        
-        county_field = {
-            'county': [
-                'iexact', 'exact',
-            ]
-        }
-        
-        fields = num_fields | county_field
-        
+                

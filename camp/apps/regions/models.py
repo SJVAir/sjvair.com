@@ -75,7 +75,7 @@ class Region(TimeStampedModel):
 
 class Boundary(TimeStampedModel):
     sqid = SqidsField(alphabet=shuffle_alphabet('regions.Boundary'))
-
+    
     region = models.ForeignKey('Region', related_name='boundaries', on_delete=models.CASCADE)
     version = models.CharField(max_length=32)  # e.g. '2020', '2023-2024', etc
     geometry = models.MultiPolygonField()
