@@ -37,6 +37,7 @@ class BoundaryInline(admin.TabularInline):
             height=400,
             buffer=0.3
         )
+        print(instance)
         static_map.add(maps.Area(
             geometry=instance.geometry,
             fill_color='dodgerblue',

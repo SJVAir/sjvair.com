@@ -1,11 +1,11 @@
 from resticus.filters import FilterSet
 
-from camp.apps.integrate.ces4.models import Tract
+from camp.apps.integrate.ces4.models import Record
 
 
 class Ces4Filter(FilterSet):
     class Meta:
-        model = Tract
+        model = Record
         fields = dict.fromkeys(
             [
         'tract', 'population',

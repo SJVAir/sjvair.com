@@ -4,7 +4,7 @@ from shapely.wkt import loads as load_wkt
 from camp.utils.counties import County
 from camp.api.v2.ces4.tests import create_test_ces4_obj
 from camp.apps.integrate.ces4.data import Ces4Data
-from camp.apps.integrate.ces4.models import Tract
+from camp.apps.integrate.ces4.models import Record
 
 
 class Tests_CES4_App(TestCase):
@@ -44,8 +44,8 @@ class Tests_CES4_App(TestCase):
         }
         #print(Ces4.objects.first().__dict__)
         for county, count in tract_count.items():
-            assert count == Tract.objects.filter(county=county).count()
-        assert Tract.objects.count() == 760
+            assert count == Record.objects.filter(county=county).count()
+        assert Record.objects.count() == 760
         assert len(list_count) == 760
         
     def test_tract_map(self):

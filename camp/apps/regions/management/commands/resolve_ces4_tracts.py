@@ -165,9 +165,9 @@ class Command(BaseCommand):
         reverse_counts = rel['GEOID_TRACT_20'].value_counts()
         many_to_one = reverse_counts[reverse_counts > 1].count()
 
-        from camp.apps.integrate.ces4.models import Tract
+        from camp.apps.integrate.ces4.models import Record
         from camp.apps.integrate.ces4.data import Ces4Data
-        params = {Ces4Data.normalize(f.name): f.name for f in Tract._meta.get_fields()}
+        params = {Ces4Data.normalize(f.name): f.name for f in Record._meta.get_fields()}
         ces4 = get_ces4()
         ces4_2020 = build_ces4_2020(ces4, rel, tracts_2020)
         q = Ces4Data.to_db(ces4, params, 2010)

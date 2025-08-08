@@ -4,7 +4,7 @@ from django.urls import reverse
 from shapely.wkt import loads as load_wkt
 
 from camp.utils.counties import County
-from camp.apps.integrate.ces4.models import Tract
+from camp.apps.integrate.ces4.models import Record
 
 def create_test_ces4_obj(id, pm, pm_p):
     polygon_wkt = (
@@ -18,13 +18,13 @@ def create_test_ces4_obj(id, pm, pm_p):
     )
     geometry = GEOSGeometry(polygon_wkt, srid=4326)
     county = County.in_SJV(load_wkt(geometry.wkt))
-    params = {f.name: 0 for f in Tract._meta.get_fields()}
+    params = {f.name: 0 for f in Record._meta.get_fields()}
     params['objectid'] = id
     params['pol_pm'] = pm
     params['pol_pm_p'] = pm_p
     params['county'] = county
     params['geometry'] = geometry
-    return Tract.objects.create(**params)
+    return Record.objects.create(**params)
 
 
 class Tests_CES4List(TestCase):

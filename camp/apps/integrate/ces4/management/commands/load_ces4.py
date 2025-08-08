@@ -1,7 +1,0 @@
-from django.core.management.base import BaseCommand
-
-from camp.apps.integrate.ces4.data import Ces4Data
-
-class Command(BaseCommand):
-    def handle(self, *args, **options):
-        Ces4Data.ces4_request()

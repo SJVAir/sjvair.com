@@ -7,12 +7,13 @@ import zipfile
 
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 
-from camp.apps.integrate.ces4.models import Tract
+from camp.apps.integrate.ces4.models import Record
+from camp.apps.regions.models import Region
 
 
-pol_fields = [f.name[4:] for f in Tract._meta.fields if f.name.startswith('pol_')]
-char_fields = [f.name[4:] for f in Tract._meta.fields if f.name.startswith('char_')]
-pop_fields = [f.name[4:] for f in Tract._meta.fields if f.name.startswith('pop_')]
+pol_fields = [f.name[4:] for f in Record._meta.fields if f.name.startswith('pol_')]
+char_fields = [f.name[4:] for f in Record._meta.fields if f.name.startswith('char_')]
+pop_fields = [f.name[4:] for f in Record._meta.fields if f.name.startswith('pop_')]
 
 
 class Ces4Data:
@@ -63,35 +64,11 @@ class Ces4Data:
         geo = geo[geo['county'].notna()]
         return geo
               
-    def ces4_request():
-        url = 'https://gis.data.ca.gov/api/download/v1/items/b6e0a01c423b489f8d98af641445da28/shapefile?layers=0'
-        response = requests.get(url)
-        if response.status_code != 200:
-            response.raise_for_status()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
-            geo = gpd.read_file(f"{temp_dir}/CalEnviroScreen_4.0_Results.shp").to_crs(epsg=4326)
-            params = {Ces4Data.normalize(f.name): f.name for f in Tract._meta.get_fields()}
-            geo = Ces4Data.map_tracts(geo)
-            return Ces4Data.to_db(geo, params)
-
-
-    def data_matches(inputs, obj):
-        for key, val in inputs.items():
-            obj_val = getattr(obj, key)
-            if val != obj_val:
-                import numpy as np
-                if (np.isnan(val) or val == 0) and (np.isnan(obj_val) or obj_val == 0):
-                    continue
-                else:
-                    return False
-        return True
-
 #geo = geodf, params is a dict like {modelnames.lower():modelName,...} 
 #This function creates a dictionary using params[modelname.lower()] -> modelName:value
 #This is so we can use capitalized letters for Percentile = P + other small differences
     def to_db(geo, params, version):
-        tracts = []
+        records = []
         for x in range(len(geo)):
             curr = geo.iloc[x]       
             inputs = {
@@ -100,34 +77,35 @@ class Ces4Data:
                 if Ces4Data.normalize(col) in params
                 }
             inputs.pop('objectid')
-            from camp.apps.regions.models import Region
+            
             if version == 2020:
                 external_id = str(curr['GEOID_TRACT_20'])
                 inputs['tract'] = curr['GEOID_TRACT_20']
             else:
                 external_id = str(curr['Tract'])
 
-            region = Region.objects.get(type=Region.Type.TRACT,
-            external_id=external_id,
-            boundaries__version=version)
-            boundary = region.boundaries.get(version=version)
             try:
-                obj = Tract.objects.get(
+                Record.objects.get(
                     tract=external_id,
+                    boundary__version=version,
                 ) 
-                if Ces4Data.data_matches(inputs, obj) and version not in obj.boundary.values_list('version', flat=True):
-                    obj.boundary.add(boundary)
-                    obj.save()
-                    continue
-                
+                continue
             except Exception as e:
-                pass            
-            tract, created = Tract.objects.update_or_create(
+                pass     
+            
+            region = Region.objects.get(type=Region.Type.TRACT,
+                external_id=external_id,
+                boundaries__version=version
+                )
+            boundary = region.boundaries.get(version=version)       
+            record, created = Record.objects.update_or_create(
                 objectid=external_id + '_' + str(version),
                 defaults=inputs,
             )
-            tract.boundary.add(boundary)
-            tract.save()
-            tracts.append(tract)
-        return tracts
+            # record.boundary = boundary            
+            # record.save()
+            boundary.record = record
+            boundary.save()
+            records.append(record)
+        return records
         

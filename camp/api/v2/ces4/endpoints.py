@@ -1,12 +1,12 @@
 from resticus import generics
 
-from camp.apps.integrate.ces4.models import Tract
+from camp.apps.integrate.ces4.models import Record
 from .filter import Ces4Filter
 from .serializers import Ces4_Serializer
 
 
 class Ces4Mixin:
-    model = Tract
+    model = Record
     serializer_class = Ces4_Serializer
 
 

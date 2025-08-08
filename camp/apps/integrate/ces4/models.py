@@ -72,7 +72,7 @@ Population Characteristics
     pop_other - percent per census tract of those who identify as non-Hispanic "other" or as multiple races 
 
 """
-class Tract(models.Model):
+class Record(models.Model):
     objectid = models.CharField(_('Tract GEOID + version'), primary_key=True, max_length=20, help_text=_('Given Tract GEOID and census year'))
     tract = models.CharField(_('Tract GEOID'), max_length=12, help_text=_('Given Tract GEOID'))
     population = models.IntegerField(_('Tract Population Size'), null=True, help_text=_('Number of individuals living within the tract'))
@@ -227,5 +227,4 @@ class Tract(models.Model):
     # #geometric shape of tract
     # geometry = gis_models.MultiPolygonField(_('Tract Shape'), srid=4326, help_text=('Geometric shape of this tract'))
     
-    boundary = models.ManyToManyField('regions.Boundary', blank=True,)
-    
+    # boundary = models.OneToOneField('regions.Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='record_boundary')
