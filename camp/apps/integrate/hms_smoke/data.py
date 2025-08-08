@@ -7,14 +7,16 @@ import zipfile
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
+from django.contrib.gis.geos import GEOSGeometry
 from django.forms import ValidationError
 from django.utils import timezone
 from django.utils.timezone import make_aware
 
 from .models import Smoke
-from camp.utils.geodata import gdf_from_zip
 from camp.utils.counties import County
+from camp.utils.geodata import gdf_from_zip
+from camp.utils.gis import to_multipolygon
+
 
 
 
@@ -75,7 +77,7 @@ def to_db(curr, date, is_final):
     if County.in_SJV(curr.geometry):
         geometry = GEOSGeometry(curr.geometry.wkt, srid=4326)
         if geometry.geom_type == 'Polygon':
-            geometry = MultiPolygon(geometry)     
+            geometry = to_multipolygon(geometry)     
         start = parse_timestamp(curr.Start)
         end = parse_timestamp(curr.End)
         smoke = Smoke(
