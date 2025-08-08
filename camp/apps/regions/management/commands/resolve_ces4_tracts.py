@@ -67,44 +67,7 @@ def get_tract_boundaries(version: str) -> pd.DataFrame:
     return gdf
 
 
-def build_ces4_2020(ces4: pd.DataFrame, rel: pd.DataFrame, tracts_2020: pd.DataFrame) -> gpd.GeoDataFrame:
-    # Ensure merge keys are str and padded
-    rel['GEOID_TRACT_10'] = rel['GEOID_TRACT_10'].astype(str).str.zfill(11)
-    rel['GEOID_TRACT_20'] = rel['GEOID_TRACT_20'].astype(str).str.zfill(11)
-
-    # Add CES4 columns to relationship file
-    merged = rel.merge(ces4, left_on='GEOID_TRACT_10', right_on='Tract', how='inner')
-
-    # Convert area field to numeric and compute weight
-    merged['AREALAND_PART'] = pd.to_numeric(merged['AREALAND_PART'], errors='coerce')
-    merged['weight'] = merged['AREALAND_PART'] / merged.groupby('GEOID_TRACT_10')['AREALAND_PART'].transform('sum')
-
-    # Warn about partial mappings
-    check = merged.groupby('GEOID_TRACT_10')['weight'].sum().reset_index()
-    bad = check[check['weight'] < 0.99]
-    print(f'{"⚠️" if len(bad) else "✅"} {len(bad)} tracts have weights summing to less than 0.99')
-
-    # Weighted numeric aggregation
-    exclude_cols = ['Tract', 'ZIP', 'County', 'ApproxLoc', 'geometry', 'dac_category']
-    numeric_cols = [col for col in ces4.columns if col not in exclude_cols and pd.api.types.is_numeric_dtype(ces4[col])]
-    for col in numeric_cols:
-        merged[col] = merged[col] * merged['weight']
-    weighted = merged.groupby('GEOID_TRACT_20')[numeric_cols].sum().reset_index()
-
-    # Find dominant tract for each 2020 tract and its DAC category
-    merged['weight_rank'] = merged.groupby('GEOID_TRACT_20')['weight'].rank(ascending=False, method='first')
-    dominant = merged.loc[merged['weight_rank'] == 1, ['GEOID_TRACT_20', 'dac_category']]
-
-    # Add geometry and dac_category
-    out = tracts_2020[['GEOID', 'geometry']].rename(columns={'GEOID': 'GEOID_TRACT_20'})
-    out = out.merge(weighted, on='GEOID_TRACT_20', how='inner')
-    out = out.merge(dominant, on='GEOID_TRACT_20', how='left')
-
-    return gpd.GeoDataFrame(out, geometry='geometry', crs=tracts_2020.crs)
-
-
-
-def show_split_example(ces4, ces4_2020, rel, col='CIscore'):
+def show_split_example(ces4_2010, ces4_2020, rel, col='CIscore'):
     rel = rel.copy()
     rel['GEOID_TRACT_10'] = rel['GEOID_TRACT_10'].astype(str).str.zfill(11)
     rel['GEOID_TRACT_20'] = rel['GEOID_TRACT_20'].astype(str).str.zfill(11)
@@ -114,7 +77,7 @@ def show_split_example(ces4, ces4_2020, rel, col='CIscore'):
 
     print(f'🧪 Example: CES4 tract {example} was split across {vc[example]} 2020 tracts')
     rows = rel[rel['GEOID_TRACT_10'] == example].copy()
-    rows = rows.merge(ces4[['Tract', col]], left_on='GEOID_TRACT_10', right_on='Tract', how='left')
+    rows = rows.merge(ces4_2010[['Tract', col]], left_on='GEOID_TRACT_10', right_on='Tract', how='left')
     rows['AREALAND_PART'] = pd.to_numeric(rows['AREALAND_PART'], errors='coerce')
     rows['weight'] = rows['AREALAND_PART'] / rows['AREALAND_PART'].sum()
     rows['weighted_value'] = rows[col] * rows['weight']
@@ -133,14 +96,16 @@ class Command(BaseCommand):
         parser.add_argument('--refresh', action='store_true', help='Re-download tract relationship file')
 
     def handle(self, *args, **options):
-        rel = get_relationships(refresh=options['refresh'])
-        ces4 = get_ces4()
         tracts_2010 = get_tract_boundaries('2010')
-        tracts_2020 = get_tract_boundaries('2020')
-
         geoids_2010 = set(tracts_2010['GEOID'])
+
+        tracts_2020 = get_tract_boundaries('2020')
         geoids_2020 = set(tracts_2020['GEOID'])
-        ces4_geoids = set(ces4['Tract'])
+
+        rel = get_relationships(refresh=options['refresh'])
+
+        ces4_2010 = get_ces4()
+        ces4_geoids = set(ces4_2010['Tract'])
 
         # Filter rel file to just tracts we have
         rel = rel[rel['GEOID_TRACT_10'].isin(geoids_2010) | rel['GEOID_TRACT_20'].isin(geoids_2020)]
@@ -158,7 +123,15 @@ class Command(BaseCommand):
         # Mapping analysis
         rel = rel[rel['GEOID_TRACT_10'].isin(ces4_geoids)]
 
-        ces4_2020 = build_ces4_2020(ces4, rel, tracts_2020)
+        ces4_2020 = geodata.remap_gdf_boundaries(
+            source=ces4_2010.copy(),
+            target=tracts_2020.copy(),
+            rel=rel,
+            source_geoid_col='Tract',
+            target_geoid_col='GEOID',
+            rel_source_col='GEOID_TRACT_10',
+            rel_target_col='GEOID_TRACT_20',
+        ).drop(columns=['geometry'])
         print(f'✅ Built ces4_2020 GeoDataFrame with {len(ces4_2020):,} rows')
 
         mapping_counts = rel['GEOID_TRACT_10'].value_counts()
@@ -169,14 +142,16 @@ class Command(BaseCommand):
         many_to_one = reverse_counts[reverse_counts > 1].count()
 
         print('\n--- Mapping Summary ---')
-        print(f'CES4 tracts: {len(ces4)}')
+        print(f'CES4 tracts: {len(ces4_2010)}')
         print(f'2020 tracts: {len(ces4_2020)}')
         print(f'1:1 mappings (CES4 to 2020): {one_to_one}')
         print(f'1:many mappings (CES4 split across multiple 2020 tracts): {one_to_many}')
         print(f'Many:1 mappings (multiple CES4 tracts map to one 2020 tract): {many_to_one}')
 
         print('\n--- Split Example ---')
-        show_split_example(ces4, ces4_2020, rel)
+        ces4_2010['GEOID_TRACT_10'] = ces4_2010['Tract']
+        ces4_2020['GEOID_TRACT_20'] = ces4_2020['Tract']
+        show_split_example(ces4_2010, ces4_2020, rel)
 
-        import code
-        code.interact(local=locals())
+        # import code
+        # code.interact(local=locals())
