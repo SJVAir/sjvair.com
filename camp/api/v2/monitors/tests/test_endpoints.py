@@ -54,7 +54,6 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
         assert response.status_code == 200
 
-    @debug
     def test_current_data(self):
         '''
             Test that we can GET the current data endpoint.
