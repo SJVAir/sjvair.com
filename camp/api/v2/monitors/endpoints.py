@@ -4,13 +4,12 @@ from resticus import generics, http
 from resticus.views import Endpoint
 
 from django import forms
+from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
 from django.core.cache import cache
-from django.db.models import FloatField, OuterRef, Subquery
 from django.http import Http404
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from camp.apps.entries.models import BaseEntry
@@ -218,11 +217,16 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             )
         )
 
-        # Only monitors active in the last 90 days
-        queryset = queryset.get_active(timedelta(days=90).seconds)
+        # Only monitors that are recently active...
+        queryset = queryset.get_active(timedelta(
+            days=settings.MONITOR_ACTIVE_WINDOW_DAYS
+        ).total_seconds())
 
-        # Only monitors that are healthy in the last 24 hours
-        queryset = queryset.filter_healthy(hours=24)
+        # ...and recently healthy.
+        queryset = queryset.filter_healthy(
+            hours=settings.MONITOR_HEALTHY_WINDOW_HOURS,
+            threshold=settings.MONITOR_HEALTHY_THRESHOLD,
+        )
 
         queryset = queryset.with_latest_entry(self.entry_model)
         return queryset
