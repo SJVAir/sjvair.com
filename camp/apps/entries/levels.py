@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional, Union, List, Dict, Tuple
 
@@ -67,26 +67,26 @@ class AQLevelMeta(type):
     _levels = {
         'GOOD': {
             'label': _('Good'),
-            'color': '#00ccff',
+            'color': '#00e400',
         },
         'MODERATE': {
             'label': _('Moderate'),
-            'color': '#00e400',
+            'color': '#ffff00',
             'guidance': _('Highly sensitive groups should stay indoors and avoid outdoor activities.'),
         },
         'UNHEALTHY_SENSITIVE': {
             'label': _('Unhealthy for Sensitive Groups'),
-            'color': '#ffff00',
+            'color': '#ff7e00',
             'guidance': _('Sensitive groups should stay indoors and avoid outdoor activities.'),
         },
         'UNHEALTHY': {
             'label': _('Unhealthy'),
-            'color': '#ff7e00',
+            'color': '#ff0000',
             'guidance': _('Everyone should reduce prolonged or heavy exertion.'),
         },
         'VERY_UNHEALTHY': {
             'label': _('Very Unhealthy'),
-            'color': '#ff0000',
+            'color': '#8f3f97',
             'guidance': _('Everyone should avoid prolonged or heavy exertion.'),
         },
         'HAZARDOUS': {

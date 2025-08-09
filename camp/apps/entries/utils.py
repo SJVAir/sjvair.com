@@ -1,12 +1,10 @@
-import secrets
-
 from datetime import datetime
 from functools import lru_cache
-from uuid import uuid4
 
 import pandas as pd
 
 from django.conf import settings
+from django.utils.text import slugify
 
 
 @lru_cache
@@ -42,7 +40,14 @@ def generate_export_path(monitor, start_date, end_date, ext='csv'):
     """
     now = datetime.utcnow()
     timestamp_path = now.strftime('%Y/%m')
-    filename = f'{monitor.pk.hex_grouped}_{start_date}_{end_date}.{ext}'
+    bits = [slugify(monitor.name)]
+    if hasattr(monitor, 'purple_id'):
+        bits.append(monitor.purple_id)
+    if hasattr(monitor, 'location_id'):
+        bits.append(monitor.location_id)
+    bits.extend([monitor.pk.hex_grouped, start_date, end_date])
+    filename = '_'.join([str(b) for b in bits])
+    filename = f'{filename}.{ext}'
     return f'exports/{timestamp_path}/{filename}'
 
 

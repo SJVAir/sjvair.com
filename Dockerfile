@@ -37,7 +37,6 @@ COPY requirements ./requirements/
 RUN pip install --upgrade pip
 RUN pip install setuptools==70.3.0 wheel packaging
 RUN pip install --no-cache-dir -r requirements/base.txt
-RUN pip install --no-cache-dir -r requirements/develop.txt
 
 # Copy the full project into the container
 COPY . .
@@ -46,11 +45,15 @@ COPY . .
 CMD ["bash"]
 
 
-# Web stage: Adds Node/Yarn for frontend builds
+# WEB CONTAINER
 FROM base AS web
 
-# Install Node 18.x and Yarn
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get update && apt-get install -y nodejs npm \
+    && apt-get update && apt-get install -y nodejs \
     && npm install --global yarn \
     && rm -rf /var/lib/apt/lists/*
+
+# TEST CONTAINER
+FROM base AS test
+
+RUN pip install --no-cache-dir -r requirements/develop.txt

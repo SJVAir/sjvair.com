@@ -23,7 +23,6 @@ class MonitorAdminForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         if self.instance and self.instance.pk:
-            print(self.instance.groups.all())
             self.fields['groups'].initial = self.instance.groups.all()
 
     def save(self, commit=True):
