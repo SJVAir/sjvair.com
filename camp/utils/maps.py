@@ -1,0 +1,541 @@
+import json
+import tempfile
+
+from dataclasses import dataclass
+from typing import List, Literal, Optional, Union
+
+from django.conf import settings
+from django.contrib.gis.geos import GEOSGeometry
+from django.utils import timezone
+
+import contextily as ctx
+import geopandas as gpd
+import matplotlib.patheffects as pe
+import matplotlib.pyplot as plt
+
+from shapely.geometry.base import BaseGeometry
+from shapely.geometry import box, mapping, shape, Point, Polygon, MultiPolygon
+
+
+from io import BytesIO
+
+# Set a contant cache directory to prevent it from being lost
+ctx.tile.set_cache_dir(f'{tempfile.tempdir}/contextily-cache_{timezone.now().strftime("%Y%m")}')
+
+# CRS Constants
+CRS_LATLON = 'EPSG:4326'
+CRS_WEBMERCATOR = 'EPSG:3857'
+
+
+@dataclass
+class MapElement:
+    geometry: BaseGeometry
+
+    fill_color: Optional[str] = None
+    alpha: Optional[float] = None
+
+    border_color: Optional[str] = None
+    border_width: float = 1.5
+
+    label: Optional[str] = None
+    label_position: Optional[str] = 'center'
+    label_color: str = 'black'
+    label_size: int = 10
+    label_weight: str = 'normal'  # or 'bold'
+    label_outline: bool = False  # If True, render white outline for visibility
+    label_ha: str = 'center'        # 'left', 'center', 'right'
+    label_va: str = 'center'        # 'top', 'center', 'bottom'
+
+    outline: bool = False
+    shadow: bool = False
+
+
+@dataclass
+class Marker(MapElement):
+    size: int = 100
+    shape: str = 'o'  # default: circle
+    fill_color: Optional[str] = 'blue'
+    alpha: Optional[float] = 1.0
+
+    border_color: Optional[str] = 'white'
+    border_width: float = 1.5
+
+    label_position: Optional[Literal[
+        'above', 'below', 'left', 'right'
+    ]] = 'center'
+
+    outline_color: str = 'black'
+    outline_alpha: float = 0.3
+    outline_width: float = 3.0
+
+    shadow_color: str = 'black'
+    shadow_alpha: float = 0.2
+    shadow_offset: tuple[float, float] = (1, -1)
+
+    def get_label_position(self) -> tuple[str, str, float, float]:
+        """
+        Returns ha (horizontalalignment), va (verticalalignment), dx, dy offsets for a given label position.
+
+        Returns:
+            (ha, va, dx, dy): tuple of alignment strings and float offsets
+        """
+        ha = 'center'
+        va = 'center'
+        dx = 0.0
+        dy = 0.0
+
+        OFFSET = 0.002
+        match self.label_position:
+            case 'above':
+                va = 'bottom'
+                dy = OFFSET
+            case 'below':
+                va = 'top'
+                dy = -OFFSET
+            case 'left':
+                ha = 'right'
+                dx = -OFFSET
+            case 'right':
+                ha = 'left'
+                dx = OFFSET
+            case _:
+                ha, va = 'center', 'center'
+
+        return ha, va, self.geometry.x + dx, self.geometry.y + dy
+
+
+@dataclass
+class Area(MapElement):
+    fill_color: Optional[str] = 'lightgray'
+    alpha: Optional[float] = 0.4
+
+    border_color: Optional[str] = 'black'
+    border_width: float = 1
+
+    label_position: Optional[Literal[
+        'top-left', 'top', 'top-right', 'left', 'center',
+        'right', 'bottom-left', 'bottom', 'bottom-right'
+    ]] = 'center'
+
+    outline_color: str = 'white'
+    outline_width: float = 2.0
+    outline_alpha: float = 1.0
+
+    shadow_color: str = 'black'
+    shadow_alpha: float = 0.2
+    shadow_offset: tuple[float, float] = (2, -2)
+
+    def get_label_position(self) -> tuple[str, str, float, float]:
+        """
+        Returns ha (horizontalalignment), va (verticalalignment), dx, dy offsets for a given label position.
+
+        Returns:
+            (ha, va, dx, dy): tuple of alignment strings and float offsets
+        """
+        minx, miny, maxx, maxy = self.geometry.bounds
+
+        match self.label_position:
+            case 'top-left':
+                x, y = (minx, maxy)
+                ha, va = 'left', 'top'
+            case 'top':
+                x, y = ((minx + maxx) / 2, maxy)
+                ha, va = 'center', 'top'
+            case 'top-right':
+                x, y = (maxx, maxy)
+                ha, va = 'right', 'top'
+            case 'left':
+                x, y = (minx, (miny + maxy) / 2)
+                ha, va = 'left', 'center'
+            case 'center':
+                x, y = ((minx + maxx) / 2, (miny + maxy) / 2)
+                ha, va = 'center', 'center'
+            case 'right':
+                x, y = (maxx, (miny + maxy) / 2)
+                ha, va = 'right', 'center'
+            case 'bottom-left':
+                x, y = (minx, miny)
+                ha, va = 'left', 'bottom'
+            case 'bottom':
+                x, y = ((minx + maxx) / 2, miny)
+                ha, va = 'center', 'bottom'
+            case 'bottom-right':
+                x, y = (maxx, miny)
+                ha, va = 'right', 'bottom'
+            case _:
+                x, y = self.geometry.centroid.x, self.geometry.centroid.y
+                ha, va = 'center', 'center'
+
+        return ha, va, x, y
+
+
+class StaticMap:
+    def __init__(
+        self,
+        width: int = 800,
+        height: int = 600,
+        dpi: int = 100,
+        buffer: Optional[float] = None,
+        basemap=ctx.providers.MapTiler.Basic,
+        crs: str = CRS_WEBMERCATOR,
+    ):
+        self.width = width
+        self.height = height
+        self.dpi = dpi
+        self.buffer = buffer
+
+        self.basemap = basemap
+        if self.basemap and self.basemap.get('name', '').startswith('MapTiler'):
+            self.basemap['key'] = settings.MAPTILER_API_KEY
+        # self.basemap['zoomOffset'] = 0
+
+        self.crs = crs
+        self.elements: List[MapElement] = []
+
+    @property
+    def areas(self):
+        return [e for e in self.elements if isinstance(e.geometry, (Polygon, MultiPolygon))]
+
+    @property
+    def markers(self):
+        return [e for e in self.elements if isinstance(e.geometry, Point)]
+
+    def add(self, element: MapElement):
+        element.geometry = to_shape(element.geometry)
+        self.elements.append(element)
+
+    def add_area_label(self, ax, area):
+        ha, va, x, y = area.get_label_position()
+
+        text_obj = ax.text(
+            x, y, area.label,
+            fontsize=area.label_size,
+            color=area.label_color,
+            weight=area.label_weight,
+            ha=ha, va=va,
+            zorder=6,
+        )
+
+        if area.label_outline:
+            text_obj.set_path_effects([
+                pe.Stroke(linewidth=3, foreground='white'),
+                pe.Normal(),
+            ])
+
+    def add_marker_label(self, ax, marker):
+        ha, va, x, y = marker.get_label_position()
+
+        text_obj = ax.text(
+            x, y, marker.label,
+            fontsize=marker.label_size,
+            color=marker.label_color,
+            weight=marker.label_weight,
+            ha=ha, va=va,
+            zorder=6,
+        )
+
+        if marker.label_outline:
+            text_obj.set_path_effects([
+                pe.Stroke(linewidth=3, foreground='white'),
+                pe.Normal(),
+            ])
+
+    def get_path_effects(self, element: MapElement):
+        effects = []
+
+        if element.outline:
+            effects.append(
+                pe.withStroke(
+                    linewidth=element.outline_width,
+                    foreground=element.outline_color,
+                    alpha=element.outline_alpha,
+                )
+            )
+
+        if element.shadow:
+            effects.append(
+                pe.withSimplePatchShadow(
+                    offset=element.shadow_offset,
+                    shadow_rgbFace=element.shadow_color,
+                    alpha=element.shadow_alpha,
+                )
+            )
+
+        return effects
+
+    def render(self, out_path: Optional[str] = None, format: Optional[str] = None):
+        if not self.elements:
+            raise ValueError('No map elements added.')
+
+        fig, ax = plt.subplots(
+            figsize=(self.width / self.dpi, self.height / self.dpi),
+            dpi=self.dpi
+        )
+        fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+        # Plot polygons
+        for area in self.areas:
+            gpd.GeoSeries([area.geometry]).plot(
+                ax=ax,
+                alpha=area.alpha if area.alpha is not None else 0.4,
+                facecolor=area.fill_color or 'gray',
+                edgecolor=area.border_color or 'black',
+                path_effects=self.get_path_effects(area),
+                linewidth=area.border_width,
+            )
+
+            if area.label:
+                self.add_area_label(ax, area)
+
+        # Plot points
+        for marker in self.markers:
+            x, y = marker.geometry.x, marker.geometry.y
+            ax.scatter(
+                x, y,
+                s=marker.size,
+                color=marker.fill_color or 'blue',
+                edgecolors=marker.border_color or 'white',
+                linewidths=marker.border_width,
+                marker=marker.shape,
+                path_effects=self.get_path_effects(marker),
+                zorder=3,
+            )
+
+            if marker.label:
+                self.add_marker_label(ax, marker)
+
+        # Set map bounds
+        geometries = [e.geometry for e in self.elements if e.geometry and not e.geometry.is_empty]
+        if not geometries:
+            raise ValueError('No valid geometries to render map.')
+
+        series = gpd.GeoSeries(geometries, crs=CRS_LATLON)
+        extent = self._compute_extent(series, buffer=self.buffer)
+        ax.set_xlim(extent[0], extent[2])
+        ax.set_ylim(extent[1], extent[3])
+        ax.axis('off')
+
+        if self.basemap:
+            ctx.add_basemap(ax, source=self.basemap, attribution=False, zoom_adjust=-1)
+
+        if out_path and not format:
+            format = out_path.split('.')[-1]
+        if not format:
+            format = 'png'
+
+        if out_path:
+            plt.savefig(out_path, format=format)
+            plt.close(fig)
+            return None
+        else:
+            buf = BytesIO()
+            plt.savefig(buf, format=format)
+            plt.close(fig)
+            buf.seek(0)
+            return buf.getvalue()
+
+    def _adjust_bounds_to_aspect(self, bounds):
+        minx, miny, maxx, maxy = bounds
+        current_aspect = (maxx - minx) / (maxy - miny)
+        target_aspect = self.width / self.height
+
+        if current_aspect > target_aspect:
+            # Add vertical padding
+            new_height = (maxx - minx) / target_aspect
+            center_y = (miny + maxy) / 2
+            miny = center_y - new_height / 2
+            maxy = center_y + new_height / 2
+        else:
+            # Add horizontal padding
+            new_width = (maxy - miny) * target_aspect
+            center_x = (minx + maxx) / 2
+            minx = center_x - new_width / 2
+            maxx = center_x + new_width / 2
+
+        return (minx, miny, maxx, maxy)
+
+    def _compute_extent(
+        self,
+        series: gpd.GeoSeries,
+        buffer: Optional[float] = None,
+    ) -> tuple[float, float, float, float]:
+        """
+        Compute extent bounds for rendering from a GeoSeries,
+        applying buffer and adjusting for aspect ratio.
+
+        Args:
+            series: A GeoSeries of geometries in EPSG:3857.
+            buffer: Amount of padding in map units (>=1.0 = meters, <1.0 = percent of extent).
+                Defaults to:
+                - 500m for a single Point
+                - 10% for all others
+
+        Returns:
+            Bounds tuple (minx, miny, maxx, maxy), adjusted to match image aspect ratio.
+        """
+        if len(series) == 1 and series.iloc[0].geom_type == 'Point':
+            buf = buffer if buffer is not None else 500
+            x, y = series.iloc[0].x, series.iloc[0].y
+            bounds = box(x - buf, y - buf, x + buf, y + buf).bounds
+        else:
+            minx, miny, maxx, maxy = series.total_bounds
+            if buffer is None:
+                buffer = 0.10
+            if buffer <= 1.0:
+                pad_x = (maxx - minx) * buffer
+                pad_y = (maxy - miny) * buffer
+            else:
+                pad_x = pad_y = buffer
+            bounds = (minx - pad_x, miny - pad_y, maxx + pad_x, maxy + pad_y)
+
+        return self._adjust_bounds_to_aspect(bounds)
+
+
+def plot_overlay_map(
+    overlays: list,
+    base_layers: list = None,
+    out_path: str = None,
+    width: int = 3600,
+    height: int = 3600,
+    buffer: float = 0.3,
+):
+    """
+    Render a static map with translucent overlay geometries and bold base outlines.
+
+    Parameters:
+        overlays (list): List of geometries to render with fill + thin border
+        base_layers (list): Optional list of geometries to render with thick border only
+        out_path (str): File path to save the output image
+        width (int): Image width in pixels
+        height (int): Image height in pixels
+        buffer (float): Geometry buffer to pad around map extent
+    """
+    static_map = StaticMap(width=width, height=height, buffer=buffer)
+
+    for geometry in overlays:
+        static_map.add(Area(
+            geometry=geometry,
+            fill_color='red',
+            border_color='dimgray',
+            border_width=1,
+            alpha=0.4,
+        ))
+
+    if base_layers:
+        for geometry in base_layers:
+            static_map.add(Area(
+                geometry=geometry,
+                fill_color='none',
+                border_color='black',
+                border_width=4,
+            ))
+
+    static_map.render(out_path)
+    return static_map
+
+
+def to_shape(geometry):
+    if isinstance(geometry, GEOSGeometry):
+        geometry = shape(json.loads(geometry.geojson))
+    return gpd.GeoSeries([geometry], crs=CRS_LATLON).to_crs(CRS_WEBMERCATOR).iloc[0]
+
+
+def to_geos(geometry):
+    """
+    Convert a Shapely geometry or GEOSGeometry into a GEOSGeometry,
+    ensuring it's in EPSG:4326 (WGS84).
+
+    Args:
+        geometry: A Shapely or GEOS geometry object.
+
+    Returns:
+        A GEOSGeometry object in EPSG:4326.
+    """
+    if isinstance(geometry, GEOSGeometry):
+        return geometry
+
+    if isinstance(geometry, BaseGeometry):
+        return GEOSGeometry(json.dumps(mapping(geometry)), srid=4326)
+
+    raise TypeError(f'Unsupported geometry type: {type(geometry)}')
+
+
+def from_geometries(
+    *geometries: Union[GEOSGeometry, BaseGeometry],
+
+    width: int = 800,
+    height: int = 600,
+    dpi: int = 100,
+    buffer: Optional[float] = None,
+
+    marker_size: int = Marker.size,
+    marker_shape: str = Marker.shape,
+    marker_fill_color: Optional[str] = Marker.fill_color,
+    marker_border_color: Optional[str] = Marker.border_color,
+    marker_border_width: float = Marker.border_width,
+    marker_alpha: Optional[float] = Marker.alpha,
+    marker_outline: bool = Marker.outline,
+    marker_shadow: bool = Marker.shadow,
+
+    area_fill_color: Optional[str] = Area.fill_color,
+    area_border_color: Optional[str] = Area.border_color,
+    area_border_width: float = Area.border_width,
+    area_alpha: Optional[float] = Area.alpha,
+    area_outline: bool = Area.outline,
+    area_shadow: bool = Area.shadow,
+
+    out_path: Optional[str] = None,
+    format: Optional[str] = None,
+):
+    """
+    Render a static map from a list of geometries and return a BytesIO buffer or save to disk.
+
+    Args:
+        gdf: A GeoDataFrame that we want to render.
+        width: Image width in pixels.
+        height: Image height in pixels.
+        dpi: Dots per inch for output image.
+        buffer: Amount of buffer space surrounding the geometries on the map (<=1.0 for percent, else meters).
+        alpha: Polygon fill transparency.
+        edgecolor: Color for polygon outlines.
+        point_color: Color for points.
+        out_path: If given, save to this path. Otherwise returns BytesIO buffer.
+        format: If given, create image in this format. Otherwise, derive from out_path or default to png
+
+    Returns:
+        BytesIO buffer of PNG if out_path is None, else None.
+    """
+    # Make sure input is geographic
+
+    static_map = StaticMap(width=width, height=height, dpi=dpi, buffer=buffer)
+
+    for geometry in geometries:
+        if geometry.geom_type == 'Point':
+            static_map.add(Marker(
+                geometry=geometry,
+                size=marker_size,
+                shape=marker_shape,
+
+                fill_color=marker_fill_color,
+                border_color=marker_border_color,
+                border_width=marker_border_width,
+                alpha=marker_alpha,
+
+                outline=marker_outline,
+                shadow=marker_shadow,
+            ))
+        elif geometry.geom_type in ('Polygon', 'MultiPolygon'):
+            static_map.add(Area(
+                geometry=geometry,
+
+                fill_color=area_fill_color,
+                border_color=area_border_color,
+                border_width=area_border_width,
+                alpha=area_alpha,
+
+                outline=area_outline,
+                shadow=area_shadow,
+            ))
+
+    return static_map.render(out_path=out_path, format=format)
+

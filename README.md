@@ -71,13 +71,13 @@ San Joaquin Valley Air Quality Monitoring Platform
 ## 🧪 Running Tests
 
 ```bash
-docker compose --profile test run --rm test
+docker compose run --rm test
 ```
 
 Or with flags:
 
 ```bash
-docker compose --profile test run --rm test pytest -s -x -k "test_something"
+docker compose run --rm test pytest -s -x -k "test_something"
 ```
 
 ---
@@ -115,6 +115,26 @@ docker compose exec web python manage.py migrate
 
 ```bash
 docker compose exec web bash
+```
+
+### Import all regional data
+
+```bash
+docker compose exec web bash -c "
+  python manage.py migrate regions zero &&
+  python manage.py migrate regions &&
+  python manage.py import_counties &&
+  python manage.py import_census_tracts &&
+  python manage.py import_cities &&
+  python manage.py import_school_districts &&
+  python manage.py import_zipcodes &&
+  python manage.py import_congressional_districts &&
+  python manage.py import_state_assembly &&
+  python manage.py import_state_senate &&
+  python manage.py import_urban_areas &&
+  python manage.py import_land_use &&
+  python manage.py import_protected_areas
+"
 ```
 
 ---

@@ -63,6 +63,7 @@ class EndpointTests(TestCase):
         request = self.factory.get(url)
         response = current_data(request, **kwargs)
         content = get_response_data(response)
+        print(content)
         assert response.status_code == 200
 
     def test_closest_monitor(self):

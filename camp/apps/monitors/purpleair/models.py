@@ -104,6 +104,8 @@ class PurpleAir(Monitor):
         },
     }
 
+    grade = Monitor.Grade.LCS
+
     # Legacy
     CALIBRATE = True
     SENSORS = ['a', 'b']

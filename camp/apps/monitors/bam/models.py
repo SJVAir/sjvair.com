@@ -69,6 +69,8 @@ class BAM1022(Monitor):
         },
     }
 
+    grade = Monitor.Grade.FEM
+
     class Meta:
         verbose_name = 'BAM 1022'
 

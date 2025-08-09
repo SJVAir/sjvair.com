@@ -6,6 +6,8 @@ x-build-base: &build-base
     - .:/app
   env_file:
     - .env
+  networks:
+    - sjvair-net
   depends_on:
     db:
       condition: service_healthy
@@ -14,6 +16,13 @@ x-build-base: &build-base
     cache:
       condition: service_healthy
 
+networks:
+  sjvair-net:
+    driver: bridge
+    driver_opts:
+      # Prevent HTTPS timeouts to Azure blob storage by lowering MTU below VPN/tunnel limit
+      com.docker.network.driver.mtu: 1300
+
 services:
   db:
     image: postgis/postgis:17-3.5
@@ -21,6 +30,8 @@ services:
       POSTGRES_DB: sjvair
       POSTGRES_USER: sjvair
       POSTGRES_PASSWORD: changeme
+    networks:
+      - sjvair-net
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -33,6 +44,8 @@ services:
 
   queue:
     image: redis:8-alpine
+    networks:
+      - sjvair-net
     ports:
       - "6379:6379"
     healthcheck:
@@ -43,6 +56,8 @@ services:
 
   cache:
     image: memcached:1.6-alpine
+    networks:
+      - sjvair-net
     ports:
       - "11211:11211"
     healthcheck:
@@ -64,15 +79,18 @@ services:
   worker-primary:
     <<: *build-base
     command: python manage.py djangohuey --simple --queue primary
-    profiles: ["default", "worker-primary", "workers"]
+    profiles: ["default", "workers"]
 
   worker-secondary:
     <<: *build-base
     command: python manage.py djangohuey --simple --queue secondary
-    profiles: ["worker-secondary", "workers"]
+    profiles: ["workers"]
 
   test:
     <<: *build-base
+    build:
+      context: .
+      target: test
     command: pytest
     env_file:
       - .env.test
