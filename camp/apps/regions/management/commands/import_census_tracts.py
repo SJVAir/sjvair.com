@@ -109,7 +109,7 @@ class Command(BaseCommand):
         print('\nLoading 2020 tracts...')
         print(f'-> {TRACTS_2020_URL}')
         gdf = (geodata
-            .gdf_from_zip(TRACTS_2020_URL, verify=False, limit_to_counties=True)
+            .gdf_from_url(TRACTS_2020_URL, verify=False, limit_to_counties=True)
             .rename(columns={
                 'STATEFP': 'statefp',
                 'COUNTYFP': 'countyfp',
@@ -139,7 +139,7 @@ class Command(BaseCommand):
         print('\nLoading 2010 tracts...')
         print(f'-> {TRACTS_2010_URL}')
         gdf = (geodata
-            .gdf_from_zip(TRACTS_2010_URL, verify=False, limit_to_counties=True)
+            .gdf_from_url(TRACTS_2010_URL, verify=False, limit_to_counties=True)
             .rename(columns={
                 'STATEFP10': 'statefp',
                 'COUNTYFP10': 'countyfp',

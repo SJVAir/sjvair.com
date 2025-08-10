@@ -1,5 +1,6 @@
 import hashlib
 import tempfile
+import zipfile
 
 from pathlib import Path
 from typing import Optional, Sequence, Union
@@ -7,9 +8,10 @@ from typing import Optional, Sequence, Union
 import ckanapi
 import geopandas as gpd
 import pandas as pd
-import requests
 
 from shapely.geometry.base import BaseGeometry
+
+from camp.utils.http import stream_to_disk
 
 GEODATA_CACHE_DIR = Path(tempfile.gettempdir()) / 'geodata-cache'
 GEODATA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -113,6 +115,7 @@ def filter_by_overlap(
     mask = gdf.geometry.apply(sufficient_overlap)
     return gdf[mask].copy().reset_index(drop=True)
 
+
 def filter_by_counties(
     gdf: gpd.GeoDataFrame,
     threshold: float = 0.5
@@ -176,29 +179,43 @@ def gdf_from_ckan(
     This function queries a CKAN instance (e.g. data.ca.gov) for a dataset by ID,
     locates the specified resource (typically a shapefile), downloads it, and
     loads it into a GeoDataFrame in the specified coordinate reference system.
-
-    Args:
-        dataset_id: The CKAN dataset/package ID or slug.
-        server: The CKAN server hostname (default is 'data.ca.gov').
-        resource_name: The display name of the resource to fetch (default is 'Shapefile').
-        crs: Coordinate reference system to reproject the data to (default is 'EPSG:4326').
-        verify: Whether to verify SSL certificates when downloading (default: True).
-
-    Returns:
-        GeoDataFrame containing the spatial data from the requested CKAN resource.
-
-    Raises:
-        ValueError: If the resource with the given name is not found in the dataset.
-        FileNotFoundError: If the shapefile download fails.
-        ValueError: If the shapefile cannot be read or parsed.
     """
     ckan = ckanapi.RemoteCKAN(f'https://{server}')
     package = ckan.action.package_show(id=dataset_id)
     resource = next((r for r in package['resources'] if r['name'] == resource_name), None)
     if not resource:
         raise ValueError(f'\nResource not found: {resource_name}')
+
+    return gdf_from_url(
+        url=resource['url'],
+        encoding=encoding,
+        crs=crs,
+        verify=verify,
+        string_fields=string_fields,
+        limit_to_counties=limit_to_counties,
+        threshold=threshold,
+    )
+
+
+def gdf_from_url(
+    url: str,
+    verify: bool = True,
+    encoding: str = 'utf-8',
+    crs: str = 'EPSG:4326',
+    string_fields: Union[bool, Sequence[str]] = False,
+    limit_to_counties: bool = False,
+    threshold: float = 0.5,
+) -> gpd.GeoDataFrame:
+    """
+        Get a GDF from a URL.
+    """
+    url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+    cache_path = GEODATA_CACHE_DIR / f'{url_hash}.zip'
+    if not cache_path.exists():
+        stream_to_disk(url=url, dest=cache_path, verify=verify)
+
     return gdf_from_zip(
-        zipfile=resource['url'],
+        path=cache_path,
         encoding=encoding,
         crs=crs,
         verify=verify,
@@ -209,7 +226,7 @@ def gdf_from_ckan(
 
 
 def gdf_from_zip(
-    zipfile: str,
+    path: str,
     verify: bool = True,
     encoding: str = 'utf-8',
     crs: str = 'EPSG:4326',
@@ -218,70 +235,14 @@ def gdf_from_zip(
     threshold: float = 0.5
 ) -> gpd.GeoDataFrame:
     """
-    Loads a GeoDataFrame from a zipfile path or URL.
-
-    Args:
-        zipfile: Path to local zipfile or URL pointing to zip shapefile.
-        crs: Coordinate reference system to convert to.
-        verify: Whether to verify SSL certificates (only used if zipfile is a URL).
-
-    Returns:
-        GeoDataFrame in the specified CRS.
-
-    Raises:
-        FileNotFoundError: If the remote file cannot be downloaded.
-        ValueError: If reading the shapefile fails.
+    Loads a GeoDataFrame from a zipfile path.
     """
-    if zipfile.startswith('http'):
-        # Generate safe cache filename using SHA256 hash of the URL
-        url_hash = hashlib.sha256(zipfile.encode()).hexdigest()[:16]
-        cache_path = GEODATA_CACHE_DIR / f'{url_hash}.zip'
+    with zipfile.ZipFile(path) as z:
+        if bad := z.testzip():
+            path.unlink(missing_ok=True)
+            raise ValueError(f'Corrupt ZIP member: {bad}')
 
-        if cache_path.exists():
-            print(f'\nUsing cached shapefile...')
-            print(f'-> {cache_path}')
-            return gdf_from_zip(
-                zipfile=str(cache_path),
-                encoding=encoding,
-                crs=crs,
-                string_fields=string_fields,
-                limit_to_counties=limit_to_counties,
-                threshold=threshold,
-            )
-
-        retries = requests.adapters.Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[500, 502, 503, 504, 429, 404, 400, 202],
-            allowed_methods=['GET']
-        )
-        adapter = requests.adapters.HTTPAdapter(max_retries=retries)
-        session = requests.Session()
-        session.mount('http://', adapter)
-        session.mount('https://', adapter)
-
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (compatible; SJVAir Downloader)',
-            'Accept': '*/*',
-        }
-
-        print('\nDownloading file:')
-        print(f'-> URL: {zipfile}')
-        print(f'-> Dest: {cache_path}\n')
-        response = session.get(zipfile, verify=verify, headers=headers)
-        response.raise_for_status()
-
-        cache_path.write_bytes(response.content)
-        return gdf_from_zip(
-            zipfile=str(cache_path),
-            encoding=encoding,
-            crs=crs,
-            string_fields=string_fields,
-            limit_to_counties=limit_to_counties,
-            threshold=threshold,
-        )
-
-    gdf = gpd.read_file(f'zip://{zipfile}', encoding=encoding).to_crs(crs)
+    gdf = gpd.read_file(f'zip://{path}', encoding=encoding).to_crs(crs)
 
     if string_fields is True:
         gdf = stringify_gdf_fields(gdf)
