@@ -1,4 +1,3 @@
-from django.contrib.gis.db import models as gis_models
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -223,8 +222,5 @@ class Record(models.Model):
     # percent per census tract of those who identify as non-Hispanic "other" or as multiple races 
     pop_other = models.IntegerField(_('Other Ethnicity'), null=True, help_text=_('Number of people per census tract of those who identify as non-Hispanic "other" or as multiple races'))
     pop_other_p = models.FloatField(_('Other Ethnicity Percentile'), null=True)
-    
-    # #geometric shape of tract
-    # geometry = gis_models.MultiPolygonField(_('Tract Shape'), srid=4326, help_text=('Geometric shape of this tract'))
     
     boundary = models.OneToOneField('regions.Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='record_boundary')

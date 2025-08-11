@@ -68,8 +68,11 @@ def normalize(name):
 
 def get_ces4() -> pd.DataFrame:
     counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
-    gdf = geodata.gdf_from_zip('https://gis.data.ca.gov/api/download/v1/items/b6e0a01c423b489f8d98af641445da28/shapefile?layers=0')
-    gdf['Tract'] = gdf['tract']
+    gdf = geodata.gdf_from_ckan(
+        dataset_id='calenviroscreen-4-0-results1',
+        resource_name='Shapefile'
+        )
+    gdf.rename(columns={'tract': 'Tract'}, inplace=True)
     gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.25)
     gdf['Tract'] = gdf['Tract'].astype(str).str.zfill(11)
 
@@ -165,7 +168,6 @@ def to_db(geo, params, version):
             if normalize(col) in params
             }
         inputs.pop('objectid')
-        
         if version == 2020:
             inputs['tract'] = curr['GEOID_TRACT_20']
         external_id = inputs['tract']
@@ -177,7 +179,6 @@ def to_db(geo, params, version):
             continue
         except Record.DoesNotExist:
             pass     
-        
         region = Region.objects.get(type=Region.Type.TRACT,
             external_id=external_id,
             boundaries__version=version
@@ -191,6 +192,7 @@ def to_db(geo, params, version):
         record.save()
         records.append(record)
     return records
+  
     
 class Command(BaseCommand):
     help = 'Analyze how CES4 tracts (2010) map to 2020 census tracts using the relationship file'
@@ -237,8 +239,8 @@ class Command(BaseCommand):
         params = {normalize(f.name): f.name for f in Record._meta.get_fields()}
         ces4 = get_ces4()
         ces4_2020 = build_ces4_2020(ces4, rel, tracts_2020)
-        q = to_db(ces4, params, 2010)
-        r = to_db(ces4_2020, params, 2020)
+        ces_2010 = to_db(ces4, params, 2010)
+        ces_2020 = to_db(ces4_2020, params, 2020)
         
 
         print('\n--- Mapping Summary ---')
@@ -250,6 +252,7 @@ class Command(BaseCommand):
 
         print('\n--- Split Example ---')
         show_split_example(ces4, ces4_2020, rel)
-
-        # import code
-        # code.interact(local=locals())
+        
+        print('\n--- CES4 Records Added ---')
+        print(f'CES4 2010: {len(ces_2010)} Records Added')
+        print(f'CES4 2020: {len(ces_2020)} Records Added')

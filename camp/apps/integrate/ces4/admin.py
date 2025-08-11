@@ -6,7 +6,6 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from .models import Record
-from camp.apps.regions.admin import BoundaryInline
 
 
 #Filter for UI, set default as percentile bounds 0-100
@@ -20,12 +19,10 @@ CustomNumericRangeFilter = (
 
 @admin.register(Record)
 class Ces4Admin(OSMGeoAdmin):
-    # inlines = [BoundaryInline]
     list_display = [
         'tract','pollution_p', 'pol_ozone',
         'pol_ozone_p', 'pol_pm', 'pol_pm_p', 'char_asthma', 'char_asthma_p', 
         ]
-    # readonly_fields = ['boundary']
     list_filter = [
         ('pollution_p', CustomNumericRangeFilter), ('pol_ozone_p', CustomNumericRangeFilter),
         ('pol_pm_p', CustomNumericRangeFilter), ('char_asthma_p', CustomNumericRangeFilter),
