@@ -3,21 +3,16 @@ import uuid
 
 from datetime import datetime
 
-from resticus import generics, http
+from resticus import generics
 
 from django import forms
 from django.contrib.gis.db.models.functions import Distance
-from django.contrib.gis.geos import GEOSGeometry, Point
-from django.contrib.gis.measure import D
-from django.core.cache import cache
 from django.db.models import QuerySet
-from django.http import Http404, JsonResponse
-from django.shortcuts import get_object_or_404
 from django.utils.functional import cached_property
 
 from camp.apps.monitors.models import Entry, Monitor
 from camp.utils.forms import LatLonForm
-from camp.utils.views import get_view_cache_key
+from camp.utils.views import CachedEndpointMixin
 from .filters import EntryFilter, MonitorFilter
 from .serializers import EntrySerializer, MonitorSerializer
 from ..endpoints import CSVExport
@@ -36,27 +31,10 @@ class MonitorMixin:
         return self.request.monitor
 
 
-class MonitorList(MonitorMixin, generics.ListEndpoint):
+class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
+    cache_timeout = 90
     filter_class = MonitorFilter
     paginate = False
-
-    def get(self, request, *args, **kwargs):
-        cache_key = get_view_cache_key(self)
-
-        clear_cache = '_cc' in request.GET
-        if clear_cache:
-            cache.delete(cache_key)
-        else:
-            data = cache.get(cache_key)
-            if data is not None:
-                return data
-
-        response = super().get(request, *args, **kwargs)
-
-        # cache for 90 seconds, but we have a task to
-        # refresh the cache every 60 seconds
-        cache.set(cache_key, response, 90)
-        return response
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -64,11 +42,9 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
         queryset = queryset.exclude(airgradient__isnull=False)
         return queryset
 
-    def get_cache_key(self):
-        key = str(self.__class__)
 
-
-class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
+class MonitorDetail(CachedEndpointMixin, MonitorMixin, generics.DetailEndpoint):
+    cache_timeout = 60
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
 

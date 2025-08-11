@@ -16,9 +16,8 @@ from camp.apps.entries.models import BaseEntry
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
-from camp.apps.qaqc.models import HealthCheck
 from camp.utils.forms import LatLonForm
-from camp.utils.views import get_view_cache_key
+from camp.utils.views import CachedEndpointMixin
 
 from .filters import MonitorFilter, get_entry_filterset
 from .forms import EntryExportForm
@@ -73,27 +72,12 @@ class EntryMixin(EntryTypeMixin):
         return queryset
 
 
-class MonitorList(MonitorMixin, generics.ListEndpoint):
+class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
+    cache_refresh = True
+    cache_refresh_name = 'api:v2:monitors:monitor-list'
+    cache_timeout = 90
     filter_class = MonitorFilter
     paginate = False
-
-    def get(self, request, *args, **kwargs):
-        cache_key = get_view_cache_key(self)
-
-        clear_cache = '_cc' in request.GET
-        if clear_cache:
-            cache.delete(cache_key)
-        else:
-            data = cache.get(cache_key)
-            if data is not None:
-                return data
-
-        response = super().get(request, *args, **kwargs)
-
-        # cache for 90 seconds, but we have a task to
-        # refresh the cache every 60 seconds
-        cache.set(cache_key, response, 90)
-        return response
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -150,7 +134,10 @@ class MonitorMetaEndpoint(Endpoint):
         }}
 
 
-class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
+class MonitorDetail(CachedEndpointMixin, MonitorMixin, generics.DetailEndpoint):
+    cache_timeout = 60
+    cache_refresh = False
+
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
     serializer_class = MonitorSerializer
@@ -204,7 +191,12 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         return super().serialize(source, fields, include, exclude, fixup)
 
 
-class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
+class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
+    cache_refresh = True
+    cache_refresh_kwargs = [{'entry_type': E.entry_type} for E in BaseEntry.get_subclasses()]
+    cache_refresh_name = 'api:v2:monitors:current-data'
+    cache_timeout = 90
+
     paginate = False
     serializer_class = MonitorSerializer
 
