@@ -75,10 +75,8 @@ def to_db(curr, date, is_final):
     """
     #If the county is not within the SJV return it does not need to be added
     if County.in_SJV(curr.geometry):
-        geometry = GEOSGeometry(curr.geometry.wkt, srid=4326)
-        if geometry.geom_type == 'Polygon':
-            geometry = to_multipolygon(geometry)     
-        start = parse_timestamp(curr.Start)
+        geometry = to_multipolygon(geometry)     
+        start = parse_timestamp(curr.Start) 
         end = parse_timestamp(curr.End)
         smoke = Smoke(
             date=date,
