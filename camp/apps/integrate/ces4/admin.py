@@ -2,6 +2,8 @@ from rangefilter.filters import NumericRangeFilterBuilder
 
 from django.contrib.gis import admin
 from django.contrib.gis.admin import OSMGeoAdmin
+from django.urls import reverse
+from django.utils.html import format_html
 
 from .models import Record
 from camp.apps.regions.admin import BoundaryInline
@@ -18,7 +20,7 @@ CustomNumericRangeFilter = (
 
 @admin.register(Record)
 class Ces4Admin(OSMGeoAdmin):
-    inlines = [BoundaryInline]
+    # inlines = [BoundaryInline]
     list_display = [
         'tract','pollution_p', 'pol_ozone',
         'pol_ozone_p', 'pol_pm', 'pol_pm_p', 'char_asthma', 'char_asthma_p', 
@@ -30,6 +32,16 @@ class Ces4Admin(OSMGeoAdmin):
         ]
     ordering = ('-ci_score_p', )
     search_fields = ['tract']
+    readonly_fields = ['link_to_boundary']
+    def link_to_boundary(self, instance):
+        region = instance.boundary.region
+        link = reverse("admin:regions_region_change", args=[region.pk])
+        return format_html(
+            '<a href="{}">{}</a>',
+            link,
+            instance.boundary,
+        )
+    link_to_boundary.short_description = "Boundary Link"
         
     def has_add_permission(self, request, obj=None):
         return False

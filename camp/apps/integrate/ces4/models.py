@@ -227,4 +227,4 @@ class Record(models.Model):
     # #geometric shape of tract
     # geometry = gis_models.MultiPolygonField(_('Tract Shape'), srid=4326, help_text=('Geometric shape of this tract'))
     
-    # boundary = models.OneToOneField('regions.Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='record_boundary')
+    boundary = models.OneToOneField('regions.Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='record_boundary')

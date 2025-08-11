@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+import re
 
 import esri2gpd
 import geopandas as gpd
@@ -8,6 +9,7 @@ import requests
 
 from django.core.management.base import BaseCommand
 
+from camp.apps.integrate.ces4.models import Record
 from camp.apps.regions.models import Region, Boundary
 from camp.utils import geodata
 
@@ -31,6 +33,37 @@ def get_relationships(refresh: bool = False) -> pd.DataFrame:
     df = pd.read_csv(CACHE_PATH, dtype=str, sep='|')
     print(f'Loaded {len(df):,} rows from relationship file')
     return df
+
+
+def normalize(name):
+    sub = {
+        'ACS2019Tot': 'population', # convert to a readable variable
+        '_pct': '_p', # 'White_pct' -> _p
+        'A_1': '_p', # 'Native_A_1' -> native_p
+        '10_6_': '10_64_', #'Pop_10_6_1' -> pop_10_64
+        'ly__1': 'ly_65_p', # 'Elderly__1' ->pop_65
+        'Pop_': '_', # 'Pop_10_64_' -> pop_10_64 
+        'pop_': '_', # rm pop as a model label, ex: pop_other
+        '_10': '10', # to prevent _1 catching _10 int _p0
+        '_1': '_p', # some percentiles in shp file are labaeled with _1
+        'Sco': '_s', # PopCharSco -> popchar_s
+        'Amer': '', #'Asian_Amer' -> asian
+        'Ame': '', #'Native_Ame' -> native
+        'Am': '', # rm Am from 'Asian_Am_1' and 'African_Am'
+        'n_u': 'n', # rm _u specifically from 'Children_u', _u catches char_unemp
+        'Children': '10', # replace Children with 10, matches with pop_10, for under 10
+        'Elderly': '', # convert elderly to pop_65, aka no 'Elderly'
+        'African': 'black', # short hand African_am to black
+        '_Mult': '', # standardize Multiple ethnicities to other only
+        '_Mu': '', # _Mu ==_Mult in this case also
+        'pol_': '', # rm class label
+        'popchar_':'popchar', #to prevent the next char_ from catching  popchar_s/p
+        'char_': '', #rm class label
+        '_': '', #strip all '_'
+    }
+    for key, value in sub.items():
+            name = re.sub(key, value, name)     
+    return name.lower() # lower all bc some input columns have captialization.
 
 
 def get_ces4() -> pd.DataFrame:
@@ -100,7 +133,6 @@ def build_ces4_2020(ces4: pd.DataFrame, rel: pd.DataFrame, tracts_2020: pd.DataF
     return gpd.GeoDataFrame(out, geometry='geometry', crs=tracts_2020.crs)
 
 
-
 def show_split_example(ces4, ces4_2020, rel, col='CIscore'):
     rel = rel.copy()
     rel['GEOID_TRACT_10'] = rel['GEOID_TRACT_10'].astype(str).str.zfill(11)
@@ -123,6 +155,43 @@ def show_split_example(ces4, ces4_2020, rel, col='CIscore'):
     print(f'\nWeighted average value applied to 2020 tracts:\n{value_2020}')
 
 
+def to_db(geo, params, version):
+    records = []
+    for x in range(len(geo)):
+        curr = geo.iloc[x]       
+        inputs = {
+            params[normalize(col)]:curr[col] 
+            for col in geo.columns 
+            if normalize(col) in params
+            }
+        inputs.pop('objectid')
+        
+        if version == 2020:
+            inputs['tract'] = curr['GEOID_TRACT_20']
+        external_id = inputs['tract']
+        try:
+            Record.objects.get(
+                tract=external_id,
+                boundary__version=version,
+            ) 
+            continue
+        except Record.DoesNotExist:
+            pass     
+        
+        region = Region.objects.get(type=Region.Type.TRACT,
+            external_id=external_id,
+            boundaries__version=version
+            )
+        boundary = region.boundaries.get(version=version)       
+        record, created = Record.objects.update_or_create(
+            objectid=external_id + '_' + str(version),
+            defaults=inputs,
+        )
+        record.boundary = boundary            
+        record.save()
+        records.append(record)
+    return records
+    
 class Command(BaseCommand):
     help = 'Analyze how CES4 tracts (2010) map to 2020 census tracts using the relationship file'
 
@@ -165,13 +234,11 @@ class Command(BaseCommand):
         reverse_counts = rel['GEOID_TRACT_20'].value_counts()
         many_to_one = reverse_counts[reverse_counts > 1].count()
 
-        from camp.apps.integrate.ces4.models import Record
-        from camp.apps.integrate.ces4.data import Ces4Data
-        params = {Ces4Data.normalize(f.name): f.name for f in Record._meta.get_fields()}
+        params = {normalize(f.name): f.name for f in Record._meta.get_fields()}
         ces4 = get_ces4()
         ces4_2020 = build_ces4_2020(ces4, rel, tracts_2020)
-        q = Ces4Data.to_db(ces4, params, 2010)
-        r = Ces4Data.to_db(ces4_2020, params, 2020)
+        q = to_db(ces4, params, 2010)
+        r = to_db(ces4_2020, params, 2020)
         
 
         print('\n--- Mapping Summary ---')

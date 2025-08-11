@@ -66,9 +66,5 @@ class RegionAdmin(OSMGeoAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-    def save_model(self, request, obj, form, change):
-        messages.add_message(request, messages.WARNING, "The next message is a lie:")
-        pass
-
-    def save_formset(self, request, form, formset, change):
-        pass
+    def has_change_permission(self, request, obj=None):
+        return False
