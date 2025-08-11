@@ -32,7 +32,10 @@ class MonitorMixin:
 
 
 class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
+    cache_refresh = True
+    cache_refresh_name = 'api:v1:monitors:monitor-list'
     cache_timeout = 90
+
     filter_class = MonitorFilter
     paginate = False
 
@@ -44,7 +47,9 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
 
 
 class MonitorDetail(CachedEndpointMixin, MonitorMixin, generics.DetailEndpoint):
+    cache_refresh = False
     cache_timeout = 60
+
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
 
