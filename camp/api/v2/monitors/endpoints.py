@@ -76,6 +76,7 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
     cache_refresh = True
     cache_refresh_name = 'api:v2:monitors:monitor-list'
     cache_timeout = 90
+
     filter_class = MonitorFilter
     paginate = False
 
@@ -86,6 +87,13 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
 
 
 class MonitorMetaEndpoint(Endpoint):
+    def get_default_pollutant(self):
+        display = settings.DEFAULT_POLLUTANT
+        valid = [E.entry_type for E in BaseEntry.get_subclasses()]
+        if display in valid:
+            return display
+        return 'pm25'
+
     def get_monitors(self):
         payload = {}
 
@@ -126,9 +134,9 @@ class MonitorMetaEndpoint(Endpoint):
             }
         return payload
 
-
     def get(self, request, *args, **kwargs):
         return {'data': {
+            'default_pollutant': self.get_default_pollutant(),
             'monitors': self.get_monitors(),
             'entries': self.get_entries()
         }}
