@@ -1,6 +1,11 @@
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon as GEOSMultiPolygon
 from shapely.geometry import Polygon, MultiPolygon
 
+# Common EPSG codes
+EPSG_LATLON = 4326
+EPSG_WEBMERCATOR = 3857
+EPSG_CALIFORNIA_ALBERS = 3310
+
 
 def make_valid(geometry: GEOSGeometry) -> GEOSGeometry:
     """
@@ -10,6 +15,7 @@ def make_valid(geometry: GEOSGeometry) -> GEOSGeometry:
     """
     geom = GEOSGeometry(geometry.wkt)  # Strip Z/M if present
     return geom if geom.valid else geom.make_valid()
+
 
 def to_multipolygon(geom, srid=4326):
     """

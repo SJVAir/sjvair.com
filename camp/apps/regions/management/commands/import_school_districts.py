@@ -12,7 +12,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         print('\n--- Importing School Districts ---')
-        gdf = geodata.gdf_from_ckan('california-school-district-areas-2023-24', limit_to_counties=True)
+        gdf = geodata.gdf_from_ckan('california-school-district-areas-2023-24', limit_to_region=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():

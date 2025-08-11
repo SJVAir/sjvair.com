@@ -22,6 +22,9 @@ class JSONEncoder(ResticusJSONEncoder):
         if isinstance(obj, (float, np.floating)) and (math.isnan(obj) or math.isinf(obj)):
             return None
 
+        if isinstance(obj, np.number):
+            return obj.item()
+
         return super().default(obj)
 
 

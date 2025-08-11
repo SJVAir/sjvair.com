@@ -9,11 +9,8 @@ from model_utils.models import TimeStampedModel
 
 from camp.apps.regions.managers import RegionManager
 from camp.apps.regions.querysets import BoundaryQuerySet
-
-# Common EPSG codes
-EPSG_LATLON = 4326
-EPSG_WEBMERCATOR = 3857
-EPSG_CALIFORNIA_ALBERS = 3310
+from camp.utils import gis
+from camp.utils.encoders import JSONEncoder
 
 
 class Region(TimeStampedModel):
@@ -79,7 +76,7 @@ class Boundary(TimeStampedModel):
     region = models.ForeignKey('Region', related_name='boundaries', on_delete=models.CASCADE)
     version = models.CharField(max_length=32)  # e.g. '2020', '2023-2024', etc
     geometry = models.MultiPolygonField()
-    metadata = models.JSONField(blank=True, default=dict)
+    metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
 
     objects = BoundaryQuerySet.as_manager()
 
@@ -94,21 +91,21 @@ class Boundary(TimeStampedModel):
     def geom_latlon(self):
         """Geometry in WGS 84 (EPSG:4326) - for display or GPS comparisons"""
         clone = self.geometry.clone()
-        clone.transform(EPSG_LATLON)
+        clone.transform(gis.EPSG_LATLON)
         return clone
 
     @cached_property
     def geom_web_mercator(self):
         """Geometry in Web Mercator (EPSG:3857) - for use with tile maps"""
         clone = self.geometry.clone()
-        clone.transform(EPSG_WEBMERCATOR)
+        clone.transform(gis.EPSG_WEBMERCATOR)
         return clone
 
     @cached_property
     def geom_california_albers(self):
         """Geometry in California Albers (EPSG:3310) - for area and length calculations"""
         clone = self.geometry.clone()
-        clone.transform(EPSG_CALIFORNIA_ALBERS)
+        clone.transform(gis.EPSG_CALIFORNIA_ALBERS)
         return clone
 
     @cached_property

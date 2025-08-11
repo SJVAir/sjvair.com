@@ -14,7 +14,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         print('\n--- Importing Urban Areas ---')
-        gdf = geodata.gdf_from_ckan('2020-adjusted-urban-area', limit_to_counties=True)
+        gdf = geodata.gdf_from_ckan('2020-adjusted-urban-area', limit_to_region=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():

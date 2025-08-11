@@ -16,7 +16,7 @@ class Command(BaseCommand):
         print('\n--- Importing Cities / CDPs ---')
         gdf = geodata.gdf_from_ckan('ca-geographic-boundaries',
             resource_name='CA Places Boundaries',
-            limit_to_counties=True
+            limit_to_region=True
         )
 
         with transaction.atomic():
