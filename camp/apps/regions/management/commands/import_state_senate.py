@@ -11,7 +11,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         print('\n--- Importing State Senate Districts ---')
-        gdf = geodata.gdf_from_ckan('senate-districts', limit_to_counties=True)
+        gdf = geodata.gdf_from_ckan('senate-districts', limit_to_region=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():

@@ -3,14 +3,17 @@ import tempfile
 import zipfile
 
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Iterator, Optional, Sequence, Union
 
 import ckanapi
+import fiona
 import geopandas as gpd
 import pandas as pd
 
+from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
+from camp.utils import gis
 from camp.utils.http import stream_to_disk
 
 GEODATA_CACHE_DIR = Path(tempfile.gettempdir()) / 'geodata-cache'
@@ -90,61 +93,69 @@ def remap_gdf_boundaries(
 
 
 def filter_by_overlap(
-    gdf: gpd.GeoDataFrame,
+    series_iter: Iterator[gpd.GeoSeries],
     reference_geom: BaseGeometry,
     threshold: float = 0.5
-) -> gpd.GeoDataFrame:
+) -> Iterator[gpd.GeoSeries]:
     """
-    Filters rows in a GeoDataFrame where the geometry overlaps with a reference geometry
+    Filters streamed GeoSeries where geometry overlaps with a reference geometry
     by at least the given fraction of its own area.
 
     Args:
-        gdf: The GeoDataFrame to filter.
-        reference_geom: A base geometry (e.g., a unary_union of other geometries) to compare against.
-        threshold: Minimum fraction of each geometry’s area that must overlap with reference_geom.
+        series_iter: Iterator of GeoSeries rows (streamed from disk).
+        reference_geom: Geometry to compare against (e.g., unary_union of counties).
+        threshold: Minimum fraction of area that must overlap.
 
-    Returns:
-        A filtered GeoDataFrame containing only geometries meeting the threshold.
+    Yields:
+        GeoSeries rows that meet the overlap threshold.
     """
-    def sufficient_overlap(geom):
+    for series in series_iter:
+        geom = series.geometry
         if geom.is_empty or geom.area == 0 or not geom.intersects(reference_geom):
-            return False
+            continue
         intersection_area = geom.intersection(reference_geom).area
-        return (intersection_area / geom.area) >= threshold
-
-    mask = gdf.geometry.apply(sufficient_overlap)
-    return gdf[mask].copy().reset_index(drop=True)
+        if (intersection_area / geom.area) >= threshold:
+            yield series
 
 
-def filter_by_counties(
-    gdf: gpd.GeoDataFrame,
-    threshold: float = 0.5
-) -> gpd.GeoDataFrame:
+def load_region_geometry(crs: Optional[str] = gis.EPSG_LATLON):
     from camp.apps.regions.models import Region
-    counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
-    gdf = filter_by_overlap(gdf, counties_gdf.unary_union, threshold=threshold)
+    geometry = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe().unary_union
+    if crs != gis.EPSG_LATLON:
+        geometry = (
+            gpd.GeoSeries([geometry], crs=gis.EPSG_LATLON)
+            .to_crs(crs)
+            .iloc[0]
+        )
+    return geometry
+
+
+def gdf_from_ckan(*args, **kwargs) -> gpd.GeoDataFrame:
+    gdf = gpd.GeoDataFrame(iter_from_ckan(*args, **kwargs))
+    if 'geometry' not in gdf.columns:
+        gdf.set_geometry('geometry', inplace=True)
+    return gdf
+
+def gdf_from_url(*args, **kwargs) -> gpd.GeoDataFrame:
+    gdf = gpd.GeoDataFrame(iter_from_url(*args, **kwargs))
+    if 'geometry' not in gdf.columns:
+        gdf.set_geometry('geometry', inplace=True)
+    return gdf
+
+def gdf_from_zip(*args, **kwargs) -> gpd.GeoDataFrame:
+    gdf = gpd.GeoDataFrame(iter_from_zip(*args, **kwargs))
+    if 'geometry' not in gdf.columns:
+        gdf.set_geometry('geometry', inplace=True)
     return gdf
 
 
-def stringify_gdf_fields(
-    gdf: gpd.GeoDataFrame,
-    columns: Optional[Sequence[str]] = None
-) -> gpd.GeoDataFrame:
-    """
-    Converts specified columns in a GeoDataFrame to strings, preserving the original geometry.
-
-    Args:
-        gdf: The input GeoDataFrame.
-        columns: Optional list of column names to convert. If None, all non-geometry columns are converted.
-
-    Returns:
-        A copy of the GeoDataFrame with specified columns converted to strings.
-
-    Notes:
-        - Missing values (NaN) are preserved as empty strings.
-        - Geometry column is left unmodified.
-    """
-
+def stream_filtered_gdf(
+    path: str,
+    crs: str = gis.EPSG_LATLON,
+    encoding: str = 'utf-8',
+    limit_to_region: bool = False,
+    string_fields: Union[bool, Sequence[str]] = False,
+) -> Iterator[gpd.GeoSeries]:
     def clean_value(val):
         if pd.isnull(val):
             return ''
@@ -152,25 +163,40 @@ def stringify_gdf_fields(
             return str(int(val))
         return str(val)
 
-    gdf = gdf.copy()
+    with fiona.open(f'zip://{path}', encoding=encoding) as src:
+        iterable = src
+        if limit_to_region:
+            region = load_region_geometry(src.crs)
+            iterable = src.filter(bbox=region.bounds)
 
-    if columns is None:
-        columns = [col for col in gdf.columns if col != gdf.geometry.name]
+        for i, feat in enumerate(iterable):
+            geometry = shape(feat['geometry'])
+            props = feat['properties']
 
-    for col in columns:
-        gdf[col] = gdf[col].map(clean_value)
-    return gdf
+            if string_fields is True:
+                props = {k: clean_value(v) for k, v in props.items()}
+            elif isinstance(string_fields, (list, tuple)):
+                props = {
+                    k: clean_value(v) if k in string_fields else v
+                    for k, v in props.items()
+                }
+
+            gdf = gpd.GeoDataFrame([props], geometry=[geometry], crs=src.crs)
+            if src.crs and src.crs.to_string() != crs:
+                gdf = gdf.to_crs(crs)
+
+            yield gdf.iloc[0]
 
 
-def gdf_from_ckan(
+def iter_from_ckan(
     dataset_id: str,
     server: str = 'data.ca.gov',
     resource_name: str = 'Shapefile',
     encoding: str = 'utf-8',
-    crs: str = 'EPSG:4326',
+    crs: str = gis.EPSG_LATLON,
     verify: bool = True,
     string_fields: Union[bool, Sequence[str]] = False,
-    limit_to_counties: bool = False,
+    limit_to_region: bool = False,
     threshold: float = 0.5
 ) -> gpd.GeoDataFrame:
     """
@@ -186,24 +212,24 @@ def gdf_from_ckan(
     if not resource:
         raise ValueError(f'\nResource not found: {resource_name}')
 
-    return gdf_from_url(
+    return iter_from_url(
         url=resource['url'],
         encoding=encoding,
         crs=crs,
         verify=verify,
         string_fields=string_fields,
-        limit_to_counties=limit_to_counties,
+        limit_to_region=limit_to_region,
         threshold=threshold,
     )
 
 
-def gdf_from_url(
+def iter_from_url(
     url: str,
     verify: bool = True,
     encoding: str = 'utf-8',
-    crs: str = 'EPSG:4326',
+    crs: str = gis.EPSG_LATLON,
     string_fields: Union[bool, Sequence[str]] = False,
-    limit_to_counties: bool = False,
+    limit_to_region: bool = False,
     threshold: float = 0.5,
 ) -> gpd.GeoDataFrame:
     """
@@ -212,44 +238,53 @@ def gdf_from_url(
     url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
     cache_path = GEODATA_CACHE_DIR / f'{url_hash}.zip'
     if not cache_path.exists():
+        print('\nDownloading dataset:')
+        print(f'-> {url}')
+        print(f'-> {cache_path}')
         stream_to_disk(url=url, dest=cache_path, verify=verify)
+        with zipfile.ZipFile(cache_path) as z:
+            if bad := z.testzip():
+                cache_path.unlink(missing_ok=True)
+                raise ValueError(f'Corrupt ZIP member: {bad}')
 
-    return gdf_from_zip(
+    return iter_from_zip(
         path=cache_path,
         encoding=encoding,
         crs=crs,
         verify=verify,
         string_fields=string_fields,
-        limit_to_counties=limit_to_counties,
+        limit_to_region=limit_to_region,
         threshold=threshold,
     )
 
 
-def gdf_from_zip(
+def iter_from_zip(
     path: str,
     verify: bool = True,
     encoding: str = 'utf-8',
-    crs: str = 'EPSG:4326',
+    crs: str = gis.EPSG_LATLON,
     string_fields: Union[bool, Sequence[str]] = False,
-    limit_to_counties: bool = False,
+    limit_to_region: bool = False,
     threshold: float = 0.5
 ) -> gpd.GeoDataFrame:
     """
     Loads a GeoDataFrame from a zipfile path.
     """
-    with zipfile.ZipFile(path) as z:
-        if bad := z.testzip():
-            path.unlink(missing_ok=True)
-            raise ValueError(f'Corrupt ZIP member: {bad}')
+    print('\nLoading gdf from...')
+    print(f'-> {path}')
 
-    gdf = gpd.read_file(f'zip://{path}', encoding=encoding).to_crs(crs)
+    results = stream_filtered_gdf(
+        path=path,
+        encoding=encoding,
+        crs=crs,
+        limit_to_region=limit_to_region,
+    )
 
-    if string_fields is True:
-        gdf = stringify_gdf_fields(gdf)
-    elif isinstance(string_fields, (list, tuple)):
-        gdf = stringify_gdf_fields(gdf, string_fields)
+    if limit_to_region:
+        results = filter_by_overlap(
+            results,
+            load_region_geometry(crs),
+            threshold=threshold
+        )
 
-    if limit_to_counties:
-        gdf = filter_by_counties(gdf, threshold=threshold)
-
-    return gdf
+    return results

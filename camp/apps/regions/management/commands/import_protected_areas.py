@@ -5,8 +5,7 @@ from django.db import transaction
 from django.utils.text import slugify
 
 from camp.apps.regions.models import Region
-from camp.utils import geodata
-from camp.utils.gis import to_multipolygon
+from camp.utils import geodata, gis
 
 DATASET_URL = "https://www2.census.gov/geo/tiger/TIGER2010/TRACT/2010/tl_2010_06_tract10.zip"
 
@@ -19,7 +18,7 @@ class Command(BaseCommand):
         gdf = geodata.gdf_from_ckan(
             'california-protected-areas-database',
             resource_name='California Protected Areas Database 2025a release',
-            limit_to_counties=True
+            limit_to_region=True
         )
 
         with transaction.atomic():
@@ -31,7 +30,7 @@ class Command(BaseCommand):
                     type=Region.Type.PROTECTED,
                     external_id=str(row.HOLDING_ID),
                     version='2025a',
-                    geometry=to_multipolygon(row.geometry),
+                    geometry=gis.to_multipolygon(row.geometry),
                     metadata={
                         'access_type': row.ACCESS_TYP,
                         'unit_id': row.UNIT_ID,
@@ -54,7 +53,7 @@ class Command(BaseCommand):
                         'county': row.COUNTY,
                         'acres': row.ACRES,
                         'label_name': row.LABEL_NAME,
-                        'date_revised': row.DATE_REVIS.isoformat() if pd.notnull(row.DATE_REVIS) else None,
+                        'date_revised': row.DATE_REVIS,
                         'year_protected': row.YR_PROTECT,
                         'year_established': row.YR_EST,
                         'gap_status': {
