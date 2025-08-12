@@ -59,11 +59,8 @@ class RegionAdmin(OSMGeoAdmin):
     inlines = [BoundaryInline]
     list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
     list_filter = ['type', 'boundary__version']
-    readonly_fields = ['name', 'slug', 'external_id', 'type', 'boundary', 'get_overview_map', 'get_monitor_map']
+    fields = ['name', 'slug', 'external_id', 'type', 'boundary', 'get_overview_map', 'get_monitor_map']
     search_fields = ['name', 'external_id']
-
-    def get_fields(self, request, obj=None):
-        return self.readonly_fields
 
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
