@@ -1,16 +1,16 @@
 {
-  "name": "sjvair",
-  "version": "1.0.1",
-  "private": true,
-  "scripts": {
-    "heroku-postbuild": "invoke build"
-  },
-  "dependencies": {
-    "@sjvair/monitor-map": "^2.03.0",
-    "@sjvair/sensor-scatterplot": "^1.0.12",
-    "@sjvair/web-widget": "^1.0.9",
-    "bulma": "^0.9.4",
-    "bulma-list": "^1.2.0"
-  },
-  "packageManager": "yarn@1.22.19+sha1.4ba7fc5c6e704fce2066ecbfb0b0d8976fe62447"
+    "name": "sjvair",
+    "version": "1.0.1",
+    "private": true,
+    "scripts": {
+        "heroku-postbuild": "invoke build"
+    },
+    "dependencies": {
+        "@sjvair/monitor-map": "^2.5.1",
+        "@sjvair/sensor-scatterplot": "^1.0.12",
+        "@sjvair/web-widget": "^1.0.9",
+        "bulma": "^0.9.4",
+        "bulma-list": "^1.2.0"
+    },
+    "packageManager": "yarn@1.22.19+sha1.4ba7fc5c6e704fce2066ecbfb0b0d8976fe62447"
 }
