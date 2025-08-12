@@ -11,7 +11,7 @@ from django.contrib.auth.views import RedirectURLMixin
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.core.cache import cache
 from django.db import connection
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.shortcuts import redirect, resolve_url
 from django.template import loader, TemplateDoesNotExist
 from django.test import RequestFactory
@@ -25,7 +25,7 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 import vanilla
 
 from django_huey import get_queue
-from resticus import generics
+from resticus import http
 from resticus.http import JSONResponse
 from ua_parser import user_agent_parser
 
@@ -74,7 +74,6 @@ class CachedEndpointMixin:
           - default: read cache -> return if hit -> compute + write if miss.
         """
         cache_key = self.get_view_cache_key()
-
         clear = '_cc' in request.GET
         warm = '_warm' in request.GET  # bypass read, write fresh
 
@@ -84,12 +83,12 @@ class CachedEndpointMixin:
         if not warm:
             cached = cache.get(cache_key)
             if cached is not None:
-                return cached
+                return self._finalize_response(cached, 'HIT')
 
-        # Compute fresh
+        status = 'REFRESH' if warm else 'BYPASS' if clear else 'MISS'
         response = super().get(request, *args, **kwargs)
         cache.set(cache_key, response, self.cache_timeout)
-        return response
+        return self._finalize_response(response, status)
 
     def get_view_cache_key(self) -> str:
         """
@@ -114,6 +113,15 @@ class CachedEndpointMixin:
             key = f'{key}|q:{hashlib.sha1(qs.encode()).hexdigest()}'
 
         return key
+
+    def _finalize_response(self, response, cache_status: str):
+        if not isinstance(response, (HttpResponse, StreamingHttpResponse)):
+            if self.is_streaming():
+                response = self.streaming_response(response)
+            else:
+                response = http.Http200(response)
+        response['X-Cache-Status'] = cache_status
+        return response
 
     # ---------- Prewarm helpers ----------
 
@@ -170,47 +178,6 @@ class CachedEndpointMixin:
                 return resp
             results.append((view_cls, getattr(resp, 'status_code', 0)))
         return results
-
-
-# class CachedEndpointMixin:
-#     cache_timeout = 60
-
-#     def get(self, request, *args, **kwargs):
-#         cache_key = self.get_view_cache_key()
-
-#         clear_cache = '_cc' in request.GET
-#         if clear_cache:
-#             cache.delete(cache_key)
-#         else:
-#             data = cache.get(cache_key)
-#             if data is not None:
-#                 return data
-
-#         response = super().get(request, *args, **kwargs)
-#         cache.set(cache_key, response, self.cache_timeout)
-#         return response
-
-#     def get_view_cache_key(self):
-#         '''
-#             Given an instance of a class-based view, return
-#             a suitable key for caching the response.
-#         '''
-#         key = f'{self.__class__.__module__}.{self.__class__.__name__}'
-
-#         # Encode the kwargs into the key
-#         if self.kwargs:
-#             encoded = hashlib.sha1(urllib.parse.urlencode(self.kwargs).encode()).hexdigest()
-#             key = f'{key}|kw:{encoded}'
-
-#         # Encode the url params into the key
-#         # TODO: Account for self.filter_class, so that the cache
-#         # isn't polluted with garbage kwargs.
-#         params = self.request.GET.copy()
-#         params.pop('_cc', None)
-#         if params:
-#             encoded = hashlib.sha1(urllib.parse.urlencode(params, doseq=True).encode()).hexdigest()
-#             key = f'{key}|q:{encoded}'
-#         return key
 
 
 class RedirectViewMixin(RedirectURLMixin):
