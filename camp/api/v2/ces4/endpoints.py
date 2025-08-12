@@ -8,11 +8,11 @@ from .serializers import Ces4_Serializer
 class Ces4Mixin:
     model = Record
     serializer_class = Ces4_Serializer
+    paginate = True
 
 
 class Ces4List(Ces4Mixin, generics.ListEndpoint):
     filter_class = Ces4Filter
-    paginate = False
     
     
 class Ces4Detail(Ces4Mixin, generics.DetailEndpoint):

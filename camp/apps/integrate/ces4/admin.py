@@ -1,5 +1,6 @@
 from rangefilter.filters import NumericRangeFilterBuilder
 
+from django.contrib import admin as norm_admin
 from django.contrib.gis import admin
 from django.contrib.gis.admin import OSMGeoAdmin
 from django.urls import reverse
@@ -16,20 +17,36 @@ CustomNumericRangeFilter = (
         )
     )
 
+class BoundaryVersionFilter(norm_admin.SimpleListFilter):
+    title = 'Version'
+    parameter_name = 'boundary__version'
+    
+    def lookups(self, request, model_admin):
+        return [
+            ('2010', '2010'),
+            ('2020', '2020'),
+        ]
+    def queryset(self, request, queryset):
+        if self.value() in ('2010', '2020'):
+            return queryset.filter(boundary__version=self.value())
+        return queryset
+
 
 @admin.register(Record)
 class Ces4Admin(OSMGeoAdmin):
     list_display = [
-        'tract','pollution_p', 'pol_ozone',
+        'tract', 'version', 'pollution_p', 'pol_ozone',
         'pol_ozone_p', 'pol_pm', 'pol_pm_p', 'char_asthma', 'char_asthma_p', 
         ]
     list_filter = [
+        BoundaryVersionFilter,
         ('pollution_p', CustomNumericRangeFilter), ('pol_ozone_p', CustomNumericRangeFilter),
         ('pol_pm_p', CustomNumericRangeFilter), ('char_asthma_p', CustomNumericRangeFilter),
         ]
     ordering = ('-ci_score_p', )
     search_fields = ['tract']
     readonly_fields = ['link_to_boundary']
+    
     def link_to_boundary(self, instance):
         region = instance.boundary.region
         link = reverse("admin:regions_region_change", args=[region.pk])
@@ -38,7 +55,7 @@ class Ces4Admin(OSMGeoAdmin):
             link,
             instance.boundary,
         )
-    link_to_boundary.short_description = "Boundary Link"
+    link_to_boundary.short_description = 'Boundary Link'
         
     def has_add_permission(self, request, obj=None):
         return False
@@ -48,7 +65,4 @@ class Ces4Admin(OSMGeoAdmin):
     
     def has_delete_permission(self, request, obj=None):
         return False
-    
-    def save_model(self, request, obj, form, change):
-        pass
     

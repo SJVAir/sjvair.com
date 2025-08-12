@@ -224,3 +224,8 @@ class Record(models.Model):
     pop_other_p = models.FloatField(_('Other Ethnicity Percentile'), null=True)
     
     boundary = models.OneToOneField('regions.Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='record_boundary')
+
+    @property
+    def version(self):
+        return self.boundary.version
+    
