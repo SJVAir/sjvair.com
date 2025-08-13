@@ -75,7 +75,7 @@ workers = env('WEB_CONCURRENCY', _default_workers, int)
 worker_class = env('GUNICORN_WORKER_CLASS', 'sync')
 
 # Threads (used only if worker_class='gthread')
-threads = env('GUNICORN_THREADS', 2, int)
+threads = env('GUNICORN_THREADS', 1, int)
 
 # Per-request time budget; Heroku router is ~30s, so don't exceed that.
 timeout = env('GUNICORN_TIMEOUT', 30, int)
