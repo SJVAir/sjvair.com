@@ -102,6 +102,17 @@ def get_tract_boundaries(version: str) -> pd.DataFrame:
 
 def build_ces4_2020(ces4: pd.DataFrame, rel: pd.DataFrame, tracts_2020: pd.DataFrame) -> gpd.GeoDataFrame:
     # Ensure merge keys are str and padded
+    count_cols = [
+        'ACS2019Tot', 'cleanups', 'gwthreats', 'haz', 'iwb', 'swis', 
+        'Children_u', 'Pop_10_64_', 'Elderly_65', 'Hispanic',
+        'White', 'African_Am', 'Native_Ame', 'Asian_Amer', 'Other_Mult', 
+        ]
+    rate_cols = [
+        'ozone', 'pm', 'diesel', 'pest', 'RSEIhaz', 
+        'traffic', 'drink', 'lead', 'asthma', 'cvd', 
+        'lbw','edu', 'ling', 'pov', 'housingB', 'unemp',
+        ]
+    
     rel['GEOID_TRACT_10'] = rel['GEOID_TRACT_10'].astype(str).str.zfill(11)
     rel['GEOID_TRACT_20'] = rel['GEOID_TRACT_20'].astype(str).str.zfill(11)
 
@@ -117,12 +128,20 @@ def build_ces4_2020(ces4: pd.DataFrame, rel: pd.DataFrame, tracts_2020: pd.DataF
     bad = check[check['weight'] < 0.99]
     print(f'⚠️ {len(bad)} tracts have weights summing to less than 0.99')
 
-    # Weighted numeric aggregation
-    exclude_cols = ['Tract', 'ZIP', 'County', 'ApproxLoc', 'geometry', 'dac_category']
-    numeric_cols = [col for col in ces4.columns if col not in exclude_cols and pd.api.types.is_numeric_dtype(ces4[col])]
-    for col in numeric_cols:
-        merged[col] = merged[col] * merged['weight']
-    weighted = merged.groupby('GEOID_TRACT_20')[numeric_cols].sum().reset_index()
+    #Integer based variables
+    counts_weighted = merged.copy()
+    for col in count_cols:
+        counts_weighted[col] = counts_weighted[col] * counts_weighted['weight']
+    counts_result = counts_weighted.groupby('GEOID_TRACT_20')[count_cols].sum().reset_index()
+
+    #Metric based variables EX: ozone -> ppm
+    rates_result = merged.groupby('GEOID_TRACT_20').apply(
+        lambda df: pd.Series({
+            col: (df[col] * df['weight']).sum() / df['weight'].sum()
+            for col in rate_cols
+        })
+    ).reset_index()
+    weighted = counts_result.merge(rates_result, on='GEOID_TRACT_20', how='outer')
 
     # Find dominant tract for each 2020 tract and its DAC category
     merged['weight_rank'] = merged.groupby('GEOID_TRACT_20')['weight'].rank(ascending=False, method='first')
@@ -167,7 +186,7 @@ def to_db(geo, params, version):
             for col in geo.columns 
             if normalize(col) in params
             }
-        inputs.pop('objectid')
+        #inputs.pop('objectid')
         if version == 2020:
             inputs['tract'] = curr['GEOID_TRACT_20']
         external_id = inputs['tract']
@@ -193,6 +212,50 @@ def to_db(geo, params, version):
         records.append(record)
     return records
   
+def recalculate_ces4_sjv(df: pd.DataFrame) -> pd.DataFrame:
+    exposure_cols = ['ozone', 'pm', 'diesel', 'pest', 'RSEIhaz', 'traffic', 'drink', 'lead']
+    effects_cols = ['cleanups', 'gwthreats', 'haz', 'iwb', 'swis', ]
+    sensitive_pop_cols = ['asthma', 'cvd', 'lbw',]
+    socioeconomic_cols = ['edu', 'ling', 'pov', 'housingB', 'unemp', ]
+    ethnic_percentile_map = {
+        'Children_u': 'Children_1',
+        'Pop_10_64_': 'Pop_10_6_1',
+        'Elderly_65': 'Elderly__1',
+        'Hispanic': 'Hispanic_p',
+        'White': 'White_pct',
+        'African_Am': 'African__1',
+        'Native_Ame': 'Native_A_1',
+        'Asian_Amer': 'Asian_Am_1',
+        'Other_Mult': 'Other_Mu_1'
+    }
+    scores = {'CIscore': 'CIscoreP', 
+              'PollutionS': 'PollutionP', 
+              'PopCharSco': 'PopCharP' }
+    
+    numeric_cols = exposure_cols + effects_cols + sensitive_pop_cols + socioeconomic_cols
+    for col in numeric_cols:
+        df[f"{col}P"] = df[col].rank(pct=True) * 100
+    for col, pct in ethnic_percentile_map.items():
+        df[pct] = df[col].rank(pct=True) * 100
+
+    # Calculate component scores as average of percentiles
+    df['exposure_avg'] = df[[f"{c}P" for c in exposure_cols]].mean(axis=1)
+    df['effects_avg'] = df[[f"{c}P" for c in effects_cols]].mean(axis=1)
+    df['Pollution'] = df[[f"{c}P" for c in  exposure_cols + effects_cols]].mean(axis=1)
+    df['PollutionS'] = ((df['exposure_avg'] + 0.5 * df['effects_avg']) / 1.5) * (10 / 81.9)
+
+     # Compute Population Characteristics Score
+    df['pop_char_avg'] = df[[f"{c}P" for c in sensitive_pop_cols]].mean(axis=1)
+    df['econom_avg'] = df[[f"{c}P" for c in socioeconomic_cols]].mean(axis=1)
+    df['PopChar'] = df[[f"{c}P" for c in sensitive_pop_cols + socioeconomic_cols]].mean(axis=1)
+    df['PopCharSco'] = ((df['pop_char_avg'] + df['econom_avg'])/2)  / 96.4 * 10
+    
+    df['CIscore'] = df['PollutionS'] * df['PopCharSco']
+    for col, pct in scores.items():
+        df[pct] = df[col].rank(pct=True) * 100
+
+    return df
+    
     
 class Command(BaseCommand):
     help = 'Analyze how CES4 tracts (2010) map to 2020 census tracts using the relationship file'
@@ -237,8 +300,9 @@ class Command(BaseCommand):
         many_to_one = reverse_counts[reverse_counts > 1].count()
 
         params = {normalize(f.name): f.name for f in Record._meta.get_fields()}
-        ces4 = get_ces4()
-        ces4_2020 = build_ces4_2020(ces4, rel, tracts_2020)
+        ces4 = recalculate_ces4_sjv(get_ces4())
+        ces4_2020 = recalculate_ces4_sjv(build_ces4_2020(ces4, rel, tracts_2020))
+        
         ces_2010 = to_db(ces4, params, 2010)
         ces_2020 = to_db(ces4_2020, params, 2020)
         
