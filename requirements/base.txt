@@ -41,7 +41,7 @@ dpath==2.0.6
 fiona==1.10.1
 geopandas==1.0.1
 geopy==2.3.0
-gunicorn==22.0.0
+gunicorn==23.0.0
 hiredis==2.2.3
 huey==2.4.5
 invoke==2.2.0
