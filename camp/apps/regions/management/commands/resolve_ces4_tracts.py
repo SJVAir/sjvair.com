@@ -201,6 +201,7 @@ def to_db(geo: pd.DataFrame, params: list[str], version: str) -> list[Record]:
         records.append(record)
     return records
   
+  
 def recalculate_ces4_sjv(df: pd.DataFrame, exposure: list[str], effects: list[str], sens_pop: list[str], socio: list[str], ethnic_p_map: dict[str, str]) -> pd.DataFrame:
     scores = {'CIscore': 'CIscoreP', 
               'PollutionS': 'PollutionP', 
@@ -298,7 +299,6 @@ class Command(BaseCommand):
         ces_2010 = to_db(ces_2010, params, 2010)
         ces_2020 = to_db(ces_2020, params, 2020)
         
-
         print('\n--- Mapping Summary ---')
         print(f'CES4 tracts: {len(ces4)}')
         print(f'2020 tracts: {len(ces4_2020)}')
