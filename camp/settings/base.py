@@ -35,6 +35,17 @@ if COMMIT_HASH is None:
     except subprocess.CalledProcessError:
         COMMIT_HASH = 'unknown'
 
+
+# Monitors API tuning (with sensible defaults)
+MONITOR_ACTIVE_WINDOW_DAYS = int(env('MONITOR_ACTIVE_WINDOW_DAYS', '90'))
+
+MONITOR_HEALTHY_WINDOW_HOURS = int(env('MONITOR_HEALTHY_WINDOW_HOURS', '24'))
+
+MONITOR_HEALTHY_THRESHOLD = float(env('MONITOR_HEALTHY_THRESHOLD', '0.9'))
+
+DEFAULT_POLLUTANT = env('DEFAULT_POLLUTANT', 'pm25')
+
+
 DOMAIN = env('DOMAIN', '')
 
 # Quick-start development settings - unsuitable for production

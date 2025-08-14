@@ -39,6 +39,8 @@ class AQview(Monitor):
         },
     }
 
+    grade = Monitor.Grade.FEM
+
     class Meta:
         verbose_name = 'AQview'
 

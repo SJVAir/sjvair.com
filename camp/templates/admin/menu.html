@@ -85,9 +85,21 @@
 
 <div class="module">
     <table>
-        <caption>Data Integration</caption>
+        <caption>Spatial Analysis</caption>
         <tr>
             <td colspan="2">
+                <h3><a href="{% url 'admin:regions_region_changelist'%}">Regions</a></h3>
+                <p>Cities, counties, land use, and more.</p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Data Integrations</caption>
+        <tr>
+            <td>
                 <h3><a href="{% url 'admin:hms_smoke_smoke_changelist'%}">HMS Smoke</a></h3>
                 <p>NOAA Hazard Mapping System Smoke data.</p>
             </td>
@@ -105,13 +117,13 @@
             </td>
         </tr>
     </table>
-</div> 
+</div>
 
 <div class="module">
     <table>
         <caption>Help Center</caption>
         <tr>
-            <td colspan="2">
+            <td>
                 <h3><a href="{% url 'admin:helpdesk_category_changelist' %}">Categories</a></h3>
                 <p>How articles are organized.</p>
             </td>
@@ -120,7 +132,7 @@
             </td>
         </tr>
         <tr>
-            <td colspan="2">
+            <td>
                 <h3><a href="{% url 'admin:helpdesk_article_changelist' %}">Articles</a></h3>
                 <p>Main content for the Help Desk.</p>
             </td>
@@ -129,11 +141,11 @@
             </td>
         </tr>
         <tr>
-            <td colspan="2">
+            <td>
                 <h3><a href="{% url 'admin:helpdesk_term_changelist' %}">Glossary</a></h3>
                 <p>A list of terms and their definitions.</p>
             </td>
-            <td class="links">
+            <td>
                 <p><a href="#" target="_blank">View on Site ↗</a></p>
             </td>
         </tr>

@@ -4,6 +4,7 @@ import django.contrib.gis.db.models.fields
 from django.db import migrations, models
 import django.db.models.deletion
 import django.utils.timezone
+import camp.utils.encoders
 import model_utils.fields
 
 
@@ -24,8 +25,10 @@ class Migration(migrations.Migration):
                 ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, editable=False, verbose_name='modified')),
                 ('version', models.CharField(max_length=32)),
                 ('geometry', django.contrib.gis.db.models.fields.MultiPolygonField(srid=4326)),
-                ('metadata', models.JSONField(blank=True, default=dict)),
+
+                ('metadata', models.JSONField(blank=True, default=dict, encoder=camp.utils.encoders.JSONEncoder)),
                 ('record', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='boundaries', to='ces4.record')),
+
             ],
             options={
                 'ordering': ['region', '-version'],

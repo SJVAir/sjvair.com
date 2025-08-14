@@ -1,6 +1,6 @@
-from django.contrib.gis.db.models import Union
+from django.contrib.gis.db import models
+from django.contrib.gis.db.models import Count, Func, F, OuterRef, Subquery, Union
 from django.contrib.gis.geos import GEOSGeometry
-from django.db import models
 
 import geopandas as gpd
 from shapely.wkt import loads as load_wkt
@@ -9,6 +9,21 @@ from camp.utils import maps
 
 
 class RegionQuerySet(models.QuerySet):
+    def with_monitor_count(self):
+        from camp.apps.monitors.models import Monitor
+
+        # Subquery returns a single count of monitors intersecting the region geometry
+        monitor_count_query = (Monitor.objects
+            .filter(position__intersects=OuterRef('boundary__geometry'))
+            .order_by()  # Required to use Subquery safely
+            .annotate(count=Func(F('id'), function='Count'))
+            .values('count')
+        )
+
+        return self.annotate(
+            monitor_count=Subquery(monitor_count_query, output_field=models.IntegerField())
+        )
+
     def render_map(self, **kwargs):
         geometries = [region.boundary.geometry for region in self.select_related('boundary')]
         return maps.from_geometries(*geometries, **kwargs)

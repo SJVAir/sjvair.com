@@ -13,7 +13,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         print('\n--- Importing Congressional Districts ---')
-        gdf = geodata.gdf_from_zip(DATASET_URL, verify=False, limit_to_counties=True)
+        gdf = geodata.gdf_from_url(DATASET_URL, verify=False, limit_to_region=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():

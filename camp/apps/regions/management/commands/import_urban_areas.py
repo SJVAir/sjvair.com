@@ -14,13 +14,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         print('\n--- Importing Urban Areas ---')
-        gdf = geodata.gdf_from_ckan('2020-adjusted-urban-area', limit_to_counties=True)
+        gdf = geodata.gdf_from_ckan('2020-adjusted-urban-area', limit_to_region=True)
 
         with transaction.atomic():
             for _, row in gdf.iterrows():
+                name = row.NAME
+                if name.endswith(', CA'):
+                    name = name[:-4]
                 region, created = Region.objects.import_or_update(
-                    name=row.NAME,
-                    slug=slugify(row.NAME),
+                    name=name,
+                    slug=slugify(name),
                     type=Region.Type.URBAN_AREA,
                     external_id=row.UACE20,
                     version='2020',

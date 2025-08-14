@@ -143,8 +143,8 @@ def build_ces4_2020(ces4: pd.DataFrame, rel: pd.DataFrame, tracts_2020: pd.DataF
 
     return gpd.GeoDataFrame(out, geometry='geometry', crs=tracts_2020.crs)
 
+def show_split_example(ces4_2010, ces4_2020, rel, col='CIscore'):
 
-def show_split_example(ces4, ces4_2020, rel, col='CIscore'):
     rel = rel.copy()
     rel['GEOID_TRACT_10'] = rel['GEOID_TRACT_10'].astype(str).str.zfill(11)
     rel['GEOID_TRACT_20'] = rel['GEOID_TRACT_20'].astype(str).str.zfill(11)
@@ -154,7 +154,7 @@ def show_split_example(ces4, ces4_2020, rel, col='CIscore'):
 
     print(f'🧪 Example: CES4 tract {example} was split across {vc[example]} 2020 tracts')
     rows = rel[rel['GEOID_TRACT_10'] == example].copy()
-    rows = rows.merge(ces4[['Tract', col]], left_on='GEOID_TRACT_10', right_on='Tract', how='left')
+    rows = rows.merge(ces4_2010[['Tract', col]], left_on='GEOID_TRACT_10', right_on='Tract', how='left')
     rows['AREALAND_PART'] = pd.to_numeric(rows['AREALAND_PART'], errors='coerce')
     rows['weight'] = rows['AREALAND_PART'] / rows['AREALAND_PART'].sum()
     rows['weighted_value'] = rows[col] * rows['weight']
@@ -239,14 +239,16 @@ class Command(BaseCommand):
         parser.add_argument('--refresh', action='store_true', help='Re-download tract relationship file')
 
     def handle(self, *args, **options):
-        rel = get_relationships(refresh=options['refresh'])
-        ces4 = get_ces4()
         tracts_2010 = get_tract_boundaries('2010')
-        tracts_2020 = get_tract_boundaries('2020')
-
         geoids_2010 = set(tracts_2010['GEOID'])
+
+        tracts_2020 = get_tract_boundaries('2020')
         geoids_2020 = set(tracts_2020['GEOID'])
-        ces4_geoids = set(ces4['Tract'])
+
+        rel = get_relationships(refresh=options['refresh'])
+
+        ces4_2010 = get_ces4()
+        ces4_geoids = set(ces4_2010['Tract'])
 
         # Filter rel file to just tracts we have
         rel = rel[rel['GEOID_TRACT_10'].isin(geoids_2010) | rel['GEOID_TRACT_20'].isin(geoids_2020)]
@@ -282,7 +284,8 @@ class Command(BaseCommand):
         rate_cols = exposure + sens_pop + socio
         count_cols = effects + [key for key, value in ethnic_p_map.items()] + ['ACS2019Tot']
         
-        ces4_2020 = build_ces4_2020(ces4, rel, tracts_2020, count_cols, rate_cols)
+        ces4_2020 = build_ces4_2020(ces4_2010, rel, tracts_2020, count_cols, rate_cols)
+
         print(f'✅ Built ces4_2020 GeoDataFrame with {len(ces4_2020):,} rows')
 
         mapping_counts = rel['GEOID_TRACT_10'].value_counts()
@@ -293,22 +296,23 @@ class Command(BaseCommand):
         many_to_one = reverse_counts[reverse_counts > 1].count()
 
         params = {normalize(f.name): f.name for f in Record._meta.get_fields()}
-        ces_2010 = recalculate_ces4_sjv(ces4, exposure, effects, sens_pop, socio, ethnic_p_map)
+        ces_2010 = recalculate_ces4_sjv(ces4_2010, exposure, effects, sens_pop, socio, ethnic_p_map)
         ces_2020 = recalculate_ces4_sjv(ces4_2020, exposure, effects, sens_pop, socio, ethnic_p_map)
         
         ces_2010 = to_db(ces_2010, params, 2010)
         ces_2020 = to_db(ces_2020, params, 2020)
         
         print('\n--- Mapping Summary ---')
-        print(f'CES4 tracts: {len(ces4)}')
+        print(f'CES4 tracts: {len(ces4_2010)}')
         print(f'2020 tracts: {len(ces4_2020)}')
         print(f'1:1 mappings (CES4 to 2020): {one_to_one}')
         print(f'1:many mappings (CES4 split across multiple 2020 tracts): {one_to_many}')
         print(f'Many:1 mappings (multiple CES4 tracts map to one 2020 tract): {many_to_one}')
 
         print('\n--- Split Example ---')
-        show_split_example(ces4, ces4_2020, rel)
+        show_split_example(ces4_2010, ces4_2020, rel)
         
         print('\n--- CES4 Records Added ---')
         print(f'CES4 2010: {len(ces_2010)} Records Added')
         print(f'CES4 2020: {len(ces_2020)} Records Added')
+

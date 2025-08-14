@@ -18,7 +18,7 @@ class Command(BaseCommand):
 
         print('\nLoading dataset...')
         print(f'-> {DATASET_URL}')
-        gdf = geodata.gdf_from_zip(DATASET_URL, verify=False, limit_to_counties=True, threshold=0.25)
+        gdf = geodata.gdf_from_url(DATASET_URL, verify=False, limit_to_region=True, threshold=0.25)
         gdf['ZCTA5CE10'] = gdf['ZCTA5CE10'].astype(str).str.zfill(5)
 
         print('\nLoading Rural/Urban Communting Areas...')
@@ -42,10 +42,12 @@ class Command(BaseCommand):
                     version='2020',
                     geometry=to_multipolygon(row.geometry),
                     metadata={
-                        'primary': row.PrimaryRUCA,
-                        'secondary': row.SecondaryRUCA,
-                        'type': row.ZIPCodeType,
-                        'post_office': row.POName,
+                        'ruca': {
+                            'primary': row.PrimaryRUCA,
+                            'secondary': row.SecondaryRUCA,
+                            'type': row.ZIPCodeType,
+                            'post_office': row.POName,
+                        }
                     }
                 )
 
