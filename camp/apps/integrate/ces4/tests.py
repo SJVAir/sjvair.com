@@ -11,8 +11,7 @@ class Tests_CES4_App(TestCase):
     def test_request(self):
         out = StringIO()
         call_command('import_counties', stdout=out)
-        call_command('import_census_tracts_2010', stdout=out)
-        call_command('import_census_tracts_2020', stdout=out)
+        call_command('import_census_tracts', stdout=out)
         call_command('resolve_ces4_tracts', stdout=out)
 
         assert Record.objects.filter(boundary__version='2010').count() == Boundary.objects.filter(region__type=Region.Type.TRACT, version='2010').count()

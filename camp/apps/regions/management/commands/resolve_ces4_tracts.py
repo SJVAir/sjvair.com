@@ -73,14 +73,17 @@ def get_ces4() -> pd.DataFrame:
         resource_name='Shapefile'
         )
     gdf.rename(columns={'tract': 'Tract'}, inplace=True)
-    gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.25)
+    gdf_new = (row for _, row in gdf.iterrows())
+    gdf_new = geodata.filter_by_overlap(gdf_new, counties_gdf.unary_union, 0.25)
+    gdf = gpd.GeoDataFrame(list(gdf_new), crs=gdf.crs)
     gdf['Tract'] = gdf['Tract'].astype(str).str.zfill(11)
-
+    
     # Get the SB535 Disadvantaged Communities dataset and filter by county
     sb535dac = esri2gpd.get(SB535DAC_URL)
-    sb535dac = geodata.filter_by_overlap(sb535dac, counties_gdf.unary_union, 0.50)
+    sb535dac_new = (row for _, row in sb535dac.iterrows())
+    sb535dac_new = geodata.filter_by_overlap(sb535dac_new, counties_gdf.unary_union, 0.50)
+    sb535dac = gpd.GeoDataFrame(list(sb535dac_new), crs=sb535dac.crs)
     sb535dac['Tract'] = sb535dac['Tract'].astype(str).str.zfill(11)
-
     # Get the DAC status for each CES4 record
     dac_lookup = sb535dac.set_index('Tract')['DAC_category']
     gdf['dac_sb535'] = gdf['Tract'].isin(dac_lookup.index)
@@ -239,6 +242,7 @@ class Command(BaseCommand):
         parser.add_argument('--refresh', action='store_true', help='Re-download tract relationship file')
 
     def handle(self, *args, **options):
+        
         tracts_2010 = get_tract_boundaries('2010')
         geoids_2010 = set(tracts_2010['GEOID'])
 
