@@ -35,7 +35,7 @@ def get_relationships(refresh: bool = False) -> pd.DataFrame:
     return df
 
 
-def normalize(name):
+def normalize(name: str) -> str:
     sub = {
         'ACS2019Tot': 'population', # convert to a readable variable
         '_pct': '_p', # 'White_pct' -> _p
@@ -100,19 +100,8 @@ def get_tract_boundaries(version: str) -> pd.DataFrame:
     return gdf
 
 
-def build_ces4_2020(ces4: pd.DataFrame, rel: pd.DataFrame, tracts_2020: pd.DataFrame) -> gpd.GeoDataFrame:
+def build_ces4_2020(ces4: pd.DataFrame, rel: pd.DataFrame, tracts_2020: pd.DataFrame, count_cols: list[str], rate_cols: list[str]) -> gpd.GeoDataFrame:
     # Ensure merge keys are str and padded
-    count_cols = [
-        'ACS2019Tot', 'cleanups', 'gwthreats', 'haz', 'iwb', 'swis', 
-        'Children_u', 'Pop_10_64_', 'Elderly_65', 'Hispanic',
-        'White', 'African_Am', 'Native_Ame', 'Asian_Amer', 'Other_Mult', 
-        ]
-    rate_cols = [
-        'ozone', 'pm', 'diesel', 'pest', 'RSEIhaz', 
-        'traffic', 'drink', 'lead', 'asthma', 'cvd', 
-        'lbw','edu', 'ling', 'pov', 'housingB', 'unemp',
-        ]
-    
     rel['GEOID_TRACT_10'] = rel['GEOID_TRACT_10'].astype(str).str.zfill(11)
     rel['GEOID_TRACT_20'] = rel['GEOID_TRACT_20'].astype(str).str.zfill(11)
 
@@ -177,7 +166,7 @@ def show_split_example(ces4, ces4_2020, rel, col='CIscore'):
     print(f'\nWeighted average value applied to 2020 tracts:\n{value_2020}')
 
 
-def to_db(geo, params, version):
+def to_db(geo: pd.DataFrame, params: list[str], version: str) -> list[Record]:
     records = []
     for x in range(len(geo)):
         curr = geo.iloc[x]       
@@ -212,42 +201,27 @@ def to_db(geo, params, version):
         records.append(record)
     return records
   
-def recalculate_ces4_sjv(df: pd.DataFrame) -> pd.DataFrame:
-    exposure_cols = ['ozone', 'pm', 'diesel', 'pest', 'RSEIhaz', 'traffic', 'drink', 'lead']
-    effects_cols = ['cleanups', 'gwthreats', 'haz', 'iwb', 'swis', ]
-    sensitive_pop_cols = ['asthma', 'cvd', 'lbw',]
-    socioeconomic_cols = ['edu', 'ling', 'pov', 'housingB', 'unemp', ]
-    ethnic_percentile_map = {
-        'Children_u': 'Children_1',
-        'Pop_10_64_': 'Pop_10_6_1',
-        'Elderly_65': 'Elderly__1',
-        'Hispanic': 'Hispanic_p',
-        'White': 'White_pct',
-        'African_Am': 'African__1',
-        'Native_Ame': 'Native_A_1',
-        'Asian_Amer': 'Asian_Am_1',
-        'Other_Mult': 'Other_Mu_1'
-    }
+def recalculate_ces4_sjv(df: pd.DataFrame, exposure: list[str], effects: list[str], sens_pop: list[str], socio: list[str], ethnic_p_map: dict[str, str]) -> pd.DataFrame:
     scores = {'CIscore': 'CIscoreP', 
               'PollutionS': 'PollutionP', 
               'PopCharSco': 'PopCharP' }
     
-    numeric_cols = exposure_cols + effects_cols + sensitive_pop_cols + socioeconomic_cols
+    numeric_cols = exposure + effects + sens_pop + socio
     for col in numeric_cols:
         df[f"{col}P"] = df[col].rank(pct=True) * 100
-    for col, pct in ethnic_percentile_map.items():
+    for col, pct in ethnic_p_map.items():
         df[pct] = df[col].rank(pct=True) * 100
 
     # Calculate component scores as average of percentiles
-    df['exposure_avg'] = df[[f"{c}P" for c in exposure_cols]].mean(axis=1)
-    df['effects_avg'] = df[[f"{c}P" for c in effects_cols]].mean(axis=1)
-    df['Pollution'] = df[[f"{c}P" for c in  exposure_cols + effects_cols]].mean(axis=1)
+    df['exposure_avg'] = df[[f"{c}P" for c in exposure]].mean(axis=1)
+    df['effects_avg'] = df[[f"{c}P" for c in effects]].mean(axis=1)
+    df['Pollution'] = df[[f"{c}P" for c in  exposure + effects]].mean(axis=1)
     df['PollutionS'] = ((df['exposure_avg'] + 0.5 * df['effects_avg']) / 1.5) * (10 / 81.9)
 
      # Compute Population Characteristics Score
-    df['pop_char_avg'] = df[[f"{c}P" for c in sensitive_pop_cols]].mean(axis=1)
-    df['econom_avg'] = df[[f"{c}P" for c in socioeconomic_cols]].mean(axis=1)
-    df['PopChar'] = df[[f"{c}P" for c in sensitive_pop_cols + socioeconomic_cols]].mean(axis=1)
+    df['pop_char_avg'] = df[[f"{c}P" for c in sens_pop]].mean(axis=1)
+    df['econom_avg'] = df[[f"{c}P" for c in socio]].mean(axis=1)
+    df['PopChar'] = df[[f"{c}P" for c in sens_pop + socio]].mean(axis=1)
     df['PopCharSco'] = ((df['pop_char_avg'] + df['econom_avg'])/2)  / 96.4 * 10
     
     df['CIscore'] = df['PollutionS'] * df['PopCharSco']
@@ -289,7 +263,25 @@ class Command(BaseCommand):
         # Mapping analysis
         rel = rel[rel['GEOID_TRACT_10'].isin(ces4_geoids)]
 
-        ces4_2020 = build_ces4_2020(ces4, rel, tracts_2020)
+        exposure = ['ozone', 'pm', 'diesel', 'pest', 'RSEIhaz', 'traffic', 'drink', 'lead']
+        effects = ['cleanups', 'gwthreats', 'haz', 'iwb', 'swis', ]
+        sens_pop = ['asthma', 'cvd', 'lbw',]
+        socio = ['edu', 'ling', 'pov', 'housingB', 'unemp', ]
+        ethnic_p_map = {
+            'Children_u': 'Children_1',
+            'Pop_10_64_': 'Pop_10_6_1',
+            'Elderly_65': 'Elderly__1',
+            'Hispanic': 'Hispanic_p',
+            'White': 'White_pct',
+            'African_Am': 'African__1',
+            'Native_Ame': 'Native_A_1',
+            'Asian_Amer': 'Asian_Am_1',
+            'Other_Mult': 'Other_Mu_1'
+        }
+        rate_cols = exposure + sens_pop + socio
+        count_cols = effects + [key for key, value in ethnic_p_map.items()] + ['ACS2019Tot']
+        
+        ces4_2020 = build_ces4_2020(ces4, rel, tracts_2020, count_cols, rate_cols)
         print(f'✅ Built ces4_2020 GeoDataFrame with {len(ces4_2020):,} rows')
 
         mapping_counts = rel['GEOID_TRACT_10'].value_counts()
@@ -300,8 +292,8 @@ class Command(BaseCommand):
         many_to_one = reverse_counts[reverse_counts > 1].count()
 
         params = {normalize(f.name): f.name for f in Record._meta.get_fields()}
-        ces_2010 = recalculate_ces4_sjv(ces4)
-        ces_2020 = recalculate_ces4_sjv(ces4_2020)
+        ces_2010 = recalculate_ces4_sjv(ces4, exposure, effects, sens_pop, socio, ethnic_p_map)
+        ces_2020 = recalculate_ces4_sjv(ces4_2020, exposure, effects, sens_pop, socio, ethnic_p_map)
         
         ces_2010 = to_db(ces_2010, params, 2010)
         ces_2020 = to_db(ces_2020, params, 2020)
