@@ -300,11 +300,11 @@ class Command(BaseCommand):
         many_to_one = reverse_counts[reverse_counts > 1].count()
 
         params = {normalize(f.name): f.name for f in Record._meta.get_fields()}
-        ces4 = recalculate_ces4_sjv(get_ces4())
-        ces4_2020 = recalculate_ces4_sjv(build_ces4_2020(ces4, rel, tracts_2020))
+        ces_2010 = recalculate_ces4_sjv(ces4)
+        ces_2020 = recalculate_ces4_sjv(ces4_2020)
         
-        ces_2010 = to_db(ces4, params, 2010)
-        ces_2020 = to_db(ces4_2020, params, 2020)
+        ces_2010 = to_db(ces_2010, params, 2010)
+        ces_2020 = to_db(ces_2020, params, 2020)
         
 
         print('\n--- Mapping Summary ---')
