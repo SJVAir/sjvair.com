@@ -286,7 +286,7 @@ class Command(BaseCommand):
             'Other_Mult': 'Other_Mu_1'
         }
         rate_cols = exposure + sens_pop + socio
-        count_cols = effects + [key for key, value in ethnic_p_map.items()] + ['ACS2019Tot']
+        count_cols = effects + list(ethnic_p_map.keys) + ['ACS2019Tot'] 
         
         ces4_2020 = build_ces4_2020(ces4_2010, rel, tracts_2020, count_cols, rate_cols)
 
@@ -319,4 +319,3 @@ class Command(BaseCommand):
         print('\n--- CES4 Records Added ---')
         print(f'CES4 2010: {len(ces_2010)} Records Added')
         print(f'CES4 2020: {len(ces_2020)} Records Added')
-
