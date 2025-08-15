@@ -103,49 +103,6 @@ def get_tract_boundaries(version: str) -> pd.DataFrame:
     return gdf
 
 
-def build_ces4_2020(ces4: pd.DataFrame, rel: pd.DataFrame, tracts_2020: pd.DataFrame, count_cols: list[str], rate_cols: list[str]) -> gpd.GeoDataFrame:
-    # Ensure merge keys are str and padded
-    rel['GEOID_TRACT_10'] = rel['GEOID_TRACT_10'].astype(str).str.zfill(11)
-    rel['GEOID_TRACT_20'] = rel['GEOID_TRACT_20'].astype(str).str.zfill(11)
-
-    # Add CES4 columns to relationship file
-    merged = rel.merge(ces4, left_on='GEOID_TRACT_10', right_on='Tract', how='inner')
-
-    # Convert area field to numeric and compute weight
-    merged['AREALAND_PART'] = pd.to_numeric(merged['AREALAND_PART'], errors='coerce')
-    merged['weight'] = merged['AREALAND_PART'] / merged.groupby('GEOID_TRACT_10')['AREALAND_PART'].transform('sum')
-
-    # Warn about partial mappings
-    check = merged.groupby('GEOID_TRACT_10')['weight'].sum().reset_index()
-    bad = check[check['weight'] < 0.99]
-    print(f'⚠️ {len(bad)} tracts have weights summing to less than 0.99')
-
-    #Integer based variables
-    counts_weighted = merged.copy()
-    for col in count_cols:
-        counts_weighted[col] = counts_weighted[col] * counts_weighted['weight']
-    counts_result = counts_weighted.groupby('GEOID_TRACT_20')[count_cols].sum().reset_index()
-
-    #Metric based variables EX: ozone -> ppm
-    rates_result = merged.groupby('GEOID_TRACT_20').apply(
-        lambda df: pd.Series({
-            col: (df[col] * df['weight']).sum() / df['weight'].sum()
-            for col in rate_cols
-        })
-    ).reset_index()
-    weighted = counts_result.merge(rates_result, on='GEOID_TRACT_20', how='outer')
-
-    # Find dominant tract for each 2020 tract and its DAC category
-    merged['weight_rank'] = merged.groupby('GEOID_TRACT_20')['weight'].rank(ascending=False, method='first')
-    dominant = merged.loc[merged['weight_rank'] == 1, ['GEOID_TRACT_20', 'dac_category']]
-
-    # Add geometry and dac_category
-    out = tracts_2020[['GEOID', 'geometry']].rename(columns={'GEOID': 'GEOID_TRACT_20'})
-    out = out.merge(weighted, on='GEOID_TRACT_20', how='inner')
-    out = out.merge(dominant, on='GEOID_TRACT_20', how='left')
-
-    return gpd.GeoDataFrame(out, geometry='geometry', crs=tracts_2020.crs)
-
 def show_split_example(ces4_2010, ces4_2020, rel, col='CIscore'):
 
     rel = rel.copy()
@@ -178,7 +135,7 @@ def to_db(geo: pd.DataFrame, params: list[str], version: str) -> list[Record]:
             for col in geo.columns 
             if normalize(col) in params
             }
-        #inputs.pop('objectid')
+        inputs.pop('objectid')
         if version == 2020:
             inputs['tract'] = curr['GEOID_TRACT_20']
         external_id = inputs['tract']
@@ -285,11 +242,22 @@ class Command(BaseCommand):
             'Asian_Amer': 'Asian_Am_1',
             'Other_Mult': 'Other_Mu_1'
         }
-        rate_cols = exposure + sens_pop + socio
-        count_cols = effects + list(ethnic_p_map.keys) + ['ACS2019Tot'] 
+        rate_fields = exposure + sens_pop + socio
+        count_fields = effects + list(ethnic_p_map.keys()) + ['ACS2019Tot'] 
         
-        ces4_2020 = build_ces4_2020(ces4_2010, rel, tracts_2020, count_cols, rate_cols)
-
+        ces4_2020 = geodata.remap_gdf_boundaries(
+            source=ces4_2010.copy(),
+            target=tracts_2020.copy(),
+            rel=rel,
+            source_geoid_col='Tract',
+            target_geoid_col='GEOID',
+            rel_source_col='GEOID_TRACT_10',
+            rel_target_col='GEOID_TRACT_20',
+            rate_fields=rate_fields,
+            count_fields=count_fields,
+        ).drop(columns=['geometry'])
+        
+        ces4_2020.rename(columns={'Tract': 'GEOID_TRACT_20'}, inplace=True)
         print(f'✅ Built ces4_2020 GeoDataFrame with {len(ces4_2020):,} rows')
 
         mapping_counts = rel['GEOID_TRACT_10'].value_counts()

@@ -30,6 +30,8 @@ def remap_gdf_boundaries(
     rel_target_col: Optional[str] = None,
     area_field: str = 'AREALAND_PART',
     include_fields: Optional[list[str]] = None,
+    rate_fields: Optional[list[str]] = None, 
+    count_fields: Optional[list[str]] = None, 
 ) -> gpd.GeoDataFrame:
     """
     Remap metadata from source tracts to target geometries using area-based weighting.
@@ -66,17 +68,34 @@ def remap_gdf_boundaries(
     bad = check[check['weight'] < 0.99]
     print(f'{"⚠️" if len(bad) else "✅"} {len(bad)} tracts have weights summing to less than 0.99')
 
-    # Determine columns to carry forward
-    if include_fields is None:
-        include_fields = [col for col in source.columns if col not in (source_geoid_col, 'geometry')]
+    if rate_fields and count_fields:
+        counts_weighted = merged.copy()
+        for col in count_fields:
+            counts_weighted[col] = counts_weighted[col] * counts_weighted['weight']
+        counts_result = counts_weighted.groupby('GEOID_TARGET')[count_fields].sum().reset_index()
 
-    numeric_cols = [col for col in include_fields if pd.api.types.is_numeric_dtype(source[col])]
-    non_numeric_cols = [col for col in include_fields if col not in numeric_cols]
+        #Metric based variables EX: ozone -> ppm
+        rates_result = merged.groupby('GEOID_TARGET').apply(
+            lambda df: pd.Series({
+                col: (df[col] * df['weight']).sum() / df['weight'].sum()
+                for col in rate_fields
+            })
+        ).reset_index()
+        aggregated = counts_result.merge(rates_result, on='GEOID_TARGET', how='outer')
+        non_numeric_cols = [col for col in source.columns if col not in rate_fields and col not in count_fields] 
 
-    # Weighted numeric aggregation
-    for col in numeric_cols:
-        merged[col] = pd.to_numeric(merged[col], errors='coerce') * merged['weight']
-    aggregated = merged.groupby('GEOID_TARGET')[numeric_cols].sum().reset_index()
+    else:
+        # Determine columns to carry forward
+        if include_fields is None:
+            include_fields = [col for col in source.columns if col not in (source_geoid_col, 'geometry')]
+
+        numeric_cols = [col for col in include_fields if pd.api.types.is_numeric_dtype(source[col])]
+        non_numeric_cols = [col for col in include_fields if col not in numeric_cols]
+
+        # Weighted numeric aggregation
+        for col in numeric_cols:
+            merged[col] = pd.to_numeric(merged[col], errors='coerce') * merged['weight']
+        aggregated = merged.groupby('GEOID_TARGET')[numeric_cols].sum().reset_index()
 
     # Non-numeric from dominant row
     merged['rank'] = merged.groupby('GEOID_TARGET')['weight'].rank(ascending=False, method='first')
@@ -84,11 +103,15 @@ def remap_gdf_boundaries(
 
     # Merge both sets of data
     result = aggregated.merge(dominant_rows, on='GEOID_TARGET', how='left')
-
+    if 'geometry' in result.columns:
+        result = result.drop(columns='geometry')
+        
     # Attach geometry
+    
     out = target[[target_geoid_col, 'geometry']].rename(columns={target_geoid_col: 'GEOID_TARGET'})
     out = out.merge(result, on='GEOID_TARGET', how='left')
-
+    out = out.drop(columns=['Tract'], errors='ignore')
+    print(out)
     return gpd.GeoDataFrame(out, geometry='geometry', crs=target.crs).rename(columns={'GEOID_TARGET': source_geoid_col})
 
 
