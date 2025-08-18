@@ -111,7 +111,7 @@ def remap_gdf_boundaries(
     out = target[[target_geoid_col, 'geometry']].rename(columns={target_geoid_col: 'GEOID_TARGET'})
     out = out.merge(result, on='GEOID_TARGET', how='left')
     out = out.drop(columns=['Tract'], errors='ignore')
-    print(out)
+    
     return gpd.GeoDataFrame(out, geometry='geometry', crs=target.crs).rename(columns={'GEOID_TARGET': source_geoid_col})
 
 

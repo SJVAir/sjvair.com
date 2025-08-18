@@ -125,39 +125,38 @@ def show_split_example(ces4_2010, ces4_2020, rel, col='CIscore'):
     value_2020 = ces4_2020.loc[ces4_2020['GEOID_TRACT_20'].isin(rows['GEOID_TRACT_20']), col]
     print(f'\nWeighted average value applied to 2020 tracts:\n{value_2020}')
 
-
+# input CalEnviroScreen (CES) Records into the database
 def to_db(geo: pd.DataFrame, params: list[str], version: str) -> list[Record]:
     records = []
+    # Normalize column names, with original names for indexing
+    norm_cols = {
+        normalize(col): col
+        for col in geo.columns
+        if normalize(col) in params
+    }
+    # Iterate through each CES Tract
     for x in range(len(geo)):
-        curr = geo.iloc[x]       
+        curr = geo.iloc[x]
+        # Dictionary of model field name "params[norm_col]", and its value "curr[orig_col]"
         inputs = {
-            params[normalize(col)]:curr[col] 
-            for col in geo.columns 
-            if normalize(col) in params
+            params[norm_col]: curr[orig_col]
+            for norm_col, orig_col in norm_cols.items()
             }
-        inputs.pop('objectid')
+        inputs.pop('objectid') #Pop their given ID number
         if version == 2020:
             inputs['tract'] = curr['GEOID_TRACT_20']
         external_id = inputs['tract']
-        try:
-            Record.objects.get(
-                tract=external_id,
-                boundary__version=version,
-            ) 
-            continue
-        except Record.DoesNotExist:
-            pass     
         region = Region.objects.get(type=Region.Type.TRACT,
             external_id=external_id,
             boundaries__version=version
             )
-        boundary = region.boundaries.get(version=version)       
         record, created = Record.objects.update_or_create(
             objectid=external_id + '_' + str(version),
-            defaults=inputs,
+            defaults={
+                **inputs,
+                'boundary' : region.boundaries.get(version=version),
+            }
         )
-        record.boundary = boundary            
-        record.save()
         records.append(record)
     return records
   

@@ -223,7 +223,7 @@ class Record(models.Model):
     pop_other = models.IntegerField(_('Other Ethnicity'), null=True, help_text=_('Number of people per census tract of those who identify as non-Hispanic "other" or as multiple races'))
     pop_other_p = models.FloatField(_('Other Ethnicity Percentile'), null=True)
     
-    boundary = models.OneToOneField('regions.Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='record_boundary')
+    boundary = models.OneToOneField('regions.Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='record_boundary', help_text=_('Boundary object for this given tract.'))
 
     @property
     def version(self):
