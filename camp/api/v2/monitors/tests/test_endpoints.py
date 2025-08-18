@@ -8,7 +8,7 @@ from pprint import pprint
 import pytest
 
 from django.conf import settings
-from django.test import TestCase, RequestFactory
+from django.test import TestCase, RequestFactory, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -24,6 +24,7 @@ closest_monitor = endpoints.ClosestMonitor.as_view()
 current_data = endpoints.CurrentData.as_view()
 monitor_list = endpoints.MonitorList.as_view()
 monitor_detail = endpoints.MonitorDetail.as_view()
+monitor_meta = endpoints.MonitorMetaEndpoint.as_view()
 create_entry = endpoints.CreateEntry.as_view()
 entry_list = endpoints.EntryList.as_view()
 entry_csv = endpoints.EntryCSV.as_view()
@@ -53,6 +54,33 @@ class EndpointTests(TestCase):
         response = monitor_list(request)
         content = get_response_data(response)
         assert response.status_code == 200
+
+    def _fetch_monitor_meta(self):
+        url = reverse('api:v2:monitors:monitor-meta')
+        request = self.factory.get(url)
+        response = monitor_meta(request)
+        return response, get_response_data(response)
+
+    @override_settings(DEFAULT_POLLUTANT='pm25')
+    def test_monitor_meta_pm25(self):
+        '''
+            Test that we can GET the monitor meta endpoint.
+        '''
+        response, content = self._fetch_monitor_meta()
+        assert response.status_code == 200
+        assert content['data']['default_pollutant'] == 'pm25'
+
+    @override_settings(DEFAULT_POLLUTANT='o3')
+    def test_monitor_meta_o3(self):
+        response, content = self._fetch_monitor_meta()
+        assert response.status_code == 200
+        assert content['data']['default_pollutant'] == 'o3'
+
+    @override_settings(DEFAULT_POLLUTANT='lolnope')
+    def test_monitor_meta_invalid(self):
+        response, content = self._fetch_monitor_meta()
+        assert response.status_code == 200
+        assert content['data']['default_pollutant'] == 'pm25'
 
     def test_current_data(self):
         '''

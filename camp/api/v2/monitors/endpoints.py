@@ -1,7 +1,10 @@
+from datetime import timedelta
+
 from resticus import generics, http
 from resticus.views import Endpoint
 
 from django import forms
+from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
 from django.core.cache import cache
 from django.http import Http404
@@ -10,11 +13,11 @@ from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
 
 from camp.apps.entries.models import BaseEntry
-from camp.apps.monitors.models import Monitor
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
+from camp.apps.monitors.models import Monitor
 from camp.utils.forms import LatLonForm
-from camp.utils.views import get_view_cache_key
+from camp.utils.views import CachedEndpointMixin
 
 from .filters import MonitorFilter, get_entry_filterset
 from .forms import EntryExportForm
@@ -69,27 +72,13 @@ class EntryMixin(EntryTypeMixin):
         return queryset
 
 
-class MonitorList(MonitorMixin, generics.ListEndpoint):
+class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
+    cache_refresh = True
+    cache_refresh_name = 'api:v2:monitors:monitor-list'
+    cache_timeout = 90
+
     filter_class = MonitorFilter
     paginate = False
-
-    def get(self, request, *args, **kwargs):
-        cache_key = get_view_cache_key(self)
-
-        clear_cache = '_cc' in request.GET
-        if clear_cache:
-            cache.delete(cache_key)
-        else:
-            data = cache.get(cache_key)
-            if data is not None:
-                return data
-
-        response = super().get(request, *args, **kwargs)
-
-        # cache for 90 seconds, but we have a task to
-        # refresh the cache every 60 seconds
-        cache.set(cache_key, response, 90)
-        return response
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -98,6 +87,13 @@ class MonitorList(MonitorMixin, generics.ListEndpoint):
 
 
 class MonitorMetaEndpoint(Endpoint):
+    def get_default_pollutant(self):
+        display = settings.DEFAULT_POLLUTANT
+        valid = [E.entry_type for E in BaseEntry.get_subclasses()]
+        if display in valid:
+            return display
+        return 'pm25'
+
     def get_monitors(self):
         payload = {}
 
@@ -138,15 +134,18 @@ class MonitorMetaEndpoint(Endpoint):
             }
         return payload
 
-
     def get(self, request, *args, **kwargs):
         return {'data': {
+            'default_pollutant': self.get_default_pollutant(),
             'monitors': self.get_monitors(),
             'entries': self.get_entries()
         }}
 
 
-class MonitorDetail(MonitorMixin, generics.DetailEndpoint):
+class MonitorDetail(CachedEndpointMixin, MonitorMixin, generics.DetailEndpoint):
+    cache_timeout = 60
+    cache_refresh = False
+
     lookup_field = 'pk'
     lookup_url_kwarg = 'monitor_id'
     serializer_class = MonitorSerializer
@@ -200,7 +199,12 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         return super().serialize(source, fields, include, exclude, fixup)
 
 
-class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
+class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
+    cache_refresh = True
+    cache_refresh_kwargs = [{'entry_type': E.entry_type} for E in BaseEntry.get_subclasses()]
+    cache_refresh_name = 'api:v2:monitors:current-data'
+    cache_timeout = 90
+
     paginate = False
     serializer_class = MonitorSerializer
 
@@ -209,10 +213,22 @@ class CurrentData(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             .get_queryset(*args, **kwargs)
             .filter(
                 is_hidden=False,
-                position__isnull=False,
+                position__isnull=False
             )
-            .with_latest_entry(self.entry_model)
         )
+
+        # Only monitors that are recently active...
+        queryset = queryset.get_active(timedelta(
+            days=settings.MONITOR_ACTIVE_WINDOW_DAYS
+        ).total_seconds())
+
+        # ...and recently healthy.
+        queryset = queryset.filter_healthy(
+            hours=settings.MONITOR_HEALTHY_WINDOW_HOURS,
+            threshold=settings.MONITOR_HEALTHY_THRESHOLD,
+        )
+
+        queryset = queryset.with_latest_entry(self.entry_model)
         return queryset
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
