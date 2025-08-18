@@ -7,13 +7,17 @@ import zipfile
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
+from django.contrib.gis.geos import GEOSGeometry
 from django.forms import ValidationError
 from django.utils import timezone
 from django.utils.timezone import make_aware
 
 from .models import Smoke
 from camp.utils.counties import County
+from camp.utils.geodata import gdf_from_zip
+from camp.utils.gis import to_multipolygon
+
+
 
 
 def parse_timestamp(string):
@@ -50,17 +54,12 @@ def get_smoke_file(date):
         f"{date.strftime('%m')}/"
         f"hms_smoke{date.strftime('%Y%m%d')}.zip"
         )
-    response = requests.get(final_url)
-    if response.status_code != 200:
-        response.raise_for_status()    
-    with tempfile.TemporaryDirectory() as temp_dir:     #create temp_dir for zipfiles, add necessary data, then remove dir
-        zipfile.ZipFile(io.BytesIO(response.content)).extractall(temp_dir)
-        geo = gpd.read_file(f"{temp_dir}/hms_smoke{date.strftime('%Y%m%d')}.shp")
-        smokes = []
-        for i in range(len(geo)):
-            if smoke := to_db(geo.iloc[i], date, is_final):
-                smokes.append(smoke)
-        return smokes
+    gdf = gdf_from_zip(final_url)
+    smokes = []
+    for i in range(len(gdf)):
+        if smoke := to_db(gdf.iloc[i], date, is_final):
+            smokes.append(smoke)
+    return smokes
             
             
 #Save GeoDataFrame as an object
@@ -76,10 +75,8 @@ def to_db(curr, date, is_final):
     """
     #If the county is not within the SJV return it does not need to be added
     if County.in_SJV(curr.geometry):
-        geometry = GEOSGeometry(curr.geometry.wkt, srid=4326)
-        if geometry.geom_type == 'Polygon':
-            geometry = MultiPolygon(geometry)     
-        start = parse_timestamp(curr.Start)
+        geometry = to_multipolygon(geometry)     
+        start = parse_timestamp(curr.Start) 
         end = parse_timestamp(curr.End)
         smoke = Smoke(
             date=date,
