@@ -28,7 +28,7 @@ class AirGradientAdmin(MonitorAdmin):
     list_filter = MonitorAdmin.list_filter[:]
     list_filter.insert(1, 'place')
 
-    readonly_fields = ['location', 'position', 'county']
+    readonly_fields = ['name', 'location', 'position', 'county', 'get_map']
 
     def has_add_permission(self, request, obj=None):
         return False
