@@ -55,7 +55,7 @@ class SmokeAdmin(OSMGeoAdmin):
     def get_day_map(self, instance):
         if not instance or not instance.geometry:
             return '-'
-        width, height = (1000, 600)
+        width, height = (600, 800)
         date_smokes = self.model.objects.filter(date=instance.date)
         if len(date_smokes) <=1:
             return 'This is the only smoke for the day.'
@@ -75,7 +75,7 @@ class SmokeAdmin(OSMGeoAdmin):
                 fill_color=color,
                 border_color='black',
             ))
-        content = b64encode(static_map.render(format='png')).decode()
+        content = b64encode(static_map.render(format='png', bbox=[-124, 32, -114, 42])).decode() # Render Map to size of California bounding box
         return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.date} "All Plumes This Day" />')
     get_day_map.short_description = 'All Plumes This Day'
             
