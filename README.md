@@ -4,7 +4,7 @@ San Joaquin Valley Air Quality Monitoring Platform
 
 ---
 
-## 🛠 Tech Stack
+## 🛠️ Tech Stack
 
 - **Platform:** Python, Django
 - **Database:** PostgreSQL with PostGIS
@@ -119,10 +119,12 @@ docker compose exec web bash
 
 ### Import all regional data
 
+_(Note: This can take up to 20 minutes or more to finish, with
+`import_land_use` and `import_protected_areas` being the main
+culprits. These can be ommitted if necessary.)_
+
 ```bash
 docker compose exec web bash -c "
-  python manage.py migrate regions zero &&
-  python manage.py migrate regions &&
   python manage.py import_counties &&
   python manage.py import_census_tracts &&
   python manage.py import_cities &&
