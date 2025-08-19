@@ -1,20 +1,14 @@
 from datetime import datetime
-import geopandas as gpd
-import io
-import requests
-import tempfile
-import zipfile
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.contrib.gis.geos import GEOSGeometry
 from django.forms import ValidationError
 from django.utils import timezone
 from django.utils.timezone import make_aware
 
 from .models import Smoke
 from camp.utils.counties import County
-from camp.utils.geodata import gdf_from_zip
+from camp.utils.geodata import gdf_from_url
 from camp.utils.gis import to_multipolygon
 
 
@@ -54,7 +48,7 @@ def get_smoke_file(date):
         f"{date.strftime('%m')}/"
         f"hms_smoke{date.strftime('%Y%m%d')}.zip"
         )
-    gdf = gdf_from_zip(final_url)
+    gdf = gdf_from_url(final_url)
     smokes = []
     for i in range(len(gdf)):
         if smoke := to_db(gdf.iloc[i], date, is_final):
@@ -75,7 +69,7 @@ def to_db(curr, date, is_final):
     """
     #If the county is not within the SJV return it does not need to be added
     if County.in_SJV(curr.geometry):
-        geometry = to_multipolygon(geometry)     
+        geometry = to_multipolygon(curr.geometry)     
         start = parse_timestamp(curr.Start) 
         end = parse_timestamp(curr.End)
         smoke = Smoke(

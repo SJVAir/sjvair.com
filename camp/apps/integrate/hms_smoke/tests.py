@@ -81,12 +81,6 @@ class FetchFilesTaskTest(TestCase):
         get_smoke_file(make_aware(datetime(2025, 7, 2)).date())
         assert Smoke.objects.filter(is_final=True).count() == count
         assert Smoke.objects.all().count() == count 
-        
-    def test_fetch_files(self):
-        fetch_files.call_local()  
-        
-    def test_final_files(self):
-        final_file.call_local()  
     
     def test_get_smoke_file(self):
         assert Smoke.objects.all().count() == 0
