@@ -19,21 +19,16 @@ def tempo_data(key, bdate, edate):
         'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', 'o3_col'],
         'hcho':['tempo.l3.hcho.vertical_column','vertical_column', 'hcho_col'],
         }
-    obj_list = []
     token_dict = {"api_key":'anonymous'}
     
-    # SJV_bbox = (-121.585078, 34.788655, -117.616517, 38.300252) #San Joaquin Valley Boundary Box
     bbox = Region.objects.filter(type=Region.Type.COUNTY).combined_geometry()
     tempokey, column, shp_col = keys[key]
-    print(type(bbox))
     #QUERY FOR TEMPO DATA FROM PYRSIG
     with tempfile.TemporaryDirectory() as temp_dir:
         api = pyrsig.RsigApi(workdir=temp_dir, tempo_kw=token_dict, bdate=bdate, gridfit=True, bbox=bbox.extent, edate=edate) 
         tempodf = api.to_dataframe(
             tempokey, unit_keys=False, parse_dates=True, 
         )  
-        if len(tempodf) ==0:
-            return obj_list
         if key == 'no2' or key =='hcho':
             tempodf[column] = tempodf[column]/1000000000
         tempodf = tempodf.sort_values(by='time', ascending=True)
@@ -47,28 +42,31 @@ def tempo_data(key, bdate, edate):
                     'Longitude_NW', 'Latitude_NW',
                     'Longitude_SW', 'Latitude_SW',
                 ]  
+        process = {
+            'no2': no2_data,
+            'o3tot': default_data,
+            'hcho': default_data,
+        }
+        obj_list = []
         
-        if key == 'no2': #PROCESS NO2 FILES HERE
-            obj_list.append(no2_data(tempodf, column, shp_col, key, temp_dir, coordkeys))
-        #ORGANIZE DATA BY TIMESTAMP
-        
-        else: #PROCESS HCHO AND O3TOT
-            for timestamp, group in tempodf.groupby('time'):
-                if TempoGrid.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
-                    continue
-                geometries, values = [], [] 
-                for x in range(len(group)):
-                    geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
-                    geometries.append(geom)
-                    values.append(group.iloc[x][column])
-                    
-                obj_list.append(df_to_shp(geometries, values, [timestamp], key, shp_col, temp_dir, True))
-        return obj_list
+        return process[key](tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list)
 
+def row_to_polygon(row, coords):
+    return Polygon(row[coords].values.reshape(5,2))
+
+def default_data(tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list):
+    for timestamp, group in tempodf.groupby('time'):
+        if TempoGrid.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
+            continue
+        geometries, values = [], [] 
+        geometries = group.apply(lambda row: row_to_polygon(row, coordkeys), axis=1).tolist()
+        values = group[column].tolist()
+
+        obj_list.append(df_to_shp(geometries, values, [timestamp], key, shp_col, temp_dir, True))
+    return obj_list
 
 #COMBINES THE 2 NO2 SCANS INTO ONE SHAPEFILE/OBJECT
-def no2_data(tempodf, column, shp_col, key, temp_dir, coordkeys):
-    obj_list = []
+def no2_data(tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list):
     geometries, values, timestamps= [], [], []
     all_timestamps = tempodf['time'].unique()
     all_timestamps.to_pydatetime().sort()
@@ -80,12 +78,10 @@ def no2_data(tempodf, column, shp_col, key, temp_dir, coordkeys):
         elif len(timestamps) == 1 and not (abs(timestamps[0] - timestamp) <= timedelta(minutes=15)):
             obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, False))
             geometries, values, timestamps = [], [], []
+        
         timestamps.append(timestamp)
-      
-        for x in range(len(group)):
-            geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
-            geometries.append(geom)
-            values.append(group.iloc[x][column])  
+        geometries = group.apply(lambda row: row_to_polygon(row, coordkeys), axis=1).tolist()
+        values = group[column].tolist() 
                   
         if len(timestamps) == 2:  
             obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, True))
@@ -112,7 +108,7 @@ def df_to_shp(geometries, values, stamp, key, shp_col, temp_dir, final):
     
     #STORE THE ZIP FILES AS A FILEFIELD IN THE PARTICULAR OBJECT TYPE
     with open(zip_path, "rb") as f:
-        obj = TempoGrid(timestamp=stamp[0], pollutant=key, final=final)
+        obj, created = TempoGrid.objects.update_or_create(timestamp=stamp[0], pollutant=key, final=final)
         if len(stamp) == 2: 
             obj.timestamp_2 = stamp[1]
         obj.file.save(f"{filename}.zip", File(f)) 
