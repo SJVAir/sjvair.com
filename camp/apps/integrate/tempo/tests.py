@@ -1,3 +1,5 @@
+from io import StringIO
+from django.core.management import call_command
 from django.test import TestCase
 from .data import tempo_data
 from camp.apps.integrate.tempo.models import TempoGrid
@@ -9,6 +11,8 @@ from datetime import datetime
 
 class Test(TestCase):
     def setUp(self):
+        out = StringIO()
+        call_command('import_counties', stdout=out)
         bdate = timezone.now() 
         bdate = bdate.replace(hour=1, minute=0, second=0, microsecond=0)
         bdate = bdate - timedelta(hours=1)

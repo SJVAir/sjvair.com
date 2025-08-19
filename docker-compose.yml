@@ -26,6 +26,7 @@ networks:
 services:
   db:
     image: postgis/postgis:17-3.5
+    container_name: sjvair
     environment:
       POSTGRES_DB: sjvair
       POSTGRES_USER: sjvair
@@ -44,6 +45,7 @@ services:
 
   queue:
     image: redis:8-alpine
+    container_name: redis
     networks:
       - sjvair-net
     ports:
@@ -56,6 +58,7 @@ services:
 
   cache:
     image: memcached:1.6-alpine
+    container_name: memcached
     networks:
       - sjvair-net
     ports:

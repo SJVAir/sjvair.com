@@ -10,22 +10,8 @@ import geopandas as gpd
 from django.contrib.gis.geos import GEOSGeometry
 from django.core.files import File
 from camp.apps.integrate.tempo.models import TempoGrid
-
-#bounding boxes 
-'''
-San joaquin  = -121.585078	37.481783	-120.917007	38.300252
-Fresno = -120.918731	35.906914	-118.360586	37.585837
-Kern = -120.194369	34.788655	-117.616517	35.798392
-Tulare = -119.573194	35.788935	-117.980761	36.744816
-Stanislaus = -121.486775	37.134774	-120.387329	38.077421
-Kings = -120.315068	35.78858	-119.474354	36.488962
-Madera = -120.545536	36.763047	-119.022363	37.777986
-Merced = -121.248647	36.740381	-120.052055	37.633364
-
-Final bounding box = (-121.585078, 34.788655, -117.616517, 38.300252)
-
-'''
-#THIS IS USED TO MAKE THE RETRIEVING DATA FUNCTION MODULAR FOR ALL POLLUTANT TYPES
+from camp.apps.regions.models import Region
+# from camp.apps.regions.querysets import combined_geometry
 
 def tempo_data(key, bdate, edate):
     keys = {
@@ -35,12 +21,14 @@ def tempo_data(key, bdate, edate):
         }
     obj_list = []
     token_dict = {"api_key":'anonymous'}
-    SJV_bbox = (-121.585078, 34.788655, -117.616517, 38.300252) #San Joaquin Valley Boundary Box
+    
+    # SJV_bbox = (-121.585078, 34.788655, -117.616517, 38.300252) #San Joaquin Valley Boundary Box
+    bbox = Region.objects.filter(type=Region.Type.COUNTY).combined_geometry()
     tempokey, column, shp_col = keys[key]
-
+    print(type(bbox))
     #QUERY FOR TEMPO DATA FROM PYRSIG
     with tempfile.TemporaryDirectory() as temp_dir:
-        api = pyrsig.RsigApi(workdir=temp_dir, tempo_kw=token_dict, bdate=bdate, gridfit=True, bbox=SJV_bbox, edate=edate) 
+        api = pyrsig.RsigApi(workdir=temp_dir, tempo_kw=token_dict, bdate=bdate, gridfit=True, bbox=bbox.extent, edate=edate) 
         tempodf = api.to_dataframe(
             tempokey, unit_keys=False, parse_dates=True, 
         )  
@@ -52,21 +40,23 @@ def tempo_data(key, bdate, edate):
         tempodf['row_index'] = tempodf.index
         print(tempodf.groupby('time')['row_index'].agg(['min', 'max']))
         
-        if key == 'no2':
-            obj_list.append(no2_data(tempodf, column, shp_col, key, temp_dir))
-        #ORGANIZE DATA BY TIMESTAMP
-        else:
-            for timestamp, group in tempodf.groupby('time'):
-                if TempoGrid.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
-                    continue
-                geometries, values = [], []
-                coordkeys = [
+        coordkeys = [
                     'Longitude_SW', 'Latitude_SW',
                     'Longitude_SE', 'Latitude_SE',
                     'Longitude_NE', 'Latitude_NE',
                     'Longitude_NW', 'Latitude_NW',
                     'Longitude_SW', 'Latitude_SW',
-                ]   
+                ]  
+        
+        if key == 'no2': #PROCESS NO2 FILES HERE
+            obj_list.append(no2_data(tempodf, column, shp_col, key, temp_dir, coordkeys))
+        #ORGANIZE DATA BY TIMESTAMP
+        
+        else: #PROCESS HCHO AND O3TOT
+            for timestamp, group in tempodf.groupby('time'):
+                if TempoGrid.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
+                    continue
+                geometries, values = [], [] 
                 for x in range(len(group)):
                     geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
                     geometries.append(geom)
@@ -77,7 +67,7 @@ def tempo_data(key, bdate, edate):
 
 
 #COMBINES THE 2 NO2 SCANS INTO ONE SHAPEFILE/OBJECT
-def no2_data(tempodf, column, shp_col, key, temp_dir):
+def no2_data(tempodf, column, shp_col, key, temp_dir, coordkeys):
     obj_list = []
     geometries, values, timestamps= [], [], []
     all_timestamps = tempodf['time'].unique()
@@ -91,17 +81,12 @@ def no2_data(tempodf, column, shp_col, key, temp_dir):
             obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, False))
             geometries, values, timestamps = [], [], []
         timestamps.append(timestamp)
-        coordkeys = [
-            'Longitude_SW', 'Latitude_SW',
-            'Longitude_SE', 'Latitude_SE',
-            'Longitude_NE', 'Latitude_NE',
-            'Longitude_NW', 'Latitude_NW',
-            'Longitude_SW', 'Latitude_SW',
-        ]   
+      
         for x in range(len(group)):
             geom = Polygon(group[coordkeys].iloc[x].values.reshape(5, 2))
             geometries.append(geom)
-            values.append(group.iloc[x][column])        
+            values.append(group.iloc[x][column])  
+                  
         if len(timestamps) == 2:  
             obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, True))
             geometries, values, timestamps = [], [], []
