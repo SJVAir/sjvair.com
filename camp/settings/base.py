@@ -475,6 +475,7 @@ SILKY_IGNORE_PATH_PATTERNS = [re.compile(path) for path in [
     r'^/media/.*',
     r'^/static/.*',
     r'^/system-status/.*',
+    r'^/__debug__/.*',
 ]]
 
 # Scout APM
