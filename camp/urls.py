@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path, re_path 
+from django.urls import include, path, re_path
 
 from camp.utils import views
 
@@ -26,6 +26,7 @@ urlpatterns = [
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
     path('batcave/stats.json', views.AdminStats.as_view(), name='admin-stats'),
     path('batcave/flush-queue/<str:key>/', views.FlushQueue.as_view(), name='flush-queue'),
+    path('batcave/silk/', include('silk.urls', namespace='silk')),
     path('batcave/', admin.site.urls),
 ]
 
