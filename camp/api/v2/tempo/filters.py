@@ -3,32 +3,17 @@ from resticus.filters import FilterSet
 from camp.apps.integrate.tempo.models import TempoGrid
 
 
-class O3totFilter(FilterSet):
+class TempoFIlter(FilterSet):
     model = TempoGrid
     fields = {
+        'pollutant': ['exact'],
+        
         'timestamp': [
             'exact', 
             'lt', 'lte',
             'gt', 'gte',
-        ]
-    }
-    
-    
-class HchoFilter(FilterSet):
-    model = TempoGrid
-    fields = {
-        'timestamp': [
-            'exact', 
-            'lt', 'lte',
-            'gt', 'gte',
-        ]
-    }
-    
-    
-class No2Filter(FilterSet):
-    model = TempoGrid
-    fields = {
-        'timestamp': [
+        ],
+        'timestamp_2': [
             'exact', 
             'lt', 'lte',
             'gt', 'gte',

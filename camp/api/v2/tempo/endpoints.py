@@ -1,43 +1,22 @@
 from resticus import generics
 
 from camp.apps.integrate.tempo.models import TempoGrid
-from .serializer import O3totSerializer, HchoSerializer, No2Serializer
-from .filters import O3totFilter, HchoFilter, No2Filter
+from .serializer import TempoSerializer
+from .filters import TempoFIlter
 
-class O3totMixin:
+class TempoMixin:
     model = TempoGrid
-    serializer_class = O3totSerializer
-    paginate = True  #defaults to page_size = 100
-    def get_queryset(self):    
-        return (
-            super().get_queryset().order_by('-timestamp')
-        )
-    
-class HchoMixin:
-    model = TempoGrid
-    serializer_class = HchoSerializer
-    paginate = True  #defaults to page_size = 100
-    def get_queryset(self):    
-        return (
-            super().get_queryset().order_by('-timestamp')
-        )
-    
-class No2Mixin:
-    model = TempoGrid
-    serializer_class = No2Serializer
+    serializer_class = TempoSerializer
     paginate = True  #defaults to page_size = 100
     def get_queryset(self):    
         return (
             super().get_queryset().order_by('-timestamp')
         )
         
-class O3totList(O3totMixin, generics.ListEndpoint): #Maybe not list endpoint because we need to return shapefiles not a queryset
-    filter_class = O3totFilter
+class TempoList(TempoMixin, generics.ListEndpoint):
+    filter_class = TempoFIlter
 
+class TempoDetail(TempoMixin, generics.DetailEndpoint):
+    lookup_field = 'id'
+    lookup_url_kwarg = 'tempo_id'
     
-class HchoList(HchoMixin, generics.ListEndpoint): #Maybe not list endpoint because we need to return shapefiles not a queryset
-    filter_class = HchoFilter
-
-
-class No2List(No2Mixin, generics.ListEndpoint): #Maybe not list endpoint because we need to return shapefiles not a queryset
-    filter_class = No2Filter

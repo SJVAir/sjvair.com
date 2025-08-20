@@ -1,26 +1,13 @@
 from resticus import serializers
 
 
-class O3totSerializer(serializers.Serializer):
+class TempoSerializer(serializers.Serializer):
     fields = {
         'id',
-        'timestamp', 
+        'pollutant',
+        'timestamp',
+        'timestamp_2', 
         'file',
-    }
-    
-    
-class HchoSerializer(serializers.Serializer):
-    fields = {
-        'id',
-        'timestamp', 
-        'file',
-    }
-    
-    
-class No2Serializer(serializers.Serializer):
-    fields = {
-        'id',
-        'timestamp', 
-        'file',
+        'final',
     }
     
