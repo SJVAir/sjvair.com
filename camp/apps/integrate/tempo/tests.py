@@ -5,7 +5,6 @@ from .data import tempo_data
 from camp.apps.integrate.tempo.models import TempoGrid
 from django.utils import timezone
 from datetime import timedelta
-from datetime import datetime
 
 # Create your tests here.
 

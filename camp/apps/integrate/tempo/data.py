@@ -1,14 +1,13 @@
+import geopandas as gpd
+import os
 import pyrsig
+from datetime import timedelta
 import tempfile
 import zipfile
-import io
-import os
-from datetime import timedelta
-from django.utils import timezone
-from shapely  import Polygon, MultiPolygon
-import geopandas as gpd
-from django.contrib.gis.geos import GEOSGeometry
+
 from django.core.files import File
+from django.contrib.gis.geos import Polygon
+
 from camp.apps.integrate.tempo.models import TempoGrid
 from camp.apps.regions.models import Region
 # from camp.apps.regions.querysets import combined_geometry
@@ -32,6 +31,7 @@ def tempo_data(key, bdate, edate):
         if key == 'no2' or key =='hcho':
             tempodf[column] = tempodf[column]/1000000000
         tempodf = tempodf.sort_values(by='time', ascending=True)
+        
         tempodf['row_index'] = tempodf.index
         print(tempodf.groupby('time')['row_index'].agg(['min', 'max']))
         
@@ -48,7 +48,6 @@ def tempo_data(key, bdate, edate):
             'hcho': default_data,
         }
         obj_list = []
-        
         return process[key](tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list)
 
 def row_to_polygon(row, coords):
@@ -71,21 +70,27 @@ def no2_data(tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list):
     all_timestamps = tempodf['time'].unique()
     all_timestamps.to_pydatetime().sort()
     final_stamp = all_timestamps[-1]
+    qs = TempoGrid.objects.filter(pollutant='no2', final=True)
     for timestamp, group in tempodf.groupby('time'):
         timestamp = timestamp.to_pydatetime()
-        if TempoGrid.objects.filter(timestamp=timestamp, pollutant='no2', final=True).exists() or TempoGrid.objects.filter(timestamp_2=timestamp, pollutant='no2', final=True).exists():
+        #If the complete file is already added, continue
+        if qs.filter(timestamp=timestamp,).exists() or qs.filter(timestamp_2=timestamp,).exists():
             continue
+        #If the second half of the grid is not present, final = False
         elif len(timestamps) == 1 and not (abs(timestamps[0] - timestamp) <= timedelta(minutes=15)):
             obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, False))
             geometries, values, timestamps = [], [], []
-        
+        #reshape coords to geometry objects and add the geometry/value combination to lists
         timestamps.append(timestamp)
         geometries = group.apply(lambda row: row_to_polygon(row, coordkeys), axis=1).tolist()
         values = group[column].tolist() 
-                  
+        
+        #Complete shape file      
         if len(timestamps) == 2:  
             obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, True))
             geometries, values, timestamps = [], [], []
+        
+        #length = 1 and last shape file means no other file
         elif timestamp == final_stamp:
             obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, False))
     return obj_list
@@ -100,6 +105,7 @@ def df_to_shp(geometries, values, stamp, key, shp_col, temp_dir, final):
     gdf.to_file(shp_path, driver="ESRI Shapefile")
     zip_path = os.path.join(temp_dir, f"{filename}.zip")
     
+    #convert shp to zip
     with zipfile.ZipFile(zip_path, 'w') as zf:
         for ext in [".shp", ".shx", ".dbf", ".prj", ".cpg"]:
             filepath = os.path.join(temp_dir, f"{filename}{ext}")
