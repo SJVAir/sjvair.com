@@ -4,25 +4,30 @@ from django.test import TestCase
 from .data import tempo_data
 from camp.apps.integrate.tempo.models import TempoGrid
 from django.utils import timezone
-from datetime import timedelta
-
-# Create your tests here.
+from datetime import datetime
 
 class Test(TestCase):
     def setUp(self):
         out = StringIO()
         call_command('import_counties', stdout=out)
-        bdate = timezone.now() 
-        bdate = bdate.replace(hour=1, minute=0, second=0, microsecond=0)
-        bdate = bdate - timedelta(hours=1)
-        self.bdate = bdate
+        self.bdate = datetime(2025, 7, 12, 0, 0, 0, 0)
+        self.edate = datetime(2025, 7, 12, 13, 0, 0, 0)
     
     def test1(self):
-        tempo_data('o3tot', self.bdate, timezone.now())
-        print("COUNT: ", TempoGrid.objects.all().count())
+        tempo_data('o3tot', self.bdate, self.edate)
+        qs = TempoGrid.objects.all()
+        assert qs.count() == 3
+        assert qs.first().pollutant == 'o3tot'
+        assert qs.first().final == True
+    
+    def test2(self):
+        self.edate = datetime(2025, 7, 12, 0, 0, 0, 0)
+        tempo_data('no2', self.bdate, self.edate)
+        qs = TempoGrid.objects.all()
+        assert qs.count() == 2
+        assert qs.filter(timestamp_2=None)[0].final == False
+        assert qs.filter(timestamp_2=None)[0].timestamp == datetime(2025, 7, 12, 0, 59, 0, 0, tzinfo=timezone.utc)
+        assert qs.filter(timestamp_2__isnull=False)[0].final == True
         
-  
-    # def test2(self):
-    #     tempo_data('hcho', self.bdate)
-    #     print("COUNT: ", HchoFile.objects.all().count())
+
  

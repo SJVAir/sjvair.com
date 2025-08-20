@@ -4,7 +4,6 @@ from django.contrib.gis.admin import OSMGeoAdmin
 from .models import TempoGrid
 
 
-
 @admin.register(TempoGrid)
 class O3totAdmin(OSMGeoAdmin):
     date_hierarchy = 'timestamp'

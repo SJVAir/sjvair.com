@@ -6,11 +6,11 @@ import tempfile
 import zipfile
 
 from django.core.files import File
-from django.contrib.gis.geos import Polygon
+from shapely import Polygon
 
 from camp.apps.integrate.tempo.models import TempoGrid
 from camp.apps.regions.models import Region
-# from camp.apps.regions.querysets import combined_geometry
+
 
 def tempo_data(key, bdate, edate):
     keys = {
