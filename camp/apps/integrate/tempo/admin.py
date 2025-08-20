@@ -1,14 +1,7 @@
-from base64 import b64encode
-from math import pow
-import geopandas as gpd
-
 from django.contrib import admin
 from django.contrib.gis.admin import OSMGeoAdmin
-from django.utils.safestring import mark_safe
 
 from .models import TempoGrid
-from camp.utils import maps
-from camp.utils.geodata import gdf_from_zip
 
 
 
