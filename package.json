@@ -6,7 +6,7 @@
         "heroku-postbuild": "invoke build"
     },
     "dependencies": {
-        "@sjvair/monitor-map": "^2.6.0",
+        "@sjvair/monitor-map": "^2.6.1",
         "@sjvair/sensor-scatterplot": "^1.0.12",
         "@sjvair/web-widget": "^1.0.9",
         "bulma": "^0.9.4",
