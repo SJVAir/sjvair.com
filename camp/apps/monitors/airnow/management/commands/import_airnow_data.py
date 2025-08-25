@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.monitors.airnow.tasks import import_airnow_data, import_airnow_data_legacy
+from camp.apps.monitors.airnow.tasks import import_airnow_data
 
 
 class Command(BaseCommand):
@@ -8,4 +8,3 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         import_airnow_data.call_local()
-        import_airnow_data_legacy.call_local()
