@@ -1,4 +1,7 @@
-from django.contrib.gis.geos import MultiPolygon, Polygon
+from io import StringIO
+
+from django.core.management import call_command
+from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase
 from django.urls import reverse
 
@@ -12,14 +15,16 @@ def create_test_boundary(version):
         slug="test-region",
         type=Region.Type.TRACT
     )
-    poly = Polygon((
-        (0, 0),
-        (0, 1),
-        (1, 1),
-        (1, 0),
-        (0, 0)
-    ))
-    mpoly = MultiPolygon(poly)
+    wkt = (
+        "MULTIPOLYGON((("
+        "-119.860839 36.660399, "
+        "-119.860839 36.905755, "
+        "-119.650879 36.905755, "
+        "-119.650879 36.660399, "
+        "-119.860839 36.660399"
+        ")))"
+    )
+    mpoly = GEOSGeometry(wkt)
     boundary = Boundary.objects.create(
         region=region,
         version=version,
@@ -32,15 +37,7 @@ def create_test_boundary(version):
 
 
 def create_test_ces4_obj(id, pm, pm_p):
-    polygon_wkt = (
-        "MULTIPOLYGON((("
-        "-119.860839 36.660399, "
-        "-119.860839 36.905755, "
-        "-119.650879 36.905755, "
-        "-119.650879 36.660399, "
-        "-119.860839 36.660399"
-        ")))"
-    )
+    
     params = {f.name: 0 for f in Record._meta.get_fields()}
     params['objectid'] = id
     params['pol_pm'] = pm
@@ -60,6 +57,8 @@ class Tests_CES4List(TestCase):
         self.ces4_1 = create_test_ces4_obj(1, 2.1, .65)
         self.ces4_2 = create_test_ces4_obj(2, .89, .3)
         self.ces4_3 = create_test_ces4_obj(3, .1, .05)
+        out = StringIO()
+        call_command('import_counties', stdout=out)
     
     def test1_list(self):
         url = reverse("api:v2:ces4:ces4-list")
@@ -99,6 +98,21 @@ class Tests_CES4List(TestCase):
         assert response.status_code == 200
         assert len(response.json()['data']) == 3
         
+    #TESTS COUNTY FILTER
+    def test6_list(self):
+        url = reverse("api:v2:ces4:ces4-list")
+        url += "?county=Fresno County"
+        response = self.client.get(url)
+        assert response.status_code == 200
+        assert len(response.json()['data']) == 3
+        
+    def test7_list(self):
+        url = reverse("api:v2:ces4:ces4-list")
+        url += "?county=Tulare County"
+        response = self.client.get(url)
+        assert response.status_code == 200
+        assert len(response.json()['data']) == 0
+      
 class Tests_CES4Detail(TestCase):
     """
     test1 - query for objectID = 1, returns object 1
