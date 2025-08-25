@@ -1,9 +1,12 @@
 from resticus.filters import FilterSet
 
+from camp.api.v2.filters import CountyFilter
 from camp.apps.integrate.ces4.models import Record
 
 
 class Ces4Filter(FilterSet):
+    county = CountyFilter(field_name='boundary__geometry', lookup_expr='intersects')
+    
     class Meta:
         model = Record
         fields = dict.fromkeys(

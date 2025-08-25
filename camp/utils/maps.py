@@ -322,7 +322,6 @@ class StaticMap:
             series = gpd.GeoSeries(geometries, crs=CRS_LATLON)
             extent = self._compute_extent(series, buffer=self.buffer)
             
-            print(extent)
             
         ax.set_xlim(extent[0], extent[2])
         ax.set_ylim(extent[1], extent[3])
@@ -391,9 +390,7 @@ class StaticMap:
             x, y = series.iloc[0].x, series.iloc[0].y
             bounds = box(x - buf, y - buf, x + buf, y + buf).bounds
         else:
-            print(series.crs)
             minx, miny, maxx, maxy = series.total_bounds
-            print(series.total_bounds)
             if buffer is None:
                 buffer = 0.10
             if buffer <= 1.0:
@@ -402,7 +399,6 @@ class StaticMap:
             else:
                 pad_x = pad_y = buffer
             bounds = (minx - pad_x, miny - pad_y, maxx + pad_x, maxy + pad_y)
-            print(bounds)
         return self._adjust_bounds_to_aspect(bounds)
 
 
