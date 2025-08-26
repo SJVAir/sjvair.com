@@ -1,8 +1,4 @@
-import os
-import uuid
-
 from django.db import models
-from django.contrib.gis.db import models as gis_models
 from django_smalluuid.models import SmallUUIDField, uuid_default
 
 
@@ -12,9 +8,9 @@ def file_path(instance, filename):
 
 class TempoGrid(models.Model):
     class Pollutant(models.TextChoices):
-        O3TOT = 'o3tot', 'Ozone' #measured in Dobson Units
-        HCHO = 'hcho', 'Formaldehyde' #measured in molecules/cm2
-        NO2 = 'no2', 'Nitrogen Dioxide' #measured in molecules/cm2
+        O3TOT = 'o3tot', 'Ozone' #measured in Dobson Units   range is <1.00e+02 DU to  >=4.97e+02DU
+        HCHO = 'hcho', 'Formaldehyde' #measured in molecules/cm2   range is <0 mol/cm2 to >=2.94e+16 mol/cm2
+        NO2 = 'no2', 'Nitrogen Dioxide' #measured in molecules/cm2   range is <0 mol/cm2 to >=2.99e+16 mol/cm2
         
     id = SmallUUIDField(
         default=uuid_default(),
