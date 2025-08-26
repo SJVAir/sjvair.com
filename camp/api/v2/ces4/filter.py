@@ -11,9 +11,8 @@ class Ces4Filter(FilterSet):
         model = Record
         fields = dict.fromkeys(
             [
-        'tract', 'population', 'boundary__version',
-        'pollution', 'pollution_p', 'pollution_s',
-        'ci_score', 'ci_score_p',
+        'objectid', 'tract', 'population', 'boundary__version',
+        'pollution', 'pollution_p', 'pollution_s','ci_score', 'ci_score_p',
         'pol_ozone', 'pol_ozone_p', 'pol_pm', 'pol_pm_p',
         'pol_diesel', 'pol_diesel_p', 'pol_pest', 'pol_pest_p',
         'pol_rsei_haz', 'pol_rsei_haz_p', 'pol_traffic', 'pol_traffic_p',
