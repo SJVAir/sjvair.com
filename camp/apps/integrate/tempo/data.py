@@ -29,9 +29,9 @@ def tempo_data(key, bdate, edate):
             tempokey, unit_keys=False, parse_dates=True, 
         )  
         if key == 'no2' or key =='hcho':
-            tempodf[column] = tempodf[column]/1000000000
+            tempodf[column] = tempodf[column]/1000000000000000   #to display data from 1 * 10^14 to 150 * 10^14
+            
         tempodf = tempodf.sort_values(by='time', ascending=True)
-        
         tempodf['row_index'] = tempodf.index
         print(tempodf.groupby('time')['row_index'].agg(['min', 'max']))
         
