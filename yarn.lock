@@ -12,10 +12,10 @@
   resolved "https://registry.npmjs.org/@sjvair/sensor-scatterplot/-/sensor-scatterplot-1.0.12.tgz"
   integrity sha512-p8j77gnWbnWeAjd1qpjAKA81wRktLaKygz8m0THp+y0Mf7upIweanjyu6YXT8/e/m+iuVCn70GNAbCOgDQ9LEA==
 
-"@sjvair/web-widget@^1.0.9":
-  version "1.0.9"
-  resolved "https://registry.npmjs.org/@sjvair/web-widget/-/web-widget-1.0.9.tgz"
-  integrity sha512-ZQMLJUF0RLt3ozks2DvI71Su8NQOCty0wlrsd5Awl0OI++aRo+EDGPdaEYc07USqZxGiro71/4YEj05aDq9kaA==
+"@sjvair/web-widget@^2.0.0":
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/@sjvair/web-widget/-/web-widget-2.0.0.tgz#cd943f9aa0dc4b024c9a92b14ea2a450fd417f21"
+  integrity sha512-2iJ0PWEdsEkZn8vxL7Bn3E2bXQklk5eiUXES0/6i0WOSiyhkkSDz6CeNsIQBpNLMXSfZsSUDH8TeC4PqcGYoRA==
 
 bulma-list@^1.2.0:
   version "1.2.0"
