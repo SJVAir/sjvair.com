@@ -8,7 +8,7 @@
     "dependencies": {
         "@sjvair/monitor-map": "^2.6.1",
         "@sjvair/sensor-scatterplot": "^1.0.12",
-        "@sjvair/web-widget": "^1.0.9",
+        "@sjvair/web-widget": "^2.0.0",
         "bulma": "^0.9.4",
         "bulma-list": "^1.2.0"
     },
