@@ -1,7 +1,7 @@
 import geopandas as gpd
 import os
 import pyrsig
-from datetime import timedelta
+from datetime import timedelta, datetime
 import tempfile
 import zipfile
 
@@ -12,7 +12,7 @@ from camp.apps.integrate.tempo.models import TempoGrid
 from camp.apps.regions.models import Region
 
 
-def tempo_data(key, bdate, edate):
+def tempo_data(key: str, bdate: datetime, edate: datetime) -> list[TempoGrid]:
     keys = {
         'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', 'no2_col'], 
         'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', 'o3_col'],
@@ -50,10 +50,10 @@ def tempo_data(key, bdate, edate):
         obj_list = []
         return process[key](tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list)
 
-def row_to_polygon(row, coords):
+def row_to_polygon(row: gpd.GeoSeries, coords: list[str]) -> Polygon:
     return Polygon(row[coords].values.reshape(5,2))
 
-def default_data(tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list):
+def default_data(tempodf: gpd.GeoDataFrame, column: str, shp_col: str, key: str, temp_dir: str, coordkeys: list[str], obj_list: list[TempoGrid]) -> list[TempoGrid]:
     for timestamp, group in tempodf.groupby('time'):
         if TempoGrid.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
             continue
@@ -65,7 +65,7 @@ def default_data(tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list):
     return obj_list
 
 #COMBINES THE 2 NO2 SCANS INTO ONE SHAPEFILE/OBJECT
-def no2_data(tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list):
+def no2_data(tempodf: gpd.GeoDataFrame, column: str, shp_col: str, key: str, temp_dir: str, coordkeys: list[str], obj_list: list[TempoGrid]) -> list[TempoGrid]:
     geometries, values, timestamps= [], [], []
     all_timestamps = tempodf['time'].unique()
     all_timestamps.to_pydatetime().sort()
@@ -97,7 +97,7 @@ def no2_data(tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list):
     
     
 #CREATES SHAPEFILE AND ADDS TO DB
-def df_to_shp(geometries, values, stamp, key, shp_col, temp_dir, final):
+def df_to_shp(geometries: list[Polygon], values: list[float], stamp: list[datetime], key: str, shp_col: str, temp_dir: str, final: bool) -> TempoGrid:
     #CONSTRUCT SHAPE FILES
     gdf = gpd.GeoDataFrame({shp_col: values}, geometry=geometries, crs="EPSG:4326")
     filename = f"{key}{stamp[0].strftime('%Y%m%d%H%M%S')}"
