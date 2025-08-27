@@ -5,7 +5,7 @@ from . import endpoints
 app_name = 'tempo'
 
 urlpatterns = [
-    path('', endpoints.TempoGrid.as_view(), name='tempo-list'),
+    path('', endpoints.TempoList.as_view(), name='tempo-list'),
     path('<tempo_id>/', endpoints.TempoDetail.as_view(), name='tempo-detail'),
     
 ]
