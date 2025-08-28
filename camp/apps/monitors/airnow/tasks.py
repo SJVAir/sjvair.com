@@ -24,8 +24,7 @@ def import_airnow_data(start_date=None, end_date=None):
     end_date = end_date or timezone.now()
 
     for county in Region.objects.counties().select_related('boundary'):
-        county_start = start_date
-        if county_start is None:
+        if start_date is None:
             oldest_last_entry = (AirNow.objects
                 .get_active()
                 .filter(position__within=county.boundary.geometry)
@@ -35,25 +34,31 @@ def import_airnow_data(start_date=None, end_date=None):
                 .first()
             )
 
-            oldest_last_entry = oldest_last_entry or (end_date - timedelta(hours=24))
-            county_start = max(oldest_last_entry, end_date - timedelta(hours=24))
+            # Default window: last 24 hours
+            start_date = end_date - timedelta(hours=24)
 
-        print(f'\nCounty: {county.name}')
-        print(f'Window: {county_start} - {end_date}')
+            if oldest_last_entry:
+                # Don't fetch earlier than 24h ago
+                start_date = max(oldest_last_entry, start_date)
+
+            # Ensure at least 1h difference
+            if start_date > end_date - timedelta(hours=1):
+                start_date = end_date - timedelta(hours=1)
+
         data = airnow_api.query(
             bbox=county.boundary.geometry.extent,
-            start_date=county_start,
-            end_date=end_date
+            start_date=start_date,
+            end_date=end_date,
         )
         for item in data:
-            print(f"- {item['SiteName']} ({item['Parameter']})")
-
-            # Look up the monitor by name. If it doesn't exist, create it.
             try:
+                # Look up the monitor by name...
                 monitor = AirNow.objects.get(name=item['SiteName'])
             except AirNow.DoesNotExist:
+                # ...but it doesn't exist, so create it...
                 latlon = Point(item['Longitude'], item['Latitude'], srid=gis.EPSG_LATLON)
                 if not county.boundary.geometry.contains(latlon):
+                    # ...unless it's outside the county!
                     continue
 
                 monitor = AirNow.objects.create(
@@ -66,17 +71,15 @@ def import_airnow_data(start_date=None, end_date=None):
 
             if entry := monitor.handle_payload(item):
                 cleaned = monitor.process_entry_ng(entry)
-                print('\t[AirNow] Entry created:', entry.timestamp)
 
     legacy_previous = 1
     if start_date:
-        legacy_previous = (end_date - start_date).hours
+        legacy_previous = int((end_date - start_date).total_seconds() / 3600)
     import_airnow_data_legacy(timestamp=end_date, previous=legacy_previous)
 
 
 # @db_periodic_task(crontab(minute='*/15'), priority=50)
 def import_airnow_data_legacy(timestamp=None, previous=None):
-    print('LEGACY', timestamp, previous)
     if settings.AIRNOW_API_KEY is None:
         # Do nothing if we don't have a key.
         return

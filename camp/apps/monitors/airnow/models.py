@@ -82,7 +82,6 @@ class AirNow(Monitor):
                 value=payload['Value']
             )
 
-
     # Legacy
     def process_entry(self, entry, payload):
         entry.timestamp = make_aware(parse_datetime(
