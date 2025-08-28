@@ -7,6 +7,7 @@ from django.db.models import (
     Case, Count, Exists, Value, When,
     OuterRef, Subquery,
 )
+from django.db.models.functions import Coalesce
 from django.db.models.query import ModelIterable
 from django.utils import timezone
 
@@ -186,7 +187,11 @@ class MonitorQuerySet(InheritanceQuerySet):
                 )
 
         queryset = self.annotate(
-            passing_health_checks=Subquery(passing_count, output_field=IntegerField()),
+            passing_health_checks=Coalesce(
+                Subquery(passing_count, output_field=IntegerField()),
+                Value(0),
+                output_field=IntegerField(),
+            ),
             is_healthy=Case(
                 *whens,
                 default=Value(False),
