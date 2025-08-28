@@ -112,7 +112,7 @@ class AirNowClient:
         **kwargs: Any,
     ) -> Iterator[Dict[str, Any]]:
 
-        end_date = start_date or timezone.now()
+        end_date = end_date or timezone.now()
         start_date = start_date or end_date - timedelta(hours=1)
 
         windows = chunk_date_range(start_date, end_date, days=batch_days)
