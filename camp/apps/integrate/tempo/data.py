@@ -14,14 +14,14 @@ from camp.apps.regions.models import Region
 
 def tempo_data(key: str, bdate: datetime, edate: datetime) -> list[TempoGrid]:
     keys = {
-        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', 'no2_col'], 
-        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', 'o3_col'],
-        'hcho':['tempo.l3.hcho.vertical_column','vertical_column', 'hcho_col'],
+        'no2':['tempo.l2.no2.vertical_column_troposphere', 'no2_vertical_column_troposphere', 'no2_col', '1e14 mol/cm2'], 
+        'o3tot':['tempo.l3.o3tot.column_amount_o3','o3_column_amount_o3', 'o3_col', 'Dobson Unit'],
+        'hcho':['tempo.l3.hcho.vertical_column','vertical_column', 'hcho_col', '1e14 mol/cm2'],
         }
     token_dict = {"api_key":'anonymous'}
     
     bbox = Region.objects.filter(type=Region.Type.COUNTY).combined_geometry()
-    tempokey, column, shp_col = keys[key]
+    tempokey, column, shp_col, unit = keys[key]
     #QUERY FOR TEMPO DATA FROM PYRSIG
     with tempfile.TemporaryDirectory() as temp_dir:
         api = pyrsig.RsigApi(workdir=temp_dir, tempo_kw=token_dict, bdate=bdate, gridfit=True, bbox=bbox.extent, edate=edate) 
@@ -48,12 +48,12 @@ def tempo_data(key: str, bdate: datetime, edate: datetime) -> list[TempoGrid]:
             'hcho': default_data,
         }
         obj_list = []
-        return process[key](tempodf, column, shp_col, key, temp_dir, coordkeys, obj_list)
+        return process[key](tempodf, column, shp_col, key, unit,  temp_dir, coordkeys, obj_list)
 
 def row_to_polygon(row: gpd.GeoSeries, coords: list[str]) -> Polygon:
     return Polygon(row[coords].values.reshape(5,2))
 
-def default_data(tempodf: gpd.GeoDataFrame, column: str, shp_col: str, key: str, temp_dir: str, coordkeys: list[str], obj_list: list[TempoGrid]) -> list[TempoGrid]:
+def default_data(tempodf: gpd.GeoDataFrame, column: str, shp_col: str, key: str, unit: str, temp_dir: str, coordkeys: list[str], obj_list: list[TempoGrid]) -> list[TempoGrid]:
     for timestamp, group in tempodf.groupby('time'):
         if TempoGrid.objects.filter(timestamp=timestamp, pollutant=key, ).exists():
             continue
@@ -61,11 +61,11 @@ def default_data(tempodf: gpd.GeoDataFrame, column: str, shp_col: str, key: str,
         geometries = group.apply(lambda row: row_to_polygon(row, coordkeys), axis=1).tolist()
         values = group[column].tolist()
 
-        obj_list.append(df_to_shp(geometries, values, [timestamp], key, shp_col, temp_dir, True))
+        obj_list.append(df_to_shp(geometries, values, [timestamp], key, unit, shp_col, temp_dir, True))
     return obj_list
 
 #COMBINES THE 2 NO2 SCANS INTO ONE SHAPEFILE/OBJECT
-def no2_data(tempodf: gpd.GeoDataFrame, column: str, shp_col: str, key: str, temp_dir: str, coordkeys: list[str], obj_list: list[TempoGrid]) -> list[TempoGrid]:
+def no2_data(tempodf: gpd.GeoDataFrame, column: str, shp_col: str, key: str, unit: str, temp_dir: str, coordkeys: list[str], obj_list: list[TempoGrid]) -> list[TempoGrid]:
     geometries, values, timestamps= [], [], []
     all_timestamps = tempodf['time'].unique()
     all_timestamps.to_pydatetime().sort()
@@ -78,28 +78,28 @@ def no2_data(tempodf: gpd.GeoDataFrame, column: str, shp_col: str, key: str, tem
             continue
         #If the second half of the grid is not present, final = False
         elif len(timestamps) == 1 and not (abs(timestamps[0] - timestamp) <= timedelta(minutes=15)):
-            obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, False))
+            obj_list.append(df_to_shp(geometries, values, timestamps, key, unit, shp_col, temp_dir, False))
             geometries, values, timestamps = [], [], []
         #reshape coords to geometry objects and add the geometry/value combination to lists
         timestamps.append(timestamp)
-        geometries = group.apply(lambda row: row_to_polygon(row, coordkeys), axis=1).tolist()
-        values = group[column].tolist() 
+        geometries += group.apply(lambda row: row_to_polygon(row, coordkeys), axis=1).tolist()
+        values += group[column].tolist() 
         
         #Complete shape file      
         if len(timestamps) == 2:  
-            obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, True))
+            obj_list.append(df_to_shp(geometries, values, timestamps, key, unit, shp_col, temp_dir, True))
             geometries, values, timestamps = [], [], []
         
         #length = 1 and last shape file means no other file
         elif timestamp == final_stamp:
-            obj_list.append(df_to_shp(geometries, values, timestamps, key, shp_col, temp_dir, False))
+            obj_list.append(df_to_shp(geometries, values, timestamps, key, unit, shp_col, temp_dir, False))
     return obj_list
     
     
 #CREATES SHAPEFILE AND ADDS TO DB
-def df_to_shp(geometries: list[Polygon], values: list[float], stamp: list[datetime], key: str, shp_col: str, temp_dir: str, final: bool) -> TempoGrid:
+def df_to_shp(geometries: list[Polygon], values: list[float], stamp: list[datetime], key: str, unit: str, shp_col: str, temp_dir: str, final: bool) -> TempoGrid:
     #CONSTRUCT SHAPE FILES
-    gdf = gpd.GeoDataFrame({shp_col: values}, geometry=geometries, crs="EPSG:4326")
+    gdf = gpd.GeoDataFrame({shp_col: values, "Units":unit}, geometry=geometries, crs="EPSG:4326")
     filename = f"{key}{stamp[0].strftime('%Y%m%d%H%M%S')}"
     shp_path = os.path.join(temp_dir, f"{filename}.shp")
     gdf.to_file(shp_path, driver="ESRI Shapefile")

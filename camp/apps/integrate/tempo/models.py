@@ -24,7 +24,7 @@ class TempoGrid(models.Model):
     pollutant = models.CharField(max_length=5, choices=Pollutant.choices,)
     timestamp = models.DateTimeField(null=True)
     timestamp_2 = models.DateTimeField(null=True, blank=True)
-    
+
     file = models.FileField(upload_to=file_path, null=True, blank=True)
     
     final = models.BooleanField()

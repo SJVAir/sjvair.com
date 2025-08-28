@@ -8,8 +8,7 @@ from .models import TempoGrid
 class O3totAdmin(OSMGeoAdmin):
     date_hierarchy = 'timestamp'
     list_filter  = ['pollutant', ]
-    readonly_fields = ['id', 'timestamp','pollutant', ]
-    list_display = ['id', 'pollutant', 'timestamp',  ]
+    list_display = ['id', 'pollutant', 'timestamp', 'final', ]
     ordering = ('-timestamp', )
     
     def has_add_permission(self, request, obj = None):
