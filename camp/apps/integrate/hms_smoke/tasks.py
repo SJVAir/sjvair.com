@@ -22,5 +22,6 @@ def fetch_files(date=None):
 #data usually available around 8am pst, but just in case the data is late
 @db_periodic_task(crontab(minute='0', hour='17'), priority=50)
 def final_file(date=None):
-    date = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date() - timedelta(days=1)
+    if date is None:
+        date = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date() - timedelta(days=1)
     get_smoke_file(date)
