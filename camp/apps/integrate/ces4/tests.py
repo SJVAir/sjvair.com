@@ -4,7 +4,7 @@ from django.db.models import Max, Min
 from django.core.management import call_command
 from django.test import TestCase
 
-from camp.apps.integrate.ces4.management.commands.resolve_ces4_tracts import normalize
+from camp.apps.integrate.ces4.management.commands.import_ces4_data import normalize
 from camp.apps.integrate.ces4.models import Record
 from camp.apps.regions.models import Boundary, Region
 
@@ -16,7 +16,7 @@ class Tests_CES4_App(TestCase):
         out = StringIO()
         call_command('import_counties', stdout=out)
         call_command('import_census_tracts', stdout=out)
-        call_command('resolve_ces4_tracts', stdout=out)
+        call_command('import_ces4_data', stdout=out)
 
         ces_2020 = Record.objects.filter(boundary__version='2020')
         assert Record.objects.filter(boundary__version='2010').count() == Boundary.objects.filter(region__type=Region.Type.TRACT, version='2010').count()
