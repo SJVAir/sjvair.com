@@ -94,10 +94,10 @@
 {% block sidebar %}
 <div id="content-related">
     <div class="module">
-        <h2>{% trans 'System Status' %}</h2>
+        <h2>{% trans 'Infrastructure' %}</h2>
         <ul class="">
+            <li><a href="{% url 'silk:summary' %}">Request Profiling</a></li>
             <li><a href="{% url 'health_check:health_check_home' %}">System Health Checks</a></li>
-            <li><a href="{% url 'health_check:health_check_subset' 'air-networks' %}">Air Network Integrations</a></li>
         </ul>
         <table>
             <tr>
@@ -129,6 +129,7 @@
             <li><a href="{% url 'admin:alerts_subscription_county_stats' %}">Subscription Stats by County</a></li>
         </ul>
     </div>
+
     <div class="module" id="recent-actions-module">
         <h2>{% translate 'Recent actions' %}</h2>
         <h3>{% translate 'My actions' %}</h3>

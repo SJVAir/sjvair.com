@@ -1,6 +1,9 @@
 import json
+import time
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from random import random
+from typing import Sequence, Iterator, Dict, Any, Optional
 
 import requests
 
@@ -9,7 +12,8 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 from resticus.encoders import JSONEncoder
 
-from camp.utils.counties import County
+from camp.apps.regions.models import Region
+from camp.utils.datetime import chunk_date_range
 
 
 # https://docs.airnowapi.org/webservices
@@ -60,11 +64,11 @@ class AirNowClient:
         self.api_key = api_key
         self.requestor = Requestor(self)
 
-    def request(self, path, **kwargs):
-        url = f"https://{self.domain}{path}"
+    def request(self, path: str, **kwargs: Any) -> requests.Response:
+        url = f'https://{self.domain}{path}'
         return self.requestor.request(url, **kwargs)
 
-    def build_params(self, params, **extra):
+    def build_params(self, params: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
         params.update(**extra)
         params.update({
             'api_key': self.api_key,
@@ -72,26 +76,67 @@ class AirNowClient:
         })
         return params
 
-    def data(self, bbox, start_date, end_date, **kwargs):
-        path = f"/aq/data/"
-        params = self.build_params({
-            'startdate': start_date.strftime('%Y-%m-%dT%H'),
-            'enddate': end_date.strftime('%Y-%m-%dT%H'),
+    def data(self,
+        bbox: Sequence[float],
+        start_date: Optional[datetime],
+        end_date: Optional[datetime],
+        **kwargs: Any,
+    ):
+        path = '/aq/data/'
+        base = {
             'parameters': 'OZONE,PM25,PM10,CO,NO2,SO2',
             'bbox': ','.join(map(str, bbox)),
-            'datatype': 'B',
+            'datatype': 'C',
             'verbose': 1,
             'nowcastonly': 0,
             'includerawconcentrations': 1,
-        }, **kwargs)
-        return self.request(path, method="get", params=params)
+        }
 
-    def query(self, county, timestamp=None, previous=1, **kwargs):
+        if start_date:
+            base['startdate'] = start_date.strftime('%Y-%m-%dT%H')
+
+        if end_date:
+            base['enddate']   = end_date.strftime('%Y-%m-%dT%H')
+
+        params = self.build_params(base, **kwargs)
+        return self.request(path, method='get', params=params)
+
+    def query(
+        self,
+        *,
+        bbox: Sequence[float],
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        batch_days: int = 7,
+        pause_secs: float = 0.2,
+        **kwargs: Any,
+    ) -> Iterator[Dict[str, Any]]:
+
+        end_date = end_date or timezone.now()
+        start_date = start_date or end_date - timedelta(hours=1)
+
+        windows = chunk_date_range(start_date, end_date, days=batch_days)
+        for idx, (win_start, win_end) in enumerate(windows):
+            response = self.data(bbox=bbox, start_date=win_start, end_date=win_end, **kwargs)
+
+            # handle rate limit
+            if response.status_code == 429:
+                wait = max(1.0, random() * 5.0)
+                time.sleep(wait)
+                response = self.data(bbox=bbox, start_date=win_start, end_date=win_end, **kwargs)
+
+            for entry in response.json():
+                yield entry
+
+            if idx + 1 < len(windows):
+                time.sleep(pause_secs)
+
+    def query_legacy(self, bbox, timestamp=None, previous=1, **kwargs):
         if timestamp is None:
             timestamp = timezone.now()
 
         response = self.data(
-            bbox=County.counties[county].extent,
+            bbox=bbox,
             start_date=timestamp - timedelta(hours=previous),
             end_date=timestamp,
             **kwargs,
@@ -104,13 +149,6 @@ class AirNowClient:
             data[entry['SiteName']][entry['UTC']][entry['Parameter']] = entry
 
         return data
-    
-    def query_ng(self, county, timestamp=None, previous=1, **kwargs):
-        results = self.query(county, timestamp=timestamp, previous=previous, **kwargs)
-        for container in results.values():
-            for timestamp, data in container.items():
-                for item in data.values():
-                    yield item
 
 
 airnow_api = AirNowClient(settings.AIRNOW_API_KEY)
