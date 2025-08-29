@@ -5,7 +5,7 @@ from camp.apps.integrate.hms_smoke.models import Smoke
 
 
 class SmokeFilter(FilterSet):
-    county = CountyFilter(field_name='geometry', lookup_expr='intersects')
+    county = CountyFilter(field_name='geometry', lookup_expr='intersects', threshold=.00001)
     
     class Meta: 
         model = Smoke

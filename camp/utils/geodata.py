@@ -10,6 +10,9 @@ import fiona
 import geopandas as gpd
 import pandas as pd
 
+from django.db.models import QuerySet
+from django.contrib.gis.db.models import F
+from django.contrib.gis.db.models.functions import Area, Intersection
 from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
@@ -139,6 +142,35 @@ def filter_by_overlap(
         intersection_area = geom.intersection(reference_geom).area
         if (intersection_area / geom.area) >= threshold:
             yield series
+
+
+def query_by_overlap(
+    qs: QuerySet,
+    geom_field: str,
+    ref_geom: BaseGeometry,
+    threshold: float = 0.5
+) -> QuerySet:
+    """
+    Filters a QuerySet with a reference geometry.
+    Objects in the resulting queryset will be considered overlapping with the reference geoemetry if 
+    their area within the reference is within given threshold. 
+    
+    Example use: determine if ces4 tracts have 50% of its area in Fresno County Geometry, will return tracts with a majority in Fresno
+    Args: 
+        qs: QuerySet of objects with geometries
+        geom_field: the string name of the geometry field. Ex: 'geometry' or 'boundary__geometry'
+        ref_geom: geometry of the desired comparison object
+        threshold: the minimum ratio of the total area that is desired in the reference geometry
+        
+    Yields:
+        QuerySet with objects that have geometries within a certain threshold of the reference
+    """
+    
+    qs = qs.annotate(
+        overlap = Area(Intersection(F(geom_field), ref_geom)),
+        total_area = Area(F(geom_field))
+    )
+    return qs.filter(overlap__gte=F("total_area") * threshold)
 
 
 def load_region_geometry(crs: Optional[str] = gis.EPSG_LATLON):

@@ -5,7 +5,7 @@ from camp.apps.integrate.ces4.models import Record
 
 
 class Ces4Filter(FilterSet):
-    county = CountyFilter(field_name='boundary__geometry', lookup_expr='intersects')
+    county = CountyFilter(field_name='boundary__geometry', lookup_expr='intersects', threshold=.5)
     
     class Meta:
         model = Record

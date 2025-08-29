@@ -7,7 +7,7 @@ from django_filters import filters
 
 from camp.utils.datetime import make_aware
 from camp.apps.regions.models import Region
-
+from camp.utils.geodata import query_by_overlap
 class TimezoneDateTimeFilter(filters.DateTimeFilter):
     def filter(self, qs, value):
         if value is None:
@@ -23,6 +23,10 @@ class TimezoneDateTimeFilter(filters.DateTimeFilter):
         return super().filter(qs, value)
 
 class CountyFilter(filters.Filter):
+    def __init__(self, *args, threshold=0.5, **kwargs):
+        self.threshold = threshold
+        super().__init__(*args, **kwargs)
+    
     def filter(self, qs, value):
         if value is None:
             return qs
@@ -31,4 +35,4 @@ class CountyFilter(filters.Filter):
         except Region.DoesNotExist:
             return qs.none()
         value = county.boundary.geometry
-        return super().filter(qs, value)        
+        return query_by_overlap(qs, self.field_name, value, self.threshold)
