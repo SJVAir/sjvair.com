@@ -10,7 +10,7 @@ import fiona
 import geopandas as gpd
 import pandas as pd
 
-from shapely.geometry import shape
+from shapely.geometry import shape, Point, LineString
 from shapely.geometry.base import BaseGeometry
 
 from camp.utils import gis
@@ -111,8 +111,15 @@ def filter_by_overlap(
     """
     for series in series_iter:
         geom = series.geometry
-        if geom.is_empty or geom.area == 0 or not geom.intersects(reference_geom):
+        if geom.is_empty or not geom.intersects(reference_geom):
             continue
+
+        if isinstance(geom, (Point, LineString)):
+            yield series
+
+        if geom.area == 0:
+            continue
+
         intersection_area = geom.intersection(reference_geom).area
         if (intersection_area / geom.area) >= threshold:
             yield series
@@ -120,7 +127,7 @@ def filter_by_overlap(
 
 def load_region_geometry(crs: Optional[str] = gis.EPSG_LATLON):
     from camp.apps.regions.models import Region
-    geometry = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe().unary_union
+    geometry = Region.objects.counties().to_dataframe().unary_union
     if crs != gis.EPSG_LATLON:
         geometry = (
             gpd.GeoSeries([geometry], crs=gis.EPSG_LATLON)
