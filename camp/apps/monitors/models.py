@@ -306,6 +306,28 @@ class Monitor(models.Model):
         entry_models = entry_models or self.entry_types
         return to_multi_entry_wide_dataframe(entry_models, self, start_date, end_date)
 
+    def is_processable(self, obj_or_model) -> bool:
+        """
+        Check whether this monitor can process either:
+          - a model class, or
+          - a specific entry instance.
+        """
+        from camp.apps.entries.models import BaseEntry
+
+        entry_model = obj_or_model
+        if isinstance(obj_or_model, BaseEntry):
+            entry_model = type(obj_or_model)
+
+        processors = (
+            self.ENTRY_CONFIG
+            .get(entry_model, {})
+            .get('processors', {})
+        )
+
+        if isinstance(obj_or_model, BaseEntry):
+            return bool(processors.get(obj_or_model.stage))
+        return bool(processors)
+
     def initialize_entry(self, EntryModel, **kwargs):
         defaults = {
             'monitor': self,
@@ -316,16 +338,17 @@ class Monitor(models.Model):
         defaults.update(**kwargs)
         return EntryModel(**defaults)
 
-    def create_entry(self, EntryModel, **data):
+    def create_entry(self, EntryModel, save: bool = True, **data):
         entry = self.initialize_entry(EntryModel)
 
         for key, value in data.items():
             setattr(entry, key, value)
 
         if entry.validation_check():
-            entry.save()
-            entry.refresh_from_db()
-            self.update_latest_entry(entry)
+            if save:
+                entry.save()
+                entry.refresh_from_db()
+                self.update_latest_entry(entry)
             return entry
 
     def process_entries_ng(self, entries):
