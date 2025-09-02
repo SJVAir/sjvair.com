@@ -175,7 +175,7 @@ class PurpleAir(Monitor):
         # If we're here, it's probably outside.
         return self.LOCATION.outside
 
-    def create_entries(self, payload):
+    def create_entries(self, payload, save=True):
         timestamp = parse_timestamp(payload.get('last_seen', payload.get('time_stamp')))
         entries = []
 
@@ -195,17 +195,18 @@ class PurpleAir(Monitor):
                 entry = self.create_entry(
                     EntryModel=EntryModel,
                     timestamp=timestamp,
+                    save=save,
                     **data
                 )
                 if entry is not None:
                     entries.append(entry)
         return entries
 
-    def create_entry(self, EntryModel, **data):
+    def create_entry(self, EntryModel, save: bool = True, **data):
         if not data or any(v is None for v in data.values()):
             return
 
-        return super().create_entry(EntryModel, **data)
+        return super().create_entry(EntryModel, save=save, **data)
 
     def process_entry_pipeline(self, entry, cutoff_stage=None):
         '''
