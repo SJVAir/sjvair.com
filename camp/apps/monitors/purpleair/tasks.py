@@ -150,7 +150,7 @@ def import_monitor_history(monitor_id, start_date, end_date, chunk_size=28):
         for entry in monitor.create_entries(payload, save=False):
             EntryModel = type(entry)
             entries[EntryModel].append(entry)
-            if len(entries[EntryModel]) >= 10_000:
+            if len(entries[EntryModel]) >= 5000:
                 print(f'Saving {len(entries[EntryModel])} {EntryModel.entry_type} {entries[EntryModel][-1].timestamp}')
                 EntryModel.objects.bulk_create(entries[EntryModel], ignore_conflicts=True)
                 entries[EntryModel] = []
@@ -180,8 +180,9 @@ def process_monitor_history(monitor_id, start_date, end_date):
             .iterator(chunk_size=1000)
         )
 
-        for entry in queryset:
-            print(entry.entry_type, entry.timestamp)
+        for i, entry in enumerate(queryset):
+            if (i % 5000) == 0:
+                print(i, entry.entry_type, entry.timestamp)
             monitor.process_entry_pipeline(entry)
 
 
