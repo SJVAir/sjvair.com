@@ -2,10 +2,10 @@
 # yarn lockfile v1
 
 
-"@sjvair/monitor-map@^2.6.2":
-  version "2.6.2"
-  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-2.6.2.tgz#1794d69449a00b0824ff1452d85d629e591aacc4"
-  integrity sha512-v7XiJqwT4KqAup1WGLgx3PFK9EIOnwDl8wHfmogwmo0z4sMYvkopSTxCaI+giri93WxjWmIao9BtJeGKqloGig==
+"@sjvair/monitor-map@^2.6.3":
+  version "2.6.3"
+  resolved "https://registry.npmjs.org/@sjvair/monitor-map/-/monitor-map-2.6.3.tgz"
+  integrity sha512-KpP6uXVISFH8jLEUFRXObMCQXPyrWY4YeMS7iR4gZXpREAb7o5NU0iAfUuA33ViUs5J46/Y0T/UYRrJIaJ85Mw==
 
 "@sjvair/sensor-scatterplot@^1.0.12":
   version "1.0.12"
@@ -14,7 +14,7 @@
 
 "@sjvair/web-widget@^2.0.0":
   version "2.0.0"
-  resolved "https://registry.yarnpkg.com/@sjvair/web-widget/-/web-widget-2.0.0.tgz#cd943f9aa0dc4b024c9a92b14ea2a450fd417f21"
+  resolved "https://registry.npmjs.org/@sjvair/web-widget/-/web-widget-2.0.0.tgz"
   integrity sha512-2iJ0PWEdsEkZn8vxL7Bn3E2bXQklk5eiUXES0/6i0WOSiyhkkSDz6CeNsIQBpNLMXSfZsSUDH8TeC4PqcGYoRA==
 
 bulma-list@^1.2.0:
