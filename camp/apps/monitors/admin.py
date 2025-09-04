@@ -91,7 +91,7 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         ('Metadata', {'fields': ['groups', 'notes', 'data_provider', 'data_provider_url']}),
     ]
 
-    csv_export_fields = ['id', 'name', 'get_device', 'health_grade', 'last_updated', 'county', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
+    csv_export_fields = ['id', 'name', 'get_device', 'health_grade', 'last_updated', 'legacy_last_updated', 'county', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
     search_fields = ['county', 'location', 'name']
     save_on_top = True
 
@@ -130,8 +130,10 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         for monitor in queryset:
             row = {}
             for field in fields:
-                value = getattr(monitor, field)
-                row[field] = value() if callable(value) else value
+                if value := getattr(monitor, field, None):
+                    row[field] = value() if callable(value) else value
+                elif method := getattr(self, field, None):
+                    row[field] = method(monitor)
             # Make sure the ID is quoted
             if 'id' in row:
                 row['id'] = str(row['id'])
