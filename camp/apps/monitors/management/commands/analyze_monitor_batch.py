@@ -177,13 +177,17 @@ class Command(BaseCommand):
         }
 
     def find_next_monitor(self, i):
-        for j, monitor in enumerate(self.data[i + 1:], start=i + 1):
-            if monitor['intradevice_valid']:
-                return j
+        valid = [idx for idx, m in enumerate(self.data) if m['intradevice_valid']]
+        if len(valid) < 2:
+            return None
 
-        for j, monitor in enumerate(self.data[:i]):
-            if monitor['intradevice_valid']:
-                return j
+        try:
+            pos = valid.index(i)
+        except ValueError:
+            return None
+
+        # return the next valid index, wrapping around
+        return valid[(pos + 1) % len(valid)]
 
     def generate_regression(self, a, b):
         df_a = pd.DataFrame.from_records(a.values('timestamp', 'pm25_reported'))
