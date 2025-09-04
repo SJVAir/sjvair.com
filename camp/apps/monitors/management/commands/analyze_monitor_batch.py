@@ -81,7 +81,10 @@ class Command(BaseCommand):
                 continue
 
             if (monitor2_idx := self.find_next_monitor(i)) is None:
+                monitor['interdevice'] = None
+                monitor['interdevice_valid'] = False
                 continue
+
             monitor2 = self.data[monitor2_idx]
 
             results = self.generate_regression(monitor['a'], monitor2['b'])
@@ -155,14 +158,16 @@ class Command(BaseCommand):
 
         coef_key = next(iter(results.coefs.keys()))  # first feature name
 
+        numeric_df = results.df[['endog_value', 'exog_value']].astype(float)
+
         return {
             f'{prefix} R2': r(results.r2),
             f'{prefix} Intercept': r(results.intercept),
             f'{prefix} Coefficient': r(results.coefs[coef_key]),
             f'{prefix} Variance Score': r(results.variance),
-            f'{prefix} Variance Mean': r(results.df.var(axis='columns').mean()),
+            f'{prefix} Variance Mean': r(numeric_df.var(axis='columns').mean()),
             f'{prefix} Percent Change Mean': r(
-                results.df
+                numeric_df
                 .pct_change(axis='columns')['exog_value']
                 .replace([np.inf, -np.inf], np.nan)
                 .dropna()
@@ -186,6 +191,9 @@ class Command(BaseCommand):
 
         if df_a.empty or df_b.empty:
             return None
+
+        df_a['pm25_reported'] = df_a['pm25_reported'].astype(float)
+        df_b['pm25_reported'] = df_b['pm25_reported'].astype(float)
 
         df_a = df_a.rename(columns={'pm25_reported': 'endog_value'})
         df_b = df_b.rename(columns={'pm25_reported': 'exog_value'})
@@ -234,7 +242,7 @@ class Command(BaseCommand):
         if options['start_date'] is not None:
             start_date = datetime.strptime(options['start_date'], '%Y-%m-%d').date()
         else:
-            start_date = (lookup['timestamp__lte'] - timedelta(days=14)).date()
+            start_date = (end_date - timedelta(days=14)).date()
 
         start_date = datetime.combine(start_date, time.min)
         start_date = timezone.make_aware(start_date, TZ)
