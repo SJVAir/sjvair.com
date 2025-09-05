@@ -81,6 +81,7 @@ class Command(BaseCommand):
                 continue
 
             if (monitor2_idx := self.find_next_monitor(i)) is None:
+                print('NO VALID NEXT MONITOR', monitor['monitor'].name)
                 monitor['interdevice'] = None
                 monitor['interdevice_valid'] = False
                 continue
@@ -189,7 +190,7 @@ class Command(BaseCommand):
         # return the next valid index, wrapping around
         return valid[(pos + 1) % len(valid)]
 
-    def generate_regression(self, a, b):
+    def generate_regression(self, a, b, freq='1h'):
         df_a = pd.DataFrame.from_records(a.values('timestamp', 'pm25_reported'))
         df_b = pd.DataFrame.from_records(b.values('timestamp', 'pm25_reported'))
 
@@ -199,16 +200,16 @@ class Command(BaseCommand):
         df_a['pm25_reported'] = df_a['pm25_reported'].astype(float)
         df_b['pm25_reported'] = df_b['pm25_reported'].astype(float)
 
-        df_a = df_a.rename(columns={'pm25_reported': 'endog_value'})
-        df_b = df_b.rename(columns={'pm25_reported': 'exog_value'})
+        df_a = df_a.rename(columns={'pm25_reported': 'endog_value'}).set_index('timestamp')
+        df_b = df_b.rename(columns={'pm25_reported': 'exog_value'}).set_index('timestamp')
+
+        df_a = df_a.resample(freq).mean()
+        df_b = df_b.resample(freq).mean()
 
         # Merge on timestamp
         merged = pd.merge(df_a, df_b, on='timestamp', how='inner').dropna()
         if merged.empty:
             return None
-
-        # import code
-        # code.interact(local=locals())
 
         features = merged[['exog_value']]
         target = merged['endog_value']
