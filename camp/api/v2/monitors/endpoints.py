@@ -173,6 +173,7 @@ class EntryExport(FormEndpoint):
 class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
     form_class = LatLonForm
     serializer_class = MonitorSerializer
+    paginate = False
 
     def get_queryset(self):
         form = self.get_form(self.request.GET)
