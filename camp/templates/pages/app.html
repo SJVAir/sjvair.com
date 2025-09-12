@@ -7,12 +7,13 @@
 {% block body-class %}app{% endblock %}
 
 {% block main %}
-<section class="section hook is-medium">
+<section class="section hook">
     <div class="container">
         <div class="columns is-centered is-vcentered">
             <div class="column is-6-desktop">
                 <h1 class="title">Get to know the air you're breathing.</h1>
                 <p class="lead">Download the SJVAir app and stay on top of your local air quality and weather. For iOS and Android.</p>
+
                 <ul class="badges is-inline">
                     <li><a href="{{ settings.APP_URL_IPHONE }}">
                         <img src="{% static 'img/app/apple-app-store-badge.svg' %}" alt="Download for iPhone" />
@@ -21,6 +22,21 @@
                         <img src="{% static 'img/app/google-play-store-badge.svg' %}" alt="Download for Android" />
                     </a></li>
                 </ul>
+                <div class="card qr-code">
+                    <div class="card-image">
+                        <figure class="image is-square">
+                            <img src="{% static 'img/sjvair-app-qr-code.svg' %}" alt="QR Code" />
+                        </figure>
+                    </div>
+                    <header class="card-header">
+                        <span class="card-header-title is-centered">
+                            <span class="icon">
+                                <span class="fa-regular fa-qrcode-read"></span>
+                            </span>
+                            <span>Scan to Download</span>
+                        </span>
+                    </header>
+                </div>
             </div>
             <div class="column is-3-desktop">
                 <div class="crossfade">
@@ -32,6 +48,67 @@
         </div>
     </div>
 </section>
+
+<section class="section has-background-light">
+    <div class="container">
+        <h2 class="title has-text-centered mb-6">App Features</h2>
+
+        <div class="columns is-mobile is-multiline is-centered">
+            <div class="column is-10-mobile is-5-tablet is-3-desktop has-text-centered">
+                <div class="box">
+                    <span class="icon is-large has-text-primary mb-4">
+                        <span class="fa-duotone fa-3x fa-smog"
+                            style="--fa-primary-color: RosyBrown;
+                                --fa-secondary-color: Tan;
+                                --fa-secondary-opacity: 1.0;"></span>
+                    </span>
+                    <h3 class="title is-size-5 mb-1">Check Local Air Quality</h3>
+                    <p>Stay informed with instant readings geolocated to your position.</p>
+                </div>
+            </div>
+
+            <div class="column is-10-mobile is-5-tablet is-3-desktop has-text-centered">
+                <div class="box">
+                    <span class="icon is-large has-text-info mb-4">
+                        <span class="fa-duotone fa-3x fa-map-marked-alt"
+                            style="--fa-primary-color: Crimson;
+                                --fa-secondary-color: CadetBlue;
+                                --fa-secondary-opacity: 1.0;"></span>
+                    </span>
+                    <h3 class="title is-size-5 mb-1">Explore the Map</h3>
+                    <p>Explore a live map showing monitors across the San Joaquin Valley.</p>
+                </div>
+            </div>
+
+            <div class="column is-10-mobile is-5-tablet is-3-desktop has-text-centered">
+                <div class="box">
+                    <span class="icon is-large has-text-warning mb-4">
+                        <span class="fa-duotone fa-3x fa-cloud-sun"
+                            style="--fa-primary-color: Silver;
+                                --fa-secondary-color: Gold;
+                                --fa-secondary-opacity: 1.0;"></span>
+                    </span>
+                    <h3 class="title is-size-5 mb-1">See Local Weather</h3>
+                    <p>Check temperature, humidity, and conditions alongside air quality.</p>
+                </div>
+            </div>
+
+            <div class="column is-10-mobile is-5-tablet is-3-desktop has-text-centered">
+                <div class="box">
+                    <span class="icon is-large has-text-danger mb-4">
+                        <span class="fa-duotone fa-3x fa-mobile-vibrate"
+                            style="--fa-primary-color: DodgerBlue;
+                                --fa-secondary-color: SlateGray;
+                                --fa-secondary-opacity: 1.0;"></span>
+                    </span>
+                    <h3 class="title is-size-5 mb-1">Get Bad Air Quality Alerts</h3>
+                    <p>Get notified when pollutants reach levels that matter to you.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
 {% endblock %}
 
 {% block javascripts %}

@@ -25,38 +25,46 @@
                     <ul class="menu-list">
                         <li>
                             <a href="{% url 'account:profile' %}" class="{% block account-tab-profile %}{% endblock %}">
-                                <span class="icon is-size-6">
-                                    <span class="far fa-fw fa-user"></span>
+                                <span class="icon-text">
+                                    <span class="icon">
+                                        <span class="fa-regular fa-fw fa-user"></span>
+                                    </span>
+                                    <span>Your Profile</span>
                                 </span>
-                                <span>Your Profile</span>
                             </a>
                         </li>
                         <li>
                             <a href="{% url 'account:alerts' %}" class="{% block account-tab-alerts %}{% endblock %}">
-                                <span class="icon is-size-6">
-                                    <span class="far fa-fw fa-sensor-alert"></span>
+                                <span class="icon-text">
+                                    <span class="icon">
+                                        <span class="fa-regular fa-fw fa-sensor-alert"></span>
+                                    </span>
+                                    <span>Air Quality Alerts</span>
                                 </span>
-                                <span>Air Quality Alerts</span>
                                 {% get_user_alert_count as alert_count %}
                                 {% if alert_count %}<span class="tag is-rounded is-danger">{{ alert_count }}</span>{% endif %}
                             </a>
                         </li>
                         <li>
                             <a href="{% url 'account:subscriptions' %}" class="{% block account-tab-subscriptions %}{% endblock %}">
-                                <span class="icon is-size-6">
-                                    <span class="far fa-fw fa-shield-check"></span>
+                                <span class="icon-text">
+                                    <span class="icon">
+                                        <span class="fa-regular fa-fw fa-shield-check"></span>
+                                    </span>
+                                    <span>Monitor Subscriptions</span>
                                 </span>
-                                <span>Monitor Subscriptions</span>
                                 {% get_user_subscription_count as subscription_count %}
                                 {% if subscription_count %}<span class="tag is-rounded is-info">{{ subscription_count }}</span>{% endif %}
                             </a>
                         </li>
                         <li>
                             <a href="{% url 'account:password-change' %}" class="{% block account-tab-password %}{% endblock %}">
-                                <span class="icon is-size-6">
-                                    <span class="far fa-fw fa-lock"></span>
+                                <span class="icon-text">
+                                    <span class="icon">
+                                        <span class="fa-regular fa-fw fa-lock"></span>
+                                    </span>
+                                    <span>Change Password</span>
                                 </span>
-                                <span>Change Password</span>
                             </a>
                         </li>
                     </ul>
