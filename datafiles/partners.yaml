@@ -26,13 +26,13 @@
   logo: img/logo/vo.png
   url: https://www.valleyonward.org/
 
+- name: Little Manila Rising
+  logo: img/logo/lmr.png
+  url: https://www.littlemanila.org/
+
 - name: The LEAP Institute
   logo: img/logo/leap.png
   url: https://theleapinstitute.org/
-
-- name: Little Manila Rising
-  logo: img/logo/lmr.jpg
-  url: https://www.littlemanila.org/
 
 - name: Root Access
   logo: img/logo/rootaccess.svg
@@ -41,3 +41,7 @@
 - name: University of California, Merced
   logo: img/logo/ucmerced.png
   url: https://www.ucmerced.edu/
+
+- name: San Joaquin Valley Air Pollution Control District
+  logo: img/logo/sjvapcd.svg
+  url: https://valleyair.org/

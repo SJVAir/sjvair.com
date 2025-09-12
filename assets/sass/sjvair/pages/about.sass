@@ -3,20 +3,24 @@
 body.about
     .hook
         @include header-bg('../img/about/delano-bam.jpg', .5)
-        
+
 
     section
         .title
             font-size: $size-2
 
-    section.data-providers,
-    section.funding-sources
-        .lead
-            @extend .mb-6
-    
-        img
-            max-height: 100px
-            max-width: 250px
+        .org-logo
+            display: flex
+            align-items: center
+            justify-content: center
+            height: 120px // adjust to taste
+            min-width: 120px   // ensures wide-but-short logos don’t shrink too far
+            max-width: 100%
+
+            img
+                max-height: 100%
+                max-width: 100%
+                object-fit: contain
 
     section.technology-stack
         img
@@ -31,6 +35,26 @@ body.about
 body.about.data
     .hook
         @include header-bg('../img/about/air-monitor-prototype.jpg', .6)
+
+    section.section
+        h2
+            @extend .has-text-weight-bold
+            @extend .is-size-3
+            @extend .mb-2
+
+            &.air-monitoring-networks
+                @extend .has-text-link-dark
+
+            &.satellite-atmospheric-data
+                @extend .has-text-info-dark
+
+            &.environmental-health-mapping
+                @extend .has-text-success-dark
+
+        .description
+            @extend .has-text-grey
+            @extend .is-size-4
+            @extend .mb-2
 
 body.about.testing
     .hook

@@ -1,19 +1,42 @@
-- name: US EPA
-  logo: img/logo/epa.svg
-  url: https://www.airnow.gov/
 
-- name: California Air Resource Board
-  logo: img/logo/carb.svg
-  url: https://aqview.arb.ca.gov/
+    - name: US EPA
+      logo: img/logo/epa-horizontal.svg
+      url: https://www.epa.gov/
+      classes: is-6-mobile is-4-tablet is-4-desktop
 
-- name: San Joaquin Valley Air Pollution Control District
-  logo: img/logo/sjvapcd.svg
-  url: https://valleyair.org/
+    - name: California Air Resource Board
+      logo: img/logo/carb.svg
+      url: https://aqview.arb.ca.gov/
+      classes: is-6-mobile is-4-tablet is-4-desktop
 
-- name: AirGradient
-  logo: img/logo/airgradient.svg
-  url: https://www.airgradient.com/
+    - name: San Joaquin Valley Air Pollution Control District
+      logo: img/logo/sjvapcd.svg
+      url: https://valleyair.org/
+      classes: is-6-mobile is-4-tablet is-4-desktop
 
-- name: PurpleAir
-  logo: img/logo/purpleair.png
-  url: https://www2.purpleair.com/
+
+    - name: PurpleAir
+      logo: img/logo/purpleair.png
+      url: https://www2.purpleair.com/
+      classes: is-5-mobile is-3-tablet is-3-desktop
+
+    - name: AirGradient
+      logo: img/logo/airgradient.svg
+      url: https://www.airgradient.com/
+      classes: is-4-mobile is-3-tablet is-3-desktop
+
+
+    - name: National Aeronautics and Space Administration
+      logo: img/logo/nasa.svg
+      url: https://www.nasa.gov/
+      classes: is-3-mobile is-2-tablet is-2-desktop
+
+    - name: National Oceanic and Atmospheric Administration
+      logo: img/logo/noaa.svg
+      url: https://www.noaa.gov/
+      classes: is-3-mobile is-2-tablet is-2-desktop
+
+    - name: Office of Environmental Health Hazard Assessment
+      logo: img/logo/oehha.png
+      url: https://oehha.ca.gov/
+      classes: is-3-mobile is-2-tablet is-2-desktop

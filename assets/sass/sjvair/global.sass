@@ -44,6 +44,9 @@ ul
 .navbar
     border-bottom: $grey-lighter 1px solid
 
+    .icon
+        @extend .has-text-grey
+
 section.hook
     background-color: $info
     background-image: linear-gradient(45deg, hsl(207, 54%, 35%) 0%, hsl(207, 47%, 39%) 21%, hsl(207, 42%, 43%) 30%, hsl(207, 39%, 46%) 39%, hsl(207, 37%, 49%) 46%, hsl(207, 38%, 52%) 54%, hsl(207, 40%, 55%) 61%, hsl(207, 43%, 57%) 69%, hsl(207, 46%, 60%) 79%, hsl(207, 49%, 62%) 100%)
@@ -146,6 +149,9 @@ footer.footer
         ul
             @extend .mb-5
 
+            &.fa-ul
+                margin-left: 1.5em
+
             &:last-child
                 @extend .mb-0
 
@@ -156,3 +162,6 @@ footer.footer
             &:hover
                 color: $white !important
                 text-decoration: underline
+
+        span[class*="fa-"]
+            @extend .has-text-grey-light
