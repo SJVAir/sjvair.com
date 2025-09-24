@@ -5,44 +5,6 @@
 
 {% block extrastyle %}
 {{ block.super }}
-<script type="text/javascript" src="{% static 'sensor-scatterplot/sensor-scatterplot.js' %}"></script>
-<script type="module">
-    const dataCells = document.querySelectorAll(".field-view_chart");
-    const chartBtns = document.querySelectorAll("a[monitorId]");
-    let linksCentered = false;
-
-    function appendScatterplot(event) {
-        event.preventDefault();
-
-        const { target } = event;
-        const scatterplot = document.createElement('scatter-plot');
-
-        target.getAttributeNames()
-          .map(name => [ name, target.getAttribute(name) ])
-          .forEach(attr => scatterplot.setAttribute(attr[0], attr[1]));
-
-        // Add the scatterplot as the next element and remove the button.
-        target.parentNode.append(scatterplot);
-        target.remove();
-
-        if (!linksCentered) {
-          dataCells.forEach(cell => { cell.style.textAlign = "center" });
-          linksCentered = true;
-        }
-    }
-
-    // Lock width on chart table data cells to prevent expansion
-    let cellWidth;
-    dataCells.forEach(cell => {
-      if (cellWidth === undefined) {
-        cellWidth = window.getComputedStyle(cell).width;
-      }
-      cell.style.width = cellWidth;
-    });
-
-    // Append chart on click
-    chartBtns.forEach(btn => btn.addEventListener("click", appendScatterplot))
-</script>
 <script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
 {{ export_form.media }}
 
@@ -125,7 +87,6 @@
                     <th>Temperature</th>
                     <th>Humidity</th>
                     <th>Alert</th>
-                    <th>Sensor Analysis</th>
                 </tr>
             </thead>
             <tbody>
@@ -164,18 +125,6 @@
                         {% empty %}
                             <span>–</span>
                         {% endfor %}
-                    </td>
-                    <td>
-                        {% if original.health %}
-                            <a href="#"
-                                detectBackground="true"
-                                monitorId="{{ original.pk }}"
-                                timestampGte="{{ original.health.hour.isoformat }}"
-                                timestampLte="{{ original.health.hour.isoformat }}"
-                            >View Chart</a>
-                        {% else %}
-                            <span>-</span>
-                        {% endif %}
                     </td>
                 </tr>
             </tbody>

@@ -7,11 +7,6 @@
   resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-2.6.6.tgz#6448747c66f91c6bdaacc2534809fd6d70031466"
   integrity sha512-RSH+s2rL6WRACRHoePeLfyIDEEDFJUNfYijWezGq1vYjG6F8alIMO0mXtSUPO0PqXSTDYf0nx476WaqdLTLLqA==
 
-"@sjvair/sensor-scatterplot@^1.0.12":
-  version "1.0.12"
-  resolved "https://registry.npmjs.org/@sjvair/sensor-scatterplot/-/sensor-scatterplot-1.0.12.tgz"
-  integrity sha512-p8j77gnWbnWeAjd1qpjAKA81wRktLaKygz8m0THp+y0Mf7upIweanjyu6YXT8/e/m+iuVCn70GNAbCOgDQ9LEA==
-
 "@sjvair/web-widget@^2.0.0":
   version "2.0.0"
   resolved "https://registry.npmjs.org/@sjvair/web-widget/-/web-widget-2.0.0.tgz"
