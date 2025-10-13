@@ -3,6 +3,11 @@
   logo: img/logo/school/delano-usd.png
   url: https://www.duesd.org/
 
+- name: Firebaugh-Las Deltas Unified School District
+  slug: fldusd
+  logo: img/logo/school/fldusd.jpg
+  url: https://www.fldusd.org/
+
 - name: Livingston Union School District
   slug: lusd
   logo: img/logo/school/livingston-usd.png

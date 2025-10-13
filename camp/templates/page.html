@@ -3,7 +3,7 @@
 
 {% block shared-head %}
 <link type="text/css" rel="stylesheet" href="{% static 'css/style.css' %}" />
-<link rel="stylesheet" href="https://pro.fontawesome.com/releases/v5.15.4/css/all.css" integrity="sha384-rqn26AG5Pj86AF4SO72RK5fyefcQ/x32DNQfChxWvbXIyXFePlEktwD18fEz+kQU" crossorigin="anonymous">
+<script src="https://kit.fontawesome.com/4b80128965.js" crossorigin="anonymous"></script>
 {% endblock %}
 
 {% block body %}
@@ -28,25 +28,43 @@
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">Resources</a>
                     <div class="navbar-dropdown">
-                        <a class="navbar-item" href="/guidelines/">Outdoor Activity Guidelines</a>
+                        <a class="navbar-item" href="/guidelines/">
+                            <span class="icon"><span class="fa-regular fa-fw fa-person-soccer"></span></span>
+                            <span>Outdoor Activity Guidelines</span>
+                        </a>
 
                         <a class="navbar-item" href="{% static 'docs/Wildfire-Smoke-Preparedness-2021.pdf' %}">
+                            <span class="icon"><span class="fa-regular fa-fw fa-fire"></span></span>
                             <span>Wildfire Smoke Preparedness</span>
-                            <span class="icon">
-                                <span class="far fa-fw fa-file-pdf"></span>
-                            </span>
                         </a>
                     </div>
                 </div>
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">About</a>
                     <div class="navbar-dropdown">
-                        <a class="navbar-item" href="/about/">About SJVAir</a>
-                        <a class="navbar-item" href="/about/integrations/">Data Integrations</a>
-                        <a class="navbar-item" href="/about/testing/">Monitor Testing</a>
+                        <a class="navbar-item" href="/about/">
+                            <span class="icon"><span class="fa-regular fa-fw fa-user-group"></span></span>
+                            <span>About SJVAir</span>
+                        </a>
+                        <a class="navbar-item" href="/about/integrations/">
+                            <span class="icon"><span class="fa-regular fa-fw fa-diagram-project"></span></span>
+                            <span>Data Integrations</span>
+                        </a>
+                        <a class="navbar-item" href="/about/testing/">
+                            <span class="icon"><span class="fa-regular fa-fw fa-chart-fft"></span></span>
+                            <span>Monitor Testing</span>
+                        </a>
                         <hr class="dropdown-divider" />
-                        {# <a class="navbar-item" href="{% url 'helpdesk:home' %}">Help Center</a> #}
-                        <a class="navbar-item" href="{% url 'contact:form' %}">Contact Us</a>
+                        {% comment %}
+                        <a class="navbar-item" href="{% url 'helpdesk:home' %}">
+                            <span class="icon"><span class="fa-regular fa-fw fa-circle-question"></span></span>
+                            <span>Support Center</span>
+                        </a>
+                        {% endcomment %}
+                        <a class="navbar-item" href="{% url 'contact:form' %}">
+                            <span class="icon"><span class="fa-regular fa-fw fa-envelope"></span></span>
+                            <span>Contact Us</span>
+                        </a>
                     </div>
                 </div>
                 <!-- <a href="/api/" class="navbar-item">Developers</a> -->
@@ -141,31 +159,71 @@
         <div class="columns is-multiline">
             <div class="column nav is-half-tablet is-one-quarter-desktop">
                 <h4>Air Quality</h4>
-                <ul>
-                    <li><a href="/">Live Map</a></li>
-                    <li><a href="/alerts/">Text Alerts</a></li>
-                    <li><a href="/app/">Get the App!</a></li>
+                <ul class="fa-ul">
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-map"></span>
+                        </span>
+                        <a href="/">Live Map</a>
+                    </li>
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-message-exclamation"></span>
+                        </span>
+                        <a href="/alerts/">Text Alerts</a>
+                    </li>
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-mobile"></span>
+                        </span>
+                        <a href="/app/">Get the App!</a>
+                    </li>
                 </ul>
             </div>
             <div class="column nav is-half-tablet is-one-quarter-desktop">
                 <h4>Resources</h4>
-                <ul>
-                    <li><a href="/guidelines/">Outdoor Activity Guidelines</a></li>
-                    <li><a href="{% static 'docs/Wildfire-Smoke-Preparedness-2021.pdf' %}">
-                        <span>Wildfire Smoke Preparedness</span>
-                        <span class="icon">
-                            <span class="far fa-fw fa-file-pdf"></span>
+                <ul class="fa-ul">
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-person-soccer"></span>
                         </span>
-                    </a></li>
+                        <a href="/guidelines/">Outdoor Activity Guidelines</a>
+                    </li>
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-fire"></span>
+                        </span>
+                        <a href="{% static 'docs/Wildfire-Smoke-Preparedness-2021.pdf' %}">Wildfire Smoke Preparedness</a>
+                    </li>
                 </ul>
             </div>
             <div class="column nav is-half-tablet is-one-quarter-desktop">
                 <h4>About</h4>
-                <ul>
-                    <li><a href="/about/">About SJVAir</a></li>
-                    <li><a href="/about/integrations/">Data Integrations</a></li>
-                    <li><a href="/about/testing/">Monitor Testing</a></li>
-                    <li><a href="{% url 'contact:form' %}">Contact Us</a></li>
+                <ul class="fa-ul">
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-user-group"></span>
+                        </span>
+                        <a href="/about/">About SJVAir</a>
+                    </li>
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-diagram-project"></span>
+                        </span>
+                        <a href="/about/integrations/">Data Integrations</a>
+                    </li>
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-chart-fft"></span>
+                        </span>
+                        <a href="/about/testing/">Monitor Testing</a>
+                    </li>
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-envelope"></span>
+                        </span>
+                        <a href="{% url 'contact:form' %}">Contact Us</a>
+                    </li>
                 </ul>
             </div>
             <div class="column is-half-tablet is-one-quarter-desktop">
@@ -173,27 +231,27 @@
                     <img src="{% static 'img/sjvair-white.svg' %}" alt="SJVAir" />
                 </a>
 
-                <p class="description">SJVAir is a network of air quality monitors providing real-time data to disadvantaged communities across the San Joaquin Valley.</p>
+                <p class="description">SJVAir is a network of regulatory and professional-grade air quality monitors providing real-time data to disadvantaged communities across the San Joaquin Valley.</p>
 
                 <div class="buttons are-small mt-2 mb-0">
-                    <a href="https://www.facebook.com/sjvair" class="button is-facebook" target="_blank" title="Like us on Facebook">
+                    <a href="https://bsky.app/profile/sjvair.com" class="button is-bluesky" target="_blank" title="Follow us on Bluesky">
                         <span class="icon">
-                            <span class="fab fa-facebook-f fa-lg"></span>
+                            <span class="fa-brands fa-bluesky fa-lg"></span>
                         </span>
                     </a>
-                    <a href="https://twitter.com/sjvair" class="button is-twitter" target="_blank" title="Follow us on Twitter">
+                    <a href="https://www.facebook.com/sjvair" class="button is-facebook" target="_blank" title="Like us on Facebook">
                         <span class="icon">
-                            <span class="fab fa-twitter fa-lg"></span>
+                            <span class="fa-brands fa-facebook-f fa-lg"></span>
                         </span>
                     </a>
                     <a href="https://www.instagram.com/sjvair_quality" class="button is-instagram" target="_blank" title="Follow us on Instagram">
                         <span class="icon">
-                            <span class="fab fa-instagram fa-lg"></span>
+                            <span class="fa-brands fa-instagram fa-lg"></span>
                         </span>
                     </a>
                     <a href="https://github.com/SJVAir" class="button is-github" target="_blank" title="Fork us on Github">
                         <span class="icon">
-                            <span class="fab fa-github fa-lg"></span>
+                            <span class="fa-brands fa-github fa-lg"></span>
                         </span>
                     </a>
                 </div>
