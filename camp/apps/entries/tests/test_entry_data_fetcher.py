@@ -13,7 +13,7 @@ class EntryDataFetcherTest(TestCase):
             name='Test Monitor',
             position='POINT(0 0)',
             county='Fresno',
-            purple_id=11235,
+            sensor_id=11235,
         )
 
     def test_to_dataframe_returns_empty_df(self):

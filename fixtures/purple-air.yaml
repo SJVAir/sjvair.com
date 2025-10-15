@@ -13,7 +13,7 @@
 - model: purpleair.purpleair
   pk: jLI5fer7S0uyR7eMYNSPpg
   fields:
-    purple_id: 8892
+    sensor_id: 8892
 - model: monitors.entry
   pk: sUvcEE_MT8yrPgBbh1F7zw
   fields:

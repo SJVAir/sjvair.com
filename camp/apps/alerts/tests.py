@@ -14,7 +14,7 @@ class AlertEvaluatorTests(TestCase):
     fixtures = ['users.yaml', 'purple-air.yaml']
 
     def setUp(self):
-        self.monitor = PurpleAir.objects.get(purple_id=8892)
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
         self.entry_model = PM25
         self.lookup = self.monitor.alertable_entry_types[PM25]
 

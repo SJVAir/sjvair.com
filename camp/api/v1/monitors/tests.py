@@ -24,7 +24,7 @@ class EndpointTests(TestCase):
         self.factory = RequestFactory()
 
     def get_purple_air(self):
-        return PurpleAir.objects.get(purple_id=8892)
+        return PurpleAir.objects.get(sensor_id=8892)
 
     def get_bam1022(self):
         return BAM1022.objects.get(name='CCAC')

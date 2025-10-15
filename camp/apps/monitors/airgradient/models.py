@@ -124,9 +124,14 @@ class AirGradient(Monitor):
 
     grade = Monitor.Grade.LCS
 
-    place = models.ForeignKey('airgradient.Place', related_name='monitors', blank=True, null=True, on_delete=models.SET_NULL)
-    location_id = models.IntegerField(unique=True)
-    serial = MACAddressField()
+    place = models.ForeignKey('airgradient.Place',
+        related_name='monitors',
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL
+    )
+    sensor_id = models.IntegerField(unique=True)
+    mac = MACAddressField()
 
     class Meta:
         verbose_name = 'AirGradient'
@@ -166,14 +171,14 @@ class AirGradient(Monitor):
 
     def get_current_measure(self):
         try:
-            return self.place.api.get_world_current_measures_by_location(self.location_id)
+            return self.place.api.get_world_current_measures_by_location(self.sensor_id)
         except requests.HTTPError:
-            return self.place.api.get_current_measures(self.location_id)
+            return self.place.api.get_current_measures(self.sensor_id)
 
     def update_data(self, data=None):
         if data is None:
-            if self.location_id is None:
-                raise ValueError(f'Cannot fetch AirGradient data if location_id is None.')
+            if self.sensor_id is None:
+                raise ValueError('Cannot fetch AirGradient data if sensor_id is None.')
             data = self.get_current_measure()
 
         self.name = html.unescape(data['locationName']).strip()
