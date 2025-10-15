@@ -10,7 +10,7 @@ class ToMultiEntryWideDataFrameTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def setUp(self):
-        self.monitor = PurpleAir.objects.get(purple_id=8892)
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
         self.timestamp = datetime(2025, 1, 1, 12, 0)
 
         # PM2.5 - a

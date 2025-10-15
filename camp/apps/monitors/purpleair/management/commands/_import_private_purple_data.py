@@ -48,9 +48,9 @@ device_list = {
 
 class Command(BaseCommand):
     def handle(self, *args, **kwargs):
-        for purple_id, key in device_list.items():
+        for sensor_id, key in device_list.items():
             PurpleAir.objects.get_or_create(
-                purple_id=purple_id,
+                sensor_id=sensor_id,
                 defaults={
                     'data': [{'THINGSPEAK_PRIMARY_ID_READ_KEY': key}]
                 }

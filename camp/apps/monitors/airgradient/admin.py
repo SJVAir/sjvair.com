@@ -20,10 +20,10 @@ class PlaceAdmin(admin.ModelAdmin):
 @admin.register(AirGradient)
 class AirGradientAdmin(MonitorAdmin):
     csv_export_fields = MonitorAdmin.csv_export_fields[:]
-    csv_export_fields.insert(2, 'location_id')
+    csv_export_fields.insert(2, 'sensor_id')
 
     list_display = MonitorAdmin.list_display[:]
-    list_display.insert(1, 'location_id')
+    list_display.insert(1, 'sensor_id')
 
     list_filter = MonitorAdmin.list_filter[:]
     list_filter.insert(1, 'place')

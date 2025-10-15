@@ -14,7 +14,7 @@ class ProcessorTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def setUp(self):
-        self.monitor = PurpleAir.objects.get(purple_id=8892)
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
 
     def test_processor_equality_and_string_repr(self):
         proc_class = processors.PM25_UnivariateLinearRegression
