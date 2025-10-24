@@ -11,7 +11,7 @@ from model_utils.models import TimeStampedModel
 
 from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.models import Monitor
+from camp.apps.monitors.models import Monitor, LCSMixin
 from camp.apps.monitors.airgradient.api import AirGradientAPI
 from camp.utils.datetime import parse_timestamp
 from camp.utils.fields import MACAddressField
@@ -39,7 +39,7 @@ class Place(TimeStampedModel):
         return AirGradientAPI(token=self.token)
 
 
-class AirGradient(Monitor):
+class AirGradient(LCSMixin, Monitor):
     DATA_PROVIDERS = [{
         'name': 'AirGradient',
         'url': 'https://www.airgradient.com/'
@@ -122,16 +122,12 @@ class AirGradient(Monitor):
         },
     }
 
-    grade = Monitor.Grade.LCS
-
     place = models.ForeignKey('airgradient.Place',
         related_name='monitors',
         blank=True,
         null=True,
         on_delete=models.SET_NULL
     )
-    sensor_id = models.IntegerField(unique=True)
-    mac = MACAddressField()
 
     class Meta:
         verbose_name = 'AirGradient'
