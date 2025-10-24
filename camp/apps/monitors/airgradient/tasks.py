@@ -37,7 +37,7 @@ def update_realtime():
         # from the group should be manually retried.
         missing_monitors = (AirGradient.objects
             .filter(place_id=place.pk)
-            .exclude(location_id__in=seen_ids)
+            .exclude(sensor_id__in=seen_ids)
             .select_related('place')
             .get_active()
         )
@@ -52,10 +52,10 @@ def update_realtime():
 @db_task()
 def process_data(payload, place_id):
     try:
-        monitor = AirGradient.objects.get(location_id=payload['locationId'])
+        monitor = AirGradient.objects.get(sensor_id=payload['locationId'])
     except AirGradient.DoesNotExist:
         monitor = AirGradient(
-            location_id=payload['locationId'],
+            sensor_id=payload['locationId'],
             place_id=place_id
         )
         monitor.update_data(payload)
@@ -88,7 +88,7 @@ def import_airgradient_history(monitor_id, start_date=None, end_date=None):
 
         try:
             results = monitor.place.api.get_raw_measures(
-                location_id=monitor.location_id,
+                location_id=monitor.sensor_id,
                 from_time=current.isoformat(),
                 to_time=batch_end.isoformat(),
             )

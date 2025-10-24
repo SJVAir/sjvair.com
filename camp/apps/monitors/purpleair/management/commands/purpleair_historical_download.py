@@ -17,18 +17,18 @@ class Command(BaseCommand):
     help = 'Download historical PurpleAir data and save to CSV with human-readable timestamps'
 
     def add_arguments(self, parser):
-        parser.add_argument('-p', '--purple_id', type=int, help='PurpleAir sensor ID')
+        parser.add_argument('-i', '--sensor_id', type=int, help='PurpleAir sensor index')
         parser.add_argument('-s', '--start_date', type=str, help='Start date (YYYY-MM-DD)')
         parser.add_argument('-e', '--end_date', type=str, help='End date (YYYY-MM-DD)')
         parser.add_argument(
             '-o', '--output',
             type=str,
             default=None,
-            help='Optional output CSV path (default is based on purple_id and date range)'
+            help='Optional output CSV path (default is based on sensor_id and date range)'
         )
 
     def handle(self, *args, **options):
-        self.purple_id = options['purple_id']
+        self.sensor_id = options['sensor_id']
         self.start_date_str = options['start_date']
         self.end_date_str = options['end_date']
         self.output_path = options['output']
@@ -39,7 +39,7 @@ class Command(BaseCommand):
         except ValueError:
             raise CommandError('Dates must be in YYYY-MM-DD format.')
 
-        self.monitor = PurpleAir.objects.filter(purple_id=self.purple_id).first()
+        self.monitor = PurpleAir.objects.filter(sensor_id=self.sensor_id).first()
 
         if self.output_path is None:
             self.output_path = self.get_default_path()
@@ -57,7 +57,7 @@ class Command(BaseCommand):
 
     def print_summary(self):
         self.stdout.write(self.style.NOTICE('Download Configuration:'))
-        self.stdout.write(f'  PurpleAir ID: {self.purple_id}')
+        self.stdout.write(f'  PurpleAir ID: {self.sensor_id}')
         if self.monitor:
             self.stdout.write(f'  Monitor: {self.monitor.name} (pk={self.monitor.pk})')
         else:
@@ -66,12 +66,12 @@ class Command(BaseCommand):
         self.stdout.write(f'  Output file: {self.output_path}')
 
     def get_default_path(self):
-        base = f'{self.purple_id}_{self.start_date_str}_to_{self.end_date_str}.csv'
+        base = f'{self.sensor_id}_{self.start_date_str}_to_{self.end_date_str}.csv'
         prefix = slugify(self.monitor.name) if self.monitor else 'purpleair'
         return os.path.abspath(f'purpleair-export/{prefix}_{base}')
 
     def download_and_save(self):
-        self.stdout.write(f'Downloading data for PurpleAir ID {self.purple_id} from {self.start_date_str} to {self.end_date_str}')
+        self.stdout.write(f'Downloading data for PurpleAir ID {self.sensor_id} from {self.start_date_str} to {self.end_date_str}')
         self.stdout.write(f'Saving to: {self.output_path}')
 
         header_written = False
@@ -84,7 +84,7 @@ class Command(BaseCommand):
                 label = f'Chunk: {chunk_start.date()} → {chunk_end.date()}'
                 self.stdout.write(self.style.MIGRATE_HEADING(label))
 
-                entries = purpleair_api.get_sensor_history(self.purple_id, chunk_start, chunk_end)
+                entries = purpleair_api.get_sensor_history(self.sensor_id, chunk_start, chunk_end)
                 if not entries:
                     continue
 

@@ -32,7 +32,7 @@ def update_realtime():
     # Any monitors that are active but missing
     # from the group should be manually retried.
     missing_monitors = (PurpleAir.objects
-        .exclude(purple_id__in=seen_ids)
+        .exclude(sensor_id__in=seen_ids)
         .get_active()
     )
 
@@ -48,13 +48,13 @@ def update_monitor_data():
     sensors = purpleair_api.list_group_members(settings.PURPLEAIR_GROUP_ID)
     for sensor in sensors:
         try:
-            monitor = PurpleAir.objects.get(purple_id=sensor['sensor_index'])
+            monitor = PurpleAir.objects.get(sensor_id=sensor['sensor_index'])
         except PurpleAir.DoesNotExist:
-            monitor = PurpleAir(purple_id=sensor['sensor_index'])
+            monitor = PurpleAir(sensor_id=sensor['sensor_index'])
 
-        data = purpleair_api.get_sensor(monitor.purple_id)
+        data = purpleair_api.get_sensor(monitor.sensor_id)
         if data is None:
-            purpleair_api.delete_group_member(settings.PURPLEAIR_GROUP_ID, monitor.purple_id)
+            purpleair_api.delete_group_member(settings.PURPLEAIR_GROUP_ID, monitor.sensor_id)
             continue
 
         monitor.update_data(data)
@@ -111,14 +111,14 @@ def find_new_monitors():
 @db_task()
 def process_data(payload, cutoff_stage=None):
     try:
-        monitor = PurpleAir.objects.get(purple_id=payload['sensor_index'])
+        monitor = PurpleAir.objects.get(sensor_id=payload['sensor_index'])
     except PurpleAir.DoesNotExist:
         data = purpleair_api.get_sensor(payload['sensor_index'])
         if data is None:
             purpleair_api.delete_group_member(settings.PURPLEAIR_GROUP_ID, payload['sensor_index'])
             return
 
-        monitor = PurpleAir(purple_id=payload['sensor_index'])
+        monitor = PurpleAir(sensor_id=payload['sensor_index'])
         monitor.update_data(data)
         monitor.save()
 
@@ -138,7 +138,7 @@ def process_data(payload, cutoff_stage=None):
 def import_monitor_history(monitor_id, start_date, end_date, chunk_size=28):
     monitor = PurpleAir.objects.get(pk=monitor_id)
     history = purpleair_api.get_sensor_history(
-        sensor_index=monitor.purple_id,
+        sensor_index=monitor.sensor_id,
         start_date=start_date,
         end_date=end_date,
         batch_days=28,

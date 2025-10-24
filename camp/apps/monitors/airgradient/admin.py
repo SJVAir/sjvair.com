@@ -1,6 +1,6 @@
 from django.contrib.gis import admin
 
-from camp.apps.monitors.admin import MonitorAdmin
+from camp.apps.monitors.admin import LCSMonitorAdmin
 from camp.apps.monitors.airgradient.models import AirGradient, Place
 
 
@@ -18,20 +18,6 @@ class PlaceAdmin(admin.ModelAdmin):
 
 
 @admin.register(AirGradient)
-class AirGradientAdmin(MonitorAdmin):
-    csv_export_fields = MonitorAdmin.csv_export_fields[:]
-    csv_export_fields.insert(2, 'location_id')
-
-    list_display = MonitorAdmin.list_display[:]
-    list_display.insert(1, 'location_id')
-
-    list_filter = MonitorAdmin.list_filter[:]
+class AirGradientAdmin(LCSMonitorAdmin):
+    list_filter = LCSMonitorAdmin.list_filter[:]
     list_filter.insert(1, 'place')
-
-    readonly_fields = ['name', 'location', 'position', 'county', 'get_map']
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False

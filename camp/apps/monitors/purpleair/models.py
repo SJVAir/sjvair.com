@@ -8,12 +8,13 @@ from django.contrib.gis.geos import Point
 
 from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.models import Monitor, Entry
+from camp.apps.monitors.models import Monitor, LCSMixin, Entry
 from camp.apps.monitors.purpleair.api import purpleair_api
 from camp.utils.datetime import parse_timestamp
+from camp.utils.fields import MACAddressField
 
 
-class PurpleAir(Monitor):
+class PurpleAir(LCSMixin, Monitor):
     DATA_PROVIDERS = [{
         'name': 'PurpleAir',
         'url': 'https://www2.purpleair.com/'
@@ -104,8 +105,6 @@ class PurpleAir(Monitor):
         },
     }
 
-    grade = Monitor.Grade.LCS
-
     # Legacy
     CALIBRATE = True
     SENSORS = ['a', 'b']
@@ -124,13 +123,14 @@ class PurpleAir(Monitor):
 
     SENSOR_ATTRS = ['fahrenheit', 'humidity', 'pressure']
     SENSOR_ATTRS.extend(CHANNEL_FIELDS_LEGACY.keys())
-
     # Legacy - end
-
-    purple_id = models.IntegerField(unique=True)
 
     class Meta:
         verbose_name = 'PurpleAir'
+
+    @property
+    def purple_id(self):
+        return self.sensor_id
 
     def update_data(self, data=None):
         if data is None:

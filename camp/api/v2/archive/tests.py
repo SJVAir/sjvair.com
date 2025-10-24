@@ -15,7 +15,7 @@ class EndpointTests(TestCase):
 
     def setUp(self):
         self.factory = RequestFactory()
-        self.monitor = PurpleAir.objects.get(purple_id=8892)
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
 
     def test_get_archive_list(self):
         url = reverse('api:v1:monitors:archive:archive-list', kwargs={

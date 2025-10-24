@@ -16,7 +16,7 @@ pytestmark = [
 
 class SerializerTests(TestCase):
     def setUp(self):
-        self.monitor = PurpleAir.objects.get(purple_id=8892)
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
 
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
         self.health_check = HealthCheck.objects.create(
