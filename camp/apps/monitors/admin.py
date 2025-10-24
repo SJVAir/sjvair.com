@@ -5,6 +5,7 @@ from base64 import b64encode
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
+from django.db import models
 from django.contrib.gis import admin as gisadmin
 from django.db.models import Count, F
 from django.http import HttpResponse
@@ -13,10 +14,11 @@ from django.utils.safestring import mark_safe
 from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
 from camp.apps.qaqc.admin import HealthCheckInline
+from camp.template_tags import admin_changelist_url
 from camp.utils import maps
 
 from .forms import MonitorAdminForm, EntryExportForm
-from .models import Group
+from .models import Group, Host, Monitor
 
 
 class HealthCheckFilter(SimpleListFilter):
@@ -84,15 +86,16 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', 'device', MonitorIsActiveFilter, 'groups', 'location', 'county', HealthCheckFilter]
 
+    autocomplete_fields = ['host']
     readonly_fields = ['get_map']
     fieldsets = [
         (None, {'fields': ['name', 'is_hidden', 'is_sjvair']}),
-        ('Location Data', {'fields': ['county', 'location', 'get_map']}),
+        ('Location Data', {'fields': ['host', 'county', 'location', 'get_map']}),
         ('Metadata', {'fields': ['groups', 'notes', 'data_provider', 'data_provider_url']}),
     ]
 
     csv_export_fields = ['id', 'name', 'get_device', 'health_grade', 'last_updated', 'legacy_last_updated', 'county', 'is_sjvair', 'is_hidden', 'location', 'position', 'notes']
-    search_fields = ['county', 'location', 'name']
+    search_fields = ['county', 'location', 'name', 'host__name', 'host__address', 'host__notes']
     save_on_top = True
 
     change_form_template = 'admin/monitors/monitor/change_form.html'
@@ -227,6 +230,64 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         return ''
     legacy_last_updated.admin_order_field = 'latest__timestamp'
     legacy_last_updated.short_description = 'Last Updated (Legacy)'
+
+
+class LCSMonitorAdmin(MonitorAdmin):
+    csv_export_fields = MonitorAdmin.csv_export_fields[:]
+    csv_export_fields.insert(2, 'sensor_id')
+    csv_export_fields.insert(3, 'hardware_id')
+
+    list_display = MonitorAdmin.list_display[:]
+    list_display.insert(1, 'sensor_id')
+    list_display.insert(2, 'get_hardware_id')
+
+    readonly_fields = ['name', 'location', 'position', 'county', 'get_map']
+
+    search_fields = MonitorAdmin.search_fields[:]
+    search_fields.extend(['hardware_id', 'sensor_id'])
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_hardware_id(self, instance):
+        url = admin_changelist_url(instance)
+        link = f'<a href="{url}?hardware_id={instance.hardware_id}">{instance.hardware_id}</a>'
+        return mark_safe(link)
+
+
+@admin.register(Host)
+class HostAdmin(admin.ModelAdmin):
+    list_display = ('name', 'email', 'phone', 'monitor_count')
+    search_fields = ('name', 'email', 'phone', 'address', 'notes')
+
+    def get_queryset(self, *args, **kwargs):
+        queryset = super().get_queryset(*args, **kwargs)
+        queryset = queryset.annotate(monitor_count=Count('monitors'))
+        return queryset
+
+    def formfield_for_dbfield(self, db_field, **kwargs):
+        if db_field.name == 'address':
+            # We don't need a ton of lines for an address.
+            kwargs['widget'] = admin.widgets.AdminTextareaWidget(attrs={'rows': 3})
+        return super().formfield_for_dbfield(db_field, **kwargs)
+
+    @csrf_protect_m
+    def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+        if extra_context is None:
+            extra_context = {}
+        if object_id is not None:
+            hosted_monitors = (Monitor.objects
+                .filter(host_id=object_id)
+                .with_last_entry_timestamp()
+            )
+            extra_context.update(hosted_monitors=hosted_monitors,)
+        return super().changeform_view(request, object_id, form_url, extra_context)
+
+    def monitor_count(self, instance):
+        return instance.monitor_count
 
 
 @admin.register(Group)

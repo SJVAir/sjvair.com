@@ -26,6 +26,6 @@ device_list = {
 
 class Command(BaseCommand):
     def handle(self, *args, **kwargs):
-        for purple_id in device_list.values():
-            PurpleAir.objects.get_or_create(purple_id=purple_id)
+        for sensor_id in device_list.values():
+            PurpleAir.objects.get_or_create(sensor_id=sensor_id)
         periodic_purple_import()

@@ -11,7 +11,7 @@ from model_utils.models import TimeStampedModel
 
 from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.models import Monitor
+from camp.apps.monitors.models import Monitor, LCSMixin
 from camp.apps.monitors.airgradient.api import AirGradientAPI
 from camp.utils.datetime import parse_timestamp
 from camp.utils.fields import MACAddressField
@@ -39,7 +39,7 @@ class Place(TimeStampedModel):
         return AirGradientAPI(token=self.token)
 
 
-class AirGradient(Monitor):
+class AirGradient(LCSMixin, Monitor):
     DATA_PROVIDERS = [{
         'name': 'AirGradient',
         'url': 'https://www.airgradient.com/'
@@ -122,11 +122,12 @@ class AirGradient(Monitor):
         },
     }
 
-    grade = Monitor.Grade.LCS
-
-    place = models.ForeignKey('airgradient.Place', related_name='monitors', blank=True, null=True, on_delete=models.SET_NULL)
-    location_id = models.IntegerField(unique=True)
-    serial = MACAddressField()
+    place = models.ForeignKey('airgradient.Place',
+        related_name='monitors',
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL
+    )
 
     class Meta:
         verbose_name = 'AirGradient'
@@ -166,14 +167,14 @@ class AirGradient(Monitor):
 
     def get_current_measure(self):
         try:
-            return self.place.api.get_world_current_measures_by_location(self.location_id)
+            return self.place.api.get_world_current_measures_by_location(self.sensor_id)
         except requests.HTTPError:
-            return self.place.api.get_current_measures(self.location_id)
+            return self.place.api.get_current_measures(self.sensor_id)
 
     def update_data(self, data=None):
         if data is None:
-            if self.location_id is None:
-                raise ValueError(f'Cannot fetch AirGradient data if location_id is None.')
+            if self.sensor_id is None:
+                raise ValueError('Cannot fetch AirGradient data if sensor_id is None.')
             data = self.get_current_measure()
 
         self.name = html.unescape(data['locationName']).strip()

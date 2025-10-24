@@ -14,7 +14,7 @@ class HealthCheckTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def setUp(self):
-        self.monitor = PurpleAir.objects.get(purple_id=8892)
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
         self.hour = make_aware(datetime(2025, 7, 4, 13, 0, 0))
         self.sensor_keys = self.monitor.ENTRY_CONFIG[PM25]['sensors']
 

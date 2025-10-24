@@ -7,7 +7,7 @@ from django.conf import settings
 from django.shortcuts import resolve_url
 from django.template.loader import render_to_string
 from django.test import RequestFactory
-from django.urls import resolve
+from django.urls import resolve, reverse
 from django.urls.exceptions import Resolver404
 
 from resticus import generics
@@ -53,6 +53,48 @@ def jsonify(data):
         return json.dumps(data, indent=4)
     except Exception:
         return data
+
+# Admin URL helpers
+
+@register.simple_tag
+def admin_changelist_url(instance):
+    return reverse(
+        f'admin:{instance._meta.app_label}_{instance._meta.model_name}_changelist'
+    )
+
+
+@register.simple_tag
+def admin_add_url(instance):
+    return reverse(
+        f'admin:{instance._meta.app_label}_{instance._meta.model_name}_add'
+    )
+
+
+@register.simple_tag
+def admin_history_url(instance):
+    return reverse(
+        f'admin:{instance._meta.app_label}_{instance._meta.model_name}_history',
+        args=[instance.pk]
+    )
+
+
+@register.simple_tag
+def admin_delete_url(instance):
+    return reverse(
+        f'admin:{instance._meta.app_label}_{instance._meta.model_name}_delete',
+        args=[instance.pk]
+    )
+
+
+@register.simple_tag
+def admin_change_url(instance):
+    return reverse(
+        f'admin:{instance._meta.app_label}_{instance._meta.model_name}_change',
+        args=[instance.pk]
+    )
+
+
+## /Admin URL helpers
 
 
 @register.simple_tag

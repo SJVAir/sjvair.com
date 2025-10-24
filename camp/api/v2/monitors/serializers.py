@@ -47,9 +47,13 @@ class MonitorSerializer(serializers.Serializer):
     ]
 
     monitor_extras = {
-        PurpleAir: ['purple_id'],
+        PurpleAir: [
+            'sensor_id',
+            ('purple_id', lambda monitor: monitor.sensor_id), # deprecated
+        ],
         AirGradient: [
-            'location_id',
+            'sensor_id',
+            ('location_id', lambda monitor: monitor.sensor_id), # deprecated
             ('dual_channel', lambda monitor: monitor.is_dual_channel)
         ],
     }
