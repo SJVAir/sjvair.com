@@ -1,0 +1,54 @@
+{% extends "admin/change_form.html" %}
+{% load sjvair %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style type="text/css">
+    #hosted-monitors table {
+        width: 100%;
+    }
+</style>
+{% endblock %}
+
+{% block after_field_sets %}
+{{ block.super }}
+    <fieldset id="hosted-monitors" class="module aligned wide">
+        <h2>Hosted Monitors</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Device</th>
+                    <th>Sensor ID</th>
+                    <th>Hardware ID</th>
+                    <th>Last Updated</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for monitor in hosted_monitors %}
+                <tr>
+                    <td style="text-align: center;">
+                        <a href="{{ monitor.get_absolute_url }}" target="_blank">🔗</a>
+                    </td>
+                    <td><a href="{% admin_change_url monitor %}">{{ monitor.name }}</a></td>
+                    <td><a href="{% admin_changelist_url monitor %}">{{ monitor.monitor_type }}</a></td>
+                    <td>{{ monitor.device }}</td>
+                    <td>{% if monitor.sensor_id %}{{ monitor.sensor_id }}{% endif %}</td>
+                    <td>{% if monitor.hardware_id %}<a href="{% admin_changelist_url monitor %}?hardware_id={{ monitor.hardware_id }}">{{ monitor.hardware_id }}</a>{% endif %}</td>
+                    <td>
+                        {% if monitor.is_active %}
+                            <img src="{% static 'admin/img/icon-yes.svg' %}" alt="Active" />
+                        {% else %}
+                            <img src="{% static 'admin/img/icon-no.svg' %}" alt="Inactive" />
+                        {% endif %}
+                        <span>{{ monitor.last_entry_timestamp }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </fieldset>
+{% endblock %}
