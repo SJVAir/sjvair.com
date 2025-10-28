@@ -19,8 +19,9 @@ def update_realtime():
     start = timezone.now()
     print(f'\n=== AirGradient Import Start: {start.time()}\n')
 
+    seen_ids = set()
+
     for place in Place.objects.filter(is_enabled=True):
-        seen_ids = set()
         try:
             data = place.api.get_all_channel_measures()
         except Exception as e:
@@ -33,20 +34,55 @@ def update_realtime():
             # process_data.call_local(payload, place.pk)
             process_data.schedule([payload, place.pk], delay=1, priority=40)
 
-        # Any monitors that are active but missing
-        # from the group should be manually retried.
-        missing_monitors = (AirGradient.objects
-            .filter(place_id=place.pk)
-            .exclude(sensor_id__in=seen_ids)
-            .select_related('place')
-            .get_active()
-        )
+    # Any monitors that are active but missing
+    # from the group should be manually retried.
+    missing_monitors = (AirGradient.objects
+        .exclude(sensor_id__in=seen_ids)
+        .select_related('place')
+        .get_active()
+    )
 
-        for monitor in missing_monitors:
-            monitor.import_latest()
+    for monitor in missing_monitors:
+        monitor.import_latest()
 
     end = timezone.now()
     print(f'\n=== AirGradient Import Done: {start.time()} - {end.time()} ({end - start})\n')
+
+
+@db_periodic_task(crontab(hour='23', minute='3'))
+def update_monitor_data():
+    start = timezone.now()
+    print(f'\n=== AirGradient Monitor Update: {start.time()}\n')
+
+    seen_ids = set()
+
+    for place in Place.objects.filter(is_enabled=True):
+        try:
+            data = place.api.get_all_channel_measures()
+        except Exception as e:
+            # Log and skip if a token is bad or unavailable
+            print(f'[AirGradient] Error fetching data for {place.name}: {e}')
+            continue
+
+        data = {i['locationId']: i for i in data}
+        queryset = AirGradient.objects.filter(place_id=place.pk)
+        for monitor in queryset:
+            if monitor.sensor_id in data:
+                seen_ids.add(monitor.sensor_id)
+                monitor.update_data(data[monitor.sensor_id])
+                monitor.save()
+
+    missing_monitors = (AirGradient.objects
+        .exclude(sensor_id__in=seen_ids)
+        .select_related('place')
+        .get_active()
+    )
+
+    for monitor in missing_monitors:
+        monitor.update_data()
+
+    end = timezone.now()
+    print(f'\n=== AirGradient Monitor Update Done: {start.time()} - {end.time()} ({end - start})\n')
 
 
 @db_task()

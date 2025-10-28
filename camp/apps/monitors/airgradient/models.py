@@ -179,7 +179,7 @@ class AirGradient(LCSMixin, Monitor):
 
         self.name = html.unescape(data['locationName']).strip()
         self.device = data.get('model', self.device)
-        self.serial = data.get('serialno', self.serial)
+        self.hardware_id = data.get('serialno', self.hardware_id)
         self.location = self.get_probable_location()
 
         # Some payloads include lat/lon, some don't...
