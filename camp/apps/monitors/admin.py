@@ -18,7 +18,7 @@ from camp.template_tags import admin_changelist_url
 from camp.utils import maps
 
 from .forms import MonitorAdminForm, EntryExportForm
-from .models import Group, Host, Monitor
+from .models import Group, Host, LatestEntry, Monitor
 
 
 class HealthCheckFilter(SimpleListFilter):
@@ -120,7 +120,8 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
         if object_id is not None:
             extra_context.update(
                 entry_archives=self.get_entry_archives(object_id),
-                alerts=self.get_alerts(object_id)
+                alerts=self.get_alerts(object_id),
+                latest_entries=self.get_latest_entries(object_id),
             )
         return super().changeform_view(request, object_id, form_url, extra_context)
 
@@ -169,6 +170,12 @@ class MonitorAdmin(gisadmin.OSMGeoAdmin):
                 monitor_id=object_id,
                 end_time__isnull=True
             )
+        )
+
+    def get_latest_entries(self, object_id):
+        return (LatestEntry.objects
+            .filter(monitor_id=object_id)
+            .order_by('entry_type', 'stage', 'processor')
         )
 
     def get_entry_archives(self, object_id):

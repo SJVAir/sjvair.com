@@ -417,13 +417,14 @@ class Monitor(models.Model):
 
         # Skip if not the default calibration
         if entry.stage == entry.Stage.CALIBRATED:
-            if entry.calibration != self.get_default_calibration(entry.__class__):
+            if entry.processor != self.get_default_calibration(entry.__class__):
                 return
 
         lookup = {
             'monitor_id': self.pk,
             'entry_type': entry.entry_type,
             'processor': entry.processor,
+            'stage': entry.stage,
         }
 
         try:

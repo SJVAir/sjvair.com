@@ -55,7 +55,8 @@
         margin-left: 1em;
     }
 
-    #monitor-status table {
+    #monitor-status table,
+    #latest-entries table {
         width: 100%;
     }
 
@@ -174,4 +175,36 @@
         </table>
         {% endif %}
     </fieldset>
+{% endblock %}
+
+
+{% block after_field_sets %}
+
+{% if original and latest_entries %}
+<fieldset id="latest-entries" class="module aligned wide">
+    <h2>Latest Entries</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Timestamp</th>
+                <th>Value(s)</th>
+                <th>Stage</th>
+                <th>Processor</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for latest in latest_entries %}
+            <tr>
+                <th>{{ latest.entry_model.label }}</th>
+                <td>{{ latest.timestamp }}</td>
+                <td>-</td>
+                <td>{{ latest.stage }}</td>
+                <td>{{ latest.processor }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</fieldset>
+{% endif %}
 {% endblock %}
