@@ -47,7 +47,7 @@ class HealthCheckInline(TabularInlinePaginated):
 
     extra = 0
     model = HealthCheck
-    per_page = 24
+    per_page = 8
     fields = (
         ['get_hour', 'score', 'grade']
         + [f'{f}_display' for f in base_fields]

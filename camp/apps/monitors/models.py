@@ -18,6 +18,8 @@ from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils import Choices
+from model_utils.models import TimeStampedModel
+from phonenumber_field.modelfields import PhoneNumberField
 from py_expression_eval import Parser as ExpressionParser
 
 from camp.apps.calibrations.utils import get_default_calibration
@@ -29,6 +31,7 @@ from camp.apps.qaqc.models import HealthCheck
 from camp.utils import classproperty
 from camp.utils.counties import County
 from camp.utils.datetime import make_aware
+from camp.utils.fields import MACAddressField
 
 
 class Group(models.Model):
@@ -140,6 +143,16 @@ class Monitor(models.Model):
     is_sjvair = models.BooleanField(default=False, help_text="Is this monitor part of the SJVAir network?")
     device = models.CharField(max_length=50, blank=True)
 
+    # Who is hosting this monitor?
+    host = models.ForeignKey(
+        'monitors.Host',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='monitors',
+        help_text=_('Who is currently hosting this device.'),
+    )
+
     # Data provider info
     data_provider = models.CharField(max_length=100, blank=True)
     data_provider_url = models.URLField(max_length=100, blank=True)
@@ -204,11 +217,13 @@ class Monitor(models.Model):
 
         def recurse(subcls):
             for sc in subcls.__subclasses__():
-                subclasses.add(sc)
+                # Skip abstract models
+                if not getattr(getattr(sc, '_meta', None), 'abstract', False):
+                    subclasses.add(sc)
                 recurse(sc)
 
         recurse(cls)
-        return list(subclasses)
+        return list(sorted(subclasses, key=lambda c: c.__name__))
 
     @property
     def slug(self):
@@ -306,6 +321,28 @@ class Monitor(models.Model):
         entry_models = entry_models or self.entry_types
         return to_multi_entry_wide_dataframe(entry_models, self, start_date, end_date)
 
+    def is_processable(self, obj_or_model) -> bool:
+        """
+        Check whether this monitor can process either:
+          - a model class, or
+          - a specific entry instance.
+        """
+        from camp.apps.entries.models import BaseEntry
+
+        entry_model = obj_or_model
+        if isinstance(obj_or_model, BaseEntry):
+            entry_model = type(obj_or_model)
+
+        processors = (
+            self.ENTRY_CONFIG
+            .get(entry_model, {})
+            .get('processors', {})
+        )
+
+        if isinstance(obj_or_model, BaseEntry):
+            return bool(processors.get(obj_or_model.stage))
+        return bool(processors)
+
     def initialize_entry(self, EntryModel, **kwargs):
         defaults = {
             'monitor': self,
@@ -316,16 +353,17 @@ class Monitor(models.Model):
         defaults.update(**kwargs)
         return EntryModel(**defaults)
 
-    def create_entry(self, EntryModel, **data):
+    def create_entry(self, EntryModel, save: bool = True, **data):
         entry = self.initialize_entry(EntryModel)
 
         for key, value in data.items():
             setattr(entry, key, value)
 
         if entry.validation_check():
-            entry.save()
-            entry.refresh_from_db()
-            self.update_latest_entry(entry)
+            if save:
+                entry.save()
+                entry.refresh_from_db()
+                self.update_latest_entry(entry)
             return entry
 
     def process_entries_ng(self, entries):
@@ -379,13 +417,14 @@ class Monitor(models.Model):
 
         # Skip if not the default calibration
         if entry.stage == entry.Stage.CALIBRATED:
-            if entry.calibration != self.get_default_calibration(entry.__class__):
+            if entry.processor != self.get_default_calibration(entry.__class__):
                 return
 
         lookup = {
             'monitor_id': self.pk,
             'entry_type': entry.entry_type,
             'processor': entry.processor,
+            'stage': entry.stage,
         }
 
         try:
@@ -514,6 +553,48 @@ class Monitor(models.Model):
 
         if entry.sensor == self.default_sensor and is_latest:
             self.latest = entry
+
+
+class LCSMixin(Monitor):
+    sensor_id = models.IntegerField(unique=True)
+    hardware_id = MACAddressField(blank=True, null=True)
+
+    grade = Monitor.Grade.LCS
+
+    class Meta:
+        abstract = True
+
+    def get_related_monitors_by_hardware(self, include_self: bool = False):
+        """
+        Return all monitors of the same class with the same hardware ID.
+        """
+        if not self.hardware_id:
+            return self.__class__.objects.none()
+
+        queryset = self.__class__.objects.filter(hardware_id=self.hardware_id)
+        if not include_self and self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+        return queryset
+
+    def get_related_monitors_by_name(self, include_self: bool = False):
+        """
+        Return all monitors of the same class with the same hardware ID.
+        """
+        queryset = self.__class__.objects.filter(name__iexact=self.name)
+        if not include_self and self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+        return queryset
+
+
+class Host(TimeStampedModel):
+    name = models.CharField(max_length=200, help_text=_('Contact or organization name.'))
+    email = models.EmailField(blank=True)
+    phone = PhoneNumberField(blank=True)
+    address = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.name
 
 
 # Deprecated (Old and Busted)

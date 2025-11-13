@@ -11,6 +11,9 @@ from camp.utils.gis import to_multipolygon
 
 
 class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
+    def counties(self):
+        return self.filter(type=self.model.Type.COUNTY)
+
     def get_county_region(self, obj):
         return self.get_containing_region(obj, self.model.Type.COUNTY)
 

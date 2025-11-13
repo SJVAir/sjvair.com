@@ -13,7 +13,7 @@ class AQviewAdmin(MonitorAdmin):
     list_display.remove('get_health_grade')
 
     fields = MonitorAdmin.fields
-    readonly_fields = ['name', 'location', 'position', 'county']
+    readonly_fields = ['name', 'location', 'position', 'county', 'get_map']
 
     def has_add_permission(self, request, obj=None):
         return False

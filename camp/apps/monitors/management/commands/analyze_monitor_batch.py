@@ -6,6 +6,7 @@ from datetime import date, time, datetime, timedelta
 from pprint import pprint
 
 import numpy as np
+import pandas as pd
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
@@ -13,7 +14,7 @@ from django.utils import timezone
 import pytz
 
 from camp.apps.monitors.models import Group
-from camp.datasci import UnivariateLinearRegression
+from camp.datasci import LinearRegression
 
 # Example:
 #   python manage.py analyze_monitor_batch \
@@ -48,12 +49,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         lookup = self.get_lookup(**options)
         group = Group.objects.get(name=options['group'])
-        
+
 
         self.data = []
         self.rows = []
         queryset = group.monitors.select_related('latest').order_by('name')
-        queryset = queryset.filter(pk__in=['HEoirP4rQeySlZlT0r3w2A', 'Oj5xfOnIRwmFFU0gy8sxrw', 'ifWdgoRfQFCjR0fqBOSj3w']).distinct()
         monitor_count = queryset.count()
 
         # Intradevice analysis
@@ -80,11 +80,13 @@ class Command(BaseCommand):
                 monitor['interdevice_valid'] = False
                 continue
 
-            monitor2_idx = self.find_next_monitor(i)
-            monitor2 = self.data[monitor2_idx]
-
-            if monitor2 is None:
+            if (monitor2_idx := self.find_next_monitor(i)) is None:
+                print('NO VALID NEXT MONITOR', monitor['monitor'].name)
+                monitor['interdevice'] = None
+                monitor['interdevice_valid'] = False
                 continue
+
+            monitor2 = self.data[monitor2_idx]
 
             results = self.generate_regression(monitor['a'], monitor2['b'])
             is_valid = self.validate_results(results)
@@ -130,7 +132,7 @@ class Command(BaseCommand):
 
             if monitor['intradevice'] is not None:
                 results = monitor['intradevice']
-                df = results.reg.df
+                df = results.df
                 self.rows[-1].update({'Hours': len(df)})
                 self.rows[-1].update(self.prep_results_row(results, 'Intra'))
                 self.rows[-1].update({
@@ -144,7 +146,7 @@ class Command(BaseCommand):
 
             if monitor['interdevice'] is not None:
                 results = monitor['interdevice']
-                df = results.reg.df.round(5)
+                df = results.df.round(5)
                 self.rows[-1].update({
                     'Inter Monitor ID': monitor['interdevice_monitor']['monitor'].pk,
                     'Inter Monitor Name': monitor['interdevice_monitor']['monitor'].name,
@@ -155,35 +157,71 @@ class Command(BaseCommand):
         if results is None:
             return {}
 
+        coef_key = next(iter(results.coefs.keys()))  # first feature name
+
+        numeric_df = results.df[['endog_value', 'exog_value']].astype(float)
+
         return {
             f'{prefix} R2': r(results.r2),
             f'{prefix} Intercept': r(results.intercept),
-            f'{prefix} Coefficient': r(results.coefs['pm25_reported']),
+            f'{prefix} Coefficient': r(results.coefs[coef_key]),
             f'{prefix} Variance Score': r(results.variance),
-            f'{prefix} Variance Mean': r(results.reg.df.var(axis='columns').mean()),
-            f'{prefix} Percent Change Mean': r((results.reg.df
+            f'{prefix} Variance Mean': r(numeric_df.var(axis='columns').mean()),
+            f'{prefix} Percent Change Mean': r(
+                numeric_df
                 .pct_change(axis='columns')['exog_value']
                 .replace([np.inf, -np.inf], np.nan)
                 .dropna()
                 .abs()
                 .mean()
-            )),
+            ),
         }
 
     def find_next_monitor(self, i):
-        for j, monitor in enumerate(self.data[i + 1:]):
-            if monitor['intradevice_valid']:
-                return i + j + 1
+        valid = [idx for idx, m in enumerate(self.data) if m['intradevice_valid']]
+        if len(valid) < 2:
+            return None
 
-        for j, monitor in enumerate(self.data[:i]):
-            if monitor['intradevice_valid']:
-                return i
+        try:
+            pos = valid.index(i)
+        except ValueError:
+            return None
 
-    def generate_regression(self, a, b):
-        linreg = UnivariateLinearRegression(a, b, 'pm25_reported')
-        results = linreg.generate_regression()
+        # return the next valid index, wrapping around
+        return valid[(pos + 1) % len(valid)]
+
+    def generate_regression(self, a, b, freq='1h'):
+        df_a = pd.DataFrame.from_records(a.values('timestamp', 'pm25_reported'))
+        df_b = pd.DataFrame.from_records(b.values('timestamp', 'pm25_reported'))
+
+        if df_a.empty or df_b.empty:
+            return None
+
+        df_a['pm25_reported'] = df_a['pm25_reported'].astype(float)
+        df_b['pm25_reported'] = df_b['pm25_reported'].astype(float)
+
+        df_a = df_a.rename(columns={'pm25_reported': 'endog_value'}).set_index('timestamp')
+        df_b = df_b.rename(columns={'pm25_reported': 'exog_value'}).set_index('timestamp')
+
+        df_a = df_a.resample(freq).mean()
+        df_b = df_b.resample(freq).mean()
+
+        # Merge on timestamp
+        merged = pd.merge(df_a, df_b, on='timestamp', how='inner').dropna()
+        if merged.empty:
+            return None
+
+        features = merged[['exog_value']]
+        target = merged['endog_value']
+
+        linreg = LinearRegression(features, target)
+        results = linreg.fit()
+
         if results is not None:
+            results.reg = linreg  # keep original df for downstream stats
+            results.df = merged
             results.is_valid = self.validate_results(results)
+
         return results
 
     def validate_results(self, results):
@@ -209,7 +247,7 @@ class Command(BaseCommand):
         if options['start_date'] is not None:
             start_date = datetime.strptime(options['start_date'], '%Y-%m-%d').date()
         else:
-            start_date = (lookup['timestamp__lte'] - timedelta(days=14)).date()
+            start_date = (end_date - timedelta(days=14)).date()
 
         start_date = datetime.combine(start_date, time.min)
         start_date = timezone.make_aware(start_date, TZ)

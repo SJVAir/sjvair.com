@@ -2,20 +2,15 @@
 # yarn lockfile v1
 
 
-"@sjvair/monitor-map@^2.5.1":
-  version "2.5.1"
-  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-2.5.1.tgz#fe7ac3e1cc86c5b8e60a10a427aefb73ee79c06e"
-  integrity sha512-s/RAMEhqbENNGSwUkvXcUdGZCrpEH+uCAXOHylhgyy4lLeEHa3gSaVvEjpABnQHN9OPLsIKTzgiJJwThLPBCCg==
+"@sjvair/monitor-map@^2.7.5":
+  version "2.7.5"
+  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-2.7.5.tgz#5d274df527b367ccbc2e2ad21bce58fad8ee3229"
+  integrity sha512-l5Y8gWjVMRAQcjoSPHO74XA8UZp1sVwyK88QpTtlhGZ4l4zcOoDTZ5Gc+UU4wnJblhAZDPzRnkep1LeB6MK3Yg==
 
-"@sjvair/sensor-scatterplot@^1.0.12":
-  version "1.0.12"
-  resolved "https://registry.npmjs.org/@sjvair/sensor-scatterplot/-/sensor-scatterplot-1.0.12.tgz"
-  integrity sha512-p8j77gnWbnWeAjd1qpjAKA81wRktLaKygz8m0THp+y0Mf7upIweanjyu6YXT8/e/m+iuVCn70GNAbCOgDQ9LEA==
-
-"@sjvair/web-widget@^1.0.9":
-  version "1.0.9"
-  resolved "https://registry.npmjs.org/@sjvair/web-widget/-/web-widget-1.0.9.tgz"
-  integrity sha512-ZQMLJUF0RLt3ozks2DvI71Su8NQOCty0wlrsd5Awl0OI++aRo+EDGPdaEYc07USqZxGiro71/4YEj05aDq9kaA==
+"@sjvair/web-widget@^2.0.1":
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@sjvair/web-widget/-/web-widget-2.0.1.tgz#888d75da0993ff9eb3085622d7c6621de2d95f4d"
+  integrity sha512-Av1OFWayJ1K/yczbv/YSBaEanCBoBpYUcfODznrC9KFf+Hhqknnl1FNgj1d0s7De27v88mYXefz2uau5ythFZw==
 
 bulma-list@^1.2.0:
   version "1.2.0"

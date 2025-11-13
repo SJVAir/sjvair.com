@@ -22,3 +22,8 @@ class UserSerializer(serializers.Serializer):
         'language',
         ('api_token', get_token),
     ]
+
+    def fixup(self, instance, data):
+        if instance.is_staff:
+            data['is_admin'] = True
+        return data

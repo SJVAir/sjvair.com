@@ -25,7 +25,7 @@ def parse_timestamp(value):
 
 
 def chunk_date_range(start_date, end_date, days=28):
-    '''Splits a date range into chunks, each `days` long.'''
+    '''Splits a date(time) range into chunks, each `days` long.'''
 
     chunks = []
     current_date = start_date
@@ -34,8 +34,8 @@ def chunk_date_range(start_date, end_date, days=28):
         period_end_date = current_date + timedelta(days=days - 1)
         chunk_end_date = min(period_end_date, end_date)
         chunks.append((
-            datetime.combine(current_date, time.min),
-            datetime.combine(chunk_end_date, time.max),
+            current_date if isinstance(current_date, datetime) else datetime.combine(current_date, time.min),
+            chunk_end_date if isinstance(chunk_end_date, datetime) else datetime.combine(chunk_end_date, time.max),
         ))
         current_date = chunk_end_date + timedelta(days=1)
 
