@@ -37,7 +37,7 @@ def purpleair_monitor(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         call_command('loaddata', 'purple-air.yaml', verbosity=0)
         call_command('loaddata', 'bam1022.yaml', verbosity=0)
-        monitor = PurpleAir.objects.get(purple_id=8892)
+        monitor = PurpleAir.objects.get(sensor_id=8892)
         create_hourly_data_for_monitor(monitor)
         try:
             yield

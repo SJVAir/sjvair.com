@@ -77,17 +77,17 @@ services:
     command: python manage.py runserver 0:8000
     ports:
       - "8000:8000"
-    profiles: ["default", "web"]
+    profiles: ["all", "default", "web"]
 
   worker-primary:
     <<: *build-base
     command: python manage.py djangohuey --simple --queue primary
-    profiles: ["default", "workers"]
+    profiles: ["all", "default", "workers"]
 
   worker-secondary:
     <<: *build-base
     command: python manage.py djangohuey --simple --queue secondary
-    profiles: ["workers"]
+    profiles: ["all", "workers"]
 
   test:
     <<: *build-base

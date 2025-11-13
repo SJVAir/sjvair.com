@@ -1,4 +1,4 @@
-Django==4.2.20
+Django==4.2.25
 
 dj-database-url==2.0.0
 dj-static==0.0.6
@@ -18,9 +18,11 @@ django-huey==1.1.1
 django-jsonform==2.22.0
 django-localflavor==4.0
 django-model-utils==4.3.1
+django-pgactivity==1.7.1
 django-phonenumber-field[phonenumberslite]==7.1.0
 django-prose==2.0.0
 django-recaptcha==4.0.0
+django-silk[formatting]==5.4.1
 django-smalluuid==1.2.1
 django-sqids==0.2.2
 django-storages==1.13.2
@@ -41,7 +43,7 @@ dpath==2.0.6
 fiona==1.10.1
 geopandas==1.0.1
 geopy==2.3.0
-gunicorn==22.0.0
+gunicorn==23.0.0
 hiredis==2.2.3
 huey==2.4.5
 invoke==2.2.0
@@ -68,7 +70,7 @@ python-rapidjson==1.16
 pytz==2022.1
 PyYAML==6.0.1
 redis==4.6.0
-requests==2.32.2
+requests==2.32.4
 scikit-learn==1.5.0
 scout-apm==2.26.1
 sentry-sdk==1.29.2

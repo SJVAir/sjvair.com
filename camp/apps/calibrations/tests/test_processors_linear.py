@@ -17,7 +17,7 @@ class BaseLinearProcessorTest(TestCase):
             name='Colocated Sensor',
             position='POINT(0 0)',
             county='Fresno',
-            purple_id=11235,
+            sensor_id=11235,
         )
         self.reference = BAM1022.objects.create(
             name='Reference BAM',

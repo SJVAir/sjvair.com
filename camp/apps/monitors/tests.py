@@ -13,7 +13,7 @@ class MonitorTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def get_purpleair(self):
-        return PurpleAir.objects.get(purple_id=8892)
+        return PurpleAir.objects.get(sensor_id=8892)
 
     # Create your tests here.
     def test_latest_entry_entry_property_and_setter(self):

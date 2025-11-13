@@ -15,10 +15,10 @@ from .models import PurpleAir
 class PurpleAirTests(TestCase):
     fixtures = ['purple-air.yaml']
     def setUp(self):
-        self.monitor = PurpleAir.objects.get(purple_id=8892)
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
 
     def test_create_entry_legacy(self):
-        payload = purpleair_api.get_sensor(self.monitor.purple_id)
+        payload = purpleair_api.get_sensor(self.monitor.sensor_id)
         (a, b) = self.monitor.create_entries_legacy(payload)
         self.monitor.check_latest(a)
         self.monitor.check_latest(b)

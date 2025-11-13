@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     gdal-bin \
     git \
+    iputils-ping \
     libgdal-dev \
     libjpeg-dev \
     libpq-dev \

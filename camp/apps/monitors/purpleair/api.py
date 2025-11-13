@@ -28,9 +28,9 @@ class PurpleAirAPI:
 
     MONITOR_FIELDS = [
         'name', 'private', 'date_created', 'last_modified',
-        'model', 'hardware', 'firmware_version', 'firmware_upgrade', 'rssi',
-        'location_type', 'latitude', 'longitude', 'altitude',
-        'confidence_manual', 'confidence_auto', 'confidence',
+        'model', 'hardware', # 'firmware_version', 'firmware_upgrade', 'rssi',
+        'location_type', 'latitude', 'longitude',
+        # 'confidence_manual', 'confidence_auto', 'confidence',
 
         'primary_id_a', 'primary_key_a', 'secondary_id_a', 'secondary_key_a',
         'primary_id_b', 'primary_key_b', 'secondary_id_b', 'secondary_key_b',
@@ -115,12 +115,12 @@ class PurpleAirAPI:
 
     # Sensors
 
-    def list_sensors(self, fields=None):
+    def list_sensors(self, fields=None, **kwargs):
         ''' Get a list of all sensors '''
         fields = fields or self.MONITOR_FIELDS
-        response = self.get('/v1/sensors', params={
-            'fields': ','.join(fields)
-        })
+        params = {'fields': ','.join(fields)}
+        params.update(**kwargs)
+        response = self.get('/v1/sensors', params=params)
         data = response.json()
         return [dict(zip(data['fields'], sensor)) for sensor in data['data']]
 
@@ -136,13 +136,13 @@ class PurpleAirAPI:
         except KeyError:
             return None
 
-    def get_sensor_history(self, sensor_index, start_date=None, end_date=None, fields=None):
+    def get_sensor_history(self, sensor_index, start_date=None, end_date=None, fields=None, batch_days=28):
         ''' Get a sensor's historical entries, batching the
             requests and yielding entries as an iterator.
         '''
         start_date = start_date or (timezone.now().date() - datetime.timedelta(days=28))
         end_date = end_date or timezone.now().date()
-        timestamp_chunks = chunk_date_range(start_date, end_date)
+        timestamp_chunks = chunk_date_range(start_date, end_date, days=batch_days)
         chunk_count = len(timestamp_chunks)
 
         for i, (start_timestamp, end_timestamp) in enumerate(timestamp_chunks):

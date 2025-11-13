@@ -70,7 +70,6 @@ def collectstatic(ctx):
 def import_npm_assets(ctx):
     import_node_module(ctx, '@sjvair/monitor-map')
     import_node_module(ctx, '@sjvair/web-widget', 'widget')
-    import_node_module(ctx, '@sjvair/sensor-scatterplot')
 
 
 @invoke.task()

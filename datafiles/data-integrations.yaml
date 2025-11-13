@@ -1,0 +1,60 @@
+- category: Air Monitoring Networks
+  icon:
+    name: fa-sensor-cloud
+    primary: slategray
+    secondary: lightsteelblue
+  description: Data from ground-level sensors, both community-deployed and regulatory-grade, providing real-time measurements of PM2.5, ozone, and other key pollutants across the San Joaquin Valley.
+  integrations:
+    - name: AirGradient
+      logo: img/logo/airgradient-logo.png
+      url: https://www.airgradient.com/
+      description: AirGradient is an open-source air quality platform that provides both ready-to-use monitors and DIY kits for community scientists. Their <a href="https://www.airgradient.com/manifesto/">commitment to transparency and open data</a> has made them a valuable collaborator in environmental monitoring. In SJVAir, we include all publicly accessible AirGradient monitors in the San Joaquin Valley, with an emphasis on <a href="/about/testing/">tested and verified units</a> to ensure data quality.
+
+    - name: PurpleAir
+      logo: img/logo/purpleair-square.png
+      url: https://www2.purpleair.com/
+      description: PurpleAir is one of the largest community air quality sensor networks in the world. Their low-cost monitors are widely deployed by residents, schools, and community groups, creating dense coverage across neighborhoods. In SJVAir, we incorporate every publicly accessible PurpleAir monitor in the San Joaquin Valley, alongside a subset of units that we independently <a href="/about/testing/">test and verify</a> for reliability.
+
+    - name: AirNow
+      logo: img/logo/airnow.svg
+      url: https://www.airnow.gov/
+      description: AirNow is the official U.S. platform for air quality information, operated through a partnership of the Environmental Protection Agency, NOAA, NASA, the National Park Service, the CDC, and state, tribal, and local agencies. It serves as the central hub for regulatory-grade monitoring data, providing the public with reliable and standardized air quality information nationwide.
+
+    - name: AQview
+      logo: img/logo/carb-vertical.png
+      url: https://aqview.arb.ca.gov/
+      description: AQview is the California Air Resources Board's (CARB) data platform for AB 617 communities, providing regulatory-grade PM2.5 measurements in areas most impacted by air pollution. Because AQview does not offer a public API, SJVAir is one of the only external platforms to integrate and display this data outside of CARB's own system.
+
+- category: Satellite & Atmospheric Data
+  icon:
+    name: fa-satellite
+    primary: DarkSlateGray
+    secondary: MediumSlateBlue
+  description: Satellite observations and atmospheric models that track wildfire smoke, pollution, and regional air quality trends, helping to fill gaps between ground-level measurements.
+  integrations:
+    - name: NOAA HMS Fire and Smoke
+      logo: img/logo/noaa.svg
+      url: https://www.ospo.noaa.gov/products/land/hms.html
+      description: The NOAA Hazard Mapping System (HMS) Fire and Smoke product provides daily maps of active fires and smoke plumes across North America. Using observations from the <a href="https://science.nasa.gov/mission/goes/">GOES geostationary satellites</a>, HMS offers near real-time information on smoke extent and movement, helping communities understand wildfire impacts on local air quality.
+
+    - name: TEMPO Satellite
+      logo: img/logo/tempo.png
+      url: https://tempo.si.edu/
+      description: "Tropospheric Emissions: Monitoring of Pollution (TEMPO) is a NASA mission operated in collaboration with the Smithsonian Astrophysical Observatory. From geostationary orbit, TEMPO measures pollutants such as ozone, nitrogen dioxide, and formaldehyde across North America, providing hourly observations that offer unprecedented insight into air quality at regional and local scales."
+
+- category: Environmental & Health Mapping
+  icon:
+    name: fa-earth-americas
+    primary: forestgreen
+    secondary: deepskyblue
+  description: Datasets that combine environmental, health, and socioeconomic indicators to identify communities most impacted by pollution and support equity-focused decision making.
+  integrations:
+    - name: CalEnvironScreen
+      logo: img/logo/calenviroscreen-logo.png
+      url: https://oehha.ca.gov/calenviroscreen
+      description: CalEnviroScreen is a mapping and screening tool developed by the California Office of Environmental Health Hazard Assessment (OEHHA). It combines environmental, health, and socioeconomic data from state and federal sources to identify communities most affected by pollution and socioeconomic burdens, helping guide California's environmental justice policies and investments.
+
+    - name: Healthy Places Index
+      logo: img/logo/healthy-places-index-logo.png
+      url: https://www.healthyplacesindex.org/
+      description: The Healthy Places Index (HPI), developed by the Public Health Alliance, maps social and environmental conditions that shape health outcomes across California. By combining indicators such as education, housing, job opportunities, and environmental quality, HPI highlights community factors strongly linked to life expectancy and supports efforts to advance health equity.

@@ -181,7 +181,7 @@ class BaseEntry(models.Model):
     def validation_check(self):
         return not (self.__class__.objects
             .filter(
-                monitor=self.monitor,
+                monitor_id=self.monitor.pk,
                 timestamp=self.timestamp,
                 sensor=self.sensor,
                 stage=self.stage,

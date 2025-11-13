@@ -19,7 +19,7 @@ class EntryExportEndpointTests(TestCase):
 
     def setUp(self):
         self.factory = RequestFactory()
-        self.monitor = PurpleAir.objects.get(purple_id=8892)
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
         self.start = timezone.now().date() - timedelta(days=7)
         self.end = timezone.now().date()
         self.user = User.objects.get(email='user@sjvair.com')

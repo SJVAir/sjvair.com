@@ -19,7 +19,7 @@ class TestPM25UnivariateLinearRegressionTrainer(TestCase):
             name='Colocated Sensor',
             position='POINT(0 0)',
             county='Fresno',
-            purple_id=11235,
+            sensor_id=11235,
         )
         self.reference = BAM1022.objects.create(
             name='Reference BAM',
@@ -89,7 +89,7 @@ class TestPM25UnivariateLinearRegressionProcessor(TestCase):
             name='Test Monitor',
             position='POINT(0 0)',
             county='Fresno',
-            purple_id=11235,
+            sensor_id=11235,
         )
 
         now = timezone.now()
