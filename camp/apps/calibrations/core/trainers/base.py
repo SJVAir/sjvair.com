@@ -41,7 +41,6 @@ class BaseTrainer(ABC, metaclass=TrainerMeta):
         lookup = {
             'monitor_id': self.pair.colocated_id,
             'stage': self.pair.colocated.get_default_stage(self.entry_model),
-            'sensor': self.pair.colocated.get_default_sensor(self.entry_model),
         }
         lookup.update(kwargs)
         return self.entry_model.objects.filter(**lookup)
@@ -50,7 +49,6 @@ class BaseTrainer(ABC, metaclass=TrainerMeta):
         lookup = {
             'monitor_id': self.pair.reference_id,
             'stage': self.pair.reference.get_default_stage(self.entry_model),
-            'sensor': self.pair.reference.get_default_sensor(self.entry_model),
         }
         lookup.update(kwargs)
         return self.entry_model.objects.filter(**lookup)

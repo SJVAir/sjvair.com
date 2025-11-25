@@ -16,6 +16,14 @@ class EntryDataFetcherTest(TestCase):
             sensor_id=11235,
         )
 
+    def _create_entry(self, entry_model, timestamp, value):
+        return entry_model.objects.create(
+            monitor=self.monitor,
+            stage=self.monitor.get_default_stage(entry_model),
+            timestamp=timestamp,
+            value=value
+        )
+
     def test_to_dataframe_returns_empty_df(self):
         fetcher = EntryDataFetcher(monitor=self.monitor, entry_types=[PM25])
         df = fetcher.to_dataframe()
@@ -25,10 +33,10 @@ class EntryDataFetcherTest(TestCase):
         assert df.empty
 
     def test_to_dataframe_merges_dataframes_correctly(self):
-        PM25.objects.create(monitor=self.monitor, timestamp='2025-01-01T00:00:00Z', value=10)
-        PM25.objects.create(monitor=self.monitor, timestamp='2025-01-01T01:00:00Z', value=12)
-        Temperature.objects.create(monitor=self.monitor, timestamp='2025-01-01T00:00:00Z', value=65)
-        Temperature.objects.create(monitor=self.monitor, timestamp='2025-01-01T02:00:00Z', value=66)
+        self._create_entry(PM25, timestamp='2025-01-01T00:00:00Z', value=10)
+        self._create_entry(PM25, timestamp='2025-01-01T01:00:00Z', value=12)
+        self._create_entry(Temperature, timestamp='2025-01-01T00:00:00Z', value=65)
+        self._create_entry(Temperature, timestamp='2025-01-01T02:00:00Z', value=66)
 
         fetcher = EntryDataFetcher(monitor=self.monitor, entry_types=[PM25, Temperature])
         df = fetcher.to_dataframe()
@@ -43,8 +51,8 @@ class EntryDataFetcherTest(TestCase):
         assert row['temperature'] == 65
 
     def test_to_dataframe_uses_custom_entry_types(self):
-        PM25.objects.create(monitor=self.monitor, timestamp='2025-01-01T00:00:00Z', value=10)
-        Temperature.objects.create(monitor=self.monitor, timestamp='2025-01-01T00:00:00Z', value=65)
+        self._create_entry(PM25, timestamp='2025-01-01T00:00:00Z', value=10)
+        self._create_entry(Temperature, timestamp='2025-01-01T00:00:00Z', value=65)
 
         fetcher = EntryDataFetcher(monitor=self.monitor, entry_types=[PM25])
         df = fetcher.to_dataframe()
@@ -53,7 +61,7 @@ class EntryDataFetcherTest(TestCase):
         assert 'temperature' not in df.columns
 
     def test_to_dataframe_infers_entry_types_if_none(self):
-        PM25.objects.create(monitor=self.monitor, timestamp='2025-01-01T00:00:00Z', value=10)
+        self._create_entry(PM25, timestamp='2025-01-01T00:00:00Z', value=10)
 
         fetcher = EntryDataFetcher(monitor=self.monitor)  # entry_types=None
         df = fetcher.to_dataframe()
