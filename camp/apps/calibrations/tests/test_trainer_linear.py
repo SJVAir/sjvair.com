@@ -8,6 +8,8 @@ from datetime import timedelta
 from camp.apps.calibrations import trainers
 from camp.apps.calibrations.models import CalibrationPair
 from camp.apps.entries import models as entry_models
+from camp.apps.monitors.bam.models import BAM1022
+from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.models import Monitor
 
 TRAINER_PARAMS = [
@@ -18,8 +20,8 @@ TRAINER_PARAMS = [
 
 class TestPM25LinearRegressionTrainers(TestCase):
     def setUp(self):
-        self.colocated = Monitor.objects.create(name='Colocated Sensor')
-        self.reference = Monitor.objects.create(name='Reference Sensor')
+        self.colocated = PurpleAir.objects.create(name='Colocated Sensor', sensor_id='000000')
+        self.reference = BAM1022.objects.create(name='Reference Sensor')
 
         self.pair = CalibrationPair.objects.create(
             colocated=self.colocated,

@@ -24,7 +24,10 @@ class EntryDataFetcher:
         self.end_time = end_time
 
     def get_queryset(self, entry_model):
-        queryset = entry_model.objects.filter(monitor_id=self.monitor.pk)
+        queryset = entry_model.objects.filter(
+            monitor_id=self.monitor.pk,
+            stage=self.monitor.get_default_stage(entry_model),
+        )
 
         if self.start_time:
             queryset = queryset.filter(timestamp__gte=self.start_time)
@@ -32,10 +35,7 @@ class EntryDataFetcher:
         if self.end_time:
             queryset = queryset.filter(timestamp__lte=self.end_time)
 
-        if hasattr(entry_model, 'default_stage'):
-            queryset = queryset.filter(stage=entry_model.default_stage)
-
-        return queryset
+        return queryset.order_by('timestamp')
 
     def get_field_map(self, entry_model):
         fields = entry_model.declared_field_names
