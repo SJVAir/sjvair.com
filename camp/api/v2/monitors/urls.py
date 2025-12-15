@@ -13,6 +13,7 @@ urlpatterns = [
     path('<monitor_id>/', endpoints.MonitorDetail.as_view(), name='monitor-detail'),
     path('<monitor_id>/entries/', endpoints.CreateEntry.as_view(), name='entry-create'),
     path('<monitor_id>/entries/export/', endpoints.EntryExport.as_view(), name='entry-export'),
+    path('<monitor_id>/entries/export/json/', endpoints.EntryJSONExport.as_view(), name='entry-export-json'),
     path('<monitor_id>/entries/<entry_type>/', endpoints.EntryList.as_view(), name='entry-list'),
     path('<monitor_id>/entries/<entry_type>/csv/', endpoints.EntryCSV.as_view(), name='entry-csv'),
 

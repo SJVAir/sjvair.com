@@ -1,5 +1,6 @@
 import pandas as pd
 from typing import List, Optional, Type
+
 from camp.apps.entries.models import BaseEntry
 
 
@@ -53,8 +54,8 @@ class EntryDataFetcher:
         frames = []
 
         for entry_model in self.entry_types:
-            data = (
-                self.get_queryset(entry_model)
+            data = (self
+                .get_queryset(entry_model)
                 .projections(fields=['timestamp'] + entry_model.declared_field_names)
             )
 
