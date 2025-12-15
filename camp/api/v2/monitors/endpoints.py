@@ -1,4 +1,7 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+import math
+
+import pandas as pd
 
 from resticus import generics, http
 from resticus.views import Endpoint
@@ -13,10 +16,12 @@ from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
 
 from camp.apps.entries.models import BaseEntry
+from camp.apps.entries.fetchers import EntryDataFetcher
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
 from camp.utils.forms import LatLonForm
+from camp.utils.datetime import make_aware
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import MonitorFilter, get_entry_filterset
@@ -168,6 +173,56 @@ class EntryExport(FormEndpoint):
         email = self.get_email()
         task = data_export(self.request.monitor.pk, email=email, **form.cleaned_data)
         return http.JSONResponse({'task_id': str(task.id)}, status=202)
+
+
+class EntryJSONExport(MonitorMixin, FormEndpoint):
+
+    def get(self, request, *args, **kwargs):
+        form = EntryExportForm(request.GET)
+        if not form.is_valid():
+            return http.Http400({"errors": form.errors.get_json_data()})
+
+        start_time, end_time = self.get_time_range(form.cleaned_data)
+
+        fetcher = EntryDataFetcher(
+            monitor=self.request.monitor,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        df = fetcher.to_dataframe()
+        records = self.dataframe_to_records(df)
+
+        return {'data': records}
+
+    def get_time_range(self, cleaned_data):
+        start_date = cleaned_data['start_date']
+        end_date = cleaned_data['end_date']
+
+        start_time = make_aware(datetime.combine(start_date, datetime.min.time()))
+        end_time = make_aware(datetime.combine(end_date, datetime.max.time()))
+
+        return start_time, end_time
+
+    def dataframe_to_records(self, dataframe):
+        if dataframe is None or dataframe.empty:
+            return []
+
+        frame = dataframe.reset_index()
+        records = []
+
+        for record in frame.to_dict(orient='records'):
+            normalized = {}
+            for key, value in record.items():
+                if pd.isna(value):
+                    normalized[key] = None
+                elif key == 'timestamp' and hasattr(value, 'isoformat'):
+                    normalized[key] = value.isoformat()
+                else:
+                    normalized[key] = value
+            records.append(normalized)
+
+        return records
 
 
 class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):

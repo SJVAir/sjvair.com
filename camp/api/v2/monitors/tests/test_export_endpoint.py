@@ -9,7 +9,7 @@ from django.utils import timezone
 from camp.apps.accounts.models import User
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.entries.models import PM25, Humidity, Temperature
-from camp.api.v2.monitors.endpoints import EntryExport
+from camp.api.v2.monitors.endpoints import EntryExport, EntryJSONExport
 from camp.utils.datetime import make_aware
 from camp.utils.test import debug, get_response_data
 
@@ -122,3 +122,25 @@ class EntryExportEndpointTests(TestCase):
 
         assert response.status_code == 401
         assert len(mail.outbox) == 0
+
+    def test_entry_json_export(self):
+        url = reverse('api:v2:monitors:entry-export-json', kwargs={'monitor_id': self.monitor.pk})
+        start_date = self.start
+        end_date = (self.end - timedelta(days=2)).strftime('%Y-%m-%d')
+        params = {
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': (self.end - timedelta(days=2)).strftime('%Y-%m-%d'),
+        }
+
+        request = self.factory.get(url, params)
+        request.monitor = self.monitor
+
+        response = EntryJSONExport.as_view()(request, monitor_id=self.monitor.pk)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+
+        expected_timestamp = make_aware(datetime.combine(self.end - timedelta(days=2), datetime.min.time()))
+        assert content['data'][-1]['timestamp'] == expected_timestamp.isoformat()
+        assert 'pm25' in content['data'][0]
+        assert 'humidity' in content['data'][0]
