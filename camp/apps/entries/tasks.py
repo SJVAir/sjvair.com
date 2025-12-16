@@ -114,7 +114,7 @@ def data_export(monitor_id, start_date, end_date, email=None):
             'message': 'Monitor not found'
         }
 
-    df = monitor.get_entry_data_table(start_date=start_date, end_date=end_date)
+    df = monitor.get_full_entry_dataframe(start_date=start_date, end_date=end_date)
 
     if df is None or df.empty:
         return {

@@ -125,11 +125,10 @@ class EntryExportEndpointTests(TestCase):
 
     def test_entry_json_export(self):
         url = reverse('api:v2:monitors:entry-export-json', kwargs={'monitor_id': self.monitor.pk})
-        start_date = self.start
-        end_date = (self.end - timedelta(days=2)).strftime('%Y-%m-%d')
+        start_date, end_date = self.start, (self.end - timedelta(days=2))
         params = {
             'start_date': start_date.strftime('%Y-%m-%d'),
-            'end_date': (self.end - timedelta(days=2)).strftime('%Y-%m-%d'),
+            'end_date': end_date.strftime('%Y-%m-%d'),
         }
 
         request = self.factory.get(url, params)

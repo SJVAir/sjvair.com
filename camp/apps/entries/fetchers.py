@@ -15,12 +15,12 @@ class EntryDataFetcher:
     def __init__(
         self,
         monitor,
-        entry_types: Optional[List[Type[BaseEntry]]] = None,
         start_time=None,
         end_time=None,
+        entry_types: Optional[List[Type[BaseEntry]]] = None,
     ):
         self.monitor = monitor
-        self.entry_types = entry_types or BaseEntry.__subclasses__()
+        self.entry_types = entry_types or monitor.entry_types
         self.start_time = start_time
         self.end_time = end_time
 
@@ -34,7 +34,7 @@ class EntryDataFetcher:
             queryset = queryset.filter(timestamp__gte=self.start_time)
 
         if self.end_time:
-            queryset = queryset.filter(timestamp__lte=self.end_time)
+            queryset = queryset.filter(timestamp__lt=self.end_time)
 
         return queryset.order_by('timestamp')
 

@@ -1,22 +1,22 @@
 from datetime import datetime, timedelta
-import math
+
+import csv
 
 import pandas as pd
 
 from resticus import generics, http
+from resticus.iterators import iterdict
 from resticus.views import Endpoint
 
 from django import forms
 from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
-from django.core.cache import cache
-from django.http import Http404
+from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
 
 from camp.apps.entries.models import BaseEntry
-from camp.apps.entries.fetchers import EntryDataFetcher
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
@@ -160,6 +160,107 @@ class MonitorDetail(CachedEndpointMixin, MonitorMixin, generics.DetailEndpoint):
         return super().serialize(source, fields, include, exclude, fixup)
 
 
+class EntryExportMixin:
+    form_class = EntryExportForm
+    streaming = True
+
+    def get(self, request, *args, **kwargs):
+        return self.process_form(data=request.GET)
+
+    def post(self, request, *args, **kwargs):
+        return self.process_form(data=request.data)
+
+    def form_valid(self, form):
+        start_time, end_time = self.get_time_range(
+            form.cleaned_data['start_date'],
+            form.cleaned_data['end_date'],
+        )
+
+        scope = form.cleaned_data.get('scope') or form.Scope.DEFAULT
+        df = self.get_dataframe(
+            start_time=start_time,
+            end_time=end_time,
+            scope=scope,
+        )
+        return self.render(df=df, form=form, scope=scope)
+
+    def get_dataframe(self, start_time, end_time, scope):
+        scope_handler = {
+            EntryExportForm.Scope.DEFAULT: self.request.monitor.get_entry_dataframe,
+            EntryExportForm.Scope.FULL: self.request.monitor.get_full_entry_dataframe
+        }[scope]
+
+        return scope_handler(
+            start_time=start_time,
+            end_time=end_time,
+            entry_types=None, # Maybe add this to EntryExportForm later?
+        )
+
+    def get_time_range(self, start_date, end_date):
+        start_time = make_aware(datetime.combine(start_date, datetime.min.time()))
+        end_time = make_aware(datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
+        return start_time, end_time
+
+
+class EntryExportJSON(EntryExportMixin, FormEndpoint):
+    def dataframe_to_records(self, df):
+        if df is None or df.empty:
+            return
+
+        columns = df.columns.to_list()
+        for ts, values in zip(df.index, df.itertuples(index=False, name=None)):
+            record = {'timestamp': ts.isoformat()}
+            for key, value in zip(columns, values):
+                record[key] = None if pd.isna(value) else value
+            yield record
+
+    def render(self, df, form, scope):
+        return iterdict({'data': self.dataframe_to_records(df) or []})
+
+
+class EntryExportCSV(EntryExportMixin, FormEndpoint):
+    class Echo:
+        def write(self, value):
+            return value
+
+    def dataframe_to_csv_rows(self, df):
+        if df is None or df.empty:
+            yield '' # Return an empty string
+            return
+
+        writer = csv.writer(self.Echo())
+        columns = df.columns.to_list()
+        yield writer.writerow(['timestamp', *columns])
+
+        for ts, values in zip(df.index, df.itertuples(index=False, name=None)):
+            row = [ts.isoformat(), *(
+                '' if pd.isna(value) else value
+                for value in values
+            )]
+            yield writer.writerow(row)
+
+    def get_filename(self, start_date, end_date, scope, **kwargs):
+        bits = [
+            'entries',
+            self.request.monitor.slug,
+            str(self.request.monitor.pk),
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d'),
+        ]
+
+        if scope and scope != EntryExportForm.Scope.DEFAULT:
+            bits.append(scope)
+
+        return f'{"_".join(bits)}.csv'
+
+    def render(self, df, form, scope):
+        filename = self.get_filename(**form.cleaned_data)
+        rows = self.dataframe_to_csv_rows(df)
+        headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
+        return StreamingHttpResponse(rows, content_type='text/csv', headers=headers)
+
+
+
 class EntryExport(FormEndpoint):
     form_class = EntryExportForm
     login_required = True
@@ -173,56 +274,6 @@ class EntryExport(FormEndpoint):
         email = self.get_email()
         task = data_export(self.request.monitor.pk, email=email, **form.cleaned_data)
         return http.JSONResponse({'task_id': str(task.id)}, status=202)
-
-
-class EntryJSONExport(MonitorMixin, FormEndpoint):
-
-    def get(self, request, *args, **kwargs):
-        form = EntryExportForm(request.GET)
-        if not form.is_valid():
-            return http.Http400({"errors": form.errors.get_json_data()})
-
-        start_time, end_time = self.get_time_range(form.cleaned_data)
-
-        fetcher = EntryDataFetcher(
-            monitor=self.request.monitor,
-            start_time=start_time,
-            end_time=end_time,
-        )
-
-        df = fetcher.to_dataframe()
-        records = self.dataframe_to_records(df)
-
-        return {'data': records}
-
-    def get_time_range(self, cleaned_data):
-        start_date = cleaned_data['start_date']
-        end_date = cleaned_data['end_date']
-
-        start_time = make_aware(datetime.combine(start_date, datetime.min.time()))
-        end_time = make_aware(datetime.combine(end_date, datetime.max.time()))
-
-        return start_time, end_time
-
-    def dataframe_to_records(self, dataframe):
-        if dataframe is None or dataframe.empty:
-            return []
-
-        frame = dataframe.reset_index()
-        records = []
-
-        for record in frame.to_dict(orient='records'):
-            normalized = {}
-            for key, value in record.items():
-                if pd.isna(value):
-                    normalized[key] = None
-                elif key == 'timestamp' and hasattr(value, 'isoformat'):
-                    normalized[key] = value.isoformat()
-                else:
-                    normalized[key] = value
-            records.append(normalized)
-
-        return records
 
 
 class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):

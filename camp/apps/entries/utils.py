@@ -51,21 +51,22 @@ def generate_export_path(monitor, start_date, end_date, ext='csv'):
     return f'exports/{timestamp_path}/{filename}'
 
 
-def to_multi_entry_wide_dataframe(entry_models, monitor, start_date=None, end_date=None):
+def to_multi_entry_wide_dataframe(monitor, start_date, end_date, entry_types=None):
     """
     Returns a wide-format DataFrame of entry values for a given monitor across multiple entry models.
     Each row is a unique (timestamp, sensor) pair.
     Columns are named like 'pm25_cleaned', 'humidity_raw', 'o3_modelx', etc.
     """
 
+    entry_types = entry_types or monitor.entry_types
     dfs = []
 
-    for model in entry_models:
-        lookup = {'monitor_id': monitor.pk}
-        if start_date:
-            lookup['timestamp__gte'] = start_date
-        if end_date:
-            lookup['timestamp__lt'] = end_date
+    for model in entry_types:
+        lookup = {
+            'monitor_id': monitor.pk,
+            'timestamp__gte': start_date,
+            'timestamp__lt': end_date,
+        }
 
         qs = model.objects.filter(**lookup)
         df = qs.to_dataframe()
