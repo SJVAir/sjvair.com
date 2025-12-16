@@ -304,22 +304,32 @@ class Monitor(models.Model):
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'
 
-    def fetch_entries(self, start_time, end_time):
+    def get_entry_dataframe(self, start_time, end_time, entry_types=None):
+        """
+        Return the resolved entry data for this monitor.
+
+        - One column per entry type
+        - Uses monitor default stage/calibration
+        - No sensor or processor branching
+        - Intended for API responses, analytics, and training
+        """
         from camp.apps.entries.fetchers import EntryDataFetcher
         return EntryDataFetcher(
             monitor=self,
-            entry_types=self.entry_types,
             start_time=start_time,
             end_time=end_time,
-        )
+            entry_types=entry_types,
+        ).to_dataframe()
 
-    def get_entry_data_table(self, entry_models=None, start_date=None, end_date=None):
+    def get_full_entry_dataframe(self, start_date, end_date, entry_types=None):
         """
-        Returns a wide-format DataFrame of entry values for this monitor across the given entry models.
-        Each row is (timestamp, sensor), with columns for each stage/processor.
+        Return the full entry dataset for this monitor.
+
+        - Includes all stages, processors, and sensors
+        - Column names encode metadata
+        - Intended for export, QA, and debugging
         """
-        entry_models = entry_models or self.entry_types
-        return to_multi_entry_wide_dataframe(entry_models, self, start_date, end_date)
+        return to_multi_entry_wide_dataframe(self, start_date, end_date, entry_types)
 
     def is_processable(self, obj_or_model) -> bool:
         """
