@@ -6,12 +6,12 @@ from django.db.models import enums
 
 class EntryExportForm(forms.Form):
     class Scope(enums.TextChoices):
-        DEFAULT = 'default', 'Default values'
-        FULL = 'full', 'All stages and processors'
+        RESOLVED = 'resolved', 'Default stage and calibration per pollutant'
+        EXPANDED = 'expanded', 'All stages and calibrations per pollutant'
 
     start_date = forms.DateField(required=True)
     end_date = forms.DateField(required=True)
-    scope = forms.ChoiceField(choices=Scope.choices, required=False, initial=Scope.DEFAULT)
+    scope = forms.ChoiceField(choices=Scope.choices, required=False, initial=Scope.RESOLVED)
 
     MAX_EXPORT_RANGE = timedelta(days=180)
 

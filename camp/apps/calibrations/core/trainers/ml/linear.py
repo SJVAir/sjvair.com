@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from camp.apps.calibrations.core.trainers.base import BaseTrainer
-from camp.apps.entries.fetchers import EntryDataFetcher
+from camp.apps.entries.timelines import ResolvedEntryTimeline
 from camp.datasci.cleaning import filter_by_completeness
 from camp.datasci.linear import LinearRegression
 
@@ -22,15 +22,15 @@ class LinearRegressionTrainer(BaseTrainer):
 
     def get_sample(self, monitor, sample, days):
         start_time = self.end_time - timedelta(days=days)
-        fetcher = EntryDataFetcher(
+        builder = ResolvedEntryTimeline(
             monitor=monitor,
             entry_types=self.get_entry_types(),
             start_time=start_time,
             end_time=self.end_time,
         )
-        df = fetcher.to_dataframe()
+        df = builder.to_dataframe()
 
-        if df is not None:
+        if not df.empty:
             if self.min_completeness:
                 df = filter_by_completeness(df,
                     interval=monitor.EXPECTED_INTERVAL,
@@ -39,7 +39,7 @@ class LinearRegressionTrainer(BaseTrainer):
                 )
 
             df = df.resample(self.resample_freq).mean()
-            field_map = fetcher.get_field_map(self.entry_model)
+            field_map = builder.get_field_map(self.entry_model)
 
             if isinstance(sample, str):
                 remapped = field_map.get(sample, sample)

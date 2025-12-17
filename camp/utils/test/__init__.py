@@ -20,7 +20,7 @@ def get_response_data(response):
     if isinstance(content, bytes):
         content = content.decode('utf-8')
 
-    if response.get('Content-Type') == 'application/json':
+    if response.get('Content-Type', '').startswith('application/json'):
         return json.loads(content)
     return content
 

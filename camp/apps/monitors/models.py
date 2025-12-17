@@ -25,7 +25,6 @@ from py_expression_eval import Parser as ExpressionParser
 from camp.apps.calibrations.utils import get_default_calibration
 from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
-from camp.apps.entries.utils import to_multi_entry_wide_dataframe
 from camp.apps.monitors.managers import MonitorManager
 from camp.apps.qaqc.models import HealthCheck
 from camp.utils import classproperty
@@ -304,7 +303,7 @@ class Monitor(models.Model):
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'
 
-    def get_entry_dataframe(self, start_time, end_time, entry_types=None):
+    def get_resolved_entries(self, start_time=None, end_time=None, entry_types=None):
         """
         Return the resolved entry data for this monitor.
 
@@ -313,15 +312,16 @@ class Monitor(models.Model):
         - No sensor or processor branching
         - Intended for API responses, analytics, and training
         """
-        from camp.apps.entries.fetchers import EntryDataFetcher
-        return EntryDataFetcher(
+        from camp.apps.entries.timelines import ResolvedEntryTimeline
+        df = ResolvedEntryTimeline(
             monitor=self,
             start_time=start_time,
             end_time=end_time,
             entry_types=entry_types,
         ).to_dataframe()
+        return df
 
-    def get_full_entry_dataframe(self, start_date, end_date, entry_types=None):
+    def get_expanded_entries(self, start_time=None, end_time=None, entry_types=None):
         """
         Return the full entry dataset for this monitor.
 
@@ -329,7 +329,14 @@ class Monitor(models.Model):
         - Column names encode metadata
         - Intended for export, QA, and debugging
         """
-        return to_multi_entry_wide_dataframe(self, start_date, end_date, entry_types)
+        from camp.apps.entries.timelines import ExpandedEntryTimeline
+        df = ExpandedEntryTimeline(
+            monitor=self,
+            start_time=start_time,
+            end_time=end_time,
+            entry_types=entry_types,
+        ).to_dataframe()
+        return df
 
     def is_processable(self, obj_or_model) -> bool:
         """
