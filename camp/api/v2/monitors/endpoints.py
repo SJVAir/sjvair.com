@@ -176,7 +176,7 @@ class EntryExportMixin:
             form.cleaned_data['end_date'],
         )
 
-        scope = form.cleaned_data.get('scope') or form.Scope.DEFAULT
+        scope = form.cleaned_data.get('scope') or form.Scope.RESOLVED
         df = self.get_dataframe(
             start_time=start_time,
             end_time=end_time,
@@ -186,8 +186,8 @@ class EntryExportMixin:
 
     def get_dataframe(self, start_time, end_time, scope):
         scope_handler = {
-            EntryExportForm.Scope.DEFAULT: self.request.monitor.get_entry_dataframe,
-            EntryExportForm.Scope.FULL: self.request.monitor.get_full_entry_dataframe
+            EntryExportForm.Scope.RESOLVED: self.request.monitor.get_resolved_entries,
+            EntryExportForm.Scope.EXPANDED: self.request.monitor.get_expanded_entries
         }[scope]
 
         return scope_handler(
@@ -215,7 +215,7 @@ class EntryExportJSON(EntryExportMixin, FormEndpoint):
             yield record
 
     def render(self, df, form, scope):
-        return iterdict({'data': self.dataframe_to_records(df) or []})
+        return {'data': self.dataframe_to_records(df) or []}
 
 
 class EntryExportCSV(EntryExportMixin, FormEndpoint):
@@ -248,7 +248,7 @@ class EntryExportCSV(EntryExportMixin, FormEndpoint):
             end_date.strftime('%Y-%m-%d'),
         ]
 
-        if scope and scope != EntryExportForm.Scope.DEFAULT:
+        if scope and scope != EntryExportForm.Scope.RESOLVED:
             bits.append(scope)
 
         return f'{"_".join(bits)}.csv'
