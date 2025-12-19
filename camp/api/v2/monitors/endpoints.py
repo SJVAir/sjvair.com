@@ -59,6 +59,7 @@ class EntryTypeMixin:
 
 class EntryMixin(EntryTypeMixin):
     serializer_class = EntrySerializer
+    streaming = True
 
     def get_queryset(self):
         queryset = self.entry_model.objects.all()
@@ -84,6 +85,7 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
 
     filter_class = MonitorFilter
     paginate = False
+    streaming = True
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -162,7 +164,6 @@ class MonitorDetail(CachedEndpointMixin, MonitorMixin, generics.DetailEndpoint):
 
 class EntryExportMixin:
     form_class = EntryExportForm
-    streaming = True
 
     def get(self, request, *args, **kwargs):
         return self.process_form(data=request.GET)
@@ -203,6 +204,8 @@ class EntryExportMixin:
 
 
 class EntryExportJSON(EntryExportMixin, FormEndpoint):
+    streaming = True
+
     def dataframe_to_records(self, df):
         if df is None or df.empty:
             return
@@ -223,6 +226,20 @@ class EntryExportCSV(EntryExportMixin, FormEndpoint):
         def write(self, value):
             return value
 
+    def get_filename(self, start_date, end_date, scope, **kwargs):
+        bits = [
+            'entries',
+            self.request.monitor.slug,
+            str(self.request.monitor.pk),
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d'),
+        ]
+
+        if scope and scope != EntryExportForm.Scope.RESOLVED:
+            bits.append(scope)
+
+        return f'{"_".join(bits)}.csv'
+
     def dataframe_to_csv_rows(self, df):
         if df is None or df.empty:
             yield '' # Return an empty string
@@ -238,20 +255,6 @@ class EntryExportCSV(EntryExportMixin, FormEndpoint):
                 for value in values
             )]
             yield writer.writerow(row)
-
-    def get_filename(self, start_date, end_date, scope, **kwargs):
-        bits = [
-            'entries',
-            self.request.monitor.slug,
-            str(self.request.monitor.pk),
-            start_date.strftime('%Y-%m-%d'),
-            end_date.strftime('%Y-%m-%d'),
-        ]
-
-        if scope and scope != EntryExportForm.Scope.RESOLVED:
-            bits.append(scope)
-
-        return f'{"_".join(bits)}.csv'
 
     def render(self, df, form, scope):
         filename = self.get_filename(**form.cleaned_data)
@@ -314,6 +317,7 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
 
     paginate = False
     serializer_class = MonitorSerializer
+    streaming = True
 
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
