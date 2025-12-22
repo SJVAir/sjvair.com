@@ -25,7 +25,6 @@ from py_expression_eval import Parser as ExpressionParser
 from camp.apps.calibrations.utils import get_default_calibration
 from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
-from camp.apps.entries.utils import to_multi_entry_wide_dataframe
 from camp.apps.monitors.managers import MonitorManager
 from camp.apps.qaqc.models import HealthCheck
 from camp.utils import classproperty
@@ -304,22 +303,40 @@ class Monitor(models.Model):
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'
 
-    def fetch_entries(self, start_time, end_time):
-        from camp.apps.entries.fetchers import EntryDataFetcher
-        return EntryDataFetcher(
+    def get_resolved_entries(self, start_time=None, end_time=None, entry_types=None):
+        """
+        Return the resolved entry data for this monitor.
+
+        - One column per entry type
+        - Uses monitor default stage/calibration
+        - No sensor or processor branching
+        - Intended for API responses, analytics, and training
+        """
+        from camp.apps.entries.timelines import ResolvedEntryTimeline
+        df = ResolvedEntryTimeline(
             monitor=self,
-            entry_types=self.entry_types,
             start_time=start_time,
             end_time=end_time,
-        )
+            entry_types=entry_types,
+        ).to_dataframe()
+        return df
 
-    def get_entry_data_table(self, entry_models=None, start_date=None, end_date=None):
+    def get_expanded_entries(self, start_time=None, end_time=None, entry_types=None):
         """
-        Returns a wide-format DataFrame of entry values for this monitor across the given entry models.
-        Each row is (timestamp, sensor), with columns for each stage/processor.
+        Return the full entry dataset for this monitor.
+
+        - Includes all stages, processors, and sensors
+        - Column names encode metadata
+        - Intended for export, QA, and debugging
         """
-        entry_models = entry_models or self.entry_types
-        return to_multi_entry_wide_dataframe(entry_models, self, start_date, end_date)
+        from camp.apps.entries.timelines import ExpandedEntryTimeline
+        df = ExpandedEntryTimeline(
+            monitor=self,
+            start_time=start_time,
+            end_time=end_time,
+            entry_types=entry_types,
+        ).to_dataframe()
+        return df
 
     def is_processable(self, obj_or_model) -> bool:
         """

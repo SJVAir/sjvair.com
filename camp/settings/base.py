@@ -347,8 +347,8 @@ RESTICUS = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["resticus.auth.TokenAuth"],
     "TOKEN_MODEL": "resticus.Token",
     'STREAMING': [],
-    "JSON_DECODER": "camp.utils.encoders.RapidJSONDecoder",
-    "JSON_ENCODER": "camp.utils.encoders.RapidJSONEncoder",
+    "JSON_DECODER": "camp.utils.encoders.JSONDecoder",
+    "JSON_ENCODER": "camp.utils.encoders.JSONEncoder",
 }
 
 # huey / django-huey
