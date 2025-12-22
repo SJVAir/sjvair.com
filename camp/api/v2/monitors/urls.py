@@ -12,7 +12,14 @@ urlpatterns = [
 
     path('<monitor_id>/', endpoints.MonitorDetail.as_view(), name='monitor-detail'),
     path('<monitor_id>/entries/', endpoints.CreateEntry.as_view(), name='entry-create'),
+
+    # Entry export
+    # Deprecated in favor of /csv/ and /json/
     path('<monitor_id>/entries/export/', endpoints.EntryExport.as_view(), name='entry-export'),
+    path('<monitor_id>/entries/export/csv/', endpoints.EntryExportCSV.as_view(), name='entry-export-csv'),
+    path('<monitor_id>/entries/export/json/', endpoints.EntryExportJSON.as_view(), name='entry-export-json'),
+
+    # Entries by type
     path('<monitor_id>/entries/<entry_type>/', endpoints.EntryList.as_view(), name='entry-list'),
     path('<monitor_id>/entries/<entry_type>/csv/', endpoints.EntryCSV.as_view(), name='entry-csv'),
 

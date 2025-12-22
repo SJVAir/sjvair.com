@@ -1,5 +1,7 @@
 import os
 
+from datetime import datetime, timedelta
+
 from django.core.files.storage import default_storage, FileSystemStorage
 from django.utils import timezone
 
@@ -105,7 +107,7 @@ def copy_legacy_entries(monitor_id):
 
 
 @db_task()
-def data_export(monitor_id, start_date, end_date, email=None):
+def data_export(monitor_id, start_date, end_date, scope=None, email=None):
     try:
         monitor = Monitor.objects.get(pk=monitor_id)
     except Monitor.DoesNotExist:
@@ -114,7 +116,10 @@ def data_export(monitor_id, start_date, end_date, email=None):
             'message': 'Monitor not found'
         }
 
-    df = monitor.get_entry_data_table(start_date=start_date, end_date=end_date)
+    df = monitor.get_expanded_entries(
+        start_time=datetime.combine(start_date, datetime.min.time()),
+        end_time=datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+    )
 
     if df is None or df.empty:
         return {
