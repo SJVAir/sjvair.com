@@ -2,7 +2,7 @@ import copy
 import math
 import uuid
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pandas as pd
@@ -571,11 +571,19 @@ class Monitor(models.Model):
         if entry.sensor == self.default_sensor and is_latest:
             self.latest = entry
 
-    def get_entry_migration_status(self):
+    def get_entry_migration_status(self, min_date=None) -> str:
+        # Normalize min_date to aware datetime if provided
+        if min_date:
+            if isinstance(min_date, date) and not isinstance(min_date, datetime):
+                min_date = datetime.combine(min_date, datetime.min.time())
+            min_date = timezone.make_aware(min_date)
+
         try:
             legacy_ts = self.entries.earliest('timestamp').timestamp
         except ObjectDoesNotExist:
             return 'no_legacy'
+
+        legacy_ts = max(legacy_ts, min_date) if min_date else legacy_ts
 
         try:
             pm25_ts = self.pm25_entries.earliest().timestamp
