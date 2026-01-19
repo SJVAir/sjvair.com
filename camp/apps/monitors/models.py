@@ -571,6 +571,22 @@ class Monitor(models.Model):
         if entry.sensor == self.default_sensor and is_latest:
             self.latest = entry
 
+    def get_entry_migration_status(self):
+        try:
+            legacy_ts = self.entries.earliest('timestamp').timestamp
+        except ObjectDoesNotExist:
+            return 'no_legacy'
+
+        try:
+            pm25_ts = self.pm25_entries.earliest().timestamp
+        except ObjectDoesNotExist:
+            return 'needs_full_migration'
+
+        if pm25_ts > legacy_ts:
+            return 'needs_backfill'
+
+        return 'ok'
+
 
 class LCSMixin(Monitor):
     sensor_id = models.IntegerField(unique=True)
