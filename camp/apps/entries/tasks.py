@@ -1,6 +1,6 @@
 import os
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from django.core.files.storage import default_storage, FileSystemStorage
 from django.utils import timezone
@@ -87,18 +87,29 @@ def copy_legacy_entries_range(monitor_id, start, end):
 
 
 @db_task(queue='secondary')
-def copy_legacy_entries(monitor_id):
+def copy_legacy_entries(monitor_id, min_date=None):
     monitor = Monitor.objects.get(pk=monitor_id)
 
+    if min_date:
+        if isinstance(min_date, date) and not isinstance(min_date, datetime):
+            min_date = datetime.combine(min_date, datetime.min.time())
+        min_date = timezone.make_aware(min_date)
+
     try:
-        start = monitor.entries.earliest('timestamp').timestamp
+        legacy_start = monitor.entries.earliest('timestamp').timestamp
     except monitor.entries.model.DoesNotExist:
         return  # no legacy entries at all
+
+    start = max(legacy_start, min_date) if min_date else legacy_start
 
     try:
         end = monitor.pm25_entries.earliest().timestamp
     except entry_models.PM25.DoesNotExist:
         end = timezone.now()
+
+    # Nothing to do if the bounds collapse
+    if start >= end:
+        return
 
     chunks = chunk_date_range(start, end, days=3)
 
