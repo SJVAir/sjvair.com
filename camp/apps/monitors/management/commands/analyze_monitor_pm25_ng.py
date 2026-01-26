@@ -17,6 +17,34 @@ from camp.datasci import stats
 
 TZ = pytz.timezone('America/Los_Angeles')
 
+BASE_FIELDS = [
+    'Monitor ID',
+    'Monitor Name',
+    'Is Active',
+    'Latest Entry',
+    'Hours',
+]
+
+INTRA_FIELDS = [
+    'Intra A Mean',
+    'Intra B Mean',
+    'Intra Correlation',
+    'Intra RPD (%)',
+    'Intra Pass',
+]
+
+INTER_FIELDS = [
+    'Inter Monitor ID',
+    'Inter Monitor Name',
+    'Inter A Mean',
+    'Inter B Mean',
+    'Inter Correlation',
+    'Inter RPD (%)',
+    'Inter Pass',
+]
+
+CSV_FIELDS = BASE_FIELDS + INTRA_FIELDS + INTER_FIELDS
+
 
 @dataclass
 class QAResults:
@@ -155,8 +183,7 @@ class Command(BaseCommand):
     def save_or_display(self, options):
         if options['output']:
             with open(options['output'], 'w') as f:
-                keys = self.rows[0].keys()
-                writer = csv.DictWriter(f, keys)
+                writer = csv.DictWriter(f, CSV_FIELDS)
                 writer.writerows(self.header_rows)
                 writer.writeheader()
                 writer.writerows(self.rows)
