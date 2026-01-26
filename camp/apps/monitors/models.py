@@ -578,22 +578,37 @@ class Monitor(models.Model):
                 min_date = datetime.combine(min_date, datetime.min.time())
             min_date = timezone.make_aware(min_date)
 
-        try:
-            legacy_ts = self.entries.earliest('timestamp').timestamp
-        except ObjectDoesNotExist:
-            return 'no_legacy'
+        legacy_qs = self.entries.all()
 
-        legacy_ts = max(legacy_ts, min_date) if min_date else legacy_ts
+        # No legacy data at all
+        if not legacy_qs.exists():
+            return 'ok'
 
-        try:
-            pm25_ts = self.pm25_entries.earliest().timestamp
-        except ObjectDoesNotExist:
+        # No legacy data in the requested window → nothing to migrate
+        if min_date and not legacy_qs.filter(timestamp__gte=min_date).exists():
+            return 'ok'
+
+        # First legacy timestamp in the window
+        legacy_ts = (
+            legacy_qs.filter(timestamp__gte=min_date).earliest('timestamp').timestamp
+            if min_date
+            else legacy_qs.earliest('timestamp').timestamp
+        )
+
+        pm25_qs = self.pm25_entries.all()
+
+        # No PM25 data at all
+        if not pm25_qs.exists():
             return 'needs_full_migration'
 
+        pm25_ts = pm25_qs.earliest('timestamp').timestamp
+
+        # PM25 starts after legacy in the window
         if pm25_ts > legacy_ts:
             return 'needs_backfill'
 
         return 'ok'
+
 
 
 class LCSMixin(Monitor):
