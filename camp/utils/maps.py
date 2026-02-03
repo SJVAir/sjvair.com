@@ -188,6 +188,8 @@ class StaticMap:
         self.basemap = basemap
         if self.basemap and self.basemap.get('name', '').startswith('MapTiler'):
             self.basemap['key'] = settings.MAPTILER_API_KEY
+            self.basemap['variant'] == 'basic-v4'
+            self.basemap['r'] == '@2x'
         # self.basemap['zoomOffset'] = 0
 
         self.crs = crs
