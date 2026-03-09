@@ -7,6 +7,15 @@ from datetime import datetime, timedelta, time
 import requests
 
 
+MIN_INVERSION_STRENGTH_F = 2.7
+MAX_BOUNDARY_LAYER_HEIGHT_M = 400.0
+MAX_WIND_SPEED_MPH = 4.5
+PM25_THRESHOLD = 35.0
+MIN_PERSISTENCE_HOURS_WATCH = 6
+MIN_PERSISTENCE_HOURS_ADVISORY = 12
+MIN_PERSISTENCE_HOURS_PERSISTENT = 48
+
+
 class InversionType(models.TextChoices):
     RADIATION = 'radiation', 'Radiation Inversion'
     SUBSIDENCE = 'subsidence', 'Subsidence Inversion'
@@ -44,11 +53,11 @@ class Inversion(models.Model):
 
     # Meteorological data from OpenMeteo
     temperature_gradient = models.FloatField(
-        help_text='Temperature difference between surface and upper air (°C)'
+        help_text='Temperature difference between surface and upper air (°F)'
     )
-    surface_temperature = models.FloatField(help_text='Surface temperature (°C)')
-    upper_air_temperature = models.FloatField(help_text='Upper air temperature (°C)')
-    wind_speed = models.FloatField(help_text='Wind speed (m/s)')
+    surface_temperature = models.FloatField(help_text='Surface temperature (°F)')
+    upper_air_temperature = models.FloatField(help_text='Upper air temperature (°F)')
+    wind_speed = models.FloatField(help_text='Wind speed (mph)')
     pressure = models.FloatField(help_text='Atmospheric pressure (hPa)')
     boundary_layer_height = models.FloatField(
         null=True, blank=True, help_text='Planetary boundary layer height (meters)'
@@ -149,11 +158,14 @@ class Inversion(models.Model):
         """
         Update severity classification based on duration and PM2.5 confirmation.
         """
-        if self.persistence_hours >= 48 and self.pm25_confirmed:
+        if (
+            self.persistence_hours >= MIN_PERSISTENCE_HOURS_PERSISTENT
+            and self.pm25_confirmed
+        ):
             self.severity = InversionSeverity.PERSISTENT
-        elif self.persistence_hours >= 12:
+        elif self.persistence_hours >= MIN_PERSISTENCE_HOURS_ADVISORY:
             self.severity = InversionSeverity.ADVISORY
-        elif self.persistence_hours >= 6:
+        elif self.persistence_hours >= MIN_PERSISTENCE_HOURS_WATCH:
             self.severity = InversionSeverity.WATCH
         else:
             self.severity = None
@@ -178,7 +190,7 @@ class RadiationInversion(models.Model):
         help_text='Time period when detected',
     )
     ground_cooling_rate = models.FloatField(
-        null=True, blank=True, help_text='Rate of ground cooling (°C/hour)'
+        null=True, blank=True, help_text='Rate of ground cooling (°F/hour)'
     )
 
     class Meta:
@@ -248,8 +260,8 @@ class FrontalInversion(models.Model):
     front_speed = models.FloatField(
         null=True, blank=True, help_text='Speed of front movement (m/s)'
     )
-    warm_air_temperature = models.FloatField(help_text='Warm air mass temperature (°C)')
-    cold_air_temperature = models.FloatField(help_text='Cold air mass temperature (°C)')
+    warm_air_temperature = models.FloatField(help_text='Warm air mass temperature (°F)')
+    cold_air_temperature = models.FloatField(help_text='Cold air mass temperature (°F)')
 
     class Meta:
         ordering = ['-inversion__detected_at']
@@ -347,7 +359,7 @@ def get_pm25_hourly_values(monitor, start_time, end_time):
     ]
 
 
-def analyze_pm25_persistence(monitor, start_time, end_time, threshold=35.0):
+def analyze_pm25_persistence(monitor, start_time, end_time, threshold=PM25_THRESHOLD):
     """
     Analyze PM2.5 persistence patterns during potential inversion period.
 
@@ -476,11 +488,11 @@ def detect_and_confirm_inversion(
     monitor=None,
     start_time=None,
     end_time=None,
-    min_inversion_strength_c=1.5,
-    max_boundary_layer_height_m=400.0,
-    max_wind_speed_ms=2.0,
-    pm25_threshold=35.0,
-    min_persistence_hours=6,
+    min_inversion_strength_f=MIN_INVERSION_STRENGTH_F,
+    max_boundary_layer_height_m=MAX_BOUNDARY_LAYER_HEIGHT_M,
+    max_wind_speed_mph=MAX_WIND_SPEED_MPH,
+    pm25_threshold=PM25_THRESHOLD,
+    min_persistence_hours=MIN_PERSISTENCE_HOURS_WATCH,
 ):
     """
     Detect inversion events using OpenMeteo and confirm with PM2.5 data.
@@ -491,9 +503,9 @@ def detect_and_confirm_inversion(
         monitor: Monitor object for PM2.5 data (optional but recommended)
         start_time: Start of detection period
         end_time: End of detection period
-        min_inversion_strength_c: Minimum temperature gradient for inversion (°C)
+        min_inversion_strength_f: Minimum temperature gradient for inversion (°F)
         max_boundary_layer_height_m: Maximum boundary layer height (meters)
-        max_wind_speed_ms: Maximum wind speed for stagnant conditions (m/s)
+        max_wind_speed_mph: Maximum wind speed for stagnant conditions (mph)
         pm25_threshold: PM2.5 threshold for unhealthy levels (μg/m³)
         min_persistence_hours: Minimum hours for inversion watch
 
@@ -507,7 +519,6 @@ def detect_and_confirm_inversion(
 
     # Fetch meteorological data from OpenMeteo
     met_data = fetch_openmeteo_data(latitude, longitude, start_time, end_time)
-    print(met_data)
 
     # Detect inversions from meteorological conditions
     inversions = []
@@ -518,9 +529,9 @@ def detect_and_confirm_inversion(
     for hour_data in met_data:
         # Check inversion conditions
         is_inversion = (
-            hour_data['temp_gradient'] >= min_inversion_strength_c
+            hour_data['temp_gradient'] >= min_inversion_strength_f
             and hour_data.get('boundary_layer_height', 0) <= max_boundary_layer_height_m
-            and hour_data['wind_speed'] <= max_wind_speed_ms
+            and hour_data['wind_speed'] <= max_wind_speed_mph
         )
 
         if is_inversion:
@@ -602,9 +613,9 @@ def detect_and_confirm_inversion(
 
 def fetch_openmeteo_data(latitude, longitude, start_time, end_time):
     """
-    Fetch meteorological data from OpenMeteo API.
+    Fetch meteorological data from OpenMeteo API in imperial units.
 
-    Returns list of hourly data dictionaries.
+    Returns list of hourly data dictionaries with temperatures in Fahrenheit.
     """
     url = 'https://api.open-meteo.com/v1/forecast'
 
@@ -620,6 +631,10 @@ def fetch_openmeteo_data(latitude, longitude, start_time, end_time):
             'shortwave_radiation',
             'boundary_layer_height',
         ],
+        'temperature_unit': 'fahrenheit',
+        'windspeed_unit': 'mph',
+        'precipitation_unit': 'inch',
+        'timezone': 'auto',
         'start_date': start_time.strftime('%Y-%m-%d'),
         'end_date': end_time.strftime('%Y-%m-%d'),
     }
@@ -695,7 +710,7 @@ def classify_inversion_type(hour_data):
     pressure = hour_data.get('pressure', 1013)
     solar_rad = hour_data.get('solar_radiation', 0)
 
-    if cloud_cover < 30 and wind_speed < 2 and solar_rad < 50:
+    if cloud_cover < 30 and wind_speed < MAX_WIND_SPEED_MPH and solar_rad < 50:
         return InversionType.RADIATION
     elif pressure > 1020:
         return InversionType.SUBSIDENCE
