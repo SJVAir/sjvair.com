@@ -16,7 +16,7 @@ class Smoke(models.Model):
         editable=False,
         verbose_name='ID'
     )
-    date = models.DateField(null=True)
+    date = models.DateField()
     satellite = models.CharField(max_length=20)
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True)
@@ -38,10 +38,12 @@ class Fire(models.Model):
     # date is the file date (which day's snapshot this record came from).
     # timestamp is the actual observation time of the individual fire point.
     # These can differ — a single day's file may contain points observed across midnight.
-    date = models.DateField(null=True)
+    date = models.DateField()
     satellite = models.CharField(max_length=20)
     timestamp = models.DateTimeField(null=True)
     frp = models.DecimalField(max_digits=10, decimal_places=3, null=True)
+    # Ecosystem land cover code from the HMS fire product.
+    # See: https://www.ospo.noaa.gov/products/land/hms.html#data
     ecosystem = models.IntegerField()
     method = models.CharField(max_length=10)
     geometry = gis_models.PointField(srid=4326)

@@ -19,7 +19,7 @@ class FireSerializer(serializers.Serializer):
         'date',
         'satellite',
         'timestamp',
-        'frp',
+        ('frp', lambda fire: float(fire.frp) if fire.frp is not None else None),
         'ecosystem',
         'method',
         'geometry',
