@@ -41,7 +41,7 @@ class Fire(models.Model):
     date = models.DateField(null=True)
     satellite = models.CharField(max_length=20)
     timestamp = models.DateTimeField(null=True)
-    frp = models.DecimalField(max_digits=10, decimal_places=3)
+    frp = models.DecimalField(max_digits=10, decimal_places=3, null=True)
     ecosystem = models.IntegerField()
     method = models.CharField(max_length=10)
     geometry = gis_models.PointField(srid=4326)

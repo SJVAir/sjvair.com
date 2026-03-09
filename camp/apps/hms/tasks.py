@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError  # used by fetch_smoke
 from django.db import transaction
 from django.utils import timezone
 from django.utils.timezone import make_aware
@@ -77,16 +78,12 @@ def fetch_fire(date=None):
                 date=date,
                 satellite=row.Satellite,
                 timestamp=parse_timestamp(f'{row.YearDay} {row.Time}'),
-                frp=row.FRP,
+                frp=Decimal(f'{row.FRP:.3f}') if row.FRP >= 0 else None,
                 ecosystem=row.Ecosystem,
                 method=row.Method,
                 geometry=geometry,
             )
-            try:
-                fire.full_clean()
-                fire.save()
-            except ValidationError:
-                pass
+            fire.save()
 
 
 # Re-fetch the previous day's fire data one final time (~1pm PST).
