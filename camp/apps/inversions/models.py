@@ -7,13 +7,14 @@ from datetime import datetime, timedelta, time
 import requests
 
 
-MIN_INVERSION_STRENGTH_F = 2.7
 MAX_BOUNDARY_LAYER_HEIGHT_M = 400.0
 MAX_WIND_SPEED_MPH = 4.5
-PM25_THRESHOLD = 35.0
+MIN_INVERSION_STRENGTH_F = 2.7
 MIN_PERSISTENCE_HOURS_WATCH = 6
 MIN_PERSISTENCE_HOURS_ADVISORY = 12
 MIN_PERSISTENCE_HOURS_PERSISTENT = 48
+PM25_THRESHOLD = 35.0
+SEA_LEVEL_PRESSURE = 1013
 
 
 class InversionType(models.TextChoices):
@@ -658,7 +659,7 @@ def fetch_openmeteo_data(latitude, longitude, start_time, end_time):
                     'temp_aloft': temp_80m,
                     'temp_gradient': temp_80m - temp_2m,
                     'pressure': hourly.get(
-                        'surface_pressure', [1013] * len(hourly['time'])
+                        'surface_pressure', [SEA_LEVEL_PRESSURE] * len(hourly['time'])
                     )[i],
                     'cloud_cover': hourly.get('cloudcover', [0] * len(hourly['time']))[
                         i
@@ -707,7 +708,7 @@ def classify_inversion_type(hour_data):
     """
     cloud_cover = hour_data.get('cloud_cover', 0)
     wind_speed = hour_data.get('wind_speed', 0)
-    pressure = hour_data.get('pressure', 1013)
+    pressure = hour_data.get('pressure', SEA_LEVEL_PRESSURE)
     solar_rad = hour_data.get('solar_radiation', 0)
 
     if cloud_cover < 30 and wind_speed < MAX_WIND_SPEED_MPH and solar_rad < 50:
