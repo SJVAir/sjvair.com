@@ -110,12 +110,13 @@ class HealthCheck(TimeStampedModel):
         return self.channel_sanity('b')
 
     def channel_sanity(self, channel):
-        return all(
+        values = [
             getattr(self, field.name)
             for field in self._meta.fields
             if field.name.startswith('sanity_')
             and field.name.endswith(f'_{channel}')
-        )
+        ]
+        return all(v for v in values if v is not None)
 
     def _set_attrs(self, data):
         for key, value in data.items():
