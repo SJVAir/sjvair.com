@@ -4,8 +4,10 @@ from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 
+from unittest.mock import patch
+
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.models import LatestEntry
+from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
@@ -15,7 +17,21 @@ class MonitorTests(TestCase):
     def get_purpleair(self):
         return PurpleAir.objects.get(sensor_id=8892)
 
-    # Create your tests here.
+    def test_get_initial_stage_falls_back_to_raw_when_allowed_stages_missing(self):
+        # ENTRY_CONFIG exists for PM25 but has no 'allowed_stages' key
+        monitor = self.get_purpleair()
+        config_without_stages = {entry_models.PM25: {}}
+        with patch.object(type(monitor), 'ENTRY_CONFIG', config_without_stages):
+            stage = monitor.get_initial_stage(entry_models.PM25)
+        assert stage == entry_models.PM25.Stage.RAW
+
+    def test_get_initial_stage_falls_back_to_raw_when_entry_not_in_config(self):
+        # EntryModel is not in ENTRY_CONFIG at all
+        monitor = self.get_purpleair()
+        with patch.object(type(monitor), 'ENTRY_CONFIG', {}):
+            stage = monitor.get_initial_stage(entry_models.PM25)
+        assert stage == entry_models.PM25.Stage.RAW
+
     def test_latest_entry_entry_property_and_setter(self):
         monitor = self.get_purpleair()
 

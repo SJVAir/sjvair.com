@@ -289,7 +289,7 @@ class Monitor(models.Model):
 
         Falls back to 'raw' if not explicitly configured.
         '''
-        for stage in cls.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages'):
+        for stage in cls.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages', []):
             return stage
         return EntryModel.Stage.RAW
 
