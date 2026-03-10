@@ -136,6 +136,13 @@ class AirGradient(LCSMixin, Monitor):
     def is_dual_channel(self):
         return self.device == 'O-1PP'
 
+    @classmethod
+    def health_check_queryset_filter(cls):
+        return {**super().health_check_queryset_filter(), 'airgradient__device': 'O-1PP'}
+
+    def supports_health_checks(self):
+        return self.is_dual_channel
+
     @property
     def data_providers(self):
         providers = super().data_providers
