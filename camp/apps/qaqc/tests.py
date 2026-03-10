@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -7,6 +8,7 @@ from django.test import TestCase
 
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.entries.models import PM25
+from camp.apps.qaqc.evaluator import SanityChecks
 from camp.apps.qaqc.models import HealthCheck
 
 
@@ -114,3 +116,56 @@ class HealthCheckTests(TestCase):
         # Ensure the monitor's health object has been updated
         self.monitor.refresh_from_db()
         assert self.monitor.health_id == hc.pk
+
+
+class SanityChecksOkTests(TestCase):
+    def _make_sanity(self, results):
+        """Build a SanityChecks with pre-set results, bypassing __post_init__."""
+        sc = object.__new__(SanityChecks)
+        sc.results = results
+        return sc
+
+    def test_all_true_is_ok(self):
+        sc = self._make_sanity({'max': True, 'flatline': True, 'completeness': True})
+        assert sc.ok is True
+
+    def test_any_false_is_not_ok(self):
+        sc = self._make_sanity({'max': True, 'flatline': False, 'completeness': True})
+        assert sc.ok is False
+
+    def test_none_values_are_skipped(self):
+        # None means indeterminate — should not count as failure
+        sc = self._make_sanity({'max': None, 'flatline': None, 'completeness': True})
+        assert sc.ok is True
+
+    def test_none_mixed_with_false_still_fails(self):
+        sc = self._make_sanity({'max': None, 'flatline': False, 'completeness': True})
+        assert sc.ok is False
+
+
+class ChannelSanityTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.hour = make_aware(datetime(2025, 7, 4, 13, 0, 0))
+
+    def test_channel_sanity_true_when_all_none(self):
+        # Sanity fields are null (health check never fully evaluated) — vacuously passes
+        hc = HealthCheck.objects.create(monitor=self.monitor, hour=self.hour, score=0)
+        assert hc.channel_a_sanity is True
+        assert hc.channel_b_sanity is True
+
+    def test_channel_sanity_false_when_any_false(self):
+        hc = HealthCheck.objects.create(
+            monitor=self.monitor, hour=self.hour, score=0,
+            sanity_max_a=True, sanity_flatline_a=False, sanity_completeness_a=True,
+        )
+        assert hc.channel_a_sanity is False
+
+    def test_channel_sanity_true_when_all_true(self):
+        hc = HealthCheck.objects.create(
+            monitor=self.monitor, hour=self.hour, score=3,
+            sanity_max_a=True, sanity_flatline_a=True, sanity_completeness_a=True,
+        )
+        assert hc.channel_a_sanity is True

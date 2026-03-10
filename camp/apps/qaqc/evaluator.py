@@ -23,7 +23,9 @@ class SanityChecks:
 
     @property
     def ok(self) -> bool:
-        return all(self.results.values())
+        # None means indeterminate (insufficient data for that check) — skip it.
+        # check_completeness() will handle the no-data case explicitly.
+        return all(v for v in self.results.values() if v is not None)
 
     def as_dict(self, suffix, flat: bool = True) -> dict:
         if not flat:
