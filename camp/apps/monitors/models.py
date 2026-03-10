@@ -488,14 +488,17 @@ class Monitor(models.Model):
         return data
 
     @classmethod
-    def supports_health_checks(cls):
+    def health_check_queryset_filter(cls):
+        """Returns kwargs to filter health-check-eligible monitors of this type."""
+        return {f'{cls.monitor_type}__isnull': False}
+
+    def supports_health_checks(self):
+        """Returns True if this monitor instance supports health checks."""
         from camp.apps.entries.models import PM25
-        config = cls.ENTRY_CONFIG.get(PM25)
+        config = type(self).ENTRY_CONFIG.get(PM25)
         if not config:
             return False
-
-        sensors = config.get('sensors', [])
-        return len(sensors) >= 2
+        return len(config.get('sensors', [])) >= 2
 
 
     def run_health_check(self, hour):

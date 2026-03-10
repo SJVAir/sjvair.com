@@ -70,10 +70,12 @@ class MonitorQuerySet(InheritanceQuerySet):
         queryset = self.none()
 
         if self.model._meta.model_name == 'monitor':
+            from camp.apps.entries.models import PM25
             lookup = Q()
             for subclass in self.model.get_subclasses():
-                if subclass.supports_health_checks():
-                    lookup |= Q(**{f'{subclass.monitor_type}__isnull': False})
+                config = subclass.ENTRY_CONFIG.get(PM25, {})
+                if len(config.get('sensors', [])) >= 2:
+                    lookup |= Q(**subclass.health_check_queryset_filter())
 
             if lookup:
                 queryset = self.filter(lookup)
