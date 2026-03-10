@@ -466,6 +466,8 @@ SILKY_MAX_RESPONSE_BODY_SIZE = int(env('SILKY_MAX_REQUEST_BODY_SIZE', 1024))
 # Enabled via periodic task camp.utils.tasks.silky_garbage_collection
 SILKY_MAX_RECORDED_REQUESTS_CHECK_PERCENT = 0
 
+SILKY_ANALYZE_QUERIES = False  # Disabled: EXPLAIN breaks with PostGIS geometry params
+
 SILKY_INTERCEPT_FUNC = import_string('camp.utils.silk.silky_should_intercept')
 
 SILKY_INTERCEPT_PERCENT = int(env('SILKY_INTERCEPT_PERCENT', 10))
