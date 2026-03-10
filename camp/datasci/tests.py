@@ -22,6 +22,21 @@ class DataSciTests(TestCase):
         assert result.rpd_means == 0
         assert result.rmse == 0
 
+    def test_rpd_pairwise_all_zeros_returns_none(self):
+        # When both channels report 0, pairwise RPD is 0/0 — should return None, not NaN
+        s1 = pd.Series([0, 0, 0])
+        s2 = pd.Series([0, 0, 0])
+        assert stats.rpd_pairwise(s1, s2) is None
+
+    def test_stats_empty_series_return_none(self):
+        empty = pd.Series([], dtype=float)
+        assert stats.flatline_ratio(empty) is None
+        assert stats.mad(empty) is None
+        assert stats.rmse(empty, empty) is None
+        assert stats.rpd_means(empty, empty) is None
+        assert stats.rpd_pairwise(empty, empty) is None
+        assert stats.signal_range(empty) is None
+
     def test_univariate_regression(self):
         # Simple linear data: y = 2x + 1
         df = pd.DataFrame({
