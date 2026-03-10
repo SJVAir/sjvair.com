@@ -86,6 +86,14 @@ class HealthCheckTests(TestCase):
         assert hc.grade == 'F'
         assert hc.score == 0
 
+    def test_grade_does_not_crash_when_rpd_pairwise_is_none(self):
+        # Both channels at zero produces rpd_pairwise=None (0/0); get_score() must not crash
+        self.create_entries([0.0] * self.samples, [0.0] * self.samples)
+        hc = self.monitor.run_health_check(self.hour)
+
+        assert hc.rpd_pairwise is None
+        assert hc.score in (0, 1, 2)  # grade B at best — not A, since rpd_pairwise is unknown
+
     def test_monitor_health_grade_updated(self):
         # Create an old health check
         HealthCheck.objects.create(

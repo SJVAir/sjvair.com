@@ -114,7 +114,7 @@ class HealthCheckEvaluator:
 
     def get_score(self) -> int:
         if self.sanity_a.ok and self.sanity_b.ok:
-            if self.summary.rpd_pairwise <= .2:
+            if self.summary.rpd_pairwise is not None and self.summary.rpd_pairwise <= .2:
                 return 3
             return 2
         if self.sanity_a.ok or self.sanity_b.ok:

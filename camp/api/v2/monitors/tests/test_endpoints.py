@@ -127,6 +127,16 @@ class EndpointTests(TestCase):
             assert 'distance' in monitor
             assert isinstance(monitor['distance'], (float, int))
 
+    def test_closest_monitor_missing_params(self):
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:monitor-closest', kwargs=kwargs)
+        request = self.factory.get(url)  # no lat/lon
+        response = closest_monitor(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert content['data'] == []
+
     def test_monitor_detail(self):
         '''
             Test that we can GET the monitor detail endpoint.
