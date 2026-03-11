@@ -32,7 +32,7 @@ asciichartpy==1.5.25
 awscli==1.44.38
 argon2-cffi==21.3.0
 asgiref==3.7.2
-boto3==1.28.22
+boto3==1.39.48
 channels-redis==4.1.0
 channels==4.0.0
 ckanapi==4.8
