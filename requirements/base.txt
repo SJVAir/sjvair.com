@@ -57,7 +57,7 @@ numpy==1.25.2
 optimize-images==1.5.1
 openpyxl==3.1.5
 pandas==2.2.2
-Pillow==10.3.0
+Pillow==12.1.1
 psutil==5.9.8
 psycopg2==2.9.3 --no-binary psycopg2
 py-expression-eval==0.3.14
