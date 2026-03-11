@@ -233,9 +233,9 @@ class AirGradient(LCSMixin, Monitor):
         for EntryModel, spec in self.ENTRY_CONFIG.items():
             fields = spec.get('fields', {})
 
-            for channel, payload in channels:
+            for channel, channel_payload in channels:
                 data = {
-                    field_name: payload.get(source_key)
+                    field_name: channel_payload.get(source_key)
                     for field_name, source_key in fields.items()
                 }
 
