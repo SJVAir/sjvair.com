@@ -136,3 +136,4 @@ class CES4(CESRecord):
     class Meta(CESRecord.Meta):
         verbose_name = _('CalEnviroScreen 4.0')
         verbose_name_plural = _('CalEnviroScreen 4.0 Records')
+        ordering = ['boundary__region__external_id']
