@@ -1,36 +1,15 @@
-import tempfile
-from pathlib import Path
-
 import esri2gpd
 import geopandas as gpd
 import pandas as pd
-import requests
 
 from django.core.management.base import BaseCommand
 
 from camp.apps.regions.models import Region, Boundary
+from camp.apps.regions.utils import get_tract_relationships
 from camp.utils import geodata
-
-
-RELATIONSHIP_URL = 'https://www2.census.gov/geo/docs/maps-data/data/rel2020/tract/tab20_tract20_tract10_natl.txt'
-CACHE_PATH = Path(f'{tempfile.tempdir}/tract_2010_2020_relationship.txt')
 
 # https://oehha.ca.gov/calenviroscreen/sb535
 SB535DAC_URL = 'https://services1.arcgis.com/PCHfdHz4GlDNAhBb/arcgis/rest/services/SB_535_Disadvantaged_Communities_2022/FeatureServer/0'
-
-
-def get_relationships(refresh: bool = False) -> pd.DataFrame:
-    if refresh or not CACHE_PATH.exists():
-        print('Downloading relationship file...')
-        response = requests.get(RELATIONSHIP_URL, verify=False)
-        response.raise_for_status()
-        CACHE_PATH.write_text(response.text)
-    else:
-        print(f'Using cached file at {CACHE_PATH}')
-
-    df = pd.read_csv(CACHE_PATH, dtype=str, sep='|')
-    print(f'Loaded {len(df):,} rows from relationship file')
-    return df
 
 
 def get_ces4() -> pd.DataFrame:
@@ -116,7 +95,7 @@ class Command(BaseCommand):
         tracts_2020 = get_tract_boundaries('2020')
         geoids_2020 = set(tracts_2020['GEOID'])
 
-        rel = get_relationships(refresh=options['refresh'])
+        rel = get_tract_relationships(refresh=options['refresh'])
 
         ces4_2010 = get_ces4()
         ces4_geoids = set(ces4_2010['Tract'])
