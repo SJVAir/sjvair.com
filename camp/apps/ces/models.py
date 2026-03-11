@@ -5,10 +5,10 @@ from camp.apps.ces.querysets import CESQuerySet
 
 
 class DACCategory(models.IntegerChoices):
-    TOP_CES_SCORE    = 1, _('Top 25% CES overall score')
-    TOP_POLLUTION    = 2, _('Top 5% pollution burden (no overall score)')
-    PRIOR_DAC        = 3, _('Designated under 2017 DAC list')
-    TRIBAL_LAND      = 4, _('Federally recognized Tribal land')
+    TOP_CES_SCORE = 1, _('Top 25% CES overall score')
+    TOP_POLLUTION = 2, _('Top 5% pollution burden (no overall score)')
+    PRIOR_DAC = 3, _('Designated under 2017 DAC list')
+    TRIBAL_LAND = 4, _('Federally recognized Tribal land')
 
 
 class CESRecord(models.Model):
@@ -24,18 +24,18 @@ class CESRecord(models.Model):
         on_delete=models.CASCADE,
         related_name='%(class)s',
     )
-    population = models.IntegerField(null=True)
+    population = models.IntegerField(_('Total Population'), null=True)
 
     # Composite CalEnviroScreen score
-    ci_score   = models.FloatField(null=True, verbose_name='CES Score')
-    ci_score_p = models.FloatField(null=True, verbose_name='CES Score Percentile')
+    ci_score = models.FloatField(_('CES Score'), null=True)
+    ci_score_p = models.FloatField(_('CES Score Percentile'), null=True)
 
     # SB535 Disadvantaged Community designation for this CES version
-    dac_sb535    = models.BooleanField(null=True, verbose_name='SB535 DAC')
+    dac_sb535 = models.BooleanField(_('SB535 DAC'), null=True)
     dac_category = models.IntegerField(
+        _('DAC Category'),
         null=True, blank=True,
         choices=DACCategory.choices,
-        verbose_name='DAC Category',
     )
 
     objects = CESQuerySet.as_manager()
@@ -69,67 +69,70 @@ class CES4(CESRecord):
     """
 
     # --- Pollution Burden ---
-    pollution   = models.FloatField(null=True, verbose_name='Pollution Burden Score')
-    pollution_s = models.FloatField(null=True, verbose_name='Pollution Burden Score (scaled)')
-    pollution_p = models.FloatField(null=True, verbose_name='Pollution Burden Percentile')
+    pollution = models.FloatField(_('Pollution Burden Score'), null=True)
+    pollution_s = models.FloatField(_('Pollution Burden Score (scaled)'), null=True)
+    pollution_p = models.FloatField(_('Pollution Burden Percentile'), null=True)
 
-    pol_ozone     = models.FloatField(null=True, verbose_name='Ozone')
-    pol_ozone_p   = models.FloatField(null=True, verbose_name='Ozone Percentile')
-    pol_pm        = models.FloatField(null=True, verbose_name='PM2.5')
-    pol_pm_p      = models.FloatField(null=True, verbose_name='PM2.5 Percentile')
-    pol_diesel    = models.FloatField(null=True, verbose_name='Diesel PM')
-    pol_diesel_p  = models.FloatField(null=True, verbose_name='Diesel PM Percentile')
-    pol_pest      = models.FloatField(null=True, verbose_name='Pesticides')
-    pol_pest_p    = models.FloatField(null=True, verbose_name='Pesticides Percentile')
-    pol_rsei_haz  = models.FloatField(null=True, verbose_name='Toxic Releases (RSEI)')
-    pol_rsei_haz_p= models.FloatField(null=True, verbose_name='Toxic Releases Percentile')
-    pol_traffic   = models.FloatField(null=True, verbose_name='Traffic')
-    pol_traffic_p = models.FloatField(null=True, verbose_name='Traffic Percentile')
-    pol_drink     = models.FloatField(null=True, verbose_name='Drinking Water')
-    pol_drink_p   = models.FloatField(null=True, verbose_name='Drinking Water Percentile')
-    pol_haz       = models.FloatField(null=True, verbose_name='Hazardous Waste')
-    pol_haz_p     = models.FloatField(null=True, verbose_name='Hazardous Waste Percentile')
-    pol_lead      = models.FloatField(null=True, verbose_name='Lead')
-    pol_lead_p    = models.FloatField(null=True, verbose_name='Lead Percentile')
-    pol_cleanups  = models.FloatField(null=True, verbose_name='Cleanup Sites')
-    pol_cleanups_p= models.FloatField(null=True, verbose_name='Cleanup Sites Percentile')
-    pol_gwthreats = models.FloatField(null=True, verbose_name='Groundwater Threats')
-    pol_gwthreats_p = models.FloatField(null=True, verbose_name='Groundwater Threats Percentile')
-    pol_iwb       = models.FloatField(null=True, verbose_name='Impaired Water Bodies')
-    pol_iwb_p     = models.FloatField(null=True, verbose_name='Impaired Water Bodies Percentile')
-    pol_swis      = models.FloatField(null=True, verbose_name='Solid Waste Sites')
-    pol_swis_p    = models.FloatField(null=True, verbose_name='Solid Waste Sites Percentile')
+    pol_ozone = models.FloatField(_('Ozone'), null=True)
+    pol_ozone_p = models.FloatField(_('Ozone Percentile'), null=True)
+    pol_pm = models.FloatField(_('PM2.5'), null=True)
+    pol_pm_p = models.FloatField(_('PM2.5 Percentile'), null=True)
+    pol_diesel = models.FloatField(_('Diesel PM'), null=True)
+    pol_diesel_p = models.FloatField(_('Diesel PM Percentile'), null=True)
+    pol_pest = models.FloatField(_('Pesticides'), null=True)
+    pol_pest_p = models.FloatField(_('Pesticides Percentile'), null=True)
+    pol_rsei_haz = models.FloatField(_('Toxic Releases (RSEI)'), null=True)
+    pol_rsei_haz_p = models.FloatField(_('Toxic Releases Percentile'), null=True)
+    pol_traffic = models.FloatField(_('Traffic'), null=True)
+    pol_traffic_p = models.FloatField(_('Traffic Percentile'), null=True)
+    pol_drink = models.FloatField(_('Drinking Water Contaminants'), null=True)
+    pol_drink_p = models.FloatField(_('Drinking Water Contaminants Percentile'), null=True)
+    pol_haz = models.FloatField(_('Hazardous Waste'), null=True)
+    pol_haz_p = models.FloatField(_('Hazardous Waste Percentile'), null=True)
+    pol_lead = models.FloatField(_('Lead'), null=True)
+    pol_lead_p = models.FloatField(_('Lead Percentile'), null=True)
+    pol_cleanups = models.FloatField(_('Cleanup Sites'), null=True)
+    pol_cleanups_p = models.FloatField(_('Cleanup Sites Percentile'), null=True)
+    pol_gwthreats = models.FloatField(_('Groundwater Threats'), null=True)
+    pol_gwthreats_p = models.FloatField(_('Groundwater Threats Percentile'), null=True)
+    pol_iwb = models.FloatField(_('Impaired Water Bodies'), null=True)
+    pol_iwb_p = models.FloatField(_('Impaired Water Bodies Percentile'), null=True)
+    pol_swis = models.FloatField(_('Solid Waste Sites'), null=True)
+    pol_swis_p = models.FloatField(_('Solid Waste Sites Percentile'), null=True)
 
     # --- Population Characteristics ---
-    popchar   = models.FloatField(null=True, verbose_name='Population Characteristics Score')
-    popchar_s = models.FloatField(null=True, verbose_name='Population Characteristics Score (scaled)')
-    popchar_p = models.FloatField(null=True, verbose_name='Population Characteristics Percentile')
+    popchar = models.FloatField(_('Population Characteristics Score'), null=True)
+    popchar_s = models.FloatField(_('Population Characteristics Score (scaled)'), null=True)
+    popchar_p = models.FloatField(_('Population Characteristics Percentile'), null=True)
 
-    char_asthma   = models.FloatField(null=True, verbose_name='Asthma')
-    char_asthma_p = models.FloatField(null=True, verbose_name='Asthma Percentile')
-    char_cvd      = models.FloatField(null=True, verbose_name='Cardiovascular Disease')
-    char_cvd_p    = models.FloatField(null=True, verbose_name='Cardiovascular Disease Percentile')
-    char_lbw      = models.FloatField(null=True, verbose_name='Low Birth Weight')
-    char_lbw_p    = models.FloatField(null=True, verbose_name='Low Birth Weight Percentile')
-    char_edu      = models.FloatField(null=True, verbose_name='Educational Attainment')
-    char_edu_p    = models.FloatField(null=True, verbose_name='Educational Attainment Percentile')
-    char_ling     = models.FloatField(null=True, verbose_name='Linguistic Isolation')
-    char_ling_p   = models.FloatField(null=True, verbose_name='Linguistic Isolation Percentile')
-    char_pov      = models.FloatField(null=True, verbose_name='Poverty')
-    char_pov_p    = models.FloatField(null=True, verbose_name='Poverty Percentile')
-    char_unemp    = models.FloatField(null=True, verbose_name='Unemployment')
-    char_unemp_p  = models.FloatField(null=True, verbose_name='Unemployment Percentile')
-    char_housingb   = models.FloatField(null=True, verbose_name='Housing Burden')
-    char_housingb_p = models.FloatField(null=True, verbose_name='Housing Burden Percentile')
+    char_asthma = models.FloatField(_('Asthma'), null=True)
+    char_asthma_p = models.FloatField(_('Asthma Percentile'), null=True)
+    char_cvd = models.FloatField(_('Cardiovascular Disease'), null=True)
+    char_cvd_p = models.FloatField(_('Cardiovascular Disease Percentile'), null=True)
+    char_lbw = models.FloatField(_('Low Birth Weight'), null=True)
+    char_lbw_p = models.FloatField(_('Low Birth Weight Percentile'), null=True)
+    char_edu = models.FloatField(_('Educational Attainment'), null=True)
+    char_edu_p = models.FloatField(_('Educational Attainment Percentile'), null=True)
+    char_ling = models.FloatField(_('Linguistic Isolation'), null=True)
+    char_ling_p = models.FloatField(_('Linguistic Isolation Percentile'), null=True)
+    char_pov = models.FloatField(_('Poverty'), null=True)
+    char_pov_p = models.FloatField(_('Poverty Percentile'), null=True)
+    char_unemp = models.FloatField(_('Unemployment'), null=True)
+    char_unemp_p = models.FloatField(_('Unemployment Percentile'), null=True)
+    char_housingb = models.FloatField(_('Housing Burden'), null=True)
+    char_housingb_p = models.FloatField(_('Housing Burden Percentile'), null=True)
 
     # --- Demographics ---
-    pop_hispanic = models.IntegerField(null=True, verbose_name='Hispanic Population')
-    pop_white    = models.IntegerField(null=True, verbose_name='White Population')
-    pop_black    = models.IntegerField(null=True, verbose_name='Black Population')
-    pop_native   = models.IntegerField(null=True, verbose_name='Native American Population')
-    pop_asian    = models.IntegerField(null=True, verbose_name='Asian American Population')
-    pop_other    = models.IntegerField(null=True, verbose_name='Other/Mixed Population')
+    pop_under_10 = models.IntegerField(_('Population Under 10'), null=True)
+    pop_10_64 = models.IntegerField(_('Population 10–64'), null=True)
+    pop_65_plus = models.IntegerField(_('Population 65+'), null=True)
+    pop_hispanic = models.IntegerField(_('Hispanic Population'), null=True)
+    pop_white = models.IntegerField(_('White Population'), null=True)
+    pop_black = models.IntegerField(_('Black or African American Population'), null=True)
+    pop_native = models.IntegerField(_('American Indian and Alaska Native Population'), null=True)
+    pop_aapi = models.IntegerField(_('Asian American and Pacific Islander Population'), null=True)
+    pop_other = models.IntegerField(_('Other or Multiple Races Population'), null=True)
 
     class Meta(CESRecord.Meta):
-        verbose_name = 'CalEnviroScreen 4.0'
-        verbose_name_plural = 'CalEnviroScreen 4.0 Records'
+        verbose_name = _('CalEnviroScreen 4.0')
+        verbose_name_plural = _('CalEnviroScreen 4.0 Records')
