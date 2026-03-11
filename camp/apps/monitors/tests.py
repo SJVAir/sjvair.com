@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 
+from decimal import Decimal
 from unittest.mock import patch
 
 from camp.apps.entries import models as entry_models
@@ -31,6 +32,27 @@ class MonitorTests(TestCase):
         with patch.object(type(monitor), 'ENTRY_CONFIG', {}):
             stage = monitor.get_initial_stage(entry_models.PM25)
         assert stage == entry_models.PM25.Stage.RAW
+
+    def test_get_latest_data_returns_entry_data(self):
+        monitor = self.get_purpleair()
+
+        entry = entry_models.PM25.objects.create(
+            monitor_id=monitor.pk,
+            timestamp='2025-04-27T00:00:00Z',
+            sensor='a',
+            location='outside',
+            stage=entry_models.PM25.Stage.CLEANED,
+            value=Decimal('12.34'),
+        )
+        monitor.update_latest_entry(entry)
+
+        data = monitor.get_latest_data()
+
+        assert 'pm25' in data
+        assert data['pm25']['value'] == entry.value
+        assert data['pm25']['sensor'] == entry.sensor
+        assert data['pm25']['stage'] == entry.stage
+        assert data['pm25']['processor'] == entry.processor
 
     def test_latest_entry_entry_property_and_setter(self):
         monitor = self.get_purpleair()
