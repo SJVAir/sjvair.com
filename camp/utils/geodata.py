@@ -70,13 +70,25 @@ def remap_gdf_boundaries(
     if include_fields is None:
         include_fields = [col for col in source.columns if col not in (source_geoid_col, 'geometry')]
 
-    numeric_cols = [col for col in include_fields if pd.api.types.is_numeric_dtype(source[col])]
-    non_numeric_cols = [col for col in include_fields if col not in numeric_cols]
+    # Booleans must be separated out before the numeric check — pandas considers
+    # bool dtype numeric, which would cause them to be averaged into floats.
+    bool_cols = [col for col in include_fields if pd.api.types.is_bool_dtype(source[col])]
+    numeric_cols = [col for col in include_fields if pd.api.types.is_numeric_dtype(source[col]) and col not in bool_cols]
+    non_numeric_cols = [col for col in include_fields if col not in numeric_cols and col not in bool_cols]
 
     # Weighted numeric aggregation
     for col in numeric_cols:
         merged[col] = pd.to_numeric(merged[col], errors='coerce') * merged['weight']
     aggregated = merged.groupby('GEOID_TARGET')[numeric_cols].sum().reset_index()
+
+    # Boolean: majority-area rule (True if weighted sum > 0.5)
+    for col in bool_cols:
+        merged[f'_bool_{col}'] = merged[col].astype(float) * merged['weight']
+    bool_agg = merged.groupby('GEOID_TARGET')[[f'_bool_{col}' for col in bool_cols]].sum().reset_index()
+    for col in bool_cols:
+        bool_agg[col] = bool_agg[f'_bool_{col}'] > 0.5
+        bool_agg = bool_agg.drop(columns=[f'_bool_{col}'])
+    aggregated = aggregated.merge(bool_agg, on='GEOID_TARGET', how='left')
 
     # Non-numeric from dominant row
     merged['rank'] = merged.groupby('GEOID_TARGET')['weight'].rank(ascending=False, method='first')
@@ -285,6 +297,7 @@ def iter_from_zip(
         encoding=encoding,
         crs=crs,
         limit_to_region=limit_to_region,
+        string_fields=string_fields,
     )
 
     if limit_to_region:

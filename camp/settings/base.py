@@ -17,7 +17,6 @@ import zoneinfo
 
 import dj_database_url
 
-from django.utils.module_loading import import_string
 from django.utils.translation import gettext_lazy as _
 
 from unipath import Path
@@ -91,7 +90,7 @@ INSTALLED_APPS = [
     'pgactivity',
     'prose',
     'resticus',
-    'silk',
+
     'storages',
     'widget_tweaks',
 
@@ -131,7 +130,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.middleware.gzip.GZipMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
-    'silk.middleware.SilkyMiddleware',
+
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -347,8 +346,8 @@ RESTICUS = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["resticus.auth.TokenAuth"],
     "TOKEN_MODEL": "resticus.Token",
     'STREAMING': [],
-    "JSON_DECODER": "camp.utils.encoders.RapidJSONDecoder",
-    "JSON_ENCODER": "camp.utils.encoders.RapidJSONEncoder",
+    "JSON_DECODER": "camp.utils.encoders.JSONDecoder",
+    "JSON_ENCODER": "camp.utils.encoders.JSONEncoder",
 }
 
 # huey / django-huey
@@ -449,34 +448,6 @@ if "SENTRY_DSN" in os.environ:
     )
 
 
-# django-silk
-
-SILKY_AUTHENTICATION = True  # User must login
-SILKY_AUTHORISATION = True  # User must have permissions
-
-SILKY_PYTHON_PROFILER = bool(int(env('SILKY_PYTHON_PROFILER', 1)))
-
-SILKY_META = bool(int(env('SILKY_META', 1)))
-
-SILKY_MAX_RECORDED_REQUESTS = int(env('SILKY_MAX_RECORDED_REQUESTS', 10**4))
-
-SILKY_MAX_REQUEST_BODY_SIZE = int(env('SILKY_MAX_REQUEST_BODY_SIZE', -1))
-SILKY_MAX_RESPONSE_BODY_SIZE = int(env('SILKY_MAX_REQUEST_BODY_SIZE', 1024))
-
-# Enabled via periodic task camp.utils.tasks.silky_garbage_collection
-SILKY_MAX_RECORDED_REQUESTS_CHECK_PERCENT = 0
-
-SILKY_INTERCEPT_FUNC = import_string('camp.utils.silk.silky_should_intercept')
-
-SILKY_INTERCEPT_PERCENT = int(env('SILKY_INTERCEPT_PERCENT', 10))
-
-SILKY_IGNORE_PATH_PATTERNS = [re.compile(path) for path in [
-    r'^/batcave/.*',
-    r'^/media/.*',
-    r'^/static/.*',
-    r'^/system-status/.*',
-    r'^/__debug__/.*',
-]]
 
 # Scout APM
 

@@ -35,17 +35,27 @@ def get_relationships(refresh: bool = False) -> pd.DataFrame:
 
 def get_ces4() -> pd.DataFrame:
     counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
+    counties_union = counties_gdf.unary_union
+
     gdf = geodata.gdf_from_ckan(
         dataset_id='calenviroscreen-4-0',
         resource_name='CalEnviroScreen 4.0 Results Shapefile',
         string_fields=['Tract'],
+        limit_to_region=True,
+        threshold=0.25,
     )
-    gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.25)
     gdf['Tract'] = gdf['Tract'].astype(str).str.zfill(11)
 
-    # Get the SB535 Disadvantaged Communities dataset and filter by county
+    # Get the SB535 Disadvantaged Communities dataset and filter by county.
+    # esri2gpd returns a materialized GeoDataFrame so filter directly.
     sb535dac = esri2gpd.get(SB535DAC_URL)
-    sb535dac = geodata.filter_by_overlap(sb535dac, counties_gdf.unary_union, 0.50)
+    sb535dac = sb535dac[
+        sb535dac.geometry.apply(
+            lambda g: (not g.is_empty and g.area > 0
+                       and g.intersects(counties_union)
+                       and g.intersection(counties_union).area / g.area >= 0.50)
+        )
+    ]
     sb535dac['Tract'] = sb535dac['Tract'].astype(str).str.zfill(11)
 
     # Get the DAC status for each CES4 record
@@ -73,7 +83,11 @@ def show_split_example(ces4_2010, ces4_2020, rel, col='CIscore'):
     rel['GEOID_TRACT_20'] = rel['GEOID_TRACT_20'].astype(str).str.zfill(11)
 
     vc = rel['GEOID_TRACT_10'].value_counts()
-    example = vc[vc > 1].index[0]
+    splits = vc[vc > 1]
+    if splits.empty:
+        print('No 1:many splits found — skipping example.')
+        return
+    example = splits.index[0]
 
     print(f'🧪 Example: CES4 tract {example} was split across {vc[example]} 2020 tracts')
     rows = rel[rel['GEOID_TRACT_10'] == example].copy()
