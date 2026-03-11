@@ -14,11 +14,14 @@ class PM25_FEM_Cleaner(BaseProcessor):
     required_stage = PM25.Stage.RAW
     next_stage = PM25.Stage.CLEANED
 
+    MIN_VALID = -10
+    MAX_VALID = 3000
+
     def process(self):
         if self.entry.value is None:
             return None
 
-        if self.entry.value < -10:
+        if (self.entry.value < self.MIN_VALID) or (self.entry.value >= self.MAX_VALID):
             return None  # Discard clearly invalid data
 
         value = max(self.entry.value, 0)  # Clamp negative to 0

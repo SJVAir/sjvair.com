@@ -23,7 +23,9 @@ class SanityChecks:
 
     @property
     def ok(self) -> bool:
-        return all(self.results.values())
+        # None means indeterminate (insufficient data for that check) — skip it.
+        # check_completeness() will handle the no-data case explicitly.
+        return all(v for v in self.results.values() if v is not None)
 
     def as_dict(self, suffix, flat: bool = True) -> dict:
         if not flat:
@@ -114,7 +116,7 @@ class HealthCheckEvaluator:
 
     def get_score(self) -> int:
         if self.sanity_a.ok and self.sanity_b.ok:
-            if self.summary.rpd_pairwise <= .2:
+            if self.summary.rpd_pairwise is not None and self.summary.rpd_pairwise <= .2:
                 return 3
             return 2
         if self.sanity_a.ok or self.sanity_b.ok:

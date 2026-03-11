@@ -39,7 +39,7 @@ def calibration_model_upload_to(instance, filename):
     return os.path.join(
         'calibrations',
         instance.entry_type or 'unknown',
-        instance.model_name or 'model',
+        instance.trainer or 'model',
         f'{now.year}',
         f'{now.month:02}',
         filename

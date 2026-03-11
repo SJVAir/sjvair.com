@@ -11,59 +11,61 @@ from phonenumber_field.phonenumber import PhoneNumber
 from resticus.encoders import JSONEncoder as ResticusJSONEncoder
 
 
+def coalesce(gen, target=64 * 1024):
+    buf = []
+    size = 0
+    for s in gen:
+        if isinstance(s, (bytes, bytearray)):
+            s = s.decode('utf-8')
+        buf.append(s)
+        size += len(s)
+        if size >= target:
+            yield ''.join(buf).encode('utf-8')
+            buf, size = [], 0
+    if buf:
+        yield ''.join(buf).encode('utf-8')
+
+
+class JSONDecoder:
+    def decode(self, data):
+        if isinstance(data, (bytes, bytearray)):
+            data = data.decode('utf-8')
+        return rapidjson.loads(data)
+
+
 class JSONEncoder(ResticusJSONEncoder):
     def default(self, obj):
         if isinstance(obj, (HumanName, PhoneNumber)):
             return str(obj)
 
         if isinstance(obj, GEOSGeometry):
-            return json.loads(obj.geojson)
-
-        if isinstance(obj, (float, np.floating)) and (math.isnan(obj) or math.isinf(obj)):
-            return None
+            return obj.__geo_interface__
 
         if isinstance(obj, np.number):
             return obj.item()
 
         return super().default(obj)
 
+    def iterencode(self, o, _one_shot=False):
+        markers = {} if self.check_circular else None
+        _encoder = json.encoder.encode_basestring_ascii if self.ensure_ascii else json.encoder.encode_basestring
 
-class IterStream:
-    def __init__(self):
-        self.__in = []
+        # This is basically what stdlib does internally, but we override floatstr.
+        def floatstr(value, allow_nan=True, _repr=float.__repr__):
+            if isinstance(value, float) and not math.isfinite(value):
+                return 'null'
+            return _repr(value)
 
-    def write(self, data):
-        self.__in.append(data)
+        if (_one_shot and json.encoder.c_make_encoder is not None
+                and self.indent is None):
+            _iterencode = json.encoder.c_make_encoder(
+                markers, self.default, _encoder, self.indent,
+                self.key_separator, self.item_separator, self.sort_keys,
+                self.skipkeys, self.allow_nan)
+            return _iterencode(o, 0)
 
-    def __iter__(self):
-        return iter(self.__in)
-
-
-class RapidJSONDecoder:
-    def decode(self, data):
-        return rapidjson.loads(data)
-
-
-class RapidJSONEncoder(rapidjson.Encoder):
-    def __init__(self, *args, **kwargs):
-        self._encoder = JSONEncoder()
-
-    def default(self, obj):
-        return self._encoder.default(obj)
-
-    def encode(self, obj):
-        return self(self._clean_floats(obj))
-
-    def _clean_floats(self, obj):
-        if isinstance(obj, dict):
-            return {k: self._clean_floats(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._clean_floats(v) for v in obj]
-        elif isinstance(obj, (float, np.floating)) and not math.isfinite(obj):
-            return None
-        return obj
-
-    def iterencode(self, data):
-        stream = IterStream()
-        self(data, stream)
-        yield from stream
+        _iterencode = json.encoder._make_iterencode(
+            markers, self.default, _encoder, self.indent, floatstr,
+            self.key_separator, self.item_separator, self.sort_keys,
+            self.skipkeys, _one_shot)
+        return coalesce(_iterencode(o, 0))

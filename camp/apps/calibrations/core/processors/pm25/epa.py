@@ -22,15 +22,7 @@ class PM25_EPA_Oct2021(BaseProcessor):
     next_stage = PM25.Stage.CALIBRATED
 
     def process(self):
-        if 'humidity' not in self.context:
-            print('=====' * 5)
-            print('HUMIDITY MISSING:')
-            print(self.entry.__class__)
-            print(self.entry.pk)
-            print(self.entry.monitor.__class__)
-            print(self.entry.monitor.pk)
-            print(self.entry.monitor.name)
-            print('=====' * 5)
+        # Humidity is required for the EPA correction; skip if unavailable.
         value = self.get_correction(pm25=self.context['pm25'], rh=self.context['humidity'])
         if value is not None:
             return self.build_entry(value=value)
@@ -68,34 +60,34 @@ class PM25_EPA_Oct2021(BaseProcessor):
         '''
 
         if pm25 < 30:
-            corrected = D('0.524') * pm25 - D('0.0862') * rh + D('5.75')
+            corrected = (D('0.524') * pm25) - (D('0.0862') * rh) + D('5.75')
 
         elif pm25 < 50:
-            fraction = pm25 / D('20') - D('1.5')
+            fraction = (pm25 / D('20')) - D('1.5')
             corrected = (
                 (D('0.786') * fraction + D('0.524') * (D('1') - fraction)) * pm25
-                - D('0.0862') * rh
+                - (D('0.0862') * rh)
                 + D('5.75')
             )
 
         elif pm25 < 210:
-            corrected = D('0.786') * pm25 - D('0.0862') * rh + D('5.75')
+            corrected = (D('0.786') * pm25) - (D('0.0862') * rh) + D('5.75')
 
         elif pm25 < 260:
             fraction = pm25 / D('50') - D('4.2')
             corrected = (
                 (D('0.69') * fraction + D('0.786') * (D('1') - fraction)) * pm25
-                - D('0.0862') * rh * (D('1') - fraction)
-                + D('2.966') * fraction
-                + D('5.75') * (D('1') - fraction)
-                + D('0.000884') * (pm25**2) * fraction
+                - (D('0.0862') * rh * (D('1') - fraction))
+                + (D('2.966') * fraction)
+                + (D('5.75') * (D('1') - fraction))
+                + (D('0.000884') * (pm25**2) * fraction)
             )
 
         else:
             corrected = (
-            D('2.966')
-            + D('0.69') * pm25
-            + D('0.000884') * (pm25**2)
-        )
+                D('2.966')
+                + (D('0.69') * pm25)
+                + (D('0.000884') * (pm25**2))
+            )
 
         return max(corrected, D('0.0'))

@@ -178,6 +178,7 @@ class StaticMap:
         buffer: Optional[float] = None,
         basemap=ctx.providers.MapTiler.Basic,
         crs: str = CRS_WEBMERCATOR,
+        zoom_adjust: int = 0,
     ):
         self.width = width
         self.height = height
@@ -187,9 +188,12 @@ class StaticMap:
         self.basemap = basemap
         if self.basemap and self.basemap.get('name', '').startswith('MapTiler'):
             self.basemap['key'] = settings.MAPTILER_API_KEY
+            self.basemap['variant'] = 'base-v4'
+            self.basemap['r'] = '@2x'
         # self.basemap['zoomOffset'] = 0
 
         self.crs = crs
+        self.zoom_adjust = zoom_adjust
         self.elements: List[MapElement] = []
 
     @property
@@ -316,7 +320,7 @@ class StaticMap:
         ax.axis('off')
 
         if self.basemap:
-            ctx.add_basemap(ax, source=self.basemap, attribution=False, zoom_adjust=-1)
+            ctx.add_basemap(ax, source=self.basemap, attribution=False, zoom_adjust=self.zoom_adjust)
 
         if out_path and not format:
             format = out_path.split('.')[-1]

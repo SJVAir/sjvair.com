@@ -2,7 +2,7 @@ import copy
 import math
 import uuid
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pandas as pd
@@ -25,7 +25,6 @@ from py_expression_eval import Parser as ExpressionParser
 from camp.apps.calibrations.utils import get_default_calibration
 from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
-from camp.apps.entries.utils import to_multi_entry_wide_dataframe
 from camp.apps.monitors.managers import MonitorManager
 from camp.apps.qaqc.models import HealthCheck
 from camp.utils import classproperty
@@ -290,7 +289,7 @@ class Monitor(models.Model):
 
         Falls back to 'raw' if not explicitly configured.
         '''
-        for stage in cls.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages'):
+        for stage in cls.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages', []):
             return stage
         return EntryModel.Stage.RAW
 
@@ -304,22 +303,40 @@ class Monitor(models.Model):
     def get_absolute_url(self):
         return f'/monitor/{self.pk}'
 
-    def fetch_entries(self, start_time, end_time):
-        from camp.apps.entries.fetchers import EntryDataFetcher
-        return EntryDataFetcher(
+    def get_resolved_entries(self, start_time=None, end_time=None, entry_types=None):
+        """
+        Return the resolved entry data for this monitor.
+
+        - One column per entry type
+        - Uses monitor default stage/calibration
+        - No sensor or processor branching
+        - Intended for API responses, analytics, and training
+        """
+        from camp.apps.entries.timelines import ResolvedEntryTimeline
+        df = ResolvedEntryTimeline(
             monitor=self,
-            entry_types=self.entry_types,
             start_time=start_time,
             end_time=end_time,
-        )
+            entry_types=entry_types,
+        ).to_dataframe()
+        return df
 
-    def get_entry_data_table(self, entry_models=None, start_date=None, end_date=None):
+    def get_expanded_entries(self, start_time=None, end_time=None, entry_types=None):
         """
-        Returns a wide-format DataFrame of entry values for this monitor across the given entry models.
-        Each row is (timestamp, sensor), with columns for each stage/processor.
+        Return the full entry dataset for this monitor.
+
+        - Includes all stages, processors, and sensors
+        - Column names encode metadata
+        - Intended for export, QA, and debugging
         """
-        entry_models = entry_models or self.entry_types
-        return to_multi_entry_wide_dataframe(entry_models, self, start_date, end_date)
+        from camp.apps.entries.timelines import ExpandedEntryTimeline
+        df = ExpandedEntryTimeline(
+            monitor=self,
+            start_time=start_time,
+            end_time=end_time,
+            entry_types=entry_types,
+        ).to_dataframe()
+        return df
 
     def is_processable(self, obj_or_model) -> bool:
         """
@@ -456,29 +473,50 @@ class Monitor(models.Model):
         entry type on this monitor. Assumes latest_entries are already filtered
         by calibration (via .with_latest_entries()).
         '''
-        data = {}
+        from itertools import groupby
 
-        for latest in self.latest_entries.all():
-            payload = latest.entry.declared_data()
+        latests = list(self.latest_entries.all())
+
+        # Batch-fetch actual entry objects grouped by entry type — one query per table
+        # instead of one query per LatestEntry row.
+        entry_map = {}
+        for entry_type, group in groupby(
+            sorted(latests, key=lambda l: l.entry_type),
+            key=lambda l: l.entry_type
+        ):
+            group = list(group)
+            entry_model = group[0].entry_model
+            for entry in entry_model.objects.filter(pk__in=[l.entry_id for l in group]):
+                entry_map[entry.pk] = entry
+
+        data = {}
+        for latest in latests:
+            entry = entry_map.get(latest.entry_id)
+            if entry is None:
+                continue
+            payload = entry.declared_data()
             payload.update({
-                'sensor': latest.entry.sensor,
-                'timestamp': latest.entry.timestamp,
-                'stage': latest.entry.stage,
-                'processor': latest.entry.processor,
+                'sensor': entry.sensor,
+                'timestamp': latest.timestamp,
+                'stage': latest.stage,
+                'processor': latest.processor,
             })
             data[latest.entry_type] = payload
 
         return data
 
     @classmethod
-    def supports_health_checks(cls):
+    def health_check_queryset_filter(cls):
+        """Returns kwargs to filter health-check-eligible monitors of this type."""
+        return {f'{cls.monitor_type}__isnull': False}
+
+    def supports_health_checks(self):
+        """Returns True if this monitor instance supports health checks."""
         from camp.apps.entries.models import PM25
-        config = cls.ENTRY_CONFIG.get(PM25)
+        config = type(self).ENTRY_CONFIG.get(PM25)
         if not config:
             return False
-
-        sensors = config.get('sensors', [])
-        return len(sensors) >= 2
+        return len(config.get('sensors', [])) >= 2
 
 
     def run_health_check(self, hour):
@@ -553,6 +591,45 @@ class Monitor(models.Model):
 
         if entry.sensor == self.default_sensor and is_latest:
             self.latest = entry
+
+    def get_entry_migration_status(self, min_date=None) -> str:
+        # Normalize min_date to aware datetime if provided
+        if min_date:
+            if isinstance(min_date, date) and not isinstance(min_date, datetime):
+                min_date = datetime.combine(min_date, datetime.min.time())
+            min_date = timezone.make_aware(min_date)
+
+        legacy_qs = self.entries.all()
+
+        # No legacy data at all
+        if not legacy_qs.exists():
+            return 'ok'
+
+        # No legacy data in the requested window → nothing to migrate
+        if min_date and not legacy_qs.filter(timestamp__gte=min_date).exists():
+            return 'ok'
+
+        # First legacy timestamp in the window
+        legacy_ts = (
+            legacy_qs.filter(timestamp__gte=min_date).earliest('timestamp').timestamp
+            if min_date
+            else legacy_qs.earliest('timestamp').timestamp
+        )
+
+        pm25_qs = self.pm25_entries.all()
+
+        # No PM25 data at all
+        if not pm25_qs.exists():
+            return 'needs_full_migration'
+
+        pm25_ts = pm25_qs.earliest('timestamp').timestamp
+
+        # PM25 starts after legacy in the window
+        if pm25_ts > legacy_ts:
+            return 'needs_backfill'
+
+        return 'ok'
+
 
 
 class LCSMixin(Monitor):

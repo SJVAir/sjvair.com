@@ -1,4 +1,4 @@
-Django==4.2.25
+Django==4.2.29
 
 dj-database-url==2.0.0
 dj-static==0.0.6
@@ -22,7 +22,6 @@ django-pgactivity==1.7.1
 django-phonenumber-field[phonenumberslite]==7.1.0
 django-prose==2.0.0
 django-recaptcha==4.0.0
-django-silk[formatting]==5.4.1
 django-smalluuid==1.2.1
 django-sqids==0.2.2
 django-storages==1.13.2
@@ -30,10 +29,10 @@ django-vanilla-views==3.0.0
 django-widget-tweaks==1.4.12
 
 asciichartpy==1.5.25
-awscli==1.29.22
+awscli==1.44.38
 argon2-cffi==21.3.0
 asgiref==3.7.2
-boto3==1.28.22
+boto3==1.42.48
 channels-redis==4.1.0
 channels==4.0.0
 ckanapi==4.8
@@ -41,7 +40,7 @@ contextily==1.6.2
 delegator.py==0.1.1
 dpath==2.0.6
 fiona==1.10.1
-geopandas==1.0.1
+geopandas==1.1.2
 geopy==2.3.0
 gunicorn==23.0.0
 hiredis==2.2.3
@@ -58,7 +57,7 @@ numpy==1.25.2
 optimize-images==1.5.1
 openpyxl==3.1.5
 pandas==2.2.2
-Pillow==10.3.0
+Pillow==12.1.1
 psutil==5.9.8
 psycopg2==2.9.3 --no-binary psycopg2
 py-expression-eval==0.3.14

@@ -99,11 +99,14 @@ class FormEndpoint(generics.Endpoint):
         form_class = self.get_form_class()
         return form_class(data=data, files=files, **kwargs)
 
-    def post(self, request, *args, **kwargs):
-        form = self.get_form(data=request.data, files=request.FILES)
+    def process_form(self, *args, **kwargs):
+        form = self.get_form(*args, **kwargs)
         if form.is_valid():
             return self.form_valid(form)
         return self.form_invalid(form)
+
+    def post(self, request, *args, **kwargs):
+        return self.process_form(data=request.data, files=request.FILES)
 
     def form_valid(self, form):
         raise NotImplementedError()

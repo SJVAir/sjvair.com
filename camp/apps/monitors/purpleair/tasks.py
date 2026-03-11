@@ -126,10 +126,12 @@ def process_data(payload, cutoff_stage=None):
     for entry in entries:
         monitor.process_entry_pipeline(entry, cutoff_stage=cutoff_stage)
 
+
     # Legacy
-    entries = monitor.create_entries_legacy(payload)
-    for entry in entries:
-        monitor.check_latest(entry)
+    # Commented out, to be removed in the future.
+    # entries = monitor.create_entries_legacy(payload)
+    # for entry in entries:
+    #     monitor.check_latest(entry)
 
     monitor.save()
 

@@ -1,5 +1,7 @@
 import os
 
+from datetime import date, datetime, timedelta
+
 from django.core.files.storage import default_storage, FileSystemStorage
 from django.utils import timezone
 
@@ -85,18 +87,29 @@ def copy_legacy_entries_range(monitor_id, start, end):
 
 
 @db_task(queue='secondary')
-def copy_legacy_entries(monitor_id):
+def copy_legacy_entries(monitor_id, min_date=None):
     monitor = Monitor.objects.get(pk=monitor_id)
 
+    if min_date:
+        if isinstance(min_date, date) and not isinstance(min_date, datetime):
+            min_date = datetime.combine(min_date, datetime.min.time())
+        min_date = timezone.make_aware(min_date)
+
     try:
-        start = monitor.entries.earliest('timestamp').timestamp
+        legacy_start = monitor.entries.earliest('timestamp').timestamp
     except monitor.entries.model.DoesNotExist:
         return  # no legacy entries at all
+
+    start = max(legacy_start, min_date) if min_date else legacy_start
 
     try:
         end = monitor.pm25_entries.earliest().timestamp
     except entry_models.PM25.DoesNotExist:
         end = timezone.now()
+
+    # Nothing to do if the bounds collapse
+    if start >= end:
+        return
 
     chunks = chunk_date_range(start, end, days=3)
 
@@ -105,7 +118,7 @@ def copy_legacy_entries(monitor_id):
 
 
 @db_task()
-def data_export(monitor_id, start_date, end_date, email=None):
+def data_export(monitor_id, start_date, end_date, scope=None, email=None):
     try:
         monitor = Monitor.objects.get(pk=monitor_id)
     except Monitor.DoesNotExist:
@@ -114,7 +127,10 @@ def data_export(monitor_id, start_date, end_date, email=None):
             'message': 'Monitor not found'
         }
 
-    df = monitor.get_entry_data_table(start_date=start_date, end_date=end_date)
+    df = monitor.get_expanded_entries(
+        start_time=datetime.combine(start_date, datetime.min.time()),
+        end_time=datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+    )
 
     if df is None or df.empty:
         return {
