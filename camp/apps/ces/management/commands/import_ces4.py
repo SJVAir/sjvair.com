@@ -7,6 +7,7 @@ from camp.apps.ces.models import CES4, DACCategory
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.regions.utils import get_tract_relationships
 from camp.utils import geodata
+from camp.utils.geodata import load_region_geometry
 
 # https://oehha.ca.gov/calenviroscreen/sb535
 SB535_URL = 'https://services1.arcgis.com/PCHfdHz4GlDNAhBb/arcgis/rest/services/SB_535_Disadvantaged_Communities_2022/FeatureServer/0'
@@ -128,9 +129,7 @@ class Command(BaseCommand):
 
     def get_ces4(self):
         """Download and filter CES4 shapefile, joining SB535 DAC status."""
-        counties_union = Region.objects.filter(
-            type=Region.Type.COUNTY
-        ).to_dataframe().unary_union
+        counties_union = load_region_geometry()
 
         gdf = geodata.gdf_from_ckan(
             dataset_id='calenviroscreen-4-0',

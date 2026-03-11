@@ -9,12 +9,10 @@ class CESQuerySet(models.QuerySet):
         return self.filter(boundary__region__external_id=geoid)
 
 
-class CESManager(models.Manager):
+class CESManager(models.Manager.from_queryset(CESQuerySet)):
     def get_queryset(self):
-        return CESQuerySet(self.model, using=self._db).select_related('boundary__region')
-
-    def for_version(self, version):
-        return self.get_queryset().for_version(version)
-
-    def for_tract(self, geoid):
-        return self.get_queryset().for_tract(geoid)
+        return (
+            super().get_queryset()
+            .select_related('boundary__region')
+            .defer('boundary__geometry')
+        )

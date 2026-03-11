@@ -17,6 +17,8 @@ def get_tract_relationships(refresh: bool = False) -> pd.DataFrame:
     """
     if refresh or not TRACT_RELATIONSHIP_CACHE.exists():
         print('Downloading tract relationship file...')
+        # verify=False: census.gov serves a valid cert but has historically had
+        # chain issues in some environments. Safe to disable for this public data file.
         response = requests.get(TRACT_RELATIONSHIP_URL, verify=False)
         response.raise_for_status()
         TRACT_RELATIONSHIP_CACHE.write_text(response.text)
