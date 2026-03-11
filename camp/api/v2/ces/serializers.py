@@ -9,7 +9,7 @@ class CES4Serializer(serializers.Serializer):
         'ci_score',
         'ci_score_p',
         'dac_sb535',
-        'dac_category',
+        ('dac_category', lambda r: r.get_dac_category_display()),
         # Pollution burden
         'pollution',
         'pollution_s',

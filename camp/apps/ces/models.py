@@ -1,7 +1,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from camp.apps.ces.querysets import CESQuerySet
+from camp.apps.ces.querysets import CESManager
 
 
 class DACCategory(models.IntegerChoices):
@@ -38,7 +38,7 @@ class CESRecord(models.Model):
         choices=DACCategory.choices,
     )
 
-    objects = CESQuerySet.as_manager()
+    objects = CESManager()
 
     class Meta:
         abstract = True
