@@ -22,15 +22,7 @@ class PM25_EPA_Oct2021(BaseProcessor):
     next_stage = PM25.Stage.CALIBRATED
 
     def process(self):
-        if 'humidity' not in self.context:
-            print('=====' * 5)
-            print('HUMIDITY MISSING:')
-            print(self.entry.__class__)
-            print(self.entry.pk)
-            print(self.entry.monitor.__class__)
-            print(self.entry.monitor.pk)
-            print(self.entry.monitor.name)
-            print('=====' * 5)
+        # Humidity is required for the EPA correction; skip if unavailable.
         value = self.get_correction(pm25=self.context['pm25'], rh=self.context['humidity'])
         if value is not None:
             return self.build_entry(value=value)
