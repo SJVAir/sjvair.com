@@ -121,6 +121,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.purpleair',
     'camp.apps.regions',
     'camp.apps.sensors',
+    'camp.apps.summaries',
     'camp.apps.qaqc',
     'camp.utils',
 ]
