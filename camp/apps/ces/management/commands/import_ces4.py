@@ -1,14 +1,22 @@
 import esri2gpd
+import pandas as pd
 
 from django.core.management.base import BaseCommand
 
-from camp.apps.ces.models import CES4
+from camp.apps.ces.models import CES4, DACCategory
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.regions.utils import get_tract_relationships
 from camp.utils import geodata
 
 # https://oehha.ca.gov/calenviroscreen/sb535
 SB535_URL = 'https://services1.arcgis.com/PCHfdHz4GlDNAhBb/arcgis/rest/services/SB_535_Disadvantaged_Communities_2022/FeatureServer/0'
+
+# Maps SB535 DAC_category strings to DACCategory integer choices
+DAC_CATEGORY_MAP = {
+    'CalEnviroScreen 4.0 Top 25%': DACCategory.TOP_CES_SCORE,
+    'CalEnviroScreen 4.0 High Pollution Burden Score, Low Population Count': DACCategory.TOP_POLLUTION,
+    'CalEnviroScreen 3.0 Disadvantaged Communities Only': DACCategory.PRIOR_DAC,
+}
 
 # Explicit mapping from CES4 shapefile columns to CES4 model fields.
 # California-wide percentiles are preserved as published by OEHHA.
@@ -145,8 +153,11 @@ class Command(BaseCommand):
 
         dac_lookup = sb535.set_index('Tract')['DAC_category']
         gdf['dac_sb535'] = gdf['Tract'].isin(dac_lookup.index)
-        gdf['dac_category'] = gdf['Tract'].map(dac_lookup).where(
-            gdf['Tract'].isin(dac_lookup.index), other=None
+        gdf['dac_category'] = (
+            gdf['Tract']
+            .map(dac_lookup)
+            .map(DAC_CATEGORY_MAP)
+            .where(gdf['Tract'].isin(dac_lookup.index), other=None)
         )
 
         self.stdout.write(f'Loaded {len(gdf):,} CES4 tracts')
@@ -218,7 +229,8 @@ class Command(BaseCommand):
                 if shp_col in row.index
             }
             fields['dac_sb535'] = row.get('dac_sb535')
-            fields['dac_category'] = row.get('dac_category') or None
+            dac_cat = row.get('dac_category')
+            fields['dac_category'] = None if pd.isna(dac_cat) else int(dac_cat)
 
             _, created = CES4.objects.update_or_create(
                 boundary=boundary,
