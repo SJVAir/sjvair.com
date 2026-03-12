@@ -161,14 +161,13 @@ def get_monitor_weight(monitor, hour):
     return LCS_WEIGHT * health_factor
 
 
-def compute_region_summary(region, timestamp, entry_type, processor):
+def compute_region_summary(region, timestamp, entry_type):
     """
     Compute a weighted region summary from existing hourly MonitorSummary records.
 
-    FEM/FRM monitors always contribute their processor='' (clean) summary,
-    regardless of the requested processor. LCS monitors contribute their summary
-    at the specified processor. This allows parallel region summaries keyed by
-    LCS calibration model while keeping FEM data as a consistent baseline.
+    For each monitor in the region, uses the best available summary: CALIBRATED
+    (processor≠'') is preferred over RAW (processor=''). If multiple CALIBRATED
+    summaries exist for a monitor, the first alphabetically by processor is used.
 
     Returns a dict ready to use as RegionSummary field values, or None if no
     contributing monitors have a summary for this window.
@@ -179,38 +178,38 @@ def compute_region_summary(region, timestamp, entry_type, processor):
     if not region.boundary:
         return None
 
-    monitors_in_region = list(
+    monitor_ids = list(
         Monitor.objects
         .filter(position__within=region.boundary.geometry)
+        .values_list('pk', flat=True)
     )
 
-    if not monitors_in_region:
+    if not monitor_ids:
         return None
 
-    fem_ids = [m.pk for m in monitors_in_region if m.grade in {Monitor.Grade.FEM, Monitor.Grade.FRM}]
-    lcs_ids = [m.pk for m in monitors_in_region if m.grade == Monitor.Grade.LCS]
-
-    base_filter = dict(
-        timestamp=timestamp,
-        resolution=BaseSummary.Resolution.HOURLY,
-        entry_type=entry_type,
+    # For each monitor, prefer CALIBRATED (processor≠'') over RAW (processor='').
+    # Order by processor so '' (RAW) sorts before any calibrated processor name,
+    # meaning later entries override earlier ones — last write wins per monitor_id.
+    all_summaries = (
+        MonitorSummary.objects
+        .filter(
+            monitor_id__in=monitor_ids,
+            timestamp=timestamp,
+            resolution=BaseSummary.Resolution.HOURLY,
+            entry_type=entry_type,
+        )
+        .select_related('monitor')
+        .order_by('processor')  # '' < any non-blank string
     )
 
-    # FEM monitors always contribute their clean (processor='') summary
-    fem_summaries = list(
-        MonitorSummary.objects
-        .filter(**base_filter, monitor_id__in=fem_ids, processor='')
-        .select_related('monitor')
-    ) if fem_ids else []
+    # One summary per monitor: CALIBRATED overrides RAW
+    best_by_monitor = {}
+    for s in all_summaries:
+        existing = best_by_monitor.get(s.monitor_id)
+        if existing is None or (existing.processor == '' and s.processor != ''):
+            best_by_monitor[s.monitor_id] = s
 
-    # LCS monitors contribute the requested calibration processor
-    lcs_summaries = list(
-        MonitorSummary.objects
-        .filter(**base_filter, monitor_id__in=lcs_ids, processor=processor)
-        .select_related('monitor')
-    ) if lcs_ids else []
-
-    summaries = fem_summaries + lcs_summaries
+    summaries = list(best_by_monitor.values())
 
     if not summaries:
         return None

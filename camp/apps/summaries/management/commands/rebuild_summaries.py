@@ -146,15 +146,15 @@ class Command(BaseCommand):
         self.stdout.flush()
 
         for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
-            combos = list(
+            entry_types = list(
                 MonitorSummary.objects
                 .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY)
-                .values_list('entry_type', 'processor')
+                .values_list('entry_type', flat=True)
                 .distinct()
             )
             for region in regions:
-                for entry_type, processor in combos:
-                    stats = compute_region_summary(region, hour, entry_type, processor)
+                for entry_type in entry_types:
+                    stats = compute_region_summary(region, hour, entry_type)
                     if stats is None:
                         continue
                     RegionSummary.objects.update_or_create(
@@ -162,7 +162,6 @@ class Command(BaseCommand):
                         timestamp=hour,
                         resolution=BaseSummary.Resolution.HOURLY,
                         entry_type=entry_type,
-                        processor=processor,
                         defaults=stats,
                     )
 
