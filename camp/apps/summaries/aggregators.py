@@ -34,14 +34,23 @@ def merge_tdigests(dicts: list) -> TDigest:
     return merged
 
 
-def compute_monitor_summary(monitor, timestamp, EntryModel, stage, processor):
+def _stage_for_processor(processor):
+    """Derive entry stage from processor: blank → RAW, non-blank → CALIBRATED."""
+    from camp.apps.entries.stages import Stage
+    return Stage.RAW if not processor else Stage.CALIBRATED
+
+
+def compute_monitor_summary(monitor, timestamp, EntryModel, processor):
     """
     Compute summary stats for one monitor over one hour from raw entries.
+
+    Stage is derived from processor: blank processor → RAW, non-blank → CALIBRATED.
 
     Returns a dict ready to use as MonitorSummary field values, or None if
     there are no entries in the window.
     """
     hour_end = timestamp + timedelta(hours=1)
+    stage = _stage_for_processor(processor)
 
     values = [
         float(v)
@@ -152,12 +161,14 @@ def get_monitor_weight(monitor, hour):
     return LCS_WEIGHT * health_factor
 
 
-def compute_region_summary(region, timestamp, entry_type, stage, processor):
+def compute_region_summary(region, timestamp, entry_type, processor):
     """
     Compute a weighted region summary from existing hourly MonitorSummary records.
 
-    FEM monitors contribute at FEM_WEIGHT; LCS monitors are scaled by health score.
-    Only monitors whose position falls within the region's geometry are included.
+    FEM/FRM monitors always contribute their processor='' (clean) summary,
+    regardless of the requested processor. LCS monitors contribute their summary
+    at the specified processor. This allows parallel region summaries keyed by
+    LCS calibration model while keeping FEM data as a consistent baseline.
 
     Returns a dict ready to use as RegionSummary field values, or None if no
     contributing monitors have a summary for this window.
@@ -168,24 +179,38 @@ def compute_region_summary(region, timestamp, entry_type, stage, processor):
     if not region.boundary:
         return None
 
-    monitor_ids = list(
+    monitors_in_region = list(
         Monitor.objects
         .filter(position__within=region.boundary.geometry)
-        .values_list('pk', flat=True)
     )
 
-    summaries = list(
-        MonitorSummary.objects
-        .filter(
-            monitor_id__in=monitor_ids,
-            timestamp=timestamp,
-            resolution=BaseSummary.Resolution.HOURLY,
-            entry_type=entry_type,
-            stage=stage,
-            processor=processor,
-        )
-        .select_related('monitor')
+    if not monitors_in_region:
+        return None
+
+    fem_ids = [m.pk for m in monitors_in_region if m.grade in {Monitor.Grade.FEM, Monitor.Grade.FRM}]
+    lcs_ids = [m.pk for m in monitors_in_region if m.grade == Monitor.Grade.LCS]
+
+    base_filter = dict(
+        timestamp=timestamp,
+        resolution=BaseSummary.Resolution.HOURLY,
+        entry_type=entry_type,
     )
+
+    # FEM monitors always contribute their clean (processor='') summary
+    fem_summaries = list(
+        MonitorSummary.objects
+        .filter(**base_filter, monitor_id__in=fem_ids, processor='')
+        .select_related('monitor')
+    ) if fem_ids else []
+
+    # LCS monitors contribute the requested calibration processor
+    lcs_summaries = list(
+        MonitorSummary.objects
+        .filter(**base_filter, monitor_id__in=lcs_ids, processor=processor)
+        .select_related('monitor')
+    ) if lcs_ids else []
+
+    summaries = fem_summaries + lcs_summaries
 
     if not summaries:
         return None

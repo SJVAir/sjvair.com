@@ -21,9 +21,13 @@ def get_summarizable_entry_models():
 @db_periodic_task(crontab(hour='*', minute='5'), priority=50)
 def hourly_monitor_summaries(hour=None):
     """
-    Compute hourly MonitorSummary for every (monitor, entry_type, stage, processor)
-    combo that has entries in the previous hour.
+    Compute hourly MonitorSummary for every (monitor, entry_type, processor) combo
+    that has entries in the previous hour. Only RAW (processor='') and CALIBRATED
+    (processor≠'') entries are summarized — CORRECTED and CLEANED are skipped.
     """
+    from django.db.models import Q
+    from camp.apps.entries.stages import Stage
+
     if hour is None:
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
         hour = now - timedelta(hours=1)
@@ -35,15 +39,19 @@ def hourly_monitor_summaries(hour=None):
                 timestamp__gte=hour,
                 timestamp__lt=hour + timedelta(hours=1),
             )
-            .values_list('monitor_id', 'stage', 'processor')
+            .filter(
+                Q(stage=Stage.RAW, processor='') |
+                Q(stage=Stage.CALIBRATED)
+            )
+            .values_list('monitor_id', 'processor')
             .distinct()
         )
-        for monitor_id, stage, processor in combos:
-            summarize_monitor_hour(str(monitor_id), hour, EntryModel.entry_type, stage, processor)
+        for monitor_id, processor in combos:
+            summarize_monitor_hour(str(monitor_id), hour, EntryModel.entry_type, processor)
 
 
 @db_task(priority=50)
-def summarize_monitor_hour(monitor_id, hour, entry_type, stage, processor):
+def summarize_monitor_hour(monitor_id, hour, entry_type, processor):
     """Compute and save one hourly MonitorSummary record."""
     from camp.apps.entries.fields import EntryTypeField
     from camp.apps.summaries.aggregators import compute_monitor_summary
@@ -52,7 +60,7 @@ def summarize_monitor_hour(monitor_id, hour, entry_type, stage, processor):
     monitor = Monitor.objects.get(pk=monitor_id)
     EntryModel = EntryTypeField.get_model_map()[entry_type]
 
-    stats = compute_monitor_summary(monitor, hour, EntryModel, stage, processor)
+    stats = compute_monitor_summary(monitor, hour, EntryModel, processor)
     if stats is None:
         return
 
@@ -61,7 +69,6 @@ def summarize_monitor_hour(monitor_id, hour, entry_type, stage, processor):
         timestamp=hour,
         resolution=BaseSummary.Resolution.HOURLY,
         entry_type=entry_type,
-        stage=stage,
         processor=processor,
         defaults=stats,
     )
@@ -70,7 +77,7 @@ def summarize_monitor_hour(monitor_id, hour, entry_type, stage, processor):
 @db_periodic_task(crontab(hour='*', minute='15'), priority=50)
 def hourly_region_summaries(hour=None):
     """
-    Compute hourly RegionSummary for each region, for each (entry_type, stage, processor)
+    Compute hourly RegionSummary for each region, for each (entry_type, processor)
     combo found in MonitorSummary records for that hour.
     """
     from camp.apps.regions.models import Region
@@ -83,17 +90,17 @@ def hourly_region_summaries(hour=None):
     combos = (
         MonitorSummary.objects
         .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY)
-        .values_list('entry_type', 'stage', 'processor')
+        .values_list('entry_type', 'processor')
         .distinct()
     )
 
     for region in Region.objects.all():
-        for entry_type, stage, processor in combos:
-            summarize_region_hour(str(region.pk), hour, entry_type, stage, processor)
+        for entry_type, processor in combos:
+            summarize_region_hour(str(region.pk), hour, entry_type, processor)
 
 
 @db_task(priority=50)
-def summarize_region_hour(region_id, hour, entry_type, stage, processor):
+def summarize_region_hour(region_id, hour, entry_type, processor):
     """Compute and save one hourly RegionSummary record."""
     from camp.apps.regions.models import Region
     from camp.apps.summaries.aggregators import compute_region_summary
@@ -101,7 +108,7 @@ def summarize_region_hour(region_id, hour, entry_type, stage, processor):
 
     region = Region.objects.get(pk=region_id)
 
-    stats = compute_region_summary(region, hour, entry_type, stage, processor)
+    stats = compute_region_summary(region, hour, entry_type, processor)
     if stats is None:
         return
 
@@ -110,7 +117,6 @@ def summarize_region_hour(region_id, hour, entry_type, stage, processor):
         timestamp=hour,
         resolution=BaseSummary.Resolution.HOURLY,
         entry_type=entry_type,
-        stage=stage,
         processor=processor,
         defaults=stats,
     )
@@ -139,13 +145,12 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     if monitor_ids is not None:
         qs = qs.filter(monitor_id__in=monitor_ids)
 
-    combos = qs.values_list('monitor_id', 'entry_type', 'stage', 'processor').distinct()
+    combos = qs.values_list('monitor_id', 'entry_type', 'processor').distinct()
 
-    for monitor_id, entry_type, stage, processor in combos:
+    for monitor_id, entry_type, processor in combos:
         source_qs = MonitorSummary.objects.filter(
             monitor_id=monitor_id,
             entry_type=entry_type,
-            stage=stage,
             processor=processor,
             resolution=source_resolution,
             timestamp__gte=window_start,
@@ -160,7 +165,6 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
             timestamp=window_start,
             resolution=target_resolution,
             entry_type=entry_type,
-            stage=stage,
             processor=processor,
             defaults=stats,
         )
@@ -179,13 +183,12 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
     if region_ids is not None:
         qs = qs.filter(region_id__in=region_ids)
 
-    combos = qs.values_list('region_id', 'entry_type', 'stage', 'processor').distinct()
+    combos = qs.values_list('region_id', 'entry_type', 'processor').distinct()
 
-    for region_id, entry_type, stage, processor in combos:
+    for region_id, entry_type, processor in combos:
         source_qs = RegionSummary.objects.filter(
             region_id=region_id,
             entry_type=entry_type,
-            stage=stage,
             processor=processor,
             resolution=source_resolution,
             timestamp__gte=window_start,
@@ -205,7 +208,6 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
             timestamp=window_start,
             resolution=target_resolution,
             entry_type=entry_type,
-            stage=stage,
             processor=processor,
             defaults={**stats, 'station_count': station_count},
         )

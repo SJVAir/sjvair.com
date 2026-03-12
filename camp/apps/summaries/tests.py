@@ -62,9 +62,7 @@ class ComputeMonitorSummaryTests(TestCase):
         )
 
     def test_returns_none_when_no_entries(self):
-        result = compute_monitor_summary(
-            self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
-        )
+        result = compute_monitor_summary(self.monitor, self.hour, PM25, '')
         assert result is None
 
     def test_computes_basic_stats(self):
@@ -72,9 +70,7 @@ class ComputeMonitorSummaryTests(TestCase):
         for i, v in enumerate(values):
             self._make_entry(v, offset_minutes=i * 2)
 
-        result = compute_monitor_summary(
-            self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
-        )
+        result = compute_monitor_summary(self.monitor, self.hour, PM25, '')
 
         assert result is not None
         assert result['count'] == 5
@@ -91,9 +87,7 @@ class ComputeMonitorSummaryTests(TestCase):
         for i in range(25):
             self._make_entry(15.0, offset_minutes=i * 2)
 
-        result = compute_monitor_summary(
-            self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
-        )
+        result = compute_monitor_summary(self.monitor, self.hour, PM25, '')
         assert result['is_complete']
 
     def test_is_complete_false_when_insufficient_coverage(self):
@@ -101,9 +95,7 @@ class ComputeMonitorSummaryTests(TestCase):
         for i in range(5):
             self._make_entry(15.0, offset_minutes=i * 2)
 
-        result = compute_monitor_summary(
-            self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
-        )
+        result = compute_monitor_summary(self.monitor, self.hour, PM25, '')
         assert not result['is_complete']
 
     def test_only_includes_entries_in_window(self):
@@ -111,9 +103,7 @@ class ComputeMonitorSummaryTests(TestCase):
         self._make_entry(10.0, offset_minutes=5)     # in window
         self._make_entry(100.0, offset_minutes=65)   # after window
 
-        result = compute_monitor_summary(
-            self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
-        )
+        result = compute_monitor_summary(self.monitor, self.hour, PM25, '')
         assert result['count'] == 1
         assert result['mean'] == pytest.approx(10.0)
 
@@ -134,7 +124,6 @@ class RollupSummariesTests(TestCase):
             timestamp=hour,
             resolution=MonitorSummary.Resolution.HOURLY,
             entry_type='pm25',
-            stage='raw',
             processor='',
             count=count,
             expected_count=expected,
@@ -160,7 +149,6 @@ class RollupSummariesTests(TestCase):
         qs = MonitorSummary.objects.filter(
             monitor=self.monitor,
             entry_type='pm25',
-            stage='raw',
             processor='',
             resolution=MonitorSummary.Resolution.HOURLY,
         )
@@ -220,7 +208,6 @@ class ComputeRegionSummaryTests(TestCase):
             timestamp=self.hour,
             resolution=MonitorSummary.Resolution.HOURLY,
             entry_type='pm25',
-            stage='raw',
             processor='',
             count=count,
             expected_count=30,
@@ -237,7 +224,7 @@ class ComputeRegionSummaryTests(TestCase):
         )
 
     def test_returns_none_when_no_monitor_summaries(self):
-        assert compute_region_summary(self.region, self.hour, 'pm25', 'raw', '') is None
+        assert compute_region_summary(self.region, self.hour, 'pm25', '') is None
 
     def test_returns_stats_when_monitor_in_region(self):
         if not self.region.boundary:
@@ -246,7 +233,7 @@ class ComputeRegionSummaryTests(TestCase):
         self.monitor.save()
         self._make_monitor_summary(mean=25.0)
 
-        result = compute_region_summary(self.region, self.hour, 'pm25', 'raw', '')
+        result = compute_region_summary(self.region, self.hour, 'pm25', '')
 
         assert result is not None
         assert result['station_count'] == 1
@@ -256,7 +243,7 @@ class ComputeRegionSummaryTests(TestCase):
         region_no_boundary = Region.objects.filter(boundary__isnull=True).first()
         if region_no_boundary is None:
             self.skipTest('no region without boundary in fixtures')
-        assert compute_region_summary(region_no_boundary, self.hour, 'pm25', 'raw', '') is None
+        assert compute_region_summary(region_no_boundary, self.hour, 'pm25', '') is None
 
 
 class SummarizeMonitorHourTests(TestCase):
@@ -281,7 +268,7 @@ class SummarizeMonitorHourTests(TestCase):
             self._make_entry(20.0 + i, offset_minutes=i * 2)
 
         summarize_monitor_hour(
-            str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, ''
+            str(self.monitor.pk), self.hour, 'pm25', ''
         )
 
         assert MonitorSummary.objects.count() == 1
@@ -294,13 +281,13 @@ class SummarizeMonitorHourTests(TestCase):
         for i in range(5):
             self._make_entry(20.0, offset_minutes=i * 2)
 
-        summarize_monitor_hour(str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, '')
-        summarize_monitor_hour(str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, '')
+        summarize_monitor_hour(str(self.monitor.pk), self.hour, 'pm25', '')
+        summarize_monitor_hour(str(self.monitor.pk), self.hour, 'pm25', '')
 
         assert MonitorSummary.objects.count() == 1
 
     def test_skips_when_no_entries(self):
-        summarize_monitor_hour(str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, '')
+        summarize_monitor_hour(str(self.monitor.pk), self.hour, 'pm25', '')
         assert MonitorSummary.objects.count() == 0
 
 
@@ -325,7 +312,6 @@ class SummarizeRegionHourTests(TestCase):
             timestamp=self.hour,
             resolution=MonitorSummary.Resolution.HOURLY,
             entry_type='pm25',
-            stage='raw',
             processor='',
             count=10,
             expected_count=30,
@@ -343,7 +329,7 @@ class SummarizeRegionHourTests(TestCase):
 
     def test_creates_region_summary(self):
         self._make_monitor_summary(mean=25.0)
-        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', 'raw', '')
+        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', '')
 
         assert RegionSummary.objects.count() == 1
         summary = RegionSummary.objects.first()
@@ -351,13 +337,13 @@ class SummarizeRegionHourTests(TestCase):
         assert summary.station_count == 1
 
     def test_skips_when_no_monitor_summaries(self):
-        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', 'raw', '')
+        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', '')
         assert RegionSummary.objects.count() == 0
 
     def test_idempotent_when_called_twice(self):
         self._make_monitor_summary(mean=25.0)
-        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', 'raw', '')
-        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', 'raw', '')
+        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', '')
+        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', '')
         assert RegionSummary.objects.count() == 1
 
 
@@ -378,7 +364,6 @@ class RollupMonitorSummariesTests(TestCase):
             timestamp=hour,
             resolution=MonitorSummary.Resolution.HOURLY,
             entry_type='pm25',
-            stage='raw',
             processor='',
             count=10,
             expected_count=30,
@@ -443,7 +428,6 @@ class RollupRegionSummariesTests(TestCase):
             timestamp=hour,
             resolution=RegionSummary.Resolution.HOURLY,
             entry_type='pm25',
-            stage='raw',
             processor='',
             count=10,
             expected_count=30,
@@ -621,7 +605,6 @@ class HourlyRegionSummariesTaskTests(TestCase):
             timestamp=self.hour,
             resolution=BaseSummary.Resolution.HOURLY,
             entry_type='pm25',
-            stage='raw',
             processor='',
             count=10,
             expected_count=30,
@@ -678,7 +661,6 @@ class DailyMonitorSummariesTaskTests(TestCase):
             timestamp=hour,
             resolution=BaseSummary.Resolution.HOURLY,
             entry_type='pm25',
-            stage='raw',
             processor='',
             count=10,
             expected_count=30,
