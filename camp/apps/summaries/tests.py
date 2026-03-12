@@ -1,12 +1,15 @@
 from datetime import timedelta
 
 import numpy as np
+import pytest
 from tdigest import TDigest
 
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.utils import timezone
 
-from camp.apps.entries.models import PM25
+from camp.apps.entries.models import CO, NO2, O3, PM25, SO2
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.qaqc.models import HealthCheck
@@ -21,6 +24,7 @@ from camp.apps.summaries.aggregators import (
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.tasks import (
+    get_summarizable_entry_models,
     rollup_monitor_summaries,
     rollup_region_summaries,
     summarize_monitor_hour,
@@ -49,7 +53,7 @@ class ComputeMonitorSummaryTests(TestCase):
         result = compute_monitor_summary(
             self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
         )
-        self.assertIsNone(result)
+        assert result is None
 
     def test_computes_basic_stats(self):
         values = [10.0, 20.0, 30.0, 40.0, 50.0]
@@ -60,14 +64,14 @@ class ComputeMonitorSummaryTests(TestCase):
             self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
         )
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result['count'], 5)
-        self.assertAlmostEqual(result['mean'], 30.0)
-        self.assertAlmostEqual(result['minimum'], 10.0)
-        self.assertAlmostEqual(result['maximum'], 50.0)
-        self.assertAlmostEqual(result['sum_value'], 150.0)
-        self.assertIn('tdigest', result)
-        self.assertIsInstance(result['tdigest'], dict)
+        assert result is not None
+        assert result['count'] == 5
+        assert result['mean'] == pytest.approx(30.0)
+        assert result['minimum'] == pytest.approx(10.0)
+        assert result['maximum'] == pytest.approx(50.0)
+        assert result['sum_value'] == pytest.approx(150.0)
+        assert 'tdigest' in result
+        assert isinstance(result['tdigest'], dict)
 
     def test_is_complete_true_when_sufficient_coverage(self):
         # PurpleAir expects 30 readings/hour (2-min interval).
@@ -78,7 +82,7 @@ class ComputeMonitorSummaryTests(TestCase):
         result = compute_monitor_summary(
             self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
         )
-        self.assertTrue(result['is_complete'])
+        assert result['is_complete']
 
     def test_is_complete_false_when_insufficient_coverage(self):
         # Only 5 entries out of 30 expected
@@ -88,7 +92,7 @@ class ComputeMonitorSummaryTests(TestCase):
         result = compute_monitor_summary(
             self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
         )
-        self.assertFalse(result['is_complete'])
+        assert not result['is_complete']
 
     def test_only_includes_entries_in_window(self):
         self._make_entry(100.0, offset_minutes=-5)   # before window
@@ -98,8 +102,8 @@ class ComputeMonitorSummaryTests(TestCase):
         result = compute_monitor_summary(
             self.monitor, self.hour, PM25, PM25.Stage.RAW, ''
         )
-        self.assertEqual(result['count'], 1)
-        self.assertAlmostEqual(result['mean'], 10.0)
+        assert result['count'] == 1
+        assert result['mean'] == pytest.approx(10.0)
 
 
 class RollupSummariesTests(TestCase):
@@ -135,8 +139,7 @@ class RollupSummariesTests(TestCase):
         )
 
     def test_returns_none_for_empty_queryset(self):
-        result = rollup_summaries(MonitorSummary.objects.none())
-        self.assertIsNone(result)
+        assert rollup_summaries(MonitorSummary.objects.none()) is None
 
     def test_rolls_up_two_hours(self):
         self._make_monitor_summary(self.hour, mean=10.0, count=10)
@@ -151,11 +154,11 @@ class RollupSummariesTests(TestCase):
         )
         result = rollup_summaries(qs)
 
-        self.assertEqual(result['count'], 20)
-        self.assertAlmostEqual(result['mean'], 15.0)
-        self.assertAlmostEqual(result['minimum'], 10.0)
-        self.assertAlmostEqual(result['maximum'], 20.0)
-        self.assertIn('tdigest', result)
+        assert result['count'] == 20
+        assert result['mean'] == pytest.approx(15.0)
+        assert result['minimum'] == pytest.approx(10.0)
+        assert result['maximum'] == pytest.approx(20.0)
+        assert 'tdigest' in result
 
     def test_is_complete_aggregated_correctly(self):
         # 10 out of 30 expected = 33%, not complete
@@ -166,7 +169,7 @@ class RollupSummariesTests(TestCase):
         result = rollup_summaries(qs)
 
         # combined: 20 count, 60 expected = 33%, not complete
-        self.assertFalse(result['is_complete'])
+        assert not result['is_complete']
 
 
 class GetMonitorWeightTests(TestCase):
@@ -177,18 +180,15 @@ class GetMonitorWeightTests(TestCase):
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
 
     def test_lcs_monitor_without_health_check_gets_full_lcs_weight(self):
-        weight = get_monitor_weight(self.monitor, self.hour)
-        self.assertEqual(weight, LCS_WEIGHT * 1.0)
+        assert get_monitor_weight(self.monitor, self.hour) == LCS_WEIGHT * 1.0
 
     def test_lcs_monitor_with_zero_health_score_gets_zero_weight(self):
         HealthCheck.objects.create(monitor=self.monitor, hour=self.hour, score=0)
-        weight = get_monitor_weight(self.monitor, self.hour)
-        self.assertEqual(weight, 0.0)
+        assert get_monitor_weight(self.monitor, self.hour) == 0.0
 
     def test_lcs_monitor_with_max_health_score_gets_full_lcs_weight(self):
         HealthCheck.objects.create(monitor=self.monitor, hour=self.hour, score=3)
-        weight = get_monitor_weight(self.monitor, self.hour)
-        self.assertAlmostEqual(weight, LCS_WEIGHT * 1.0)
+        assert get_monitor_weight(self.monitor, self.hour) == pytest.approx(LCS_WEIGHT * 1.0)
 
 
 class ComputeRegionSummaryTests(TestCase):
@@ -225,10 +225,7 @@ class ComputeRegionSummaryTests(TestCase):
         )
 
     def test_returns_none_when_no_monitor_summaries(self):
-        result = compute_region_summary(
-            self.region, self.hour, 'pm25', 'raw', ''
-        )
-        self.assertIsNone(result)
+        assert compute_region_summary(self.region, self.hour, 'pm25', 'raw', '') is None
 
     def test_returns_stats_when_monitor_in_region(self):
         if not self.region.boundary:
@@ -237,22 +234,17 @@ class ComputeRegionSummaryTests(TestCase):
         self.monitor.save()
         self._make_monitor_summary(mean=25.0)
 
-        result = compute_region_summary(
-            self.region, self.hour, 'pm25', 'raw', ''
-        )
+        result = compute_region_summary(self.region, self.hour, 'pm25', 'raw', '')
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result['station_count'], 1)
-        self.assertAlmostEqual(result['mean'], 25.0, places=1)
+        assert result is not None
+        assert result['station_count'] == 1
+        assert result['mean'] == pytest.approx(25.0, abs=0.1)
 
     def test_returns_none_for_region_without_boundary(self):
         region_no_boundary = Region.objects.filter(boundary__isnull=True).first()
         if region_no_boundary is None:
             self.skipTest('no region without boundary in fixtures')
-        result = compute_region_summary(
-            region_no_boundary, self.hour, 'pm25', 'raw', ''
-        )
-        self.assertIsNone(result)
+        assert compute_region_summary(region_no_boundary, self.hour, 'pm25', 'raw', '') is None
 
 
 class SummarizeMonitorHourTests(TestCase):
@@ -280,30 +272,24 @@ class SummarizeMonitorHourTests(TestCase):
             str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, ''
         )
 
-        self.assertEqual(MonitorSummary.objects.count(), 1)
+        assert MonitorSummary.objects.count() == 1
         summary = MonitorSummary.objects.first()
-        self.assertEqual(summary.monitor, self.monitor)
-        self.assertEqual(summary.entry_type, 'pm25')
-        self.assertEqual(summary.count, 5)
+        assert summary.monitor == self.monitor
+        assert summary.entry_type == 'pm25'
+        assert summary.count == 5
 
     def test_idempotent_when_called_twice(self):
         for i in range(5):
             self._make_entry(20.0, offset_minutes=i * 2)
 
-        summarize_monitor_hour(
-            str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, ''
-        )
-        summarize_monitor_hour(
-            str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, ''
-        )
+        summarize_monitor_hour(str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, '')
+        summarize_monitor_hour(str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, '')
 
-        self.assertEqual(MonitorSummary.objects.count(), 1)
+        assert MonitorSummary.objects.count() == 1
 
     def test_skips_when_no_entries(self):
-        summarize_monitor_hour(
-            str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, ''
-        )
-        self.assertEqual(MonitorSummary.objects.count(), 0)
+        summarize_monitor_hour(str(self.monitor.pk), self.hour, 'pm25', PM25.Stage.RAW, '')
+        assert MonitorSummary.objects.count() == 0
 
 
 class SummarizeRegionHourTests(TestCase):
@@ -345,25 +331,22 @@ class SummarizeRegionHourTests(TestCase):
 
     def test_creates_region_summary(self):
         self._make_monitor_summary(mean=25.0)
-
         summarize_region_hour(str(self.region.pk), self.hour, 'pm25', 'raw', '')
 
-        self.assertEqual(RegionSummary.objects.count(), 1)
+        assert RegionSummary.objects.count() == 1
         summary = RegionSummary.objects.first()
-        self.assertEqual(summary.region, self.region)
-        self.assertEqual(summary.station_count, 1)
+        assert summary.region == self.region
+        assert summary.station_count == 1
 
     def test_skips_when_no_monitor_summaries(self):
         summarize_region_hour(str(self.region.pk), self.hour, 'pm25', 'raw', '')
-        self.assertEqual(RegionSummary.objects.count(), 0)
+        assert RegionSummary.objects.count() == 0
 
     def test_idempotent_when_called_twice(self):
         self._make_monitor_summary(mean=25.0)
-
         summarize_region_hour(str(self.region.pk), self.hour, 'pm25', 'raw', '')
         summarize_region_hour(str(self.region.pk), self.hour, 'pm25', 'raw', '')
-
-        self.assertEqual(RegionSummary.objects.count(), 1)
+        assert RegionSummary.objects.count() == 1
 
 
 class RollupMonitorSummariesTests(TestCase):
@@ -411,30 +394,22 @@ class RollupMonitorSummariesTests(TestCase):
         )
 
         daily = MonitorSummary.objects.filter(resolution=MonitorSummary.Resolution.DAILY)
-        self.assertEqual(daily.count(), 1)
-        self.assertAlmostEqual(daily.first().mean, 20.0)  # mean of (10, 20, 30)
+        assert daily.count() == 1
+        assert daily.first().mean == pytest.approx(20.0)  # mean of (10, 20, 30)
 
     def test_daily_rollup_is_idempotent(self):
         for h in range(3):
             self._make_hourly_summary(self.yesterday + timedelta(hours=h))
 
-        rollup_monitor_summaries(
-            MonitorSummary.Resolution.DAILY,
-            MonitorSummary.Resolution.HOURLY,
-            self.yesterday,
-            self.yesterday + timedelta(days=1),
-        )
-        rollup_monitor_summaries(
-            MonitorSummary.Resolution.DAILY,
-            MonitorSummary.Resolution.HOURLY,
-            self.yesterday,
-            self.yesterday + timedelta(days=1),
-        )
+        for _ in range(2):
+            rollup_monitor_summaries(
+                MonitorSummary.Resolution.DAILY,
+                MonitorSummary.Resolution.HOURLY,
+                self.yesterday,
+                self.yesterday + timedelta(days=1),
+            )
 
-        self.assertEqual(
-            MonitorSummary.objects.filter(resolution=MonitorSummary.Resolution.DAILY).count(),
-            1,
-        )
+        assert MonitorSummary.objects.filter(resolution=MonitorSummary.Resolution.DAILY).count() == 1
 
 
 class RollupRegionSummariesTests(TestCase):
@@ -489,6 +464,81 @@ class RollupRegionSummariesTests(TestCase):
         )
 
         daily = RegionSummary.objects.filter(resolution=RegionSummary.Resolution.DAILY)
-        self.assertEqual(daily.count(), 1)
-        self.assertAlmostEqual(daily.first().mean, 20.0)  # mean of (10, 20, 30)
-        self.assertEqual(daily.first().station_count, 3)  # max of (1, 2, 3)
+        assert daily.count() == 1
+        assert daily.first().mean == pytest.approx(20.0)  # mean of (10, 20, 30)
+        assert daily.first().station_count == 3            # max of (1, 2, 3)
+
+
+class GetSummarizableEntryModelsTests(TestCase):
+    def test_returns_expected_models(self):
+        models = get_summarizable_entry_models()
+        assert {m.__name__ for m in models} == {'PM25', 'O3', 'CO', 'NO2', 'SO2'}
+
+    def test_excluded_types_not_present(self):
+        from camp.apps.entries.models import CO2, Humidity, Pressure, Temperature
+        models = get_summarizable_entry_models()
+        excluded = {Temperature, Humidity, Pressure, CO2}
+        for m in models:
+            assert m not in excluded
+
+
+class RebuildSummariesCommandTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+        self.start = (self.hour - timedelta(hours=1)).strftime('%Y-%m-%d')
+
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        if self.region:
+            self.monitor.position = self.region.boundary.geometry.centroid
+            self.monitor.save()
+
+    def _make_entries(self, count=5):
+        for i in range(count):
+            PM25.objects.create(
+                monitor=self.monitor,
+                timestamp=self.hour + timedelta(minutes=i * 2),
+                stage=PM25.Stage.RAW,
+                processor='',
+                value=20.0 + i,
+                location=self.monitor.location,
+            )
+
+    def _run(self, *args):
+        call_command('rebuild_summaries', *args, stdout=open('/dev/null', 'w'))
+
+    def test_creates_monitor_summaries(self):
+        self._make_entries()
+        self._run(self.start, '--monitors-only')
+        assert MonitorSummary.objects.count() > 0
+
+    def test_monitors_only_skips_regions(self):
+        self._make_entries()
+        self._run(self.start, '--monitors-only')
+        assert RegionSummary.objects.count() == 0
+
+    def test_regions_only_skips_monitors(self):
+        self._make_entries()
+        self._run(self.start, '--monitors-only')
+        MonitorSummary.objects.all().delete()
+        self._run(self.start, '--regions-only')
+        assert MonitorSummary.objects.count() == 0
+
+    def test_monitor_flag_scopes_to_one_monitor(self):
+        self._make_entries()
+        self._run(self.start, f'--monitor={self.monitor.pk}', '--monitors-only')
+        for summary in MonitorSummary.objects.all():
+            assert summary.monitor_id == self.monitor.pk
+
+    def test_creates_region_summaries_when_monitor_in_region(self):
+        if not self.region:
+            self.skipTest('no region with boundary in fixtures')
+        self._make_entries()
+        self._run(self.start)
+        assert RegionSummary.objects.count() > 0
+
+    def test_invalid_date_raises_error(self):
+        with pytest.raises((CommandError, SystemExit)):
+            self._run('not-a-date')
