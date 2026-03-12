@@ -118,27 +118,28 @@ def summarize_region_hour(region_id, hour, entry_type, stage, processor):
 
 # ---- Rollup helpers ----
 
-def rollup_monitor_summaries(target_resolution, source_resolution, window_start, window_end):
+def rollup_monitor_summaries(target_resolution, source_resolution, window_start, window_end, monitor_ids=None):
     """
     Roll up MonitorSummary records from source_resolution into target_resolution
     for the given time window.
 
     Finds all distinct (monitor, entry_type, stage, processor) combos in the source
     window and creates/updates one target_resolution record per combo.
+
+    Optionally scoped to a list of monitor_ids (for targeted backfill/recalculation).
     """
     from camp.apps.summaries.aggregators import rollup_summaries
     from camp.apps.summaries.models import MonitorSummary
 
-    combos = (
-        MonitorSummary.objects
-        .filter(
-            resolution=source_resolution,
-            timestamp__gte=window_start,
-            timestamp__lt=window_end,
-        )
-        .values_list('monitor_id', 'entry_type', 'stage', 'processor')
-        .distinct()
+    qs = MonitorSummary.objects.filter(
+        resolution=source_resolution,
+        timestamp__gte=window_start,
+        timestamp__lt=window_end,
     )
+    if monitor_ids is not None:
+        qs = qs.filter(monitor_id__in=monitor_ids)
+
+    combos = qs.values_list('monitor_id', 'entry_type', 'stage', 'processor').distinct()
 
     for monitor_id, entry_type, stage, processor in combos:
         source_qs = MonitorSummary.objects.filter(
@@ -165,21 +166,20 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
         )
 
 
-def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end):
+def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end, region_ids=None):
     """Same as rollup_monitor_summaries but for RegionSummary."""
     from camp.apps.summaries.aggregators import rollup_summaries
     from camp.apps.summaries.models import RegionSummary
 
-    combos = (
-        RegionSummary.objects
-        .filter(
-            resolution=source_resolution,
-            timestamp__gte=window_start,
-            timestamp__lt=window_end,
-        )
-        .values_list('region_id', 'entry_type', 'stage', 'processor')
-        .distinct()
+    qs = RegionSummary.objects.filter(
+        resolution=source_resolution,
+        timestamp__gte=window_start,
+        timestamp__lt=window_end,
     )
+    if region_ids is not None:
+        qs = qs.filter(region_id__in=region_ids)
+
+    combos = qs.values_list('region_id', 'entry_type', 'stage', 'processor').distinct()
 
     for region_id, entry_type, stage, processor in combos:
         source_qs = RegionSummary.objects.filter(
