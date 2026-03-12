@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.models import Monitor
+from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.qaqc.models import HealthCheck
 from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import (
@@ -31,7 +32,7 @@ class ComputeMonitorSummaryTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def setUp(self):
-        self.monitor = Monitor.objects.first()
+        self.monitor = PurpleAir.objects.first()
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
 
     def _make_entry(self, value, offset_minutes=0):
@@ -105,7 +106,7 @@ class RollupSummariesTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def setUp(self):
-        self.monitor = Monitor.objects.first()
+        self.monitor = PurpleAir.objects.first()
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
 
     def _make_monitor_summary(self, hour, mean, count=10, expected=30):
@@ -172,7 +173,7 @@ class GetMonitorWeightTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml']
 
     def setUp(self):
-        self.monitor = Monitor.objects.first()
+        self.monitor = PurpleAir.objects.first()
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
 
     def test_lcs_monitor_without_health_check_gets_full_lcs_weight(self):
@@ -194,7 +195,7 @@ class ComputeRegionSummaryTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml']
 
     def setUp(self):
-        self.monitor = Monitor.objects.first()
+        self.monitor = PurpleAir.objects.first()
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
         self.region = Region.objects.first()
 
@@ -258,7 +259,7 @@ class SummarizeMonitorHourTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def setUp(self):
-        self.monitor = Monitor.objects.first()
+        self.monitor = PurpleAir.objects.first()
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
 
     def _make_entry(self, value, offset_minutes=0):
@@ -309,7 +310,7 @@ class SummarizeRegionHourTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml']
 
     def setUp(self):
-        self.monitor = Monitor.objects.first()
+        self.monitor = PurpleAir.objects.first()
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
         self.region = Region.objects.filter(boundary__isnull=False).first()
         if self.region is None:
@@ -369,7 +370,7 @@ class RollupMonitorSummariesTests(TestCase):
     fixtures = ['purple-air.yaml']
 
     def setUp(self):
-        self.monitor = Monitor.objects.first()
+        self.monitor = PurpleAir.objects.first()
         today = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
         self.yesterday = today - timedelta(days=1)
 
