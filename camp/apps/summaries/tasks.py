@@ -77,8 +77,9 @@ def summarize_monitor_hour(monitor_id, hour, entry_type, processor):
 @db_periodic_task(crontab(hour='*', minute='15'), priority=50)
 def hourly_region_summaries(hour=None):
     """
-    Compute hourly RegionSummary for each region, for each (entry_type, processor)
-    combo found in MonitorSummary records for that hour.
+    Compute one hourly RegionSummary per region per entry_type found in
+    MonitorSummary records for that hour. Uses each monitor's best available
+    calibration — no processor fan-out needed at the region level.
     """
     from camp.apps.regions.models import Region
     from camp.apps.summaries.models import MonitorSummary, BaseSummary
@@ -87,20 +88,20 @@ def hourly_region_summaries(hour=None):
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
         hour = now - timedelta(hours=1)
 
-    combos = (
+    entry_types = (
         MonitorSummary.objects
         .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY)
-        .values_list('entry_type', 'processor')
+        .values_list('entry_type', flat=True)
         .distinct()
     )
 
     for region in Region.objects.all():
-        for entry_type, processor in combos:
-            summarize_region_hour(str(region.pk), hour, entry_type, processor)
+        for entry_type in entry_types:
+            summarize_region_hour(str(region.pk), hour, entry_type)
 
 
 @db_task(priority=50)
-def summarize_region_hour(region_id, hour, entry_type, processor):
+def summarize_region_hour(region_id, hour, entry_type):
     """Compute and save one hourly RegionSummary record."""
     from camp.apps.regions.models import Region
     from camp.apps.summaries.aggregators import compute_region_summary
@@ -108,7 +109,7 @@ def summarize_region_hour(region_id, hour, entry_type, processor):
 
     region = Region.objects.get(pk=region_id)
 
-    stats = compute_region_summary(region, hour, entry_type, processor)
+    stats = compute_region_summary(region, hour, entry_type)
     if stats is None:
         return
 
@@ -117,7 +118,6 @@ def summarize_region_hour(region_id, hour, entry_type, processor):
         timestamp=hour,
         resolution=BaseSummary.Resolution.HOURLY,
         entry_type=entry_type,
-        processor=processor,
         defaults=stats,
     )
 
@@ -183,13 +183,12 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
     if region_ids is not None:
         qs = qs.filter(region_id__in=region_ids)
 
-    combos = qs.values_list('region_id', 'entry_type', 'processor').distinct()
+    combos = qs.values_list('region_id', 'entry_type').distinct()
 
-    for region_id, entry_type, processor in combos:
+    for region_id, entry_type in combos:
         source_qs = RegionSummary.objects.filter(
             region_id=region_id,
             entry_type=entry_type,
-            processor=processor,
             resolution=source_resolution,
             timestamp__gte=window_start,
             timestamp__lt=window_end,
@@ -208,7 +207,6 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
             timestamp=window_start,
             resolution=target_resolution,
             entry_type=entry_type,
-            processor=processor,
             defaults={**stats, 'station_count': station_count},
         )
 

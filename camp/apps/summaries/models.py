@@ -26,7 +26,6 @@ class BaseSummary(models.Model):
     resolution = models.CharField(_('resolution'), max_length=10, choices=Resolution.choices)
     timestamp = models.DateTimeField(_('timestamp'))
     entry_type = EntryTypeField()
-    processor = models.CharField(_('processor'), max_length=100, blank=True, default='', db_index=True)
 
     # Rollup machinery — needed for correct aggregation across time periods
     count = models.PositiveIntegerField(_('count'))
@@ -62,6 +61,7 @@ class MonitorSummary(BaseSummary):
         on_delete=models.CASCADE,
         related_name='summaries',
     )
+    processor = models.CharField(_('processor'), max_length=100, blank=True, default='', db_index=True)
 
     class Meta(BaseSummary.Meta):
         unique_together = ('monitor', 'entry_type', 'processor', 'resolution', 'timestamp')
@@ -76,4 +76,4 @@ class RegionSummary(BaseSummary):
     station_count = models.PositiveIntegerField(_('station count'))
 
     class Meta(BaseSummary.Meta):
-        unique_together = ('region', 'entry_type', 'processor', 'resolution', 'timestamp')
+        unique_together = ('region', 'entry_type', 'resolution', 'timestamp')

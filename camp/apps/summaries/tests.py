@@ -224,7 +224,7 @@ class ComputeRegionSummaryTests(TestCase):
         )
 
     def test_returns_none_when_no_monitor_summaries(self):
-        assert compute_region_summary(self.region, self.hour, 'pm25', '') is None
+        assert compute_region_summary(self.region, self.hour, 'pm25') is None
 
     def test_returns_stats_when_monitor_in_region(self):
         if not self.region.boundary:
@@ -233,7 +233,7 @@ class ComputeRegionSummaryTests(TestCase):
         self.monitor.save()
         self._make_monitor_summary(mean=25.0)
 
-        result = compute_region_summary(self.region, self.hour, 'pm25', '')
+        result = compute_region_summary(self.region, self.hour, 'pm25')
 
         assert result is not None
         assert result['station_count'] == 1
@@ -243,7 +243,7 @@ class ComputeRegionSummaryTests(TestCase):
         region_no_boundary = Region.objects.filter(boundary__isnull=True).first()
         if region_no_boundary is None:
             self.skipTest('no region without boundary in fixtures')
-        assert compute_region_summary(region_no_boundary, self.hour, 'pm25', '') is None
+        assert compute_region_summary(region_no_boundary, self.hour, 'pm25') is None
 
 
 class SummarizeMonitorHourTests(TestCase):
@@ -329,7 +329,7 @@ class SummarizeRegionHourTests(TestCase):
 
     def test_creates_region_summary(self):
         self._make_monitor_summary(mean=25.0)
-        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', '')
+        summarize_region_hour(str(self.region.pk), self.hour, 'pm25')
 
         assert RegionSummary.objects.count() == 1
         summary = RegionSummary.objects.first()
@@ -337,13 +337,13 @@ class SummarizeRegionHourTests(TestCase):
         assert summary.station_count == 1
 
     def test_skips_when_no_monitor_summaries(self):
-        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', '')
+        summarize_region_hour(str(self.region.pk), self.hour, 'pm25')
         assert RegionSummary.objects.count() == 0
 
     def test_idempotent_when_called_twice(self):
         self._make_monitor_summary(mean=25.0)
-        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', '')
-        summarize_region_hour(str(self.region.pk), self.hour, 'pm25', '')
+        summarize_region_hour(str(self.region.pk), self.hour, 'pm25')
+        summarize_region_hour(str(self.region.pk), self.hour, 'pm25')
         assert RegionSummary.objects.count() == 1
 
 
@@ -428,7 +428,6 @@ class RollupRegionSummariesTests(TestCase):
             timestamp=hour,
             resolution=RegionSummary.Resolution.HOURLY,
             entry_type='pm25',
-            processor='',
             count=10,
             expected_count=30,
             sum_value=float(arr.sum()),
