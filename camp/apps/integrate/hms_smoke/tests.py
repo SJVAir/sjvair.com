@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import geopandas as gpd
+import pytest
 
 from shapely.wkt import loads as load_wkt
 
@@ -41,7 +42,7 @@ class Tests_Miscellaneous(TestCase):
 
     def test_full_clean_test(self):
         #confirms that a validation error from smoke.full_clean() occurs
-        with self.assertRaises(ValidationError):
+        with pytest.raises(ValidationError):
             create_smoke_objects('Light1',-1,-1)
 
     def test1_only_SJV_counties(self):
