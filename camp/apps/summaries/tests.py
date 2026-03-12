@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -8,6 +9,14 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 from django.utils import timezone
+
+# Fixed datetime for time-sensitive task tests.
+# Apr 1, 2026 10:30 UTC — a convenient date for calendar helper assertions:
+#   yesterday       = 2026-03-31
+#   last month      = 2026-03-01
+#   last quarter    = 2026-01-01  (Q1: Jan–Mar)
+#   last season     = 2025-12-01  (winter: Dec–Feb; use Mar 1 as "now" for that helper)
+FIXED_NOW = timezone.make_aware(datetime(2026, 4, 1, 10, 30, 0))
 
 from camp.apps.entries.models import CO, NO2, O3, PM25, SO2
 from camp.apps.monitors.models import Monitor
@@ -24,7 +33,10 @@ from camp.apps.summaries.aggregators import (
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.tasks import (
+    daily_monitor_summaries,
     get_summarizable_entry_models,
+    hourly_monitor_summaries,
+    hourly_region_summaries,
     rollup_monitor_summaries,
     rollup_region_summaries,
     summarize_monitor_hour,
@@ -542,3 +554,193 @@ class RebuildSummariesCommandTests(TestCase):
     def test_invalid_date_raises_error(self):
         with pytest.raises((CommandError, SystemExit)):
             self._run('not-a-date')
+
+
+# ---- Periodic task tests ----
+
+class HourlyMonitorSummariesTaskTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        # The hour that should be summarized when timezone.now() == FIXED_NOW
+        self.expected_hour = FIXED_NOW.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+
+    def _make_entry(self, value=20.0, offset_minutes=5):
+        return PM25.objects.create(
+            monitor=self.monitor,
+            timestamp=self.expected_hour + timedelta(minutes=offset_minutes),
+            stage=PM25.Stage.RAW,
+            processor='',
+            value=value,
+            location=self.monitor.location,
+        )
+
+    def test_creates_summary_for_explicit_hour(self):
+        self._make_entry()
+        hourly_monitor_summaries(hour=self.expected_hour)
+        assert MonitorSummary.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.expected_hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+        ).exists()
+
+    def test_uses_previous_hour_when_called_without_args(self):
+        self._make_entry()
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+            hourly_monitor_summaries()
+        assert MonitorSummary.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.expected_hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+        ).exists()
+
+    def test_skips_monitors_with_no_entries(self):
+        hourly_monitor_summaries(hour=self.expected_hour)
+        assert MonitorSummary.objects.count() == 0
+
+
+class HourlyRegionSummariesTaskTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.hour = FIXED_NOW.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        if self.region is None:
+            self.skipTest('no region with boundary in fixtures')
+        self.monitor.position = self.region.boundary.geometry.centroid
+        self.monitor.save()
+
+    def _make_monitor_summary(self):
+        arr = np.array([20.0] * 10)
+        digest = TDigest()
+        digest.batch_update(arr.tolist())
+        return MonitorSummary.objects.create(
+            monitor=self.monitor,
+            timestamp=self.hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25',
+            stage='raw',
+            processor='',
+            count=10,
+            expected_count=30,
+            sum_value=float(arr.sum()),
+            sum_of_squares=float((arr ** 2).sum()),
+            minimum=float(arr.min()),
+            maximum=float(arr.max()),
+            mean=float(arr.mean()),
+            stddev=float(arr.std()),
+            p25=float(np.percentile(arr, 25)),
+            p75=float(np.percentile(arr, 75)),
+            tdigest=tdigest_to_dict(digest),
+            is_complete=False,
+        )
+
+    def test_creates_region_summary_for_explicit_hour(self):
+        self._make_monitor_summary()
+        hourly_region_summaries(hour=self.hour)
+        assert RegionSummary.objects.filter(
+            region=self.region,
+            timestamp=self.hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+        ).exists()
+
+    def test_uses_previous_hour_when_called_without_args(self):
+        self._make_monitor_summary()
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+            hourly_region_summaries()
+        assert RegionSummary.objects.filter(
+            region=self.region,
+            timestamp=self.hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+        ).exists()
+
+    def test_skips_when_no_monitor_summaries(self):
+        hourly_region_summaries(hour=self.hour)
+        assert RegionSummary.objects.count() == 0
+
+
+class DailyMonitorSummariesTaskTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        # With FIXED_NOW = Apr 1 10:30, yesterday = Mar 31
+        self.yesterday = FIXED_NOW.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+
+    def _make_hourly_summary(self, hour, mean=20.0):
+        arr = np.array([mean] * 10)
+        digest = TDigest()
+        digest.batch_update(arr.tolist())
+        return MonitorSummary.objects.create(
+            monitor=self.monitor,
+            timestamp=hour,
+            resolution=BaseSummary.Resolution.HOURLY,
+            entry_type='pm25',
+            stage='raw',
+            processor='',
+            count=10,
+            expected_count=30,
+            sum_value=float(arr.sum()),
+            sum_of_squares=float((arr ** 2).sum()),
+            minimum=float(arr.min()),
+            maximum=float(arr.max()),
+            mean=mean,
+            stddev=0.0,
+            p25=mean,
+            p75=mean,
+            tdigest=tdigest_to_dict(digest),
+            is_complete=False,
+        )
+
+    def test_rolls_up_yesterday_when_called_without_args(self):
+        for h in range(3):
+            self._make_hourly_summary(self.yesterday + timedelta(hours=h))
+
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+            daily_monitor_summaries()
+
+        assert MonitorSummary.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.yesterday,
+            resolution=BaseSummary.Resolution.DAILY,
+        ).exists()
+
+
+class CalendarHelperTests(TestCase):
+    """Tests for the private calendar helpers that compute rollup windows."""
+
+    def test_yesterday(self):
+        from camp.apps.summaries.tasks import _yesterday
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+            result = _yesterday()
+        expected = FIXED_NOW.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        assert result == expected  # 2026-03-31
+
+    def test_last_month_start(self):
+        from camp.apps.summaries.tasks import _last_month_start
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+            result = _last_month_start()
+        assert result.year == 2026
+        assert result.month == 3
+        assert result.day == 1
+
+    def test_last_quarter_start(self):
+        from camp.apps.summaries.tasks import _last_quarter_start
+        # Apr 1 → current quarter is Q2, last quarter is Q1 = Jan 1
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+            result = _last_quarter_start()
+        assert result.year == 2026
+        assert result.month == 1
+        assert result.day == 1
+
+    def test_last_season_start(self):
+        from camp.apps.summaries.tasks import _last_season_start
+        # Mar 1 → season that just ended is winter (Dec 1 of previous year)
+        mar_1 = timezone.make_aware(datetime(2026, 3, 1, 0, 30, 0))
+        with patch('django.utils.timezone.now', return_value=mar_1):
+            result = _last_season_start()
+        assert result.year == 2025
+        assert result.month == 12
+        assert result.day == 1
