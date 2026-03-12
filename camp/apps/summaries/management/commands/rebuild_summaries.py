@@ -111,6 +111,8 @@ class Command(BaseCommand):
 
         for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
             for EntryModel in entry_models:
+                from django.db.models import Q
+                from camp.apps.entries.stages import Stage
                 combos = (
                     EntryModel.objects
                     .filter(
@@ -118,12 +120,16 @@ class Command(BaseCommand):
                         timestamp__gte=hour,
                         timestamp__lt=hour + timedelta(hours=1),
                     )
-                    .values_list('monitor_id', 'stage', 'processor')
+                    .filter(
+                        Q(stage=Stage.RAW, processor='') |
+                        Q(stage=Stage.CALIBRATED)
+                    )
+                    .values_list('monitor_id', 'processor')
                     .distinct()
                 )
-                for mon_id, stage, processor in combos:
+                for mon_id, processor in combos:
                     monitor = monitors_by_id[mon_id]
-                    stats = compute_monitor_summary(monitor, hour, EntryModel, stage, processor)
+                    stats = compute_monitor_summary(monitor, hour, EntryModel, processor)
                     if stats is None:
                         continue
                     MonitorSummary.objects.update_or_create(
@@ -131,7 +137,6 @@ class Command(BaseCommand):
                         timestamp=hour,
                         resolution=BaseSummary.Resolution.HOURLY,
                         entry_type=EntryModel.entry_type,
-                        stage=stage,
                         processor=processor,
                         defaults=stats,
                     )
@@ -144,12 +149,12 @@ class Command(BaseCommand):
             combos = list(
                 MonitorSummary.objects
                 .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY)
-                .values_list('entry_type', 'stage', 'processor')
+                .values_list('entry_type', 'processor')
                 .distinct()
             )
             for region in regions:
-                for entry_type, stage, processor in combos:
-                    stats = compute_region_summary(region, hour, entry_type, stage, processor)
+                for entry_type, processor in combos:
+                    stats = compute_region_summary(region, hour, entry_type, processor)
                     if stats is None:
                         continue
                     RegionSummary.objects.update_or_create(
@@ -157,7 +162,6 @@ class Command(BaseCommand):
                         timestamp=hour,
                         resolution=BaseSummary.Resolution.HOURLY,
                         entry_type=entry_type,
-                        stage=stage,
                         processor=processor,
                         defaults=stats,
                     )
