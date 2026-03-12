@@ -11,12 +11,9 @@ from camp.apps.monitors.models import Monitor
 
 
 def get_summarizable_entry_models():
-    """Return entry models that have a single `value` field (excludes Particulates)."""
+    """Return entry models that have opted in to summarization via summarize = True."""
     from camp.apps.entries.utils import get_all_entry_models
-    return [
-        m for m in get_all_entry_models()
-        if any(f.name == 'value' for f in m._meta.concrete_fields)
-    ]
+    return [m for m in get_all_entry_models() if m.summarize]
 
 
 # ---- Hourly tasks ----
