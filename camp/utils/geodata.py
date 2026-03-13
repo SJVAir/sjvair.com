@@ -128,6 +128,7 @@ def filter_by_overlap(
 
         if isinstance(geom, (Point, LineString)):
             yield series
+            continue
 
         if geom.area == 0:
             continue
