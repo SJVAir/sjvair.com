@@ -1,9 +1,15 @@
+from django.conf import settings
+
 from resticus import serializers
+
+
+def _timestamp(s):
+    return s.timestamp.astimezone(settings.DEFAULT_TIMEZONE).isoformat()
 
 
 class MonitorSummarySerializer(serializers.Serializer):
     fields = [
-        ('timestamp', lambda s: s.timestamp.isoformat()),
+        ('timestamp', _timestamp),
         'entry_type',
         'processor',
         'count',
@@ -20,7 +26,7 @@ class MonitorSummarySerializer(serializers.Serializer):
 
 class RegionSummarySerializer(serializers.Serializer):
     fields = [
-        ('timestamp', lambda s: s.timestamp.isoformat()),
+        ('timestamp', _timestamp),
         'entry_type',
         'count',
         'expected_count',
