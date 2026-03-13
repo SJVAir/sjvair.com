@@ -1,4 +1,4 @@
-from resticus import generics, http
+from resticus import generics
 
 from django.http import Http404
 from django.utils.functional import cached_property
@@ -37,11 +37,11 @@ class SummaryMixin:
         month = self.kwargs.get('month')
         day = self.kwargs.get('day')
         filters = {}
-        if year:
+        if year is not None:
             filters['timestamp__year'] = int(year)
-        if month:
+        if month is not None:
             filters['timestamp__month'] = int(month)
-        if day:
+        if day is not None:
             filters['timestamp__day'] = int(day)
         return filters
 
