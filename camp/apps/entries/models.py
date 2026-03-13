@@ -20,6 +20,7 @@ from .managers import EntryQuerySet
 class BaseEntry(models.Model):
     epa_aqs_code = None
     units = None
+    summarize = False
     Stage = stages.Stage
     Levels = None
 
@@ -306,6 +307,7 @@ class PM25(BaseEntry):
     label = _('PM2.5')
     epa_aqs_code = 88101
     units = 'µg/m³'
+    summarize = True
 
     Levels = LevelSet(
         AQLevel.GOOD(0.0),
@@ -451,6 +453,7 @@ class CO(BaseEntry):
     label = _('Carbon Monoxide')
     epa_aqs_code = 42101
     units = 'ppm'
+    summarize = True
 
     Levels = LevelSet(
         AQLevel.GOOD(0.0),
@@ -483,6 +486,7 @@ class NO2(BaseEntry):
     label = _('Nitrogen Dioxide')
     epa_aqs_code = 42602
     units = 'ppb'
+    summarize = True
 
     Levels = LevelSet(
         AQLevel.GOOD(0.0),
@@ -504,6 +508,7 @@ class O3(BaseEntry):
     label = _('Ozone')
     epa_aqs_code = 44201
     units = 'ppb'
+    summarize = True
 
     Levels = LevelSet(
         AQLevel.GOOD(0.0),
@@ -524,6 +529,7 @@ class SO2(BaseEntry):
     label = _('Sulfur Dioxide')
     epa_aqs_code = 42401
     units = 'ppb'
+    summarize = True
 
     Levels = LevelSet(
         AQLevel.GOOD(0),
