@@ -1,7 +1,5 @@
 from resticus import serializers
 
-from camp.apps.regions.models import Region
-
 
 class RegionSerializer(serializers.Serializer):
     fields = ['id', 'name', 'type']

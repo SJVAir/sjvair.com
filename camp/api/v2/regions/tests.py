@@ -80,7 +80,7 @@ class RegionDetailTests(TestCase):
     def test_detail_null_geometry_for_region_without_boundary(self):
         region = Region.objects.filter(boundary__isnull=True).first()
         if region is None:
-            return  # skip: all fixtures have boundaries
+            pytest.skip('all fixtures have boundaries')
         request = self.factory.get('/')
         response = region_detail(request, region_id=region.pk)
         data = get_response_data(response)
