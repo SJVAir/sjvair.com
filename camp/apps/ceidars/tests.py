@@ -72,7 +72,7 @@ class TestFacilityGeocode:
     def test_geocode_failure_returns_false(self, facility):
         import requests as req
         with patch('requests.get', side_effect=req.RequestException):
-            with patch('time.sleep'):
+            with patch('camp.apps.ceidars.models.time.sleep'):
                 result = facility.geocode()
         assert result is False
 

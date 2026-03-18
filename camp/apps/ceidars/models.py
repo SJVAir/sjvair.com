@@ -1,4 +1,5 @@
 import time
+from urllib.parse import quote
 
 import requests
 
@@ -43,7 +44,7 @@ class Facility(TimeStampedModel):
         successful call to respect MapTiler rate limits during bulk imports.
         """
         query = clean_address(f'{self.street}, {self.city}, CA {self.zipcode}')
-        url = f'https://api.maptiler.com/geocoding/{query}.json'
+        url = f'https://api.maptiler.com/geocoding/{quote(query)}.json'
         params = {'key': settings.MAPTILER_API_KEY}
 
         for attempt in range(5):
