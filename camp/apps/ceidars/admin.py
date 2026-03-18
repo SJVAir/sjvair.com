@@ -1,4 +1,5 @@
 from django.contrib.gis import admin
+from django.db.models import Max
 
 from .models import EmissionsRecord, Facility
 
@@ -26,14 +27,18 @@ class FacilityAdmin(admin.GISModelAdmin):
     inlines = [EmissionsRecordInline]
     actions = ['regeocode_selected']
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(
+            latest_emission_year=Max('emissions__year')
+        )
+
     @admin.display(boolean=True, description='Geocoded')
     def has_position(self, obj):
         return obj.position is not None
 
     @admin.display(description='Latest year')
     def latest_year(self, obj):
-        record = obj.emissions.order_by('-year').first()
-        return record.year if record else '—'
+        return obj.latest_emission_year or '—'
 
     @admin.action(description='Re-geocode selected facilities')
     def regeocode_selected(self, request, queryset):
