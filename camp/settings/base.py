@@ -112,6 +112,7 @@ INSTALLED_APPS = [
     'camp.apps.entries',
     'camp.apps.helpdesk',
     'camp.apps.integrate.hms_smoke',
+    'camp.apps.ceidars',
     'camp.apps.monitors',
     'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
