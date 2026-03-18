@@ -1,7 +1,8 @@
 import re
 
 # Strips trailing unit/suite/apt/# suffixes from street addresses.
-_unit_re = re.compile(r'(?:,?\s*(?:Apt|Unit|Suite)?\s*#?\s*\w+)$', re.IGNORECASE)
+# Requires an explicit unit keyword (Apt, Unit, Suite) or a # sign before the unit value.
+_unit_re = re.compile(r',?\s*(?:(?:Apt|Unit|Suite)\s*#?\s*\w+|#\s*\w+)$', re.IGNORECASE)
 
 
 def clean_address(address):
