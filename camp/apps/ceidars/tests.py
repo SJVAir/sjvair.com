@@ -1,10 +1,12 @@
 import pytest
+from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
 from django.contrib.gis.geos import Point
+from django.core.management import call_command
 
 from camp.apps.ceidars.models import Facility, EmissionsRecord
-from camp.utils.geocoding import clean_address
+from camp.utils.geocode import clean_address
 
 
 @pytest.fixture
@@ -40,39 +42,38 @@ class TestCleanAddress:
 
 
 class TestFacilityGeocode:
-    def test_geocode_success(self, facility):
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            'features': [{'geometry': {'coordinates': [-119.7871, 36.7378]}}]
-        }
-        with patch('requests.get', return_value=mock_response):
+    def test_geocode_success_via_census(self, facility):
+        point = Point(-119.7871, 36.7378, srid=4326)
+        with patch('camp.utils.geocode.census', return_value=point):
             result = facility.geocode()
         assert result is True
-        assert facility.position == Point(-119.7871, 36.7378, srid=4326)
+        assert facility.position == point
+
+    def test_geocode_falls_back_to_maptiler(self, facility):
+        point = Point(-119.7871, 36.7378, srid=4326)
+        with patch('camp.utils.geocode.census', return_value=None):
+            with patch('camp.utils.geocode.maptiler', return_value=point):
+                result = facility.geocode()
+        assert result is True
+        assert facility.position == point
 
     def test_geocode_no_results(self, facility):
-        mock_response = MagicMock()
-        mock_response.json.return_value = {'features': []}
-        with patch('requests.get', return_value=mock_response):
-            result = facility.geocode()
+        with patch('camp.utils.geocode.census', return_value=None):
+            with patch('camp.utils.geocode.maptiler', return_value=None):
+                result = facility.geocode()
         assert result is False
         assert facility.position is None
 
     def test_geocode_does_not_save(self, facility):
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            'features': [{'geometry': {'coordinates': [-119.7871, 36.7378]}}]
-        }
-        with patch('requests.get', return_value=mock_response):
+        point = Point(-119.7871, 36.7378, srid=4326)
+        with patch('camp.utils.geocode.census', return_value=point):
             facility.geocode()
-        # Reload from DB — position should still be None
         facility.refresh_from_db()
         assert facility.position is None
 
     def test_geocode_failure_returns_false(self, facility):
-        import requests as req
-        with patch('requests.get', side_effect=req.RequestException):
-            with patch('camp.apps.ceidars.models.time.sleep'):
+        with patch('camp.utils.geocode.census', return_value=None):
+            with patch('camp.utils.geocode.maptiler', return_value=None):
                 result = facility.geocode()
         assert result is False
 
@@ -103,9 +104,6 @@ class TestEmissionsRecord:
 
 # ---- Import command tests ----
 
-from django.core.management import call_command
-
-
 CRITERIA_CSV = """CO,AB,FACID,DIS,FNAME,FSTREET,FCITY,FZIP,FSIC,COID,DISN,CHAPIS,CERR_CODE,TOGT,ROGT,COT,NOXT,SOXT,PMT,PM10T
 10,SJV,1,SJU,TEST FACILITY A,123 MAIN ST,FRESNO,93701,4911,FRE,SAN JOAQUIN VALLEY APCD,,,1.5,1.2,0.3,2.1,0.1,0.8,1.0
 """
@@ -114,9 +112,11 @@ TOXICS_CSV = """CO,AB,FACID,DIS,FNAME,FSTREET,FCITY,FZIP,FSIC,COID,TS,HRA,CHINDE
 10,SJV,1,SJU,TEST FACILITY A,123 MAIN ST,FRESNO,93701,4911,FRE,,,,,SAN JOAQUIN VALLEY APCD,,
 """
 
+_TEST_POINT = Point(-119.787, 36.737, srid=4326)
+
 
 def mock_fetch(criteria_csv=CRITERIA_CSV, toxics_csv=TOXICS_CSV):
-    """Returns a mock for requests.get that serves test CSVs."""
+    """Returns a mock for requests.get that serves the CARB test CSVs."""
     def _fetch(url, **kwargs):
         mock = MagicMock()
         if 'faccrit' in url:
@@ -130,27 +130,26 @@ def mock_fetch(criteria_csv=CRITERIA_CSV, toxics_csv=TOXICS_CSV):
 
 class TestImportCommand:
     def test_creates_facility_and_emissions_record(self, db):
-        mock_geocode = MagicMock(return_value=True)
         with patch('requests.get', side_effect=mock_fetch()):
-            with patch.object(Facility, 'geocode', mock_geocode):
+            with patch('camp.utils.geocode.batch', return_value=[_TEST_POINT]):
                 call_command('import_ceidars', year=2023, county=10)
 
         assert Facility.objects.count() == 1
         facility = Facility.objects.get(county_code=10, facid=1)
         assert facility.name == 'TEST FACILITY A'
         assert facility.metadata_year == 2023
+        assert facility.position == _TEST_POINT
 
         assert EmissionsRecord.objects.count() == 1
         record = EmissionsRecord.objects.get(facility=facility, year=2023)
-        from decimal import Decimal
         assert record.tog == Decimal('1.5')
         assert record.pm25 == Decimal('0.8')
 
     def test_idempotent_rerun(self, db):
-        mock_geocode = MagicMock(return_value=True)
         with patch('requests.get', side_effect=mock_fetch()):
-            with patch.object(Facility, 'geocode', mock_geocode):
+            with patch('camp.utils.geocode.batch', return_value=[_TEST_POINT]):
                 call_command('import_ceidars', year=2023, county=10)
+                # Second run: facility exists, batch not called (no new facilities)
                 call_command('import_ceidars', year=2023, county=10)
 
         assert Facility.objects.count() == 1
@@ -158,14 +157,12 @@ class TestImportCommand:
 
     def test_metadata_year_guard_prevents_older_overwrite(self, db):
         criteria_2022 = CRITERIA_CSV.replace('TEST FACILITY A', 'OLD NAME')
-        mock_geocode = MagicMock(return_value=True)
         with patch('requests.get', side_effect=mock_fetch()):
-            with patch.object(Facility, 'geocode', mock_geocode):
+            with patch('camp.utils.geocode.batch', return_value=[_TEST_POINT]):
                 call_command('import_ceidars', year=2023, county=10)
 
         with patch('requests.get', side_effect=mock_fetch(criteria_csv=criteria_2022)):
-            with patch.object(Facility, 'geocode', mock_geocode):
-                call_command('import_ceidars', year=2022, county=10)
+            call_command('import_ceidars', year=2022, county=10)
 
         facility = Facility.objects.get(county_code=10, facid=1)
         assert facility.name == 'TEST FACILITY A'
@@ -173,9 +170,8 @@ class TestImportCommand:
         assert EmissionsRecord.objects.count() == 2
 
     def test_geocode_failure_does_not_abort(self, db):
-        mock_geocode = MagicMock(return_value=False)
         with patch('requests.get', side_effect=mock_fetch()):
-            with patch.object(Facility, 'geocode', mock_geocode):
+            with patch('camp.utils.geocode.batch', return_value=[None]):
                 call_command('import_ceidars', year=2023, county=10)
 
         assert Facility.objects.count() == 1
