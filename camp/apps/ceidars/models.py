@@ -1,16 +1,9 @@
-import time
-from urllib.parse import quote
-
-import requests
-
-from django.conf import settings
 from django.contrib.gis.db import models
-from django.contrib.gis.geos import Point
 
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
-from camp.utils.geocoding import clean_address
+from camp.utils import geocode as _geocode
 
 
 class Facility(TimeStampedModel):
@@ -36,32 +29,14 @@ class Facility(TimeStampedModel):
 
     def geocode(self):
         """
-        Geocodes the facility address via MapTiler and sets self.position.
-        Returns True on success, False if all retries are exhausted.
-        Does not save — caller is responsible for saving.
-
-        Uses exponential backoff (up to 5 retries). Sleeps 100ms after a
-        successful call to respect MapTiler rate limits during bulk imports.
+        Geocodes the facility address, trying Census first then MapTiler.
+        Sets self.position on success. Returns True/False. Does not save.
         """
-        query = clean_address(f'{self.street}, {self.city}, CA {self.zipcode}')
-        url = f'https://api.maptiler.com/geocoding/{quote(query)}.json'
-        params = {'key': settings.MAPTILER_API_KEY}
-
-        for attempt in range(5):
-            try:
-                response = requests.get(url, params=params, timeout=10)
-                response.raise_for_status()
-                data = response.json()
-                if data.get('features'):
-                    lon, lat = data['features'][0]['geometry']['coordinates']
-                    self.position = Point(lon, lat, srid=4326)
-                    time.sleep(0.1)
-                    return True
-                return False
-            except requests.RequestException:
-                wait = (2 ** attempt) * 0.5
-                time.sleep(wait)
-
+        address = f'{self.street}, {self.city}, CA {self.zipcode}'
+        position = _geocode.census(address) or _geocode.maptiler(address)
+        if position:
+            self.position = position
+            return True
         return False
 
 

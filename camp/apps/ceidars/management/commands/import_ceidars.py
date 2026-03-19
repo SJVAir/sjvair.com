@@ -6,6 +6,7 @@ import requests
 from django.core.management.base import BaseCommand, CommandError
 
 from camp.apps.ceidars.models import EmissionsRecord, Facility
+from camp.utils import geocode
 
 
 COUNTY_CODES = {
@@ -71,6 +72,7 @@ class Command(BaseCommand):
             criteria_url = f'{BASE_URL}/faccrit_output.csv?dbyr={year}&ab_=SJV&dis_=SJU&co_={county_code}'
             toxics_url = f'{BASE_URL}/factox_output.csv?dbyr={year}&ab_=SJV&dis_=SJU&co_={county_code}'
 
+            self.stdout.write(f'{county_name} ({county_code}): fetching...', ending='\r')
             try:
                 criteria = fetch_csv(criteria_url)
                 toxics = fetch_csv(toxics_url)
@@ -85,7 +87,41 @@ class Command(BaseCommand):
                 suffixes=('_crit', '_tox'),
             )
 
+            # Determine which facilities need geocoding
+            all_facids = [int(row['FACID']) for _, row in merged.iterrows()]
+            existing_facids = set(
+                Facility.objects.filter(county_code=county_code, facid__in=all_facids)
+                .values_list('facid', flat=True)
+            )
+
+            geocode_index = []   # list of (facid, address_dict) in batch order
             for _, row in merged.iterrows():
+                facid = int(row['FACID'])
+                if facid not in existing_facids or regeocode:
+                    geocode_index.append((facid, {
+                        'street': row.get('FSTREET', '').strip(),
+                        'city': row.get('FCITY', '').strip(),
+                        'state': 'CA',
+                        'zipcode': row.get('FZIP', '').strip(),
+                    }))
+
+            # Batch geocode upfront
+            positions = {}
+            if geocode_index:
+                self.stdout.write(
+                    f'{county_name} ({county_code}): geocoding {len(geocode_index)} facilities...',
+                    ending='\r',
+                )
+                results = geocode.batch([addr for _, addr in geocode_index])
+                positions = {facid: point for (facid, _), point in zip(geocode_index, results)}
+
+            # Upsert facilities and emissions records
+            total_rows = len(merged)
+            for i, (_, row) in enumerate(merged.iterrows(), 1):
+                self.stdout.write(
+                    f'{county_name} ({county_code}): {i}/{total_rows} facilities...',
+                    ending='\r',
+                )
                 facid = int(row['FACID'])
 
                 facility, created = Facility.objects.get_or_create(
@@ -103,13 +139,15 @@ class Command(BaseCommand):
 
                 if created:
                     created_count += 1
-                    if not facility.geocode():
+                    facility.position = positions.get(facid)
+                    if facility.position is None:
                         geocode_failures += 1
                     facility.save()
                 else:
                     updated_count += 1
                     if regeocode:
-                        if not facility.geocode():
+                        facility.position = positions.get(facid)
+                        if facility.position is None:
                             geocode_failures += 1
 
                     if facility.metadata_year is None or year >= facility.metadata_year:
