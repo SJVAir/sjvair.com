@@ -116,3 +116,19 @@ class TestCeidarsEndpoint:
         response = client.get(url)
         assert response.status_code == 200
         assert response.json()['data'] == []
+
+    def test_ambiguous_region_slug_returns_400(self, client, record):
+        # Two regions share the same slug but different types — no region_type → 400
+        Region.objects.create(name='Central', slug='central', type=Region.Type.COUNTY)
+        Region.objects.create(name='Central', slug='central', type=Region.Type.CITY)
+        url = reverse('api:v2:ceidars:list')
+        response = client.get(url, {'region': 'central'})
+        assert response.status_code == 400
+
+    def test_region_without_boundary_returns_empty_list(self, client, record):
+        # Region exists but has no boundary set
+        Region.objects.create(name='Kern', slug='kern', type=Region.Type.COUNTY)
+        url = reverse('api:v2:ceidars:list')
+        response = client.get(url, {'region': 'kern', 'region_type': 'county'})
+        assert response.status_code == 200
+        assert response.json()['data'] == []
