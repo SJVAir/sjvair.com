@@ -38,6 +38,13 @@ def fetch_csv(url):
     return pd.read_csv(io.StringIO(response.text), dtype=str).fillna('')
 
 
+def decimal_or_none(val):
+    val = str(val).strip()
+    if not val or val.lower() == 'nan':
+        return None
+    return val
+
+
 class Command(BaseCommand):
     help = 'Import CEIDARS emissions data for a given year.'
 
@@ -114,12 +121,6 @@ class Command(BaseCommand):
                         facility.metadata_year = year
 
                     facility.save()
-
-                def decimal_or_none(val):
-                    val = str(val).strip()
-                    if not val or val.lower() == 'nan':
-                        return None
-                    return val
 
                 emissions_data = {
                     col: decimal_or_none(row.get(src))
