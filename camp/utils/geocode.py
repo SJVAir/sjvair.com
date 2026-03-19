@@ -106,8 +106,15 @@ def batch(addresses, retries=5):
 
 # -- MapTiler Geocoding API --
 
+_MAPTILER_ACCEPTED_TYPES = {'address', 'poi'}
+
+
 def maptiler(address, retries=5):
-    """Single address → Point or None via MapTiler Geocoding API."""
+    """Single address → Point or None via MapTiler Geocoding API.
+
+    Only accepts results with place_type 'address' or 'poi' — skips city
+    centroids, postal codes, counties, and other low-precision fallbacks.
+    """
     query = clean_address(address)
     if not query:
         return None
@@ -120,9 +127,10 @@ def maptiler(address, retries=5):
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
-            if data.get('features'):
-                lon, lat = data['features'][0]['geometry']['coordinates']
-                return Point(lon, lat, srid=4326)
+            for feature in data.get('features', []):
+                if _MAPTILER_ACCEPTED_TYPES.intersection(feature.get('place_type', [])):
+                    lon, lat = feature['geometry']['coordinates']
+                    return Point(lon, lat, srid=4326)
             return None
         except requests.RequestException:
             time.sleep((2 ** attempt) * 0.5)
