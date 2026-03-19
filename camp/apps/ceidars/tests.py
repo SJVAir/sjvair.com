@@ -172,7 +172,8 @@ class TestImportCommand:
     def test_geocode_failure_does_not_abort(self, db):
         with patch('requests.get', side_effect=mock_fetch()):
             with patch('camp.utils.geocode.batch', return_value=[None]):
-                call_command('import_ceidars', year=2023, county=10)
+                with patch('camp.utils.geocode.maptiler', return_value=None):
+                    call_command('import_ceidars', year=2023, county=10)
 
         assert Facility.objects.count() == 1
         assert Facility.objects.first().position is None
