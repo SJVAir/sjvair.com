@@ -88,7 +88,7 @@ class Command(BaseCommand):
 
         # Batch geocode all at once
         self.stdout.write(f'Running batch (Census)...')
-        batch_results = geocode.batch(rows)
+        batch_results = geocode.census_batch(rows)
 
         # Individual geocodes
         census_results = []

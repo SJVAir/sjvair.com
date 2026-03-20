@@ -1,7 +1,9 @@
 import csv
 import io
+import itertools
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 import requests
@@ -22,6 +24,16 @@ def clean_address(address):
     return _unit_re.sub('', address).strip()
 
 
+def _address_string(addr):
+    """Build a single-line address string from a dict with street/city/state/zipcode."""
+    parts = [addr.get('street', ''), addr.get('city', '')]
+    state = addr.get('state', '')
+    zipcode = addr.get('zipcode', '')
+    if state or zipcode:
+        parts.append(f'{state} {zipcode}'.strip())
+    return ', '.join(p for p in parts if p)
+
+
 # -- Census Geocoding Services --
 
 _CENSUS_URL = 'https://geocoding.geo.census.gov/geocoder/locations'
@@ -30,7 +42,7 @@ _BATCH_SIZE = 1000
 
 
 def census(address, retries=5):
-    """Single address → Point or None via Census Geocoding Services."""
+    """Single address string → Point or None via Census Geocoding Services."""
     query = clean_address(address)
     if not query:
         return None
@@ -56,7 +68,7 @@ def census(address, retries=5):
     return None
 
 
-def batch(addresses, retries=5):
+def census_batch(addresses, retries=5):
     """
     Batch geocode a list of address dicts via Census Geocoding Services.
     Each dict should have: street, city, state, zipcode (all optional strings).
@@ -104,18 +116,10 @@ def batch(addresses, retries=5):
     return results
 
 
-# -- Combined geocoder --
-
-
-def resolve(address, strict=False):
-    """Try Census first, fall back to MapTiler. Returns Point or None."""
-    return census(address) or maptiler(address, strict=strict)
-
-
 # -- MapTiler Geocoding API --
 
 def maptiler(address, retries=5, strict=False):
-    """Single address → Point or None via MapTiler Geocoding API.
+    """Single address string → Point or None via MapTiler Geocoding API.
 
     By default, accepts the first result with place_type 'address' or 'poi',
     skipping city centroids, postal codes, counties, and other low-precision
@@ -152,3 +156,35 @@ def maptiler(address, retries=5, strict=False):
             time.sleep((2 ** attempt) * 0.5)
 
     return None
+
+
+def maptiler_batch(addresses, workers=5, strict=False):
+    """
+    Batch geocode a list of address dicts via MapTiler, concurrently.
+    Each dict should have: street, city, state, zipcode (all optional strings).
+    Returns a list of Point or None, parallel to input.
+    """
+    if not addresses:
+        return []
+
+    total = len(addresses)
+    results = []
+    spinner = itertools.cycle('|/-\\')
+
+    def _geocode(addr):
+        return maptiler(_address_string(addr), strict=strict)
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for result in executor.map(_geocode, addresses):
+            results.append(result)
+            print(f'\r  maptiler [{len(results)}/{total}] {next(spinner)}', end='', flush=True)
+
+    print(flush=True)
+    return results
+
+
+# -- Combined geocoder --
+
+def resolve(address, strict=False):
+    """Single address string → Point or None. Tries Census first, falls back to MapTiler."""
+    return census(address) or maptiler(address, strict=strict)
