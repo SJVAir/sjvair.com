@@ -13,9 +13,8 @@ def facility(db):
         county_code=10,
         facid=1,
         name='TEST PLANT',
-        city='FRESNO',
-        zipcode='93701',
-        position=Point(-119.787, 36.737, srid=4326),
+        address={'street': '123 MAIN ST', 'city': 'FRESNO', 'zipcode': '93701'},
+        point=Point(-119.787, 36.737, srid=4326),
     )
 
 
@@ -67,7 +66,8 @@ class TestCeidarsEndpoint:
 
     def test_excludes_facilities_without_position(self, client, db):
         facility = Facility.objects.create(
-            county_code=10, facid=99, name='NO POSITION', city='FRESNO', zipcode='93701'
+            county_code=10, facid=99, name='NO POSITION',
+            address={'city': 'FRESNO', 'zipcode': '93701'},
         )
         EmissionsRecord.objects.create(facility=facility, year=2023)
         url = reverse('api:v2:ceidars:list')
