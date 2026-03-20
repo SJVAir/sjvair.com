@@ -1,4 +1,5 @@
 import io
+import re
 
 import pandas as pd
 import requests
@@ -6,6 +7,7 @@ import requests
 from django.core.management.base import BaseCommand, CommandError
 
 from camp.apps.ceidars.models import EmissionsRecord, Facility
+from camp.apps.regions.models import Region
 from camp.utils import geocode
 
 
@@ -31,6 +33,48 @@ TOXICS_COLS = {
     'TS': 'total_score', 'HRA': 'hra',
     'CHINDEX': 'chindex', 'AHINDEX': 'ahindex',
 }
+
+# Known corrections for CEIDARS city name variants.
+# Keys are uppercase raw values; values are the corrected uppercase form
+# used for region lookup. Strip-CA-suffix handling is done separately.
+CITY_CORRECTIONS = {
+    'AWAHNEE': 'AHWAHNEE',
+    'BAKERSIFLED': 'BAKERSFIELD',
+    'KETTLEMAN': 'KETTLEMAN CITY',
+    'LAKE OF THE WDS': 'LAKE OF THE WOODS',
+    'LEGRAND': 'LE GRAND',
+    'LEMONCOVE': 'LEMON COVE',
+    'MC FARLAND': 'MCFARLAND',
+    "O'NEILS": "O'NEALS",
+    'ONEALS': "O'NEALS",
+    'PINE MTN CLUB': 'PINE MOUNTAIN CLUB',
+    'PORTERVILE': 'PORTERVILLE',
+    'TRANQUILITY': 'TRANQUILLITY',
+}
+
+# Patterns that indicate a value is not a city name (county strings,
+# GPS coordinates, descriptive strings, etc.) — these resolve to None.
+_NON_CITY_RE = re.compile(
+    r'county|sjvapcd|valley$|national|nat park|\bnf\b|cyn\b|site near|'
+    r'mi n/o|w/o\s|west of|skyline|tejon ranch|terminus|pampa peak|'
+    r'las yeguas|western fresno|& kings|sec\s*\d|\bt\d+s\b',
+    re.IGNORECASE,
+)
+
+_STRIP_CA_RE = re.compile(r',?\s*CA$', re.IGNORECASE)
+
+
+def normalize_city(raw, city_lookup):
+    """
+    Normalize a raw CEIDARS city string and return a matching Region or None.
+
+    city_lookup: dict mapping uppercase city/CDP name → Region object.
+    """
+    city = _STRIP_CA_RE.sub('', raw.strip()).strip().upper()
+    if not city or _NON_CITY_RE.search(city):
+        return None
+    city = CITY_CORRECTIONS.get(city, city)
+    return city_lookup.get(city)
 
 
 def fetch_csv(url):
@@ -64,10 +108,25 @@ class Command(BaseCommand):
 
         counties = {county_filter: COUNTY_CODES[county_filter]} if county_filter else COUNTY_CODES
 
+        # Pre-load region lookups once for the entire import.
+        county_regions = {
+            r.name: r
+            for r in Region.objects.filter(type=Region.Type.COUNTY, name__in=COUNTY_CODES.values())
+        }
+        zipcode_regions = {
+            r.name: r
+            for r in Region.objects.filter(type=Region.Type.ZIPCODE)
+        }
+        city_regions = {
+            r.name.upper(): r
+            for r in Region.objects.filter(type__in=[Region.Type.CITY, Region.Type.CDP])
+        }
+
         total_facilities = total_records = total_geocode_failures = 0
 
         for county_code, county_name in counties.items():
             created_count = updated_count = record_count = geocode_failures = 0
+            county_region = county_regions.get(county_name)
 
             criteria_url = f'{BASE_URL}/faccrit_output.csv?dbyr={year}&ab_=SJV&dis_=SJU&co_={county_code}'
             toxics_url = f'{BASE_URL}/factox_output.csv?dbyr={year}&ab_=SJV&dis_=SJU&co_={county_code}'
@@ -138,39 +197,49 @@ class Command(BaseCommand):
                 )
                 facid = int(row['FACID'])
 
+                address = {
+                    'street': row.get('FSTREET', '').strip(),
+                    'city': row.get('FCITY', '').strip(),
+                    'zipcode': row.get('FZIP', '').strip(),
+                }
+                zipcode_region = zipcode_regions.get(address['zipcode'])
+                city_region = normalize_city(address['city'], city_regions)
+
                 facility, created = Facility.objects.get_or_create(
                     county_code=county_code,
                     facid=facid,
                     defaults={
                         'name': row.get('FNAME', '').strip(),
-                        'street': row.get('FSTREET', '').strip(),
-                        'city': row.get('FCITY', '').strip(),
-                        'zipcode': row.get('FZIP', '').strip(),
+                        'address': address,
                         'sic_code': int(row['FSIC']) if row.get('FSIC') else None,
                         'metadata_year': year,
+                        'county': county_region,
+                        'zipcode': zipcode_region,
+                        'city': city_region,
                     },
                 )
 
                 if created:
                     created_count += 1
-                    facility.position = positions.get(facid)
-                    if facility.position is None:
+                    facility.point = positions.get(facid)
+                    if facility.point is None:
                         geocode_failures += 1
                     facility.save()
                 else:
                     updated_count += 1
                     if regeocode:
-                        facility.position = positions.get(facid)
-                        if facility.position is None:
+                        facility.point = positions.get(facid)
+                        if facility.point is None:
                             geocode_failures += 1
 
                     if facility.metadata_year is None or year >= facility.metadata_year:
                         facility.name = row.get('FNAME', '').strip()
-                        facility.street = row.get('FSTREET', '').strip()
-                        facility.city = row.get('FCITY', '').strip()
-                        facility.zipcode = row.get('FZIP', '').strip()
+                        facility.address = address
                         facility.sic_code = int(row['FSIC']) if row.get('FSIC') else None
                         facility.metadata_year = year
+                        facility.county = county_region
+                        facility.zipcode = zipcode_region
+                        facility.city = city_region
 
                     facility.save()
 

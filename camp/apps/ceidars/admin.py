@@ -20,10 +20,10 @@ class EmissionsRecordInline(admin.TabularInline):
 
 @admin.register(Facility)
 class FacilityAdmin(admin.GISModelAdmin):
-    list_display = ['name', 'city', 'county_code', 'sic_code', 'has_position', 'latest_year']
+    list_display = ['name', 'county_code', 'sic_code', 'has_point', 'latest_year']
     list_filter = ['county_code']
-    search_fields = ['name', 'city']
-    readonly_fields = ['sqid', 'county_code', 'facid', 'metadata_year', 'position']
+    search_fields = ['name', 'address__city']
+    readonly_fields = ['sqid', 'county_code', 'facid', 'metadata_year', 'point']
     inlines = [EmissionsRecordInline]
     actions = ['regeocode_selected']
 
@@ -33,8 +33,8 @@ class FacilityAdmin(admin.GISModelAdmin):
         )
 
     @admin.display(boolean=True, description='Geocoded')
-    def has_position(self, obj):
-        return obj.position is not None
+    def has_point(self, obj):
+        return obj.point is not None
 
     @admin.display(description='Latest year')
     def latest_year(self, obj):
@@ -46,7 +46,7 @@ class FacilityAdmin(admin.GISModelAdmin):
         failed = 0
         for facility in queryset:
             if facility.geocode():
-                facility.save(update_fields=['position'])
+                facility.save(update_fields=['point'])
                 success += 1
             else:
                 failed += 1

@@ -42,7 +42,7 @@ class CeidarsEndpoint(generics.ListEndpoint):
 
         qs = (
             Facility.objects
-            .exclude(position=None)
+            .filter(point__isnull=False)
             .filter(emissions__year=self.year)
             .prefetch_related('emissions')
         )
@@ -50,7 +50,7 @@ class CeidarsEndpoint(generics.ListEndpoint):
         if bbox:
             try:
                 west, south, east, north = [float(x) for x in bbox.split(',')]
-                qs = qs.filter(position__within=Polygon.from_bbox((west, south, east, north)))
+                qs = qs.filter(point__within=Polygon.from_bbox((west, south, east, north)))
             except (ValueError, TypeError):
                 return Http400('Invalid bbox format. Expected: west,south,east,north')
 
@@ -70,7 +70,7 @@ class CeidarsEndpoint(generics.ListEndpoint):
             if not region.boundary:
                 return Facility.objects.none()
 
-            qs = qs.filter(position__within=region.boundary.geometry)
+            qs = qs.filter(point__within=region.boundary.geometry)
 
         return qs
 

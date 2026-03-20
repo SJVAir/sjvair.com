@@ -104,16 +104,26 @@ def batch(addresses, retries=5):
     return results
 
 
+# -- Combined geocoder --
+
+
+def resolve(address, strict=False):
+    """Try Census first, fall back to MapTiler. Returns Point or None."""
+    return census(address) or maptiler(address, strict=strict)
+
+
 # -- MapTiler Geocoding API --
 
-_MAPTILER_ACCEPTED_TYPES = {'address', 'poi'}
-
-
-def maptiler(address, retries=5):
+def maptiler(address, retries=5, strict=False):
     """Single address → Point or None via MapTiler Geocoding API.
 
-    Only accepts results with place_type 'address' or 'poi' — skips city
-    centroids, postal codes, counties, and other low-precision fallbacks.
+    By default, accepts the first result with place_type 'address' or 'poi',
+    skipping city centroids, postal codes, counties, and other low-precision
+    fallbacks.
+
+    With strict=True, scans all returned features and only returns a result
+    if one has place_type 'address' — useful when poi-level precision isn't
+    good enough (e.g. a named park matching instead of a street address).
     """
     query = clean_address(address)
     if not query:
@@ -126,11 +136,17 @@ def maptiler(address, retries=5):
         try:
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
-            data = response.json()
-            for feature in data.get('features', []):
-                if _MAPTILER_ACCEPTED_TYPES.intersection(feature.get('place_type', [])):
-                    lon, lat = feature['geometry']['coordinates']
-                    return Point(lon, lat, srid=4326)
+            features = response.json().get('features', [])
+            for feature in features:
+                place_type = set(feature.get('place_type', []))
+                if strict:
+                    if 'address' in place_type:
+                        lon, lat = feature['geometry']['coordinates']
+                        return Point(lon, lat, srid=4326)
+                else:
+                    if place_type & {'address', 'poi'}:
+                        lon, lat = feature['geometry']['coordinates']
+                        return Point(lon, lat, srid=4326)
             return None
         except requests.RequestException:
             time.sleep((2 ** attempt) * 0.5)

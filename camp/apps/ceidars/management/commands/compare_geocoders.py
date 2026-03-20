@@ -1,40 +1,15 @@
 import io
 import math
-from urllib.parse import quote
 
 import pandas as pd
 import requests
 
-from django.conf import settings
-from django.contrib.gis.geos import Point
 from django.core.management.base import BaseCommand
 
 from camp.utils import geocode
-from camp.utils.geocode import clean_address
 
 
 BASE_URL = 'https://www.arb.ca.gov/app/emsinv/iframe/facinfo'
-
-
-def maptiler_with_type(address):
-    """Like geocode.maptiler() but returns (Point or None, place_type str or None)
-    for the best feature regardless of type — used to show what MapTiler matched."""
-    query = clean_address(address)
-    if not query:
-        return None, None
-    url = f'https://api.maptiler.com/geocoding/{quote(query)}.json'
-    try:
-        response = requests.get(url, params={'key': settings.MAPTILER_API_KEY}, timeout=10)
-        response.raise_for_status()
-        features = response.json().get('features', [])
-        if features:
-            f = features[0]
-            lon, lat = f['geometry']['coordinates']
-            place_type = '/'.join(f.get('place_type', []))
-            return Point(lon, lat, srid=4326), place_type
-    except requests.RequestException:
-        pass
-    return None, None
 
 
 def fetch_csv(url):
@@ -117,7 +92,8 @@ class Command(BaseCommand):
 
         # Individual geocodes
         census_results = []
-        maptiler_results = []  # list of (Point or None, place_type str or None)
+        maptiler_loose = []   # strict=False: address or poi
+        maptiler_strict = []  # strict=True: address only
         for i, addr in enumerate(rows, 1):
             self.stdout.write(f'  census {i}/{len(rows)}...   ', ending='\r')
             address = f'{addr["street"]}, {addr["city"]}, CA {addr["zipcode"]}'
@@ -127,49 +103,52 @@ class Command(BaseCommand):
         for i, addr in enumerate(rows, 1):
             self.stdout.write(f'  maptiler {i}/{len(rows)}...', ending='\r')
             address = f'{addr["street"]}, {addr["city"]}, CA {addr["zipcode"]}'
-            maptiler_results.append(maptiler_with_type(address))
+            maptiler_loose.append(geocode.maptiler(address, strict=False))
+            maptiler_strict.append(geocode.maptiler(address, strict=True))
 
         self.stdout.write('\n')
 
         # Output comparison
         col_addr = 42
         col_result = 22
-        col_type = 14
         header = (
             f'{"Address":<{col_addr}} '
             f'{"Census":<{col_result}} '
-            f'{"MapTiler":<{col_result}} {"type":<{col_type}} '
+            f'{"MT loose":<{col_result}} '
+            f'{"MT strict":<{col_result}} '
             f'{"Batch":<{col_result}} '
-            f'{"C↔M":>8}  {"C↔B":>8}'
+            f'{"C↔ML":>8}  {"C↔MS":>8}  {"C↔B":>8}'
         )
         self.stdout.write(header)
         self.stdout.write('-' * len(header))
 
-        census_hits = maptiler_hits = batch_hits = 0
+        census_hits = loose_hits = strict_hits = batch_hits = 0
 
-        for addr, c, (m, m_type), b in zip(rows, census_results, maptiler_results, batch_results):
+        for addr, c, ml, ms, b in zip(rows, census_results, maptiler_loose, maptiler_strict, batch_results):
             address_str = f'{addr["street"]}, {addr["city"]} {addr["zipcode"]}'[:col_addr]
 
             if c:
                 census_hits += 1
-            if m:
-                maptiler_hits += 1
+            if ml:
+                loose_hits += 1
+            if ms:
+                strict_hits += 1
             if b:
                 batch_hits += 1
 
             self.stdout.write(
                 f'{address_str:<{col_addr}} '
                 f'{fmt_point(c):<{col_result}} '
-                f'{fmt_point(m):<{col_result}} {(m_type or "--"):<{col_type}} '
+                f'{fmt_point(ml):<{col_result}} '
+                f'{fmt_point(ms):<{col_result}} '
                 f'{fmt_point(b):<{col_result}} '
-                f'{fmt_dist(c, m):>8}  {fmt_dist(c, b):>8}'
+                f'{fmt_dist(c, ml):>8}  {fmt_dist(c, ms):>8}  {fmt_dist(c, b):>8}'
             )
 
         self.stdout.write('')
-        maptiler_raw_hits = sum(1 for _, t in maptiler_results if t is not None)
         self.stdout.write(
             f'Matched: Census {census_hits}/{len(rows)}, '
-            f'MapTiler {maptiler_hits}/{len(rows)} address/poi '
-            f'({maptiler_raw_hits}/{len(rows)} before type filter), '
+            f'MT loose {loose_hits}/{len(rows)}, '
+            f'MT strict {strict_hits}/{len(rows)}, '
             f'Batch {batch_hits}/{len(rows)}'
         )
