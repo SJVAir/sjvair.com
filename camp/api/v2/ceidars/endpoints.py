@@ -35,7 +35,7 @@ class FacilityDetail(generics.DetailEndpoint):
             Prefetch('emissions', queryset=EmissionsRecord.objects.order_by('-year'))
         )
 
-    def serialize(self, facility, **kwargs):
-        data = self.serializer_class(facility).serialize()
-        data['emissions'] = EmissionsSerializer(facility.emissions.all()).serialize()
+    def serialize(self, instance, **kwargs):
+        data = self.serializer_class(instance).serialize()
+        data['emissions'] = EmissionsSerializer(instance.emissions.all()).serialize()
         return data

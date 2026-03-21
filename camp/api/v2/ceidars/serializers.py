@@ -1,17 +1,14 @@
 from resticus import serializers
 
 
-EMISSIONS_FIELDS = (
-    'year', 'tog', 'rog', 'co', 'nox', 'sox', 'pm25', 'pm10',
-    'total_score', 'hra', 'chindex', 'ahindex',
-    'acetaldehyde', 'benzene', 'butadiene', 'carbon_tetrachloride',
-    'chromium_hexavalent', 'dichlorobenzene', 'formaldehyde',
-    'methylene_chloride', 'naphthalene', 'perchloroethylene',
-)
-
-
 class EmissionsSerializer(serializers.Serializer):
-    fields = EMISSIONS_FIELDS
+    fields = (
+        'year', 'tog', 'rog', 'co', 'nox', 'sox', 'pm25', 'pm10',
+        'total_score', 'hra', 'chindex', 'ahindex',
+        'acetaldehyde', 'benzene', 'butadiene', 'carbon_tetrachloride',
+        'chromium_hexavalent', 'dichlorobenzene', 'formaldehyde',
+        'methylene_chloride', 'naphthalene', 'perchloroethylene',
+    )
 
 
 class FacilitySerializer(serializers.Serializer):
