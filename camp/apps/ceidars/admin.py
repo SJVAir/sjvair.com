@@ -24,7 +24,7 @@ class EmissionsRecordInline(admin.TabularInline):
 
 @admin.register(Facility)
 class FacilityAdmin(admin.GISModelAdmin):
-    list_display = ['name', 'get_county', 'get_city', 'get_zipcode', 'sic_code', 'has_point', 'latest_year']
+    list_display = ['name', 'get_county', 'get_city', 'get_zipcode', 'sic_code', 'is_minor_source', 'has_point', 'latest_year']
     list_filter = ['county', 'city']
     search_fields = ['name', 'address__street', 'address__city']
     readonly_fields = ['sqid', 'county_code', 'facid', 'metadata_year', 'point']

@@ -9,5 +9,6 @@ class FacilitySerializer(serializers.Serializer):
         ('city', lambda f: f.get_city()),
         ('zipcode', lambda f: f.get_zipcode()),
         'sic_code',
+        'is_minor_source',
         'point',
     )
