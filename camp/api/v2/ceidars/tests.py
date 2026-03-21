@@ -81,7 +81,7 @@ class TestCeidarsFilters(TestCase):
         assert 'TEST GAS STATION' not in names
 
 
-class TestCeidarsEndpoint:
+class TestFacilityList:
     def test_returns_facilities_for_latest_year(self, client, record):
         url = reverse('api:v2:ceidars:list')
         response = client.get(url)
@@ -89,14 +89,30 @@ class TestCeidarsEndpoint:
         data = response.json()['data']
         assert len(data) == 1
         assert data[0]['name'] == 'TEST PLANT'
-        assert data[0]['year'] == 2023
-        assert data[0]['pm25'] is not None
+        assert data[0]['emissions']['year'] == 2023
+        assert data[0]['emissions']['pm25'] is not None
 
     def test_returns_facilities_for_specific_year(self, client, record):
-        url = reverse('api:v2:ceidars:list-by-year', kwargs={'year': 2023})
-        response = client.get(url)
+        url = reverse('api:v2:ceidars:list')
+        response = client.get(url, {'year': 2023})
         assert response.status_code == 200
         assert len(response.json()['data']) == 1
+
+    def test_invalid_year_returns_empty_list(self, client, db):
+        url = reverse('api:v2:ceidars:list')
+        response = client.get(url, {'year': 'garbage'})
+        assert response.status_code == 200
+        assert response.json()['data'] == []
+
+    def test_year_filter_excludes_other_years(self, client, facility):
+        EmissionsRecord.objects.create(facility=facility, year=2022, pm25='1.0')
+        EmissionsRecord.objects.create(facility=facility, year=2023, pm25='1.5')
+        url = reverse('api:v2:ceidars:list')
+        response = client.get(url, {'year': 2022})
+        assert response.status_code == 200
+        data = response.json()['data']
+        assert len(data) == 1
+        assert data[0]['emissions']['year'] == 2022
 
     def test_excludes_facilities_without_position(self, client, db):
         facility = Facility.objects.create(
@@ -110,16 +126,36 @@ class TestCeidarsEndpoint:
         names = [d['name'] for d in response.json()['data']]
         assert 'NO POSITION' not in names
 
-    def test_excludes_facilities_without_record_for_year(self, client, facility):
-        # facility exists but has no EmissionsRecord
+    def test_excludes_facilities_without_record_for_year(self, client, record):
+        no_record = Facility.objects.create(
+            county_code=10, facid=99, name='NO RECORD',
+            address={'city': 'FRESNO', 'zipcode': '93701'},
+            point=Point(-119.787, 36.737, srid=4326),
+        )
         url = reverse('api:v2:ceidars:list')
         response = client.get(url)
         assert response.status_code == 200
-        assert response.json()['data'] == []
+        names = [d['name'] for d in response.json()['data']]
+        assert 'TEST PLANT' in names
+        assert 'NO RECORD' not in names
 
-    def test_empty_when_no_records(self, client, db):
-        url = reverse('api:v2:ceidars:list')
+
+
+class TestFacilityDetail:
+    def test_returns_facility_with_all_emissions(self, client, facility):
+        EmissionsRecord.objects.create(facility=facility, year=2023, pm25='1.5')
+        EmissionsRecord.objects.create(facility=facility, year=2022, pm25='1.2')
+        url = reverse('api:v2:ceidars:detail', kwargs={'sqid': facility.sqid})
         response = client.get(url)
         assert response.status_code == 200
-        assert response.json()['data'] == []
+        data = response.json()['data']
+        assert data['name'] == 'TEST PLANT'
+        assert isinstance(data['emissions'], list)
+        assert len(data['emissions']) == 2
+        assert data['emissions'][0]['year'] == 2023
+        assert data['emissions'][1]['year'] == 2022
 
+    def test_returns_404_for_unknown_sqid(self, client, db):
+        url = reverse('api:v2:ceidars:detail', kwargs={'sqid': 'doesnotexist'})
+        response = client.get(url)
+        assert response.status_code == 404
