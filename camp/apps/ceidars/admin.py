@@ -8,10 +8,14 @@ class EmissionsRecordInline(admin.TabularInline):
     model = EmissionsRecord
     extra = 0
     readonly_fields = [
-        'sqid', 'year',
+        'year',
         'tog', 'rog', 'co', 'nox', 'sox', 'pm25', 'pm10',
         'total_score', 'hra', 'chindex', 'ahindex',
+        'acetaldehyde', 'benzene', 'butadiene', 'carbon_tetrachloride',
+        'chromium_hexavalent', 'dichlorobenzene', 'formaldehyde',
+        'methylene_chloride', 'naphthalene', 'perchloroethylene',
     ]
+    fields = readonly_fields
     can_delete = False
 
     def has_add_permission(self, request, obj=None):
@@ -20,12 +24,24 @@ class EmissionsRecordInline(admin.TabularInline):
 
 @admin.register(Facility)
 class FacilityAdmin(admin.GISModelAdmin):
-    list_display = ['name', 'county_code', 'sic_code', 'has_point', 'latest_year']
-    list_filter = ['county_code']
-    search_fields = ['name', 'address__city']
+    list_display = ['name', 'get_county', 'get_city', 'get_zipcode', 'sic_code', 'has_point', 'latest_year']
+    list_filter = ['county', 'city']
+    search_fields = ['name', 'address__street', 'address__city']
     readonly_fields = ['sqid', 'county_code', 'facid', 'metadata_year', 'point']
     inlines = [EmissionsRecordInline]
     actions = ['regeocode_selected']
+
+    fieldsets = [
+        (None, {
+            'fields': ['sqid', ('county_code', 'facid'), 'name', 'sic_code', 'metadata_year'],
+        }),
+        ('Location', {
+            'fields': ['address', 'point'],
+        }),
+        ('Regions', {
+            'fields': ['county', 'zipcode', 'city'],
+        }),
+    ]
 
     def get_queryset(self, request):
         return super().get_queryset(request).annotate(

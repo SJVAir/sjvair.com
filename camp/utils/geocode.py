@@ -177,9 +177,9 @@ def maptiler_batch(addresses, workers=5, strict=False):
     with ThreadPoolExecutor(max_workers=workers) as executor:
         for result in executor.map(_geocode, addresses):
             results.append(result)
-            print(f'\r  maptiler [{len(results)}/{total}] {next(spinner)}', end='', flush=True)
+            print(f'\r  maptiler [{len(results)}/{total}] {next(spinner)}\033[K', end='', flush=True)
 
-    print(flush=True)
+    print(f'\r\033[K', end='', flush=True)
     return results
 
 
