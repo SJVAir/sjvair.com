@@ -1,5 +1,6 @@
 import io
 import re
+import time
 
 import pandas as pd
 import requests
@@ -32,6 +33,20 @@ CRITERIA_COLS = {
 TOXICS_COLS = {
     'TS': 'total_score', 'HRA': 'hra',
     'CHINDEX': 'chindex', 'AHINDEX': 'ahindex',
+}
+
+# CAS number → EmissionsRecord field name for named toxic air contaminants.
+TOXIC_POLLUTANTS = {
+    '75070': 'acetaldehyde',
+    '71432': 'benzene',
+    '106990': 'butadiene',
+    '56235': 'carbon_tetrachloride',
+    '18540299': 'chromium_hexavalent',
+    '106467': 'dichlorobenzene',
+    '50000': 'formaldehyde',
+    '75092': 'methylene_chloride',
+    '91203': 'naphthalene',
+    '127184': 'perchloroethylene',
 }
 
 # Known corrections for CEIDARS city name variants.
@@ -77,10 +92,16 @@ def normalize_city(raw, city_lookup):
     return city_lookup.get(city)
 
 
-def fetch_csv(url):
-    response = requests.get(url, timeout=30)
-    response.raise_for_status()
-    return pd.read_csv(io.StringIO(response.text), dtype=str).fillna('')
+def fetch_csv(url, retries=5):
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            return pd.read_csv(io.StringIO(response.text), dtype=str).fillna('')
+        except requests.RequestException:
+            if attempt == retries - 1:
+                raise
+            time.sleep((2 ** attempt) * 0.5)
 
 
 def decimal_or_none(val):
@@ -92,6 +113,10 @@ def decimal_or_none(val):
 
 class Command(BaseCommand):
     help = 'Import CEIDARS emissions data for a given year.'
+
+    def status(self, msg):
+        """Write an overwriting status line, clearing any leftover characters."""
+        self.stdout.write(f'{msg}\033[K', ending='\r')
 
     def add_arguments(self, parser):
         parser.add_argument('--year', type=int, required=True, help='Inventory year (e.g. 2023)')
@@ -123,21 +148,36 @@ class Command(BaseCommand):
         }
 
         total_facilities = total_records = total_geocode_failures = 0
+        start_time = time.monotonic()
 
         for county_code, county_name in counties.items():
             created_count = updated_count = record_count = geocode_failures = 0
+            county_start = time.monotonic()
             county_region = county_regions.get(county_name)
 
             criteria_url = f'{BASE_URL}/faccrit_output.csv?dbyr={year}&ab_=SJV&dis_=SJU&co_={county_code}'
             toxics_url = f'{BASE_URL}/factox_output.csv?dbyr={year}&ab_=SJV&dis_=SJU&co_={county_code}'
 
-            self.stdout.write(f'{county_name} ({county_code}): fetching...', ending='\r')
+            self.status(f'{county_name} ({county_code}): fetching...')
             try:
                 criteria = fetch_csv(criteria_url)
                 toxics = fetch_csv(toxics_url)
             except requests.RequestException as e:
                 self.stderr.write(f'{county_name} ({county_code}): fetch failed — {e}')
                 continue
+
+            # Fetch per-pollutant EMS (tons/yr) for each named toxic.
+            # Facilities that don't emit a given pollutant won't appear in that response.
+            toxic_ems = {}  # {facid: {field_name: value}}
+            for cas_id, field_name in TOXIC_POLLUTANTS.items():
+                pol_url = f'{BASE_URL}/factox_output.csv?dbyr={year}&ab_=SJV&dis_=SJU&co_={county_code}&showpol={cas_id}'
+                try:
+                    pol_df = fetch_csv(pol_url)
+                    for _, row in pol_df.iterrows():
+                        facid = int(row['FACID'])
+                        toxic_ems.setdefault(facid, {})[field_name] = decimal_or_none(row.get('EMS', ''))
+                except requests.RequestException as e:
+                    self.stderr.write(f'{county_name} ({county_code}): {field_name} fetch failed — {e}')
 
             merged = pd.merge(
                 criteria, toxics,
@@ -167,19 +207,13 @@ class Command(BaseCommand):
             # Batch geocode upfront via Census, then fall back to MapTiler for failures
             positions = {}
             if geocode_index:
-                self.stdout.write(
-                    f'{county_name} ({county_code}): geocoding {len(geocode_index)} via Census...',
-                    ending='\r',
-                )
+                self.status(f'{county_name} ({county_code}): geocoding {len(geocode_index)} via Census...')
                 results = geocode.census_batch([addr for _, addr in geocode_index])
                 positions = {facid: point for (facid, _), point in zip(geocode_index, results)}
 
                 census_failures = [(facid, addr) for (facid, addr), point in zip(geocode_index, results) if point is None]
                 if census_failures:
-                    self.stdout.write(
-                        f'{county_name} ({county_code}): {len(census_failures)} Census failures, retrying via MapTiler...',
-                        ending='\r',
-                    )
+                    self.status(f'{county_name} ({county_code}): {len(census_failures)} Census failures, retrying via MapTiler...')
                     maptiler_results = geocode.maptiler_batch([addr for _, addr in census_failures])
                     for (facid, _), point in zip(census_failures, maptiler_results):
                         positions[facid] = point
@@ -187,10 +221,7 @@ class Command(BaseCommand):
             # Upsert facilities and emissions records
             total_rows = len(merged)
             for i, (_, row) in enumerate(merged.iterrows(), 1):
-                self.stdout.write(
-                    f'{county_name} ({county_code}): {i}/{total_rows} facilities...',
-                    ending='\r',
-                )
+                self.status(f'{county_name} ({county_code}): {i}/{total_rows} facilities...')
                 facid = int(row['FACID'])
 
                 address = {
@@ -247,6 +278,7 @@ class Command(BaseCommand):
                     col: decimal_or_none(row.get(src))
                     for src, col in TOXICS_COLS.items()
                 })
+                emissions_data.update(toxic_ems.get(facid, {}))
 
                 EmissionsRecord.objects.update_or_create(
                     facility=facility,
@@ -255,20 +287,24 @@ class Command(BaseCommand):
                 )
                 record_count += 1
 
+            elapsed = time.monotonic() - county_start
             self.stdout.write(
                 f'{county_name} ({county_code}): '
                 f'{created_count + updated_count} facilities '
                 f'({created_count} new, {updated_count} updated), '
                 f'{record_count} emissions records upserted, '
-                f'{geocode_failures} geocoding failures'
+                f'{geocode_failures} geocoding failures '
+                f'[{elapsed:.1f}s]'
             )
 
             total_facilities += created_count + updated_count
             total_records += record_count
             total_geocode_failures += geocode_failures
 
+        total_elapsed = time.monotonic() - start_time
         self.stdout.write(
             f'\nDone. {total_facilities} facilities, '
             f'{total_records} emissions records, '
-            f'{total_geocode_failures} geocoding failures.'
+            f'{total_geocode_failures} geocoding failures '
+            f'[{total_elapsed:.1f}s]'
         )

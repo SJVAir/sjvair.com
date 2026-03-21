@@ -11,8 +11,13 @@ from camp.apps.regions.models import Region
 from .serializers import FacilitySerializer
 
 
-EMISSIONS_FIELDS = ['tog', 'rog', 'co', 'nox', 'sox', 'pm25', 'pm10',
-                    'total_score', 'hra', 'chindex', 'ahindex']
+EMISSIONS_FIELDS = [
+    'tog', 'rog', 'co', 'nox', 'sox', 'pm25', 'pm10',
+    'total_score', 'hra', 'chindex', 'ahindex',
+    'acetaldehyde', 'benzene', 'butadiene', 'carbon_tetrachloride',
+    'chromium_hexavalent', 'dichlorobenzene', 'formaldehyde',
+    'methylene_chloride', 'naphthalene', 'perchloroethylene',
+]
 
 
 class CeidarsEndpoint(generics.ListEndpoint):
