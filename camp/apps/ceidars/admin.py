@@ -40,6 +40,21 @@ class EmissionsYearFilter(base_admin.SimpleListFilter):
         return queryset
 
 
+class SourceTypeFilter(base_admin.SimpleListFilter):
+    title = 'source type'
+    parameter_name = 'source_type'
+
+    def lookups(self, request, model_admin):
+        return [('major', 'Major'), ('minor', 'Minor')]
+
+    def queryset(self, request, queryset):
+        if self.value() == 'major':
+            return queryset.major_sources()
+        if self.value() == 'minor':
+            return queryset.minor_sources()
+        return queryset
+
+
 class EmissionsRecordInline(admin.TabularInline):
     model = EmissionsRecord
     extra = 0
@@ -61,7 +76,7 @@ class EmissionsRecordInline(admin.TabularInline):
 @admin.register(Facility)
 class FacilityAdmin(admin.GISModelAdmin):
     list_display = ['name', 'get_county', 'get_city', 'get_zipcode', 'sic_code', 'is_minor_source', 'has_point', 'latest_year']
-    list_filter = [CountyFilter, EmissionsYearFilter]
+    list_filter = [CountyFilter, EmissionsYearFilter, SourceTypeFilter]
     search_fields = ['name', 'address__street', 'address__city']
     readonly_fields = ['sqid', 'county_code', 'facid', 'name', 'sic_code', 'metadata_year', 'address', 'point', 'county', 'city', 'zipcode']
     inlines = [EmissionsRecordInline]

@@ -98,13 +98,25 @@
 <div class="module">
     <table>
         <caption>Data Integrations</caption>
+        {% comment %}
         <tr>
             <td>
-                <h3><a href="{% url 'admin:hms_smoke_smoke_changelist'%}">HMS Smoke</a></h3>
-                <p>NOAA Hazard Mapping System Smoke data.</p>
+                <h3>HMS <a href="{% url 'admin:hms_fire_changelist'%}">Fire</a> &amp; <a href="{% url 'admin:hms_smoke_changelist'%}">Smoke</a></h3>
+                <p>NOAA's Hazard Mapping System.</p>
             </td>
             <td class="links">
-                <p><a href='https://www.ospo.noaa.gov/products/land/hms.html#maps'>📍 HMS Smoke Map</a></p>
+                <p><a href='https://www.ospo.noaa.gov/products/land/hms.html#maps'>📍 HMS Map</a></p>
+            </td>
+        </tr>
+        {% endcomment %}
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:ceidars_facility_changelist'%}">CEIDARS</a></h3>
+                <p>California Emissions Inventory Data and Reporting System.</p>
+            </td>
+            <td class="links">
+                <p><a href='https://ww2.arb.ca.gov/ceidars'>📍 CEIDARS Website</a></p>
+                <p><a href='https://ww2.arb.ca.gov/applications/facility-search-tool'>📍 Facility Search Tool</a></p>
             </td>
         </tr>
     </table>
