@@ -1,10 +1,22 @@
 from django.db.models import Prefetch
 from resticus import generics
+from resticus.views import Endpoint
 
 from camp.apps.ceidars.models import EmissionsRecord, Facility
 
 from .filters import FacilityFilter
 from .serializers import EmissionsSerializer, FacilitySerializer
+
+
+class YearList(Endpoint):
+    def get(self, request):
+        years = (
+            EmissionsRecord.objects
+            .values_list('year', flat=True)
+            .distinct()
+            .order_by('-year')
+        )
+        return {'data': list(years)}
 
 
 class FacilityList(generics.ListEndpoint):

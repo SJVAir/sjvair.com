@@ -14,9 +14,14 @@ class EmissionsSerializer(serializers.Serializer):
 class FacilitySerializer(serializers.Serializer):
     fields = (
         ('id', lambda f: f.sqid),
+        'facid',
         'name',
+        ('address', lambda f: f.address.get('street')),
+        ('county_id', lambda f: f.county.sqid if f.county_id else None),
         ('county', lambda f: f.get_county()),
+        ('city_id', lambda f: f.city.sqid if f.city_id else None),
         ('city', lambda f: f.get_city()),
+        ('zipcode_id', lambda f: f.zipcode.sqid if f.zipcode_id else None),
         ('zipcode', lambda f: f.get_zipcode()),
         'sic_code',
         'is_minor_source',
