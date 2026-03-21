@@ -47,6 +47,9 @@ class Facility(TimeStampedModel):
     county_code = models.IntegerField(_('County code'))
     facid = models.IntegerField(_('Facility ID'))
 
+    # Tracks which import year last wrote the facility metadata (name, address,
+    # sic_code, region FKs). Used to prevent older imports from overwriting
+    # newer metadata — emissions records are always upserted regardless.
     metadata_year = models.IntegerField(_('Metadata year'), null=True, blank=True)
     name = models.CharField(_('Name'), max_length=60)
     sic_code = models.IntegerField(_('SIC code'), null=True, blank=True)
