@@ -97,7 +97,10 @@ def fetch_csv(url, retries=5):
         try:
             response = requests.get(url, timeout=30)
             response.raise_for_status()
-            return pd.read_csv(io.StringIO(response.text), dtype=str).fillna('')
+            try:
+                return pd.read_csv(io.StringIO(response.text), dtype=str).fillna('')
+            except pd.errors.EmptyDataError:
+                return pd.DataFrame()
         except requests.RequestException:
             if attempt == retries - 1:
                 raise
@@ -279,6 +282,9 @@ class Command(BaseCommand):
                     for src, col in TOXICS_COLS.items()
                 })
                 emissions_data.update(toxic_ems.get(facid, {}))
+
+                if all(v is None for v in emissions_data.values()):
+                    continue
 
                 EmissionsRecord.objects.update_or_create(
                     facility=facility,
