@@ -7,9 +7,37 @@ from model_utils.models import TimeStampedModel
 from camp.utils import geocode as _geocode
 
 
+# SIC codes that CEIDARS excludes via the "all_fac=C" parameter — gas stations,
+# newspapers, print shops, dry cleaners, and autobody shops. These are minor
+# permitted sources whose emissions are aggregated at the county level in CARB's
+# areawide inventory rather than individually attributed.
+MINOR_SOURCE_SIC_CODES = frozenset([
+    2711,  # Newspapers
+    2752,  # Commercial printing, lithographic
+    5541,  # Gasoline service stations
+    7216,  # Dry cleaning plants
+    7532,  # Top, body & upholstery repair shops
+    7538,  # Automotive repair shops, NEC
+])
+
+
+class FacilityQuerySet(models.QuerySet):
+    def major_sources(self):
+        return self.exclude(sic_code__in=MINOR_SOURCE_SIC_CODES)
+
+    def minor_sources(self):
+        return self.filter(sic_code__in=MINOR_SOURCE_SIC_CODES)
+
+
 class FacilityManager(models.Manager):
     def get_queryset(self):
-        return super().get_queryset().select_related('county', 'zipcode', 'city')
+        return FacilityQuerySet(self.model, using=self._db).select_related('county', 'zipcode', 'city')
+
+    def major_sources(self):
+        return self.get_queryset().major_sources()
+
+    def minor_sources(self):
+        return self.get_queryset().minor_sources()
 
 
 class Facility(TimeStampedModel):
@@ -70,6 +98,10 @@ class Facility(TimeStampedModel):
 
     def get_zipcode(self):
         return self.zipcode.name if self.zipcode_id else self.address.get('zipcode', '')
+
+    @property
+    def is_minor_source(self):
+        return self.sic_code in MINOR_SOURCE_SIC_CODES
 
     def geocode(self):
         """
