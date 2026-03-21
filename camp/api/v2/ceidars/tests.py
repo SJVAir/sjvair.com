@@ -141,6 +141,23 @@ class TestFacilityList:
 
 
 
+class TestYearList:
+    def test_returns_distinct_years_descending(self, client, facility):
+        EmissionsRecord.objects.create(facility=facility, year=2021)
+        EmissionsRecord.objects.create(facility=facility, year=2022)
+        EmissionsRecord.objects.create(facility=facility, year=2023)
+        url = reverse('api:v2:ceidars:years')
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.json()['data'] == [2023, 2022, 2021]
+
+    def test_returns_empty_list_when_no_records(self, client, db):
+        url = reverse('api:v2:ceidars:years')
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.json()['data'] == []
+
+
 class TestFacilityDetail:
     def test_returns_facility_with_all_emissions(self, client, facility):
         EmissionsRecord.objects.create(facility=facility, year=2023, pm25='1.5')
