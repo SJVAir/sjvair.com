@@ -13,14 +13,14 @@ from camp.utils import geocode
 
 
 COUNTY_CODES = {
-    10: 'Fresno',
-    15: 'Kern',
-    16: 'Kings',
-    20: 'Madera',
-    24: 'Merced',
-    39: 'San Joaquin',
-    50: 'Stanislaus',
-    54: 'Tulare',
+    10: 'Fresno County',
+    15: 'Kern County',
+    16: 'Kings County',
+    20: 'Madera County',
+    24: 'Merced County',
+    39: 'San Joaquin County',
+    50: 'Stanislaus County',
+    54: 'Tulare County',
 }
 
 BASE_URL = 'https://www.arb.ca.gov/app/emsinv/iframe/facinfo'
