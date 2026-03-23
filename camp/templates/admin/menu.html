@@ -91,11 +91,11 @@
 
 <div class="module">
     <table>
-        <caption>Wildfire & Smoke</caption>
+        <caption>Wildfire &amp; Smoke</caption>
         <tr>
             <td>
-                <h3><a href="{% url 'admin:hms_smoke_changelist' %}">HMS Smoke</a></h3>
-                <p>NOAA Hazard Mapping System smoke plumes.</p>
+                <h3><a href="{% url 'admin:hms_fire_changelist' %}">Fire Pixels</a></h3>
+                <p>NOAA Hazard Mapping System</p>
             </td>
             <td class="links">
                 <p><a href="https://www.ospo.noaa.gov/products/land/hms.html#maps" target="_blank">📍 HMS Smoke Map</a></p>
@@ -103,11 +103,25 @@
         </tr>
         <tr>
             <td>
-                <h3><a href="{% url 'admin:hms_fire_changelist' %}">HMS Fire</a></h3>
-                <p>NOAA Hazard Mapping System fire points.</p>
+                <h3><a href="{% url 'admin:hms_smoke_changelist' %}">Smoke Plumes</a></h3>
+                <p>NOAA Hazard Mapping System</p>
             </td>
             <td class="links">
-                <p><a href="https://www.ospo.noaa.gov/products/land/hms.html#maps" target="_blank">📍 HMS Fire Map</a></p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Data Integrations</caption>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:ceidars_facility_changelist'%}">CEIDARS</a></h3>
+                <p>California Emissions Inventory Data and Reporting System.</p>
+            </td>
+            <td class="links">
+                <p><a href='https://ww2.arb.ca.gov/ceidars'>🔗 CEIDARS Website</a></p>
             </td>
         </tr>
     </table>

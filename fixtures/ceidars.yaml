@@ -1,0 +1,53 @@
+# Facility 1: major source in Fresno (county pk=3, city pk=9, zipcode pk=11)
+- model: ceidars.facility
+  pk: 1
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    county_code: 10
+    facid: 1
+    metadata_year: 2023
+    name: TEST PLANT
+    sic_code: 4911
+    address: {"street": "123 MAIN ST", "city": "FRESNO", "zipcode": "93728"}
+    point: SRID=4326;POINT (-119.787 36.737)
+    county: 3
+    city: 9
+    zipcode: 11
+
+# Facility 2: minor source (gas station) in Kern, no city/zipcode FK
+- model: ceidars.facility
+  pk: 2
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    county_code: 15
+    facid: 2
+    metadata_year: 2023
+    name: TEST GAS STATION
+    sic_code: 5541
+    address: {"street": "456 OAK AVE", "city": "BAKERSFIELD", "zipcode": "93301"}
+    point: SRID=4326;POINT (-119.018 35.373)
+    county: 2
+    city: null
+    zipcode: null
+
+- model: ceidars.emissionsrecord
+  pk: 1
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    facility: 1
+    year: 2023
+    tog: "1.5"
+    pm25: "0.8"
+
+- model: ceidars.emissionsrecord
+  pk: 2
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    facility: 2
+    year: 2023
+    tog: "0.1"
+    pm25: "0.05"
