@@ -2,6 +2,38 @@ from django.test import TestCase
 from unittest.mock import patch
 
 from camp.apps.monitors.airgradient.api import AirGradientAPI
+from camp.apps.monitors.airgradient.models import AirGradient
+from camp.apps.monitors.models import Monitor
+
+
+class HealthCheckSupportTests(TestCase):
+    _next_sensor_id = 1
+
+    def make_monitor(self, device):
+        sensor_id = HealthCheckSupportTests._next_sensor_id
+        HealthCheckSupportTests._next_sensor_id += 1
+        return AirGradient.objects.create(name=f'Test {device}', device=device, sensor_id=sensor_id)
+
+    def test_dual_channel_supports_health_checks(self):
+        monitor = self.make_monitor('O-1PP')
+        assert monitor.supports_health_checks() is True
+
+    def test_single_channel_does_not_support_health_checks(self):
+        monitor = self.make_monitor('O-1PST')
+        assert monitor.supports_health_checks() is False
+
+    def test_health_check_queryset_filter_includes_device(self):
+        f = AirGradient.health_check_queryset_filter()
+        assert f.get('airgradient__isnull') is False
+        assert f.get('airgradient__device') == 'O-1PP'
+
+    def test_get_for_health_checks_includes_dual_channel(self):
+        self.make_monitor('O-1PP')
+        assert Monitor.objects.get_for_health_checks().count() == 1
+
+    def test_get_for_health_checks_excludes_single_channel(self):
+        self.make_monitor('O-1PST')
+        assert Monitor.objects.get_for_health_checks().count() == 0
 
 
 class AirGradientAPITests(TestCase):

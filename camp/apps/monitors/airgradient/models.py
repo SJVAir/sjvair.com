@@ -136,6 +136,13 @@ class AirGradient(LCSMixin, Monitor):
     def is_dual_channel(self):
         return self.device == 'O-1PP'
 
+    @classmethod
+    def health_check_queryset_filter(cls):
+        return {**super().health_check_queryset_filter(), 'airgradient__device': 'O-1PP'}
+
+    def supports_health_checks(self):
+        return self.is_dual_channel
+
     @property
     def data_providers(self):
         providers = super().data_providers
@@ -226,9 +233,9 @@ class AirGradient(LCSMixin, Monitor):
         for EntryModel, spec in self.ENTRY_CONFIG.items():
             fields = spec.get('fields', {})
 
-            for channel, payload in channels:
+            for channel, channel_payload in channels:
                 data = {
-                    field_name: payload.get(source_key)
+                    field_name: channel_payload.get(source_key)
                     for field_name, source_key in fields.items()
                 }
 

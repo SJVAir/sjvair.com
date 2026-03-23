@@ -29,6 +29,13 @@ class HealthCheckSerializer(serializers.Serializer):
         'grade',
     ]
 
+    def fixup(self, instance, data):
+        import math
+        return {
+            k: None if isinstance(v, float) and math.isnan(v) else v
+            for k, v in data.items()
+        }
+
 
 class MonitorSerializer(serializers.Serializer):
     fields = [

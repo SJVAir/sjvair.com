@@ -475,7 +475,7 @@ class CO2(BaseEntry):
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
-        help_text='Carbon monoxide (ppm)',
+        help_text='Carbon dioxide (ppm)',
     )
 
 

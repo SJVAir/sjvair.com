@@ -59,7 +59,7 @@ class ClosestMonitor(MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         form = self.get_form(self.request.GET)
-        if not form.is_valid:
+        if not form.is_valid():
             return self.model.objects.none()
 
         queryset = super().get_queryset()

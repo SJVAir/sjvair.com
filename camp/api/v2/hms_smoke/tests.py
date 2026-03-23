@@ -1,4 +1,5 @@
 from datetime import datetime, time, timedelta
+from unittest.mock import patch
 
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.test import TestCase
@@ -6,6 +7,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.integrate.hms_smoke.models import Smoke
+
+# Fixed reference time: 20:00 UTC = 12:00 PM PST (UTC-8).
+# Using noon Pacific ensures now.hour >= 12, preventing the overnight fallback
+# in SmokeListOngoing regardless of when the tests actually run.
+FIXED_NOW = datetime(2026, 1, 15, 20, 0, 0, tzinfo=timezone.utc)
 
 
 def create_smoke_objects(density, start, end):
@@ -147,10 +153,15 @@ class Tests_OngoingSmoke(TestCase):
     test5 - query for ongoing, give smoke2 an old time query (not from most recent query), returns smoke1
     """
     def setUp(self):
+        self.patcher = patch('django.utils.timezone.now', return_value=FIXED_NOW)
+        self.patcher.start()
         self.smoke1 = create_smoke_objects("Light", -1, 1)
         self.smoke2 = create_smoke_objects("MEDIUM", -1, -1)
         self.smoke3 = create_smoke_objects("Heavy", 1, 1)
         self.smoke4 = create_smoke_objects("light", -1, 1)
+
+    def tearDown(self):
+        self.patcher.stop()
 
     def test1_ongoing_smoke(self):
         url = reverse("api:v2:hms-smoke:smoke-ongoing")

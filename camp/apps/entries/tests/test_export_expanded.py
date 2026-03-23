@@ -1,11 +1,12 @@
 import pandas as pd
 
+from decimal import Decimal
 from django.test import TestCase
 from django.utils.timezone import make_aware
 from datetime import datetime, timedelta
 
 from camp.apps.entries.timelines import ExpandedEntryTimeline
-from camp.apps.entries.models import PM25, Humidity, Temperature
+from camp.apps.entries.models import PM25, Humidity, Particulates, Temperature
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
@@ -123,6 +124,30 @@ class ExpandedEntryTimelineTests(TestCase):
 
         assert 'humidity_raw' in df.columns
         assert not any(col.startswith('pm25_') for col in df.columns)
+
+    def test_particulates_multi_field_columns_are_included(self):
+        # Particulates has no 'value' field — each particle size bin should
+        # produce its own column rather than being silently dropped.
+        Particulates.objects.create(
+            monitor=self.monitor,
+            timestamp=self.timestamp,
+            sensor='a',
+            stage=Particulates.Stage.RAW,
+            particles_03um=123.4,
+            particles_05um=45.6,
+        )
+
+        df = ExpandedEntryTimeline(
+            monitor=self.monitor,
+            start_time=self.timestamp - timedelta(hours=1),
+            end_time=self.timestamp + timedelta(hours=1),
+            entry_types=[Particulates],
+        ).to_dataframe()
+
+        assert 'particulates_raw_a_particles_03um' in df.columns
+        assert 'particulates_raw_a_particles_05um' in df.columns
+        assert df.iloc[0]['particulates_raw_a_particles_03um'] == Decimal('123.4')
+        assert df.iloc[0]['particulates_raw_a_particles_05um'] == Decimal('45.6')
 
     def test_empty_dataset_returns_empty_df_with_datetime_index(self):
         df = ExpandedEntryTimeline(

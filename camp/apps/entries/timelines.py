@@ -138,7 +138,21 @@ class ExpandedEntryTimeline(EntryTimeline):
                 return '_'.join(bits)
 
             df['column_key'] = df.apply(label_row, axis=1)
-            frames.append(df[['timestamp', 'sensor', 'column_key', *entry_model.declared_field_names]])
+            fields = entry_model.declared_field_names
+
+            if fields == ['value']:
+                frames.append(df[['timestamp', 'column_key', 'value']])
+            else:
+                # Multi-field entry type (e.g. Particulates): melt each field into
+                # its own row so the pivot_table's values='value' still works.
+                melted = df.melt(
+                    id_vars=['timestamp', 'column_key'],
+                    value_vars=fields,
+                    var_name='_field',
+                    value_name='value',
+                )
+                melted['column_key'] = melted['column_key'] + '_' + melted['_field']
+                frames.append(melted[['timestamp', 'column_key', 'value']])
 
         if not frames:
             return pd.DataFrame()
