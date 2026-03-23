@@ -13,6 +13,7 @@ urlpatterns = [
     path('monitors/', include('camp.api.v2.monitors.urls', namespace='monitors')),
     path('calibrations/', include('camp.api.v2.calibrations.urls', namespace='calibrations')),
     path('hms-smoke/', include('camp.api.v2.hms_smoke.urls', namespace='hms-smoke')),
+    path('regions/', include('camp.api.v2.regions.urls', namespace='regions')),
     path('ceidars/', include('camp.api.v2.ceidars.urls', namespace='ceidars')),
     path('task/<task_id>/', endpoints.TaskStatus.as_view(), name='task-status'),
 ]
