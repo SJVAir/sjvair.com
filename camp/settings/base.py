@@ -112,6 +112,8 @@ INSTALLED_APPS = [
     'camp.apps.contact',
     'camp.apps.entries',
     'camp.apps.helpdesk',
+    'camp.apps.hms',
+    'camp.apps.ces',
     'camp.apps.integrate.hms_smoke',
     'camp.apps.ceidars',
     'camp.apps.monitors',
