@@ -3,6 +3,7 @@ from base64 import b64encode
 from django.contrib import admin as base_admin
 from django.contrib.gis import admin
 from django.db.models import Max
+from django.urls import reverse
 from django.utils.safestring import mark_safe
 
 from camp.apps.regions.models import Region
@@ -93,7 +94,7 @@ class FacilityAdmin(admin.GISModelAdmin):
     list_display = ['name', 'get_county', 'get_city', 'get_zipcode', 'sic_code', 'is_minor_source', 'has_point', 'latest_year']
     list_filter = [CountyFilter, EmissionsYearFilter, SourceTypeFilter]
     search_fields = ['name', 'address__street', 'address__city']
-    readonly_fields = ['sqid', 'county_code', 'facid', 'name', 'sic_code', 'metadata_year', 'address', 'point', 'county', 'city', 'zipcode', 'get_county_map', 'get_city_map', 'get_zipcode_map']
+    readonly_fields = ['sqid', 'county_code', 'facid', 'name', 'sic_code', 'metadata_year', 'address', 'point', 'get_county_display', 'get_city_display', 'get_zipcode_display']
     inlines = [EmissionsRecordInline]
     actions = ['regeocode_selected']
 
@@ -106,9 +107,9 @@ class FacilityAdmin(admin.GISModelAdmin):
         }),
         ('Regions', {
             'fields': [
-                ('county', 'get_county_map'),
-                ('city', 'get_city_map'),
-                ('zipcode', 'get_zipcode_map'),
+                'get_county_display',
+                'get_city_display',
+                'get_zipcode_display',
             ],
         }),
     ]
@@ -129,10 +130,10 @@ class FacilityAdmin(admin.GISModelAdmin):
 
     def _render_region_map(self, facility, region):
         if not region or not region.boundary:
-            return '-'
+            return None
         boundary = region.boundary
         width, height = {'landscape': (400, 300), 'portrait': (300, 400)}[boundary.orientation]
-        static_map = maps.StaticMap(width=width, height=height, buffer=0.1)
+        static_map = maps.StaticMap(width=width, height=height, buffer=0.1, zoom_adjust=-1)
         static_map.add(maps.Area(
             geometry=boundary.geometry,
             fill_color='DodgerBlue',
@@ -145,28 +146,34 @@ class FacilityAdmin(admin.GISModelAdmin):
                 geometry=facility.point,
                 shape='*',
                 size=200,
-                fill_color='SaddleBrown',
+                fill_color='Crimson',
                 border_color='White',
                 border_width=1,
                 outline=True,
-                # outline_color='Black',
-                # outline_alpha=1,
-                # outline_width=2,
-          ))
-        content = b64encode(static_map.render(format='png')).decode()
-        return mark_safe(f'<img src="data:image/png;base64,{content}" alt="Map" />')
+            ))
+        return b64encode(static_map.render(format='png')).decode()
 
-    @admin.display(description='County map')
-    def get_county_map(self, facility):
-        return self._render_region_map(facility, facility.county)
+    def _render_region_display(self, facility, region):
+        if not region:
+            return '-'
+        url = reverse('admin:regions_region_change', args=[region.pk])
+        html = f'<a href="{url}">{region.name}</a>'
+        map_content = self._render_region_map(facility, region)
+        if map_content:
+            html += f'<br><img src="data:image/png;base64,{map_content}" alt="{region.name} map" />'
+        return mark_safe(html)
 
-    @admin.display(description='City map')
-    def get_city_map(self, facility):
-        return self._render_region_map(facility, facility.city)
+    @admin.display(description='County')
+    def get_county_display(self, facility):
+        return self._render_region_display(facility, facility.county)
 
-    @admin.display(description='Zipcode map')
-    def get_zipcode_map(self, facility):
-        return self._render_region_map(facility, facility.zipcode)
+    @admin.display(description='City')
+    def get_city_display(self, facility):
+        return self._render_region_display(facility, facility.city)
+
+    @admin.display(description='Zipcode')
+    def get_zipcode_display(self, facility):
+        return self._render_region_display(facility, facility.zipcode)
 
     @admin.display(boolean=True, description='Geocoded')
     def has_point(self, obj):
