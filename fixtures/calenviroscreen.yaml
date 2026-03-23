@@ -1,0 +1,323 @@
+# Two fake Fresno County census tracts for CES tests.
+# PKs start at 1001 to avoid conflicts with regions.yaml.
+
+- model: regions.region
+  pk: 1001
+  fields:
+    name: Census Tract 1.01
+    slug: tract-06019000101
+    type: tract
+    external_id: '06019000101'
+    boundary: 1003
+
+- model: regions.region
+  pk: 1002
+  fields:
+    name: Census Tract 1.02
+    slug: tract-06019000102
+    type: tract
+    external_id: '06019000102'
+    boundary: 1004
+
+# 2010 boundaries
+- model: regions.boundary
+  pk: 1001
+  fields:
+    region: 1001
+    version: '2010'
+    metadata: {}
+    geometry: SRID=4326;MULTIPOLYGON (((-119.8 36.7, -119.7 36.7, -119.7 36.8, -119.8 36.8, -119.8 36.7)))
+
+- model: regions.boundary
+  pk: 1002
+  fields:
+    region: 1002
+    version: '2010'
+    metadata: {}
+    geometry: SRID=4326;MULTIPOLYGON (((-119.7 36.7, -119.6 36.7, -119.6 36.8, -119.7 36.8, -119.7 36.7)))
+
+# 2020 boundaries
+- model: regions.boundary
+  pk: 1003
+  fields:
+    region: 1001
+    version: '2020'
+    metadata: {}
+    geometry: SRID=4326;MULTIPOLYGON (((-119.8 36.7, -119.7 36.7, -119.7 36.8, -119.8 36.8, -119.8 36.7)))
+
+- model: regions.boundary
+  pk: 1004
+  fields:
+    region: 1002
+    version: '2020'
+    metadata: {}
+    geometry: SRID=4326;MULTIPOLYGON (((-119.7 36.7, -119.6 36.7, -119.6 36.8, -119.7 36.8, -119.7 36.7)))
+
+# CES4 records — both tracts × both vintages
+- model: ces.ces4
+  pk: 1
+  fields:
+    boundary: 1001  # tract 1.01, 2010
+    population: 4500
+    ci_score: 75.2
+    ci_score_p: 88.4
+    dac_sb535: true
+    dac_category: 1
+    pollution: 6.1
+    pollution_s: 0.74
+    pollution_p: 82.0
+    pol_pm: 12.4
+    pol_pm_p: 79.0
+    pol_ozone: 0.062
+    pol_ozone_p: 71.0
+    pol_diesel: 8.3
+    pol_diesel_p: 65.0
+    pol_traffic: 520.0
+    pol_traffic_p: 55.0
+    popchar: 7.8
+    popchar_s: 0.69
+    popchar_p: 91.0
+    char_pov: 28.4
+    char_pov_p: 85.0
+    char_unemp: 14.2
+    char_unemp_p: 80.0
+    pop_hispanic: 2800
+    pop_white: 900
+    pop_black: 200
+    pop_native: 50
+    pop_aapi: 300
+    pop_other: 250
+    pop_under_10: 600
+    pop_10_64: 3200
+    pop_65_plus: 700
+    pol_pest: null
+    pol_pest_p: null
+    pol_rsei_haz: null
+    pol_rsei_haz_p: null
+    pol_drink: null
+    pol_drink_p: null
+    pol_haz: null
+    pol_haz_p: null
+    pol_lead: null
+    pol_lead_p: null
+    pol_cleanups: null
+    pol_cleanups_p: null
+    pol_gwthreats: null
+    pol_gwthreats_p: null
+    pol_iwb: null
+    pol_iwb_p: null
+    pol_swis: null
+    pol_swis_p: null
+    char_asthma: null
+    char_asthma_p: null
+    char_cvd: null
+    char_cvd_p: null
+    char_lbw: null
+    char_lbw_p: null
+    char_edu: null
+    char_edu_p: null
+    char_ling: null
+    char_ling_p: null
+    char_housingb: null
+    char_housingb_p: null
+
+- model: ces.ces4
+  pk: 2
+  fields:
+    boundary: 1002  # tract 1.02, 2010
+    population: 3200
+    ci_score: 42.1
+    ci_score_p: 51.3
+    dac_sb535: false
+    dac_category: null
+    pollution: 3.8
+    pollution_s: 0.46
+    pollution_p: 48.0
+    pol_pm: 8.1
+    pol_pm_p: 44.0
+    pol_ozone: 0.055
+    pol_ozone_p: 52.0
+    pol_diesel: 4.1
+    pol_diesel_p: 38.0
+    pol_traffic: 210.0
+    pol_traffic_p: 30.0
+    popchar: 5.1
+    popchar_s: null
+    popchar_p: 60.0
+    char_pov: 18.1
+    char_pov_p: 55.0
+    char_unemp: 9.3
+    char_unemp_p: 48.0
+    pop_hispanic: 1400
+    pop_white: 1100
+    pop_black: 150
+    pop_native: 30
+    pop_aapi: 320
+    pop_other: 200
+    pop_under_10: 400
+    pop_10_64: 2300
+    pop_65_plus: 500
+    pol_pest: null
+    pol_pest_p: null
+    pol_rsei_haz: null
+    pol_rsei_haz_p: null
+    pol_drink: null
+    pol_drink_p: null
+    pol_haz: null
+    pol_haz_p: null
+    pol_lead: null
+    pol_lead_p: null
+    pol_cleanups: null
+    pol_cleanups_p: null
+    pol_gwthreats: null
+    pol_gwthreats_p: null
+    pol_iwb: null
+    pol_iwb_p: null
+    pol_swis: null
+    pol_swis_p: null
+    char_asthma: null
+    char_asthma_p: null
+    char_cvd: null
+    char_cvd_p: null
+    char_lbw: null
+    char_lbw_p: null
+    char_edu: null
+    char_edu_p: null
+    char_ling: null
+    char_ling_p: null
+    char_housingb: null
+    char_housingb_p: null
+
+- model: ces.ces4
+  pk: 3
+  fields:
+    boundary: 1003  # tract 1.01, 2020
+    population: 4600
+    ci_score: 74.8
+    ci_score_p: 87.9
+    dac_sb535: true
+    dac_category: 1
+    pollution: 6.0
+    pollution_s: 0.73
+    pollution_p: 81.5
+    pol_pm: 12.1
+    pol_pm_p: 78.0
+    pol_ozone: 0.061
+    pol_ozone_p: 70.0
+    pol_diesel: 8.0
+    pol_diesel_p: 64.0
+    pol_traffic: 510.0
+    pol_traffic_p: 54.0
+    popchar: 7.7
+    popchar_s: null
+    popchar_p: 90.5
+    char_pov: 27.9
+    char_pov_p: 84.0
+    char_unemp: 13.8
+    char_unemp_p: 79.0
+    pop_hispanic: 2850
+    pop_white: 880
+    pop_black: 210
+    pop_native: 55
+    pop_aapi: 305
+    pop_other: 260
+    pop_under_10: 620
+    pop_10_64: 3260
+    pop_65_plus: 720
+    pol_pest: null
+    pol_pest_p: null
+    pol_rsei_haz: null
+    pol_rsei_haz_p: null
+    pol_drink: null
+    pol_drink_p: null
+    pol_haz: null
+    pol_haz_p: null
+    pol_lead: null
+    pol_lead_p: null
+    pol_cleanups: null
+    pol_cleanups_p: null
+    pol_gwthreats: null
+    pol_gwthreats_p: null
+    pol_iwb: null
+    pol_iwb_p: null
+    pol_swis: null
+    pol_swis_p: null
+    char_asthma: null
+    char_asthma_p: null
+    char_cvd: null
+    char_cvd_p: null
+    char_lbw: null
+    char_lbw_p: null
+    char_edu: null
+    char_edu_p: null
+    char_ling: null
+    char_ling_p: null
+    char_housingb: null
+    char_housingb_p: null
+
+- model: ces.ces4
+  pk: 4
+  fields:
+    boundary: 1004  # tract 1.02, 2020
+    population: 3300
+    ci_score: 41.5
+    ci_score_p: 50.8
+    dac_sb535: false
+    dac_category: null
+    pollution: 3.7
+    pollution_s: null
+    pollution_p: 47.5
+    pol_pm: 7.9
+    pol_pm_p: 43.0
+    pol_ozone: 0.054
+    pol_ozone_p: 51.0
+    pol_diesel: 4.0
+    pol_diesel_p: 37.0
+    pol_traffic: 205.0
+    pol_traffic_p: 29.0
+    popchar: 5.0
+    popchar_s: null
+    popchar_p: 59.5
+    char_pov: 17.8
+    char_pov_p: 54.0
+    char_unemp: 9.1
+    char_unemp_p: 47.0
+    pop_hispanic: 1420
+    pop_white: 1120
+    pop_black: 155
+    pop_native: 32
+    pop_aapi: 325
+    pop_other: 205
+    pop_under_10: 410
+    pop_10_64: 2350
+    pop_65_plus: 510
+    pol_pest: null
+    pol_pest_p: null
+    pol_rsei_haz: null
+    pol_rsei_haz_p: null
+    pol_drink: null
+    pol_drink_p: null
+    pol_haz: null
+    pol_haz_p: null
+    pol_lead: null
+    pol_lead_p: null
+    pol_cleanups: null
+    pol_cleanups_p: null
+    pol_gwthreats: null
+    pol_gwthreats_p: null
+    pol_iwb: null
+    pol_iwb_p: null
+    pol_swis: null
+    pol_swis_p: null
+    char_asthma: null
+    char_asthma_p: null
+    char_cvd: null
+    char_cvd_p: null
+    char_lbw: null
+    char_lbw_p: null
+    char_edu: null
+    char_edu_p: null
+    char_ling: null
+    char_ling_p: null
+    char_housingb: null
+    char_housingb_p: null

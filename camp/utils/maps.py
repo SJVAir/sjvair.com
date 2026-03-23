@@ -19,8 +19,8 @@ from shapely.geometry import box, mapping, shape, Point, Polygon, MultiPolygon
 
 from io import BytesIO
 
-# Set a contant cache directory to prevent it from being lost
-ctx.tile.set_cache_dir(f'{tempfile.tempdir}/contextily-cache_{timezone.now().strftime("%Y%m")}')
+# Set a constant cache directory to prevent it from being lost
+ctx.tile.set_cache_dir(f'{tempfile.gettempdir()}/contextily-cache_{timezone.now().strftime("%Y%m")}')
 
 # CRS Constants
 CRS_LATLON = 'EPSG:4326'
@@ -42,12 +42,13 @@ class MapElement:
     label_color: str = 'black'
     label_size: int = 10
     label_weight: str = 'normal'  # or 'bold'
-    label_outline: bool = False  # If True, render white outline for visibility
-    label_ha: str = 'center'        # 'left', 'center', 'right'
-    label_va: str = 'center'        # 'top', 'center', 'bottom'
+    label_outline: bool = False
+    label_outline_color: str = 'white'
+    label_outline_width: float = 3.0
 
     outline: bool = False
     shadow: bool = False
+    zorder: int = 1
 
 
 @dataclass
@@ -59,6 +60,7 @@ class Marker(MapElement):
 
     border_color: Optional[str] = 'white'
     border_width: float = 1.5
+    zorder: int = 5
 
     label_position: Optional[Literal[
         'above', 'below', 'left', 'right'
@@ -148,7 +150,8 @@ class Area(MapElement):
                 x, y = (minx, (miny + maxy) / 2)
                 ha, va = 'left', 'center'
             case 'center':
-                x, y = ((minx + maxx) / 2, (miny + maxy) / 2)
+                pt = self.geometry.representative_point()
+                x, y = pt.x, pt.y
                 ha, va = 'center', 'center'
             case 'right':
                 x, y = (maxx, (miny + maxy) / 2)
@@ -188,9 +191,9 @@ class StaticMap:
         self.basemap = basemap
         if self.basemap and self.basemap.get('name', '').startswith('MapTiler'):
             self.basemap['key'] = settings.MAPTILER_API_KEY
-            self.basemap['variant'] = 'base-v4'
+            if self.basemap.get('name') == 'MapTiler.Basic':
+                self.basemap['variant'] = 'base-v4'
             self.basemap['r'] = '@2x'
-        # self.basemap['zoomOffset'] = 0
 
         self.crs = crs
         self.zoom_adjust = zoom_adjust
@@ -198,49 +201,31 @@ class StaticMap:
 
     @property
     def areas(self):
-        return [e for e in self.elements if isinstance(e.geometry, (Polygon, MultiPolygon))]
+        return [e for e in self.elements if isinstance(e, Area)]
 
     @property
     def markers(self):
-        return [e for e in self.elements if isinstance(e.geometry, Point)]
+        return [e for e in self.elements if isinstance(e, Marker)]
 
     def add(self, element: MapElement):
         element.geometry = to_shape(element.geometry)
         self.elements.append(element)
 
-    def add_area_label(self, ax, area):
-        ha, va, x, y = area.get_label_position()
+    def add_label(self, ax, element):
+        ha, va, x, y = element.get_label_position()
 
         text_obj = ax.text(
-            x, y, area.label,
-            fontsize=area.label_size,
-            color=area.label_color,
-            weight=area.label_weight,
+            x, y, element.label,
+            fontsize=element.label_size,
+            color=element.label_color,
+            weight=element.label_weight,
             ha=ha, va=va,
-            zorder=6,
+            zorder=element.zorder + 1,
         )
 
-        if area.label_outline:
+        if element.label_outline:
             text_obj.set_path_effects([
-                pe.Stroke(linewidth=3, foreground='white'),
-                pe.Normal(),
-            ])
-
-    def add_marker_label(self, ax, marker):
-        ha, va, x, y = marker.get_label_position()
-
-        text_obj = ax.text(
-            x, y, marker.label,
-            fontsize=marker.label_size,
-            color=marker.label_color,
-            weight=marker.label_weight,
-            ha=ha, va=va,
-            zorder=6,
-        )
-
-        if marker.label_outline:
-            text_obj.set_path_effects([
-                pe.Stroke(linewidth=3, foreground='white'),
+                pe.Stroke(linewidth=element.label_outline_width, foreground=element.label_outline_color),
                 pe.Normal(),
             ])
 
@@ -267,15 +252,31 @@ class StaticMap:
 
         return effects
 
-    def render(self, out_path: Optional[str] = None, format: Optional[str] = None):
+    def render(self, out_path: Optional[str] = None, format: Optional[str] = None, jpeg_quality: int = 90):
         if not self.elements:
             raise ValueError('No map elements added.')
 
-        fig, ax = plt.subplots(
+        fig = plt.figure(
             figsize=(self.width / self.dpi, self.height / self.dpi),
-            dpi=self.dpi
+            dpi=self.dpi,
+            frameon=False,
         )
-        fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+        ax = fig.add_axes([0, 0, 1, 1])
+
+        # Set map bounds first so basemap fetches the right tiles
+        geometries = [e.geometry for e in self.elements if e.geometry and not e.geometry.is_empty]
+        if not geometries:
+            raise ValueError('No valid geometries to render map.')
+
+        series = gpd.GeoSeries(geometries, crs=CRS_WEBMERCATOR)
+        extent = self._compute_extent(series, buffer=self.buffer)
+        ax.set_xlim(extent[0], extent[2])
+        ax.set_ylim(extent[1], extent[3])
+        ax.axis('off')
+
+        # Draw basemap first so vector layers render on top
+        if self.basemap:
+            ctx.add_basemap(ax, source=self.basemap, attribution=False, zoom_adjust=self.zoom_adjust, reset_extent=False)
 
         # Plot polygons
         for area in self.areas:
@@ -286,10 +287,11 @@ class StaticMap:
                 edgecolor=area.border_color or 'black',
                 path_effects=self.get_path_effects(area),
                 linewidth=area.border_width,
+                zorder=area.zorder,
             )
 
             if area.label:
-                self.add_area_label(ax, area)
+                self.add_label(ax, area)
 
         # Plot points
         for marker in self.markers:
@@ -302,38 +304,28 @@ class StaticMap:
                 linewidths=marker.border_width,
                 marker=marker.shape,
                 path_effects=self.get_path_effects(marker),
-                zorder=3,
+                zorder=marker.zorder,
             )
 
             if marker.label:
-                self.add_marker_label(ax, marker)
-
-        # Set map bounds
-        geometries = [e.geometry for e in self.elements if e.geometry and not e.geometry.is_empty]
-        if not geometries:
-            raise ValueError('No valid geometries to render map.')
-
-        series = gpd.GeoSeries(geometries, crs=CRS_LATLON)
-        extent = self._compute_extent(series, buffer=self.buffer)
-        ax.set_xlim(extent[0], extent[2])
-        ax.set_ylim(extent[1], extent[3])
-        ax.axis('off')
-
-        if self.basemap:
-            ctx.add_basemap(ax, source=self.basemap, attribution=False, zoom_adjust=self.zoom_adjust)
+                self.add_label(ax, marker)
 
         if out_path and not format:
             format = out_path.split('.')[-1]
         if not format:
             format = 'png'
 
+        save_kwargs = dict(format=format, pad_inches=0, bbox_inches='tight')
+        if format in ('jpg', 'jpeg'):
+            save_kwargs['pil_kwargs'] = {'quality': jpeg_quality}
+
         if out_path:
-            plt.savefig(out_path, format=format)
+            plt.savefig(out_path, **save_kwargs)
             plt.close(fig)
             return None
         else:
             buf = BytesIO()
-            plt.savefig(buf, format=format)
+            plt.savefig(buf, **save_kwargs)
             plt.close(fig)
             buf.seek(0)
             return buf.getvalue()
@@ -395,48 +387,6 @@ class StaticMap:
         return self._adjust_bounds_to_aspect(bounds)
 
 
-def plot_overlay_map(
-    overlays: list,
-    base_layers: list = None,
-    out_path: str = None,
-    width: int = 3600,
-    height: int = 3600,
-    buffer: float = 0.3,
-):
-    """
-    Render a static map with translucent overlay geometries and bold base outlines.
-
-    Parameters:
-        overlays (list): List of geometries to render with fill + thin border
-        base_layers (list): Optional list of geometries to render with thick border only
-        out_path (str): File path to save the output image
-        width (int): Image width in pixels
-        height (int): Image height in pixels
-        buffer (float): Geometry buffer to pad around map extent
-    """
-    static_map = StaticMap(width=width, height=height, buffer=buffer)
-
-    for geometry in overlays:
-        static_map.add(Area(
-            geometry=geometry,
-            fill_color='red',
-            border_color='dimgray',
-            border_width=1,
-            alpha=0.4,
-        ))
-
-    if base_layers:
-        for geometry in base_layers:
-            static_map.add(Area(
-                geometry=geometry,
-                fill_color='none',
-                border_color='black',
-                border_width=4,
-            ))
-
-    static_map.render(out_path)
-    return static_map
-
 
 def to_shape(geometry):
     if isinstance(geometry, GEOSGeometry):
@@ -471,6 +421,7 @@ def from_geometries(
     height: int = 600,
     dpi: int = 100,
     buffer: Optional[float] = None,
+    basemap=ctx.providers.MapTiler.Basic,
 
     marker_size: int = Marker.size,
     marker_shape: str = Marker.shape,
@@ -490,6 +441,7 @@ def from_geometries(
 
     out_path: Optional[str] = None,
     format: Optional[str] = None,
+    jpeg_quality: int = 90,
 ):
     """
     Render a static map from a list of geometries and return a BytesIO buffer or save to disk.
@@ -511,7 +463,7 @@ def from_geometries(
     """
     # Make sure input is geographic
 
-    static_map = StaticMap(width=width, height=height, dpi=dpi, buffer=buffer)
+    static_map = StaticMap(width=width, height=height, dpi=dpi, buffer=buffer, basemap=basemap)
 
     for geometry in geometries:
         if geometry.geom_type == 'Point':
@@ -541,5 +493,5 @@ def from_geometries(
                 shadow=area_shadow,
             ))
 
-    return static_map.render(out_path=out_path, format=format)
+    return static_map.render(out_path=out_path, format=format, jpeg_quality=jpeg_quality)
 

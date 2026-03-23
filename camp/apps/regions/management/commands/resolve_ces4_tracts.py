@@ -1,51 +1,40 @@
-import tempfile
-from pathlib import Path
-
 import esri2gpd
 import geopandas as gpd
 import pandas as pd
-import requests
 
 from django.core.management.base import BaseCommand
 
 from camp.apps.regions.models import Region, Boundary
+from camp.apps.regions.utils import get_tract_relationships
 from camp.utils import geodata
-
-
-RELATIONSHIP_URL = 'https://www2.census.gov/geo/docs/maps-data/data/rel2020/tract/tab20_tract20_tract10_natl.txt'
-CACHE_PATH = Path(f'{tempfile.tempdir}/tract_2010_2020_relationship.txt')
 
 # https://oehha.ca.gov/calenviroscreen/sb535
 SB535DAC_URL = 'https://services1.arcgis.com/PCHfdHz4GlDNAhBb/arcgis/rest/services/SB_535_Disadvantaged_Communities_2022/FeatureServer/0'
 
 
-def get_relationships(refresh: bool = False) -> pd.DataFrame:
-    if refresh or not CACHE_PATH.exists():
-        print('Downloading relationship file...')
-        response = requests.get(RELATIONSHIP_URL, verify=False)
-        response.raise_for_status()
-        CACHE_PATH.write_text(response.text)
-    else:
-        print(f'Using cached file at {CACHE_PATH}')
-
-    df = pd.read_csv(CACHE_PATH, dtype=str, sep='|')
-    print(f'Loaded {len(df):,} rows from relationship file')
-    return df
-
-
 def get_ces4() -> pd.DataFrame:
     counties_gdf = Region.objects.filter(type=Region.Type.COUNTY).to_dataframe()
+    counties_union = counties_gdf.unary_union
+
     gdf = geodata.gdf_from_ckan(
         dataset_id='calenviroscreen-4-0',
         resource_name='CalEnviroScreen 4.0 Results Shapefile',
         string_fields=['Tract'],
+        limit_to_region=True,
+        threshold=0.25,
     )
-    gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.25)
     gdf['Tract'] = gdf['Tract'].astype(str).str.zfill(11)
 
-    # Get the SB535 Disadvantaged Communities dataset and filter by county
+    # Get the SB535 Disadvantaged Communities dataset and filter by county.
+    # esri2gpd returns a materialized GeoDataFrame so filter directly.
     sb535dac = esri2gpd.get(SB535DAC_URL)
-    sb535dac = geodata.filter_by_overlap(sb535dac, counties_gdf.unary_union, 0.50)
+    sb535dac = sb535dac[
+        sb535dac.geometry.apply(
+            lambda g: (not g.is_empty and g.area > 0
+                       and g.intersects(counties_union)
+                       and g.intersection(counties_union).area / g.area >= 0.50)
+        )
+    ]
     sb535dac['Tract'] = sb535dac['Tract'].astype(str).str.zfill(11)
 
     # Get the DAC status for each CES4 record
@@ -73,7 +62,11 @@ def show_split_example(ces4_2010, ces4_2020, rel, col='CIscore'):
     rel['GEOID_TRACT_20'] = rel['GEOID_TRACT_20'].astype(str).str.zfill(11)
 
     vc = rel['GEOID_TRACT_10'].value_counts()
-    example = vc[vc > 1].index[0]
+    splits = vc[vc > 1]
+    if splits.empty:
+        print('No 1:many splits found — skipping example.')
+        return
+    example = splits.index[0]
 
     print(f'🧪 Example: CES4 tract {example} was split across {vc[example]} 2020 tracts')
     rows = rel[rel['GEOID_TRACT_10'] == example].copy()
@@ -102,7 +95,7 @@ class Command(BaseCommand):
         tracts_2020 = get_tract_boundaries('2020')
         geoids_2020 = set(tracts_2020['GEOID'])
 
-        rel = get_relationships(refresh=options['refresh'])
+        rel = get_tract_relationships(refresh=options['refresh'])
 
         ces4_2010 = get_ces4()
         ces4_geoids = set(ces4_2010['Tract'])

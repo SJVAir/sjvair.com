@@ -35,12 +35,13 @@ class Command(BaseCommand):
         queryset = Monitor.objects.get_for_health_checks()
 
         if options['monitor_id']:
-            queryset = queryset.filter(monitor_id=options['monitor_id'])
+            queryset = queryset.filter(pk=options['monitor_id'])
 
         count = queryset.count()
         self.stdout.write(f'Evaluating {count} monitor{"s" if count > 1 else ""} @ {hour:%Y-%m-%d %H:00}')
 
         for i, monitor in enumerate(queryset):
+            monitor.run_health_check(hour)
             self.stdout.write(
                 self.style.SUCCESS('✓')
                 + f' {i} {monitor.monitor_type} | {monitor.name}'

@@ -289,7 +289,7 @@ class Monitor(models.Model):
 
         Falls back to 'raw' if not explicitly configured.
         '''
-        for stage in cls.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages'):
+        for stage in cls.ENTRY_CONFIG.get(EntryModel, {}).get('allowed_stages', []):
             return stage
         return EntryModel.Stage.RAW
 
@@ -473,29 +473,50 @@ class Monitor(models.Model):
         entry type on this monitor. Assumes latest_entries are already filtered
         by calibration (via .with_latest_entries()).
         '''
-        data = {}
+        from itertools import groupby
 
-        for latest in self.latest_entries.all():
-            payload = latest.entry.declared_data()
+        latests = list(self.latest_entries.all())
+
+        # Batch-fetch actual entry objects grouped by entry type — one query per table
+        # instead of one query per LatestEntry row.
+        entry_map = {}
+        for entry_type, group in groupby(
+            sorted(latests, key=lambda l: l.entry_type),
+            key=lambda l: l.entry_type
+        ):
+            group = list(group)
+            entry_model = group[0].entry_model
+            for entry in entry_model.objects.filter(pk__in=[l.entry_id for l in group]):
+                entry_map[entry.pk] = entry
+
+        data = {}
+        for latest in latests:
+            entry = entry_map.get(latest.entry_id)
+            if entry is None:
+                continue
+            payload = entry.declared_data()
             payload.update({
-                'sensor': latest.entry.sensor,
-                'timestamp': latest.entry.timestamp,
-                'stage': latest.entry.stage,
-                'processor': latest.entry.processor,
+                'sensor': entry.sensor,
+                'timestamp': latest.timestamp,
+                'stage': latest.stage,
+                'processor': latest.processor,
             })
             data[latest.entry_type] = payload
 
         return data
 
     @classmethod
-    def supports_health_checks(cls):
+    def health_check_queryset_filter(cls):
+        """Returns kwargs to filter health-check-eligible monitors of this type."""
+        return {f'{cls.monitor_type}__isnull': False}
+
+    def supports_health_checks(self):
+        """Returns True if this monitor instance supports health checks."""
         from camp.apps.entries.models import PM25
-        config = cls.ENTRY_CONFIG.get(PM25)
+        config = type(self).ENTRY_CONFIG.get(PM25)
         if not config:
             return False
-
-        sensors = config.get('sensors', [])
-        return len(sensors) >= 2
+        return len(config.get('sensors', [])) >= 2
 
 
     def run_health_check(self, hour):

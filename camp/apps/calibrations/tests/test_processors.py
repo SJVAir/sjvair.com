@@ -1,13 +1,33 @@
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import MagicMock
 
 from django.test import TestCase
 from django.utils import timezone
 
 from camp.apps.calibrations import processors
+from camp.apps.calibrations.utils import calibration_model_upload_to
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
+
+
+class CalibrationUploadPathTests(TestCase):
+    def test_upload_path_uses_trainer(self):
+        instance = MagicMock()
+        instance.entry_type = 'pm25'
+        instance.trainer = 'PM25_UnivariateLinearRegression'
+        path = calibration_model_upload_to(instance, 'model.bin')
+        assert 'PM25_UnivariateLinearRegression' in path
+        assert 'pm25' in path
+        assert path.endswith('model.bin')
+
+    def test_upload_path_falls_back_when_trainer_empty(self):
+        instance = MagicMock()
+        instance.entry_type = 'pm25'
+        instance.trainer = ''
+        path = calibration_model_upload_to(instance, 'model.bin')
+        assert 'model' in path
 
 
 class ProcessorTests(TestCase):
