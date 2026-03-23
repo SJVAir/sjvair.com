@@ -152,19 +152,19 @@ def load_region_geometry(crs: Optional[str] = gis.EPSG_LATLON):
 
 def gdf_from_ckan(*args, **kwargs) -> gpd.GeoDataFrame:
     gdf = gpd.GeoDataFrame(iter_from_ckan(*args, **kwargs))
-    if 'geometry' not in gdf.columns:
+    if 'geometry' not in gdf.columns and not gdf.empty:
         gdf.set_geometry('geometry', inplace=True)
     return gdf
 
 def gdf_from_url(*args, **kwargs) -> gpd.GeoDataFrame:
     gdf = gpd.GeoDataFrame(iter_from_url(*args, **kwargs))
-    if 'geometry' not in gdf.columns:
+    if 'geometry' not in gdf.columns and not gdf.empty:
         gdf.set_geometry('geometry', inplace=True)
     return gdf
 
 def gdf_from_zip(*args, **kwargs) -> gpd.GeoDataFrame:
     gdf = gpd.GeoDataFrame(iter_from_zip(*args, **kwargs))
-    if 'geometry' not in gdf.columns:
+    if 'geometry' not in gdf.columns and not gdf.empty:
         gdf.set_geometry('geometry', inplace=True)
     return gdf
 
