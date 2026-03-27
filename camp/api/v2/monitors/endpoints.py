@@ -265,6 +265,7 @@ class EntryExportCSV(EntryExportMixin, FormEndpoint):
 
 
 class EntryExport(FormEndpoint):
+    documented = False
     form_class = EntryExportForm
     login_required = True
 
@@ -348,6 +349,7 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
 
 
 class CreateEntry(EntryMixin, generics.CreateEndpoint):
+    documented = False
     form_class = forms.Form
     upload_not_allowed = 'Direct entry uploads are not allowed for this monitor.'
 
