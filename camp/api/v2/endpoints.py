@@ -14,6 +14,8 @@ from resticus.serializers import serialize
 
 
 class CurrentTime(generics.Endpoint):
+    documented = False
+
     def get(self, request):
         timestamp = timezone.now().utctimetuple()
         return calendar.timegm(timestamp)
@@ -23,6 +25,7 @@ class TaskStatus(generics.Endpoint):
     """
     Gets status of specific Huey task
     """
+    documented = False
 
     def get(self, request, task_id):
         queue = get_queue(settings.DJANGO_HUEY.get('default'))
