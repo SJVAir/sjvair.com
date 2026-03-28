@@ -79,6 +79,8 @@ class EntryMixin(EntryTypeMixin):
 
 
 class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
+    """List all air quality monitors."""
+
     cache_refresh = True
     cache_refresh_name = 'api:v2:monitors:monitor-list'
     cache_timeout = 90
@@ -94,6 +96,8 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
 
 
 class MonitorMetaEndpoint(Endpoint):
+    """Metadata describing all monitor types and entry types supported by the API."""
+
     def get_default_pollutant(self):
         display = settings.DEFAULT_POLLUTANT
         valid = [E.entry_type for E in BaseEntry.get_subclasses()]
@@ -150,6 +154,8 @@ class MonitorMetaEndpoint(Endpoint):
 
 
 class MonitorDetail(CachedEndpointMixin, MonitorMixin, generics.DetailEndpoint):
+    """Retrieve a single monitor by ID, including its latest sensor readings."""
+
     cache_timeout = 60
     cache_refresh = False
 
@@ -204,6 +210,8 @@ class EntryExportMixin:
 
 
 class EntryExportJSON(EntryExportMixin, FormEndpoint):
+    """Export a monitor's resolved entries as JSON for a given date range."""
+
     streaming = True
 
     def dataframe_to_records(self, df):
@@ -222,6 +230,9 @@ class EntryExportJSON(EntryExportMixin, FormEndpoint):
 
 
 class EntryExportCSV(EntryExportMixin, FormEndpoint):
+    """Export a monitor's resolved entries as a CSV download for a given date range."""
+    response_content_type = 'text/csv'
+
     class Echo:
         def write(self, value):
             return value
@@ -281,6 +292,8 @@ class EntryExport(FormEndpoint):
 
 
 class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
+    """Return the three nearest active monitors to a given latitude/longitude that have recent data for the specified entry type."""
+
     form_class = LatLonForm
     serializer_class = MonitorSerializer
     paginate = False
@@ -311,6 +324,8 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
 
 
 class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
+    """List monitors with recent, healthy data for the specified entry type. Suitable for map display."""
+
     cache_refresh = True
     cache_refresh_kwargs = [{'entry_type': E.entry_type} for E in BaseEntry.get_subclasses()]
     cache_refresh_name = 'api:v2:monitors:current-data'
@@ -383,6 +398,8 @@ class CreateEntry(EntryMixin, generics.CreateEndpoint):
 
 
 class EntryList(EntryMixin, generics.ListEndpoint):
+    """Paginated time-series entries for a monitor filtered by entry type (e.g. pm25, temperature)."""
+
     paginate = True
     page_size = 10080
 
@@ -396,6 +413,8 @@ class EntryList(EntryMixin, generics.ListEndpoint):
 
 
 class EntryCSV(EntryMixin, CSVExport):
+    """Download entries for a monitor as a CSV file."""
+
     streaming = True
 
     @cached_property
