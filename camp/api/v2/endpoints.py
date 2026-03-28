@@ -36,6 +36,7 @@ class TaskStatus(generics.Endpoint):
 class CSVExport(generics.ListEndpoint):
     filter_class = None
     model = None
+    response_content_type = 'text/csv'
 
     columns = []
     headers = {}
