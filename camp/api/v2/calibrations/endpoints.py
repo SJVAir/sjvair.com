@@ -6,6 +6,8 @@ from .serializers import CalibratorSerializer
 
 
 class CalibratorList(generics.ListEndpoint):
+    """List all enabled calibration models used to correct sensor readings."""
+
     model = Calibrator
     serializer_class = CalibratorSerializer
 
