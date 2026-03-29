@@ -9,6 +9,8 @@ from .serializers import EmissionsSerializer, FacilitySerializer
 
 
 class YearList(Endpoint):
+    """List all years for which CEIDARS emissions data is available."""
+
     def get(self, request):
         years = (
             EmissionsRecord.objects
@@ -20,6 +22,8 @@ class YearList(Endpoint):
 
 
 class FacilityList(generics.ListEndpoint):
+    """List CEIDARS permitted facilities with their most recent annual emissions data."""
+
     model = Facility
     serializer_class = FacilitySerializer
     filter_class = FacilityFilter
@@ -38,6 +42,8 @@ class FacilityList(generics.ListEndpoint):
 
 
 class FacilityDetail(generics.DetailEndpoint):
+    """Retrieve a single CEIDARS facility with its full emissions history."""
+
     model = Facility
     serializer_class = FacilitySerializer
     lookup_field = 'sqid'

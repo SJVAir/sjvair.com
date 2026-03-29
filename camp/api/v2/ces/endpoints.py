@@ -21,10 +21,13 @@ class CES4Mixin:
 
 
 class CES4List(CES4Mixin, generics.ListEndpoint):
+    """List CalEnviroScreen 4.0 scores for all census tracts for a given year."""
+
     filter_class = CES4Filter
 
 
 class CES4Detail(CES4Mixin, generics.DetailEndpoint):
+    """Retrieve the CalEnviroScreen 4.0 score for a specific census tract."""
     def get_object(self):
         try:
             return self.get_queryset().get(
