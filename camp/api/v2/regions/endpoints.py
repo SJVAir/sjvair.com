@@ -3,7 +3,7 @@ from resticus import generics
 from camp.apps.regions.models import Region
 
 from .filters import RegionFilter
-from .serializers import RegionDetailSerializer, RegionSerializer
+from .serializers import RegionSerializer
 
 
 class RegionMixin:
@@ -20,6 +20,12 @@ class RegionList(RegionMixin, generics.ListEndpoint):
 
 
 class RegionDetail(RegionMixin, generics.DetailEndpoint):
-    serializer_class = RegionDetailSerializer
     lookup_field = 'pk'
     lookup_url_kwarg = 'region_id'
+
+
+class PlaceSearch(generics.Endpoint):
+    def get(self, request):
+        q = request.GET.get('q', '').strip()
+        place = Region.objects.resolve_place(q) if q else None
+        return {'data': RegionSerializer(place).serialize() if place else None}

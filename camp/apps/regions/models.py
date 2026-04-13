@@ -35,6 +35,9 @@ class Region(TimeStampedModel):
         LAND_USE = 'land_use', _('Land Use')
         PROTECTED = 'protected', _('Protected Area')
 
+        # Synthetic community areas (union of UA + city + CDP)
+        PLACE = 'place', _('Place')
+
         # Catch-all for user-defined regions
         CUSTOM = 'custom', _('Custom Region')
 
