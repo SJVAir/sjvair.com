@@ -8,7 +8,11 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
+from django.conf import settings
+from django.db.models import Q
+
 from camp.utils.datetime import make_aware
+from camp.apps.entries.stages import Stage
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.tasks import (
@@ -111,8 +115,6 @@ class Command(BaseCommand):
 
         for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
             for EntryModel in entry_models:
-                from django.db.models import Q
-                from camp.apps.entries.stages import Stage
                 combos = (
                     EntryModel.objects
                     .filter(
@@ -189,7 +191,7 @@ class Command(BaseCommand):
         d = parse_date(value)
         if d is None:
             raise CommandError(f'Invalid date: {value!r}. Use YYYY-MM-DD.')
-        return make_aware(datetime(d.year, d.month, d.day))
+        return make_aware(datetime(d.year, d.month, d.day), settings.DEFAULT_TIMEZONE)
 
     def _window_end(self, resolution, window_start):
         R = BaseSummary.Resolution

@@ -42,11 +42,7 @@ class BaseSummary(models.Model):
     p25 = models.FloatField(_('25th percentile'))
     p75 = models.FloatField(_('75th percentile'))
 
-    is_complete = models.BooleanField(
-        _('is complete'),
-        default=False,
-        help_text=_('True if count >= 80% of expected_count.'),
-    )
+    is_complete = models.BooleanField(_('is complete'), default=False)
 
     class Meta:
         abstract = True
