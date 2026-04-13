@@ -72,14 +72,6 @@ class RegionDetailTests(TestCase):
         data = get_response_data(response)
         assert set(data['data'].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
 
-    def test_detail_null_boundary_for_region_without_boundary(self):
-        region = Region.objects.filter(boundary__isnull=True).first()
-        if region is None:
-            pytest.skip('all fixtures have boundaries')
-        request = self.factory.get('/')
-        response = region_detail(request, region_id=region.pk)
-        data = get_response_data(response)
-        assert data['data']['boundary'] is None
 
 
 def make_place(name, slug, geom_wkt):

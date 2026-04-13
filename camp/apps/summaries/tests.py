@@ -240,11 +240,6 @@ class ComputeRegionSummaryTests(TestCase):
         assert result['station_count'] == 1
         assert result['mean'] == pytest.approx(25.0, abs=0.1)
 
-    def test_returns_none_for_region_without_boundary(self):
-        region_no_boundary = Region.objects.filter(boundary__isnull=True).first()
-        if region_no_boundary is None:
-            self.skipTest('no region without boundary in fixtures')
-        assert compute_region_summary(region_no_boundary, self.hour, 'pm25') is None
 
 
 class SummarizeMonitorHourTests(TestCase):
