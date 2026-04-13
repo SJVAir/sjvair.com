@@ -11,6 +11,7 @@ class MonitorSummarySerializer(serializers.Serializer):
     fields = [
         ('timestamp', _timestamp),
         'entry_type',
+        'resolution',
         'processor',
         'count',
         'expected_count',
@@ -28,6 +29,7 @@ class RegionSummarySerializer(serializers.Serializer):
     fields = [
         ('timestamp', _timestamp),
         'entry_type',
+        'resolution',
         'count',
         'expected_count',
         'minimum',
