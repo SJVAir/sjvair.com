@@ -1,18 +1,26 @@
 import calendar
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from django.db.models import Max
+from django.conf import settings
+from django.db.models import Max, Q
 from django.utils import timezone
+
+from camp.utils.datetime import localtime, make_aware
 
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
+from camp.apps.entries.fields import EntryTypeField
+from camp.apps.entries.stages import Stage
+from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
+from camp.apps.regions.models import Region
+from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries
+from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 
 
 def get_summarizable_entry_models():
     """Return entry models that have opted in to summarization via summarize = True."""
-    from camp.apps.entries.utils import get_all_entry_models
     return [m for m in get_all_entry_models() if m.summarize]
 
 
@@ -25,9 +33,6 @@ def hourly_monitor_summaries(hour=None):
     that has entries in the previous hour. Only RAW (processor='') and CALIBRATED
     (processor≠'') entries are summarized — CORRECTED and CLEANED are skipped.
     """
-    from django.db.models import Q
-    from camp.apps.entries.stages import Stage
-
     if hour is None:
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
         hour = now - timedelta(hours=1)
@@ -53,10 +58,6 @@ def hourly_monitor_summaries(hour=None):
 @db_task(priority=50)
 def summarize_monitor_hour(monitor_id, hour, entry_type, processor):
     """Compute and save one hourly MonitorSummary record."""
-    from camp.apps.entries.fields import EntryTypeField
-    from camp.apps.summaries.aggregators import compute_monitor_summary
-    from camp.apps.summaries.models import MonitorSummary, BaseSummary
-
     monitor = Monitor.objects.get(pk=monitor_id)
     EntryModel = EntryTypeField.get_model_map()[entry_type]
 
@@ -81,9 +82,6 @@ def hourly_region_summaries(hour=None):
     MonitorSummary records for that hour. Uses each monitor's best available
     calibration — no processor fan-out needed at the region level.
     """
-    from camp.apps.regions.models import Region
-    from camp.apps.summaries.models import MonitorSummary, BaseSummary
-
     if hour is None:
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
         hour = now - timedelta(hours=1)
@@ -103,10 +101,6 @@ def hourly_region_summaries(hour=None):
 @db_task(priority=50)
 def summarize_region_hour(region_id, hour, entry_type):
     """Compute and save one hourly RegionSummary record."""
-    from camp.apps.regions.models import Region
-    from camp.apps.summaries.aggregators import compute_region_summary
-    from camp.apps.summaries.models import RegionSummary, BaseSummary
-
     region = Region.objects.get(pk=region_id)
 
     stats = compute_region_summary(region, hour, entry_type)
@@ -134,9 +128,6 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
 
     Optionally scoped to a list of monitor_ids (for targeted backfill/recalculation).
     """
-    from camp.apps.summaries.aggregators import rollup_summaries
-    from camp.apps.summaries.models import MonitorSummary
-
     qs = MonitorSummary.objects.filter(
         resolution=source_resolution,
         timestamp__gte=window_start,
@@ -172,9 +163,6 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
 
 def rollup_region_summaries(target_resolution, source_resolution, window_start, window_end, region_ids=None):
     """Same as rollup_monitor_summaries but for RegionSummary."""
-    from camp.apps.summaries.aggregators import rollup_summaries
-    from camp.apps.summaries.models import RegionSummary
-
     qs = RegionSummary.objects.filter(
         resolution=source_resolution,
         timestamp__gte=window_start,
@@ -213,32 +201,44 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
 
 # ---- Calendar helpers ----
 
+def _add_3_months(dt):
+    """Advance a datetime by exactly 3 calendar months, re-localizing for DST."""
+    month = dt.month + 3
+    year = dt.year
+    if month > 12:
+        month -= 12
+        year += 1
+    return make_aware(datetime(year, month, dt.day), settings.DEFAULT_TIMEZONE)
+
+
 def _yesterday():
-    today = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    return today - timedelta(days=1)
+    today = localtime().date()
+    yesterday = today - timedelta(days=1)
+    return make_aware(datetime(yesterday.year, yesterday.month, yesterday.day), settings.DEFAULT_TIMEZONE)
 
 
 def _last_month_start():
-    today = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    last_month = today - timedelta(days=1)
-    return last_month.replace(day=1)
+    today = localtime().date()
+    first_of_month = today.replace(day=1)
+    last_month_end = first_of_month - timedelta(days=1)
+    return make_aware(datetime(last_month_end.year, last_month_end.month, 1), settings.DEFAULT_TIMEZONE)
 
 
 def _last_quarter_start():
-    today = timezone.now()
+    today = localtime().date()
     quarter_month = ((today.month - 1) // 3) * 3 + 1
-    current_quarter_start = today.replace(month=quarter_month, day=1, hour=0, minute=0, second=0, microsecond=0)
-    if quarter_month == 1:
-        return current_quarter_start.replace(year=current_quarter_start.year - 1, month=10)
-    return current_quarter_start.replace(month=quarter_month - 3)
+    prev_quarter_month = quarter_month - 3
+    if prev_quarter_month <= 0:
+        return make_aware(datetime(today.year - 1, prev_quarter_month + 12, 1), settings.DEFAULT_TIMEZONE)
+    return make_aware(datetime(today.year, prev_quarter_month, 1), settings.DEFAULT_TIMEZONE)
 
 
 def _last_season_start():
-    today = timezone.now()
+    today = localtime().date()
     end_month = today.month
     start_month = end_month - 3 if end_month > 3 else end_month + 9
     start_year = today.year if end_month > 3 else today.year - 1
-    return today.replace(year=start_year, month=start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+    return make_aware(datetime(start_year, start_month, 1), settings.DEFAULT_TIMEZONE)
 
 
 # ---- Rollup periodic tasks ----
@@ -246,7 +246,6 @@ def _last_season_start():
 @db_periodic_task(crontab(hour='0', minute='15'), priority=50)
 def daily_monitor_summaries(day=None):
     """Roll up yesterday's hourly MonitorSummary records into daily ones."""
-    from camp.apps.summaries.models import BaseSummary
     day = day or _yesterday()
     rollup_monitor_summaries(BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
 
@@ -254,7 +253,6 @@ def daily_monitor_summaries(day=None):
 @db_periodic_task(crontab(hour='0', minute='25'), priority=50)
 def daily_region_summaries(day=None):
     """Roll up yesterday's hourly RegionSummary records into daily ones."""
-    from camp.apps.summaries.models import BaseSummary
     day = day or _yesterday()
     rollup_region_summaries(BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
 
@@ -262,7 +260,6 @@ def daily_region_summaries(day=None):
 @db_periodic_task(crontab(day='1', hour='0', minute='30'), priority=50)
 def monthly_monitor_summaries(month_start=None):
     """Roll up last month's daily MonitorSummary records into monthly ones."""
-    from camp.apps.summaries.models import BaseSummary
     month_start = month_start or _last_month_start()
     _, days_in_month = calendar.monthrange(month_start.year, month_start.month)
     rollup_monitor_summaries(BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY, month_start, month_start + timedelta(days=days_in_month))
@@ -271,7 +268,6 @@ def monthly_monitor_summaries(month_start=None):
 @db_periodic_task(crontab(day='1', hour='0', minute='40'), priority=50)
 def monthly_region_summaries(month_start=None):
     """Roll up last month's daily RegionSummary records into monthly ones."""
-    from camp.apps.summaries.models import BaseSummary
     month_start = month_start or _last_month_start()
     _, days_in_month = calendar.monthrange(month_start.year, month_start.month)
     rollup_region_summaries(BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY, month_start, month_start + timedelta(days=days_in_month))
@@ -280,17 +276,15 @@ def monthly_region_summaries(month_start=None):
 @db_periodic_task(crontab(month='1,4,7,10', day='1', hour='0', minute='45'), priority=50)
 def quarterly_monitor_summaries(quarter_start=None):
     """Roll up last quarter's monthly MonitorSummary records into quarterly ones."""
-    from camp.apps.summaries.models import BaseSummary
     quarter_start = quarter_start or _last_quarter_start()
-    rollup_monitor_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, quarter_start + timedelta(days=92))
+    rollup_monitor_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, _add_3_months(quarter_start))
 
 
 @db_periodic_task(crontab(month='1,4,7,10', day='1', hour='0', minute='50'), priority=50)
 def quarterly_region_summaries(quarter_start=None):
     """Roll up last quarter's monthly RegionSummary records into quarterly ones."""
-    from camp.apps.summaries.models import BaseSummary
     quarter_start = quarter_start or _last_quarter_start()
-    rollup_region_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, quarter_start + timedelta(days=92))
+    rollup_region_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, _add_3_months(quarter_start))
 
 
 @db_periodic_task(crontab(month='3,6,9,12', day='1', hour='1', minute='0'), priority=50)
@@ -299,34 +293,30 @@ def seasonal_monitor_summaries(season_start=None):
     Roll up the past 3 months of monthly MonitorSummary records into a seasonal one.
     Runs Mar 1, Jun 1, Sep 1, Dec 1 to summarize the just-completed season.
     """
-    from camp.apps.summaries.models import BaseSummary
     season_start = season_start or _last_season_start()
-    rollup_monitor_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, season_start + timedelta(days=92))
+    rollup_monitor_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, _add_3_months(season_start))
 
 
 @db_periodic_task(crontab(month='3,6,9,12', day='1', hour='1', minute='10'), priority=50)
 def seasonal_region_summaries(season_start=None):
     """Roll up the past 3 months of monthly RegionSummary records into a seasonal one."""
-    from camp.apps.summaries.models import BaseSummary
     season_start = season_start or _last_season_start()
-    rollup_region_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, season_start + timedelta(days=92))
+    rollup_region_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, _add_3_months(season_start))
 
 
 @db_periodic_task(crontab(month='1', day='1', hour='1', minute='15'), priority=50)
 def yearly_monitor_summaries(year_start=None):
     """Roll up last year's monthly MonitorSummary records into yearly ones."""
-    from camp.apps.summaries.models import BaseSummary
     if year_start is None:
-        today = timezone.now()
-        year_start = today.replace(year=today.year - 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        today = localtime().date()
+        year_start = make_aware(datetime(today.year - 1, 1, 1), settings.DEFAULT_TIMEZONE)
     rollup_monitor_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))
 
 
 @db_periodic_task(crontab(month='1', day='1', hour='1', minute='20'), priority=50)
 def yearly_region_summaries(year_start=None):
     """Roll up last year's monthly RegionSummary records into yearly ones."""
-    from camp.apps.summaries.models import BaseSummary
     if year_start is None:
-        today = timezone.now()
-        year_start = today.replace(year=today.year - 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        today = localtime().date()
+        year_start = make_aware(datetime(today.year - 1, 1, 1), settings.DEFAULT_TIMEZONE)
     rollup_region_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))

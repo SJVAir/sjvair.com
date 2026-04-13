@@ -112,7 +112,19 @@ class MonitorSummaryListTests(TestCase):
         assert 'p25' in record
         assert 'p75' in record
         assert 'processor' in record
+        assert 'resolution' in record
         assert 'is_complete' in record
+
+    def test_missing_monitor_returns_404(self):
+        url = reverse('api:v2:monitors:monitor-summary-hourly-year', kwargs={
+            'monitor_id': self.monitor.pk,
+            'entry_type': 'pm25',
+            'year': 2026,
+        })
+        request = self.factory.get(url)
+        request.monitor = None
+        response = monitor_summary_list(request, monitor_id=self.monitor.pk, entry_type='pm25', resolution='hour', year=2026)
+        assert response.status_code == 404
 
     def test_processor_filter_default_empty_string(self):
         make_monitor_summary(self.monitor, self.hour, processor='PM25_EPA_Oct2021')
@@ -213,6 +225,7 @@ class RegionSummaryListTests(TestCase):
         record = data['data'][0]
         assert 'sum_value' not in record
         assert 'tdigest' not in record
+        assert 'resolution' in record
 
     def test_invalid_region_returns_404(self):
         request = self.factory.get('/')

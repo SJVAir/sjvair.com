@@ -199,7 +199,12 @@ class Command(BaseCommand):
             _, days = calendar.monthrange(window_start.year, window_start.month)
             return window_start + timedelta(days=days)
         if resolution in (R.QUARTERLY, R.SEASONAL):
-            return window_start + timedelta(days=92)
+            month = window_start.month + 3
+            year = window_start.year
+            if month > 12:
+                month -= 12
+                year += 1
+            return window_start.replace(year=year, month=month)
         if resolution == R.YEARLY:
             return window_start.replace(year=window_start.year + 1)
 

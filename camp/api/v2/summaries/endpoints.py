@@ -1,11 +1,16 @@
+import calendar as cal
+from datetime import datetime, timedelta
+
 from resticus import generics
 
+from django.conf import settings
 from django.http import Http404
 from django.utils.functional import cached_property
 
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.utils.datetime import make_aware
 
 from .serializers import MonitorSummarySerializer, RegionSummarySerializer
 
@@ -32,18 +37,34 @@ class SummaryMixin:
         return model
 
     def get_date_filter(self):
-        """Build timestamp filter kwargs from optional year/month/day URL kwargs."""
+        """
+        Build timestamp range filter from optional year/month/day URL kwargs.
+
+        Uses explicit gte/lt range filters against LA-midnight boundaries rather
+        than Django's __year/__month/__day lookups (which operate on the stored
+        UTC value and misalign with the LA-localized timestamps the API returns).
+        """
         year = self.kwargs.get('year')
-        month = self.kwargs.get('month')
-        day = self.kwargs.get('day')
-        filters = {}
-        if year is not None:
-            filters['timestamp__year'] = int(year)
-        if month is not None:
-            filters['timestamp__month'] = int(month)
+        if year is None:
+            return {}
+
+        year = int(year)
+        month = int(self.kwargs['month']) if self.kwargs.get('month') is not None else None
+        day = int(self.kwargs['day']) if self.kwargs.get('day') is not None else None
+        tz = settings.DEFAULT_TIMEZONE
+
         if day is not None:
-            filters['timestamp__day'] = int(day)
-        return filters
+            start = make_aware(datetime(year, month, day), tz)
+            end = start + timedelta(days=1)
+        elif month is not None:
+            _, days_in_month = cal.monthrange(year, month)
+            start = make_aware(datetime(year, month, 1), tz)
+            end = start + timedelta(days=days_in_month)
+        else:
+            start = make_aware(datetime(year, 1, 1), tz)
+            end = make_aware(datetime(year + 1, 1, 1), tz)
+
+        return {'timestamp__gte': start, 'timestamp__lt': end}
 
     def get_queryset(self):
         # super() here → generics.ListEndpoint.get_queryset() → self.model.objects.all()

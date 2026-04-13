@@ -9,6 +9,10 @@ FEM_WEIGHT = 3.0
 LCS_WEIGHT = 1.0
 MAX_HEALTH_SCORE = 3
 
+# Sentinel: get_monitor_weight uses this default to mean "go fetch from DB".
+# Distinct from None, which means "no health check record found → use 1.0".
+_UNSET = object()
+
 
 def tdigest_to_dict(digest: TDigest) -> dict:
     """Serialize a TDigest to a JSON-safe dict."""
@@ -138,13 +142,17 @@ def rollup_summaries(queryset):
     }
 
 
-def get_monitor_weight(monitor, hour):
+def get_monitor_weight(monitor, hour, health_score=_UNSET):
     """
     Return the contribution weight for a monitor at a given hour.
 
     FEM/FRM monitors always get FEM_WEIGHT (authoritative, no health check needed).
     LCS monitors get LCS_WEIGHT scaled by their health score (0–1 factor).
     Monitors with no health check record get health_factor=1.0.
+
+    health_score: optional pre-fetched score value to avoid a DB query. Pass
+    the score for this specific monitor; None means "no record found, use 1.0".
+    Omit entirely to have this function fetch from the DB itself.
     """
     from camp.apps.monitors.models import Monitor
     from camp.apps.qaqc.models import HealthCheck
@@ -152,11 +160,16 @@ def get_monitor_weight(monitor, hour):
     if monitor.grade in {Monitor.Grade.FEM, Monitor.Grade.FRM}:
         return FEM_WEIGHT
 
-    try:
-        health = HealthCheck.objects.get(monitor=monitor, hour=hour)
-        health_factor = health.score / MAX_HEALTH_SCORE
-    except HealthCheck.DoesNotExist:
-        health_factor = 1.0
+    if health_score is _UNSET:
+        try:
+            health_score = (HealthCheck.objects
+                .values_list('score', flat=True)
+                .get(monitor=monitor, hour=hour)
+            )
+        except HealthCheck.DoesNotExist:
+            health_score = None
+
+    health_factor = health_score / MAX_HEALTH_SCORE if health_score is not None else 1.0
 
     return LCS_WEIGHT * health_factor
 
@@ -214,8 +227,20 @@ def compute_region_summary(region, timestamp, entry_type):
     if not summaries:
         return None
 
-    weighted_count = 0.0
-    weighted_expected = 0.0
+    # Pre-fetch all health checks in one query to avoid N+1 per monitor.
+    from camp.apps.qaqc.models import HealthCheck
+    health_scores = dict(HealthCheck.objects
+        .filter(
+            monitor_id__in=[s.monitor_id for s in summaries],
+            hour=timestamp
+        )
+        .values_list('monitor_id', 'score')
+    )
+
+    # Weight by per-monitor mean, not per-observation count. A FEM reporting
+    # once per hour and an LCS reporting 30 times per hour should each
+    # contribute one weighted vote, not 1 vs 30 votes.
+    total_weight = 0.0
     weighted_sum = 0.0
     weighted_sum_sq = 0.0
     minimum = None
@@ -224,30 +249,32 @@ def compute_region_summary(region, timestamp, entry_type):
     station_count = 0
 
     for s in summaries:
-        weight = get_monitor_weight(s.monitor, timestamp)
+        if s.count == 0:
+            continue
+        weight = get_monitor_weight(s.monitor, timestamp, health_score=health_scores.get(s.monitor_id))
         if weight == 0:
             continue
 
-        weighted_count += weight * s.count
-        weighted_expected += weight * s.expected_count
-        weighted_sum += weight * s.sum_value
-        weighted_sum_sq += weight * s.sum_of_squares
+        second_moment = s.sum_of_squares / s.count
+        total_weight += weight
+        weighted_sum += weight * s.mean
+        weighted_sum_sq += weight * second_moment
         minimum = s.minimum if minimum is None else min(minimum, s.minimum)
         maximum = s.maximum if maximum is None else max(maximum, s.maximum)
         tdigests.append(s.tdigest)
         station_count += 1
 
-    if station_count == 0 or weighted_count == 0:
+    if station_count == 0 or total_weight == 0:
         return None
 
-    mean = weighted_sum / weighted_count
-    variance = max((weighted_sum_sq / weighted_count) - (mean ** 2), 0)
+    mean = weighted_sum / total_weight
+    variance = max(weighted_sum_sq / total_weight - mean ** 2, 0)
     stddev = variance ** 0.5
     merged = merge_tdigests(tdigests)
 
     return {
-        'count': int(round(weighted_count)),
-        'expected_count': int(round(weighted_expected)),
+        'count': int(round(total_weight)),
+        'expected_count': int(round(total_weight)),
         'sum_value': weighted_sum,
         'sum_of_squares': weighted_sum_sq,
         'minimum': minimum,
@@ -257,6 +284,6 @@ def compute_region_summary(region, timestamp, entry_type):
         'p25': merged.percentile(25),
         'p75': merged.percentile(75),
         'tdigest': tdigest_to_dict(merged),
-        'is_complete': weighted_count >= 0.8 * weighted_expected,
+        'is_complete': True,
         'station_count': station_count,
     }

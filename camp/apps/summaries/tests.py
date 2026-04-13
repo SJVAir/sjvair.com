@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 from tdigest import TDigest
 
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
@@ -648,8 +649,8 @@ class DailyMonitorSummariesTaskTests(TestCase):
 
     def setUp(self):
         self.monitor = PurpleAir.objects.first()
-        # With FIXED_NOW = Apr 1 10:30, yesterday = Mar 31
-        self.yesterday = FIXED_NOW.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        # FIXED_NOW = 2026-04-01 10:30 UTC = 03:30 PDT → yesterday in LA = 2026-03-31
+        self.yesterday = timezone.make_aware(datetime(2026, 3, 31), settings.DEFAULT_TIMEZONE)
 
     def _make_hourly_summary(self, hour, mean=20.0):
         arr = np.array([mean] * 10)
@@ -696,8 +697,9 @@ class CalendarHelperTests(TestCase):
         from camp.apps.summaries.tasks import _yesterday
         with patch('django.utils.timezone.now', return_value=FIXED_NOW):
             result = _yesterday()
-        expected = FIXED_NOW.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
-        assert result == expected  # 2026-03-31
+        # FIXED_NOW = 2026-04-01 10:30 UTC = 2026-04-01 03:30 PDT → yesterday in LA = 2026-03-31
+        expected = timezone.make_aware(datetime(2026, 3, 31), settings.DEFAULT_TIMEZONE)
+        assert result == expected
 
     def test_last_month_start(self):
         from camp.apps.summaries.tasks import _last_month_start
@@ -718,10 +720,11 @@ class CalendarHelperTests(TestCase):
 
     def test_last_season_start(self):
         from camp.apps.summaries.tasks import _last_season_start
-        # Mar 1 → season that just ended is winter (Dec 1 of previous year)
-        mar_1 = timezone.make_aware(datetime(2026, 3, 1, 0, 30, 0))
+        # Need "now" to be March in LA time. 2026-03-01 12:00 UTC = 04:00 PST = March in LA.
+        mar_1 = timezone.make_aware(datetime(2026, 3, 1, 12, 0, 0))
         with patch('django.utils.timezone.now', return_value=mar_1):
             result = _last_season_start()
+        # March → end_month=3, start_month=12, start_year=2025 → Dec 1 2025
         assert result.year == 2025
         assert result.month == 12
         assert result.day == 1
