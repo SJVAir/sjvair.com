@@ -1,34 +1,16 @@
 <div class="module">
     <table>
-        <caption>User Management</caption>
+        <caption>Platform</caption>
         <tr>
             <td colspan="2">
                 <h3><a href="{% url 'admin:accounts_user_changelist' %}">User Accounts</a></h3>
                 <p>Usernames, email addresses, and passwords</p>
             </td>
         </tr>
-    </table>
-</div>
-
-<div class="module">
-    <table>
-        <caption>Air Quality</caption>
         <tr>
             <td colspan="2">
-                <h3><a href="{% url 'admin:calibrations_calibrationpair_changelist' %}">Calibration Pairs</a></h3>
-                <p>Reference and colocated monitors.</p>
-            </td>
-        </tr>
-        <tr>
-            <td colspan="2">
-                <h3><a href="{% url 'admin:calibrations_defaultcalibration_changelist' %}">Default Calibrations</a></h3>
-                <p>Set the default display calibration by monitor and entry type.</p>
-            </td>
-        </tr>
-        <tr>
-            <td colspan="2">
-                <h3><a href="{% url 'admin:alerts_alert_changelist' %}">Alerts</a></h3>
-                <p>Tracking when the air is bad.</p>
+                <h3><a href="{% url 'admin:regions_region_changelist' %}">Regions</a></h3>
+                <p>Cities, counties, land use, and more.</p>
             </td>
         </tr>
     </table>
@@ -85,11 +67,46 @@
 
 <div class="module">
     <table>
-        <caption>Spatial Analysis</caption>
+        <caption>Air Quality</caption>
         <tr>
             <td colspan="2">
-                <h3><a href="{% url 'admin:regions_region_changelist'%}">Regions</a></h3>
-                <p>Cities, counties, land use, and more.</p>
+                <h3><a href="{% url 'admin:calibrations_calibrationpair_changelist' %}">Calibration Pairs</a></h3>
+                <p>Reference and colocated monitors.</p>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <h3><a href="{% url 'admin:calibrations_defaultcalibration_changelist' %}">Default Calibrations</a></h3>
+                <p>Set the default display calibration by monitor and entry type.</p>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <h3><a href="{% url 'admin:alerts_alert_changelist' %}">Alerts</a></h3>
+                <p>Tracking when the air is bad.</p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Wildfire &amp; Smoke</caption>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:hms_fire_changelist' %}">Fire Pixels</a></h3>
+                <p>NOAA Hazard Mapping System</p>
+            </td>
+            <td class="links">
+                <p><a href="https://www.ospo.noaa.gov/products/land/hms.html#maps" target="_blank">📍 HMS Smoke Map</a></p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:hms_smoke_changelist' %}">Smoke Plumes</a></h3>
+                <p>NOAA Hazard Mapping System</p>
+            </td>
+            <td class="links">
             </td>
         </tr>
     </table>
@@ -100,11 +117,11 @@
         <caption>Data Integrations</caption>
         <tr>
             <td>
-                <h3><a href="{% url 'admin:hms_smoke_smoke_changelist'%}">HMS Smoke</a></h3>
-                <p>NOAA Hazard Mapping System Smoke data.</p>
+                <h3><a href="{% url 'admin:ceidars_facility_changelist'%}">CEIDARS</a></h3>
+                <p>California Emissions Inventory Data and Reporting System.</p>
             </td>
             <td class="links">
-                <p><a href='https://www.ospo.noaa.gov/products/land/hms.html#maps'>📍 HMS Smoke Map</a></p>
+                <p><a href='https://ww2.arb.ca.gov/ceidars'>🔗 CEIDARS Website</a></p>
             </td>
         </tr>
     </table>
@@ -119,7 +136,7 @@
                 <p>How articles are organized.</p>
             </td>
             <td class="links">
-                <p><a href="#" target="_blank">View on Site ↗</a></p>
+                <p><a href="{% url 'helpdesk:home' %}" target="_blank">View on Site ↗</a></p>
             </td>
         </tr>
         <tr>
@@ -128,7 +145,7 @@
                 <p>Main content for the Help Desk.</p>
             </td>
             <td class="links">
-                <p><a href="#" target="_blank">View on Site ↗</a></p>
+                <p><a href="{% url 'helpdesk:home' %}" target="_blank">View on Site ↗</a></p>
             </td>
         </tr>
         <tr>
@@ -136,8 +153,8 @@
                 <h3><a href="{% url 'admin:helpdesk_term_changelist' %}">Glossary</a></h3>
                 <p>A list of terms and their definitions.</p>
             </td>
-            <td>
-                <p><a href="#" target="_blank">View on Site ↗</a></p>
+            <td class="links">
+                <p><a href="{% url 'helpdesk:glossary' %}" target="_blank">View on Site ↗</a></p>
             </td>
         </tr>
     </table>

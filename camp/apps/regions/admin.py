@@ -42,7 +42,8 @@ class BoundaryInline(admin.TabularInline):
         static_map = maps.StaticMap(
             width=width,
             height=height,
-            buffer=0.3
+            buffer=0.3,
+            # zoom_adjust=-1,
         )
         static_map.add(maps.Area(
             geometry=instance.geometry,
@@ -105,15 +106,15 @@ class RegionAdmin(OSMGeoAdmin):
                 county = Region.objects.get_county_region(instance).boundary
 
             width, height = {
-                'landscape': (300, 200),
-                'portrait': (200, 300),
+                'landscape': (400, 300),
+                'portrait': (300, 400),
             }[county.orientation]
 
             static_map = maps.StaticMap(
                 width=width,
                 height=height,
                 buffer=0.1,
-                # basemap=None,
+                zoom_adjust=-1,
             )
 
             if county.region_id != instance.pk:
@@ -127,8 +128,7 @@ class RegionAdmin(OSMGeoAdmin):
             static_map.add(maps.Area(
                 geometry=instance.boundary.geometry,
                 fill_color='dodgerblue',
-                border_color='royalblue',
-                border_width=1,
+                border_width=0,
                 alpha=1,
             ))
 
@@ -153,14 +153,13 @@ class RegionAdmin(OSMGeoAdmin):
                 width=width,
                 height=height,
                 buffer=0.1,
-                # basemap=None,
+                zoom_adjust=-1,
             )
             static_map.add(maps.Area(
                 geometry=instance.boundary.geometry,
                 fill_color='dodgerblue',
                 border_color='royalblue',
                 border_width=1,
-                # alpha=0.2
             ))
 
             monitor_list = sorted(

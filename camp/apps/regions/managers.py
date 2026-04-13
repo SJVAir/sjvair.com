@@ -66,6 +66,38 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
 
         return intersecting.first()
 
+    def resolve_place(self, name: str, threshold: float = 0.3) -> 'Region | None':
+        """
+        Resolves a community name to a Place region using trigram similarity.
+
+        Tries Place names first, then falls back to City/CDP names and returns
+        the Place with the greatest spatial overlap.
+        """
+        from django.contrib.postgres.search import TrigramWordSimilarity
+        from .models import Region
+
+        place = (
+            self.filter(type=Region.Type.PLACE)
+            .annotate(similarity=TrigramWordSimilarity(name, 'name'))
+            .filter(similarity__gte=threshold)
+            .order_by('-similarity')
+            .first()
+        )
+        if place:
+            return place
+
+        region = (
+            self.filter(type__in=[Region.Type.CITY, Region.Type.CDP], boundary__isnull=False)
+            .annotate(similarity=TrigramWordSimilarity(name, 'name'))
+            .filter(similarity__gte=threshold)
+            .order_by('-similarity')
+            .first()
+        )
+        if region:
+            return self.get_containing_region(region, Region.Type.PLACE)
+
+        return None
+
     def import_or_update(cls,
         name: str,
         slug: str,
