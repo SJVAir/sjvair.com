@@ -75,6 +75,7 @@ scout-apm==2.26.1
 sentry-sdk==1.29.2
 simpleeval==1.0.5
 tqdm==4.67.1
+tdigest==0.5.2.2
 twilio==8.5.0
 ua-parser==0.18.0
 Unipath==1.1
