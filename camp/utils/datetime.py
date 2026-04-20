@@ -1,7 +1,17 @@
 from datetime import datetime, time, timedelta
 
 from django import forms
+from django.conf import settings
 from django.utils import timezone
+
+
+def localtime(value=None):
+    """Convert a datetime to the project's local timezone (America/Los_Angeles).
+
+    Equivalent to Django's timezone.localtime() if TIME_ZONE were set to LA
+    rather than UTC.
+    """
+    return timezone.localtime(value, timezone=settings.DEFAULT_TIMEZONE)
 
 
 def make_aware(timestamp, tz=timezone.utc):
