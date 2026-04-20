@@ -1,8 +1,77 @@
+import pytest
+
 from django.contrib.gis.geos import GEOSGeometry
-from django.test import TestCase
+from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
+from camp.api.v2.regions.endpoints import RegionDetail, RegionList
 from camp.apps.regions.models import Boundary, Region
+from camp.utils.test import get_response_data
+
+region_list = RegionList.as_view()
+region_detail = RegionDetail.as_view()
+
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+]
+
+
+class RegionListTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_list_returns_200(self):
+        request = self.factory.get(reverse('api:v2:regions:region-list'))
+        response = region_list(request)
+        assert response.status_code == 200
+
+    def test_list_fields(self):
+        request = self.factory.get(reverse('api:v2:regions:region-list'))
+        response = region_list(request)
+        data = get_response_data(response)
+        assert len(data['data']) > 0
+        assert set(data['data'][0].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
+
+    def test_filter_by_type(self):
+        request = self.factory.get(reverse('api:v2:regions:region-list'), {'type': 'county'})
+        response = region_list(request)
+        data = get_response_data(response)
+        assert all(r['type'] == 'county' for r in data['data'])
+
+    def test_filter_by_invalid_type_returns_empty(self):
+        request = self.factory.get(reverse('api:v2:regions:region-list'), {'type': 'nonexistent'})
+        response = region_list(request)
+        data = get_response_data(response)
+        assert data['data'] == []
+
+
+class RegionDetailTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+
+    def test_detail_returns_200(self):
+        request = self.factory.get('/')
+        response = region_detail(request, region_id=self.region.pk)
+        assert response.status_code == 200
+
+    def test_detail_has_geometry(self):
+        request = self.factory.get('/')
+        response = region_detail(request, region_id=self.region.pk)
+        data = get_response_data(response)
+        assert data['data']['boundary'] is not None
+        assert data['data']['boundary']['geometry'] is not None
+
+    def test_detail_fields(self):
+        request = self.factory.get('/')
+        response = region_detail(request, region_id=self.region.pk)
+        data = get_response_data(response)
+        assert set(data['data'].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
+
 
 
 def make_place(name, slug, geom_wkt):

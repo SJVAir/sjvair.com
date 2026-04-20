@@ -25,4 +25,5 @@ urlpatterns = [
 
     path('<monitor_id>/alerts/', include('camp.api.v2.alerts.urls', namespace='alerts')),
     path('<monitor_id>/archive/', include('camp.api.v2.archive.urls', namespace='archive')),
+    path('<monitor_id>/summaries/', include('camp.api.v2.summaries.monitor_urls')),
 ]
