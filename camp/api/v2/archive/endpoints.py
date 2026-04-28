@@ -19,10 +19,11 @@ class EntryArchiveMixin:
 
 
 class ArchiveList(EntryArchiveMixin, generics.ListEndpoint):
-    pass
+    """List available monthly entry archive files for a monitor."""
 
 
 class ArchiveCSV(EntryArchiveMixin, generics.DetailEndpoint):
+    """Redirect to the download URL for a monitor's monthly entry archive CSV."""
     def get_object(self):
         return self.get_queryset().get(
             year=self.kwargs['year'],

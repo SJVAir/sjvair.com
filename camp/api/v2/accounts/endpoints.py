@@ -35,6 +35,7 @@ from . import forms, serializers
 
 
 class AlertList(generics.ListEndpoint):
+    documented = False
     model = Alert
     login_required = True
 
@@ -55,7 +56,7 @@ class LoginEndpoint(TokenAuthEndpoint):
     """
     Logs in a user and gets auth token
     """
-    
+    documented = False
     serializer_class = serializers.UserSerializer
 
     def get(self, request, **kwargs):
@@ -73,6 +74,7 @@ class RegisterEndpoint(generics.CreateEndpoint):
     """
     Create a new user and send code for phone number validation.
     """
+    documented = False
     form_class = forms.UserRegistrationForm
     model = User
     serializer_class = serializers.UserSerializer
@@ -82,7 +84,7 @@ class UserDetail(generics.DetailUpdateDeleteEndpoint):
     """
     Retrieve, update or delete a user
     """
-
+    documented = False
     form_class = forms.UserForm
     model = User
     serializer_class = serializers.UserSerializer
@@ -101,6 +103,7 @@ class UserDetail(generics.DetailUpdateDeleteEndpoint):
 
 
 class ChangePasswordEndpoint(mixins.UpdateModelMixin, generics.GenericEndpoint):
+    documented = False
     form_class = auth_forms.PasswordChangeForm
     model = User
     serializer_class = serializers.UserSerializer
@@ -114,6 +117,7 @@ class ChangePasswordEndpoint(mixins.UpdateModelMixin, generics.GenericEndpoint):
 
 
 class SendPhoneVerificationEndpoint(FormEndpoint):
+    documented = False
     login_required = True
     form_class = forms.SendPhoneVerificationForm
 
@@ -132,6 +136,7 @@ class SendPhoneVerificationEndpoint(FormEndpoint):
 
 
 class ConfirmPhoneVerificationEndpoint(FormEndpoint):
+    documented = False
     login_required = True
     form_class = forms.ConfirmPhoneVerificationForm
 
@@ -150,6 +155,7 @@ class ConfirmPhoneVerificationEndpoint(FormEndpoint):
 
 
 class PasswordResetEndpoint(FormEndpoint):
+    documented = False
     form_class = forms.PasswordResetForm
 
     def form_valid(self, form):
@@ -158,6 +164,7 @@ class PasswordResetEndpoint(FormEndpoint):
 
 
 class PasswordResetConfirmEndpoint(FormEndpoint):
+    documented = False
     form_class = forms.SetPasswordForm
 
     @method_decorator(csrf_exempt)

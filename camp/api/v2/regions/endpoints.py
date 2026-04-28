@@ -25,6 +25,8 @@ class RegionDetail(RegionMixin, generics.DetailEndpoint):
 
 
 class PlaceSearch(generics.Endpoint):
+    """Search for a place by name and return its geographic region data."""
+
     def get(self, request):
         q = request.GET.get('q', '').strip()
         place = Region.objects.resolve_place(q) if q else None
