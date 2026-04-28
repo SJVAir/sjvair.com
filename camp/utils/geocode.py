@@ -1,9 +1,8 @@
 import csv
 import io
-import itertools
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote
 
 import requests
@@ -71,12 +70,10 @@ def census(address, retries=5):
 def census_batch(addresses, retries=5):
     """
     Batch geocode a list of address dicts via Census Geocoding Services.
-    Each dict should have: street, city, state, zipcode (all optional strings).
-    Returns a list of Point or None, parallel to input.
-    Sends up to 1000 addresses per request.
+    Yields (address, point) pairs in input order. point is None on failure.
     """
     if not addresses:
-        return []
+        return
 
     results = [None] * len(addresses)
 
@@ -113,7 +110,7 @@ def census_batch(addresses, retries=5):
             except requests.RequestException:
                 time.sleep((2 ** attempt) * 0.5)
 
-    return results
+    yield from zip(addresses, results)
 
 
 # -- MapTiler Geocoding API --
@@ -161,26 +158,18 @@ def maptiler(address, retries=5, strict=False):
 def maptiler_batch(addresses, workers=5, strict=False):
     """
     Batch geocode a list of address dicts via MapTiler, concurrently.
-    Each dict should have: street, city, state, zipcode (all optional strings).
-    Returns a list of Point or None, parallel to input.
+    Yields (address, point) pairs in completion order. point is None on failure.
     """
     if not addresses:
-        return []
-
-    total = len(addresses)
-    results = []
-    spinner = itertools.cycle('|/-\\')
+        return
 
     def _geocode(addr):
-        return maptiler(_address_string(addr), strict=strict)
+        return addr, maptiler(_address_string(addr), strict=strict)
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        for result in executor.map(_geocode, addresses):
-            results.append(result)
-            print(f'\r  maptiler [{len(results)}/{total}] {next(spinner)}\033[K', end='', flush=True)
-
-    print(f'\r\033[K', end='', flush=True)
-    return results
+        futures = {executor.submit(_geocode, addr): addr for addr in addresses}
+        for future in as_completed(futures):
+            yield future.result()
 
 
 # -- Combined geocoder --
@@ -188,3 +177,23 @@ def maptiler_batch(addresses, workers=5, strict=False):
 def resolve(address, strict=False):
     """Single address string → Point or None. Tries Census first, falls back to MapTiler."""
     return census(address) or maptiler(address, strict=strict)
+
+
+def resolve_batch(addresses, workers=5, strict=False):
+    """
+    Geocode a list of address dicts, yielding (address, point) pairs.
+    Census batch runs first; failures fall back to MapTiler concurrently.
+    Results are yielded as they become available — Census hits up front,
+    MapTiler results as each finishes.
+    """
+    if not addresses:
+        return
+
+    fallbacks = []
+    for addr, point in census_batch(addresses):
+        if point is not None:
+            yield addr, point
+        else:
+            fallbacks.append(addr)
+
+    yield from maptiler_batch(fallbacks, workers=workers, strict=strict)

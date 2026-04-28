@@ -207,19 +207,13 @@ class Command(BaseCommand):
                         'zipcode': row.get('FZIP', '').strip(),
                     }))
 
-            # Batch geocode upfront via Census, then fall back to MapTiler for failures
+            # Batch geocode upfront via Census, falling back to MapTiler for failures.
             positions = {}
             if geocode_index:
-                self.status(f'{county_name} ({county_code}): geocoding {len(geocode_index)} via Census...')
-                results = geocode.census_batch([addr for _, addr in geocode_index])
-                positions = {facid: point for (facid, _), point in zip(geocode_index, results)}
-
-                census_failures = [(facid, addr) for (facid, addr), point in zip(geocode_index, results) if point is None]
-                if census_failures:
-                    self.status(f'{county_name} ({county_code}): {len(census_failures)} Census failures, retrying via MapTiler...')
-                    maptiler_results = geocode.maptiler_batch([addr for _, addr in census_failures])
-                    for (facid, _), point in zip(census_failures, maptiler_results):
-                        positions[facid] = point
+                self.status(f'{county_name} ({county_code}): geocoding {len(geocode_index)} facilities...')
+                addr_to_facid = {id(addr): facid for facid, addr in geocode_index}
+                for addr, point in geocode.resolve_batch([addr for _, addr in geocode_index]):
+                    positions[addr_to_facid[id(addr)]] = point
 
             # Upsert facilities and emissions records
             total_rows = len(merged)
