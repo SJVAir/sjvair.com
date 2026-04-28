@@ -380,6 +380,16 @@ DJANGO_HUEY = {
             'huey_class': 'huey.PriorityRedisHuey',
             'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
         },
+        'summaries': {
+            'name': 'summaries_tasks',
+            'connection': {'url': f'{REDIS_URL}/2'},
+            'consumer': {
+                'periodic': True,
+                'workers': int(env('HUEY_SUMMARIES_WORKERS', env('HUEY_WORKERS', 2)))
+            },
+            'huey_class': 'huey.PriorityRedisHuey',
+            'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
+        },
     }
 }
 

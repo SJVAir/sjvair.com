@@ -89,6 +89,11 @@ services:
     command: python manage.py djangohuey --simple --queue secondary
     profiles: ["all", "workers"]
 
+  worker-summaries:
+    <<: *build-base
+    command: python manage.py djangohuey --simple --queue summaries
+    profiles: ["all", "workers"]
+
   test:
     <<: *build-base
     build:
