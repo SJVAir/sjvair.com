@@ -234,7 +234,7 @@ def mock_fetch(criteria_csv=CRITERIA_CSV, toxics_csv=TOXICS_CSV):
 class TestImportCommand:
     def test_creates_facility_and_emissions_record(self, db):
         with patch('requests.get', side_effect=mock_fetch()):
-            with patch('camp.utils.geocode.census_batch', return_value=[_TEST_POINT]):
+            with patch('camp.utils.geocode.resolve_batch', side_effect=lambda addrs, **kw: [(a, _TEST_POINT) for a in addrs]):
                 call_command('import_ceidars', year=2023, county=10)
 
         assert Facility.objects.count() == 1
@@ -251,9 +251,9 @@ class TestImportCommand:
 
     def test_idempotent_rerun(self, db):
         with patch('requests.get', side_effect=mock_fetch()):
-            with patch('camp.utils.geocode.census_batch', return_value=[_TEST_POINT]):
+            with patch('camp.utils.geocode.resolve_batch', side_effect=lambda addrs, **kw: [(a, _TEST_POINT) for a in addrs]):
                 call_command('import_ceidars', year=2023, county=10)
-                # Second run: facility exists, batch not called (no new facilities)
+                # Second run: facility exists, resolve_batch not called (no new facilities)
                 call_command('import_ceidars', year=2023, county=10)
 
         assert Facility.objects.count() == 1
@@ -262,7 +262,7 @@ class TestImportCommand:
     def test_metadata_year_guard_prevents_older_overwrite(self, db):
         criteria_2022 = CRITERIA_CSV.replace('TEST FACILITY A', 'OLD NAME')
         with patch('requests.get', side_effect=mock_fetch()):
-            with patch('camp.utils.geocode.census_batch', return_value=[_TEST_POINT]):
+            with patch('camp.utils.geocode.resolve_batch', side_effect=lambda addrs, **kw: [(a, _TEST_POINT) for a in addrs]):
                 call_command('import_ceidars', year=2023, county=10)
 
         with patch('requests.get', side_effect=mock_fetch(criteria_csv=criteria_2022)):
@@ -275,9 +275,8 @@ class TestImportCommand:
 
     def test_geocode_failure_does_not_abort(self, db):
         with patch('requests.get', side_effect=mock_fetch()):
-            with patch('camp.utils.geocode.census_batch', return_value=[None]):
-                with patch('camp.utils.geocode.maptiler_batch', return_value=[None]):
-                    call_command('import_ceidars', year=2023, county=10)
+            with patch('camp.utils.geocode.resolve_batch', side_effect=lambda addrs, **kw: [(a, None) for a in addrs]):
+                call_command('import_ceidars', year=2023, county=10)
 
         assert Facility.objects.count() == 1
         assert Facility.objects.first().point is None
