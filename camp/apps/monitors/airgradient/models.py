@@ -6,6 +6,8 @@ from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 from django.utils.functional import cached_property
 
+from netaddr import EUI, AddrFormatError
+
 from django_smalluuid.models import SmallUUIDField, uuid_default
 from model_utils.models import TimeStampedModel
 
@@ -186,8 +188,15 @@ class AirGradient(LCSMixin, Monitor):
 
         self.name = html.unescape(data['locationName']).strip()
         self.device = data.get('model', self.device)
-        self.hardware_id = data.get('serialno', self.hardware_id)
         self.location = self.get_probable_location()
+
+        serialno = data.get('serialno')
+        if serialno:
+            try:
+                EUI(serialno)
+                self.hardware_id = serialno
+            except AddrFormatError:
+                pass
 
         # Some payloads include lat/lon, some don't...
         if data.get('latitude') and data.get('longitude'):
