@@ -40,5 +40,14 @@ DJANGO_HUEY = {
             'huey_class': 'huey.MemoryHuey',
             'immediate': True
         },
+        'summaries': {
+            'name': 'summaries_tasks',
+            'consumer': {
+                'periodic': False,
+                'workers': 1
+            },
+            'huey_class': 'huey.MemoryHuey',
+            'immediate': True
+        },
     }
 }

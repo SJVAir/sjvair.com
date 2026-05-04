@@ -9,11 +9,6 @@ FEM_WEIGHT = 3.0
 LCS_WEIGHT = 1.0
 MAX_HEALTH_SCORE = 3
 
-# Sentinel: get_monitor_weight uses this default to mean "go fetch from DB".
-# Distinct from None, which means "no health check record found → use 1.0".
-_UNSET = object()
-
-
 def tdigest_to_dict(digest: TDigest) -> dict:
     """Serialize a TDigest to a JSON-safe dict."""
     return {
@@ -142,35 +137,20 @@ def rollup_summaries(queryset):
     }
 
 
-def get_monitor_weight(monitor, hour, health_score=_UNSET):
+def get_monitor_weight(grade, health_score=None):
     """
-    Return the contribution weight for a monitor at a given hour.
+    Return the contribution weight for a monitor.
 
     FEM/FRM monitors always get FEM_WEIGHT (authoritative, no health check needed).
     LCS monitors get LCS_WEIGHT scaled by their health score (0–1 factor).
     Monitors with no health check record get health_factor=1.0.
-
-    health_score: optional pre-fetched score value to avoid a DB query. Pass
-    the score for this specific monitor; None means "no record found, use 1.0".
-    Omit entirely to have this function fetch from the DB itself.
     """
     from camp.apps.monitors.models import Monitor
-    from camp.apps.qaqc.models import HealthCheck
 
-    if monitor.grade in {Monitor.Grade.FEM, Monitor.Grade.FRM}:
+    if grade in {Monitor.Grade.FEM, Monitor.Grade.FRM}:
         return FEM_WEIGHT
 
-    if health_score is _UNSET:
-        try:
-            health_score = (HealthCheck.objects
-                .values_list('score', flat=True)
-                .get(monitor=monitor, hour=hour)
-            )
-        except HealthCheck.DoesNotExist:
-            health_score = None
-
     health_factor = health_score / MAX_HEALTH_SCORE if health_score is not None else 1.0
-
     return LCS_WEIGHT * health_factor
 
 
@@ -191,11 +171,13 @@ def compute_region_summary(region, timestamp, entry_type):
     if not region.boundary:
         return None
 
-    monitor_ids = list(
+    monitor_grades = dict(
         Monitor.objects
         .filter(position__within=region.boundary.geometry)
-        .values_list('pk', flat=True)
+        .with_grade()
+        .values_list('pk', 'grade')
     )
+    monitor_ids = list(monitor_grades)
 
     if not monitor_ids:
         return None
@@ -211,7 +193,6 @@ def compute_region_summary(region, timestamp, entry_type):
             resolution=BaseSummary.Resolution.HOURLY,
             entry_type=entry_type,
         )
-        .select_related('monitor')
         .order_by('processor')  # '' < any non-blank string
     )
 
@@ -251,7 +232,7 @@ def compute_region_summary(region, timestamp, entry_type):
     for s in summaries:
         if s.count == 0:
             continue
-        weight = get_monitor_weight(s.monitor, timestamp, health_score=health_scores.get(s.monitor_id))
+        weight = get_monitor_weight(monitor_grades.get(s.monitor_id), health_scores.get(s.monitor_id))
         if weight == 0:
             continue
 
