@@ -101,6 +101,22 @@ class MonitorQuerySet(InheritanceQuerySet):
     def get_active_multisensor(self):
         return self.get_active().exclude(default_sensor='').exclude(location='inside')
 
+    def with_grade(self):
+        from django.db.models import CharField
+        from camp.apps.monitors.models import Monitor
+
+        whens = []
+        for subclass in Monitor.get_subclasses():
+            grade = getattr(subclass, 'GRADE', None)
+            if grade in {Monitor.Grade.FEM, Monitor.Grade.FRM} and not subclass._meta.abstract:
+                whens.append(
+                    When(**{f'{subclass._meta.model_name}__isnull': False}, then=Value(grade))
+                )
+
+        return self.annotate(
+            grade=Case(*whens, default=Value(Monitor.Grade.LCS), output_field=CharField())
+        )
+
     def with_last_entry_timestamp(self):
         from camp.apps.monitors.models import LatestEntry
 
@@ -173,7 +189,7 @@ class MonitorQuerySet(InheritanceQuerySet):
         whens = []
         for subclass in Monitor.get_subclasses():
             model_name = subclass._meta.model_name
-            if subclass.grade == Monitor.Grade.LCS:
+            if getattr(subclass, 'GRADE', None) == Monitor.Grade.LCS:
                 whens.append(
                     When(**{
                         f'{model_name}__isnull': False,
@@ -228,3 +244,6 @@ class MonitorManager(InheritanceManager):
 
     def get_for_health_checks(self, hour: Optional[datetime] = None):
         return self.get_queryset().get_for_health_checks(hour)
+
+    def with_grade(self):
+        return self.get_queryset().with_grade()

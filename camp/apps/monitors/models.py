@@ -123,7 +123,7 @@ class Monitor(models.Model):
         FRM = 'frm', _('Federal Reference Method')
         LCS = 'lcs', _('Low-Cost Sensor')
 
-    grade = None
+    GRADE = None
 
     id = SmallUUIDField(
         default=uuid_default(),
@@ -254,7 +254,7 @@ class Monitor(models.Model):
 
     @property
     def is_regulatory(self):
-        return self.grade in {self.Grade.FEM, self.Grade.FRM}
+        return self.GRADE in {self.Grade.FEM, self.Grade.FRM}
 
     @cached_property
     def is_active(self):
@@ -636,7 +636,7 @@ class LCSMixin(Monitor):
     sensor_id = models.IntegerField(unique=True)
     hardware_id = MACAddressField(blank=True, null=True)
 
-    grade = Monitor.Grade.LCS
+    GRADE = Monitor.Grade.LCS
 
     class Meta:
         abstract = True

@@ -162,10 +162,12 @@ class RegionAdmin(OSMGeoAdmin):
                 border_width=1,
             ))
 
-            monitor_list = sorted(
-                instance.monitors.with_last_entry_timestamp().with_latest_entry(entry_models.PM25),
-                key=lambda m: (m.grade, m.position),
-                reverse=True
+            monitor_list = (
+                instance.monitors
+                .with_grade()
+                .with_last_entry_timestamp()
+                .order_by('grade', 'position')
+                .with_latest_entry(entry_models.PM25)
             )
 
             active = 0

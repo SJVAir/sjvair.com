@@ -48,6 +48,7 @@ class BaseSummary(models.Model):
         abstract = True
         indexes = [
             models.Index(fields=['timestamp', 'resolution', 'entry_type']),
+            models.Index(fields=['resolution', 'timestamp']),
         ]
 
 

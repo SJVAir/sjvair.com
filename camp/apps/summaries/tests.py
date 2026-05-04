@@ -20,11 +20,13 @@ from django.utils import timezone
 FIXED_NOW = timezone.make_aware(datetime(2026, 4, 1, 10, 30, 0))
 
 from camp.apps.entries.models import CO, NO2, O3, PM25, SO2
+from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.qaqc.models import HealthCheck
 from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import (
+    FEM_WEIGHT,
     LCS_WEIGHT,
     compute_monitor_summary,
     compute_region_summary,
@@ -181,31 +183,59 @@ class GetMonitorWeightTests(TestCase):
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
 
     def test_lcs_monitor_without_health_check_gets_full_lcs_weight(self):
-        assert get_monitor_weight(self.monitor, self.hour) == LCS_WEIGHT * 1.0
+        assert get_monitor_weight(Monitor.Grade.LCS) == LCS_WEIGHT * 1.0
 
     def test_lcs_monitor_with_zero_health_score_gets_zero_weight(self):
-        HealthCheck.objects.create(monitor=self.monitor, hour=self.hour, score=0)
-        assert get_monitor_weight(self.monitor, self.hour) == 0.0
+        assert get_monitor_weight(Monitor.Grade.LCS, health_score=0) == 0.0
 
     def test_lcs_monitor_with_max_health_score_gets_full_lcs_weight(self):
-        HealthCheck.objects.create(monitor=self.monitor, hour=self.hour, score=3)
-        assert get_monitor_weight(self.monitor, self.hour) == pytest.approx(LCS_WEIGHT * 1.0)
+        assert get_monitor_weight(Monitor.Grade.LCS, health_score=3) == pytest.approx(LCS_WEIGHT * 1.0)
+
+    def test_fem_monitor_always_gets_fem_weight(self):
+        assert get_monitor_weight(Monitor.Grade.FEM) == FEM_WEIGHT
+
+    def test_fem_monitor_ignores_health_score(self):
+        assert get_monitor_weight(Monitor.Grade.FEM, health_score=0) == FEM_WEIGHT
+
+    def test_frm_monitor_always_gets_fem_weight(self):
+        assert get_monitor_weight(Monitor.Grade.FRM) == FEM_WEIGHT
+
+
+class WithGradeTests(TestCase):
+    fixtures = ['purple-air.yaml', 'bam1022.yaml']
+
+    def test_lcs_monitor_annotated_as_lcs(self):
+        pa = PurpleAir.objects.first()
+        result = Monitor.objects.with_grade().get(pk=pa.pk)
+        assert result.grade == Monitor.Grade.LCS
+
+    def test_fem_monitor_annotated_as_fem(self):
+        bam = BAM1022.objects.first()
+        result = Monitor.objects.with_grade().get(pk=bam.pk)
+        assert result.grade == Monitor.Grade.FEM
+
+    def test_values_list_returns_correct_grades(self):
+        grades = dict(Monitor.objects.with_grade().values_list('pk', 'grade'))
+        pa = PurpleAir.objects.first()
+        bam = BAM1022.objects.first()
+        assert grades[pa.pk] == Monitor.Grade.LCS
+        assert grades[bam.pk] == Monitor.Grade.FEM
 
 
 class ComputeRegionSummaryTests(TestCase):
-    fixtures = ['purple-air.yaml', 'regions.yaml']
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'regions.yaml']
 
     def setUp(self):
         self.monitor = PurpleAir.objects.first()
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
         self.region = Region.objects.first()
 
-    def _make_monitor_summary(self, mean=20.0, count=10):
+    def _make_monitor_summary(self, mean=20.0, count=10, monitor=None):
         arr = np.array([mean] * count)
         digest = TDigest()
         digest.batch_update(arr.tolist())
         return MonitorSummary.objects.create(
-            monitor=self.monitor,
+            monitor=monitor or self.monitor,
             timestamp=self.hour,
             resolution=MonitorSummary.Resolution.HOURLY,
             entry_type='pm25',
@@ -239,6 +269,32 @@ class ComputeRegionSummaryTests(TestCase):
         assert result is not None
         assert result['station_count'] == 1
         assert result['mean'] == pytest.approx(25.0, abs=0.1)
+
+    def test_fem_monitor_outweighs_lcs(self):
+        if not self.region.boundary:
+            self.skipTest('requires region with boundary')
+        centroid = self.region.boundary.geometry.centroid
+
+        # LCS monitor at 10, FEM monitor at 30 — FEM weight is 3×, so weighted
+        # mean should be closer to 30 than a simple average of 20 would give.
+        lcs = self.monitor
+        lcs.position = centroid
+        lcs.save()
+
+        fem = BAM1022.objects.first()
+        fem.position = centroid
+        fem.save()
+
+        self._make_monitor_summary(monitor=lcs, mean=10.0)
+        self._make_monitor_summary(monitor=fem, mean=30.0)
+
+        result = compute_region_summary(self.region, self.hour, 'pm25')
+
+        assert result is not None
+        assert result['station_count'] == 2
+        # weighted mean: (LCS_WEIGHT*10 + FEM_WEIGHT*30) / (LCS_WEIGHT + FEM_WEIGHT)
+        expected = (LCS_WEIGHT * 10.0 + FEM_WEIGHT * 30.0) / (LCS_WEIGHT + FEM_WEIGHT)
+        assert result['mean'] == pytest.approx(expected, abs=0.01)
 
 
 
@@ -479,7 +535,8 @@ class RebuildSummariesCommandTests(TestCase):
     def setUp(self):
         self.monitor = PurpleAir.objects.first()
         self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
-        self.start = (self.hour - timedelta(hours=1)).strftime('%Y-%m-%d')
+        local_hour = timezone.localtime(self.hour, settings.DEFAULT_TIMEZONE)
+        self.start = (local_hour - timedelta(hours=1)).strftime('%Y-%m-%d')
 
         self.region = Region.objects.filter(boundary__isnull=False).first()
         if self.region:
