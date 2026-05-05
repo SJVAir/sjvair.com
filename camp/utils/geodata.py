@@ -150,23 +150,26 @@ def load_region_geometry(crs: Optional[str] = gis.EPSG_LATLON):
     return geometry
 
 
-def gdf_from_ckan(*args, **kwargs) -> gpd.GeoDataFrame:
-    gdf = gpd.GeoDataFrame(iter_from_ckan(*args, **kwargs))
-    if 'geometry' not in gdf.columns and not gdf.empty:
-        gdf.set_geometry('geometry', inplace=True)
+def _finalize_gdf(gdf: gpd.GeoDataFrame, crs: str) -> gpd.GeoDataFrame:
+    if gdf.empty:
+        return gdf
+    if 'geometry' not in gdf.columns:
+        gdf = gdf.set_geometry('geometry')
+    if gdf.crs is None:
+        gdf = gdf.set_crs(crs)
     return gdf
+
+def gdf_from_ckan(*args, **kwargs) -> gpd.GeoDataFrame:
+    crs = kwargs.get('crs', gis.EPSG_LATLON)
+    return _finalize_gdf(gpd.GeoDataFrame(iter_from_ckan(*args, **kwargs)), crs)
 
 def gdf_from_url(*args, **kwargs) -> gpd.GeoDataFrame:
-    gdf = gpd.GeoDataFrame(iter_from_url(*args, **kwargs))
-    if 'geometry' not in gdf.columns and not gdf.empty:
-        gdf.set_geometry('geometry', inplace=True)
-    return gdf
+    crs = kwargs.get('crs', gis.EPSG_LATLON)
+    return _finalize_gdf(gpd.GeoDataFrame(iter_from_url(*args, **kwargs)), crs)
 
 def gdf_from_zip(*args, **kwargs) -> gpd.GeoDataFrame:
-    gdf = gpd.GeoDataFrame(iter_from_zip(*args, **kwargs))
-    if 'geometry' not in gdf.columns and not gdf.empty:
-        gdf.set_geometry('geometry', inplace=True)
-    return gdf
+    crs = kwargs.get('crs', gis.EPSG_LATLON)
+    return _finalize_gdf(gpd.GeoDataFrame(iter_from_zip(*args, **kwargs)), crs)
 
 
 def stream_filtered_gdf(
@@ -183,7 +186,13 @@ def stream_filtered_gdf(
             return str(int(val))
         return str(val)
 
-    with fiona.open(f'zip://{path}', encoding=encoding) as src:
+    try:
+        zipfile.ZipFile(str(path)).close()
+        fiona_path = f'zip://{path}'
+    except zipfile.BadZipFile:
+        fiona_path = str(path)
+
+    with fiona.open(fiona_path, encoding=encoding) as src:
         iterable = src
         if limit_to_region:
             region = load_region_geometry(src.crs)
@@ -201,7 +210,7 @@ def stream_filtered_gdf(
                     for k, v in props.items()
                 }
 
-            gdf = gpd.GeoDataFrame([props], geometry=[geometry], crs=src.crs)
+            gdf = gpd.GeoDataFrame([props], geometry=[geometry], crs=src.crs or crs)
             if src.crs and src.crs.to_string() != crs:
                 gdf = gdf.to_crs(crs)
 
@@ -262,10 +271,13 @@ def iter_from_url(
         print(f'-> {url}')
         print(f'-> {cache_path}')
         stream_to_disk(url=url, dest=cache_path, verify=verify)
-        with zipfile.ZipFile(cache_path) as z:
-            if bad := z.testzip():
-                cache_path.unlink(missing_ok=True)
-                raise ValueError(f'Corrupt ZIP member: {bad}')
+        try:
+            with zipfile.ZipFile(cache_path) as z:
+                if bad := z.testzip():
+                    cache_path.unlink(missing_ok=True)
+                    raise ValueError(f'Corrupt ZIP member: {bad}')
+        except zipfile.BadZipFile:
+            pass  # Not a ZIP (e.g. raw GeoJSON) — cached as-is, fiona reads directly
 
     return iter_from_zip(
         path=cache_path,

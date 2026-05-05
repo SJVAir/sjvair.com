@@ -38,6 +38,9 @@ class Region(TimeStampedModel):
         # Synthetic community areas (union of UA + city + CDP)
         PLACE = 'place', _('Place')
 
+        # Agricultural survey geography (PLSS / MTRS)
+        MTRS = 'mtrs', _('MTRS Section')
+
         # Catch-all for user-defined regions
         CUSTOM = 'custom', _('Custom Region')
 
