@@ -24,6 +24,8 @@ docker compose run --rm web python manage.py createsuperuser
 
 Tests use `camp.settings.test` which runs Huey in immediate/synchronous mode and swaps in a local memory cache. Fixtures live in `/fixtures/*.yaml`.
 
+Tests use `django.test.TestCase` with setup in the test methods or setUp and pytest-style assert statements (`assert x` instead of `self.isX()`).
+
 ## Architecture Overview
 
 SJVAir is a Django/PostGIS air quality monitoring platform for the San Joaquin Valley. It ingests data from multiple sensor networks, processes it through a calibration pipeline, and exposes it via a versioned REST API.
@@ -77,8 +79,9 @@ Key env vars: `DATABASE_URL`, `REDIS_URL`, `PURPLEAIR_READ_KEY`, `AIRNOW_API_KEY
 
 ### Key Conventions
 
-- All primary keys are `SmallUUIDField` (URL-safe UUIDs via `django-smalluuid`)
+- Legacy primary keys are `SmallUUIDField` (URL-safe UUIDs via `django-smalluuid`), with newer models using sqids.
 - Timezone is always `America/Los_Angeles`; `camp/utils/datetime.py` has helpers
 - `Monitor.ENTRY_CONFIG` is the source of truth for what data a monitor produces and how it's processed
 - `Monitor.supports_health_checks()` is an **instance method** — returns `True` only if this specific monitor instance supports dual-channel health checks (e.g., AirGradient requires `device == 'O-1PP'`)
 - `Monitor.health_check_queryset_filter()` is a **classmethod** — returns a dict of queryset kwargs for filtering health-check-eligible monitors of that type in bulk
+- All tests should inherit from Django's test case and use Django's fixtures system.

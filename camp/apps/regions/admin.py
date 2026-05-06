@@ -11,6 +11,7 @@ from camp.apps.entries import models as entry_models
 from camp.apps.entries.levels import _blend_hex
 from camp.apps.regions.models import Region, Boundary
 from camp.utils import maps
+from camp.utils.admin import ReadOnlyAdminMixin
 
 
 class BoundaryInline(admin.TabularInline):
@@ -56,7 +57,7 @@ class BoundaryInline(admin.TabularInline):
 
 
 @admin.register(Region)
-class RegionAdmin(OSMGeoAdmin):
+class RegionAdmin(ReadOnlyAdminMixin, OSMGeoAdmin):
     inlines = [BoundaryInline]
     list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
     list_filter = ['type', 'boundary__version']
@@ -78,15 +79,6 @@ class RegionAdmin(OSMGeoAdmin):
     def current_version(self, instance):
         return instance.boundary.version if instance.boundary else '-'
     current_version.short_description = 'Version'
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
     def save_model(self, request, obj, form, change):
         messages.add_message(request, messages.WARNING, "The next message is a lie:")

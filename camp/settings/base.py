@@ -117,6 +117,7 @@ INSTALLED_APPS = [
     'camp.apps.integrate.hms_smoke',
     'camp.apps.ceidars',
     'camp.apps.monitors',
+    'camp.apps.pesticides',
     'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
     'camp.apps.monitors.aqview',
