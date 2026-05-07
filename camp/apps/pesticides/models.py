@@ -13,6 +13,7 @@ class Chemical(TimeStampedModel):
         BIOPESTICIDE             = 'biopesticide',             _('Biopesticide')
         CARCINOGEN               = 'carcinogen',               _('Carcinogen')
         CHOLINESTERASE_INHIBITOR = 'cholinesterase_inhibitor', _('Cholinesterase Inhibitor')
+        DEVELOPMENTAL_TOXIN      = 'developmental_toxin',      _('Developmental Toxin')
         FUMIGANT                 = 'fumigant',                 _('Fumigant')
         GROUNDWATER_CONTAMINANT  = 'groundwater_contaminant',  _('Groundwater Contaminant')
         OIL                      = 'oil',                      _('Oil')
