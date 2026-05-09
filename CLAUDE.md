@@ -26,6 +26,34 @@ Tests use `camp.settings.test` which runs Huey in immediate/synchronous mode and
 
 Tests use `django.test.TestCase` with setup in the test methods or setUp and pytest-style assert statements (`assert x` instead of `self.isX()`).
 
+## Pesticide Data Import
+
+PUR data and chemical enrichment must be imported in order. Each step depends on the previous.
+
+```bash
+# 1. Import PUR use records (repeat for each year; imports reference tables on first run)
+docker compose run --rm web python manage.py import_pur --year 2023
+docker compose run --rm web python manage.py import_pur --year 2022 --skip-lookup
+
+# 2. Enrich chemicals with CompTox (DTXSID, CAS numbers, IARC group)
+#    Requires COMPTOX_API_KEY in .env
+#    Phase 'search': batch name search + CAS lookup
+#    Phase 'equals': slower individual search for high-volume unmatched chemicals (run after search)
+#    Phase 'hazard': fetches IARC cancer classifications (requires DTXSIDs from search)
+docker compose run --rm web python manage.py import_comptox --phase search
+docker compose run --rm web python manage.py import_comptox --phase equals --limit 500 --workers 10
+docker compose run --rm web python manage.py import_comptox --phase hazard
+
+# 3. Apply Prop 65 carcinogen/reproductive/developmental toxin classifications
+#    Download CSV manually from https://oehha.ca.gov/proposition-65/proposition-65-list
+#    (site uses JS bot-protection that blocks server-side downloads)
+docker compose run --rm web python manage.py import_prop65 --path /path/to/p65chemicalslist.csv
+```
+
+Steps 2 and 3 are idempotent and safe to re-run. Re-running `import_pur` for a given year
+deletes and reimports that year's records. Run `import_comptox --phase search` first whenever
+new PUR years are added (new chemicals may appear); then re-run `equals` and `hazard`.
+
 ## Architecture Overview
 
 SJVAir is a Django/PostGIS air quality monitoring platform for the San Joaquin Valley. It ingests data from multiple sensor networks, processes it through a calibration pipeline, and exposes it via a versioned REST API.

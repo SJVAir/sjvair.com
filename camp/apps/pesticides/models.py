@@ -20,11 +20,19 @@ class Chemical(TimeStampedModel):
         REPRODUCTIVE_TOXIN       = 'reproductive_toxin',       _('Reproductive Toxin')
         TOXIC_AIR_CONTAMINANT    = 'toxic_air_contaminant',    _('Toxic Air Contaminant')
 
+    class IARCGroup(models.TextChoices):
+        GROUP_1  = '1',  _('Group 1 – Carcinogenic to humans')
+        GROUP_2A = '2A', _('Group 2A – Probably carcinogenic to humans')
+        GROUP_2B = '2B', _('Group 2B – Possibly carcinogenic to humans')
+        GROUP_3  = '3',  _('Group 3 – Not classifiable as to carcinogenicity')
+
     sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.Chemical'))
 
     chem_code = models.IntegerField(_('Chemical Code'), unique=True)
     name = models.CharField(_('Name'), max_length=256)
     cas_number = models.CharField(_('CAS Number'), max_length=32, blank=True)
+    dtxsid = models.CharField(_('DTXSID'), max_length=20, blank=True, db_index=True)
+    iarc_group = models.CharField(_('IARC Group'), max_length=2, blank=True, choices=IARCGroup.choices)
     categories = ArrayField(
         models.CharField(max_length=32, choices=Category.choices),
         verbose_name=_('Categories'),

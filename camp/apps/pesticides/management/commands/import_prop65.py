@@ -1,13 +1,12 @@
 import csv
 import io
 
-import requests
 from django.core.management.base import BaseCommand
 
 from camp.apps.pesticides.models import Chemical
 
-# Download from: https://oehha.ca.gov/proposition-65/proposition-65-list
-PROP65_URL = 'https://oehha.ca.gov/media/downloads/proposition-65/p65list.csv'
+# Download manually from: https://oehha.ca.gov/proposition-65/proposition-65-list
+# The site uses JavaScript bot-protection that blocks server-side requests.
 
 TOXICITY_MAP = {
     'cancer': Chemical.Category.CARCINOGEN,
@@ -22,48 +21,64 @@ class Command(BaseCommand):
     help = 'Import Prop 65 chemical classifications from OEHHA.'
 
     def add_arguments(self, parser):
-        parser.add_argument('--url', default=PROP65_URL, help='URL to Prop 65 CSV')
-        parser.add_argument('--path', help='Path to local Prop 65 CSV file')
+        parser.add_argument(
+            '--path',
+            required=True,
+            help='Path to locally downloaded Prop 65 CSV file',
+        )
 
     def handle(self, *args, **options):
-        data = self._load(options)
-        cas_categories = self._parse(data)
-        self._apply(cas_categories)
+        data = self._load(options['path'])
+        cas_categories, name_categories = self._parse(data)
+        self._apply(cas_categories, name_categories)
 
-    def _load(self, options):
-        if options.get('path'):
-            with open(options['path'], encoding='utf-8-sig') as f:
-                return f.read()
-        url = options['url']
-        self.stdout.write(f'Downloading {url}')
-        r = requests.get(url, timeout=30)
-        r.raise_for_status()
-        return r.text
+    def _load(self, path):
+        with open(path, encoding='latin-1') as f:
+            lines = f.readlines()
+        # Skip the preamble rows; find the real header line
+        for i, line in enumerate(lines):
+            if line.startswith('Chemical,'):
+                return ''.join(lines[i:])
+        raise ValueError('Could not find header row in Prop 65 CSV')
 
     def _parse(self, data):
         cas_categories = {}
+        name_categories = {}
         for row in csv.DictReader(io.StringIO(data)):
             cas = (row.get('CAS No.') or '').strip()
-            if not cas or cas.upper() == 'N/A':
+            name = (row.get('Chemical') or '').strip().upper()
+            categories = set()
+            for toxicity in (row.get('Type of Toxicity') or '').split(','):
+                category = TOXICITY_MAP.get(toxicity.strip().lower())
+                if category:
+                    categories.add(category)
+            if not categories:
                 continue
-            toxicity = (row.get('Type of Toxicity') or '').strip().lower()
-            category = TOXICITY_MAP.get(toxicity)
-            if not category:
-                continue
-            cas_categories.setdefault(cas, set()).add(category)
+            if cas and cas.upper() != 'N/A':
+                cas_categories.setdefault(cas, set()).update(categories)
+            if name:
+                name_categories.setdefault(name, set()).update(categories)
         self.stdout.write(f'Parsed {len(cas_categories):,} CAS numbers from Prop 65 list')
-        return cas_categories
+        return cas_categories, name_categories
 
-    def _apply(self, cas_categories):
-        updated = matched = 0
-        for chemical in Chemical.objects.exclude(cas_number=''):
-            new_cats = cas_categories.get(chemical.cas_number)
+    def _apply(self, cas_categories, name_categories):
+        updated = cas_matched = name_matched = 0
+        for chemical in Chemical.objects.all():
+            if chemical.cas_number:
+                new_cats = cas_categories.get(chemical.cas_number)
+            else:
+                new_cats = name_categories.get(chemical.name.upper())
             if new_cats is None:
                 continue
-            matched += 1
+            if chemical.cas_number:
+                cas_matched += 1
+            else:
+                name_matched += 1
             to_add = new_cats - set(chemical.categories)
             if to_add:
                 chemical.categories = sorted(set(chemical.categories) | to_add)
                 chemical.save(update_fields=['categories', 'modified'])
                 updated += 1
-        self.stdout.write(f'Matched {matched:,} chemicals, updated {updated:,}')
+        self.stdout.write(
+            f'Matched {cas_matched:,} by CAS, {name_matched:,} by name, updated {updated:,}'
+        )
