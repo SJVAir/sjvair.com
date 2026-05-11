@@ -24,12 +24,25 @@ PT = ZoneInfo('America/Los_Angeles')
 
 @pytest.fixture
 def fresno_county(db):
-    return Region.objects.create(
+    region = Region.objects.create(
         name='Fresno County',
         slug='fresno-county',
         type=Region.Type.COUNTY,
         external_id='fresno-county',
     )
+    poly = Polygon((
+        (-121.0, 35.8), (-118.3, 35.8),
+        (-118.3, 37.6), (-121.0, 37.6),
+        (-121.0, 35.8),
+    ), srid=4326)
+    boundary = Boundary.objects.create(
+        region=region,
+        version='test',
+        geometry=MultiPolygon(poly, srid=4326),
+    )
+    region.boundary = boundary
+    region.save()
+    return region
 
 
 @pytest.fixture
@@ -194,9 +207,10 @@ class TestFetchApplications:
         mock_apps.assert_called_once()
 
     def test_county_filter_skips_other_counties(self, fresno_county, mtrs_region, db):
+        # API returns Fresno (10); we filter to Kern (15) → nothing fetched
         auth, active, noi, apps = mock_client()
         with auth, active, noi, apps:
-            fetch_applications(county_filter='15')  # Kern, not Fresno
+            fetch_applications(county_filter='15')
 
         assert SprayApplication.objects.count() == 0
 

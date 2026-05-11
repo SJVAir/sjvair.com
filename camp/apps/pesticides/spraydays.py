@@ -14,14 +14,14 @@ DELAY = 0.5
 PT = ZoneInfo('America/Los_Angeles')
 
 SJV_COUNTIES = {
-    '10': {'name': 'Fresno',      'region_name': 'Fresno County',      'extent': (-120.91874387116177, 35.906918921644284, -118.36059845591876, 37.58584217244814)},
-    '15': {'name': 'Kern',        'region_name': 'Kern County',        'extent': (-120.19416465753791, 34.790613897603095, -117.61620722389377, 35.79820707546911)},
-    '16': {'name': 'Kings',       'region_name': 'Kings County',       'extent': (-120.3150806921342,  35.78868292674303,  -119.47436659496141, 36.488967029419356)},
-    '20': {'name': 'Madera',      'region_name': 'Madera County',      'extent': (-120.54554884301392, 36.763052005975005, -119.02237565751238, 37.777991170180144)},
-    '24': {'name': 'Merced',      'region_name': 'Merced County',      'extent': (-121.24865995448454, 36.74038596070541,  -120.05206778225329, 37.633369079327096)},
-    '39': {'name': 'San Joaquin', 'region_name': 'San Joaquin County', 'extent': (-121.58509112060935, 37.48178798747774,  -120.91701998347031, 38.30025709137086)},
-    '50': {'name': 'Stanislaus',  'region_name': 'Stanislaus County',  'extent': (-121.48678803889365, 37.13477897457777,  -120.38734188505447, 38.077426078999295)},
-    '54': {'name': 'Tulare',      'region_name': 'Tulare County',      'extent': (-119.57320663026515, 35.78916605794458,  -117.98077330401863, 36.74482113093293)},
+    '10': {'name': 'Fresno',      'region_name': 'Fresno County'},
+    '15': {'name': 'Kern',        'region_name': 'Kern County'},
+    '16': {'name': 'Kings',       'region_name': 'Kings County'},
+    '20': {'name': 'Madera',      'region_name': 'Madera County'},
+    '24': {'name': 'Merced',      'region_name': 'Merced County'},
+    '39': {'name': 'San Joaquin', 'region_name': 'San Joaquin County'},
+    '50': {'name': 'Stanislaus',  'region_name': 'Stanislaus County'},
+    '54': {'name': 'Tulare',      'region_name': 'Tulare County'},
 }
 
 # Matches MTRS external_id like "MDM-T13S-R14E-08"
@@ -169,8 +169,13 @@ def fetch_applications(county_filter=None, stdout=None):
         county_info = SJV_COUNTIES[county_code]
         county_region = county_regions.get(county_code)
 
+        if not county_region or not county_region.boundary:
+            log(f'{county_info["name"]}: no boundary found, skipping')
+            continue
+
+        extent = county_region.boundary.geometry.extent  # (west, south, east, north)
         log(f'{county_info["name"]}: fetching NOI locations...')
-        noi_points = client.get_noi_locations(county_info['extent'])
+        noi_points = client.get_noi_locations(extent)
         log(f'{county_info["name"]}: {len(noi_points)} NOI pins')
 
         for noi in noi_points:
