@@ -100,14 +100,14 @@ class ProductChemical(models.Model):
         return f'{self.product} / {self.chemical}'
 
 
-class PURRecord(TimeStampedModel):
+class PesticideUse(TimeStampedModel):
     class AerialGround(models.TextChoices):
         AERIAL      = 'A', _('Aerial')
         FUMIGATION  = 'F', _('Fumigation')
         GROUND      = 'G', _('Ground')
         OTHER       = 'O', _('Other')
 
-    sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.PURRecord'))
+    sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.PesticideUse'))
 
     year = models.IntegerField(_('Year'))
     use_no = models.IntegerField(_('Use Number'))
@@ -177,15 +177,15 @@ class PURRecord(TimeStampedModel):
             models.Index(fields=['commodity']),
             models.Index(fields=['application_date']),
         ]
-        verbose_name = _('PUR Record')
-        verbose_name_plural = _('PUR Records')
+        verbose_name = _('Pesticide Use')
+        verbose_name_plural = _('Pesticide Uses')
 
     def __str__(self):
         return f'{self.year} / {self.use_no}'
 
 
-class SprayApplication(TimeStampedModel):
-    sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.SprayApplication'))
+class PesticideNotice(TimeStampedModel):
+    sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.PesticideNotice'))
 
     application_id = models.IntegerField(_('Application ID'), unique=True)
     comtr = models.CharField(_('COMTR'), max_length=11, db_index=True)
@@ -194,7 +194,7 @@ class SprayApplication(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='spray_applications',
+        related_name='pesticide_notices',
         verbose_name=_('MTRS Section'),
         limit_choices_to={'type': 'mtrs'},
     )
@@ -203,7 +203,7 @@ class SprayApplication(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='county_spray_applications',
+        related_name='county_pesticide_notices',
         verbose_name=_('County'),
         limit_choices_to={'type': 'county'},
     )
@@ -212,18 +212,19 @@ class SprayApplication(TimeStampedModel):
     treated_amount = models.FloatField(_('Treated Amount'), null=True, blank=True)
     treated_units = models.CharField(_('Treated Units'), max_length=32, blank=True)
     application_method = models.CharField(_('Application Method'), max_length=128, blank=True)
-    products = models.JSONField(_('Products'), default=list)
+    products = models.ManyToManyField('pesticides.Product', blank=True,
+        related_name='pesticide_notices', verbose_name=_('Products'))
     chemicals = models.ManyToManyField(
         'pesticides.Chemical',
         blank=True,
-        related_name='spray_applications',
+        related_name='pesticide_notices',
         verbose_name=_('Chemicals'),
     )
 
     class Meta:
         ordering = ['scheduled_application']
-        verbose_name = _('Spray Application')
-        verbose_name_plural = _('Spray Applications')
+        verbose_name = _('Pesticide Notice')
+        verbose_name_plural = _('Pesticide Notices')
 
     def __str__(self):
         return f'{self.application_id} / {self.comtr}'

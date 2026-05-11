@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.utils.timezone import make_aware
 from zoneinfo import ZoneInfo
 
-from camp.apps.pesticides.models import Chemical, SprayApplication
+from camp.apps.pesticides.models import Chemical, Product, PesticideNotice
 from camp.apps.pesticides.spraydays import (
     SprayDaysClient,
     comtr_from_mtrs,
@@ -76,6 +76,15 @@ def chemical(db):
     return Chemical.objects.create(chem_code=383, name='METHOMYL')
 
 
+@pytest.fixture
+def product(db):
+    return Product.objects.create(
+        prodno=1,
+        reg_number='83100-28-ZA-83979',
+        name='NUDRIN SP',
+    )
+
+
 # Test coordinates fall inside the mtrs_region boundary above
 TEST_LAT = 36.5
 TEST_LON = -119.8
@@ -138,7 +147,7 @@ class TestComtrFromMtrs:
 # ---------------------------------------------------------------------------
 
 class TestFetchApplications:
-    def test_creates_application(self, fresno_county, mtrs_region, chemical):
+    def test_creates_application(self, fresno_county, mtrs_region, chemical, product):
         auth, active, noi, apps = mock_client()
         with auth, active, noi, apps:
             created, updated = fetch_applications()
@@ -146,7 +155,7 @@ class TestFetchApplications:
         assert created == 1
         assert updated == 0
 
-        app = SprayApplication.objects.get(application_id=2058111)
+        app = PesticideNotice.objects.get(application_id=2058111)
         assert app.comtr == '1017S16E08'
         assert app.county == fresno_county
         assert app.mtrs == mtrs_region
@@ -154,6 +163,7 @@ class TestFetchApplications:
         assert app.treated_units == 'Acres'
         assert app.application_method == 'Ground'
         assert chemical in app.chemicals.all()
+        assert product in app.products.all()
         assert app.scheduled_application == make_aware(
             datetime(2026, 5, 15, 8, 0, 0), PT
         )
@@ -170,7 +180,7 @@ class TestFetchApplications:
 
         assert created == 0
         assert updated == 1
-        assert SprayApplication.objects.get(application_id=2058111).treated_amount == 50.0
+        assert PesticideNotice.objects.get(application_id=2058111).treated_amount == 50.0
 
     def test_skips_unparseable_date(self, fresno_county, mtrs_region, db):
         bad_app = {**MOCK_APPLICATION, 'ScheduledApplicationFormatted': 'not-a-date'}
@@ -179,7 +189,16 @@ class TestFetchApplications:
             created, updated = fetch_applications()
 
         assert created == 0
-        assert SprayApplication.objects.count() == 0
+        assert PesticideNotice.objects.count() == 0
+
+    def test_unknown_product_reg_no_is_ignored(self, fresno_county, mtrs_region, db):
+        auth, active, noi, apps = mock_client()
+        with auth, active, noi, apps:
+            created, _ = fetch_applications()
+
+        assert created == 1
+        spray = PesticideNotice.objects.get(application_id=2058111)
+        assert spray.products.count() == 0
 
     def test_unknown_chemical_code_is_ignored(self, fresno_county, mtrs_region, db):
         app = {**MOCK_APPLICATION, 'Products': [{
@@ -192,7 +211,7 @@ class TestFetchApplications:
             created, _ = fetch_applications()
 
         assert created == 1
-        spray = SprayApplication.objects.get(application_id=2058111)
+        spray = PesticideNotice.objects.get(application_id=2058111)
         assert spray.chemicals.count() == 0
 
     def test_deduplicates_comtr_across_noi_pins(self, fresno_county, mtrs_region, db):
@@ -214,7 +233,7 @@ class TestFetchApplications:
         with auth, active, noi, apps:
             fetch_applications(county_filter='15')
 
-        assert SprayApplication.objects.count() == 0
+        assert PesticideNotice.objects.count() == 0
 
     def test_no_mtrs_match_skips_pin(self, fresno_county, db):
         # NOI pin outside any MTRS boundary → no application created
@@ -235,19 +254,19 @@ class TestFetchApplications:
 
 
 # ---------------------------------------------------------------------------
-# SprayApplication model
+# PesticideNotice model
 # ---------------------------------------------------------------------------
 
-class TestSprayApplicationModel:
+class TestPesticideNoticeModel:
     def test_application_id_is_unique(self, fresno_county, db):
-        SprayApplication.objects.create(
+        PesticideNotice.objects.create(
             application_id=1,
             comtr='1017S16E08',
             county=fresno_county,
             scheduled_application=make_aware(datetime(2026, 5, 15, 8, 0), PT),
         )
         with pytest.raises(Exception):
-            SprayApplication.objects.create(
+            PesticideNotice.objects.create(
                 application_id=1,
                 comtr='1017S16E08',
                 county=fresno_county,
@@ -255,7 +274,7 @@ class TestSprayApplicationModel:
             )
 
     def test_str(self, fresno_county, db):
-        app = SprayApplication.objects.create(
+        app = PesticideNotice.objects.create(
             application_id=42,
             comtr='1017S16E08',
             county=fresno_county,

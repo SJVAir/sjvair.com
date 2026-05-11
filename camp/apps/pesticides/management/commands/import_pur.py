@@ -9,7 +9,7 @@ import requests
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from camp.apps.pesticides.models import Chemical, Commodity, Product, ProductChemical, PURRecord
+from camp.apps.pesticides.models import Chemical, Commodity, PesticideUse, Product, ProductChemical
 from camp.apps.regions.models import Region
 
 CDPR_URL = 'https://files.cdpr.ca.gov/pub/outgoing/pur_archives/pur{year}.zip'
@@ -359,7 +359,7 @@ class Command(BaseCommand):
     def _import_county_file(self, path, year, county_cd, county_id,
                             mtrs_cache, commodity_cache, product_map, chemical_map):
         with transaction.atomic():
-            PURRecord.objects.filter(year=year, county_id=county_id).delete()
+            PesticideUse.objects.filter(year=year, county_id=county_id).delete()
 
             records = []
             count = 0
@@ -379,7 +379,7 @@ class Command(BaseCommand):
                         row.get('section', ''),
                     )
 
-                    records.append(PURRecord(
+                    records.append(PesticideUse(
                         year=year,
                         use_no=parse_int(row.get('use_no')),
                         county_id=county_id,
@@ -406,14 +406,14 @@ class Command(BaseCommand):
                     count += 1
 
                     if len(records) >= BATCH_SIZE:
-                        PURRecord.objects.bulk_create(records)
+                        PesticideUse.objects.bulk_create(records)
                         records = []
                         self.stdout.write(
                             f'  County {county_cd:02d}: {count:,} rows...', ending='\r'
                         )
 
             if records:
-                PURRecord.objects.bulk_create(records)
+                PesticideUse.objects.bulk_create(records)
 
         self.stdout.write(f'  County {county_cd:02d}: {count:,} rows imported         ')
         return count

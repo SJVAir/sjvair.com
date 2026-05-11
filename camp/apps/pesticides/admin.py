@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from camp.apps.pesticides.models import Chemical, Commodity, Product, ProductChemical, PURRecord, SprayApplication
+from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product, ProductChemical
 from camp.utils.admin import ReadOnlyAdminMixin, admin_change_link
 
 
@@ -31,8 +31,8 @@ class ProductAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     inlines = [ProductChemicalInline]
 
 
-@admin.register(PURRecord)
-class PURRecordAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+@admin.register(PesticideUse)
+class PesticideUseAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     date_hierarchy = 'application_date'
     list_display = ['year', 'use_no', 'get_county', 'get_mtrs', 'get_commodity', 'get_product', 'get_chemical', 'lbs_chemical', 'acres_treated', 'application_date']
     list_filter = ['aerial_ground', 'county', 'product__fumigant', 'product__california_restricted']
@@ -63,14 +63,15 @@ class PURRecordAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     get_product.short_description = 'Product'
 
 
-@admin.register(SprayApplication)
-class SprayApplicationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+@admin.register(PesticideNotice)
+class PesticideNoticeAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     date_hierarchy = 'scheduled_application'
     list_display = ['application_id', 'comtr', 'get_county', 'scheduled_application', 'treated_amount', 'treated_units', 'application_method']
-    list_filter = ['county', 'application_method']
+    list_filter = ['county', 'application_method', 'products__fumigant', 'products__california_restricted']
     list_select_related = ['county', 'mtrs']
     ordering = ['-scheduled_application']
     raw_id_fields = ['county', 'mtrs']
+    filter_horizontal = ['chemicals', 'products']
     search_fields = ['application_id', 'comtr', 'county__name']
     show_full_result_count = False
 

@@ -74,26 +74,12 @@ class SprayDaysClient:
         return self._get('/NoticeOfIntent/GetApplicationsInComtrs', {'comtrs': comtr}) or []
 
 
-def _parse_products(raw_products):
-    return [
-        {
-            'name': p.get('ProductName', ''),
-            'epa_reg_no': p.get('EPARegNo', ''),
-            'chemicals': [
-                {'name': c.get('ChemicalName', ''), 'code': c.get('ChemicalCode', '')}
-                for c in (p.get('Chemicals') or [])
-            ],
-        }
-        for p in (raw_products or [])
-    ]
-
-
-def _chem_pks_from_products(products, chemical_map):
+def _chem_pks_from_raw(raw_products, chemical_map):
     pks = set()
-    for p in products:
-        for c in p['chemicals']:
+    for p in (raw_products or []):
+        for c in (p.get('Chemicals') or []):
             try:
-                code = int(c['code'])
+                code = int(c.get('ChemicalCode', ''))
                 if code in chemical_map:
                     pks.add(chemical_map[code])
             except (ValueError, TypeError):
@@ -101,8 +87,17 @@ def _chem_pks_from_products(products, chemical_map):
     return pks
 
 
-def _upsert_application(app_data, comtr, mtrs, county_region, lat, lon, chemical_map):
-    from camp.apps.pesticides.models import SprayApplication
+def _product_pks_from_raw(raw_products, product_map):
+    pks = set()
+    for p in (raw_products or []):
+        reg_no = (p.get('EPARegNo') or '').strip()
+        if reg_no in product_map:
+            pks.add(product_map[reg_no])
+    return pks
+
+
+def _upsert_application(app_data, comtr, mtrs, county_region, lat, lon, chemical_map, product_map):
+    from camp.apps.pesticides.models import PesticideNotice
 
     scheduled_str = app_data.get('ScheduledApplicationFormatted', '')
     try:
@@ -112,10 +107,11 @@ def _upsert_application(app_data, comtr, mtrs, county_region, lat, lon, chemical
     except (ValueError, TypeError):
         return None, False
 
-    products = _parse_products(app_data.get('Products'))
-    chem_pks = _chem_pks_from_products(products, chemical_map)
+    raw_products = app_data.get('Products') or []
+    chem_pks = _chem_pks_from_raw(raw_products, chemical_map)
+    product_pks = _product_pks_from_raw(raw_products, product_map)
 
-    obj, created = SprayApplication.objects.update_or_create(
+    obj, created = PesticideNotice.objects.update_or_create(
         application_id=app_data['Id'],
         defaults={
             'comtr': comtr,
@@ -126,15 +122,15 @@ def _upsert_application(app_data, comtr, mtrs, county_region, lat, lon, chemical
             'treated_amount': app_data.get('TreatedAmount'),
             'treated_units': (app_data.get('TreatedUnits') or '').strip(),
             'application_method': (app_data.get('ApplicationMethod') or '').strip(),
-            'products': products,
         },
     )
     obj.chemicals.set(chem_pks)
+    obj.products.set(product_pks)
     return obj, created
 
 
 def fetch_applications(county_filter=None, stdout=None):
-    from camp.apps.pesticides.models import Chemical
+    from camp.apps.pesticides.models import Chemical, Product
 
     def log(msg, **kwargs):
         if stdout:
@@ -145,6 +141,7 @@ def fetch_applications(county_filter=None, stdout=None):
     client.authenticate()
 
     chemical_map = {c.chem_code: c.pk for c in Chemical.objects.only('id', 'chem_code')}
+    product_map = {p.reg_number: p.pk for p in Product.objects.only('id', 'reg_number')}
     county_regions = {
         r.metadata['ca_county_code']: r
         for r in Region.objects.filter(
@@ -198,7 +195,7 @@ def fetch_applications(county_filter=None, stdout=None):
             raw_apps = client.get_applications(comtr)
             for app_data in raw_apps:
                 obj, was_created = _upsert_application(
-                    app_data, comtr, mtrs, county_region, lat, lon, chemical_map
+                    app_data, comtr, mtrs, county_region, lat, lon, chemical_map, product_map
                 )
                 if obj is None:
                     skipped += 1
