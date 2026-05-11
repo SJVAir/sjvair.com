@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from django_huey import get_queue
 
-from . import endpoints
+from .. import endpoints
 from camp.utils.test import debug, get_response_data
 from camp.utils.test.helpers import queue_immediate_mode
 from camp.utils.tasks import add
