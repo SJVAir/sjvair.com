@@ -12,6 +12,7 @@ from camp.apps.pesticides.spraydays import (
     SprayDaysClient,
     comtr_from_mtrs,
     fetch_applications,
+    SJV_COUNTY_CODES,
 )
 from camp.apps.regions.models import Boundary, Region
 
@@ -26,9 +27,10 @@ PT = ZoneInfo('America/Los_Angeles')
 def fresno_county(db):
     region = Region.objects.create(
         name='Fresno County',
-        slug='fresno-county',
+        slug='fresno',
         type=Region.Type.COUNTY,
-        external_id='fresno-county',
+        external_id='06019',
+        metadata={'ca_county_code': '10'},
     )
     poly = Polygon((
         (-121.0, 35.8), (-118.3, 35.8),

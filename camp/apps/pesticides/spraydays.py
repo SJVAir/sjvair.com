@@ -13,16 +13,9 @@ BASE_URL = 'https://spraydays.cdpr.ca.gov'
 DELAY = 0.5
 PT = ZoneInfo('America/Los_Angeles')
 
-SJV_COUNTIES = {
-    '10': {'name': 'Fresno',      'region_name': 'Fresno County'},
-    '15': {'name': 'Kern',        'region_name': 'Kern County'},
-    '16': {'name': 'Kings',       'region_name': 'Kings County'},
-    '20': {'name': 'Madera',      'region_name': 'Madera County'},
-    '24': {'name': 'Merced',      'region_name': 'Merced County'},
-    '39': {'name': 'San Joaquin', 'region_name': 'San Joaquin County'},
-    '50': {'name': 'Stanislaus',  'region_name': 'Stanislaus County'},
-    '54': {'name': 'Tulare',      'region_name': 'Tulare County'},
-}
+# CA state county codes (01–58, alphabetical) for the eight SJV counties.
+# These are stored on Region.metadata['ca_county_code'] by import_counties.
+SJV_COUNTY_CODES = {'10', '15', '16', '20', '24', '39', '50', '54'}
 
 # Matches MTRS external_id like "MDM-T13S-R14E-08"
 _MTRS_RE = re.compile(r'^[A-Z]+-T(\d+)([NS])-R(\d+)([EW])-(\d+)$')
@@ -64,8 +57,9 @@ class SprayDaysClient:
         all_counties = self._get('/Map/GetCountyData') or []
         return [
             c for c in all_counties
-            if str(c['CountyId']) in SJV_COUNTIES and c['ApplicationCount'] > 0
+            if str(c['CountyId']) in SJV_COUNTY_CODES and c['ApplicationCount'] > 0
         ]
+
 
     def get_noi_locations(self, extent):
         west, south, east, north = extent
@@ -152,8 +146,11 @@ def fetch_applications(county_filter=None, stdout=None):
 
     chemical_map = {c.chem_code: c.pk for c in Chemical.objects.only('id', 'chem_code')}
     county_regions = {
-        code: Region.objects.filter(type=Region.Type.COUNTY, name=info['region_name']).first()
-        for code, info in SJV_COUNTIES.items()
+        r.metadata['ca_county_code']: r
+        for r in Region.objects.filter(
+            type=Region.Type.COUNTY,
+            metadata__ca_county_code__in=SJV_COUNTY_CODES,
+        ).select_related('boundary')
     }
 
     active_counties = client.get_active_counties()
@@ -166,17 +163,16 @@ def fetch_applications(county_filter=None, stdout=None):
 
     for county_data in active_counties:
         county_code = str(county_data['CountyId'])
-        county_info = SJV_COUNTIES[county_code]
         county_region = county_regions.get(county_code)
 
         if not county_region or not county_region.boundary:
-            log(f'{county_info["name"]}: no boundary found, skipping')
+            log(f'County {county_code}: no boundary found, skipping')
             continue
 
         extent = county_region.boundary.geometry.extent  # (west, south, east, north)
-        log(f'{county_info["name"]}: fetching NOI locations...')
+        log(f'{county_region.name}: fetching NOI locations...')
         noi_points = client.get_noi_locations(extent)
-        log(f'{county_info["name"]}: {len(noi_points)} NOI pins')
+        log(f'{county_region.name}: {len(noi_points)} NOI pins')
 
         for noi in noi_points:
             lat, lon = noi['Latitude'], noi['Longitude']

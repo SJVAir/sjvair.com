@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 
-from camp.apps.pesticides.spraydays import SJV_COUNTIES, fetch_applications
+from camp.apps.pesticides.spraydays import SJV_COUNTY_CODES, fetch_applications
 
 
 class Command(BaseCommand):
@@ -9,9 +9,9 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             '--county',
-            choices=list(SJV_COUNTIES.keys()),
+            choices=sorted(SJV_COUNTY_CODES),
             metavar='CODE',
-            help=f'Limit to a single county code ({", ".join(SJV_COUNTIES)})',
+            help=f'Limit to a single county code ({", ".join(sorted(SJV_COUNTY_CODES))})',
         )
 
     def handle(self, *args, **options):
