@@ -22,10 +22,14 @@ class SmokeMixin:
 
 
 class SmokeList(SmokeMixin, generics.ListEndpoint):
+    """List HMS smoke plumes."""
+
     filter_class = SmokeFilter
 
 
 class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
+    """Current HMS smoke plumes. Falls back to yesterday's data before noon if today's data isn't yet published."""
+
     filter_class = SmokeFilter
 
     def get_queryset(self):
@@ -57,5 +61,7 @@ class SmokeListOngoing(SmokeMixin, generics.ListEndpoint):
 
 
 class SmokeDetail(SmokeMixin, generics.DetailEndpoint):
+    """Retrieve a single HMS smoke plume record."""
+
     lookup_field = 'id'
     lookup_url_kwarg = 'smoke_id'
