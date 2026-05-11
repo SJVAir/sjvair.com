@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from camp.apps.pesticides.models import Chemical, Commodity, Product, ProductChemical, PURRecord
+from camp.apps.pesticides.models import Chemical, Commodity, Product, ProductChemical, PURRecord, SprayApplication
 from camp.utils.admin import ReadOnlyAdminMixin, admin_change_link
 
 
@@ -61,3 +61,19 @@ class PURRecordAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     def get_product(self, instance):
         return admin_change_link(instance.product)
     get_product.short_description = 'Product'
+
+
+@admin.register(SprayApplication)
+class SprayApplicationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    date_hierarchy = 'scheduled_application'
+    list_display = ['application_id', 'comtr', 'get_county', 'scheduled_application', 'treated_amount', 'treated_units', 'application_method']
+    list_filter = ['county', 'application_method']
+    list_select_related = ['county', 'mtrs']
+    ordering = ['-scheduled_application']
+    raw_id_fields = ['county', 'mtrs']
+    search_fields = ['application_id', 'comtr', 'county__name']
+    show_full_result_count = False
+
+    def get_county(self, instance):
+        return admin_change_link(instance.county, instance.county.name if instance.county else None)
+    get_county.short_description = 'County'

@@ -1,5 +1,5 @@
+from django.contrib.gis.db import models
 from django.contrib.postgres.fields import ArrayField
-from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from django_sqids import SqidsField, shuffle_alphabet
@@ -182,3 +182,48 @@ class PURRecord(TimeStampedModel):
 
     def __str__(self):
         return f'{self.year} / {self.use_no}'
+
+
+class SprayApplication(TimeStampedModel):
+    sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.SprayApplication'))
+
+    application_id = models.IntegerField(_('Application ID'), unique=True)
+    comtr = models.CharField(_('COMTR'), max_length=11, db_index=True)
+    mtrs = models.ForeignKey(
+        'regions.Region',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='spray_applications',
+        verbose_name=_('MTRS Section'),
+        limit_choices_to={'type': 'mtrs'},
+    )
+    county = models.ForeignKey(
+        'regions.Region',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='county_spray_applications',
+        verbose_name=_('County'),
+        limit_choices_to={'type': 'county'},
+    )
+    point = models.PointField(_('Point'), null=True, blank=True, srid=4326)
+    scheduled_application = models.DateTimeField(_('Scheduled Application'), db_index=True)
+    treated_amount = models.FloatField(_('Treated Amount'), null=True, blank=True)
+    treated_units = models.CharField(_('Treated Units'), max_length=32, blank=True)
+    application_method = models.CharField(_('Application Method'), max_length=128, blank=True)
+    products = models.JSONField(_('Products'), default=list)
+    chemicals = models.ManyToManyField(
+        'pesticides.Chemical',
+        blank=True,
+        related_name='spray_applications',
+        verbose_name=_('Chemicals'),
+    )
+
+    class Meta:
+        ordering = ['scheduled_application']
+        verbose_name = _('Spray Application')
+        verbose_name_plural = _('Spray Applications')
+
+    def __str__(self):
+        return f'{self.application_id} / {self.comtr}'
