@@ -48,9 +48,14 @@ docker compose run --rm web python manage.py import_comptox --phase hazard
 #    Download CSV manually from https://oehha.ca.gov/proposition-65/proposition-65-list
 #    (site uses JS bot-protection that blocks server-side downloads)
 docker compose run --rm web python manage.py import_prop65 --path /path/to/p65chemicalslist.csv
+
+# 4. Apply CARB Toxic Air Contaminant classifications from the consolidated health values PDF
+#    Can download automatically or provide a local file (URL changes when CARB updates it)
+docker compose run --rm web python manage.py import_carbtac --url
+docker compose run --rm web python manage.py import_carbtac --path /path/to/contable.pdf
 ```
 
-Steps 2 and 3 are idempotent and safe to re-run. Re-running `import_pur` for a given year
+Steps 2–4 are idempotent and safe to re-run. Re-running `import_pur` for a given year
 deletes and reimports that year's records. Run `import_comptox --phase search` first whenever
 new PUR years are added (new chemicals may appear); then re-run `equals` and `hazard`.
 

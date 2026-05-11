@@ -70,6 +70,7 @@ pytz==2022.1
 PyYAML==6.0.1
 redis==4.6.0
 ctx-python==0.0.1a10
+pdfplumber==0.11.6
 requests==2.33.0
 scikit-learn==1.5.0
 scout-apm==2.26.1
