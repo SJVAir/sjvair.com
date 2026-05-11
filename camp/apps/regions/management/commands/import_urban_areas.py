@@ -34,8 +34,8 @@ class Command(BaseCommand):
                         'population': row.Population,
                         'area_sqm': row.Area_sqm,
                         'urban_area_type': 'urbanized' if row.UrbanAreas == 2 else 'small_urban',
-                        'urban_area_code': row.UrbanAreas
-                    }
+                        'urban_area_code': row.UrbanAreas,
+                    },
                 )
 
                 self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')

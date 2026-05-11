@@ -95,11 +95,13 @@ class Command(BaseCommand):
                             'tractce': row.tractce,
                             'name': row.name,
                             'namelsad': row.namelsad,
-                            'aland': row.aland,
-                            'awater': row.awater,
                             'dac': self.extract_columns(row, 'dac_'),
                             'ruca': self.extract_columns(row, 'ruca_'),
-                        }
+                        },
+                        boundary_metadata={
+                            'aland': row.aland,
+                            'awater': row.awater,
+                        },
                     )
 
                     self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')

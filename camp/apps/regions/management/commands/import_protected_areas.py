@@ -64,7 +64,7 @@ class Command(BaseCommand):
                             'total_gap_acres': row.GAP_tot_ac,
                             'gap_source': row.GAP_Source,
                         },
-                    }
+                    },
                 )
 
                 self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')

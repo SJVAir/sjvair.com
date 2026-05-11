@@ -61,7 +61,7 @@ class RegionAdmin(ReadOnlyAdminMixin, OSMGeoAdmin):
     inlines = [BoundaryInline]
     list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
     list_filter = ['type', 'boundary__version']
-    fields = ['name', 'slug', 'external_id', 'type', 'boundary', 'get_overview_map', 'get_monitor_map']
+    fields = ['name', 'slug', 'external_id', 'type', 'boundary', 'get_metadata', 'get_overview_map', 'get_monitor_map']
     search_fields = ['name', 'external_id']
 
     def get_queryset(self, *args, **kwargs):
@@ -79,6 +79,12 @@ class RegionAdmin(ReadOnlyAdminMixin, OSMGeoAdmin):
     def current_version(self, instance):
         return instance.boundary.version if instance.boundary else '-'
     current_version.short_description = 'Version'
+
+    def get_metadata(self, instance):
+        if not instance.metadata:
+            return '-'
+        return mark_safe(f'<pre>{yaml.dump(instance.metadata).strip()}</pre>')
+    get_metadata.short_description = 'Metadata'
 
     def save_model(self, request, obj, form, change):
         messages.add_message(request, messages.WARNING, "The next message is a lie:")
