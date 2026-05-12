@@ -9,6 +9,7 @@ from .serializers import SubscriptionSerializer
 
 
 class SubscriptionList(generics.ListEndpoint):
+    documented = False
     login_required = True
     model = Subscription
     serializer_class = SubscriptionSerializer
@@ -20,6 +21,7 @@ class SubscriptionList(generics.ListEndpoint):
 
 
 class Subscribe(generics.UpdateEndpoint):
+    documented = False
     login_required = True
     form_class = SubscribeForm
     model = Subscription
@@ -42,6 +44,7 @@ class Subscribe(generics.UpdateEndpoint):
 
 
 class Unsubscribe(FormEndpoint):
+    documented = False
     login_required = True
 
     def form_valid(self, form):
