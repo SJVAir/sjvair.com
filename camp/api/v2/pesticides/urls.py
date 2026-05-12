@@ -6,13 +6,13 @@ app_name = 'pesticides'
 
 urlpatterns = [
     path('commodities/', endpoints.CommodityList.as_view(), name='commodity-list'),
-    path('commodities/<str:sqid>/', endpoints.CommodityDetail.as_view(), name='commodity-detail'),
+    path('commodities/<str:commodity_id>/', endpoints.CommodityDetail.as_view(), name='commodity-detail'),
     path('chemicals/', endpoints.ChemicalList.as_view(), name='chemical-list'),
-    path('chemicals/<str:sqid>/', endpoints.ChemicalDetail.as_view(), name='chemical-detail'),
+    path('chemicals/<str:chemical_id>/', endpoints.ChemicalDetail.as_view(), name='chemical-detail'),
     path('products/', endpoints.ProductList.as_view(), name='product-list'),
-    path('products/<str:sqid>/', endpoints.ProductDetail.as_view(), name='product-detail'),
+    path('products/<str:product_id>/', endpoints.ProductDetail.as_view(), name='product-detail'),
     path('use/', endpoints.PesticideUseList.as_view(), name='use-list'),
-    path('use/<str:sqid>/', endpoints.PesticideUseDetail.as_view(), name='use-detail'),
+    path('use/<str:use_id>/', endpoints.PesticideUseDetail.as_view(), name='use-detail'),
     path('notice/', endpoints.PesticideNoticeList.as_view(), name='notice-list'),
-    path('notice/<str:sqid>/', endpoints.PesticideNoticeDetail.as_view(), name='notice-detail'),
+    path('notice/<str:notice_id>/', endpoints.PesticideNoticeDetail.as_view(), name='notice-detail'),
 ]

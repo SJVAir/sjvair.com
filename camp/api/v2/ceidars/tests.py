@@ -162,7 +162,7 @@ class TestFacilityDetail:
     def test_returns_facility_with_all_emissions(self, client, facility):
         EmissionsRecord.objects.create(facility=facility, year=2023, pm25='1.5')
         EmissionsRecord.objects.create(facility=facility, year=2022, pm25='1.2')
-        url = reverse('api:v2:ceidars:detail', kwargs={'sqid': facility.sqid})
+        url = reverse('api:v2:ceidars:detail', kwargs={'facility_id': facility.sqid})
         response = client.get(url)
         assert response.status_code == 200
         data = response.json()['data']
@@ -173,6 +173,6 @@ class TestFacilityDetail:
         assert data['emissions'][1]['year'] == 2022
 
     def test_returns_404_for_unknown_sqid(self, client, db):
-        url = reverse('api:v2:ceidars:detail', kwargs={'sqid': 'doesnotexist'})
+        url = reverse('api:v2:ceidars:detail', kwargs={'facility_id': 'doesnotexist'})
         response = client.get(url)
         assert response.status_code == 404

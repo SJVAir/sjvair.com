@@ -117,7 +117,7 @@ class ChemicalDetailTests(TestCase):
         self.product = make_product()
         self.product.chemicals.through.objects.create(product=self.product, chemical=self.chemical)
         make_use(self.county, chemical=self.chemical, commodity=self.commodity, product=self.product)
-        self.url = reverse('api:v2:pesticides:chemical-detail', kwargs={'sqid': self.chemical.sqid})
+        self.url = reverse('api:v2:pesticides:chemical-detail', kwargs={'chemical_id': self.chemical.sqid})
 
     def test_detail_returns_200(self):
         assert self.client.get(self.url).status_code == 200
@@ -184,7 +184,7 @@ class CommodityDetailTests(TestCase):
         self.chemical = make_chemical()
         self.product = make_product()
         make_use(self.county, chemical=self.chemical, commodity=self.commodity, product=self.product)
-        self.url = reverse('api:v2:pesticides:commodity-detail', kwargs={'sqid': self.commodity.sqid})
+        self.url = reverse('api:v2:pesticides:commodity-detail', kwargs={'commodity_id': self.commodity.sqid})
 
     def test_detail_returns_200(self):
         assert self.client.get(self.url).status_code == 200
@@ -252,7 +252,7 @@ class ProductDetailTests(TestCase):
         self.commodity = make_commodity()
         self.product.chemicals.through.objects.create(product=self.product, chemical=self.chemical)
         make_use(self.county, chemical=self.chemical, commodity=self.commodity, product=self.product)
-        self.url = reverse('api:v2:pesticides:product-detail', kwargs={'sqid': self.product.sqid})
+        self.url = reverse('api:v2:pesticides:product-detail', kwargs={'product_id': self.product.sqid})
 
     def test_detail_returns_200(self):
         assert self.client.get(self.url).status_code == 200
@@ -354,7 +354,7 @@ class PesticideUseDetailTests(TestCase):
     def setUp(self):
         self.county = make_county()
         self.use = make_use(self.county, year=2023, use_no=1)
-        self.url = reverse('api:v2:pesticides:use-detail', kwargs={'sqid': self.use.sqid})
+        self.url = reverse('api:v2:pesticides:use-detail', kwargs={'use_id': self.use.sqid})
 
     def test_detail_returns_200(self):
         assert self.client.get(self.url).status_code == 200
@@ -432,7 +432,7 @@ class PesticideNoticeDetailTests(TestCase):
     def setUp(self):
         self.county = make_county()
         self.notice = make_notice(self.county)
-        self.url = reverse('api:v2:pesticides:notice-detail', kwargs={'sqid': self.notice.sqid})
+        self.url = reverse('api:v2:pesticides:notice-detail', kwargs={'notice_id': self.notice.sqid})
 
     def test_detail_returns_200(self):
         assert self.client.get(self.url).status_code == 200
