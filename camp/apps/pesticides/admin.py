@@ -66,13 +66,13 @@ class PesticideUseAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 @admin.register(PesticideNotice)
 class PesticideNoticeAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     date_hierarchy = 'scheduled_application'
-    list_display = ['application_id', 'comtr', 'get_county', 'scheduled_application', 'treated_amount', 'treated_units', 'application_method']
+    list_display = ['application_id', 'comtrs', 'get_county', 'scheduled_application', 'treated_amount', 'treated_units', 'application_method']
     list_filter = ['county', 'application_method', 'products__fumigant', 'products__california_restricted']
     list_select_related = ['county', 'mtrs']
     ordering = ['-scheduled_application']
     raw_id_fields = ['county', 'mtrs']
     filter_horizontal = ['chemicals', 'products']
-    search_fields = ['application_id', 'comtr', 'county__name']
+    search_fields = ['application_id', 'comtrs', 'county__name']
     show_full_result_count = False
 
     def get_county(self, instance):

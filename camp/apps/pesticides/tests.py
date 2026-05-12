@@ -7,10 +7,11 @@ from django.test import TestCase
 from django.utils.timezone import make_aware
 from zoneinfo import ZoneInfo
 
-from camp.apps.pesticides.models import Chemical, Product, PesticideNotice
+from camp.apps.pesticides.models import Chemical, Commodity, PesticideUse, Product, PesticideNotice
+from camp.apps.regions.models import Region
 from camp.apps.pesticides.spraydays import (
     SprayDaysClient,
-    comtr_from_mtrs,
+    comtrs_from_mtrs,
     fetch_applications,
     SJV_COUNTY_CODES,
 )
@@ -119,27 +120,27 @@ def mock_client(active_counties=None, noi_points=None, applications=None):
 
 
 # ---------------------------------------------------------------------------
-# comtr_from_mtrs
+# comtrs_from_mtrs
 # ---------------------------------------------------------------------------
 
-class TestComtrFromMtrs:
+class TestComtrsFromMtrs:
     def test_south_range(self):
-        assert comtr_from_mtrs('MDM-T17S-R16E-08', '10') == '1017S16E08'
+        assert comtrs_from_mtrs('MDM-T17S-R16E-08', '10') == '1017S16E08'
 
     def test_north_range(self):
-        assert comtr_from_mtrs('MDM-T01N-R04E-01', '15') == '1501N04E01'
+        assert comtrs_from_mtrs('MDM-T01N-R04E-01', '15') == '1501N04E01'
 
     def test_west_range(self):
-        assert comtr_from_mtrs('MDM-T05S-R03W-12', '39') == '3905S03W12'
+        assert comtrs_from_mtrs('MDM-T05S-R03W-12', '39') == '3905S03W12'
 
     def test_pads_single_digit_township(self):
-        assert comtr_from_mtrs('MDM-T01S-R01E-01', '10') == '1001S01E01'
+        assert comtrs_from_mtrs('MDM-T01S-R01E-01', '10') == '1001S01E01'
 
     def test_invalid_returns_none(self):
-        assert comtr_from_mtrs('NOT-A-VALID-ID', '10') is None
+        assert comtrs_from_mtrs('NOT-A-VALID-ID', '10') is None
 
     def test_empty_returns_none(self):
-        assert comtr_from_mtrs('', '10') is None
+        assert comtrs_from_mtrs('', '10') is None
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +157,7 @@ class TestFetchApplications:
         assert updated == 0
 
         app = PesticideNotice.objects.get(application_id=2058111)
-        assert app.comtr == '1017S16E08'
+        assert app.comtrs == '1017S16E08'
         assert app.county == fresno_county
         assert app.mtrs == mtrs_region
         assert app.treated_amount == 33.75
@@ -214,7 +215,7 @@ class TestFetchApplications:
         spray = PesticideNotice.objects.get(application_id=2058111)
         assert spray.chemicals.count() == 0
 
-    def test_deduplicates_comtr_across_noi_pins(self, fresno_county, mtrs_region, db):
+    def test_deduplicates_comtrs_across_noi_pins(self, fresno_county, mtrs_region, db):
         # Two NOI pins in the same MTRS section → only one GetApplications call
         two_pins = [
             {'Latitude': TEST_LAT, 'Longitude': TEST_LON},
@@ -261,14 +262,14 @@ class TestPesticideNoticeModel:
     def test_application_id_is_unique(self, fresno_county, db):
         PesticideNotice.objects.create(
             application_id=1,
-            comtr='1017S16E08',
+            comtrs='1017S16E08',
             county=fresno_county,
             scheduled_application=make_aware(datetime(2026, 5, 15, 8, 0), PT),
         )
         with pytest.raises(Exception):
             PesticideNotice.objects.create(
                 application_id=1,
-                comtr='1017S16E08',
+                comtrs='1017S16E08',
                 county=fresno_county,
                 scheduled_application=make_aware(datetime(2026, 5, 15, 8, 0), PT),
             )
@@ -276,8 +277,161 @@ class TestPesticideNoticeModel:
     def test_str(self, fresno_county, db):
         app = PesticideNotice.objects.create(
             application_id=42,
-            comtr='1017S16E08',
+            comtrs='1017S16E08',
             county=fresno_county,
             scheduled_application=make_aware(datetime(2026, 5, 15, 8, 0), PT),
         )
         assert str(app) == '42 / 1017S16E08'
+
+
+# ---------------------------------------------------------------------------
+# Chemical model
+# ---------------------------------------------------------------------------
+
+class ChemicalModelTests(TestCase):
+    def test_str(self):
+        chem = Chemical.objects.create(chem_code=383, name='METHOMYL')
+        assert str(chem) == 'METHOMYL'
+
+    def test_categories_default_empty(self):
+        chem = Chemical.objects.create(chem_code=9999, name='TEST')
+        assert chem.categories == []
+
+    def test_iarc_group_blank_by_default(self):
+        chem = Chemical.objects.create(chem_code=9998, name='TEST2')
+        assert chem.iarc_group == ''
+
+    def test_dtxsid_blank_by_default(self):
+        chem = Chemical.objects.create(chem_code=9997, name='TEST3')
+        assert chem.dtxsid == ''
+
+
+# ---------------------------------------------------------------------------
+# M2M relations through PesticideUse
+# ---------------------------------------------------------------------------
+
+class ChemicalCommoditiesM2MTests(TestCase):
+    def setUp(self):
+        self.county = Region.objects.create(
+            name='Fresno County', slug='fresno',
+            type=Region.Type.COUNTY, external_id='06019',
+            metadata={'ca_county_code': '10'},
+        )
+        self.chemical = Chemical.objects.create(chem_code=383, name='METHOMYL')
+        self.commodity = Commodity.objects.create(site_code='01', name='ALMOND')
+        self.use = PesticideUse.objects.create(
+            year=2023, use_no=1,
+            county=self.county,
+            chemical=self.chemical,
+            commodity=self.commodity,
+        )
+
+    def test_commodity_accessible_via_m2m(self):
+        assert self.commodity in self.chemical.commodities.all()
+
+    def test_requires_distinct_for_unique_results(self):
+        # Multiple PesticideUse rows with same pair — raw .count() returns row count,
+        # .distinct().count() returns unique commodities.
+        for i in range(3):
+            PesticideUse.objects.create(
+                year=2023, use_no=i + 10,
+                county=self.county,
+                chemical=self.chemical,
+                commodity=self.commodity,
+            )
+        assert self.chemical.commodities.distinct().count() == 1
+
+    def test_use_without_commodity_is_excluded(self):
+        chemical2 = Chemical.objects.create(chem_code=999, name='OTHER')
+        PesticideUse.objects.create(year=2023, use_no=99, county=self.county, chemical=chemical2)
+        assert chemical2.commodities.count() == 0
+
+    def test_reverse_chemicals_on_commodity(self):
+        assert self.chemical in self.commodity.chemicals.all()
+
+    def test_reverse_requires_distinct(self):
+        for i in range(3):
+            PesticideUse.objects.create(
+                year=2023, use_no=i + 10,
+                county=self.county,
+                chemical=self.chemical,
+                commodity=self.commodity,
+            )
+        assert self.commodity.chemicals.distinct().count() == 1
+
+
+class ProductCommoditiesM2MTests(TestCase):
+    def setUp(self):
+        self.county = Region.objects.create(
+            name='Fresno County', slug='fresno',
+            type=Region.Type.COUNTY, external_id='06019',
+            metadata={'ca_county_code': '10'},
+        )
+        self.product = Product.objects.create(prodno=1, reg_number='83100-28', name='NUDRIN SP')
+        self.commodity = Commodity.objects.create(site_code='01', name='ALMOND')
+        self.use = PesticideUse.objects.create(
+            year=2023, use_no=1,
+            county=self.county,
+            product=self.product,
+            commodity=self.commodity,
+        )
+
+    def test_commodity_accessible_via_m2m(self):
+        assert self.commodity in self.product.commodities.all()
+
+    def test_requires_distinct_for_unique_results(self):
+        for i in range(3):
+            PesticideUse.objects.create(
+                year=2023, use_no=i + 10,
+                county=self.county,
+                product=self.product,
+                commodity=self.commodity,
+            )
+        assert self.product.commodities.distinct().count() == 1
+
+    def test_reverse_products_on_commodity(self):
+        assert self.product in self.commodity.products.all()
+
+    def test_use_without_commodity_is_excluded(self):
+        product2 = Product.objects.create(prodno=2, reg_number='999-1', name='OTHER')
+        PesticideUse.objects.create(year=2023, use_no=99, county=self.county, product=product2)
+        assert product2.commodities.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Queryset with_* filter tests
+# ---------------------------------------------------------------------------
+
+class WithChemicalsFilterTests(TestCase):
+    def setUp(self):
+        self.county = Region.objects.create(
+            name='Fresno County', slug='fresno',
+            type=Region.Type.COUNTY, external_id='06019',
+            metadata={'ca_county_code': '10'},
+        )
+        self.glyphosate = Chemical.objects.create(chem_code=417, name='GLYPHOSATE')
+        self.copper = Chemical.objects.create(chem_code=100, name='COPPER SULFATE')
+        self.almond = Commodity.objects.create(site_code='01', name='ALMOND')
+        self.grape = Commodity.objects.create(site_code='02', name='GRAPE')
+
+        # Glyphosate → Almond in 2022, Glyphosate → Grape in 2023
+        PesticideUse.objects.create(year=2022, use_no=1, county=self.county,
+            chemical=self.glyphosate, commodity=self.almond)
+        PesticideUse.objects.create(year=2023, use_no=2, county=self.county,
+            chemical=self.glyphosate, commodity=self.grape)
+
+        # Copper → Almond in 2023
+        PesticideUse.objects.create(year=2023, use_no=3, county=self.county,
+            chemical=self.copper, commodity=self.almond)
+
+    def _almond(self):
+        return Commodity.objects.with_chemicals(pesticide_uses__year=2023).get(pk=self.almond.pk)
+
+    def test_matched_chemical_is_returned(self):
+        # Copper was used on Almond in 2023 — should appear
+        assert self.copper in self._almond().chemicals.all()
+
+    def test_cross_commodity_false_positive(self):
+        # Glyphosate was used on Almond in 2022 and on Grape in 2023 —
+        # should NOT appear in Almond's chemicals when filtered to 2023
+        assert self.glyphosate not in self._almond().chemicals.all()

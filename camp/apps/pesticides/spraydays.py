@@ -21,8 +21,8 @@ SJV_COUNTY_CODES = {'10', '15', '16', '20', '24', '39', '50', '54'}
 _MTRS_RE = re.compile(r'^[A-Z]+-T(\d+)([NS])-R(\d+)([EW])-(\d+)$')
 
 
-def comtr_from_mtrs(external_id, county_code):
-    """Convert an MTRS external_id + two-digit county code string to a COMTR code."""
+def comtrs_from_mtrs(external_id, county_code):
+    """Convert an MTRS external_id + two-digit county code string to a COMTRS code."""
     m = _MTRS_RE.match(external_id)
     if not m:
         return None
@@ -70,8 +70,8 @@ class SprayDaysClient:
             'bottomRightLong': east,
         }) or []
 
-    def get_applications(self, comtr):
-        return self._get('/NoticeOfIntent/GetApplicationsInComtrs', {'comtrs': comtr}) or []
+    def get_applications(self, comtrs):
+        return self._get('/NoticeOfIntent/GetApplicationsInComtrs', {'comtrs': comtrs}) or []
 
 
 def _chem_pks_from_raw(raw_products, chemical_map):
@@ -96,7 +96,7 @@ def _product_pks_from_raw(raw_products, product_map):
     return pks
 
 
-def _upsert_application(app_data, comtr, mtrs, county_region, lat, lon, chemical_map, product_map):
+def _upsert_application(app_data, comtrs, mtrs, county_region, lat, lon, chemical_map, product_map):
     from camp.apps.pesticides.models import PesticideNotice
 
     scheduled_str = app_data.get('ScheduledApplicationFormatted', '')
@@ -114,7 +114,7 @@ def _upsert_application(app_data, comtr, mtrs, county_region, lat, lon, chemical
     obj, created = PesticideNotice.objects.update_or_create(
         application_id=app_data['Id'],
         defaults={
-            'comtr': comtr,
+            'comtrs': comtrs,
             'mtrs': mtrs,
             'county': county_region,
             'point': Point(lon, lat, srid=4326),
@@ -154,7 +154,7 @@ def fetch_applications(county_filter=None, stdout=None):
     if county_filter:
         active_counties = [c for c in active_counties if str(c['CountyId']) == county_filter]
 
-    seen_locs = {}   # (lat, lon) → (comtr, mtrs_region)
+    seen_locs = {}   # (lat, lon) → (comtrs, mtrs_region)
     processed = set()
     created = updated = skipped = 0
 
@@ -182,20 +182,20 @@ def fetch_applications(county_filter=None, stdout=None):
                     boundary__geometry__covers=point,
                 ).first()
                 if mtrs and mtrs.external_id:
-                    comtr = comtr_from_mtrs(mtrs.external_id, county_code)
-                    seen_locs[loc_key] = (comtr, mtrs)
+                    comtrs = comtrs_from_mtrs(mtrs.external_id, county_code)
+                    seen_locs[loc_key] = (comtrs, mtrs)
                 else:
                     seen_locs[loc_key] = (None, None)
 
-            comtr, mtrs = seen_locs[loc_key]
-            if not comtr or comtr in processed:
+            comtrs, mtrs = seen_locs[loc_key]
+            if not comtrs or comtrs in processed:
                 continue
-            processed.add(comtr)
+            processed.add(comtrs)
 
-            raw_apps = client.get_applications(comtr)
+            raw_apps = client.get_applications(comtrs)
             for app_data in raw_apps:
                 obj, was_created = _upsert_application(
-                    app_data, comtr, mtrs, county_region, lat, lon, chemical_map, product_map
+                    app_data, comtrs, mtrs, county_region, lat, lon, chemical_map, product_map
                 )
                 if obj is None:
                     skipped += 1

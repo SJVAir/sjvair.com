@@ -6,6 +6,7 @@ from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
 from camp.apps.regions.models import Region
+from camp.apps.pesticides.querysets import ChemicalQuerySet, CommodityQuerySet, ProductQuerySet
 
 
 class Chemical(TimeStampedModel):
@@ -26,6 +27,8 @@ class Chemical(TimeStampedModel):
         GROUP_2B = '2B', _('Group 2B – Possibly carcinogenic to humans')
         GROUP_3  = '3',  _('Group 3 – Not classifiable as to carcinogenicity')
 
+    objects = ChemicalQuerySet.as_manager()
+
     sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.Chemical'))
 
     chem_code = models.IntegerField(_('Chemical Code'), unique=True)
@@ -39,6 +42,14 @@ class Chemical(TimeStampedModel):
         default=list,
         blank=True,
     )
+    commodities = models.ManyToManyField(
+        'pesticides.Commodity',
+        through='pesticides.PesticideUse',
+        through_fields=('chemical', 'commodity'),
+        related_name='chemicals',
+        verbose_name=_('Commodities'),
+        blank=True,
+    )
 
     class Meta:
         ordering = ['name']
@@ -50,6 +61,8 @@ class Chemical(TimeStampedModel):
 
 
 class Commodity(TimeStampedModel):
+    objects = CommodityQuerySet.as_manager()
+
     sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.Commodity'))
 
     site_code = models.CharField(_('Site Code'), max_length=8, unique=True)
@@ -65,6 +78,8 @@ class Commodity(TimeStampedModel):
 
 
 class Product(TimeStampedModel):
+    objects = ProductQuerySet.as_manager()
+
     sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.Product'))
 
     prodno = models.IntegerField(_('Product Number'), unique=True)
@@ -77,6 +92,14 @@ class Product(TimeStampedModel):
         through='ProductChemical',
         related_name='products',
         verbose_name=_('Chemicals'),
+    )
+    commodities = models.ManyToManyField(
+        'pesticides.Commodity',
+        through='pesticides.PesticideUse',
+        through_fields=('product', 'commodity'),
+        related_name='products',
+        verbose_name=_('Commodities'),
+        blank=True,
     )
 
     class Meta:
@@ -114,7 +137,7 @@ class PesticideUse(TimeStampedModel):
     county = models.ForeignKey(
         'regions.Region',
         on_delete=models.PROTECT,
-        related_name='pur_records',
+        related_name='pesticide_uses',
         verbose_name=_('County'),
         limit_choices_to={'type': Region.Type.COUNTY},
     )
@@ -123,7 +146,7 @@ class PesticideUse(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='pur_records_mtrs',
+        related_name='pesticide_usess_mtrs',
         verbose_name=_('MTRS Section'),
         limit_choices_to={'type': Region.Type.MTRS},
     )
@@ -133,7 +156,7 @@ class PesticideUse(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='pur_records',
+        related_name='pesticide_uses',
         verbose_name=_('pesticides.Product'),
     )
     chemical = models.ForeignKey(
@@ -141,7 +164,7 @@ class PesticideUse(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='pur_records',
+        related_name='pesticide_uses',
         verbose_name=_('pesticides.Chemical'),
     )
     commodity = models.ForeignKey(
@@ -149,7 +172,7 @@ class PesticideUse(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='pur_records',
+        related_name='pesticide_uses',
         verbose_name=_('pesticides.Commodity'),
     )
     site_code = models.CharField(_('Site Code'), max_length=8, blank=True)
@@ -188,7 +211,7 @@ class PesticideNotice(TimeStampedModel):
     sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.PesticideNotice'))
 
     application_id = models.IntegerField(_('Application ID'), unique=True)
-    comtr = models.CharField(_('COMTR'), max_length=11, db_index=True)
+    comtrs = models.CharField(_('COMTRS'), max_length=11, db_index=True)
     mtrs = models.ForeignKey(
         'regions.Region',
         on_delete=models.SET_NULL,
@@ -227,4 +250,4 @@ class PesticideNotice(TimeStampedModel):
         verbose_name_plural = _('Pesticide Notices')
 
     def __str__(self):
-        return f'{self.application_id} / {self.comtr}'
+        return f'{self.application_id} / {self.comtrs}'

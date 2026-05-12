@@ -6,6 +6,7 @@ from urllib.parse import unquote
 import ctxpy
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Count
 
 from camp.apps.pesticides.models import Chemical
 
@@ -43,7 +44,7 @@ class Command(BaseCommand):
             '--workers',
             type=int,
             default=10,
-            help='Thread pool size for equals phase (default: 10)',
+            help='Thread pool size for parallel phases (default: 10)',
         )
         parser.add_argument(
             '--inspect',
@@ -58,6 +59,7 @@ class Command(BaseCommand):
 
         self.chem_client = ctxpy.Chemical(x_api_key=api_key)
         self.haz_client = ctxpy.Hazard(x_api_key=api_key)
+        self.workers = options['workers']
 
         phase = options['phase']
 
@@ -66,7 +68,7 @@ class Command(BaseCommand):
             self._phase_cas_lookup()
 
         if phase in ('equals', 'all'):
-            self._phase_equals(limit=options['limit'], workers=options['workers'])
+            self._phase_equals(limit=options['limit'])
 
         if phase in ('hazard', 'all'):
             self._phase_hazard(inspect=options['inspect'])
@@ -78,9 +80,6 @@ class Command(BaseCommand):
         chemicals = list(Chemical.objects.filter(dtxsid='').values('id', 'name', 'cas_number'))
         self.stdout.write(f'  {len(chemicals):,} chemicals without DTXSID')
 
-        # Map search term (lowercased) → set of chemical IDs.
-        # For comma-containing names, also index the base compound name
-        # (before the first comma) so salt forms match their parent compound.
         term_to_ids = {}
         for c in chemicals:
             full = c['name'].lower()
@@ -91,30 +90,28 @@ class Command(BaseCommand):
                     term_to_ids.setdefault(base, set()).add(c['id'])
 
         all_terms = list(term_to_ids.keys())
+        batches = [all_terms[i:i + BATCH_SIZE] for i in range(0, len(all_terms), BATCH_SIZE)]
         updated = 0
+        completed = 0
 
-        for i in range(0, len(all_terms), BATCH_SIZE):
-            batch = all_terms[i:i + BATCH_SIZE]
-            results = self._search_with_retry(batch)
-            for result in results:
-                search_value = unquote(result.get('searchValue') or '').lower()
-                dtxsid = result.get('dtxsid', '')
-                casrn = result.get('casrn', '')
-                if not dtxsid:
-                    continue
-                chem_ids = term_to_ids.get(search_value, set())
-                if not chem_ids:
-                    continue
-                # Always write DTXSID; only fill CAS if the chemical has none
-                rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(dtxsid=dtxsid)
-                if casrn:
-                    Chemical.objects.filter(pk__in=chem_ids, cas_number='').update(cas_number=casrn)
-                updated += rows
-
-            self.stdout.write(
-                f'  Processed {min(i + BATCH_SIZE, len(all_terms)):,} / {len(all_terms):,}',
-                ending='\r',
-            )
+        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+            futures = {pool.submit(self._search_with_retry, batch): batch for batch in batches}
+            for future in as_completed(futures):
+                completed += 1
+                for result in future.result():
+                    search_value = unquote(result.get('searchValue') or '').lower()
+                    dtxsid = result.get('dtxsid', '')
+                    casrn = result.get('casrn', '')
+                    if not dtxsid:
+                        continue
+                    chem_ids = term_to_ids.get(search_value, set())
+                    if not chem_ids:
+                        continue
+                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(dtxsid=dtxsid)
+                    if casrn:
+                        Chemical.objects.filter(pk__in=chem_ids, cas_number='').update(cas_number=casrn)
+                    updated += rows
+                self.stdout.write(f'  {completed:,} / {len(batches):,} batches', ending='\r')
 
         self.stdout.write(f'\n  Updated {updated:,} chemicals with DTXSID')
 
@@ -132,33 +129,34 @@ class Command(BaseCommand):
             cas_to_ids.setdefault(c['cas_number'], set()).add(c['id'])
 
         all_cas = list(cas_to_ids.keys())
+        batches = [all_cas[i:i + BATCH_SIZE] for i in range(0, len(all_cas), BATCH_SIZE)]
         updated = 0
+        completed = 0
 
-        for i in range(0, len(all_cas), BATCH_SIZE):
-            batch = all_cas[i:i + BATCH_SIZE]
-            results = self._search_with_retry(batch)
-            for result in results:
-                search_value = unquote(result.get('searchValue') or '').upper()
-                dtxsid = result.get('dtxsid', '')
-                if not dtxsid:
-                    continue
-                chem_ids = cas_to_ids.get(search_value, set())
-                if not chem_ids:
-                    continue
-                rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(dtxsid=dtxsid)
-                updated += rows
+        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+            futures = {pool.submit(self._search_with_retry, batch): batch for batch in batches}
+            for future in as_completed(futures):
+                completed += 1
+                for result in future.result():
+                    search_value = unquote(result.get('searchValue') or '').upper()
+                    dtxsid = result.get('dtxsid', '')
+                    if not dtxsid:
+                        continue
+                    chem_ids = cas_to_ids.get(search_value, set())
+                    if not chem_ids:
+                        continue
+                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(dtxsid=dtxsid)
+                    updated += rows
+                self.stdout.write(f'  {completed:,} / {len(batches):,} batches', ending='\r')
 
-        self.stdout.write(f'  Updated {updated:,} chemicals with DTXSID via CAS lookup')
+        self.stdout.write(f'\n  Updated {updated:,} chemicals with DTXSID via CAS lookup')
 
-    def _phase_equals(self, limit, workers):
-        from django.db import connection
-        from django.db.models import Count
-
+    def _phase_equals(self, limit):
         self.stdout.write(f'Phase 1c: equals search for top {limit:,} unmatched chemicals...')
         chemicals = list(
             Chemical.objects
             .filter(dtxsid='')
-            .annotate(record_count=Count('pur_records'))
+            .annotate(record_count=Count('pesticide_uses'))
             .order_by('-record_count')
             .values('id', 'name', 'cas_number')[:limit]
         )
@@ -179,7 +177,7 @@ class Command(BaseCommand):
 
         updated = 0
         completed = 0
-        with ThreadPoolExecutor(max_workers=workers) as pool:
+        with ThreadPoolExecutor(max_workers=self.workers) as pool:
             futures = {pool.submit(lookup, c): c for c in chemicals}
             for future in as_completed(futures):
                 completed += 1
@@ -223,14 +221,21 @@ class Command(BaseCommand):
             self.stdout.write('---')
             return
 
+        def lookup(chem):
+            return chem['id'], self._get_iarc_group(chem['dtxsid'])
+
         updated = 0
-        for i, chem in enumerate(chemicals):
-            iarc_group = self._get_iarc_group(chem['dtxsid'])
-            if iarc_group:
-                Chemical.objects.filter(pk=chem['id']).update(iarc_group=iarc_group)
-                updated += 1
-            if (i + 1) % 50 == 0:
-                self.stdout.write(f'  {i + 1:,} / {len(chemicals):,}', ending='\r')
+        completed = 0
+        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+            futures = {pool.submit(lookup, c): c for c in chemicals}
+            for future in as_completed(futures):
+                completed += 1
+                chem_id, iarc_group = future.result()
+                if iarc_group:
+                    Chemical.objects.filter(pk=chem_id).update(iarc_group=iarc_group)
+                    updated += 1
+                if completed % 50 == 0:
+                    self.stdout.write(f'  {completed:,} / {len(chemicals):,}', ending='\r')
 
         self.stdout.write(f'\n  Updated {updated:,} chemicals with IARC group')
 
