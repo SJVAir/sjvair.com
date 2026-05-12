@@ -155,7 +155,8 @@ def fetch_applications(county_filter=None, stdout=None):
         active_counties = [c for c in active_counties if str(c['CountyId']) == county_filter]
 
     seen_locs = {}   # (lat, lon) → (comtrs, mtrs_region)
-    processed = set()
+    processed = set()        # comtrs strings already fetched from API
+    processed_apps = set()   # application_ids already upserted this run
     created = updated = skipped = 0
 
     for county_data in active_counties:
@@ -194,6 +195,10 @@ def fetch_applications(county_filter=None, stdout=None):
 
             raw_apps = client.get_applications(comtrs)
             for app_data in raw_apps:
+                app_id = app_data['Id']
+                if app_id in processed_apps:
+                    continue
+                processed_apps.add(app_id)
                 obj, was_created = _upsert_application(
                     app_data, comtrs, mtrs, county_region, lat, lon, chemical_map, product_map
                 )
