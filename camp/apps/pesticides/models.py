@@ -146,7 +146,7 @@ class PesticideUse(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='pesticide_usess_mtrs',
+        related_name='pesticide_uses_mtrs',
         verbose_name=_('MTRS Section'),
         limit_choices_to={'type': Region.Type.MTRS},
     )
@@ -191,6 +191,7 @@ class PesticideUse(TimeStampedModel):
     record_id = models.CharField(_('Record ID'), max_length=4, blank=True)
 
     class Meta:
+        ordering = ['-application_date', '-year']
         indexes = [
             models.Index(fields=['year', 'county']),
             models.Index(fields=['year', 'use_no']),

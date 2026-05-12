@@ -50,3 +50,10 @@ class OpenAPISchemaTests(TestCase):
 
     def test_account_endpoints_are_not_documented(self):
         assert not any('account' in p for p in self.paths)
+
+    def test_pesticides_endpoints_are_documented(self):
+        assert any('pesticides' in p and p.endswith('chemicals/') for p in self.paths)
+        assert any('pesticides' in p and p.endswith('commodities/') for p in self.paths)
+        assert any('pesticides' in p and p.endswith('products/') for p in self.paths)
+        assert any('pesticides' in p and p.endswith('use/') for p in self.paths)
+        assert any('pesticides' in p and p.endswith('notice/') for p in self.paths)
