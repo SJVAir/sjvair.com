@@ -5,7 +5,9 @@ from . import endpoints
 app_name = 'pesticides'
 
 urlpatterns = [
-    path('summary/<str:region_id>/', endpoints.PesticideSummary.as_view(), name='summary'),
+    path('region/<str:region_id>/summary/', endpoints.PesticideRegionSummary.as_view(), name='region-summary'),
+    path('region/<str:region_id>/notice/', endpoints.PesticideRegionNotice.as_view(), name='region-notice'),
+    path('region/<str:region_id>/use/', endpoints.PesticideRegionUse.as_view(), name='region-use'),
     path('commodities/', endpoints.CommodityList.as_view(), name='commodity-list'),
     path('commodities/<str:commodity_id>/', endpoints.CommodityDetail.as_view(), name='commodity-detail'),
     path('chemicals/', endpoints.ChemicalList.as_view(), name='chemical-list'),

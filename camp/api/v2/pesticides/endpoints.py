@@ -16,7 +16,6 @@ from .serializers import (
     CommodityDetailSerializer,
     PesticideNoticeSerializer,
     PesticideSummaryResponseSerializer,
-    PesticideSummarySerializer,
     PesticideUseSerializer,
     ProductSerializer,
     ProductDetailSerializer,
@@ -130,12 +129,29 @@ class PesticideNoticeDetail(PesticideNoticeMixin, generics.DetailEndpoint):
     lookup_url_kwarg = 'notice_id'
 
 
-class PesticideSummary(generics.ListEndpoint):
+class PesticideRegionMixin:
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+        self.region = get_object_or_404(
+            Region.objects.select_related('boundary'),
+            sqid=self.kwargs['region_id'],
+        )
+
+    def get_region_queryset(self, queryset):
+        if self.region.type == Region.Type.COUNTY:
+            return queryset.filter(county=self.region)
+        try:
+            geometry = self.region.boundary.geometry
+        except AttributeError:
+            return queryset.none()
+        return queryset.filter(mtrs__boundary__geometry__intersects=geometry)
+
+
+class PesticideRegionSummary(PesticideRegionMixin, generics.ListEndpoint):
     """
     Aggregate pesticide use records by chemical, commodity, and year for a region.
 
-    The region is specified as a sqid in the URL path. County uses a direct FK;
-    all other region types use an MTRS spatial join.
+    County regions use a direct FK; all other region types use an MTRS spatial join.
     """
 
     model = PesticideUse
@@ -144,19 +160,7 @@ class PesticideSummary(generics.ListEndpoint):
     paginate = False
 
     def get_queryset(self):
-        self.region = get_object_or_404(
-            Region.objects.select_related('boundary'),
-            sqid=self.kwargs['region_id'],
-        )
-        if self.region.type == Region.Type.COUNTY:
-            return PesticideUse.objects.filter(county=self.region)
-        try:
-            geometry = self.region.boundary.geometry
-        except AttributeError:
-            return PesticideUse.objects.none()
-        return PesticideUse.objects.filter(
-            mtrs__boundary__geometry__intersects=geometry
-        )
+        return self.get_region_queryset(PesticideUse.objects.all())
 
     def aggregate(self, queryset):
         return list(
@@ -197,3 +201,21 @@ class PesticideSummary(generics.ListEndpoint):
             data=rows,
             count=len(rows),
         ))
+
+
+class PesticideRegionNotice(PesticideRegionMixin, PesticideNoticeMixin, generics.ListEndpoint):
+    """List pesticide application notices for a region. County uses a direct FK; other region types use an MTRS spatial join."""
+
+    filter_class = PesticideNoticeFilter
+
+    def get_queryset(self):
+        return self.get_region_queryset(super().get_queryset())
+
+
+class PesticideRegionUse(PesticideRegionMixin, PesticideUseMixin, generics.ListEndpoint):
+    """List pesticide use records for a region. County uses a direct FK; other region types use an MTRS spatial join."""
+
+    filter_class = PesticideUseFilter
+
+    def get_queryset(self):
+        return self.get_region_queryset(super().get_queryset())

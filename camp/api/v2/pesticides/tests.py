@@ -446,10 +446,10 @@ class PesticideNoticeListTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# PesticideSummary
+# Region-scoped endpoints
 # ---------------------------------------------------------------------------
 
-class PesticideSummaryTests(TestCase):
+class PesticideRegionSummaryTests(TestCase):
     def setUp(self):
         self.county = make_county()
         self.chemical = make_chemical(chem_code=100, name='GLYPHOSATE', iarc_group='2A', categories=['carcinogen'])
@@ -465,13 +465,13 @@ class PesticideSummaryTests(TestCase):
             lbs_chemical=500.0,
             acres_treated=10.0,
         )
-        self.url = reverse('api:v2:pesticides:summary', kwargs={'region_id': self.county.sqid})
+        self.url = reverse('api:v2:pesticides:region-summary', kwargs={'region_id': self.county.sqid})
 
     def test_returns_200(self):
         assert self.client.get(self.url).status_code == 200
 
     def test_404_for_unknown_region(self):
-        url = reverse('api:v2:pesticides:summary', kwargs={'region_id': 'BOGUS'})
+        url = reverse('api:v2:pesticides:region-summary', kwargs={'region_id': 'BOGUS'})
         assert self.client.get(url).status_code == 404
 
     def test_response_shape(self):
@@ -524,10 +524,92 @@ class PesticideSummaryTests(TestCase):
             type=Region.Type.CITY,
             external_id='2027000',
         )
-        url = reverse('api:v2:pesticides:summary', kwargs={'region_id': city.sqid})
+        url = reverse('api:v2:pesticides:region-summary', kwargs={'region_id': city.sqid})
         data = self.client.get(url).json()
         assert data['count'] == 0
         assert data['data'] == []
+
+
+class PesticideRegionNoticeTests(TestCase):
+    def setUp(self):
+        self.county = make_county()
+        self.chemical = make_chemical()
+        self.notice = make_notice(self.county, application_id=1)
+        self.notice.chemicals.add(self.chemical)
+        self.url = reverse('api:v2:pesticides:region-notice', kwargs={'region_id': self.county.sqid})
+
+    def test_returns_200(self):
+        assert self.client.get(self.url).status_code == 200
+
+    def test_404_for_unknown_region(self):
+        url = reverse('api:v2:pesticides:region-notice', kwargs={'region_id': 'BOGUS'})
+        assert self.client.get(url).status_code == 404
+
+    def test_scoped_to_region(self):
+        other = Region.objects.create(name='Kern', slug='kern', type=Region.Type.COUNTY, external_id='06029')
+        make_notice(other, application_id=2)
+        data = self.client.get(self.url).json()
+        assert data['count'] == 1
+        assert data['data'][0]['application_id'] == 1
+
+    def test_non_county_region_without_boundary_returns_empty(self):
+        city = Region.objects.create(name='Fresno', slug='fresno-city', type=Region.Type.CITY, external_id='2027000')
+        url = reverse('api:v2:pesticides:region-notice', kwargs={'region_id': city.sqid})
+        assert self.client.get(url).json()['count'] == 0
+
+    def test_filter_upcoming(self):
+        make_notice(self.county, application_id=3,
+            scheduled_application=timezone.now() - timedelta(days=1))
+        data = self.client.get(self.url, {'upcoming': 'true'}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['application_id'] == 1
+
+    def test_filter_by_chemical(self):
+        other_chem = make_chemical(chem_code=999, name='OTHER')
+        other_notice = make_notice(self.county, application_id=4)
+        other_notice.chemicals.add(other_chem)
+        data = self.client.get(self.url, {'chemical': self.chemical.chem_code}).json()
+        assert data['count'] == 1
+
+
+class PesticideRegionUseTests(TestCase):
+    def setUp(self):
+        self.county = make_county()
+        self.chemical = make_chemical()
+        self.commodity = make_commodity()
+        self.use = make_use(self.county, chemical=self.chemical, commodity=self.commodity,
+                            year=2023, use_no=1, lbs_chemical=100.0)
+        self.url = reverse('api:v2:pesticides:region-use', kwargs={'region_id': self.county.sqid})
+
+    def test_returns_200(self):
+        assert self.client.get(self.url).status_code == 200
+
+    def test_404_for_unknown_region(self):
+        url = reverse('api:v2:pesticides:region-use', kwargs={'region_id': 'BOGUS'})
+        assert self.client.get(url).status_code == 404
+
+    def test_scoped_to_region(self):
+        other = Region.objects.create(name='Kern', slug='kern', type=Region.Type.COUNTY, external_id='06029')
+        make_use(other, year=2023, use_no=2)
+        data = self.client.get(self.url).json()
+        assert data['count'] == 1
+        assert data['data'][0]['use_no'] == 1
+
+    def test_non_county_region_without_boundary_returns_empty(self):
+        city = Region.objects.create(name='Fresno', slug='fresno-city', type=Region.Type.CITY, external_id='2027000')
+        url = reverse('api:v2:pesticides:region-use', kwargs={'region_id': city.sqid})
+        assert self.client.get(url).json()['count'] == 0
+
+    def test_filter_by_year(self):
+        make_use(self.county, year=2022, use_no=10)
+        data = self.client.get(self.url, {'year': 2023}).json()
+        assert data['count'] == 1
+
+    def test_filter_by_chemical(self):
+        other_chem = make_chemical(chem_code=999, name='OTHER')
+        make_use(self.county, chemical=other_chem, year=2023, use_no=10)
+        data = self.client.get(self.url, {'chemical': self.chemical.chem_code}).json()
+        assert data['count'] == 1
 
 
 class PesticideNoticeDetailTests(TestCase):
