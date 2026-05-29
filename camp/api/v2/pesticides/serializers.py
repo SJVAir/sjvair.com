@@ -1,5 +1,11 @@
 from resticus import serializers
 
+from camp.api.v2.regions.serializers import RegionSerializer
+
+
+class PesticideRegionSerializer(RegionSerializer):
+    exclude = ['boundary']
+
 
 class ChemicalSerializer(serializers.Serializer):
     fields = (
@@ -66,6 +72,25 @@ class PesticideUseSerializer(serializers.Serializer):
         ('product', ProductSerializer),
         ('chemical', ChemicalSerializer),
         ('commodity', CommoditySerializer),
+    )
+
+
+class PesticideSummarySerializer(serializers.Serializer):
+    fields = (
+        'year',
+        ('chemical', ChemicalSerializer),
+        ('commodity', CommoditySerializer),
+        'total_lbs',
+        'total_acres',
+        'application_count',
+    )
+
+
+class PesticideSummaryResponseSerializer(serializers.Serializer):
+    fields = (
+        ('region', PesticideRegionSerializer),
+        ('data', {'fields': PesticideSummarySerializer.fields}),
+        'count',
     )
 
 

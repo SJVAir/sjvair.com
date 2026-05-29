@@ -57,3 +57,4 @@ class OpenAPISchemaTests(TestCase):
         assert any('pesticides' in p and p.endswith('products/') for p in self.paths)
         assert any('pesticides' in p and p.endswith('use/') for p in self.paths)
         assert any('pesticides' in p and p.endswith('notice/') for p in self.paths)
+        assert any('pesticides' in p and 'summary' in p for p in self.paths)

@@ -1,14 +1,22 @@
+from types import SimpleNamespace
+
+from django.db.models import Count, Sum
+from django.shortcuts import get_object_or_404
+
 from resticus import generics
 
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.regions.models import Region
 
-from .filters import ChemicalFilter, CommodityFilter, PesticideNoticeFilter, PesticideUseFilter, ProductFilter
+from .filters import ChemicalFilter, CommodityFilter, PesticideNoticeFilter, PesticideSummaryFilter, PesticideUseFilter, ProductFilter
 from .serializers import (
     ChemicalSerializer,
     ChemicalDetailSerializer,
     CommoditySerializer,
     CommodityDetailSerializer,
     PesticideNoticeSerializer,
+    PesticideSummaryResponseSerializer,
+    PesticideSummarySerializer,
     PesticideUseSerializer,
     ProductSerializer,
     ProductDetailSerializer,
@@ -120,3 +128,72 @@ class PesticideNoticeDetail(PesticideNoticeMixin, generics.DetailEndpoint):
 
     lookup_field = 'sqid'
     lookup_url_kwarg = 'notice_id'
+
+
+class PesticideSummary(generics.ListEndpoint):
+    """
+    Aggregate pesticide use records by chemical, commodity, and year for a region.
+
+    The region is specified as a sqid in the URL path. County uses a direct FK;
+    all other region types use an MTRS spatial join.
+    """
+
+    model = PesticideUse
+    serializer_class = PesticideSummaryResponseSerializer
+    filter_class = PesticideSummaryFilter
+    paginate = False
+
+    def get_queryset(self):
+        self.region = get_object_or_404(
+            Region.objects.select_related('boundary'),
+            sqid=self.kwargs['region_id'],
+        )
+        if self.region.type == Region.Type.COUNTY:
+            return PesticideUse.objects.filter(county=self.region)
+        try:
+            geometry = self.region.boundary.geometry
+        except AttributeError:
+            return PesticideUse.objects.none()
+        return PesticideUse.objects.filter(
+            mtrs__boundary__geometry__intersects=geometry
+        )
+
+    def aggregate(self, queryset):
+        return list(
+            queryset
+            .values('chemical_id', 'commodity_id', 'year')
+            .annotate(
+                total_lbs=Sum('lbs_chemical'),
+                total_acres=Sum('acres_treated'),
+                application_count=Count('id'),
+            )
+            .order_by('-year', 'chemical_id', 'commodity_id')
+        )
+
+    def build_rows(self, rows):
+        chemical_ids = {r['chemical_id'] for r in rows if r['chemical_id']}
+        commodity_ids = {r['commodity_id'] for r in rows if r['commodity_id']}
+        chemicals = {c.pk: c for c in Chemical.objects.filter(pk__in=chemical_ids)}
+        commodities = {c.pk: c for c in Commodity.objects.filter(pk__in=commodity_ids)}
+
+        return [
+            SimpleNamespace(
+                year=row['year'],
+                chemical=chemicals.get(row['chemical_id']),
+                commodity=commodities.get(row['commodity_id']),
+                total_lbs=row['total_lbs'],
+                total_acres=row['total_acres'],
+                application_count=row['application_count'],
+            )
+            for row in rows
+        ]
+
+    def get(self, request, region_id):
+        queryset = self.get_queryset()
+        queryset = self.filter_queryset(queryset)
+        rows = self.build_rows(self.aggregate(queryset))
+        return self.serialize(SimpleNamespace(
+            region=self.region,
+            data=rows,
+            count=len(rows),
+        ))

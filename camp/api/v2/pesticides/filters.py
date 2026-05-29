@@ -56,6 +56,23 @@ class PesticideUseFilter(FilterSet):
         }
 
 
+class PesticideSummaryFilter(FilterSet):
+    chemical = django_filters.NumberFilter(field_name='chemical__chem_code')
+    commodity = django_filters.CharFilter(field_name='commodity__site_code')
+    category = django_filters.CharFilter(method='filter_category')
+    iarc_group = django_filters.CharFilter(field_name='chemical__iarc_group')
+
+    def filter_category(self, queryset, name, value):
+        return queryset.filter(chemical__categories__contains=[value])
+
+    class Meta:
+        model = PesticideUse
+        fields = {
+            'year': ['exact', 'lte', 'gte'],
+            'aerial_ground': ['exact'],
+        }
+
+
 class PesticideNoticeFilter(FilterSet):
     county = django_filters.CharFilter(field_name='county__slug')
     chemical = django_filters.NumberFilter(field_name='chemicals__chem_code')

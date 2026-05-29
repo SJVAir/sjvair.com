@@ -428,6 +428,91 @@ class PesticideNoticeListTests(TestCase):
             self.client.get(self.url)
 
 
+# ---------------------------------------------------------------------------
+# PesticideSummary
+# ---------------------------------------------------------------------------
+
+class PesticideSummaryTests(TestCase):
+    def setUp(self):
+        self.county = make_county()
+        self.chemical = make_chemical(chem_code=100, name='GLYPHOSATE', iarc_group='2A', categories=['carcinogen'])
+        self.commodity = make_commodity(site_code='01', name='ALMOND')
+        self.product = make_product()
+        make_use(
+            self.county,
+            chemical=self.chemical,
+            commodity=self.commodity,
+            product=self.product,
+            year=2023,
+            use_no=1,
+            lbs_chemical=500.0,
+            acres_treated=10.0,
+        )
+        self.url = reverse('api:v2:pesticides:summary', kwargs={'region_id': self.county.sqid})
+
+    def test_returns_200(self):
+        assert self.client.get(self.url).status_code == 200
+
+    def test_404_for_unknown_region(self):
+        url = reverse('api:v2:pesticides:summary', kwargs={'region_id': 'BOGUS'})
+        assert self.client.get(url).status_code == 404
+
+    def test_response_shape(self):
+        data = self.client.get(self.url).json()
+        assert set(data.keys()) == {'region', 'data', 'count'}
+        assert data['count'] == 1
+        assert set(data['region'].keys()) == {'id', 'name', 'slug', 'type'}
+        item = data['data'][0]
+        assert set(item.keys()) == {'year', 'chemical', 'commodity', 'total_lbs', 'total_acres', 'application_count'}
+
+    def test_nested_objects(self):
+        item = self.client.get(self.url).json()['data'][0]
+        assert item['chemical']['name'] == 'GLYPHOSATE'
+        assert item['commodity']['name'] == 'ALMOND'
+
+    def test_aggregates_correctly(self):
+        make_use(self.county, chemical=self.chemical, commodity=self.commodity,
+                 year=2023, use_no=2, lbs_chemical=300.0, acres_treated=5.0)
+        item = self.client.get(self.url).json()['data'][0]
+        assert item['total_lbs'] == 800.0
+        assert item['total_acres'] == 15.0
+        assert item['application_count'] == 2
+
+    def test_filter_by_year(self):
+        make_use(self.county, chemical=self.chemical, commodity=self.commodity,
+                 year=2022, use_no=10, lbs_chemical=100.0)
+        data = self.client.get(self.url, {'year': 2023}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['year'] == 2023
+
+    def test_filter_by_chemical(self):
+        other_chem = make_chemical(chem_code=999, name='OTHER')
+        make_use(self.county, chemical=other_chem, commodity=self.commodity,
+                 year=2023, use_no=10)
+        data = self.client.get(self.url, {'chemical': self.chemical.chem_code}).json()
+        assert data['count'] == 1
+
+    def test_filter_by_category(self):
+        safe_chem = make_chemical(chem_code=999, name='SAFE', categories=[])
+        make_use(self.county, chemical=safe_chem, commodity=self.commodity,
+                 year=2023, use_no=10)
+        data = self.client.get(self.url, {'category': 'carcinogen'}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['chemical']['name'] == 'GLYPHOSATE'
+
+    def test_non_county_region_without_boundary_returns_empty(self):
+        city = Region.objects.create(
+            name='Fresno',
+            slug='fresno-city',
+            type=Region.Type.CITY,
+            external_id='2027000',
+        )
+        url = reverse('api:v2:pesticides:summary', kwargs={'region_id': city.sqid})
+        data = self.client.get(url).json()
+        assert data['count'] == 0
+        assert data['data'] == []
+
+
 class PesticideNoticeDetailTests(TestCase):
     def setUp(self):
         self.county = make_county()
