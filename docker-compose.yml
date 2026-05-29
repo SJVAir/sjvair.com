@@ -92,7 +92,7 @@ services:
   worker-summaries:
     <<: *build-base
     command: python manage.py djangohuey --simple --queue summaries
-    profiles: ["all", "workers"]
+    profiles: ["all", "default", "workers"]
 
   test:
     <<: *build-base
