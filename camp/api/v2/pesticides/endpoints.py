@@ -92,7 +92,7 @@ class PesticideUseMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().select_related('product', 'chemical', 'commodity')
+        return super().get_queryset().select_related('county', 'mtrs', 'product', 'chemical', 'commodity')
 
 
 class PesticideUseList(PesticideUseMixin, generics.ListEndpoint):
@@ -114,7 +114,7 @@ class PesticideNoticeMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().prefetch_related('chemicals', 'products')
+        return super().get_queryset().select_related('county').prefetch_related('chemicals', 'products')
 
 
 class PesticideNoticeList(PesticideNoticeMixin, generics.ListEndpoint):

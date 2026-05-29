@@ -313,7 +313,8 @@ class PesticideUseListTests(TestCase):
         item = data['data'][0]
         assert set(item.keys()) == {
             'id', 'year', 'use_no', 'comtrs', 'lbs_chemical', 'acres_treated',
-            'application_date', 'aerial_ground', 'product', 'chemical', 'commodity',
+            'application_date', 'aerial_ground', 'county', 'mtrs',
+            'product', 'chemical', 'commodity',
         }
 
     def test_nested_fk_fields(self):
@@ -337,6 +338,21 @@ class PesticideUseListTests(TestCase):
         make_use(self.county, year=2023, use_no=4, aerial_ground='A')
         data = self.client.get(self.url, {'aerial_ground': 'G'}).json()
         assert data['count'] == 1
+
+    def test_filter_by_commodity(self):
+        other = make_commodity(site_code='99', name='GRAPE')
+        make_use(self.county, commodity=other, year=2023, use_no=5)
+        data = self.client.get(self.url, {'commodity': '01'}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['commodity']['name'] == 'ALMOND'
+
+    def test_county_in_response(self):
+        item = self.client.get(self.url).json()['data'][0]
+        assert item['county']['slug'] == 'fresno'
+
+    def test_mtrs_null_when_unset(self):
+        item = self.client.get(self.url).json()['data'][0]
+        assert item['mtrs'] is None
 
     def test_no_n_plus_1_queries(self):
         # select_related means query count stays flat as rows grow
@@ -363,7 +379,8 @@ class PesticideUseDetailTests(TestCase):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
             'id', 'year', 'use_no', 'comtrs', 'lbs_chemical', 'acres_treated',
-            'application_date', 'aerial_ground', 'product', 'chemical', 'commodity',
+            'application_date', 'aerial_ground', 'county', 'mtrs',
+            'product', 'chemical', 'commodity',
         }
 
 
@@ -387,7 +404,7 @@ class PesticideNoticeListTests(TestCase):
     def test_list_fields(self):
         item = self.client.get(self.url).json()['data'][0]
         assert set(item.keys()) == {
-            'id', 'application_id', 'comtrs', 'point', 'scheduled_application',
+            'id', 'application_id', 'comtrs', 'county', 'point', 'scheduled_application',
             'treated_amount', 'treated_units', 'application_method',
             'chemicals', 'products',
         }
@@ -525,7 +542,7 @@ class PesticideNoticeDetailTests(TestCase):
     def test_detail_fields(self):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
-            'id', 'application_id', 'comtrs', 'point', 'scheduled_application',
+            'id', 'application_id', 'comtrs', 'county', 'point', 'scheduled_application',
             'treated_amount', 'treated_units', 'application_method',
             'chemicals', 'products',
         }

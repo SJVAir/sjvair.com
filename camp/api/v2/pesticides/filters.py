@@ -44,6 +44,7 @@ class ProductFilter(FilterSet):
 class PesticideUseFilter(FilterSet):
     county = django_filters.CharFilter(field_name='county__slug')
     chemical = django_filters.NumberFilter(field_name='chemical__chem_code')
+    commodity = django_filters.CharFilter(field_name='commodity__site_code')
     product = django_filters.NumberFilter(field_name='product__prodno')
 
     class Meta:
