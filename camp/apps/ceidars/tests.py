@@ -4,6 +4,7 @@ from unittest.mock import patch, MagicMock
 
 from django.contrib.gis.geos import Point
 from django.core.management import call_command
+from django.db import IntegrityError, transaction
 
 from camp.apps.ceidars.models import Facility, EmissionsRecord
 from camp.apps.ceidars.management.commands.import_ceidars import normalize_city
@@ -184,8 +185,9 @@ class TestFacilityGeocode:
 class TestFacilityUniqueness:
     def test_unique_together(self, db):
         Facility.objects.create(county_code=10, facid=999, name='A')
-        with pytest.raises(Exception):
-            Facility.objects.create(county_code=10, facid=999, name='B')
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                Facility.objects.create(county_code=10, facid=999, name='B')
 
 
 class TestEmissionsRecord:
@@ -201,8 +203,9 @@ class TestEmissionsRecord:
 
     def test_unique_together(self, facility):
         EmissionsRecord.objects.create(facility=facility, year=2023)
-        with pytest.raises(Exception):
-            EmissionsRecord.objects.create(facility=facility, year=2023)
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                EmissionsRecord.objects.create(facility=facility, year=2023)
 
 
 # ---- Import command tests ----
