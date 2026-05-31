@@ -38,6 +38,5 @@ class RegionSummarySerializer(serializers.Serializer):
         'stddev',
         'p25',
         'p75',
-        'is_complete',
         'station_count',
     ]

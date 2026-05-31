@@ -190,7 +190,6 @@ def rollup_region_stats(records):
         'p25': merged.percentile(25),
         'p75': merged.percentile(75),
         'tdigest': tdigest_to_dict(merged),
-        'is_complete': count >= 0.8 * expected_count,
     }
 
 
@@ -328,6 +327,5 @@ def compute_region_summary(region, timestamp, entry_type, monitor_grades=None):
         'p25': merged.percentile(25),
         'p75': merged.percentile(75),
         'tdigest': tdigest_to_dict(merged),
-        'is_complete': True,
         'station_count': station_count,
     }

@@ -618,7 +618,6 @@ class RollupRegionSummariesTests(TestCase):
             p25=mean,
             p75=mean,
             tdigest=tdigest_to_dict(digest),
-            is_complete=False,
             station_count=station_count,
         )
 

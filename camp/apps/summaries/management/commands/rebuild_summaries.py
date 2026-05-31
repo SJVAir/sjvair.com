@@ -210,7 +210,7 @@ class Command(BaseCommand):
                     update_fields=[
                         'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
                         'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                        'tdigest', 'is_complete', 'station_count',
+                        'tdigest', 'station_count',
                     ],
                 )
 
