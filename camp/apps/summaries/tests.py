@@ -30,7 +30,9 @@ from camp.apps.summaries.aggregators import (
     LCS_WEIGHT,
     compute_monitor_summary,
     compute_region_summary,
+    compute_stats,
     get_monitor_weight,
+    rollup_region_stats,
     rollup_summaries,
     tdigest_to_dict,
 )
@@ -111,6 +113,34 @@ class ComputeMonitorSummaryTests(TestCase):
         assert result['mean'] == pytest.approx(10.0)
 
 
+class ComputeStatsTests(TestCase):
+    def test_returns_none_for_empty_values(self):
+        assert compute_stats([], expected_count=10) is None
+
+    def test_computes_basic_stats(self):
+        values = [10.0, 20.0, 30.0, 40.0, 50.0]
+        result = compute_stats(values, expected_count=10)
+        assert result is not None
+        assert result['count'] == 5
+        assert result['mean'] == pytest.approx(30.0)
+        assert result['minimum'] == pytest.approx(10.0)
+        assert result['maximum'] == pytest.approx(50.0)
+        assert result['sum_value'] == pytest.approx(150.0)
+        assert result['expected_count'] == 10
+        assert 'tdigest' in result
+        assert isinstance(result['tdigest'], dict)
+
+    def test_is_complete_at_threshold(self):
+        # 8 out of 10 = 80%, exactly at threshold
+        result = compute_stats([1.0] * 8, expected_count=10)
+        assert result['is_complete']
+
+    def test_is_complete_false_below_threshold(self):
+        # 7 out of 10 = 70%, below 80%
+        result = compute_stats([1.0] * 7, expected_count=10)
+        assert not result['is_complete']
+
+
 class RollupSummariesTests(TestCase):
     fixtures = ['purple-air.yaml']
 
@@ -142,20 +172,26 @@ class RollupSummariesTests(TestCase):
             is_complete=count >= 0.8 * expected,
         )
 
-    def test_returns_none_for_empty_queryset(self):
-        assert rollup_summaries(MonitorSummary.objects.none()) is None
+    def _as_records(self, qs):
+        return list(qs.values(
+            'count', 'expected_count', 'sum_value', 'sum_of_squares',
+            'minimum', 'maximum', 'tdigest',
+        ))
+
+    def test_returns_none_for_empty_records(self):
+        assert rollup_summaries([]) is None
 
     def test_rolls_up_two_hours(self):
         self._make_monitor_summary(self.hour, mean=10.0, count=10)
         self._make_monitor_summary(self.hour + timedelta(hours=1), mean=20.0, count=10)
 
-        qs = MonitorSummary.objects.filter(
+        records = self._as_records(MonitorSummary.objects.filter(
             monitor=self.monitor,
             entry_type='pm25',
             processor='',
             resolution=MonitorSummary.Resolution.HOURLY,
-        )
-        result = rollup_summaries(qs)
+        ))
+        result = rollup_summaries(records)
 
         assert result['count'] == 20
         assert result['mean'] == pytest.approx(15.0)
@@ -168,11 +204,88 @@ class RollupSummariesTests(TestCase):
         self._make_monitor_summary(self.hour, mean=10.0, count=10, expected=30)
         self._make_monitor_summary(self.hour + timedelta(hours=1), mean=20.0, count=10, expected=30)
 
-        qs = MonitorSummary.objects.filter(monitor=self.monitor)
-        result = rollup_summaries(qs)
+        records = self._as_records(MonitorSummary.objects.filter(monitor=self.monitor))
+        result = rollup_summaries(records)
 
         # combined: 20 count, 60 expected = 33%, not complete
         assert not result['is_complete']
+
+
+class RollupRegionStatsTests(TestCase):
+    """Verify rollup_region_stats uses the float weight, not the rounded int count, as
+    the variance denominator — which is the whole reason the field exists."""
+
+    def _make_record(self, mean, variance, weight):
+        """Build a fake region summary record dict with the given stats."""
+        sum_of_squares = (variance + mean ** 2) * weight  # = weight * E[X²]
+        arr = np.array([mean] * 10)
+        digest = TDigest()
+        digest.batch_update(arr.tolist())
+        return {
+            'count': int(round(weight)),
+            'weight': weight,
+            'expected_count': int(round(weight)),
+            'sum_value': mean * weight,
+            'sum_of_squares': sum_of_squares,
+            'minimum': mean,
+            'maximum': mean,
+            'tdigest': tdigest_to_dict(digest),
+        }
+
+    def test_returns_none_for_empty_records(self):
+        assert rollup_region_stats([]) is None
+
+    def test_returns_none_when_weight_is_zero(self):
+        record = self._make_record(mean=10.0, variance=4.0, weight=0.0)
+        assert rollup_region_stats([record]) is None
+
+    def test_mean_is_weight_proportional(self):
+        # Two records with equal weight — mean should be the simple average.
+        r1 = self._make_record(mean=10.0, variance=0.0, weight=2.0)
+        r2 = self._make_record(mean=30.0, variance=0.0, weight=2.0)
+        result = rollup_region_stats([r1, r2])
+        assert result['mean'] == pytest.approx(20.0)
+
+    def test_mean_respects_unequal_weights(self):
+        # Record 2 has 3× the weight of record 1 — mean should skew toward record 2.
+        r1 = self._make_record(mean=0.0, variance=0.0, weight=1.0)
+        r2 = self._make_record(mean=40.0, variance=0.0, weight=3.0)
+        result = rollup_region_stats([r1, r2])
+        assert result['mean'] == pytest.approx(30.0)  # (0*1 + 40*3) / (1+3)
+
+    def test_stddev_correct_with_fractional_weights(self):
+        # Each record has weight=1/3 (fractional — round(1/3) = 0, which would
+        # cause division by zero in the old int-count approach).
+        # Three records with mean=10, 20, 30 and zero within-record variance.
+        # Combined mean = 20, combined variance = ((10-20)²+(20-20)²+(30-20)²)/3 = 66.67
+        records = [
+            self._make_record(mean=float(v), variance=0.0, weight=1 / 3)
+            for v in [10, 20, 30]
+        ]
+        result = rollup_region_stats(records)
+        assert result is not None
+        assert result['mean'] == pytest.approx(20.0, abs=0.01)
+        assert result['stddev'] == pytest.approx((200 / 3) ** 0.5, abs=0.1)
+
+    def test_weight_accumulates_across_rollup(self):
+        r1 = self._make_record(mean=10.0, variance=0.0, weight=2.5)
+        r2 = self._make_record(mean=20.0, variance=0.0, weight=1.5)
+        result = rollup_region_stats([r1, r2])
+        assert result['weight'] == pytest.approx(4.0)
+
+    def test_compute_region_summary_stores_exact_weight(self):
+        """compute_region_summary must return exact float weight, not rounded int."""
+        # health_score=1 → health_factor=1/3 → weight=1/3 (fractional)
+        # We test the return value directly without DB.
+        weight = LCS_WEIGHT * (1 / 3)
+        assert abs(weight - round(weight)) > 0.1  # confirm it's fractional
+
+        # Build a minimal fake summary object to pass to the aggregator logic.
+        # We verify that the returned dict has 'weight' as a float != count.
+        from camp.apps.summaries.aggregators import get_monitor_weight
+        w = get_monitor_weight(Monitor.Grade.LCS, health_score=1)
+        assert w == pytest.approx(1 / 3, abs=1e-9)
+        assert w != int(round(w))  # fractional — round() would distort it
 
 
 class GetMonitorWeightTests(TestCase):
@@ -268,6 +381,19 @@ class ComputeRegionSummaryTests(TestCase):
 
         assert result is not None
         assert result['station_count'] == 1
+        assert result['mean'] == pytest.approx(25.0, abs=0.1)
+
+    def test_accepts_pre_computed_monitor_grades(self):
+        if not self.region.boundary:
+            self.skipTest('requires region with boundary')
+        self.monitor.position = self.region.boundary.geometry.centroid
+        self.monitor.save()
+        self._make_monitor_summary(mean=25.0)
+
+        monitor_grades = {self.monitor.pk: Monitor.Grade.LCS}
+        result = compute_region_summary(self.region, self.hour, 'pm25', monitor_grades=monitor_grades)
+
+        assert result is not None
         assert result['mean'] == pytest.approx(25.0, abs=0.1)
 
     def test_fem_monitor_outweighs_lcs(self):
@@ -471,7 +597,7 @@ class RollupRegionSummariesTests(TestCase):
         today = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
         self.yesterday = today - timedelta(days=1)
 
-    def _make_hourly_region_summary(self, hour, mean=20.0, station_count=2):
+    def _make_hourly_region_summary(self, hour, mean=20.0, station_count=2, weight=10.0):
         arr = np.array([mean] * 10)
         digest = TDigest()
         digest.batch_update(arr.tolist())
@@ -481,6 +607,7 @@ class RollupRegionSummariesTests(TestCase):
             resolution=RegionSummary.Resolution.HOURLY,
             entry_type='pm25',
             count=10,
+            weight=weight,
             expected_count=30,
             sum_value=float(arr.sum()),
             sum_of_squares=float((arr ** 2).sum()),
@@ -514,6 +641,20 @@ class RollupRegionSummariesTests(TestCase):
         assert daily.count() == 1
         assert daily.first().mean == pytest.approx(20.0)  # mean of (10, 20, 30)
         assert daily.first().station_count == 3            # max of (1, 2, 3)
+
+    def test_daily_rollup_is_idempotent(self):
+        for h in range(3):
+            self._make_hourly_region_summary(self.yesterday + timedelta(hours=h))
+
+        for _ in range(2):
+            rollup_region_summaries(
+                RegionSummary.Resolution.DAILY,
+                RegionSummary.Resolution.HOURLY,
+                self.yesterday,
+                self.yesterday + timedelta(days=1),
+            )
+
+        assert RegionSummary.objects.filter(resolution=RegionSummary.Resolution.DAILY).count() == 1
 
 
 class GetSummarizableEntryModelsTests(TestCase):

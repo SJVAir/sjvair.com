@@ -1,5 +1,6 @@
 import calendar
 import sys
+from collections import defaultdict
 from datetime import datetime, timedelta
 
 import tqdm
@@ -13,7 +14,7 @@ from django.db.models import Q
 
 from camp.utils.datetime import make_aware
 from camp.apps.entries.stages import Stage
-from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary
+from camp.apps.summaries.aggregators import compute_stats, compute_region_summary
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.tasks import (
     get_summarizable_entry_models,
@@ -115,7 +116,7 @@ class Command(BaseCommand):
 
         for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
             for EntryModel in entry_models:
-                combos = (
+                rows = list(
                     EntryModel.objects
                     .filter(
                         monitor_id__in=monitor_ids,
@@ -126,24 +127,55 @@ class Command(BaseCommand):
                         Q(stage=Stage.RAW, processor='') |
                         Q(stage=Stage.CALIBRATED)
                     )
-                    .values_list('monitor_id', 'processor')
-                    .distinct()
+                    .values_list('monitor_id', 'processor', 'value')
                 )
-                for mon_id, processor in combos:
+
+                groups = defaultdict(list)
+                for mon_id, processor, value in rows:
+                    if value is not None:
+                        groups[(mon_id, processor)].append(float(value))
+
+                to_upsert = []
+                for (mon_id, processor), values in groups.items():
                     monitor = monitors_by_id[mon_id]
-                    stats = compute_monitor_summary(monitor, hour, EntryModel, processor)
+                    stats = compute_stats(values, monitor.expected_hourly_entries or 1)
                     if stats is None:
                         continue
-                    MonitorSummary.objects.update_or_create(
+                    to_upsert.append(MonitorSummary(
                         monitor_id=mon_id,
                         timestamp=hour,
                         resolution=BaseSummary.Resolution.HOURLY,
                         entry_type=EntryModel.entry_type,
                         processor=processor,
-                        defaults=stats,
+                        **stats,
+                    ))
+
+                if to_upsert:
+                    MonitorSummary.objects.bulk_create(
+                        to_upsert,
+                        update_conflicts=True,
+                        unique_fields=['monitor', 'entry_type', 'processor', 'resolution', 'timestamp'],
+                        update_fields=[
+                            'count', 'expected_count', 'sum_value', 'sum_of_squares',
+                            'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
+                            'tdigest', 'is_complete',
+                        ],
                     )
 
     def _backfill_region_summaries(self, regions, hours):
+        from camp.apps.monitors.models import Monitor
+
+        # Pre-compute monitor grades per region — boundaries don't change across hours.
+        region_monitor_grades = {}
+        for region in regions:
+            if region.boundary:
+                region_monitor_grades[region.pk] = dict(
+                    Monitor.objects
+                    .filter(position__within=region.boundary.geometry)
+                    .with_grade()
+                    .values_list('pk', 'grade')
+                )
+
         self.stdout.write(f'\nComputing hourly region summaries...')
         self.stdout.flush()
 
@@ -154,18 +186,33 @@ class Command(BaseCommand):
                 .values_list('entry_type', flat=True)
                 .distinct()
             )
+            to_upsert = []
             for region in regions:
+                monitor_grades = region_monitor_grades.get(region.pk)
+                if not monitor_grades:
+                    continue
                 for entry_type in entry_types:
-                    stats = compute_region_summary(region, hour, entry_type)
+                    stats = compute_region_summary(region, hour, entry_type, monitor_grades=monitor_grades)
                     if stats is None:
                         continue
-                    RegionSummary.objects.update_or_create(
+                    to_upsert.append(RegionSummary(
                         region=region,
                         timestamp=hour,
                         resolution=BaseSummary.Resolution.HOURLY,
                         entry_type=entry_type,
-                        defaults=stats,
-                    )
+                        **stats,
+                    ))
+            if to_upsert:
+                RegionSummary.objects.bulk_create(
+                    to_upsert,
+                    update_conflicts=True,
+                    unique_fields=['region', 'entry_type', 'resolution', 'timestamp'],
+                    update_fields=[
+                        'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
+                        'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
+                        'tdigest', 'is_complete', 'station_count',
+                    ],
+                )
 
     def _rollup(self, rollup_fn, label, ids, start, end):
         R = BaseSummary.Resolution
@@ -206,7 +253,7 @@ class Command(BaseCommand):
             if month > 12:
                 month -= 12
                 year += 1
-            return window_start.replace(year=year, month=month)
+            return make_aware(datetime(year, month, 1), settings.DEFAULT_TIMEZONE)
         if resolution == R.YEARLY:
             return window_start.replace(year=window_start.year + 1)
 

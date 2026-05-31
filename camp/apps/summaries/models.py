@@ -71,6 +71,10 @@ class RegionSummary(BaseSummary):
         related_name='summaries',
     )
     station_count = models.PositiveIntegerField(_('station count'))
+    # Exact float total weight — used as variance denominator so rollup stddev is
+    # correct even when monitor health scores produce fractional weights. `count`
+    # stores int(round(weight)) for API display; `weight` carries the precise value.
+    weight = models.FloatField(_('weight'), default=0.0)
 
     class Meta(BaseSummary.Meta):
         unique_together = ('region', 'entry_type', 'resolution', 'timestamp')
