@@ -19,8 +19,8 @@ class MonitorSummaryAdmin(admin.ModelAdmin):
 
 @admin.register(RegionSummary)
 class RegionSummaryAdmin(admin.ModelAdmin):
-    list_display = ['region', 'entry_type', 'resolution', 'timestamp', 'mean', 'station_count', 'is_complete']
-    list_filter = ['resolution', 'entry_type', 'is_complete']
+    list_display = ['region', 'entry_type', 'resolution', 'timestamp', 'mean', 'station_count']
+    list_filter = ['resolution', 'entry_type']
     search_fields = ['region__name']
     ordering = ['-timestamp']
     readonly_fields = _readonly(RegionSummary)

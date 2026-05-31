@@ -42,8 +42,6 @@ class BaseSummary(models.Model):
     p25 = models.FloatField(_('25th percentile'))
     p75 = models.FloatField(_('75th percentile'))
 
-    is_complete = models.BooleanField(_('is complete'), default=False)
-
     class Meta:
         abstract = True
         indexes = [
@@ -59,6 +57,7 @@ class MonitorSummary(BaseSummary):
         related_name='summaries',
     )
     processor = models.CharField(_('processor'), max_length=100, blank=True, default='', db_index=True)
+    is_complete = models.BooleanField(_('is complete'), default=False)
 
     class Meta(BaseSummary.Meta):
         unique_together = ('monitor', 'entry_type', 'processor', 'resolution', 'timestamp')
