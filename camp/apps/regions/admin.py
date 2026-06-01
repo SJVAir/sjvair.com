@@ -13,6 +13,32 @@ from camp.apps.regions.models import Region, Boundary
 from camp.utils import maps
 
 
+class CountyFilter(admin.SimpleListFilter):
+    title = 'county'
+    parameter_name = 'county'
+
+    def lookups(self, request, model_admin):
+        counties = (
+            Region.objects
+            .filter(type=Region.Type.COUNTY, boundary__isnull=False)
+            .order_by('name')
+        )
+        return [(c.pk, c.name) for c in counties]
+
+    def queryset(self, request, queryset):
+        if not self.value():
+            return queryset
+        try:
+            county = (
+                Region.objects
+                .select_related('boundary')
+                .get(pk=self.value(), type=Region.Type.COUNTY)
+            )
+        except Region.DoesNotExist:
+            return queryset
+        return queryset.filter(boundary__geometry__intersects=county.boundary.geometry)
+
+
 class BoundaryInline(admin.TabularInline):
     model = Boundary
     readonly_fields = ['get_map', 'get_info']
@@ -59,7 +85,7 @@ class BoundaryInline(admin.TabularInline):
 class RegionAdmin(OSMGeoAdmin):
     inlines = [BoundaryInline]
     list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
-    list_filter = ['type', 'boundary__version']
+    list_filter = ['type', CountyFilter, 'boundary__version']
     fields = ['name', 'slug', 'external_id', 'type', 'boundary', 'get_overview_map', 'get_monitor_map']
     search_fields = ['name', 'external_id']
 

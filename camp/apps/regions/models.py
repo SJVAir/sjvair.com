@@ -47,7 +47,6 @@ class Region(TimeStampedModel):
     slug = models.SlugField(max_length=128)
     external_id = models.CharField(max_length=64, blank=True, null=True)
     type = models.CharField(max_length=32, choices=Type.choices, db_index=True)
-
     boundary = models.OneToOneField('Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='current_for',)
 
     objects = RegionManager()

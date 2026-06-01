@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from camp.apps.regions.management.base import CountyFilterMixin
 from camp.apps.regions.models import Region
 from camp.utils import geodata
 from camp.utils.gis import to_multipolygon
@@ -8,12 +9,20 @@ from camp.utils.gis import to_multipolygon
 DATASET_URL = 'https://www2.census.gov/geo/tiger/TIGER2022/CD/tl_2022_06_cd118.zip'
 
 
-class Command(BaseCommand):
+class Command(CountyFilterMixin, BaseCommand):
     help = 'Import 116th Congressional Districts (2020) that intersect with San Joaquin Valley counties.'
+
+    def add_arguments(self, parser):
+        self.add_county_arguments(parser)
 
     def handle(self, *args, **options):
         print('\n--- Importing Congressional Districts ---')
-        gdf = geodata.gdf_from_url(DATASET_URL, verify=False, limit_to_region=True)
+        region_geometry = self.get_region_geometry(options.get('counties'))
+        gdf = geodata.gdf_from_url(
+            DATASET_URL, verify=False,
+            limit_to_region=(region_geometry is None),
+            region_geometry=region_geometry,
+        )
 
         with transaction.atomic():
             for _, row in gdf.iterrows():

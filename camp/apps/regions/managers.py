@@ -10,9 +10,21 @@ from camp.apps.regions.querysets import RegionQuerySet
 from camp.utils.gis import to_multipolygon
 
 
+SJV_COUNTIES = {
+    'Fresno County',
+    'Kern County',
+    'Kings County',
+    'Madera County',
+    'Merced County',
+    'San Joaquin County',
+    'Stanislaus County',
+    'Tulare County',
+}
+
+
 class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
     def counties(self):
-        return self.filter(type=self.model.Type.COUNTY)
+        return self.filter(type=self.model.Type.COUNTY, name__in=SJV_COUNTIES)
 
     def get_county_region(self, obj):
         return self.get_containing_region(obj, self.model.Type.COUNTY)
@@ -106,6 +118,7 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
         geometry,
         version: str,
         metadata: Optional[dict] = None,
+        **extra_defaults,
     ) -> 'Region':
         from .models import Region, Boundary
         region, created = Region.objects.update_or_create(
@@ -114,6 +127,7 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
             defaults={
                 'name': name,
                 'slug': slug,
+                **extra_defaults,
             }
         )
 

@@ -150,6 +150,20 @@ def load_region_geometry(crs: Optional[str] = gis.EPSG_LATLON):
     return geometry
 
 
+def _to_src_crs(geom, src_crs):
+    """Transform a WGS84 Shapely geometry to the fiona source CRS for bbox pre-filtering."""
+    if src_crs is None:
+        return geom
+    target = src_crs.to_string() if hasattr(src_crs, 'to_string') else str(src_crs)
+    if target == gis.EPSG_LATLON:
+        return geom
+    return (
+        gpd.GeoSeries([geom], crs=gis.EPSG_LATLON)
+        .to_crs(target)
+        .iloc[0]
+    )
+
+
 def gdf_from_ckan(*args, **kwargs) -> gpd.GeoDataFrame:
     gdf = gpd.GeoDataFrame(iter_from_ckan(*args, **kwargs))
     if 'geometry' not in gdf.columns and not gdf.empty:
@@ -175,6 +189,7 @@ def stream_filtered_gdf(
     encoding: str = 'utf-8',
     limit_to_region: bool = False,
     string_fields: Union[bool, Sequence[str]] = False,
+    region_geometry=None,
 ) -> Iterator[gpd.GeoSeries]:
     def clean_value(val):
         if pd.isnull(val):
@@ -185,7 +200,9 @@ def stream_filtered_gdf(
 
     with fiona.open(f'zip://{path}', encoding=encoding) as src:
         iterable = src
-        if limit_to_region:
+        if region_geometry is not None:
+            iterable = src.filter(bbox=_to_src_crs(region_geometry, src.crs).bounds)
+        elif limit_to_region:
             region = load_region_geometry(src.crs)
             iterable = src.filter(bbox=region.bounds)
 
@@ -217,7 +234,8 @@ def iter_from_ckan(
     verify: bool = True,
     string_fields: Union[bool, Sequence[str]] = False,
     limit_to_region: bool = False,
-    threshold: float = 0.5
+    threshold: float = 0.5,
+    region_geometry=None,
 ) -> gpd.GeoDataFrame:
     """
     Fetch a GeoDataFrame from a CKAN-backed open data portal.
@@ -240,6 +258,7 @@ def iter_from_ckan(
         string_fields=string_fields,
         limit_to_region=limit_to_region,
         threshold=threshold,
+        region_geometry=region_geometry,
     )
 
 
@@ -251,6 +270,7 @@ def iter_from_url(
     string_fields: Union[bool, Sequence[str]] = False,
     limit_to_region: bool = False,
     threshold: float = 0.5,
+    region_geometry=None,
 ) -> gpd.GeoDataFrame:
     """
         Get a GDF from a URL.
@@ -275,6 +295,7 @@ def iter_from_url(
         string_fields=string_fields,
         limit_to_region=limit_to_region,
         threshold=threshold,
+        region_geometry=region_geometry,
     )
 
 
@@ -285,7 +306,8 @@ def iter_from_zip(
     crs: str = gis.EPSG_LATLON,
     string_fields: Union[bool, Sequence[str]] = False,
     limit_to_region: bool = False,
-    threshold: float = 0.5
+    threshold: float = 0.5,
+    region_geometry=None,
 ) -> gpd.GeoDataFrame:
     """
     Loads a GeoDataFrame from a zipfile path.
@@ -299,13 +321,12 @@ def iter_from_zip(
         crs=crs,
         limit_to_region=limit_to_region,
         string_fields=string_fields,
+        region_geometry=region_geometry,
     )
 
-    if limit_to_region:
-        results = filter_by_overlap(
-            results,
-            load_region_geometry(crs),
-            threshold=threshold
-        )
+    if region_geometry is not None:
+        results = filter_by_overlap(results, region_geometry, threshold=threshold)
+    elif limit_to_region:
+        results = filter_by_overlap(results, load_region_geometry(crs), threshold=threshold)
 
     return results

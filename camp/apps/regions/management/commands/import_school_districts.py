@@ -2,17 +2,26 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.text import slugify
 
+from camp.apps.regions.management.base import CountyFilterMixin
 from camp.apps.regions.models import Region
 from camp.utils import geodata
 from camp.utils.gis import to_multipolygon
 
 
-class Command(BaseCommand):
-    help = 'Import California cities (places) into the Region table (limited to those within SJV counties)'
+class Command(CountyFilterMixin, BaseCommand):
+    help = 'Import School Districts into the Region table'
+
+    def add_arguments(self, parser):
+        self.add_county_arguments(parser)
 
     def handle(self, *args, **options):
         print('\n--- Importing School Districts ---')
-        gdf = geodata.gdf_from_ckan('california-school-district-areas-2023-24', limit_to_region=True)
+        region_geometry = self.get_region_geometry(options.get('counties'))
+        gdf = geodata.gdf_from_ckan(
+            'california-school-district-areas-2023-24',
+            limit_to_region=(region_geometry is None),
+            region_geometry=region_geometry,
+        )
 
         with transaction.atomic():
             for _, row in gdf.iterrows():

@@ -2,10 +2,9 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.text import slugify
 
+from camp.apps.regions.management.base import CountyFilterMixin
 from camp.apps.regions.models import Region
 from camp.utils import geodata, gis
-
-DATASET_URL = "https://www2.census.gov/geo/tiger/TIGER2010/TRACT/2010/tl_2010_06_tract10.zip"
 
 
 def fix_encoding(value: str) -> str:
@@ -20,14 +19,19 @@ def fix_encoding(value: str) -> str:
         return value
 
 
-class Command(BaseCommand):
-    help = 'Import Census Tracts for the San Joaquin Valley'
+class Command(CountyFilterMixin, BaseCommand):
+    help = 'Import Land Use into the Region table'
+
+    def add_arguments(self, parser):
+        self.add_county_arguments(parser)
 
     def handle(self, *args, **options):
         print('\n--- Importing Land Use ---')
+        region_geometry = self.get_region_geometry(options.get('counties'))
         series = geodata.iter_from_ckan(
             dataset_id='california-general-plan-land-use',
-            limit_to_region=True
+            limit_to_region=(region_geometry is None),
+            region_geometry=region_geometry,
         )
 
         with transaction.atomic():

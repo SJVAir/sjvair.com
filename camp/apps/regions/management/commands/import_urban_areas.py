@@ -2,19 +2,26 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.text import slugify
 
+from camp.apps.regions.management.base import CountyFilterMixin
 from camp.apps.regions.models import Region
 from camp.utils import geodata
 from camp.utils.gis import to_multipolygon
 
-DATASET_URL = "https://www2.census.gov/geo/tiger/TIGER2010/TRACT/2010/tl_2010_06_tract10.zip"
 
+class Command(CountyFilterMixin, BaseCommand):
+    help = 'Import Urban Areas into the Region table'
 
-class Command(BaseCommand):
-    help = 'Import Census Tracts for the San Joaquin Valley'
+    def add_arguments(self, parser):
+        self.add_county_arguments(parser)
 
     def handle(self, *args, **options):
         print('\n--- Importing Urban Areas ---')
-        gdf = geodata.gdf_from_ckan('2020-adjusted-urban-area', limit_to_region=True)
+        region_geometry = self.get_region_geometry(options.get('counties'))
+        gdf = geodata.gdf_from_ckan(
+            '2020-adjusted-urban-area',
+            limit_to_region=(region_geometry is None),
+            region_geometry=region_geometry,
+        )
 
         with transaction.atomic():
             for _, row in gdf.iterrows():

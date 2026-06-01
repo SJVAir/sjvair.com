@@ -3,6 +3,7 @@ from django.db import transaction
 
 import pandas as pd
 
+from camp.apps.regions.management.base import CountyFilterMixin
 from camp.apps.regions.models import Region
 from camp.utils import geodata
 from camp.utils.gis import to_multipolygon
@@ -11,8 +12,8 @@ DATASET_URL = 'https://www2.census.gov/geo/tiger/TIGER2020/ZCTA5/tl_2020_us_zcta
 RUCA_URL = 'https://ers.usda.gov/sites/default/files/_laserfiche/DataFiles/53241/RUCA-codes-2020-zipcode.csv?v=33034'
 
 
-class Command(BaseCommand):
-    help = 'Import ZIP Code Tabulation Areas (ZCTAs) into Region table, limited to SJV counties'
+class Command(CountyFilterMixin, BaseCommand):
+    help = 'Import ZIP Code Tabulation Areas (ZCTAs) into Region table'
 
     # Coverage notes:
     #
@@ -37,12 +38,21 @@ class Command(BaseCommand):
     # used to create Region polygons but could supplement county-level
     # lookups if needed in the future.
 
+    def add_arguments(self, parser):
+        self.add_county_arguments(parser)
+
     def handle(self, *args, **options):
         print('\n--- Importing Zipcodes ---')
 
         print('\nLoading dataset...')
         print(f'-> {DATASET_URL}')
-        gdf = geodata.gdf_from_url(DATASET_URL, verify=False, limit_to_region=True, threshold=0.01)
+        region_geometry = self.get_region_geometry(options.get('counties'))
+        gdf = geodata.gdf_from_url(
+            DATASET_URL, verify=False,
+            limit_to_region=(region_geometry is None),
+            region_geometry=region_geometry,
+            threshold=0.01,
+        )
         gdf['ZCTA5CE10'] = gdf['ZCTA5CE10'].astype(str).str.zfill(5)
 
         print('\nLoading Rural/Urban Communting Areas...')
