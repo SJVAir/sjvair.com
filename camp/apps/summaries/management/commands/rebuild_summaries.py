@@ -69,7 +69,7 @@ class Command(BaseCommand):
                 raise CommandError(f'Region not found: {region_id}')
             if not region.boundary:
                 raise CommandError(f'Region {region_id} has no boundary geometry')
-            monitors = Monitor.objects.filter(position__within=region.boundary.geometry)
+            monitors = region.monitors
         else:
             monitors = Monitor.objects.all()
 
