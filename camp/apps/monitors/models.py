@@ -10,6 +10,7 @@ import pandas as pd
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
+from django.db import IntegrityError
 from django.db.models import Avg, Q
 from django.utils import timezone
 from django.utils.functional import cached_property
@@ -444,27 +445,24 @@ class Monitor(models.Model):
             'stage': entry.stage,
         }
 
-        try:
-            latest = LatestEntry.objects.get(**lookup)
-        except LatestEntry.DoesNotExist:
-            LatestEntry.objects.create(
-                entry_id=entry.pk,
-                timestamp=entry.timestamp,
-                **lookup
-            )
-            return
+        # Atomic conditional update: only overwrite if our entry is newer.
+        # Using filter().update() avoids the TOCTOU race in the update path.
+        updated = LatestEntry.objects.filter(
+            timestamp__lt=entry.timestamp,
+            **lookup
+        ).update(entry_id=entry.pk, timestamp=entry.timestamp)
 
-        # Manual compare to avoid hitting the DB unless necessary
-        try:
-            if latest.entry.timestamp >= entry.timestamp:
-                return
-        except ObjectDoesNotExist:
-            # referenced entry was deleted
-            pass
-
-        latest.entry_id = entry.pk
-        latest.timestamp = entry.timestamp
-        latest.save()
+        if not updated:
+            # Either no record exists yet, or the stored entry is already newer.
+            # get_or_create handles the creation case; IntegrityError catches
+            # the race where two workers both see DoesNotExist and both try to create.
+            try:
+                LatestEntry.objects.get_or_create(
+                    defaults={'entry_id': entry.pk, 'timestamp': entry.timestamp},
+                    **lookup
+                )
+            except IntegrityError:
+                pass
 
 
     def get_latest_data(self):

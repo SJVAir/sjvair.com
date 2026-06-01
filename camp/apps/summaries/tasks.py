@@ -1,8 +1,9 @@
 import calendar
+from collections import defaultdict
 from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db.models import Max, Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from camp.utils.datetime import localtime, make_aware
@@ -15,7 +16,7 @@ from camp.apps.entries.stages import Stage
 from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
-from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries
+from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 
 
@@ -86,22 +87,29 @@ def hourly_region_summaries(hour=None):
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
         hour = now - timedelta(hours=1)
 
-    entry_types = (
-        MonitorSummary.objects
-        .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY)
-        .values_list('entry_type', flat=True)
-        .distinct()
+    entry_models = get_summarizable_entry_models()
+
+    regions = (Region.objects
+        .filter(
+            Exists(
+                Monitor.objects.filter(
+                    position__isnull=False,
+                    position__intersects=OuterRef('boundary__geometry'),
+                )
+            ),
+            boundary__isnull=False
+        )
     )
 
-    for region in Region.objects.all():
-        for entry_type in entry_types:
-            summarize_region_hour(str(region.pk), hour, entry_type)
+    for region in regions:
+        for EntryModel in entry_models:
+            summarize_region_hour(str(region.pk), hour, EntryModel.entry_type)
 
 
 @db_task(priority=50, queue='summaries')
 def summarize_region_hour(region_id, hour, entry_type):
     """Compute and save one hourly RegionSummary record."""
-    region = Region.objects.get(pk=region_id)
+    region = Region.objects.select_related('boundary').get(pk=region_id)
 
     stats = compute_region_summary(region, hour, entry_type)
     if stats is None:
@@ -123,8 +131,8 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     Roll up MonitorSummary records from source_resolution into target_resolution
     for the given time window.
 
-    Finds all distinct (monitor, entry_type, stage, processor) combos in the source
-    window and creates/updates one target_resolution record per combo.
+    Fetches all source records in one query, groups by (monitor, entry_type, processor)
+    in Python, then batch-upserts the results.
 
     Optionally scoped to a list of monitor_ids (for targeted backfill/recalculation).
     """
@@ -136,28 +144,43 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     if monitor_ids is not None:
         qs = qs.filter(monitor_id__in=monitor_ids)
 
-    combos = qs.values_list('monitor_id', 'entry_type', 'processor').distinct()
+    records = list(qs.values(
+        'monitor_id', 'entry_type', 'processor',
+        'count', 'expected_count', 'sum_value', 'sum_of_squares',
+        'minimum', 'maximum', 'tdigest',
+    ))
 
-    for monitor_id, entry_type, processor in combos:
-        source_qs = MonitorSummary.objects.filter(
-            monitor_id=monitor_id,
-            entry_type=entry_type,
-            processor=processor,
-            resolution=source_resolution,
-            timestamp__gte=window_start,
-            timestamp__lt=window_end,
-        )
-        stats = rollup_summaries(source_qs)
+    if not records:
+        return
+
+    groups = defaultdict(list)
+    for r in records:
+        groups[(r['monitor_id'], r['entry_type'], r['processor'])].append(r)
+
+    to_upsert = []
+    for (monitor_id, entry_type, processor), group_records in groups.items():
+        stats = rollup_summaries(group_records)
         if stats is None:
             continue
-
-        MonitorSummary.objects.update_or_create(
+        to_upsert.append(MonitorSummary(
             monitor_id=monitor_id,
             timestamp=window_start,
             resolution=target_resolution,
             entry_type=entry_type,
             processor=processor,
-            defaults=stats,
+            **stats,
+        ))
+
+    if to_upsert:
+        MonitorSummary.objects.bulk_create(
+            to_upsert,
+            update_conflicts=True,
+            unique_fields=['monitor', 'entry_type', 'processor', 'resolution', 'timestamp'],
+            update_fields=[
+                'count', 'expected_count', 'sum_value', 'sum_of_squares',
+                'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
+                'tdigest', 'is_complete',
+            ],
         )
 
 
@@ -171,31 +194,45 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
     if region_ids is not None:
         qs = qs.filter(region_id__in=region_ids)
 
-    combos = qs.values_list('region_id', 'entry_type').distinct()
+    records = list(qs.values(
+        'region_id', 'entry_type', 'station_count',
+        'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
+        'minimum', 'maximum', 'tdigest',
+    ))
 
-    for region_id, entry_type in combos:
-        source_qs = RegionSummary.objects.filter(
-            region_id=region_id,
-            entry_type=entry_type,
-            resolution=source_resolution,
-            timestamp__gte=window_start,
-            timestamp__lt=window_end,
-        )
-        stats = rollup_summaries(source_qs)
+    if not records:
+        return
+
+    groups = defaultdict(list)
+    for r in records:
+        groups[(r['region_id'], r['entry_type'])].append(r)
+
+    to_upsert = []
+    for (region_id, entry_type), group_records in groups.items():
+        stats = rollup_region_stats(group_records)
         if stats is None:
             continue
-
         # station_count: max across the period (most monitors that ever contributed)
-        station_count = source_qs.aggregate(
-            max_stations=Max('station_count')
-        )['max_stations'] or 0
-
-        RegionSummary.objects.update_or_create(
+        station_count = max(r['station_count'] for r in group_records)
+        to_upsert.append(RegionSummary(
             region_id=region_id,
             timestamp=window_start,
             resolution=target_resolution,
             entry_type=entry_type,
-            defaults={**stats, 'station_count': station_count},
+            station_count=station_count,
+            **stats,
+        ))
+
+    if to_upsert:
+        RegionSummary.objects.bulk_create(
+            to_upsert,
+            update_conflicts=True,
+            unique_fields=['region', 'entry_type', 'resolution', 'timestamp'],
+            update_fields=[
+                'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
+                'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
+                'tdigest', 'station_count',
+            ],
         )
 
 
