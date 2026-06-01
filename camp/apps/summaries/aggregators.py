@@ -231,12 +231,10 @@ def compute_region_summary(region, timestamp, entry_type, monitor_grades=None):
         return None
 
     if monitor_grades is None:
-        monitor_grades = dict(
-            Monitor.objects
-            .filter(position__within=region.boundary.geometry)
-            .with_grade()
-            .values_list('pk', 'grade')
-        )
+        monitor_grades = {
+            m.pk: m.GRADE
+            for m in region.monitors.only('pk')
+        }
 
     monitor_ids = list(monitor_grades)
 

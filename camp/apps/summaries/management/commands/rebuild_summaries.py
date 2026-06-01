@@ -169,12 +169,10 @@ class Command(BaseCommand):
         region_monitor_grades = {}
         for region in regions:
             if region.boundary:
-                region_monitor_grades[region.pk] = dict(
-                    Monitor.objects
-                    .filter(position__within=region.boundary.geometry)
-                    .with_grade()
-                    .values_list('pk', 'grade')
-                )
+                region_monitor_grades[region.pk] = {
+                    m.pk: m.GRADE
+                    for m in region.monitors.only('pk')
+                }
 
         self.stdout.write(f'\nComputing hourly region summaries...')
         self.stdout.flush()
