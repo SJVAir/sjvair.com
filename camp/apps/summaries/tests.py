@@ -836,6 +836,21 @@ class RebuildSummariesCommandTests(TestCase):
         self._run(self.start)
         assert RegionSummary.objects.count() > 0
 
+    def test_region_flag_scopes_to_one_region(self):
+        if not self.region:
+            self.skipTest('no region with boundary in fixtures')
+        self._make_entries()
+        self._run(self.start, f'--region={self.region.pk}')
+        # All region summaries belong to the specified region
+        for summary in RegionSummary.objects.all():
+            assert summary.region_id == self.region.pk
+        # Monitor summaries exist for the monitors in that region
+        assert MonitorSummary.objects.count() > 0
+
+    def test_region_flag_invalid_region_raises_error(self):
+        with pytest.raises((CommandError, SystemExit, ValueError)):
+            self._run(self.start, '--region=doesnotexist')
+
     def test_invalid_date_raises_error(self):
         with pytest.raises((CommandError, SystemExit)):
             self._run('not-a-date')
