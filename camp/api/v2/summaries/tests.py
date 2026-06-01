@@ -32,7 +32,6 @@ STATS = {
     'stddev': 0.0,
     'p25': 10.0,
     'p75': 10.0,
-    'is_complete': True,
     'tdigest': {'C': [], 'n': 0},
 }
 
@@ -44,6 +43,7 @@ def make_monitor_summary(monitor, timestamp, resolution='hour', entry_type='pm25
         resolution=resolution,
         entry_type=entry_type,
         processor=processor,
+        is_complete=True,
         **STATS,
     )
 
@@ -55,6 +55,7 @@ def make_region_summary(region, timestamp, resolution='hour', entry_type='pm25')
         resolution=resolution,
         entry_type=entry_type,
         station_count=3,
+        weight=30.0,
         **STATS,
     )
 
@@ -225,6 +226,8 @@ class RegionSummaryListTests(TestCase):
         record = data['data'][0]
         assert 'sum_value' not in record
         assert 'tdigest' not in record
+        assert 'weight' not in record
+        assert 'is_complete' not in record
         assert 'resolution' in record
 
     def test_invalid_region_returns_404(self):
@@ -245,3 +248,17 @@ class RegionSummaryListTests(TestCase):
         data = get_response_data(response)
         timestamps = [r['timestamp'] for r in data['data']]
         assert timestamps == sorted(timestamps)
+
+    def test_month_filter(self):
+        # setUp creates a record in March 2026; add one in April — month=3 should exclude it.
+        make_region_summary(self.region, timezone.make_aware(datetime(2026, 4, 15, 10, 0, 0)))
+        response = self._get('region-summary-hourly-month', 'pm25', 'hour', year=2026, month=3)
+        data = get_response_data(response)
+        assert len(data['data']) == 1
+
+    def test_day_filter(self):
+        # setUp creates a record on March 15; add one on March 16 — day=15 should exclude it.
+        make_region_summary(self.region, timezone.make_aware(datetime(2026, 3, 16, 10, 0, 0)))
+        response = self._get('region-summary-hourly-day', 'pm25', 'hour', year=2026, month=3, day=15)
+        data = get_response_data(response)
+        assert len(data['data']) == 1
