@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from camp.utils.datetime import localtime, make_aware
@@ -87,22 +87,29 @@ def hourly_region_summaries(hour=None):
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
         hour = now - timedelta(hours=1)
 
-    entry_types = (
-        MonitorSummary.objects
-        .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY)
-        .values_list('entry_type', flat=True)
-        .distinct()
+    entry_models = get_summarizable_entry_models()
+
+    regions = (Region.objects
+        .filter(
+            Exists(
+                Monitor.objects.filter(
+                    position__isnull=False,
+                    position__intersects=OuterRef('boundary__geometry'),
+                )
+            ),
+            boundary__isnull=False
+        )
     )
 
-    for region in Region.objects.all():
-        for entry_type in entry_types:
-            summarize_region_hour(str(region.pk), hour, entry_type)
+    for region in regions:
+        for EntryModel in entry_models:
+            summarize_region_hour(str(region.pk), hour, EntryModel.entry_type)
 
 
 @db_task(priority=50, queue='summaries')
 def summarize_region_hour(region_id, hour, entry_type):
     """Compute and save one hourly RegionSummary record."""
-    region = Region.objects.get(pk=region_id)
+    region = Region.objects.select_related('boundary').get(pk=region_id)
 
     stats = compute_region_summary(region, hour, entry_type)
     if stats is None:
