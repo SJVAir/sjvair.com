@@ -64,7 +64,7 @@ py-expression-eval==0.3.14
 pylibmc==1.6.3
 python-aqi==0.6.1
 python-binary-memcached==0.31.2
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 python-rapidjson==1.16
 pytz==2022.1
 PyYAML==6.0.1
