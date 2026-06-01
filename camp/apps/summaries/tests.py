@@ -42,6 +42,8 @@ from camp.apps.summaries.tasks import (
     get_summarizable_entry_models,
     hourly_monitor_summaries,
     hourly_region_summaries,
+    monthly_monitor_summaries,
+    quarterly_monitor_summaries,
     rollup_monitor_summaries,
     rollup_region_summaries,
     summarize_monitor_hour,
@@ -422,6 +424,45 @@ class ComputeRegionSummaryTests(TestCase):
         expected = (LCS_WEIGHT * 10.0 + FEM_WEIGHT * 30.0) / (LCS_WEIGHT + FEM_WEIGHT)
         assert result['mean'] == pytest.approx(expected, abs=0.01)
 
+    def test_calibrated_processor_preferred_over_raw(self):
+        # When a monitor has both a RAW (processor='') and a CALIBRATED summary,
+        # the region should use the CALIBRATED one.
+        if not self.region.boundary:
+            self.skipTest('requires region with boundary')
+        self.monitor.position = self.region.boundary.geometry.centroid
+        self.monitor.save()
+
+        # RAW summary at mean=10, CALIBRATED at mean=50 — region should use 50.
+        self._make_monitor_summary(mean=10.0)  # processor=''
+
+        arr = np.array([50.0] * 10)
+        digest = TDigest()
+        digest.batch_update(arr.tolist())
+        MonitorSummary.objects.create(
+            monitor=self.monitor,
+            timestamp=self.hour,
+            resolution=MonitorSummary.Resolution.HOURLY,
+            entry_type='pm25',
+            processor='custom_calibration',
+            count=10,
+            expected_count=30,
+            sum_value=float(arr.sum()),
+            sum_of_squares=float((arr ** 2).sum()),
+            minimum=50.0,
+            maximum=50.0,
+            mean=50.0,
+            stddev=0.0,
+            p25=50.0,
+            p75=50.0,
+            tdigest=tdigest_to_dict(digest),
+            is_complete=True,
+        )
+
+        result = compute_region_summary(self.region, self.hour, 'pm25')
+
+        assert result is not None
+        assert result['mean'] == pytest.approx(50.0, abs=0.1)
+
 
 
 class SummarizeMonitorHourTests(TestCase):
@@ -526,7 +567,7 @@ class SummarizeRegionHourTests(TestCase):
 
 
 class RollupMonitorSummariesTests(TestCase):
-    fixtures = ['purple-air.yaml']
+    fixtures = ['purple-air.yaml', 'bam1022.yaml']
 
     def setUp(self):
         self.monitor = PurpleAir.objects.first()
@@ -585,6 +626,40 @@ class RollupMonitorSummariesTests(TestCase):
             )
 
         assert MonitorSummary.objects.filter(resolution=MonitorSummary.Resolution.DAILY).count() == 1
+
+    def test_monitor_ids_scoping_excludes_other_monitors(self):
+        # Create hourly summaries for self.monitor and a second monitor.
+        # Rollup scoped to self.monitor only — second monitor must not appear.
+        other = BAM1022.objects.first()
+        for h in range(2):
+            self._make_hourly_summary(self.yesterday + timedelta(hours=h))
+            arr = np.array([99.0] * 10)
+            digest = TDigest()
+            digest.batch_update(arr.tolist())
+            MonitorSummary.objects.create(
+                monitor=other,
+                timestamp=self.yesterday + timedelta(hours=h),
+                resolution=MonitorSummary.Resolution.HOURLY,
+                entry_type='pm25',
+                processor='',
+                count=10, expected_count=1, sum_value=float(arr.sum()),
+                sum_of_squares=float((arr ** 2).sum()),
+                minimum=99.0, maximum=99.0, mean=99.0, stddev=0.0,
+                p25=99.0, p75=99.0, tdigest=tdigest_to_dict(digest),
+                is_complete=True,
+            )
+
+        rollup_monitor_summaries(
+            MonitorSummary.Resolution.DAILY,
+            MonitorSummary.Resolution.HOURLY,
+            self.yesterday,
+            self.yesterday + timedelta(days=1),
+            monitor_ids=[self.monitor.pk],
+        )
+
+        daily = MonitorSummary.objects.filter(resolution=MonitorSummary.Resolution.DAILY)
+        assert daily.count() == 1
+        assert daily.first().monitor == self.monitor
 
 
 class RollupRegionSummariesTests(TestCase):
@@ -654,6 +729,40 @@ class RollupRegionSummariesTests(TestCase):
             )
 
         assert RegionSummary.objects.filter(resolution=RegionSummary.Resolution.DAILY).count() == 1
+
+    def test_region_ids_scoping_excludes_other_regions(self):
+        other_region = Region.objects.filter(boundary__isnull=False).exclude(pk=self.region.pk).first()
+        if other_region is None:
+            self.skipTest('requires at least two regions with boundaries in fixtures')
+
+        for h in range(2):
+            self._make_hourly_region_summary(self.yesterday + timedelta(hours=h))
+            arr = np.array([99.0] * 10)
+            digest = TDigest()
+            digest.batch_update(arr.tolist())
+            RegionSummary.objects.create(
+                region=other_region,
+                timestamp=self.yesterday + timedelta(hours=h),
+                resolution=RegionSummary.Resolution.HOURLY,
+                entry_type='pm25',
+                count=5, weight=5.0, expected_count=5,
+                sum_value=float(arr.sum()), sum_of_squares=float((arr ** 2).sum()),
+                minimum=99.0, maximum=99.0, mean=99.0, stddev=0.0,
+                p25=99.0, p75=99.0, tdigest=tdigest_to_dict(digest),
+                station_count=1,
+            )
+
+        rollup_region_summaries(
+            RegionSummary.Resolution.DAILY,
+            RegionSummary.Resolution.HOURLY,
+            self.yesterday,
+            self.yesterday + timedelta(days=1),
+            region_ids=[self.region.pk],
+        )
+
+        daily = RegionSummary.objects.filter(resolution=RegionSummary.Resolution.DAILY)
+        assert daily.count() == 1
+        assert daily.first().region == self.region
 
 
 class GetSummarizableEntryModelsTests(TestCase):
@@ -920,3 +1029,151 @@ class CalendarHelperTests(TestCase):
         assert result.year == 2025
         assert result.month == 12
         assert result.day == 1
+
+    def test_window_end_quarterly_is_dst_safe(self):
+        # Jan 1 midnight PST = UTC-8. The quarterly window end (Apr 1) falls in
+        # PDT = UTC-7. Using .replace() would keep the PST offset, giving
+        # Apr 1 08:00 UTC instead of the correct Apr 1 07:00 UTC.
+        from camp.apps.summaries.management.commands.rebuild_summaries import Command
+        jan_1_pst = timezone.make_aware(datetime(2026, 1, 1, 0, 0, 0), settings.DEFAULT_TIMEZONE)
+        apr_1_pdt = timezone.make_aware(datetime(2026, 4, 1, 0, 0, 0), settings.DEFAULT_TIMEZONE)
+
+        result = Command()._window_end(BaseSummary.Resolution.QUARTERLY, jan_1_pst)
+
+        assert result == apr_1_pdt
+        # PDT is UTC-7; PST is UTC-8 — verify the offset changed
+        assert result.utcoffset() != jan_1_pst.utcoffset()
+
+    def test_window_end_seasonal_is_dst_safe(self):
+        # Dec → Mar stays in PST (no DST crossing), so offsets should match.
+        from camp.apps.summaries.management.commands.rebuild_summaries import Command
+        dec_1_pst = timezone.make_aware(datetime(2025, 12, 1, 0, 0, 0), settings.DEFAULT_TIMEZONE)
+        mar_1_pst = timezone.make_aware(datetime(2026, 3, 1, 0, 0, 0), settings.DEFAULT_TIMEZONE)
+
+        result = Command()._window_end(BaseSummary.Resolution.SEASONAL, dec_1_pst)
+
+        assert result == mar_1_pst
+        assert result.utcoffset() == dec_1_pst.utcoffset()
+
+
+class MonthlyMonitorSummariesTaskTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        # FIXED_NOW = 2026-04-01 → last month = March 2026
+        self.march = timezone.make_aware(datetime(2026, 3, 1), settings.DEFAULT_TIMEZONE)
+
+    def _make_daily_summary(self, day, mean=20.0):
+        arr = np.array([mean] * 10)
+        digest = TDigest()
+        digest.batch_update(arr.tolist())
+        return MonitorSummary.objects.create(
+            monitor=self.monitor,
+            timestamp=day,
+            resolution=BaseSummary.Resolution.DAILY,
+            entry_type='pm25',
+            processor='',
+            count=10,
+            expected_count=720,
+            sum_value=float(arr.sum()),
+            sum_of_squares=float((arr ** 2).sum()),
+            minimum=float(arr.min()),
+            maximum=float(arr.max()),
+            mean=mean,
+            stddev=0.0,
+            p25=mean,
+            p75=mean,
+            tdigest=tdigest_to_dict(digest),
+            is_complete=False,
+        )
+
+    def test_rolls_up_last_month_when_called_without_args(self):
+        for d in range(3):
+            self._make_daily_summary(self.march + timedelta(days=d))
+
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+            monthly_monitor_summaries()
+
+        assert MonitorSummary.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.march,
+            resolution=BaseSummary.Resolution.MONTHLY,
+        ).exists()
+
+    def test_explicit_month_start_used_when_provided(self):
+        for d in range(3):
+            self._make_daily_summary(self.march + timedelta(days=d))
+
+        monthly_monitor_summaries(month_start=self.march)
+
+        assert MonitorSummary.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.march,
+            resolution=BaseSummary.Resolution.MONTHLY,
+        ).exists()
+
+
+class QuarterlyMonitorSummariesTaskTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        # FIXED_NOW = 2026-04-01 → last quarter = Q1 2026 (Jan–Mar)
+        self.q1_start = timezone.make_aware(datetime(2026, 1, 1), settings.DEFAULT_TIMEZONE)
+
+    def _make_monthly_summary(self, month_start, mean=20.0):
+        arr = np.array([mean] * 10)
+        digest = TDigest()
+        digest.batch_update(arr.tolist())
+        return MonitorSummary.objects.create(
+            monitor=self.monitor,
+            timestamp=month_start,
+            resolution=BaseSummary.Resolution.MONTHLY,
+            entry_type='pm25',
+            processor='',
+            count=10,
+            expected_count=100,
+            sum_value=float(arr.sum()),
+            sum_of_squares=float((arr ** 2).sum()),
+            minimum=float(arr.min()),
+            maximum=float(arr.max()),
+            mean=mean,
+            stddev=0.0,
+            p25=mean,
+            p75=mean,
+            tdigest=tdigest_to_dict(digest),
+            is_complete=False,
+        )
+
+    def test_rolls_up_last_quarter_when_called_without_args(self):
+        for month in [1, 2, 3]:
+            self._make_monthly_summary(
+                timezone.make_aware(datetime(2026, month, 1), settings.DEFAULT_TIMEZONE)
+            )
+
+        with patch('django.utils.timezone.now', return_value=FIXED_NOW):
+            quarterly_monitor_summaries()
+
+        assert MonitorSummary.objects.filter(
+            monitor=self.monitor,
+            timestamp=self.q1_start,
+            resolution=BaseSummary.Resolution.QUARTERLY,
+        ).exists()
+
+    def test_quarterly_mean_aggregates_monthly_records(self):
+        means = [10.0, 20.0, 30.0]
+        for month, mean in zip([1, 2, 3], means):
+            self._make_monthly_summary(
+                timezone.make_aware(datetime(2026, month, 1), settings.DEFAULT_TIMEZONE),
+                mean=mean,
+            )
+
+        quarterly_monitor_summaries(quarter_start=self.q1_start)
+
+        quarterly = MonitorSummary.objects.get(
+            monitor=self.monitor,
+            timestamp=self.q1_start,
+            resolution=BaseSummary.Resolution.QUARTERLY,
+        )
+        assert quarterly.mean == pytest.approx(20.0)  # mean of (10, 20, 30)
