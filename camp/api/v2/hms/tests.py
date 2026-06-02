@@ -21,14 +21,12 @@ SJV_POLYGON = (
 SJV_POINT = 'POINT(-119.069180 36.965302)'
 
 
-def _local_today():
-    """Return today's date in the project's local timezone (America/Los_Angeles),
-    matching the date the endpoint uses when defaulting to 'today'."""
+def _today():
     return timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
 
 
 def create_smoke(density='light', days_offset=0):
-    today = _local_today()
+    today = _today()
     baseline = datetime.combine(today, time(12, 0, tzinfo=timezone.utc))
     smoke = Smoke(
         date=today + timedelta(days=days_offset),
@@ -44,7 +42,7 @@ def create_smoke(density='light', days_offset=0):
 
 
 def create_fire(days_offset=0):
-    today = _local_today()
+    today = _today()
     baseline = datetime.combine(today, time(12, 0, tzinfo=timezone.utc))
     fire = Fire(
         date=today + timedelta(days=days_offset),

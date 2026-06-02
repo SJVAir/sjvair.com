@@ -1,0 +1,216 @@
+import re
+import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import requests
+from django.contrib.gis.geos import Point
+from django.utils.timezone import make_aware
+
+from camp.apps.regions.models import Region
+
+BASE_URL = 'https://spraydays.cdpr.ca.gov'
+DELAY = 0.5
+PT = ZoneInfo('America/Los_Angeles')
+
+# CA state county codes (01–58, alphabetical) for the eight SJV counties.
+# These are stored on Region.metadata['ca_county_code'] by import_counties.
+SJV_COUNTY_CODES = {'10', '15', '16', '20', '24', '39', '50', '54'}
+
+# Matches MTRS external_id like "MDM-T13S-R14E-08"
+_MTRS_RE = re.compile(r'^[A-Z]+-T(\d+)([NS])-R(\d+)([EW])-(\d+)$')
+
+
+def comtrs_from_mtrs(external_id, county_code):
+    """Convert an MTRS external_id + two-digit county code string to a COMTRS code."""
+    m = _MTRS_RE.match(external_id)
+    if not m:
+        return None
+    t_num, t_dir, r_num, r_dir, section = m.groups()
+    return f'{county_code}{int(t_num):02d}{t_dir}{int(r_num):02d}{r_dir}{int(section):02d}'
+
+
+class SprayDaysClient:
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/124.0.0.0 Safari/537.36'
+            ),
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': f'{BASE_URL}/Map/GetMap',
+        })
+
+    def authenticate(self):
+        self.session.get(f'{BASE_URL}/Map/GetMap', timeout=30)
+
+    def _get(self, path, params=None):
+        resp = self.session.get(f'{BASE_URL}{path}', params=params, timeout=30)
+        resp.raise_for_status()
+        time.sleep(DELAY)
+        return resp.json()
+
+    def get_active_counties(self):
+        all_counties = self._get('/Map/GetCountyData') or []
+        return [
+            c for c in all_counties
+            if str(c['CountyId']) in SJV_COUNTY_CODES and c['ApplicationCount'] > 0
+        ]
+
+
+    def get_noi_locations(self, extent):
+        west, south, east, north = extent
+        return self._get('/Map/GetNoiInBounds', {
+            'topLeftLat': south,
+            'topLeftLong': west,
+            'bottomRightLat': north,
+            'bottomRightLong': east,
+        }) or []
+
+    def get_applications(self, comtrs):
+        return self._get('/NoticeOfIntent/GetApplicationsInComtrs', {'comtrs': comtrs}) or []
+
+
+def _chem_pks_from_raw(raw_products, chemical_map):
+    pks = set()
+    for p in (raw_products or []):
+        for c in (p.get('Chemicals') or []):
+            try:
+                code = int(c.get('ChemicalCode', ''))
+                if code in chemical_map:
+                    pks.add(chemical_map[code])
+            except (ValueError, TypeError):
+                pass
+    return pks
+
+
+def _product_pks_from_raw(raw_products, product_map):
+    pks = set()
+    for p in (raw_products or []):
+        reg_no = (p.get('EPARegNo') or '').strip()
+        if reg_no in product_map:
+            pks.add(product_map[reg_no])
+    return pks
+
+
+def _upsert_application(app_data, comtrs, mtrs, county_region, lat, lon, chemical_map, product_map):
+    from camp.apps.pesticides.models import PesticideNotice
+
+    scheduled_str = app_data.get('ScheduledApplicationFormatted', '')
+    try:
+        scheduled_dt = make_aware(
+            datetime.strptime(scheduled_str, '%m/%d/%Y %I:%M:%S %p'), PT
+        )
+    except (ValueError, TypeError):
+        return None, False
+
+    raw_products = app_data.get('Products') or []
+    chem_pks = _chem_pks_from_raw(raw_products, chemical_map)
+    product_pks = _product_pks_from_raw(raw_products, product_map)
+
+    obj, created = PesticideNotice.objects.update_or_create(
+        application_id=app_data['Id'],
+        defaults={
+            'comtrs': comtrs,
+            'mtrs': mtrs,
+            'county': county_region,
+            'point': Point(lon, lat, srid=4326),
+            'scheduled_application': scheduled_dt,
+            'treated_amount': app_data.get('TreatedAmount'),
+            'treated_units': (app_data.get('TreatedUnits') or '').strip(),
+            'application_method': (app_data.get('ApplicationMethod') or '').strip(),
+        },
+    )
+    obj.chemicals.set(chem_pks)
+    obj.products.set(product_pks)
+    return obj, created
+
+
+def fetch_applications(county_filter=None, stdout=None):
+    from camp.apps.pesticides.models import Chemical, Product
+
+    def log(msg, **kwargs):
+        if stdout:
+            stdout.write(msg, **kwargs)
+
+    client = SprayDaysClient()
+    log('Authenticating...')
+    client.authenticate()
+
+    chemical_map = {c.chem_code: c.pk for c in Chemical.objects.only('id', 'chem_code')}
+    product_map = {p.reg_number: p.pk for p in Product.objects.only('id', 'reg_number')}
+    county_regions = {
+        r.metadata['ca_county_code']: r
+        for r in Region.objects.filter(
+            type=Region.Type.COUNTY,
+            metadata__ca_county_code__in=SJV_COUNTY_CODES,
+        ).select_related('boundary')
+    }
+
+    active_counties = client.get_active_counties()
+    if county_filter:
+        active_counties = [c for c in active_counties if str(c['CountyId']) == county_filter]
+
+    seen_locs = {}   # (lat, lon) → (comtrs, mtrs_region)
+    processed = set()        # comtrs strings already fetched from API
+    processed_apps = set()   # application_ids already upserted this run
+    created = updated = skipped = 0
+
+    for county_data in active_counties:
+        county_code = str(county_data['CountyId'])
+        county_region = county_regions.get(county_code)
+
+        if not county_region or not county_region.boundary:
+            log(f'County {county_code}: no boundary found, skipping')
+            continue
+
+        extent = county_region.boundary.geometry.extent  # (west, south, east, north)
+        log(f'{county_region.name}: fetching NOI locations...')
+        noi_points = client.get_noi_locations(extent)
+        log(f'{county_region.name}: {len(noi_points)} NOI pins')
+
+        for noi in noi_points:
+            lat, lon = noi['Latitude'], noi['Longitude']
+            loc_key = (lat, lon)
+
+            if loc_key not in seen_locs:
+                point = Point(lon, lat, srid=4326)
+                mtrs = Region.objects.filter(
+                    type=Region.Type.MTRS,
+                    boundary__geometry__covers=point,
+                ).first()
+                if mtrs and mtrs.external_id:
+                    comtrs = comtrs_from_mtrs(mtrs.external_id, county_code)
+                    seen_locs[loc_key] = (comtrs, mtrs)
+                else:
+                    seen_locs[loc_key] = (None, None)
+
+            comtrs, mtrs = seen_locs[loc_key]
+            if not comtrs or comtrs in processed:
+                continue
+            processed.add(comtrs)
+
+            raw_apps = client.get_applications(comtrs)
+            for app_data in raw_apps:
+                app_id = app_data['Id']
+                if app_id in processed_apps:
+                    continue
+                processed_apps.add(app_id)
+                obj, was_created = _upsert_application(
+                    app_data, comtrs, mtrs, county_region, lat, lon, chemical_map, product_map
+                )
+                if obj is None:
+                    skipped += 1
+                elif was_created:
+                    created += 1
+                else:
+                    updated += 1
+
+    log(
+        f'Done: {created} created, {updated} updated, {skipped} skipped '
+        f'(bad date / parse error)'
+    )
+    return created, updated

@@ -118,17 +118,16 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
         geometry,
         version: str,
         metadata: Optional[dict] = None,
-        **extra_defaults,
+        boundary_metadata: Optional[dict] = None,
     ) -> 'Region':
         from .models import Region, Boundary
+        region_defaults = {'name': name, 'slug': slug}
+        if metadata is not None:
+            region_defaults['metadata'] = metadata
         region, created = Region.objects.update_or_create(
             external_id=external_id,
             type=type,
-            defaults={
-                'name': name,
-                'slug': slug,
-                **extra_defaults,
-            }
+            defaults=region_defaults,
         )
 
         boundary, _ = Boundary.objects.update_or_create(
@@ -136,7 +135,7 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
             version=version,
             defaults={
                 'geometry': to_multipolygon(geometry),
-                'metadata': metadata or {}
+                'metadata': boundary_metadata or {}
             }
         )
 

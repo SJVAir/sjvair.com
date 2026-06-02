@@ -31,7 +31,7 @@ class Command(BaseCommand):
         self.stdout.write(f'Loaded {len(df):,} rows from relationship file\n')
 
         fips = {
-            r.boundary.metadata['statefp'] + r.boundary.metadata['countyfp']
+            r.metadata['statefp'] + r.metadata['countyfp']
             for r in Region.objects.filter(type=Region.Type.COUNTY)
         }
 

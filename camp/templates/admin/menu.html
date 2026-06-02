@@ -129,6 +129,36 @@
 
 <div class="module">
     <table>
+        <caption>Pesticides</caption>
+        <tr>
+            <td colspan="2">
+                <h3><a href="{% url 'admin:pesticides_purrecord_changelist' %}">Pesticide Use Reports</a></h3>
+                <p>CDPR annual pesticide application records.</p>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <h3><a href="{% url 'admin:pesticides_chemical_changelist' %}">Chemicals</a></h3>
+                <p>Active ingredients and chemical reference data.</p>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <h3><a href="{% url 'admin:pesticides_product_changelist' %}">Products</a></h3>
+                <p>Registered pesticide products and their formulations.</p>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <h3><a href="{% url 'admin:pesticides_commodity_changelist' %}">Commodities</a></h3>
+                <p>Agricultural sites and treated crop types.</p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
         <caption>Help Center</caption>
         <tr>
             <td>

@@ -8,6 +8,7 @@ from django.utils.safestring import mark_safe
 
 from camp.apps.regions.models import Region
 from camp.utils import maps
+from camp.utils.admin import ReadOnlyAdminMixin
 
 from .models import EmissionsRecord, Facility
 
@@ -90,7 +91,7 @@ class EmissionsRecordInline(admin.TabularInline):
 
 
 @admin.register(Facility)
-class FacilityAdmin(admin.GISModelAdmin):
+class FacilityAdmin(ReadOnlyAdminMixin, admin.GISModelAdmin):
     list_display = ['name', 'get_county', 'get_city', 'get_zipcode', 'sic_code', 'is_minor_source', 'has_point', 'latest_year']
     list_filter = [CountyFilter, EmissionsYearFilter, SourceTypeFilter]
     search_fields = ['name', 'address__street', 'address__city']
@@ -118,15 +119,6 @@ class FacilityAdmin(admin.GISModelAdmin):
         return super().get_queryset(request).annotate(
             latest_emission_year=Max('emissions__year')
         )
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
     def _render_region_map(self, facility, region):
         if not region or not region.boundary:

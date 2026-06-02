@@ -64,11 +64,13 @@ py-expression-eval==0.3.14
 pylibmc==1.6.3
 python-aqi==0.6.1
 python-binary-memcached==0.31.2
-python-dotenv==1.0.0
+python-dotenv==1.0.1
 python-rapidjson==1.16
 pytz==2022.1
 PyYAML==6.0.1
 redis==4.6.0
+ctx-python==0.0.1a10
+pdfplumber==0.11.6
 requests==2.33.0
 scikit-learn==1.5.0
 scout-apm==2.26.1
@@ -81,7 +83,7 @@ ua-parser==0.18.0
 Unipath==1.1
 whitenoise==6.5.0
 
-git+https://github.com/dmpayton/django-resticus@feature/api-docs
+git+https://github.com/dmpayton/django-resticus@develop
 git+https://github.com/dmpayton/django-form-utils@django-3.x
 git+https://github.com/dmpayton/django-admin-honeypot
 git+https://github.com/dmpayton/esri2gpd@master

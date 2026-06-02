@@ -39,6 +39,8 @@ class Command(CountyFilterMixin, BaseCommand):
                         'district': row.CD118FP,
                         'namelsad': row.NAMELSAD20,
                         'session': row.CDSESSN,
+                    },
+                    boundary_metadata={
                         'aland': row.ALAND20,
                         'awater': row.AWATER20,
                     },

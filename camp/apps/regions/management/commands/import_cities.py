@@ -48,9 +48,11 @@ class Command(CountyFilterMixin, BaseCommand):
                         'placefp': row.PLACEFP,
                         'name': row.NAME,
                         'namelsad': row.NAMELSAD,
+                    },
+                    boundary_metadata={
                         'aland': row.ALAND,
                         'awater': row.AWATER,
-                    }
+                    },
                 )
 
                 self.stdout.write(f'{region.get_type_display()} {"Imported" if created else "Updated"}: {region.name}')

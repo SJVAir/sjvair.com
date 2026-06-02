@@ -18,7 +18,7 @@ class Command(CountyFilterMixin, BaseCommand):
         print('\n--- Importing School Districts ---')
         region_geometry = self.get_region_geometry(options.get('counties'))
         gdf = geodata.gdf_from_ckan(
-            'california-school-district-areas-2023-24',
+            'california-school-district-areas-2025-26',
             limit_to_region=(region_geometry is None),
             region_geometry=region_geometry,
         )
@@ -30,7 +30,7 @@ class Command(CountyFilterMixin, BaseCommand):
                     slug=slugify(row.DistrictNa),
                     type=Region.Type.SCHOOL_DISTRICT,
                     external_id=row.CDSCode,
-                    version='2023-2024',
+                    version='2025-2026',
                     geometry=to_multipolygon(row.geometry),
                     metadata = {
                         # Identifiers
@@ -44,20 +44,14 @@ class Command(CountyFilterMixin, BaseCommand):
                         'district_type': row.DistrictTy,
                         'grade_low': row.GradeLow,
                         'grade_high': row.GradeHigh,
-                        'locale': row.LocaleDist,  # NCES locale code
+                        'locale_code': row.LocaleCode,
+                        'locale_desc': row.LocaleDesc,
 
                         # Enrollment
                         'enrollment': {
                             'total': row.EnrollTota,
                             'charter': row.EnrollChar,
                             'non_charter': row.EnrollNonC,
-                        },
-
-                        # Representation
-                        'representation': {
-                            'congress_us': row.CongressUS,
-                            'senate_ca': row.SenateCA,
-                            'assembly_ca': row.AssemblyCA,
                         },
 
                         # Assistance

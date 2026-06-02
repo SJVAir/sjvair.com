@@ -217,9 +217,13 @@ class Command(BaseCommand):
 
             # Upsert facilities and emissions records
             total_rows = len(merged)
+            seen_facids = set()
             for i, (_, row) in enumerate(merged.iterrows(), 1):
                 self.status(f'{county_name} ({county_code}): {i}/{total_rows} facilities...')
                 facid = int(row['FACID'])
+                if facid in seen_facids:
+                    continue
+                seen_facids.add(facid)
 
                 address = {
                     'street': row.get('FSTREET', '').strip(),

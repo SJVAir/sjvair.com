@@ -38,6 +38,9 @@ class Region(TimeStampedModel):
         # Synthetic community areas (union of UA + city + CDP)
         PLACE = 'place', _('Place')
 
+        # Agricultural survey geography (PLSS / MTRS)
+        MTRS = 'mtrs', _('MTRS Section')
+
         # Catch-all for user-defined regions
         CUSTOM = 'custom', _('Custom Region')
 
@@ -47,6 +50,8 @@ class Region(TimeStampedModel):
     slug = models.SlugField(max_length=128)
     external_id = models.CharField(max_length=64, blank=True, null=True)
     type = models.CharField(max_length=32, choices=Type.choices, db_index=True)
+
+    metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
     boundary = models.OneToOneField('Boundary', null=True, blank=True, on_delete=models.SET_NULL, related_name='current_for',)
 
     objects = RegionManager()

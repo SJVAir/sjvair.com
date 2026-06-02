@@ -47,6 +47,7 @@ class FacilityDetail(generics.DetailEndpoint):
     model = Facility
     serializer_class = FacilitySerializer
     lookup_field = 'sqid'
+    lookup_url_kwarg = 'facility_id'
 
     def get_queryset(self):
         return Facility.objects.prefetch_related(

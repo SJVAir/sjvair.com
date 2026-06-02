@@ -7,5 +7,5 @@ app_name = 'ceidars'
 urlpatterns = [
     path('', endpoints.FacilityList.as_view(), name='list'),
     path('years/', endpoints.YearList.as_view(), name='years'),
-    path('<str:sqid>/', endpoints.FacilityDetail.as_view(), name='detail'),
+    path('<str:facility_id>/', endpoints.FacilityDetail.as_view(), name='detail'),
 ]

@@ -3,6 +3,7 @@ from django.test import TestCase
 
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region, Boundary
+from camp.apps.regions.management.commands.import_mtrs import build_mtrs
 
 
 class RegionTests(TestCase):
@@ -69,3 +70,20 @@ class RegionTests(TestCase):
         # Quick reality check: Fresno centroid should fall inside
         fresno = Region.objects.get(name='Fresno County', type=Region.Type.COUNTY)
         assert combined.contains(fresno.boundary.geometry.centroid)
+
+
+class BuildMtrsTests(TestCase):
+    def test_single_digit_section_is_zero_padded(self):
+        assert build_mtrs('MD', 'T13S', 'R14E', 8) == 'MD-T13S-R14E-08'
+
+    def test_section_one_is_zero_padded(self):
+        assert build_mtrs('MD', 'T13S', 'R14E', 1) == 'MD-T13S-R14E-01'
+
+    def test_two_digit_section_is_unchanged(self):
+        assert build_mtrs('MD', 'T13S', 'R14E', 36) == 'MD-T13S-R14E-36'
+
+    def test_different_meridian(self):
+        assert build_mtrs('HM', 'T01N', 'R01E', 5) == 'HM-T01N-R01E-05'
+
+    def test_mtrs_region_type_exists(self):
+        assert Region.Type.MTRS == 'mtrs'
