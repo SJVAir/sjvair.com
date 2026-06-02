@@ -121,7 +121,7 @@
                 <p>California Emissions Inventory Data and Reporting System.</p>
             </td>
             <td class="links">
-                <p><a href='https://ww2.arb.ca.gov/ceidars'>🔗 CEIDARS Website</a></p>
+                <p><a href="https://ww2.arb.ca.gov/ceidars">🔗 CEIDARS</a></p>
             </td>
         </tr>
     </table>
@@ -131,9 +131,21 @@
     <table>
         <caption>Pesticides</caption>
         <tr>
-            <td colspan="2">
+            <td>
                 <h3><a href="{% url 'admin:pesticides_pesticideuse_changelist' %}">Pesticide Use Reports</a></h3>
                 <p>CDPR annual pesticide application records.</p>
+            </td>
+            <td class="links">
+                <p><a href="https://calpip.cdpr.ca.gov/infodocs.cfm?ds=PUR">🔗 PUR @ CalPIP</a></p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:pesticides_pesticidenotice_changelist' %}">Pesticide Notices of Intent</a></h3>
+                <p>CDPR advance notices of pesticide applications.</p>
+            </td>
+            <td class="links">
+                <p><a href="https://spraydays.cdpr.ca.gov/">🔗 SprayDays</a></p>
             </td>
         </tr>
         <tr>
