@@ -113,6 +113,7 @@ class Area(MapElement):
 
     border_color: Optional[str] = 'black'
     border_width: float = 1
+    hatch: Optional[str] = None
 
     label_position: Optional[Literal[
         'top-left', 'top', 'top-right', 'left', 'center',
@@ -179,6 +180,7 @@ class StaticMap:
         height: int = 600,
         dpi: int = 100,
         buffer: Optional[float] = None,
+        bounds: Optional[tuple[float, float, float, float]] = None,
         basemap=ctx.providers.MapTiler.Basic,
         crs: str = CRS_WEBMERCATOR,
         zoom_adjust: int = 0,
@@ -187,6 +189,7 @@ class StaticMap:
         self.height = height
         self.dpi = dpi
         self.buffer = buffer
+        self.bounds = bounds  # (west, south, east, north) in WGS84
 
         self.basemap = basemap
         if self.basemap and self.basemap.get('name', '').startswith('MapTiler'):
@@ -268,8 +271,16 @@ class StaticMap:
         if not geometries:
             raise ValueError('No valid geometries to render map.')
 
-        series = gpd.GeoSeries(geometries, crs=CRS_WEBMERCATOR)
-        extent = self._compute_extent(series, buffer=self.buffer)
+        if self.bounds is not None:
+            west, south, east, north = self.bounds
+            extent = (
+                gpd.GeoSeries([box(west, south, east, north)], crs=CRS_LATLON)
+                .to_crs(CRS_WEBMERCATOR)
+                .total_bounds
+            )
+        else:
+            series = gpd.GeoSeries(geometries, crs=CRS_WEBMERCATOR)
+            extent = self._compute_extent(series, buffer=self.buffer)
         ax.set_xlim(extent[0], extent[2])
         ax.set_ylim(extent[1], extent[3])
         ax.axis('off')
@@ -277,6 +288,9 @@ class StaticMap:
         # Draw basemap first so vector layers render on top
         if self.basemap:
             ctx.add_basemap(ax, source=self.basemap, attribution=False, zoom_adjust=self.zoom_adjust, reset_extent=False)
+            # Re-assert limits — contextily can silently adjust them during tile alignment
+            ax.set_xlim(extent[0], extent[2])
+            ax.set_ylim(extent[1], extent[3])
 
         # Plot polygons
         for area in self.areas:
@@ -287,6 +301,7 @@ class StaticMap:
                 edgecolor=area.border_color or 'black',
                 path_effects=self.get_path_effects(area),
                 linewidth=area.border_width,
+                hatch=area.hatch,
                 zorder=area.zorder,
             )
 
@@ -315,7 +330,7 @@ class StaticMap:
         if not format:
             format = 'png'
 
-        save_kwargs = dict(format=format, pad_inches=0, bbox_inches='tight')
+        save_kwargs = dict(format=format, pad_inches=0)
         if format in ('jpg', 'jpeg'):
             save_kwargs['pil_kwargs'] = {'quality': jpeg_quality}
 
@@ -373,10 +388,13 @@ class StaticMap:
             buf = buffer if buffer is not None else 500
             x, y = series.iloc[0].x, series.iloc[0].y
             bounds = box(x - buf, y - buf, x + buf, y + buf).bounds
-        else:
-            minx, miny, maxx, maxy = series.total_bounds
-            if buffer is None:
-                buffer = 0.10
+            return self._adjust_bounds_to_aspect(bounds)
+
+        minx, miny, maxx, maxy = series.total_bounds
+        bounds = self._adjust_bounds_to_aspect((minx, miny, maxx, maxy))
+
+        if buffer is not None:
+            minx, miny, maxx, maxy = bounds
             if buffer <= 1.0:
                 pad_x = (maxx - minx) * buffer
                 pad_y = (maxy - miny) * buffer
@@ -384,7 +402,7 @@ class StaticMap:
                 pad_x = pad_y = buffer
             bounds = (minx - pad_x, miny - pad_y, maxx + pad_x, maxy + pad_y)
 
-        return self._adjust_bounds_to_aspect(bounds)
+        return bounds
 
 
 
