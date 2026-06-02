@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y \
     libproj-dev \
     libssl-dev \
     libtiff5-dev \
+    postgresql-client \
     zlib1g-dev\
     && rm -rf /var/lib/apt/lists/*
 
