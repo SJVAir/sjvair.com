@@ -89,6 +89,7 @@ class Facility(TimeStampedModel):
 
     class Meta:
         unique_together = [('county_code', 'facid')]
+        verbose_name_plural = 'facilities'
 
     def __str__(self):
         return f'{self.name} ({self.address.get("city", "")})'
