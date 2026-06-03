@@ -2,15 +2,81 @@
 # yarn lockfile v1
 
 
-"@sjvair/monitor-map@^2.8.1":
-  version "2.8.1"
-  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-2.8.1.tgz#5439b8b83885726db42380e1a2c6d7bae281fa02"
-  integrity sha512-D/gYfJZYKJUQzO1Rpdye0XakUnc/ChlXFOxtgHUAk8vNZzgXyLulnPzzzhmdQdHUxYctxrEqKByeeQSYOwQJFg==
+"@sjvair/monitor-map@^3.0.1":
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-3.0.1.tgz#68f40d8af63e9222171c6ad16b588a9349990aa8"
+  integrity sha512-zMUSwZQ4cVviqBpnXofndmQXvRPfhmejNk8UL1pqpHP2OPL8IzpSXltWRo4Z8iZCi+UmLIgBFIxA9DfX6YSzzw==
+  dependencies:
+    "@turf/clusters-dbscan" "^7.3.5"
+    sv-router "^0.16.2"
 
 "@sjvair/web-widget@^2.0.1":
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/@sjvair/web-widget/-/web-widget-2.0.1.tgz#888d75da0993ff9eb3085622d7c6621de2d95f4d"
   integrity sha512-Av1OFWayJ1K/yczbv/YSBaEanCBoBpYUcfODznrC9KFf+Hhqknnl1FNgj1d0s7De27v88mYXefz2uau5ythFZw==
+
+"@turf/clone@7.3.5":
+  version "7.3.5"
+  resolved "https://registry.yarnpkg.com/@turf/clone/-/clone-7.3.5.tgz#87906386ebf7e17b528eba79e766d945ffa88a5e"
+  integrity sha512-qfIaHj3410QEcTpiCRnTzhq8YrUp2gWrUIPLBAEFykopNxJkq1du1VrRzvuAo36ap2UV7KppkS6wGNypbcxswQ==
+  dependencies:
+    "@turf/helpers" "7.3.5"
+    "@types/geojson" "^7946.0.10"
+    tslib "^2.8.1"
+
+"@turf/clusters-dbscan@^7.3.5":
+  version "7.3.5"
+  resolved "https://registry.yarnpkg.com/@turf/clusters-dbscan/-/clusters-dbscan-7.3.5.tgz#536ec668caab4d0de84effe726184bbb7ed7221b"
+  integrity sha512-xdc0ccv2fyiUSWrJYJFE6RTluf8oVCB0/aCOdUD/ZvtG3eyqGIXMRMzAR1PujQHjBWtI+ndD4Eq+DqiGukGK+g==
+  dependencies:
+    "@turf/clone" "7.3.5"
+    "@turf/distance" "7.3.5"
+    "@turf/helpers" "7.3.5"
+    "@turf/meta" "7.3.5"
+    "@types/geojson" "^7946.0.10"
+    rbush "^3.0.1"
+    tslib "^2.8.1"
+
+"@turf/distance@7.3.5":
+  version "7.3.5"
+  resolved "https://registry.yarnpkg.com/@turf/distance/-/distance-7.3.5.tgz#3aa16a1fde30e5cf4cf40b7e497be8cc5d6bbaaf"
+  integrity sha512-uQAC63zg/l91KUxzfhqio7Ii3+UXTrPOVJScIdRj6EO6+9XHI4kC+AdyIS4cPAv14sZfJLIBxzMnzcGrss+kEA==
+  dependencies:
+    "@turf/helpers" "7.3.5"
+    "@turf/invariant" "7.3.5"
+    "@types/geojson" "^7946.0.10"
+    tslib "^2.8.1"
+
+"@turf/helpers@7.3.5":
+  version "7.3.5"
+  resolved "https://registry.yarnpkg.com/@turf/helpers/-/helpers-7.3.5.tgz#051928c03cdf9ffcc7ae36581c317afc49bfd999"
+  integrity sha512-E/NMGV5MwbjjP7AJXBtsanC3yY8N2MQ87IGdIgkB2ji5AtBpwnH4L3gEqpYN4RlCJJWbLbzO91BbKv2waUd0eg==
+  dependencies:
+    "@types/geojson" "^7946.0.10"
+    tslib "^2.8.1"
+
+"@turf/invariant@7.3.5":
+  version "7.3.5"
+  resolved "https://registry.yarnpkg.com/@turf/invariant/-/invariant-7.3.5.tgz#5619d0e0ef3755e2be69855bad47e10158a1820b"
+  integrity sha512-ZVIvsBvjr8lO7WxC5zYNjRsjSDvyGvWkJMjuWaJjTU8x+1tmfNnw3gDX/TI2Sit83gcRYLYkNo23lB/udqx/Hg==
+  dependencies:
+    "@turf/helpers" "7.3.5"
+    "@types/geojson" "^7946.0.10"
+    tslib "^2.8.1"
+
+"@turf/meta@7.3.5":
+  version "7.3.5"
+  resolved "https://registry.yarnpkg.com/@turf/meta/-/meta-7.3.5.tgz#c498a6f1e8603e014e8bfbc9a4b2760b6219edb9"
+  integrity sha512-r+ohqxoyqeigFB0oFrQx/YEHIkOKqcKpCjvZkvZs7Tkv+IFco5MezAd2zd4rzK+0DfFgDP3KpJc7HqrYjvEjhg==
+  dependencies:
+    "@turf/helpers" "7.3.5"
+    "@types/geojson" "^7946.0.10"
+    tslib "^2.8.1"
+
+"@types/geojson@^7946.0.10":
+  version "7946.0.16"
+  resolved "https://registry.yarnpkg.com/@types/geojson/-/geojson-7946.0.16.tgz#8ebe53d69efada7044454e3305c19017d97ced2a"
+  integrity sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==
 
 bulma-list@^1.2.0:
   version "1.2.0"
@@ -21,3 +87,32 @@ bulma@^0.9.4:
   version "0.9.4"
   resolved "https://registry.npmjs.org/bulma/-/bulma-0.9.4.tgz"
   integrity sha512-86FlT5+1GrsgKbPLRRY7cGDg8fsJiP/jzTqXXVqiUZZ2aZT8uemEOHlU1CDU+TxklPEZ11HZNNWclRBBecP4CQ==
+
+esm-env@^1.2.2:
+  version "1.2.2"
+  resolved "https://registry.yarnpkg.com/esm-env/-/esm-env-1.2.2.tgz#263c9455c55861f41618df31b20cb571fc20b75e"
+  integrity sha512-Epxrv+Nr/CaL4ZcFGPJIYLWFom+YeV1DqMLHJoEd9SYRxNbaFruBwfEX/kkHUJf55j2+TUbmDcmuilbP1TmXHA==
+
+quickselect@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/quickselect/-/quickselect-2.0.0.tgz#f19680a486a5eefb581303e023e98faaf25dd018"
+  integrity sha512-RKJ22hX8mHe3Y6wH/N3wCM6BWtjaxIyyUIkpHOvfFnxdI4yD4tBXEBKSbriGujF6jnSVkJrffuo6vxACiSSxIw==
+
+rbush@^3.0.1:
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/rbush/-/rbush-3.0.1.tgz#5fafa8a79b3b9afdfe5008403a720cc1de882ecf"
+  integrity sha512-XRaVO0YecOpEuIvbhbpTrZgoiI6xBlz6hnlr6EHhd+0x9ase6EmeN+hdwwUaJvLcsFFQ8iWVF1GAK1yB0BWi0w==
+  dependencies:
+    quickselect "^2.0.0"
+
+sv-router@^0.16.2:
+  version "0.16.3"
+  resolved "https://registry.yarnpkg.com/sv-router/-/sv-router-0.16.3.tgz#27731119971730f8e3dad81a2b8cb980f0061136"
+  integrity sha512-nne8keA2GKZRdRE8r7HFx7wcR2ruqVPf/RZ9De5webNgaDbfKHEeh5qpAe0Hg0cczXnZh/qcgRsSNDphbVd0Gw==
+  dependencies:
+    esm-env "^1.2.2"
+
+tslib@^2.8.1:
+  version "2.8.1"
+  resolved "https://registry.yarnpkg.com/tslib/-/tslib-2.8.1.tgz#612efe4ed235d567e8aba5f2a5fab70280ade83f"
+  integrity sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==
