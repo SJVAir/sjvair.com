@@ -3,6 +3,20 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path, re_path
 
+from redis.asyncio import Redis as RedisClient
+
+from health_check.checks import Cache, Database, Storage
+from health_check.contrib.psutil import Memory
+from health_check.contrib.redis import Redis
+from health_check.views import HealthCheckView
+
+from camp.apps.monitors.health_checks import (
+    AirGradientHealthCheck,
+    AirNowHealthCheck,
+    AQviewHealthCheck,
+    CCACBAMHealthCheck,
+    PurpleAirHealthCheck,
+)
 from camp.utils import views
 
 admin.site.site_title = "SJVAir Admin"
@@ -22,7 +36,18 @@ urlpatterns = [
     path('prose/', include('prose.urls')),
 
     # Admin-y stuff
-    path('system-status/', include('health_check.urls')),
+    path('system-status/', HealthCheckView.as_view(checks=[
+        Database(),
+        Cache(),
+        Storage(),
+        Memory(),
+        Redis(client_factory=lambda: RedisClient.from_url(f'{settings.REDIS_URL}/0')),
+        AirGradientHealthCheck(),
+        AirNowHealthCheck(),
+        AQviewHealthCheck(),
+        CCACBAMHealthCheck(),
+        PurpleAirHealthCheck(),
+    ])),
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
     path('batcave/stats.json', views.AdminStats.as_view(), name='admin-stats'),
     path('batcave/flush-queue/<str:key>/', views.FlushQueue.as_view(), name='flush-queue'),

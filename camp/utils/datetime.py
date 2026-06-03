@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone as dt_timezone
 
 from django import forms
 from django.conf import settings
@@ -14,7 +14,7 @@ def localtime(value=None):
     return timezone.localtime(value, timezone=settings.DEFAULT_TIMEZONE)
 
 
-def make_aware(timestamp, tz=timezone.utc):
+def make_aware(timestamp, tz=dt_timezone.utc):
     if timezone.is_naive(timestamp):
         return timezone.make_aware(timestamp, tz)
     return timestamp

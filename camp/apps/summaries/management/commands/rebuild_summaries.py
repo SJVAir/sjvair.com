@@ -38,6 +38,8 @@ class Command(BaseCommand):
             help='Skip region summaries')
         group.add_argument('--regions-only', action='store_true',
             help='Skip monitor summaries')
+        parser.add_argument('--async', action='store_true', dest='enqueue',
+            help='Enqueue tasks for background processing instead of running synchronously')
 
     def handle(self, *args, **options):
         from camp.apps.monitors.models import Monitor
@@ -53,6 +55,7 @@ class Command(BaseCommand):
         if start >= end:
             raise CommandError('start must be before end')
 
+        enqueue = options['enqueue']
         monitors_only = options['monitors_only']
         regions_only = options['regions_only']
         monitor_id = options.get('monitor_id')
@@ -98,14 +101,22 @@ class Command(BaseCommand):
 
         # Monitor summaries
         if not regions_only:
-            monitors_by_id = {m.pk: m for m in monitors}
-            self._backfill_monitor_summaries(monitors_by_id, hours, entry_models)
-            self._rollup(rollup_monitor_summaries, 'monitor', monitor_ids, start, end)
+            if enqueue:
+                self._enqueue_monitor_summaries(monitor_ids, hours, entry_models)
+                self._enqueue_monitor_rollups(start, end)
+            else:
+                monitors_by_id = {m.pk: m for m in monitors}
+                self._backfill_monitor_summaries(monitors_by_id, hours, entry_models)
+                self._rollup(rollup_monitor_summaries, 'monitor', monitor_ids, start, end)
 
         # Region summaries
         if not monitors_only:
-            self._backfill_region_summaries(list(regions), hours)
-            self._rollup(rollup_region_summaries, 'region', region_ids, start, end)
+            if enqueue:
+                self._enqueue_region_summaries(region_ids, hours, entry_models)
+                self._enqueue_region_rollups(start, end)
+            else:
+                self._backfill_region_summaries(list(regions), hours)
+                self._rollup(rollup_region_summaries, 'region', region_ids, start, end)
 
         self.stdout.write(self.style.SUCCESS('Done.'))
 
@@ -169,10 +180,9 @@ class Command(BaseCommand):
         region_monitor_grades = {}
         for region in regions:
             if region.boundary:
-                region_monitor_grades[region.pk] = {
-                    m.pk: m.GRADE
-                    for m in region.monitors.only('pk')
-                }
+                region_monitor_grades[region.pk] = dict(
+                    region.monitors.with_grade().values_list('pk', 'grade')
+                )
 
         self.stdout.write(f'\nComputing hourly region summaries...')
         self.stdout.flush()
@@ -229,6 +239,90 @@ class Command(BaseCommand):
             for window_start in tqdm.tqdm(windows, file=self.stdout, dynamic_ncols=True):
                 window_end = self._window_end(target, window_start)
                 rollup_fn(target, source, window_start, window_end, **{f'{label}_ids': ids})
+
+    # ---- Async enqueue methods ----
+
+    def _enqueue_monitor_summaries(self, monitor_ids, hours, entry_models):
+        from camp.apps.summaries.tasks import summarize_monitor_hour
+        self.stdout.write('\nEnqueuing hourly monitor summaries...')
+        self.stdout.flush()
+        count = 0
+        for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
+            for EntryModel in entry_models:
+                combos = (
+                    EntryModel.objects
+                    .filter(
+                        monitor_id__in=monitor_ids,
+                        timestamp__gte=hour,
+                        timestamp__lt=hour + timedelta(hours=1),
+                    )
+                    .filter(
+                        Q(stage=Stage.RAW, processor='') |
+                        Q(stage=Stage.CALIBRATED)
+                    )
+                    .values_list('monitor_id', 'processor')
+                    .distinct()
+                )
+                for monitor_id, processor in combos:
+                    summarize_monitor_hour(str(monitor_id), hour, EntryModel.entry_type, processor)
+                    count += 1
+        self.stdout.write(f'  → {count:,} tasks enqueued')
+
+    def _enqueue_region_summaries(self, region_ids, hours, entry_models):
+        from camp.apps.summaries.tasks import summarize_region_hour
+        self.stdout.write('\nEnqueuing hourly region summaries...')
+        self.stdout.flush()
+        count = 0
+        for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
+            for region_id in region_ids:
+                for EntryModel in entry_models:
+                    summarize_region_hour(str(region_id), hour, EntryModel.entry_type)
+                    count += 1
+        self.stdout.write(f'  → {count:,} tasks enqueued')
+
+    def _enqueue_monitor_rollups(self, start, end):
+        from camp.apps.summaries.tasks import (
+            daily_monitor_summaries, monthly_monitor_summaries,
+            quarterly_monitor_summaries, seasonal_monitor_summaries,
+            yearly_monitor_summaries,
+        )
+        self.stdout.write('\nEnqueuing monitor rollups...')
+        self.stdout.flush()
+        windows = [
+            (daily_monitor_summaries,     'day',           self._iter_days(start, end)),
+            (monthly_monitor_summaries,   'month_start',   self._iter_months(start, end)),
+            (quarterly_monitor_summaries, 'quarter_start', self._iter_quarters(start, end)),
+            (seasonal_monitor_summaries,  'season_start',  self._iter_seasons(start, end)),
+            (yearly_monitor_summaries,    'year_start',    self._iter_years(start, end)),
+        ]
+        count = 0
+        for task_fn, kwarg, window_iter in windows:
+            for window in window_iter:
+                task_fn(**{kwarg: window})
+                count += 1
+        self.stdout.write(f'  → {count:,} tasks enqueued')
+
+    def _enqueue_region_rollups(self, start, end):
+        from camp.apps.summaries.tasks import (
+            daily_region_summaries, monthly_region_summaries,
+            quarterly_region_summaries, seasonal_region_summaries,
+            yearly_region_summaries,
+        )
+        self.stdout.write('\nEnqueuing region rollups...')
+        self.stdout.flush()
+        windows = [
+            (daily_region_summaries,     'day',           self._iter_days(start, end)),
+            (monthly_region_summaries,   'month_start',   self._iter_months(start, end)),
+            (quarterly_region_summaries, 'quarter_start', self._iter_quarters(start, end)),
+            (seasonal_region_summaries,  'season_start',  self._iter_seasons(start, end)),
+            (yearly_region_summaries,    'year_start',    self._iter_years(start, end)),
+        ]
+        count = 0
+        for task_fn, kwarg, window_iter in windows:
+            for window in window_iter:
+                task_fn(**{kwarg: window})
+                count += 1
+        self.stdout.write(f'  → {count:,} tasks enqueued')
 
     # ---- Date helpers ----
 

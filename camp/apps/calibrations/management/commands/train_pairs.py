@@ -1,7 +1,8 @@
+from datetime import datetime, timezone as dt_timezone
+import pytz
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from datetime import datetime
-import pytz
 
 from camp.apps.calibrations.models import CalibrationPair
 from camp.apps.calibrations.tasks import train_pair
@@ -43,7 +44,7 @@ class Command(BaseCommand):
         pacific = pytz.timezone('America/Los_Angeles')
         now_pacific = timezone.now().astimezone(pacific)
         midnight_pacific = now_pacific.replace(hour=0, minute=0, second=0, microsecond=0)
-        return midnight_pacific.astimezone(timezone.utc)
+        return midnight_pacific.astimezone(dt_timezone.utc)
 
     def get_training_tasks(self):
         entry_types = self.options.get('entry_type') or []
