@@ -77,7 +77,7 @@ class MonitorIsActiveFilter(admin.SimpleListFilter):
             return queryset
 
 
-class MonitorAdmin(gisadmin.OSMGeoAdmin):
+class MonitorAdmin(gisadmin.GISModelAdmin):
     inlines = [HealthCheckInline]
     actions = ['export_monitor_list_csv']
     form = MonitorAdminForm
