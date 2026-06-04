@@ -37,7 +37,7 @@ fiona==1.10.1
 geopandas==1.1.2
 geopy==2.3.0
 gunicorn==23.0.0
-hiredis==2.2.3
+hiredis==3.4.0
 huey==2.4.5
 invoke==2.2.0
 jsonschema==4.19.0
@@ -61,7 +61,7 @@ python-dotenv==1.0.1
 python-rapidjson==1.16
 pytz==2022.1
 PyYAML==6.0.1
-redis==4.6.0
+redis==8.0.0
 ctx-python==0.0.1a10
 pdfplumber==0.11.6
 requests==2.33.0

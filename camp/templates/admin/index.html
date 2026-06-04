@@ -94,38 +94,87 @@
 {% block sidebar %}
 <div id="content-related">
     <div class="module">
-        <h2>{% trans 'Infrastructure' %}</h2>
-        <ul class="">
-
-            <li><a href="{% url 'system-status' %}">System Health Checks</a></li>
-        </ul>
+        <h2>{% trans 'System Status' %}</h2>
         <table>
             <tr>
-                <th>Timestamp</th>
-                <td><span id="id_timestamp"></span></td>
+                <th class="nowrap">Timestamp</th>
+                <td style="text-align: right;"><span id="id_timestamp"></span></td>
             </tr>
             <tr>
-                <th>Monitor Entries</th>
-                <td>≈<span id="id_entry-count"></span></td>
+                <th class="nowrap">Monitor Entries</th>
+                <td style="text-align: right;">≈<span id="id_entry-count"></span></td>
             </tr>
-            {% for key in settings.DJANGO_HUEY.queues.keys %}
-            <tr class="queue queue-{{ key }}">
-                <th>Queue: {{ key }}</th>
-                <td>
-                    <div class="size"></div>
-                    <form action="{% url 'flush-queue' key=key %}" method="POST">
-                        {% csrf_token %}
-                        <button type="submit">Flush queue</button>
-                    </form>
+            <tr>
+                <td colspan="2">
+                    <ul>
+                        <li><a href="{% url 'system-status:index' %}">Infrastructure</a>
+                            <ul data-status-url="{% url 'system-status:index' %}?format=json"></ul>
+                        </li>
+                        <li><a href="{% url 'system-status:data-feeds' %}">Data Feeds</a>
+                            <ul data-status-url="{% url 'system-status:data-feeds' %}?format=json"></ul>
+                        </li>
+                    </ul>
+                    <script type="text/javascript">
+                    (function () {
+                        document.querySelectorAll('[data-status-url]').forEach(ul => {
+                            fetch(ul.dataset.statusUrl, {headers: {Accept: 'application/json'}})
+                                .then(r => r.json())
+                                .then(data => {
+                                    const allOk = Object.values(data).every(v => v === 'OK');
+                                    const summary = document.createElement('b');
+                                    summary.style.color = allOk ? 'green' : 'red';
+                                    summary.textContent = allOk ? '✓ ' : '✗ ';
+                                    ul.parentElement.querySelector('a').prepend(summary);
+
+                                    ul.replaceChildren(...Object.entries(data).map(([name, status]) => {
+                                        const ok = status === 'OK';
+                                        const span = document.createElement('b');
+                                        span.style.color = ok ? 'green' : 'red';
+                                        span.textContent = ok ? '✓' : '✗';
+                                        const li = document.createElement('li');
+                                        li.append(span, ' ' + name.replace(/\(.*\)$/, ''));
+                                        if (!ok) li.title = String(status);
+                                        return li;
+                                    }));
+                                })
+                                .catch(() => {
+                                    const li = document.createElement('li');
+                                    li.className = 'quiet';
+                                    li.textContent = '? unavailable';
+                                    ul.replaceChildren(li);
+                                });
+                        });
+                    })();
+                    </script>
                 </td>
             </tr>
-            {% endfor %}
+
+            <tr>
+                <td colspan="2">
+                    <div style="font-weight:bold" class="quiet">Queues</div>
+                    <ul>
+                        {% for key in settings.DJANGO_HUEY.queues.keys %}
+                        <li class="queue queue-{{ key }}">
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <span>{{ key|title }}</span>
+                                <form action="{% url 'flush-queue' key=key %}" method="POST" style="display:inline">
+                                    {% csrf_token %}
+                                    <span style="font-weight:bold;" class="size"></span>
+                                    <span>&nbsp;</span>
+                                    <input type="submit" value="Flush" class="small" style="padding:1px 4px">
+                                </form>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </td>
+            </tr>
         </table>
     </div>
 
     <div class="module">
         <h2>Quick Links</h2>
-        <ul class="">
+        <ul>
             <li><a href="{% url 'admin:alerts_subscription_county_stats' %}">Subscription Stats by County</a></li>
         </ul>
     </div>

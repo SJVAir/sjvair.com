@@ -21,9 +21,12 @@ class MonitorHealthCheck(HealthCheck):
     model: type = dataclasses.field(default=Monitor, repr=False)
     limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=1), repr=False)
 
+    def __repr__(self):
+        return self.network
+
     @property
     def labels(self):
-        return {'check': f'Air Network: {self.network}'}
+        return {'check': self.network}
 
     def run(self):
         try:
@@ -47,7 +50,7 @@ class MonitorHealthCheck(HealthCheck):
             raise ServiceReturnedUnexpectedResult(e.__class__.__name__) from e
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(repr=False)
 class AirGradientHealthCheck(MonitorHealthCheck):
     network: str = dataclasses.field(default='AirGradient', repr=False)
     model: type = dataclasses.field(default=AirGradient, repr=False)
@@ -59,28 +62,28 @@ class AirGradientHealthCheck(MonitorHealthCheck):
         super().run()
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(repr=False)
 class AirNowHealthCheck(MonitorHealthCheck):
     network: str = dataclasses.field(default='AirNow', repr=False)
     model: type = dataclasses.field(default=AirNow, repr=False)
     limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=3), repr=False)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(repr=False)
 class AQviewHealthCheck(MonitorHealthCheck):
     network: str = dataclasses.field(default='AQview', repr=False)
     model: type = dataclasses.field(default=AQview, repr=False)
     limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=3), repr=False)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(repr=False)
 class CCACBAMHealthCheck(MonitorHealthCheck):
     network: str = dataclasses.field(default='CCAC BAM-1022', repr=False)
     model: type = dataclasses.field(default=BAM1022, repr=False)
     limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=2), repr=False)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(repr=False)
 class PurpleAirHealthCheck(MonitorHealthCheck):
     network: str = dataclasses.field(default='PurpleAir', repr=False)
     model: type = dataclasses.field(default=PurpleAir, repr=False)
