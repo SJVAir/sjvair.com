@@ -8,7 +8,8 @@ from django.conf import settings
 
 def datafile(filename, mode='r'):
     path = settings.BASE_DIR.child('datafiles', *filename.split(os.sep))
-    contents = open(path, mode).read()
+    with open(path, mode) as f:
+        contents = f.read()
     if path.ext in ['.json', '.geojson']:
         return json.loads(contents)
     if path.ext == '.yaml':
