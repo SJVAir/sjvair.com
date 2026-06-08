@@ -38,7 +38,7 @@ RUN git config --global --add safe.directory /app
 # Install Python dependencies
 COPY requirements ./requirements/
 RUN pip install --upgrade pip
-RUN pip install setuptools==70.3.0 wheel packaging
+RUN pip install setuptools==82.0.1 wheel packaging
 RUN pip install --no-cache-dir -r requirements/base.txt
 
 # Copy the full project into the container
