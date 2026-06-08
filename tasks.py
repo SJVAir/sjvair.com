@@ -36,9 +36,10 @@ def mkdir(dirname):
 def assets(*paths):
     return path('assets', *paths)
 
+
 def import_node_module(ctx, target, destination=None):
     destination = path('dist', destination or os.path.basename(target))
-    target = path('node_modules', target, 'dist')
+    target = path('node_modules', target)
 
     ctx.run(f'rm -rf {destination}')
     ctx.run(f'cp -r {target} {destination}')
@@ -56,9 +57,12 @@ def styles(ctx):
         include_paths=(assets('sass'), path('node_modules')),
         output_style='compressed',
     )
+    # Wrap compiled output in a CSS layer so it doesn't
+    # override third-party utilities in embedded micro-frontends
+    layered_css = f'@layer bulma{{{compiled_css}}}'
     mkdir('dist/css')
     with open(path('dist/css/style.css'), 'w') as f:
-        f.write(compiled_css)
+        f.write(layered_css)
 
 
 @invoke.task
@@ -68,8 +72,8 @@ def collectstatic(ctx):
 
 @invoke.task()
 def import_npm_assets(ctx):
-    import_node_module(ctx, '@sjvair/monitor-map')
-    import_node_module(ctx, '@sjvair/web-widget', 'widget')
+    import_node_module(ctx, '@sjvair/monitor-map/dist/monitor-map')
+    import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
 
 
 @invoke.task()
