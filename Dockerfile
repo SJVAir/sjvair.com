@@ -1,5 +1,5 @@
-# Use the official slim Python 3.11 image as base
-FROM python:3.11-slim AS base
+# Use the official slim Python 3.14 image as base
+FROM python:3.14-slim AS base
 
 # Enable colored terminal output
 ENV FORCE_COLOR=1
@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     iputils-ping \
     libgdal-dev \
     libjpeg-dev \
+    libmemcached-dev \
     libpq-dev \
     libproj-dev \
     libssl-dev \
@@ -37,7 +38,7 @@ RUN git config --global --add safe.directory /app
 # Install Python dependencies
 COPY requirements ./requirements/
 RUN pip install --upgrade pip
-RUN pip install setuptools==70.3.0 wheel packaging
+RUN pip install setuptools==82.0.1 wheel packaging
 RUN pip install --no-cache-dir -r requirements/base.txt
 
 # Copy the full project into the container

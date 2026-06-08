@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon, Point
@@ -27,7 +27,7 @@ def _today():
 
 def create_smoke(density='light', days_offset=0):
     today = _today()
-    baseline = datetime.combine(today, time(12, 0, tzinfo=timezone.utc))
+    baseline = datetime.combine(today, time(12, 0, tzinfo=dt_timezone.utc))
     smoke = Smoke(
         date=today + timedelta(days=days_offset),
         satellite='TestSatellite',
@@ -43,7 +43,7 @@ def create_smoke(density='light', days_offset=0):
 
 def create_fire(days_offset=0):
     today = _today()
-    baseline = datetime.combine(today, time(12, 0, tzinfo=timezone.utc))
+    baseline = datetime.combine(today, time(12, 0, tzinfo=dt_timezone.utc))
     fire = Fire(
         date=today + timedelta(days=days_offset),
         satellite='TestSatellite',

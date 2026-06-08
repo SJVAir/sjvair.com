@@ -96,13 +96,6 @@ INSTALLED_APPS = [
     'widget_tweaks',
 
     'health_check',
-    'health_check.db',
-    'health_check.cache',
-    'health_check.storage',
-    'health_check.contrib.migrations',
-    'health_check.contrib.psutil',
-    'health_check.contrib.s3boto3_storage',
-    'health_check.contrib.redis',
 
     'camp.api',
     'camp.apps.accounts',
@@ -241,8 +234,6 @@ DEFAULT_TIMEZONE = zoneinfo.ZoneInfo('America/Los_Angeles')
 
 USE_I18N = True
 
-USE_L10N = True
-
 USE_TZ = True
 
 LANGUAGE_CODE = 'en'
@@ -299,27 +290,6 @@ APP_URL_IPAD = env('APP_URL_IPAD',
 
 APP_URL_IPHONE = env('APP_URL_IPHONE',
     'https://apps.apple.com/us/app/sjvair/id6448961840?platform=iphone')
-
-
-# django-health-check
-
-HEALTH_CHECK = {
-    'DISK_USAGE_MAX': None,  # percent
-    'MEMORY_MIN': 100,  # in MB
-    'SUBSETS': {
-        'air-networks': [
-            'Air Network: AirGradient',
-            'Air Network: AirNow',
-            'Air Network: AQview',
-            'Air Network: CCAC BAM-1022',
-            'Air Network: PurpleAir',
-        ],
-        'integration-airnow': ['Air Network: AirNow'],
-        'integration-aqview': ['Air Network: AQview'],
-        'integration-ccac-bam1022': ['Air Network: CCAC BAM-1022'],
-        'integration-purpleair': ['Air Network: PurpleAir'],
-    }
-}
 
 
 # django-sqids
