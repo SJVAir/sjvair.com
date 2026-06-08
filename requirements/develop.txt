@@ -1,13 +1,13 @@
 -r base.txt
 
-coverage==6.4.2
-mock==4.0.3
+coverage==7.14.1
+mock==5.2.0
 
-pytest==8.4.2
-pytest-asyncio==1.1.0
-pytest-cov==3.0.0
+pytest==9.0.3
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
 pytest-django==4.12.0
 pytest-dotenv==0.5.2
 # pytest-pythonpath removed — obsolete since pytest 7; use pythonpath = . in pytest.ini instead
 
-pur==7.3.2
+pur==7.4.0
