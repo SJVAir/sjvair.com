@@ -27,7 +27,7 @@ import vanilla
 from django_huey import get_queue
 from resticus import http
 from resticus.http import JSONResponse
-from ua_parser import user_agent_parser
+from ua_parser import parse as ua_parse
 
 from camp.apps.entries.models import PM25
 
@@ -243,14 +243,14 @@ class GetTheApp(vanilla.TemplateView):
     template_name = 'pages/app.html'
 
     def get(self, request):
-        user_agent = user_agent_parser.Parse(request.META.get('HTTP_USER_AGENT', ''))
-        if user_agent['os']['family'] == 'Android':
+        user_agent = ua_parse(request.META.get('HTTP_USER_AGENT', ''))
+        if getattr(user_agent.os, 'family', None) == 'Android':
             return redirect(settings.APP_URL_ANDROID)
 
-        if user_agent['device']['family'] == 'iPhone':
+        if getattr(user_agent.device, 'family', None) == 'iPhone':
             return redirect(settings.APP_URL_IPHONE)
 
-        if user_agent['device']['family'] == 'iPad':
+        if getattr(user_agent.device, 'family', None) == 'iPad':
             return redirect(settings.APP_URL_IPAD)
 
         return super().get(request)

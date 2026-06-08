@@ -43,7 +43,7 @@ class SanityChecks:
         """
         if self.summary.max is None or pd.isna(self.summary.max):
             return None
-        return self.summary.max < 1500
+        return bool(self.summary.max < 1500)
 
     def check_flatline(self) -> bool:
         """
@@ -54,7 +54,7 @@ class SanityChecks:
         """
         if self.summary.flatline is None or pd.isna(self.summary.flatline):
             return None
-        return self.summary.flatline < .75
+        return bool(self.summary.flatline < .75)
 
     def check_completeness(self) -> bool:
         """
@@ -66,7 +66,7 @@ class SanityChecks:
         if self.summary.count is None or pd.isna(self.summary.count):
             return None
         expected = self.monitor.expected_hourly_entries
-        return (self.summary.count / expected) >= .8
+        return bool((self.summary.count / expected) >= .8)
 
 
 @dataclass
