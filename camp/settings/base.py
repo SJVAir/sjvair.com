@@ -112,6 +112,7 @@ INSTALLED_APPS = [
     'camp.apps.pesticides',
     'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
+    'camp.apps.monitors.aqlite',
     'camp.apps.monitors.aqview',
     'camp.apps.monitors.bam',
     'camp.apps.monitors.purpleair',
