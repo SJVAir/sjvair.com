@@ -2,8 +2,11 @@ import csv
 import io
 import tempfile
 from datetime import date, datetime, timezone
+from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+from django.core.management import call_command
 
 from django.contrib.gis.geos import Point
 from django.test import TestCase
@@ -354,3 +357,86 @@ class O3VOZBoxProcessorTests(TestCase):
         )
         result = cal_processors.O3_VOZBox(o3_entry).run()
         assert result is None
+
+
+class ImportVozboxCalTests(TestCase):
+    def setUp(self):
+        self.monitor = VOZBox.objects.create(
+            sensor_id='e00fce682bbf742cd0b6768a',
+            name='Lost Hills',
+            location='outside',
+        )
+
+    def _cal_rows(self):
+        return {
+            'e00fce682bbf742cd0b6768a': [{
+                'timestamp': datetime(2025, 6, 20, 15, 0, 0, tzinfo=timezone.utc),
+                'pm25_a': 5.0, 'pm25_b': 4.0,
+                'pm10_a': 6.0, 'pm10_b': 4.0,
+                'pm1_a': None, 'pm1_b': None,
+                'temperature': 16.0,
+                'humidity': 54.0,
+                'o3': 26.981,
+                'o3_cal': 23.127,
+                'latitude': 36.785343,
+                'longitude': -119.773056,
+            }],
+        }
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
+    def test_creates_calibrated_o3_entry(self, MockClient):
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
+        instance.get_cal_data.return_value = self._cal_rows()
+
+        out = StringIO()
+        call_command('import_vozbox_cal', stdout=out)
+
+        assert entry_models.O3.objects.filter(
+            monitor=self.monitor,
+            stage=entry_models.O3.Stage.CALIBRATED,
+            sensor='1',
+        ).exists()
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
+    def test_skips_unknown_coreids(self, MockClient):
+        rows = self._cal_rows()
+        rows['unknown_coreid_xyz'] = rows['e00fce682bbf742cd0b6768a']
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
+        instance.get_cal_data.return_value = rows
+
+        out = StringIO()
+        call_command('import_vozbox_cal', stdout=out)
+
+        assert 'unknown_coreid_xyz' in out.getvalue()
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
+    def test_date_range_filter(self, MockClient):
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_cal_files.return_value = [
+            (date(2025, 6, 19), 12),
+            (date(2025, 6, 20), 15),
+            (date(2025, 6, 21), 8),
+        ]
+        instance.get_cal_data.return_value = {}
+
+        call_command('import_vozbox_cal', start='2025-06-20', end='2025-06-20')
+
+        assert instance.get_cal_data.call_count == 1
+        instance.get_cal_data.assert_called_once_with(date(2025, 6, 20), 15)
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
+    def test_skips_row_when_o3_cal_is_none(self, MockClient):
+        rows = self._cal_rows()
+        rows['e00fce682bbf742cd0b6768a'][0]['o3_cal'] = None
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
+        instance.get_cal_data.return_value = rows
+
+        call_command('import_vozbox_cal')
+
+        assert not entry_models.O3.objects.filter(
+            monitor=self.monitor,
+            stage=entry_models.O3.Stage.CALIBRATED,
+        ).exists()
