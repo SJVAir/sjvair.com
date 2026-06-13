@@ -171,3 +171,89 @@ class VozBoxClientHTTPTests(TestCase):
             tmpdir_name = client._tmpdir.name
             assert Path(tmpdir_name).exists()
         assert not Path(tmpdir_name).exists()
+
+
+from django.contrib.gis.geos import Point
+from camp.apps.monitors.vozbox.models import VOZBox
+from camp.apps.entries import models as entry_models
+
+
+class VOZBoxModelTests(TestCase):
+    def _make_row(self, **kwargs):
+        defaults = {
+            'timestamp': datetime(2025, 6, 9, 0, 0, 0, tzinfo=timezone.utc),
+            'pm1_a': 7.0, 'pm1_b': 4.0,
+            'pm25_a': 10.0, 'pm25_b': 4.0,
+            'pm10_a': 10.0, 'pm10_b': 4.0,
+            'temperature': 36.0,
+            'humidity': 26.0,
+            'o3': 70.0,
+            'o3_cal': None,
+            'latitude': 36.785328,
+            'longitude': -119.773125,
+        }
+        defaults.update(kwargs)
+        return defaults
+
+    def test_update_data_sets_position(self):
+        monitor = VOZBox(sensor_id='e00fce68f12da1a0c5de6248')
+        monitor.update_data(self._make_row())
+        assert monitor.position.coords == Point(-119.773125, 36.785328).coords
+
+    def test_update_data_sets_name_from_coreid_when_empty(self):
+        monitor = VOZBox(sensor_id='e00fce68f12da1a0c5de6248')
+        monitor.update_data(self._make_row())
+        assert monitor.name == 'e00fce68f12da1a0c5de6248'
+
+    def test_update_data_does_not_overwrite_existing_name(self):
+        monitor = VOZBox(sensor_id='e00fce68f12da1a0c5de6248', name='Coalinga')
+        monitor.update_data(self._make_row())
+        assert monitor.name == 'Coalinga'
+
+    def test_update_data_sets_location_outside(self):
+        monitor = VOZBox(sensor_id='e00fce68f12da1a0c5de6248')
+        monitor.update_data(self._make_row())
+        assert monitor.location == 'outside'
+
+    def test_supports_health_checks(self):
+        monitor = VOZBox(sensor_id='e00fce68f12da1a0c5de6248')
+        assert monitor.supports_health_checks() is True
+
+    def test_create_entries_produces_all_types(self):
+        monitor = VOZBox.objects.create(
+            sensor_id='e00fce68f12da1a0c5de6248',
+            name='Test',
+            location='outside',
+        )
+        row = self._make_row()
+        entries = monitor.create_entries(row)
+        entry_types = {type(e) for e in entries}
+        assert entry_models.PM10 in entry_types    # PM1.0
+        assert entry_models.PM25 in entry_types
+        assert entry_models.PM100 in entry_types
+        assert entry_models.Temperature in entry_types
+        assert entry_models.Humidity in entry_types
+        assert entry_models.O3 in entry_types
+
+    def test_create_entries_dual_channel_pm25(self):
+        monitor = VOZBox.objects.create(
+            sensor_id='e00fce68f12da1a0c5de6248',
+            name='Test',
+            location='outside',
+        )
+        row = self._make_row()
+        entries = monitor.create_entries(row)
+        pm25_entries = [e for e in entries if isinstance(e, entry_models.PM25)]
+        sensors = {e.sensor for e in pm25_entries}
+        assert sensors == {'a', 'b'}
+
+    def test_create_entries_skips_none_values(self):
+        monitor = VOZBox.objects.create(
+            sensor_id='e00fce68f12da1a0c5de6248',
+            name='Test',
+            location='outside',
+        )
+        row = self._make_row(pm25_a=None)
+        entries = monitor.create_entries(row)
+        pm25_a_entries = [e for e in entries if isinstance(e, entry_models.PM25) and e.sensor == 'a']
+        assert pm25_a_entries == []
