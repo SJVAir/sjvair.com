@@ -55,10 +55,11 @@ class VozBoxClient:
         return f'{self.DAILY_PREFIX}_{d.strftime("%Y-%m-%d")}.csv'
 
     def cal_filename(self, d: date, hour_utc: int) -> str:
-        return f'{self.CAL_PREFIX}_{d.strftime("%Y-%m-%d")}T{hour_utc}.csv'
+        return f'{self.CAL_PREFIX}_{d.strftime("%Y-%m-%d")}T{hour_utc:02d}.csv'
 
     def download_csv(self, url: str) -> Optional[Path]:
-        assert self._tmpdir is not None, 'VozBoxClient must be used as a context manager'
+        if self._tmpdir is None:
+            raise RuntimeError('VozBoxClient must be used as a context manager')
         response = self.session.get(url)
         if response.status_code == 404:
             return None
