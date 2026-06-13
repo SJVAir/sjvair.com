@@ -33,8 +33,8 @@ Each file contains all active devices. Devices are identified by the `coreid` co
 - `unixtime`, `coreid`, `lat`, `lon`
 - `m_PM25_CF1`, `m_PM25_ATM`, `m_PM25_b`, `m_PM10_CF1`, `m_PM10_ATM`, `m_PM10_b`
 - `temp_C`, `rh`, `o3`
-- `C1_T`, `C2_rh`, `C3_o3`, `b` — per-row regression coefficients
-- `o3_cal` — calibrated O3 value (`C1_T*temp + C2_rh*rh + C3_o3*o3 + b`)
+- `C1_T`, `C2_rh`, `C3_o3`, `b` — per-row regression coefficients (exact formula TBD — confirm with Quinn Research)
+- `o3_cal` — calibrated O3 value
 
 ## Module Structure
 
@@ -69,7 +69,7 @@ with VozBoxClient() as client:
 - Realtime downloads use `raw.githubusercontent.com` URLs constructed directly from date/hour — no GitHub API call needed, no rate limit consumed.
 - Directory listing (`list_daily_files()`, `list_cal_files()`) uses the GitHub Contents API for the backfill command.
 
-**Authentication:** Optional `VOZBOX_GITHUB_TOKEN` setting. If present, added as `Authorization: Bearer <token>` to GitHub API requests, raising the rate limit from 60 to 5000 req/hr. Raw downloads are unaffected (no rate limit on `raw.githubusercontent.com`).
+**Authentication:** Optional `GITHUB_API_TOKEN` setting (shared with any other GitHub API integrations). If present, added as `Authorization: Bearer <token>` to GitHub API requests, raising the rate limit from 60 to 5000 req/hr. Raw downloads are unaffected (no rate limit on `raw.githubusercontent.com`).
 
 **Temp dir:** Created on `__enter__`, deleted on `__exit__`. `download_csv(url)` writes the file there and returns the path.
 
@@ -121,11 +121,17 @@ class VOZBox(LCSMixin, Monitor):
 
 **Health checks:** All VOZboxes are dual-channel — `supports_health_checks()` returns `True` unconditionally. No per-device variant needed.
 
-## O3 Calibration Processor (`camp/apps/calibrations/processors.py`)
+## O3 Calibration
 
-`O3_VOZBox` is a processor that follows the existing processor interface. It accepts an O3 RAW entry and produces a CALIBRATED entry using a trained regression model (temperature and humidity as covariates). The model weights come from the `Calibration` infrastructure already in place.
+There are two distinct O3 calibration paths, and they coexist without conflict:
 
-The processor is wired into `ENTRY_CONFIG` now but is **inactive until a `DefaultCalibration` record exists for `(VOZBox, O3)`** — this is how all processors in this codebase work. No CALIBRATED O3 entries will be produced until calibration training runs. The Quinn Research formula (`o3_cal = C1_T*temp + C2_rh*rh + C3_o3*o3 + b`) serves as the reference approach for that training work.
+**External calibration (Quinn Research, via `import_vozbox_cal`):**
+Calibrated O3 values from the `moospmV3_cal` CSVs are stored as O3 CALIBRATED entries with `processor=''`. No processor class is needed. `get_default_calibration` returns `''` when no `DefaultCalibration` record exists for `(VOZBox, O3)`, so these entries correctly update `LatestEntry` and appear in the API until our own calibration is operational. The unique constraint `(monitor, timestamp, sensor, stage, processor)` keeps them distinct from pipeline-produced entries.
+
+**Internal calibration (future, `VOZBox_O3_xyz` in `camp/apps/calibrations/processors.py`):**
+A future processor trained against a reference FEM O3 instrument, with temperature and humidity as covariates (matching the Quinn Research formula structure). Wired into `ENTRY_CONFIG` as a RAW → CALIBRATED processor. Inactive until a `DefaultCalibration` record for `(VOZBox, O3)` is registered. Once active, its CALIBRATED entries take over `LatestEntry`; the external entries remain in the DB but no longer update the "latest" pointer.
+
+The calibrated CSV columns (`C1_T`, `C2_rh`, `C3_o3`, `b`) suggest a multivariate linear form using temperature, humidity, and raw O3 as inputs — confirming with Quinn Research on the exact formula would be a prerequisite to building the internal calibration.
 
 ## Tasks (`tasks.py`)
 
