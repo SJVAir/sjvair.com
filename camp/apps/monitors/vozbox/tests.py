@@ -8,9 +8,11 @@ from unittest.mock import MagicMock, patch
 from django.contrib.gis.geos import Point
 from django.test import TestCase
 
+from camp.apps.calibrations import processors as cal_processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.vozbox.api import VozBoxClient
 from camp.apps.monitors.vozbox.models import VOZBox
+from camp.apps.monitors.vozbox.tasks import process_device
 
 
 DAILY_CSV = """\
@@ -257,9 +259,6 @@ class VOZBoxModelTests(TestCase):
         assert pm25_a_entries == []
 
 
-from camp.apps.monitors.vozbox.tasks import process_device
-
-
 class ProcessDeviceTests(TestCase):
     def _make_rows(self, coreid, count=2):
         rows = []
@@ -322,9 +321,6 @@ class ProcessDeviceTests(TestCase):
         monitor = VOZBox.objects.get(sensor_id=coreid)
         pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').count()
         assert pm25_count == 3
-
-
-from camp.apps.calibrations import processors as cal_processors
 
 
 class O3VOZBoxProcessorTests(TestCase):
