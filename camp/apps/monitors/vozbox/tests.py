@@ -257,6 +257,73 @@ class VOZBoxModelTests(TestCase):
         assert pm25_a_entries == []
 
 
+from camp.apps.monitors.vozbox.tasks import process_device
+
+
+class ProcessDeviceTests(TestCase):
+    def _make_rows(self, coreid, count=2):
+        rows = []
+        for i in range(count):
+            rows.append({
+                'timestamp': datetime(2025, 6, 9, i, 0, 0, tzinfo=timezone.utc),
+                'pm1_a': 7.0, 'pm1_b': 4.0,
+                'pm25_a': 10.0, 'pm25_b': 4.0,
+                'pm10_a': 10.0, 'pm10_b': 4.0,
+                'temperature': 36.0,
+                'humidity': 26.0,
+                'o3': 70.0,
+                'o3_cal': None,
+                'latitude': 36.785328,
+                'longitude': -119.773125,
+            })
+        return rows
+
+    def test_process_device_creates_monitor_on_first_encounter(self):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        rows = self._make_rows(coreid)
+        process_device(coreid, rows)
+        assert VOZBox.objects.filter(sensor_id=coreid).exists()
+
+    def test_process_device_uses_existing_monitor(self):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        monitor = VOZBox.objects.create(
+            sensor_id=coreid,
+            name='Coalinga',
+            location='outside',
+        )
+        rows = self._make_rows(coreid)
+        process_device(coreid, rows)
+        assert VOZBox.objects.filter(sensor_id=coreid).count() == 1
+        monitor.refresh_from_db()
+        assert monitor.name == 'Coalinga'
+
+    def test_process_device_creates_entries(self):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        rows = self._make_rows(coreid, count=1)
+        process_device(coreid, rows)
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        assert entry_models.PM25.objects.filter(monitor=monitor).exists()
+        assert entry_models.O3.objects.filter(monitor=monitor).exists()
+
+    def test_process_device_deduplicates_rows(self):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        rows = self._make_rows(coreid, count=1)
+        process_device(coreid, rows)
+        process_device(coreid, rows)   # second call with same rows
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').count()
+        assert pm25_count == 1   # no duplicates
+
+    def test_process_device_skips_rows_before_latest(self):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        rows = self._make_rows(coreid, count=3)
+        process_device(coreid, rows[:2])   # process first 2
+        process_device(coreid, rows)        # process all 3 (first 2 already exist)
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').count()
+        assert pm25_count == 3
+
+
 from camp.apps.calibrations import processors as cal_processors
 
 
