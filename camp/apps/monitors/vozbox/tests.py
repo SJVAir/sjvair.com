@@ -1,7 +1,7 @@
 import csv
 import io
 import tempfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -97,3 +97,77 @@ class VozBoxClientParseTests(TestCase):
             result = client.parse_csv(path)
 
         assert result == {}
+
+
+class VozBoxClientHTTPTests(TestCase):
+    def _make_response(self, status_code=200, text=''):
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.text = text
+        resp.json.return_value = []
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    @patch('camp.apps.monitors.vozbox.api.requests.Session')
+    def test_get_daily_data_returns_none_on_404(self, MockSession):
+        MockSession.return_value.__enter__ = lambda s: s
+        MockSession.return_value.get.return_value = self._make_response(404)
+
+        with VozBoxClient() as client:
+            result = client.get_daily_data(date(2025, 6, 9))
+
+        assert result is None
+
+    @patch('camp.apps.monitors.vozbox.api.requests.Session')
+    def test_get_daily_data_parses_csv_on_200(self, MockSession):
+        MockSession.return_value.__enter__ = lambda s: s
+        MockSession.return_value.get.return_value = self._make_response(200, text=DAILY_CSV)
+
+        with VozBoxClient() as client:
+            result = client.get_daily_data(date(2025, 6, 9))
+
+        assert result is not None
+        assert 'e00fce68f12da1a0c5de6248' in result
+
+    @patch('camp.apps.monitors.vozbox.api.requests.Session')
+    def test_list_daily_files_returns_sorted_dates(self, MockSession):
+        api_response = MagicMock()
+        api_response.status_code = 200
+        api_response.raise_for_status = MagicMock()
+        api_response.json.return_value = [
+            {'name': 'moospmV3_2025-06-09.csv'},
+            {'name': 'moospmV3_2025-06-08.csv'},
+            {'name': '.RData'},
+            {'name': 'carb_data_cleaning.Rout'},
+        ]
+        MockSession.return_value.__enter__ = lambda s: s
+        MockSession.return_value.get.return_value = api_response
+
+        with VozBoxClient() as client:
+            result = client.list_daily_files()
+
+        assert result == [date(2025, 6, 8), date(2025, 6, 9)]
+
+    @patch('camp.apps.monitors.vozbox.api.requests.Session')
+    def test_list_cal_files_returns_sorted_date_hour_tuples(self, MockSession):
+        api_response = MagicMock()
+        api_response.status_code = 200
+        api_response.raise_for_status = MagicMock()
+        api_response.json.return_value = [
+            {'name': 'moospmV3_cal_2025-06-20T15.csv'},
+            {'name': 'moospmV3_cal_2025-06-20T14.csv'},
+        ]
+        MockSession.return_value.__enter__ = lambda s: s
+        MockSession.return_value.get.return_value = api_response
+
+        with VozBoxClient() as client:
+            result = client.list_cal_files()
+
+        assert result == [(date(2025, 6, 20), 14), (date(2025, 6, 20), 15)]
+
+    @patch('camp.apps.monitors.vozbox.api.requests.Session')
+    def test_context_manager_cleans_up_tmpdir(self, MockSession):
+        with VozBoxClient() as client:
+            tmpdir_name = client._tmpdir.name
+            assert Path(tmpdir_name).exists()
+        assert not Path(tmpdir_name).exists()
