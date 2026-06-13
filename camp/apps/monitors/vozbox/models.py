@@ -118,6 +118,8 @@ class VOZBox(Monitor):
         return entries
 
     def create_entry(self, EntryModel, **data):
-        if any(v is None for v in data.values()):
+        skip_keys = {'timestamp', 'sensor'}
+        values = {k: v for k, v in data.items() if k not in skip_keys}
+        if any(v is None for v in values.values()):
             return None
         return super().create_entry(EntryModel, **data)

@@ -5,9 +5,12 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from django.contrib.gis.geos import Point
 from django.test import TestCase
 
+from camp.apps.entries import models as entry_models
 from camp.apps.monitors.vozbox.api import VozBoxClient
+from camp.apps.monitors.vozbox.models import VOZBox
 
 
 DAILY_CSV = """\
@@ -171,11 +174,6 @@ class VozBoxClientHTTPTests(TestCase):
             tmpdir_name = client._tmpdir.name
             assert Path(tmpdir_name).exists()
         assert not Path(tmpdir_name).exists()
-
-
-from django.contrib.gis.geos import Point
-from camp.apps.monitors.vozbox.models import VOZBox
-from camp.apps.entries import models as entry_models
 
 
 class VOZBoxModelTests(TestCase):
