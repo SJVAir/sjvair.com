@@ -255,3 +255,39 @@ class VOZBoxModelTests(TestCase):
         entries = monitor.create_entries(row)
         pm25_a_entries = [e for e in entries if isinstance(e, entry_models.PM25) and e.sensor == 'a']
         assert pm25_a_entries == []
+
+
+from camp.apps.calibrations import processors as cal_processors
+
+
+class O3VOZBoxProcessorTests(TestCase):
+    def test_processor_is_registered(self):
+        assert 'O3_VOZBox' in cal_processors
+
+    def test_processor_name(self):
+        assert cal_processors.O3_VOZBox.name == 'O3_VOZBox'
+
+    def test_processor_entry_model_is_o3(self):
+        assert cal_processors.O3_VOZBox.entry_model == entry_models.O3
+
+    def test_processor_required_stage_is_raw(self):
+        assert cal_processors.O3_VOZBox.required_stage == entry_models.O3.Stage.RAW
+
+    def test_processor_next_stage_is_calibrated(self):
+        assert cal_processors.O3_VOZBox.next_stage == entry_models.O3.Stage.CALIBRATED
+
+    def test_processor_returns_none_when_no_calibration(self):
+        monitor = VOZBox.objects.create(
+            sensor_id='e00fce68test0001',
+            name='Test O3',
+            location='outside',
+        )
+        o3_entry = entry_models.O3.objects.create(
+            monitor=monitor,
+            location='outside',
+            sensor='1',
+            stage=entry_models.O3.Stage.RAW,
+            value=25.0,
+        )
+        result = cal_processors.O3_VOZBox(o3_entry).run()
+        assert result is None
