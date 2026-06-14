@@ -63,7 +63,7 @@ class VOZBox(Monitor):
                 entry_models.O3.Stage.RAW,
                 entry_models.O3.Stage.CALIBRATED,
             ],
-            'default_stage': entry_models.O3.Stage.RAW,
+            'default_stage': entry_models.O3.Stage.CALIBRATED,
             'processors': {
                 entry_models.O3.Stage.RAW: [processors.O3_VOZBox],
             },

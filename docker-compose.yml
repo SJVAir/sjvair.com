@@ -99,6 +99,7 @@ services:
     build:
       context: .
       target: test
+    image: sjvair-com-test:latest
     command: pytest
     env_file:
       - .env.test

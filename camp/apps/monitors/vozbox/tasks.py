@@ -19,13 +19,17 @@ def import_realtime():
     yesterday = today - timedelta(days=1)
 
     combined = {}
-    with VozBoxClient() as client:
-        for d in [yesterday, today]:
-            data = client.get_daily_data(d)
-            if data is None:
-                continue
-            for coreid, rows in data.items():
-                combined.setdefault(coreid, []).extend(rows)
+    try:
+        with VozBoxClient() as client:
+            for d in [yesterday, today]:
+                data = client.get_daily_data(d)
+                if data is None:
+                    continue
+                for coreid, rows in data.items():
+                    combined.setdefault(coreid, []).extend(rows)
+    except Exception as e:
+        print(f'\n=== VOZbox Import Error: {e}\n')
+        return
 
     for coreid, rows in combined.items():
         process_device.schedule([coreid, rows], delay=1, priority=40)

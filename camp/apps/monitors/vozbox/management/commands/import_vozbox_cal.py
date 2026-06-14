@@ -42,7 +42,7 @@ class Command(BaseCommand):
 
                     for row in rows:
                         o3_cal = row.get('o3_cal')
-                        if o3_cal is None:
+                        if o3_cal is None or o3_cal < 0:
                             continue
                         monitor.create_entry(
                             entry_models.O3,
@@ -52,4 +52,3 @@ class Command(BaseCommand):
                             value=o3_cal,
                         )
 
-                    monitor.save()

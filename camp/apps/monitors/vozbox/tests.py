@@ -427,6 +427,21 @@ class ImportVozboxCalTests(TestCase):
         instance.get_cal_data.assert_called_once_with(date(2025, 6, 20), 15)
 
     @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
+    def test_skips_row_when_o3_cal_is_negative(self, MockClient):
+        rows = self._cal_rows()
+        rows['e00fce682bbf742cd0b6768a'][0]['o3_cal'] = -999.0
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
+        instance.get_cal_data.return_value = rows
+
+        call_command('import_vozbox_cal')
+
+        assert not entry_models.O3.objects.filter(
+            monitor=self.monitor,
+            stage=entry_models.O3.Stage.CALIBRATED,
+        ).exists()
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
     def test_skips_row_when_o3_cal_is_none(self, MockClient):
         rows = self._cal_rows()
         rows['e00fce682bbf742cd0b6768a'][0]['o3_cal'] = None
