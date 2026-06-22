@@ -2,10 +2,10 @@
 # yarn lockfile v1
 
 
-"@sjvair/monitor-map@^3.0.1":
-  version "3.0.1"
-  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-3.0.1.tgz#68f40d8af63e9222171c6ad16b588a9349990aa8"
-  integrity sha512-zMUSwZQ4cVviqBpnXofndmQXvRPfhmejNk8UL1pqpHP2OPL8IzpSXltWRo4Z8iZCi+UmLIgBFIxA9DfX6YSzzw==
+"@sjvair/monitor-map@^3.0.2":
+  version "3.0.2"
+  resolved "https://registry.yarnpkg.com/@sjvair/monitor-map/-/monitor-map-3.0.2.tgz#925ff3ca4c77de5167838ae7bcd0f22b6aba619a"
+  integrity sha512-Nh1UeZxoyAU+1PLzb4I7nPpcA0QYcqivvCYpZ+0YXRFiMhGsTk8N4lTwCBW3AFqns9YUvhktFv2f9S2Zbm/fAA==
   dependencies:
     "@turf/clusters-dbscan" "^7.3.5"
     sv-router "^0.16.2"
