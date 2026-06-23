@@ -10,6 +10,7 @@ from health_check.exceptions import ServiceWarning, ServiceReturnedUnexpectedRes
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.airgradient.models import AirGradient, Place
 from camp.apps.monitors.airnow.models import AirNow
+from camp.apps.monitors.aqlite.models import AQLite, Organization
 from camp.apps.monitors.aqview.models import AQview
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
@@ -81,6 +82,18 @@ class CCACBAMHealthCheck(MonitorHealthCheck):
     network: str = dataclasses.field(default='CCAC BAM-1022', repr=False)
     model: type = dataclasses.field(default=BAM1022, repr=False)
     limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=2), repr=False)
+
+
+@dataclasses.dataclass(repr=False)
+class AQLiteHealthCheck(MonitorHealthCheck):
+    network: str = dataclasses.field(default='AQLite', repr=False)
+    model: type = dataclasses.field(default=AQLite, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(minutes=10), repr=False)
+
+    def run(self):
+        if not Organization.objects.filter(is_enabled=True).exists():
+            raise ServiceWarning('No enabled organizations are configured.')
+        super().run()
 
 
 @dataclasses.dataclass(repr=False)

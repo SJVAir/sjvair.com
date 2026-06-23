@@ -15,6 +15,7 @@ from health_check.views import HealthCheckView
 from camp.apps.monitors.health_checks import (
     AirGradientHealthCheck,
     AirNowHealthCheck,
+    AQLiteHealthCheck,
     AQviewHealthCheck,
     CCACBAMHealthCheck,
     PurpleAirHealthCheck,
@@ -61,6 +62,7 @@ urlpatterns += [path('system-status/', include(([
         checks=[
             AirGradientHealthCheck,
             AirNowHealthCheck,
+            AQLiteHealthCheck,
             AQviewHealthCheck,
             CCACBAMHealthCheck,
             PurpleAirHealthCheck,
