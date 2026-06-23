@@ -48,8 +48,7 @@ class AQLiteAPI:
         response = self.get(f'uploads/primary/time-series/{device_id}', params=params)
         return response.json()
 
-    @staticmethod
-    def parse_response(data):
+    def parse_response(self, data):
         """Normalize the grouped time-series response into per-timestamp dicts."""
         uploads = {}
         for key, points in data.items():
