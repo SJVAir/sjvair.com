@@ -37,7 +37,7 @@ class AQLiteAPI:
     def get(self, path, **kwargs):
         return self.request(path, 'get', **kwargs)
 
-    def get_time_series(self, device_id, start=None, end=None, average=0):
+    def get_time_series(self, device_id, start=None, end=None, average=0, parse=False):
         end = end or timezone.now()
         start = start or end - timedelta(hours=24)
         params = {
@@ -46,7 +46,8 @@ class AQLiteAPI:
             'end': end.isoformat(),
         }
         response = self.get(f'uploads/primary/time-series/{device_id}', params=params)
-        return response.json()
+        data = response.json()
+        return self.parse_response(data) if parse else data
 
     def parse_response(self, data):
         """Normalize the grouped time-series response into per-timestamp dicts."""
