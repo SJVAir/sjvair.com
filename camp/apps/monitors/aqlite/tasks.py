@@ -33,14 +33,14 @@ def process_data(monitor_id):
     end = timezone.now()
     start = end - timedelta(minutes=10)
 
-    response = monitor.organization.api.get_time_series(
+    payloads = monitor.organization.api.get_time_series(
         device_id=monitor.device_id,
         start=start,
         end=end,
         average=0,
     )
 
-    for payload in monitor.organization.api.parse_response(response):
+    for payload in payloads:
         entries = monitor.create_entries(payload)
         for entry in entries:
             monitor.process_entry_pipeline(entry)

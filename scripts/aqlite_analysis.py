@@ -50,8 +50,7 @@ def parse_date(s):
 
 def fetch_ozone(org, device_id, start, end):
     """Return {timestamp_str: float_ppb} for one device."""
-    data = org.api.get_time_series(f'AQLite-{device_id}', start, end, average=0)
-    records = org.api.parse_response(data)
+    records = org.api.get_time_series(f'AQLite-{device_id}', start, end, average=0)
     result = {}
     for rec in records:
         ts = rec.get('timestamp')

@@ -71,14 +71,12 @@ class Command(BaseCommand):
     def _import_monitor(self, monitor, start, end, now):
         self.stdout.write(f'\n{monitor.device_id}')
 
-        response = monitor.organization.api.get_time_series(
+        payloads = monitor.organization.api.get_time_series(
             device_id=monitor.device_id,
             start=start,
             end=end,
             average=0,
         )
-
-        payloads = monitor.organization.api.parse_response(response)
         self.stdout.write(f'  {len(payloads)} raw records')
 
         created = 0

@@ -37,7 +37,7 @@ class AQLiteAPI:
     def get(self, path, **kwargs):
         return self.request(path, 'get', **kwargs)
 
-    def get_time_series(self, device_id, start=None, end=None, average=0, parse=False):
+    def get_time_series(self, device_id, start=None, end=None, average=0, parse=True):
         end = end or timezone.now()
         start = start or end - timedelta(hours=24)
         params = {
