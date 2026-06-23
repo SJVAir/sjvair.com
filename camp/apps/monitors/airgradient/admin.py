@@ -1,6 +1,6 @@
 from django.contrib.gis import admin
 from django.urls import reverse
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
 
 from camp.apps.monitors.admin import LCSMonitorAdmin
 from camp.apps.monitors.airgradient.models import AirGradient, Place
@@ -29,6 +29,6 @@ class AirGradientAdmin(LCSMonitorAdmin):
         if not instance.place:
             return '-'
         url = reverse('admin:airgradient_place_change', args=[instance.place.pk])
-        return mark_safe(f'<a href="{url}">{instance.place.name}</a>')
+        return format_html('<a href="{}">{}</a>', url, instance.place.name)
     get_place.short_description = 'Place'
     get_place.admin_order_field = 'place__name'

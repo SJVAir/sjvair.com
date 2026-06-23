@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.urls import reverse
-from django.utils.safestring import mark_safe
+from django.utils.html import format_html
 
 from camp.apps.monitors.admin import MonitorAdmin
 from camp.apps.monitors.aqlite.models import AQLite, Organization
@@ -28,6 +28,6 @@ class AQLiteAdmin(MonitorAdmin):
         if not instance.organization:
             return '-'
         url = reverse('admin:aqlite_organization_change', args=[instance.organization.pk])
-        return mark_safe(f'<a href="{url}">{instance.organization.name}</a>')
+        return format_html('<a href="{}">{}</a>', url, instance.organization.name)
     get_organization.short_description = 'Organization'
     get_organization.admin_order_field = 'organization__name'
