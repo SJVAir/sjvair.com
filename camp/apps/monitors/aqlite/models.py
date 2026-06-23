@@ -105,19 +105,6 @@ class AQLite(Monitor):
     class Meta:
         verbose_name = 'AQLite'
 
-    @staticmethod
-    def parse_response(data):
-        """Normalize the grouped time-series response into per-timestamp dicts."""
-        uploads = {}
-        for key, points in data.items():
-            _, name = key.split(':', 1)
-            for point in points:
-                upload_id = point['dataPoint']['uploadId']
-                if upload_id not in uploads:
-                    uploads[upload_id] = {'timestamp': point['averagedStartDate']}
-                uploads[upload_id][name] = point['dataPoint']['value']
-        return list(uploads.values())
-
     def _update_position(self, lat, lon):
         new_point = Point(lon, lat)
         if self.position is not None:

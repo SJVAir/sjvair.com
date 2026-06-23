@@ -47,3 +47,16 @@ class AQLiteAPI:
         }
         response = self.get(f'uploads/primary/time-series/{device_id}', params=params)
         return response.json()
+
+    @staticmethod
+    def parse_response(data):
+        """Normalize the grouped time-series response into per-timestamp dicts."""
+        uploads = {}
+        for key, points in data.items():
+            _, name = key.split(':', 1)
+            for point in points:
+                upload_id = point['dataPoint']['uploadId']
+                if upload_id not in uploads:
+                    uploads[upload_id] = {'timestamp': point['averagedStartDate']}
+                uploads[upload_id][name] = point['dataPoint']['value']
+        return list(uploads.values())

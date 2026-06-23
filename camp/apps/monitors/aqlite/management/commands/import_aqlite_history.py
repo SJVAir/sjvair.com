@@ -78,7 +78,7 @@ class Command(BaseCommand):
             average=0,
         )
 
-        payloads = monitor.parse_response(response)
+        payloads = monitor.organization.api.parse_response(response)
         self.stdout.write(f'  {len(payloads)} raw records')
 
         created = 0

@@ -40,7 +40,7 @@ def process_data(monitor_id):
         average=0,
     )
 
-    for payload in monitor.parse_response(response):
+    for payload in monitor.organization.api.parse_response(response):
         entries = monitor.create_entries(payload)
         for entry in entries:
             monitor.process_entry_pipeline(entry)
