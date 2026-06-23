@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.utils.timesince import timesince
 
 from health_check.base import HealthCheck
-from health_check.exceptions import ServiceWarning, ServiceReturnedUnexpectedResult
+from health_check.exceptions import ServiceReturnedUnexpectedResult, ServiceWarning
 
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.airgradient.models import AirGradient, Place
@@ -59,7 +59,7 @@ class AirGradientHealthCheck(MonitorHealthCheck):
 
     def run(self):
         if not Place.objects.exists():
-            raise ServiceWarning('No API tokens are configured.')
+            return
         super().run()
 
 
@@ -83,6 +83,11 @@ class CCACBAMHealthCheck(MonitorHealthCheck):
     model: type = dataclasses.field(default=BAM1022, repr=False)
     limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=2), repr=False)
 
+    def run(self):
+        if not BAM1022.objects.exists():
+            return
+        super().run()
+
 
 @dataclasses.dataclass(repr=False)
 class AQLiteHealthCheck(MonitorHealthCheck):
@@ -92,7 +97,7 @@ class AQLiteHealthCheck(MonitorHealthCheck):
 
     def run(self):
         if not Organization.objects.filter(is_enabled=True).exists():
-            raise ServiceWarning('No enabled organizations are configured.')
+            return
         super().run()
 
 
