@@ -9,9 +9,6 @@ from camp.utils.forms import DateRangeForm
 
 @admin.register(AirNow)
 class AirNowAdmin(MonitorAdmin):
-    list_display = MonitorAdmin.list_display[:]
-    list_display.remove('get_health_grade')
-
     fields = MonitorAdmin.fields
     readonly_fields = ['name', 'location', 'position', 'county', 'get_map']
 

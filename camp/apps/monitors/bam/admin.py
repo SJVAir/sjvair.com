@@ -8,5 +8,4 @@ from camp.apps.monitors.bam.models import BAM1022
 
 @admin.register(BAM1022)
 class BAM1022Admin(MonitorAdmin):
-    list_display = MonitorAdmin.list_display[:]
-    list_display.remove('get_health_grade')
+    pass
