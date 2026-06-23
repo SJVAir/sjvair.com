@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
+from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import Monitor
 from camp.utils.datetime import make_aware
@@ -53,9 +54,16 @@ class AQLite(Monitor):
     ENTRY_CONFIG = {
         entry_models.O3: {
             'fields': {'value': 'OZONE'},
-            'allowed_stages': [entry_models.O3.Stage.RAW],
-            'default_stage': entry_models.O3.Stage.RAW,
-            'alerts': {'stage': entry_models.O3.Stage.RAW},
+            'allowed_stages': [
+                entry_models.O3.Stage.RAW,
+                entry_models.O3.Stage.CLEANED,
+                entry_models.O3.Stage.CALIBRATED,
+            ],
+            'default_stage': entry_models.O3.Stage.CALIBRATED,
+            'processors': {
+                entry_models.O3.Stage.RAW: [processors.AQLiteRawCleaner],
+            },
+            'alerts': {'stage': entry_models.O3.Stage.CALIBRATED},
         },
         entry_models.Temperature: {
             'fields': {'celsius': 'TEMP'},
