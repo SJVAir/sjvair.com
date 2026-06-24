@@ -12,10 +12,10 @@ __all__ = ['AQLiteRawCleaner', 'AQLiteHourlyAggregator']
 # Negatives in [-10, 0) are valid near-zero noise — keep them signed so the
 # hourly mean stays unbiased. Clamp happens only in the aggregator, after averaging.
 MIN_VALID = -10   # ppb — below this is an instrument fault, not noise
-MAX_VALID = 500   # ppb — FEM certification boundary; comfortably above real SJV peaks
+MAX_VALID = 1000  # ppb — instrument upper limit; comfortably above real SJV peaks
 
 # A gap longer than this between consecutive RAW entries implies a restart.
-GAP_THRESHOLD = timedelta(minutes=30)
+GAP_THRESHOLD = timedelta(minutes=10)
 
 # How long after a detected restart to discard readings while the lamp stabilizes.
 WARMUP_DURATION = timedelta(minutes=20)

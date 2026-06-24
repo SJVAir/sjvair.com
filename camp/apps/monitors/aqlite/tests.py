@@ -57,10 +57,10 @@ class AQLiteRawCleanerTests(TestCase):
     # --- Range checks ---
 
     def test_discards_at_ceiling(self):
-        assert self._clean(500) is None
+        assert self._clean(1000) is None
 
     def test_discards_above_ceiling(self):
-        assert self._clean(600) is None
+        assert self._clean(1001) is None
 
     def test_discards_below_floor(self):
         assert self._clean(-11) is None
@@ -110,7 +110,7 @@ class AQLiteRawCleanerTests(TestCase):
         # Restart 10 minutes ago — this entry is 10 min post-restart, still warming up.
         history = [
             (self.now - timedelta(minutes=45), 5),   # before the gap
-            (self.now - timedelta(minutes=10), 5),   # first entry after restart (35-min gap)
+            (self.now - timedelta(minutes=10), 5),   # first entry after restart (35-min gap > 10-min threshold)
         ]
         result = self._clean(5, history=history)
         assert result is None
@@ -192,7 +192,7 @@ class AQLitePipelineTests(TestCase):
         assert float(cleaned[0].value) == 15.0
 
     def test_invalid_raw_entry_produces_no_cleaned(self):
-        entry = make_raw(self.monitor, self.now, 999)
+        entry = make_raw(self.monitor, self.now, 1000)
         entry.refresh_from_db()
         results = self.monitor.process_entry_pipeline(entry)
         assert not any(e.stage == O3.Stage.CLEANED for e in results)
