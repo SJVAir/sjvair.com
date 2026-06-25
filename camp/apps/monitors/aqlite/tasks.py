@@ -1,11 +1,13 @@
 from datetime import timedelta
 
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
 from camp.apps.monitors.aqlite.models import AQLite
+from camp.utils.datetime import make_aware
 
 
 @db_periodic_task(crontab(minute='*/5'), priority=50)
@@ -28,10 +30,13 @@ def update_realtime():
 
 @db_task()
 def process_data(monitor_id):
+    from camp.apps.calibrations import processors
+
     monitor = AQLite.objects.select_related('organization').get(pk=monitor_id)
 
     end = timezone.now()
     start = end - timedelta(minutes=10)
+    current_hour = end.replace(minute=0, second=0, microsecond=0)
 
     payloads = monitor.organization.api.get_time_series(
         device_id=monitor.device_id,
@@ -40,10 +45,20 @@ def process_data(monitor_id):
         average=0,
     )
 
+    affected_hours = set()
     for payload in payloads:
         entries = monitor.create_entries(payload)
         for entry in entries:
             monitor.process_entry_pipeline(entry)
+        ts = make_aware(parse_datetime(payload['timestamp']))
+        affected_hours.add(ts.replace(minute=0, second=0, microsecond=0))
+
+    # Aggregate any complete affected hours. Handles backfilled entries whose
+    # historical hours won't be revisited by the scheduled aggregate_hourly task.
+    for hour_start in sorted(affected_hours):
+        hour_end = hour_start + timedelta(hours=1)
+        if hour_end <= current_hour:
+            processors.AQLiteHourlyAggregator.aggregate(monitor, hour_start, hour_end)
 
     monitor.save()
 
