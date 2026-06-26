@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.gis.geos import Point
 from django.test import TestCase
@@ -7,7 +8,9 @@ from django.utils import timezone
 from camp.apps.calibrations import processors
 from camp.apps.calibrations.core.processors.o3.aqlite import AQLiteHourlyAggregator
 from camp.apps.entries.models import O3
-from camp.apps.monitors.aqlite.models import AQLite
+from camp.apps.monitors.aqlite.api import AQLiteAPI
+from camp.apps.monitors.aqlite.models import AQLite, Organization
+from camp.apps.monitors.aqlite.tasks import fill_monitor_gaps, process_data
 
 
 def make_monitor():
@@ -16,6 +19,17 @@ def make_monitor():
         device_id='AQLite-TEST',
         position=Point(-119.8, 36.7),
         location='outside',
+    )
+
+
+def make_monitor_with_org():
+    org = Organization.objects.create(name='Test Org', key='test-key')
+    return AQLite.objects.create(
+        name='Test AQLite (Org)',
+        device_id='AQLite-TEST-ORG',
+        position=Point(-119.8, 36.7),
+        location='outside',
+        organization=org,
     )
 
 
@@ -196,3 +210,101 @@ class AQLitePipelineTests(TestCase):
         entry.refresh_from_db()
         results = self.monitor.process_entry_pipeline(entry)
         assert not any(e.stage == O3.Stage.CLEANED for e in results)
+
+
+class AQLiteProcessDataTests(TestCase):
+    def setUp(self):
+        self.monitor = make_monitor_with_org()
+        self.now = timezone.now().replace(second=0, microsecond=0)
+
+    def test_no_entries_passes_none_start(self):
+        with patch.object(AQLiteAPI, 'get_time_series', return_value=[]) as mock_gts:
+            process_data(self.monitor.pk)
+        _, kwargs = mock_gts.call_args
+        assert kwargs['start'] is None
+
+    def test_uses_latest_raw_timestamp_as_start(self):
+        ts = self.now - timedelta(minutes=30)
+        make_raw(self.monitor, ts, 5)
+        with patch.object(AQLiteAPI, 'get_time_series', return_value=[]) as mock_gts:
+            process_data(self.monitor.pk)
+        _, kwargs = mock_gts.call_args
+        assert kwargs['start'] == ts
+
+    def test_caps_start_at_24h(self):
+        # Latest RAW entry older than 24h → start should be capped at now-24h.
+        old_ts = self.now - timedelta(days=7)
+        make_raw(self.monitor, old_ts, 5)
+        with patch('django.utils.timezone.now', return_value=self.now):
+            with patch.object(AQLiteAPI, 'get_time_series', return_value=[]) as mock_gts:
+                process_data(self.monitor.pk)
+        _, kwargs = mock_gts.call_args
+        assert kwargs['start'] >= self.now - timedelta(hours=24)
+
+    def test_no_new_data_skips_save(self):
+        with patch.object(AQLiteAPI, 'get_time_series', return_value=[]):
+            with patch.object(AQLite, 'save') as mock_save:
+                process_data(self.monitor.pk)
+        mock_save.assert_not_called()
+
+
+class AQLiteFillMonitorGapsTests(TestCase):
+    def setUp(self):
+        self.monitor = make_monitor_with_org()
+        self.now = timezone.now().replace(second=0, microsecond=0)
+        self.current_hour = self.now.replace(minute=0, second=0, microsecond=0)
+        self.window_start = self.current_hour - timedelta(hours=24)
+
+    def _run_with_mock_api(self, return_value=None):
+        with patch('django.utils.timezone.now', return_value=self.now):
+            with patch.object(AQLiteAPI, 'get_time_series', return_value=return_value or []) as mock_gts:
+                fill_monitor_gaps(self.monitor.pk)
+        return mock_gts
+
+    def test_no_entries_calls_api_for_full_window(self):
+        mock_gts = self._run_with_mock_api()
+        mock_gts.assert_called_once()
+        _, kwargs = mock_gts.call_args
+        assert kwargs['start'] == self.window_start + timedelta(seconds=1)
+        assert kwargs['end'] == self.now - timedelta(seconds=1)
+
+    def test_gap_calls_api_with_offset_window(self):
+        t1 = self.now - timedelta(hours=3)  # last entry before gap
+        t2 = self.now - timedelta(hours=1)  # first entry after gap
+        make_raw(self.monitor, t1, 5)
+        make_raw(self.monitor, t2, 5)
+
+        mock_gts = self._run_with_mock_api()
+
+        # Multiple gaps will exist (leading + mid + trailing), so find the
+        # specific one bracketed by t1 and t2.
+        all_kwargs = [kw for _, kw in mock_gts.call_args_list]
+        mid_gap = next(
+            (kw for kw in all_kwargs if kw['start'] == t1 + timedelta(seconds=1)),
+            None,
+        )
+        assert mid_gap is not None
+        assert mid_gap['end'] == t2 - timedelta(seconds=1)
+
+    def test_backfill_creates_raw_entry(self):
+        t1 = self.now - timedelta(hours=2)
+        make_raw(self.monitor, t1, 5)
+
+        backfill_ts = t1 + timedelta(minutes=30)
+        payload = {
+            'timestamp': backfill_ts.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'OZONE': 25.3,
+            'LAT': str(self.monitor.position.y),
+            'LON': str(self.monitor.position.x),
+        }
+        self._run_with_mock_api(return_value=[payload])
+
+        assert O3.objects.filter(monitor=self.monitor, stage=O3.Stage.RAW).count() == 2
+
+    def test_no_backfill_skips_save(self):
+        make_raw(self.monitor, self.now - timedelta(hours=2), 5)
+        with patch('django.utils.timezone.now', return_value=self.now):
+            with patch.object(AQLiteAPI, 'get_time_series', return_value=[]):
+                with patch.object(AQLite, 'save') as mock_save:
+                    fill_monitor_gaps(self.monitor.pk)
+        mock_save.assert_not_called()

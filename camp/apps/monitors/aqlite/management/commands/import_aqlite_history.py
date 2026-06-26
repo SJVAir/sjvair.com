@@ -71,23 +71,22 @@ class Command(BaseCommand):
     def _import_monitor(self, monitor, start, end, now):
         self.stdout.write(f'\n{monitor.device_id}')
 
-        payloads = monitor.organization.api.get_time_series(
+        records = 0
+        created = 0
+        for payload in monitor.organization.api.get_time_series(
             device_id=monitor.device_id,
             start=start,
             end=end,
             average=0,
-        )
-        self.stdout.write(f'  {len(payloads)} raw records')
-
-        created = 0
-        for payload in payloads:
+        ):
+            records += 1
             entries = monitor.create_entries(payload)
             for entry in entries:
                 monitor.process_entry_pipeline(entry)
                 created += 1
 
         monitor.save()
-        self.stdout.write(f'  {created} entries created')
+        self.stdout.write(f'  {records} raw records, {created} entries created')
 
         # Aggregate each complete hour in the range.
         # Start at the first full hour boundary after `start`.
