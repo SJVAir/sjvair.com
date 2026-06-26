@@ -187,7 +187,7 @@ class AirGradient(LCSMixin, Monitor):
             data = self.get_current_measure()
 
         self.name = html.unescape(data['locationName']).strip()
-        self.device = data.get('model', self.device)
+        self.device = data.get('model') or self.device
         self.location = self.get_probable_location()
 
         serialno = data.get('serialno')
