@@ -85,7 +85,8 @@ class Command(BaseCommand):
                 monitor.process_entry_pipeline(entry)
                 created += 1
 
-        monitor.save()
+        if records:
+            monitor.save()
         self.stdout.write(f'  {records} raw records, {created} entries created')
 
         # Aggregate each complete hour in the range.

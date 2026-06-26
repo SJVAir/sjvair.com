@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+import requests
+
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -16,11 +18,7 @@ def update_realtime():
     start = timezone.now()
     print(f'\n=== AQLite Import Start: {start.time()}\n')
 
-    monitors = (AQLite.objects
-        .select_related('organization')
-        .filter(organization__isnull=False, organization__is_enabled=True)
-        .get_active()
-    )
+    monitors = AQLite.objects.filter(organization__isnull=False, organization__is_enabled=True)
 
     for monitor in monitors:
         process_data.schedule([monitor.pk], delay=1, priority=40)
@@ -57,12 +55,15 @@ def process_data(monitor_id):
     )
 
     affected_hours = set()
-    for payload in payloads:
-        entries = monitor.create_entries(payload)
-        for entry in entries:
-            monitor.process_entry_pipeline(entry)
-        ts = make_aware(parse_datetime(payload['timestamp']))
-        affected_hours.add(ts.replace(minute=0, second=0, microsecond=0))
+    try:
+        for payload in payloads:
+            entries = monitor.create_entries(payload)
+            for entry in entries:
+                monitor.process_entry_pipeline(entry)
+            ts = make_aware(parse_datetime(payload['timestamp']))
+            affected_hours.add(ts.replace(minute=0, second=0, microsecond=0))
+    except requests.exceptions.RequestException as e:
+        print(f'[AQLite] API error for {monitor.device_id}: {e}')
 
     if affected_hours:
         # Aggregate any complete affected hours. Handles backfilled entries whose
@@ -94,8 +95,8 @@ def aggregate_hourly():
 def aggregate_monitor_hour(monitor_id, hour_start, hour_end):
     from camp.apps.calibrations import processors
     monitor = AQLite.objects.get(pk=monitor_id)
-    processors.AQLiteHourlyAggregator.aggregate(monitor, hour_start, hour_end)
-    monitor.save()
+    if processors.AQLiteHourlyAggregator.aggregate(monitor, hour_start, hour_end):
+        monitor.save()
 
 
 # Anything longer than this between consecutive RAW entries is treated as a gap.
@@ -144,18 +145,20 @@ def fill_monitor_gaps(monitor_id):
 
     affected_hours = set()
     for gap_start, gap_end in gaps:
-        payloads = monitor.organization.api.get_time_series(
-            device_id=monitor.device_id,
-            start=gap_start,
-            end=gap_end,
-            average=0,
-        )
-        for payload in payloads:
-            entries = monitor.create_entries(payload)
-            for entry in entries:
-                monitor.process_entry_pipeline(entry)
-            ts = make_aware(parse_datetime(payload['timestamp']))
-            affected_hours.add(ts.replace(minute=0, second=0, microsecond=0))
+        try:
+            for payload in monitor.organization.api.get_time_series(
+                device_id=monitor.device_id,
+                start=gap_start,
+                end=gap_end,
+                average=0,
+            ):
+                entries = monitor.create_entries(payload)
+                for entry in entries:
+                    monitor.process_entry_pipeline(entry)
+                ts = make_aware(parse_datetime(payload['timestamp']))
+                affected_hours.add(ts.replace(minute=0, second=0, microsecond=0))
+        except requests.exceptions.RequestException as e:
+            print(f'[AQLite] API error for {monitor.device_id} gap {gap_start}–{gap_end}: {e}')
 
     if not affected_hours:
         return
