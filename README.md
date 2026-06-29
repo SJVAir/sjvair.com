@@ -20,7 +20,7 @@ San Joaquin Valley Air Quality Monitoring Platform
 ### Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
-- Git and Python 3.11+ installed on your host (only needed for optional local scripts).
+- Git and Python 3.14+ installed on your host (only needed for optional local scripts).
 
 ---
 

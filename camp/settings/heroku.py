@@ -1,5 +1,4 @@
 import os
-import django_heroku
 
 from .base import *
 
@@ -36,7 +35,14 @@ AWS_QUERYSTRING_AUTH = False
 # We only use S3 for media files. Static files are
 # built locally and manually synced to S3 so that
 # we can, e.g., post-process and compress images.
-DEFAULT_FILE_STORAGE = 'camp.utils.storage.S3UploadStorage'
+STORAGES = {
+    "default": {
+        "BACKEND": "camp.utils.storage.S3UploadStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 DEFAULT_FILE_LOCATION = 'files'
 MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{DEFAULT_FILE_LOCATION}/'
 

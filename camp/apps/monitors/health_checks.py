@@ -1,10 +1,10 @@
+import dataclasses
 from datetime import timedelta
 
-from django.db.models import F
 from django.utils import timezone
 from django.utils.timesince import timesince
 
-from health_check.backends import BaseHealthCheckBackend
+from health_check.base import HealthCheck
 from health_check.exceptions import ServiceWarning, ServiceReturnedUnexpectedResult
 
 from camp.apps.monitors.models import Monitor
@@ -15,17 +15,20 @@ from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
-class MonitorHealthCheck(BaseHealthCheckBackend):
-    critical_service = True
+@dataclasses.dataclass
+class MonitorHealthCheck(HealthCheck):
+    network: str = dataclasses.field(default='', repr=False)
+    model: type = dataclasses.field(default=Monitor, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=1), repr=False)
 
-    network = None
-    model = Monitor
-    limit = timedelta(hours=1)
+    def __repr__(self):
+        return self.network
 
-    def identifier(self):
-        return f'Air Network: {self.network}'
+    @property
+    def labels(self):
+        return {'check': self.network}
 
-    def check_status(self):
+    def run(self):
         try:
             monitor = (self.model.objects
                 .get_active()
@@ -38,49 +41,50 @@ class MonitorHealthCheck(BaseHealthCheckBackend):
                 raise ServiceWarning('No entries in database.')
 
             timestamp = monitor.last_entry_timestamp
-
             now = timezone.now()
             if now - timestamp > self.limit:
                 raise ServiceWarning(f'Last entry was {timesince(timestamp)} ago.')
+        except ServiceWarning:
+            raise
         except Exception as e:
-            if isinstance(e, ServiceWarning):
-                raise e
-            self.add_error(ServiceReturnedUnexpectedResult(e.__class__.__name__), e)
+            raise ServiceReturnedUnexpectedResult(e.__class__.__name__) from e
 
 
+@dataclasses.dataclass(repr=False)
 class AirGradientHealthCheck(MonitorHealthCheck):
-    network = 'AirGradient'
-    model = AirGradient
-    limit = timedelta(minutes=10)
+    network: str = dataclasses.field(default='AirGradient', repr=False)
+    model: type = dataclasses.field(default=AirGradient, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(minutes=10), repr=False)
 
-    def check_status(self):
-        # Only return
+    def run(self):
         if not Place.objects.exists():
             raise ServiceWarning('No API tokens are configured.')
-        return super().check_status()
+        super().run()
 
 
+@dataclasses.dataclass(repr=False)
 class AirNowHealthCheck(MonitorHealthCheck):
-    network = 'AirNow'
-    model = AirNow
-    limit = timedelta(hours=3)
+    network: str = dataclasses.field(default='AirNow', repr=False)
+    model: type = dataclasses.field(default=AirNow, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=3), repr=False)
 
 
+@dataclasses.dataclass(repr=False)
 class AQviewHealthCheck(MonitorHealthCheck):
-    network = 'AQview'
-    model = AQview
-    limit = timedelta(hours=3)
+    network: str = dataclasses.field(default='AQview', repr=False)
+    model: type = dataclasses.field(default=AQview, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=3), repr=False)
 
 
+@dataclasses.dataclass(repr=False)
 class CCACBAMHealthCheck(MonitorHealthCheck):
-    critical_service = False
-    network = 'CCAC BAM-1022'
-    model = BAM1022
-    limit = timedelta(hours=2)
+    network: str = dataclasses.field(default='CCAC BAM-1022', repr=False)
+    model: type = dataclasses.field(default=BAM1022, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=2), repr=False)
 
 
+@dataclasses.dataclass(repr=False)
 class PurpleAirHealthCheck(MonitorHealthCheck):
-    network = 'PurpleAir'
-    model = PurpleAir
-    limit = timedelta(minutes=10)
-
+    network: str = dataclasses.field(default='PurpleAir', repr=False)
+    model: type = dataclasses.field(default=PurpleAir, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(minutes=10), repr=False)

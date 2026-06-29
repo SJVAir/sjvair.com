@@ -18,6 +18,6 @@ class TimezoneDateTimeFilter(filters.DateTimeFilter):
             value = make_aware(value, timezone=settings.DEFAULT_TIMEZONE)
 
         # Convert to UTC for database comparison
-        value = value.astimezone(timezone.utc)
+        value = value.astimezone(datetime.timezone.utc)
 
         return super().filter(qs, value)

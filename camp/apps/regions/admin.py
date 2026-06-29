@@ -3,7 +3,7 @@ from base64 import b64encode
 import yaml
 
 from django.contrib import admin, messages
-from django.contrib.gis.admin import OSMGeoAdmin
+from django.contrib.gis.admin import GISModelAdmin
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
@@ -83,7 +83,7 @@ class BoundaryInline(admin.TabularInline):
 
 
 @admin.register(Region)
-class RegionAdmin(ReadOnlyAdminMixin, OSMGeoAdmin):
+class RegionAdmin(ReadOnlyAdminMixin, GISModelAdmin):
     inlines = [BoundaryInline]
     list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
     list_filter = ['type', CountyFilter, 'boundary__version']

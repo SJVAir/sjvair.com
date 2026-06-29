@@ -37,6 +37,44 @@
             return Math.round(n / oom) * oom;
         }
 
+        let fetchSystemStatus = () => {
+            document.querySelectorAll('[data-status-url]').forEach(ul => {
+                const a = ul.parentElement.querySelector('a');
+                let indicator = a.querySelector('b.status-indicator');
+                if (!indicator) {
+                    indicator = document.createElement('b');
+                    indicator.className = 'status-indicator';
+                    indicator.textContent = '… ';
+                    a.prepend(indicator);
+                }
+                fetch(ul.dataset.statusUrl, {headers: {Accept: 'application/json'}})
+                    .then(r => r.json())
+                    .then(data => {
+                        const allOk = Object.values(data).every(v => v === 'OK');
+                        indicator.style.color = allOk ? 'green' : 'red';
+                        indicator.textContent = allOk ? '✓ ' : '✗ ';
+                        ul.replaceChildren(...Object.entries(data).map(([name, status]) => {
+                            const ok = status === 'OK';
+                            const span = document.createElement('b');
+                            span.style.color = ok ? 'green' : 'red';
+                            span.textContent = ok ? '✓' : '✗';
+                            const li = document.createElement('li');
+                            li.append(span, ' ' + name.replace(/\(.*\)$/, ''));
+                            if (!ok) li.title = String(status);
+                            return li;
+                        }));
+                    })
+                    .catch(() => {
+                        indicator.textContent = '? ';
+                        indicator.style.color = '#999';
+                        const li = document.createElement('li');
+                        li.className = 'quiet';
+                        li.textContent = '? unavailable';
+                        ul.replaceChildren(li);
+                    });
+            });
+        };
+
         let fetchStats = () => {
             $.getJSON('{% url "admin-stats" %}', (data) => {
                 $('#id_timestamp').text(
@@ -45,15 +83,16 @@
                 $('#id_entry-count').text(roundOOM(data.entry_count).toLocaleString());
 
                 for (const key in data.queue_size) {
-                    console.log(`.queue-${key} .size`);
-                    console.log(data.queue_size[key].toLocaleString());
                     $(`.queue-${key} .size`).text(data.queue_size[key].toLocaleString());
                 }
             });
+            fetchSystemStatus();
         };
 
-        fetchStats();
-        setInterval(fetchStats, 15 * 1000);
+        $(document).ready(function() {
+            fetchStats();
+            setInterval(fetchStats, 15 * 1000);
+        });
     })(jQuery);
 
     // Menu toggle.
@@ -75,6 +114,7 @@
 {% endblock %}
 
 {% block content %}
+{% if request.resolver_match.url_name == 'index' %}
 <div id="content-main">
     <div class="admin-toggle">
         <a href="#" data-tab=".admin-simple">[ Simple ]</a>
@@ -89,45 +129,66 @@
         {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
     </div>
 </div>
+{% else %}
+    {{ block.super }}
+{% endif %}
 {% endblock %}
 
 {% block sidebar %}
 <div id="content-related">
     <div class="module">
-        <h2>{% trans 'Infrastructure' %}</h2>
-        <ul class="">
-
-            <li><a href="{% url 'health_check:health_check_home' %}">System Health Checks</a></li>
+        <h2>Quick Links</h2>
+        <ul>
+            <li><a href="{% url 'admin:alerts_subscription_county_stats' %}">Subscription Stats by County</a></li>
         </ul>
-        <table>
-            <tr>
-                <th>Timestamp</th>
-                <td><span id="id_timestamp"></span></td>
-            </tr>
-            <tr>
-                <th>Monitor Entries</th>
-                <td>≈<span id="id_entry-count"></span></td>
-            </tr>
-            {% for key in settings.DJANGO_HUEY.queues.keys %}
-            <tr class="queue queue-{{ key }}">
-                <th>Queue: {{ key }}</th>
-                <td>
-                    <div class="size"></div>
-                    <form action="{% url 'flush-queue' key=key %}" method="POST">
-                        {% csrf_token %}
-                        <button type="submit">Flush queue</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
     </div>
 
     <div class="module">
-        <h2>Quick Links</h2>
-        <ul class="">
-            <li><a href="{% url 'admin:alerts_subscription_county_stats' %}">Subscription Stats by County</a></li>
-        </ul>
+        <h2>{% trans 'System Status' %}</h2>
+        <table>
+            <tr>
+                <th class="nowrap">Timestamp</th>
+                <td style="text-align: right;"><span id="id_timestamp"></span></td>
+            </tr>
+            <tr>
+                <th class="nowrap">Monitor Entries</th>
+                <td style="text-align: right;">≈<span id="id_entry-count"></span></td>
+            </tr>
+            <tr>
+                <td colspan="2">
+                    <ul>
+                        <li><a href="{% url 'system-status:index' %}">Infrastructure</a>
+                            <ul data-status-url="{% url 'system-status:index' %}?format=json"></ul>
+                        </li>
+                        <li><a href="{% url 'system-status:data-feeds' %}">Data Feeds</a>
+                            <ul data-status-url="{% url 'system-status:data-feeds' %}?format=json"></ul>
+                        </li>
+                    </ul>
+
+                </td>
+            </tr>
+
+            <tr>
+                <td colspan="2">
+                    <div style="font-weight:bold" class="quiet">Queues</div>
+                    <ul>
+                        {% for key in settings.DJANGO_HUEY.queues.keys %}
+                        <li class="queue queue-{{ key }}">
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <span>{{ key|title }}</span>
+                                <form action="{% url 'flush-queue' key=key %}" method="POST" style="display:inline">
+                                    {% csrf_token %}
+                                    <span style="font-weight:bold;" class="size"></span>
+                                    <span>&nbsp;</span>
+                                    <input type="submit" value="Flush" class="small" style="padding:1px 4px; font-weight:bold; background:var(--delete-button-bg);" onclick="return confirm('Flush the {{ key }} queue?')">
+                                </form>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <div class="module" id="recent-actions-module">
