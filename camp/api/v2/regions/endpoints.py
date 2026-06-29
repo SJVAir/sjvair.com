@@ -35,6 +35,8 @@ class PlaceSearch(generics.Endpoint):
     """Search regions by name, returning all high-confidence matches ordered by similarity.
     Accepts ?q=<name> and optional ?type=<type> to scope to a specific region type."""
 
+    form_class = PlaceQueryForm
+
     def get(self, request):
         form = PlaceQueryForm(request.GET)
         form.is_valid()
@@ -50,6 +52,8 @@ class PlaceLookup(generics.Endpoint):
     """Resolve a name to the single best-match region. Without ?type, resolves to the
     containing Place using City/CDP fallback. With ?type=<type>, returns the top match
     within that type directly."""
+
+    form_class = PlaceQueryForm
 
     def get(self, request):
         form = PlaceQueryForm(request.GET)
