@@ -2,6 +2,7 @@ from typing import Optional
 
 from django.contrib.gis.db import models
 from django.contrib.gis.geos.geometry import GEOSGeometry
+from django.contrib.postgres.search import TrigramWordSimilarity
 from django.db.models import F, Func, Value
 from django.db.models.expressions import ExpressionWrapper
 from django.db.models.fields import FloatField
@@ -78,15 +79,28 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
 
         return intersecting.first()
 
-    def resolve_place(self, name: str, threshold: float = 0.3) -> 'Region | None':
+    def search_regions(self, name: str, type: str = None, threshold: float = 0.3):
         """
-        Resolves a community name to a Place region using trigram similarity.
+        Returns a queryset of regions matching name by trigram similarity,
+        ordered by descending similarity score. Optionally scoped to a region type.
+        """
+        qs = self.annotate(similarity=TrigramWordSimilarity(name, 'name'))
+        if type:
+            qs = qs.filter(type=type)
+        return qs.filter(similarity__gte=threshold).order_by('-similarity')
 
-        Tries Place names first, then falls back to City/CDP names and returns
-        the Place with the greatest spatial overlap.
+    def resolve_place(self, name: str, type: str = None, threshold: float = 0.3) -> 'Region | None':
         """
-        from django.contrib.postgres.search import TrigramWordSimilarity
+        Resolves a community name to a single best-match region.
+
+        With a type, returns the top similarity match within that type.
+        Without a type, tries Place names first, then falls back to City/CDP
+        names and returns the Place with the greatest spatial overlap.
+        """
         from .models import Region
+
+        if type:
+            return self.search_regions(name, type=type, threshold=threshold).first()
 
         place = (
             self.filter(type=Region.Type.PLACE)

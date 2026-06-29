@@ -1,9 +1,16 @@
+from django import forms
+
 from resticus import generics
 
 from camp.apps.regions.models import Region
 
 from .filters import RegionFilter
 from .serializers import RegionSerializer
+
+
+class PlaceQueryForm(forms.Form):
+    q = forms.CharField(required=False, strip=True)
+    type = forms.CharField(required=False, strip=True)
 
 
 class RegionMixin:
@@ -25,9 +32,33 @@ class RegionDetail(RegionMixin, generics.DetailEndpoint):
 
 
 class PlaceSearch(generics.Endpoint):
-    """Search for a place by name and return its geographic region data."""
+    """Search regions by name, returning all high-confidence matches ordered by similarity.
+    Accepts ?q=<name> and optional ?type=<type> to scope to a specific region type."""
+
+    form_class = PlaceQueryForm
 
     def get(self, request):
-        q = request.GET.get('q', '').strip()
-        place = Region.objects.resolve_place(q) if q else None
-        return {'data': RegionSerializer(place).serialize() if place else None}
+        form = PlaceQueryForm(request.GET)
+        form.is_valid()
+        q = form.cleaned_data.get('q', '')
+        region_type = form.cleaned_data.get('type', '')
+        if not q:
+            return {'data': []}
+        regions = Region.objects.search_regions(q, type=region_type or None)
+        return {'data': [RegionSerializer(r).serialize() for r in regions]}
+
+
+class PlaceLookup(generics.Endpoint):
+    """Resolve a name to the single best-match region. Without ?type, resolves to the
+    containing Place using City/CDP fallback. With ?type=<type>, returns the top match
+    within that type directly."""
+
+    form_class = PlaceQueryForm
+
+    def get(self, request):
+        form = PlaceQueryForm(request.GET)
+        form.is_valid()
+        q = form.cleaned_data.get('q', '')
+        region_type = form.cleaned_data.get('type', '')
+        region = Region.objects.resolve_place(q, type=region_type or None) if q else None
+        return {'data': RegionSerializer(region).serialize() if region else None}

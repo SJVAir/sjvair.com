@@ -3,6 +3,7 @@ from django.utils import timezone
 from resticus.filters import FilterSet
 
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.regions.models import Region
 
 
 class ChemicalFilter(FilterSet):
@@ -46,6 +47,20 @@ class PesticideUseFilter(FilterSet):
     chemical = django_filters.NumberFilter(field_name='chemical__chem_code')
     commodity = django_filters.CharFilter(field_name='commodity__site_code')
     product = django_filters.NumberFilter(field_name='product__prodno')
+    region_id = django_filters.CharFilter(method='filter_region_id')
+
+    def filter_region_id(self, queryset, name, value):
+        try:
+            region = Region.objects.select_related('boundary').get(sqid=value)
+        except Region.DoesNotExist:
+            return queryset.none()
+        if region.type == Region.Type.COUNTY:
+            return queryset.filter(county=region)
+        try:
+            region_geometry = region.boundary.geometry
+        except AttributeError:
+            return queryset.none()
+        return queryset.filter(mtrs__boundary__geometry__intersects=region_geometry)
 
     class Meta:
         model = PesticideUse
@@ -79,11 +94,25 @@ class PesticideNoticeFilter(FilterSet):
     chemical = django_filters.NumberFilter(field_name='chemicals__chem_code')
     product = django_filters.NumberFilter(field_name='products__prodno')
     upcoming = django_filters.BooleanFilter(method='filter_upcoming')
+    region_id = django_filters.CharFilter(method='filter_region_id')
 
     def filter_upcoming(self, queryset, name, value):
         if value:
             return queryset.filter(scheduled_application__gte=timezone.now())
         return queryset
+
+    def filter_region_id(self, queryset, name, value):
+        try:
+            region = Region.objects.select_related('boundary').get(sqid=value)
+        except Region.DoesNotExist:
+            return queryset.none()
+        if region.type == Region.Type.COUNTY:
+            return queryset.filter(county=region)
+        try:
+            region_geometry = region.boundary.geometry
+        except AttributeError:
+            return queryset.none()
+        return queryset.filter(mtrs__boundary__geometry__intersects=region_geometry)
 
     class Meta:
         model = PesticideNotice

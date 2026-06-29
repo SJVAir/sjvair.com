@@ -88,6 +88,15 @@ FIELD_MAP = {
 }
 
 
+def _clean_value(v):
+    """Convert NaN to None and snap float drift near -999 to exactly -999."""
+    if pd.isna(v):
+        return None
+    if abs(v - (-999)) <= 1:
+        return -999
+    return v
+
+
 class Command(BaseCommand):
     help = 'Import CalEnviroScreen 4.0 for both 2010 and 2020 census tract vintages.'
 
@@ -223,11 +232,12 @@ class Command(BaseCommand):
                 continue
 
             fields = {
-                model_field: row.get(shp_col)
+                model_field: _clean_value(row.get(shp_col))
                 for shp_col, model_field in FIELD_MAP.items()
                 if shp_col in row.index
             }
-            fields['dac_sb535'] = row.get('dac_sb535')
+            dac_sb535 = row.get('dac_sb535')
+            fields['dac_sb535'] = None if pd.isna(dac_sb535) else bool(dac_sb535)
             dac_cat = row.get('dac_category')
             fields['dac_category'] = None if pd.isna(dac_cat) else int(dac_cat)
 
