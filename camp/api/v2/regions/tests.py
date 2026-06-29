@@ -46,6 +46,20 @@ class RegionListTests(TestCase):
         data = get_response_data(response)
         assert data['data'] == []
 
+    def test_filter_by_name(self):
+        request = self.factory.get(reverse('api:v2:regions:region-list'), {'name': 'fresno'})
+        response = region_list(request)
+        data = get_response_data(response)
+        assert len(data['data']) > 0
+        assert all('fresno' in r['name'].lower() for r in data['data'])
+
+    def test_filter_by_slug(self):
+        request = self.factory.get(reverse('api:v2:regions:region-list'), {'slug': 'fresno'})
+        response = region_list(request)
+        data = get_response_data(response)
+        assert len(data['data']) > 0
+        assert all(r['slug'] == 'fresno' for r in data['data'])
+
 
 class RegionDetailTests(TestCase):
     fixtures = ['regions.yaml']
@@ -105,7 +119,51 @@ CLOVIS_CITY_WKT = 'MULTIPOLYGON(((-119.83 36.75, -119.73 36.75, -119.73 36.85, -
 class TestPlaceSearch(TestCase):
     def setUp(self):
         self.fresno = make_place('Fresno', 'fresno', FRESNO_PLACE_WKT)
+        self.clovis = make_city('Clovis', 'clovis', CLOVIS_CITY_WKT)
         self.url = reverse('api:v2:regions:place-search')
+
+    def test_returns_list(self):
+        response = self.client.get(self.url, {'q': 'Fresno'})
+        assert response.status_code == 200
+        assert isinstance(response.json()['data'], list)
+
+    def test_matches_by_name(self):
+        response = self.client.get(self.url, {'q': 'Fresno'})
+        names = [r['name'] for r in response.json()['data']]
+        assert 'Fresno' in names
+
+    def test_case_insensitive(self):
+        response = self.client.get(self.url, {'q': 'fresno'})
+        names = [r['name'] for r in response.json()['data']]
+        assert 'Fresno' in names
+
+    def test_type_filter_scopes_results(self):
+        response = self.client.get(self.url, {'q': 'Clovis', 'type': 'city'})
+        data = response.json()['data']
+        assert len(data) == 1
+        assert data[0]['name'] == 'Clovis'
+        assert data[0]['type'] == 'city'
+
+    def test_type_filter_excludes_other_types(self):
+        response = self.client.get(self.url, {'q': 'Fresno', 'type': 'city'})
+        names = [r['name'] for r in response.json()['data']]
+        assert 'Fresno' not in names
+
+    def test_no_match_returns_empty_list(self):
+        response = self.client.get(self.url, {'q': 'nonexistent'})
+        assert response.status_code == 200
+        assert response.json()['data'] == []
+
+    def test_empty_query_returns_empty_list(self):
+        response = self.client.get(self.url)
+        assert response.status_code == 200
+        assert response.json()['data'] == []
+
+
+class TestPlaceLookup(TestCase):
+    def setUp(self):
+        self.fresno = make_place('Fresno', 'fresno', FRESNO_PLACE_WKT)
+        self.url = reverse('api:v2:regions:place-lookup')
 
     def test_exact_match(self):
         response = self.client.get(self.url, {'q': 'Fresno'})
@@ -128,6 +186,13 @@ class TestPlaceSearch(TestCase):
         response = self.client.get(self.url, {'q': 'Clovis'})
         assert response.status_code == 200
         assert response.json()['data']['name'] == 'Fresno'
+
+    def test_type_returns_direct_match_not_place(self):
+        make_city('Clovis', 'clovis', CLOVIS_CITY_WKT)
+        response = self.client.get(self.url, {'q': 'Clovis', 'type': 'city'})
+        assert response.status_code == 200
+        assert response.json()['data']['name'] == 'Clovis'
+        assert response.json()['data']['type'] == 'city'
 
     def test_no_match_returns_null(self):
         response = self.client.get(self.url, {'q': 'nonexistent'})
