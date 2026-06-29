@@ -1,12 +1,13 @@
 import pytest
 from datetime import date, timedelta
 
+from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Boundary, Region
 
 
 def make_county():
@@ -628,3 +629,109 @@ class PesticideNoticeDetailTests(TestCase):
             'treated_amount', 'treated_units', 'application_method',
             'chemicals', 'products',
         }
+
+
+# ---------------------------------------------------------------------------
+# region_id filter — PesticideUse
+# ---------------------------------------------------------------------------
+
+def make_mtrs_region(geometry_wkt, slug='test-mtrs', external_id='9001'):
+    region = Region.objects.create(
+        name='Test MTRS', slug=slug, type=Region.Type.MTRS, external_id=external_id,
+    )
+    boundary = Boundary.objects.create(
+        region=region, version='2020',
+        geometry=GEOSGeometry(geometry_wkt, srid=4326),
+    )
+    region.boundary = boundary
+    region.save()
+    return region
+
+
+def make_city_region(geometry_wkt, slug='test-city', external_id='9002'):
+    region = Region.objects.create(
+        name='Test City', slug=slug, type=Region.Type.CITY, external_id=external_id,
+    )
+    boundary = Boundary.objects.create(
+        region=region, version='2020',
+        geometry=GEOSGeometry(geometry_wkt, srid=4326),
+    )
+    region.boundary = boundary
+    region.save()
+    return region
+
+
+class PesticideUseRegionFilterTests(TestCase):
+    def setUp(self):
+        self.url = reverse('api:v2:pesticides:use-list')
+        self.county = make_county()
+        self.use = make_use(self.county, year=2023, use_no=1)
+
+    def test_county_region_filters_by_county_fk(self):
+        other_county = Region.objects.create(
+            name='Kern', slug='kern', type=Region.Type.COUNTY, external_id='06029',
+        )
+        make_use(other_county, year=2023, use_no=2)
+        data = self.client.get(self.url, {'region_id': self.county.sqid}).json()
+        assert data['count'] == 1
+
+    def test_spatial_region_filters_by_mtrs_intersection(self):
+        mtrs_geom = 'MULTIPOLYGON (((-119.9 36.6, -119.8 36.6, -119.8 36.7, -119.9 36.7, -119.9 36.6)))'
+        city_geom = 'MULTIPOLYGON (((-120.0 36.5, -119.7 36.5, -119.7 36.8, -120.0 36.8, -120.0 36.5)))'
+        mtrs = make_mtrs_region(mtrs_geom)
+        city = make_city_region(city_geom)
+        use_in_region = make_use(self.county, year=2023, use_no=2, mtrs=mtrs)
+        data = self.client.get(self.url, {'region_id': city.sqid}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['id'] == str(use_in_region.sqid)
+
+    def test_region_without_boundary_returns_empty(self):
+        city = Region.objects.create(
+            name='No Boundary City', slug='no-boundary', type=Region.Type.CITY, external_id='9099',
+        )
+        data = self.client.get(self.url, {'region_id': city.sqid}).json()
+        assert data['count'] == 0
+
+    def test_invalid_region_id_returns_empty(self):
+        data = self.client.get(self.url, {'region_id': 'BOGUS'}).json()
+        assert data['count'] == 0
+
+
+# ---------------------------------------------------------------------------
+# region_id filter — PesticideNotice
+# ---------------------------------------------------------------------------
+
+class PesticideNoticeRegionFilterTests(TestCase):
+    def setUp(self):
+        self.url = reverse('api:v2:pesticides:notice-list')
+        self.county = make_county()
+        self.notice = make_notice(self.county, application_id=1)
+
+    def test_county_region_filters_by_county_fk(self):
+        other_county = Region.objects.create(
+            name='Kern', slug='kern', type=Region.Type.COUNTY, external_id='06029',
+        )
+        make_notice(other_county, application_id=2)
+        data = self.client.get(self.url, {'region_id': self.county.sqid}).json()
+        assert data['count'] == 1
+
+    def test_spatial_region_filters_by_mtrs_intersection(self):
+        mtrs_geom = 'MULTIPOLYGON (((-119.9 36.6, -119.8 36.6, -119.8 36.7, -119.9 36.7, -119.9 36.6)))'
+        city_geom = 'MULTIPOLYGON (((-120.0 36.5, -119.7 36.5, -119.7 36.8, -120.0 36.8, -120.0 36.5)))'
+        mtrs = make_mtrs_region(mtrs_geom)
+        city = make_city_region(city_geom)
+        notice_in_region = make_notice(self.county, application_id=2, mtrs=mtrs)
+        data = self.client.get(self.url, {'region_id': city.sqid}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['id'] == str(notice_in_region.sqid)
+
+    def test_region_without_boundary_returns_empty(self):
+        city = Region.objects.create(
+            name='No Boundary City', slug='no-boundary', type=Region.Type.CITY, external_id='9099',
+        )
+        data = self.client.get(self.url, {'region_id': city.sqid}).json()
+        assert data['count'] == 0
+
+    def test_invalid_region_id_returns_empty(self):
+        data = self.client.get(self.url, {'region_id': 'BOGUS'}).json()
+        assert data['count'] == 0

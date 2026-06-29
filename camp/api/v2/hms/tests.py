@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.hms.models import Fire, Smoke
+from camp.apps.regions.models import Boundary, Region
 
 
 SJV_POLYGON = (
@@ -146,3 +147,89 @@ class FireDetailTests(TestCase):
         url = reverse('api:v2:hms:fire-detail', kwargs={'fire_id': 'gQ7rC18FRKuu15z9m2CsFm'})
         response = self.client.get(url)
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Region filter helpers
+# ---------------------------------------------------------------------------
+
+# SJV_POLYGON spans lon -119.861 to -119.651, lat 36.660 to 36.906
+# SJV_POINT is at lon -119.069, lat 36.965 (east of SJV_POLYGON)
+REGION_COVERS_SMOKE = 'MULTIPOLYGON (((-120.0 36.5, -119.5 36.5, -119.5 37.0, -120.0 37.0, -120.0 36.5)))'
+REGION_MISSES_SMOKE = 'MULTIPOLYGON (((-118.5 36.5, -118.0 36.5, -118.0 37.0, -118.5 37.0, -118.5 36.5)))'
+REGION_COVERS_FIRE = 'MULTIPOLYGON (((-119.5 36.7, -118.9 36.7, -118.9 37.2, -119.5 37.2, -119.5 36.7)))'
+REGION_MISSES_FIRE = 'MULTIPOLYGON (((-121.0 37.5, -120.5 37.5, -120.5 38.0, -121.0 38.0, -121.0 37.5)))'
+
+
+def create_region(geometry_wkt=None, slug='test-region', external_id='9001'):
+    region = Region.objects.create(
+        name='Test Region', slug=slug, type=Region.Type.CITY, external_id=external_id,
+    )
+    if geometry_wkt:
+        boundary = Boundary.objects.create(
+            region=region, version='2020',
+            geometry=GEOSGeometry(geometry_wkt, srid=4326),
+        )
+        region.boundary = boundary
+        region.save()
+    return region
+
+
+# ---------------------------------------------------------------------------
+# Smoke region_id filter
+# ---------------------------------------------------------------------------
+
+class SmokeRegionFilterTests(TestCase):
+    def setUp(self):
+        self.smoke = create_smoke()
+        self.url = reverse('api:v2:hms:smoke-list')
+
+    def test_region_intersecting_smoke_returns_it(self):
+        region = create_region(REGION_COVERS_SMOKE)
+        data = self.client.get(self.url, {'region_id': region.sqid}).json()
+        ids = [r['id'] for r in data['data']]
+        assert str(self.smoke.pk) in ids
+
+    def test_region_not_intersecting_smoke_excludes_it(self):
+        region = create_region(REGION_MISSES_SMOKE, slug='far-region', external_id='9002')
+        data = self.client.get(self.url, {'region_id': region.sqid}).json()
+        assert len(data['data']) == 0
+
+    def test_region_without_boundary_returns_empty(self):
+        region = create_region(slug='no-boundary', external_id='9003')
+        data = self.client.get(self.url, {'region_id': region.sqid}).json()
+        assert len(data['data']) == 0
+
+    def test_invalid_region_id_returns_empty(self):
+        data = self.client.get(self.url, {'region_id': 'BOGUS'}).json()
+        assert len(data['data']) == 0
+
+
+# ---------------------------------------------------------------------------
+# Fire region_id filter
+# ---------------------------------------------------------------------------
+
+class FireRegionFilterTests(TestCase):
+    def setUp(self):
+        self.fire = create_fire()
+        self.url = reverse('api:v2:hms:fire-list')
+
+    def test_region_containing_fire_returns_it(self):
+        region = create_region(REGION_COVERS_FIRE)
+        data = self.client.get(self.url, {'region_id': region.sqid}).json()
+        ids = [r['id'] for r in data['data']]
+        assert str(self.fire.pk) in ids
+
+    def test_region_not_containing_fire_excludes_it(self):
+        region = create_region(REGION_MISSES_FIRE, slug='far-region', external_id='9002')
+        data = self.client.get(self.url, {'region_id': region.sqid}).json()
+        assert len(data['data']) == 0
+
+    def test_region_without_boundary_returns_empty(self):
+        region = create_region(slug='no-boundary', external_id='9003')
+        data = self.client.get(self.url, {'region_id': region.sqid}).json()
+        assert len(data['data']) == 0
+
+    def test_invalid_region_id_returns_empty(self):
+        data = self.client.get(self.url, {'region_id': 'BOGUS'}).json()
+        assert len(data['data']) == 0

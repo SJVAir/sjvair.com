@@ -1,7 +1,9 @@
+from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
 from camp.api.v2.ces import endpoints
+from camp.apps.regions.models import Boundary, Region
 from camp.utils.test import get_response_data
 
 ces4_list = endpoints.CES4List.as_view()
@@ -92,3 +94,57 @@ class CES4EndpointTests(TestCase):
 
         assert response.status_code == 200
         assert all(r['ci_score_p'] >= 80 for r in data['data'])
+
+
+class CES4RegionFilterTests(TestCase):
+    # Fixture tracts (2020 boundaries):
+    #   Tract 1.01: lon -119.8 to -119.7, lat 36.7 to 36.8
+    #   Tract 1.02: lon -119.7 to -119.6, lat 36.7 to 36.8
+    fixtures = ['calenviroscreen']
+
+    COVERS_BOTH = 'MULTIPOLYGON (((-119.9 36.6, -119.5 36.6, -119.5 36.9, -119.9 36.9, -119.9 36.6)))'
+    COVERS_ONLY_1_01 = 'MULTIPOLYGON (((-119.9 36.6, -119.71 36.6, -119.71 36.9, -119.9 36.9, -119.9 36.6)))'
+    COVERS_NEITHER = 'MULTIPOLYGON (((-120.5 38.0, -120.4 38.0, -120.4 38.1, -120.5 38.1, -120.5 38.0)))'
+
+    def _create_region(self, geometry_wkt=None):
+        region = Region.objects.create(
+            name='Test City', slug='test-city', type=Region.Type.CITY, external_id='9999',
+        )
+        if geometry_wkt:
+            boundary = Boundary.objects.create(
+                region=region, version='2020',
+                geometry=GEOSGeometry(geometry_wkt, srid=4326),
+            )
+            region.boundary = boundary
+            region.save()
+        return region
+
+    def test_region_covering_both_tracts_returns_two(self):
+        region = self._create_region(self.COVERS_BOTH)
+        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
+        data = self.client.get(url, {'region_id': region.sqid}).json()
+        assert data['count'] == 2
+
+    def test_region_covering_one_tract_returns_one(self):
+        region = self._create_region(self.COVERS_ONLY_1_01)
+        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
+        data = self.client.get(url, {'region_id': region.sqid}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['tract'] == '06019000101'
+
+    def test_region_outside_tracts_returns_empty(self):
+        region = self._create_region(self.COVERS_NEITHER)
+        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
+        data = self.client.get(url, {'region_id': region.sqid}).json()
+        assert data['count'] == 0
+
+    def test_region_without_boundary_returns_empty(self):
+        region = self._create_region()
+        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
+        data = self.client.get(url, {'region_id': region.sqid}).json()
+        assert data['count'] == 0
+
+    def test_invalid_region_id_returns_empty(self):
+        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
+        data = self.client.get(url, {'region_id': 'BOGUS'}).json()
+        assert data['count'] == 0
