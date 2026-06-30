@@ -1,13 +1,10 @@
 import glob
-import json
 import os
-import shutil
 
-import delegator
-import invoke
 import livereload
 import sass
 
+from invoke.tasks import task
 from livereload.watcher import Watcher
 
 
@@ -45,12 +42,12 @@ def import_node_module(ctx, target, destination=None):
     ctx.run(f'cp -r {target} {destination}')
 
 
-@invoke.task()
+@task()
 def optimize_images(ctx):
     ctx.run('optimize-images ./public/static/')
 
 
-@invoke.task()
+@task()
 def styles(ctx):
     compiled_css = sass.compile(
         filename=assets('sass/style.sass'),
@@ -65,37 +62,37 @@ def styles(ctx):
         f.write(layered_css)
 
 
-@invoke.task
+@task
 def collectstatic(ctx):
     ctx.run('python manage.py collectstatic --noinput', pty=True)
 
 
-@invoke.task()
-def import_npm_assets(ctx):
-    import_node_module(ctx, '@sjvair/monitor-map/dist/monitor-map')
-    import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
+@task()
+def import_monitor_map(ctx, mode):
+    ctx.run(f'bash ./scripts/import-monitor-map.sh {mode}')
 
 
-@invoke.task()
-def build(ctx):
+@task()
+def build(ctx, mode='production'):
     # Directory prep
     ctx.run('rm -rf ./public/static')
     mkdir(path('dist'))
 
-    import_npm_assets(ctx)
+    import_monitor_map(ctx, mode)
+    import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
     styles(ctx)
     collectstatic(ctx)
     optimize_images(ctx)
 
 
-@invoke.task
+@task
 def release(ctx):
     ctx.run('python manage.py migrate --no-input', pty=True)
     ctx.run('python manage.py sync_staticfiles_s3', pty=True)
 
 
 # Some steps in here are no longer needed
-@invoke.task()
+@task()
 def watch(ctx):
     server = livereload.Server(watcher=GlobWatcher())
     server.watch(path('./assets/img/'), lambda: collectstatic(ctx))
