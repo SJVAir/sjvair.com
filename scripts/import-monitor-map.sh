@@ -29,7 +29,7 @@ cd /tmp
 git clone https://github.com/SJVAir/monitor-map
 cd ./monitor-map
 
-command -v npm && npm i
+command -v npm && npm i --include=dev
 
 case "$1" in
 "local")
