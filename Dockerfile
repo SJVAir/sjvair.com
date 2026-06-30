@@ -51,7 +51,7 @@ CMD ["bash"]
 # WEB CONTAINER
 FROM base AS web
 
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_26.x | bash - \
     && apt-get update && apt-get install -y nodejs \
     && npm install --global yarn \
     && rm -rf /var/lib/apt/lists/*
