@@ -68,18 +68,18 @@ def collectstatic(ctx):
 
 
 @task()
-def import_npm_assets(ctx):
-    import_node_module(ctx, '@sjvair/monitor-map/dist/monitor-map')
-    import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
+def import_monitor_map(ctx, mode):
+    ctx.run(f'bash ./scripts/import-monitor-map.sh {mode}')
 
 
 @task()
-def build(ctx):
+def build(ctx, mode='production'):
     # Directory prep
     ctx.run('rm -rf ./public/static')
     mkdir(path('dist'))
 
-    import_npm_assets(ctx)
+    import_monitor_map(ctx, mode)
+    import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
     styles(ctx)
     collectstatic(ctx)
     optimize_images(ctx)
