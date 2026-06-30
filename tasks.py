@@ -1,9 +1,6 @@
 import glob
-import json
 import os
-import shutil
 
-import delegator
 import invoke
 import livereload
 import sass
