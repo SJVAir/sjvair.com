@@ -190,8 +190,8 @@ class RegionSummaryListTests(TestCase):
         make_region_summary(self.region, self.hour)
 
     def _get(self, url_name, entry_type, resolution, year=None, month=None, day=None, query=None):
-        reverse_kwargs = {'region_id': self.region.pk, 'entry_type': entry_type}
-        view_kwargs = {'region_id': self.region.pk, 'entry_type': entry_type, 'resolution': resolution}
+        reverse_kwargs = {'region_id': self.region.sqid, 'entry_type': entry_type}
+        view_kwargs = {'region_id': self.region.sqid, 'entry_type': entry_type, 'resolution': resolution}
         if year is not None:
             reverse_kwargs['year'] = year
             view_kwargs['year'] = year
