@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from django.test import TestCase
@@ -10,6 +10,7 @@ from unittest.mock import patch
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.utils.datetime import make_aware
 
 
 class MonitorTests(TestCase):
@@ -82,3 +83,31 @@ class MonitorTests(TestCase):
         # Check that the getter returns the same object without re-query
         assert latest.entry.pk == entry.pk
         assert latest.entry is latest._entry  # cached!
+
+    def test_filter_healthy_as_of_excludes_future_health_checks(self):
+        from camp.apps.qaqc.models import HealthCheck
+
+        monitor = self.get_purpleair()
+        as_of = make_aware(datetime(2026, 1, 1, 12, 0))
+
+        # A passing HealthCheck *before* as_of should count...
+        HealthCheck.objects.create(monitor=monitor, hour=as_of - timedelta(hours=1), score=3)
+        # ...but one *after* as_of must not count toward the as_of query.
+        HealthCheck.objects.create(monitor=monitor, hour=as_of + timedelta(hours=1), score=3)
+
+        # threshold=1.0 over 1 hour requires exactly 1 passing check in-window.
+        # (filter_healthy/select_health live on MonitorQuerySet, not the manager,
+        # so go through get_queryset() the same way MonitorManager.get_active does.)
+        healthy_ids = set(Monitor.objects.get_queryset().filter_healthy(
+            hours=1, min_score=1, threshold=1.0, as_of=as_of,
+        ).values_list('pk', flat=True))
+
+        assert monitor.pk in healthy_ids
+
+        # Now push as_of back before either HealthCheck exists — should be excluded.
+        earlier = as_of - timedelta(hours=3)
+        healthy_ids = set(Monitor.objects.get_queryset().filter_healthy(
+            hours=1, min_score=1, threshold=1.0, as_of=earlier,
+        ).values_list('pk', flat=True))
+
+        assert monitor.pk not in healthy_ids

@@ -167,11 +167,12 @@ class MonitorQuerySet(InheritanceQuerySet):
 
         return monitors
 
-    def select_health(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8):
+    def select_health(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8, as_of: Optional[datetime] = None):
         from camp.apps.monitors.models import Monitor
         from camp.apps.qaqc.models import HealthCheck
 
-        cutoff = timezone.now() - timedelta(hours=hours)
+        as_of = as_of or timezone.now()
+        cutoff = as_of - timedelta(hours=hours)
         required_passing = int(hours * threshold)
 
         passing_count = (
@@ -179,6 +180,7 @@ class MonitorQuerySet(InheritanceQuerySet):
             .filter(
                 monitor=OuterRef('pk'),
                 hour__gte=cutoff,
+                hour__lte=as_of,
                 score__gte=min_score
             )
             .values('monitor')
@@ -219,11 +221,12 @@ class MonitorQuerySet(InheritanceQuerySet):
 
         return queryset
 
-    def filter_healthy(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8):
+    def filter_healthy(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8, as_of: Optional[datetime] = None):
         return self.select_health(
             hours=hours,
             min_score=min_score,
             threshold=threshold,
+            as_of=as_of,
         ).filter(is_healthy=True)
 
 
