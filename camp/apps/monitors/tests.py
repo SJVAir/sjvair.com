@@ -111,3 +111,40 @@ class MonitorTests(TestCase):
         ).values_list('pk', flat=True))
 
         assert monitor.pk not in healthy_ids
+
+    def _make_region_with_boundary(self, bbox, name='Test Region'):
+        from django.contrib.gis.geos import MultiPolygon, Polygon
+        from camp.apps.regions.models import Boundary, Region
+
+        region = Region.objects.create(name=name, slug=name.lower().replace(' ', '-'), type=Region.Type.CUSTOM)
+        boundary = Boundary.objects.create(
+            region=region,
+            version='test',
+            geometry=MultiPolygon(Polygon.from_bbox(bbox)),
+        )
+        region.boundary = boundary
+        region.save()
+        return region
+
+    def test_in_regions_filters_by_covering_boundary(self):
+        monitor = self.get_purpleair()
+        lon, lat = monitor.position.x, monitor.position.y
+
+        containing = self._make_region_with_boundary(
+            (lon - 0.01, lat - 0.01, lon + 0.01, lat + 0.01), name='Containing'
+        )
+        excluding = self._make_region_with_boundary(
+            (lon + 10, lat + 10, lon + 11, lat + 11), name='Excluding'
+        )
+
+        assert monitor.pk in set(Monitor.objects.in_regions([containing]).values_list('pk', flat=True))
+        assert monitor.pk not in set(Monitor.objects.in_regions([excluding]).values_list('pk', flat=True))
+        # Union: covered by *any* of the given regions.
+        assert monitor.pk in set(Monitor.objects.in_regions([excluding, containing]).values_list('pk', flat=True))
+
+    def test_in_bbox_filters_by_bounding_box(self):
+        monitor = self.get_purpleair()
+        lon, lat = monitor.position.x, monitor.position.y
+
+        assert monitor.pk in set(Monitor.objects.in_bbox(lon - 0.01, lat - 0.01, lon + 0.01, lat + 0.01).values_list('pk', flat=True))
+        assert monitor.pk not in set(Monitor.objects.in_bbox(lon + 10, lat + 10, lon + 11, lat + 11).values_list('pk', flat=True))

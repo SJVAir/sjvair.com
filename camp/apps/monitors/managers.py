@@ -101,6 +101,21 @@ class MonitorQuerySet(InheritanceQuerySet):
     def get_active_multisensor(self):
         return self.get_active().exclude(default_sensor='').exclude(location='inside')
 
+    def in_regions(self, regions):
+        boundaries = [r.boundary.geometry for r in regions if r.boundary_id]
+        if not boundaries:
+            return self.none()
+
+        query = Q()
+        for geometry in boundaries:
+            query |= Q(position__coveredby=geometry)
+        return self.filter(query)
+
+    def in_bbox(self, west, south, east, north):
+        from django.contrib.gis.geos import Polygon
+        bbox = Polygon.from_bbox((west, south, east, north))
+        return self.filter(position__within=bbox)
+
     def with_grade(self):
         from django.db.models import CharField
         from camp.apps.monitors.models import Monitor
@@ -250,3 +265,9 @@ class MonitorManager(InheritanceManager):
 
     def with_grade(self):
         return self.get_queryset().with_grade()
+
+    def in_regions(self, regions):
+        return self.get_queryset().in_regions(regions)
+
+    def in_bbox(self, west, south, east, north):
+        return self.get_queryset().in_bbox(west, south, east, north)
