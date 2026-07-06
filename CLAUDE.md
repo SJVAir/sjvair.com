@@ -85,6 +85,7 @@ Two versioned REST APIs at `/api/1.0/` and `/api/2.0/`, built on `django-resticu
 - `GET /api/2.0/monitors/` — all monitors
 - `GET /api/2.0/monitors/{type}/closest/` — nearest monitors by lat/lon
 - `GET /api/2.0/monitors/{type}/current/` — monitors with recent healthy data
+- `GET /api/2.0/monitors/{type}/at/` — monitors with data as of a historical timestamp (`?timestamp=`, `?region=`, `?bbox=`)
 - `GET /api/2.0/monitors/{id}/entries/{type}/` — paginated entry list
 - `GET /api/2.0/monitors/{id}/entries/{type}.csv` — CSV export
 
