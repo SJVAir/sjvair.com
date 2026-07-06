@@ -244,6 +244,37 @@ class MonitorQuerySet(InheritanceQuerySet):
             as_of=as_of,
         ).filter(is_healthy=True)
 
+    def with_entry_as_of(self, entry_model, timestamp, seconds=None):
+        entry_type = entry_model.entry_type
+        results = []
+
+        for monitor in self:
+            window_seconds = seconds if seconds is not None else monitor.LAST_ACTIVE_LIMIT
+            cutoff = timestamp - timedelta(seconds=window_seconds)
+
+            stage = monitor.get_default_stage(entry_model)
+            lookup = {
+                'monitor_id': monitor.pk,
+                'timestamp__lte': timestamp,
+                'timestamp__gte': cutoff,
+                'stage': stage,
+            }
+            if stage == entry_model.Stage.CALIBRATED:
+                lookup['processor'] = monitor.get_default_calibration(entry_model) or ''
+
+            entry = (entry_model.objects
+                .filter(**lookup)
+                .order_by('-timestamp')
+                .first()
+            )
+
+            if entry is not None:
+                setattr(monitor, f'latest_{entry_type}', entry)
+                monitor.latest_entry = entry
+                results.append(monitor)
+
+        return results
+
 
 class MonitorManager(InheritanceManager):
     _queryset_class = MonitorQuerySet

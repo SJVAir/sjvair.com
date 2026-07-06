@@ -148,3 +148,44 @@ class MonitorTests(TestCase):
 
         assert monitor.pk in set(Monitor.objects.in_bbox(lon - 0.01, lat - 0.01, lon + 0.01, lat + 0.01).values_list('pk', flat=True))
         assert monitor.pk not in set(Monitor.objects.in_bbox(lon + 10, lat + 10, lon + 11, lat + 11).values_list('pk', flat=True))
+
+    def test_with_entry_as_of_returns_the_entry_current_at_that_time(self):
+        monitor = self.get_purpleair()
+        as_of = make_aware(datetime(2026, 1, 1, 12, 0))
+        stage = monitor.get_default_stage(entry_models.PM25)
+
+        entry_models.PM25.objects.create(
+            monitor_id=monitor.pk, timestamp=as_of - timedelta(minutes=20),
+            sensor='a', stage=stage, value=Decimal('9.0'),
+        )
+        current = entry_models.PM25.objects.create(
+            monitor_id=monitor.pk, timestamp=as_of - timedelta(minutes=5),
+            sensor='a', stage=stage, value=Decimal('11.0'),
+        )
+        # An entry *after* as_of must not be picked.
+        entry_models.PM25.objects.create(
+            monitor_id=monitor.pk, timestamp=as_of + timedelta(minutes=5),
+            sensor='a', stage=stage, value=Decimal('99.0'),
+        )
+
+        results = Monitor.objects.filter(pk=monitor.pk).with_entry_as_of(entry_models.PM25, as_of)
+
+        assert len(results) == 1
+        assert results[0].latest_pm25.pk == current.pk
+        assert results[0].latest_entry.pk == current.pk
+
+    def test_with_entry_as_of_drops_monitors_with_no_qualifying_entry(self):
+        monitor = self.get_purpleair()
+        as_of = make_aware(datetime(2026, 1, 1, 12, 0))
+
+        # Only an entry far outside the active window before as_of.
+        stage = monitor.get_default_stage(entry_models.PM25)
+        entry_models.PM25.objects.create(
+            monitor_id=monitor.pk, timestamp=as_of - timedelta(days=10),
+            sensor='a', stage=stage, value=Decimal('9.0'),
+        )
+
+        results = Monitor.objects.filter(pk=monitor.pk).with_entry_as_of(
+            entry_models.PM25, as_of, seconds=3600,
+        )
+        assert results == []
