@@ -365,7 +365,9 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
 
 
 class MonitorsAt(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
-    """Monitors with data as of an arbitrary historical timestamp. Like current/, but for a specific point in time."""
+    """Monitors with data as of a historical `timestamp`, like current/ but for a specific point in time.
+    Optionally scope to one or more `region` ids (covered by any of their boundaries) or a `bbox`
+    (`west,south,east,north`)."""
 
     form_class = MonitorAtForm
     paginate = False
