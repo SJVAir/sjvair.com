@@ -101,6 +101,21 @@ class MonitorQuerySet(InheritanceQuerySet):
     def get_active_multisensor(self):
         return self.get_active().exclude(default_sensor='').exclude(location='inside')
 
+    def in_regions(self, regions):
+        boundaries = [r.boundary.geometry for r in regions if r.boundary_id]
+        if not boundaries:
+            return self.none()
+
+        query = Q()
+        for geometry in boundaries:
+            query |= Q(position__coveredby=geometry)
+        return self.filter(query)
+
+    def in_bbox(self, west, south, east, north):
+        from django.contrib.gis.geos import Polygon
+        bbox = Polygon.from_bbox((west, south, east, north))
+        return self.filter(position__within=bbox)
+
     def with_grade(self):
         from django.db.models import CharField
         from camp.apps.monitors.models import Monitor
@@ -167,11 +182,12 @@ class MonitorQuerySet(InheritanceQuerySet):
 
         return monitors
 
-    def select_health(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8):
+    def select_health(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8, as_of: Optional[datetime] = None):
         from camp.apps.monitors.models import Monitor
         from camp.apps.qaqc.models import HealthCheck
 
-        cutoff = timezone.now() - timedelta(hours=hours)
+        as_of = as_of or timezone.now()
+        cutoff = as_of - timedelta(hours=hours)
         required_passing = int(hours * threshold)
 
         passing_count = (
@@ -179,6 +195,7 @@ class MonitorQuerySet(InheritanceQuerySet):
             .filter(
                 monitor=OuterRef('pk'),
                 hour__gte=cutoff,
+                hour__lte=as_of,
                 score__gte=min_score
             )
             .values('monitor')
@@ -219,12 +236,44 @@ class MonitorQuerySet(InheritanceQuerySet):
 
         return queryset
 
-    def filter_healthy(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8):
+    def filter_healthy(self, hours: int = 24, min_score: int = 1, threshold: float = 0.8, as_of: Optional[datetime] = None):
         return self.select_health(
             hours=hours,
             min_score=min_score,
             threshold=threshold,
+            as_of=as_of,
         ).filter(is_healthy=True)
+
+    def with_entry_as_of(self, entry_model, timestamp, seconds=None):
+        entry_type = entry_model.entry_type
+        results = []
+
+        for monitor in self:
+            window_seconds = seconds if seconds is not None else monitor.LAST_ACTIVE_LIMIT
+            cutoff = timestamp - timedelta(seconds=window_seconds)
+
+            stage = monitor.get_default_stage(entry_model)
+            lookup = {
+                'monitor_id': monitor.pk,
+                'timestamp__lte': timestamp,
+                'timestamp__gte': cutoff,
+                'stage': stage,
+            }
+            if stage == entry_model.Stage.CALIBRATED:
+                lookup['processor'] = monitor.get_default_calibration(entry_model) or ''
+
+            entry = (entry_model.objects
+                .filter(**lookup)
+                .order_by('-timestamp')
+                .first()
+            )
+
+            if entry is not None:
+                setattr(monitor, f'latest_{entry_type}', entry)
+                monitor.latest_entry = entry
+                results.append(monitor)
+
+        return results
 
 
 class MonitorManager(InheritanceManager):
@@ -247,3 +296,9 @@ class MonitorManager(InheritanceManager):
 
     def with_grade(self):
         return self.get_queryset().with_grade()
+
+    def in_regions(self, regions):
+        return self.get_queryset().in_regions(regions)
+
+    def in_bbox(self, west, south, east, north):
+        return self.get_queryset().in_bbox(west, south, east, north)
