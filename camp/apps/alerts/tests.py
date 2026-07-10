@@ -1,7 +1,10 @@
 from datetime import timedelta
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 from django.utils import timezone
+
+from twilio.base.exceptions import TwilioRestException
 
 from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Alert, AlertUpdate, Notification, Subscription
@@ -175,3 +178,66 @@ class NotificationModelTests(TestCase):
         )
         self.user.delete()
         assert not Notification.objects.filter(pk=notification.pk).exists()
+
+
+class NotifySubscribersTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.user = User.objects.get(email='user@sjvair.com')
+        self.alert = Alert.objects.create(
+            monitor=self.monitor,
+            entry_type=PM25.entry_type,
+            start_time=timezone.now(),
+        )
+
+    def create_subscription(self, level):
+        return Subscription.objects.create(
+            user=self.user, monitor=self.monitor, level=level,
+        )
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_successful_send_marks_notification_sent(self, mock_client_class):
+        mock_message = MagicMock(sid='SM_test_sid')
+        mock_client_class.return_value.messages.create.return_value = mock_message
+
+        self.create_subscription('moderate')
+        update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
+
+        notification = Notification.objects.get(alert_update=update)
+        assert notification.status == Notification.Status.SENT
+        assert notification.provider_id == 'SM_test_sid'
+        assert notification.sent_at is not None
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_twilio_failure_is_caught_and_logged(self, mock_client_class):
+        mock_client_class.return_value.messages.create.side_effect = TwilioRestException(
+            status=400, uri='https://api.twilio.com/fake', msg='Invalid phone number', code=21211,
+        )
+
+        self.create_subscription('moderate')
+        update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
+
+        notification = Notification.objects.get(alert_update=update)
+        assert notification.status == Notification.Status.FAILED
+        assert 'Invalid phone number' in notification.error
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_only_subscribers_meeting_threshold_are_notified(self, mock_client_class):
+        mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
+
+        self.create_subscription('hazardous')
+        update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
+
+        assert not Notification.objects.filter(alert_update=update).exists()
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_send_sms_alerts_disabled_skips_entirely(self, mock_client_class):
+        self.create_subscription('moderate')
+
+        with self.settings(SEND_SMS_ALERTS=False):
+            update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
+
+        assert not Notification.objects.filter(alert_update=update).exists()
+        mock_client_class.return_value.messages.create.assert_not_called()

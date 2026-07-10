@@ -1,10 +1,16 @@
+from random import choice
+
 from django_huey import db_task, db_periodic_task
 from huey import crontab
+from django.conf import settings
 from django.utils import timezone
 from django.db.models import Q
 
+import twilio.rest
+from twilio.base.exceptions import TwilioRestException
+
 from camp.apps.alerts.evaluator import AlertEvaluator
-from camp.apps.alerts.models import Alert
+from camp.apps.alerts.models import Alert, Notification
 from camp.apps.monitors.models import Monitor
 
 
@@ -34,3 +40,30 @@ def periodic_alerts():
 
         for monitor in monitors:
             AlertEvaluator(monitor).evaluate()
+
+
+@db_task(priority=100)
+def send_alert_notification(notification_id):
+    notification = Notification.objects.select_related('user').get(pk=notification_id)
+
+    twilio_client = twilio.rest.Client(
+        settings.TWILIO_ACCOUNT_SID,
+        settings.TWILIO_AUTH_TOKEN
+    )
+
+    try:
+        message = twilio_client.messages.create(
+            to=str(notification.user.phone),
+            from_=choice(settings.TWILIO_PHONE_NUMBERS),
+            body=notification.message,
+        )
+    except TwilioRestException as exc:
+        notification.status = Notification.Status.FAILED
+        notification.error = str(exc)
+        notification.save(update_fields=['status', 'error'])
+        return
+
+    notification.status = Notification.Status.SENT
+    notification.sent_at = timezone.now()
+    notification.provider_id = message.sid
+    notification.save(update_fields=['status', 'sent_at', 'provider_id'])
