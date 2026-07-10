@@ -9,6 +9,7 @@ from django.utils.functional import cached_property
 from django.utils.translation import gettext as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
+from django_sqids import SqidsField, shuffle_alphabet
 from model_utils import Choices
 from model_utils.models import TimeStampedModel
 
@@ -167,3 +168,30 @@ class AlertUpdate(TimeStampedModel):
         if not self.alert.latest or self.alert.latest.timestamp < self.timestamp:
             self.alert.latest_id = self.pk
             self.alert.save(update_fields=['latest_id'])
+
+
+class Notification(TimeStampedModel):
+    class Status(models.TextChoices):
+        QUEUED = 'queued', _('Queued')
+        SENT = 'sent', _('Sent')
+        DELIVERED = 'delivered', _('Delivered')
+        UNDELIVERED = 'undelivered', _('Undelivered')
+        FAILED = 'failed', _('Failed')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('alerts.Notification'))
+
+    alert_update = models.ForeignKey('alerts.AlertUpdate', related_name='notifications', on_delete=models.CASCADE)
+    subscription = models.ForeignKey('alerts.Subscription', null=True, blank=True, related_name='notifications', on_delete=models.SET_NULL)
+    user = models.ForeignKey('accounts.User', related_name='notifications', on_delete=models.CASCADE)
+
+    status = models.CharField(max_length=11, choices=Status.choices, default=Status.QUEUED)
+    message = models.TextField()
+    provider_id = models.CharField(max_length=64, blank=True)
+    error = models.TextField(blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created']
+
+    def __str__(self):
+        return f'Notification for {self.user_id} @ {self.status}'
