@@ -241,3 +241,21 @@ class NotifySubscribersTests(TestCase):
 
         assert not Notification.objects.filter(alert_update=update).exists()
         mock_client_class.return_value.messages.create.assert_not_called()
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_unverified_phone_subscriber_is_not_notified(self, mock_client_class):
+        mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
+
+        unverified_user = User.objects.create_user(
+            email='unverified@sjvair.com',
+            password='password',
+            full_name='Jane Unverified',
+            phone='559-555-1234',
+            phone_verified=False,
+        )
+        Subscription.objects.create(
+            user=unverified_user, monitor=self.monitor, level='moderate',
+        )
+        update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
+
+        assert not Notification.objects.filter(alert_update=update, user=unverified_user).exists()

@@ -37,6 +37,9 @@ def notify_subscribers(alert_update):
         if level < sub_level:
             continue
 
+        if not (subscription.user.phone and subscription.user.phone_verified):
+            continue
+
         notification = Notification.objects.create(
             alert_update=alert_update,
             subscription=subscription,
