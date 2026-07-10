@@ -114,6 +114,18 @@ class AlertEvaluatorTests(TestCase):
 
         assert Alert.objects.count() == 0
 
+    def test_alert_and_alertupdate_use_integer_pk_and_sqid(self):
+        self.create_pm25_entry(40, minutes_ago=5)
+        evaluator = AlertEvaluator(self.monitor)
+        alert = evaluator.creation_check(self.entry_model, self.lookup)
+
+        assert isinstance(alert.pk, int)
+        assert alert.sqid
+
+        update = alert.updates.first()
+        assert isinstance(update.pk, int)
+        assert update.sqid
+
 
 class NotificationModelTests(TestCase):
     fixtures = ['users.yaml', 'purple-air.yaml']
