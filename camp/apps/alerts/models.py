@@ -64,13 +64,7 @@ class Subscription(TimeStampedModel):
 
 
 class Alert(TimeStampedModel):
-    id = SmallUUIDField(
-        default=uuid_default(),
-        primary_key=True,
-        db_index=True,
-        editable=False,
-        verbose_name='ID'
-    )
+    sqid = SqidsField(alphabet=shuffle_alphabet('alerts.Alert'))
 
     monitor = models.ForeignKey('monitors.Monitor', related_name='alerts', on_delete=models.CASCADE)
     entry_type = EntryTypeField()
@@ -142,6 +136,8 @@ class Alert(TimeStampedModel):
 
 
 class AlertUpdate(TimeStampedModel):
+    sqid = SqidsField(alphabet=shuffle_alphabet('alerts.AlertUpdate'))
+
     alert = models.ForeignKey('alerts.Alert', related_name='updates', on_delete=models.CASCADE)
     timestamp = models.DateTimeField(default=timezone.now)
     level = models.CharField(max_length=25)
