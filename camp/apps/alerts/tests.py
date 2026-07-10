@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 from django.conf import settings
+from django.contrib.gis.geos import Point
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -12,8 +13,9 @@ from twilio.request_validator import RequestValidator
 from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Alert, AlertUpdate, Notification, Subscription
 from camp.apps.alerts.evaluator import AlertEvaluator
-from camp.apps.entries.models import PM25
+from camp.apps.entries.models import O3, PM25
 from camp.apps.entries.levels import AQLevel, LevelSet
+from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.purpleair.models import PurpleAir
 
 
@@ -59,14 +61,18 @@ class AlertEvaluatorTests(TestCase):
         evaluator = AlertEvaluator(self.monitor)
         alert = evaluator.creation_check(self.entry_model, self.lookup)
 
+        # Push the last update outside the notification cooldown window
+        # so the escalation below isn't suppressed by it.
+        last_update = alert.updates.latest()
+        last_update.timestamp = timezone.now() - timedelta(minutes=40)
+        last_update.save(update_fields=['timestamp'])
+
         self.create_pm25_entry(220, minutes_ago=3)
         self.create_pm25_entry(220, minutes_ago=2)
         self.create_pm25_entry(220, minutes_ago=1)
-        u = evaluator.update_check(alert, self.entry_model, self.lookup)
+        evaluator.update_check(alert, self.entry_model, self.lookup)
 
         updates = AlertUpdate.objects.filter(alert=alert)
-        # import code
-        # code.interact(local=locals())
         assert updates.count() == 2
         assert updates.latest().get_level() > updates.earliest().get_level()
 
@@ -131,6 +137,89 @@ class AlertEvaluatorTests(TestCase):
         update = alert.updates.first()
         assert isinstance(update.pk, int)
         assert update.sqid
+
+    def test_cooldown_suppresses_rapid_reescalation(self):
+        self.create_pm25_entry(10, minutes_ago=5)  # MODERATE
+        evaluator = AlertEvaluator(self.monitor)
+        alert = evaluator.creation_check(self.entry_model, self.lookup)
+        assert alert.updates.latest().get_level() == AQLevel.scale.MODERATE
+
+        # Replace with entries that average into UNHEALTHY_SENSITIVE (a
+        # 1-rank jump) with no time elapsed since the last update.
+        self.entry_model.objects.all().delete()
+        self.create_pm25_entry(40, minutes_ago=1)
+        evaluator.update_check(alert, self.entry_model, self.lookup)
+
+        updates = AlertUpdate.objects.filter(alert=alert)
+        assert updates.count() == 1
+
+    def test_severity_bypass_skips_cooldown(self):
+        self.create_pm25_entry(10, minutes_ago=5)  # MODERATE
+        evaluator = AlertEvaluator(self.monitor)
+        alert = evaluator.creation_check(self.entry_model, self.lookup)
+        assert alert.updates.latest().get_level() == AQLevel.scale.MODERATE
+
+        # Jump straight to VERY_UNHEALTHY (rank 4, a 3-rank jump) with no
+        # time elapsed — severity bypass should fire immediately.
+        self.entry_model.objects.all().delete()
+        self.create_pm25_entry(200, minutes_ago=1)
+        evaluator.update_check(alert, self.entry_model, self.lookup)
+
+        updates = AlertUpdate.objects.filter(alert=alert)
+        assert updates.count() == 2
+        assert updates.latest().get_level() == AQLevel.scale.VERY_UNHEALTHY
+
+    def test_get_current_level_ignores_stale_entries(self):
+        self.create_pm25_entry(80, minutes_ago=200)
+        evaluator = AlertEvaluator(self.monitor)
+        level = evaluator.get_current_level(self.entry_model, self.lookup)
+        assert level is None
+
+
+class MultiPollutantAndHourlyMonitorTests(TestCase):
+    fixtures = ['users.yaml']
+
+    def setUp(self):
+        self.monitor = AirNow.objects.create(
+            name='Test AirNow Station',
+            position=Point(-119.8, 36.7),
+            county='Fresno',
+            location='outside',
+        )
+        self.pm25_lookup = self.monitor.alertable_entry_types[PM25]
+        self.o3_lookup = self.monitor.alertable_entry_types[O3]
+
+    def test_hourly_monitor_ignores_stale_reading(self):
+        O3.objects.create(
+            monitor=self.monitor,
+            value=125,  # UNHEALTHY_SENSITIVE if fresh
+            timestamp=timezone.now() - timedelta(hours=5),
+            **self.o3_lookup
+        )
+        evaluator = AlertEvaluator(self.monitor)
+        level = evaluator.get_level(O3, self.o3_lookup, window=evaluator.DEESCALATION_WINDOW)
+        assert level is None
+
+    def test_two_pollutants_produce_independent_alerts(self):
+        PM25.objects.create(
+            monitor=self.monitor, value=60, timestamp=timezone.now(), **self.pm25_lookup
+        )
+        O3.objects.create(
+            monitor=self.monitor, value=125, timestamp=timezone.now(), **self.o3_lookup
+        )
+
+        # Raw entry creation doesn't touch LatestEntry (that only happens via
+        # the real ingestion pipeline), so force is_active for this check.
+        self.monitor.is_active = True
+
+        evaluator = AlertEvaluator(self.monitor)
+        evaluator.evaluate()
+
+        pm25_alert = Alert.objects.get(monitor=self.monitor, entry_type=PM25.entry_type)
+        o3_alert = Alert.objects.get(monitor=self.monitor, entry_type=O3.entry_type)
+        assert pm25_alert.pk != o3_alert.pk
+        assert pm25_alert.updates.count() == 1
+        assert o3_alert.updates.count() == 1
 
 
 class NotificationModelTests(TestCase):
