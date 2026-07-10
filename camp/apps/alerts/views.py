@@ -1,12 +1,18 @@
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count, Q
+from django.http import HttpResponse, HttpResponseForbidden
 from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 
 import vanilla
 
-from camp.apps.alerts.models import Alert, Subscription
+from twilio.request_validator import RequestValidator
+
+from camp.apps.alerts.models import Alert, Notification, Subscription
 from camp.apps.monitors.models import Monitor
 from camp.utils.counties import County
 
@@ -80,3 +86,30 @@ class SubscriptionCountyStats(vanilla.TemplateView):
             })
 
         return stats
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class TwilioStatusCallback(View):
+    STATUS_MAP = {
+        'delivered': Notification.Status.DELIVERED,
+        'undelivered': Notification.Status.UNDELIVERED,
+        'failed': Notification.Status.FAILED,
+    }
+
+    def post(self, request, *args, **kwargs):
+        validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
+        signature = request.META.get('HTTP_X_TWILIO_SIGNATURE', '')
+        url = request.build_absolute_uri()
+
+        if not validator.validate(url, request.POST, signature):
+            return HttpResponseForbidden()
+
+        status = self.STATUS_MAP.get(request.POST.get('MessageStatus'))
+        if status is None:
+            return HttpResponse(status=200)
+
+        Notification.objects.filter(
+            provider_id=request.POST.get('MessageSid')
+        ).update(status=status)
+
+        return HttpResponse(status=200)

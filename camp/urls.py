@@ -12,6 +12,7 @@ from health_check.contrib.psutil import Memory
 from health_check.contrib.redis import Redis
 from health_check.views import HealthCheckView
 
+from camp.apps.alerts.views import TwilioStatusCallback
 from camp.apps.monitors.health_checks import (
     AirGradientHealthCheck,
     AirNowHealthCheck,
@@ -36,6 +37,8 @@ urlpatterns = [
     path('widget/', views.RenderStatic.as_view(static_file='widget/index.html')),
 
     path('prose/', include('prose.urls')),
+
+    path('webhooks/twilio/status/', TwilioStatusCallback.as_view(), name='twilio-status-callback'),
 
     # Admin-y stuff
     path('admin/', include('admin_honeypot.urls', namespace='admin_honeypot')),
