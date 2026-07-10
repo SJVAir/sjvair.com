@@ -21,12 +21,13 @@ This redesign adds a persisted delivery log, decouples sending from the `Alert` 
 - Add a minimum gap between consecutive notifications on the same alert, bypassed for large severity jumps
 - Fix a real staleness bug in `AlertEvaluator.get_current_level` (docstring claims a freshness check that was never implemented), relevant to hourly-reporting monitors like AirNow/BAM
 - Remove dead code left over from when the system was PM2.5-only
+- Migrate `Alert` and `AlertUpdate` off the legacy `SmallUUIDField` pattern onto `SqidsField`, matching newer apps (`regions`, `pesticides`, `ceidars`)
 
 ## Non-Goals
 
 - No notification channel abstraction. SMS via Twilio is the only channel in use or planned; no `channel` field, no interface.
 - No regional subscriptions. `Region` (`camp/apps/regions/`) already supports geometry-based monitor lookup and could support "subscribe to all monitors in this region" later, but that's not built here. The only accommodation made now is that recipient resolution lives behind one function (`get_recipients`) instead of an inline queryset, so that extension doesn't require touching the rest of the pipeline.
-- No changes to `Subscription` (model, API endpoints, or admin). Existing subscriptions and their semantics (user + monitor + level, not pollutant-specific) are preserved as-is.
+- No changes to `Subscription` (model, API endpoints, or admin). Existing subscriptions and their semantics (user + monitor + level, not pollutant-specific) are preserved as-is — unlike `Alert`/`AlertUpdate` below, `Subscription` data is not reconstructable and is not being touched.
 - No changes to per-pollutant alert evaluation. `Alert`/`AlertEvaluator` already operate per `(monitor, entry_type)` pair, and multiple alertable pollutants per monitor (e.g., AirNow's PM2.5 and O3) already produce independent `Alert` records that independently notify subscribers. This already works and isn't being changed — see "Multi-pollutant behavior" below.
 
 ---
@@ -93,7 +94,31 @@ Twilio POSTs to this endpoint as a message's status changes after sending (`sent
 
 ---
 
-## 2. Evaluator anti-flapping logic
+## 2. `Alert` / `AlertUpdate`: migrate to sqids
+
+`Alert` currently uses the legacy pattern (`id = SmallUUIDField(primary_key=True, ...)`). `AlertUpdate` has no external-facing identifier at all today, just Django's default `AutoField`. Both move to the newer convention used by `regions`, `pesticides`, and `ceidars`:
+
+```python
+class Alert(TimeStampedModel):
+    sqid = SqidsField(alphabet=shuffle_alphabet('alerts.Alert'))
+    # ... unchanged fields (monitor, entry_type, start_time, end_time, latest)
+
+class AlertUpdate(TimeStampedModel):
+    sqid = SqidsField(alphabet=shuffle_alphabet('alerts.AlertUpdate'))
+    # ... unchanged fields (alert, timestamp, level)
+```
+
+Both keep the default auto `id` as primary key; `sqid` is the new external-facing identifier.
+
+**This is a destructive migration.** Changing `Alert`'s primary key type means dropping and recreating the `Alert` and `AlertUpdate` tables — existing rows are not preserved. This is intentional: alert/notification history isn't treated as data of record (it's derivable from raw entry values if ever needed), and there's no backfill planned as part of this work. `Subscription` is unaffected and keeps all existing data (see Non-Goals).
+
+One operational side effect worth knowing about at deploy time: any alerts that are currently open (`end_time__isnull=True`) are gone once the tables are recreated. `AlertEvaluator` will simply create fresh `Alert` records for any monitor still above threshold on its next run — but those new alerts start their `start_time` (and therefore the `MINIMUM_DURATION` close-gate) over from the deploy time. This is a one-time transitional quirk affecting whatever alerts happen to be active at deploy time, not an ongoing behavior change.
+
+`Alert` is referenced today by `api/v1/accounts/endpoints.py` and `api/v2/accounts/endpoints.py` (`AlertList`, undocumented, `login_required`, lists the current user's active alerts) — no endpoint retrieves a single `Alert` by ID, and neither is a documented/public API contract, so the PK type change has no external consumers to break.
+
+---
+
+## 3. Evaluator anti-flapping logic
 
 ### Window changes (`camp/apps/alerts/evaluator.py`)
 
@@ -174,4 +199,6 @@ New tests for `TwilioStatusCallback`:
 
 ## Migration
 
-One new migration for the `Notification` model. No changes to existing `Subscription`, `Alert`, or `AlertUpdate` schemas.
+- New migration adding the `Notification` model.
+- Destructive migration for `Alert`/`AlertUpdate`: existing rows are deleted as part of switching `Alert`'s primary key from `SmallUUIDField` to the default auto PK + `SqidsField`. See "1a. `Alert`/`AlertUpdate`: migrate to sqids" for the accepted data-loss rationale and the transitional effect on alerts open at deploy time.
+- No changes to `Subscription`.
