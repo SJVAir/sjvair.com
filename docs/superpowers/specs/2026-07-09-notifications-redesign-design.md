@@ -40,9 +40,11 @@ class Notification(TimeStampedModel):
     class Status(models.TextChoices):
         QUEUED = 'queued', _('Queued')
         SENT = 'sent', _('Sent')
+        DELIVERED = 'delivered', _('Delivered')
+        UNDELIVERED = 'undelivered', _('Undelivered')
         FAILED = 'failed', _('Failed')
 
-    id = SmallUUIDField(default=uuid_default(), primary_key=True, db_index=True, editable=False)
+    sqid = SqidsField(alphabet=shuffle_alphabet('alerts.Notification'))
 
     alert_update = models.ForeignKey('alerts.AlertUpdate', related_name='notifications', on_delete=models.CASCADE)
     subscription = models.ForeignKey('alerts.Subscription', null=True, blank=True, related_name='notifications', on_delete=models.SET_NULL)
@@ -55,6 +57,7 @@ class Notification(TimeStampedModel):
     sent_at = models.DateTimeField(null=True, blank=True)
 ```
 
+- Uses `SqidsField` (`django_sqids`), not `SmallUUIDField` — per project convention, newer models use sqids over the legacy smalluuid PK pattern (see `regions`, `pesticides`, `ceidars` apps). Primary key remains the default auto `id`; `sqid` is the external-facing identifier, looked up via `provider_id`/`MessageSid` internally rather than `sqid` for the webhook.
 - `subscription` is `SET_NULL` so the audit trail survives the user unsubscribing later.
 - `user` is `CASCADE` (consistent with `Subscription.user`) — if the account is deleted, its notification history goes with it.
 - `message` stores the exact rendered text sent, independent of what the `Alert`/`AlertUpdate` looks like later.
@@ -70,8 +73,17 @@ class Notification(TimeStampedModel):
 ### New task: `camp/apps/alerts/tasks.py` — `send_alert_notification(notification_id)`
 
 - Loads the `Notification`, sends via the existing Twilio client pattern (same as `accounts.tasks.send_sms_message`)
-- On success: `status=SENT`, `sent_at=now()`, `provider_id=<Twilio SID>`
+- On success: `status=SENT`, `sent_at=now()`, `provider_id=<Twilio SID>`. The `messages.create()` call includes `status_callback=<webhook URL>` (see below) so delivery confirmation arrives asynchronously rather than by polling.
 - On `TwilioRestException`: `status=FAILED`, `error=str(exception)` — caught and logged instead of propagating
+
+### Delivery status webhook: `camp/apps/alerts/views.py` — `TwilioStatusCallback`
+
+Twilio POSTs to this endpoint as a message's status changes after sending (`sent` → `delivered`/`undelivered`, or `failed`). It's wired at the top level (`camp/urls.py`, e.g. `webhooks/twilio/status/`), not under `account/`, since it's an external callback rather than a user-facing page — same `csrf_exempt` treatment as the existing `CreateEntry` upload endpoint in `api/v2/monitors/endpoints.py`.
+
+- Validates the request using `twilio.request_validator.RequestValidator(settings.TWILIO_AUTH_TOKEN)` against the `X-Twilio-Signature` header; rejects with 403 if invalid. No other Twilio-originated endpoint currently exists in the codebase, so there's no established pattern to follow here — just Twilio's own documented validation method.
+- Reads `MessageSid` and `MessageStatus` from the POST body. Maps Twilio's `delivered`/`undelivered`/`failed` to the matching `Notification.Status`; other intermediate statuses (`queued`, `sending`, `sent`) are ignored since `SENT` is already recorded at send time.
+- Looks up `Notification.objects.get(provider_id=MessageSid)`. If no match (e.g., a stale or replayed callback), returns 200 without error — Twilio doesn't need a failure response for this case.
+- The callback URL follows the existing convention of hardcoding the production domain (see `Alert.send_notifications`'s `https://sjvair.com{...}` today) rather than introducing a new `SITE_URL` setting.
 
 ### Changes to `Alert` (`models.py`)
 
@@ -152,6 +164,13 @@ New tests for `camp/apps/alerts/notifications.py` (mocked Twilio client):
 - Successful send creates a `Notification` with `status=SENT`, `provider_id` populated
 - `TwilioRestException` is caught, not raised — `Notification` ends up `status=FAILED` with `error` populated
 - Only subscribers whose `level` threshold is met receive a `Notification`
+
+New tests for `TwilioStatusCallback`:
+
+- Valid signature + `MessageStatus=delivered` updates the matching `Notification` to `DELIVERED`
+- Valid signature + `MessageStatus=undelivered` updates to `UNDELIVERED`
+- Invalid/missing signature is rejected with 403 and does not touch any `Notification`
+- Unknown `MessageSid` returns 200 without error and without modifying any row
 
 ## Migration
 
