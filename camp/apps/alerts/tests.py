@@ -3,7 +3,8 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from camp.apps.alerts.models import Alert, AlertUpdate
+from camp.apps.accounts.models import User
+from camp.apps.alerts.models import Alert, AlertUpdate, Notification, Subscription
 from camp.apps.alerts.evaluator import AlertEvaluator
 from camp.apps.entries.models import PM25
 from camp.apps.entries.levels import AQLevel, LevelSet
@@ -112,3 +113,53 @@ class AlertEvaluatorTests(TestCase):
         evaluator.evaluate()
 
         assert Alert.objects.count() == 0
+
+
+class NotificationModelTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.user = User.objects.get(email='user@sjvair.com')
+        self.subscription = Subscription.objects.create(
+            user=self.user, monitor=self.monitor, level='unhealthy',
+        )
+        self.alert = Alert.objects.create(
+            monitor=self.monitor,
+            entry_type=PM25.entry_type,
+            start_time=timezone.now(),
+        )
+        self.alert_update = AlertUpdate.objects.create(
+            alert=self.alert, level='unhealthy',
+        )
+
+    def test_defaults_to_queued_and_has_sqid(self):
+        notification = Notification.objects.create(
+            alert_update=self.alert_update,
+            subscription=self.subscription,
+            user=self.user,
+            message='test message',
+        )
+        assert notification.status == Notification.Status.QUEUED
+        assert notification.sqid
+
+    def test_survives_subscription_deletion(self):
+        notification = Notification.objects.create(
+            alert_update=self.alert_update,
+            subscription=self.subscription,
+            user=self.user,
+            message='test message',
+        )
+        self.subscription.delete()
+        notification.refresh_from_db()
+        assert notification.subscription_id is None
+
+    def test_deleted_with_user(self):
+        notification = Notification.objects.create(
+            alert_update=self.alert_update,
+            subscription=self.subscription,
+            user=self.user,
+            message='test message',
+        )
+        self.user.delete()
+        assert not Notification.objects.filter(pk=notification.pk).exists()
