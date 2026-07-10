@@ -8,9 +8,11 @@ from camp.apps.entries.levels import AQLevel
 
 
 class AlertEvaluator:
-    CREATION_WINDOW = pd.Timedelta('30m')
-    UPDATE_WINDOW = pd.Timedelta('60m')
+    ESCALATION_WINDOW = pd.Timedelta('15m')
+    DEESCALATION_WINDOW = pd.Timedelta('60m')
     MINIMUM_DURATION = pd.Timedelta('60m')
+    NOTIFICATION_COOLDOWN = pd.Timedelta('30m')
+    SEVERITY_BYPASS_RANKS = 2
 
     def __init__(self, monitor):
         self.monitor = monitor
@@ -50,7 +52,7 @@ class AlertEvaluator:
 
         Args:
             entry_model: The entry model to query (e.g., PM25).
-            minutes: The averaging window in minutes (e.g., 30 or 60).
+            window: The averaging window (e.g., ESCALATION_WINDOW or DEESCALATION_WINDOW).
 
         Returns:
             A Level instance corresponding to the averaged value, or None if no data is available.
@@ -90,10 +92,15 @@ class AlertEvaluator:
 
         if not entry:
             return None
+
+        interval = pd.to_timedelta(self.monitor.EXPECTED_INTERVAL)
+        if timezone.now() - entry.timestamp > interval * 2:
+            return None
+
         return entry_model.Levels.get_level(entry.value)
 
     def creation_check(self, entry_model, lookup):
-        level = self.get_level(entry_model, lookup, window=self.CREATION_WINDOW)
+        level = self.get_level(entry_model, lookup, window=self.ESCALATION_WINDOW)
         if not level or level < AQLevel.scale.MODERATE:
             # Below moderate (good) so no alert needed.
             return
@@ -108,24 +115,39 @@ class AlertEvaluator:
 
     def update_check(self, alert, entry_model, lookup):
         """
-        Update an active alert if the level has changed,
-        or close it out if the level has dropped to GOOD.
+        Escalate quickly (15-minute average), de-escalate or close slowly
+        (60-minute average). A minimum gap is enforced between consecutive
+        notifications on the same alert, unless the level jumps by 2 or
+        more ranks.
         """
-        level = self.get_level(entry_model, lookup, window=self.UPDATE_WINDOW)
-        if level is None:
-            return
+        fast_level = self.get_level(entry_model, lookup, window=self.ESCALATION_WINDOW)
+        slow_level = self.get_level(entry_model, lookup, window=self.DEESCALATION_WINDOW)
 
         last_update = alert.updates.latest()
+        current_level = last_update.get_level()
         now = timezone.now()
 
-        # If the level has changed but still isn't good, make the update.
-        if level != last_update.get_level() and level != AQLevel.scale.GOOD:
-            alert.create_update(level)
+        candidate = None
+        if fast_level and fast_level > current_level:
+            candidate = fast_level
+        elif slow_level and slow_level < current_level:
+            candidate = slow_level
+
+        if candidate is None:
             return
 
-        # If the new level is GOOD and the alert has lived long enough, we can end the alert.
-        if level == AQLevel.scale.GOOD and (now - alert.start_time) >= self.MINIMUM_DURATION:
-            alert.end_time = timezone.now()
-            alert.save(update_fields=['end_time'])
-            alert.create_update(level)
+        if candidate == AQLevel.scale.GOOD:
+            # If the new level is GOOD and the alert has lived long enough, we can end the alert.
+            if (now - alert.start_time) >= self.MINIMUM_DURATION:
+                alert.end_time = now
+                alert.save(update_fields=['end_time'])
+                alert.create_update(candidate)
             return
+
+        rank_jump = abs(candidate.rank - current_level.rank)
+        time_since_last = now - last_update.timestamp
+        if time_since_last < self.NOTIFICATION_COOLDOWN and rank_jump < self.SEVERITY_BYPASS_RANKS:
+            # Still within the cooldown and not a big enough jump to bypass it.
+            return
+
+        alert.create_update(candidate)
