@@ -1,10 +1,13 @@
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+from django.conf import settings
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from twilio.base.exceptions import TwilioRestException
+from twilio.request_validator import RequestValidator
 
 from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Alert, AlertUpdate, Notification, Subscription
@@ -259,3 +262,67 @@ class NotifySubscribersTests(TestCase):
         update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
 
         assert not Notification.objects.filter(alert_update=update, user=unverified_user).exists()
+
+
+class TwilioStatusCallbackTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.user = User.objects.get(email='user@sjvair.com')
+        self.alert = Alert.objects.create(
+            monitor=self.monitor,
+            entry_type=PM25.entry_type,
+            start_time=timezone.now(),
+        )
+        self.alert_update = AlertUpdate.objects.create(alert=self.alert, level='unhealthy')
+        self.notification = Notification.objects.create(
+            alert_update=self.alert_update,
+            user=self.user,
+            message='test message',
+            status=Notification.Status.SENT,
+            provider_id='SM_test_sid',
+        )
+        self.url = reverse('twilio-status-callback')
+
+    def post_with_signature(self, data):
+        full_url = f'http://testserver{self.url}'
+        validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
+        signature = validator.compute_signature(full_url, data)
+        return self.client.post(self.url, data, HTTP_X_TWILIO_SIGNATURE=signature)
+
+    def test_delivered_status_updates_notification(self):
+        response = self.post_with_signature({
+            'MessageSid': 'SM_test_sid',
+            'MessageStatus': 'delivered',
+        })
+        assert response.status_code == 200
+        self.notification.refresh_from_db()
+        assert self.notification.status == Notification.Status.DELIVERED
+
+    def test_undelivered_status_updates_notification(self):
+        response = self.post_with_signature({
+            'MessageSid': 'SM_test_sid',
+            'MessageStatus': 'undelivered',
+        })
+        assert response.status_code == 200
+        self.notification.refresh_from_db()
+        assert self.notification.status == Notification.Status.UNDELIVERED
+
+    def test_invalid_signature_is_rejected(self):
+        response = self.client.post(self.url, {
+            'MessageSid': 'SM_test_sid',
+            'MessageStatus': 'delivered',
+        }, HTTP_X_TWILIO_SIGNATURE='not-a-real-signature')
+        assert response.status_code == 403
+        self.notification.refresh_from_db()
+        assert self.notification.status == Notification.Status.SENT
+
+    def test_unknown_sid_returns_200_without_error(self):
+        response = self.post_with_signature({
+            'MessageSid': 'SM_does_not_exist',
+            'MessageStatus': 'delivered',
+        })
+        assert response.status_code == 200
+        self.notification.refresh_from_db()
+        assert self.notification.status == Notification.Status.SENT

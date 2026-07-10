@@ -3,6 +3,7 @@ from random import choice
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 from django.conf import settings
+from django.urls import reverse
 from django.utils import timezone
 from django.db.models import Q
 
@@ -56,6 +57,7 @@ def send_alert_notification(notification_id):
             to=str(notification.user.phone),
             from_=choice(settings.TWILIO_PHONE_NUMBERS),
             body=notification.message,
+            status_callback=f'https://sjvair.com{reverse("twilio-status-callback")}',
         )
     except TwilioRestException as exc:
         notification.status = Notification.Status.FAILED
