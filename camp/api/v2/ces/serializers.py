@@ -3,6 +3,7 @@ from resticus import serializers
 
 class CES4Serializer(serializers.Serializer):
     fields = (
+        ('id', lambda r: r.sqid),
         ('tract', lambda r: r.tract),
         ('census_year', lambda r: r.census_year),
         'population',

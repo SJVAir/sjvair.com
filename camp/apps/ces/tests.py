@@ -57,3 +57,8 @@ class CES4ModelTests(TestCase):
                     boundary__region__external_id=geoid,
                     boundary__version=year,
                 ).exists()
+
+    def test_sqid_is_a_nonempty_string(self):
+        record = self.get_tract('06019000101', '2020')
+        assert isinstance(record.sqid, str)
+        assert record.sqid

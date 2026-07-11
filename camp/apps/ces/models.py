@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django_sqids import SqidsField, shuffle_alphabet
 
 from camp.apps.ces.querysets import CESManager
 
@@ -67,6 +68,10 @@ class CES4(CESRecord):
 
     Percentiles are California-wide as published by OEHHA.
     """
+
+    # New models in this project use sqids for their external identifier
+    # (see CLAUDE.md Key Conventions).
+    sqid = SqidsField(alphabet=shuffle_alphabet('ces.CES4'))
 
     # --- Pollution Burden ---
     pollution = models.FloatField(_('Pollution Burden Score'), null=True)

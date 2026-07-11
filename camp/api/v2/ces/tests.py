@@ -40,6 +40,7 @@ class CES4EndpointTests(TestCase):
         data = get_response_data(response)
 
         record = data['data'][0]
+        assert 'id' in record
         assert 'tract' in record
         assert 'census_year' in record
         assert 'ci_score' in record
