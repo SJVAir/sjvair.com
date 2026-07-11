@@ -261,10 +261,11 @@ class CES5Mixin:
     model = CES5
     serializer_class = CES5Serializer
     paginate = True
+    filter_class = CES5Filter
 
 
 class CES5List(CES5Mixin, generics.ListEndpoint):
-    filter_class = CES5Filter
+    pass
 
 
 class CES5Detail(CES5Mixin, generics.DetailEndpoint):
@@ -283,6 +284,36 @@ class CES5Detail(CES5Mixin, generics.DetailEndpoint):
 filter and range filters on `ci_score`, `ci_score_p`, `pollution_p`,
 `popchar_p`, plus new range filters for `pol_small_ats_p` and
 `char_diabetes_p`.
+
+### OpenAPI schema
+
+This project has no static OpenAPI file — `resticus.schemas.SchemaGenerator`
+builds the schema dynamically from each endpoint's `filter_class` (query
+params), `serializer_class`/`model` (response shape), and class docstring
+(operation description), served at `/api/2.0/openapi.json` and asserted
+against in `camp/api/v2/tests/test_openapi.py`. There is nothing to
+hand-edit — but it does mean **`year` must become a declared filter field**,
+not a value read directly off `request.GET`, or it disappears from the
+generated docs entirely once it moves off the URL path. `CES4Filter` gets:
+
+```python
+year = django_filters.CharFilter(field_name='boundary__version')
+```
+
+This is deliberately redundant with (but consistent with) `CES4Mixin`'s own
+default-application logic: when `?year=` is omitted, `CES4Mixin.get_queryset`
+applies the `'2020'` default directly; when provided, both the mixin and this
+declared filter resolve to the same `boundary__version` value, so there's no
+conflict. `filter_class` also moves from `CES4List`/`CES5List` up to
+`CES4Mixin`/`CES5Mixin` so the query params are documented on the Detail
+operations too (Detail's custom `get_object()` doesn't actually invoke the
+FilterSet — this is documentation-only, matching how `filter_class` is
+already used purely as a schema-introspection surface elsewhere in this
+codebase, not a guarantee every declared field is enforced on every action).
+
+`camp/api/v2/tests/test_openapi.py` gets new assertions verifying the CES4
+and CES5 paths are documented, and that `year` appears as a query parameter
+on the CES4 operations.
 
 ## Tests & fixtures
 
