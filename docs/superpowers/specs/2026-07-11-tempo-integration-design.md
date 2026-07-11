@@ -33,19 +33,19 @@ Map overlay is the immediate priority; the data model is built to serve all thre
 
 ## Models
 
-### `TempoGrid`
+### `Granule`
 
-One row per `(product, timestamp)` — the clipped hourly grid for one product, at whatever is currently the best-available NASA version.
+One row per `(product, timestamp)` — the clipped hourly grid for one product, at whatever is currently the best-available NASA version. Named after NASA's own term for one hourly, per-product L3 file.
 
 ```python
-class TempoGrid(models.Model):
+class Granule(models.Model):
     class Product(models.TextChoices):
         NO2 = 'no2', 'Nitrogen Dioxide'
         O3TOT = 'o3tot', 'Total Ozone'
         HCHO = 'hcho', 'Formaldehyde'
         CLDO4 = 'cldo4', 'Cloud Fraction'
 
-    id = SmallUUIDField(default=uuid_default(), primary_key=True, editable=False)
+    sqid = SqidsField(alphabet=shuffle_alphabet('tempo.Granule'))
 
     product = models.CharField(max_length=10, choices=Product.choices)
     timestamp = models.DateTimeField()          # start of the observation hour
@@ -70,18 +70,18 @@ class TempoGrid(models.Model):
 Core logic lives in one function, called from every ingestion path:
 
 ```python
-def sync_tempo_grid(product: str, timestamp: datetime) -> TempoGrid | None:
+def sync_granule(product: str, timestamp: datetime) -> Granule | None:
     """
     Fetches the best-available NASA granule for (product, timestamp), compares
-    its version against what's stored, and replaces the TempoGrid row only if
+    its version against what's stored, and replaces the Granule row only if
     NASA's version is newer than what we have. No-op if already up to date.
     """
 ```
 
 Flow:
 1. Query NASA CMR for the granule covering `(product, timestamp)`, clipped to our AOI via Harmony.
-2. Compare the granule's algorithm version against `TempoGrid.version` for the existing row, if any.
-3. If missing, or NASA's version is newer: fetch the subsetted netCDF via Harmony, load into a numpy array + geotransform, build a `GDALRaster` directly from the array (no intermediate file), render the colorized PNG from the same array, and `update_or_create` the `TempoGrid` row.
+2. Compare the granule's algorithm version against `Granule.version` for the existing row, if any.
+3. If missing, or NASA's version is newer: fetch the subsetted netCDF via Harmony, load into a numpy array + geotransform, build a `GDALRaster` directly from the array (no intermediate file), render the colorized PNG from the same array, and `update_or_create` the `Granule` row.
 4. If already up to date: skip.
 
 ### Callers
@@ -91,9 +91,9 @@ Flow:
 | `fetch_tempo` (Huey periodic task) | Hourly, daylight hours only | Live NRT ingestion for the current hour |
 | `fetch_tempo_final` (Huey periodic task) | Daily, delayed | Re-check yesterday once NASA's standard product typically lands |
 | `sync_tempo_reprocessing` (Huey periodic task) | Weekly | Queries CMR's `updated_since` filter against a stored checkpoint to find granules NASA has revised (V03→V04 reprocessing), re-syncs just those, advances the checkpoint. Avoids re-diffing the full history on every run. |
-| `import_tempo` (management command) | Manual | `manage.py import_tempo --start 2023-08-02 --end ... --product no2`. Initial full-history backfill and any ad-hoc range re-sync. Submits Harmony's async range-based subset jobs (one per product per span) rather than one request per hour. Resumable — safe to interrupt and rerun since `sync_tempo_grid` skips anything already up to date. |
+| `import_tempo` (management command) | Manual | `manage.py import_tempo --start 2023-08-02 --end ... --product no2`. Initial full-history backfill and any ad-hoc range re-sync. Submits Harmony's async range-based subset jobs (one per product per span) rather than one request per hour. Resumable — safe to interrupt and rerun since `sync_granule` skips anything already up to date. |
 
-All four are thin wrappers around `sync_tempo_grid` — the historical backfill and everyday NRT ingestion are the same code path, just driven by a date range instead of the clock.
+All four are thin wrappers around `sync_granule` — the historical backfill and everyday NRT ingestion are the same code path, just driven by a date range instead of the clock.
 
 ### Error handling / QA
 
@@ -128,7 +128,7 @@ These are called directly by whatever needs a comparison — internal data-tooli
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/2.0/tempo/` | User-facing products with label, units, colormap/legend stops. Excludes `CLDO4` — it's QA-only and never exposed as a toggleable layer, though it's still ingested and stored as a `TempoGrid` row like the other products. |
+| `GET /api/2.0/tempo/` | User-facing products with label, units, colormap/legend stops. Excludes `CLDO4` — it's QA-only and never exposed as a toggleable layer, though it's still ingested and stored as a `Granule` row like the other products. |
 | `GET /api/2.0/tempo/{product}/grids/` | Available hourly timestamps for a product — `timestamp`, `is_final`, `bounds`, `preview_url`. Defaults to today, falling back to yesterday if today's data isn't available yet. |
 | `GET /api/2.0/tempo/{product}/value/?lat=&lon=&timestamp=` | Point value via `value_at_point` |
 | `GET /api/2.0/tempo/{product}/zonal/?region_id=&timestamp=` | Zonal aggregate over a community boundary via `zonal_stats` |
