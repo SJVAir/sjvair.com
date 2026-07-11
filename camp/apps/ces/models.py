@@ -7,7 +7,7 @@ from camp.apps.ces.querysets import CESManager
 class DACCategory(models.IntegerChoices):
     TOP_CES_SCORE = 1, _('Top 25% CES overall score')
     TOP_POLLUTION = 2, _('Top 5% pollution burden (no overall score)')
-    PRIOR_DAC = 3, _('Designated under 2017 DAC list')
+    PRIOR_DAC = 3, _('Carried over from prior DAC designation')
     TRIBAL_LAND = 4, _('Federally recognized Tribal land')
 
 
