@@ -75,6 +75,129 @@ git commit -m "refactor(ces): generalize DACCategory.PRIOR_DAC label for CES5"
 
 ---
 
+### Task 1.5: Retrofit `CES4` with a `sqid` field
+
+This project's convention (`CLAUDE.md` Key Conventions) is that all new models get a `sqid = SqidsField(alphabet=shuffle_alphabet('app.ModelName'))` for their external identifier, following `camp/apps/ceidars/models.py`. CES5 (Task 2) already gets one. Since nothing downstream depends on CES4 data yet, CES4 is retrofitted with the same convention here, before Task 2 adds CES5 — so both models pick up the pattern independently and consistently.
+
+**Important:** declare `sqid` separately on `CES4` and `CES5` (Task 2), each with its own seed string — do NOT hoist a single `sqid` field onto the shared `CESRecord` abstract base. `shuffle_alphabet(seed)` computes a fixed shuffled-alphabet string once, at field-declaration time; Django's abstract-field inheritance clones that already-built field object into every concrete subclass rather than re-running `shuffle_alphabet` per subclass. A `sqid` declared once on `CESRecord` would give CES4 and CES5 the *identical* alphabet, so e.g. `CES4` row `id=7` and `CES5` row `id=7` would encode to the exact same sqid string — defeating the purpose of a unique-per-model opaque identifier. `camp/apps/ceidars/models.py` avoids this by seeding per concrete model (`'ceidars.Facility'`, `'ceidars.EmissionsRecord'`); CES4/CES5 follow that precedent.
+
+`SqidsField` is a derived/virtual field computed from the real `id` PK at read time by `django_sqids` — it adds **no migration column** (confirmed: zero `sqid` references anywhere in `camp/apps/ceidars/migrations/`, despite `Facility`/`EmissionsRecord` declaring the field) and needs **no fixture value or data backfill**. Existing CES4 rows get valid sqids for free the moment the field is declared.
+
+This task does NOT change CES4's URL/lookup design — detail lookups stay tract-GEOID-based (`camp/api/v2/ces/endpoints.py`, unchanged by this task). `sqid` is exposed in the API purely as an `id` field, for consistency with how other newer apps' serializers already do it (`('id', lambda f: f.sqid)` in `camp/api/v2/ceidars/serializers.py`).
+
+**Files:**
+- Modify: `camp/apps/ces/models.py` (add `sqid` to `CES4`)
+- Modify: `camp/api/v2/ces/serializers.py` (add `id` to `CES4Serializer`)
+- Modify: `camp/apps/ces/tests.py` (add a `sqid` test to `CES4ModelTests`)
+- Modify: `camp/api/v2/ces/tests.py` (add an `id`-field assertion to `CES4EndpointTests`)
+
+**Interfaces:**
+- Consumes: `CES4` model, `CES4Serializer` (from before this task — Task 1's label change, unrelated to this).
+- Produces: `CES4.sqid` (a `SqidsField`, virtual — no DB column). `CES4Serializer` now includes `('id', lambda r: r.sqid)` as its first field. Task 2's `CES5` model and Task 6's `CES5Serializer` follow this exact same pattern with their own `'ces.CES5'` seed — this task's diff is the reference implementation for that.
+
+- [ ] **Step 1: Write the failing tests first**
+
+In `camp/apps/ces/tests.py`, add a test to `CES4ModelTests` (after `test_str`, or anywhere in the class):
+
+```python
+    def test_sqid_is_a_nonempty_string(self):
+        record = self.get_tract('06019000101', '2020')
+        assert isinstance(record.sqid, str)
+        assert record.sqid
+```
+
+In `camp/api/v2/ces/tests.py`, add an assertion to the existing `test_list_records_have_expected_fields` method on `CES4EndpointTests` — find this exact method and add one line at the top of its body:
+
+```python
+    def test_list_records_have_expected_fields(self):
+        request = self.factory.get('/')
+        response = ces4_list(request, year='2020')
+        data = get_response_data(response)
+
+        record = data['data'][0]
+        assert 'id' in record
+        assert 'tract' in record
+        assert 'census_year' in record
+        assert 'ci_score' in record
+        assert 'ci_score_p' in record
+        assert 'dac_sb535' in record
+        assert 'pollution_p' in record
+        assert 'popchar_p' in record
+```
+
+(Only the `assert 'id' in record` line is new — the rest of this method is unchanged from its current form. Task 5, later, will change the `ces4_list(request, year='2020')` call signature as part of a separate refactor; that's expected and not this task's concern.)
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `docker compose run --rm test pytest camp/apps/ces/tests.py::CES4ModelTests::test_sqid_is_a_nonempty_string camp/api/v2/ces/tests.py::CES4EndpointTests::test_list_records_have_expected_fields -v`
+Expected: Both FAIL — `AttributeError: 'CES4' object has no attribute 'sqid'` for the first, `KeyError`/`AssertionError` (no `'id'` key) for the second.
+
+- [ ] **Step 3: Add the `sqid` field to `CES4`**
+
+In `camp/apps/ces/models.py`, add this import alongside the existing ones (`from django.db import models`, `from django.utils.translation import gettext_lazy as _`, `from camp.apps.ces.querysets import CESManager`):
+
+```python
+from django_sqids import SqidsField, shuffle_alphabet
+```
+
+Then, inside the `CES4` class, add `sqid` as the first field (right after the class's opening, before `pollution`):
+
+```python
+class CES4(CESRecord):
+    """
+    CalEnviroScreen 4.0 (2021), keyed to both 2010 and 2020 census tract
+    boundaries. 2010-vintage records use original CES4 scores; 2020-vintage
+    records are area-weighted crosswalks from 2010 tracts.
+
+    Percentiles are California-wide as published by OEHHA.
+    """
+
+    # New models in this project use sqids for their external identifier
+    # (see CLAUDE.md Key Conventions).
+    sqid = SqidsField(alphabet=shuffle_alphabet('ces.CES4'))
+
+    # --- Pollution Burden ---
+    pollution = models.FloatField(_('Pollution Burden Score'), null=True)
+    ...
+```
+
+(The docstring and everything from `# --- Pollution Burden ---` onward already exists in the file, unchanged — only the `sqid` field is new.)
+
+- [ ] **Step 4: Add `id` to `CES4Serializer`**
+
+In `camp/api/v2/ces/serializers.py`, add one line at the top of `CES4Serializer.fields`:
+
+```python
+class CES4Serializer(serializers.Serializer):
+    fields = (
+        ('id', lambda r: r.sqid),
+        ('tract', lambda r: r.tract),
+        ('census_year', lambda r: r.census_year),
+        'population',
+        ...
+```
+
+(Only the `('id', lambda r: r.sqid)` line is new — everything else in this serializer already exists, unchanged.)
+
+- [ ] **Step 5: Generate the migration and confirm it's a no-op for `sqid`**
+
+Run: `docker compose run --rm web python manage.py makemigrations ces`
+Expected: Django reports "No changes detected" — `SqidsField` contributes no concrete column (`column = None`, `concrete = False` per `django_sqids.field.SqidsField.contribute_to_class`), so there is nothing for the migration autodetector to pick up. If a migration DOES get generated, stop and report BLOCKED — that would mean this field is behaving differently than the ceidars precedent, and needs investigation before proceeding.
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `docker compose run --rm test pytest camp/apps/ces/tests.py camp/api/v2/ces/tests.py -v`
+Expected: All tests PASS, including the two new ones from Step 1.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add camp/apps/ces/models.py camp/api/v2/ces/serializers.py camp/apps/ces/tests.py camp/api/v2/ces/tests.py
+git commit -m "feat(ces): retrofit CES4 with a sqid field"
+```
+
+---
+
 ### Task 2: Add the `CES5` model, migration, and fixture data
 
 **Files:**
@@ -84,10 +207,10 @@ git commit -m "refactor(ces): generalize DACCategory.PRIOR_DAC label for CES5"
 - Create: `camp/apps/ces/migrations/0003_ces5.py` (generated, not hand-written)
 
 **Interfaces:**
-- Consumes: `CESRecord` abstract base and `DACCategory` enum from `camp/apps/ces/models.py` (unchanged from Task 1). `CESManager`/`CESQuerySet` from `camp/apps/ces/querysets.py` (unchanged — reused as-is).
-- Produces: `CES5` model with fields `boundary`, `population`, `ci_score`, `ci_score_p`, `dac_sb535`, `dac_category` (inherited from `CESRecord`), plus `sqid` (per this project's current convention that all new models get one — see below), `zipcode`, `approx_loc`, `county`, `region_name`, and all `pol_*`, `char_*`, `pop_*_pct`, `pollution*`, `popchar*` fields listed below. `record.tract`, `record.census_year`, `record.region` properties (inherited, unchanged behavior). Later tasks (admin, importer, API) depend on these exact field names.
+- Consumes: `CESRecord` abstract base and `DACCategory` enum from `camp/apps/ces/models.py` (unchanged from Task 1). `CESManager`/`CESQuerySet` from `camp/apps/ces/querysets.py` (unchanged — reused as-is). The `from django_sqids import SqidsField, shuffle_alphabet` import added to `camp/apps/ces/models.py` by Task 1.5.
+- Produces: `CES5` model with fields `boundary`, `population`, `ci_score`, `ci_score_p`, `dac_sb535`, `dac_category` (inherited from `CESRecord`), plus `sqid`, `zipcode`, `approx_loc`, `county`, `region_name`, and all `pol_*`, `char_*`, `pop_*_pct`, `pollution*`, `popchar*` fields listed below. `record.tract`, `record.census_year`, `record.region` properties (inherited, unchanged behavior). Later tasks (admin, importer, API) depend on these exact field names.
 
-`sqid` note: this project's convention (documented in `CLAUDE.md` under Key Conventions) is that all new models get `sqid = SqidsField(alphabet=shuffle_alphabet('app.ModelName'))` for their external identifier, following `camp/apps/ceidars/models.py`. `SqidsField` is a derived/virtual field computed from the real `id` PK at read time by `django_sqids` — it adds no migration column and needs no value in fixtures. `CES4` predates this convention and is not being retrofitted here (out of scope). This does NOT change CES5's URL/lookup design (still tract-GEOID-based, per the approved spec) — `sqid` is exposed in the API purely as an `('id', ...)` field for consistency with how other newer apps already do it (Task 6).
+`sqid` note: same convention Task 1.5 applied to `CES4` — `sqid = SqidsField(alphabet=shuffle_alphabet('ces.CES5'))`, its own seed (not `CESRecord`, not CES4's seed — see Task 1.5 for why sharing a seed across models would cause id collisions). `SqidsField` is virtual — no migration column, no fixture value needed. This does NOT change CES5's URL/lookup design (still tract-GEOID-based, per the approved spec) — `sqid` is exposed in the API purely as an `('id', ...)` field, same as CES4 now does (Task 6).
 
 - [ ] **Step 1: Write the failing test — fixture data first**
 
@@ -319,13 +442,9 @@ Expected: FAIL with `ImportError: cannot import name 'CES5'` (or similar) since 
 
 - [ ] **Step 3: Add the `CES5` model**
 
-First, add this import at the top of `camp/apps/ces/models.py`, alongside the existing `from django.db import models` / `from django.utils.translation import gettext_lazy as _` / `from camp.apps.ces.querysets import CESManager` imports:
+Task 1.5 already added `from django_sqids import SqidsField, shuffle_alphabet` to the top of `camp/apps/ces/models.py` (for `CES4`'s `sqid` field) — confirm it's there; you don't need to add it again.
 
-```python
-from django_sqids import SqidsField, shuffle_alphabet
-```
-
-Then append to `camp/apps/ces/models.py`, after the existing `CES4` class:
+Append to `camp/apps/ces/models.py`, after the existing `CES4` class:
 
 ```python
 class CES5(CESRecord):
@@ -1488,4 +1607,4 @@ git commit -m "feat(api): add CES5 endpoints"
 - **Field name consistency:** `FIELD_MAP` in Task 4 was cross-checked field-by-field against the model definition in Task 2 and the serializer in Task 6 — every model field has exactly one `FIELD_MAP` source column (except the inherited `boundary`/`dac_sb535`/`dac_category`, which are set separately) and appears in `CES5Serializer.fields`.
 - **No automated importer tests:** Called out explicitly in Task 4 rather than glossed over — this matches existing project convention for network-dependent importers, not an oversight.
 - **OpenAPI schema coverage:** Added after discovering (mid-plan) that this project's schema is generated dynamically by `resticus.schemas.SchemaGenerator` from each endpoint's `filter_class`/`serializer_class`/docstring — there's no static file to update. This forced a design change: `year` had to become a declared `CES4Filter` field (Task 5) rather than a bare `request.GET` read, or it would silently vanish from the docs when it moved off the URL path. Both Tasks 5 and 6 now assert the generated schema directly via `camp/api/v2/tests/test_openapi.py`.
-- **`sqid` convention:** Added after `CLAUDE.md`/memory were updated mid-session to require sqids on all new models. `CES5` (a new model) now declares `sqid = SqidsField(...)` (Task 2) and exposes it as `id` in `CES5Serializer` (Task 6), matching `camp/apps/ceidars/`'s pattern. `CES4` predates the convention and isn't retrofitted — out of scope. This doesn't change the tract-GEOID-based detail lookup already designed and approved.
+- **`sqid` convention:** Added after `CLAUDE.md`/memory were updated mid-session to require sqids on all new models, then extended (at the user's request) to retrofit CES4 too, since nothing downstream depends on CES4 data yet. New Task 1.5 gives `CES4` its own `sqid = SqidsField(alphabet=shuffle_alphabet('ces.CES4'))`; Task 2 gives `CES5` `shuffle_alphabet('ces.CES5')`. Each is declared independently on its own concrete model, deliberately NOT hoisted onto the shared `CESRecord` abstract base — `shuffle_alphabet` bakes in a fixed alphabet string at field-declaration time, and abstract-field inheritance clones that same field object into every subclass, so a single declaration on `CESRecord` would give CES4 and CES5 identical alphabets and colliding sqid strings for rows sharing the same integer `id`. Both are exposed as `id` in their respective serializers (Task 1.5, Task 6), matching `camp/apps/ceidars/`'s pattern. This doesn't change the tract-GEOID-based detail lookup already designed and approved for either version.

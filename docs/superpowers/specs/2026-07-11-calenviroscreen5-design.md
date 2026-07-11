@@ -65,6 +65,13 @@ Decisions made during design (see conversation for full rationale):
   segment moves to an optional `?year=` query param (defaulting to `2020`),
   so CES4 and CES5 share the same URL shape. Base path stays
   `calenviroscreen/`; version segments stay dotted (`4.0/`, `5.0/`).
+- **CES4 is retrofitted with `sqid`**, matching this project's current
+  "new models get a sqid" convention, extended here to CES4 since nothing
+  downstream depends on CES4 data yet. Declared per-concrete-model on CES4
+  and CES5 separately (not on the shared `CESRecord` base — see Model
+  section for why a shared declaration would cause CES4/CES5 id collisions).
+  No migration column, no data reimport — `SqidsField` is virtual, derived
+  from `id` at read time.
 
 ## Model
 
@@ -76,13 +83,33 @@ abstract `CESRecord` base unchanged (`boundary`, `population`, `ci_score`,
 
 Per this project's current convention (all new models get a `sqid` for their
 external identifier, e.g. `camp/apps/ceidars/models.py`), `CES5` gets a
-`sqid = SqidsField(alphabet=shuffle_alphabet('ces.CES5'))`. `CES4` predates
-this convention and isn't retrofitted here — out of scope. `SqidsField` is a
-derived/virtual field (computed from the real `id` PK at read time via
-`django_sqids`), so it adds no migration column and needs no fixture value.
-The public detail lookup stays tract-GEOID-based as already designed
-(`sqid` doesn't replace that) — it's exposed in the API as an `id` field for
-consistency with how other newer apps' serializers already do
+`sqid = SqidsField(alphabet=shuffle_alphabet('ces.CES5'))`. Since nothing
+downstream depends on CES4 data yet, `CES4` is retrofitted with the same
+convention: `sqid = SqidsField(alphabet=shuffle_alphabet('ces.CES4'))`.
+
+This is declared **on each concrete model separately** (`CES4` and `CES5`
+each get their own field, each with its own seed string), not hoisted onto
+the shared `CESRecord` abstract base. `shuffle_alphabet(seed)` computes a
+fixed shuffled-alphabet string once, at field-declaration time — abstract
+field inheritance clones that already-built field object into every
+concrete subclass rather than re-running `shuffle_alphabet` per subclass. A
+single `sqid` field declared on `CESRecord` would give CES4 and CES5 the
+*identical* alphabet, so e.g. `CES4` row `id=7` and `CES5` row `id=7` would
+encode to the exact same sqid string — the opposite of what an opaque,
+unique-per-model identifier is for. `camp/apps/ceidars/models.py` avoids
+this same trap by seeding per concrete model (`'ceidars.Facility'`,
+`'ceidars.EmissionsRecord'`), and CES4/CES5 follow that precedent.
+
+`SqidsField` is a derived/virtual field (computed from the real `id` PK at
+read time via `django_sqids`) — it adds no migration column (confirmed: zero
+`sqid` references anywhere in `camp/apps/ceidars/migrations/`) and needs no
+fixture value or data backfill. Existing CES4 rows get valid sqids for free
+the moment the field is declared; no migration squash or reimport needed.
+
+The public detail lookup stays tract-GEOID-based as already designed for
+both versions (`sqid` doesn't replace that) — it's exposed in the API as an
+`id` field on both `CES4Serializer` and `CES5Serializer`, for consistency
+with how other newer apps' serializers already do
 (`('id', lambda f: f.sqid)` in `camp/api/v2/ceidars/serializers.py`).
 
 ```python
@@ -292,11 +319,11 @@ class CES5Detail(CES5Mixin, generics.DetailEndpoint):
             raise Http404
 ```
 
-**`serializers.py`** — `CES5Serializer` mirrors `CES4Serializer`'s shape, plus
-an `('id', lambda r: r.sqid)` field (per the sqid convention above — CES4 has
-no such field since it predates the convention), `zipcode`, `approx_loc`,
-`county`, `region_name`, `pol_small_ats(_p)`, `char_diabetes(_p)`, and the
-`_pct`-suffixed demographic fields.
+**`serializers.py`** — `CES4Serializer` gains an `('id', lambda r: r.sqid)`
+field (now that CES4 has a `sqid`, per above). `CES5Serializer` mirrors
+`CES4Serializer`'s shape, plus its own `('id', lambda r: r.sqid)`, `zipcode`,
+`approx_loc`, `county`, `region_name`, `pol_small_ats(_p)`,
+`char_diabetes(_p)`, and the `_pct`-suffixed demographic fields.
 
 **`filters.py`** — `CES5Filter` mirrors `CES4Filter`'s `region_id` method
 filter and range filters on `ci_score`, `ci_score_p`, `pollution_p`,
