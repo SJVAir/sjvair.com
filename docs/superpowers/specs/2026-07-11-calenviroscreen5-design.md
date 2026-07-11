@@ -74,8 +74,24 @@ abstract `CESRecord` base unchanged (`boundary`, `population`, `ci_score`,
 `region` properties). `DACCategory` enum is reused unchanged except for the
 `PRIOR_DAC` label tweak above.
 
+Per this project's current convention (all new models get a `sqid` for their
+external identifier, e.g. `camp/apps/ceidars/models.py`), `CES5` gets a
+`sqid = SqidsField(alphabet=shuffle_alphabet('ces.CES5'))`. `CES4` predates
+this convention and isn't retrofitted here — out of scope. `SqidsField` is a
+derived/virtual field (computed from the real `id` PK at read time via
+`django_sqids`), so it adds no migration column and needs no fixture value.
+The public detail lookup stays tract-GEOID-based as already designed
+(`sqid` doesn't replace that) — it's exposed in the API as an `id` field for
+consistency with how other newer apps' serializers already do
+(`('id', lambda f: f.sqid)` in `camp/api/v2/ceidars/serializers.py`).
+
 ```python
+from django_sqids import SqidsField, shuffle_alphabet
+
+
 class CES5(CESRecord):
+    sqid = SqidsField(alphabet=shuffle_alphabet('ces.CES5'))
+
     # --- Tract metadata (new in CES5) ---
     zipcode = models.IntegerField(_('ZIP Code'), null=True)
     approx_loc = models.CharField(_('Approximate Location'), max_length=100, null=True, blank=True)
@@ -277,8 +293,10 @@ class CES5Detail(CES5Mixin, generics.DetailEndpoint):
 ```
 
 **`serializers.py`** — `CES5Serializer` mirrors `CES4Serializer`'s shape, plus
-`zipcode`, `approx_loc`, `county`, `region_name`, `pol_small_ats(_p)`,
-`char_diabetes(_p)`, and the `_pct`-suffixed demographic fields.
+an `('id', lambda r: r.sqid)` field (per the sqid convention above — CES4 has
+no such field since it predates the convention), `zipcode`, `approx_loc`,
+`county`, `region_name`, `pol_small_ats(_p)`, `char_diabetes(_p)`, and the
+`_pct`-suffixed demographic fields.
 
 **`filters.py`** — `CES5Filter` mirrors `CES4Filter`'s `region_id` method
 filter and range filters on `ci_score`, `ci_score_p`, `pollution_p`,
