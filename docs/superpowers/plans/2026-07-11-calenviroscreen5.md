@@ -830,14 +830,25 @@ git commit -m "feat(ces): add import_ces5 management command"
 
 Moves CES4's `<year>` URL segment to an optional `?year=` query param (defaulting to `'2020'`), so CES4 and CES5 (Task 6) share the same URL shape.
 
+This project has no static OpenAPI file to hand-edit — `resticus`'s
+`SchemaGenerator` builds `/api/2.0/openapi.json` dynamically from each
+endpoint's `filter_class` (query params), `serializer_class`/`model`
+(response shape), and docstring (description). That means `year` must
+become a **declared filter field**, not a value read only off
+`request.GET`, or it silently disappears from the generated docs once it
+moves off the URL path — this task adds it to `CES4Filter` for that reason,
+not just for the query-param mechanics.
+
 **Files:**
 - Modify: `camp/api/v2/ces/urls.py`
 - Modify: `camp/api/v2/ces/endpoints.py`
+- Modify: `camp/api/v2/ces/filters.py`
 - Modify: `camp/api/v2/ces/tests.py`
+- Modify: `camp/api/v2/tests/test_openapi.py`
 
 **Interfaces:**
-- Consumes: `CES4`, `CES4Filter`, `CES4Serializer` (unchanged).
-- Produces: `CES4Mixin.get_queryset()` now reads `year` from `self.request.GET` instead of `self.kwargs['year']`. URL names `ces4-list`/`ces4-detail` no longer take a `year` kwarg — only `tract` (for detail). Task 6's `CES5List`/`CES5Detail` follow the same `urls.py` file and reuse `generics.ListEndpoint`/`generics.DetailEndpoint` the same way.
+- Consumes: `CES4`, `CES4Serializer` (unchanged).
+- Produces: `CES4Filter` gains a declared `year` field. `filter_class = CES4Filter` moves from `CES4List` up to `CES4Mixin` (so it's documented on the Detail operation too — Detail's custom `get_object()` doesn't actually invoke the FilterSet; this is documentation-only, same as this codebase already treats `filter_class` elsewhere). `CES4Mixin.get_queryset()` now reads `year` from `self.request.GET` instead of `self.kwargs['year']`. URL names `ces4-list`/`ces4-detail` no longer take a `year` kwarg — only `tract` (for detail). Task 6's `CES5List`/`CES5Detail` follow the same `urls.py` file and reuse `generics.ListEndpoint`/`generics.DetailEndpoint` the same way.
 
 - [ ] **Step 1: Update the failing tests first**
 
@@ -975,7 +986,19 @@ urlpatterns = [
 ]
 ```
 
-- [ ] **Step 4: Update the endpoint**
+- [ ] **Step 4: Add `year` as a declared filter field**
+
+In `camp/api/v2/ces/filters.py`, add a `year` field to `CES4Filter` (right above the existing `region_id` field is fine):
+
+```python
+class CES4Filter(FilterSet):
+    year = django_filters.CharFilter(field_name='boundary__version')
+    region_id = django_filters.CharFilter(method='filter_region_id')
+```
+
+This doesn't change `CES4Filter`'s actual filtering behavior in a way that conflicts with Step 5 below — when `?year=` is provided, this filter and `CES4Mixin`'s own default-handling both resolve to the same value, so the `.filter(boundary__version=...)` call is redundant but not contradictory. Its purpose here is to make `year` show up in the generated OpenAPI schema (Step 7), which is the only mechanism this project's schema generator has for documenting GET query parameters.
+
+- [ ] **Step 5: Update the endpoint**
 
 In `camp/api/v2/ces/endpoints.py`, change:
 
@@ -990,6 +1013,23 @@ class CES4Mixin:
             super().get_queryset()
             .filter(boundary__version=self.kwargs['year'])
         )
+
+
+class CES4List(CES4Mixin, generics.ListEndpoint):
+    """List CalEnviroScreen 4.0 scores for all census tracts for a given year."""
+
+    filter_class = CES4Filter
+
+
+class CES4Detail(CES4Mixin, generics.DetailEndpoint):
+    """Retrieve the CalEnviroScreen 4.0 score for a specific census tract."""
+    def get_object(self):
+        try:
+            return self.get_queryset().get(
+                boundary__region__external_id=self.kwargs['tract']
+            )
+        except CES4.DoesNotExist:
+            raise Http404
 ```
 
 to:
@@ -999,6 +1039,7 @@ class CES4Mixin:
     model = CES4
     serializer_class = CES4Serializer
     paginate = True
+    filter_class = CES4Filter
 
     def get_queryset(self):
         year = self.request.GET.get('year') or '2020'
@@ -1006,19 +1047,53 @@ class CES4Mixin:
             super().get_queryset()
             .filter(boundary__version=year)
         )
+
+
+class CES4List(CES4Mixin, generics.ListEndpoint):
+    """List CalEnviroScreen 4.0 scores for all census tracts for a given year (default 2020)."""
+
+
+class CES4Detail(CES4Mixin, generics.DetailEndpoint):
+    """Retrieve the CalEnviroScreen 4.0 score for a specific census tract."""
+    def get_object(self):
+        try:
+            return self.get_queryset().get(
+                boundary__region__external_id=self.kwargs['tract']
+            )
+        except CES4.DoesNotExist:
+            raise Http404
 ```
 
-`CES4List` and `CES4Detail` themselves need no changes — `CES4Detail.get_object` already only references `self.kwargs['tract']`, and it calls `self.get_queryset()`, which now applies the year filter from the query param automatically.
+Moving `filter_class` up to `CES4Mixin` (instead of only on `CES4List`) means both the list and detail operations document `year`/`region_id`/etc. in the OpenAPI schema, not just list.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `docker compose run --rm test pytest camp/api/v2/ces/tests.py -v`
 Expected: All tests PASS, including the new `test_list_defaults_to_2020_when_year_omitted`.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Add and verify an OpenAPI schema assertion for `year`**
+
+Append to `camp/api/v2/tests/test_openapi.py` (this file already has a `setUp` that loads `self.paths` from the live schema — see the existing tests in that file for the pattern):
+
+```python
+    def test_ces4_paths_are_documented(self):
+        assert any(p.endswith('calenviroscreen/4.0/') for p in self.paths)
+        assert any(p.endswith('calenviroscreen/4.0/{tract}/') for p in self.paths)
+
+    def test_ces4_year_query_param_is_documented(self):
+        list_params = self.paths['/calenviroscreen/4.0/']['get']['parameters']
+        assert any(p['name'] == 'year' for p in list_params)
+        detail_params = self.paths['/calenviroscreen/4.0/{tract}/']['get']['parameters']
+        assert any(p['name'] == 'year' for p in detail_params)
+```
+
+Run: `docker compose run --rm test pytest camp/api/v2/tests/test_openapi.py -v`
+Expected: All tests PASS, including the two new ones. If the exact path strings don't match (e.g. a leading/trailing slash differs from what `self.paths` actually contains), run `docker compose run --rm test pytest camp/api/v2/tests/test_openapi.py -v -s` and inspect `self.paths.keys()` by temporarily adding `print(list(self.paths))` in `setUp`, then fix the assertions to match — don't guess.
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add camp/api/v2/ces/urls.py camp/api/v2/ces/endpoints.py camp/api/v2/ces/tests.py
+git add camp/api/v2/ces/urls.py camp/api/v2/ces/endpoints.py camp/api/v2/ces/filters.py camp/api/v2/ces/tests.py camp/api/v2/tests/test_openapi.py
 git commit -m "refactor(api): move CES4's year from URL path to query param"
 ```
 
@@ -1032,9 +1107,10 @@ git commit -m "refactor(api): move CES4's year from URL path to query param"
 - Modify: `camp/api/v2/ces/endpoints.py` (append `CES5Mixin`, `CES5List`, `CES5Detail`)
 - Modify: `camp/api/v2/ces/urls.py` (append CES5 paths)
 - Modify: `camp/api/v2/ces/tests.py` (append `CES5EndpointTests`, `CES5RegionFilterTests`)
+- Modify: `camp/api/v2/tests/test_openapi.py` (append CES5 path assertions, alongside Task 5's CES4 assertions)
 
 **Interfaces:**
-- Consumes: `CES5` model (Task 2). `Region`, `Boundary` from `camp.apps.regions.models` (unchanged). `resticus.generics`, `resticus.serializers`, `resticus.filters.FilterSet`, `django_filters` (unchanged, same libraries CES4 already uses).
+- Consumes: `CES5` model (Task 2). `Region`, `Boundary` from `camp.apps.regions.models` (unchanged). `resticus.generics`, `resticus.serializers`, `resticus.filters.FilterSet`, `django_filters` (unchanged, same libraries CES4 already uses). Task 5's `filter_class`-on-`Mixin` pattern (this task follows the same convention for `CES5Mixin`).
 - Produces: URL names `ces5-list`, `ces5-detail` under namespace `api:v2:ces`. No later task depends on this.
 
 - [ ] **Step 1: Write the failing tests first**
@@ -1321,12 +1397,11 @@ class CES5Mixin:
     model = CES5
     serializer_class = CES5Serializer
     paginate = True
+    filter_class = CES5Filter
 
 
 class CES5List(CES5Mixin, generics.ListEndpoint):
     """List CalEnviroScreen 5.0 scores for all census tracts."""
-
-    filter_class = CES5Filter
 
 
 class CES5Detail(CES5Mixin, generics.DetailEndpoint):
@@ -1339,6 +1414,8 @@ class CES5Detail(CES5Mixin, generics.DetailEndpoint):
         except CES5.DoesNotExist:
             raise Http404
 ```
+
+`filter_class` goes on `CES5Mixin` (shared by List and Detail), the same pattern as Task 5's `CES4Mixin` change — this documents CES5's query params (`region_id`, `dac_sb535`, `pol_small_ats_p`, etc.) on both operations in the OpenAPI schema, consistent with how `filter_class` is used purely as a schema-introspection surface elsewhere in this codebase.
 
 - [ ] **Step 6: Add the URLs**
 
@@ -1354,15 +1431,33 @@ In `camp/api/v2/ces/urls.py`, append to `urlpatterns`:
 Run: `docker compose run --rm test pytest camp/api/v2/ces/tests.py -v`
 Expected: All tests PASS, including `CES4EndpointTests`, `CES4RegionFilterTests`, `CES5EndpointTests`, and `CES5RegionFilterTests`.
 
-- [ ] **Step 8: Run the full test suite as a final regression check**
+- [ ] **Step 8: Add and verify OpenAPI schema assertions for the CES5 paths**
 
-Run: `docker compose run --rm test pytest camp/apps/ces/ camp/api/v2/ces/ -v`
+Append to `camp/api/v2/tests/test_openapi.py` (alongside the `test_ces4_*` tests added in Task 5):
+
+```python
+    def test_ces5_paths_are_documented(self):
+        assert any(p.endswith('calenviroscreen/5.0/') for p in self.paths)
+        assert any(p.endswith('calenviroscreen/5.0/{tract}/') for p in self.paths)
+
+    def test_ces5_has_no_year_query_param(self):
+        # CES5 has only one vintage, so unlike CES4 it should NOT document a year param.
+        list_params = self.paths['/calenviroscreen/5.0/']['get']['parameters']
+        assert not any(p['name'] == 'year' for p in list_params)
+```
+
+Run: `docker compose run --rm test pytest camp/api/v2/tests/test_openapi.py -v`
+Expected: All tests PASS, including the two new ones and the two `test_ces4_*` tests added in Task 5 (run the whole file, not just the new tests, since this file has no per-task isolation).
+
+- [ ] **Step 9: Run the full test suite as a final regression check**
+
+Run: `docker compose run --rm test pytest camp/apps/ces/ camp/api/v2/ces/ camp/api/v2/tests/test_openapi.py -v`
 Expected: All tests PASS.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add camp/api/v2/ces/serializers.py camp/api/v2/ces/filters.py camp/api/v2/ces/endpoints.py camp/api/v2/ces/urls.py camp/api/v2/ces/tests.py
+git add camp/api/v2/ces/serializers.py camp/api/v2/ces/filters.py camp/api/v2/ces/endpoints.py camp/api/v2/ces/urls.py camp/api/v2/ces/tests.py camp/api/v2/tests/test_openapi.py
 git commit -m "feat(api): add CES5 endpoints"
 ```
 
@@ -1373,3 +1468,4 @@ git commit -m "feat(api): add CES5 endpoints"
 - **Spec coverage:** Model (Task 2), admin (Task 3), importer (Task 4), CES4 URL restructure (Task 5), CES5 API (Task 6), and the `DACCategory` label refinement (Task 1) all map directly to sections in the design spec. Fixtures/tests are folded into Tasks 2 and 6 per the spec's "Tests & fixtures" section.
 - **Field name consistency:** `FIELD_MAP` in Task 4 was cross-checked field-by-field against the model definition in Task 2 and the serializer in Task 6 — every model field has exactly one `FIELD_MAP` source column (except the inherited `boundary`/`dac_sb535`/`dac_category`, which are set separately) and appears in `CES5Serializer.fields`.
 - **No automated importer tests:** Called out explicitly in Task 4 rather than glossed over — this matches existing project convention for network-dependent importers, not an oversight.
+- **OpenAPI schema coverage:** Added after discovering (mid-plan) that this project's schema is generated dynamically by `resticus.schemas.SchemaGenerator` from each endpoint's `filter_class`/`serializer_class`/docstring — there's no static file to update. This forced a design change: `year` had to become a declared `CES4Filter` field (Task 5) rather than a bare `request.GET` read, or it would silently vanish from the docs when it moved off the URL path. Both Tasks 5 and 6 now assert the generated schema directly via `camp/api/v2/tests/test_openapi.py`.
