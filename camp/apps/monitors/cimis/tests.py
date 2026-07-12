@@ -144,3 +144,142 @@ class ProcessCimisStationTests(TestCase):
         from camp.apps.monitors.cimis.models import CIMIS
         assert CIMIS.objects.filter(station_number='2').count() == 1
         assert result is not False
+
+
+from datetime import datetime
+
+
+class CimisParseTimestampTests(TestCase):
+    def setUp(self):
+        self.monitor = CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+
+    def test_parses_normal_hour(self):
+        timestamp = self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '0100'})
+        local = timestamp.astimezone(timestamp.tzinfo)
+        assert (local.year, local.month, local.day, local.hour, local.minute) == (2026, 7, 1, 1, 0)
+
+    def test_parses_midnight_boundary_hour_2400(self):
+        timestamp = self.monitor.parse_timestamp({'Date': '2026-07-01', 'Hour': '2400'})
+        local = timestamp.astimezone(timestamp.tzinfo)
+        assert (local.year, local.month, local.day, local.hour, local.minute) == (2026, 7, 2, 0, 0)
+
+
+class CimisHandlePayloadTests(TestCase):
+    def setUp(self):
+        self.monitor = CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+
+    def make_record(self, **overrides):
+        record = {
+            'Date': '2026-07-01',
+            'Hour': '1300',
+            'Station': '2',
+            'HlyAirTmp': {'Value': '95.4', 'Qc': ' ', 'Unit': '(F)'},
+            'HlyRelHum': {'Value': '22.0', 'Qc': ' ', 'Unit': '(%)'},
+            'HlyWindSpd': {'Value': '5.1', 'Qc': 'R', 'Unit': '(mph)'},
+            'HlyAsceEto': {'Value': None, 'Qc': 'N', 'Unit': '(in)'},
+        }
+        record.update(overrides)
+        return record
+
+    def test_creates_entries_for_present_qc_acceptable_fields(self):
+        entries = self.monitor.handle_payload(self.make_record())
+        entry_types = {type(e) for e in entries}
+
+        from camp.apps.entries import models as entry_models
+        assert entry_models.Temperature in entry_types
+        assert entry_models.Humidity in entry_types
+
+    def test_ingests_estimated_qc_flagged_values(self):
+        entries = self.monitor.handle_payload(self.make_record())
+
+        from decimal import Decimal
+        from camp.apps.entries import models as entry_models
+        wind_entries = [e for e in entries if isinstance(e, entry_models.WindSpeed)]
+        assert len(wind_entries) == 1
+        assert wind_entries[0].value == Decimal('5.1')
+
+    def test_skips_field_flagged_not_available(self):
+        entries = self.monitor.handle_payload(self.make_record())
+
+        from camp.apps.entries import models as entry_models
+        assert not any(isinstance(e, entry_models.ETo) for e in entries)
+
+    def test_skips_field_missing_from_record(self):
+        record = self.make_record()
+        del record['HlyRelHum']
+        entries = self.monitor.handle_payload(record)
+
+        from camp.apps.entries import models as entry_models
+        assert not any(isinstance(e, entry_models.Humidity) for e in entries)
+
+
+class ProcessCimisDataTests(TestCase):
+    def setUp(self):
+        self.monitor = CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+
+    def test_creates_entries_for_known_station(self):
+        from camp.apps.monitors.cimis.tasks import process_cimis_data
+
+        record = {
+            'Date': '2026-07-01',
+            'Hour': '1300',
+            'Station': '2',
+            'HlyAirTmp': {'Value': '95.4', 'Qc': ' ', 'Unit': '(F)'},
+        }
+        entries = process_cimis_data.call_local(record)
+
+        assert entries is not False
+        assert len(entries) == 1
+
+    def test_returns_false_for_unknown_station(self):
+        from camp.apps.monitors.cimis.tasks import process_cimis_data
+
+        record = {'Date': '2026-07-01', 'Hour': '1300', 'Station': '999'}
+        result = process_cimis_data.call_local(record)
+
+        assert result is False
+
+
+class ImportCimisDataTests(TestCase):
+    def test_no_op_when_no_monitors_exist(self):
+        from camp.apps.monitors.cimis.tasks import import_cimis_data
+        # Should not raise even with zero CIMIS monitors in the DB.
+        import_cimis_data()
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_calls_api_with_all_known_station_numbers(self, MockAPI):
+        CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        CIMIS.objects.create(
+            name='Station B',
+            station_number='5',
+            position=Point(-119.0, 36.0, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = []
+
+        from camp.apps.monitors.cimis.tasks import import_cimis_data
+        import_cimis_data()
+
+        called_kwargs = mock_instance.get_hourly_data.call_args.kwargs
+        assert sorted(called_kwargs['station_numbers']) == ['2', '5']

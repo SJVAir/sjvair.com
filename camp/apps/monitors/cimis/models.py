@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta
+
+from django.conf import settings
 from django.contrib.gis.db import models
 
 from camp.apps.entries import models as entry_models
@@ -92,3 +95,37 @@ class CIMIS(Monitor):
         config['fields']['value']: EntryModel
         for EntryModel, config in ENTRY_CONFIG.items()
     }
+
+    def parse_timestamp(self, record):
+        date_str = record['Date']
+        hour_str = record['Hour'].zfill(4)
+
+        if hour_str == '2400':
+            base = datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)
+            naive = base.replace(hour=0, minute=0)
+        else:
+            naive = datetime.strptime(f'{date_str} {hour_str}', '%Y-%m-%d %H%M')
+
+        return naive.replace(tzinfo=settings.DEFAULT_TIMEZONE)
+
+    def handle_payload(self, record):
+        timestamp = self.parse_timestamp(record)
+        entries = []
+
+        for field_name, EntryModel in self.ENTRY_MAP.items():
+            item = record.get(field_name)
+            if not item:
+                continue
+
+            if item.get('Qc') == 'N':
+                continue
+
+            value = item.get('Value')
+            if value in (None, ''):
+                continue
+
+            entry = self.create_entry(EntryModel, timestamp=timestamp, value=value)
+            if entry:
+                entries.append(entry)
+
+        return entries

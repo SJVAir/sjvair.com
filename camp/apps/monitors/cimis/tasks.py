@@ -1,4 +1,5 @@
 from django.contrib.gis.geos import Point
+from django.utils import timezone
 
 from django_huey import db_task, db_periodic_task
 from huey import crontab
@@ -47,3 +48,33 @@ def process_cimis_station(station):
         },
     )
     return monitor
+
+
+@db_periodic_task(crontab(minute='45'), priority=50)
+def import_cimis_data():
+    station_numbers = list(CIMIS.objects.values_list('station_number', flat=True))
+    if not station_numbers:
+        return
+
+    today = timezone.localtime(timezone.now()).date()
+    api = CIMISAPI()
+    providers = api.get_hourly_data(
+        station_numbers=station_numbers,
+        start_date=today,
+        end_date=today,
+        data_items=list(CIMIS.ENTRY_MAP.keys()),
+    )
+
+    for provider in providers:
+        for record in provider.get('Records', []):
+            process_cimis_data.call_local(record)
+
+
+@db_task(priority=50)
+def process_cimis_data(record):
+    try:
+        monitor = CIMIS.objects.get(station_number=record['Station'])
+    except CIMIS.DoesNotExist:
+        return False
+
+    return monitor.handle_payload(record)
