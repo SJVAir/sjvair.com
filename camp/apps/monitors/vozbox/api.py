@@ -95,14 +95,20 @@ class VozBoxClient:
             except (ValueError, TypeError):
                 return None
 
+        def _pm(key):
+            val = _float(key)
+            if val is not None and val > 9999:
+                return None
+            return val
+
         return {
             'timestamp': ts,
-            'pm1_a': _float('m_PM1_ATM'),
-            'pm1_b': _float('m_PM1_b'),
-            'pm25_a': _float('m_PM25_ATM'),
-            'pm25_b': _float('m_PM25_b'),
-            'pm10_a': _float('m_PM10_ATM'),
-            'pm10_b': _float('m_PM10_b'),
+            'pm1_a': _pm('m_PM1_ATM'),
+            'pm1_b': _pm('m_PM1_b'),
+            'pm25_a': _pm('m_PM25_ATM'),
+            'pm25_b': _pm('m_PM25_b'),
+            'pm10_a': _pm('m_PM10_ATM'),
+            'pm10_b': _pm('m_PM10_b'),
             'temperature': _float('temp_C'),
             'humidity': _float('rh'),
             'o3': _float('o3'),

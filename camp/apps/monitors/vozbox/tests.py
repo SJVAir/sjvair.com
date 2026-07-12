@@ -106,6 +106,23 @@ class VozBoxClientParseTests(TestCase):
 
         assert result == {}
 
+    def test_normalize_row_drops_pm_values_over_9999(self):
+        content = (
+            'unixtime,m_PM1_ATM,m_PM1_b,m_PM25_ATM,m_PM25_b,m_PM10_ATM,m_PM10_b,temp_C,rh,o3,lat,lon,coreid\n'
+            '1749427200,10000,12000,12196,4,12807,4,36,26,70,36.79,-119.77,e00fce68f12da1a0c5de6248\n'
+        )
+        with VozBoxClient() as client:
+            path = self._write_csv(content)
+            result = client.parse_csv(path)
+
+        row = result['e00fce68f12da1a0c5de6248'][0]
+        assert row['pm1_a'] is None    # 10000 > 9999
+        assert row['pm1_b'] is None    # 12000 > 9999
+        assert row['pm25_a'] is None   # 12196 > 9999
+        assert row['pm10_a'] is None   # 12807 > 9999
+        assert row['pm25_b'] == 4.0    # valid value unchanged
+        assert row['pm10_b'] == 4.0    # valid value unchanged
+
 
 class VozBoxClientHTTPTests(TestCase):
     def _make_response(self, status_code=200, text=''):
