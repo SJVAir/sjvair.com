@@ -78,3 +78,12 @@ class OpenAPISchemaTests(TestCase):
         assert any(p['name'] == 'year' for p in list_params)
         detail_params = self.paths['/calenviroscreen/4.0/{tract}/']['get']['parameters']
         assert any(p['name'] == 'year' for p in detail_params)
+
+    def test_ces5_paths_are_documented(self):
+        assert any(p.endswith('calenviroscreen/5.0/') for p in self.paths)
+        assert any(p.endswith('calenviroscreen/5.0/{tract}/') for p in self.paths)
+
+    def test_ces5_has_no_year_query_param(self):
+        # CES5 has only one vintage, so unlike CES4 it should NOT document a year param.
+        list_params = self.paths['/calenviroscreen/5.0/']['get']['parameters']
+        assert not any(p['name'] == 'year' for p in list_params)

@@ -3,6 +3,7 @@ from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
 from camp.api.v2.ces import endpoints
+from camp.apps.ces.models import CES5
 from camp.apps.regions.models import Boundary, Region
 from camp.utils.test import get_response_data
 
@@ -159,3 +160,106 @@ class CES4RegionFilterTests(TestCase):
         url = reverse('api:v2:ces:ces4-list')
         data = self.client.get(url, {'region_id': 'BOGUS', 'year': '2020'}).json()
         assert data['count'] == 0
+
+
+ces5_list = endpoints.CES5List.as_view()
+ces5_detail = endpoints.CES5Detail.as_view()
+
+
+class CES5EndpointTests(TestCase):
+    fixtures = ['calenviroscreen']
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_list_returns_two_records(self):
+        request = self.factory.get('/')
+        response = ces5_list(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 200
+        assert len(data['data']) == 2
+
+    def test_list_records_have_expected_fields(self):
+        request = self.factory.get('/')
+        response = ces5_list(request)
+        data = get_response_data(response)
+
+        record = data['data'][0]
+        assert 'id' in record
+        assert 'tract' in record
+        assert 'census_year' in record
+        assert 'ci_score' in record
+        assert 'dac_sb535' in record
+        assert 'region_name' in record
+        assert 'pol_small_ats_p' in record
+        assert 'char_diabetes_p' in record
+        assert 'pop_hispanic_pct' in record
+
+    def test_detail_returns_correct_tract(self):
+        tract = '06019000101'
+        request = self.factory.get('/')
+        response = ces5_detail(request, tract=tract)
+        data = get_response_data(response)
+
+        assert response.status_code == 200
+        assert data['data']['tract'] == tract
+        assert data['data']['census_year'] == '2020'
+
+    def test_detail_404_for_unknown_tract(self):
+        request = self.factory.get('/')
+        response = ces5_detail(request, tract='99999999999')
+
+        assert response.status_code == 404
+
+    def test_filter_by_dac_sb535(self):
+        request = self.factory.get('/', {'dac_sb535': 'true'})
+        response = ces5_list(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 200
+        assert len(data['data']) == 1
+        assert data['data'][0]['dac_sb535'] is True
+
+    def test_filter_by_ci_score_p_gte(self):
+        request = self.factory.get('/', {'ci_score_p__gte': '80'})
+        response = ces5_list(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 200
+        assert all(r['ci_score_p'] >= 80 for r in data['data'])
+
+
+class CES5RegionFilterTests(TestCase):
+    # Same fixture tracts as CES4RegionFilterTests (2020 boundaries):
+    #   Tract 1.01: lon -119.8 to -119.7, lat 36.7 to 36.8
+    #   Tract 1.02: lon -119.7 to -119.6, lat 36.7 to 36.8
+    fixtures = ['calenviroscreen']
+
+    COVERS_BOTH = 'MULTIPOLYGON (((-119.9 36.6, -119.5 36.6, -119.5 36.9, -119.9 36.9, -119.9 36.6)))'
+    COVERS_ONLY_1_01 = 'MULTIPOLYGON (((-119.9 36.6, -119.71 36.6, -119.71 36.9, -119.9 36.9, -119.9 36.6)))'
+
+    def _create_region(self, geometry_wkt):
+        region = Region.objects.create(
+            name='Test City', slug='test-city-ces5', type=Region.Type.CITY, external_id='9998',
+        )
+        boundary = Boundary.objects.create(
+            region=region, version='2020',
+            geometry=GEOSGeometry(geometry_wkt, srid=4326),
+        )
+        region.boundary = boundary
+        region.save()
+        return region
+
+    def test_region_covering_both_tracts_returns_two(self):
+        region = self._create_region(self.COVERS_BOTH)
+        url = reverse('api:v2:ces:ces5-list')
+        data = self.client.get(url, {'region_id': region.sqid}).json()
+        assert data['count'] == 2
+
+    def test_region_covering_one_tract_returns_one(self):
+        region = self._create_region(self.COVERS_ONLY_1_01)
+        url = reverse('api:v2:ces:ces5-list')
+        data = self.client.get(url, {'region_id': region.sqid}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['tract'] == '06019000101'
