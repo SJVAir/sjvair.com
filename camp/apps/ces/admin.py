@@ -2,29 +2,30 @@ from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
 from camp.apps.ces.models import CES4, CES5
+from camp.utils.admin import ReadOnlyAdminMixin, admin_change_link
 
 
-class CESRecordAdmin(admin.ModelAdmin):
-    list_display = ['tract', 'census_year', 'ci_score', 'ci_score_p', 'dac_sb535', 'dac_category']
+class CESRecordAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ['get_tract', 'census_year', 'ci_score', 'ci_score_p', 'dac_sb535', 'dac_category']
     list_filter = ['boundary__version', 'dac_sb535', 'dac_category']
+    list_select_related = ['boundary__region']
     search_fields = ['boundary__region__external_id', 'boundary__region__name']
-    readonly_fields = ['tract', 'census_year', 'region']
+    readonly_fields = ['tract', 'census_year', 'get_region']
 
-    def has_add_permission(self, request):
-        return False
+    @admin.display(description=_('Tract'), ordering='boundary__region__external_id')
+    def get_tract(self, obj):
+        return admin_change_link(obj.region, obj.tract)
 
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-    def save_model(self, request, obj, form, change):
-        pass
+    @admin.display(description=_('Region'))
+    def get_region(self, obj):
+        return admin_change_link(obj.region)
 
 
 @admin.register(CES4)
 class CES4Admin(CESRecordAdmin):
     fieldsets = [
         (None, {
-            'fields': ['tract', 'census_year', 'region', 'population', 'ci_score', 'ci_score_p'],
+            'fields': ['tract', 'census_year', 'get_region', 'population', 'ci_score', 'ci_score_p'],
         }),
         (_('SB535 Disadvantaged Community'), {
             'fields': ['dac_sb535', 'dac_category'],
@@ -75,10 +76,14 @@ class CES4Admin(CESRecordAdmin):
 
 @admin.register(CES5)
 class CES5Admin(CESRecordAdmin):
+    list_display = CESRecordAdmin.list_display + ['county']
+    list_filter = CESRecordAdmin.list_filter + ['county']
+    search_fields = CESRecordAdmin.search_fields + ['zipcode']
+
     fieldsets = [
         (None, {
             'fields': [
-                'tract', 'census_year', 'region', 'zipcode', 'approx_loc',
+                'tract', 'census_year', 'get_region', 'zipcode', 'approx_loc',
                 'county', 'region_name', 'population', 'ci_score', 'ci_score_p',
             ],
         }),
