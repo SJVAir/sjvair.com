@@ -108,8 +108,21 @@ class TwilioStatusCallback(View):
         if status is None:
             return HttpResponse(status=200)
 
+        message_sid = request.POST.get('MessageSid')
+        if not message_sid:
+            return HttpResponse(status=200)
+
+        # Exclude notifications already in a terminal state: Twilio status
+        # callbacks can arrive out of order or be retried, and a stale
+        # callback shouldn't revert an already-delivered notification.
         Notification.objects.filter(
-            provider_id=request.POST.get('MessageSid')
+            provider_id=message_sid
+        ).exclude(
+            status__in=[
+                Notification.Status.DELIVERED,
+                Notification.Status.UNDELIVERED,
+                Notification.Status.FAILED,
+            ]
         ).update(status=status)
 
         return HttpResponse(status=200)
