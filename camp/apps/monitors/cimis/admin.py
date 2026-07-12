@@ -9,8 +9,7 @@ class CIMISAdmin(MonitorAdmin):
     list_display = MonitorAdmin.list_display[:]
     list_display.remove('get_health_grade')
 
-    fields = MonitorAdmin.fields
-    readonly_fields = ['name', 'location', 'position', 'county', 'station_number', 'get_map']
+    readonly_fields = ['get_monitor_id', 'name', 'location', 'position', 'county', 'station_number', 'get_map']
 
     def has_add_permission(self, request, obj=None):
         return False

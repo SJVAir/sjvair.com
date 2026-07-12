@@ -7,7 +7,7 @@ class CIMISAPI:
     base_url = 'https://et.water.ca.gov/api'
 
     def __init__(self, app_key=None):
-        self.app_key = app_key or settings.CIMIS_APP_KEY
+        self.app_key = app_key or settings.CIMIS_API_KEY
         self.session = requests.Session()
 
     def get_stations(self):

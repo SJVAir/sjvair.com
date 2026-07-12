@@ -283,3 +283,4 @@ class ImportCimisDataTests(TestCase):
 
         called_kwargs = mock_instance.get_hourly_data.call_args.kwargs
         assert sorted(called_kwargs['station_numbers']) == ['2', '5']
+        assert sorted(called_kwargs['data_items']) == sorted(CIMIS.ENTRY_MAP.keys())

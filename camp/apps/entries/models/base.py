@@ -1,5 +1,3 @@
-from decimal import Decimal, ROUND_HALF_UP
-
 from django.conf import settings
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
@@ -12,7 +10,6 @@ from django_smalluuid.models import SmallUUIDField, uuid_default
 from camp.apps.monitors.models import Monitor
 from camp.utils import classproperty
 
-from ..levels import LevelSet, AQLevel
 from ..managers import EntryQuerySet
 from .. import stages
 

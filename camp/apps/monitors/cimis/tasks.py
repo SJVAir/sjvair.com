@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.utils import timezone
 
@@ -20,6 +21,10 @@ def parse_hms_coordinate(value):
 
 @db_periodic_task(crontab(hour='3', minute='0'), priority=50)
 def discover_cimis_stations():
+    if settings.CIMIS_API_KEY is None:
+        # Do nothing if we don't have a key.
+        return
+
     api = CIMISAPI()
     for station in api.get_stations():
         process_cimis_station.call_local(station)
