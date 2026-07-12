@@ -65,6 +65,11 @@ Decisions made during design (see conversation for full rationale):
   segment moves to an optional `?year=` query param (defaulting to `2020`),
   so CES4 and CES5 share the same URL shape. Base path stays
   `calenviroscreen/`; version segments stay dotted (`4.0/`, `5.0/`).
+- **`camp/utils/geodata.py`'s shared zip-shapefile loader gets a targeted,
+  backward-compatible fix** for OEHHA's CES5 zip packaging (nested directory
+  named `*.shp`) — discovered mid-implementation against the live resource.
+  See "Shared loader fix" below for the exact change and why it can't
+  regress CES4 or anything else already working.
 - **CES4 is retrofitted with `sqid`**, matching this project's current
   "new models get a sqid" convention, extended here to CES4 since nothing
   downstream depends on CES4 data yet. Declared per-concrete-model on CES4
@@ -203,6 +208,75 @@ class CES5(CESRecord):
 
 `camp/apps/ces/admin.py` gets a `CES5Admin(CESRecordAdmin)` registration
 following the same fieldsets pattern as `CES4Admin`.
+
+## Shared loader fix: nested-directory shapefile zips
+
+Discovered while implementing the importer (verified directly against the
+live resource, not theoretical): OEHHA's CalEnviroScreen 5.0 shapefile zip
+(`calenviroscreen50results_f_070126.shp.zip`) nests its `.shp`/`.dbf`/`.shx`
+files inside a **subdirectory whose own name ends in `.shp`**:
+
+```
+calenviroscreen50results_F_070126.shp/
+calenviroscreen50results_F_070126.shp/CES5_final_shapefile.dbf
+calenviroscreen50results_F_070126.shp/CES5_final_shapefile.shp
+calenviroscreen50results_F_070126.shp/CES5_final_shapefile.shx
+...
+```
+
+`camp/utils/geodata.py:stream_filtered_gdf` opens shapefile zips with a bare
+`fiona.open(f'zip://{path}')` (no inner path), relying on GDAL's zip-root
+shapefile auto-detection. That auto-detection returns zero layers for this
+particular packaging — confirmed via `fiona.listlayers('zip://{path}')` →
+`[]`, while `fiona.listlayers('zip://{path}!/calenviroscreen50results_F_070126.shp')`
+→ `['CES5_final_shapefile']`. This is a shared-utility bug: `stream_filtered_gdf`
+backs `import_ces4` too (and any future CKAN-shapefile importer), so the fix
+belongs in `camp/utils/geodata.py`, not in `import_ces5.py`.
+
+**Fix:** in `stream_filtered_gdf`, after determining the zip-based
+`fiona_path`, check `fiona.listlayers(fiona_path)`. If it's empty, probe
+each top-level entry in the zip for a nested layer (`f'{fiona_path}!/{entry}'`)
+and use the first one that resolves; otherwise fall back to the original
+`fiona_path` unchanged. This only activates when the existing root-level
+open would have yielded nothing anyway — CES4's zip (and anything else
+already working) has layers at the root, so `fiona.listlayers(fiona_path)`
+is non-empty there and the new probing code never runs. Verified this
+precondition directly against CES4's cached shapefile zip before relying on
+it.
+
+```python
+def _resolve_nested_zip_shapefile(path, fiona_path):
+    """
+    Some zips (e.g. OEHHA's CalEnviroScreen 5.0 shapefile) nest the actual
+    .shp/.dbf/.shx inside a subdirectory whose own name happens to end in
+    `.shp`, which breaks GDAL's root-level shapefile auto-detection for a
+    zip. Probe each top-level entry for a nested layer before giving up.
+    """
+    with zipfile.ZipFile(str(path)) as z:
+        top_level_entries = {
+            name.split('/', 1)[0]
+            for name in z.namelist()
+            if '/' in name
+        }
+    for entry in sorted(top_level_entries):
+        candidate = f'{fiona_path}!/{entry}'
+        if fiona.listlayers(candidate):
+            return candidate
+    return fiona_path
+```
+
+Called from `stream_filtered_gdf` right after `fiona_path` is set to the
+`zip://` form:
+
+```python
+    try:
+        zipfile.ZipFile(str(path)).close()
+        fiona_path = f'zip://{path}'
+        if not fiona.listlayers(fiona_path):
+            fiona_path = _resolve_nested_zip_shapefile(path, fiona_path)
+    except zipfile.BadZipFile:
+        fiona_path = str(path)
+```
 
 ## Import command
 
