@@ -6,6 +6,8 @@ from camp.apps.regions.models import Region
 
 
 class CES4Filter(FilterSet):
+    # Declared here so `year` shows up in the generated OpenAPI schema; the
+    # actual default-to-2020 behavior is applied in CES4Mixin.get_queryset().
     year = django_filters.CharFilter(field_name='boundary__version')
     region_id = django_filters.CharFilter(method='filter_region_id')
 

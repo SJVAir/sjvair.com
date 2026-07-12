@@ -104,7 +104,10 @@ FIELD_MAP = {
 
 
 def _clean_value(v):
-    """Convert NaN to None and snap float drift near -999 to exactly -999."""
+    """
+    Convert NaN to None and snap float drift near -999 to exactly -999;
+    non-numeric values (e.g. CES5's zipcode/approx_loc strings) pass through unchanged.
+    """
     if pd.isna(v):
         return None
     if isinstance(v, (int, float)) and abs(v - (-999)) <= 1:
@@ -154,31 +157,31 @@ class Command(BaseCommand):
         mutating it in place with `dac_sb535`/`dac_category` columns.
 
         This layer is a DRAFT (public comment through Aug 14, 2026). If it
-        can't be fetched, warn and leave dac_sb535/dac_category null rather
-        than failing the whole import — the indicator data is still valid.
+        can't be fetched or its schema doesn't match what we expect, warn and
+        leave dac_sb535/dac_category null rather than failing the whole
+        import — the indicator data is still valid.
         """
         try:
             counties_union = load_region_geometry()
             dac = esri2gpd.get(DRAFT_DAC_2026_URL)
+            dac = dac[
+                dac.geometry.apply(
+                    lambda g: (not g.is_empty and g.area > 0
+                               and g.intersects(counties_union)
+                               and g.intersection(counties_union).area / g.area >= 0.50)
+                )
+            ]
+            dac['tract'] = dac['tract'].astype(str).str.zfill(11)
+            dac_lookup = dac.set_index('tract')['dac_type']
         except Exception as exc:
             self.stdout.write(self.style.WARNING(
-                f'⚠ Could not fetch draft DAC 2026 layer ({exc}); '
+                f'⚠ Could not fetch or interpret draft DAC 2026 layer ({exc}); '
                 'dac_sb535/dac_category will be left null for all tracts.'
             ))
             gdf['dac_sb535'] = None
             gdf['dac_category'] = None
             return
 
-        dac = dac[
-            dac.geometry.apply(
-                lambda g: (not g.is_empty and g.area > 0
-                           and g.intersects(counties_union)
-                           and g.intersection(counties_union).area / g.area >= 0.50)
-            )
-        ]
-        dac['tract'] = dac['tract'].astype(str).str.zfill(11)
-
-        dac_lookup = dac.set_index('tract')['dac_type']
         gdf['dac_sb535'] = gdf['tract'].isin(dac_lookup.index)
         gdf['dac_category'] = (
             gdf['tract']

@@ -87,3 +87,5 @@ class OpenAPISchemaTests(TestCase):
         # CES5 has only one vintage, so unlike CES4 it should NOT document a year param.
         list_params = self.paths['/calenviroscreen/5.0/']['get']['parameters']
         assert not any(p['name'] == 'year' for p in list_params)
+        detail_params = self.paths['/calenviroscreen/5.0/{tract}/']['get']['parameters']
+        assert not any(p['name'] == 'year' for p in detail_params)
