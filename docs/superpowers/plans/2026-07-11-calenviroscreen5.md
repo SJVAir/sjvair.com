@@ -665,6 +665,112 @@ git commit -m "feat(ces): register CES5 admin"
 
 ---
 
+### Task 3.5: Fix the shared zip-shapefile loader for nested-directory zips
+
+**Discovered mid-plan, verified against the live resource:** OEHHA's live CalEnviroScreen 5.0 shapefile zip (`calenviroscreen50results_f_070126.shp.zip`, the resource Task 4 downloads) nests its `.shp`/`.dbf`/`.shx` files inside a subdirectory whose own name ends in `.shp`:
+
+```
+calenviroscreen50results_F_070126.shp/
+calenviroscreen50results_F_070126.shp/CES5_final_shapefile.dbf
+calenviroscreen50results_F_070126.shp/CES5_final_shapefile.shp
+calenviroscreen50results_F_070126.shp/CES5_final_shapefile.shx
+...
+```
+
+`camp/utils/geodata.py:stream_filtered_gdf` opens shapefile zips with a bare `fiona.open(f'zip://{path}')`, relying on GDAL's zip-root shapefile auto-detection. That returns zero layers for this packaging (confirmed: `fiona.listlayers('zip://{path}')` → `[]`), while `fiona.listlayers('zip://{path}!/calenviroscreen50results_F_070126.shp')` → `['CES5_final_shapefile']`. This function backs `import_ces4` too (and any future CKAN-shapefile importer) — it's a shared-utility bug, not something to work around inside `import_ces5.py`.
+
+**Files:**
+- Modify: `camp/utils/geodata.py`
+
+**Interfaces:**
+- Consumes: `fiona`, `zipfile` (already imported in this file).
+- Produces: `stream_filtered_gdf` now resolves nested-directory zip shapefiles automatically. Task 4's `import_ces5.py` (which calls `geodata.gdf_from_ckan` → `iter_from_url` → `iter_from_zip` → `stream_filtered_gdf`) depends on this fix to load CES5's shapefile at all.
+
+**Backward-compatibility constraint:** the fix must be a no-op for any zip that already works today (CES4's included) — it only activates when the existing root-level `zip://` open would already yield zero layers.
+
+- [ ] **Step 1: Confirm the precondition against CES4's real shapefile (regression safety check, not a unit test — this file has no existing test suite)**
+
+Run: `docker compose run --rm web python manage.py shell -c "
+from camp.utils import geodata
+from camp.utils.geodata import GEODATA_CACHE_DIR
+import fiona
+paths = list(GEODATA_CACHE_DIR.glob('*.zip'))
+print([p.name for p in paths])
+for p in paths:
+    print(p, fiona.listlayers(f'zip://{p}'))
+"`
+
+If CES4's shapefile zip isn't already cached locally (no output, or empty list), run `docker compose run --rm web python manage.py import_ces4 --print-columns` first to populate the cache (it downloads the CES4 shapefile and exits before touching the DB), then re-run the shell check above.
+
+Expected: at least one cached zip reports a non-empty layer list at the bare `zip://{path}` form — this is CES4's shapefile, and it confirms the guard condition (`if not fiona.listlayers(fiona_path)`) will evaluate `False` for it, so the new code path added in Step 2 never executes for CES4. This is the evidence that the fix cannot regress CES4.
+
+- [ ] **Step 2: Add the fix**
+
+In `camp/utils/geodata.py`, add this helper function near `stream_filtered_gdf` (right above it is fine):
+
+```python
+def _resolve_nested_zip_shapefile(path, fiona_path):
+    """
+    Some zips (e.g. OEHHA's CalEnviroScreen 5.0 shapefile) nest the actual
+    .shp/.dbf/.shx inside a subdirectory whose own name happens to end in
+    `.shp`, which breaks GDAL's root-level shapefile auto-detection for a
+    zip. Probe each top-level entry for a nested layer before giving up.
+    """
+    with zipfile.ZipFile(str(path)) as z:
+        top_level_entries = {
+            name.split('/', 1)[0]
+            for name in z.namelist()
+            if '/' in name
+        }
+    for entry in sorted(top_level_entries):
+        candidate = f'{fiona_path}!/{entry}'
+        if fiona.listlayers(candidate):
+            return candidate
+    return fiona_path
+```
+
+Then, in `stream_filtered_gdf`, change:
+
+```python
+    try:
+        zipfile.ZipFile(str(path)).close()
+        fiona_path = f'zip://{path}'
+    except zipfile.BadZipFile:
+        fiona_path = str(path)
+```
+
+to:
+
+```python
+    try:
+        zipfile.ZipFile(str(path)).close()
+        fiona_path = f'zip://{path}'
+        if not fiona.listlayers(fiona_path):
+            fiona_path = _resolve_nested_zip_shapefile(path, fiona_path)
+    except zipfile.BadZipFile:
+        fiona_path = str(path)
+```
+
+Everything else in `stream_filtered_gdf` (the `with fiona.open(fiona_path, ...)` block onward) is unchanged.
+
+- [ ] **Step 3: Verify against CES5's real shapefile**
+
+Run: `docker compose run --rm web python manage.py import_ces5 --print-columns`
+Expected: this now gets past the shapefile-loading step (which is as far as this task needs to verify — full column-mapping correctness is Task 4's job, not this task's). If it still fails with `ValueError: Null layer` or similar, the fix isn't resolving the right entry — check that `top_level_entries` actually contains `calenviroscreen50results_F_070126.shp` (the directory name), not something else (e.g. verify `zipfile.ZipFile(path).namelist()` directly if needed).
+
+- [ ] **Step 4: Re-run the Step 1 regression check to confirm no change for CES4**
+
+Re-run the same shell snippet from Step 1 against CES4's cached zip. Expected: identical output to Step 1 — same non-empty layer list at the bare `zip://{path}` form, proving the new code path still doesn't activate for CES4's zip.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add camp/utils/geodata.py
+git commit -m "fix(geodata): resolve shapefiles nested in a zip subdirectory"
+```
+
+---
+
 ### Task 4: `import_ces5` management command
 
 This command has no automated tests — matching the existing project convention for network-dependent data importers (`import_ces4`, `import_pur`, `import_comptox`, `import_carbtac` are all untested directly; they're verified by running against real data). Verification here is manual, via `--print-columns` and a real run against a dev database.
