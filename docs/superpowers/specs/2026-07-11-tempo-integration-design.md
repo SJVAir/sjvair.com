@@ -122,13 +122,24 @@ def zonal_stats(product: str, timestamp: datetime, polygon: Polygon) -> dict | N
 
 These are called directly by whatever needs a comparison — internal data-tooling scripts, notebooks, or future endpoints — not precomputed at ingest. Deliberately decoupled from `Monitor`/`Region`: adding a new monitor (e.g. OWWL) or redrawing a community boundary works retroactively against existing history with no backfill step, since these functions always query the archived grid directly.
 
+## Comparison Methodology
+
+TEMPO measures atmospheric column density (molecules/cm², integrated through the troposphere); every ground network we compare against (AirNow, AQLite/PurpleAir, future OWWL) measures surface concentration (ppb). **There is no fixed conversion between them** — the relationship depends on boundary-layer height and vertical mixing, which shift by hour and season. NASA's own TEMPO validation uses Pandora spectrometers precisely because Pandora measures the same column quantity TEMPO does; against surface in-situ monitors, even NASA validates by correlation, not unit conversion.
+
+So "compare TEMPO to a ground monitor" means **checking whether the two series move together over time, not whether their values agree**. `value_at_point` returns the raw column number; any comparison logic sits one layer up, in analysis code, as one of:
+
+- **Dual-axis time series** — TEMPO's column value and the ground monitor's ppb reading plotted against the same time axis on separate y-axes, so a viewer can see whether the two lines rise and fall together without needing shared units.
+- **Correlation, not conversion** — Pearson r (or a simple regression) between the paired series at a monitor's location over a rolling window, as a QA/exploration signal (e.g. correlation breaking down may indicate a plume aloft that isn't reaching the surface, rather than a data quality problem).
+
+Neither approach requires new ingestion or storage infrastructure — both are built from `value_at_point` output paired with the monitor's own `Entry` data, entirely in analysis/presentation code.
+
 ## API
 
 **Files:** `camp/api/v2/tempo/` (`endpoints.py`, `serializers.py`, `urls.py`), wired into `camp/api/v2/urls.py`.
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/2.0/tempo/` | User-facing products with label, units, colormap/legend stops. Excludes `CLDO4` — it's QA-only and never exposed as a toggleable layer, though it's still ingested and stored as a `Granule` row like the other products. |
+| `GET /api/2.0/tempo/` | User-facing products with label, units, and legend stops (color breaks using SJVAir's existing site palette, scaled to each product's molec/cm² range — a *secondary* legend, distinct from the ppb-based AQI legend used for ground monitors, since the two are different quantities). Excludes `CLDO4` — it's QA-only and never exposed as a toggleable layer, though it's still ingested and stored as a `Granule` row like the other products. |
 | `GET /api/2.0/tempo/{product}/grids/` | Available hourly timestamps for a product — `timestamp`, `is_final`, `bounds`, `preview_url`. Defaults to today, falling back to yesterday if today's data isn't available yet. |
 | `GET /api/2.0/tempo/{product}/value/?lat=&lon=&timestamp=` | Point value via `value_at_point` |
 | `GET /api/2.0/tempo/{product}/zonal/?region_id=&timestamp=` | Zonal aggregate over a community boundary via `zonal_stats` |
@@ -145,6 +156,6 @@ These are called directly by whatever needs a comparison — internal data-tooli
 ## Deferred
 
 - `GET /api/2.0/monitors/{id}/tempo/{product}/` (time-series of point values at a monitor's location, for comparison charts) — `value_at_point` covers this need internally for now via direct data-tooling use; add a dedicated endpoint if/when a UI needs it.
-- NASA GIBS WMTS as an alternative overlay source — considered and dropped; cadence (day-level `TIME` granularity in available docs) doesn't match our hourly need, and self-rendering gives us control over colormap/legend consistency with the rest of the site.
+- NASA GIBS WMTS as an alternative overlay source — considered and dropped. GIBS does support subdaily TEMPO time steps matching its actual scan cadence (not day-only, as an earlier pass at this doc assumed), but it renders with NASA's own fixed scientific colormap, not ours. Self-rendering the `preview` PNG lets us use SJVAir's existing color palette for consistency with the rest of the site.
 - Feeding TEMPO values into the existing `summaries` app (`MonitorSummary`/`RegionSummary`) — those are built around `Entry`'s stage/calibration pipeline, which TEMPO's column data doesn't fit. Community aggregate stats are served via `zonal_stats` directly; formal integration into the summaries rollup system is a separate future decision.
 - PostGIS raster tile pyramid / XYZ tiling — the clipped AOI is small and fixed-extent, so a single `ImageOverlay` per hour is sufficient; no need for zoom-level tile generation.
