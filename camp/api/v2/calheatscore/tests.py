@@ -20,7 +20,7 @@ class CalHeatScoreListTests(TestCase):
             data = self.client.get(url).json()
 
         assert data['count'] == 1
-        assert data['data'][0]['zip_code'] == '93728'
+        assert data['data'][0]['zipcode'] == '93728'
         assert data['data'][0]['score'] == 3
         assert data['data'][0]['score_display'] == 'High'
 
@@ -49,27 +49,27 @@ class CalHeatScoreListZipFilterTests(TestCase):
         )
         CalHeatScore.objects.create(region=self.other_region, date=date(2026, 7, 12), score=1)
 
-    def test_filters_by_exact_zip_code(self):
+    def test_filters_by_exact_zipcode(self):
         url = reverse('api:v2:calheatscore:calheatscore-list')
-        data = self.client.get(url, {'date': '2026-07-12', 'zip_code': '93650'}).json()
+        data = self.client.get(url, {'date': '2026-07-12', 'zipcode': '93650'}).json()
 
         assert data['count'] == 1
-        assert data['data'][0]['zip_code'] == '93650'
+        assert data['data'][0]['zipcode'] == '93650'
 
-    def test_filters_by_zip_code_in(self):
+    def test_filters_by_zipcode_in(self):
         url = reverse('api:v2:calheatscore:calheatscore-list')
-        data = self.client.get(url, {'date': '2026-07-12', 'zip_code__in': '93728,93650'}).json()
+        data = self.client.get(url, {'date': '2026-07-12', 'zipcode__in': '93728,93650'}).json()
 
         assert data['count'] == 2
-        zips = {row['zip_code'] for row in data['data']}
+        zips = {row['zipcode'] for row in data['data']}
         assert zips == {'93728', '93650'}
 
-    def test_zip_code_in_excludes_unlisted_zips(self):
+    def test_zipcode_in_excludes_unlisted_zips(self):
         url = reverse('api:v2:calheatscore:calheatscore-list')
-        data = self.client.get(url, {'date': '2026-07-12', 'zip_code__in': '93650'}).json()
+        data = self.client.get(url, {'date': '2026-07-12', 'zipcode__in': '93650'}).json()
 
         assert data['count'] == 1
-        assert data['data'][0]['zip_code'] == '93650'
+        assert data['data'][0]['zipcode'] == '93650'
 
 
 class CalHeatScoreByZipTests(TestCase):
