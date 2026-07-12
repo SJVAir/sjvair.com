@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import transaction
 from django.utils.translation import gettext as _
 
 from camp.apps.alerts import tasks
@@ -48,4 +49,10 @@ def notify_subscribers(alert_update):
             user=subscription.user,
             message=message,
         )
-        tasks.send_alert_notification(notification.pk)
+        # Defer the enqueue until this row is actually committed: callers
+        # (e.g. AlertEvaluator.update_check) may run inside an outer
+        # transaction.atomic() block, and a Huey worker could otherwise
+        # dequeue and look up this notification before it's visible.
+        transaction.on_commit(
+            lambda pk=notification.pk: tasks.send_alert_notification(pk)
+        )

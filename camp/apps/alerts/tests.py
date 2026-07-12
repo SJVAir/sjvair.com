@@ -329,12 +329,30 @@ class NotifySubscribersTests(TestCase):
         mock_client_class.return_value.messages.create.return_value = mock_message
 
         self.create_subscription('moderate')
-        update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
+        with self.captureOnCommitCallbacks(execute=True):
+            update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
 
         notification = Notification.objects.get(alert_update=update)
         assert notification.status == Notification.Status.SENT
         assert notification.provider_id == 'SM_test_sid'
         assert notification.sent_at is not None
+
+    @patch('camp.apps.alerts.tasks.twilio.rest.Client')
+    def test_send_is_deferred_until_transaction_commits(self, mock_client_class):
+        mock_client_class.return_value.messages.create.return_value = MagicMock(sid='SM_test_sid')
+
+        self.create_subscription('moderate')
+
+        # No captureOnCommitCallbacks here: create_update() runs inside
+        # this test's own (uncommitted) transaction, so the deferred send
+        # task must not fire yet. If notify_subscribers ever went back to
+        # enqueuing synchronously instead of via transaction.on_commit,
+        # this would flip to SENT and catch the regression.
+        update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
+
+        notification = Notification.objects.get(alert_update=update)
+        assert notification.status == Notification.Status.QUEUED
+        mock_client_class.return_value.messages.create.assert_not_called()
 
     @patch('camp.apps.alerts.tasks.twilio.rest.Client')
     def test_twilio_failure_is_caught_and_logged(self, mock_client_class):
@@ -343,7 +361,8 @@ class NotifySubscribersTests(TestCase):
         )
 
         self.create_subscription('moderate')
-        update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
+        with self.captureOnCommitCallbacks(execute=True):
+            update = self.alert.create_update(AQLevel.scale.UNHEALTHY)
 
         notification = Notification.objects.get(alert_update=update)
         assert notification.status == Notification.Status.FAILED
@@ -422,6 +441,33 @@ class TwilioStatusCallbackTests(TestCase):
         assert response.status_code == 200
         self.notification.refresh_from_db()
         assert self.notification.status == Notification.Status.DELIVERED
+
+    def test_delivered_callback_backfills_missing_sent_at(self):
+        # setUp creates the notification with sent_at unset, simulating a
+        # callback that beat our own SENT write.
+        assert self.notification.sent_at is None
+
+        response = self.post_with_signature({
+            'MessageSid': 'SM_test_sid',
+            'MessageStatus': 'delivered',
+        })
+        assert response.status_code == 200
+        self.notification.refresh_from_db()
+        assert self.notification.status == Notification.Status.DELIVERED
+        assert self.notification.sent_at is not None
+
+    def test_delivered_callback_does_not_overwrite_existing_sent_at(self):
+        original_sent_at = timezone.now() - timedelta(minutes=5)
+        self.notification.sent_at = original_sent_at
+        self.notification.save(update_fields=['sent_at'])
+
+        response = self.post_with_signature({
+            'MessageSid': 'SM_test_sid',
+            'MessageStatus': 'delivered',
+        })
+        assert response.status_code == 200
+        self.notification.refresh_from_db()
+        assert self.notification.sent_at == original_sent_at
 
     def test_undelivered_status_updates_notification(self):
         response = self.post_with_signature({
