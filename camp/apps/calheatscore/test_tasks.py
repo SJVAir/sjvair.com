@@ -83,3 +83,41 @@ class ImportCalHeatScoreTests(TestCase):
         import_calheatscore.call_local()
 
         mock_client.query.assert_not_called()
+
+    @patch('camp.apps.calheatscore.tasks.calheatscore_client')
+    def test_skips_row_with_malformed_date(self, mock_client):
+        mock_client.query.return_value = [{**FRESNO_ROW, 'DATE': 'not-a-date'}]
+
+        import_calheatscore.call_local()
+
+        assert CalHeatScore.objects.count() == 0
+
+    @patch('camp.apps.calheatscore.tasks.calheatscore_client')
+    def test_skips_row_with_missing_date_key(self, mock_client):
+        row = {k: v for k, v in FRESNO_ROW.items() if k != 'DATE'}
+        mock_client.query.return_value = [row]
+
+        import_calheatscore.call_local()
+
+        assert CalHeatScore.objects.count() == 0
+
+    @patch('camp.apps.calheatscore.tasks.calheatscore_client')
+    def test_skips_only_the_day_with_a_non_numeric_score(self, mock_client):
+        mock_client.query.return_value = [{**FRESNO_ROW, 'CHS_Day_0': 'not-a-number'}]
+
+        import_calheatscore.call_local()
+
+        scores = CalHeatScore.objects.filter(region__external_id='93728')
+        assert scores.count() == 6
+        assert not scores.filter(date=date(2026, 7, 11)).exists()
+        assert scores.filter(date=date(2026, 7, 12)).exists()
+
+    @patch('camp.apps.calheatscore.tasks.calheatscore_client')
+    def test_skips_only_the_day_with_an_out_of_range_score(self, mock_client):
+        mock_client.query.return_value = [{**FRESNO_ROW, 'CHS_Day_0': '9'}]
+
+        import_calheatscore.call_local()
+
+        scores = CalHeatScore.objects.filter(region__external_id='93728')
+        assert scores.count() == 6
+        assert not scores.filter(date=date(2026, 7, 11)).exists()

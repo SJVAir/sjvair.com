@@ -31,18 +31,32 @@ def import_calheatscore():
 
         rows = calheatscore_client.query(list(regions_by_zip.keys()))
         for row in rows:
-            region = regions_by_zip.get(row['ZIP_CODE'])
+            region = regions_by_zip.get(row.get('ZIP_CODE'))
             if region is None:
                 continue
 
-            base_date = datetime.strptime(row['DATE'], '%Y-%m-%d').date()
+            try:
+                base_date = datetime.strptime(row['DATE'], '%Y-%m-%d').date()
+            except (KeyError, ValueError):
+                # Malformed row from the upstream feed — skip just this ZIP,
+                # not the whole day's import for every other ZIP.
+                continue
+
             for lead, field in enumerate(DAY_FIELDS):
                 value = row.get(field)
                 if value in (None, ''):
                     continue
 
+                try:
+                    score = int(value)
+                except ValueError:
+                    continue
+
+                if score not in CalHeatScore.Score.values:
+                    continue
+
                 CalHeatScore.objects.update_or_create(
                     region=region,
                     date=base_date + timedelta(days=lead),
-                    defaults={'score': int(value)},
+                    defaults={'score': score},
                 )
