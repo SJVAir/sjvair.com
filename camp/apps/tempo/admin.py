@@ -9,4 +9,4 @@ class GranuleAdmin(admin.ModelAdmin):
     list_filter = ('product', 'is_final', 'version')
     search_fields = ('sqid__exact',)
     date_hierarchy = 'timestamp'
-    readonly_fields = ('raster', 'preview', 'bounds')
+    exclude = ('raster', 'bounds')

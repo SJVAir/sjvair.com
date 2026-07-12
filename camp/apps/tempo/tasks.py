@@ -18,12 +18,17 @@ PRODUCTS = [choice[0] for choice in Granule.Product.choices]
 # TEMPO only observes during PT daylight hours; run hourly, 15 min past the
 # hour to give NASA's NRT pipeline (~180 min claimed latency, but the top of
 # the hour is safest to avoid) a head start. 13-23 UTC covers roughly
-# 5am-3pm PT.
+# 5am-3pm PT. Since NRT data isn't available for ~180 min, target the hour
+# 3 hours back rather than the current hour, which can't possibly have data
+# yet.
 @db_periodic_task(crontab(minute='15', hour='13-23'), priority=50)
 def fetch_tempo():
-    timestamp = timezone.now().replace(minute=0, second=0, microsecond=0)
+    timestamp = (timezone.now() - timedelta(hours=3)).replace(minute=0, second=0, microsecond=0)
     for product in PRODUCTS:
-        sync_granule(product, timestamp)
+        try:
+            sync_granule(product, timestamp)
+        except Exception as exc:
+            sentry_sdk.capture_exception(exc)
 
 
 # Re-check every hour of yesterday once NASA's standard product typically
@@ -38,7 +43,10 @@ def fetch_tempo_final():
     for hour in range(24):
         timestamp = day_start + timedelta(hours=hour)
         for product in PRODUCTS:
-            sync_granule(product, timestamp)
+            try:
+                sync_granule(product, timestamp)
+            except Exception as exc:
+                sentry_sdk.capture_exception(exc)
 
 
 # Re-syncs a rolling 90-day window weekly to pick up NASA's non-chronological
