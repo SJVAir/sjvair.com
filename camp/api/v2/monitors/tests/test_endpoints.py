@@ -529,3 +529,49 @@ class EndpointTests(TestCase):
         assert 'errors' in content
         assert content['errors']['detail'][0]['message'] == endpoints.CreateEntry.upload_not_allowed
 
+
+class MonitorFilterDeviceTests(TestCase):
+    '''
+        MonitorFilter.filter_device() hardcodes a device-name -> lookup-field
+        map. purpleair_monitor (module-level fixture) guarantees a non-CIMIS,
+        non-AirGradient monitor exists, so these tests fail if filtering
+        doesn't actually narrow the queryset.
+    '''
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_filters_by_cimis_device(self):
+        from django.contrib.gis.geos import Point
+        from camp.apps.monitors.cimis.models import CIMIS
+
+        CIMIS.objects.create(
+            name='CIMIS Station',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+
+        url = reverse('api:v2:monitors:monitor-list')
+        request = self.factory.get(url, {'device': 'CIMIS'})
+        response = monitor_list(request)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert len(content['data']) >= 1
+        assert all(monitor['type'] == 'cimis' for monitor in content['data'])
+
+    def test_filters_by_airgradient_device(self):
+        from camp.apps.monitors.airgradient.models import AirGradient
+
+        AirGradient.objects.create(name='AG Station', device='O-1PP', sensor_id=99999)
+
+        url = reverse('api:v2:monitors:monitor-list')
+        request = self.factory.get(url, {'device': 'AirGradient'})
+        response = monitor_list(request)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert len(content['data']) >= 1
+        assert all(monitor['type'] == 'airgradient' for monitor in content['data'])
+
