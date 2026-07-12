@@ -25,7 +25,7 @@ class CalHeatScoreClient:
             'returnGeometry': 'false',
             'f': 'json',
         }
-        return self.session.get(self.url, params=params)
+        return self.session.get(self.url, params=params, timeout=30)
 
     def query(self, zip_codes: Sequence[str]) -> List[Dict[str, Any]]:
         if not zip_codes:
