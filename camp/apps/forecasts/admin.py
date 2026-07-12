@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from camp.utils.admin import ReadOnlyAdminMixin
+from camp.utils.admin import ReadOnlyAdminMixin, admin_change_link
 
 from .models import Forecast
 
@@ -9,7 +9,7 @@ from .models import Forecast
 class ForecastAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     date_hierarchy = 'forecast_date'
     list_display = [
-        'zone_name', 'region', 'forecast_date', 'issued_date',
+        'zone_name', 'get_region', 'forecast_date', 'issued_date',
         'aqi_value', 'aqi_category', 'pollutant', 'burn_status', 'air_alert',
     ]
     list_filter = ['aqi_category', 'pollutant', 'burn_status', 'air_alert']
@@ -25,3 +25,8 @@ class ForecastAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('region')
+
+    def get_region(self, instance):
+        return admin_change_link(instance.region, instance.region.name)
+    get_region.short_description = 'Region'
+    get_region.admin_order_field = 'region__name'
