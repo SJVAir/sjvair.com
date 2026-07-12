@@ -10,7 +10,7 @@ from huey import crontab
 
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.airnow.models import AirNow
-from camp.apps.monitors.airnow.client import airnow_api
+from camp.apps.monitors.airnow.api import airnow_api
 from camp.apps.regions.models import Region
 from camp.utils import gis
 

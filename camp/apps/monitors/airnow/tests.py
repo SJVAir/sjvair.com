@@ -4,7 +4,7 @@ from django.test import TestCase
 
 import requests
 
-from camp.apps.monitors.airnow.client import AirNowClient
+from camp.apps.monitors.airnow.api import AirNowAPI
 
 
 def make_response(status_code=200, json_result=None, json_error=None):
@@ -19,10 +19,10 @@ def make_response(status_code=200, json_result=None, json_error=None):
 
 class FetchEntriesTests(TestCase):
     def setUp(self):
-        self.client = AirNowClient(api_key='test-key')
+        self.client = AirNowAPI(api_key='test-key')
 
-    @patch('camp.apps.monitors.airnow.client.time.sleep')
-    @patch.object(AirNowClient, 'data')
+    @patch('camp.apps.monitors.airnow.api.time.sleep')
+    @patch.object(AirNowAPI, 'data')
     def test_returns_entries_on_first_success(self, mock_data, mock_sleep):
         mock_data.return_value = make_response(json_result=[{'SiteName': 'A'}])
 
@@ -32,8 +32,8 @@ class FetchEntriesTests(TestCase):
         assert mock_data.call_count == 1
         mock_sleep.assert_not_called()
 
-    @patch('camp.apps.monitors.airnow.client.time.sleep')
-    @patch.object(AirNowClient, 'data')
+    @patch('camp.apps.monitors.airnow.api.time.sleep')
+    @patch.object(AirNowAPI, 'data')
     def test_retries_on_bad_json_body_then_succeeds(self, mock_data, mock_sleep):
         json_error = requests.exceptions.JSONDecodeError('Expecting value', '', 0)
         mock_data.side_effect = [
@@ -47,8 +47,8 @@ class FetchEntriesTests(TestCase):
         assert mock_data.call_count == 2
         mock_sleep.assert_called_once()
 
-    @patch('camp.apps.monitors.airnow.client.time.sleep')
-    @patch.object(AirNowClient, 'data')
+    @patch('camp.apps.monitors.airnow.api.time.sleep')
+    @patch.object(AirNowAPI, 'data')
     def test_raises_after_exhausting_attempts_on_bad_json(self, mock_data, mock_sleep):
         json_error = requests.exceptions.JSONDecodeError('Expecting value', '', 0)
         mock_data.return_value = make_response(json_error=json_error)
@@ -60,8 +60,8 @@ class FetchEntriesTests(TestCase):
 
         assert mock_data.call_count == 3
 
-    @patch('camp.apps.monitors.airnow.client.time.sleep')
-    @patch.object(AirNowClient, 'data')
+    @patch('camp.apps.monitors.airnow.api.time.sleep')
+    @patch.object(AirNowAPI, 'data')
     def test_retries_on_rate_limit_then_succeeds(self, mock_data, mock_sleep):
         mock_data.side_effect = [
             make_response(status_code=429),
@@ -74,8 +74,8 @@ class FetchEntriesTests(TestCase):
         assert mock_data.call_count == 2
         mock_sleep.assert_called_once()
 
-    @patch('camp.apps.monitors.airnow.client.time.sleep')
-    @patch.object(AirNowClient, 'data')
+    @patch('camp.apps.monitors.airnow.api.time.sleep')
+    @patch.object(AirNowAPI, 'data')
     def test_raises_after_exhausting_attempts_on_rate_limit(self, mock_data, mock_sleep):
         response = make_response(status_code=429)
         response.raise_for_status.side_effect = requests.exceptions.HTTPError('429')
