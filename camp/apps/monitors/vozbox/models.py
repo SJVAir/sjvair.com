@@ -78,7 +78,7 @@ class VOZBox(Monitor):
     def update_data(self, row):
         if not self.name:
             self.name = self.sensor_id
-        if row.get('latitude') and row.get('longitude'):
+        if row.get('latitude') is not None and row.get('longitude') is not None:
             self.position = Point(float(row['longitude']), float(row['latitude']), srid=4326)
         self.location = self.LOCATION.outside
 
