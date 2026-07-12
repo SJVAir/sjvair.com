@@ -80,13 +80,11 @@ def split_today_tomorrow(elements):
 
 @db_periodic_task(crontab(minute='45', hour='23,0,1,2'), priority=50)
 def fetch_forecasts():
+    issued_date = timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
+
     response = requests.get(FEED_URL, timeout=30)
     response.raise_for_status()
     root = ET.fromstring(response.content)
-
-    # Extract issued_date from the feed's lastBuildDate
-    last_build_date_el = root.find('.//lastBuildDate')
-    issued_date = parse_feed_datetime(last_build_date_el.text).date() if last_build_date_el is not None else timezone.now().astimezone(settings.DEFAULT_TIMEZONE).date()
 
     with transaction.atomic():
         Forecast.objects.filter(issued_date=issued_date).delete()

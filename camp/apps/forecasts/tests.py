@@ -51,6 +51,9 @@ class ForecastModelTests(TestCase):
         assert list(Forecast.objects.all()) == [newer, older]
 
 
+FIXED_NOW = datetime(2026, 7, 11, 19, 0, 0, tzinfo=dt_timezone.utc)
+
+
 SAMPLE_FEED_XML = b"""<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0"   xmlns:burnStatus="https://ww2.valleyair.org/" xmlns:AQI="https://ww2.valleyair.org/">
 <title>SJVAPCD mobile app Status</title>
@@ -191,6 +194,11 @@ def mock_response(content=SAMPLE_FEED_XML):
 
 class FetchForecastsTests(TestCase):
     fixtures = ['regions.yaml']
+
+    def setUp(self):
+        patcher = patch('django.utils.timezone.now', return_value=FIXED_NOW)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @patch('camp.apps.forecasts.tasks.requests.get')
     def test_creates_forecast_for_each_mapped_zone(self, mock_get):
