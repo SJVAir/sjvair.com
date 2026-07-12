@@ -54,6 +54,9 @@ class CIMISAPITests(TestCase):
     def setUp(self):
         self.api = CIMISAPI(app_key='test-key')
 
+    def test_session_header_has_subscription_key(self):
+        assert self.api.session.headers['Ocp-Apim-Subscription-Key'] == 'test-key'
+
     @patch('camp.apps.monitors.cimis.api.requests.Session.get')
     def test_get_stations_returns_station_list(self, mock_get):
         mock_get.return_value = make_response(json_result={'Stations': [{'StationNbr': '2'}]})
@@ -62,8 +65,9 @@ class CIMISAPITests(TestCase):
 
         assert stations == [{'StationNbr': '2'}]
         called_url, called_kwargs = mock_get.call_args
-        assert called_url[0] == 'https://et.water.ca.gov/api/station'
-        assert called_kwargs['params']['appKey'] == 'test-key'
+        assert called_url[0] == 'https://et.water.ca.gov/StationWeb/GetAllStations'
+        assert 'params' not in called_kwargs or not called_kwargs.get('params')
+        assert self.api.session.headers['Ocp-Apim-Subscription-Key'] == 'test-key'
 
     @patch('camp.apps.monitors.cimis.api.requests.Session.get')
     def test_get_hourly_data_builds_correct_params(self, mock_get):
@@ -81,14 +85,16 @@ class CIMISAPITests(TestCase):
 
         assert providers == [{'Name': 'cimis', 'Records': []}]
         called_url, called_kwargs = mock_get.call_args
-        assert called_url[0] == 'https://et.water.ca.gov/api/data'
+        assert called_url[0] == 'https://et.water.ca.gov/StationWeb/GetDataByStationNumber'
         params = called_kwargs['params']
-        assert params['targets'] == '2,5'
+        assert params['stationNbrs'] == '2,5'
         assert params['startDate'] == '2026-07-01'
         assert params['endDate'] == '2026-07-01'
         assert params['dataItems'] == 'hly-air-tmp,hly-wind-spd'
         assert params['unitOfMeasure'] == 'E'
-        assert params['appKey'] == 'test-key'
+        assert params['isHourly'] == 'true'
+        assert 'appKey' not in params
+        assert self.api.session.headers['Ocp-Apim-Subscription-Key'] == 'test-key'
 
 
 class ParseHmsCoordinateTests(TestCase):
