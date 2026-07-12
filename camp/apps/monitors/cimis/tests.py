@@ -6,6 +6,7 @@ from django.test import TestCase
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.cimis.api import CIMISAPI
 from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.monitors.cimis.tasks import parse_hms_coordinate, process_cimis_station
 
 
 class CIMISModelTests(TestCase):
@@ -88,3 +89,58 @@ class CIMISAPITests(TestCase):
         assert params['dataItems'] == 'hly-air-tmp,hly-wind-spd'
         assert params['unitOfMeasure'] == 'E'
         assert params['appKey'] == 'test-key'
+
+
+class ParseHmsCoordinateTests(TestCase):
+    def test_parses_valid_latitude(self):
+        assert parse_hms_coordinate("36º20'10N / 36.3360") == 36.3360
+
+    def test_parses_valid_negative_longitude(self):
+        assert parse_hms_coordinate("-120º6'47W / -120.1130") == -120.1130
+
+    def test_returns_none_for_missing_slash(self):
+        assert parse_hms_coordinate('garbage') is None
+
+    def test_returns_none_for_empty_string(self):
+        assert parse_hms_coordinate('') is None
+
+
+class ProcessCimisStationTests(TestCase):
+    def make_station(self, **overrides):
+        station = {
+            'StationNbr': '2',
+            'Name': 'Five Points',
+            'County': 'Fresno',
+            'IsActive': 'True',
+            'HmsLatitude': "36º20'10N / 36.3360",
+            'HmsLongitude': "-120º6'47W / -120.1130",
+        }
+        station.update(overrides)
+        return station
+
+    def test_creates_monitor_for_active_sjv_county_station(self):
+        monitor = process_cimis_station.call_local(self.make_station())
+
+        assert monitor is not False
+        assert monitor.station_number == '2'
+        assert monitor.county == 'Fresno'
+
+    def test_skips_station_outside_sjv_counties(self):
+        result = process_cimis_station.call_local(self.make_station(County='Los Angeles'))
+        assert result is False
+
+    def test_skips_inactive_station(self):
+        result = process_cimis_station.call_local(self.make_station(IsActive='False'))
+        assert result is False
+
+    def test_skips_station_with_unparseable_coordinates(self):
+        result = process_cimis_station.call_local(self.make_station(HmsLatitude='garbage'))
+        assert result is False
+
+    def test_is_idempotent_for_existing_station(self):
+        process_cimis_station.call_local(self.make_station())
+        result = process_cimis_station.call_local(self.make_station(Name='Five Points Updated'))
+
+        from camp.apps.monitors.cimis.models import CIMIS
+        assert CIMIS.objects.filter(station_number='2').count() == 1
+        assert result is not False
