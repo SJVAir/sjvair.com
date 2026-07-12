@@ -5,6 +5,9 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from camp.apps.calheatscore.models import CalHeatScore
+from camp.apps.regions.models import Region
+
 
 class CalHeatScoreListTests(TestCase):
     fixtures = ['regions', 'calheatscore']
@@ -35,6 +38,40 @@ class CalHeatScoreListTests(TestCase):
         assert data['count'] == 0
 
 
+class CalHeatScoreListZipFilterTests(TestCase):
+    fixtures = ['regions', 'calheatscore']
+
+    def setUp(self):
+        # A second ZIP region + score, sharing 2026-07-12 with the fixture's
+        # 93728 record, so both can appear on the same date-filtered list.
+        self.other_region = Region.objects.create(
+            name='93650', slug='93650', type=Region.Type.ZIPCODE, external_id='93650',
+        )
+        CalHeatScore.objects.create(region=self.other_region, date=date(2026, 7, 12), score=1)
+
+    def test_filters_by_exact_zip_code(self):
+        url = reverse('api:v2:calheatscore:calheatscore-list')
+        data = self.client.get(url, {'date': '2026-07-12', 'zip_code': '93650'}).json()
+
+        assert data['count'] == 1
+        assert data['data'][0]['zip_code'] == '93650'
+
+    def test_filters_by_zip_code_in(self):
+        url = reverse('api:v2:calheatscore:calheatscore-list')
+        data = self.client.get(url, {'date': '2026-07-12', 'zip_code__in': '93728,93650'}).json()
+
+        assert data['count'] == 2
+        zips = {row['zip_code'] for row in data['data']}
+        assert zips == {'93728', '93650'}
+
+    def test_zip_code_in_excludes_unlisted_zips(self):
+        url = reverse('api:v2:calheatscore:calheatscore-list')
+        data = self.client.get(url, {'date': '2026-07-12', 'zip_code__in': '93650'}).json()
+
+        assert data['count'] == 1
+        assert data['data'][0]['zip_code'] == '93650'
+
+
 class CalHeatScoreByZipTests(TestCase):
     fixtures = ['regions', 'calheatscore']
 
@@ -51,3 +88,18 @@ class CalHeatScoreByZipTests(TestCase):
         data = self.client.get(url).json()
 
         assert data['count'] == 0
+
+    def test_filters_by_exact_date(self):
+        url = reverse('api:v2:calheatscore:calheatscore-by-zip', kwargs={'zipcode': '93728'})
+        data = self.client.get(url, {'date': '2026-07-12'}).json()
+
+        assert data['count'] == 1
+        assert data['data'][0]['date'] == '2026-07-12'
+
+    def test_filters_by_date_range(self):
+        url = reverse('api:v2:calheatscore:calheatscore-by-zip', kwargs={'zipcode': '93728'})
+        data = self.client.get(url, {'date__gte': '2026-07-12'}).json()
+
+        assert data['count'] == 2
+        dates = {row['date'] for row in data['data']}
+        assert dates == {'2026-07-12', '2026-07-13'}

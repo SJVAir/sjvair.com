@@ -10,7 +10,8 @@ from .serializers import CalHeatScoreSerializer
 
 
 class CalHeatScoreList(generics.ListEndpoint):
-    """Today's CalHeatScore for every SJV ZIP code (filterable by ?date=)."""
+    """Today's CalHeatScore for every SJV ZIP code (filterable by ?date=,
+    ?zip_code=, and ?zip_code__in=)."""
 
     model = CalHeatScore
     serializer_class = CalHeatScoreSerializer
@@ -26,10 +27,12 @@ class CalHeatScoreList(generics.ListEndpoint):
 
 
 class CalHeatScoreByZip(generics.ListEndpoint):
-    """All stored CalHeatScore dates (past actuals + forecast) for one ZIP code."""
+    """All stored CalHeatScore dates (past actuals + forecast) for one ZIP
+    code (filterable by ?date=, ?date__gte=, ?date__lte=)."""
 
     model = CalHeatScore
     serializer_class = CalHeatScoreSerializer
+    filter_class = CalHeatScoreFilter
     paginate = True
 
     def get_queryset(self):
