@@ -1,6 +1,8 @@
 from datetime import date, datetime, timezone as dt_timezone
+from io import StringIO
 from unittest.mock import Mock, patch
 
+from django.core.management import call_command
 from django.test import TestCase
 
 from camp.apps.regions.models import Region
@@ -268,3 +270,15 @@ class FetchForecastsTests(TestCase):
         assert count == 16
         fetch_forecasts.call_local()
         assert Forecast.objects.count() == count
+
+
+class FetchForecastsCommandTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_command_ingests_forecasts(self, mock_get):
+        mock_get.return_value = mock_response()
+        out = StringIO()
+        call_command('fetch_forecasts', stdout=out)
+        assert Forecast.objects.count() == 16
+        assert 'Done' in out.getvalue()
