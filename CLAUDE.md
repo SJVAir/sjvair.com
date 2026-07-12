@@ -113,7 +113,7 @@ Key env vars: `DATABASE_URL`, `REDIS_URL`, `PURPLEAIR_READ_KEY`, `AIRNOW_API_KEY
 
 ### Key Conventions
 
-- Legacy primary keys are `SmallUUIDField` (URL-safe UUIDs via `django-smalluuid`), with newer models using sqids.
+- **All new models use sqids** (`django_sqids`) for their external identifier — `sqid = SqidsField(alphabet=shuffle_alphabet('app.ModelName'))` alongside the default integer PK, following the pattern in `camp/apps/ceidars/models.py`. `SmallUUIDField` (`django-smalluuid`) only appears on legacy models predating this convention — do not use it for new models.
 - Timezone is always `America/Los_Angeles`; `camp/utils/datetime.py` has helpers
 - `Monitor.ENTRY_CONFIG` is the source of truth for what data a monitor produces and how it's processed
 - `Monitor.supports_health_checks()` is an **instance method** — returns `True` only if this specific monitor instance supports dual-channel health checks (e.g., AirGradient requires `device == 'O-1PP'`)
