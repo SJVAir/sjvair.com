@@ -35,10 +35,17 @@ class AlertEvaluator:
                 # Lock the alert row for the duration of the check so
                 # overlapping evaluate() runs for the same alert can't
                 # both pass the cooldown check and each create a
-                # duplicate update/notification.
+                # duplicate update/notification. Re-check end_time under
+                # the lock in case a concurrent evaluation closed the
+                # alert between the unlocked check above and acquiring
+                # the lock here.
                 with transaction.atomic():
-                    active_alert = Alert.objects.select_for_update().get(pk=active_alert.pk)
-                    self.update_check(active_alert, entry_model, lookup)
+                    active_alert = Alert.objects.select_for_update().filter(
+                        pk=active_alert.pk,
+                        end_time__isnull=True,
+                    ).first()
+                    if active_alert is not None:
+                        self.update_check(active_alert, entry_model, lookup)
             else:
                 # No current alert, check to see if we need to
                 # create one.

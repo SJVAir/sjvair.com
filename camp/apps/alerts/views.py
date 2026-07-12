@@ -3,7 +3,9 @@ from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count, Q
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse, HttpResponseForbidden
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -115,6 +117,8 @@ class TwilioStatusCallback(View):
         # Exclude notifications already in a terminal state: Twilio status
         # callbacks can arrive out of order or be retried, and a stale
         # callback shouldn't revert an already-delivered notification.
+        # Backfill sent_at too, in case this callback beat our own SENT
+        # write (e.g. a delayed/queued send task).
         Notification.objects.filter(
             provider_id=message_sid
         ).exclude(
@@ -123,6 +127,9 @@ class TwilioStatusCallback(View):
                 Notification.Status.UNDELIVERED,
                 Notification.Status.FAILED,
             ]
-        ).update(status=status)
+        ).update(
+            status=status,
+            sent_at=Coalesce('sent_at', timezone.now()),
+        )
 
         return HttpResponse(status=200)
