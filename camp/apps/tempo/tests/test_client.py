@@ -7,6 +7,8 @@ from django.test import TestCase, override_settings
 
 from datetime import datetime, timezone as dt_timezone
 
+from constance.test import override_config
+
 from camp.apps.tempo.client import TempoClient, _collection_cache
 
 
@@ -163,3 +165,22 @@ class FetchGranuleBytesTests(TestCase):
 
         with pytest.raises(requests.exceptions.HTTPError):
             self.client.fetch_granule_bytes(self.granule, self.bbox)
+
+
+class TempoClientTokenFallbackTests(TestCase):
+    @override_settings(EARTHDATA_TOKEN='settings-token')
+    def test_falls_back_to_settings_when_constance_is_unset(self):
+        client = TempoClient()
+        assert client.token == 'settings-token'
+
+    @override_settings(EARTHDATA_TOKEN='settings-token')
+    @override_config(EARTHDATA_TOKEN='constance-token')
+    def test_prefers_constance_over_settings(self):
+        client = TempoClient()
+        assert client.token == 'constance-token'
+
+    @override_settings(EARTHDATA_TOKEN='settings-token')
+    @override_config(EARTHDATA_TOKEN='constance-token')
+    def test_explicit_token_overrides_everything(self):
+        client = TempoClient(token='explicit-token')
+        assert client.token == 'explicit-token'

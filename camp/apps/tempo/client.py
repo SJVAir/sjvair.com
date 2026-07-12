@@ -4,6 +4,8 @@ from typing import Optional
 
 import requests
 
+from constance import config as constance_config
+
 from django.conf import settings
 
 CMR_GRANULE_SEARCH_URL = 'https://cmr.earthdata.nasa.gov/search/granules.json'
@@ -34,7 +36,7 @@ _COLLECTION_CACHE_TTL = 3600  # seconds
 
 class TempoClient:
     def __init__(self, token=None):
-        self.token = token or settings.EARTHDATA_TOKEN
+        self.token = token or constance_config.EARTHDATA_TOKEN or settings.EARTHDATA_TOKEN
         self.session = self._make_session()
 
     def _make_session(self):

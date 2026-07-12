@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    'constance',
     'corsheaders',
     'admin_honeypot',
     'django_admin_inline_paginator',
@@ -457,3 +458,17 @@ if SCOUT_KEY is not None:
 MAPTILER_API_KEY = env('MAPTILER_API_KEY')
 
 EARTHDATA_TOKEN = env('EARTHDATA_TOKEN', '')
+
+import datetime as dt
+
+EARTHDATA_TOKEN_NOT_SET = dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc)
+
+CONSTANCE_CONFIG = {
+    'EARTHDATA_TOKEN': ('', 'NASA Earthdata Login bearer token for TEMPO ingestion.', str),
+    'EARTHDATA_TOKEN_EXPIRES_AT': (
+        EARTHDATA_TOKEN_NOT_SET,
+        'When the current EARTHDATA_TOKEN expires (set by renew_earthdata_token; informational only).',
+        dt.datetime,
+    ),
+}
+CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
