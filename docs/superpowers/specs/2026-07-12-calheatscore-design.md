@@ -109,10 +109,11 @@ params = {
 ```
 
 The response must be checked for an `error` property before processing (the service returns
-HTTP 200 even on error). The exact JSON shape of the `DATE` field (ArcGIS services commonly
-return dates as epoch-millisecond integers rather than ISO strings) has not been confirmed
-against a live request — **to be verified during implementation**, the same way CIMIS's actual
-endpoint behavior had to be verified against live testing rather than trusting published docs.
+HTTP 200 even on error). Confirmed via a live request: `DATE` is returned as a plain
+`"YYYY-MM-DD"` string (not an epoch-millisecond integer, as some ArcGIS services use), so it
+parses directly with `datetime.strptime(value, '%Y-%m-%d').date()`. `DATE` reflects the as-of
+date the service last refreshed (`CHS_Day_0` = that date, `CHS_Day_N` = that date + N days) —
+it lags behind the calendar date until the daily 5am/8am Pacific refresh has run.
 
 **Task** (`camp/apps/calheatscore/tasks.py`): a `db_periodic_task` scheduled once daily
 (~9:00am Pacific, after the source's 5am/8am refresh window), following the `hms`/`airnow`
