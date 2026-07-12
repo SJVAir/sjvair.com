@@ -6,7 +6,7 @@ import requests
 from defusedxml import ElementTree as ET
 
 from django.conf import settings
-from django.db import transaction
+from django.db import Error as DBError, transaction
 from django.utils import timezone
 from django_huey import db_periodic_task
 from huey import crontab
@@ -102,40 +102,47 @@ def fetch_forecasts():
                 continue  # region not yet imported
 
             try:
-                published_at = parse_feed_datetime(item.findtext('pubdate'))
+                # A nested atomic() creates a savepoint for this zone alone, so a
+                # failure here (parse error or DB error) only rolls back this
+                # zone's writes, not the whole run's transaction.
+                with transaction.atomic():
+                    published_at = parse_feed_datetime(item.findtext('pubdate'))
 
-                alert_el = item.find('airAlertStatus')
-                air_alert = alert_el.get('status') == 'YES'
-                air_alert_start = parse_alert_date(alert_el.get('startDate'))
-                air_alert_end = parse_alert_date(alert_el.get('endDate'))
+                    alert_el = item.find('airAlertStatus')
+                    air_alert = alert_el.get('status') == 'YES'
+                    air_alert_start = parse_alert_date(alert_el.get('startDate'))
+                    air_alert_end = parse_alert_date(alert_el.get('endDate'))
 
-                for horizon in ('today', 'tomorrow'):
-                    elements = item.findall(f'{{{NAMESPACE_URI}}}{horizon}')
-                    burn_el, aqi_el = split_today_tomorrow(elements)
+                    for horizon in ('today', 'tomorrow'):
+                        elements = item.findall(f'{{{NAMESPACE_URI}}}{horizon}')
+                        burn_el, aqi_el = split_today_tomorrow(elements)
 
-                    aqi_value, pollutant = parse_aqi_text(aqi_el.text)
-                    forecast_date = parse_feed_datetime(aqi_el.get('date')).date()
+                        aqi_value, pollutant = parse_aqi_text(aqi_el.text)
+                        forecast_date = parse_feed_datetime(aqi_el.get('date')).date()
 
-                    Forecast.objects.create(
-                        region=region,
-                        zone_name=zone_name,
-                        forecast_date=forecast_date,
-                        issued_date=issued_date,
-                        published_at=published_at,
-                        aqi_value=aqi_value,
-                        aqi_category=aqi_label(aqi_value),
-                        pollutant=pollutant,
-                        burn_status=burn_el.get('status', ''),
-                        burn_status_text=burn_el.text or '',
-                        air_alert=air_alert,
-                        air_alert_start=air_alert_start,
-                        air_alert_end=air_alert_end,
-                    )
-            except (StopIteration, ValueError, AttributeError) as exc:
+                        Forecast.objects.create(
+                            region=region,
+                            zone_name=zone_name,
+                            forecast_date=forecast_date,
+                            issued_date=issued_date,
+                            published_at=published_at,
+                            aqi_value=aqi_value,
+                            aqi_category=aqi_label(aqi_value),
+                            pollutant=pollutant,
+                            burn_status=burn_el.get('status', ''),
+                            burn_status_text=burn_el.text or '',
+                            air_alert=air_alert,
+                            air_alert_start=air_alert_start,
+                            air_alert_end=air_alert_end,
+                        )
+            except (StopIteration, ValueError, AttributeError, DBError) as exc:
                 # A single zone with an unexpected feed shape (e.g. "Unavailable"
-                # AQI text, or a missing pubdate/airAlertStatus element) shouldn't
-                # roll back the whole run. Skip it and keep processing the rest.
-                logger.warning(
+                # AQI text, a missing pubdate/airAlertStatus element, or a value
+                # that violates a field constraint) shouldn't roll back the whole
+                # run. Skip it and keep processing the rest. Logged at ERROR (not
+                # WARNING) so a persistent problem for one zone actually creates a
+                # Sentry issue instead of only a breadcrumb.
+                logger.error(
                     'Skipping malformed forecast feed item for zone %r: %s',
                     zone_name, exc,
                 )

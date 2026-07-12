@@ -3,6 +3,7 @@ from io import StringIO
 from unittest.mock import Mock, patch
 
 from django.core.management import call_command
+from django.db import IntegrityError
 from django.test import TestCase
 
 from camp.apps.regions.models import Region
@@ -284,6 +285,26 @@ class FetchForecastsTests(TestCase):
         mock_get.return_value = mock_response(broken_xml)
 
         fetch_forecasts.call_local()  # must not raise
+
+        assert Forecast.objects.count() == 14
+        assert not Forecast.objects.filter(zone_name='Kings').exists()
+
+    @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_db_error_for_one_zone_does_not_abort_other_zones(self, mock_get):
+        # Simulates a DB-level failure (e.g. a value that violates a field
+        # constraint) for a single zone. The nested savepoint around each
+        # zone's writes should isolate this: Kings' rows are dropped, but the
+        # other 7 (already-committed-to-the-savepoint) zones must still land.
+        mock_get.return_value = mock_response()
+        original_create = Forecast.objects.create
+
+        def flaky_create(**kwargs):
+            if kwargs.get('zone_name') == 'Kings':
+                raise IntegrityError('simulated db error')
+            return original_create(**kwargs)
+
+        with patch.object(Forecast.objects, 'create', side_effect=flaky_create):
+            fetch_forecasts.call_local()  # must not raise
 
         assert Forecast.objects.count() == 14
         assert not Forecast.objects.filter(zone_name='Kings').exists()
