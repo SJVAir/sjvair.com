@@ -6,6 +6,12 @@ import model_utils.fields
 
 
 class Migration(migrations.Migration):
+    # This migration re-adds notification.alert_update as NOT NULL, which
+    # only succeeds because 0005_notification (this same PR) guarantees the
+    # Notification table is empty when this runs. Deploy 0005 and 0006
+    # together in the same release — if 0005 ever goes live on its own
+    # first and real Notification rows are created, this migration will
+    # fail with a NOT NULL constraint violation.
 
     dependencies = [
         ('monitors', '0017_auto_20210312_1234'),

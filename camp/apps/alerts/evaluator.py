@@ -1,5 +1,6 @@
 import pandas as pd
 
+from django.db import transaction
 from django.db.models import Avg, Count
 from django.utils import timezone
 
@@ -31,9 +32,13 @@ class AlertEvaluator:
                 continue
 
             if active_alert:
-                # There's an active alert, so check if we need
-                # to update or end it.
-                self.update_check(active_alert, entry_model, lookup)
+                # Lock the alert row for the duration of the check so
+                # overlapping evaluate() runs for the same alert can't
+                # both pass the cooldown check and each create a
+                # duplicate update/notification.
+                with transaction.atomic():
+                    active_alert = Alert.objects.select_for_update().get(pk=active_alert.pk)
+                    self.update_check(active_alert, entry_model, lookup)
             else:
                 # No current alert, check to see if we need to
                 # create one.

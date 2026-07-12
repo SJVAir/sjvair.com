@@ -449,3 +449,28 @@ class TwilioStatusCallbackTests(TestCase):
         assert response.status_code == 200
         self.notification.refresh_from_db()
         assert self.notification.status == Notification.Status.SENT
+
+    def test_stale_callback_does_not_revert_terminal_status(self):
+        self.notification.status = Notification.Status.DELIVERED
+        self.notification.save(update_fields=['status'])
+
+        response = self.post_with_signature({
+            'MessageSid': 'SM_test_sid',
+            'MessageStatus': 'undelivered',
+        })
+        assert response.status_code == 200
+        self.notification.refresh_from_db()
+        assert self.notification.status == Notification.Status.DELIVERED
+
+    def test_empty_sid_does_not_mass_update_notifications(self):
+        self.notification.status = Notification.Status.QUEUED
+        self.notification.provider_id = ''
+        self.notification.save(update_fields=['status', 'provider_id'])
+
+        response = self.post_with_signature({
+            'MessageSid': '',
+            'MessageStatus': 'delivered',
+        })
+        assert response.status_code == 200
+        self.notification.refresh_from_db()
+        assert self.notification.status == Notification.Status.QUEUED

@@ -414,3 +414,36 @@ class AuthenticationTests(TestCase):
         # The user should not be deleted
         assert User.objects.filter(pk=self.user.pk).exists()
 
+
+class AlertListTests(TestCase):
+    fixtures = ['users.yaml', 'purple-air.yaml']
+
+    def setUp(self):
+        from camp.apps.alerts.models import Alert, Subscription
+        from camp.apps.monitors.purpleair.models import PurpleAir
+        from django.utils import timezone
+
+        self.factory = RequestFactory()
+        self.user = User.objects.get(email='user@sjvair.com')
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+
+        Subscription.objects.create(
+            user=self.user, monitor=self.monitor, level='unhealthy'
+        )
+        self.alert = Alert.objects.create(
+            monitor=self.monitor, entry_type='pm25', start_time=timezone.now()
+        )
+
+    def test_alert_list_exposes_sqid_not_sequential_id(self):
+        url = reverse('api:v2:account:alert-list')
+        request = self.factory.get(url)
+        request.user = self.user
+        response = endpoints.AlertList.as_view()(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 200
+        alert_data = data['data'][0]
+        assert alert_data['sqid'] == self.alert.sqid
+        assert 'id' not in alert_data
+        assert 'latest' not in alert_data
+
