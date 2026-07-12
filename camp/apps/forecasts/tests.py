@@ -271,6 +271,23 @@ class FetchForecastsTests(TestCase):
         fetch_forecasts.call_local()
         assert Forecast.objects.count() == count
 
+    @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_malformed_zone_is_skipped_without_aborting_the_run(self, mock_get):
+        # Kings' <AQI:today> text no longer matches AQI_TEXT_RE, simulating a
+        # plausible "Unavailable" feed state. This should only drop Kings'
+        # rows, not roll back the other 7 (already-good) zones.
+        broken_xml = SAMPLE_FEED_XML.replace(
+            b'<AQI:today date="2026-07-11T00:00:00 -7:00" status="Yellow">71 Moderate (O3)</AQI:today>',
+            b'<AQI:today date="2026-07-11T00:00:00 -7:00" status="Yellow">Unavailable</AQI:today>',
+        )
+        assert broken_xml != SAMPLE_FEED_XML
+        mock_get.return_value = mock_response(broken_xml)
+
+        fetch_forecasts.call_local()  # must not raise
+
+        assert Forecast.objects.count() == 14
+        assert not Forecast.objects.filter(zone_name='Kings').exists()
+
 
 class FetchForecastsCommandTests(TestCase):
     fixtures = ['regions.yaml']

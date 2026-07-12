@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import datetime, timedelta, timezone as dt_timezone
 
@@ -14,6 +15,8 @@ from camp.apps.regions.models import Region
 from camp.utils.aqi import aqi_label
 
 from .models import Forecast
+
+logger = logging.getLogger(__name__)
 
 
 FEED_URL = 'https://ww2.valleyair.org/aqinfo/airstatus.xml'
@@ -98,32 +101,42 @@ def fetch_forecasts():
             if region is None:
                 continue  # region not yet imported
 
-            published_at = parse_feed_datetime(item.findtext('pubdate'))
+            try:
+                published_at = parse_feed_datetime(item.findtext('pubdate'))
 
-            alert_el = item.find('airAlertStatus')
-            air_alert = alert_el.get('status') == 'YES'
-            air_alert_start = parse_alert_date(alert_el.get('startDate'))
-            air_alert_end = parse_alert_date(alert_el.get('endDate'))
+                alert_el = item.find('airAlertStatus')
+                air_alert = alert_el.get('status') == 'YES'
+                air_alert_start = parse_alert_date(alert_el.get('startDate'))
+                air_alert_end = parse_alert_date(alert_el.get('endDate'))
 
-            for horizon in ('today', 'tomorrow'):
-                elements = item.findall(f'{{{NAMESPACE_URI}}}{horizon}')
-                burn_el, aqi_el = split_today_tomorrow(elements)
+                for horizon in ('today', 'tomorrow'):
+                    elements = item.findall(f'{{{NAMESPACE_URI}}}{horizon}')
+                    burn_el, aqi_el = split_today_tomorrow(elements)
 
-                aqi_value, pollutant = parse_aqi_text(aqi_el.text)
-                forecast_date = parse_feed_datetime(aqi_el.get('date')).date()
+                    aqi_value, pollutant = parse_aqi_text(aqi_el.text)
+                    forecast_date = parse_feed_datetime(aqi_el.get('date')).date()
 
-                Forecast.objects.create(
-                    region=region,
-                    zone_name=zone_name,
-                    forecast_date=forecast_date,
-                    issued_date=issued_date,
-                    published_at=published_at,
-                    aqi_value=aqi_value,
-                    aqi_category=aqi_label(aqi_value),
-                    pollutant=pollutant,
-                    burn_status=burn_el.get('status', ''),
-                    burn_status_text=burn_el.text or '',
-                    air_alert=air_alert,
-                    air_alert_start=air_alert_start,
-                    air_alert_end=air_alert_end,
+                    Forecast.objects.create(
+                        region=region,
+                        zone_name=zone_name,
+                        forecast_date=forecast_date,
+                        issued_date=issued_date,
+                        published_at=published_at,
+                        aqi_value=aqi_value,
+                        aqi_category=aqi_label(aqi_value),
+                        pollutant=pollutant,
+                        burn_status=burn_el.get('status', ''),
+                        burn_status_text=burn_el.text or '',
+                        air_alert=air_alert,
+                        air_alert_start=air_alert_start,
+                        air_alert_end=air_alert_end,
+                    )
+            except (StopIteration, ValueError, AttributeError) as exc:
+                # A single zone with an unexpected feed shape (e.g. "Unavailable"
+                # AQI text, or a missing pubdate/airAlertStatus element) shouldn't
+                # roll back the whole run. Skip it and keep processing the rest.
+                logger.warning(
+                    'Skipping malformed forecast feed item for zone %r: %s',
+                    zone_name, exc,
                 )
+                continue
