@@ -30,6 +30,7 @@ urlpatterns = [
     path('calenviroscreen/', include('camp.api.v2.ces.urls', namespace='ces')),
     path('regions/', include('camp.api.v2.regions.urls', namespace='regions')),
     path('ceidars/', include('camp.api.v2.ceidars.urls', namespace='ceidars')),
+    path('forecasts/', include('camp.api.v2.forecasts.urls', namespace='forecasts')),
     path('hms/', include('camp.api.v2.hms.urls', namespace='hms')),
     path('pesticides/', include('camp.api.v2.pesticides.urls', namespace='pesticides')),
     path('task/<task_id>/', endpoints.TaskStatus.as_view(), name='task-status'),
