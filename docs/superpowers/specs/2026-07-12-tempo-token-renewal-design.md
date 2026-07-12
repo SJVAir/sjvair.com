@@ -24,7 +24,7 @@ Confirmed against NASA's own documentation (`https://urs.earthdata.nasa.gov/docu
 
 **Constraint:** a user may have at most 2 valid tokens at once. **Find-or-create is deliberately not used for renewal** — it would likely just hand back the existing, still-valid-but-soon-to-expire token instead of minting a fresh 60-day one. The renewal flow explicitly revokes the currently-stored token (if any), then creates a new one.
 
-**Unverified, flag for Task 1:** the exact format of `expiration_date` (a date string vs. a full timestamp — the EDL web UI shows both a date and a time, e.g. "09-9-2026 9:46pm EDT") hasn't been confirmed against a live API response. Task 1 below includes a manual verification step before the parsing logic is trusted.
+**Unverified, flag for Task 1:** the exact format of `expiration_date` (a date string vs. a full timestamp — the EDL web UI shows both a date and a time, e.g. "09-9-2026 9:46pm EDT") hasn't been confirmed against a live API response. Task 1 below includes a manual verification step before the parsing logic is trusted. Also unverified: whether `constance`'s `datetime.datetime` field type accepts `None` as its declared default (some Django-style field type declarations require a real value of the matching type) — Task 1 should confirm this against the actual installed `constance` version and fall back to a sentinel past `datetime` if `None` isn't accepted.
 
 ## Storage: `django-constance`
 
@@ -32,14 +32,16 @@ New dependency (`requirements/base.txt`) — the first use of `constance` in thi
 
 ```python
 # camp/settings/base.py
+import datetime as dt
+
 CONSTANCE_CONFIG = {
     'EARTHDATA_TOKEN': ('', 'NASA Earthdata Login bearer token for TEMPO ingestion.', str),
-    'EARTHDATA_TOKEN_EXPIRES_AT': ('', 'Date the current EARTHDATA_TOKEN expires (set by renew_earthdata_token; informational only).', str),
+    'EARTHDATA_TOKEN_EXPIRES_AT': (None, 'When the current EARTHDATA_TOKEN expires (set by renew_earthdata_token; informational only).', dt.datetime),
 }
 CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
 ```
 
-`EARTHDATA_TOKEN_EXPIRES_AT` is stored as `str` (not `datetime.date`) since the exact API response format isn't confirmed yet (see above) — Task 1 parses whatever NASA actually returns into a consistent stored format, rather than the settings declaration guessing at a type ahead of that confirmation.
+`EARTHDATA_TOKEN_EXPIRES_AT` is stored as a real `datetime`, not a string — NASA's raw `expiration_date` value is parsed exactly once, in the renewal command below (the only place that raw API response is ever seen), via `camp.utils.datetime.parse_datetime` (the existing codebase utility that already handles flexible date-string parsing and returns a timezone-aware value). Every consumer after that — the reminder task, any future admin display — works with a normal Python `datetime`, not a string it has to re-parse. The exact format NASA sends (see "Unverified" note above) only matters to that one parsing call.
 
 `constance` ships its own migrations and admin integration (`Sites > Constance > Config` in the Django admin) — no custom model needed.
 
@@ -68,6 +70,8 @@ import requests
 
 from django.core.management.base import BaseCommand
 from constance import config as constance_config
+
+from camp.utils.datetime import parse_datetime
 
 EDL_BASE_URL = 'https://urs.earthdata.nasa.gov'
 
@@ -101,11 +105,17 @@ class Command(BaseCommand):
         response.raise_for_status()
         data = response.json()
 
+        # NASA's expiration_date format is confirmed in Task 1 against a
+        # real response before this parsing is trusted -- parse_datetime
+        # (camp/utils/datetime.py) already handles the common date-string
+        # formats and returns a timezone-aware value.
+        expires_at = parse_datetime(data['expiration_date'])
+
         constance_config.EARTHDATA_TOKEN = data['access_token']
-        constance_config.EARTHDATA_TOKEN_EXPIRES_AT = data['expiration_date']
+        constance_config.EARTHDATA_TOKEN_EXPIRES_AT = expires_at
 
         self.stdout.write(self.style.SUCCESS(
-            f"Token renewed. Expires {data['expiration_date']}."
+            f'Token renewed. Expires {expires_at:%Y-%m-%d}.'
         ))
 ```
 
@@ -129,7 +139,7 @@ def check_earthdata_token_expiry():
     if not expires_at:
         return  # renewal command has never been run; nothing to warn about yet
 
-    days_left = (parse_expiry(expires_at) - localtime().date()).days
+    days_left = (expires_at.date() - localtime().date()).days
     if days_left <= 10:
         send_mail(
             subject=f'TEMPO Earthdata token expires in {days_left} day{"s" if days_left != 1 else ""}',
@@ -142,7 +152,7 @@ def check_earthdata_token_expiry():
         )
 ```
 
-Runs weekly rather than once, so it keeps nagging every week the token is within the 10-day window until someone actually renews it -- a single easy-to-miss email is worse than a recurring one that naturally stops once `EARTHDATA_TOKEN_EXPIRES_AT` moves back out past the threshold. `parse_expiry` is the same parsing logic the renewal command's response handling needs -- Task 1 defines it once and both consume it, once the real `expiration_date` format is confirmed.
+Since `EARTHDATA_TOKEN_EXPIRES_AT` is already a real `datetime` (parsed once, in the renewal command above), this task does plain date arithmetic — no parsing of its own. Runs weekly rather than once, so it keeps nagging every week the token is within the 10-day window until someone actually renews it — a single easy-to-miss email is worse than a recurring one that naturally stops once `EARTHDATA_TOKEN_EXPIRES_AT` moves back out past the threshold.
 
 ## Deferred
 
