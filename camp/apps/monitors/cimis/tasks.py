@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+import sentry_sdk
+
 from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.utils import timezone
@@ -34,6 +36,10 @@ def discover_cimis_stations():
 
 @db_task(priority=50)
 def process_cimis_station(station):
+    station_number = station.get('StationNbr')
+    if not station_number:
+        return False
+
     county = station.get('County')
     if county not in County.names:
         return False
@@ -47,9 +53,9 @@ def process_cimis_station(station):
         return False
 
     monitor, _created = CIMIS.objects.get_or_create(
-        station_number=station['StationNbr'],
+        station_number=station_number,
         defaults={
-            'name': f"CIMIS #{station['StationNbr']} - {station.get('Name', '')}",
+            'name': f"CIMIS #{station_number} - {station.get('Name', '')}",
             'position': Point(longitude, latitude, srid=4326),
             'location': CIMIS.LOCATION.outside,
         },
@@ -58,13 +64,16 @@ def process_cimis_station(station):
 
 
 def _ingest_cimis_data(target_date):
-    station_numbers = list(CIMIS.objects.values_list('station_number', flat=True))
-    if not station_numbers:
+    monitors_by_station = {
+        monitor.station_number: monitor
+        for monitor in CIMIS.objects.all()
+    }
+    if not monitors_by_station:
         return
 
     api = CIMISAPI()
     providers = api.get_hourly_data(
-        station_numbers=station_numbers,
+        station_numbers=list(monitors_by_station.keys()),
         start_date=target_date,
         end_date=target_date,
         data_items=list(CIMIS.ENTRY_MAP.keys()),
@@ -72,7 +81,9 @@ def _ingest_cimis_data(target_date):
 
     for provider in providers:
         for record in provider.get('Records', []):
-            process_cimis_data.call_local(record)
+            monitor = monitors_by_station.get(record.get('Station'))
+            if monitor is not None:
+                process_cimis_data.call_local(record, monitor=monitor)
 
 
 @db_periodic_task(crontab(minute='45'), priority=50)
@@ -97,10 +108,20 @@ def finalize_cimis_data():
 
 
 @db_task(priority=50)
-def process_cimis_data(record):
-    try:
-        monitor = CIMIS.objects.get(station_number=record['Station'])
-    except CIMIS.DoesNotExist:
-        return False
+def process_cimis_data(record, monitor=None):
+    if monitor is None:
+        station_number = record.get('Station')
+        if not station_number:
+            return False
+        try:
+            monitor = CIMIS.objects.get(station_number=station_number)
+        except CIMIS.DoesNotExist:
+            return False
 
-    return monitor.handle_payload(record)
+    try:
+        return monitor.handle_payload(record)
+    except (KeyError, ValueError, TypeError, AttributeError):
+        # A malformed record from the API shouldn't take down the whole
+        # ingestion run - report it and move on to the next record.
+        sentry_sdk.capture_exception()
+        return False

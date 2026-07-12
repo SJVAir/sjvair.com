@@ -153,6 +153,10 @@ class ProcessCimisStationTests(TestCase):
         assert CIMIS.objects.filter(station_number='2').count() == 1
         assert result is not False
 
+    def test_skips_station_missing_station_number(self):
+        result = process_cimis_station.call_local(self.make_station(StationNbr=None))
+        assert result is False
+
 
 from datetime import datetime
 
@@ -262,6 +266,43 @@ class ProcessCimisDataTests(TestCase):
 
         assert result is False
 
+    def test_returns_false_for_malformed_record_missing_date(self):
+        from camp.apps.monitors.cimis.tasks import process_cimis_data
+
+        record = {
+            'Hour': '1300',
+            'Station': '2',
+            'HlyAirTmp': {'Value': '95.4', 'Qc': ' ', 'Unit': '(F)'},
+        }
+        result = process_cimis_data.call_local(record)
+
+        assert result is False
+
+    def test_uses_provided_monitor_without_database_lookup(self):
+        from camp.apps.monitors.cimis.tasks import process_cimis_data
+
+        # A monitor whose station_number doesn't match the record's 'Station'
+        # proves the passed-in monitor is used directly, not re-derived from
+        # the DB by looking up record['Station'].
+        other_monitor = CIMIS.objects.create(
+            name='Station B',
+            station_number='999',
+            position=Point(-119.0, 36.0, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        record = {
+            'Date': '2026-07-01',
+            'Hour': '1300',
+            'Station': '2',
+            'HlyAirTmp': {'Value': '95.4', 'Qc': ' ', 'Unit': '(F)'},
+        }
+
+        entries = process_cimis_data.call_local(record, monitor=other_monitor)
+
+        assert entries is not False
+        assert len(entries) == 1
+        assert entries[0].monitor_id == other_monitor.pk
+
 
 class ImportCimisDataTests(TestCase):
     def test_no_op_when_no_monitors_exist(self):
@@ -292,6 +333,54 @@ class ImportCimisDataTests(TestCase):
         called_kwargs = mock_instance.get_hourly_data.call_args.kwargs
         assert sorted(called_kwargs['station_numbers']) == ['2', '5']
         assert sorted(called_kwargs['data_items']) == sorted(CIMIS.ENTRY_MAP.keys())
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_resolves_monitor_once_and_skips_database_lookup_per_record(self, MockAPI):
+        monitor = CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        record = {
+            'Date': '2026-07-01',
+            'Hour': '1300',
+            'Station': '2',
+            'HlyAirTmp': {'Value': '95.4', 'Qc': ' ', 'Unit': '(F)'},
+        }
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = [{'Records': [record]}]
+
+        from camp.apps.monitors.cimis.tasks import import_cimis_data
+        with patch('camp.apps.monitors.cimis.models.CIMIS.objects.get') as mock_get:
+            import_cimis_data()
+            mock_get.assert_not_called()
+
+        from camp.apps.entries import models as entry_models
+        assert entry_models.Temperature.objects.filter(monitor=monitor).exists()
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_skips_record_for_unknown_station_without_querying(self, MockAPI):
+        CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        record = {
+            'Date': '2026-07-01',
+            'Hour': '1300',
+            'Station': '999',
+            'HlyAirTmp': {'Value': '95.4', 'Qc': ' ', 'Unit': '(F)'},
+        }
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = [{'Records': [record]}]
+
+        from camp.apps.monitors.cimis.tasks import import_cimis_data
+        import_cimis_data()
+
+        from camp.apps.entries import models as entry_models
+        assert not entry_models.Temperature.objects.exists()
 
 
 class FinalizeCimisDataTests(TestCase):
