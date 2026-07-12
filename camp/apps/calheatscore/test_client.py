@@ -58,5 +58,25 @@ class CalHeatScoreClientTests(TestCase):
         assert params['where'] == "ZIP_CODE IN ('93728','93650')"
         assert params['returnGeometry'] == 'false'
         assert params['f'] == 'json'
+        assert kwargs['timeout'] == 30
         assert 'CHS_Day_0' in params['outFields']
         assert 'CHS_Day_6' in params['outFields']
+
+    def test_data_escapes_single_quotes_in_zip_codes(self):
+        with patch.object(self.client.session, 'get') as mock_get:
+            mock_get.return_value = make_response(json_result={'features': []})
+            self.client.data(["93728' OR '1'='1"])
+
+        _, kwargs = mock_get.call_args
+        assert kwargs['params']['where'] == "ZIP_CODE IN ('93728'' OR ''1''=''1')"
+
+    @patch.object(CalHeatScoreClient, 'data')
+    def test_query_raises_for_non_2xx_status(self, mock_data):
+        import requests
+
+        response = make_response(status_code=500)
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError('500')
+        mock_data.return_value = response
+
+        with pytest.raises(requests.exceptions.HTTPError):
+            self.client.query(['93728'])

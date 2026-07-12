@@ -18,7 +18,11 @@ class CalHeatScoreClient:
         self.session = requests.Session()
 
     def data(self, zip_codes: Sequence[str]) -> requests.Response:
-        where = 'ZIP_CODE IN ({})'.format(','.join(f"'{z}'" for z in zip_codes))
+        # ZIP codes come from internal Region.external_id data, not user
+        # input, but quotes are still escaped defensively before building
+        # the ArcGIS `where` clause.
+        escaped = (z.replace("'", "''") for z in zip_codes)
+        where = 'ZIP_CODE IN ({})'.format(','.join(f"'{z}'" for z in escaped))
         params = {
             'where': where,
             'outFields': ','.join(self.fields),
