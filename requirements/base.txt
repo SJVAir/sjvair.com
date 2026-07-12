@@ -31,6 +31,7 @@ argon2-cffi==25.1.0
 boto3==1.43.24
 ckanapi==4.11
 contextily==1.7.0
+defusedxml==0.7.1
 delegator.py==0.1.1
 dpath==2.2.0
 fiona==1.10.1
