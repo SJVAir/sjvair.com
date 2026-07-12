@@ -105,7 +105,7 @@ Task files: `camp/apps/*/tasks.py`. In tests, `MemoryHuey(immediate=True)` runs 
 - `camp/settings/test.py` — overrides for tests (sync Huey, file email, local cache)
 - `camp/settings/heroku.py` — production (S3, Memcached, SSL)
 
-Key env vars: `DATABASE_URL`, `REDIS_URL`, `PURPLEAIR_READ_KEY`, `AIRNOW_API_KEY`, `TWILIO_*`, `AWS_*`.
+Key env vars: `DATABASE_URL`, `REDIS_URL`, `PURPLEAIR_READ_KEY`, `AIRNOW_API_KEY`, `CIMIS_API_KEY`, `TWILIO_*`, `AWS_*`.
 
 ### Data Science Utilities
 
