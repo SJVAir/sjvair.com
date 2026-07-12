@@ -29,7 +29,10 @@ class CalHeatScoreClient:
             'returnGeometry': 'false',
             'f': 'json',
         }
-        return self.session.get(self.url, params=params, timeout=30)
+        # POST, not GET: the SJV ZIP set (~240 ZIPs) makes a `where` clause
+        # long enough to exceed the server's URL length limit, which fails
+        # as a bare 404 rather than a proper ArcGIS JSON error.
+        return self.session.post(self.url, data=params, timeout=30)
 
     def query(self, zip_codes: Sequence[str]) -> List[Dict[str, Any]]:
         if not zip_codes:
