@@ -21,16 +21,18 @@ def notify_subscribers(alert_update):
     level = alert_update.get_level()
 
     icon = '✅' if level == AQLevel.scale.GOOD else '⚠️'
-    message = '\n'.join([
+    lines = [
         _('{icon} Air Quality Alert for {name} in {county} County').format(
             icon=icon,
             name=alert.monitor.name,
             county=alert.monitor.county,
         ),
         f'{alert.entry_model.label}: {level.label}',
-        f'{level.guidance}\n' or '',
-        f'🔗 https://sjvair.com{alert.monitor.get_absolute_url()}',
-    ])
+    ]
+    if level.guidance:
+        lines.append(str(level.guidance))
+    lines.append(f'🔗 https://sjvair.com{alert.monitor.get_absolute_url()}')
+    message = '\n'.join(lines)
 
     for subscription in get_recipients(alert):
         sub_level = AQLevel.scale[subscription.level.upper()]

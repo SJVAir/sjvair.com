@@ -52,6 +52,10 @@ def send_alert_notification(notification_id):
     )
 
     try:
+        # Hardcoded production domain, not settings/Site-derived: this URL
+        # must exactly match what Twilio signs, and Twilio's status
+        # callback always hits the public production host regardless of
+        # which environment queued the notification.
         message = twilio_client.messages.create(
             to=str(notification.user.phone),
             from_=choice(settings.TWILIO_PHONE_NUMBERS),
