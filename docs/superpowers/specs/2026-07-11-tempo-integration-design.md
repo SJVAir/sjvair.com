@@ -26,6 +26,7 @@ Map overlay is the immediate priority; the data model is built to serve all thre
   - **NRT** — available ~180 min after observation, used for live ingestion.
   - **Standard (science-quality)** — released with a delay, supersedes NRT for the same hour once available.
   - **Ongoing reprocessing** — NASA is reprocessing the full mission archive from V03 to V04 non-chronologically, on no fixed schedule. A given historical date's authoritative version can change months after it was first imported.
+- **Versioning is per-collection, not per-file.** Confirmed via live CMR queries (2026-07-12): NASA mints a *separate CMR collection* (its own `concept_id`) for each algorithm version under the same short name — e.g. `TEMPO_NO2_L3` has one collection for V03 (`C2930763263-LARC_CLOUD`) and another for V04 (`C3685896708-LARC_CLOUD`). A granule search by short name alone, without pinning a collection, is ambiguous when both a date's V03 and V04 granules exist (identical `time_start`, CMR's tie-break is undocumented and was confirmed non-deterministic-in-practice by direct testing — it returned the *older* V03 granule under `sort_key=-start_date, page_size=1`). See "CMR Version Resolution" below.
 
 ## App Location
 
@@ -65,6 +66,15 @@ class Granule(models.Model):
 
 ## Ingestion
 
+### CMR Version Resolution
+
+`TempoClient.find_granule` resolves a specific collection *before* searching for a granule, rather than searching an unversioned short name:
+
+1. `_resolve_collections(short_name)` — a CMR *collection* search (no temporal/bbox filter — this is metadata, not a granule lookup) returning every collection matching that short name, each with its own `concept_id` and `version_id` string (e.g. `'V04'`, `'V03'`). Sorted newest-first by `version_id`. Cached in-process with a short TTL (collections change on the order of months, not worth a fresh lookup on every call, but long-running Huey workers shouldn't pin a stale list forever).
+2. Try the newest collection's `concept_id` first: search granules scoped to that specific collection (not the short name) for `(timestamp, bbox)`. If found, that's the result — tagged with that collection's `version_id`.
+3. If not found, try the next-newest collection, and so on. This naturally falls back to V03 for historical dates NASA hasn't reprocessed to V04 yet, while always preferring V04 once it's available for that date — deterministically, not via CMR's undocumented tie-break.
+4. `find_granule`'s return dict includes `version` (the collection's `version_id` string) alongside the existing `concept_id`/`granule_id`/`collection_concept_id`/`is_final` fields — this is what makes the version comparison in `sync_granule` below cheap.
+
 ### Sync function
 
 Core logic lives in one function, called from every ingestion path:
@@ -72,17 +82,20 @@ Core logic lives in one function, called from every ingestion path:
 ```python
 def sync_granule(product: str, timestamp: datetime) -> Granule | None:
     """
-    Fetches the best-available NASA granule for (product, timestamp), compares
-    its version against what's stored, and replaces the Granule row only if
-    NASA's version is newer than what we have. No-op if already up to date.
+    Finds the best-available NASA granule for (product, timestamp) and
+    compares its version against what's stored -- without downloading
+    anything yet. Only fetches and replaces the Granule row if NASA's
+    version is actually newer than what we have. No-op if already up to
+    date, which is the common case for both routine sync and re-checking
+    history for reprocessing upgrades.
     """
 ```
 
 Flow:
-1. Query NASA CMR for the granule covering `(product, timestamp)`, clipped to our AOI via Harmony.
-2. Compare the granule's algorithm version against `Granule.version` for the existing row, if any.
-3. If missing, or NASA's version is newer: fetch the subsetted netCDF via Harmony, load into a numpy array + geotransform, build a `GDALRaster` directly from the array (no intermediate file), render the colorized PNG from the same array, and `update_or_create` the `Granule` row.
-4. If already up to date: skip.
+1. Call `TempoClient.find_granule(product, timestamp, bbox)` — resolves the best-available collection/granule per "CMR Version Resolution" above. This alone tells us the granule's version; no download yet.
+2. Compare that version (and `is_final` tier) against the existing `Granule` row, if any, via `_should_replace` (tier-first: standard always supersedes NRT regardless of version number, NRT never replaces existing standard data; same-tier falls back to version-string comparison).
+3. If no replacement is needed: return `None`. **No Harmony fetch happens in this case** — this is what makes re-checking history for reprocessing upgrades (see `sync_tempo_reprocessing` below) cheap instead of an unconditional download every time.
+4. If replacement is needed: fetch the subsetted netCDF via Harmony, load into a numpy array + geotransform, build a `GDALRaster` directly from the array (no intermediate file), render the colorized PNG from the same array, and `update_or_create` the `Granule` row. The file's own `processing_version` attribute is still parsed and stored as `Granule.version` (ground truth for what was actually ingested) — CMR's collection-level version from step 1 is only used for the pre-download decision, not written to the database directly.
 
 ### Callers
 
@@ -90,8 +103,8 @@ Flow:
 |---|---|---|
 | `fetch_tempo` (Huey periodic task) | Hourly, daylight hours only | Live NRT ingestion for the current hour |
 | `fetch_tempo_final` (Huey periodic task) | Daily, delayed | Re-check yesterday once NASA's standard product typically lands |
-| `sync_tempo_reprocessing` (Huey periodic task) | Weekly | Queries CMR's `updated_since` filter against a stored checkpoint to find granules NASA has revised (V03→V04 reprocessing), re-syncs just those, advances the checkpoint. Avoids re-diffing the full history on every run. |
-| `import_tempo` (management command) | Manual | `manage.py import_tempo --start 2023-08-02 --end ... --product no2`. Initial full-history backfill and any ad-hoc range re-sync. Submits Harmony's async range-based subset jobs (one per product per span) rather than one request per hour. Resumable — safe to interrupt and rerun since `sync_granule` skips anything already up to date. |
+| `sync_tempo_reprocessing` (Huey periodic task) | Weekly | Re-syncs a rolling window of history (e.g. the last 90 days, extendable to full mission history now that the cost concern is resolved) to catch NASA's non-chronological V03→V04 reprocessing. Cheap in the common case: `sync_granule`'s version check (CMR Version Resolution) short-circuits before any download for every hour that hasn't actually changed. |
+| `import_tempo` (management command) | Manual | `manage.py import_tempo --start 2023-08-02 --end ... --product no2`. Initial full-history backfill and any ad-hoc range re-sync. Resumable — safe to interrupt and rerun since `sync_granule` skips anything already up to date. |
 
 All four are thin wrappers around `sync_granule` — the historical backfill and everyday NRT ingestion are the same code path, just driven by a date range instead of the clock.
 

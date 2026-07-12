@@ -117,6 +117,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.purpleair',
     'camp.apps.regions',
     'camp.apps.summaries',
+    'camp.apps.tempo',
     'camp.apps.qaqc',
     'camp.utils',
 ]
@@ -454,3 +455,5 @@ if SCOUT_KEY is not None:
 # MapTiler
 
 MAPTILER_API_KEY = env('MAPTILER_API_KEY')
+
+EARTHDATA_TOKEN = env('EARTHDATA_TOKEN', '')
