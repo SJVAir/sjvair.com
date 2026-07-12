@@ -4,6 +4,8 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
+from camp.apps.entries.levels import AQI_LEVELS
+
 
 class Forecast(TimeStampedModel):
     class Pollutant(models.TextChoices):
@@ -43,3 +45,7 @@ class Forecast(TimeStampedModel):
 
     def __str__(self):
         return f'{self.zone_name} forecast for {self.forecast_date} (issued {self.issued_date})'
+
+    @property
+    def color(self):
+        return AQI_LEVELS.get_color(self.aqi_value)

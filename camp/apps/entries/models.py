@@ -13,7 +13,7 @@ from camp.apps.monitors.models import Monitor
 from camp.utils import classproperty
 
 from . import stages
-from .levels import LevelSet, AQLevel
+from .levels import CO_LEVELS, NO2_LEVELS, O3_LEVELS, PM25_LEVELS, PM100_LEVELS, SO2_LEVELS
 from .managers import EntryQuerySet
 
 
@@ -309,14 +309,7 @@ class PM25(BaseEntry):
     units = 'µg/m³'
     summarize = True
 
-    Levels = LevelSet(
-        AQLevel.GOOD(0.0),
-        AQLevel.MODERATE(9.1),
-        AQLevel.UNHEALTHY_SENSITIVE(35.5),
-        AQLevel.UNHEALTHY(55.5),
-        AQLevel.VERY_UNHEALTHY(150.5),
-        AQLevel.HAZARDOUS(250.5),
-    )
+    Levels = PM25_LEVELS
 
     value = models.DecimalField(
         max_digits=7, decimal_places=2,
@@ -350,15 +343,7 @@ class PM100(BaseEntry):
     epa_aqs_code = 81102
     units = 'µg/m³'
 
-    Levels = LevelSet(
-        AQLevel.GOOD(0),
-        AQLevel.MODERATE(55),
-        AQLevel.UNHEALTHY_SENSITIVE(155),
-        AQLevel.UNHEALTHY(255),
-        AQLevel.VERY_UNHEALTHY(355),
-        AQLevel.HAZARDOUS(425),
-        AQLevel.VERY_HAZARDOUS(605),
-    )
+    Levels = PM100_LEVELS
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -455,15 +440,7 @@ class CO(BaseEntry):
     units = 'ppm'
     summarize = True
 
-    Levels = LevelSet(
-        AQLevel.GOOD(0.0),
-        AQLevel.MODERATE(4.5),
-        AQLevel.UNHEALTHY_SENSITIVE(9.5),
-        AQLevel.UNHEALTHY(12.5),
-        AQLevel.VERY_UNHEALTHY(15.5),
-        AQLevel.HAZARDOUS(30.5),
-        AQLevel.VERY_HAZARDOUS(50.4),
-    )
+    Levels = CO_LEVELS
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -488,15 +465,7 @@ class NO2(BaseEntry):
     units = 'ppb'
     summarize = True
 
-    Levels = LevelSet(
-        AQLevel.GOOD(0.0),
-        AQLevel.MODERATE(54.0),
-        AQLevel.UNHEALTHY_SENSITIVE(101.0),
-        AQLevel.UNHEALTHY(361.0),
-        AQLevel.VERY_UNHEALTHY(650.0),
-        AQLevel.HAZARDOUS(1250.0),
-        AQLevel.VERY_HAZARDOUS(2050.0),
-    )
+    Levels = NO2_LEVELS
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -510,14 +479,7 @@ class O3(BaseEntry):
     units = 'ppb'
     summarize = True
 
-    Levels = LevelSet(
-        AQLevel.GOOD(0.0),
-        AQLevel.UNHEALTHY_SENSITIVE(125),
-        AQLevel.UNHEALTHY(165),
-        AQLevel.VERY_UNHEALTHY(205),
-        AQLevel.HAZARDOUS(405),
-        AQLevel.VERY_HAZARDOUS(605),
-    )
+    Levels = O3_LEVELS
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -531,13 +493,7 @@ class SO2(BaseEntry):
     units = 'ppb'
     summarize = True
 
-    Levels = LevelSet(
-        AQLevel.GOOD(0),
-        AQLevel.MODERATE(36),
-        AQLevel.UNHEALTHY_SENSITIVE(76),
-        AQLevel.UNHEALTHY(186),
-        AQLevel.VERY_UNHEALTHY(305),
-    )
+    Levels = SO2_LEVELS
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,

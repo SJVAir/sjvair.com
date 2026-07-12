@@ -35,6 +35,20 @@ class ForecastModelTests(TestCase):
         assert str(forecast) == 'Fresno forecast for 2026-07-11 (issued 2026-07-11)'
         assert Forecast.objects.filter(region=region).count() == 1
 
+    def test_color_matches_aqi_levels_for_value(self):
+        region = Region.objects.get(name='Fresno County')
+        forecast = Forecast.objects.create(
+            region=region, zone_name='Fresno',
+            forecast_date=date(2026, 7, 11), issued_date=date(2026, 7, 11),
+            published_at=datetime(2026, 7, 11, 21, 31, 9, tzinfo=dt_timezone.utc),
+            aqi_value=101, aqi_category='Unhealthy for Sensitive Groups',
+            pollutant=Forecast.Pollutant.OZONE,
+            burn_status='Discouraged', burn_status_text='Discouraged: Burning Discouraged',
+        )
+        # 101 is exactly the AQI_LEVELS.UNHEALTHY_SENSITIVE breakpoint, so this
+        # should be that tier's color with no blending toward the next tier.
+        assert forecast.color == '#ff7e00'
+
     def test_ordering_is_newest_issued_first(self):
         region = Region.objects.get(name='Fresno County')
         older = Forecast.objects.create(

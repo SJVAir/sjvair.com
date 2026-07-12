@@ -87,6 +87,7 @@ class ForecastDetailTests(TestCase):
         assert data['id'] == self.forecast.sqid
         assert data['aqi_value'] == 101
         assert data['pollutant'] == 'O3'
+        assert data['color'] == self.forecast.color
 
     def test_detail_not_found(self):
         url = reverse('api:v2:forecasts:forecast-detail', kwargs={'forecast_id': 'doesnotexist'})
