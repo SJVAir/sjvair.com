@@ -22,6 +22,7 @@ from camp.utils.test import debug, get_response_data
 
 closest_monitor = endpoints.ClosestMonitor.as_view()
 current_data = endpoints.CurrentData.as_view()
+monitors_at = endpoints.MonitorsAt.as_view()
 monitor_list = endpoints.MonitorList.as_view()
 monitor_detail = endpoints.MonitorDetail.as_view()
 monitor_meta = endpoints.MonitorMetaEndpoint.as_view()
@@ -92,6 +93,93 @@ class EndpointTests(TestCase):
         response = current_data(request, **kwargs)
         content = get_response_data(response)
         assert response.status_code == 200
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    def test_monitors_at_returns_entry_current_at_timestamp(self):
+        # threshold=0 so the monitor is considered healthy despite the
+        # purpleair_monitor fixture not creating any HealthCheck rows.
+        monitor = self.get_purple_air()
+        as_of = make_aware(datetime(2026, 7, 4, 21, 0))
+        stage = monitor.get_default_stage(entry_models.PM25)
+
+        entry = entry_models.PM25.objects.create(
+            monitor_id=monitor.pk, timestamp=as_of - timedelta(minutes=5),
+            sensor='a', stage=stage, value=Decimal('12.0'),
+        )
+        entry_models.PM25.objects.create(
+            monitor_id=monitor.pk, timestamp=as_of + timedelta(minutes=5),
+            sensor='a', stage=stage, value=Decimal('999.0'),
+        )
+
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+        request = self.factory.get(url, {'timestamp': as_of.isoformat()})
+        response = monitors_at(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        ids = [m['id'] for m in content['data']]
+        assert str(monitor.pk) in ids
+        result = next(m for m in content['data'] if m['id'] == str(monitor.pk))
+        assert Decimal(str(result['latest']['value'])) == entry.value
+
+    def test_monitors_at_missing_timestamp_returns_empty(self):
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+        request = self.factory.get(url)  # no timestamp
+        response = monitors_at(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert content['data'] == []
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    def test_monitors_at_filters_by_bbox(self):
+        # threshold=0 so the monitor is considered healthy despite the
+        # purpleair_monitor fixture not creating any HealthCheck rows.
+        monitor = self.get_purple_air()
+        as_of = make_aware(datetime(2026, 7, 4, 21, 0))
+        stage = monitor.get_default_stage(entry_models.PM25)
+        entry_models.PM25.objects.create(
+            monitor_id=monitor.pk, timestamp=as_of - timedelta(minutes=5),
+            sensor='a', stage=stage, value=Decimal('12.0'),
+        )
+
+        lon, lat = monitor.position.x, monitor.position.y
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+
+        # bbox far away -> excluded
+        request = self.factory.get(url, {
+            'timestamp': as_of.isoformat(),
+            'bbox': f'{lon + 10},{lat + 10},{lon + 11},{lat + 11}',
+        })
+        response = monitors_at(request, **kwargs)
+        assert get_response_data(response)['data'] == []
+
+        # bbox around the monitor -> included
+        request = self.factory.get(url, {
+            'timestamp': as_of.isoformat(),
+            'bbox': f'{lon - 0.01},{lat - 0.01},{lon + 0.01},{lat + 0.01}',
+        })
+        response = monitors_at(request, **kwargs)
+        ids = [m['id'] for m in get_response_data(response)['data']]
+        assert str(monitor.pk) in ids
+
+    def test_monitors_at_bad_region_id_404s(self):
+        # resticus.views.Endpoint.dispatch() catches Http404 raised anywhere
+        # during dispatch (including get_queryset()) and converts it into a
+        # 404 JSON response rather than letting it propagate to the caller,
+        # matching the pattern used by every other Http404-raising endpoint
+        # test in this codebase (e.g. camp/api/v2/summaries/tests.py).
+        kwargs = {'entry_type': 'pm25'}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+        request = self.factory.get(url, {
+            'timestamp': timezone.now().isoformat(),
+            'region': 'not-a-real-sqid',
+        })
+        response = monitors_at(request, **kwargs)
+        assert response.status_code == 404
 
     def test_closest_monitor(self):
         '''

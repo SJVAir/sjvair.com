@@ -44,6 +44,7 @@ class MonitorSerializer(serializers.Serializer):
         'name',
         ('type', lambda monitor: monitor.monitor_type),
         ('device', lambda monitor: monitor.get_device()),
+        ('grade', lambda monitor: monitor.GRADE),
         'is_active',
         'is_sjvair',
         'position',

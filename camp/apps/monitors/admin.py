@@ -82,14 +82,14 @@ class MonitorAdmin(gisadmin.GISModelAdmin):
     actions = ['export_monitor_list_csv']
     form = MonitorAdminForm
 
-    list_display = ['name', 'get_device', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'legacy_last_updated', 'get_subscriptions']
+    list_display = ['name', 'get_monitor_id', 'get_device', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'legacy_last_updated', 'get_subscriptions']
     list_editable = ['is_sjvair', 'is_hidden']
     list_filter = ['is_sjvair', 'is_hidden', 'device', MonitorIsActiveFilter, 'groups', 'location', 'county']
 
     autocomplete_fields = ['host']
-    readonly_fields = ['get_map']
+    readonly_fields = ['get_monitor_id', 'get_map']
     fieldsets = [
-        (None, {'fields': ['name', 'is_hidden', 'is_sjvair']}),
+        (None, {'fields': ['get_monitor_id', 'name', 'is_hidden', 'is_sjvair']}),
         ('Location Data', {'fields': ['host', 'county', 'location', 'get_map']}),
         ('Metadata', {'fields': ['groups', 'notes', 'data_provider', 'data_provider_url']}),
     ]
@@ -182,6 +182,24 @@ class MonitorAdmin(gisadmin.GISModelAdmin):
         queryset = EntryArchive.objects.filter(monitor_id=object_id)
         return queryset
 
+    def get_monitor_id(self, instance):
+        if not instance or not instance.pk:
+            return '-'
+
+        pk = instance.pk
+        onclick = (
+            "navigator.clipboard.writeText(this.dataset.copy);"
+            "const t=this.textContent;"
+            "this.textContent='Copied!';"
+            "setTimeout(()=>{this.textContent=t;},1000);"
+        )
+        return mark_safe(
+            f'<code data-copy="{pk}" title="Click to copy" '
+            f'style="cursor:pointer;" onclick="{onclick}">{pk}</code>'
+        )
+    get_monitor_id.short_description = 'ID'
+    get_monitor_id.admin_order_field = 'pk'
+
     def get_device(self, instance):
         return instance.get_device()
     get_device.short_description = 'Device'
@@ -247,11 +265,11 @@ class LCSMonitorAdmin(MonitorAdmin):
     csv_export_fields.insert(3, 'hardware_id')
 
     list_display = MonitorAdmin.list_display[:]
-    list_display.insert(1, 'sensor_id')
-    list_display.insert(2, 'get_hardware_id')
-    list_display.insert(3, 'get_health_grade')
+    list_display.insert(2, 'sensor_id')
+    list_display.insert(3, 'get_hardware_id')
+    list_display.insert(4, 'get_health_grade')
 
-    readonly_fields = ['name', 'location', 'position', 'county', 'get_map']
+    readonly_fields = ['get_monitor_id', 'name', 'location', 'position', 'county', 'get_map']
 
     search_fields = MonitorAdmin.search_fields[:]
     search_fields.extend(['hardware_id', 'sensor_id'])

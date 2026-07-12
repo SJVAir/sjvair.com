@@ -4,7 +4,12 @@
 {# @sjvair/monitor-map #}
 {% block extra-head %}
 <link type="text/css" rel="stylesheet" href="{% static 'monitor-map/sjvairMonitorMap.css' %}" />
-<script type="module" src="{% static 'monitor-map/sjvairMonitorMap.js' %}" async defer></script>
+<script defer>
+  window.__cdnUrl = function (filename) {
+    return "{% static 'monitor-map/' %}" + filename;
+  };
+</script>
+<script type="module" src="{% static 'monitor-map/sjvairMonitorMap.js' %}" defer></script>
 {% endblock %}
 
 {% block title %}{{ block.super }}{% endblock %}

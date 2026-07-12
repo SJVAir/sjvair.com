@@ -97,7 +97,7 @@ class RegionSummaryList(SummaryMixin, generics.ListEndpoint):
     def get_queryset(self):
         region_id = self.kwargs.get('region_id')
         try:
-            region = Region.objects.get(pk=region_id)
+            region = Region.objects.get(sqid=region_id)
         except (Region.DoesNotExist, ValueError):
             raise Http404('Region not found')
         # super() → SummaryMixin.get_queryset() → ListEndpoint → RegionSummary.objects.all()

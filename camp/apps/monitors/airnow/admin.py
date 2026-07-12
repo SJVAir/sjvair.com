@@ -10,7 +10,7 @@ from camp.utils.forms import DateRangeForm
 @admin.register(AirNow)
 class AirNowAdmin(MonitorAdmin):
     fields = MonitorAdmin.fields
-    readonly_fields = ['name', 'location', 'position', 'county', 'get_map']
+    readonly_fields = ['get_monitor_id', 'name', 'location', 'position', 'county', 'get_map']
 
     def has_add_permission(self, request, obj=None):
         return False
