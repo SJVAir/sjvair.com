@@ -2,7 +2,7 @@ import getpass
 
 import requests
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from constance import config as constance_config
 
 from camp.utils.datetime import parse_datetime
@@ -23,26 +23,34 @@ class Command(BaseCommand):
         password = getpass.getpass('Earthdata password: ')
         auth = (username, password)
 
-        old_token = constance_config.EARTHDATA_TOKEN
-        if old_token:
-            revoke_response = requests.post(
-                f'{EDL_BASE_URL}/api/users/revoke_token',
-                params={'token': old_token},
-                auth=auth,
-            )
-            if not revoke_response.ok:
-                self.stdout.write(self.style.WARNING(
-                    f'Could not revoke the previous token (status {revoke_response.status_code}) -- continuing anyway.'
-                ))
+        # Everything below is wrapped so that a failure (e.g. a mistyped
+        # password) raises CommandError rather than propagating -- Django's
+        # run_from_argv catches CommandError before it reaches sys.excepthook,
+        # keeping the plaintext password out of Sentry's default
+        # local-variable exception capture.
+        try:
+            old_token = constance_config.EARTHDATA_TOKEN
+            if old_token:
+                revoke_response = requests.post(
+                    f'{EDL_BASE_URL}/api/users/revoke_token',
+                    params={'token': old_token},
+                    auth=auth,
+                )
+                if not revoke_response.ok:
+                    self.stdout.write(self.style.WARNING(
+                        f'Could not revoke the previous token (status {revoke_response.status_code}) -- continuing anyway.'
+                    ))
 
-        response = requests.post(f'{EDL_BASE_URL}/api/users/token', auth=auth)
-        response.raise_for_status()
-        data = response.json()
+            response = requests.post(f'{EDL_BASE_URL}/api/users/token', auth=auth)
+            response.raise_for_status()
+            data = response.json()
 
-        # NASA's expiration_date format is assumed ISO-8601-compatible,
-        # per the design spec's "Before You Start" note -- confirm against
-        # a real response and adjust only this parsing call if it's wrong.
-        expires_at = parse_datetime(data['expiration_date'])
+            # NASA's expiration_date format is assumed ISO-8601-compatible,
+            # per the design spec's "Before You Start" note -- confirm against
+            # a real response and adjust only this parsing call if it's wrong.
+            expires_at = parse_datetime(data['expiration_date'])
+        except Exception as exc:
+            raise CommandError('Token renewal failed -- check your username and password and try again.') from exc
 
         constance_config.EARTHDATA_TOKEN = data['access_token']
         constance_config.EARTHDATA_TOKEN_EXPIRES_AT = expires_at

@@ -1,6 +1,9 @@
 from unittest.mock import MagicMock, patch
 
-from django.core.management import call_command
+import pytest
+import requests
+
+from django.core.management import call_command, CommandError
 from django.test import TestCase
 from constance import config as constance_config
 from constance.test import override_config
@@ -100,3 +103,21 @@ class RenewEarthdataTokenTests(TestCase):
         assert 'my-password' not in output
         assert 'super-secret-token-value' not in output
         assert '2026-09-09' in output
+
+    @override_config(EARTHDATA_TOKEN='', EARTHDATA_TOKEN_EXPIRES_AT=EARTHDATA_TOKEN_NOT_SET)
+    @patch('builtins.input', return_value='my-username')
+    @patch('getpass.getpass', return_value='my-password')
+    @patch('camp.apps.tempo.management.commands.renew_earthdata_token.requests.post')
+    def test_raises_command_error_instead_of_leaking_credentials_on_failure(self, mock_post, mock_getpass, mock_input):
+        # A raw exception here would carry `password`/`auth` in its frame
+        # locals -- Sentry's default exception capture would ship those to
+        # Sentry. CommandError is caught by Django before that ever happens,
+        # so this is the boundary that keeps credentials out of Sentry.
+        response = make_response(status_code=401, ok=False)
+        response.raise_for_status.side_effect = requests.HTTPError('401 Client Error')
+        mock_post.return_value = response
+
+        with pytest.raises(CommandError):
+            call_command('renew_earthdata_token')
+
+        assert constance_config.EARTHDATA_TOKEN == ''

@@ -77,7 +77,7 @@ def check_earthdata_token_expiry():
     if expires_at == settings.EARTHDATA_TOKEN_NOT_SET:
         return  # renewal command has never been run; nothing to warn about yet
 
-    days_left = (expires_at.date() - localtime().date()).days
+    days_left = (localtime(expires_at).date() - localtime().date()).days
     if days_left <= 10:
         send_mail(
             subject=f'TEMPO Earthdata token expires in {days_left} day{"s" if days_left != 1 else ""}',
