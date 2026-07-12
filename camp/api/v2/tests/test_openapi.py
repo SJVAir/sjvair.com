@@ -68,3 +68,13 @@ class OpenAPISchemaTests(TestCase):
         assert any('pesticides' in p and p.endswith('use/') for p in self.paths)
         assert any('pesticides' in p and p.endswith('notice/') for p in self.paths)
         assert any('pesticides' in p and 'summary' in p for p in self.paths)
+
+    def test_ces4_paths_are_documented(self):
+        assert any(p.endswith('calenviroscreen/4.0/') for p in self.paths)
+        assert any(p.endswith('calenviroscreen/4.0/{tract}/') for p in self.paths)
+
+    def test_ces4_year_query_param_is_documented(self):
+        list_params = self.paths['/calenviroscreen/4.0/']['get']['parameters']
+        assert any(p['name'] == 'year' for p in list_params)
+        detail_params = self.paths['/calenviroscreen/4.0/{tract}/']['get']['parameters']
+        assert any(p['name'] == 'year' for p in detail_params)

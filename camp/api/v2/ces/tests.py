@@ -17,26 +17,36 @@ class CES4EndpointTests(TestCase):
         self.factory = RequestFactory()
 
     def test_list_2020_returns_two_records(self):
-        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
-        request = self.factory.get(url)
-        response = ces4_list(request, year='2020')
+        url = reverse('api:v2:ces:ces4-list')
+        request = self.factory.get(url, {'year': '2020'})
+        response = ces4_list(request)
         data = get_response_data(response)
 
         assert response.status_code == 200
         assert len(data['data']) == 2
 
     def test_list_2010_returns_two_records(self):
-        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2010'})
-        request = self.factory.get(url)
-        response = ces4_list(request, year='2010')
+        url = reverse('api:v2:ces:ces4-list')
+        request = self.factory.get(url, {'year': '2010'})
+        response = ces4_list(request)
         data = get_response_data(response)
 
         assert response.status_code == 200
         assert len(data['data']) == 2
 
+    def test_list_defaults_to_2020_when_year_omitted(self):
+        url = reverse('api:v2:ces:ces4-list')
+        request = self.factory.get(url)
+        response = ces4_list(request)
+        data = get_response_data(response)
+
+        assert response.status_code == 200
+        assert len(data['data']) == 2
+        assert all(r['census_year'] == '2020' for r in data['data'])
+
     def test_list_records_have_expected_fields(self):
         request = self.factory.get('/')
-        response = ces4_list(request, year='2020')
+        response = ces4_list(request)
         data = get_response_data(response)
 
         record = data['data'][0]
@@ -51,7 +61,7 @@ class CES4EndpointTests(TestCase):
 
     def test_list_census_year_matches_requested_year(self):
         request = self.factory.get('/')
-        response = ces4_list(request, year='2020')
+        response = ces4_list(request)
         data = get_response_data(response)
 
         assert all(r['census_year'] == '2020' for r in data['data'])
@@ -59,7 +69,7 @@ class CES4EndpointTests(TestCase):
     def test_detail_returns_correct_tract(self):
         tract = '06019000101'
         request = self.factory.get('/')
-        response = ces4_detail(request, year='2020', tract=tract)
+        response = ces4_detail(request, tract=tract)
         data = get_response_data(response)
 
         assert response.status_code == 200
@@ -68,20 +78,20 @@ class CES4EndpointTests(TestCase):
 
     def test_detail_404_for_unknown_tract(self):
         request = self.factory.get('/')
-        response = ces4_detail(request, year='2020', tract='99999999999')
+        response = ces4_detail(request, tract='99999999999')
 
         assert response.status_code == 404
 
     def test_detail_404_for_wrong_year(self):
         # tract exists for 2020 but requesting 2030
-        request = self.factory.get('/')
-        response = ces4_detail(request, year='2030', tract='06019000101')
+        request = self.factory.get('/', {'year': '2030'})
+        response = ces4_detail(request, tract='06019000101')
 
         assert response.status_code == 404
 
     def test_filter_by_dac_sb535(self):
         request = self.factory.get('/', {'dac_sb535': 'true'})
-        response = ces4_list(request, year='2020')
+        response = ces4_list(request)
         data = get_response_data(response)
 
         assert response.status_code == 200
@@ -90,7 +100,7 @@ class CES4EndpointTests(TestCase):
 
     def test_filter_by_ci_score_p_gte(self):
         request = self.factory.get('/', {'ci_score_p__gte': '80'})
-        response = ces4_list(request, year='2020')
+        response = ces4_list(request)
         data = get_response_data(response)
 
         assert response.status_code == 200
@@ -122,30 +132,30 @@ class CES4RegionFilterTests(TestCase):
 
     def test_region_covering_both_tracts_returns_two(self):
         region = self._create_region(self.COVERS_BOTH)
-        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
-        data = self.client.get(url, {'region_id': region.sqid}).json()
+        url = reverse('api:v2:ces:ces4-list')
+        data = self.client.get(url, {'region_id': region.sqid, 'year': '2020'}).json()
         assert data['count'] == 2
 
     def test_region_covering_one_tract_returns_one(self):
         region = self._create_region(self.COVERS_ONLY_1_01)
-        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
-        data = self.client.get(url, {'region_id': region.sqid}).json()
+        url = reverse('api:v2:ces:ces4-list')
+        data = self.client.get(url, {'region_id': region.sqid, 'year': '2020'}).json()
         assert data['count'] == 1
         assert data['data'][0]['tract'] == '06019000101'
 
     def test_region_outside_tracts_returns_empty(self):
         region = self._create_region(self.COVERS_NEITHER)
-        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
-        data = self.client.get(url, {'region_id': region.sqid}).json()
+        url = reverse('api:v2:ces:ces4-list')
+        data = self.client.get(url, {'region_id': region.sqid, 'year': '2020'}).json()
         assert data['count'] == 0
 
     def test_region_without_boundary_returns_empty(self):
         region = self._create_region()
-        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
-        data = self.client.get(url, {'region_id': region.sqid}).json()
+        url = reverse('api:v2:ces:ces4-list')
+        data = self.client.get(url, {'region_id': region.sqid, 'year': '2020'}).json()
         assert data['count'] == 0
 
     def test_invalid_region_id_returns_empty(self):
-        url = reverse('api:v2:ces:ces4-list', kwargs={'year': '2020'})
-        data = self.client.get(url, {'region_id': 'BOGUS'}).json()
+        url = reverse('api:v2:ces:ces4-list')
+        data = self.client.get(url, {'region_id': 'BOGUS', 'year': '2020'}).json()
         assert data['count'] == 0

@@ -12,18 +12,18 @@ class CES4Mixin:
     model = CES4
     serializer_class = CES4Serializer
     paginate = True
+    filter_class = CES4Filter
 
     def get_queryset(self):
+        year = self.request.GET.get('year') or '2020'
         return (
             super().get_queryset()
-            .filter(boundary__version=self.kwargs['year'])
+            .filter(boundary__version=year)
         )
 
 
 class CES4List(CES4Mixin, generics.ListEndpoint):
-    """List CalEnviroScreen 4.0 scores for all census tracts for a given year."""
-
-    filter_class = CES4Filter
+    """List CalEnviroScreen 4.0 scores for all census tracts for a given year (default 2020)."""
 
 
 class CES4Detail(CES4Mixin, generics.DetailEndpoint):

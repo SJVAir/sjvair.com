@@ -6,6 +6,7 @@ from camp.apps.regions.models import Region
 
 
 class CES4Filter(FilterSet):
+    year = django_filters.CharFilter(field_name='boundary__version')
     region_id = django_filters.CharFilter(method='filter_region_id')
 
     def filter_region_id(self, queryset, name, value):
