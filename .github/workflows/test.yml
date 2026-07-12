@@ -1,0 +1,47 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Write .env.test
+        run: |
+          cat > .env.test <<'EOF'
+          ALLOWED_HOSTS=localhost
+          DATABASE_URL=postgres://sjvair:changeme@db:5432/sjvair
+          REDIS_URL=redis://redis:6379
+          MEMCACHED=memcached:11211
+          DJANGO_DEBUG=0
+          DJANGO_SETTINGS_MODULE=camp.settings.test
+          SECRET_KEY=ci-test-secret-key-not-for-production-use
+          PURPLEAIR_READ_KEY=ci-test-purpleair-read-key
+          PURPLEAIR_WRITE_KEY=ci-test-purpleair-write-key
+          PURPLEAIR_GROUP_ID=1400
+          EOF
+
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: test
+          tags: sjvair-com-test:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run tests
+        run: docker compose --profile test run --rm test pytest
+
+      - name: Tear down
+        if: always()
+        run: docker compose --profile test down -v
