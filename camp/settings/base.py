@@ -281,6 +281,9 @@ SJVAIR_INACTIVE_ALERT_EMAILS = [email.strip() for email in
 SJVAIR_CONTACT_EMAILS = [email.strip() for email in
     env('SJVAIR_CONTACT_EMAILS', SERVER_EMAIL).split(',')]
 
+TEMPO_ALERT_EMAILS = [email.strip() for email in
+    env('TEMPO_ALERT_EMAILS', SERVER_EMAIL).split(',')]
+
 
 # App URLs
 

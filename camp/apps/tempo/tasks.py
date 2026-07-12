@@ -3,9 +3,11 @@ from datetime import datetime, timedelta
 import sentry_sdk
 
 from django.conf import settings
+from django.core.mail import send_mail
 from django.utils import timezone
 from django_huey import db_periodic_task
 from huey import crontab
+from constance import config as constance_config
 
 from camp.utils.datetime import localtime
 
@@ -67,3 +69,22 @@ def sync_tempo_reprocessing():
             except Exception as exc:
                 sentry_sdk.capture_exception(exc)
         timestamp += timedelta(hours=1)
+
+
+@db_periodic_task(crontab(day_of_week='1', hour='9', minute='0'), priority=30)
+def check_earthdata_token_expiry():
+    expires_at = constance_config.EARTHDATA_TOKEN_EXPIRES_AT
+    if expires_at == settings.EARTHDATA_TOKEN_NOT_SET:
+        return  # renewal command has never been run; nothing to warn about yet
+
+    days_left = (expires_at.date() - localtime().date()).days
+    if days_left <= 10:
+        send_mail(
+            subject=f'TEMPO Earthdata token expires in {days_left} day{"s" if days_left != 1 else ""}',
+            message=(
+                'Run `heroku run python manage.py renew_earthdata_token` to renew it. '
+                'TEMPO ingestion will silently stop working once it expires.'
+            ),
+            from_email=settings.SERVER_EMAIL,
+            recipient_list=settings.TEMPO_ALERT_EMAILS,
+        )
