@@ -169,6 +169,40 @@ class AlertEvaluatorTests(TestCase):
         assert updates.count() == 2
         assert updates.latest().get_level() == AQLevel.scale.VERY_UNHEALTHY
 
+    def test_cooldown_suppresses_rapid_deescalation(self):
+        self.create_pm25_entry(200, minutes_ago=5)  # VERY_UNHEALTHY
+        evaluator = AlertEvaluator(self.monitor)
+        alert = evaluator.creation_check(self.entry_model, self.lookup)
+        assert alert.updates.latest().get_level() == AQLevel.scale.VERY_UNHEALTHY
+
+        # Replace with an entry that averages into UNHEALTHY (a 1-rank
+        # drop), inside the 60-minute de-escalation window but outside the
+        # 15-minute escalation window, with no time elapsed since the last
+        # update.
+        self.entry_model.objects.all().delete()
+        self.create_pm25_entry(80, minutes_ago=20)
+        evaluator.update_check(alert, self.entry_model, self.lookup)
+
+        updates = AlertUpdate.objects.filter(alert=alert)
+        assert updates.count() == 1
+
+    def test_severity_bypass_skips_cooldown_on_deescalation(self):
+        self.create_pm25_entry(200, minutes_ago=5)  # VERY_UNHEALTHY
+        evaluator = AlertEvaluator(self.monitor)
+        alert = evaluator.creation_check(self.entry_model, self.lookup)
+        assert alert.updates.latest().get_level() == AQLevel.scale.VERY_UNHEALTHY
+
+        # Drop straight to MODERATE (rank 1, a 3-rank drop) with no time
+        # elapsed — severity bypass should fire immediately despite being
+        # within the cooldown.
+        self.entry_model.objects.all().delete()
+        self.create_pm25_entry(15, minutes_ago=20)
+        evaluator.update_check(alert, self.entry_model, self.lookup)
+
+        updates = AlertUpdate.objects.filter(alert=alert)
+        assert updates.count() == 2
+        assert updates.latest().get_level() == AQLevel.scale.MODERATE
+
     def test_get_current_level_ignores_stale_entries(self):
         self.create_pm25_entry(80, minutes_ago=200)
         evaluator = AlertEvaluator(self.monitor)

@@ -8,7 +8,6 @@ from django.utils import timezone
 from django.db.models import Q
 
 import twilio.rest
-from twilio.base.exceptions import TwilioRestException
 
 from camp.apps.alerts.evaluator import AlertEvaluator
 from camp.apps.alerts.models import Alert, Notification
@@ -59,7 +58,11 @@ def send_alert_notification(notification_id):
             body=notification.message,
             status_callback=f'https://sjvair.com{reverse("twilio-status-callback")}',
         )
-    except TwilioRestException as exc:
+    except Exception as exc:
+        # Broad on purpose: network failures (timeouts, DNS, connection
+        # resets) aren't guaranteed to surface as TwilioRestException, and
+        # any unhandled exception here leaves the notification stuck at
+        # QUEUED forever with no record of why it failed.
         notification.status = Notification.Status.FAILED
         notification.error = str(exc)
         notification.save(update_fields=['status', 'error'])
