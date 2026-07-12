@@ -28,8 +28,8 @@ We considered depending on the `python-CIMIS` PyPI package
 
 **Decision: do not depend on `python-CIMIS`.** The CIMIS API itself is a
 single authenticated GET endpoint returning JSON. We'll hand-roll a small
-client, consistent with this codebase's existing per-provider pattern
-(`AirNowClient` in `camp/apps/monitors/airnow/tasks.py`), rather than trust
+client, consistent with this codebase's existing per-provider API client
+pattern (see `airgradient/api.py`, `purpleair/api.py`), rather than trust
 an unverifiable third-party dependency for something this small.
 
 ## Entry types (`camp/apps/entries/models/meteorological.py`)
@@ -95,7 +95,7 @@ Verified safe:
 ## `CIMIS` monitor (`camp/apps/monitors/cimis/`)
 
 Mirrors the existing `aqview`/`airnow` module layout: `models.py`,
-`tasks.py`, `admin.py`, `apps.py`.
+`tasks.py`, `admin.py`, `apps.py`, plus its own API client file.
 
 - `CIMIS(Monitor)`:
   - `LOCATION = Monitor.LOCATION.outside` always (fixed weather stations).
@@ -111,9 +111,18 @@ Mirrors the existing `aqview`/`airnow` module layout: `models.py`,
     `Humidity`) to `RAW`-stage entries only — no calibration/processor
     pipeline, since CIMIS data is already QC'd by the state before
     publication.
-- `CIMISClient` (in `tasks.py` or a dedicated `client.py`): one `requests`
-  session, GET `https://et.water.ca.gov/StationWeb/GetDataByStationNumber`
-  with the `Ocp-Apim-Subscription-Key` header, same shape as `AirNowClient`.
+- `CIMISAPI` in `camp/apps/monitors/cimis/api.py`: one `requests` session, GET
+  `https://et.water.ca.gov/StationWeb/GetDataByStationNumber` with the
+  `Ocp-Apim-Subscription-Key` header.
+
+  **Naming cleanup**: the three existing providers are split between
+  `api.py`/`*API` (`airgradient/api.py` → `AirGradientAPI`,
+  `purpleair/api.py` → `PurpleAirAPI`) and the outlier
+  `airnow/client.py` → `AirNowClient`. Standardize on `api.py`/`*API` as
+  part of this task: rename `airnow/client.py` → `airnow/api.py` and
+  `AirNowClient` → `AirNowAPI`, updating the import in `airnow/tasks.py`
+  and the class references and `@patch` targets throughout
+  `airnow/tests.py`. Use `cimis/api.py` / `CIMISAPI` for the new provider.
 - New setting `CIMIS_APP_KEY` (mirrors `AIRNOW_API_KEY`) — requires
   requesting a free CIMIS app key from CDWR, documented in `CLAUDE.md`'s env
   var list.
