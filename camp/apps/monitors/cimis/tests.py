@@ -1,7 +1,9 @@
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 from django.contrib.gis.geos import Point
 from django.test import TestCase
+from django.utils import timezone
 
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.cimis.api import CIMISAPI
@@ -290,3 +292,56 @@ class ImportCimisDataTests(TestCase):
         called_kwargs = mock_instance.get_hourly_data.call_args.kwargs
         assert sorted(called_kwargs['station_numbers']) == ['2', '5']
         assert sorted(called_kwargs['data_items']) == sorted(CIMIS.ENTRY_MAP.keys())
+
+
+class FinalizeCimisDataTests(TestCase):
+    def test_no_op_when_no_monitors_exist(self):
+        from camp.apps.monitors.cimis.tasks import finalize_cimis_data
+        # Should not raise even with zero CIMIS monitors in the DB.
+        finalize_cimis_data()
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_queries_yesterdays_full_day_for_all_known_stations(self, MockAPI):
+        CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = []
+
+        from camp.apps.monitors.cimis.tasks import finalize_cimis_data
+        finalize_cimis_data()
+
+        yesterday = timezone.localtime(timezone.now()).date() - timedelta(days=1)
+        called_kwargs = mock_instance.get_hourly_data.call_args.kwargs
+        assert called_kwargs['station_numbers'] == ['2']
+        assert called_kwargs['start_date'] == yesterday
+        assert called_kwargs['end_date'] == yesterday
+        assert sorted(called_kwargs['data_items']) == sorted(CIMIS.ENTRY_MAP.keys())
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_ingests_records_from_yesterday(self, MockAPI):
+        monitor = CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        yesterday = timezone.localtime(timezone.now()).date() - timedelta(days=1)
+        record = {
+            'Date': yesterday.strftime('%Y-%m-%d'),
+            'Hour': '2400',
+            'Station': '2',
+            'HlyAirTmp': {'Value': '88.1', 'Qc': ' ', 'Unit': '(F)'},
+        }
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = [{'Records': [record]}]
+
+        from camp.apps.monitors.cimis.tasks import finalize_cimis_data
+        finalize_cimis_data()
+
+        from camp.apps.entries import models as entry_models
+        entries = entry_models.Temperature.objects.filter(monitor=monitor)
+        assert entries.count() == 1
