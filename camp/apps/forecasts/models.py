@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 from model_utils.models import TimeStampedModel
 
-from camp.apps.entries.levels import AQI_LEVELS
+from camp.apps.entries import levels
 
 
 class Forecast(TimeStampedModel):
@@ -48,4 +48,4 @@ class Forecast(TimeStampedModel):
 
     @property
     def color(self):
-        return AQI_LEVELS.get_color(self.aqi_value)
+        return levels.AQI.get_color(self.aqi_value)

@@ -12,8 +12,7 @@ from django_smalluuid.models import SmallUUIDField, uuid_default
 from camp.apps.monitors.models import Monitor
 from camp.utils import classproperty
 
-from . import stages
-from .levels import CO_LEVELS, NO2_LEVELS, O3_LEVELS, PM25_LEVELS, PM100_LEVELS, SO2_LEVELS
+from . import levels, stages
 from .managers import EntryQuerySet
 
 
@@ -309,7 +308,7 @@ class PM25(BaseEntry):
     units = 'µg/m³'
     summarize = True
 
-    Levels = PM25_LEVELS
+    Levels = levels.PM25
 
     value = models.DecimalField(
         max_digits=7, decimal_places=2,
@@ -343,7 +342,7 @@ class PM100(BaseEntry):
     epa_aqs_code = 81102
     units = 'µg/m³'
 
-    Levels = PM100_LEVELS
+    Levels = levels.PM100
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -440,7 +439,7 @@ class CO(BaseEntry):
     units = 'ppm'
     summarize = True
 
-    Levels = CO_LEVELS
+    Levels = levels.CO
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -465,7 +464,7 @@ class NO2(BaseEntry):
     units = 'ppb'
     summarize = True
 
-    Levels = NO2_LEVELS
+    Levels = levels.NO2
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -479,7 +478,7 @@ class O3(BaseEntry):
     units = 'ppb'
     summarize = True
 
-    Levels = O3_LEVELS
+    Levels = levels.O3
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,
@@ -493,7 +492,7 @@ class SO2(BaseEntry):
     units = 'ppb'
     summarize = True
 
-    Levels = SO2_LEVELS
+    Levels = levels.SO2
 
     value = models.DecimalField(
         max_digits=6, decimal_places=2,

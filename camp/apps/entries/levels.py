@@ -204,8 +204,12 @@ class LevelSet:
 
 
 # Pollutant-specific level sets, breakpoints in each pollutant's native unit.
+# Import this module (not these names directly) to avoid colliding with the
+# identically-named entry models in camp.apps.entries.models, e.g.:
+#     from . import levels
+#     Levels = levels.PM25
 
-PM25_LEVELS = LevelSet(
+PM25 = LevelSet(
     AQLevel.GOOD(0.0),
     AQLevel.MODERATE(9.1),
     AQLevel.UNHEALTHY_SENSITIVE(35.5),
@@ -214,7 +218,7 @@ PM25_LEVELS = LevelSet(
     AQLevel.HAZARDOUS(250.5),
 )
 
-PM100_LEVELS = LevelSet(
+PM100 = LevelSet(
     AQLevel.GOOD(0),
     AQLevel.MODERATE(55),
     AQLevel.UNHEALTHY_SENSITIVE(155),
@@ -224,7 +228,7 @@ PM100_LEVELS = LevelSet(
     AQLevel.VERY_HAZARDOUS(605),
 )
 
-CO_LEVELS = LevelSet(
+CO = LevelSet(
     AQLevel.GOOD(0.0),
     AQLevel.MODERATE(4.5),
     AQLevel.UNHEALTHY_SENSITIVE(9.5),
@@ -234,7 +238,7 @@ CO_LEVELS = LevelSet(
     AQLevel.VERY_HAZARDOUS(50.4),
 )
 
-NO2_LEVELS = LevelSet(
+NO2 = LevelSet(
     AQLevel.GOOD(0.0),
     AQLevel.MODERATE(54.0),
     AQLevel.UNHEALTHY_SENSITIVE(101.0),
@@ -244,7 +248,7 @@ NO2_LEVELS = LevelSet(
     AQLevel.VERY_HAZARDOUS(2050.0),
 )
 
-O3_LEVELS = LevelSet(
+O3 = LevelSet(
     AQLevel.GOOD(0.0),
     AQLevel.UNHEALTHY_SENSITIVE(125),
     AQLevel.UNHEALTHY(165),
@@ -253,7 +257,7 @@ O3_LEVELS = LevelSet(
     AQLevel.VERY_HAZARDOUS(605),
 )
 
-SO2_LEVELS = LevelSet(
+SO2 = LevelSet(
     AQLevel.GOOD(0),
     AQLevel.MODERATE(36),
     AQLevel.UNHEALTHY_SENSITIVE(76),
@@ -264,7 +268,7 @@ SO2_LEVELS = LevelSet(
 # The EPA Air Quality Index itself (0-500), as opposed to a pollutant's raw
 # concentration. Breakpoints match camp.utils.aqi.aqi_label exactly (301+ is
 # "Hazardous" all the way to 500 -- the EPA AQI has no tier past Hazardous).
-AQI_LEVELS = LevelSet(
+AQI = LevelSet(
     AQLevel.GOOD(0),
     AQLevel.MODERATE(51),
     AQLevel.UNHEALTHY_SENSITIVE(101),

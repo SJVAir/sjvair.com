@@ -45,7 +45,7 @@ class ForecastModelTests(TestCase):
             pollutant=Forecast.Pollutant.OZONE,
             burn_status='Discouraged', burn_status_text='Discouraged: Burning Discouraged',
         )
-        # 101 is exactly the AQI_LEVELS.UNHEALTHY_SENSITIVE breakpoint, so this
+        # 101 is exactly the levels.AQI.UNHEALTHY_SENSITIVE breakpoint, so this
         # should be that tier's color with no blending toward the next tier.
         assert forecast.color == '#ff7e00'
 
