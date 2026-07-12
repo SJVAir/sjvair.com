@@ -15,7 +15,7 @@ from camp.apps.calibrations import processors as cal_processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.vozbox.api import VozBoxClient
 from camp.apps.monitors.vozbox.models import VOZBox
-from camp.apps.monitors.vozbox.tasks import process_device
+from camp.apps.monitors.vozbox.tasks import process_device, _bin_rows
 
 
 DAILY_CSV = """\
@@ -374,6 +374,55 @@ class O3VOZBoxProcessorTests(TestCase):
         )
         result = cal_processors.O3_VOZBox(o3_entry).run()
         assert result is None
+
+
+class BinRowsTests(TestCase):
+    def _row(self, ts):
+        return {'timestamp': ts, 'pm25_a': 10.0}
+
+    def test_keeps_one_row_per_10min_bucket(self):
+        rows = [
+            self._row(datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)),
+            self._row(datetime(2026, 7, 10, 12, 0, 30, tzinfo=timezone.utc)),
+            self._row(datetime(2026, 7, 10, 12, 1, 0, tzinfo=timezone.utc)),
+        ]
+        result = _bin_rows(rows)
+        assert len(result) == 1
+        assert result[0]['timestamp'] == datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_keeps_earliest_row_in_bucket(self):
+        rows = [
+            self._row(datetime(2026, 7, 10, 12, 3, 0, tzinfo=timezone.utc)),
+            self._row(datetime(2026, 7, 10, 12, 1, 0, tzinfo=timezone.utc)),
+            self._row(datetime(2026, 7, 10, 12, 7, 0, tzinfo=timezone.utc)),
+        ]
+        result = _bin_rows(rows)
+        assert len(result) == 1
+        assert result[0]['timestamp'] == datetime(2026, 7, 10, 12, 1, 0, tzinfo=timezone.utc)
+
+    def test_separate_buckets_for_different_10min_windows(self):
+        rows = [
+            self._row(datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)),
+            self._row(datetime(2026, 7, 10, 12, 5, 0, tzinfo=timezone.utc)),
+            self._row(datetime(2026, 7, 10, 12, 10, 0, tzinfo=timezone.utc)),
+            self._row(datetime(2026, 7, 10, 12, 15, 0, tzinfo=timezone.utc)),
+        ]
+        result = _bin_rows(rows)
+        assert len(result) == 2
+        assert result[0]['timestamp'] == datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)
+        assert result[1]['timestamp'] == datetime(2026, 7, 10, 12, 10, 0, tzinfo=timezone.utc)
+
+    def test_10min_device_rows_unchanged(self):
+        rows = [
+            self._row(datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)),
+            self._row(datetime(2026, 7, 10, 12, 10, 0, tzinfo=timezone.utc)),
+            self._row(datetime(2026, 7, 10, 12, 20, 0, tzinfo=timezone.utc)),
+        ]
+        result = _bin_rows(rows)
+        assert len(result) == 3
+
+    def test_empty_rows_returns_empty(self):
+        assert _bin_rows([]) == []
 
 
 class ImportVozboxCalTests(TestCase):

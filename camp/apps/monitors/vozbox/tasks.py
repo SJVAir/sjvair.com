@@ -38,6 +38,18 @@ def import_realtime():
     print(f'\n=== VOZbox Import Done: {start.time()} - {end.time()} ({end - start})\n')
 
 
+def _bin_rows(rows, interval_minutes=10):
+    """One row per N-minute bucket; keeps the earliest row in each bucket."""
+    buckets = {}
+    for row in sorted(rows, key=lambda r: r['timestamp']):
+        ts = row['timestamp']
+        floored = ts.replace(second=0, microsecond=0)
+        key = floored.replace(minute=(floored.minute // interval_minutes) * interval_minutes)
+        if key not in buckets:
+            buckets[key] = row
+    return list(buckets.values())
+
+
 @db_task()
 def process_device(coreid, rows):
     try:
@@ -52,6 +64,8 @@ def process_device(coreid, rows):
     if not rows:
         return
 
+    rows = _bin_rows(rows)
+
     # Cutoff: skip rows already in DB. validation_check() is the safety net.
     latest_ts = (entry_models.PM25.objects
         .filter(monitor=monitor, sensor='a', stage=entry_models.PM25.Stage.RAW)
@@ -60,7 +74,7 @@ def process_device(coreid, rows):
         .first()
     )
 
-    for row in sorted(rows, key=lambda r: r['timestamp']):
+    for row in rows:
         if latest_ts and row['timestamp'] <= latest_ts:
             continue
         entries = monitor.create_entries(row)
