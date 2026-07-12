@@ -24,19 +24,23 @@ Confirmed against NASA's own documentation (`https://urs.earthdata.nasa.gov/docu
 
 **Constraint:** a user may have at most 2 valid tokens at once. **Find-or-create is deliberately not used for renewal** — it would likely just hand back the existing, still-valid-but-soon-to-expire token instead of minting a fresh 60-day one. The renewal flow explicitly revokes the currently-stored token (if any), then creates a new one.
 
-**Unverified, flag for Task 1:** the exact format of `expiration_date` (a date string vs. a full timestamp — the EDL web UI shows both a date and a time, e.g. "09-9-2026 9:46pm EDT") hasn't been confirmed against a live API response. Task 1 below includes a manual verification step before the parsing logic is trusted. Also unverified: whether `constance`'s `datetime.datetime` field type accepts `None` as its declared default (some Django-style field type declarations require a real value of the matching type) — Task 1 should confirm this against the actual installed `constance` version and fall back to a sentinel past `datetime` if `None` isn't accepted.
+**Unverified, flag for Task 1:** the exact format of `expiration_date` (a date string vs. a full timestamp — the EDL web UI shows both a date and a time, e.g. "09-9-2026 9:46pm EDT") hasn't been confirmed against a live API response. Task 1 below includes a manual verification step before the parsing logic is trusted.
 
 ## Storage: `django-constance`
 
 New dependency (`requirements/base.txt`) — the first use of `constance` in this codebase, chosen because the token needs to be admin-editable at runtime without a redeploy, and future runtime-editable settings (not just this one) can reuse the same mechanism.
 
+`constance`'s config declarations want a real value of the declared type as the default, not `None` — confirmed against its docs, nullable fields need extra `CONSTANCE_ADDITIONAL_FIELDS` customization not worth taking on here. Use a fixed sentinel `datetime` (obviously in the past) to mean "the renewal command has never been run" instead:
+
 ```python
 # camp/settings/base.py
 import datetime as dt
 
+EARTHDATA_TOKEN_NOT_SET = dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc)
+
 CONSTANCE_CONFIG = {
     'EARTHDATA_TOKEN': ('', 'NASA Earthdata Login bearer token for TEMPO ingestion.', str),
-    'EARTHDATA_TOKEN_EXPIRES_AT': (None, 'When the current EARTHDATA_TOKEN expires (set by renew_earthdata_token; informational only).', dt.datetime),
+    'EARTHDATA_TOKEN_EXPIRES_AT': (EARTHDATA_TOKEN_NOT_SET, 'When the current EARTHDATA_TOKEN expires (set by renew_earthdata_token; informational only).', dt.datetime),
 }
 CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
 ```
@@ -136,7 +140,7 @@ TEMPO_ALERT_EMAILS = [email.strip() for email in
 @db_periodic_task(crontab(day_of_week='1', hour='9', minute='0'), priority=30)
 def check_earthdata_token_expiry():
     expires_at = constance_config.EARTHDATA_TOKEN_EXPIRES_AT
-    if not expires_at:
+    if expires_at == EARTHDATA_TOKEN_NOT_SET:
         return  # renewal command has never been run; nothing to warn about yet
 
     days_left = (expires_at.date() - localtime().date()).days
