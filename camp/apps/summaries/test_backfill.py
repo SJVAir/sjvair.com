@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta
 
 from django.conf import settings
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.utils import timezone
+import pytest
 
 from camp.utils.datetime import make_aware
 from camp.apps.summaries.models import BaseSummary
@@ -255,3 +258,48 @@ class SummaryBackfillJobTests(TestCase):
         assert job.chunk_start is None
         assert job.locked_at is None
         assert job.sqid
+
+
+class BackfillSummariesCommandTests(TestCase):
+    def _run(self, *args):
+        call_command('backfill_summaries', *args, stdout=open('/dev/null', 'w'))
+
+    def test_start_creates_running_idle_job(self):
+        self._run('start', '--from=2020-01-01', '--to=2020-02-01')
+        job = SummaryBackfillJob.objects.get()
+        assert job.state == SummaryBackfillJob.State.RUNNING
+        assert job.phase == SummaryBackfillJob.Phase.IDLE
+        assert job.range_start == make_aware(datetime(2020, 1, 1), settings.DEFAULT_TIMEZONE)
+        assert job.range_end == make_aware(datetime(2020, 2, 1), settings.DEFAULT_TIMEZONE)
+        assert job.cursor == job.range_end
+
+    def test_start_requires_from(self):
+        with pytest.raises((CommandError, SystemExit)):
+            self._run('start')
+
+    def test_start_refuses_second_job_without_force(self):
+        self._run('start', '--from=2020-01-01', '--to=2020-02-01')
+        with pytest.raises((CommandError, SystemExit)):
+            self._run('start', '--from=2019-01-01', '--to=2019-02-01')
+
+    def test_start_force_replaces_existing_job(self):
+        self._run('start', '--from=2020-01-01', '--to=2020-02-01')
+        self._run('start', '--from=2019-01-01', '--to=2019-02-01', '--force')
+        job = SummaryBackfillJob.objects.get()
+        assert job.range_start == make_aware(datetime(2019, 1, 1), settings.DEFAULT_TIMEZONE)
+
+    def test_status_with_no_job_does_not_raise(self):
+        self._run('status')
+
+    def test_status_with_job_does_not_raise(self):
+        self._run('start', '--from=2020-01-01', '--to=2020-02-01')
+        self._run('status')
+
+    def test_cancel_sets_state_done(self):
+        self._run('start', '--from=2020-01-01', '--to=2020-02-01')
+        self._run('cancel')
+        job = SummaryBackfillJob.objects.get()
+        assert job.state == SummaryBackfillJob.State.DONE
+
+    def test_cancel_with_no_active_job_does_not_raise(self):
+        self._run('cancel')
