@@ -198,9 +198,16 @@ class RegionsWithMonitorsTests(TestCase):
         region = Region.objects.filter(boundary__isnull=False).first()
         if not region:
             self.skipTest('no region with boundary in fixtures')
-        monitor = PurpleAir.objects.first()
-        monitor.position = None
-        monitor.save()
+        # purple-air.yaml defines several monitors clustered at nearly the
+        # same real position — null all of them, not just .first(), so this
+        # region is genuinely monitor-free regardless of which one .first()
+        # would otherwise have singled out. A bulk .update() doesn't work
+        # here: Django's multi-table-inheritance UPDATE path re-runs
+        # get_prep_value() on already-resolved PKs, which django_smalluuid's
+        # SmallUUIDField.to_python() can't handle — so save() each instance.
+        for monitor in PurpleAir.objects.all():
+            monitor.position = None
+            monitor.save()
         assert region.pk not in regions_with_monitors()
 
 
