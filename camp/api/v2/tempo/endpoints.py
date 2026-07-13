@@ -24,8 +24,8 @@ class TempoProducts(generics.Endpoint):
                 'label': str(label),
                 'units': PRODUCT_UNITS[key],
                 'legend': [
-                    {'value': levels[key].value, 'label': str(levels[key].label), 'color': levels[key].color}
-                    for key, _ in levels.choices
+                    {'value': level.value, 'label': str(level.label), 'color': level.color}
+                    for level in levels
                 ],
             })
         return products
