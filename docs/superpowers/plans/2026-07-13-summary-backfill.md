@@ -1360,12 +1360,10 @@ class BackfillSummariesTickDispatchRegionsTests(TestCase):
 
 class BackfillSummariesTickCompleteChunkTests(TestCase):
     def setUp(self):
-        # Chunk covering exactly one month boundary: Jun 25 -> Jul 2, so the
-        # earliest day (Jul 1... no: walking backward chunk_start=Jun 25) —
-        # use a chunk whose chunk_start lands on a month start directly, to
-        # exercise both the daily and higher-rollup cascade in one chunk.
-        from django.conf import settings
-        self.month_start = timezone.make_aware(datetime(2023, 7, 1))
+        # Chunk whose chunk_start lands exactly on a month start (Jul 1,
+        # 2023), so completing it exercises both the daily and the
+        # higher-rollup cascade (July is a quarter-start month) in one call.
+        self.month_start = _day(2023, 7, 1)
         self.job = SummaryBackfillJob.objects.create(
             cursor=self.month_start + timedelta(days=2),
             chunk_start=self.month_start,
@@ -1399,15 +1397,24 @@ class BackfillSummariesTickCompleteChunkTests(TestCase):
 
     def test_july_first_cascades_monthly_and_quarterly_rollups(self):
         # July is a quarter-start month (Jul/Aug/Sep = Q3) — crossing Jul 1
-        # while walking backward should trigger both.
-        from camp.apps.summaries.models import RegionSummary
-        backfill_summaries_tick()
-        assert MonitorSummary.objects.filter(
-            resolution=BaseSummary.Resolution.MONTHLY, timestamp=self.month_start,
-        ).exists() or True  # no monitor data in this test — assert the call didn't crash
-        # (Coverage of actual rollup content — with real data — lives in
-        # RollupMonitorSummariesTests / RollupRegionSummariesTests in tests.py;
-        # this test only proves the cascade is *invoked* for the right window.)
+        # while walking backward should trigger a monthly AND a quarterly
+        # rollup call, on top of the daily rollups for each day in the
+        # chunk. Rollup *correctness* (the actual aggregated values) is
+        # already covered by RollupMonitorSummariesTests /
+        # RollupRegionSummariesTests in tests.py — this only proves the
+        # cascade invokes the right windows.
+        with patch('camp.apps.summaries.tasks.rollup_monitor_summaries') as mock_rollup:
+            backfill_summaries_tick()
+
+        resolutions_called = [call.args[0] for call in mock_rollup.call_args_list]
+        assert BaseSummary.Resolution.DAILY in resolutions_called
+        assert BaseSummary.Resolution.MONTHLY in resolutions_called
+        assert BaseSummary.Resolution.QUARTERLY in resolutions_called
+        assert BaseSummary.Resolution.SEASONAL not in resolutions_called
+        assert BaseSummary.Resolution.YEARLY not in resolutions_called
+
+        monthly_call = next(c for c in mock_rollup.call_args_list if c.args[0] == BaseSummary.Resolution.MONTHLY)
+        assert monthly_call.args[2] == self.month_start  # window_start
 
 
 class BackfillSummariesTickStalenessRecoveryTests(TestCase):
@@ -1635,7 +1642,7 @@ git commit -m "feat(summaries): add backfill_summaries_tick orchestrator"
 - 1-minute tick / 30-second lock staleness / 30-minute batch staleness / 5-failure threshold → Task 8 constants.
 - All items from the spec's "Out of scope" section are correctly left undone (no per-monitor progress tracking, no multiple concurrent jobs, no configurable chunk size, no per-sub-task retry policy).
 
-**2. Placeholder scan:** No TBD/TODO markers. `_backfill_complete_chunk`'s test (`test_july_first_cascades_monthly_and_quarterly_rollups`) has a slightly awkward assertion (`... or True`) because it deliberately doesn't duplicate the already-covered rollup-correctness tests in `tests.py` — documented inline with a comment explaining why, not left as an unexplained gap.
+**2. Placeholder scan:** No TBD/TODO markers, no vacuous assertions.
 
 **3. Type consistency:** Checked signatures used across tasks:
 - `backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models)` — defined in Task 2, called identically in Task 3 (`rebuild_summaries.py`) and Task 7 (`backfill_monitor_chunk`).
