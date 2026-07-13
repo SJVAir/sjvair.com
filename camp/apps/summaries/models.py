@@ -2,6 +2,8 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
+from django_sqids import SqidsField, shuffle_alphabet
+from model_utils.models import TimeStampedModel
 
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.monitors.models import Monitor
@@ -77,3 +79,37 @@ class RegionSummary(BaseSummary):
 
     class Meta(BaseSummary.Meta):
         unique_together = ('region', 'entry_type', 'resolution', 'timestamp')
+
+
+class SummaryBackfillJob(TimeStampedModel):
+    class State(models.TextChoices):
+        RUNNING = 'running', _('Running')
+        PAUSED = 'paused', _('Paused')
+        DONE = 'done', _('Done')
+        FAILED = 'failed', _('Failed')
+
+    class Phase(models.TextChoices):
+        IDLE = 'idle', _('Idle')
+        MONITORS = 'monitors', _('Monitors')
+        REGIONS = 'regions', _('Regions')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('summaries.SummaryBackfillJob'))
+
+    state = models.CharField(_('state'), max_length=10, choices=State.choices, default=State.RUNNING)
+    phase = models.CharField(_('phase'), max_length=10, choices=Phase.choices, default=Phase.IDLE)
+
+    cursor = models.DateTimeField(_('cursor'))
+    chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
+    range_start = models.DateTimeField(_('range start'))
+    range_end = models.DateTimeField(_('range end'))
+
+    pending_tasks = models.PositiveIntegerField(_('pending tasks'), default=0)
+    batch_id = models.PositiveIntegerField(_('batch id'), default=0)
+    phase_started_at = models.DateTimeField(_('phase started at'), null=True, blank=True)
+    locked_at = models.DateTimeField(_('locked at'), null=True, blank=True)
+
+    consecutive_failures = models.PositiveSmallIntegerField(_('consecutive failures'), default=0)
+    last_error = models.TextField(_('last error'), blank=True, default='')
+
+    def __str__(self):
+        return f'{self.state} ({self.phase}) @ {self.cursor:%Y-%m-%d}'

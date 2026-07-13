@@ -18,7 +18,7 @@ from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
-from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
 from camp.apps.summaries.backfill import (
     backfill_monitor_hours,
     backfill_region_hours,
@@ -231,3 +231,27 @@ class BackfillRegionHoursTests(TestCase):
         other_hour = self.hour - timedelta(hours=5)
         count = backfill_region_hours(self.region, [other_hour], monitor_grades)
         assert count == 0
+
+
+class SummaryBackfillJobTests(TestCase):
+    def _make_job(self, **kwargs):
+        now = timezone.now()
+        defaults = dict(
+            cursor=now,
+            range_start=now - timedelta(days=365),
+            range_end=now,
+        )
+        defaults.update(kwargs)
+        return SummaryBackfillJob.objects.create(**defaults)
+
+    def test_defaults(self):
+        job = self._make_job()
+        assert job.state == SummaryBackfillJob.State.RUNNING
+        assert job.phase == SummaryBackfillJob.Phase.IDLE
+        assert job.pending_tasks == 0
+        assert job.batch_id == 0
+        assert job.consecutive_failures == 0
+        assert job.last_error == ''
+        assert job.chunk_start is None
+        assert job.locked_at is None
+        assert job.sqid
