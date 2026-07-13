@@ -89,20 +89,38 @@ reaches 0 — not fanned out. Rollup queries aggregate already-computed summary 
 (one query per window per level), which is cheap regardless of monitor/region
 count, so there's no parallelism to gain by distributing it.
 
-Within a chunk `[chunk_start, cursor)`, loop over each of its (≤7) days `D`:
+Within a chunk `[chunk_start, cursor)`, process in **two passes** over its (≤7)
+days — this ordering is load-bearing, not stylistic (see the note below):
 
-1. **Daily**: every day in the chunk just became fully covered → roll it up.
-2. **Monthly**: if `D.day == 1`, the month `[D, D+1month)` just became fully
+**Pass 1 — daily, every day in the chunk:** each day just became fully
+covered → roll it up.
+
+**Pass 2 — higher rollups, for each day `D`, after all of pass 1 has run:**
+
+1. **Monthly**: if `D.day == 1`, the month `[D, D+1month)` just became fully
    covered. Because the walk is strictly backward with no gaps, every day in that
-   month *after* D chronologically was necessarily already processed in an earlier
-   (more-recent) tick — so reaching D confirms the whole month is done. Roll it up.
-3. **Quarterly**: if the month rolled up in step 2 has `D.month in (1, 4, 7, 10)`,
+   month *after* D chronologically was already processed — either in an earlier
+   (more-recent) tick, or, if it falls later in *this same* chunk, in pass 1
+   above — so reaching D confirms the whole month is done. Roll it up.
+2. **Quarterly**: if the month rolled up in step 1 has `D.month in (1, 4, 7, 10)`,
    the quarter `[D, D+3months)` is also now fully covered (its other two months,
    being chronologically later, were already completed in earlier ticks). Roll it up.
-4. **Seasonal**: same check with `D.month in (12, 3, 6, 9)` (meteorological
+3. **Seasonal**: same check with `D.month in (12, 3, 6, 9)` (meteorological
    seasons — same convention as the existing `season_start_months` in
    `tasks.py`). Roll it up.
-5. **Yearly**: if `D.month == 1`, the year is fully covered. Roll it up.
+4. **Yearly**: if `D.month == 1`, the year is fully covered. Roll it up.
+
+**Why two passes, not one combined loop per day:** chunks are fixed 7-day
+windows, deliberately *not* aligned to month boundaries, so a month's 1st
+very often falls in the *middle* of a chunk rather than at its edge. A
+single ascending loop that rolled up a day and then immediately cascaded its
+higher rollups would fire a month's MONTHLY rollup before later days *in the
+same chunk* — still to come in that same loop — had been written, permanently
+undercounting the month (and everything cascaded from it), since `D.day == 1`
+only fires once and is never revisited. Doing all of pass 1 before any of
+pass 2 restores the invariant that every day contributing to a higher rollup
+window has already been written, regardless of whether it was processed in
+an earlier chunk or earlier in this same one.
 
 This reuses the existing `rollup_monitor_summaries` / `rollup_region_summaries`
 functions in `camp/apps/summaries/tasks.py` unchanged — only the *triggering*
