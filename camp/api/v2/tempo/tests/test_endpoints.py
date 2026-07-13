@@ -129,3 +129,25 @@ class TempoPointTests(TestCase):
         })
 
         assert response.status_code == 400
+
+    def test_defaults_to_todays_granule_when_no_range_given(self):
+        today_granule = create_granule()
+        create_granule(timestamp=timezone.now() - timedelta(days=3))
+
+        response = self.client.get(reverse('api:v2:tempo:point-list', args=['no2']), {
+            'latitude': '36.5', 'longitude': '-119.5',
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]['value'] == 1.0
+        assert data[0]['timestamp'] == today_granule.timestamp.isoformat().replace('+00:00', 'Z')
+
+    def test_empty_list_when_no_range_given_and_no_granules_exist(self):
+        response = self.client.get(reverse('api:v2:tempo:point-list', args=['no2']), {
+            'latitude': '36.5', 'longitude': '-119.5',
+        })
+
+        assert response.status_code == 200
+        assert response.json() == []
