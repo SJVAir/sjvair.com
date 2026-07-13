@@ -375,3 +375,207 @@ class BackfillRegionChunkTaskTests(TestCase):
         assert RegionSummary.objects.filter(region=self.region).exists()
         self.job.refresh_from_db()
         assert self.job.pending_tasks == 0
+
+
+from unittest.mock import patch
+
+from camp.apps.summaries.tasks import backfill_summaries_tick
+
+
+class BackfillSummariesTickClaimingTests(TestCase):
+    def _make_job(self, **kwargs):
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        defaults = dict(cursor=now, range_start=now - timedelta(days=30), range_end=now)
+        defaults.update(kwargs)
+        return SummaryBackfillJob.objects.create(**defaults)
+
+    def test_does_nothing_when_no_running_job(self):
+        self._make_job(state=SummaryBackfillJob.State.DONE)
+        backfill_summaries_tick()
+        # No exception, and the DONE job is untouched.
+        job = SummaryBackfillJob.objects.get()
+        assert job.state == SummaryBackfillJob.State.DONE
+
+    def test_skips_job_with_recent_lock(self):
+        job = self._make_job(locked_at=timezone.now())
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_summaries_tick()
+        job.refresh_from_db()
+        # Still idle/batch_id 0 — the tick declined to claim a freshly-locked job.
+        assert job.batch_id == 0
+
+    def test_claims_job_with_stale_lock(self):
+        job = self._make_job(locked_at=timezone.now() - timedelta(minutes=5))
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_summaries_tick()
+        job.refresh_from_db()
+        assert job.batch_id == 1
+
+
+class BackfillSummariesTickDispatchMonitorsTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        self.job = SummaryBackfillJob.objects.create(
+            cursor=now, range_start=now - timedelta(days=30), range_end=now,
+        )
+
+    def test_idle_job_with_data_dispatches_monitor_batch(self):
+        PM25.objects.create(
+            monitor=self.monitor, timestamp=self.job.cursor - timedelta(hours=1, minutes=-5),
+            stage=PM25.Stage.RAW, processor='', value=10.0, location=self.monitor.location,
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_summaries_tick()
+
+        # The dispatched backfill_monitor_chunk task ran synchronously (immediate=True)
+        # and decremented pending_tasks back to 0, then the tick's own transaction
+        # already moved on — check the job ended up in the monitors phase with the
+        # batch drained.
+        self.job.refresh_from_db()
+        assert self.job.phase == SummaryBackfillJob.Phase.MONITORS
+        assert self.job.pending_tasks == 0
+        assert self.job.batch_id == 1
+        assert MonitorSummary.objects.filter(monitor=self.monitor).exists()
+
+    def test_idle_job_with_no_data_dispatches_empty_batch(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.phase == SummaryBackfillJob.Phase.MONITORS
+        assert self.job.pending_tasks == 0
+        assert self.job.batch_id == 1
+
+
+class BackfillSummariesTickDispatchRegionsTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        from camp.apps.regions.models import Region
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        if not self.region:
+            self.skipTest('no region with boundary in fixtures')
+        monitor = PurpleAir.objects.first()
+        monitor.position = self.region.boundary.geometry.centroid
+        monitor.save()
+
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        self.job = SummaryBackfillJob.objects.create(
+            cursor=now, chunk_start=now - timedelta(days=7),
+            range_start=now - timedelta(days=30), range_end=now,
+            phase=SummaryBackfillJob.Phase.MONITORS, pending_tasks=0, batch_id=1,
+        )
+
+    def test_monitors_drained_dispatches_region_batch(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.phase == SummaryBackfillJob.Phase.REGIONS
+        assert self.job.batch_id == 2
+
+    def test_monitors_still_pending_does_nothing(self):
+        self.job.pending_tasks = 3
+        self.job.phase_started_at = timezone.now()
+        self.job.save()
+        backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.phase == SummaryBackfillJob.Phase.MONITORS
+        assert self.job.pending_tasks == 3
+        assert self.job.batch_id == 1
+
+
+class BackfillSummariesTickCompleteChunkTests(TestCase):
+    def setUp(self):
+        # Chunk whose chunk_start lands exactly on a month start (Jul 1,
+        # 2023), so completing it exercises both the daily and the
+        # higher-rollup cascade (July is a quarter-start month) in one call.
+        self.month_start = _day(2023, 7, 1)
+        self.job = SummaryBackfillJob.objects.create(
+            cursor=self.month_start + timedelta(days=2),
+            chunk_start=self.month_start,
+            range_start=self.month_start - timedelta(days=365),
+            range_end=self.month_start + timedelta(days=2),
+            phase=SummaryBackfillJob.Phase.REGIONS, pending_tasks=0, batch_id=1,
+        )
+
+    def test_regions_drained_advances_cursor_to_chunk_start(self):
+        backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.cursor == self.month_start
+        assert self.job.phase == SummaryBackfillJob.Phase.IDLE
+        assert self.job.chunk_start is None
+
+    def test_regions_drained_resets_failure_count(self):
+        self.job.consecutive_failures = 2
+        self.job.last_error = 'boom'
+        self.job.save()
+        backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.consecutive_failures == 0
+        assert self.job.last_error == ''
+
+    def test_reaching_range_start_marks_job_done(self):
+        self.job.range_start = self.month_start
+        self.job.save()
+        backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.state == SummaryBackfillJob.State.DONE
+
+    def test_july_first_cascades_monthly_and_quarterly_rollups(self):
+        # July is a quarter-start month (Jul/Aug/Sep = Q3) — crossing Jul 1
+        # while walking backward should trigger a monthly AND a quarterly
+        # rollup call, on top of the daily rollups for each day in the
+        # chunk. Rollup *correctness* (the actual aggregated values) is
+        # already covered by RollupMonitorSummariesTests /
+        # RollupRegionSummariesTests in tests.py — this only proves the
+        # cascade invokes the right windows.
+        with patch('camp.apps.summaries.tasks.rollup_monitor_summaries') as mock_rollup:
+            backfill_summaries_tick()
+
+        resolutions_called = [call.args[0] for call in mock_rollup.call_args_list]
+        assert BaseSummary.Resolution.DAILY in resolutions_called
+        assert BaseSummary.Resolution.MONTHLY in resolutions_called
+        assert BaseSummary.Resolution.QUARTERLY in resolutions_called
+        assert BaseSummary.Resolution.SEASONAL not in resolutions_called
+        assert BaseSummary.Resolution.YEARLY not in resolutions_called
+
+        monthly_call = next(c for c in mock_rollup.call_args_list if c.args[0] == BaseSummary.Resolution.MONTHLY)
+        assert monthly_call.args[2] == self.month_start  # window_start
+
+
+class BackfillSummariesTickStalenessRecoveryTests(TestCase):
+    def setUp(self):
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        self.job = SummaryBackfillJob.objects.create(
+            cursor=now, chunk_start=now - timedelta(days=7),
+            range_start=now - timedelta(days=30), range_end=now,
+            phase=SummaryBackfillJob.Phase.MONITORS, pending_tasks=5, batch_id=1,
+        )
+
+    def test_fresh_batch_is_left_alone(self):
+        self.job.phase_started_at = timezone.now()
+        self.job.save()
+        backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 5
+        assert self.job.phase == SummaryBackfillJob.Phase.MONITORS
+
+    def test_stale_batch_resets_to_idle_for_redispatch(self):
+        self.job.phase_started_at = timezone.now() - timedelta(minutes=31)
+        self.job.save()
+        backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.phase == SummaryBackfillJob.Phase.IDLE
+        assert self.job.pending_tasks == 0
+        assert self.job.consecutive_failures == 1
+        assert 'stalled' in self.job.last_error
+
+    def test_five_consecutive_stalls_marks_job_failed(self):
+        self.job.phase_started_at = timezone.now() - timedelta(minutes=31)
+        self.job.consecutive_failures = 4
+        self.job.save()
+        backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.state == SummaryBackfillJob.State.FAILED
