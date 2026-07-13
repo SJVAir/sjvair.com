@@ -31,6 +31,7 @@ urlpatterns = [
     path('regions/', include('camp.api.v2.regions.urls', namespace='regions')),
     path('ceidars/', include('camp.api.v2.ceidars.urls', namespace='ceidars')),
     path('hms/', include('camp.api.v2.hms.urls', namespace='hms')),
+    path('tempo/', include('camp.api.v2.tempo.urls', namespace='tempo')),
     path('pesticides/', include('camp.api.v2.pesticides.urls', namespace='pesticides')),
     path('task/<task_id>/', endpoints.TaskStatus.as_view(), name='task-status'),
 ]
