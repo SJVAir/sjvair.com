@@ -47,6 +47,11 @@ Example item (abridged):
 
 ### Zone mapping
 
+> **Update (2026-07-13):** the section below describes the *original* plan.
+> It's been superseded — see "Zone geometry update" after the Out of Scope
+> section for what actually shipped. Kept here for history/context on why
+> the original call was made.
+
 The feed publishes 9 zones. 8 map 1:1 (after one alias) to the existing SJV
 county `Region` records (`camp.apps.regions.managers.SJV_COUNTIES`); one does
 not correspond to any `Region` and is dropped:
@@ -291,9 +296,51 @@ class ForecastList(ForecastMixin, generics.ListEndpoint):
 
 ## Out of Scope (this pass)
 
-- Accurate forecast-zone geometry (Kern air-basin clip, Sequoia zone) — using
-  existing county boundaries as an approximation instead.
+- ~~Accurate forecast-zone geometry (Kern air-basin clip, Sequoia zone) — using
+  existing county boundaries as an approximation instead.~~ **Done — see
+  "Zone geometry update" below.** Implemented in a follow-up pass on this same
+  branch rather than deferred to a separate one.
 - Notifications/alerts driven by forecast data (e.g. air alert push
-  notifications) — this pass is ingestion + API only.
+  notifications) — considered and explicitly declined (not just deferred):
+  SJVAPCD already runs its own notification system for this, and the
+  decision was not to duplicate/compete with it. `air_alert` stays as
+  read-only data with no notification wiring.
 - Historical backfill — the feed has no archive; history only accumulates
   from when this integration starts running.
+
+## Zone geometry update (2026-07-13)
+
+The original plan (county boundaries as an approximation for Kern and a
+dropped Sequoia zone) was superseded once real zone geometry became
+available: the SJVAPCD forecast page renders its map as an inline SVG, whose
+9 path shapes were saved locally (`datafiles/sjvapcd-forecast-areas.svg`,
+cleaned of everything but the shape outlines) and used to derive accurate
+lat/lon geometry for the 3 zones that don't map 1:1 to a county:
+
+- **Kern (SJV Air Basin portion)** and **Tulare (SJV Valley portion)**: the
+  real county `Region` boundary (already accurate) intersected with the
+  SVG shape transformed into lat/lon — the real boundary supplies the outer
+  edge, the SVG only supplies the internal dividing line.
+- **Sequoia National Park and Forest**: verified (via exact-vertex-sequence
+  matching in the raw SVG path data, then confirmed geometrically) to be
+  carved entirely from Tulare's territory, not Kern's — defined as
+  `real_Tulare − Tulare_zone` so the two tile the real county exactly, with
+  no gap or overlap.
+
+The SVG pixel space is georeferenced via an affine transform fit against the
+6 zones that *do* map 1:1 to a county (used as ground-control points),
+validated to IoU ≥ 0.99 against their real boundaries — sufficient because
+the SJV's geographic extent is small enough that map-projection curvature is
+negligible.
+
+All 3 are stored as `Region(type=CUSTOM)` records (not a new `Region.Type`
+— `CUSTOM` already exists as "catch-all for user-defined regions") with
+`metadata` recording their derivation, imported via a new one-time command:
+`camp.apps.regions.forecast_zones` (the parsing/fitting logic) +
+`manage.py import_forecast_zones` (the command). This must be run once per
+environment, after `import_counties`, before Kern/Tulare/Sequoia forecasts
+will populate — see the updated CLAUDE.md import instructions.
+
+Every zone in the feed now maps to a region (`ZONE_TO_REGION` in
+`camp/apps/forecasts/tasks.py`), so a daily pull creates 18 `Forecast` rows
+(9 zones × 2 horizons) instead of the original 16.
