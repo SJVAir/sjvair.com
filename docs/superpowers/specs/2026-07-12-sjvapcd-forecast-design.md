@@ -329,7 +329,7 @@ lat/lon geometry for the 3 zones that don't map 1:1 to a county:
 
 The SVG pixel space is georeferenced via an affine transform fit against the
 6 zones that *do* map 1:1 to a county (used as ground-control points),
-validated to IoU ≥ 0.99 against their real boundaries — sufficient because
+validated to IoU ≥ 0.98 against their real boundaries — sufficient because
 the SJV's geographic extent is small enough that map-projection curvature is
 negligible.
 

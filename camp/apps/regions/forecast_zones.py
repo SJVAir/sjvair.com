@@ -7,7 +7,7 @@ The SVG's 9 named shapes are in an arbitrary rendered pixel space, not
 lat/lon. Six of them (San Joaquin, Stanislaus, Merced, Madera, Fresno,
 Kings) correspond 1:1 to real SJV counties already in the Region table --
 those six are used as ground-control points to fit an affine transform
-from SVG pixel space to lat/lon (validated to IoU >= 0.99 against the real
+from SVG pixel space to lat/lon (validated to IoU >= 0.98 against the real
 county boundaries for all six, which is why a plain affine transform is
 sufficient here -- the SJV's geographic extent is small enough that map
 projection curvature is negligible).
