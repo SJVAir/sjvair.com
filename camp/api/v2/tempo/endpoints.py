@@ -1,7 +1,13 @@
+from django.http import Http404
+from django.utils.functional import cached_property
+
 from resticus import generics
 
 from camp.apps.tempo.models import Granule
 from camp.apps.tempo.rendering import PRODUCT_COLOR_RANGES, _level_set_for
+
+from .filters import GranuleFilter, default_to_today
+from .serializers import GranuleSerializer
 
 PRODUCT_UNITS = {
     'no2': 'molecules/cm²',
@@ -29,3 +35,33 @@ class TempoProducts(generics.Endpoint):
                 ],
             })
         return products
+
+
+class TempoProductMixin:
+    @cached_property
+    def product(self):
+        product = self.kwargs['product']
+        if product not in Granule.Product.values:
+            raise Http404(f'"{product}" is not a valid TEMPO product')
+        return product
+
+
+class GranuleMixin(TempoProductMixin):
+    model = Granule
+    serializer_class = GranuleSerializer
+    paginate = True
+
+    def get_queryset(self):
+        return Granule.objects.filter(product=self.product)
+
+
+class GranuleList(GranuleMixin, generics.ListEndpoint):
+    """List TEMPO granules for one product. Defaults to today's granules, falling back to yesterday before noon if today's data isn't available yet."""
+
+    filter_class = GranuleFilter
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if 'date' not in self.request.GET and 'timestamp' not in self.request.GET:
+            return default_to_today(queryset)
+        return queryset
