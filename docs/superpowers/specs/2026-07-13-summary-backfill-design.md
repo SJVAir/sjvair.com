@@ -32,7 +32,7 @@ deadlock risk of a task that occupies a worker slot while blocking on other
 tasks that need worker slots to run.
 
 ```
-SummaryBackfillJob                    backfill_summaries_tick (periodic, every 2 min)
+SummaryBackfillJob                    backfill_summaries_tick (periodic, every 1 min)
 ┌───────────────────────┐             Claim the job (locked, skip if none/locked).
 │ cursor                │             Branch on job.phase:
 │ range_start/range_end │
@@ -119,8 +119,8 @@ phase or manual step.
 | `sqid`                 | External identifier (project convention)                                |
 | `state`                | `running` / `paused` / `done` / `failed`                                |
 | `phase`                | `idle` / `monitors` / `regions` — which batch (if any) is in flight     |
-| `cursor`               | Boundary of already-processed range (walks backward)                    |
-| `chunk_start`          | Lower bound of the chunk currently being processed (set when leaving `idle`) |
+| `cursor`               | **Confirmed** boundary of already-processed range — only moves when a chunk fully completes |
+| `chunk_start`          | **Target** lower bound of the chunk currently in flight (set once, when leaving `idle`; unchanged until the chunk completes) |
 | `range_start`          | Target earliest bound (e.g. 2020-01-01)                                 |
 | `range_end`            | Fixed starting point (e.g. start of current month)                      |
 | `pending_tasks`        | Count of outstanding sub-tasks for the current phase's batch             |
@@ -131,14 +131,30 @@ phase or manual step.
 | `last_error`           | Most recent exception message, for visibility without log-diving        |
 | `created`, `updated`   | Standard timestamps                                                      |
 
+### Tracking position in the timeline
+
+`cursor` and `chunk_start` are both persisted DB fields, not in-memory state, and
+they answer different questions:
+
+- `cursor` — "how far back is fully done?" Only ever updated in one place: the
+  `regions` → `idle` transition, after rollups for the chunk have run.
+- `chunk_start` — "where is the batch currently in flight heading?" Set once
+  when a chunk starts (`idle` → `monitors`) and left untouched for the rest of
+  that chunk's lifetime, including across the `monitors` → `regions` handoff.
+
+Because both live on the row, a tick never needs to reconstruct "where was I" —
+it just reads `phase`, `cursor`, and `chunk_start` off the job. This is also what
+makes the staleness-restart path (below) correct: it re-dispatches using the
+*same* `[chunk_start, cursor)` window already recorded, not a freshly recomputed
+one, so a restart can never accidentally drift the range being processed.
+
 ### Claiming the job
 
-Same short-lived lock as before — each tick claims the job under
-`select_for_update(skip_locked=True)`, filtered to `state='running'`, with
-`locked_at` null or older than a small threshold (e.g. 2 minutes — ticks are now
-cheap dispatch-or-check operations, not multi-minute computations, so the lock
-only needs to cover one tick's own brief duration). The lock is released as soon
-as the tick's own DB work commits.
+Each tick claims the job under `select_for_update(skip_locked=True)`, filtered
+to `state='running'`, with `locked_at` null or older than a small threshold
+(e.g. 30 seconds — comfortably longer than a tick's own dispatch-or-check
+duration, comfortably shorter than the 1-minute tick interval). The lock is
+released as soon as the tick's own DB work commits.
 
 ### Dispatching a batch safely
 
@@ -268,7 +284,7 @@ needed.
 All on the `summaries` queue, at the lowest priority in the existing scheme
 (100 → 5) so backfill work never preempts live real-time summaries:
 
-- `backfill_summaries_tick` — `db_periodic_task(crontab(minute='*/2'), priority=1,
+- `backfill_summaries_tick` — `db_periodic_task(crontab(minute='*'), priority=1,
   queue='summaries')`. The non-blocking orchestrator described above.
 - `backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id)` —
   `db_task(priority=1, queue='summaries')`. Computes hourly + daily
@@ -294,7 +310,7 @@ change.
   already cover targeted recalculation; this system is for the full-history case).
 - Multiple concurrent backfill jobs.
 - Configurable chunk size/tick interval via settings — hardcoded to 7 days /
-  2-minute orchestrator ticks / 30-minute stall threshold; can be revisited if
+  1-minute orchestrator ticks / 30-minute stall threshold; can be revisited if
   those estimates prove wrong in practice.
 - Per-sub-task retry/backoff policy beyond Huey's defaults — a failed monitor or
   region task just leaves `pending_tasks` non-zero until the batch-level
