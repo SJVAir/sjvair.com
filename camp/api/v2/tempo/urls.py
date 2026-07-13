@@ -9,4 +9,5 @@ urlpatterns = [
     path('<str:product>/granules/', endpoints.GranuleList.as_view(), name='granule-list'),
     path('<str:product>/granules/latest/', endpoints.GranuleLatest.as_view(), name='granule-latest'),
     path('<str:product>/point/', endpoints.TempoPoint.as_view(), name='point-list'),
+    path('<str:product>/region/<str:region_id>/', endpoints.TempoRegion.as_view(), name='region-list'),
 ]

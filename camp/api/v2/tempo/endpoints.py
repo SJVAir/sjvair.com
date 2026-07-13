@@ -4,12 +4,13 @@ from django.utils.functional import cached_property
 from resticus import generics
 from resticus.http import Http400
 
+from camp.apps.regions.models import Region
 from camp.apps.tempo.models import Granule
-from camp.apps.tempo.queries import point_series
+from camp.apps.tempo.queries import point_series, region_series
 from camp.apps.tempo.rendering import PRODUCT_COLOR_RANGES, _level_set_for
 
 from .filters import GranuleFilter, default_to_today
-from .forms import TempoPointForm
+from .forms import TempoPointForm, TempoSeriesForm
 from .serializers import GranuleSerializer
 
 PRODUCT_UNITS = {
@@ -97,3 +98,28 @@ class TempoPoint(TempoProductMixin, generics.Endpoint):
             start, end = min(timestamps), max(timestamps)
 
         return point_series(self.product, form.point, start, end)
+
+
+class TempoRegion(TempoProductMixin, generics.Endpoint):
+    """Zonal-aggregate value series over a community boundary, for one product across an hourly timestamp range."""
+
+    def get(self, request, region_id, *args, **kwargs):
+        try:
+            region = Region.objects.select_related('boundary').get(sqid=region_id)
+            geometry = region.boundary.geometry
+        except (Region.DoesNotExist, AttributeError):
+            raise Http404(f'"{region_id}" is not a valid region id')
+
+        form = TempoSeriesForm(request.GET)
+        if not form.is_valid():
+            return Http400({'errors': form.errors.get_json_data()})
+
+        start, end = form.cleaned_data['start'], form.cleaned_data['end']
+        if start is None:
+            queryset = default_to_today(Granule.objects.filter(product=self.product))
+            timestamps = queryset.values_list('timestamp', flat=True)
+            if not timestamps:
+                return []
+            start, end = min(timestamps), max(timestamps)
+
+        return region_series(self.product, geometry, start, end)

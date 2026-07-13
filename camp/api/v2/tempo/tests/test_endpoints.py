@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 import numpy as np
-from django.contrib.gis.geos import Polygon
+from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from camp.apps.regions.models import Boundary, Region
 from camp.apps.tempo.models import Granule
 from camp.apps.tempo.raster import build_raster
 
@@ -148,6 +149,88 @@ class TempoPointTests(TestCase):
         response = self.client.get(reverse('api:v2:tempo:point-list', args=['no2']), {
             'latitude': '36.5', 'longitude': '-119.5',
         })
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+
+def create_region_with_boundary(polygon):
+    # Boundary.geometry is a MultiPolygonField, not PolygonField -- must wrap.
+    # Region.boundary (the OneToOneField HMS's filter_region_id and this
+    # endpoint both read via region.boundary.geometry) is a separate pointer
+    # from Boundary.region (the reverse FK) and isn't set automatically by
+    # creating a Boundary row -- it has to be assigned explicitly.
+    region = Region.objects.create(name='Test Region', slug='test-region', type=Region.Type.COUNTY)
+    boundary = Boundary.objects.create(region=region, geometry=MultiPolygon(polygon), version='2026')
+    region.boundary = boundary
+    region.save(update_fields=['boundary'])
+    return region
+
+
+class TempoRegionTests(TestCase):
+    # TempoRegion is a plain generics.Endpoint like TempoProducts/TempoPoint
+    # -- no {"data": ...} envelope, response.json() is the bare list.
+    def test_returns_series_for_explicit_range(self):
+        region = create_region_with_boundary(Polygon.from_bbox((-120, 36, -119, 37)))
+        ts0 = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        ts1 = ts0 + timedelta(hours=1)
+        create_granule(timestamp=ts0)
+        create_granule(timestamp=ts1)
+
+        response = self.client.get(
+            reverse('api:v2:tempo:region-list', args=['no2', region.sqid]),
+            {'start': ts0.isoformat(), 'end': ts1.isoformat()},
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()) == 2
+
+    def test_unknown_region_404s(self):
+        response = self.client.get(reverse('api:v2:tempo:region-list', args=['no2', 'not-a-real-region']))
+
+        assert response.status_code == 404
+
+    def test_unknown_product_404s(self):
+        region = create_region_with_boundary(Polygon.from_bbox((-120, 36, -119, 37)))
+
+        response = self.client.get(reverse('api:v2:tempo:region-list', args=['not-a-real-product', region.sqid]))
+
+        assert response.status_code == 404
+
+    def test_region_without_boundary_404s(self):
+        region = Region.objects.create(name='No Boundary', slug='no-boundary', type=Region.Type.COUNTY)
+
+        response = self.client.get(reverse('api:v2:tempo:region-list', args=['no2', region.sqid]))
+
+        assert response.status_code == 404
+
+    def test_range_over_cap_is_400(self):
+        region = create_region_with_boundary(Polygon.from_bbox((-120, 36, -119, 37)))
+        now = timezone.now()
+
+        response = self.client.get(
+            reverse('api:v2:tempo:region-list', args=['no2', region.sqid]),
+            {'start': (now - timedelta(days=91)).isoformat(), 'end': now.isoformat()},
+        )
+
+        assert response.status_code == 400
+
+    def test_defaults_to_todays_granule_when_no_range_given(self):
+        region = create_region_with_boundary(Polygon.from_bbox((-120, 36, -119, 37)))
+        today_granule = create_granule()
+        create_granule(timestamp=timezone.now() - timedelta(days=3))
+
+        response = self.client.get(reverse('api:v2:tempo:region-list', args=['no2', region.sqid]))
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]['timestamp'] == today_granule.timestamp.isoformat().replace('+00:00', 'Z')
+
+    def test_empty_list_when_no_range_given_and_no_granules_exist(self):
+        region = create_region_with_boundary(Polygon.from_bbox((-120, 36, -119, 37)))
+
+        response = self.client.get(reverse('api:v2:tempo:region-list', args=['no2', region.sqid]))
 
         assert response.status_code == 200
         assert response.json() == []
