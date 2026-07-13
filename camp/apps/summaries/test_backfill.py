@@ -22,6 +22,7 @@ from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
+from camp.apps.summaries.tasks import backfill_monitor_chunk, backfill_region_chunk
 from camp.apps.summaries.backfill import (
     backfill_monitor_hours,
     backfill_region_hours,
@@ -303,3 +304,74 @@ class BackfillSummariesCommandTests(TestCase):
 
     def test_cancel_with_no_active_job_does_not_raise(self):
         self._run('cancel')
+
+
+class BackfillMonitorChunkTaskTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        now = timezone.now()
+        self.chunk_start = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+        self.chunk_end = self.chunk_start + timedelta(hours=1)
+        self.job = SummaryBackfillJob.objects.create(
+            cursor=self.chunk_end, range_start=self.chunk_start - timedelta(days=1), range_end=self.chunk_end,
+            phase=SummaryBackfillJob.Phase.MONITORS, pending_tasks=1, batch_id=1,
+        )
+        PM25.objects.create(
+            monitor=self.monitor, timestamp=self.chunk_start + timedelta(minutes=5),
+            stage=PM25.Stage.RAW, processor='', value=10.0, location=self.monitor.location,
+        )
+
+    def test_creates_summary_and_decrements_pending_tasks(self):
+        backfill_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 1)
+        assert MonitorSummary.objects.filter(monitor=self.monitor).exists()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 0
+
+    def test_stale_batch_id_does_not_decrement(self):
+        backfill_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 999)
+        # Summary is still written — computation isn't fenced, only the counter is.
+        assert MonitorSummary.objects.filter(monitor=self.monitor).exists()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 1
+
+    def test_wrong_phase_does_not_decrement(self):
+        self.job.phase = SummaryBackfillJob.Phase.REGIONS
+        self.job.save(update_fields=['phase'])
+        backfill_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 1)
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 1
+
+
+class BackfillRegionChunkTaskTests(TestCase):
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        if not self.region:
+            self.skipTest('no region with boundary in fixtures')
+        self.monitor.position = self.region.boundary.geometry.centroid
+        self.monitor.save()
+
+        self.hour = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        MonitorSummary.objects.create(
+            monitor=self.monitor, timestamp=self.hour,
+            resolution=MonitorSummary.Resolution.HOURLY, entry_type='pm25', processor='',
+            count=10, expected_count=30, sum_value=200.0, sum_of_squares=4000.0,
+            minimum=20.0, maximum=20.0, mean=20.0, stddev=0.0, p25=20.0, p75=20.0,
+            tdigest={'C': [[20.0, 10]], 'n': 10}, is_complete=False,
+        )
+
+        self.job = SummaryBackfillJob.objects.create(
+            cursor=self.hour + timedelta(hours=1), range_start=self.hour - timedelta(days=1),
+            range_end=self.hour + timedelta(hours=1),
+            phase=SummaryBackfillJob.Phase.REGIONS, pending_tasks=1, batch_id=1,
+        )
+
+    def test_creates_region_summary_and_decrements_pending_tasks(self):
+        backfill_region_chunk(self.job.pk, str(self.region.pk), self.hour, self.hour + timedelta(hours=1), 1)
+        assert RegionSummary.objects.filter(region=self.region).exists()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 0

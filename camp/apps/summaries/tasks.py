@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, F, OuterRef, Q
 from django.utils import timezone
 
 from camp.utils.datetime import localtime, make_aware
@@ -17,7 +17,8 @@ from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
-from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.backfill import backfill_monitor_hours, backfill_region_hours, hour_range
+from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
 
 
 def get_summarizable_entry_models():
@@ -363,3 +364,30 @@ def yearly_region_summaries(year_start=None):
         today = localtime().date()
         year_start = make_aware(datetime(today.year - 1, 1, 1), settings.DEFAULT_TIMEZONE)
     rollup_region_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))
+
+
+# ---- Backfill ----
+
+@db_task(priority=1, queue='summaries')
+def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
+    """Compute one monitor's hourly summaries for a backfill chunk, then report completion."""
+    monitor = Monitor.objects.get(pk=monitor_id)
+    entry_models = get_summarizable_entry_models()
+    backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models)
+
+    SummaryBackfillJob.objects.filter(
+        pk=job_id, batch_id=batch_id, phase=SummaryBackfillJob.Phase.MONITORS,
+    ).update(pending_tasks=F('pending_tasks') - 1)
+
+
+@db_task(priority=1, queue='summaries')
+def backfill_region_chunk(job_id, region_id, chunk_start, chunk_end, batch_id):
+    """Compute one region's hourly summaries for a backfill chunk, then report completion."""
+    region = Region.objects.select_related('boundary').get(pk=region_id)
+    monitor_grades = dict(region.monitors.with_grade().values_list('pk', 'grade'))
+    hours = list(hour_range(chunk_start, chunk_end))
+    backfill_region_hours(region, hours, monitor_grades)
+
+    SummaryBackfillJob.objects.filter(
+        pk=job_id, batch_id=batch_id, phase=SummaryBackfillJob.Phase.REGIONS,
+    ).update(pending_tasks=F('pending_tasks') - 1)
