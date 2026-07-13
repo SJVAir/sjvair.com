@@ -70,13 +70,13 @@ class GranuleListTests(TestCase):
         assert response.status_code == 404
 
     def test_excludes_other_products(self):
-        create_granule(product='no2')
+        no2_granule = create_granule(product='no2')
         create_granule(product='hcho')
 
         response = self.client.get(reverse('api:v2:tempo:granule-list', args=['no2']))
 
-        assert all(row['product'] == 'no2' if 'product' in row else True for row in response.json()['data'])
-        assert len(response.json()['data']) == 1
+        sqids = {row['sqid'] for row in response.json()['data']}
+        assert sqids == {no2_granule.sqid}
 
 
 class GranuleLatestTests(TestCase):
