@@ -29,8 +29,8 @@ class Forecast(TimeStampedModel):
     aqi_category = models.CharField(_('AQI category'), max_length=32)
     pollutant = models.CharField(_('pollutant'), max_length=16, choices=Pollutant.choices)
 
-    burn_status = models.CharField(_('burn status'), max_length=32)
-    burn_status_text = models.CharField(_('burn status text'), max_length=255)
+    burn_status = models.CharField(_('burn status'), max_length=32, blank=True)
+    burn_status_text = models.CharField(_('burn status text'), max_length=255, blank=True)
 
     air_alert = models.BooleanField(_('air alert'), default=False)
     air_alert_start = models.DateField(_('air alert start'), null=True, blank=True)
