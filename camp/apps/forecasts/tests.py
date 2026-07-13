@@ -221,24 +221,41 @@ class FetchForecastsTests(TestCase):
     def test_creates_forecast_for_each_mapped_zone(self, mock_get):
         mock_get.return_value = mock_response()
         fetch_forecasts.call_local()
-        # 8 mapped zones x 2 horizons (today/tomorrow) = 16 rows; Sequoia dropped.
-        assert Forecast.objects.count() == 16
+        # 9 mapped zones x 2 horizons (today/tomorrow) = 18 rows; every zone in
+        # the feed now maps to a region (6 counties + 3 derived custom zones).
+        assert Forecast.objects.count() == 18
 
     @patch('camp.apps.forecasts.tasks.requests.get')
-    def test_skips_unmapped_zone(self, mock_get):
+    def test_sequoia_zone_maps_to_custom_region(self, mock_get):
         mock_get.return_value = mock_response()
         fetch_forecasts.call_local()
-        assert not Forecast.objects.filter(zone_name='Sequoia National Park and Forest').exists()
-
-    @patch('camp.apps.forecasts.tasks.requests.get')
-    def test_kern_alias_maps_to_kern_county_region(self, mock_get):
-        mock_get.return_value = mock_response()
-        fetch_forecasts.call_local()
-        kern = Region.objects.get(name='Kern County')
+        sequoia = Region.objects.get(type=Region.Type.CUSTOM, name='Sequoia National Park and Forest')
         forecast = Forecast.objects.get(
-            region=kern, zone_name='Kern (SJV Air Basin portion)', forecast_date=date(2026, 7, 11),
+            region=sequoia, zone_name='Sequoia National Park and Forest', forecast_date=date(2026, 7, 11),
+        )
+        assert forecast.aqi_value == 129
+        assert forecast.pollutant == 'O3'
+
+    @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_kern_zone_maps_to_custom_airbasin_region(self, mock_get):
+        mock_get.return_value = mock_response()
+        fetch_forecasts.call_local()
+        kern_airbasin = Region.objects.get(type=Region.Type.CUSTOM, name='Kern (SJV Air Basin portion)')
+        forecast = Forecast.objects.get(
+            region=kern_airbasin, zone_name='Kern (SJV Air Basin portion)', forecast_date=date(2026, 7, 11),
         )
         assert forecast.aqi_value == 115
+        assert forecast.pollutant == 'O3'
+
+    @patch('camp.apps.forecasts.tasks.requests.get')
+    def test_tulare_zone_maps_to_custom_valley_region(self, mock_get):
+        mock_get.return_value = mock_response()
+        fetch_forecasts.call_local()
+        tulare_valley = Region.objects.get(type=Region.Type.CUSTOM, name='Tulare (SJV Valley portion)')
+        forecast = Forecast.objects.get(
+            region=tulare_valley, zone_name='Tulare', forecast_date=date(2026, 7, 11),
+        )
+        assert forecast.aqi_value == 105
         assert forecast.pollutant == 'O3'
 
     @patch('camp.apps.forecasts.tasks.requests.get')
@@ -282,7 +299,7 @@ class FetchForecastsTests(TestCase):
         mock_get.return_value = mock_response()
         fetch_forecasts.call_local()
         count = Forecast.objects.count()
-        assert count == 16
+        assert count == 18
         fetch_forecasts.call_local()
         assert Forecast.objects.count() == count
 
@@ -290,7 +307,7 @@ class FetchForecastsTests(TestCase):
     def test_malformed_zone_is_skipped_without_aborting_the_run(self, mock_get):
         # Kings' <AQI:today> text no longer matches AQI_TEXT_RE, simulating a
         # plausible "Unavailable" feed state. This should only drop Kings'
-        # rows, not roll back the other 7 (already-good) zones.
+        # rows, not roll back the other 8 (already-good) zones.
         broken_xml = SAMPLE_FEED_XML.replace(
             b'<AQI:today date="2026-07-11T00:00:00 -7:00" status="Yellow">71 Moderate (O3)</AQI:today>',
             b'<AQI:today date="2026-07-11T00:00:00 -7:00" status="Yellow">Unavailable</AQI:today>',
@@ -300,7 +317,7 @@ class FetchForecastsTests(TestCase):
 
         fetch_forecasts.call_local()  # must not raise
 
-        assert Forecast.objects.count() == 14
+        assert Forecast.objects.count() == 16
         assert not Forecast.objects.filter(zone_name='Kings').exists()
 
     @patch('camp.apps.forecasts.tasks.requests.get')
@@ -308,7 +325,7 @@ class FetchForecastsTests(TestCase):
         # Simulates a DB-level failure (e.g. a value that violates a field
         # constraint) for a single zone. The nested savepoint around each
         # zone's writes should isolate this: Kings' rows are dropped, but the
-        # other 7 (already-committed-to-the-savepoint) zones must still land.
+        # other 8 (already-committed-to-the-savepoint) zones must still land.
         mock_get.return_value = mock_response()
         original_create = Forecast.objects.create
 
@@ -320,7 +337,7 @@ class FetchForecastsTests(TestCase):
         with patch.object(Forecast.objects, 'create', side_effect=flaky_create):
             fetch_forecasts.call_local()  # must not raise
 
-        assert Forecast.objects.count() == 14
+        assert Forecast.objects.count() == 16
         assert not Forecast.objects.filter(zone_name='Kings').exists()
 
 
@@ -332,5 +349,5 @@ class FetchForecastsCommandTests(TestCase):
         mock_get.return_value = mock_response()
         out = StringIO()
         call_command('fetch_forecasts', stdout=out)
-        assert Forecast.objects.count() == 16
+        assert Forecast.objects.count() == 18
         assert 'Done' in out.getvalue()

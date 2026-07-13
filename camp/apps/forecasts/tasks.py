@@ -26,17 +26,22 @@ FEED_URL = 'https://ww2.valleyair.org/aqinfo/airstatus.xml'
 # See split_today_tomorrow() below for how they're told apart.
 NAMESPACE_URI = 'https://ww2.valleyair.org/'
 
-# Maps the feed's raw <county> label to the matching county Region's name.
-# "Sequoia National Park and Forest" has no matching Region and is skipped.
-ZONE_TO_REGION_NAME = {
-    'San Joaquin': 'San Joaquin County',
-    'Stanislaus': 'Stanislaus County',
-    'Merced': 'Merced County',
-    'Madera': 'Madera County',
-    'Fresno': 'Fresno County',
-    'Kings': 'Kings County',
-    'Tulare': 'Tulare County',
-    'Kern (SJV Air Basin portion)': 'Kern County',
+# Maps the feed's raw <county> label to the matching Region's (type, name).
+# Six zones match a county Region 1:1. Kern and Tulare only match a *portion*
+# of their county (SJVAPCD's forecast zone excludes the desert/mountain part
+# of Kern, and Sequoia National Park and Forest is carved out of Tulare), so
+# those three map to derived Region(type=CUSTOM) records instead -- see
+# camp.apps.regions.forecast_zones and the import_forecast_zones command.
+ZONE_TO_REGION = {
+    'San Joaquin': (Region.Type.COUNTY, 'San Joaquin County'),
+    'Stanislaus': (Region.Type.COUNTY, 'Stanislaus County'),
+    'Merced': (Region.Type.COUNTY, 'Merced County'),
+    'Madera': (Region.Type.COUNTY, 'Madera County'),
+    'Fresno': (Region.Type.COUNTY, 'Fresno County'),
+    'Kings': (Region.Type.COUNTY, 'Kings County'),
+    'Tulare': (Region.Type.CUSTOM, 'Tulare (SJV Valley portion)'),
+    'Kern (SJV Air Basin portion)': (Region.Type.CUSTOM, 'Kern (SJV Air Basin portion)'),
+    'Sequoia National Park and Forest': (Region.Type.CUSTOM, 'Sequoia National Park and Forest'),
 }
 
 # "101 Unhealthy for Sensitive Groups (O3)" -> value=101, pollutant='O3'
@@ -93,11 +98,12 @@ def fetch_forecasts():
         Forecast.objects.filter(issued_date=issued_date).delete()
         for item in root.iter('item'):
             zone_name = (item.findtext('county') or '').strip()
-            region_name = ZONE_TO_REGION_NAME.get(zone_name)
-            if region_name is None:
-                continue  # unmapped zone (e.g. Sequoia National Park and Forest)
+            region_type_name = ZONE_TO_REGION.get(zone_name)
+            if region_type_name is None:
+                continue  # unrecognized zone (feed added something new)
 
-            region = Region.objects.counties().filter(name=region_name).first()
+            region_type, region_name = region_type_name
+            region = Region.objects.filter(type=region_type, name=region_name).first()
             if region is None:
                 continue  # region not yet imported
 
