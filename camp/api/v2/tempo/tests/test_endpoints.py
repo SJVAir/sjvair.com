@@ -76,3 +76,24 @@ class GranuleListTests(TestCase):
 
         assert all(row['product'] == 'no2' if 'product' in row else True for row in response.json()['data'])
         assert len(response.json()['data']) == 1
+
+
+class GranuleLatestTests(TestCase):
+    def test_returns_most_recent_granule_as_single_object_not_a_list(self):
+        older = create_granule(timestamp=timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=2))
+        newest = create_granule(timestamp=timezone.now().replace(minute=0, second=0, microsecond=0))
+
+        response = self.client.get(reverse('api:v2:tempo:granule-latest', args=['no2']))
+
+        assert response.status_code == 200
+        assert response.json()['data']['sqid'] == newest.sqid
+
+    def test_404s_when_nothing_ingested_yet(self):
+        response = self.client.get(reverse('api:v2:tempo:granule-latest', args=['no2']))
+
+        assert response.status_code == 404
+
+    def test_unknown_product_404s(self):
+        response = self.client.get(reverse('api:v2:tempo:granule-latest', args=['not-a-real-product']))
+
+        assert response.status_code == 404

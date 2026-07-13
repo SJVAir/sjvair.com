@@ -65,3 +65,13 @@ class GranuleList(GranuleMixin, generics.ListEndpoint):
         if 'date' not in self.request.GET and 'timestamp' not in self.request.GET:
             return default_to_today(queryset)
         return queryset
+
+
+class GranuleLatest(GranuleMixin, generics.DetailEndpoint):
+    """The single most recent Granule for one product -- for the map's default overlay load."""
+
+    def get_object(self):
+        granule = default_to_today(self.get_queryset()).first()  # Granule.Meta.ordering = ('-timestamp',)
+        if granule is None:
+            raise Http404('No TEMPO data available yet for this product.')
+        return granule
