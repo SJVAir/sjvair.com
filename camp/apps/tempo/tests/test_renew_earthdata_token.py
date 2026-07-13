@@ -121,3 +121,23 @@ class RenewEarthdataTokenTests(TestCase):
             call_command('renew_earthdata_token')
 
         assert constance_config.EARTHDATA_TOKEN == ''
+
+    @override_config(EARTHDATA_TOKEN='', EARTHDATA_TOKEN_EXPIRES_AT=EARTHDATA_TOKEN_NOT_SET)
+    @patch('builtins.input', return_value='my-username')
+    @patch('getpass.getpass', return_value='my-password')
+    @patch('camp.apps.tempo.management.commands.renew_earthdata_token.requests.post')
+    def test_raises_command_error_when_response_is_missing_access_token(self, mock_post, mock_getpass, mock_input):
+        # A malformed NASA response (e.g. missing access_token) used to raise
+        # a raw KeyError from *outside* the try block, where password/auth
+        # were still live locals -- exactly the leak path the try block was
+        # added to close. This must be caught the same as any other failure.
+        mock_post.return_value = make_response(json_result={
+            'token_type': 'Bearer',
+            'expiration_date': '2026-09-09T00:00:00Z',
+            # 'access_token' deliberately omitted
+        })
+
+        with pytest.raises(CommandError):
+            call_command('renew_earthdata_token')
+
+        assert constance_config.EARTHDATA_TOKEN == ''

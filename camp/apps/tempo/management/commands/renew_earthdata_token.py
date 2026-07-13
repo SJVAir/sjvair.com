@@ -24,10 +24,15 @@ class Command(BaseCommand):
         auth = (username, password)
 
         # Everything below is wrapped so that a failure (e.g. a mistyped
-        # password) raises CommandError rather than propagating -- Django's
+        # password, or a DB write failing partway through saving the new
+        # token) raises CommandError rather than propagating -- Django's
         # run_from_argv catches CommandError before it reaches sys.excepthook,
         # keeping the plaintext password out of Sentry's default
-        # local-variable exception capture.
+        # local-variable exception capture. The constance writes below are
+        # deliberately inside this block too: password/auth are still live
+        # locals in this frame until handle() returns, so any exception
+        # raised anywhere in here -- not just the HTTP calls -- must be
+        # caught here.
         try:
             old_token = constance_config.EARTHDATA_TOKEN
             if old_token:
@@ -49,11 +54,11 @@ class Command(BaseCommand):
             # per the design spec's "Before You Start" note -- confirm against
             # a real response and adjust only this parsing call if it's wrong.
             expires_at = parse_datetime(data['expiration_date'])
+
+            constance_config.EARTHDATA_TOKEN = data['access_token']
+            constance_config.EARTHDATA_TOKEN_EXPIRES_AT = expires_at
         except Exception as exc:
             raise CommandError('Token renewal failed -- check your username and password and try again.') from exc
-
-        constance_config.EARTHDATA_TOKEN = data['access_token']
-        constance_config.EARTHDATA_TOKEN_EXPIRES_AT = expires_at
 
         self.stdout.write(self.style.SUCCESS(
             f'Token renewed. Expires {expires_at:%Y-%m-%d}.'
