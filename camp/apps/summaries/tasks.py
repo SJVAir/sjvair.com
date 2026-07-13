@@ -492,11 +492,14 @@ def _backfill_dispatch_regions(job):
 
 
 def _backfill_complete_chunk(job):
-    for day in iter_chunk_days(job.chunk_start, job.cursor):
+    days = list(iter_chunk_days(job.chunk_start, job.cursor))
+
+    for day in days:
         target, source, window_start, window_end = daily_rollup_window(day)
         rollup_monitor_summaries(target, source, window_start, window_end)
         rollup_region_summaries(target, source, window_start, window_end)
 
+    for day in days:
         for target, source, window_start, window_end in higher_rollup_windows(day):
             rollup_monitor_summaries(target, source, window_start, window_end)
             rollup_region_summaries(target, source, window_start, window_end)

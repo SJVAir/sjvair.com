@@ -8,7 +8,6 @@ from django.utils import timezone
 import pytest
 
 from camp.utils.datetime import make_aware
-from camp.apps.summaries.models import BaseSummary
 from camp.apps.summaries.backfill import (
     chunk_start_for,
     hour_range,
@@ -17,7 +16,6 @@ from camp.apps.summaries.backfill import (
     higher_rollup_windows,
 )
 from camp.apps.entries.models import PM25
-from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
@@ -204,6 +202,7 @@ class RegionsWithMonitorsTests(TestCase):
         monitor.position = None
         monitor.save()
         assert region.pk not in regions_with_monitors()
+
 
 class BackfillRegionHoursTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml']
@@ -543,6 +542,66 @@ class BackfillSummariesTickCompleteChunkTests(TestCase):
 
         monthly_call = next(c for c in mock_rollup.call_args_list if c.args[0] == BaseSummary.Resolution.MONTHLY)
         assert monthly_call.args[2] == self.month_start  # window_start
+
+
+class BackfillSummariesTickCompleteChunkMonthBoundaryTests(TestCase):
+    """
+    Regression coverage for a rollup-ordering bug in _backfill_complete_chunk.
+
+    Chunks are fixed 7-day windows that are NOT aligned to month boundaries,
+    so a month's 1st very often falls in the *middle* of a chunk rather than
+    at its start/end. The buggy implementation interleaved daily rollups and
+    higher-rollup cascades in a single pass over the chunk's days (in
+    ascending order): when it reached June 1st, the June MONTHLY rollup fired
+    immediately — before June 2nd's daily rollup (later in the same loop,
+    still to come) had been written — permanently undercounting the month.
+
+    This test uses a chunk spanning May 30 - Jun 3, 2023 (May-tail days plus
+    June-head days, with June 1st landing mid-chunk, not at an edge) and
+    proves the resulting MONTHLY MonitorSummary reflects data from both
+    June 1 and June 2.
+    """
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+
+        self.chunk_start = _day(2023, 5, 30)
+        self.cursor = _day(2023, 6, 3)
+        self.june_1 = _day(2023, 6, 1)
+        self.june_2 = _day(2023, 6, 2)
+
+        PM25.objects.create(
+            monitor=self.monitor, timestamp=self.june_1 + timedelta(hours=12, minutes=5),
+            stage=PM25.Stage.RAW, processor='', value=10.0, location=self.monitor.location,
+        )
+        PM25.objects.create(
+            monitor=self.monitor, timestamp=self.june_2 + timedelta(hours=12, minutes=5),
+            stage=PM25.Stage.RAW, processor='', value=50.0, location=self.monitor.location,
+        )
+
+        # Populate the HOURLY MonitorSummary rows a real backfill would
+        # already have written in the MONITORS phase of earlier ticks.
+        backfill_monitor_hours(self.monitor, self.chunk_start, self.cursor, [PM25])
+
+        self.job = SummaryBackfillJob.objects.create(
+            cursor=self.cursor, chunk_start=self.chunk_start,
+            range_start=self.chunk_start - timedelta(days=365), range_end=self.cursor,
+            phase=SummaryBackfillJob.Phase.REGIONS, pending_tasks=0, batch_id=1,
+        )
+
+    def test_monthly_rollup_includes_all_days_in_chunk_not_just_up_to_month_start(self):
+        backfill_summaries_tick()
+
+        monthly = MonitorSummary.objects.get(
+            monitor=self.monitor, resolution=BaseSummary.Resolution.MONTHLY,
+            entry_type='pm25', processor='', timestamp=self.june_1,
+        )
+        # Both June 1 (10.0) and June 2 (50.0) must have contributed. Under
+        # the old bug, only June 1's daily summary existed by the time the
+        # MONTHLY rollup fired, giving count=1 / sum_value=10.0.
+        assert monthly.count == 2
+        assert monthly.sum_value == 60.0
 
 
 class BackfillSummariesTickStalenessRecoveryTests(TestCase):
