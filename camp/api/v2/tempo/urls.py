@@ -8,4 +8,5 @@ urlpatterns = [
     path('', endpoints.TempoProducts.as_view(), name='product-list'),
     path('<str:product>/granules/', endpoints.GranuleList.as_view(), name='granule-list'),
     path('<str:product>/granules/latest/', endpoints.GranuleLatest.as_view(), name='granule-latest'),
+    path('<str:product>/point/', endpoints.TempoPoint.as_view(), name='point-list'),
 ]

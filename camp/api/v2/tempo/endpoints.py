@@ -2,11 +2,14 @@ from django.http import Http404
 from django.utils.functional import cached_property
 
 from resticus import generics
+from resticus.http import Http400
 
 from camp.apps.tempo.models import Granule
+from camp.apps.tempo.queries import point_series
 from camp.apps.tempo.rendering import PRODUCT_COLOR_RANGES, _level_set_for
 
 from .filters import GranuleFilter, default_to_today
+from .forms import TempoPointForm
 from .serializers import GranuleSerializer
 
 PRODUCT_UNITS = {
@@ -75,3 +78,22 @@ class GranuleLatest(GranuleMixin, generics.DetailEndpoint):
         if granule is None:
             raise Http404('No TEMPO data available yet for this product.')
         return granule
+
+
+class TempoPoint(TempoProductMixin, generics.Endpoint):
+    """Point value series for one product across an hourly timestamp range."""
+
+    def get(self, request, *args, **kwargs):
+        form = TempoPointForm(request.GET)
+        if not form.is_valid():
+            return Http400({'errors': form.errors.get_json_data()})
+
+        start, end = form.cleaned_data['start'], form.cleaned_data['end']
+        if start is None:
+            queryset = default_to_today(Granule.objects.filter(product=self.product))
+            timestamps = queryset.values_list('timestamp', flat=True)
+            if not timestamps:
+                return []
+            start, end = min(timestamps), max(timestamps)
+
+        return point_series(self.product, form.point, start, end)

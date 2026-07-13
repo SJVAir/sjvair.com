@@ -97,3 +97,35 @@ class GranuleLatestTests(TestCase):
         response = self.client.get(reverse('api:v2:tempo:granule-latest', args=['not-a-real-product']))
 
         assert response.status_code == 404
+
+
+class TempoPointTests(TestCase):
+    # TempoPoint is a plain generics.Endpoint like TempoProducts above -- no
+    # {"data": ...} envelope, response.json() is the bare list.
+    def test_returns_series_for_explicit_range(self):
+        ts0 = timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        ts1 = ts0 + timedelta(hours=1)
+        create_granule(timestamp=ts0)
+        create_granule(timestamp=ts1)
+
+        response = self.client.get(reverse('api:v2:tempo:point-list', args=['no2']), {
+            'latitude': '36.5', 'longitude': '-119.5',
+            'start': ts0.isoformat(), 'end': ts1.isoformat(),
+        })
+
+        assert response.status_code == 200
+        assert len(response.json()) == 2
+
+    def test_missing_lat_lon_is_400(self):
+        response = self.client.get(reverse('api:v2:tempo:point-list', args=['no2']))
+
+        assert response.status_code == 400
+
+    def test_range_over_cap_is_400(self):
+        now = timezone.now()
+        response = self.client.get(reverse('api:v2:tempo:point-list', args=['no2']), {
+            'latitude': '36.5', 'longitude': '-119.5',
+            'start': (now - timedelta(days=91)).isoformat(), 'end': now.isoformat(),
+        })
+
+        assert response.status_code == 400
