@@ -196,8 +196,10 @@ class RegionsWithMonitorsTests(TestCase):
         region = Region.objects.filter(boundary__isnull=False).first()
         if not region:
             self.skipTest('no region with boundary in fixtures')
+        monitor = PurpleAir.objects.first()
+        monitor.position = None
+        monitor.save()
         assert region.pk not in regions_with_monitors()
-
 
 class BackfillRegionHoursTests(TestCase):
     fixtures = ['purple-air.yaml', 'regions.yaml']
