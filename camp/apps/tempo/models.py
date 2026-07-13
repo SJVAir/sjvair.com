@@ -5,6 +5,18 @@ from django.utils.translation import gettext_lazy as _
 from django_sqids import SqidsField, shuffle_alphabet
 
 
+def granule_preview_upload_to(instance, filename):
+    # Partitioned by year/month, matching archive_data_path's precedent --
+    # otherwise hourly ingestion across four products with indefinite
+    # retention piles everything into one flat, ever-growing S3 prefix.
+    return '/'.join([
+        'tempo',
+        f'{instance.timestamp.year}',
+        f'{instance.timestamp.month:02d}',
+        filename,
+    ])
+
+
 class Granule(models.Model):
     """
     One row per (product, timestamp) -- the SJV-clipped hourly grid for one
@@ -26,7 +38,7 @@ class Granule(models.Model):
     is_final = models.BooleanField(_('is final'), default=False)
 
     raster = gis_models.RasterField(_('raster'), srid=4326)
-    preview = models.ImageField(_('preview'), upload_to='tempo/previews/')
+    preview = models.ImageField(_('preview'), upload_to=granule_preview_upload_to)
     bounds = gis_models.PolygonField(_('bounds'), srid=4326)
 
     class Meta:

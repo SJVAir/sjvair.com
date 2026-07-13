@@ -73,7 +73,9 @@ def sync_granule(product: str, timestamp: datetime, client: Optional[TempoClient
         },
     )
     granule.preview.save(
-        f'{product}_{timestamp:%Y%m%dT%H%M}.png',
+        # No minutes/seconds -- ingestion always writes top-of-hour
+        # timestamps, so they'd always read ":00" and add nothing.
+        f'{product}_{timestamp:%Y-%m-%d-%H}.png',
         ContentFile(preview_bytes),
         save=True,
     )
