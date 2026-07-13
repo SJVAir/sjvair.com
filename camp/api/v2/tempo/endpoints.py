@@ -67,6 +67,16 @@ class GranuleList(GranuleMixin, generics.ListEndpoint):
     def get_queryset(self):
         queryset = super().get_queryset()
         if 'date' not in self.request.GET and 'timestamp' not in self.request.GET:
+            # Apply is_final/version (if present) before deciding whether
+            # "today" has any data -- otherwise the fallback-to-yesterday
+            # decision can't see that today's granules don't actually match
+            # the request, and never falls back even though yesterday has
+            # exactly what was asked for. Safe to filter here and again via
+            # filter_queryset() afterward: GranuleFilter only ever sees
+            # is_final/version in this branch (date/timestamp are guaranteed
+            # absent by the guard above), and re-applying the same filter is
+            # idempotent.
+            queryset = GranuleFilter(self.request.GET, queryset=queryset).qs
             return default_to_today(queryset)
         return queryset
 

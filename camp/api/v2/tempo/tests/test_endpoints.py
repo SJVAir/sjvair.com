@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone as dt_timezone
+from unittest.mock import patch
 
 import numpy as np
+from django.conf import settings
 from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.test import TestCase
 from django.urls import reverse
@@ -9,6 +11,7 @@ from django.utils import timezone
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.tempo.models import Granule
 from camp.apps.tempo.raster import build_raster
+from camp.utils.datetime import localtime, make_aware
 
 
 class TempoProductsTests(TestCase):
@@ -58,6 +61,36 @@ class GranuleListTests(TestCase):
     def test_filters_by_is_final(self):
         create_granule(is_final=False)
         final_granule = create_granule(timestamp=timezone.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1), is_final=True)
+
+        response = self.client.get(reverse('api:v2:tempo:granule-list', args=['no2']), {'is_final': 'true'})
+
+        sqids = {row['sqid'] for row in response.json()['data']}
+        assert sqids == {final_granule.sqid}
+
+    @patch('camp.api.v2.tempo.filters.localtime')
+    def test_falls_back_to_yesterday_when_todays_data_does_not_match_filter(self, mock_localtime):
+        # Regression test for a real bug: default_to_today used to decide
+        # whether to fall back to yesterday by checking existence *before*
+        # is_final/version filters were applied, so "today has *some* data
+        # (just not final)" incorrectly suppressed the fallback even though
+        # yesterday had exactly what was requested. Pins the clock to 1am LA
+        # (before-noon) so this is deterministic, not dependent on the test
+        # happening to run near real LA midnight.
+        today = localtime().date()
+        yesterday = today - timedelta(days=1)
+        mock_localtime.return_value = make_aware(
+            datetime.combine(today, datetime.min.time()).replace(hour=1),
+            tz=settings.DEFAULT_TIMEZONE,
+        )
+
+        create_granule(
+            timestamp=make_aware(datetime.combine(today, datetime.min.time()).replace(hour=0, minute=30), tz=settings.DEFAULT_TIMEZONE),
+            is_final=False,
+        )
+        final_granule = create_granule(
+            timestamp=make_aware(datetime.combine(yesterday, datetime.min.time()).replace(hour=20), tz=settings.DEFAULT_TIMEZONE),
+            is_final=True,
+        )
 
         response = self.client.get(reverse('api:v2:tempo:granule-list', args=['no2']), {'is_final': 'true'})
 
