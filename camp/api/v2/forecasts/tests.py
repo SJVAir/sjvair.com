@@ -93,3 +93,19 @@ class ForecastDetailTests(TestCase):
         url = reverse('api:v2:forecasts:forecast-detail', kwargs={'forecast_id': 'doesnotexist'})
         response = self.client.get(url)
         assert response.status_code == 404
+
+    def test_custom_region_includes_boundary_geometry(self):
+        # Kern/Tulare/Sequoia are Region(type=CUSTOM), not COUNTY -- confirm
+        # RegionSerializer includes their real derived boundary the same way
+        # it does for county regions (no type-based branching to regress on).
+        sequoia = Region.objects.get(type=Region.Type.CUSTOM, name='Sequoia National Park and Forest')
+        forecast = create_forecast(sequoia, date(2026, 7, 11))
+        url = reverse('api:v2:forecasts:forecast-detail', kwargs={'forecast_id': forecast.sqid})
+        response = self.client.get(url)
+        assert response.status_code == 200
+        region_data = response.json()['data']['region']
+        assert region_data['type'] == 'custom'
+        boundary = region_data['boundary']
+        assert boundary is not None
+        assert boundary['geometry']['type'] == 'MultiPolygon'
+        assert len(boundary['geometry']['coordinates']) > 0
