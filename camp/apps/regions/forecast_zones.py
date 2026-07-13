@@ -104,12 +104,14 @@ def iou(a, b):
     return a.intersection(b).area / union if union else 0.0
 
 
-def region_boundary_shape(region_name):
+def region_boundary_shape(region_name, region_type=None):
     from camp.apps.regions.models import Region
 
-    region = Region.objects.filter(type=Region.Type.COUNTY, name=region_name).select_related('boundary').first()
+    if region_type is None:
+        region_type = Region.Type.COUNTY
+    region = Region.objects.filter(type=region_type, name=region_name).select_related('boundary').first()
     if region is None or region.boundary is None:
-        raise RuntimeError(f'No boundary found for county Region {region_name!r}')
+        raise RuntimeError(f'No boundary found for {region_type} Region {region_name!r}')
     return shape(json.loads(region.boundary.geometry.geojson))
 
 
