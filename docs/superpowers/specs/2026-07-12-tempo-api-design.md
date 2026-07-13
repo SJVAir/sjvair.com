@@ -49,6 +49,7 @@ def zonal_stats(product: str, timestamp: datetime, polygon: Polygon) -> dict | N
 |---|---|
 | `GET /api/2.0/tempo/` | User-facing product metadata: `key`, `label`, `units` (`"molecules/cm²"`), `legend` (color stops). Excludes `cldo4`. |
 | `GET /api/2.0/tempo/{product}/granules/` | List of `Granule` rows for one product. Renamed from the original doc's `/grids/` to match the model name (`Granule`, chosen specifically for NASA's own terminology) -- every other app in this API names its list endpoint after its model (`hms/smoke/` → `Smoke`, `ces/` → `CES4`). |
+| `GET /api/2.0/tempo/{product}/granules/latest/` | The single most recent `Granule` for one product -- not a paginated list. For the map's default overlay load, mirroring `monitors/{type}/current/`'s existing role for monitor map overlays. |
 | `GET /api/2.0/tempo/{product}/point/?latitude=&longitude=&start=&end=` | Point value series via `point_series` -- one entry per hour in `[start, end]`. Renamed from `/value/` for symmetry with `/region/` below -- both endpoints are now named after the geometry parameter they take, not the computation they perform. |
 | `GET /api/2.0/tempo/{product}/region/{region_id}/?start=&end=` | Zonal aggregate series over a community boundary via `region_series` -- one summary-stats entry per hour in `[start, end]`. Renamed from `/zonal/?region_id=` -- `region_id` is a required identifier, not an optional filter, so it belongs in the path like every other identifier lookup in this API (`MonitorDetail`'s `<monitor_id>`, `CES4Detail`'s `<tract>`), not as a query param. |
 
@@ -75,6 +76,21 @@ class GranuleFilter(FilterSet):
 Defaults to today's granules, falling back to yesterday if none exist yet -- reuses `hms/endpoints.py`'s `get_default_date_queryset` helper (already generic over any queryset with a `date`-filterable field) when no `date`/`timestamp` filter is present in the request. `paginate = True`, matching every other list endpoint.
 
 Serializer fields: `sqid`, `timestamp`, `is_final`, `version`, `bounds` (GeoJSON, same automatic handling `hms`'s `geometry` field gets), `preview_url` (computed: `lambda g: g.preview.url if g.preview else None`). `raster` is never serialized -- same reasoning as the admin (`GranuleAdmin` already excludes it entirely): it's binary raster data, not meaningful in a JSON response, and PostGIS raster columns don't have a sane default JSON representation.
+
+### `GET /tempo/{product}/granules/latest/`
+
+```python
+class GranuleLatest(GranuleMixin, generics.DetailEndpoint):
+    def get_object(self):
+        granule = self.get_queryset().first()  # queryset already default-to-today/yesterday + Granule.Meta.ordering = ('-timestamp',)
+        if granule is None:
+            raise Http404('No TEMPO data available yet for this product.')
+        return granule
+```
+
+Shares `GranuleMixin`/`get_queryset()` (and therefore the same today/yesterday-fallback default and `GranuleSerializer`) with the list endpoint above -- the only difference is `.first()` instead of pagination. The 404 case is a real, if rare, possibility (a fresh environment before the first `fetch_tempo` run, or ingestion broken for more than a day) and the frontend should handle it as "no overlay available" rather than assume this endpoint always returns something.
+
+Placed at `/granules/latest/`, not `/latest/`, so it reads as "the latest of the granules list" -- consistent with `{product}` being the only other thing in the path and avoiding a second top-level noun under `{product}/`.
 
 ### Range validation -- shared by `/point/` and `/region/{region_id}/`
 
