@@ -3,7 +3,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db.models import Exists, OuterRef, Q
+from django.db import transaction
+from django.db.models import Exists, F, OuterRef, Q
 from django.utils import timezone
 
 from camp.utils.datetime import localtime, make_aware
@@ -17,7 +18,18 @@ from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
-from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.backfill import (
+    backfill_monitor_hours,
+    backfill_region_hours,
+    chunk_start_for,
+    daily_rollup_window,
+    higher_rollup_windows,
+    hour_range,
+    iter_chunk_days,
+    monitors_with_data_in,
+    regions_with_monitors,
+)
+from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
 
 
 def get_summarizable_entry_models():
@@ -363,3 +375,154 @@ def yearly_region_summaries(year_start=None):
         today = localtime().date()
         year_start = make_aware(datetime(today.year - 1, 1, 1), settings.DEFAULT_TIMEZONE)
     rollup_region_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))
+
+
+# ---- Backfill ----
+
+@db_task(priority=1, queue='summaries')
+def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
+    """Compute one monitor's hourly summaries for a backfill chunk, then report completion."""
+    monitor = Monitor.objects.get(pk=monitor_id)
+    entry_models = get_summarizable_entry_models()
+    backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models)
+
+    SummaryBackfillJob.objects.filter(
+        pk=job_id, batch_id=batch_id, phase=SummaryBackfillJob.Phase.MONITORS,
+    ).update(pending_tasks=F('pending_tasks') - 1)
+
+
+@db_task(priority=1, queue='summaries')
+def backfill_region_chunk(job_id, region_id, chunk_start, chunk_end, batch_id):
+    """Compute one region's hourly summaries for a backfill chunk, then report completion."""
+    region = Region.objects.select_related('boundary').get(pk=region_id)
+    monitor_grades = dict(region.monitors.with_grade().values_list('pk', 'grade'))
+    hours = list(hour_range(chunk_start, chunk_end))
+    backfill_region_hours(region, hours, monitor_grades)
+
+    SummaryBackfillJob.objects.filter(
+        pk=job_id, batch_id=batch_id, phase=SummaryBackfillJob.Phase.REGIONS,
+    ).update(pending_tasks=F('pending_tasks') - 1)
+
+
+# ---- Backfill orchestrator ----
+
+BACKFILL_LOCK_STALE_SECONDS = 30
+BACKFILL_BATCH_STALE_MINUTES = 30
+BACKFILL_MAX_CONSECUTIVE_FAILURES = 5
+
+
+@db_periodic_task(crontab(minute='*'), priority=1, queue='summaries')
+def backfill_summaries_tick():
+    """
+    Drive one step of the active SummaryBackfillJob, if any. Never blocks on
+    the sub-tasks it dispatches — it only checks whether the current phase's
+    batch has drained (pending_tasks == 0) and, if so, advances to the next
+    phase. See docs/superpowers/specs/2026-07-13-summary-backfill-design.md.
+    """
+    now = timezone.now()
+
+    with transaction.atomic():
+        job = (
+            SummaryBackfillJob.objects
+            .select_for_update(skip_locked=True)
+            .filter(state=SummaryBackfillJob.State.RUNNING)
+            .filter(
+                Q(locked_at__isnull=True) |
+                Q(locked_at__lt=now - timedelta(seconds=BACKFILL_LOCK_STALE_SECONDS))
+            )
+            .order_by('created')
+            .first()
+        )
+        if job is None:
+            return
+
+        job.locked_at = now
+        job.save(update_fields=['locked_at'])
+
+        if job.phase != SummaryBackfillJob.Phase.IDLE and job.pending_tasks > 0:
+            stale_before = now - timedelta(minutes=BACKFILL_BATCH_STALE_MINUTES)
+            if job.phase_started_at and job.phase_started_at < stale_before:
+                _backfill_restart_batch(job)
+            return
+
+        if job.phase == SummaryBackfillJob.Phase.IDLE:
+            _backfill_dispatch_monitors(job)
+        elif job.phase == SummaryBackfillJob.Phase.MONITORS:
+            _backfill_dispatch_regions(job)
+        elif job.phase == SummaryBackfillJob.Phase.REGIONS:
+            _backfill_complete_chunk(job)
+
+
+def _backfill_dispatch_monitors(job):
+    chunk_start = chunk_start_for(job.cursor, job.range_start)
+    entry_models = get_summarizable_entry_models()
+    monitor_ids = monitors_with_data_in(chunk_start, job.cursor, entry_models)
+
+    job.chunk_start = chunk_start
+    job.batch_id += 1
+    job.pending_tasks = len(monitor_ids)
+    job.phase = SummaryBackfillJob.Phase.MONITORS
+    job.phase_started_at = timezone.now()
+    job.save()
+
+    batch_id = job.batch_id
+    chunk_end = job.cursor
+    for monitor_id in monitor_ids:
+        transaction.on_commit(
+            lambda m=monitor_id: backfill_monitor_chunk(job.pk, str(m), chunk_start, chunk_end, batch_id)
+        )
+
+
+def _backfill_dispatch_regions(job):
+    region_ids = regions_with_monitors()
+
+    job.batch_id += 1
+    job.pending_tasks = len(region_ids)
+    job.phase = SummaryBackfillJob.Phase.REGIONS
+    job.phase_started_at = timezone.now()
+    job.save()
+
+    batch_id = job.batch_id
+    chunk_start = job.chunk_start
+    chunk_end = job.cursor
+    for region_id in region_ids:
+        transaction.on_commit(
+            lambda r=region_id: backfill_region_chunk(job.pk, str(r), chunk_start, chunk_end, batch_id)
+        )
+
+
+def _backfill_complete_chunk(job):
+    days = list(iter_chunk_days(job.chunk_start, job.cursor))
+
+    for day in days:
+        target, source, window_start, window_end = daily_rollup_window(day)
+        rollup_monitor_summaries(target, source, window_start, window_end)
+        rollup_region_summaries(target, source, window_start, window_end)
+
+    for day in days:
+        for target, source, window_start, window_end in higher_rollup_windows(day):
+            rollup_monitor_summaries(target, source, window_start, window_end)
+            rollup_region_summaries(target, source, window_start, window_end)
+
+    job.cursor = job.chunk_start
+    job.chunk_start = None
+    job.phase = SummaryBackfillJob.Phase.IDLE
+    job.pending_tasks = 0
+    job.consecutive_failures = 0
+    job.last_error = ''
+    if job.cursor <= job.range_start:
+        job.state = SummaryBackfillJob.State.DONE
+    job.save()
+
+
+def _backfill_restart_batch(job):
+    job.consecutive_failures += 1
+    job.last_error = (
+        f'Batch {job.batch_id} stalled in phase "{job.phase}" with '
+        f'{job.pending_tasks} pending task(s); restarting from the monitors phase.'
+    )
+    job.phase = SummaryBackfillJob.Phase.IDLE
+    job.pending_tasks = 0
+    if job.consecutive_failures >= BACKFILL_MAX_CONSECUTIVE_FAILURES:
+        job.state = SummaryBackfillJob.State.FAILED
+    job.save()

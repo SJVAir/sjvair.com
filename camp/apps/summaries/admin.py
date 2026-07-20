@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.db.models import Field
 
-from camp.apps.summaries.models import MonitorSummary, RegionSummary
+from camp.apps.summaries.models import MonitorSummary, RegionSummary, SummaryBackfillJob
 
 
 def _readonly(model):
@@ -24,3 +24,11 @@ class RegionSummaryAdmin(admin.ModelAdmin):
     search_fields = ['region__name']
     ordering = ['-timestamp']
     readonly_fields = _readonly(RegionSummary)
+
+
+@admin.register(SummaryBackfillJob)
+class SummaryBackfillJobAdmin(admin.ModelAdmin):
+    list_display = ['state', 'phase', 'cursor', 'range_start', 'range_end', 'pending_tasks', 'consecutive_failures', 'modified']
+    list_filter = ['state', 'phase']
+    ordering = ['-created']
+    readonly_fields = [f.name for f in SummaryBackfillJob._meta.get_fields() if isinstance(f, Field) and f.name != 'state']
