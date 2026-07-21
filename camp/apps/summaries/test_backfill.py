@@ -34,15 +34,20 @@ def _day(y, m, d):
 
 
 class ChunkStartForTests(TestCase):
-    def test_steps_back_seven_days(self):
+    def test_defaults_to_one_day(self):
         cursor = _day(2023, 7, 15)
         range_start = _day(2020, 1, 1)
-        assert chunk_start_for(cursor, range_start) == cursor - timedelta(days=7)
+        assert chunk_start_for(cursor, range_start) == cursor - timedelta(days=1)
+
+    def test_steps_back_by_chunk_days(self):
+        cursor = _day(2023, 7, 15)
+        range_start = _day(2020, 1, 1)
+        assert chunk_start_for(cursor, range_start, chunk_days=7) == cursor - timedelta(days=7)
 
     def test_clamps_to_range_start(self):
         cursor = _day(2020, 1, 4)
         range_start = _day(2020, 1, 1)
-        assert chunk_start_for(cursor, range_start) == range_start
+        assert chunk_start_for(cursor, range_start, chunk_days=7) == range_start
 
 
 class HourRangeTests(TestCase):
@@ -263,6 +268,7 @@ class SummaryBackfillJobTests(TestCase):
         assert job.consecutive_failures == 0
         assert job.last_error == ''
         assert job.chunk_start is None
+        assert job.chunk_days == 1
         assert job.locked_at is None
         assert job.sqid
 
@@ -279,6 +285,16 @@ class BackfillSummariesCommandTests(TestCase):
         assert job.range_start == make_aware(datetime(2020, 1, 1), settings.DEFAULT_TIMEZONE)
         assert job.range_end == make_aware(datetime(2020, 2, 1), settings.DEFAULT_TIMEZONE)
         assert job.cursor == job.range_end
+        assert job.chunk_days == 1
+
+    def test_start_chunk_days_flag(self):
+        self._run('start', '--from=2020-01-01', '--to=2020-02-01', '--chunk-days=7')
+        job = SummaryBackfillJob.objects.get()
+        assert job.chunk_days == 7
+
+    def test_start_rejects_chunk_days_below_one(self):
+        with pytest.raises((CommandError, SystemExit)):
+            self._run('start', '--from=2020-01-01', '--to=2020-02-01', '--chunk-days=0')
 
     def test_start_requires_from(self):
         with pytest.raises((CommandError, SystemExit)):
@@ -453,6 +469,23 @@ class BackfillSummariesTickDispatchMonitorsTests(TestCase):
         assert self.job.phase == SummaryBackfillJob.Phase.MONITORS
         assert self.job.pending_tasks == 0
         assert self.job.batch_id == 1
+
+    def test_chunk_days_widens_the_dispatched_window(self):
+        # An entry 3 days before cursor falls outside the default 1-day
+        # chunk but inside a 7-day one -- proves job.chunk_days is actually
+        # read, not just the DEFAULT_CHUNK_DAYS fallback.
+        self.job.chunk_days = 7
+        self.job.save()
+        PM25.objects.create(
+            monitor=self.monitor, timestamp=self.job.cursor - timedelta(days=3),
+            stage=PM25.Stage.RAW, processor='', value=10.0, location=self.monitor.location,
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_summaries_tick()
+
+        self.job.refresh_from_db()
+        assert self.job.chunk_start == self.job.cursor - timedelta(days=7)
+        assert MonitorSummary.objects.filter(monitor=self.monitor).exists()
 
 
 class BackfillSummariesTickDispatchRegionsTests(TestCase):

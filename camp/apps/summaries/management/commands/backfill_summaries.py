@@ -20,6 +20,10 @@ class Command(BaseCommand):
             help='Latest date to backfill, exclusive (default: start of current month)')
         parser.add_argument('--force', action='store_true',
             help='Replace an existing running/paused job instead of refusing to start a new one')
+        parser.add_argument('--chunk-days', dest='chunk_days', type=int, default=1,
+            help='Days per chunk (default: 1). Larger chunks mean fewer total tasks '
+                 'dispatched over the life of the job, at the cost of less frequent '
+                 'progress checkpoints and more DB work per task.')
 
     def handle(self, *args, **options):
         action = options['action']
@@ -33,6 +37,10 @@ class Command(BaseCommand):
     def _start(self, options):
         if not options['date_from']:
             raise CommandError('--from is required for start')
+
+        chunk_days = options['chunk_days']
+        if chunk_days < 1:
+            raise CommandError('--chunk-days must be at least 1')
 
         active = SummaryBackfillJob.objects.filter(
             state__in=[SummaryBackfillJob.State.RUNNING, SummaryBackfillJob.State.PAUSED],
@@ -58,9 +66,11 @@ class Command(BaseCommand):
             cursor=range_end,
             range_start=range_start,
             range_end=range_end,
+            chunk_days=chunk_days,
         )
         self.stdout.write(self.style.SUCCESS(
-            f'Started backfill job: {range_start:%Y-%m-%d} → {range_end:%Y-%m-%d}'
+            f'Started backfill job: {range_start:%Y-%m-%d} → {range_end:%Y-%m-%d} '
+            f'({chunk_days}-day chunks)'
         ))
 
     def _status(self):
@@ -77,6 +87,7 @@ class Command(BaseCommand):
         self.stdout.write(f'Phase: {job.phase}')
         self.stdout.write(f'Cursor: {job.cursor:%Y-%m-%d}')
         self.stdout.write(f'Range: {job.range_start:%Y-%m-%d} → {job.range_end:%Y-%m-%d}')
+        self.stdout.write(f'Chunk size: {job.chunk_days} day(s)')
         self.stdout.write(f'Progress: {percent:.1f}%')
         if job.last_error:
             self.stdout.write(self.style.WARNING(f'Last error: {job.last_error}'))

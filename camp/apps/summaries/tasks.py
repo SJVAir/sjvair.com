@@ -454,7 +454,7 @@ def backfill_summaries_tick():
 
 
 def _backfill_dispatch_monitors(job):
-    chunk_start = chunk_start_for(job.cursor, job.range_start)
+    chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
     entry_models = get_summarizable_entry_models()
     monitor_ids = monitors_with_data_in(chunk_start, job.cursor, entry_models)
 

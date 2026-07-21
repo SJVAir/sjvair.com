@@ -15,12 +15,12 @@ from camp.apps.summaries.aggregators import compute_stats, compute_region_summar
 from camp.apps.summaries.models import MonitorSummary, RegionSummary
 
 
-CHUNK_DAYS = 7
+DEFAULT_CHUNK_DAYS = 1
 
 
-def chunk_start_for(cursor, range_start):
+def chunk_start_for(cursor, range_start, chunk_days=DEFAULT_CHUNK_DAYS):
     """The lower bound of the next chunk to process, walking backward from cursor."""
-    return max(cursor - timedelta(days=CHUNK_DAYS), range_start)
+    return max(cursor - timedelta(days=chunk_days), range_start)
 
 
 def hour_range(start, end):
