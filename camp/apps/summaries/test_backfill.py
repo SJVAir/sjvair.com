@@ -628,20 +628,59 @@ class BackfillSummariesTickStalenessRecoveryTests(TestCase):
         assert self.job.pending_tasks == 5
         assert self.job.phase == SummaryBackfillJob.Phase.MONITORS
 
-    def test_stale_batch_resets_to_idle_for_redispatch(self):
-        self.job.phase_started_at = timezone.now() - timedelta(minutes=31)
+    def test_stale_monitors_batch_redispatches_monitors_only(self):
+        self.job.phase_started_at = timezone.now() - timedelta(minutes=61)
         self.job.save()
         backfill_summaries_tick()
         self.job.refresh_from_db()
-        assert self.job.phase == SummaryBackfillJob.Phase.IDLE
-        assert self.job.pending_tasks == 0
+        # A stall never jumps back to idle — it re-dispatches the same phase
+        # that stalled, so an already-completed earlier phase is never redone.
+        assert self.job.phase == SummaryBackfillJob.Phase.MONITORS
+        assert self.job.batch_id == 2
         assert self.job.consecutive_failures == 1
         assert 'stalled' in self.job.last_error
+        assert 'restarting the monitors phase' in self.job.last_error
 
     def test_five_consecutive_stalls_marks_job_failed(self):
-        self.job.phase_started_at = timezone.now() - timedelta(minutes=31)
+        self.job.phase_started_at = timezone.now() - timedelta(minutes=61)
         self.job.consecutive_failures = 4
         self.job.save()
         backfill_summaries_tick()
         self.job.refresh_from_db()
         assert self.job.state == SummaryBackfillJob.State.FAILED
+        assert self.job.phase == SummaryBackfillJob.Phase.IDLE
+        assert self.job.pending_tasks == 0
+
+
+class BackfillSummariesTickRegionsStalenessRecoveryTests(TestCase):
+    """
+    Regression coverage for the "regions stall discards a completed monitors
+    phase too" bug: a regions-phase stall must re-dispatch regions only, not
+    fall all the way back through monitors (which already succeeded).
+    """
+    fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    def setUp(self):
+        self.region = Region.objects.filter(boundary__isnull=False).first()
+        if not self.region:
+            self.skipTest('no region with boundary in fixtures')
+        monitor = PurpleAir.objects.first()
+        monitor.position = self.region.boundary.geometry.centroid
+        monitor.save()
+
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        self.job = SummaryBackfillJob.objects.create(
+            cursor=now, chunk_start=now - timedelta(days=7),
+            range_start=now - timedelta(days=30), range_end=now,
+            phase=SummaryBackfillJob.Phase.REGIONS, pending_tasks=3, batch_id=5,
+            phase_started_at=timezone.now() - timedelta(minutes=61),
+        )
+
+    def test_stale_regions_batch_redispatches_regions_only(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_summaries_tick()
+        self.job.refresh_from_db()
+        assert self.job.phase == SummaryBackfillJob.Phase.REGIONS
+        assert self.job.batch_id == 6
+        assert self.job.consecutive_failures == 1
+        assert 'restarting the regions phase' in self.job.last_error

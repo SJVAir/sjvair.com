@@ -407,7 +407,7 @@ def backfill_region_chunk(job_id, region_id, chunk_start, chunk_end, batch_id):
 # ---- Backfill orchestrator ----
 
 BACKFILL_LOCK_STALE_SECONDS = 30
-BACKFILL_BATCH_STALE_MINUTES = 30
+BACKFILL_BATCH_STALE_MINUTES = 60
 BACKFILL_MAX_CONSECUTIVE_FAILURES = 5
 
 
@@ -516,13 +516,30 @@ def _backfill_complete_chunk(job):
 
 
 def _backfill_restart_batch(job):
+    """
+    Re-dispatch whichever phase actually stalled, without discarding a phase
+    that already finished. A stall in `monitors` re-dispatches monitors; a
+    stall in `regions` re-dispatches only regions — the already-completed
+    monitors phase is never redone. This matters because "regions" batches
+    routinely finish 99%+ before a handful of stragglers lose a priority
+    race against live real-time tasks sharing the same queue; discarding an
+    entire, already-successful monitors phase over that is pure waste that
+    also adds unnecessary DB load at the worst possible time.
+    """
     job.consecutive_failures += 1
     job.last_error = (
         f'Batch {job.batch_id} stalled in phase "{job.phase}" with '
-        f'{job.pending_tasks} pending task(s); restarting from the monitors phase.'
+        f'{job.pending_tasks} pending task(s); restarting the {job.phase} phase.'
     )
-    job.phase = SummaryBackfillJob.Phase.IDLE
-    job.pending_tasks = 0
+
     if job.consecutive_failures >= BACKFILL_MAX_CONSECUTIVE_FAILURES:
+        job.phase = SummaryBackfillJob.Phase.IDLE
+        job.pending_tasks = 0
         job.state = SummaryBackfillJob.State.FAILED
-    job.save()
+        job.save()
+        return
+
+    if job.phase == SummaryBackfillJob.Phase.MONITORS:
+        _backfill_dispatch_monitors(job)
+    elif job.phase == SummaryBackfillJob.Phase.REGIONS:
+        _backfill_dispatch_regions(job)
