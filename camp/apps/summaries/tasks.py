@@ -554,11 +554,17 @@ def _backfill_restart_batch(job):
 # var -- a no-op otherwise, since tracemalloc.is_tracing() is False unless
 # SummariesConfig.ready() started it (also gated on the same var). Remove
 # once the investigation is resolved.
+#
+# Priority is set well above everything else on this queue (existing scheme
+# tops out at 100) on purpose: we specifically want a snapshot during the
+# exact moments the queue is congested and memory is climbing, not only
+# when things are quiet. At priority 1 this got stuck behind the same
+# backlog we're trying to diagnose.
 
 _memory_debug_logger = logging.getLogger('camp.apps.summaries.memory_debug')
 
 
-@db_periodic_task(crontab(minute='*'), priority=1, queue='summaries')
+@db_periodic_task(crontab(minute='*'), priority=1000, queue='summaries')
 def memory_debug_snapshot():
     if not os.environ.get('MEMORY_DEBUG'):
         return
