@@ -109,7 +109,7 @@ def hourly_region_summaries(hour=None):
 
     entry_models = get_summarizable_entry_models()
 
-    regions = (Region.objects
+    region_ids = (Region.objects
         .filter(
             Exists(
                 Monitor.objects.filter(
@@ -119,11 +119,12 @@ def hourly_region_summaries(hour=None):
             ),
             boundary__isnull=False
         )
+        .values_list('pk', flat=True)
     )
 
-    for region in regions:
+    for region_id in region_ids:
         for EntryModel in entry_models:
-            summarize_region_hour(str(region.pk), hour, EntryModel.entry_type)
+            summarize_region_hour(str(region_id), hour, EntryModel.entry_type)
 
 
 @db_task(priority=90, queue='summaries')

@@ -150,7 +150,14 @@ class Boundary(TimeStampedModel):
     @property
     def monitors(self):
         """
-        Returns a queryset of all monitors located within this region.
+        Returns a queryset of all monitors located within this boundary.
+
+        Filters via a correlated subquery instead of self.geometry - see
+        Region.monitors above for the same fix and its rationale.
         """
         from camp.apps.monitors.models import Monitor
-        return Monitor.objects.filter(position__within=self.geometry)
+        return Monitor.objects.filter(
+            position__within=models.Subquery(
+                Boundary.objects.filter(pk=self.pk).values('geometry')[:1]
+            ),
+        )
