@@ -465,11 +465,12 @@ def _backfill_dispatch_monitors(job):
     job.phase_started_at = timezone.now()
     job.save()
 
+    job_id = job.pk
     batch_id = job.batch_id
     chunk_end = job.cursor
     for monitor_id in monitor_ids:
         transaction.on_commit(
-            lambda m=monitor_id: backfill_monitor_chunk(job.pk, str(m), chunk_start, chunk_end, batch_id)
+            lambda m=monitor_id: backfill_monitor_chunk(job_id, str(m), chunk_start, chunk_end, batch_id)
         )
 
 
@@ -482,12 +483,13 @@ def _backfill_dispatch_regions(job):
     job.phase_started_at = timezone.now()
     job.save()
 
+    job_id = job.pk
     batch_id = job.batch_id
     chunk_start = job.chunk_start
     chunk_end = job.cursor
     for region_id in region_ids:
         transaction.on_commit(
-            lambda r=region_id: backfill_region_chunk(job.pk, str(r), chunk_start, chunk_end, batch_id)
+            lambda r=region_id: backfill_region_chunk(job_id, str(r), chunk_start, chunk_end, batch_id)
         )
 
 
