@@ -1,6 +1,4 @@
 import calendar
-import logging
-import os
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -548,37 +546,3 @@ def _backfill_restart_batch(job):
         _backfill_dispatch_monitors(job)
     elif job.phase == SummaryBackfillJob.Phase.REGIONS:
         _backfill_dispatch_regions(job)
-
-
-# ---- Temporary memory diagnostics ----
-# For the huey_summaries memory investigation. Gated behind MEMORY_DEBUG env
-# var -- a no-op otherwise, since tracemalloc.is_tracing() is False unless
-# SummariesConfig.ready() started it (also gated on the same var). Remove
-# once the investigation is resolved.
-#
-# Priority is set well above everything else on this queue (existing scheme
-# tops out at 100) on purpose: we specifically want a snapshot during the
-# exact moments the queue is congested and memory is climbing, not only
-# when things are quiet. At priority 1 this got stuck behind the same
-# backlog we're trying to diagnose.
-
-_memory_debug_logger = logging.getLogger('camp.apps.summaries.memory_debug')
-
-
-@db_periodic_task(crontab(minute='*'), priority=1000, queue='summaries')
-def memory_debug_snapshot():
-    if not os.environ.get('MEMORY_DEBUG'):
-        return
-
-    import tracemalloc
-    if not tracemalloc.is_tracing():
-        return
-
-    current, peak = tracemalloc.get_traced_memory()
-    snapshot = tracemalloc.take_snapshot()
-    top_stats = snapshot.statistics('lineno')[:15]
-
-    lines = [f'MEMORY_DEBUG snapshot: current={current / 1024 / 1024:.1f}MB peak={peak / 1024 / 1024:.1f}MB']
-    for stat in top_stats:
-        lines.append(f'  {stat}')
-    _memory_debug_logger.warning('\n'.join(lines))
