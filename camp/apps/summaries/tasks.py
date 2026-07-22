@@ -1,6 +1,6 @@
 import calendar
-from collections import defaultdict
 from datetime import datetime, timedelta
+from itertools import groupby
 
 from django.conf import settings
 from django.db import transaction
@@ -150,8 +150,12 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     Roll up MonitorSummary records from source_resolution into target_resolution
     for the given time window.
 
-    Fetches all source records in one query, groups by (monitor, entry_type, processor)
-    in Python, then batch-upserts the results.
+    Streams source records ordered by (monitor, entry_type, processor) and groups
+    them via itertools.groupby, rather than materializing the whole window into
+    one list first. Matters for QUARTERLY/SEASONAL/YEARLY, which can span every
+    monitor's records for the period at once, each carrying a full tdigest blob -
+    this keeps peak memory to one group (bounded by periods-per-window) instead of
+    the whole window (monitors × entry_types × processors × periods).
 
     Optionally scoped to a list of monitor_ids (for targeted backfill/recalculation).
     """
@@ -163,22 +167,17 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     if monitor_ids is not None:
         qs = qs.filter(monitor_id__in=monitor_ids)
 
-    records = list(qs.values(
+    rows = qs.order_by('monitor_id', 'entry_type', 'processor').values(
         'monitor_id', 'entry_type', 'processor',
         'count', 'expected_count', 'sum_value', 'sum_of_squares',
         'minimum', 'maximum', 'tdigest',
-    ))
-
-    if not records:
-        return
-
-    groups = defaultdict(list)
-    for r in records:
-        groups[(r['monitor_id'], r['entry_type'], r['processor'])].append(r)
+    ).iterator()
 
     to_upsert = []
-    for (monitor_id, entry_type, processor), group_records in groups.items():
-        stats = rollup_summaries(group_records)
+    for (monitor_id, entry_type, processor), group in groupby(
+        rows, key=lambda r: (r['monitor_id'], r['entry_type'], r['processor'])
+    ):
+        stats = rollup_summaries(list(group))
         if stats is None:
             continue
         to_upsert.append(MonitorSummary(
@@ -213,21 +212,15 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
     if region_ids is not None:
         qs = qs.filter(region_id__in=region_ids)
 
-    records = list(qs.values(
+    rows = qs.order_by('region_id', 'entry_type').values(
         'region_id', 'entry_type', 'station_count',
         'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
         'minimum', 'maximum', 'tdigest',
-    ))
-
-    if not records:
-        return
-
-    groups = defaultdict(list)
-    for r in records:
-        groups[(r['region_id'], r['entry_type'])].append(r)
+    ).iterator()
 
     to_upsert = []
-    for (region_id, entry_type), group_records in groups.items():
+    for (region_id, entry_type), group in groupby(rows, key=lambda r: (r['region_id'], r['entry_type'])):
+        group_records = list(group)
         stats = rollup_region_stats(group_records)
         if stats is None:
             continue
