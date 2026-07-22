@@ -70,10 +70,20 @@ class Region(TimeStampedModel):
     def monitors(self):
         """
         Returns a queryset of all monitors located within this region.
+
+        Filters against the boundary geometry via a correlated subquery rather
+        than `self.boundary.geometry`, so the geometry is never deserialized
+        into a Python-side GEOS object here — avoids a per-call native memory
+        cost that adds up fast when this is called once per region across a
+        large batch (e.g. summary backfill, which processes ~1800 regions).
         """
         from camp.apps.monitors.models import Monitor
-        if self.boundary:
-            return Monitor.objects.filter(position__intersects=self.boundary.geometry)
+        if self.boundary_id:
+            return Monitor.objects.filter(
+                position__intersects=models.Subquery(
+                    Boundary.objects.filter(pk=self.boundary_id).values('geometry')[:1]
+                ),
+            )
         return Monitor.objects.none()
 
 
