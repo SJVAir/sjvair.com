@@ -67,7 +67,7 @@ requests==2.34.2
 scikit-learn==1.9.0
 scout-apm==3.5.3
 sentry-sdk==2.62.0
-setuptools==80.10.2
+setuptools==83.0.0
 simpleeval==1.0.7
 tqdm==4.67.3
 tdigest==0.5.2.2
