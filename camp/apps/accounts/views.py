@@ -51,9 +51,7 @@ class ProfileView(LoginRequiredMixin, vanilla.UpdateView):
         return self.request.user
 
     def form_valid(self, form):
-        dirty_fields = self.object.get_dirty_fields()
-        
-        self.phone_changed = 'phone' in dirty_fields
+        self.phone_changed = self.object.tracker.has_changed('phone')
         if self.phone_changed:
             self.object.phone_verified = False
         

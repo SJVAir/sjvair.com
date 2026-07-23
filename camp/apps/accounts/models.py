@@ -9,9 +9,8 @@ from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
-from dirtyfields import DirtyFieldsMixin
 from django_smalluuid.models import SmallUUIDField, uuid_default
-from model_utils import Choices
+from model_utils import Choices, FieldTracker
 from nameparser.parser import HumanName
 from phonenumber_field.modelfields import PhoneNumberField
 
@@ -20,7 +19,7 @@ from camp.apps.accounts import tasks
 from camp.utils.fields import NullEmailField
 
 
-class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
+class User(AbstractBaseUser, PermissionsMixin, models.Model):
     LANGUAGES = Choices(*settings.LANGUAGES)
 
     id = SmallUUIDField(
@@ -59,6 +58,8 @@ class User(AbstractBaseUser, PermissionsMixin, DirtyFieldsMixin, models.Model):
     REQUIRED_FIELDS = ['full_name']
 
     objects = managers.UserManager()
+
+    tracker = FieldTracker(fields=['phone'])
 
     class Meta:
         ordering = ('-date_joined',)
