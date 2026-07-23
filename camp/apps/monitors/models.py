@@ -18,7 +18,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
-from model_utils import Choices
+from model_utils import Choices, FieldTracker
 from model_utils.models import TimeStampedModel
 from phonenumber_field.modelfields import PhoneNumberField
 from py_expression_eval import Parser as ExpressionParser
@@ -176,6 +176,8 @@ class Monitor(models.Model):
     default_sensor = models.CharField(max_length=50, default='', blank=True)
 
     objects = MonitorManager()
+
+    tracker = FieldTracker(fields=['position'])
 
     class Meta:
         base_manager_name = 'objects'
@@ -530,8 +532,12 @@ class Monitor(models.Model):
         return HealthCheck.objects.evaluate(monitor=self, hour=hour)
 
     def save(self, *args, **kwargs):
-        if self.position:
-            # TODO: Can we do this only when self.position is updated?
+        # County.lookup() does an in-process GEOS point-in-polygon check (no
+        # DB query) - cheap once, but save() runs on every process_data call
+        # for every monitor, continuously, so recomputing unconditionally
+        # adds up to a lot of native GEOS allocation over a day. Only do it
+        # when there's not already an answer, or position actually moved.
+        if self.position and (not self.county or self.tracker.has_changed('position')):
             self.county = County.lookup(self.position)
         super().save(*args, **kwargs)
 
