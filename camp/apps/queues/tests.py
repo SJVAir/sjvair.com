@@ -33,3 +33,15 @@ class ConfigureQueueStatsTests(TestCase):
         assert result is None
         assert getattr(queue, '_stats', None) is None
         assert stats_admin.get_huey is self.original_get_huey
+
+    def test_swallows_errors_and_leaves_dashboard_untouched(self):
+        from unittest import mock
+
+        queue = MemoryHuey('test-error', immediate=False)
+        db = peewee.SqliteDatabase(':memory:')
+
+        with mock.patch('huey.contrib.stats.enable_stats', side_effect=RuntimeError('boom')):
+            result = configure_queue_stats('ignored', queue=queue, db=db)
+
+        assert result is None
+        assert stats_admin.get_huey is self.original_get_huey
