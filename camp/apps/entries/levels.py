@@ -201,3 +201,78 @@ class LevelSet:
                 'guidance': level.guidance,
             }
         return result
+
+
+# Pollutant-specific level sets, breakpoints in each pollutant's native unit.
+# Import this module (not these names directly) to avoid colliding with the
+# identically-named entry models in camp.apps.entries.models, e.g.:
+#     from . import levels
+#     Levels = levels.PM25
+
+PM25 = LevelSet(
+    AQLevel.GOOD(0.0),
+    AQLevel.MODERATE(9.1),
+    AQLevel.UNHEALTHY_SENSITIVE(35.5),
+    AQLevel.UNHEALTHY(55.5),
+    AQLevel.VERY_UNHEALTHY(150.5),
+    AQLevel.HAZARDOUS(250.5),
+)
+
+PM100 = LevelSet(
+    AQLevel.GOOD(0),
+    AQLevel.MODERATE(55),
+    AQLevel.UNHEALTHY_SENSITIVE(155),
+    AQLevel.UNHEALTHY(255),
+    AQLevel.VERY_UNHEALTHY(355),
+    AQLevel.HAZARDOUS(425),
+    AQLevel.VERY_HAZARDOUS(605),
+)
+
+CO = LevelSet(
+    AQLevel.GOOD(0.0),
+    AQLevel.MODERATE(4.5),
+    AQLevel.UNHEALTHY_SENSITIVE(9.5),
+    AQLevel.UNHEALTHY(12.5),
+    AQLevel.VERY_UNHEALTHY(15.5),
+    AQLevel.HAZARDOUS(30.5),
+    AQLevel.VERY_HAZARDOUS(50.4),
+)
+
+NO2 = LevelSet(
+    AQLevel.GOOD(0.0),
+    AQLevel.MODERATE(54.0),
+    AQLevel.UNHEALTHY_SENSITIVE(101.0),
+    AQLevel.UNHEALTHY(361.0),
+    AQLevel.VERY_UNHEALTHY(650.0),
+    AQLevel.HAZARDOUS(1250.0),
+    AQLevel.VERY_HAZARDOUS(2050.0),
+)
+
+O3 = LevelSet(
+    AQLevel.GOOD(0.0),
+    AQLevel.UNHEALTHY_SENSITIVE(125),
+    AQLevel.UNHEALTHY(165),
+    AQLevel.VERY_UNHEALTHY(205),
+    AQLevel.HAZARDOUS(405),
+    AQLevel.VERY_HAZARDOUS(605),
+)
+
+SO2 = LevelSet(
+    AQLevel.GOOD(0),
+    AQLevel.MODERATE(36),
+    AQLevel.UNHEALTHY_SENSITIVE(76),
+    AQLevel.UNHEALTHY(186),
+    AQLevel.VERY_UNHEALTHY(305),
+)
+
+# The EPA Air Quality Index itself (0-500), as opposed to a pollutant's raw
+# concentration. Breakpoints match camp.utils.aqi.aqi_label exactly (301+ is
+# "Hazardous" all the way to 500 -- the EPA AQI has no tier past Hazardous).
+AQI = LevelSet(
+    AQLevel.GOOD(0),
+    AQLevel.MODERATE(51),
+    AQLevel.UNHEALTHY_SENSITIVE(101),
+    AQLevel.UNHEALTHY(151),
+    AQLevel.VERY_UNHEALTHY(201),
+    AQLevel.HAZARDOUS(301),
+)

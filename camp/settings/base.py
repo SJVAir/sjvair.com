@@ -104,6 +104,7 @@ INSTALLED_APPS = [
     'camp.apps.calibrations',
     'camp.apps.contact',
     'camp.apps.entries',
+    'camp.apps.forecasts',
     'camp.apps.helpdesk',
     'camp.apps.hms',
     'camp.apps.ces',
