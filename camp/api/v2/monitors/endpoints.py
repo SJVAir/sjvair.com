@@ -310,8 +310,19 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             .filter(is_hidden=False, location=Monitor.LOCATION.outside)
             .annotate(distance=Distance('position', form.point, spheroid=True))
             .order_by('distance')
-            .with_latest_entry(self.entry_model)
         )
+        # Apply filters (e.g. ?device=) before limiting to the 3 nearest
+        # and before with_latest_entry() - both matter: filtering after the
+        # slice would wrongly exclude a matching monitor just outside the
+        # raw top 3, and with_latest_entry() sets `latest_<type>`/`distance`
+        # by mutating the fetched instances in place, which a later
+        # .filter() call would silently lose (Django clones the queryset,
+        # discarding that in-memory state). Not using filter_class here
+        # deliberately - the base ListModelMixin would call filter_queryset()
+        # a second time after get_queryset() returns, right where it would
+        # do that damage.
+        queryset = MonitorFilter(self.request.GET, queryset=queryset).qs
+        queryset = queryset.with_latest_entry(self.entry_model)
 
         return queryset[:3]
 
@@ -355,6 +366,14 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
             hours=settings.MONITOR_HEALTHY_WINDOW_HOURS,
             threshold=settings.MONITOR_HEALTHY_THRESHOLD,
         )
+
+        # Filter (e.g. ?device=) before with_latest_entry(), not via
+        # filter_class - with_latest_entry() sets `latest_entry` by
+        # mutating the fetched instances in place, and a .filter() call
+        # afterward (which filter_class would trigger a second time, via
+        # the base ListModelMixin) clones the queryset and silently loses
+        # that in-memory state.
+        queryset = MonitorFilter(self.request.GET, queryset=queryset).qs
 
         queryset = queryset.with_latest_entry(self.entry_model)
         return queryset
@@ -405,6 +424,14 @@ class MonitorsAt(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             threshold=settings.MONITOR_HEALTHY_THRESHOLD,
             as_of=timestamp,
         )
+
+        # Filter (e.g. ?device=) before with_entry_as_of(), not via
+        # filter_class - with_entry_as_of() returns a plain list (it
+        # iterates the queryset and mutates each instance in place, no
+        # longer a queryset at all), so a .filter() call afterward (which
+        # filter_class would trigger a second time, via the base
+        # ListModelMixin) would raise, not just lose data.
+        queryset = MonitorFilter(self.request.GET, queryset=queryset).qs
 
         window_seconds = timedelta(days=settings.MONITOR_ACTIVE_WINDOW_DAYS).total_seconds()
         return queryset.with_entry_as_of(self.entry_model, timestamp, seconds=window_seconds)

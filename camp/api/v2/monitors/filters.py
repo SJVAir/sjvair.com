@@ -14,6 +14,8 @@ class MonitorFilter(FilterSet):
             'AirNow': 'airnow',
             'AQview': 'aqview',
             'BAM1022': 'bam1022',
+            'AirGradient': 'airgradient',
+            'CIMIS': 'cimis',
         }.get(value)
 
         if lookup_field is not None:

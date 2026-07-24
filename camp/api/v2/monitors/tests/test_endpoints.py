@@ -16,6 +16,7 @@ from camp.api.v2.monitors import endpoints
 from camp.apps.entries import models as entry_models
 from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.bam.models import BAM1022
+from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.datetime import make_aware
 from camp.utils.test import debug, get_response_data
@@ -528,4 +529,183 @@ class EndpointTests(TestCase):
         assert response.status_code == 403
         assert 'errors' in content
         assert content['errors']['detail'][0]['message'] == endpoints.CreateEntry.upload_not_allowed
+
+
+class MonitorFilterDeviceTests(TestCase):
+    '''
+        MonitorFilter.filter_device() hardcodes a device-name -> lookup-field
+        map. purpleair_monitor (module-level fixture) guarantees a non-CIMIS,
+        non-AirGradient monitor exists, so these tests fail if filtering
+        doesn't actually narrow the queryset.
+    '''
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_filters_by_cimis_device(self):
+        from django.contrib.gis.geos import Point
+
+        CIMIS.objects.create(
+            name='CIMIS Station',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+
+        url = reverse('api:v2:monitors:monitor-list')
+        request = self.factory.get(url, {'device': 'CIMIS'})
+        response = monitor_list(request)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert len(content['data']) >= 1
+        assert all(monitor['type'] == 'cimis' for monitor in content['data'])
+
+    def test_filters_by_airgradient_device(self):
+        from camp.apps.monitors.airgradient.models import AirGradient
+
+        AirGradient.objects.create(name='AG Station', device='O-1PP', sensor_id=99999)
+
+        url = reverse('api:v2:monitors:monitor-list')
+        request = self.factory.get(url, {'device': 'AirGradient'})
+        response = monitor_list(request)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        assert len(content['data']) >= 1
+        assert all(monitor['type'] == 'airgradient' for monitor in content['data'])
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    def test_current_data_filters_by_device(self):
+        '''
+            CurrentData didn't have filter_class wired in - ?device= was
+            silently ignored. threshold=0 so the purpleair fixture (no
+            HealthCheck rows) is eligible too, so exclusion here can only
+            be the device filter, not the health-check requirement.
+        '''
+        from django.contrib.gis.geos import Point
+        from camp.apps.monitors.purpleair.models import PurpleAir
+
+        purpleair = PurpleAir.objects.get(sensor_id=8892)
+        purpleair.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('70.0'))
+
+        cimis = CIMIS.objects.create(
+            name='CIMIS Station',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        cimis.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('75.0'))
+
+        kwargs = {'entry_type': 'temperature'}
+        url = reverse('api:v2:monitors:current-data', kwargs=kwargs)
+        request = self.factory.get(url, {'device': 'CIMIS'})
+        response = current_data(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        ids = [monitor['id'] for monitor in content['data']]
+        assert str(cimis.pk) in ids
+        assert str(purpleair.pk) not in ids
+
+    def test_closest_monitor_filters_by_device(self):
+        '''ClosestMonitor didn't have filter_class wired in - ?device= was silently ignored.'''
+        from django.contrib.gis.geos import Point
+        from camp.apps.monitors.purpleair.models import PurpleAir
+
+        purpleair = PurpleAir.objects.get(sensor_id=8892)
+        purpleair.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('70.0'))
+
+        cimis = CIMIS.objects.create(
+            name='CIMIS Station',
+            station_number='2',
+            position=purpleair.position,
+            location=CIMIS.LOCATION.outside,
+        )
+        cimis.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('75.0'))
+
+        kwargs = {'entry_type': 'temperature'}
+        url = reverse('api:v2:monitors:monitor-closest', kwargs=kwargs)
+        params = {
+            'latitude': purpleair.position.y,
+            'longitude': purpleair.position.x,
+            'device': 'CIMIS',
+        }
+        request = self.factory.get(url, params)
+        response = closest_monitor(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        ids = [monitor['id'] for monitor in content['data']]
+        assert str(cimis.pk) in ids
+        assert str(purpleair.pk) not in ids
+
+    def test_closest_monitor_filters_before_limiting_to_three(self):
+        '''
+            The device filter must apply before the "3 nearest" slice, not
+            after - otherwise a matching monitor just outside the raw top 3
+            would be wrongly excluded. Three PurpleAir monitors are closer
+            to the search point than the one CIMIS station.
+        '''
+        from django.contrib.gis.geos import Point
+        from camp.apps.monitors.purpleair.models import PurpleAir
+
+        origin = Point(-119.7871, 36.7378, srid=4326)
+        for i, sensor_id in enumerate((90001, 90002, 90003), start=1):
+            monitor = PurpleAir.objects.create(
+                name=f'Nearby PurpleAir {i}',
+                sensor_id=sensor_id,
+                position=Point(-119.7871 + (0.001 * i), 36.7378, srid=4326),
+                location=PurpleAir.LOCATION.outside,
+            )
+            monitor.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('70.0'))
+
+        cimis = CIMIS.objects.create(
+            name='CIMIS Station',
+            station_number='2',
+            position=Point(-119.7871 + 0.01, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        cimis.create_entry(entry_models.Temperature, timestamp=timezone.now(), value=Decimal('75.0'))
+
+        kwargs = {'entry_type': 'temperature'}
+        url = reverse('api:v2:monitors:monitor-closest', kwargs=kwargs)
+        params = {'latitude': origin.y, 'longitude': origin.x, 'device': 'CIMIS'}
+        request = self.factory.get(url, params)
+        response = closest_monitor(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        ids = [monitor['id'] for monitor in content['data']]
+        assert ids == [str(cimis.pk)]
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    def test_monitors_at_filters_by_device(self):
+        '''MonitorsAt didn't have filter_class wired in - ?device= was silently ignored.'''
+        from django.contrib.gis.geos import Point
+        from camp.apps.monitors.purpleair.models import PurpleAir
+
+        as_of = timezone.now()
+
+        purpleair = PurpleAir.objects.get(sensor_id=8892)
+        purpleair.create_entry(entry_models.Temperature, timestamp=as_of, value=Decimal('70.0'))
+
+        cimis = CIMIS.objects.create(
+            name='CIMIS Station',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        cimis.create_entry(entry_models.Temperature, timestamp=as_of, value=Decimal('75.0'))
+
+        kwargs = {'entry_type': 'temperature'}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+        request = self.factory.get(url, {'timestamp': as_of.isoformat(), 'device': 'CIMIS'})
+        response = monitors_at(request, **kwargs)
+        content = get_response_data(response)
+
+        assert response.status_code == 200
+        ids = [monitor['id'] for monitor in content['data']]
+        assert str(cimis.pk) in ids
+        assert str(purpleair.pk) not in ids
 
