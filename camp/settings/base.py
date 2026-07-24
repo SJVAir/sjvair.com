@@ -119,6 +119,7 @@ INSTALLED_APPS = [
     'camp.apps.regions',
     'camp.apps.summaries',
     'camp.apps.qaqc',
+    'camp.apps.queues',
     'camp.utils',
 ]
 
