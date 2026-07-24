@@ -189,6 +189,26 @@ def gdf_from_zip(*args, **kwargs) -> gpd.GeoDataFrame:
     return _finalize_gdf(gpd.GeoDataFrame(iter_from_zip(*args, **kwargs)), crs)
 
 
+def _resolve_nested_zip_shapefile(path, fiona_path):
+    """
+    Some zips (e.g. OEHHA's CalEnviroScreen 5.0 shapefile) nest the actual
+    .shp/.dbf/.shx inside a subdirectory whose own name happens to end in
+    `.shp`, which breaks GDAL's root-level shapefile auto-detection for a
+    zip. Probe each top-level entry for a nested layer before giving up.
+    """
+    with zipfile.ZipFile(str(path)) as z:
+        top_level_entries = {
+            name.split('/', 1)[0]
+            for name in z.namelist()
+            if '/' in name
+        }
+    for entry in sorted(top_level_entries):
+        candidate = f'{fiona_path}!/{entry}'
+        if fiona.listlayers(candidate):
+            return candidate
+    return fiona_path
+
+
 def stream_filtered_gdf(
     path: str,
     crs: str = gis.EPSG_LATLON,
@@ -207,6 +227,8 @@ def stream_filtered_gdf(
     try:
         zipfile.ZipFile(str(path)).close()
         fiona_path = f'zip://{path}'
+        if not fiona.listlayers(fiona_path):
+            fiona_path = _resolve_nested_zip_shapefile(path, fiona_path)
     except zipfile.BadZipFile:
         fiona_path = str(path)
 
