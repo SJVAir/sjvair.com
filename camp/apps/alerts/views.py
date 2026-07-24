@@ -1,12 +1,20 @@
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count, Q
+from django.db.models.functions import Coalesce
+from django.http import HttpResponse, HttpResponseForbidden
+from django.utils import timezone
 from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 
 import vanilla
 
-from camp.apps.alerts.models import Alert, Subscription
+from twilio.request_validator import RequestValidator
+
+from camp.apps.alerts.models import Alert, Notification, Subscription
 from camp.apps.monitors.models import Monitor
 from camp.utils.counties import County
 
@@ -80,3 +88,48 @@ class SubscriptionCountyStats(vanilla.TemplateView):
             })
 
         return stats
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class TwilioStatusCallback(View):
+    STATUS_MAP = {
+        'delivered': Notification.Status.DELIVERED,
+        'undelivered': Notification.Status.UNDELIVERED,
+        'failed': Notification.Status.FAILED,
+    }
+
+    def post(self, request, *args, **kwargs):
+        validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
+        signature = request.META.get('HTTP_X_TWILIO_SIGNATURE', '')
+        url = request.build_absolute_uri()
+
+        if not validator.validate(url, request.POST, signature):
+            return HttpResponseForbidden()
+
+        status = self.STATUS_MAP.get(request.POST.get('MessageStatus'))
+        if status is None:
+            return HttpResponse(status=200)
+
+        message_sid = request.POST.get('MessageSid')
+        if not message_sid:
+            return HttpResponse(status=200)
+
+        # Exclude notifications already in a terminal state: Twilio status
+        # callbacks can arrive out of order or be retried, and a stale
+        # callback shouldn't revert an already-delivered notification.
+        # Backfill sent_at too, in case this callback beat our own SENT
+        # write (e.g. a delayed/queued send task).
+        Notification.objects.filter(
+            provider_id=message_sid
+        ).exclude(
+            status__in=[
+                Notification.Status.DELIVERED,
+                Notification.Status.UNDELIVERED,
+                Notification.Status.FAILED,
+            ]
+        ).update(
+            status=status,
+            sent_at=Coalesce('sent_at', timezone.now()),
+        )
+
+        return HttpResponse(status=200)
