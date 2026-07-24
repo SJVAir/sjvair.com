@@ -12,9 +12,23 @@ log, and flush/revoke controls — using huey's built-in
 `huey.contrib.djhuey.stats` app, without disturbing the existing multi-queue
 `DJANGO_HUEY` configuration or the `djangohuey` consumer model.
 
-Only the **primary** queue is in scope. The secondary queue is low-traffic and
-the summaries queue is monitored by other means; both are explicitly out of
-scope here.
+Only the **primary** queue is wired in this cut. The secondary queue is
+low-traffic and the summaries queue is monitored by other means; both are
+explicitly out of scope here.
+
+### Wider intent (why the shape matters)
+
+This is deliberately built as **bridge #1** over a known structural gap: huey's
+Django integration (`huey.contrib.djhuey`) is single-instance by design, so its
+new dashboard doesn't compose with the multi-queue `django-huey` we depend on.
+The longer-term aim is a queue-aware observability layer — a
+`/admin/queues/<name>/` surface across all queues — that could eventually be
+extracted as an add-on to **`django-huey`** (the incumbent multi-queue package),
+not a fork of `djhuey` and not a change to huey core. See **Strategic context**
+at the end. Concretely, that means: the code lives in a real app
+(`camp.apps.queues`) shaped to mirror `djhuey.stats` for portability, and the
+wiring is written **queue-parametrized** (takes a queue name; this cut passes
+`'primary'`) rather than hardcoding `primary` throughout.
 
 ## Background / constraints
 
@@ -49,11 +63,22 @@ dashboard must therefore point at the **same object** the consumer uses:
 ## Decisions
 
 - **Upgrade huey `3.0.1 → 3.3.0`** (current latest; the dashboard requires ≥ 3.2.1).
-- **Point the dashboard at primary by monkeypatching** `get_huey` rather than
-  subclassing/re-registering the admin. Both admin methods reference the
-  module-level `get_huey`, so reassigning that one attribute covers the whole
+- **Point the dashboard at the target queue by monkeypatching** `get_huey`
+  rather than subclassing/re-registering the admin. Both admin methods reference
+  the module-level `get_huey`, so reassigning that one attribute covers the whole
   dashboard, and we avoid copying ~40 lines of huey-internal method bodies that
   would need to be kept in sync across upgrades.
+- **House it in a new app `camp.apps.queues`**, structured to mirror
+  `huey.contrib.djhuey.stats` (an `AppConfig.ready()` that calls `enable_stats`),
+  so a later extraction into a `django-huey` add-on is close to a copy rather
+  than a redesign. The stats/dashboard concern is kept in its own submodule so a
+  future `django.tasks` multi-queue backend can live beside it as a separate,
+  independently-extractable module.
+- **Scope note on the monkeypatch:** it points the *one* shipped dashboard at
+  *one* queue. It is correct for this single-page cut but is **not** the
+  mechanism for the eventual multi-page `/admin/queues/<name>/` surface — that
+  needs queue-aware views (see Out of scope), because three monkeypatches would
+  fight over the single `get_huey` and the shipped templates' global URL names.
 
 ## Changes
 
@@ -77,29 +102,39 @@ default) `djhuey.HUEY` instance. This is harmless — that instance never runs
 tasks — and has the useful side effect of creating the peewee tables. No Django
 migration is required (peewee issues `create table if not exists`).
 
-### 3. New app: `camp.apps.taskstats`
+### 3. New app: `camp.apps.queues`
 
-A minimal app whose only job is an `AppConfig.ready()` hook (the glue cannot live
-inside the third-party package). Structure: `apps.py`, `__init__.py`, `tests.py`.
-Add `camp.apps.taskstats` to `INSTALLED_APPS`.
+A small app whose job (for now) is an `AppConfig.ready()` hook that wires the
+dashboard to a queue — the glue cannot live inside the third-party package. Add
+`camp.apps.queues` to `INSTALLED_APPS`. Layout, shaped to mirror
+`djhuey.stats` and to keep concerns separable:
 
-The wiring logic lives in a small, testable function — e.g.
-`configure_primary_stats(queue=None, db=None)`, where both arguments default to
-the production values (`get_queue('primary')` and `stats_database()`) but can be
-injected in tests. Called from `ready()` with no arguments:
+```
+camp/apps/queues/
+    __init__.py
+    apps.py        # QueuesConfig.ready() -> configure_queue_stats('primary')
+    stats.py       # configure_queue_stats(...) — the dashboard bridge
+    tests.py
+    # (future) tasks_backend.py — multi-queue django.tasks backend
+```
 
-1. Resolve the primary instance: `queue = queue or get_queue('primary')` (via
+The wiring lives in a small, testable, **queue-parametrized** function in
+`stats.py` — e.g. `configure_queue_stats(queue_name, queue=None, db=None)`.
+`queue`/`db` default to the production values but can be injected in tests.
+`ready()` calls `configure_queue_stats('primary')`. Steps:
+
+1. Resolve the instance: `queue = queue or get_queue(queue_name)` (via
    `django_huey.get_queue`).
 2. **Guard:** if `queue.immediate` is true, return immediately — there is no
    consumer, so a live dashboard is meaningless (covers tests and local DEBUG).
 3. Obtain the stats DB if not injected: `db, options = stats_database()` from
    `huey.contrib.djhuey.stats.apps`.
-4. `enable_stats(queue, db, **options)` — attaches the recorder to the primary
-   instance (idempotent), so execution signals are recorded and `queue._stats`
-   is populated.
+4. `enable_stats(queue, db, **options)` — attaches the recorder to that instance
+   (idempotent), so execution signals are recorded and `queue._stats` is
+   populated.
 5. Monkeypatch: `huey.contrib.djhuey.stats.admin.get_huey = lambda: queue` — the
    Dashboard page's live counts, charts, per-task stats, and flush/revoke
-   controls now all target primary.
+   controls now all target that queue.
 
 Note the guard means `ready()` is a no-op in the normal test run; the function
 is exercised directly with injected arguments (see Testing).
@@ -108,6 +143,11 @@ is exercised directly with injected arguments (see Testing).
 the `djangohuey` consumers (management commands load apps first) and the web
 server — so the recorder is attached wherever tasks execute, and the monkeypatch
 is applied wherever the admin is served.
+
+The function is queue-parametrized so the eventual multi-queue work reuses it to
+register recorders per queue; the single shipped admin still shows one queue via
+the monkeypatch (that's this cut), and the multi-page surface is a later,
+separate step (Out of scope).
 
 ### 4. `HUEY_STATS` setting (base.py)
 
@@ -123,12 +163,24 @@ HUEY_STATS = {
 `test.py` inherits `INSTALLED_APPS` from base via `from .base import *`. Remove
 `huey.contrib.djhuey.stats` from the inherited list in `test.py` so the
 third-party app's `ready()` never connects to or creates tables in the test
-database. Our own `camp.apps.taskstats.ready()` already no-ops under tests
+database. Our own `camp.apps.queues.ready()` already no-ops under tests
 because the test `DJANGO_HUEY` queues run `immediate=True`, but dropping the
 vendor app removes the other path to the test DB as well.
 
 ## Out of scope (follow-ups)
 
+- **Multi-queue dashboard** (`/admin/queues/<name>/`). This cut points the one
+  shipped admin at `primary` via the monkeypatch. Covering all queues means:
+  (a) register recorders on every queue (`configure_queue_stats(name)` per queue,
+  into the one shared stats DB — events are already `queue`-tagged), and
+  (b) build **queue-aware views** on huey's public `live_counts()` /
+  `dashboard_context()` / `HueyStats` helpers. It does **not** mean calling the
+  wiring three times against the shipped admin — that would collide on the single
+  `get_huey` and the shipped templates' global URL names. This is the seed of the
+  extractable `django-huey` add-on.
+- **`django.tasks` multi-queue backend** — a `HueyBackend` variant routing
+  `queue_name → get_queue(name)`; the main design problem is namespacing result
+  ids per queue. Separate module (`tasks_backend.py`), separate effort.
 - **"Registered tasks" list** in the dashboard will be sparse in the web
   process, because `django_huey` autodiscovers `tasks.py` modules only in the
   consumer. Populating it means importing the primary queue's task modules in
@@ -142,7 +194,7 @@ The wiring function is tested hermetically — it accepts injected `queue` and
 `INSTALLED_APPS` (it is removed in `test.py`) and never touch the default test
 database.
 
-- **Unit** (`camp/apps/taskstats/tests.py`): call `configure_primary_stats(...)`
+- **Unit** (`camp/apps/queues/tests.py`): call `configure_queue_stats(...)`
   with a **non-immediate** `MemoryHuey` and an in-memory peewee
   `SqliteDatabase`, then assert (a) `queue._stats` is set after the call and
   (b) `huey.contrib.djhuey.stats.admin.get_huey()` returns that instance.
@@ -168,6 +220,50 @@ Tests follow project conventions: inherit from Django's `TestCase`, use plain
 - **Verify against a real consumer**, not just immediate-mode tests: run
   `djangohuey --queue primary`, enqueue a task, and confirm events land and the
   dashboard renders live data.
+
+## Strategic context
+
+Recorded so future work has the reasoning, not just the code.
+
+- **Why this exists as a bridge.** huey's Django layer (`huey.contrib.djhuey`)
+  is single-instance *by design*; the maintainer treats single-queue-in-Django
+  as a deliberate choice (huey issue #838) and steers users toward one queue +
+  priorities. We need multiple queues for genuine worker isolation (see the
+  queue-topology note below), so we run `django-huey`, and every new huey
+  Django-layer feature — this dashboard, later the `django.tasks` backend — has
+  to be bridged by hand. This is **bridge #1**.
+
+- **Queue topology is correct, keep it.** The three queues buy worker isolation,
+  which task priorities cannot provide (priority is dequeue ordering, not
+  capacity reservation or preemption). `primary` = latency-sensitive ingest +
+  scheduler; `secondary` = on-demand heavy bulk imports that must never starve
+  `primary`; `summaries` = long, memory-tuned rollups. huey's own docs list
+  "isolation … must never starve critical tasks of workers" as the reason to use
+  separate queues. Do **not** collapse queues to simplify monitoring — that is
+  the tail wagging the dog.
+
+- **Tripwire — when to reconsider the whole stack.** The migration trigger is not
+  "we use `django-huey`." It is the **number of hand-built bridges** we maintain
+  to keep `django-huey` composing with modern huey, and whether each huey upgrade
+  threatens them. One or two (this dashboard, maybe a rate-limit helper): fine,
+  stay. If we reach bridge #3–#4 and huey bumps become tense regression checks on
+  our monkeypatches, we have structurally outgrown the arrangement — and at that
+  point the principled move is **Celery** (native multi-queue routing) or
+  **Dramatiq**, chosen for the *isolation/routing* need, not for ecosystem size.
+
+- **Upstream posture (if we choose to give back).** Ranked: (1) build here first
+  — the deliverable and the proving ground, no external commitment; (2) if giving
+  back, contribute the two add-on modules (stats/dashboard + `django.tasks`
+  backend) to **`django-huey`**, the incumbent — additive features to a
+  maintained project, no ecosystem fragmentation; (3) a standalone package only
+  as a fallback if `django-huey` won't take them. A **new unified djhuey/django-
+  huey rewrite is explicitly rejected** — `django-huey` already covers multi-queue
+  config, per-queue consumers, decorators, signals, and DB-connection handling;
+  the only real gaps are those two modules. A separate, minimal upstream nicety
+  worth floating to huey *issue-first* (not as a surprise PR, and with low
+  expectations given #838): make `djhuey.stats`' instance resolution configurable
+  (e.g. honor `HUEY_STATS['huey']`), which turns this cut's monkeypatch into a
+  supported setting and helps single-queue users too.
 
 ## Risks
 
