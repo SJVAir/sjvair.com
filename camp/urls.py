@@ -18,6 +18,7 @@ from camp.apps.monitors.health_checks import (
     AQviewHealthCheck,
     CCACBAMHealthCheck,
     PurpleAirHealthCheck,
+    VOZBoxHealthCheck,
 )
 from camp.utils import views
 
@@ -64,6 +65,7 @@ urlpatterns += [path('system-status/', include(([
             AQviewHealthCheck,
             CCACBAMHealthCheck,
             PurpleAirHealthCheck,
+            VOZBoxHealthCheck,
         ],
         extra_context={'title': 'Data Feeds'},
     ), name='data-feeds'),

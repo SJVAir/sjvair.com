@@ -13,6 +13,7 @@ from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.aqview.models import AQview
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.monitors.vozbox.models import VOZBox
 
 
 @dataclasses.dataclass
@@ -88,3 +89,10 @@ class PurpleAirHealthCheck(MonitorHealthCheck):
     network: str = dataclasses.field(default='PurpleAir', repr=False)
     model: type = dataclasses.field(default=PurpleAir, repr=False)
     limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(minutes=10), repr=False)
+
+
+@dataclasses.dataclass(repr=False)
+class VOZBoxHealthCheck(MonitorHealthCheck):
+    network: str = dataclasses.field(default='VOZbox', repr=False)
+    model: type = dataclasses.field(default=VOZBox, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(minutes=30), repr=False)
