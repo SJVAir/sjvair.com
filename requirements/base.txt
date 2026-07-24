@@ -37,7 +37,8 @@ geopandas==1.1.3
 geopy==2.4.1
 gunicorn==26.0.0
 hiredis==3.4.0
-huey==3.0.1
+huey==3.3.0
+peewee==4.2.6
 invoke==3.0.3
 jsonschema==4.26.0
 libsass==0.23.0
