@@ -160,12 +160,26 @@ HUEY_STATS = {
 
 ### 5. Keep the test suite clean (test.py)
 
-`test.py` inherits `INSTALLED_APPS` from base via `from .base import *`. Remove
-`huey.contrib.djhuey.stats` from the inherited list in `test.py` so the
-third-party app's `ready()` never connects to or creates tables in the test
-database. Our own `camp.apps.queues.ready()` already no-ops under tests
-because the test `DJANGO_HUEY` queues run `immediate=True`, but dropping the
-vendor app removes the other path to the test DB as well.
+The stats app **stays installed** under tests — its models are Django models, so
+`configure_queue_stats` importing `huey.contrib.djhuey.stats.admin` (to patch
+`get_huey`) requires the app in `INSTALLED_APPS`, otherwise it raises
+`RuntimeError: Model ... doesn't declare an explicit app_label`. Removing the app
+would make the wiring function un-importable and therefore un-testable.
+
+Instead, keep the test Postgres untouched by pointing stats storage at throwaway
+in-memory sqlite in `test.py`:
+
+```python
+HUEY_STATS = {'capture_args': False, 'database': 'sqlite:///:memory:'}
+```
+
+With this, the vendor app's own startup `enable_stats(djhuey.HUEY, db)` creates
+its (empty) tables in an ephemeral sqlite db on a separate peewee connection,
+never in the test Postgres. Our `camp.apps.queues.ready()` still no-ops under
+tests because the test `DJANGO_HUEY` queues run `immediate=True`. The stats
+models are `managed=False`, so Django's test-DB setup never creates them either.
+The unit test injects its *own* in-memory sqlite db into `configure_queue_stats`,
+so it depends on none of this.
 
 ## Out of scope (follow-ups)
 
@@ -190,9 +204,9 @@ vendor app removes the other path to the test DB as well.
 ## Testing
 
 The wiring function is tested hermetically — it accepts injected `queue` and
-`db` arguments, so the tests never depend on the third-party stats app being in
-`INSTALLED_APPS` (it is removed in `test.py`) and never touch the default test
-database.
+`db` arguments, so the tests never touch the default test database (they use an
+in-memory sqlite peewee db) and don't rely on the vendor app's own startup
+recorder.
 
 - **Unit** (`camp/apps/queues/tests.py`): call `configure_queue_stats(...)`
   with a **non-immediate** `MemoryHuey` and an in-memory peewee
@@ -205,8 +219,9 @@ Each test restores `huey.contrib.djhuey.stats.admin.get_huey` to its original
 value afterward so the monkeypatch does not leak across tests.
 
 A rendered-dashboard check (staff `GET` → `200`) is **not** part of the
-automated suite — the stats app is intentionally absent under tests. It is
-covered instead by the manual verification step below.
+automated suite — under tests the queues run `immediate=True`, so `get_huey` is
+never patched to a real instance and the live panel has nothing meaningful to
+render. It is covered instead by the manual verification step below.
 
 Tests follow project conventions: inherit from Django's `TestCase`, use plain
 `assert` statements, and use fixtures where needed.
