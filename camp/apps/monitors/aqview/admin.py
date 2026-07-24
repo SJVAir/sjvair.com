@@ -9,9 +9,6 @@ from camp.utils.forms import DateRangeForm
 
 @admin.register(AQview)
 class AQviewAdmin(MonitorAdmin):
-    list_display = MonitorAdmin.list_display[:]
-    list_display.remove('get_health_grade')
-
     fields = MonitorAdmin.fields
     readonly_fields = ['get_monitor_id', 'name', 'location', 'position', 'county', 'get_map']
 

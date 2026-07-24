@@ -82,9 +82,9 @@ class MonitorAdmin(gisadmin.GISModelAdmin):
     actions = ['export_monitor_list_csv']
     form = MonitorAdminForm
 
-    list_display = ['name', 'get_monitor_id', 'get_device', 'get_health_grade', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'legacy_last_updated', 'get_subscriptions']
+    list_display = ['name', 'get_monitor_id', 'get_device', 'county', 'get_active_status', 'is_sjvair', 'is_hidden', 'last_updated', 'legacy_last_updated', 'get_subscriptions']
     list_editable = ['is_sjvair', 'is_hidden']
-    list_filter = ['is_sjvair', 'is_hidden', 'device', MonitorIsActiveFilter, 'groups', 'location', 'county', HealthCheckFilter]
+    list_filter = ['is_sjvair', 'is_hidden', 'device', MonitorIsActiveFilter, 'groups', 'location', 'county']
 
     autocomplete_fields = ['host']
     readonly_fields = ['get_monitor_id', 'get_map']
@@ -258,6 +258,8 @@ class MonitorAdmin(gisadmin.GISModelAdmin):
 
 
 class LCSMonitorAdmin(MonitorAdmin):
+    list_filter = MonitorAdmin.list_filter + [HealthCheckFilter]
+
     csv_export_fields = MonitorAdmin.csv_export_fields[:]
     csv_export_fields.insert(2, 'sensor_id')
     csv_export_fields.insert(3, 'hardware_id')
@@ -265,6 +267,7 @@ class LCSMonitorAdmin(MonitorAdmin):
     list_display = MonitorAdmin.list_display[:]
     list_display.insert(2, 'sensor_id')
     list_display.insert(3, 'get_hardware_id')
+    list_display.insert(4, 'get_health_grade')
 
     readonly_fields = ['get_monitor_id', 'name', 'location', 'position', 'county', 'get_map']
 
