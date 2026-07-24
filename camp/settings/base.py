@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     'django_recaptcha',
     'form_utils',
     'huey.contrib.djhuey',
+    'huey.contrib.djhuey.stats',
     'livereload',
     'localflavor',
     'pgactivity',
@@ -359,6 +360,10 @@ DJANGO_HUEY = {
             'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
         },
     }
+}
+
+HUEY_STATS = {
+    'capture_args': False,
 }
 
 MAX_QUEUE_SIZE = int(env('MAX_QUEUE_SIZE', 500))
