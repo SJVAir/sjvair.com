@@ -107,6 +107,7 @@ INSTALLED_APPS = [
     'camp.apps.helpdesk',
     'camp.apps.hms',
     'camp.apps.ces',
+    'camp.apps.calheatscore',
     'camp.apps.ceidars',
     'camp.apps.monitors',
     'camp.apps.pesticides',
