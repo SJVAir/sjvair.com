@@ -365,6 +365,8 @@ DJANGO_HUEY = {
 
 HUEY_STATS = {
     'capture_args': False,
+    'retention_hours': 24,
+    'max_events': 250_000,
 }
 
 MAX_QUEUE_SIZE = int(env('MAX_QUEUE_SIZE', 500))
