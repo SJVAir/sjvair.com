@@ -175,7 +175,13 @@
                         {% for key in settings.DJANGO_HUEY.queues.keys %}
                         <li class="queue queue-{{ key }}">
                             <div style="display:flex;justify-content:space-between;align-items:center">
-                                <span>{{ key|title }}</span>
+                                {% if forloop.first %}
+                                    <a href="{% url 'admin:hueystats_hueydashboard_changelist' %}">
+                                        <span>{{ key|title }}</span>
+                                    </a>
+                                {% else %}
+                                    <span>{{ key|title }}</span>
+                                {% endif %}
                                 <form action="{% url 'flush-queue' key=key %}" method="POST" style="display:inline">
                                     {% csrf_token %}
                                     <span style="font-weight:bold;" class="size"></span>

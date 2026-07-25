@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     'django_recaptcha',
     'form_utils',
     'huey.contrib.djhuey',
+    'huey.contrib.djhuey.stats',
     'livereload',
     'localflavor',
     'pgactivity',
@@ -118,6 +119,7 @@ INSTALLED_APPS = [
     'camp.apps.regions',
     'camp.apps.summaries',
     'camp.apps.qaqc',
+    'camp.apps.queues',
     'camp.utils',
 ]
 
@@ -359,6 +361,12 @@ DJANGO_HUEY = {
             'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
         },
     }
+}
+
+HUEY_STATS = {
+    'capture_args': False,
+    'retention_hours': 24,
+    'max_events': 250_000,
 }
 
 MAX_QUEUE_SIZE = int(env('MAX_QUEUE_SIZE', 500))
