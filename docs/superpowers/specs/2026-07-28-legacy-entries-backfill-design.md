@@ -18,9 +18,20 @@ The goal is a backfill mechanism, following the same idiom as the summaries back
 (`docs/superpowers/specs/2026-07-13-summary-backfill-design.md`) — a DB-tracked job
 driven by Huey periodic tasks — that walks all legacy `Entry` history, finds rows with
 no corresponding new RAW entry (anywhere in the range, not just at the edges), and
-inserts them. Reprocessing those RAW entries through the correction/cleaning/calibration
-pipeline is explicitly **out of scope** — this system only fills in RAW-stage entries;
-advancing them through later stages is a separate, later effort.
+inserts them. A second phase then drives those RAW entries (and any other historical
+RAW entries left incompletely processed by prior migration attempts) through the
+existing correction/cleaning/calibration pipeline.
+
+There is already a partial, previously-run migration mechanism —
+`migrate_legacy_entry` / `copy_legacy_entries` / `copy_legacy_entries_range`
+(`camp/apps/entries/tasks.py:17-117`) — which this design replaces. It has the same
+"compare earliest timestamps" blind spot this design fixes (`copy_legacy_entries` only
+migrates `[earliest_legacy_timestamp, earliest_pm25_entry_timestamp)`), and a known bug
+in its `Pressure` mapping (see **Pressure correction**, below). It is not otherwise
+touched by this design — no code from it is reused — but its past runs are the reason
+some monitors already have partially-migrated and partially-piped entries, which is why
+gap detection (RAW phase) and pipeline completion (pipeline phase) both need to handle
+"partially done," not just "fully done" or "not started."
 
 ## Scope: which monitor types and fields
 
@@ -187,6 +198,114 @@ are dispatched (an `EXISTS` subquery, not the full monitor table), and only moni
 the four eligible types — AirGradient and any other type absent from
 `LEGACY_BACKFILL_MAP` never get a task at all.
 
+## Pipeline idempotency fix (prerequisite for the pipeline phase)
+
+`BaseProcessor.run()` (`camp/apps/calibrations/core/processors/base.py:104-113`) already
+guards against duplicate/erroring re-creation of an entry: `validation_check()`
+(`entries/models.py:182-193`) checks whether a matching `(monitor, timestamp, sensor,
+stage, processor)` row already exists, and if so, `run()` returns `None` instead of
+saving a duplicate. That part is already safe to call repeatedly.
+
+The bug is in what happens *next*: `process_entry_ng`/`process_entry_pipeline`
+(`camp/apps/monitors/models.py:396-428`) only recurses into entries a call actually
+**created** — when `run()` returns `None` because the entry already existed, the
+recursion stops there, even if a *later* stage is still missing. Concretely: a RAW
+entry whose CORRECTED entry already exists (e.g. left over from a previous partial
+migration or a crashed task) but whose CLEANED/CALIBRATED entries don't will never get
+those later stages filled in by calling `process_entry_pipeline` again — the call
+silently stops at CORRECTED and reports nothing wrong.
+
+Fix: change the "entry already exists" branch to return the **existing** entry instead
+of `None`. `process_entry_ng`/`process_entry_pipeline`'s recursion then continues into
+that existing entry regardless of whether this call created it or found it already
+there, so a partially-processed chain always completes on re-run. This is a shared fix
+in `BaseProcessor.run()`, not a backfill-only wrapper — it also makes real-time ingest
+self-healing (e.g. after a task crashes mid-pipeline) instead of silently stuck, and
+avoids a second, parallel "make it idempotent" implementation living only in the
+backfill code.
+
+Existing behavior is unchanged for the common case (nothing exists yet → create and
+recurse as before) and for the fully-processed case (everything exists → each stage's
+`run()` returns its existing entry, `process_entry_ng` finds no *stage* missing, so no
+extra processor work happens — just cheap existence lookups). Needs a unit test
+covering the specific "CORRECTED exists, CLEANED doesn't" case, since that's the case
+that's silently broken today.
+
+## Phase 2: pipeline reprocessing
+
+Once RAW entries exist (whether from this backfill or left over from prior partial
+migrations), a second, independently-runnable job drives them through
+correction/cleaning/calibration. This is a separate job from the RAW backfill above —
+it can run anytime, doesn't need to wait for the RAW job to reach `done`, and is safe to
+re-run repeatedly (idempotent, per the fix above) — matching "re-run as-needed" as a
+first-class requirement, not an afterthought.
+
+**Which `EntryModel`s are in scope:** driven directly from `ENTRY_CONFIG`, not a
+hardcoded per-monitor-type list — any `EntryModel` whose `ENTRY_CONFIG` entry declares a
+`processors` key has a pipeline to run; its terminal stage is
+`config['allowed_stages'][-1]` (e.g. `CALIBRATED` for PurpleAir's `PM25`/`Temperature`/
+`Humidity`, `CLEANED` for AirNow/AQview's `PM25`). Entry models with no `processors` key
+(PurpleAir's `PM10`, `PM100`, `Particulates`) have nothing to reprocess and are skipped.
+
+**Selection, per chunk per monitor per eligible `EntryModel`:** reuses the same
+anti-join shape as RAW gap detection, just checking for a missing *terminal-stage*
+descendant instead of a missing RAW entry — find `stage=RAW` entries in the chunk
+window with no corresponding entry at `stage=terminal_stage` (any processor) for the
+same `(monitor, timestamp, sensor)`. For each match, call
+`monitor.process_entry_pipeline(raw_entry, cutoff_stage=terminal_stage)`. Because of the
+idempotency fix, this correctly completes chains left in any partial state — fully
+unprocessed, or stuck partway through from an earlier crashed/partial run — not just
+entirely-unprocessed RAW entries.
+
+**Job/task shape:** identical pattern to the RAW backfill job — a new
+`PipelineBackfillJob` (same fields: `state`, `cursor`, `chunk_start`, `range_start`/
+`range_end`, `pending_tasks`, `batch_id`, `phase_started_at`, `locked_at`,
+`consecutive_failures`, `last_error`, plus `entries_processed`), a periodic
+`reprocess_legacy_pipeline_tick` task, and a per-monitor `reprocess_monitor_chunk(job_id,
+monitor_id, chunk_start, chunk_end, batch_id)` task doing the fenced `pending_tasks`
+decrement. Kept as a separate job model (not a second phase bolted onto
+`EntryBackfillJob`) since it has its own independent lifecycle — it isn't gated on the
+RAW job's cursor, and re-running it later (e.g. after a calibration change) shouldn't
+require re-running RAW backfill too.
+
+`range_start`/`range_end` default the same way — earliest RAW entry timestamp across the
+four eligible monitor types → now — and the cursor walks backward, same rationale as
+the RAW job (recent data most likely to matter operationally).
+
+Management command `camp/apps/monitors/management/commands/reprocess_legacy_pipeline.py`,
+same `start`/`status`/`cancel` shape as `backfill_legacy_entries`.
+
+## Pressure correction (one-time data repair)
+
+The old `migrate_legacy_entry` (`camp/apps/entries/tasks.py:17-117`) mapped legacy
+`pressure` directly to the new `Pressure` entry's `value` field
+(`{'pressure': 'value'}`, line 34) with no unit conversion, for every monitor type
+generically. Per the field mapping table above, legacy `pressure` is stored in hPa for
+PurpleAir but mmHg for BAM — a direct copy is only correct for BAM. Any PurpleAir
+`Pressure` RAW entries created by that old code path are storing raw hPa values
+mislabeled as the mmHg-denominated `value` field (hPa ≈ 950–1050 typically; correctly
+converted mmHg values would be ≈ 712–787 — the two ranges don't overlap, so this is
+detectable without needing to know which code path created a given row).
+
+One-time repair, run before or independently of the two jobs above (it's bounded to
+however many PurpleAir `Pressure` RAW rows currently exist — not an open-ended
+chunked backfill, so no job-tracking machinery needed):
+
+1. For every PurpleAir `Pressure` RAW entry, look up the corresponding legacy `Entry`
+   row(s) for `(monitor, timestamp)` (either sensor — pressure isn't per-channel) and
+   compute the correct value via the `hpa` setter.
+2. If the entry's current `value` differs from the correctly-converted value beyond a
+   small tolerance (rounding), update it in place (`save(update_fields=['value'])`).
+   This recompute-and-compare approach sidesteps needing to identify *which* rows the
+   old buggy code touched — it's self-correcting for any PurpleAir `Pressure` entry,
+   regardless of provenance.
+3. Log a count of corrected rows for visibility (not a full job/report system — a
+   one-time repair, not a recurring capability).
+
+A management command, `camp/apps/monitors/management/commands/fix_purpleair_pressure.py`,
+wraps this — synchronous, since the affected row count is bounded and small relative to
+the full historical backfill volume.
+
 ## Management command
 
 `camp/apps/monitors/management/commands/backfill_legacy_entries.py`, same shape as
@@ -214,34 +333,47 @@ traffic):
 - `backfill_legacy_entries_tick` — `db_periodic_task(crontab(minute='*'), priority=1)`
 - `backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id)` —
   `db_task(priority=1)`
+- `reprocess_legacy_pipeline_tick` — `db_periodic_task(crontab(minute='*'), priority=1)`
+- `reprocess_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id)` —
+  `db_task(priority=1)`
 
 ## Code layout & testing
 
 - `camp/apps/monitors/legacy_backfill.py` — `LEGACY_BACKFILL_MAP`, plus pure,
   unit-testable helpers: chunk-range math (reused pattern from
   `camp/apps/summaries/backfill.py`), the per-`EntryModel` anti-join/gap-detection
-  function, and the RAW-entry construction function (applying `source`/`target`/
+  function (reused for both the RAW-missing check and the terminal-stage-missing
+  check), and the RAW-entry construction function (applying `source`/`target`/
   `per_sensor`/`skip_if`). These take plain querysets/values in and return plain data
   out — no Huey or job-model coupling — so they're testable without touching the task
   queue.
-- `camp/apps/monitors/models.py` — add `EntryBackfillJob`; remove
-  `get_entry_migration_status()` (superseded, and already unused elsewhere in the
-  codebase).
-- `camp/apps/monitors/tasks.py` — the tick + per-monitor-chunk tasks.
+- `camp/apps/calibrations/core/processors/base.py` — the `BaseProcessor.run()`
+  idempotency fix (return the existing entry instead of `None` when one already
+  matches).
+- `camp/apps/monitors/models.py` — add `EntryBackfillJob` and `PipelineBackfillJob`;
+  remove `get_entry_migration_status()` (superseded, and already unused elsewhere in
+  the codebase).
+- `camp/apps/monitors/tasks.py` — both jobs' tick + per-monitor-chunk tasks.
 - `camp/apps/monitors/management/commands/backfill_legacy_entries.py` — start/status/cancel.
+- `camp/apps/monitors/management/commands/reprocess_legacy_pipeline.py` — start/status/cancel.
+- `camp/apps/monitors/management/commands/fix_purpleair_pressure.py` — the one-time
+  Pressure repair.
 - `camp/apps/monitors/test_legacy_backfill.py` — unit tests per monitor type covering:
   the PurpleAir `pm25` exclusion, the AirNow/AQview/BAM coalesce fallback, the BAM
   99999 sentinel skip, the hPa-vs-mmHg pressure handling, the `per_sensor=False` dedup
   across `a`/`b` rows, interior-gap detection (not just head/tail), and idempotent
   re-running of an already-processed chunk. A handful of task-level tests using Huey
   immediate mode (`MemoryHuey`) confirm the fan-out/fenced-decrement/cursor-advance
-  wiring end to end.
+  wiring end to end, for both jobs.
+- `camp/apps/calibrations/test_processors.py` (or wherever processor tests currently
+  live) — a test for the specific "CORRECTED exists, CLEANED doesn't" case the
+  idempotency fix addresses, plus confirming the fully-processed and
+  nothing-processed-yet cases are unchanged.
+- A test for `fix_purpleair_pressure`, confirming it corrects a synthetically
+  mislabeled hPa value and leaves an already-correct mmHg value untouched.
 
 ## Out of scope
 
-- Reprocessing backfilled RAW entries through CORRECTED/CLEANED/CALIBRATED stages —
-  a separate, later effort, run and scoped independently once RAW backfill is
-  complete or substantially caught up.
 - AirGradient and any monitor type absent from `LEGACY_BACKFILL_MAP` (no legacy data
   exists to migrate).
 - CO/NO2/SO2 or any pollutant with no legacy-era counterpart.
@@ -250,3 +382,6 @@ traffic):
   the fixed defaults prove wrong in practice.
 - A replacement UI/report for per-monitor migration status beyond `status`/admin —
   job-level progress only, no new per-monitor dashboard.
+- Auditing/correcting other already-migrated fields for provenance-independent
+  correctness the way the Pressure repair does — Pressure is the one known case with a
+  cross-monitor-type unit mismatch; no other field mapping has this property.
