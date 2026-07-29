@@ -14,6 +14,7 @@ from camp.utils.text import render_markdown
 from camp.apps.monitors.legacy_backfill import (
     LEGACY_BACKFILL_MAP, chunk_start_for, find_missing_raw_entries,
     monitors_with_legacy_data_in, find_incomplete_pipelines, pipeline_entry_models,
+    monitors_with_incomplete_pipelines_in,
 )
 from .models import Entry, EntryBackfillJob, Monitor, PipelineBackfillJob
 
@@ -235,4 +236,107 @@ def _entry_backfill_restart_batch(job):
     for monitor_id in monitor_ids:
         transaction.on_commit(
             lambda m=monitor_id: backfill_monitor_chunk(job_id, str(m), chunk_start, chunk_end, batch_id)
+        )
+
+
+PIPELINE_BACKFILL_LOCK_STALE_SECONDS = 30
+PIPELINE_BACKFILL_BATCH_STALE_MINUTES = 60
+PIPELINE_BACKFILL_MAX_CONSECUTIVE_FAILURES = 5
+
+
+@db_periodic_task(crontab(minute='*'), priority=1, queue='primary')
+def reprocess_legacy_pipeline_tick():
+    '''
+    Drive one step of the active PipelineBackfillJob, if any. Never blocks on
+    the sub-tasks it dispatches. See
+    docs/superpowers/specs/2026-07-28-legacy-entries-backfill-design.md.
+    '''
+    now = timezone.now()
+
+    with transaction.atomic():
+        job = (
+            PipelineBackfillJob.objects
+            .select_for_update(skip_locked=True)
+            .filter(state=PipelineBackfillJob.State.RUNNING)
+            .filter(
+                Q(locked_at__isnull=True) |
+                Q(locked_at__lt=now - timedelta(seconds=PIPELINE_BACKFILL_LOCK_STALE_SECONDS))
+            )
+            .order_by('created')
+            .first()
+        )
+        if job is None:
+            return
+
+        job.locked_at = now
+        job.save(update_fields=['locked_at'])
+
+        if job.pending_tasks > 0:
+            stale_before = now - timedelta(minutes=PIPELINE_BACKFILL_BATCH_STALE_MINUTES)
+            if job.phase_started_at and job.phase_started_at < stale_before:
+                _pipeline_backfill_restart_batch(job)
+            return
+
+        if job.chunk_start is not None:
+            _pipeline_backfill_complete_chunk(job)
+        else:
+            _pipeline_backfill_dispatch_chunk(job)
+
+
+def _pipeline_backfill_dispatch_chunk(job):
+    chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
+    monitor_ids = monitors_with_incomplete_pipelines_in(chunk_start, job.cursor)
+
+    job.chunk_start = chunk_start
+    job.batch_id += 1
+    job.pending_tasks = len(monitor_ids)
+    job.phase_started_at = timezone.now()
+    job.save()
+
+    job_id = job.pk
+    batch_id = job.batch_id
+    chunk_end = job.cursor
+    for monitor_id in monitor_ids:
+        transaction.on_commit(
+            lambda m=monitor_id: reprocess_monitor_chunk(job_id, str(m), chunk_start, chunk_end, batch_id)
+        )
+
+
+def _pipeline_backfill_complete_chunk(job):
+    job.cursor = job.chunk_start
+    job.chunk_start = None
+    job.pending_tasks = 0
+    job.consecutive_failures = 0
+    job.last_error = ''
+    if job.cursor <= job.range_start:
+        job.state = PipelineBackfillJob.State.DONE
+    job.save()
+
+
+def _pipeline_backfill_restart_batch(job):
+    job.consecutive_failures += 1
+    job.last_error = (
+        f'Batch {job.batch_id} stalled with {job.pending_tasks} pending task(s); restarting.'
+    )
+
+    if job.consecutive_failures >= PIPELINE_BACKFILL_MAX_CONSECUTIVE_FAILURES:
+        job.pending_tasks = 0
+        job.state = PipelineBackfillJob.State.FAILED
+        job.save()
+        return
+
+    chunk_start = job.chunk_start
+    monitor_ids = monitors_with_incomplete_pipelines_in(chunk_start, job.cursor)
+
+    job.batch_id += 1
+    job.pending_tasks = len(monitor_ids)
+    job.phase_started_at = timezone.now()
+    job.save()
+
+    job_id = job.pk
+    batch_id = job.batch_id
+    chunk_end = job.cursor
+    for monitor_id in monitor_ids:
+        transaction.on_commit(
+            lambda m=monitor_id: reprocess_monitor_chunk(job_id, str(m), chunk_start, chunk_end, batch_id)
         )
