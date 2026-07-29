@@ -207,6 +207,17 @@ def pipeline_entry_models(monitor_class):
     EntryModels this monitor type both backfills from legacy data and runs
     through a processing pipeline (declares 'processors' in ENTRY_CONFIG),
     mapped to their terminal (final configured) stage.
+
+    Scope note: `monitor_class` is only ever one of the LEGACY_BACKFILL_MAP-
+    eligible types (PurpleAir, AirNow, AQview, BAM1022) -- the same four
+    types this whole legacy-entries-backfill feature covers. AirGradient
+    has a real ENTRY_CONFIG pipeline of its own but no legacy data, so it is
+    intentionally absent from LEGACY_BACKFILL_MAP and therefore never
+    reprocessed by this system, even though it could in principle have
+    stuck/incomplete RAW entries from its own real-time-ingest pipeline.
+    Extending reprocessing to AirGradient (or any other non-legacy monitor
+    type) would be a scope expansion requiring its own design sign-off, not
+    something this function's callers do.
     '''
     result = {}
     mapping = LEGACY_BACKFILL_MAP.get(monitor_class, {})
@@ -242,6 +253,14 @@ def monitors_with_incomplete_pipelines_in(chunk_start, chunk_end):
     entry in [chunk_start, chunk_end) that hasn't been run through any
     pipeline processor yet, across any of that monitor type's
     pipeline-eligible entry models.
+
+    Scope note: "eligible types" here means LEGACY_BACKFILL_MAP-eligible
+    monitor types only (PurpleAir, AirNow, AQview, BAM1022) -- see the scope
+    note on `pipeline_entry_models` above. This intentionally does NOT
+    extend to AirGradient or any other monitor type outside that set, even
+    though AirGradient has its own real processing pipeline: AirGradient
+    never had legacy migration needs, so reprocessing its real-time-ingest
+    pipeline is out of scope for this feature.
     '''
     monitor_ids = set()
     for monitor_cls in eligible_monitor_classes():

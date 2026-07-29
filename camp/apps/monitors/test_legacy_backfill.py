@@ -757,3 +757,105 @@ class FixPurpleAirPressureCommandTests(TestCase):
         call_command('fix_purpleair_pressure', '--dry-run')
         bad_entry.refresh_from_db()
         assert bad_entry.value == Decimal('1013.25')
+
+
+class LegacyBackfillThenReprocessIntegrationTests(TestCase):
+    '''
+    Final-review Finding 2 regression test: exercises BOTH job systems
+    together (backfill_monitor_chunk then reprocess_monitor_chunk) on real
+    data, covering a monitor type/pipeline shape that no prior test did --
+    this is exactly the gap that let Finding 1's cutoff_stage bug through.
+    Finding 1: passing pipeline_entry_models()'s terminal stage in as
+    cutoff_stage made single-stage (RAW->CLEANED / RAW->CALIBRATED)
+    pipelines a complete no-op, and made PurpleAir's multi-stage PM25
+    pipeline stop one stage short of CALIBRATED.
+    '''
+    fixtures = ['purple-air.yaml']
+
+    def test_single_stage_pipeline_reaches_cleaned_for_airnow(self):
+        from camp.apps.monitors.tasks import backfill_monitor_chunk, reprocess_monitor_chunk
+
+        monitor = AirNow.objects.create(name='Test AirNow Integration', location='outside')
+        chunk_start = _ts(2023, 1, 1)
+        chunk_end = _ts(2023, 1, 8)
+        ts = chunk_start + timedelta(hours=1)
+
+        # Seed a legacy Entry row; AirNow's PM25 mapping coalesces
+        # pm25_reported -> pm25 (see LEGACY_BACKFILL_MAP[AirNow][PM25]).
+        Entry.objects.create(
+            monitor=monitor, sensor='', timestamp=ts,
+            location=monitor.location, pm25_reported=Decimal('12.0'),
+        )
+
+        entry_job = EntryBackfillJob.objects.create(
+            cursor=chunk_end, range_start=_ts(2020, 1, 1), range_end=chunk_end,
+            chunk_start=chunk_start, pending_tasks=1, batch_id=1,
+        )
+        backfill_monitor_chunk(entry_job.pk, str(monitor.pk), chunk_start, chunk_end, 1)
+
+        raw = entry_models.PM25.objects.get(monitor=monitor, stage=entry_models.PM25.Stage.RAW)
+        assert raw.value == Decimal('12.0')
+
+        pipeline_job = PipelineBackfillJob.objects.create(
+            cursor=chunk_end, range_start=_ts(2020, 1, 1), range_end=chunk_end,
+            chunk_start=chunk_start, pending_tasks=1, batch_id=1,
+        )
+        reprocess_monitor_chunk(pipeline_job.pk, str(monitor.pk), chunk_start, chunk_end, 1)
+
+        # AirNow's PM25 pipeline is single-stage RAW->CLEANED (PM25_FEM_Cleaner).
+        # With the Finding 1 bug, cutoff_stage=CLEANED skipped that processor
+        # entirely, so this CLEANED entry never got created.
+        assert entry_models.PM25.objects.filter(
+            monitor=monitor, timestamp=ts, stage=entry_models.PM25.Stage.CLEANED,
+        ).exists()
+
+    def test_multi_stage_pipeline_reaches_calibrated_for_purpleair(self):
+        from camp.apps.monitors.tasks import reprocess_monitor_chunk
+
+        monitor = PurpleAir.objects.first()
+        ts = _ts(2023, 1, 1)
+        chunk_start = ts
+        chunk_end = ts + timedelta(hours=1)
+
+        entry_models.PM25.objects.create(
+            monitor=monitor, sensor='a', timestamp=ts, location=monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('10.0'),
+        )
+        entry_models.PM25.objects.create(
+            monitor=monitor, sensor='b', timestamp=ts, location=monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('10.2'),
+        )
+        # Humidity RAW entry so PM25_EPA_Oct2021's required_context (['pm25',
+        # 'humidity']) is satisfiable at the CLEANED->CALIBRATED step --
+        # entry_context() looks up Humidity at its default_stage (RAW),
+        # regardless of sensor.
+        entry_models.Humidity.objects.create(
+            monitor=monitor, sensor='', timestamp=ts, location=monitor.location,
+            stage=entry_models.Humidity.Stage.RAW, processor='', value=Decimal('40.0'),
+        )
+        # PM25_LCS_Cleaning (CORRECTED->CLEANED) defers whenever there's no
+        # later CORRECTED entry at all (get_next_entry() is None) -- by
+        # design, it won't finalize "the latest known entry". Pre-seed a
+        # later CORRECTED entry directly (bypassing the pipeline) so
+        # cleaning doesn't defer for our target timestamp.
+        entry_models.PM25.objects.create(
+            monitor=monitor, sensor='', timestamp=ts + timedelta(hours=1),
+            location=monitor.location, stage=entry_models.PM25.Stage.CORRECTED,
+            processor='PM25_LCS_Correction', value=Decimal('10.1'),
+        )
+
+        pipeline_job = PipelineBackfillJob.objects.create(
+            cursor=chunk_end, range_start=_ts(2020, 1, 1), range_end=chunk_end,
+            chunk_start=chunk_start, pending_tasks=1, batch_id=1,
+        )
+        reprocess_monitor_chunk(pipeline_job.pk, str(monitor.pk), chunk_start, chunk_end, 1)
+
+        # PurpleAir's PM25 pipeline is RAW->CORRECTED->CLEANED->CALIBRATED.
+        # With the Finding 1 bug, cutoff_stage=CALIBRATED skipped the
+        # CLEANED->CALIBRATED processors, stopping one stage short. This
+        # proves the full chain now completes (via PM25_EPA_Oct2021, which
+        # needs no trained Calibration model, unlike the linear-regression
+        # processors).
+        assert entry_models.PM25.objects.filter(
+            monitor=monitor, timestamp=ts, sensor='', stage=entry_models.PM25.Stage.CALIBRATED,
+        ).exists()
