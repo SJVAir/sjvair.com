@@ -278,3 +278,44 @@ class EntryBackfillJobTests(TestCase):
         assert job.batch_id == 0
         assert job.raw_entries_created == 0
         assert job.sqid
+
+
+class BackfillMonitorChunkTaskTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.chunk_start = _ts(2023, 1, 1)
+        self.chunk_end = _ts(2023, 1, 8)
+        self.job = EntryBackfillJob.objects.create(
+            cursor=self.chunk_end, range_start=_ts(2020, 1, 1), range_end=self.chunk_end,
+            chunk_start=self.chunk_start, pending_tasks=1, batch_id=1,
+        )
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.chunk_start + timedelta(hours=1),
+            location=self.monitor.location, pm25_reported=Decimal('5.0'),
+        )
+
+    def test_creates_raw_entries_and_decrements_pending_tasks(self):
+        from camp.apps.monitors.tasks import backfill_monitor_chunk
+        backfill_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 1)
+        assert entry_models.PM25.objects.filter(monitor=self.monitor, stage=entry_models.PM25.Stage.RAW).exists()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 0
+        assert self.job.raw_entries_created == 1
+
+    def test_stale_batch_id_still_creates_entries_but_does_not_decrement(self):
+        from camp.apps.monitors.tasks import backfill_monitor_chunk
+        backfill_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 999)
+        assert entry_models.PM25.objects.filter(monitor=self.monitor, stage=entry_models.PM25.Stage.RAW).exists()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 1
+
+    def test_idempotent_rerun_does_not_duplicate(self):
+        from camp.apps.monitors.tasks import backfill_monitor_chunk
+        backfill_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 1)
+        self.job.batch_id = 2
+        self.job.pending_tasks = 1
+        self.job.save()
+        backfill_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 2)
+        assert entry_models.PM25.objects.filter(monitor=self.monitor, stage=entry_models.PM25.Stage.RAW).count() == 1
