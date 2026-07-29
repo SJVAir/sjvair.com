@@ -247,15 +247,25 @@ hardcoded per-monitor-type list — any `EntryModel` whose `ENTRY_CONFIG` entry 
 `Humidity`, `CLEANED` for AirNow/AQview's `PM25`). Entry models with no `processors` key
 (PurpleAir's `PM10`, `PM100`, `Particulates`) have nothing to reprocess and are skipped.
 
-**Selection, per chunk per monitor per eligible `EntryModel`:** reuses the same
-anti-join shape as RAW gap detection, just checking for a missing *terminal-stage*
-descendant instead of a missing RAW entry — find `stage=RAW` entries in the chunk
-window with no corresponding entry at `stage=terminal_stage` (any processor) for the
-same `(monitor, timestamp, sensor)`. For each match, call
-`monitor.process_entry_pipeline(raw_entry, cutoff_stage=terminal_stage)`. Because of the
-idempotency fix, this correctly completes chains left in any partial state — fully
-unprocessed, or stuck partway through from an earlier crashed/partial run — not just
-entirely-unprocessed RAW entries.
+**Selection, per chunk per monitor per eligible `EntryModel`:** revised from the
+terminal-stage anti-join originally sketched here. Instead, mirroring the existing
+`derived_entries__isnull=True` idiom already used by `process_monitor_history`
+(`camp/apps/monitors/purpleair/tasks.py`), it selects `stage=RAW` entries in the chunk
+window that have *no derived entries of any kind* — i.e. the pipeline was never even
+attempted. For each match, call `monitor.process_entry_pipeline(raw_entry)` (no
+`cutoff_stage`, so the pipeline runs all the way to its terminal stage).
+
+This is a deliberate, signed-off tradeoff, not an oversight: a terminal-stage anti-join
+cannot correctly handle PurpleAir's dual-sensor PM25 merge-and-defer semantics, where
+`PM25_LCS_Correction` merges both sensor channels into a single `sensor=''` CORRECTED
+entry and only the alphabetically-first sensor's RAW row ever produces a derived entry
+at all — the other sensor's RAW row is expected to stay childless forever. A
+terminal-stage check keyed on `(monitor, timestamp, sensor)` would misidentify that
+RAW row as perpetually incomplete. The accepted limitation is the flip side: a RAW
+entry stuck partway through the pipeline (e.g. `CORRECTED` exists but
+`CLEANED`/`CALIBRATED` doesn't, from an earlier crashed/partial run) is *not* detected,
+since it already has at least one derived entry. Completing such partially-stuck chains
+is out of scope for this feature.
 
 **Job/task shape:** identical pattern to the RAW backfill job — a new
 `PipelineBackfillJob` (same fields: `state`, `cursor`, `chunk_start`, `range_start`/

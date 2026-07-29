@@ -78,9 +78,7 @@ def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id)
         if missing:
             entry_model.objects.bulk_create(
                 missing,
-                update_conflicts=True,
-                unique_fields=['monitor', 'timestamp', 'sensor', 'stage', 'processor'],
-                update_fields=[f.name for f in entry_model.declared_fields],
+                ignore_conflicts=True,
             )
             created_count += len(missing)
 
@@ -108,10 +106,10 @@ def reprocess_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id
     monitor = _resolve_monitor_subclass(monitor_id)
 
     processed_count = 0
-    for entry_model, terminal_stage in pipeline_entry_models(type(monitor)).items():
+    for entry_model in pipeline_entry_models(type(monitor)).keys():
         incomplete = find_incomplete_pipelines(monitor, entry_model, chunk_start, chunk_end)
         for raw_entry in incomplete:
-            monitor.process_entry_pipeline(raw_entry, cutoff_stage=terminal_stage)
+            monitor.process_entry_pipeline(raw_entry)
             processed_count += 1
 
     PipelineBackfillJob.objects.filter(
