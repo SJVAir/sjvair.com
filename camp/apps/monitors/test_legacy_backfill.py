@@ -319,3 +319,61 @@ class BackfillMonitorChunkTaskTests(TestCase):
         self.job.save()
         backfill_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 2)
         assert entry_models.PM25.objects.filter(monitor=self.monitor, stage=entry_models.PM25.Stage.RAW).count() == 1
+
+
+from camp.apps.monitors.tasks import backfill_legacy_entries_tick
+
+
+class BackfillLegacyEntriesTickDispatchTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.range_start = _ts(2020, 1, 1)
+        self.range_end = _ts(2023, 1, 8)
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.range_end - timedelta(hours=1),
+            location=self.monitor.location, pm25_reported=Decimal('5.0'),
+        )
+        self.job = EntryBackfillJob.objects.create(
+            cursor=self.range_end, range_start=self.range_start, range_end=self.range_end, chunk_days=7,
+        )
+
+    def test_dispatches_a_chunk_and_creates_entries_synchronously(self):
+        # Huey runs in immediate mode under camp.settings.test, so the fanned-out
+        # backfill_monitor_chunk call executes inline once the on_commit hooks
+        # fire. TestCase wraps each test in a savepoint that never really
+        # commits, so on_commit callbacks are captured, not run, unless
+        # explicitly flushed here (mirrors BackfillSummariesTickDispatchMonitorsTests).
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_legacy_entries_tick()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 0  # drained immediately (immediate-mode Huey)
+        assert entry_models.PM25.objects.filter(monitor=self.monitor, stage=entry_models.PM25.Stage.RAW).exists()
+
+    def test_no_op_when_no_running_job(self):
+        self.job.state = EntryBackfillJob.State.DONE
+        self.job.save()
+        backfill_legacy_entries_tick()  # should not raise
+
+    def test_advances_cursor_and_marks_done_when_range_exhausted(self):
+        self.job.range_start = self.range_end - timedelta(days=1)
+        self.job.cursor = self.range_end
+        self.job.chunk_days = 7
+        self.job.save()
+        # First tick dispatches the (single, clamped) chunk and, once the
+        # on_commit hooks are flushed, drains it immediately. A second tick
+        # then notices pending_tasks == 0 and finalizes the chunk. In
+        # production the two ticks are ~60s apart (crontab(minute='*')),
+        # well past ENTRY_BACKFILL_LOCK_STALE_SECONDS, so the job's own
+        # locked_at from the first tick never blocks the second. Here the
+        # two calls happen within the same test in well under 30s, so we
+        # clear locked_at between calls to simulate that real spacing
+        # (mirrors how BackfillSummariesTickClaimingTests.test_skips_job_with_recent_lock
+        # proves this same lock is intentionally sticky within the window).
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_legacy_entries_tick()
+        EntryBackfillJob.objects.filter(pk=self.job.pk).update(locked_at=None)
+        backfill_legacy_entries_tick()
+        self.job.refresh_from_db()
+        assert self.job.state == EntryBackfillJob.State.DONE
