@@ -631,3 +631,37 @@ class ReprocessMonitorChunkTaskTests(TestCase):
         ).exists()
         self.job.refresh_from_db()
         assert self.job.entries_processed == 2
+
+
+from camp.apps.monitors.tasks import reprocess_legacy_pipeline_tick
+
+
+class ReprocessLegacyPipelineTickTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.range_start = _ts(2020, 1, 1)
+        self.range_end = _ts(2023, 1, 8)
+        entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.range_end - timedelta(hours=1),
+            location=self.monitor.location, stage=entry_models.PM25.Stage.RAW, processor='',
+            value=Decimal('10.0'),
+        )
+        self.job = PipelineBackfillJob.objects.create(
+            cursor=self.range_end, range_start=self.range_start, range_end=self.range_end, chunk_days=7,
+        )
+
+    def test_dispatches_and_processes_synchronously(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            reprocess_legacy_pipeline_tick()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 0
+        assert entry_models.PM25.objects.filter(
+            monitor=self.monitor, stage=entry_models.PM25.Stage.CORRECTED,
+        ).exists()
+
+    def test_no_op_when_no_running_job(self):
+        self.job.state = PipelineBackfillJob.State.DONE
+        self.job.save()
+        reprocess_legacy_pipeline_tick()  # should not raise
