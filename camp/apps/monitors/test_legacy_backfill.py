@@ -424,3 +424,21 @@ class BackfillLegacyEntriesCommandTests(TestCase):
         call_command('backfill_legacy_entries', 'cancel')
         job = EntryBackfillJob.objects.first()
         assert job.state == EntryBackfillJob.State.DONE
+
+    def test_start_raises_command_error_on_invalid_date_values(self):
+        try:
+            call_command('backfill_legacy_entries', 'start', '--from', '2020-13-40')
+            assert False, 'expected CommandError'
+        except CommandError:
+            pass
+
+    def test_force_does_not_delete_existing_job_when_new_dates_invalid(self):
+        call_command('backfill_legacy_entries', 'start', '--from', '2020-01-01')
+        try:
+            call_command('backfill_legacy_entries', 'start', '--from', '2020-13-40', '--force')
+            assert False, 'expected CommandError'
+        except CommandError:
+            pass
+        assert EntryBackfillJob.objects.count() == 1
+        job = EntryBackfillJob.objects.first()
+        assert job.range_start.year == 2020 and job.range_start.month == 1 and job.range_start.day == 1

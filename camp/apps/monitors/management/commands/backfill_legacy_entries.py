@@ -2,6 +2,7 @@ from datetime import datetime
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
@@ -48,9 +49,8 @@ class Command(BaseCommand):
                 f'A backfill job is already {active.state} (cursor {active.cursor:%Y-%m-%d}). '
                 'Pass --force to replace it.'
             )
-        if active and options['force']:
-            active.delete()
 
+        # Parse and validate the new range before deleting the old job
         range_start = self._parse_date(options['date_from'])
         range_end = (
             self._parse_date(options['date_to'])
@@ -60,12 +60,17 @@ class Command(BaseCommand):
         if range_start >= range_end:
             raise CommandError('--from must be before --to')
 
-        EntryBackfillJob.objects.create(
-            cursor=range_end,
-            range_start=range_start,
-            range_end=range_end,
-            chunk_days=chunk_days,
-        )
+        # Delete the old job and create the new one atomically
+        with transaction.atomic():
+            if active and options['force']:
+                active.delete()
+
+            EntryBackfillJob.objects.create(
+                cursor=range_end,
+                range_start=range_start,
+                range_end=range_end,
+                chunk_days=chunk_days,
+            )
         self.stdout.write(self.style.SUCCESS(
             f'Started backfill job: {range_start:%Y-%m-%d} -> {range_end:%Y-%m-%d} '
             f'({chunk_days}-day chunks)'
@@ -102,7 +107,10 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Backfill job cancelled.'))
 
     def _parse_date(self, value):
-        d = parse_date(value)
+        try:
+            d = parse_date(value)
+        except ValueError:
+            raise CommandError(f'Invalid date: {value!r}. Use YYYY-MM-DD.')
         if d is None:
             raise CommandError(f'Invalid date: {value!r}. Use YYYY-MM-DD.')
         return make_aware(datetime(d.year, d.month, d.day), settings.DEFAULT_TIMEZONE)
