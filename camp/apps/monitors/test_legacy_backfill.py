@@ -10,7 +10,7 @@ from camp.apps.monitors.legacy_backfill import (
     LEGACY_BACKFILL_MAP, build_raw_entry, chunk_start_for, find_missing_raw_entries,
     monitors_with_legacy_data_in,
 )
-from camp.apps.monitors.models import Entry
+from camp.apps.monitors.models import Entry, EntryBackfillJob
 from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.aqview.models import AQview
 from camp.apps.monitors.bam.models import BAM1022
@@ -265,3 +265,16 @@ class MonitorsWithLegacyDataInTests(TestCase):
         window_end = _ts(2023, 1, 8)
         ids = monitors_with_legacy_data_in(window_start, window_end)
         assert monitor.pk not in ids
+
+
+class EntryBackfillJobTests(TestCase):
+    def test_defaults(self):
+        job = EntryBackfillJob.objects.create(
+            cursor=_ts(2023, 1, 8), range_start=_ts(2020, 1, 1), range_end=_ts(2023, 1, 8),
+        )
+        assert job.state == EntryBackfillJob.State.RUNNING
+        assert job.chunk_days == 7
+        assert job.pending_tasks == 0
+        assert job.batch_id == 0
+        assert job.raw_entries_created == 0
+        assert job.sqid
