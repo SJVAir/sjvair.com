@@ -377,3 +377,50 @@ class BackfillLegacyEntriesTickDispatchTests(TestCase):
         backfill_legacy_entries_tick()
         self.job.refresh_from_db()
         assert self.job.state == EntryBackfillJob.State.DONE
+
+
+from io import StringIO
+
+from django.core.management import call_command
+from django.core.management.base import CommandError
+
+
+class BackfillLegacyEntriesCommandTests(TestCase):
+    def test_start_creates_job(self):
+        out = StringIO()
+        call_command('backfill_legacy_entries', 'start', '--from', '2020-01-01', stdout=out)
+        assert EntryBackfillJob.objects.filter(state=EntryBackfillJob.State.RUNNING).exists()
+        assert 'Started' in out.getvalue()
+
+    def test_start_refuses_second_job_without_force(self):
+        call_command('backfill_legacy_entries', 'start', '--from', '2020-01-01')
+        try:
+            call_command('backfill_legacy_entries', 'start', '--from', '2020-01-01')
+            assert False, 'expected CommandError'
+        except CommandError:
+            pass
+        assert EntryBackfillJob.objects.count() == 1
+
+    def test_start_with_force_replaces_job(self):
+        call_command('backfill_legacy_entries', 'start', '--from', '2020-01-01')
+        call_command('backfill_legacy_entries', 'start', '--from', '2021-01-01', '--force')
+        assert EntryBackfillJob.objects.count() == 1
+        job = EntryBackfillJob.objects.first()
+        assert job.range_start.year == 2021
+
+    def test_status_with_no_job(self):
+        out = StringIO()
+        call_command('backfill_legacy_entries', 'status', stdout=out)
+        assert 'No backfill job' in out.getvalue()
+
+    def test_status_with_job(self):
+        call_command('backfill_legacy_entries', 'start', '--from', '2020-01-01')
+        out = StringIO()
+        call_command('backfill_legacy_entries', 'status', stdout=out)
+        assert 'running' in out.getvalue()
+
+    def test_cancel_sets_state_done(self):
+        call_command('backfill_legacy_entries', 'start', '--from', '2020-01-01')
+        call_command('backfill_legacy_entries', 'cancel')
+        job = EntryBackfillJob.objects.first()
+        assert job.state == EntryBackfillJob.State.DONE
