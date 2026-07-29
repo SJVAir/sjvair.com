@@ -711,3 +711,49 @@ class ReprocessLegacyPipelineCommandTests(TestCase):
         assert PipelineBackfillJob.objects.count() == 1
         job = PipelineBackfillJob.objects.first()
         assert job.range_start.year == 2020 and job.range_start.month == 1 and job.range_start.day == 1
+
+
+class FixPurpleAirPressureCommandTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.ts = _ts(2023, 1, 1)
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.ts,
+            location=self.monitor.location, pressure=Decimal('1013.25'),
+        )
+
+    def test_corrects_mislabeled_hpa_value(self):
+        # Simulate the old buggy migration: raw hPa copied directly into `value`.
+        bad_entry = entry_models.Pressure.objects.create(
+            monitor=self.monitor, sensor='', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.Pressure.Stage.RAW, processor='', value=Decimal('1013.25'),
+        )
+        out = StringIO()
+        call_command('fix_purpleair_pressure', stdout=out)
+        bad_entry.refresh_from_db()
+        expected = (Decimal('1013.25') / Decimal('1.33322')).quantize(Decimal('0.01'))
+        assert bad_entry.value == expected
+        assert 'Corrected 1' in out.getvalue()
+
+    def test_leaves_already_correct_value_untouched(self):
+        correct_value = (Decimal('1013.25') / Decimal('1.33322')).quantize(Decimal('0.01'))
+        good_entry = entry_models.Pressure.objects.create(
+            monitor=self.monitor, sensor='', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.Pressure.Stage.RAW, processor='', value=correct_value,
+        )
+        out = StringIO()
+        call_command('fix_purpleair_pressure', stdout=out)
+        good_entry.refresh_from_db()
+        assert good_entry.value == correct_value
+        assert 'Corrected 0' in out.getvalue()
+
+    def test_dry_run_does_not_modify(self):
+        bad_entry = entry_models.Pressure.objects.create(
+            monitor=self.monitor, sensor='', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.Pressure.Stage.RAW, processor='', value=Decimal('1013.25'),
+        )
+        call_command('fix_purpleair_pressure', '--dry-run')
+        bad_entry.refresh_from_db()
+        assert bad_entry.value == Decimal('1013.25')
