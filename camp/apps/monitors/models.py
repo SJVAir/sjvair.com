@@ -597,45 +597,6 @@ class Monitor(models.Model):
         if entry.sensor == self.default_sensor and is_latest:
             self.latest = entry
 
-    def get_entry_migration_status(self, min_date=None) -> str:
-        # Normalize min_date to aware datetime if provided
-        if min_date:
-            if isinstance(min_date, date) and not isinstance(min_date, datetime):
-                min_date = datetime.combine(min_date, datetime.min.time())
-            min_date = timezone.make_aware(min_date)
-
-        legacy_qs = self.entries.all()
-
-        # No legacy data at all
-        if not legacy_qs.exists():
-            return 'ok'
-
-        # No legacy data in the requested window → nothing to migrate
-        if min_date and not legacy_qs.filter(timestamp__gte=min_date).exists():
-            return 'ok'
-
-        # First legacy timestamp in the window
-        legacy_ts = (
-            legacy_qs.filter(timestamp__gte=min_date).earliest('timestamp').timestamp
-            if min_date
-            else legacy_qs.earliest('timestamp').timestamp
-        )
-
-        pm25_qs = self.pm25_entries.all()
-
-        # No PM25 data at all
-        if not pm25_qs.exists():
-            return 'needs_full_migration'
-
-        pm25_ts = pm25_qs.earliest('timestamp').timestamp
-
-        # PM25 starts after legacy in the window
-        if pm25_ts > legacy_ts:
-            return 'needs_backfill'
-
-        return 'ok'
-
-
 
 class LCSMixin(Monitor):
     sensor_id = models.IntegerField(unique=True)
