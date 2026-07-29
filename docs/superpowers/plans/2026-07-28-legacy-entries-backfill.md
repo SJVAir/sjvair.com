@@ -1824,18 +1824,26 @@ class ReprocessMonitorChunkTaskTests(TestCase):
         self.job.refresh_from_db()
         assert self.job.pending_tasks == 1
 
-    def test_resumes_from_partial_chain(self):
-        # Simulate a stuck-at-CORRECTED entry from a previous partial run.
-        entry_models.PM25.objects.create(
-            monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
-            stage=entry_models.PM25.Stage.CORRECTED, processor='PM25_LCS_Correction',
-            value=Decimal('10.0'), origin=self.raw,
+    def test_second_sensor_with_no_derived_entries_is_processed_independently(self):
+        # PurpleAir dual-sensor: sensor 'b' has its own RAW row; find_incomplete_pipelines
+        # (Task 9, revised) selects by derived_entries__isnull=True per RAW row, so both
+        # sensors' RAW entries are attempted independently in the same chunk call.
+        raw_b = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='b', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('10.2'),
         )
         reprocess_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 1)
+        # Sensor 'a' (lexically first) produces the merged CORRECTED entry; sensor 'b'
+        # legitimately produces no entry of its own (PM25_LCS_Correction defers to 'a') —
+        # both RAW rows were still attempted (entries_processed counts both).
         assert entry_models.PM25.objects.filter(
-            monitor=self.monitor, timestamp=self.ts, sensor='a', stage=entry_models.PM25.Stage.CLEANED,
+            monitor=self.monitor, timestamp=self.ts, sensor='', stage=entry_models.PM25.Stage.CORRECTED,
         ).exists()
+        self.job.refresh_from_db()
+        assert self.job.entries_processed == 2
 ```
+
+Note: the original brief drafted a `test_resumes_from_partial_chain` case (a RAW entry with an existing CORRECTED-only child, expecting `reprocess_monitor_chunk` to still advance it to CLEANED). That relied on `find_incomplete_pipelines` detecting a stuck-at-intermediate-stage entry — a capability Task 9 deliberately dropped (see Task 9's `derived_entries__isnull=True` redesign and its accepted-limitation test). Do not resurrect that test case here; it now asserts behavior this design intentionally does not provide.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1856,15 +1864,21 @@ from camp.apps.monitors.legacy_backfill import (
 @db_task(priority=1, queue='secondary')
 def reprocess_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
     '''
-    For one monitor, drive any RAW entries in [chunk_start, chunk_end) missing
-    their terminal pipeline stage through process_entry_pipeline, then report
-    completion. Safe to re-run (see the BaseProcessor.run() idempotency fix).
+    For one monitor, drive any RAW entries in [chunk_start, chunk_end) with no
+    derived entries yet through process_entry_pipeline, then report completion.
+    Safe to re-run (see the BaseProcessor.run() idempotency fix).
+
+    Note: find_incomplete_pipelines (Task 9, revised) selects by
+    derived_entries__isnull=True, not by terminal-stage absence — it does not
+    catch a RAW entry stuck partway through the pipeline (e.g. CORRECTED
+    exists but CLEANED/CALIBRATED doesn't). That's an accepted limitation
+    from Task 9's design revision, not something to work around here.
     '''
     monitor = _resolve_monitor_subclass(monitor_id)
 
     processed_count = 0
     for entry_model, terminal_stage in pipeline_entry_models(type(monitor)).items():
-        incomplete = find_incomplete_pipelines(monitor, entry_model, terminal_stage, chunk_start, chunk_end)
+        incomplete = find_incomplete_pipelines(monitor, entry_model, chunk_start, chunk_end)
         for raw_entry in incomplete:
             monitor.process_entry_pipeline(raw_entry, cutoff_stage=terminal_stage)
             processed_count += 1
@@ -1876,6 +1890,8 @@ def reprocess_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id
         entries_processed=F('entries_processed') + processed_count,
     )
 ```
+
+Note: `find_incomplete_pipelines` takes 4 args now (`monitor, entry_model, chunk_start, chunk_end`) — `terminal_stage` is no longer part of its signature (Task 9 revision), but `pipeline_entry_models` still supplies `terminal_stage` here for the `cutoff_stage` argument to `process_entry_pipeline`.
 
 Add `PipelineBackfillJob` to the model import line at the top of `camp/apps/monitors/tasks.py`:
 
