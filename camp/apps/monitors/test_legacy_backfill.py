@@ -1,14 +1,21 @@
+from datetime import datetime, timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.test import TestCase
+from django.utils import timezone
 
 from camp.apps.entries import models as entry_models
-from camp.apps.monitors.legacy_backfill import LEGACY_BACKFILL_MAP, build_raw_entry
+from camp.apps.monitors.legacy_backfill import (
+    LEGACY_BACKFILL_MAP, build_raw_entry, chunk_start_for, find_missing_raw_entries,
+    monitors_with_legacy_data_in,
+)
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.aqview.models import AQview
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.utils.datetime import make_aware
 
 
 def _legacy_entry(monitor, **kwargs):
@@ -147,3 +154,114 @@ class BuildRawEntryBamTests(TestCase):
         entry = build_raw_entry(self.monitor, legacy, entry_models.Temperature, mapping)
         # 20C -> 68F via the model's own celsius setter
         assert entry.value == Decimal('68.0')
+
+
+def _ts(*args):
+    return make_aware(datetime(*args), settings.DEFAULT_TIMEZONE)
+
+
+class ChunkStartForTests(TestCase):
+    def test_steps_back_by_chunk_days(self):
+        cursor = _ts(2023, 7, 15)
+        range_start = _ts(2020, 1, 1)
+        assert chunk_start_for(cursor, range_start, chunk_days=7) == cursor - timedelta(days=7)
+
+    def test_clamps_to_range_start(self):
+        cursor = _ts(2020, 1, 4)
+        range_start = _ts(2020, 1, 1)
+        assert chunk_start_for(cursor, range_start, chunk_days=7) == range_start
+
+
+class FindMissingRawEntriesTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.window_start = _ts(2023, 1, 1)
+        self.window_end = _ts(2023, 1, 8)
+
+    def test_finds_legacy_row_with_no_new_entry(self):
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.window_start + timedelta(hours=1),
+            location=self.monitor.location, pm25_reported=Decimal('5.0'),
+        )
+        mapping = LEGACY_BACKFILL_MAP[PurpleAir][entry_models.PM25]
+        missing = find_missing_raw_entries(
+            self.monitor, entry_models.PM25, mapping, self.window_start, self.window_end,
+        )
+        assert len(missing) == 1
+        assert missing[0].value == Decimal('5.0')
+
+    def test_skips_legacy_row_that_already_has_a_new_entry(self):
+        ts = self.window_start + timedelta(hours=1)
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=ts,
+            location=self.monitor.location, pm25_reported=Decimal('5.0'),
+        )
+        entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
+        )
+        mapping = LEGACY_BACKFILL_MAP[PurpleAir][entry_models.PM25]
+        missing = find_missing_raw_entries(
+            self.monitor, entry_models.PM25, mapping, self.window_start, self.window_end,
+        )
+        assert missing == []
+
+    def test_detects_interior_gap_not_just_head_or_tail(self):
+        # Three legacy rows; only the middle one is missing its new-entry counterpart.
+        timestamps = [self.window_start + timedelta(hours=h) for h in (1, 2, 3)]
+        for i, ts in enumerate(timestamps):
+            Entry.objects.create(
+                monitor=self.monitor, sensor='a', timestamp=ts,
+                location=self.monitor.location, pm25_reported=Decimal(f'{i}.0'),
+            )
+        for i, ts in enumerate(timestamps):
+            if i == 1:
+                continue  # leave the middle one un-migrated
+            entry_models.PM25.objects.create(
+                monitor=self.monitor, sensor='a', timestamp=ts, location=self.monitor.location,
+                stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal(f'{i}.0'),
+            )
+        mapping = LEGACY_BACKFILL_MAP[PurpleAir][entry_models.PM25]
+        missing = find_missing_raw_entries(
+            self.monitor, entry_models.PM25, mapping, self.window_start, self.window_end,
+        )
+        assert len(missing) == 1
+        assert missing[0].timestamp == timestamps[1]
+
+    def test_per_sensor_false_dedups_across_a_and_b_rows(self):
+        ts = self.window_start + timedelta(hours=1)
+        for sensor in ('a', 'b'):
+            Entry.objects.create(
+                monitor=self.monitor, sensor=sensor, timestamp=ts,
+                location=self.monitor.location, humidity=Decimal('40.0'),
+            )
+        mapping = LEGACY_BACKFILL_MAP[PurpleAir][entry_models.Humidity]
+        missing = find_missing_raw_entries(
+            self.monitor, entry_models.Humidity, mapping, self.window_start, self.window_end,
+        )
+        assert len(missing) == 1
+        assert missing[0].sensor == ''
+
+
+class MonitorsWithLegacyDataInTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def test_finds_monitor_with_legacy_data_in_window(self):
+        monitor = PurpleAir.objects.first()
+        window_start = _ts(2023, 1, 1)
+        window_end = _ts(2023, 1, 8)
+        Entry.objects.create(
+            monitor=monitor, sensor='a', timestamp=window_start + timedelta(hours=1),
+            location=monitor.location, pm25_reported=Decimal('5.0'),
+        )
+        ids = monitors_with_legacy_data_in(window_start, window_end)
+        assert monitor.pk in ids
+
+    def test_excludes_monitor_with_no_data_in_window(self):
+        monitor = PurpleAir.objects.first()
+        window_start = _ts(2023, 1, 1)
+        window_end = _ts(2023, 1, 8)
+        ids = monitors_with_legacy_data_in(window_start, window_end)
+        assert monitor.pk not in ids
