@@ -8,7 +8,8 @@ from django.utils import timezone
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.legacy_backfill import (
     LEGACY_BACKFILL_MAP, build_raw_entry, chunk_start_for, find_missing_raw_entries,
-    monitors_with_legacy_data_in,
+    monitors_with_legacy_data_in, find_incomplete_pipelines, monitors_with_incomplete_pipelines_in,
+    pipeline_entry_models,
 )
 from camp.apps.monitors.models import Entry, EntryBackfillJob
 from camp.apps.monitors.airnow.models import AirNow
@@ -442,3 +443,99 @@ class BackfillLegacyEntriesCommandTests(TestCase):
         assert EntryBackfillJob.objects.count() == 1
         job = EntryBackfillJob.objects.first()
         assert job.range_start.year == 2020 and job.range_start.month == 1 and job.range_start.day == 1
+
+
+class PipelineEntryModelsTests(TestCase):
+    def test_purpleair_pm25_has_calibrated_terminal_stage(self):
+        models_map = pipeline_entry_models(PurpleAir)
+        assert models_map[entry_models.PM25] == entry_models.PM25.Stage.CALIBRATED
+
+    def test_purpleair_pm10_excluded_no_processors(self):
+        models_map = pipeline_entry_models(PurpleAir)
+        assert entry_models.PM10 not in models_map
+
+    def test_airnow_pm25_has_cleaned_terminal_stage(self):
+        models_map = pipeline_entry_models(AirNow)
+        assert models_map[entry_models.PM25] == entry_models.PM25.Stage.CLEANED
+
+
+class FindIncompletePipelinesTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.ts = _ts(2023, 1, 1)
+
+    def test_finds_raw_entry_with_no_terminal_stage_entry(self):
+        raw = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
+        )
+        incomplete = find_incomplete_pipelines(
+            self.monitor, entry_models.PM25, entry_models.PM25.Stage.CALIBRATED,
+            self.ts, self.ts + timedelta(hours=1),
+        )
+        assert [e.pk for e in incomplete] == [raw.pk]
+
+    def test_skips_raw_entry_that_already_has_terminal_stage_entry(self):
+        raw = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
+        )
+        entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.CALIBRATED, processor='SomeCalibrator', value=Decimal('5.0'),
+            origin=raw,
+        )
+        incomplete = find_incomplete_pipelines(
+            self.monitor, entry_models.PM25, entry_models.PM25.Stage.CALIBRATED,
+            self.ts, self.ts + timedelta(hours=1),
+        )
+        assert incomplete == []
+
+    def test_finds_raw_entry_stuck_at_intermediate_stage(self):
+        # Left over from a previous partial migration: RAW and CORRECTED exist,
+        # but CLEANED/CALIBRATED never ran.
+        raw = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
+        )
+        entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.CORRECTED, processor='PM25_LCS_Correction',
+            value=Decimal('5.0'), origin=raw,
+        )
+        incomplete = find_incomplete_pipelines(
+            self.monitor, entry_models.PM25, entry_models.PM25.Stage.CALIBRATED,
+            self.ts, self.ts + timedelta(hours=1),
+        )
+        assert [e.pk for e in incomplete] == [raw.pk]
+
+
+class MonitorsWithIncompletePipelinesInTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def test_finds_monitor_with_incomplete_pipeline(self):
+        monitor = PurpleAir.objects.first()
+        ts = _ts(2023, 1, 1)
+        entry_models.PM25.objects.create(
+            monitor=monitor, sensor='a', timestamp=ts, location=monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
+        )
+        ids = monitors_with_incomplete_pipelines_in(ts, ts + timedelta(hours=1))
+        assert monitor.pk in ids
+
+    def test_excludes_fully_processed_monitor(self):
+        monitor = PurpleAir.objects.first()
+        ts = _ts(2023, 1, 1)
+        raw = entry_models.PM25.objects.create(
+            monitor=monitor, sensor='a', timestamp=ts, location=monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
+        )
+        entry_models.PM25.objects.create(
+            monitor=monitor, sensor='a', timestamp=ts, location=monitor.location,
+            stage=entry_models.PM25.Stage.CALIBRATED, processor='SomeCalibrator',
+            value=Decimal('5.0'), origin=raw,
+        )
+        ids = monitors_with_incomplete_pipelines_in(ts, ts + timedelta(hours=1))
+        assert monitor.pk not in ids
