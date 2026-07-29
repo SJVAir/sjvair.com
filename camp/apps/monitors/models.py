@@ -808,3 +808,40 @@ class EntryBackfillJob(TimeStampedModel):
 
     def __str__(self):
         return f'{self.state} @ {self.cursor:%Y-%m-%d}'
+
+
+class PipelineBackfillJob(TimeStampedModel):
+    '''
+    Tracks progress of driving historical RAW entries through the
+    correction/cleaning/calibration pipeline. Independent from
+    EntryBackfillJob — can run anytime, safe to re-run.
+    See docs/superpowers/specs/2026-07-28-legacy-entries-backfill-design.md.
+    '''
+    class State(models.TextChoices):
+        RUNNING = 'running', _('Running')
+        PAUSED = 'paused', _('Paused')
+        DONE = 'done', _('Done')
+        FAILED = 'failed', _('Failed')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('monitors.PipelineBackfillJob'))
+
+    state = models.CharField(_('state'), max_length=10, choices=State.choices, default=State.RUNNING)
+
+    cursor = models.DateTimeField(_('cursor'))
+    chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
+    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=7)
+    range_start = models.DateTimeField(_('range start'))
+    range_end = models.DateTimeField(_('range end'))
+
+    pending_tasks = models.PositiveIntegerField(_('pending tasks'), default=0)
+    batch_id = models.PositiveIntegerField(_('batch id'), default=0)
+    phase_started_at = models.DateTimeField(_('phase started at'), null=True, blank=True)
+    locked_at = models.DateTimeField(_('locked at'), null=True, blank=True)
+
+    consecutive_failures = models.PositiveSmallIntegerField(_('consecutive failures'), default=0)
+    last_error = models.TextField(_('last error'), blank=True, default='')
+
+    entries_processed = models.PositiveIntegerField(_('entries processed'), default=0)
+
+    def __str__(self):
+        return f'{self.state} @ {self.cursor:%Y-%m-%d}'

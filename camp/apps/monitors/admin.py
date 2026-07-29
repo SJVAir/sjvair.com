@@ -18,7 +18,7 @@ from camp.template_tags import admin_changelist_url
 from camp.utils import maps
 
 from .forms import MonitorAdminForm, EntryExportForm
-from .models import EntryBackfillJob, Group, Host, LatestEntry, Monitor
+from .models import EntryBackfillJob, Group, Host, LatestEntry, Monitor, PipelineBackfillJob
 
 
 class HealthCheckFilter(SimpleListFilter):
@@ -334,5 +334,19 @@ class EntryBackfillJobAdmin(admin.ModelAdmin):
     ordering = ['-created']
     readonly_fields = [
         f.name for f in EntryBackfillJob._meta.get_fields()
+        if isinstance(f, models.Field) and f.name != 'state'
+    ]
+
+
+@admin.register(PipelineBackfillJob)
+class PipelineBackfillJobAdmin(admin.ModelAdmin):
+    list_display = [
+        'state', 'cursor', 'range_start', 'range_end',
+        'pending_tasks', 'entries_processed', 'consecutive_failures', 'modified',
+    ]
+    list_filter = ['state']
+    ordering = ['-created']
+    readonly_fields = [
+        f.name for f in PipelineBackfillJob._meta.get_fields()
         if isinstance(f, models.Field) and f.name != 'state'
     ]
