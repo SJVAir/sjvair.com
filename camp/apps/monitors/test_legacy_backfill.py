@@ -573,3 +573,61 @@ class MonitorsWithIncompletePipelinesInTests(TestCase):
         )
         ids = monitors_with_incomplete_pipelines_in(ts, ts + timedelta(hours=1))
         assert monitor.pk not in ids
+
+
+from camp.apps.monitors.tasks import reprocess_monitor_chunk
+
+
+class ReprocessMonitorChunkTaskTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.ts = _ts(2023, 1, 1)
+        self.chunk_start = self.ts
+        self.chunk_end = self.ts + timedelta(hours=1)
+        self.raw = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('10.0'),
+        )
+        self.job = PipelineBackfillJob.objects.create(
+            cursor=self.chunk_end, range_start=_ts(2020, 1, 1), range_end=self.chunk_end,
+            chunk_start=self.chunk_start, pending_tasks=1, batch_id=1,
+        )
+
+    def test_advances_raw_entry_through_pipeline_and_decrements_pending_tasks(self):
+        reprocess_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 1)
+        # PM25_LCS_Correction always merges A/B into a sensor='' CORRECTED entry
+        # (see build_entry(sensor='') in PM25_LCS_Correction.process()).
+        assert entry_models.PM25.objects.filter(
+            monitor=self.monitor, timestamp=self.ts, sensor='', stage=entry_models.PM25.Stage.CORRECTED,
+        ).exists()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 0
+        assert self.job.entries_processed == 1
+
+    def test_stale_batch_id_still_processes_but_does_not_decrement(self):
+        reprocess_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 999)
+        assert entry_models.PM25.objects.filter(
+            monitor=self.monitor, timestamp=self.ts, sensor='', stage=entry_models.PM25.Stage.CORRECTED,
+        ).exists()
+        self.job.refresh_from_db()
+        assert self.job.pending_tasks == 1
+
+    def test_second_sensor_with_no_derived_entries_is_processed_independently(self):
+        # PurpleAir dual-sensor: sensor 'b' has its own RAW row; find_incomplete_pipelines
+        # (Task 9, revised) selects by derived_entries__isnull=True per RAW row, so both
+        # sensors' RAW entries are attempted independently in the same chunk call.
+        raw_b = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='b', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('10.2'),
+        )
+        reprocess_monitor_chunk(self.job.pk, str(self.monitor.pk), self.chunk_start, self.chunk_end, 1)
+        # Sensor 'a' (lexically first) produces the merged CORRECTED entry; sensor 'b'
+        # legitimately produces no entry of its own (PM25_LCS_Correction defers to 'a') —
+        # both RAW rows were still attempted (entries_processed counts both).
+        assert entry_models.PM25.objects.filter(
+            monitor=self.monitor, timestamp=self.ts, sensor='', stage=entry_models.PM25.Stage.CORRECTED,
+        ).exists()
+        self.job.refresh_from_db()
+        assert self.job.entries_processed == 2

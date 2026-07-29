@@ -13,9 +13,9 @@ from huey import crontab
 from camp.utils.text import render_markdown
 from camp.apps.monitors.legacy_backfill import (
     LEGACY_BACKFILL_MAP, chunk_start_for, find_missing_raw_entries,
-    monitors_with_legacy_data_in,
+    monitors_with_legacy_data_in, find_incomplete_pipelines, pipeline_entry_models,
 )
-from .models import Entry, EntryBackfillJob, Monitor
+from .models import Entry, EntryBackfillJob, Monitor, PipelineBackfillJob
 
 
 # @db_periodic_task(crontab(hour='13', minute='0'), priority=100)
@@ -88,6 +88,36 @@ def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id)
     ).update(
         pending_tasks=F('pending_tasks') - 1,
         raw_entries_created=F('raw_entries_created') + created_count,
+    )
+
+
+@db_task(priority=1, queue='secondary')
+def reprocess_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
+    '''
+    For one monitor, drive any RAW entries in [chunk_start, chunk_end) with no
+    derived entries yet through process_entry_pipeline, then report completion.
+    Safe to re-run (see the BaseProcessor.run() idempotency fix).
+
+    Note: find_incomplete_pipelines (Task 9, revised) selects by
+    derived_entries__isnull=True, not by terminal-stage absence — it does not
+    catch a RAW entry stuck partway through the pipeline (e.g. CORRECTED
+    exists but CLEANED/CALIBRATED doesn't). That's an accepted limitation
+    from Task 9's design revision, not something to work around here.
+    '''
+    monitor = _resolve_monitor_subclass(monitor_id)
+
+    processed_count = 0
+    for entry_model, terminal_stage in pipeline_entry_models(type(monitor)).items():
+        incomplete = find_incomplete_pipelines(monitor, entry_model, chunk_start, chunk_end)
+        for raw_entry in incomplete:
+            monitor.process_entry_pipeline(raw_entry, cutoff_stage=terminal_stage)
+            processed_count += 1
+
+    PipelineBackfillJob.objects.filter(
+        pk=job_id, batch_id=batch_id,
+    ).update(
+        pending_tasks=F('pending_tasks') - 1,
+        entries_processed=F('entries_processed') + processed_count,
     )
 
 
