@@ -665,3 +665,49 @@ class ReprocessLegacyPipelineTickTests(TestCase):
         self.job.state = PipelineBackfillJob.State.DONE
         self.job.save()
         reprocess_legacy_pipeline_tick()  # should not raise
+
+
+class ReprocessLegacyPipelineCommandTests(TestCase):
+    def test_start_creates_job(self):
+        out = StringIO()
+        call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-01-01', stdout=out)
+        assert PipelineBackfillJob.objects.filter(state=PipelineBackfillJob.State.RUNNING).exists()
+        assert 'Started' in out.getvalue()
+
+    def test_start_refuses_second_job_without_force(self):
+        call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-01-01')
+        try:
+            call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-01-01')
+            assert False, 'expected CommandError'
+        except CommandError:
+            pass
+        assert PipelineBackfillJob.objects.count() == 1
+
+    def test_status_with_no_job(self):
+        out = StringIO()
+        call_command('reprocess_legacy_pipeline', 'status', stdout=out)
+        assert 'No backfill job' in out.getvalue()
+
+    def test_cancel_sets_state_done(self):
+        call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-01-01')
+        call_command('reprocess_legacy_pipeline', 'cancel')
+        job = PipelineBackfillJob.objects.first()
+        assert job.state == PipelineBackfillJob.State.DONE
+
+    def test_start_raises_command_error_on_invalid_date_values(self):
+        try:
+            call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-13-40')
+            assert False, 'expected CommandError'
+        except CommandError:
+            pass
+
+    def test_force_does_not_delete_existing_job_when_new_dates_invalid(self):
+        call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-01-01')
+        try:
+            call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-13-40', '--force')
+            assert False, 'expected CommandError'
+        except CommandError:
+            pass
+        assert PipelineBackfillJob.objects.count() == 1
+        job = PipelineBackfillJob.objects.first()
+        assert job.range_start.year == 2020 and job.range_start.month == 1 and job.range_start.day == 1
