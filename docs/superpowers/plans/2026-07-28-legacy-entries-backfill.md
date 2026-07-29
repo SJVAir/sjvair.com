@@ -2151,6 +2151,7 @@ from datetime import datetime
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
@@ -2197,9 +2198,9 @@ class Command(BaseCommand):
                 f'A pipeline reprocessing job is already {active.state} '
                 f'(cursor {active.cursor:%Y-%m-%d}). Pass --force to replace it.'
             )
-        if active and options['force']:
-            active.delete()
 
+        # Validate the new range BEFORE touching the existing job, so a bad
+        # --from/--to never destroys a still-good running/paused job.
         range_start = self._parse_date(options['date_from'])
         range_end = (
             self._parse_date(options['date_to'])
@@ -2209,12 +2210,16 @@ class Command(BaseCommand):
         if range_start >= range_end:
             raise CommandError('--from must be before --to')
 
-        PipelineBackfillJob.objects.create(
-            cursor=range_end,
-            range_start=range_start,
-            range_end=range_end,
-            chunk_days=chunk_days,
-        )
+        with transaction.atomic():
+            if active and options['force']:
+                active.delete()
+
+            PipelineBackfillJob.objects.create(
+                cursor=range_end,
+                range_start=range_start,
+                range_end=range_end,
+                chunk_days=chunk_days,
+            )
         self.stdout.write(self.style.SUCCESS(
             f'Started pipeline reprocessing job: {range_start:%Y-%m-%d} -> {range_end:%Y-%m-%d} '
             f'({chunk_days}-day chunks)'
@@ -2251,16 +2256,41 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Pipeline reprocessing job cancelled.'))
 
     def _parse_date(self, value):
-        d = parse_date(value)
+        try:
+            d = parse_date(value)
+        except ValueError:
+            d = None
         if d is None:
             raise CommandError(f'Invalid date: {value!r}. Use YYYY-MM-DD.')
         return make_aware(datetime(d.year, d.month, d.day), settings.DEFAULT_TIMEZONE)
 ```
 
+Note: this snippet already includes the two fixes review found necessary in Task 6's equivalent command (validate-before-delete ordering, wrapped in `transaction.atomic()`; `_parse_date` catching `ValueError` from `parse_date()` in addition to the `None` case) — apply the same tests Task 6 added for those cases here too:
+
+```python
+    def test_start_raises_command_error_on_invalid_date_values(self):
+        try:
+            call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-13-40')
+            assert False, 'expected CommandError'
+        except CommandError:
+            pass
+
+    def test_force_does_not_delete_existing_job_when_new_dates_invalid(self):
+        call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-01-01')
+        try:
+            call_command('reprocess_legacy_pipeline', 'start', '--from', '2020-13-40', '--force')
+            assert False, 'expected CommandError'
+        except CommandError:
+            pass
+        assert PipelineBackfillJob.objects.count() == 1
+        job = PipelineBackfillJob.objects.first()
+        assert job.range_start.year == 2020 and job.range_start.month == 1 and job.range_start.day == 1
+```
+
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `docker compose run --rm test pytest camp/apps/monitors/test_legacy_backfill.py::ReprocessLegacyPipelineCommandTests -v`
-Expected: PASS
+Expected: PASS (6 tests: the original 4 plus the 2 added above)
 
 - [ ] **Step 5: Commit**
 
