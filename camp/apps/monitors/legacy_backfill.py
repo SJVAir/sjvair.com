@@ -217,39 +217,31 @@ def pipeline_entry_models(monitor_class):
     return result
 
 
-def find_incomplete_pipelines(monitor, entry_model, terminal_stage, chunk_start, chunk_end):
+def find_incomplete_pipelines(monitor, entry_model, chunk_start, chunk_end):
     '''
-    Returns RAW-stage entry_model instances in the window that have no
-    corresponding terminal-stage entry yet (any processor). Safe to call
-    repeatedly.
+    Returns RAW-stage entry_model instances in the window that have not yet
+    been run through any pipeline processor at all (no derived entries of
+    any kind). Mirrors the derived_entries__isnull=True idiom used by
+    process_monitor_history (camp/apps/monitors/purpleair/tasks.py) — this
+    does not detect an entry stuck partway through the pipeline (e.g. RAW +
+    CORRECTED exist but CLEANED/CALIBRATED don't); that's an accepted
+    limitation, not a gap to fix here.
     '''
-    raw_qs = entry_model.objects.filter(
+    return list(entry_model.objects.filter(
         monitor=monitor,
         stage=entry_model.Stage.RAW,
         timestamp__gte=chunk_start,
         timestamp__lt=chunk_end,
-    )
-
-    complete_keys = set(
-        entry_model.objects.filter(
-            monitor=monitor,
-            stage=terminal_stage,
-            timestamp__gte=chunk_start,
-            timestamp__lt=chunk_end,
-        ).values_list('timestamp', 'sensor')
-    )
-
-    return [
-        entry for entry in raw_qs
-        if (entry.timestamp, entry.sensor) not in complete_keys
-    ]
+        derived_entries__isnull=True,
+    ))
 
 
 def monitors_with_incomplete_pipelines_in(chunk_start, chunk_end):
     '''
     Returns pks of monitors (of the eligible types) with at least one RAW
-    entry in [chunk_start, chunk_end) missing its terminal-stage counterpart,
-    across any of that monitor type's pipeline-eligible entry models.
+    entry in [chunk_start, chunk_end) that hasn't been run through any
+    pipeline processor yet, across any of that monitor type's
+    pipeline-eligible entry models.
     '''
     monitor_ids = set()
     for monitor_cls in eligible_monitor_classes():
@@ -257,29 +249,18 @@ def monitors_with_incomplete_pipelines_in(chunk_start, chunk_end):
         if not models_map:
             continue
 
-        for entry_model, terminal_stage in models_map.items():
-            # Cheap pre-filter: get monitors with any RAW at all in window
-            raw_in_range = entry_model.objects.filter(
+        for entry_model in models_map:
+            unprocessed_in_range = entry_model.objects.filter(
                 monitor=OuterRef('pk'),
                 stage=entry_model.Stage.RAW,
                 timestamp__gte=chunk_start,
                 timestamp__lt=chunk_end,
+                derived_entries__isnull=True,
             )
-            candidate_monitors = (monitor_cls.objects
-                .annotate(has_raw=Exists(raw_in_range))
-                .filter(has_raw=True)
+            ids = (monitor_cls.objects
+                .annotate(has_incomplete=Exists(unprocessed_in_range))
+                .filter(has_incomplete=True)
                 .values_list('pk', flat=True))
-
-            # Precise check: for each candidate monitor, check if any RAW entry
-            # is missing its terminal-stage counterpart, since comparing per-entry
-            # keys isn't expressible as a single annotation without risking false
-            # negatives on the sensor-collapse cases.
-            for monitor_id in candidate_monitors:
-                monitor = monitor_cls.objects.get(pk=monitor_id)
-                incomplete = find_incomplete_pipelines(
-                    monitor, entry_model, terminal_stage, chunk_start, chunk_end,
-                )
-                if incomplete:
-                    monitor_ids.add(monitor_id)
+            monitor_ids.update(ids)
 
     return list(monitor_ids)

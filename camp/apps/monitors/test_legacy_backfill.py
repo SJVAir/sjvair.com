@@ -466,18 +466,17 @@ class FindIncompletePipelinesTests(TestCase):
         self.monitor = PurpleAir.objects.first()
         self.ts = _ts(2023, 1, 1)
 
-    def test_finds_raw_entry_with_no_terminal_stage_entry(self):
+    def test_finds_raw_entry_with_no_derived_entries(self):
         raw = entry_models.PM25.objects.create(
             monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
             stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
         )
         incomplete = find_incomplete_pipelines(
-            self.monitor, entry_models.PM25, entry_models.PM25.Stage.CALIBRATED,
-            self.ts, self.ts + timedelta(hours=1),
+            self.monitor, entry_models.PM25, self.ts, self.ts + timedelta(hours=1),
         )
         assert [e.pk for e in incomplete] == [raw.pk]
 
-    def test_skips_raw_entry_that_already_has_terminal_stage_entry(self):
+    def test_skips_raw_entry_that_already_has_a_derived_entry(self):
         raw = entry_models.PM25.objects.create(
             monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
             stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
@@ -488,14 +487,18 @@ class FindIncompletePipelinesTests(TestCase):
             origin=raw,
         )
         incomplete = find_incomplete_pipelines(
-            self.monitor, entry_models.PM25, entry_models.PM25.Stage.CALIBRATED,
-            self.ts, self.ts + timedelta(hours=1),
+            self.monitor, entry_models.PM25, self.ts, self.ts + timedelta(hours=1),
         )
         assert incomplete == []
 
-    def test_finds_raw_entry_stuck_at_intermediate_stage(self):
-        # Left over from a previous partial migration: RAW and CORRECTED exist,
-        # but CLEANED/CALIBRATED never ran.
+    def test_stuck_at_intermediate_stage_is_not_detected_accepted_limitation(self):
+        '''
+        Known, accepted limitation: derived_entries__isnull=True only checks
+        whether ANY derived entry exists, so a RAW entry with a CORRECTED
+        child but no CLEANED/CALIBRATED child is considered "handled" even
+        though its chain never completed. This is intentional (see the
+        design discussion in the plan) — not something to fix here.
+        '''
         raw = entry_models.PM25.objects.create(
             monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
             stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
@@ -505,11 +508,31 @@ class FindIncompletePipelinesTests(TestCase):
             stage=entry_models.PM25.Stage.CORRECTED, processor='PM25_LCS_Correction',
             value=Decimal('5.0'), origin=raw,
         )
-        incomplete = find_incomplete_pipelines(
-            self.monitor, entry_models.PM25, entry_models.PM25.Stage.CALIBRATED,
-            self.ts, self.ts + timedelta(hours=1),
+        incomplete = find_incomplete_pipelines(self.monitor, entry_models.PM25, self.ts, self.ts + timedelta(hours=1))
+        assert incomplete == []  # NOT flagged — accepted limitation, not a bug
+
+    def test_purpleair_pm25_sensor_b_with_no_derived_entries_is_flagged_but_a_with_merged_child_is_not(self):
+        '''
+        Sensor 'a' produces a merged sensor='' CORRECTED child (real PM25_LCS_Correction
+        behavior) -- that RAW entry should be considered handled. Sensor 'b' legitimately
+        never produces a derived entry (it defers to 'a') -- with no test-created derived
+        entry, it's correctly flagged as still needing a pipeline attempt.
+        '''
+        raw_a = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.0'),
         )
-        assert [e.pk for e in incomplete] == [raw.pk]
+        raw_b = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='b', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.RAW, processor='', value=Decimal('5.2'),
+        )
+        entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.PM25.Stage.CORRECTED, processor='PM25_LCS_Correction',
+            value=Decimal('5.1'), origin=raw_a,
+        )
+        incomplete = find_incomplete_pipelines(self.monitor, entry_models.PM25, self.ts, self.ts + timedelta(hours=1))
+        assert [e.pk for e in incomplete] == [raw_b.pk]
 
 
 class MonitorsWithIncompletePipelinesInTests(TestCase):
