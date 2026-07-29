@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db.models import F
 from django.template.loader import render_to_string
 from django.utils import timezone
 
@@ -9,7 +10,10 @@ from django_huey import db_task, db_periodic_task
 from huey import crontab
 
 from camp.utils.text import render_markdown
-from .models import Entry, Monitor
+from camp.apps.monitors.legacy_backfill import (
+    LEGACY_BACKFILL_MAP, find_missing_raw_entries,
+)
+from .models import Entry, EntryBackfillJob, Monitor
 
 
 # @db_periodic_task(crontab(hour='13', minute='0'), priority=100)
@@ -55,3 +59,45 @@ def recalibrate_entry(entry_id):
     entry.pm25_avg_15 = entry.get_average('pm25', 15)
     entry.pm25_avg_60 = entry.get_average('pm25', 60)
     entry.save()
+
+
+@db_task(priority=1, queue='secondary')
+def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
+    '''
+    For one monitor, insert any RAW entries missing in [chunk_start, chunk_end)
+    across its LEGACY_BACKFILL_MAP-configured entry types, then report completion.
+    '''
+    monitor = _resolve_monitor_subclass(monitor_id)
+
+    created_count = 0
+    for entry_model, mapping in LEGACY_BACKFILL_MAP.get(type(monitor), {}).items():
+        missing = find_missing_raw_entries(monitor, entry_model, mapping, chunk_start, chunk_end)
+        if missing:
+            entry_model.objects.bulk_create(
+                missing,
+                update_conflicts=True,
+                unique_fields=['monitor', 'timestamp', 'sensor', 'stage', 'processor'],
+                update_fields=[f.name for f in entry_model.declared_fields],
+            )
+            created_count += len(missing)
+
+    EntryBackfillJob.objects.filter(
+        pk=job_id, batch_id=batch_id,
+    ).update(
+        pending_tasks=F('pending_tasks') - 1,
+        raw_entries_created=F('raw_entries_created') + created_count,
+    )
+
+
+def _resolve_monitor_subclass(monitor_id):
+    '''
+    Monitor is base-table multi-table inheritance; find which of the
+    LEGACY_BACKFILL_MAP-eligible concrete subclasses this id belongs to.
+    '''
+    from camp.apps.monitors.legacy_backfill import eligible_monitor_classes
+
+    for monitor_cls in eligible_monitor_classes():
+        monitor = monitor_cls.objects.filter(pk=monitor_id).first()
+        if monitor is not None:
+            return monitor
+    raise Monitor.DoesNotExist(f'No eligible monitor subclass found for id={monitor_id}')
