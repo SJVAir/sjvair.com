@@ -313,6 +313,29 @@ class BaseProcessorRunIdempotencyTests(TestCase):
         ).count()
         assert count == 1
 
+    def test_run_updates_existing_entry_in_place_when_value_differs(self):
+        # Simulate a data correction or algorithm change: the RAW value (and
+        # therefore what the processor computes) is now different from what
+        # the existing CORRECTED row was saved with.
+        self.raw.value = Decimal('25.00')
+        self.raw.save()
+
+        processor = _AlwaysDuplicateProcessor(self.raw)
+        result = processor.run()
+
+        assert result.pk == self.existing_corrected.pk
+        assert result.value == Decimal('25.00')
+
+        self.existing_corrected.refresh_from_db()
+        assert self.existing_corrected.value == Decimal('25.00')
+
+        # Still exactly one row — an upsert, not a new duplicate.
+        count = entry_models.PM25.objects.filter(
+            monitor=self.monitor, timestamp=self.raw.timestamp,
+            sensor='a', stage=entry_models.PM25.Stage.CORRECTED,
+        ).count()
+        assert count == 1
+
     def test_run_still_creates_when_nothing_exists(self):
         self.existing_corrected.delete()
         processor = _AlwaysDuplicateProcessor(self.raw)
