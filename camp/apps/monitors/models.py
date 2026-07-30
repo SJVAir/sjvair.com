@@ -851,7 +851,7 @@ class EntryBackfillJob(TimeStampedModel):
 
     cursor = models.DateTimeField(_('cursor'))
     chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
-    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=7)
+    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=1)
     range_start = models.DateTimeField(_('range start'))
     range_end = models.DateTimeField(_('range end'))
 
@@ -888,7 +888,7 @@ class PipelineBackfillJob(TimeStampedModel):
 
     cursor = models.DateTimeField(_('cursor'))
     chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
-    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=7)
+    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=1)
     range_start = models.DateTimeField(_('range start'))
     range_end = models.DateTimeField(_('range end'))
 
