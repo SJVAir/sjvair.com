@@ -342,7 +342,7 @@ DJANGO_HUEY = {
             'name': 'secondary_tasks',
             'connection': {'url': f'{REDIS_URL}/1'},
             'consumer': {
-                'periodic': False,
+                'periodic': True,
                 'workers': int(env('HUEY_SECONDARY_WORKERS', env('HUEY_WORKERS', 4)))
             },
             'huey_class': 'huey.PriorityRedisHuey',

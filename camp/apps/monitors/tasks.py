@@ -139,7 +139,7 @@ ENTRY_BACKFILL_BATCH_STALE_MINUTES = 60
 ENTRY_BACKFILL_MAX_CONSECUTIVE_FAILURES = 5
 
 
-@db_periodic_task(crontab(minute='*'), priority=1, queue='primary')
+@db_periodic_task(crontab(minute='*'), priority=1, queue='secondary')
 def backfill_legacy_entries_tick():
     '''
     Drive one step of the active EntryBackfillJob, if any. Never blocks on the
@@ -242,7 +242,7 @@ PIPELINE_BACKFILL_BATCH_STALE_MINUTES = 60
 PIPELINE_BACKFILL_MAX_CONSECUTIVE_FAILURES = 5
 
 
-@db_periodic_task(crontab(minute='*'), priority=1, queue='primary')
+@db_periodic_task(crontab(minute='*'), priority=1, queue='secondary')
 def reprocess_legacy_pipeline_tick():
     '''
     Drive one step of the active PipelineBackfillJob, if any. Never blocks on
