@@ -10,6 +10,7 @@ from django.utils import timezone
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
+from camp.utils.email import send_email
 from camp.utils.text import render_markdown
 from camp.apps.monitors.legacy_backfill import (
     LEGACY_BACKFILL_MAP, chunk_start_for, find_missing_raw_entries,
@@ -178,6 +179,21 @@ def backfill_legacy_entries_tick():
             _entry_backfill_dispatch_chunk(job)
 
 
+def _notify_job_failed(job, job_label, management_command):
+    '''
+    A job that's exhausted its consecutive-failure budget stops retrying on
+    its own -- email whoever monitors this (SJVAIR_INACTIVE_ALERT_EMAILS,
+    the same list used for monitor-inactivity alerts) so it doesn't sit
+    silently failed until someone happens to check `status`.
+    '''
+    send_email(
+        subject=f'[SJVAir] {job_label} failed',
+        template='email/backfill-job-failed.md',
+        context={'job': job, 'job_label': job_label, 'management_command': management_command},
+        to=settings.SJVAIR_INACTIVE_ALERT_EMAILS,
+    )
+
+
 def _entry_backfill_dispatch_chunk(job):
     chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
     monitor_ids = monitors_with_legacy_data_in(chunk_start, job.cursor)
@@ -218,6 +234,7 @@ def _entry_backfill_restart_batch(job):
         job.pending_tasks = 0
         job.state = EntryBackfillJob.State.FAILED
         job.save()
+        _notify_job_failed(job, 'Legacy entries backfill', 'backfill_legacy_entries')
         return
 
     chunk_start = job.chunk_start
@@ -321,6 +338,7 @@ def _pipeline_backfill_restart_batch(job):
         job.pending_tasks = 0
         job.state = PipelineBackfillJob.State.FAILED
         job.save()
+        _notify_job_failed(job, 'Legacy pipeline reprocessing', 'reprocess_legacy_pipeline')
         return
 
     chunk_start = job.chunk_start
