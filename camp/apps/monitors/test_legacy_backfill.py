@@ -2,7 +2,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from django.conf import settings
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from camp.apps.entries import models as entry_models
@@ -412,6 +413,7 @@ class BackfillLegacyEntriesTickStalenessTests(TestCase):
         assert self.job.consecutive_failures == 1
         assert self.job.state == EntryBackfillJob.State.RUNNING
 
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_repeated_staleness_eventually_marks_job_failed(self):
         self.job.consecutive_failures = 4  # one below the threshold of 5
         self.job.save()
@@ -420,6 +422,10 @@ class BackfillLegacyEntriesTickStalenessTests(TestCase):
         self.job.refresh_from_db()
         assert self.job.state == EntryBackfillJob.State.FAILED
         assert self.job.pending_tasks == 0
+
+        assert len(mail.outbox) == 1
+        assert mail.outbox[0].subject == '[SJVAir] Legacy entries backfill failed'
+        assert list(mail.outbox[0].to) == list(settings.SJVAIR_INACTIVE_ALERT_EMAILS)
 
 
 from io import StringIO
@@ -719,6 +725,7 @@ class ReprocessLegacyPipelineTickStalenessTests(TestCase):
         assert self.job.consecutive_failures == 1
         assert self.job.state == PipelineBackfillJob.State.RUNNING
 
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_repeated_staleness_eventually_marks_job_failed(self):
         self.job.consecutive_failures = 4  # one below the threshold of 5
         self.job.save()
@@ -727,6 +734,10 @@ class ReprocessLegacyPipelineTickStalenessTests(TestCase):
         self.job.refresh_from_db()
         assert self.job.state == PipelineBackfillJob.State.FAILED
         assert self.job.pending_tasks == 0
+
+        assert len(mail.outbox) == 1
+        assert mail.outbox[0].subject == '[SJVAir] Legacy pipeline reprocessing failed'
+        assert list(mail.outbox[0].to) == list(settings.SJVAIR_INACTIVE_ALERT_EMAILS)
 
 
 class ReprocessLegacyPipelineCommandTests(TestCase):
