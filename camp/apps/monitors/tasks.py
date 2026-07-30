@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import mail_admins, send_mail
 from django.db import transaction
 from django.db.models import F, Q
 from django.template.loader import render_to_string
@@ -10,7 +10,6 @@ from django.utils import timezone
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
-from camp.utils.email import send_email
 from camp.utils.text import render_markdown
 from camp.apps.monitors.legacy_backfill import (
     LEGACY_BACKFILL_MAP, chunk_start_for, find_missing_raw_entries,
@@ -182,15 +181,23 @@ def backfill_legacy_entries_tick():
 def _notify_job_failed(job, job_label, management_command):
     '''
     A job that's exhausted its consecutive-failure budget stops retrying on
-    its own -- email whoever monitors this (SJVAIR_INACTIVE_ALERT_EMAILS,
-    the same list used for monitor-inactivity alerts) so it doesn't sit
+    its own -- email the site admins (settings.ADMINS) so it doesn't sit
     silently failed until someone happens to check `status`.
     '''
-    send_email(
-        subject=f'[SJVAir] {job_label} failed',
-        template='email/backfill-job-failed.md',
-        context={'job': job, 'job_label': job_label, 'management_command': management_command},
-        to=settings.SJVAIR_INACTIVE_ALERT_EMAILS,
+    mail_admins(
+        subject=f'{job_label} failed',
+        message=(
+            f'{job_label} has failed after {job.consecutive_failures} consecutive '
+            f'stalled batches and stopped retrying.\n\n'
+            f'State: {job.state}\n'
+            f'Cursor: {job.cursor}\n'
+            f'Range: {job.range_start} - {job.range_end}\n'
+            f'Last error: {job.last_error}\n\n'
+            f'This job will not resume on its own. Check `{management_command} status` '
+            f'for details, investigate the cause, and either fix the underlying issue '
+            f'and `{management_command} start --force` a new run, or leave it as-is if '
+            f'no further action is needed.'
+        ),
     )
 
 

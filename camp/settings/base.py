@@ -273,8 +273,18 @@ DEFAULT_FROM_EMAIL = 'SJVAir <no-reply@sjvair.com>'
 
 SERVER_EMAIL = 'SJVAir Server <root@sjvair.com>'
 
+EMAIL_SUBJECT_PREFIX = '[SJVAir] '
+
 SJVAIR_INACTIVE_ALERT_EMAILS = [email.strip() for email in
     env('SJVAIR_INACTIVE_ALERT_EMAILS', SERVER_EMAIL).split(',')]
+
+# Recipients for Django's built-in mail_admins()/mail_managers(). ADMINS
+# must be a list of 2-tuples (Django raises ValueError otherwise), so
+# ADMIN_EMAILS is a plain comma-separated list of addresses and ADMINS is
+# derived from it.
+ADMIN_EMAILS = [email.strip() for email in env('ADMIN_EMAILS', '').split(',') if email.strip()]
+ADMINS = [(email, email) for email in ADMIN_EMAILS]
+MANAGERS = ADMINS
 
 SJVAIR_CONTACT_EMAILS = [email.strip() for email in
     env('SJVAIR_CONTACT_EMAILS', SERVER_EMAIL).split(',')]
