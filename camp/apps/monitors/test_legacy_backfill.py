@@ -274,7 +274,7 @@ class EntryBackfillJobTests(TestCase):
             cursor=_ts(2023, 1, 8), range_start=_ts(2020, 1, 1), range_end=_ts(2023, 1, 8),
         )
         assert job.state == EntryBackfillJob.State.RUNNING
-        assert job.chunk_days == 7
+        assert job.chunk_days == 1
         assert job.pending_tasks == 0
         assert job.batch_id == 0
         assert job.raw_entries_created == 0
@@ -287,7 +287,7 @@ class PipelineBackfillJobTests(TestCase):
             cursor=_ts(2023, 1, 8), range_start=_ts(2020, 1, 1), range_end=_ts(2023, 1, 8),
         )
         assert job.state == PipelineBackfillJob.State.RUNNING
-        assert job.chunk_days == 7
+        assert job.chunk_days == 1
         assert job.entries_processed == 0
         assert job.sqid
 
@@ -389,6 +389,37 @@ class BackfillLegacyEntriesTickDispatchTests(TestCase):
         backfill_legacy_entries_tick()
         self.job.refresh_from_db()
         assert self.job.state == EntryBackfillJob.State.DONE
+
+
+class BackfillLegacyEntriesTickStalenessTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.range_start = _ts(2020, 1, 1)
+        self.range_end = _ts(2023, 1, 8)
+        self.job = EntryBackfillJob.objects.create(
+            cursor=self.range_end, range_start=self.range_start, range_end=self.range_end,
+            chunk_start=self.range_end - timedelta(days=7), pending_tasks=1, batch_id=1,
+            phase_started_at=timezone.now() - timedelta(minutes=61),
+        )
+
+    def test_stale_batch_is_restarted(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_legacy_entries_tick()
+        self.job.refresh_from_db()
+        assert self.job.batch_id != 1
+        assert self.job.consecutive_failures == 1
+        assert self.job.state == EntryBackfillJob.State.RUNNING
+
+    def test_repeated_staleness_eventually_marks_job_failed(self):
+        self.job.consecutive_failures = 4  # one below the threshold of 5
+        self.job.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            backfill_legacy_entries_tick()
+        self.job.refresh_from_db()
+        assert self.job.state == EntryBackfillJob.State.FAILED
+        assert self.job.pending_tasks == 0
 
 
 from io import StringIO
@@ -667,6 +698,37 @@ class ReprocessLegacyPipelineTickTests(TestCase):
         reprocess_legacy_pipeline_tick()  # should not raise
 
 
+class ReprocessLegacyPipelineTickStalenessTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.range_start = _ts(2020, 1, 1)
+        self.range_end = _ts(2023, 1, 8)
+        self.job = PipelineBackfillJob.objects.create(
+            cursor=self.range_end, range_start=self.range_start, range_end=self.range_end,
+            chunk_start=self.range_end - timedelta(days=7), pending_tasks=1, batch_id=1,
+            phase_started_at=timezone.now() - timedelta(minutes=61),
+        )
+
+    def test_stale_batch_is_restarted(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            reprocess_legacy_pipeline_tick()
+        self.job.refresh_from_db()
+        assert self.job.batch_id != 1
+        assert self.job.consecutive_failures == 1
+        assert self.job.state == PipelineBackfillJob.State.RUNNING
+
+    def test_repeated_staleness_eventually_marks_job_failed(self):
+        self.job.consecutive_failures = 4  # one below the threshold of 5
+        self.job.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            reprocess_legacy_pipeline_tick()
+        self.job.refresh_from_db()
+        assert self.job.state == PipelineBackfillJob.State.FAILED
+        assert self.job.pending_tasks == 0
+
+
 class ReprocessLegacyPipelineCommandTests(TestCase):
     def test_start_creates_job(self):
         out = StringIO()
@@ -757,6 +819,59 @@ class FixPurpleAirPressureCommandTests(TestCase):
         call_command('fix_purpleair_pressure', '--dry-run')
         bad_entry.refresh_from_db()
         assert bad_entry.value == Decimal('1013.25')
+
+    def test_monitor_flag_scopes_to_one_monitor(self):
+        bad_entry = entry_models.Pressure.objects.create(
+            monitor=self.monitor, sensor='', timestamp=self.ts, location=self.monitor.location,
+            stage=entry_models.Pressure.Stage.RAW, processor='', value=Decimal('1013.25'),
+        )
+        out = StringIO()
+        call_command('fix_purpleair_pressure', '--monitor', str(self.monitor.pk), stdout=out)
+        bad_entry.refresh_from_db()
+        expected = (Decimal('1013.25') / Decimal('1.33322')).quantize(Decimal('0.01'))
+        assert bad_entry.value == expected
+        assert 'Corrected 1' in out.getvalue()
+
+    def test_monitor_flag_raises_on_unknown_id(self):
+        from django_smalluuid.models import uuid_default
+        unknown_id = str(uuid_default()())
+        try:
+            call_command('fix_purpleair_pressure', '--monitor', unknown_id)
+            assert False, 'expected CommandError'
+        except CommandError:
+            pass
+
+    def test_from_to_flags_scope_the_date_range(self):
+        in_range_ts = self.ts
+        out_of_range_ts = self.ts + timedelta(days=30)
+
+        Entry.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=out_of_range_ts,
+            location=self.monitor.location, pressure=Decimal('1013.25'),
+        )
+        in_range_entry = entry_models.Pressure.objects.create(
+            monitor=self.monitor, sensor='', timestamp=in_range_ts, location=self.monitor.location,
+            stage=entry_models.Pressure.Stage.RAW, processor='', value=Decimal('1013.25'),
+        )
+        out_of_range_entry = entry_models.Pressure.objects.create(
+            monitor=self.monitor, sensor='', timestamp=out_of_range_ts, location=self.monitor.location,
+            stage=entry_models.Pressure.Stage.RAW, processor='', value=Decimal('1013.25'),
+        )
+
+        out = StringIO()
+        call_command(
+            'fix_purpleair_pressure',
+            '--from', in_range_ts.strftime('%Y-%m-%d'),
+            '--to', (in_range_ts + timedelta(days=1)).strftime('%Y-%m-%d'),
+            stdout=out,
+        )
+
+        in_range_entry.refresh_from_db()
+        out_of_range_entry.refresh_from_db()
+        expected = (Decimal('1013.25') / Decimal('1.33322')).quantize(Decimal('0.01'))
+        assert in_range_entry.value == expected
+        assert out_of_range_entry.value == Decimal('1013.25')  # untouched, outside --to
+        assert 'Corrected 1 of 1 checked' in out.getvalue()
 
 
 class LegacyBackfillThenReprocessIntegrationTests(TestCase):
