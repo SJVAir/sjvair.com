@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+from django.contrib.gis.geos import Point
 from django.test import TestCase
 from django.utils import timezone
 
@@ -189,3 +190,48 @@ class MonitorTests(TestCase):
             entry_models.PM25, as_of, seconds=3600,
         )
         assert results == []
+
+
+class MonitorSaveCountyLookupTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def get_purpleair(self):
+        return PurpleAir.objects.get(sensor_id=8892)
+
+    def test_computes_county_on_first_save_with_position(self):
+        monitor = self.get_purpleair()
+        monitor.county = ''
+        monitor.position = Point(-119.7871, 36.7378)  # Fresno, CA
+
+        with patch('camp.apps.monitors.models.County.lookup', return_value='Fresno') as lookup:
+            monitor.save()
+
+        lookup.assert_called_once()
+        assert monitor.county == 'Fresno'
+
+    def test_skips_lookup_when_position_unchanged(self):
+        monitor = self.get_purpleair()
+        monitor.county = 'Fresno'
+        monitor.position = Point(-119.7871, 36.7378)
+        monitor.save()
+
+        monitor = self.get_purpleair()
+        with patch('camp.apps.monitors.models.County.lookup') as lookup:
+            monitor.name = 'Renamed'
+            monitor.save()
+
+        lookup.assert_not_called()
+
+    def test_recomputes_lookup_when_position_changes(self):
+        monitor = self.get_purpleair()
+        monitor.county = 'Fresno'
+        monitor.position = Point(-119.7871, 36.7378)
+        monitor.save()
+
+        monitor = self.get_purpleair()
+        with patch('camp.apps.monitors.models.County.lookup', return_value='Kern') as lookup:
+            monitor.position = Point(-118.7273, 35.3733)  # Kern, CA
+            monitor.save()
+
+        lookup.assert_called_once()
+        assert monitor.county == 'Kern'

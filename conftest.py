@@ -7,6 +7,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.utils import timezone
 
+from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.test.helpers import create_hourly_data_for_monitor
 from camp.utils.test.twilio_test_client import TwilioTestClient
@@ -38,8 +39,10 @@ def purpleair_monitor(django_db_setup, django_db_blocker):
         call_command('loaddata', 'purple-air.yaml', verbosity=0)
         call_command('loaddata', 'bam1022.yaml', verbosity=0)
         monitor = PurpleAir.objects.get(sensor_id=8892)
+        bam = BAM1022.objects.get(pk='gO9_akFVTVW6mYBifOtoxg')
         create_hourly_data_for_monitor(monitor)
         try:
             yield
         finally:
             monitor.delete()
+            bam.delete()

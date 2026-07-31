@@ -92,7 +92,7 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = queryset.filter(is_hidden=False)
+        queryset = queryset.get_public()
         return queryset
 
 
@@ -109,7 +109,7 @@ class MonitorMetaEndpoint(Endpoint):
     def get_monitors(self):
         payload = {}
 
-        monitor_subclasses = sorted(Monitor.get_subclasses(), key=lambda c: c.monitor_type)
+        monitor_subclasses = sorted(Monitor.get_enabled_subclasses(), key=lambda c: c.monitor_type)
         for monitor_model in monitor_subclasses:
             payload[monitor_model.monitor_type] = {
                 'label': monitor_model._meta.verbose_name,
@@ -307,7 +307,8 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         queryset = (super()
             .get_queryset()
             .get_active()
-            .filter(is_hidden=False, location=Monitor.LOCATION.outside)
+            .get_public()
+            .filter(location=Monitor.LOCATION.outside)
             .annotate(distance=Distance('position', form.point, spheroid=True))
             .order_by('distance')
         )
@@ -350,10 +351,8 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
             .get_queryset(*args, **kwargs)
-            .filter(
-                is_hidden=False,
-                position__isnull=False
-            )
+            .get_public()
+            .filter(position__isnull=False)
         )
 
         # Only monitors that are recently active...
@@ -403,7 +402,8 @@ class MonitorsAt(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
 
         queryset = (super()
             .get_queryset(*args, **kwargs)
-            .filter(is_hidden=False, position__isnull=False)
+            .get_public()
+            .filter(position__isnull=False)
         )
 
         region_ids = self.request.GET.getlist('region')

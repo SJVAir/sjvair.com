@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 from random import randint
+from unittest.mock import patch
 
 from django.db.models import Count, Max, Prefetch
 from django.test import TestCase
@@ -12,13 +13,37 @@ from .api import purpleair_api
 from .models import PurpleAir
 
 
+def make_sensor_payload():
+    '''Sample /v1/sensors/{id} 'sensor' payload, covering both channels.'''
+    payload = {
+        'last_seen': int(timezone.now().timestamp()),
+        'temperature': 72,
+        'humidity': 45,
+        'pressure': 1013.1,
+    }
+    for sensor in ('a', 'b'):
+        payload.update({
+            f'pm1.0_atm_{sensor}': 5.0,
+            f'pm2.5_atm_{sensor}': 10.0,
+            f'pm10.0_atm_{sensor}': 12.0,
+            f'0.3_um_count_{sensor}': 900,
+            f'0.5_um_count_{sensor}': 300,
+            f'1.0_um_count_{sensor}': 60,
+            f'2.5_um_count_{sensor}': 10,
+            f'5.0_um_count_{sensor}': 3,
+            f'10.0_um_count_{sensor}': 1,
+        })
+    return payload
+
+
 class PurpleAirTests(TestCase):
     fixtures = ['purple-air.yaml']
     def setUp(self):
         self.monitor = PurpleAir.objects.get(sensor_id=8892)
 
-    def test_create_entry_legacy(self):
-        payload = purpleair_api.get_sensor(self.monitor.sensor_id)
+    @patch.object(purpleair_api, 'get_sensor')
+    def test_create_entry_legacy(self, mock_get_sensor):
+        mock_get_sensor.return_value = payload = make_sensor_payload()
         (a, b) = self.monitor.create_entries_legacy(payload)
         self.monitor.check_latest(a)
         self.monitor.check_latest(b)

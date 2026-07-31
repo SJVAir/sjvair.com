@@ -57,6 +57,26 @@ class EndpointTests(TestCase):
         content = get_response_data(response)
         assert response.status_code == 200
 
+    @override_settings(MONITOR_ENABLED_TYPES=['purpleair'])
+    def test_monitor_list_filters_by_enabled_types(self):
+        '''
+            Monitors of a type not listed in MONITOR_ENABLED_TYPES are excluded.
+        '''
+        url = reverse('api:v2:monitors:monitor-list')
+        request = self.factory.get(url, {'_cc': '1'})
+        response = monitor_list(request)
+        content = get_response_data(response)
+        types = {monitor['type'] for monitor in content['data']}
+        assert types == {'purpleair'}
+
+    @override_settings(MONITOR_ENABLED_TYPES=['purpleair'])
+    def test_monitor_meta_filters_by_enabled_types(self):
+        '''
+            /meta/ only advertises monitor types listed in MONITOR_ENABLED_TYPES.
+        '''
+        response, content = self._fetch_monitor_meta()
+        assert set(content['data']['monitors'].keys()) == {'purpleair'}
+
     def _fetch_monitor_meta(self):
         url = reverse('api:v2:monitors:monitor-meta')
         request = self.factory.get(url)
