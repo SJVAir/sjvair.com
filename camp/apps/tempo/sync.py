@@ -62,6 +62,21 @@ def sync_granule(product: str, timestamp: datetime, client: Optional[TempoClient
     bounds = Polygon.from_bbox((parsed.lon_min, parsed.lat_min, parsed.lon_max, parsed.lat_max))
     preview_bytes = render_preview(parsed.array, product)
 
+    # Upload the preview before writing the Granule row. If this fails
+    # (S3 timeout, credential hiccup), nothing is written and the next
+    # sync attempt retries cleanly. The reverse order -- committing the
+    # row first -- can permanently strand a Granule with no preview:
+    # _should_replace() sees the row as already up to date and never
+    # re-fetches it once NASA's version stops changing.
+    unsaved = Granule(product=product, timestamp=timestamp)
+    preview_name = unsaved.preview.field.generate_filename(
+        unsaved,
+        # No minutes/seconds -- ingestion always writes top-of-hour
+        # timestamps, so they'd always read ":00" and add nothing.
+        f'{product}_{timestamp:%Y-%m-%d-%H}.png',
+    )
+    preview_name = unsaved.preview.storage.save(preview_name, ContentFile(preview_bytes))
+
     granule, _created = Granule.objects.update_or_create(
         product=product,
         timestamp=timestamp,
@@ -70,13 +85,7 @@ def sync_granule(product: str, timestamp: datetime, client: Optional[TempoClient
             'is_final': granule_meta['is_final'],
             'raster': raster,
             'bounds': bounds,
+            'preview': preview_name,
         },
-    )
-    granule.preview.save(
-        # No minutes/seconds -- ingestion always writes top-of-hour
-        # timestamps, so they'd always read ":00" and add nothing.
-        f'{product}_{timestamp:%Y-%m-%d-%H}.png',
-        ContentFile(preview_bytes),
-        save=True,
     )
     return granule

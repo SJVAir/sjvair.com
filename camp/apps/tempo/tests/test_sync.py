@@ -1,6 +1,7 @@
 from datetime import datetime, timezone as dt_timezone
 from unittest.mock import MagicMock, patch
 
+from django.core.files.storage import default_storage
 from django.test import TestCase
 
 from camp.apps.tempo.models import Granule
@@ -143,3 +144,23 @@ class SyncGranuleTests(TestCase):
         assert stored.is_final is True
         assert stored.version == 'V03'
         assert client.fetch_granule_bytes.call_count == 1  # only the first (accepted) sync ever fetched
+
+    @patch('camp.apps.tempo.sync.parse_granule')
+    def test_does_not_create_granule_row_when_preview_upload_fails(self, mock_parse, mock_load_region_geometry):
+        # Regression test: the Granule row must not be written until the
+        # preview upload has already succeeded. Writing the row first (the
+        # original ordering) could permanently strand it with no preview,
+        # since _should_replace() would see it as already up to date on
+        # every future sync attempt and never retry.
+        self._mock_geometry(mock_load_region_geometry)
+        mock_parse.return_value = make_granule_data(version='V03')
+
+        client = MagicMock()
+        client.find_granule.return_value = make_granule_meta(is_final=True, version='V03')
+        client.fetch_granule_bytes.return_value = b'raw-bytes'
+
+        with patch.object(default_storage, 'save', side_effect=OSError('S3 timeout')):
+            with self.assertRaises(OSError):
+                sync_granule('no2', self.timestamp, client=client)
+
+        assert Granule.objects.filter(product='no2', timestamp=self.timestamp).count() == 0

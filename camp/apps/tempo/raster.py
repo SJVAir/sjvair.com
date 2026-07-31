@@ -3,6 +3,7 @@ import numpy as np
 from django.contrib.gis.gdal import GDALRaster
 
 NODATA_VALUE = -9999.0
+GDT_FLOAT64 = 7  # GDAL pixel type constant; Django's dict-based GDALRaster has no named export
 
 
 def build_raster(
@@ -31,6 +32,10 @@ def build_raster(
         'srid': srid,
         'origin': [lon_min, lat_max],
         'scale': [scale_x, scale_y],
+        # Without an explicit datatype, GDALRaster defaults to GDT_Float32
+        # (6), silently truncating precision on TEMPO's ~1e16-1e19
+        # magnitude column-density values.
+        'datatype': GDT_FLOAT64,
         'bands': [{
             'data': data.flatten().tolist(),
             'nodata_value': NODATA_VALUE,
