@@ -1,9 +1,10 @@
 import calendar
-from collections import defaultdict
 from datetime import datetime, timedelta
+from itertools import groupby
 
 from django.conf import settings
-from django.db.models import Exists, OuterRef, Q
+from django.db import transaction
+from django.db.models import Exists, F, OuterRef, Q
 from django.utils import timezone
 
 from camp.utils.datetime import localtime, make_aware
@@ -17,7 +18,18 @@ from camp.apps.entries.utils import get_all_entry_models
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
 from camp.apps.summaries.aggregators import compute_monitor_summary, compute_region_summary, rollup_summaries, rollup_region_stats
-from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.backfill import (
+    backfill_monitor_hours,
+    backfill_region_hours,
+    chunk_start_for,
+    daily_rollup_window,
+    higher_rollup_windows,
+    hour_range,
+    iter_chunk_days,
+    monitors_with_data_in,
+    regions_with_monitors,
+)
+from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary, SummaryBackfillJob
 
 
 def get_summarizable_entry_models():
@@ -95,7 +107,7 @@ def hourly_region_summaries(hour=None):
 
     entry_models = get_summarizable_entry_models()
 
-    regions = (Region.objects
+    region_ids = (Region.objects
         .filter(
             Exists(
                 Monitor.objects.filter(
@@ -105,11 +117,12 @@ def hourly_region_summaries(hour=None):
             ),
             boundary__isnull=False
         )
+        .values_list('pk', flat=True)
     )
 
-    for region in regions:
+    for region_id in region_ids:
         for EntryModel in entry_models:
-            summarize_region_hour(str(region.pk), hour, EntryModel.entry_type)
+            summarize_region_hour(str(region_id), hour, EntryModel.entry_type)
 
 
 @db_task(priority=90, queue='summaries')
@@ -137,8 +150,12 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     Roll up MonitorSummary records from source_resolution into target_resolution
     for the given time window.
 
-    Fetches all source records in one query, groups by (monitor, entry_type, processor)
-    in Python, then batch-upserts the results.
+    Streams source records ordered by (monitor, entry_type, processor) and groups
+    them via itertools.groupby, rather than materializing the whole window into
+    one list first. Matters for QUARTERLY/SEASONAL/YEARLY, which can span every
+    monitor's records for the period at once, each carrying a full tdigest blob -
+    this keeps peak memory to one group (bounded by periods-per-window) instead of
+    the whole window (monitors × entry_types × processors × periods).
 
     Optionally scoped to a list of monitor_ids (for targeted backfill/recalculation).
     """
@@ -150,22 +167,17 @@ def rollup_monitor_summaries(target_resolution, source_resolution, window_start,
     if monitor_ids is not None:
         qs = qs.filter(monitor_id__in=monitor_ids)
 
-    records = list(qs.values(
+    rows = qs.order_by('monitor_id', 'entry_type', 'processor').values(
         'monitor_id', 'entry_type', 'processor',
         'count', 'expected_count', 'sum_value', 'sum_of_squares',
         'minimum', 'maximum', 'tdigest',
-    ))
-
-    if not records:
-        return
-
-    groups = defaultdict(list)
-    for r in records:
-        groups[(r['monitor_id'], r['entry_type'], r['processor'])].append(r)
+    ).iterator()
 
     to_upsert = []
-    for (monitor_id, entry_type, processor), group_records in groups.items():
-        stats = rollup_summaries(group_records)
+    for (monitor_id, entry_type, processor), group in groupby(
+        rows, key=lambda r: (r['monitor_id'], r['entry_type'], r['processor'])
+    ):
+        stats = rollup_summaries(list(group))
         if stats is None:
             continue
         to_upsert.append(MonitorSummary(
@@ -200,21 +212,15 @@ def rollup_region_summaries(target_resolution, source_resolution, window_start, 
     if region_ids is not None:
         qs = qs.filter(region_id__in=region_ids)
 
-    records = list(qs.values(
+    rows = qs.order_by('region_id', 'entry_type').values(
         'region_id', 'entry_type', 'station_count',
         'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
         'minimum', 'maximum', 'tdigest',
-    ))
-
-    if not records:
-        return
-
-    groups = defaultdict(list)
-    for r in records:
-        groups[(r['region_id'], r['entry_type'])].append(r)
+    ).iterator()
 
     to_upsert = []
-    for (region_id, entry_type), group_records in groups.items():
+    for (region_id, entry_type), group in groupby(rows, key=lambda r: (r['region_id'], r['entry_type'])):
+        group_records = list(group)
         stats = rollup_region_stats(group_records)
         if stats is None:
             continue
@@ -363,3 +369,173 @@ def yearly_region_summaries(year_start=None):
         today = localtime().date()
         year_start = make_aware(datetime(today.year - 1, 1, 1), settings.DEFAULT_TIMEZONE)
     rollup_region_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))
+
+
+# ---- Backfill ----
+
+@db_task(priority=1, queue='summaries')
+def backfill_monitor_chunk(job_id, monitor_id, chunk_start, chunk_end, batch_id):
+    """Compute one monitor's hourly summaries for a backfill chunk, then report completion."""
+    monitor = Monitor.objects.get(pk=monitor_id)
+    entry_models = get_summarizable_entry_models()
+    backfill_monitor_hours(monitor, chunk_start, chunk_end, entry_models)
+
+    SummaryBackfillJob.objects.filter(
+        pk=job_id, batch_id=batch_id, phase=SummaryBackfillJob.Phase.MONITORS,
+    ).update(pending_tasks=F('pending_tasks') - 1)
+
+
+@db_task(priority=1, queue='summaries')
+def backfill_region_chunk(job_id, region_id, chunk_start, chunk_end, batch_id):
+    """Compute one region's hourly summaries for a backfill chunk, then report completion."""
+    region = Region.objects.select_related('boundary').get(pk=region_id)
+    monitor_grades = dict(region.monitors.with_grade().values_list('pk', 'grade'))
+    hours = list(hour_range(chunk_start, chunk_end))
+    backfill_region_hours(region, hours, monitor_grades)
+
+    SummaryBackfillJob.objects.filter(
+        pk=job_id, batch_id=batch_id, phase=SummaryBackfillJob.Phase.REGIONS,
+    ).update(pending_tasks=F('pending_tasks') - 1)
+
+
+# ---- Backfill orchestrator ----
+
+BACKFILL_LOCK_STALE_SECONDS = 30
+BACKFILL_BATCH_STALE_MINUTES = 60
+BACKFILL_MAX_CONSECUTIVE_FAILURES = 5
+
+
+@db_periodic_task(crontab(minute='*'), priority=1, queue='summaries')
+def backfill_summaries_tick():
+    """
+    Drive one step of the active SummaryBackfillJob, if any. Never blocks on
+    the sub-tasks it dispatches — it only checks whether the current phase's
+    batch has drained (pending_tasks == 0) and, if so, advances to the next
+    phase. See docs/superpowers/specs/2026-07-13-summary-backfill-design.md.
+    """
+    now = timezone.now()
+
+    with transaction.atomic():
+        job = (
+            SummaryBackfillJob.objects
+            .select_for_update(skip_locked=True)
+            .filter(state=SummaryBackfillJob.State.RUNNING)
+            .filter(
+                Q(locked_at__isnull=True) |
+                Q(locked_at__lt=now - timedelta(seconds=BACKFILL_LOCK_STALE_SECONDS))
+            )
+            .order_by('created')
+            .first()
+        )
+        if job is None:
+            return
+
+        job.locked_at = now
+        job.save(update_fields=['locked_at'])
+
+        if job.phase != SummaryBackfillJob.Phase.IDLE and job.pending_tasks > 0:
+            stale_before = now - timedelta(minutes=BACKFILL_BATCH_STALE_MINUTES)
+            if job.phase_started_at and job.phase_started_at < stale_before:
+                _backfill_restart_batch(job)
+            return
+
+        if job.phase == SummaryBackfillJob.Phase.IDLE:
+            _backfill_dispatch_monitors(job)
+        elif job.phase == SummaryBackfillJob.Phase.MONITORS:
+            _backfill_dispatch_regions(job)
+        elif job.phase == SummaryBackfillJob.Phase.REGIONS:
+            _backfill_complete_chunk(job)
+
+
+def _backfill_dispatch_monitors(job):
+    chunk_start = chunk_start_for(job.cursor, job.range_start, job.chunk_days)
+    entry_models = get_summarizable_entry_models()
+    monitor_ids = monitors_with_data_in(chunk_start, job.cursor, entry_models)
+
+    job.chunk_start = chunk_start
+    job.batch_id += 1
+    job.pending_tasks = len(monitor_ids)
+    job.phase = SummaryBackfillJob.Phase.MONITORS
+    job.phase_started_at = timezone.now()
+    job.save()
+
+    job_id = job.pk
+    batch_id = job.batch_id
+    chunk_end = job.cursor
+    for monitor_id in monitor_ids:
+        transaction.on_commit(
+            lambda m=monitor_id: backfill_monitor_chunk(job_id, str(m), chunk_start, chunk_end, batch_id)
+        )
+
+
+def _backfill_dispatch_regions(job):
+    region_ids = regions_with_monitors()
+
+    job.batch_id += 1
+    job.pending_tasks = len(region_ids)
+    job.phase = SummaryBackfillJob.Phase.REGIONS
+    job.phase_started_at = timezone.now()
+    job.save()
+
+    job_id = job.pk
+    batch_id = job.batch_id
+    chunk_start = job.chunk_start
+    chunk_end = job.cursor
+    for region_id in region_ids:
+        transaction.on_commit(
+            lambda r=region_id: backfill_region_chunk(job_id, str(r), chunk_start, chunk_end, batch_id)
+        )
+
+
+def _backfill_complete_chunk(job):
+    days = list(iter_chunk_days(job.chunk_start, job.cursor))
+
+    for day in days:
+        target, source, window_start, window_end = daily_rollup_window(day)
+        rollup_monitor_summaries(target, source, window_start, window_end)
+        rollup_region_summaries(target, source, window_start, window_end)
+
+    for day in days:
+        for target, source, window_start, window_end in higher_rollup_windows(day):
+            rollup_monitor_summaries(target, source, window_start, window_end)
+            rollup_region_summaries(target, source, window_start, window_end)
+
+    job.cursor = job.chunk_start
+    job.chunk_start = None
+    job.phase = SummaryBackfillJob.Phase.IDLE
+    job.pending_tasks = 0
+    job.consecutive_failures = 0
+    job.last_error = ''
+    if job.cursor <= job.range_start:
+        job.state = SummaryBackfillJob.State.DONE
+    job.save()
+
+
+def _backfill_restart_batch(job):
+    """
+    Re-dispatch whichever phase actually stalled, without discarding a phase
+    that already finished. A stall in `monitors` re-dispatches monitors; a
+    stall in `regions` re-dispatches only regions — the already-completed
+    monitors phase is never redone. This matters because "regions" batches
+    routinely finish 99%+ before a handful of stragglers lose a priority
+    race against live real-time tasks sharing the same queue; discarding an
+    entire, already-successful monitors phase over that is pure waste that
+    also adds unnecessary DB load at the worst possible time.
+    """
+    job.consecutive_failures += 1
+    job.last_error = (
+        f'Batch {job.batch_id} stalled in phase "{job.phase}" with '
+        f'{job.pending_tasks} pending task(s); restarting the {job.phase} phase.'
+    )
+
+    if job.consecutive_failures >= BACKFILL_MAX_CONSECUTIVE_FAILURES:
+        job.phase = SummaryBackfillJob.Phase.IDLE
+        job.pending_tasks = 0
+        job.state = SummaryBackfillJob.State.FAILED
+        job.save()
+        return
+
+    if job.phase == SummaryBackfillJob.Phase.MONITORS:
+        _backfill_dispatch_monitors(job)
+    elif job.phase == SummaryBackfillJob.Phase.REGIONS:
+        _backfill_dispatch_regions(job)

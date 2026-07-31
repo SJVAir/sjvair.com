@@ -13,6 +13,7 @@ from health_check.contrib.redis import Redis
 from health_check.views import HealthCheckView
 
 from camp.apps.alerts.views import TwilioStatusCallback
+from camp.apps.forecasts.health_checks import ForecastsHealthCheck
 from camp.apps.monitors.health_checks import (
     AirGradientHealthCheck,
     AirNowHealthCheck,
@@ -67,6 +68,7 @@ urlpatterns += [path('system-status/', include(([
             AQviewHealthCheck,
             CCACBAMHealthCheck,
             PurpleAirHealthCheck,
+            ForecastsHealthCheck,
         ],
         extra_context={'title': 'Data Feeds'},
     ), name='data-feeds'),

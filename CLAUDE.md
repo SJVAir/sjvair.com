@@ -59,6 +59,29 @@ Steps 2–4 are idempotent and safe to re-run. Re-running `import_pur` for a giv
 deletes and reimports that year's records. Run `import_comptox --phase search` first whenever
 new PUR years are added (new chemicals may appear); then re-run `equals` and `hazard`.
 
+## SJVAPCD Forecast Setup
+
+One-time setup, required per environment before the daily forecast task
+(`fetch_forecasts`) will populate Kern, Tulare, and Sequoia forecasts. Must
+run after county `Region`s are imported.
+
+```bash
+# 1. Import counties (if not already done)
+docker compose run --rm web python manage.py import_counties
+
+# 2. Derive and import the 3 SJVAPCD forecast zones that don't map 1:1 to a
+#    county (Kern SJV Air Basin portion, Tulare valley portion, Sequoia
+#    National Park and Forest), from the locally-saved forecast map SVG
+#    (datafiles/sjvapcd-forecast-areas.svg)
+docker compose run --rm web python manage.py import_forecast_zones
+```
+
+Idempotent and safe to re-run (updates the existing `Region`/`Boundary` records
+rather than duplicating them). Until step 2 has run, the daily
+`fetch_forecasts` task still ingests the other 6 zones that map directly to
+a county — Kern, Tulare, and Sequoia rows are silently skipped (region not
+found) rather than failing.
+
 ## Architecture Overview
 
 SJVAir is a Django/PostGIS air quality monitoring platform for the San Joaquin Valley. It ingests data from multiple sensor networks, processes it through a calibration pipeline, and exposes it via a versioned REST API.
