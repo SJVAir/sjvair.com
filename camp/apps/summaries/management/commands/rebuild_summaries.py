@@ -1,6 +1,4 @@
 import calendar
-import sys
-from collections import defaultdict
 from datetime import datetime, timedelta
 
 import tqdm
@@ -14,7 +12,7 @@ from django.db.models import Q
 
 from camp.utils.datetime import make_aware
 from camp.apps.entries.stages import Stage
-from camp.apps.summaries.aggregators import compute_stats, compute_region_summary
+from camp.apps.summaries.backfill import backfill_monitor_hours, backfill_region_hours
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.apps.summaries.tasks import (
     get_summarizable_entry_models,
@@ -105,8 +103,7 @@ class Command(BaseCommand):
                 self._enqueue_monitor_summaries(monitor_ids, hours, entry_models)
                 self._enqueue_monitor_rollups(start, end)
             else:
-                monitors_by_id = {m.pk: m for m in monitors}
-                self._backfill_monitor_summaries(monitors_by_id, hours, entry_models)
+                self._backfill_monitor_summaries(monitors, start, end, entry_models)
                 self._rollup(rollup_monitor_summaries, 'monitor', monitor_ids, start, end)
 
         # Region summaries
@@ -120,63 +117,13 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS('Done.'))
 
-    def _backfill_monitor_summaries(self, monitors_by_id, hours, entry_models):
-        monitor_ids = list(monitors_by_id.keys())
+    def _backfill_monitor_summaries(self, monitors, start, end, entry_models):
         self.stdout.write(f'\nComputing hourly monitor summaries...')
         self.stdout.flush()
-
-        for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
-            for EntryModel in entry_models:
-                rows = list(
-                    EntryModel.objects
-                    .filter(
-                        monitor_id__in=monitor_ids,
-                        timestamp__gte=hour,
-                        timestamp__lt=hour + timedelta(hours=1),
-                    )
-                    .filter(
-                        Q(stage=Stage.RAW, processor='') |
-                        Q(stage=Stage.CALIBRATED)
-                    )
-                    .values_list('monitor_id', 'processor', 'value')
-                )
-
-                groups = defaultdict(list)
-                for mon_id, processor, value in rows:
-                    if value is not None:
-                        groups[(mon_id, processor)].append(float(value))
-
-                to_upsert = []
-                for (mon_id, processor), values in groups.items():
-                    monitor = monitors_by_id[mon_id]
-                    stats = compute_stats(values, monitor.expected_hourly_entries or 1)
-                    if stats is None:
-                        continue
-                    to_upsert.append(MonitorSummary(
-                        monitor_id=mon_id,
-                        timestamp=hour,
-                        resolution=BaseSummary.Resolution.HOURLY,
-                        entry_type=EntryModel.entry_type,
-                        processor=processor,
-                        **stats,
-                    ))
-
-                if to_upsert:
-                    MonitorSummary.objects.bulk_create(
-                        to_upsert,
-                        update_conflicts=True,
-                        unique_fields=['monitor', 'entry_type', 'processor', 'resolution', 'timestamp'],
-                        update_fields=[
-                            'count', 'expected_count', 'sum_value', 'sum_of_squares',
-                            'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                            'tdigest', 'is_complete',
-                        ],
-                    )
+        for monitor in tqdm.tqdm(monitors, file=self.stdout, dynamic_ncols=True):
+            backfill_monitor_hours(monitor, start, end, entry_models)
 
     def _backfill_region_summaries(self, regions, hours):
-        from camp.apps.monitors.models import Monitor
-
-        # Pre-compute monitor grades per region — boundaries don't change across hours.
         region_monitor_grades = {}
         for region in regions:
             if region.boundary:
@@ -187,40 +134,11 @@ class Command(BaseCommand):
         self.stdout.write(f'\nComputing hourly region summaries...')
         self.stdout.flush()
 
-        for hour in tqdm.tqdm(hours, file=self.stdout, dynamic_ncols=True):
-            entry_types = list(
-                MonitorSummary.objects
-                .filter(timestamp=hour, resolution=BaseSummary.Resolution.HOURLY)
-                .values_list('entry_type', flat=True)
-                .distinct()
-            )
-            to_upsert = []
-            for region in regions:
-                monitor_grades = region_monitor_grades.get(region.pk)
-                if not monitor_grades:
-                    continue
-                for entry_type in entry_types:
-                    stats = compute_region_summary(region, hour, entry_type, monitor_grades=monitor_grades)
-                    if stats is None:
-                        continue
-                    to_upsert.append(RegionSummary(
-                        region=region,
-                        timestamp=hour,
-                        resolution=BaseSummary.Resolution.HOURLY,
-                        entry_type=entry_type,
-                        **stats,
-                    ))
-            if to_upsert:
-                RegionSummary.objects.bulk_create(
-                    to_upsert,
-                    update_conflicts=True,
-                    unique_fields=['region', 'entry_type', 'resolution', 'timestamp'],
-                    update_fields=[
-                        'count', 'weight', 'expected_count', 'sum_value', 'sum_of_squares',
-                        'minimum', 'maximum', 'mean', 'stddev', 'p25', 'p75',
-                        'tdigest', 'station_count',
-                    ],
-                )
+        for region in tqdm.tqdm(regions, file=self.stdout, dynamic_ncols=True):
+            monitor_grades = region_monitor_grades.get(region.pk)
+            if not monitor_grades:
+                continue
+            backfill_region_hours(region, hours, monitor_grades)
 
     def _rollup(self, rollup_fn, label, ids, start, end):
         R = BaseSummary.Resolution

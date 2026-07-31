@@ -27,7 +27,7 @@ class RegionList(RegionMixin, generics.ListEndpoint):
 
 
 class RegionDetail(RegionMixin, generics.DetailEndpoint):
-    lookup_field = 'pk'
+    lookup_field = 'sqid'
     lookup_url_kwarg = 'region_id'
 
 

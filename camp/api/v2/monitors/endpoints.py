@@ -20,12 +20,13 @@ from camp.apps.entries.models import BaseEntry
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
+from camp.apps.regions.models import Region
 from camp.utils.forms import LatLonForm
 from camp.utils.datetime import make_aware
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import MonitorFilter, get_entry_filterset
-from .forms import EntryExportForm
+from .forms import EntryExportForm, MonitorAtForm
 from .serializers import EntrySerializer, MonitorSerializer
 from ..endpoints import CSVExport, FormEndpoint
 
@@ -91,7 +92,7 @@ class MonitorList(CachedEndpointMixin, MonitorMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        queryset = queryset.filter(is_hidden=False)
+        queryset = queryset.get_public()
         return queryset
 
 
@@ -108,7 +109,7 @@ class MonitorMetaEndpoint(Endpoint):
     def get_monitors(self):
         payload = {}
 
-        monitor_subclasses = sorted(Monitor.get_subclasses(), key=lambda c: c.monitor_type)
+        monitor_subclasses = sorted(Monitor.get_enabled_subclasses(), key=lambda c: c.monitor_type)
         for monitor_model in monitor_subclasses:
             payload[monitor_model.monitor_type] = {
                 'label': monitor_model._meta.verbose_name,
@@ -306,7 +307,8 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         queryset = (super()
             .get_queryset()
             .get_active()
-            .filter(is_hidden=False, location=Monitor.LOCATION.outside)
+            .get_public()
+            .filter(location=Monitor.LOCATION.outside)
             .annotate(distance=Distance('position', form.point, spheroid=True))
             .order_by('distance')
             .with_latest_entry(self.entry_model)
@@ -338,10 +340,8 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
             .get_queryset(*args, **kwargs)
-            .filter(
-                is_hidden=False,
-                position__isnull=False
-            )
+            .get_public()
+            .filter(position__isnull=False)
         )
 
         # Only monitors that are recently active...
@@ -357,6 +357,57 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
 
         queryset = queryset.with_latest_entry(self.entry_model)
         return queryset
+
+    def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
+        include = [('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize())]
+        return super().serialize(source, fields, include, exclude, fixup)
+
+
+class MonitorsAt(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
+    """Monitors with data as of a historical `timestamp`, like current/ but for a specific point in time.
+    Optionally scope to one or more `region` ids (covered by any of their boundaries) or a `bbox`
+    (`west,south,east,north`)."""
+
+    form_class = MonitorAtForm
+    paginate = False
+    serializer_class = MonitorSerializer
+    streaming = True
+
+    def get_queryset(self, *args, **kwargs):
+        form = self.get_form(self.request.GET)
+        if not form.is_valid():
+            return []
+
+        timestamp = form.cleaned_data['timestamp']
+        bbox = form.cleaned_data.get('bbox')
+
+        queryset = (super()
+            .get_queryset(*args, **kwargs)
+            .get_public()
+            .filter(position__isnull=False)
+        )
+
+        region_ids = self.request.GET.getlist('region')
+        if region_ids:
+            regions = []
+            for region_id in region_ids:
+                try:
+                    regions.append(Region.objects.get(sqid=region_id))
+                except Region.DoesNotExist:
+                    raise Http404(f'"{region_id}" is not a valid region id')
+            queryset = queryset.in_regions(regions)
+
+        if bbox:
+            queryset = queryset.in_bbox(*bbox)
+
+        queryset = queryset.filter_healthy(
+            hours=settings.MONITOR_HEALTHY_WINDOW_HOURS,
+            threshold=settings.MONITOR_HEALTHY_THRESHOLD,
+            as_of=timestamp,
+        )
+
+        window_seconds = timedelta(days=settings.MONITOR_ACTIVE_WINDOW_DAYS).total_seconds()
+        return queryset.with_entry_as_of(self.entry_model, timestamp, seconds=window_seconds)
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         include = [('latest', lambda monitor: EntrySerializer(monitor.latest_entry).serialize())]

@@ -70,19 +70,19 @@ class RegionDetailTests(TestCase):
 
     def test_detail_returns_200(self):
         request = self.factory.get('/')
-        response = region_detail(request, region_id=self.region.pk)
+        response = region_detail(request, region_id=self.region.sqid)
         assert response.status_code == 200
 
     def test_detail_has_geometry(self):
         request = self.factory.get('/')
-        response = region_detail(request, region_id=self.region.pk)
+        response = region_detail(request, region_id=self.region.sqid)
         data = get_response_data(response)
         assert data['data']['boundary'] is not None
         assert data['data']['boundary']['geometry'] is not None
 
     def test_detail_fields(self):
         request = self.factory.get('/')
-        response = region_detail(request, region_id=self.region.pk)
+        response = region_detail(request, region_id=self.region.sqid)
         data = get_response_data(response)
         assert set(data['data'].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
 

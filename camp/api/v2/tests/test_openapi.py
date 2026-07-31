@@ -35,6 +35,16 @@ class OpenAPISchemaTests(TestCase):
     def test_entry_list_is_documented(self):
         assert any('{entry_type}' in p and 'entries' in p for p in self.paths)
 
+    def test_monitor_current_is_documented(self):
+        assert any(p.endswith('{entry_type}/current/') for p in self.paths)
+
+    def test_monitor_at_is_documented(self):
+        assert any(p.endswith('{entry_type}/at/') for p in self.paths)
+        description = self.paths['/monitors/{entry_type}/at/']['get']['description']
+        assert 'timestamp' in description
+        assert 'region' in description
+        assert 'bbox' in description
+
     def test_task_status_is_not_documented(self):
         assert not any('task' in p for p in self.paths)
 

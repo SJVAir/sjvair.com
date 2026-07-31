@@ -101,6 +101,36 @@ class AirNowClient:
         params = self.build_params(base, **kwargs)
         return self.request(path, method='get', params=params)
 
+    def fetch_entries(
+        self,
+        *,
+        bbox: Sequence[float],
+        start_date: datetime,
+        end_date: datetime,
+        max_attempts: int = 3,
+        **kwargs: Any,
+    ) -> Any:
+        """Fetch a single window, retrying on rate limits and on the
+        occasional empty/non-JSON body AirNow's API returns under load."""
+
+        attempt = 0
+        while True:
+            attempt += 1
+            response = self.data(bbox=bbox, start_date=start_date, end_date=end_date, **kwargs)
+
+            if response.status_code == 429:
+                if attempt >= max_attempts:
+                    response.raise_for_status()
+                time.sleep(max(1.0, random() * 5.0))
+                continue
+
+            try:
+                return response.json()
+            except requests.exceptions.JSONDecodeError:
+                if attempt >= max_attempts:
+                    raise
+                time.sleep(max(1.0, random() * 5.0))
+
     def query(
         self,
         *,
@@ -109,6 +139,7 @@ class AirNowClient:
         end_date: Optional[datetime] = None,
         batch_days: int = 7,
         pause_secs: float = 0.2,
+        max_attempts: int = 3,
         **kwargs: Any,
     ) -> Iterator[Dict[str, Any]]:
 
@@ -117,33 +148,33 @@ class AirNowClient:
 
         windows = chunk_date_range(start_date, end_date, days=batch_days)
         for idx, (win_start, win_end) in enumerate(windows):
-            response = self.data(bbox=bbox, start_date=win_start, end_date=win_end, **kwargs)
-
-            # handle rate limit
-            if response.status_code == 429:
-                wait = max(1.0, random() * 5.0)
-                time.sleep(wait)
-                response = self.data(bbox=bbox, start_date=win_start, end_date=win_end, **kwargs)
-
-            for entry in response.json():
+            entries = self.fetch_entries(
+                bbox=bbox,
+                start_date=win_start,
+                end_date=win_end,
+                max_attempts=max_attempts,
+                **kwargs,
+            )
+            for entry in entries:
                 yield entry
 
             if idx + 1 < len(windows):
                 time.sleep(pause_secs)
 
-    def query_legacy(self, bbox, timestamp=None, previous=1, **kwargs):
+    def query_legacy(self, bbox, timestamp=None, previous=1, max_attempts=3, **kwargs):
         if timestamp is None:
             timestamp = timezone.now()
 
-        response = self.data(
+        entries = self.fetch_entries(
             bbox=bbox,
             start_date=timestamp - timedelta(hours=previous),
             end_date=timestamp,
+            max_attempts=max_attempts,
             **kwargs,
         )
 
         data = {}
-        for entry in response.json():
+        for entry in entries:
             data.setdefault(entry['SiteName'], {})
             data[entry['SiteName']].setdefault(entry['UTC'], {})
             data[entry['SiteName']][entry['UTC']][entry['Parameter']] = entry
