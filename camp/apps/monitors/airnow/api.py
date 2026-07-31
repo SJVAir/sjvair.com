@@ -57,7 +57,7 @@ class Requestor:
         return response
 
 
-class AirNowClient:
+class AirNowAPI:
     domain = "www.airnowapi.org"
 
     def __init__(self, api_key):
@@ -182,4 +182,4 @@ class AirNowClient:
         return data
 
 
-airnow_api = AirNowClient(settings.AIRNOW_API_KEY)
+airnow_api = AirNowAPI(settings.AIRNOW_API_KEY)

@@ -122,6 +122,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.aqlite',
     'camp.apps.monitors.aqview',
     'camp.apps.monitors.bam',
+    'camp.apps.monitors.cimis',
     'camp.apps.monitors.purpleair',
     'camp.apps.monitors.vozbox',
     'camp.apps.regions',
@@ -416,6 +417,11 @@ GOOGLE_ANALYTICS_ID = env('GOOGLE_ANALYTICS_ID')
 # Air Now API
 
 AIRNOW_API_KEY = env('AIRNOW_API_KEY')
+
+
+# CIMIS
+
+CIMIS_API_KEY = env('CIMIS_API_KEY')
 
 
 # CompTox

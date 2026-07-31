@@ -13,6 +13,8 @@ class MonitorFilter(FilterSet):
             'AirNow': 'airnow',
             'AQview': 'aqview',
             'BAM1022': 'bam1022',
+            'AirGradient': 'airgradient',
+            'CIMIS': 'cimis',
             'PurpleAir': 'purpleair',
             'VOZBox': 'vozbox',
             'AQLite': 'aqlite',
