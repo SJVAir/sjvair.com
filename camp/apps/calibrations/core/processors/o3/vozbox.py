@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from camp.apps.entries.models import O3
 from camp.apps.calibrations import processors
-from .ml.linear import LinearExpressionProcessor
+from camp.apps.calibrations.core.processors.ml.linear import LinearExpressionProcessor
 
 
 @processors.register()
