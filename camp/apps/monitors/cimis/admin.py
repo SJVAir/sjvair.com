@@ -7,7 +7,6 @@ from camp.apps.monitors.cimis.models import CIMIS
 @admin.register(CIMIS)
 class CIMISAdmin(MonitorAdmin):
     list_display = MonitorAdmin.list_display[:]
-    list_display.remove('get_health_grade')
     list_display.insert(1, 'station_number')
 
     search_fields = MonitorAdmin.search_fields + ['station_number']
