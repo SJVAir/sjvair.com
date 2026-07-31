@@ -12,13 +12,16 @@ from health_check.contrib.psutil import Memory
 from health_check.contrib.redis import Redis
 from health_check.views import HealthCheckView
 
+from camp.apps.calheatscore.health_checks import CalHeatScoreHealthCheck
 from camp.apps.forecasts.health_checks import ForecastsHealthCheck
 from camp.apps.monitors.health_checks import (
     AirGradientHealthCheck,
     AirNowHealthCheck,
+    AQLiteHealthCheck,
     AQviewHealthCheck,
     CCACBAMHealthCheck,
     PurpleAirHealthCheck,
+    VOZBoxHealthCheck,
 )
 from camp.utils import views
 
@@ -62,9 +65,12 @@ urlpatterns += [path('system-status/', include(([
         checks=[
             AirGradientHealthCheck,
             AirNowHealthCheck,
+            AQLiteHealthCheck,
             AQviewHealthCheck,
             CCACBAMHealthCheck,
             PurpleAirHealthCheck,
+            VOZBoxHealthCheck,
+            CalHeatScoreHealthCheck,
             ForecastsHealthCheck,
         ],
         extra_context={'title': 'Data Feeds'},

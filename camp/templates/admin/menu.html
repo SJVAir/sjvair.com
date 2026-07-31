@@ -40,6 +40,16 @@
         </tr>
         <tr>
             <td>
+                <h3><a href="{% url 'admin:aqlite_aqlite_changelist' %}">AQLite</a></h3>
+                <p>Our ozone monitor network, operated by CCAC.</p>
+            </td>
+            <td class="links">
+                <p><a href="https://portal.airqdb.com/" target="_blank">🔗 2BTech Portal</a></p>
+                <p><a href="{% url 'admin:aqlite_organization_changelist' %}">🔑 Organizations (API Config)</a></p>
+            </td>
+        </tr>
+        <tr>
+            <td>
                 <h3><a href="{% url 'admin:aqview_aqview_changelist' %}">AQview</a></h3>
                 <p>AB617 monitors, operated by the CARB.</p>
             </td>
@@ -60,6 +70,15 @@
             </td>
             <td class="links">
                 <p><a href="https://map.purpleair.com/" target="_blank">📍 PurpleAir Map</a></p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:vozbox_vozbox_changelist' %}">VOZbox</a></h3>
+                <p>Low-cost PM2.5 and O3 monitors, operated by CCEJN.</p>
+            </td>
+            <td class="links">
+                <p><a href="https://ccejn.org/" target="_blank">🔗 CCEJN</a></p>
             </td>
         </tr>
     </table>
@@ -131,6 +150,33 @@
             </td>
             <td class="links">
                 <p><a href="https://tempo.si.edu/" target="_blank">🔗 TEMPO Mission</a></p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:calheatscore_calheatscore_changelist' %}">CalHeatScore</a></h3>
+                <p>CalEPA daily ZIP-code heat risk scores.</p>
+            </td>
+            <td class="links">
+                <p><a href="https://calheatscore.calepa.ca.gov/" target="_blank">🔗 CalHeatScore</a></p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:ces_ces4_changelist' %}">CalEnviroScreen 4.0</a></h3>
+                <p>OEHHA cumulative pollution burden and demographics, by census tract.</p>
+            </td>
+            <td class="links">
+                <p><a href="https://oehha.ca.gov/calenviroscreen">🔗 CalEnviroScreen</a></p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <h3><a href="{% url 'admin:ces_ces5_changelist' %}">CalEnviroScreen 5.0</a></h3>
+                <p>OEHHA cumulative pollution burden and demographics, by census tract.</p>
+            </td>
+            <td class="links">
+                <p><a href="https://oehha.ca.gov/calenviroscreen">🔗 CalEnviroScreen</a></p>
             </td>
         </tr>
     </table>

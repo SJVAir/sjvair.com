@@ -5,14 +5,16 @@ from django.utils import timezone
 from django.utils.timesince import timesince
 
 from health_check.base import HealthCheck
-from health_check.exceptions import ServiceWarning, ServiceReturnedUnexpectedResult
+from health_check.exceptions import ServiceReturnedUnexpectedResult, ServiceWarning
 
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.airgradient.models import AirGradient, Place
 from camp.apps.monitors.airnow.models import AirNow
+from camp.apps.monitors.aqlite.models import AQLite, Organization
 from camp.apps.monitors.aqview.models import AQview
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.monitors.vozbox.models import VOZBox
 
 
 @dataclasses.dataclass
@@ -58,7 +60,7 @@ class AirGradientHealthCheck(MonitorHealthCheck):
 
     def run(self):
         if not Place.objects.exists():
-            raise ServiceWarning('No API tokens are configured.')
+            return
         super().run()
 
 
@@ -82,9 +84,33 @@ class CCACBAMHealthCheck(MonitorHealthCheck):
     model: type = dataclasses.field(default=BAM1022, repr=False)
     limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=2), repr=False)
 
+    def run(self):
+        if not BAM1022.objects.exists():
+            return
+        super().run()
+
+
+@dataclasses.dataclass(repr=False)
+class AQLiteHealthCheck(MonitorHealthCheck):
+    network: str = dataclasses.field(default='AQLite', repr=False)
+    model: type = dataclasses.field(default=AQLite, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(minutes=10), repr=False)
+
+    def run(self):
+        if not Organization.objects.filter(is_enabled=True).exists():
+            return
+        super().run()
+
 
 @dataclasses.dataclass(repr=False)
 class PurpleAirHealthCheck(MonitorHealthCheck):
     network: str = dataclasses.field(default='PurpleAir', repr=False)
     model: type = dataclasses.field(default=PurpleAir, repr=False)
     limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(minutes=10), repr=False)
+
+
+@dataclasses.dataclass(repr=False)
+class VOZBoxHealthCheck(MonitorHealthCheck):
+    network: str = dataclasses.field(default='VOZbox', repr=False)
+    model: type = dataclasses.field(default=VOZBox, repr=False)
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(minutes=30), repr=False)

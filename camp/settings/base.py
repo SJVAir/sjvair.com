@@ -114,14 +114,18 @@ INSTALLED_APPS = [
     'camp.apps.helpdesk',
     'camp.apps.hms',
     'camp.apps.ces',
+    'camp.apps.calheatscore',
     'camp.apps.ceidars',
     'camp.apps.monitors',
     'camp.apps.pesticides',
     'camp.apps.monitors.airgradient',
     'camp.apps.monitors.airnow',
+    'camp.apps.monitors.aqlite',
     'camp.apps.monitors.aqview',
     'camp.apps.monitors.bam',
+    'camp.apps.monitors.cimis',
     'camp.apps.monitors.purpleair',
+    'camp.apps.monitors.vozbox',
     'camp.apps.regions',
     'camp.apps.summaries',
     'camp.apps.tempo',
@@ -418,6 +422,11 @@ GOOGLE_ANALYTICS_ID = env('GOOGLE_ANALYTICS_ID')
 # Air Now API
 
 AIRNOW_API_KEY = env('AIRNOW_API_KEY')
+
+
+# CIMIS
+
+CIMIS_API_KEY = env('CIMIS_API_KEY')
 
 
 # CompTox

@@ -1,0 +1,26 @@
+# References region pk 11 (ZIP 93728) from fixtures/regions.yaml.
+# Load both fixtures together: fixtures = ['regions', 'calheatscore']
+
+- model: calheatscore.calheatscore
+  pk: 1
+  fields:
+    region: 11
+    date: '2026-07-11'
+    score: 2
+    updated_at: '2026-07-11T09:00:00Z'
+
+- model: calheatscore.calheatscore
+  pk: 2
+  fields:
+    region: 11
+    date: '2026-07-12'
+    score: 3
+    updated_at: '2026-07-11T09:00:00Z'
+
+- model: calheatscore.calheatscore
+  pk: 3
+  fields:
+    region: 11
+    date: '2026-07-13'
+    score: 1
+    updated_at: '2026-07-11T09:00:00Z'

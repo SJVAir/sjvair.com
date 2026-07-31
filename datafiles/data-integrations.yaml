@@ -42,6 +42,18 @@
       url: https://tempo.si.edu/
       description: "Tropospheric Emissions: Monitoring of Pollution (TEMPO) is a NASA mission operated in collaboration with the Smithsonian Astrophysical Observatory. From geostationary orbit, TEMPO measures pollutants such as ozone, nitrogen dioxide, and formaldehyde across North America, providing hourly observations that offer unprecedented insight into air quality at regional and local scales."
 
+- category: Weather & Climate Data
+  icon:
+    name: fa-cloud-sun-rain
+    primary: steelblue
+    secondary: powderblue
+  description: Ground-based weather station data that adds local temperature, wind, humidity, and other atmospheric context alongside our air quality measurements across the San Joaquin Valley.
+  integrations:
+    - name: CIMIS
+      logo: img/logo/cimis.png
+      url: https://cimis.water.ca.gov/
+      description: The California Irrigation Management Information System (CIMIS) is a network of automated weather stations operated by the California Department of Water Resources (DWR). Originally built to support agricultural irrigation scheduling, CIMIS stations also report hourly weather data — temperature, humidity, wind speed and direction, solar radiation, and precipitation — which SJVAir uses to add local weather context alongside air quality measurements across the San Joaquin Valley.
+
 - category: Environmental & Health Mapping
   icon:
     name: fa-earth-americas
