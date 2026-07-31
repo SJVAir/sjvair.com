@@ -3,6 +3,7 @@ from resticus import serializers
 from camp.apps.monitors.airgradient.models import AirGradient
 from camp.apps.monitors.aqlite.models import AQLite
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.monitors.vozbox.models import VOZBox
 
 
 class EntrySerializer(serializers.Serializer):
@@ -64,6 +65,9 @@ class MonitorSerializer(serializers.Serializer):
             'sensor_id',
             ('location_id', lambda monitor: monitor.sensor_id), # deprecated
             ('dual_channel', lambda monitor: monitor.is_dual_channel)
+        ],
+        VOZBox: [
+            'sensor_id',
         ],
         AQLite: [
             'device_id',

@@ -123,6 +123,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.aqview',
     'camp.apps.monitors.bam',
     'camp.apps.monitors.purpleair',
+    'camp.apps.monitors.vozbox',
     'camp.apps.regions',
     'camp.apps.summaries',
     'camp.apps.qaqc',

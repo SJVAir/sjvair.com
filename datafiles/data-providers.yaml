@@ -15,6 +15,11 @@
       classes: is-6-mobile is-4-tablet is-4-desktop
 
 
+    - name: Central California Environmental Justice Network
+      logo: img/logo/ccejn.png
+      url: https://ccejn.org/
+      classes: is-3-mobile is-2-tablet is-2-desktop
+
     - name: PurpleAir
       logo: img/logo/purpleair.png
       url: https://www2.purpleair.com/
