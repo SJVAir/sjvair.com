@@ -100,6 +100,33 @@ class CIMISAPITests(TestCase):
         assert 'appKey' not in params
         assert self.api.session.headers['Ocp-Apim-Subscription-Key'] == 'test-key'
 
+    @patch('camp.apps.monitors.cimis.api.requests.Session.get')
+    def test_get_hourly_data_converts_pascalcase_data_items_to_hyphenated_lowercase(self, mock_get):
+        # Regression test: CIMIS.ENTRY_MAP.keys() -- what tasks.py actually
+        # passes as data_items -- are PascalCase ('HlyAirTmp') to match the
+        # response's field names. The live GetDataByStationNumber endpoint
+        # rejects PascalCase in the dataItems query param (404 ERR1035);
+        # it only accepts hyphenated lowercase ('hly-air-tmp'). Confirmed
+        # live 2026-07-31.
+        mock_get.return_value = make_response(json_result={
+            'Data': {'Providers': []}
+        })
+
+        from datetime import date
+        self.api.get_hourly_data(
+            station_numbers=['2'],
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 1),
+            data_items=list(CIMIS.ENTRY_MAP.keys()),
+        )
+
+        called_kwargs = mock_get.call_args.kwargs
+        assert called_kwargs['params']['dataItems'] == (
+            'hly-air-tmp,hly-rel-hum,hly-dew-pnt,hly-soil-tmp,hly-wind-spd,'
+            'hly-wind-dir,hly-precip,hly-sol-rad,hly-net-rad,hly-vap-pres,'
+            'hly-asce-eto,hly-asce-etr'
+        )
+
 
 class ParseHmsCoordinateTests(TestCase):
     def test_parses_valid_latitude(self):

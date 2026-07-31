@@ -1,6 +1,21 @@
+import re
+
 import requests
 
 from django.conf import settings
+
+
+def _to_data_item_code(name):
+    """
+    CIMIS's hourly-data response keys each field by PascalCase (e.g.
+    'HlyAirTmp'), and CIMIS.ENTRY_MAP uses that same casing so response
+    parsing and field lookup share one name. But the live
+    GetDataByStationNumber endpoint's `dataItems` query param rejects
+    PascalCase -- confirmed live 2026-07-31: 'HlyAirTmp' -> 404
+    ERR1035-DATA ITEM NOT FOUND, 'hly-air-tmp' -> 200 with data. Converts
+    on the way out so callers can keep using the PascalCase names.
+    """
+    return re.sub(r'(?<!^)(?=[A-Z])', '-', name).lower()
 
 
 class CIMISAPI:
@@ -23,7 +38,7 @@ class CIMISAPI:
             'stationNbrs': ','.join(str(n) for n in station_numbers),
             'startDate': start_date.strftime('%Y-%m-%d'),
             'endDate': end_date.strftime('%Y-%m-%d'),
-            'dataItems': ','.join(data_items),
+            'dataItems': ','.join(_to_data_item_code(item) for item in data_items),
             'unitOfMeasure': 'E',
             'isHourly': 'true',
         }
