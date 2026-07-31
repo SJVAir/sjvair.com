@@ -54,3 +54,10 @@ DJANGO_HUEY = {
         },
     }
 }
+
+# Huey stats — keep the test Postgres untouched; the vendor stats app's
+# startup recorder writes its (empty) tables to a throwaway sqlite db instead.
+HUEY_STATS = {
+    'capture_args': False,
+    'database': 'sqlite:///:memory:',
+}

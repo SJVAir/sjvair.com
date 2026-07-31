@@ -38,6 +38,10 @@ if COMMIT_HASH is None:
 
 
 # Monitors API tuning (with sensible defaults)
+# Monitor types (e.g. 'purpleair', 'airgradient') exposed by the public API.
+# Empty means all registered types are exposed.
+MONITOR_ENABLED_TYPES = ['purpleair', 'airgradient', 'bam1022', 'aqview', 'airnow']
+
 MONITOR_ACTIVE_WINDOW_DAYS = int(env('MONITOR_ACTIVE_WINDOW_DAYS', '90'))
 
 MONITOR_HEALTHY_WINDOW_HOURS = int(env('MONITOR_HEALTHY_WINDOW_HOURS', '24'))
@@ -87,6 +91,7 @@ INSTALLED_APPS = [
     'django_recaptcha',
     'form_utils',
     'huey.contrib.djhuey',
+    'huey.contrib.djhuey.stats',
     'livereload',
     'localflavor',
     'pgactivity',
@@ -105,6 +110,7 @@ INSTALLED_APPS = [
     'camp.apps.calibrations',
     'camp.apps.contact',
     'camp.apps.entries',
+    'camp.apps.forecasts',
     'camp.apps.helpdesk',
     'camp.apps.hms',
     'camp.apps.ces',
@@ -120,6 +126,7 @@ INSTALLED_APPS = [
     'camp.apps.summaries',
     'camp.apps.tempo',
     'camp.apps.qaqc',
+    'camp.apps.queues',
     'camp.utils',
 ]
 
@@ -364,6 +371,12 @@ DJANGO_HUEY = {
             'immediate': bool(int(env('HUEY_IMMEDIATE', DEBUG)))
         },
     }
+}
+
+HUEY_STATS = {
+    'capture_args': False,
+    'retention_hours': 24,
+    'max_events': 250_000,
 }
 
 MAX_QUEUE_SIZE = int(env('MAX_QUEUE_SIZE', 500))

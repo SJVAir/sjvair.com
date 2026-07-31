@@ -8,7 +8,6 @@ django-constance==4.3.5
 django-cors-headers==4.9.0
 django-debug-toolbar==6.3.0
 django-debug-toolbar-force==0.2
-django-dirtyfields==1.9.9
 django-extensions==4.1
 django-filter==25.2
 django-health-check==4.4.2
@@ -32,6 +31,7 @@ argon2-cffi==25.1.0
 boto3==1.43.24
 ckanapi==4.11
 contextily==1.7.0
+defusedxml==0.7.1
 delegator.py==0.1.1
 dpath==2.2.0
 fiona==1.10.1
@@ -39,7 +39,8 @@ geopandas==1.1.3
 geopy==2.4.1
 gunicorn==26.0.0
 hiredis==3.4.0
-huey==3.0.1
+huey==3.3.0
+peewee==4.2.6
 invoke==3.0.3
 jsonschema==4.26.0
 libsass==0.23.0
@@ -53,7 +54,7 @@ numpy==2.4.6
 optimize-images==2.0.0
 openpyxl==3.1.5
 pandas==3.0.3
-Pillow==12.2.0
+Pillow==12.3.0
 psutil==7.2.2
 psycopg2==2.9.12 --no-binary psycopg2
 py-expression-eval==0.3.14
@@ -70,6 +71,7 @@ scikit-learn==1.9.0
 scout-apm==3.5.3
 sentry-sdk==2.62.0
 setuptools==80.10.2
+shapely==2.1.2
 simpleeval==1.0.7
 tqdm==4.67.3
 tdigest==0.5.2.2
