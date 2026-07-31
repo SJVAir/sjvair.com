@@ -1,6 +1,7 @@
 from resticus import serializers
 
 from camp.apps.monitors.airgradient.models import AirGradient
+from camp.apps.monitors.aqlite.models import AQLite
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.vozbox.models import VOZBox
 
@@ -67,6 +68,9 @@ class MonitorSerializer(serializers.Serializer):
         ],
         VOZBox: [
             'sensor_id',
+        ],
+        AQLite: [
+            'device_id',
         ],
     }
 

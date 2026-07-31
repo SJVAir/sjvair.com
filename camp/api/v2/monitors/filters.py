@@ -15,6 +15,7 @@ class MonitorFilter(FilterSet):
             'BAM1022': 'bam1022',
             'PurpleAir': 'purpleair',
             'VOZBox': 'vozbox',
+            'AQLite': 'aqlite',
         }.get(value)
 
         if lookup_field is not None:
