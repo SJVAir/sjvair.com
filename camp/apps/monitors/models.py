@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pandas as pd
 
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
@@ -226,6 +227,15 @@ class Monitor(models.Model):
 
         recurse(cls)
         return list(sorted(subclasses, key=lambda c: c.__name__))
+
+    @classmethod
+    def get_enabled_subclasses(cls):
+        """Monitor subclasses exposed by the public API (see settings.MONITOR_ENABLED_TYPES)."""
+        enabled = settings.MONITOR_ENABLED_TYPES
+        subclasses = cls.get_subclasses()
+        if not enabled:
+            return subclasses
+        return [subclass for subclass in subclasses if subclass.monitor_type in enabled]
 
     @property
     def slug(self):

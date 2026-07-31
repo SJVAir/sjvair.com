@@ -38,6 +38,10 @@ if COMMIT_HASH is None:
 
 
 # Monitors API tuning (with sensible defaults)
+# Monitor types (e.g. 'purpleair', 'airgradient') exposed by the public API.
+# Empty means all registered types are exposed.
+MONITOR_ENABLED_TYPES = ['purpleair', 'airgradient', 'bam1022', 'aqview', 'airnow']
+
 MONITOR_ACTIVE_WINDOW_DAYS = int(env('MONITOR_ACTIVE_WINDOW_DAYS', '90'))
 
 MONITOR_HEALTHY_WINDOW_HOURS = int(env('MONITOR_HEALTHY_WINDOW_HOURS', '24'))
