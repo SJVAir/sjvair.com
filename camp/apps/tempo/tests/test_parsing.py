@@ -5,7 +5,7 @@ import netCDF4
 import numpy as np
 from django.test import SimpleTestCase
 
-from camp.apps.tempo.parsing import parse_granule
+from camp.apps.tempo.parsing import parse_granule, QUALITY_FLAG_PATHS
 
 
 def build_fixture_netcdf(product='no2', quality_flags=None, processing_version=3, fill_positions=None) -> bytes:
@@ -17,6 +17,9 @@ def build_fixture_netcdf(product='no2', quality_flags=None, processing_version=3
     Written to a real temp file (not in-memory) since disk-based writing
     is the well-established netCDF4-python path; `parse_granule` itself
     reads from bytes, matching what a real HTTP response body looks like.
+    o3tot/cldo4 ship no quality variable in real NASA files (confirmed
+    against live downloaded granules on 2026-07-31), so the fixture omits
+    it for those products regardless of `quality_flags`.
     """
     var_path = {
         'no2': 'vertical_column_troposphere',
@@ -24,12 +27,7 @@ def build_fixture_netcdf(product='no2', quality_flags=None, processing_version=3
         'hcho': 'vertical_column',
         'cldo4': 'cloud_fraction',
     }[product]
-    quality_path = {
-        'no2': 'main_data_quality_flag',
-        'o3tot': 'quality_flag',
-        'hcho': 'main_data_quality_flag',
-        'cldo4': 'quality_flag',
-    }[product]
+    quality_path = QUALITY_FLAG_PATHS.get(product)
 
     if quality_flags is None:
         quality_flags = [[[0, 0], [0, 0]]]
@@ -59,10 +57,11 @@ def build_fixture_netcdf(product='no2', quality_flags=None, processing_version=3
                 var_path, 'f8', ('time', 'latitude', 'longitude'), fill_value=fill_value,
             )
             values[:] = values_data
-            quality = product_group.createVariable(
-                quality_path, 'i4', ('time', 'latitude', 'longitude'),
-            )
-            quality[:] = quality_flags
+            if quality_path:
+                quality = product_group.createVariable(
+                    quality_path, 'i4', ('time', 'latitude', 'longitude'),
+                )
+                quality[:] = quality_flags
 
         return path.read_bytes()
 
@@ -125,3 +124,15 @@ class ParseGranuleTests(SimpleTestCase):
             data = build_fixture_netcdf(product=product)
             result = parse_granule(data, product)
             assert result.array.shape == (2, 2)
+
+    def test_masks_fill_value_pixels_for_products_with_no_quality_variable(self):
+        # Regression test: o3tot/cldo4 ship no quality_flag variable in
+        # real NASA files. parse_granule must not try to read one for
+        # them, and must still mask via _FillValue alone.
+        for product in ('o3tot', 'cldo4'):
+            data = build_fixture_netcdf(product=product, fill_positions=[(0, 0)])
+
+            result = parse_granule(data, product)
+
+            assert np.isnan(result.array[1, 0])  # fill position, post north-up flip
+            assert not np.isnan(result.array[0, 0])
