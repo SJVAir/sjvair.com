@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pandas as pd
 
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.gis.db import models
 from django.contrib.postgres.indexes import BrinIndex
@@ -18,7 +19,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
-from model_utils import Choices
+from model_utils import Choices, FieldTracker
 from model_utils.models import TimeStampedModel
 from phonenumber_field.modelfields import PhoneNumberField
 from py_expression_eval import Parser as ExpressionParser
@@ -177,6 +178,8 @@ class Monitor(models.Model):
 
     objects = MonitorManager()
 
+    tracker = FieldTracker(fields=['position'])
+
     class Meta:
         base_manager_name = 'objects'
         ordering = ('name',)
@@ -224,6 +227,15 @@ class Monitor(models.Model):
 
         recurse(cls)
         return list(sorted(subclasses, key=lambda c: c.__name__))
+
+    @classmethod
+    def get_enabled_subclasses(cls):
+        """Monitor subclasses exposed by the public API (see settings.MONITOR_ENABLED_TYPES)."""
+        enabled = settings.MONITOR_ENABLED_TYPES
+        subclasses = cls.get_subclasses()
+        if not enabled:
+            return subclasses
+        return [subclass for subclass in subclasses if subclass.monitor_type in enabled]
 
     @property
     def slug(self):
@@ -530,8 +542,12 @@ class Monitor(models.Model):
         return HealthCheck.objects.evaluate(monitor=self, hour=hour)
 
     def save(self, *args, **kwargs):
-        if self.position:
-            # TODO: Can we do this only when self.position is updated?
+        # County.lookup() does an in-process GEOS point-in-polygon check (no
+        # DB query) - cheap once, but save() runs on every process_data call
+        # for every monitor, continuously, so recomputing unconditionally
+        # adds up to a lot of native GEOS allocation over a day. Only do it
+        # when there's not already an answer, or position actually moved.
+        if self.position and (not self.county or self.tracker.has_changed('position')):
             self.county = County.lookup(self.position)
         super().save(*args, **kwargs)
 
