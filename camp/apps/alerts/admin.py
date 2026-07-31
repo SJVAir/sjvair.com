@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path
 
-from .models import Subscription, Alert
+from .models import Subscription, Alert, AlertUpdate, Notification
 from .views import SubscriptionCountyStats
 
 
@@ -35,3 +35,18 @@ class AlertAdmin(admin.ModelAdmin):
 
     def county(self, instance):
         return instance.monitor.county
+
+
+@admin.register(AlertUpdate)
+class AlertUpdateAdmin(admin.ModelAdmin):
+    list_display = ['alert', 'timestamp', 'level']
+    list_filter = ['level']
+    raw_id_fields = ['alert']
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ['user', 'status', 'created', 'sent_at']
+    list_filter = ['status']
+    raw_id_fields = ['alert_update', 'subscription', 'user']
+    readonly_fields = ['created', 'modified']

@@ -38,6 +38,9 @@ class AlertList(generics.ListEndpoint):
     documented = False
     model = Alert
     login_required = True
+    # 'id'/'latest' omitted: both are now sequential ints post-sqids
+    # migration (Alert/AlertUpdate no longer use opaque UUID PKs).
+    fields = ['sqid', 'created', 'modified', 'monitor', 'entry_type', 'start_time', 'end_time']
 
     def get_queryset(self):
         queryset = super().get_queryset()
