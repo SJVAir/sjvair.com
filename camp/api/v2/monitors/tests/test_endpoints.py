@@ -562,6 +562,7 @@ class MonitorFilterDeviceTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
+    @override_settings(MONITOR_ENABLED_TYPES=[])
     def test_filters_by_cimis_device(self):
         from django.contrib.gis.geos import Point
 
@@ -595,7 +596,7 @@ class MonitorFilterDeviceTests(TestCase):
         assert len(content['data']) >= 1
         assert all(monitor['type'] == 'airgradient' for monitor in content['data'])
 
-    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0, MONITOR_ENABLED_TYPES=[])
     def test_current_data_filters_by_device(self):
         '''
             CurrentData didn't have filter_class wired in - ?device= was
@@ -628,6 +629,7 @@ class MonitorFilterDeviceTests(TestCase):
         assert str(cimis.pk) in ids
         assert str(purpleair.pk) not in ids
 
+    @override_settings(MONITOR_ENABLED_TYPES=[])
     def test_closest_monitor_filters_by_device(self):
         '''ClosestMonitor didn't have filter_class wired in - ?device= was silently ignored.'''
         from django.contrib.gis.geos import Point
@@ -660,6 +662,7 @@ class MonitorFilterDeviceTests(TestCase):
         assert str(cimis.pk) in ids
         assert str(purpleair.pk) not in ids
 
+    @override_settings(MONITOR_ENABLED_TYPES=[])
     def test_closest_monitor_filters_before_limiting_to_three(self):
         '''
             The device filter must apply before the "3 nearest" slice, not
@@ -699,7 +702,7 @@ class MonitorFilterDeviceTests(TestCase):
         ids = [monitor['id'] for monitor in content['data']]
         assert ids == [str(cimis.pk)]
 
-    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0, MONITOR_ENABLED_TYPES=[])
     def test_monitors_at_filters_by_device(self):
         '''MonitorsAt didn't have filter_class wired in - ?device= was silently ignored.'''
         from django.contrib.gis.geos import Point
