@@ -6,7 +6,9 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from django.core.management import call_command
+import pytest
+
+from django.core.management import call_command, CommandError
 
 from django.contrib.gis.geos import Point
 from django.test import TestCase
@@ -521,3 +523,77 @@ class ImportVozboxCalTests(TestCase):
             monitor=self.monitor,
             stage=entry_models.O3.Stage.CALIBRATED,
         ).exists()
+
+
+class ImportVozboxHistoryTests(TestCase):
+    def _daily_rows(self, coreid='e00fce68f12da1a0c5de6248', timestamp=None):
+        return {
+            coreid: [{
+                'timestamp': timestamp or datetime(2025, 6, 9, 0, 0, 0, tzinfo=timezone.utc),
+                'pm1_a': 7.0, 'pm1_b': 4.0,
+                'pm25_a': 10.0, 'pm25_b': 4.0,
+                'pm10_a': 10.0, 'pm10_b': 4.0,
+                'temperature': 36.0,
+                'humidity': 26.0,
+                'o3': 70.0,
+                'o3_cal': None,
+                'latitude': 36.785328,
+                'longitude': -119.773125,
+            }],
+        }
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
+    def test_creates_monitor_and_entries(self, MockClient):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_daily_files.return_value = [date(2025, 6, 9)]
+        instance.get_daily_data.return_value = self._daily_rows(coreid)
+
+        call_command('import_vozbox_history')
+
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        assert entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').exists()
+        assert entry_models.O3.objects.filter(monitor=monitor, sensor='1', stage='raw').exists()
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
+    def test_date_range_filter(self, MockClient):
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_daily_files.return_value = [
+            date(2025, 6, 8),
+            date(2025, 6, 9),
+            date(2025, 6, 10),
+        ]
+        instance.get_daily_data.return_value = {}
+
+        call_command('import_vozbox_history', start='2025-06-09', end='2025-06-09')
+
+        instance.get_daily_data.assert_called_once_with(date(2025, 6, 9))
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
+    def test_skips_day_with_no_data(self, MockClient):
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_daily_files.return_value = [date(2025, 6, 9)]
+        instance.get_daily_data.return_value = None
+
+        call_command('import_vozbox_history')
+
+        assert VOZBox.objects.count() == 0
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
+    def test_rerun_does_not_duplicate_entries(self, MockClient):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_daily_files.return_value = [date(2025, 6, 9)]
+        instance.get_daily_data.return_value = self._daily_rows(coreid)
+
+        call_command('import_vozbox_history')
+        call_command('import_vozbox_history')
+
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').count()
+        assert pm25_count == 1
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
+    def test_invalid_date_raises_command_error(self, MockClient):
+        with pytest.raises(CommandError):
+            call_command('import_vozbox_history', start='not-a-date')

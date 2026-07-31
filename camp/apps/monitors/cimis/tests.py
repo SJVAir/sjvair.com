@@ -1,5 +1,7 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from django.contrib.gis.geos import Point
 from django.test import TestCase
@@ -434,3 +436,74 @@ class FinalizeCimisDataTests(TestCase):
         from camp.apps.entries import models as entry_models
         entries = entry_models.Temperature.objects.filter(monitor=monitor)
         assert entries.count() == 1
+
+
+class ImportCimisHistoryTests(TestCase):
+    def test_no_op_when_no_monitors_exist(self):
+        from django.core.management import call_command
+        from io import StringIO
+
+        out = StringIO()
+        call_command('import_cimis_history', start='2026-07-01', end='2026-07-02', stdout=out)
+
+        assert 'discover_cimis_stations' in out.getvalue()
+
+    def test_invalid_date_raises_command_error(self):
+        from django.core.management import call_command, CommandError
+
+        with pytest.raises(CommandError):
+            call_command('import_cimis_history', start='not-a-date', end='2026-07-02')
+
+    def test_start_after_end_raises_command_error(self):
+        from django.core.management import call_command, CommandError
+
+        with pytest.raises(CommandError):
+            call_command('import_cimis_history', start='2026-07-05', end='2026-07-01')
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_ingests_one_day_at_a_time_across_the_range(self, MockAPI):
+        from django.core.management import call_command
+
+        CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = []
+
+        call_command('import_cimis_history', start='2026-07-01', end='2026-07-03')
+
+        called_days = [
+            (call.kwargs['start_date'], call.kwargs['end_date'])
+            for call in mock_instance.get_hourly_data.call_args_list
+        ]
+        assert called_days == [
+            (date(2026, 7, 1), date(2026, 7, 1)),
+            (date(2026, 7, 2), date(2026, 7, 2)),
+            (date(2026, 7, 3), date(2026, 7, 3)),
+        ]
+
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_ingests_records_across_the_range(self, MockAPI):
+        from django.core.management import call_command
+
+        monitor = CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        record = {
+            'Date': '2026-07-01',
+            'Hour': '1300',
+            'Station': '2',
+            'HlyAirTmp': {'Value': '95.4', 'Qc': ' ', 'Unit': '(F)'},
+        }
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = [{'Records': [record]}]
+
+        call_command('import_cimis_history', start='2026-07-01', end='2026-07-01')
+
+        assert entry_models.Temperature.objects.filter(monitor=monitor).exists()
