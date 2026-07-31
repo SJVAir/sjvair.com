@@ -62,6 +62,19 @@ class MonitorQuerySet(InheritanceQuerySet):
         cutoff = timezone.now() - timedelta(seconds=seconds)
         return self.filter(Q(latest_entries__isnull=True) | Q(latest__timestamp__lt=cutoff))
 
+    def get_public(self):
+        """Monitors visible to the public API: not hidden, and of an enabled type."""
+        queryset = self.filter(is_hidden=False)
+
+        enabled_subclasses = self.model.get_enabled_subclasses()
+        if len(enabled_subclasses) < len(self.model.get_subclasses()):
+            lookup = Q()
+            for subclass in enabled_subclasses:
+                lookup |= Q(**subclass.health_check_queryset_filter())
+            queryset = queryset.filter(lookup) if enabled_subclasses else queryset.none()
+
+        return queryset
+
     def get_for_health_checks(self, hour: Optional[datetime] = None):
         """
         Return a queryset of all monitors whose class supports health checks

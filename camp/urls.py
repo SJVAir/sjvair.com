@@ -13,6 +13,7 @@ from health_check.contrib.redis import Redis
 from health_check.views import HealthCheckView
 
 from camp.apps.calheatscore.health_checks import CalHeatScoreHealthCheck
+from camp.apps.forecasts.health_checks import ForecastsHealthCheck
 from camp.apps.monitors.health_checks import (
     AirGradientHealthCheck,
     AirNowHealthCheck,
@@ -66,6 +67,7 @@ urlpatterns += [path('system-status/', include(([
             CCACBAMHealthCheck,
             PurpleAirHealthCheck,
             CalHeatScoreHealthCheck,
+            ForecastsHealthCheck,
         ],
         extra_context={'title': 'Data Feeds'},
     ), name='data-feeds'),
