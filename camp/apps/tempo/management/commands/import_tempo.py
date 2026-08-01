@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 
 from django.core.management.base import BaseCommand
+from django.db import connections
+from django.db.utils import Error as DjangoDatabaseError
 from django.utils.timezone import make_aware
 
 from camp.apps.tempo.models import Granule
@@ -34,6 +36,21 @@ class Command(BaseCommand):
                 for product in products:
                     try:
                         sync_granule(product, timestamp)
+                    except DjangoDatabaseError as exc:
+                        # A dead DB connection (e.g. "server closed the
+                        # connection unexpectedly", "connection already
+                        # closed") doesn't self-heal inside a single
+                        # long-running management command -- Django's
+                        # automatic reconnect logic is wired to
+                        # request/task-boundary signals, which never fire
+                        # in a bare loop like this one. Without forcing a
+                        # reconnect here, one blip silently turns the rest
+                        # of a multi-day backfill into a no-op that still
+                        # prints "done" for every remaining day.
+                        connections.close_all()
+                        self.stderr.write(self.style.ERROR(
+                            f'{product} @ {timestamp}: database connection lost ({exc}) -- reconnected, continuing'
+                        ))
                     except Exception as exc:
                         self.stderr.write(self.style.WARNING(
                             f'{product} @ {timestamp}: {exc}'
