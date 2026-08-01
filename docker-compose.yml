@@ -27,6 +27,11 @@ services:
   db:
     image: postgis/postgis:17-3.5
     container_name: sjvair
+    # Default max_connections (100) gets exhausted fast in local dev --
+    # this container is shared across every worktree, and each web/worker/
+    # test container plus any concurrent management commands (e.g. a batch
+    # of import_* commands run in parallel) opens its own connection.
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_DB: sjvair
       POSTGRES_USER: sjvair
