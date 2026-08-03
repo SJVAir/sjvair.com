@@ -30,13 +30,17 @@ def import_realtime():
     start = timezone.now()
     logger.info('VOZbox import start')
 
-    today = timezone.localdate()
-    yesterday = today - timedelta(days=1)
+    # moospmV3_daily is a once-a-day rollup, not a live feed -- it can lag
+    # a full day behind. moospmV3 is the actual hourly, near-real-time
+    # source. Pull the current + previous hour (UTC) so an hour-boundary
+    # crossing between runs doesn't drop rows.
+    current_hour = start.replace(minute=0, second=0, microsecond=0)
+    previous_hour = current_hour - timedelta(hours=1)
 
     combined = {}
     with VozBoxClient() as client:
-        for d in [yesterday, today]:
-            data = client.get_daily_data(d)
+        for hour in [previous_hour, current_hour]:
+            data = client.get_realtime_data(hour.date(), hour.hour)
             if data is None:
                 continue
             for coreid, rows in data.items():

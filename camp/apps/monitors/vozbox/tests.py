@@ -1,7 +1,7 @@
 import csv
 import io
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -12,12 +12,13 @@ from django.core.management import call_command, CommandError
 
 from django.contrib.gis.geos import Point
 from django.test import TestCase
+from django.utils import timezone as django_timezone
 
 from camp.apps.calibrations import processors as cal_processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.vozbox.api import VozBoxClient
 from camp.apps.monitors.vozbox.models import VOZBox
-from camp.apps.monitors.vozbox.tasks import process_device, _bin_rows
+from camp.apps.monitors.vozbox.tasks import process_device, import_realtime, _bin_rows
 
 
 DAILY_CSV = """\
@@ -155,6 +156,38 @@ class VozBoxClientHTTPTests(TestCase):
 
         assert result is not None
         assert 'e00fce68f12da1a0c5de6248' in result
+
+    @patch('camp.apps.monitors.vozbox.api.requests.Session')
+    def test_get_realtime_data_returns_none_on_404(self, MockSession):
+        MockSession.return_value.__enter__ = lambda s: s
+        MockSession.return_value.get.return_value = self._make_response(404)
+
+        with VozBoxClient() as client:
+            result = client.get_realtime_data(date(2025, 6, 9), 15)
+
+        assert result is None
+
+    @patch('camp.apps.monitors.vozbox.api.requests.Session')
+    def test_get_realtime_data_parses_csv_on_200(self, MockSession):
+        MockSession.return_value.__enter__ = lambda s: s
+        MockSession.return_value.get.return_value = self._make_response(200, text=DAILY_CSV)
+
+        with VozBoxClient() as client:
+            result = client.get_realtime_data(date(2025, 6, 9), 15)
+
+        assert result is not None
+        assert 'e00fce68f12da1a0c5de6248' in result
+
+    @patch('camp.apps.monitors.vozbox.api.requests.Session')
+    def test_get_realtime_data_requests_the_hourly_url(self, MockSession):
+        MockSession.return_value.__enter__ = lambda s: s
+        MockSession.return_value.get.return_value = self._make_response(200, text=DAILY_CSV)
+
+        with VozBoxClient() as client:
+            client.get_realtime_data(date(2025, 6, 9), 15)
+
+        requested_url = MockSession.return_value.get.call_args[0][0]
+        assert requested_url.endswith('/moospmV3/moospmV3_2025-06-09T15.csv')
 
     @patch('camp.apps.monitors.vozbox.api.requests.Session')
     def test_list_daily_files_returns_sorted_dates(self, MockSession):
@@ -343,6 +376,47 @@ class ProcessDeviceTests(TestCase):
         monitor = VOZBox.objects.get(sensor_id=coreid)
         pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').count()
         assert pm25_count == 3
+
+
+class ImportRealtimeTests(TestCase):
+    """
+    Regression coverage: import_realtime must pull from the hourly
+    moospmV3 feed (get_realtime_data), not moospmV3_daily
+    (get_daily_data) -- the daily rollup only gets written once a day
+    and can lag a full day behind.
+    """
+
+    @patch('camp.apps.monitors.vozbox.tasks.process_device')
+    @patch('camp.apps.monitors.vozbox.tasks.VozBoxClient')
+    def test_queries_current_and_previous_hour(self, MockClient, mock_process_device):
+        client_instance = MockClient.return_value.__enter__.return_value
+        client_instance.get_realtime_data.return_value = None
+
+        import_realtime.call_local()
+
+        now = django_timezone.now()
+        current_hour = now.replace(minute=0, second=0, microsecond=0)
+        previous_hour = current_hour - timedelta(hours=1)
+
+        called_args = [call.args for call in client_instance.get_realtime_data.call_args_list]
+        assert (previous_hour.date(), previous_hour.hour) in called_args
+        assert (current_hour.date(), current_hour.hour) in called_args
+        assert client_instance.get_daily_data.call_count == 0
+
+    @patch('camp.apps.monitors.vozbox.tasks.process_device')
+    @patch('camp.apps.monitors.vozbox.tasks.VozBoxClient')
+    def test_schedules_process_device_per_coreid(self, MockClient, mock_process_device):
+        ts = datetime(2026, 8, 3, 15, 0, tzinfo=timezone.utc)
+        client_instance = MockClient.return_value.__enter__.return_value
+        client_instance.get_realtime_data.side_effect = [
+            {'coreid-a': [{'timestamp': ts}]},
+            {'coreid-a': [{'timestamp': ts}], 'coreid-b': [{'timestamp': ts}]},
+        ]
+
+        import_realtime.call_local()
+
+        scheduled_coreids = {call.args[0][0] for call in mock_process_device.schedule.call_args_list}
+        assert scheduled_coreids == {'coreid-a', 'coreid-b'}
 
 
 class O3VOZBoxProcessorTests(TestCase):
