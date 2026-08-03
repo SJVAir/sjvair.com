@@ -85,7 +85,7 @@ class Command(BaseCommand):
                 monitor.process_entry_pipeline(entry)
                 created += 1
 
-            if records % 500 == 0:
+            if records % 50 == 0:
                 self.stdout.write(f'  ...{records} raw records so far')
 
         if records:
