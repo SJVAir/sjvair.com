@@ -3,6 +3,7 @@ from datetime import timedelta
 import urllib.parse
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 from django.utils import timezone
 
@@ -17,6 +18,14 @@ class AQLiteAPI:
 
     def __init__(self, key):
         self.key = key
+        self.session = requests.Session()
+        retries = Retry(
+            total=5,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=['GET'],
+        )
+        self.session.mount('https://', HTTPAdapter(max_retries=retries))
 
     def build_url(self, path):
         return urllib.parse.urljoin(self.API_URL, path)
@@ -35,7 +44,7 @@ class AQLiteAPI:
         url = self.build_url(path)
         headers = self.build_headers(kwargs.pop('headers', None))
         kwargs.setdefault('timeout', 30)
-        response = requests.request(method, url, headers=headers, **kwargs)
+        response = self.session.request(method, url, headers=headers, **kwargs)
         response.raise_for_status()
         return response
 
