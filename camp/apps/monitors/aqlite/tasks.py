@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import requests
 
@@ -97,6 +97,78 @@ def aggregate_monitor_hour(monitor_id, hour_start, hour_end):
     monitor = AQLite.objects.get(pk=monitor_id)
     if processors.AQLiteHourlyAggregator.aggregate(monitor, hour_start, hour_end):
         monitor.save()
+
+
+@db_task()
+def import_history(start=None, end=None, device_ids=None):
+    """
+    Import historical AQLite data and run the O3 pipeline (RAW → CLEANED → CALIBRATED).
+
+    `start`/`end` are 'YYYY-MM-DD' strings in local time (default: 7 days ago
+    through now); `device_ids` optionally limits the import to specific
+    device IDs, e.g. ['AQLite-1608'].
+    """
+    now = timezone.now()
+    end_dt = make_aware(datetime.strptime(end, '%Y-%m-%d')) if end else now
+    start_dt = make_aware(datetime.strptime(start, '%Y-%m-%d')) if start else end_dt - timedelta(days=7)
+
+    monitors = AQLite.objects.select_related('organization').filter(
+        organization__isnull=False,
+        organization__is_enabled=True,
+    )
+    if device_ids:
+        monitors = monitors.filter(device_id__in=device_ids)
+
+    if not monitors.exists():
+        print('[AQLite] No matching monitors found.')
+        return
+
+    print(f'[AQLite] Importing {monitors.count()} monitor(s): {start_dt.date()} → {end_dt.date()}')
+
+    for monitor in monitors:
+        _import_monitor_history(monitor, start_dt, end_dt, now)
+
+
+def _import_monitor_history(monitor, start, end, now):
+    from camp.apps.calibrations import processors
+
+    print(f'\n{monitor.device_id}')
+
+    records = 0
+    created = 0
+    for payload in monitor.organization.api.get_time_series(
+        device_id=monitor.device_id,
+        start=start,
+        end=end,
+        average=0,
+    ):
+        records += 1
+        entries = monitor.create_entries(payload)
+        for entry in entries:
+            monitor.process_entry_pipeline(entry)
+            created += 1
+
+        if records % 50 == 0:
+            print(f'  ...{records} raw records so far')
+
+    if records:
+        monitor.save()
+    print(f'  {records} raw records, {created} entries created')
+
+    # Aggregate each complete hour in the range.
+    # Start at the first full hour boundary after `start`.
+    hour_end = start.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    cutoff = min(end, now).replace(minute=0, second=0, microsecond=0)
+
+    aggregated = 0
+    while hour_end <= cutoff:
+        hour_start = hour_end - timedelta(hours=1)
+        result = processors.AQLiteHourlyAggregator.aggregate(monitor, hour_start, hour_end)
+        if result:
+            aggregated += 1
+        hour_end += timedelta(hours=1)
+
+    print(f'  {aggregated} hourly CALIBRATED entries created')
 
 
 # Anything longer than this between consecutive RAW entries is treated as a gap.
