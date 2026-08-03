@@ -6,6 +6,8 @@ import requests
 
 from django.utils import timezone
 
+from camp.utils.datetime import parse_datetime
+
 
 CHUNK_SIZE = timedelta(days=7)
 
@@ -42,8 +44,8 @@ class AQLiteAPI:
 
     def get_time_series(self, device_id, start=None, end=None, average=0):
         """Yield parsed payload dicts, fetching in CHUNK_SIZE windows."""
-        end = end or timezone.now()
-        start = start or end - timedelta(hours=24)
+        end = parse_datetime(end) if end else timezone.now()
+        start = parse_datetime(start) if start else end - timedelta(hours=24)
 
         chunk_start = start
         while chunk_start < end:
