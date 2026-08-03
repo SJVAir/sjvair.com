@@ -20,6 +20,7 @@ from camp.apps.monitors.health_checks import (
     AQLiteHealthCheck,
     AQviewHealthCheck,
     CCACBAMHealthCheck,
+    CIMISHealthCheck,
     PurpleAirHealthCheck,
     VOZBoxHealthCheck,
 )
@@ -68,6 +69,7 @@ urlpatterns += [path('system-status/', include(([
             AQLiteHealthCheck,
             AQviewHealthCheck,
             CCACBAMHealthCheck,
+            CIMISHealthCheck,
             PurpleAirHealthCheck,
             VOZBoxHealthCheck,
             CalHeatScoreHealthCheck,
