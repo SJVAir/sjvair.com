@@ -1,6 +1,9 @@
 from .base import *
+import tempfile
 
 FIXTURE_DIRS = [BASE_DIR.child('fixtures')]
+
+MEDIA_ROOT = tempfile.mkdtemp(prefix='sjvair-test-media-')
 
 # Mail
 

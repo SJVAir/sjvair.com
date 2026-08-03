@@ -165,6 +165,9 @@ class LevelSet:
         except KeyError:
             raise KeyError(f"No such level: {key}")
 
+    def __iter__(self):
+        return iter(self._levels)
+
     @property
     def choices(self) -> List[Tuple[str, str]]:
         return [(lvl.key.lower(), lvl.label) for lvl in self._levels]
