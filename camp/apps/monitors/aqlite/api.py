@@ -10,7 +10,7 @@ from django.utils import timezone
 from camp.utils.datetime import parse_datetime
 
 
-CHUNK_SIZE = timedelta(days=7)
+CHUNK_SIZE = timedelta(days=1)
 
 
 class AQLiteAPI:
