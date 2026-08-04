@@ -193,6 +193,124 @@ class ProcessorTests(TestCase):
         expected = (a_entry.value + b_entry.value) / 2
         assert cleaned.value == expected
 
+    def test_pm25_lcs_correction_falls_back_when_channel_a_flatlined(self):
+        # Channel A is dead, stuck at 0.00. Channel B is healthy and varying.
+        # Correction should discard A and fall back to B instead of
+        # discarding the reading entirely.
+        base_time = timezone.now() - timedelta(minutes=20)
+        timestamps = [base_time + timedelta(minutes=2 * i) for i in range(11)]
+        b_values = [5.3, 6.4, 6.6, 5.3, 5.6, 7.5, 6.4, 6.4, 6.3, 6.4, 5.9]
+
+        a_entries = []
+        b_entries = []
+        for ts, bval in zip(timestamps, b_values):
+            a = entry_models.PM25.objects.create(
+                monitor=self.monitor,
+                timestamp=ts,
+                sensor='a',
+                value=Decimal('0.00'),
+                position=self.monitor.position,
+                location=self.monitor.location,
+                stage=entry_models.PM25.Stage.RAW,
+            )
+            b = entry_models.PM25.objects.create(
+                monitor=self.monitor,
+                timestamp=ts,
+                sensor='b',
+                value=Decimal(str(bval)),
+                position=self.monitor.position,
+                location=self.monitor.location,
+                stage=entry_models.PM25.Stage.RAW,
+            )
+            a.refresh_from_db()
+            b.refresh_from_db()
+            a_entries.append(a)
+            b_entries.append(b)
+
+        mid = len(a_entries) // 2
+        cleaner = processors.PM25_LCS_Correction(a_entries[mid])
+        cleaned = cleaner.run()
+
+        assert cleaned is not None
+        assert cleaned.value == b_entries[mid].value
+
+    def test_pm25_lcs_correction_falls_back_when_channel_a_out_of_bounds(self):
+        # Channel A is pegged above the valid range. Channel B is healthy.
+        # Correction should discard A and fall back to B.
+        base_time = timezone.now() - timedelta(minutes=20)
+        timestamps = [base_time + timedelta(minutes=2 * i) for i in range(11)]
+        a_values = [3108.80, 3111.40, 3108.20, 3107.20, 3107.70, 3099.50, 3100.80, 3104.00, 3106.70, 3105.40, 3110.10]
+        b_values = [4.5, 4.3, 4.8, 5.3, 4.3, 4.8, 4.6, 4.7, 4.2, 5.0, 4.9]
+
+        a_entries = []
+        b_entries = []
+        for ts, aval, bval in zip(timestamps, a_values, b_values):
+            a = entry_models.PM25.objects.create(
+                monitor=self.monitor,
+                timestamp=ts,
+                sensor='a',
+                value=Decimal(str(aval)),
+                position=self.monitor.position,
+                location=self.monitor.location,
+                stage=entry_models.PM25.Stage.RAW,
+            )
+            b = entry_models.PM25.objects.create(
+                monitor=self.monitor,
+                timestamp=ts,
+                sensor='b',
+                value=Decimal(str(bval)),
+                position=self.monitor.position,
+                location=self.monitor.location,
+                stage=entry_models.PM25.Stage.RAW,
+            )
+            a.refresh_from_db()
+            b.refresh_from_db()
+            a_entries.append(a)
+            b_entries.append(b)
+
+        mid = len(a_entries) // 2
+        cleaner = processors.PM25_LCS_Correction(a_entries[mid])
+        cleaned = cleaner.run()
+
+        assert cleaned is not None
+        assert cleaned.value == b_entries[mid].value
+
+    def test_pm25_lcs_correction_discards_when_both_channels_bad(self):
+        # Both channels are unusable (A out of bounds, B flatlined). The
+        # reading should still be discarded entirely.
+        base_time = timezone.now() - timedelta(minutes=20)
+        timestamps = [base_time + timedelta(minutes=2 * i) for i in range(11)]
+
+        a_entries = []
+        for ts in timestamps:
+            a = entry_models.PM25.objects.create(
+                monitor=self.monitor,
+                timestamp=ts,
+                sensor='a',
+                value=Decimal('3500.00'),
+                position=self.monitor.position,
+                location=self.monitor.location,
+                stage=entry_models.PM25.Stage.RAW,
+            )
+            b = entry_models.PM25.objects.create(
+                monitor=self.monitor,
+                timestamp=ts,
+                sensor='b',
+                value=Decimal('0.00'),
+                position=self.monitor.position,
+                location=self.monitor.location,
+                stage=entry_models.PM25.Stage.RAW,
+            )
+            a.refresh_from_db()
+            b.refresh_from_db()
+            a_entries.append(a)
+
+        mid = len(a_entries) // 2
+        cleaner = processors.PM25_LCS_Correction(a_entries[mid])
+        cleaned = cleaner.run()
+
+        assert cleaned is None
+
     def test_pm25_epa_oct2021(self):
         now = timezone.now()
 

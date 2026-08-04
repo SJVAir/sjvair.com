@@ -42,28 +42,17 @@ class PM25_LCS_Correction(BaseProcessor):
                 return False
         return True
 
-    def process(self):
-        if (self.entry.value is None
-            or self.entry.value < -15
-            or self.entry.value > 3000
-        ):
-            # Clearly invalid
-            return
-
-        if self.is_repeated():
-            # Filter out repeated sequences
-            return
-
-        cleaned_value = self.compute_ab_adjusted_value()
-        cleaned_value = max(cleaned_value, 0)
-        return self.build_entry(
-            value=cleaned_value,
-            sensor='', # At this point, A and B are effectively merged.
+    def out_of_bounds(self, value):
+        return (
+            value is None
+            or value < -15
+            or value > 3000
         )
 
-    def is_repeated(self, max_repeat=5) -> bool:
+    def is_repeated(self, entry, max_repeat=5) -> bool:
         '''
-        Checks whether the given entry is part of a sequence of repeated values.
+        Checks whether the given entry's value is part of a sequence of
+        repeated values on its own sensor channel.
 
         A value is considered repeated if it appears at least `max_repeat`
         consecutive times across the same sensor (looking both backward and forward).
@@ -75,13 +64,13 @@ class PM25_LCS_Correction(BaseProcessor):
         Returns:
             bool: True if the value is part of a repeated sequence, False otherwise.
         '''
-        value = self.entry.value
+        value = entry.value
 
-        prev_values = list(self.entry
+        prev_values = list(entry
             .get_previous_entries()
             .values_list('value', flat=True)[:max_repeat]
         )
-        next_values = list(self.entry
+        next_values = list(entry
             .get_next_entries()
             .values_list('value', flat=True)[:max_repeat]
         )
@@ -92,21 +81,48 @@ class PM25_LCS_Correction(BaseProcessor):
 
         return repeat_count > max_repeat
 
+    def is_healthy(self, entry) -> bool:
+        '''
+        A channel is healthy if it has a reading, that reading is in
+        bounds, and it isn't flatlined/repeating.
+        '''
+        return (
+            entry is not None
+            and not self.out_of_bounds(entry.value)
+            and not self.is_repeated(entry)
+        )
+
+    def process(self):
+        entry_ok = self.is_healthy(self.entry)
+        sibling_ok = self.is_healthy(self.sibling)
+
+        if entry_ok and sibling_ok:
+            # Both channels look good, blend them.
+            value = self.compute_ab_adjusted_value()
+        elif entry_ok:
+            # Only this channel is healthy, use it alone.
+            value = self.entry.value
+        elif sibling_ok:
+            # Only the sibling channel is healthy, fall back to it.
+            value = self.sibling.value
+        else:
+            # Neither channel is usable.
+            return
+
+        value = max(value, 0)
+        return self.build_entry(
+            value=value,
+            sensor='', # At this point, A and B are effectively merged.
+        )
+
     def compute_ab_adjusted_value(self) -> Decimal:
         '''
-        Computes cleaned value using a/b sensor logic.
+        Blends the A and B sensor values. Only called once both channels
+        have independently passed their own health check.
 
-        - If both A and B exist:
-            - use average if variance_pct ≤ 10
-            - use min(a, b) if variance_pct > 10
-        - If only one exists, use that value
-        - If neither, return self.entry.value
+        - use average if variance_pct ≤ 10
+        - use min(a, b) if variance_pct > 10
         '''
-        current_value = self.entry.value
-
-        if not self.sibling:
-            return current_value
-
         a = self.entry.value
         b = self.sibling.value
 
