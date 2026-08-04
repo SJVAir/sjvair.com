@@ -6,6 +6,7 @@ from django.utils import timezone
 from django_huey import db_task, db_periodic_task
 from huey import crontab
 
+from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.vozbox.api import VozBoxClient
 from camp.apps.monitors.vozbox.models import VOZBox
@@ -31,16 +32,18 @@ def import_realtime():
     logger.info('VOZbox import start')
 
     # moospmV3_daily is a once-a-day rollup, not a live feed -- it can lag
-    # a full day behind. moospmV3 is the actual hourly, near-real-time
-    # source. Pull the current + previous hour (UTC) so an hour-boundary
-    # crossing between runs doesn't drop rows.
+    # a full day behind. moospmV3_cal is the actual hourly, near-real-time
+    # source -- confirmed to carry every field moospmV3 has (identical
+    # rows, same commit) plus o3_cal, so we get calibrated O3 for free.
+    # Pull the current + previous hour (UTC) so an hour-boundary crossing
+    # between runs doesn't drop rows.
     current_hour = start.replace(minute=0, second=0, microsecond=0)
     previous_hour = current_hour - timedelta(hours=1)
 
     combined = {}
     with VozBoxClient() as client:
         for hour in [previous_hour, current_hour]:
-            data = client.get_realtime_data(hour.date(), hour.hour)
+            data = client.get_cal_data(hour.date(), hour.hour)
             if data is None:
                 continue
             for coreid, rows in data.items():
@@ -78,6 +81,17 @@ def process_device(coreid, rows):
         entries = monitor.create_entries(row)
         for entry in entries:
             monitor.process_entry_pipeline(entry)
+
+        o3_cal = row.get('o3_cal')
+        if o3_cal is not None and o3_cal >= 0:
+            monitor.create_entry(
+                entry_models.O3,
+                timestamp=row['timestamp'],
+                sensor='1',
+                stage=entry_models.O3.Stage.CALIBRATED,
+                processor=processors.VOZBox_QuinnCal.name,
+                value=o3_cal,
+            )
 
     latest_row = max(rows, key=lambda r: r['timestamp'])
     monitor.update_data(latest_row)

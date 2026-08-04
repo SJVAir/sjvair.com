@@ -2,6 +2,7 @@ from datetime import date
 
 from django.core.management.base import BaseCommand
 
+from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.vozbox.api import VozBoxClient
 from camp.apps.monitors.vozbox.models import VOZBox
@@ -49,6 +50,7 @@ class Command(BaseCommand):
                             timestamp=row['timestamp'],
                             sensor='1',
                             stage=entry_models.O3.Stage.CALIBRATED,
+                            processor=processors.VOZBox_QuinnCal.name,
                             value=o3_cal,
                         )
 

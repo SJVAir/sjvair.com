@@ -158,38 +158,6 @@ class VozBoxClientHTTPTests(TestCase):
         assert 'e00fce68f12da1a0c5de6248' in result
 
     @patch('camp.apps.monitors.vozbox.api.requests.Session')
-    def test_get_realtime_data_returns_none_on_404(self, MockSession):
-        MockSession.return_value.__enter__ = lambda s: s
-        MockSession.return_value.get.return_value = self._make_response(404)
-
-        with VozBoxClient() as client:
-            result = client.get_realtime_data(date(2025, 6, 9), 15)
-
-        assert result is None
-
-    @patch('camp.apps.monitors.vozbox.api.requests.Session')
-    def test_get_realtime_data_parses_csv_on_200(self, MockSession):
-        MockSession.return_value.__enter__ = lambda s: s
-        MockSession.return_value.get.return_value = self._make_response(200, text=DAILY_CSV)
-
-        with VozBoxClient() as client:
-            result = client.get_realtime_data(date(2025, 6, 9), 15)
-
-        assert result is not None
-        assert 'e00fce68f12da1a0c5de6248' in result
-
-    @patch('camp.apps.monitors.vozbox.api.requests.Session')
-    def test_get_realtime_data_requests_the_hourly_url(self, MockSession):
-        MockSession.return_value.__enter__ = lambda s: s
-        MockSession.return_value.get.return_value = self._make_response(200, text=DAILY_CSV)
-
-        with VozBoxClient() as client:
-            client.get_realtime_data(date(2025, 6, 9), 15)
-
-        requested_url = MockSession.return_value.get.call_args[0][0]
-        assert requested_url.endswith('/moospmV3/moospmV3_2025-06-09T15.csv')
-
-    @patch('camp.apps.monitors.vozbox.api.requests.Session')
     def test_list_daily_files_returns_sorted_dates(self, MockSession):
         api_response = MagicMock()
         api_response.status_code = 200
@@ -377,20 +345,67 @@ class ProcessDeviceTests(TestCase):
         pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').count()
         assert pm25_count == 3
 
+    def test_process_device_creates_calibrated_o3_when_o3_cal_present(self):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        rows = self._make_rows(coreid, count=1)
+        rows[0]['o3_cal'] = 23.127
+        process_device(coreid, rows)
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        calibrated = entry_models.O3.objects.filter(monitor=monitor, stage=entry_models.O3.Stage.CALIBRATED)
+        assert calibrated.count() == 1
+        assert calibrated.first().processor == 'VOZBox_QuinnCal'
+
+    def test_process_device_calibrated_o3_becomes_latest_entry(self):
+        # End-to-end check of the DefaultCalibration wiring: a named
+        # processor matching the DefaultCalibration('vozbox', 'o3') row
+        # is required for update_latest_entry to actually treat this as
+        # the displayed value instead of silently discarding it.
+        coreid = 'e00fce68f12da1a0c5de6248'
+        rows = self._make_rows(coreid, count=1)
+        rows[0]['o3_cal'] = 23.127
+        process_device(coreid, rows)
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+
+        from camp.apps.monitors.models import LatestEntry
+        latest = LatestEntry.objects.get(
+            monitor=monitor,
+            entry_type=entry_models.O3.entry_type,
+            processor='VOZBox_QuinnCal',
+        )
+        assert latest.entry.stage == entry_models.O3.Stage.CALIBRATED
+
+    def test_process_device_skips_calibrated_o3_when_o3_cal_missing(self):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        rows = self._make_rows(coreid, count=1)   # o3_cal is None by default
+        process_device(coreid, rows)
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        assert not entry_models.O3.objects.filter(monitor=monitor, stage=entry_models.O3.Stage.CALIBRATED).exists()
+
+    def test_process_device_skips_calibrated_o3_when_o3_cal_negative(self):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        rows = self._make_rows(coreid, count=1)
+        rows[0]['o3_cal'] = -999.0   # sentinel for invalid calibration, same as import_vozbox_cal
+        process_device(coreid, rows)
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        assert not entry_models.O3.objects.filter(monitor=monitor, stage=entry_models.O3.Stage.CALIBRATED).exists()
+
 
 class ImportRealtimeTests(TestCase):
     """
     Regression coverage: import_realtime must pull from the hourly
-    moospmV3 feed (get_realtime_data), not moospmV3_daily
+    moospmV3_cal feed (get_cal_data), not moospmV3_daily
     (get_daily_data) -- the daily rollup only gets written once a day
-    and can lag a full day behind.
+    and can lag a full day behind. moospmV3_cal was confirmed to carry
+    every row/field moospmV3 has (same commit, same timestamps) plus
+    o3_cal, so it's a strict superset -- no need for a separate
+    moospmV3-only fetch.
     """
 
     @patch('camp.apps.monitors.vozbox.tasks.process_device')
     @patch('camp.apps.monitors.vozbox.tasks.VozBoxClient')
     def test_queries_current_and_previous_hour(self, MockClient, mock_process_device):
         client_instance = MockClient.return_value.__enter__.return_value
-        client_instance.get_realtime_data.return_value = None
+        client_instance.get_cal_data.return_value = None
 
         import_realtime.call_local()
 
@@ -398,7 +413,7 @@ class ImportRealtimeTests(TestCase):
         current_hour = now.replace(minute=0, second=0, microsecond=0)
         previous_hour = current_hour - timedelta(hours=1)
 
-        called_args = [call.args for call in client_instance.get_realtime_data.call_args_list]
+        called_args = [call.args for call in client_instance.get_cal_data.call_args_list]
         assert (previous_hour.date(), previous_hour.hour) in called_args
         assert (current_hour.date(), current_hour.hour) in called_args
         assert client_instance.get_daily_data.call_count == 0
@@ -408,7 +423,7 @@ class ImportRealtimeTests(TestCase):
     def test_schedules_process_device_per_coreid(self, MockClient, mock_process_device):
         ts = datetime(2026, 8, 3, 15, 0, tzinfo=timezone.utc)
         client_instance = MockClient.return_value.__enter__.return_value
-        client_instance.get_realtime_data.side_effect = [
+        client_instance.get_cal_data.side_effect = [
             {'coreid-a': [{'timestamp': ts}]},
             {'coreid-a': [{'timestamp': ts}], 'coreid-b': [{'timestamp': ts}]},
         ]
@@ -450,6 +465,24 @@ class O3VOZBoxProcessorTests(TestCase):
         )
         result = cal_processors.O3_VOZBox(o3_entry).run()
         assert result is None
+
+
+class VOZBoxQuinnCalTests(TestCase):
+    def test_processor_is_registered(self):
+        assert 'VOZBox_QuinnCal' in cal_processors
+
+    def test_processor_name(self):
+        assert cal_processors.VOZBox_QuinnCal.name == 'VOZBox_QuinnCal'
+
+    def test_processor_entry_model_is_o3(self):
+        assert cal_processors.VOZBox_QuinnCal.entry_model == entry_models.O3
+
+    def test_processor_next_stage_is_calibrated(self):
+        assert cal_processors.VOZBox_QuinnCal.next_stage == entry_models.O3.Stage.CALIBRATED
+
+    def test_is_the_default_calibration_for_vozbox_o3(self):
+        from camp.apps.calibrations.utils import get_default_calibration
+        assert get_default_calibration(VOZBox, entry_models.O3) == 'VOZBox_QuinnCal'
 
 
 class BinRowsTests(TestCase):
@@ -534,11 +567,12 @@ class ImportVozboxCalTests(TestCase):
         out = StringIO()
         call_command('import_vozbox_cal', stdout=out)
 
-        assert entry_models.O3.objects.filter(
+        entry = entry_models.O3.objects.get(
             monitor=self.monitor,
             stage=entry_models.O3.Stage.CALIBRATED,
             sensor='1',
-        ).exists()
+        )
+        assert entry.processor == 'VOZBox_QuinnCal'
 
     @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
     def test_skips_unknown_coreids(self, MockClient):

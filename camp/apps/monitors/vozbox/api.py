@@ -20,13 +20,6 @@ class VozBoxClient:
     CAL_FOLDER = 'moospmV3_cal'
     CAL_PREFIX = 'moospmV3_cal'
 
-    # moospmV3_daily only gets written once a day (it's a rollup, not a
-    # live feed) -- this folder is the actual hourly, near-real-time
-    # source. Same schema and per-hour naming as CAL_FOLDER, just under
-    # the base prefix.
-    REALTIME_FOLDER = 'moospmV3'
-    REALTIME_PREFIX = 'moospmV3'
-
     def __init__(self):
         self._tmpdir = None
         self._session = None
@@ -63,9 +56,6 @@ class VozBoxClient:
 
     def cal_filename(self, d: date, hour_utc: int) -> str:
         return f'{self.CAL_PREFIX}_{d.strftime("%Y-%m-%d")}T{hour_utc:02d}.csv'
-
-    def realtime_filename(self, d: date, hour_utc: int) -> str:
-        return f'{self.REALTIME_PREFIX}_{d.strftime("%Y-%m-%d")}T{hour_utc:02d}.csv'
 
     def download_csv(self, url: str) -> Optional[Path]:
         if self._tmpdir is None:
@@ -136,13 +126,6 @@ class VozBoxClient:
 
     def get_cal_data(self, d: date, hour_utc: int) -> Optional[dict]:
         url = self._raw_url(self.CAL_FOLDER, self.cal_filename(d, hour_utc))
-        path = self.download_csv(url)
-        if path is None:
-            return None
-        return self.parse_csv(path)
-
-    def get_realtime_data(self, d: date, hour_utc: int) -> Optional[dict]:
-        url = self._raw_url(self.REALTIME_FOLDER, self.realtime_filename(d, hour_utc))
         path = self.download_csv(url)
         if path is None:
             return None
