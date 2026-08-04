@@ -11,6 +11,7 @@ from camp.apps.entries.models import PM25, Temperature
 from camp.apps.monitors.airnow.models import AirNow
 from camp.apps.monitors.aqview.models import AQview
 from camp.apps.monitors.cimis.models import CIMIS
+from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.monitors.health_checks import (
     AirGradientHealthCheck,
     AirNowHealthCheck,
@@ -117,6 +118,31 @@ class MonitorHealthCheckTests(TestCase):
         check = AQviewHealthCheck()
         check.run()
 
+    def test_vozbox_tolerates_normal_hourly_batch_latency(self):
+        """
+        Regression test: upstream's hourly batching means a reading can
+        be up to ~65 min old before it's even available. A monitor
+        stale by 70 min -- normal, expected latency -- must not trip
+        the health check under the 2h override, even though it would
+        have failed under the computed 3x default (30 min).
+        """
+        monitor = VOZBox.objects.create(
+            sensor_id='e00fce68testlatency',
+            name='Test VOZbox',
+            position=Point(-119.8, 36.7),
+            location='outside',
+        )
+        monitor.create_entry(
+            PM25,
+            stage=PM25.Stage.CLEANED,
+            sensor='a',
+            timestamp=timezone.now() - timedelta(minutes=70),
+            value=10,
+        )
+
+        check = VOZBoxHealthCheck()
+        check.run()  # within the 2h override -- should not raise
+
 
 class CIMISHealthCheckTests(TestCase):
     def test_raises_when_no_monitors_configured(self):
@@ -179,8 +205,11 @@ class HealthCheckLimitTests(TestCase):
         check = AQLiteHealthCheck()
         assert check.limit == timedelta(minutes=15)
 
-    def test_vozbox_computed_limit_exceeds_the_floor_unaffected(self):
-        # VOZBox's EXPECTED_INTERVAL is 10 min; 3x (30 min) is above the
-        # floor, so the floor shouldn't clip it.
+    def test_vozbox_overrides_the_computed_default(self):
+        # VOZBox's EXPECTED_INTERVAL (10 min) reflects the true per-row
+        # device cadence and stays that way for QA/alerts/training, but
+        # upstream only publishes in hourly batches with up to ~65 min
+        # of latency -- so the health check needs a wider, explicit
+        # limit rather than the computed 3x default (30 min).
         check = VOZBoxHealthCheck()
-        assert check.limit == timedelta(minutes=30)
+        assert check.limit == timedelta(hours=2)

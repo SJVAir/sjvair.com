@@ -10,7 +10,20 @@ from camp.apps.monitors.models import Monitor
 class VOZBox(Monitor):
     DATA_PROVIDERS = [{'name': 'CCEJN', 'url': 'https://ccejn.org/'}]
     DATA_SOURCE = {'name': 'VOZbox', 'url': 'https://ccejn.org/'}
+
+    # Devices genuinely report every 10 min -- this stays accurate for
+    # expected_hourly_entries (QA completeness), alert window sizing, and
+    # calibration training, which all need the true per-row cadence, not
+    # how often we can actually fetch new data (see LAST_ACTIVE_LIMIT).
     EXPECTED_INTERVAL = '10 min'
+
+    # Upstream (QuinnResearch's GitHub repo) only publishes once per hour,
+    # ~5 min after the hour closes, and the published file is dated for
+    # the *previous* hour's readings -- so a reading taken at :00 isn't
+    # visible to us until ~65 min later. 1h (the base default) is too
+    # tight and would flap "active" status on totally normal devices.
+    LAST_ACTIVE_LIMIT = int(60 * 60 * 1.5)
+
     GRADE = Monitor.Grade.LCS
 
     ENTRY_CONFIG = {

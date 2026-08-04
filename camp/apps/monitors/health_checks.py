@@ -145,3 +145,10 @@ class PurpleAirHealthCheck(MonitorHealthCheck):
 class VOZBoxHealthCheck(MonitorHealthCheck):
     network: str = dataclasses.field(default='VOZbox', repr=False)
     model: type = dataclasses.field(default=VOZBox, repr=False)
+
+    # Override: upstream only publishes once an hour (~5 min after each
+    # hour closes, dated for the *previous* hour), so a reading can be
+    # up to ~65 min old before it's even available to us. 3x
+    # EXPECTED_INTERVAL (10 min) would be 30 min, which would page on
+    # totally normal hourly batching, not an actual outage.
+    limit: timedelta = dataclasses.field(default_factory=lambda: timedelta(hours=2), repr=False)
