@@ -104,13 +104,52 @@ class BaseProcessor(ABC, metaclass=ProcessorMeta):
 
     def run(self, commit=True):
         '''
-        Runs the processor and returns the new entry, or None if no value is produced.
+        Runs the processor and returns the resulting entry, or None if no
+        value is produced.
+
+        If a matching entry already exists (same monitor/timestamp/sensor/
+        stage/processor), this behaves as an upsert: the existing entry's
+        computed fields are updated in place to the freshly computed values
+        when they differ, rather than just returning the stale row
+        unchanged. This makes re-running the pipeline self-healing after a
+        data correction or a calibration/algorithm change, not merely a
+        resume mechanism — and the same (existing) row is returned either
+        way, so process_entry_pipeline's recursion continues correctly
+        downstream regardless of whether anything actually changed.
         '''
         if not self.is_valid():
             return
 
         processed = self.process()
-        if processed is not None and processed.validation_check():
+        if processed is None:
+            return
+
+        if processed.validation_check():
             if commit:
                 processed.save()
             return processed
+
+        existing = processed.__class__.objects.filter(
+            monitor_id=processed.monitor_id,
+            timestamp=processed.timestamp,
+            sensor=processed.sensor,
+            stage=processed.stage,
+            processor=processed.processor,
+        ).first()
+
+        if existing is None:
+            # Rare race: validation_check() saw a conflict that's since gone.
+            return None
+
+        sync_fields = [*processed.declared_field_names, 'calibration_id']
+        changed_fields = [
+            field for field in sync_fields
+            if getattr(existing, field) != getattr(processed, field)
+        ]
+
+        if changed_fields and commit:
+            for field in changed_fields:
+                setattr(existing, field, getattr(processed, field))
+            existing.save()
+
+        return existing

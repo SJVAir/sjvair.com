@@ -19,6 +19,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from django_smalluuid.models import SmallUUIDField, uuid_default
+from django_sqids import SqidsField, shuffle_alphabet
 from model_utils import Choices, FieldTracker
 from model_utils.models import TimeStampedModel
 from phonenumber_field.modelfields import PhoneNumberField
@@ -606,45 +607,6 @@ class Monitor(models.Model):
         if entry.sensor == self.default_sensor and is_latest:
             self.latest = entry
 
-    def get_entry_migration_status(self, min_date=None) -> str:
-        # Normalize min_date to aware datetime if provided
-        if min_date:
-            if isinstance(min_date, date) and not isinstance(min_date, datetime):
-                min_date = datetime.combine(min_date, datetime.min.time())
-            min_date = timezone.make_aware(min_date)
-
-        legacy_qs = self.entries.all()
-
-        # No legacy data at all
-        if not legacy_qs.exists():
-            return 'ok'
-
-        # No legacy data in the requested window → nothing to migrate
-        if min_date and not legacy_qs.filter(timestamp__gte=min_date).exists():
-            return 'ok'
-
-        # First legacy timestamp in the window
-        legacy_ts = (
-            legacy_qs.filter(timestamp__gte=min_date).earliest('timestamp').timestamp
-            if min_date
-            else legacy_qs.earliest('timestamp').timestamp
-        )
-
-        pm25_qs = self.pm25_entries.all()
-
-        # No PM25 data at all
-        if not pm25_qs.exists():
-            return 'needs_full_migration'
-
-        pm25_ts = pm25_qs.earliest('timestamp').timestamp
-
-        # PM25 starts after legacy in the window
-        if pm25_ts > legacy_ts:
-            return 'needs_backfill'
-
-        return 'ok'
-
-
 
 class LCSMixin(Monitor):
     sensor_id = models.IntegerField(unique=True)
@@ -821,3 +783,75 @@ class Entry(models.Model):
             self.celsius = (Decimal(self.fahrenheit) - 32) * (Decimal(5) / Decimal(9))
 
         return super().save(*args, **kwargs)
+
+
+class EntryBackfillJob(TimeStampedModel):
+    '''
+    Tracks progress of the legacy Entry -> entries app RAW-stage backfill.
+    See docs/superpowers/specs/2026-07-28-legacy-entries-backfill-design.md.
+    '''
+    class State(models.TextChoices):
+        RUNNING = 'running', _('Running')
+        PAUSED = 'paused', _('Paused')
+        DONE = 'done', _('Done')
+        FAILED = 'failed', _('Failed')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('monitors.EntryBackfillJob'))
+
+    state = models.CharField(_('state'), max_length=10, choices=State.choices, default=State.RUNNING)
+
+    cursor = models.DateTimeField(_('cursor'))
+    chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
+    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=1)
+    range_start = models.DateTimeField(_('range start'))
+    range_end = models.DateTimeField(_('range end'))
+
+    pending_tasks = models.PositiveIntegerField(_('pending tasks'), default=0)
+    batch_id = models.PositiveIntegerField(_('batch id'), default=0)
+    phase_started_at = models.DateTimeField(_('phase started at'), null=True, blank=True)
+    locked_at = models.DateTimeField(_('locked at'), null=True, blank=True)
+
+    consecutive_failures = models.PositiveSmallIntegerField(_('consecutive failures'), default=0)
+    last_error = models.TextField(_('last error'), blank=True, default='')
+
+    raw_entries_created = models.PositiveIntegerField(_('raw entries created'), default=0)
+
+    def __str__(self):
+        return f'{self.state} @ {self.cursor:%Y-%m-%d}'
+
+
+class PipelineBackfillJob(TimeStampedModel):
+    '''
+    Tracks progress of driving historical RAW entries through the
+    correction/cleaning/calibration pipeline. Independent from
+    EntryBackfillJob — can run anytime, safe to re-run.
+    See docs/superpowers/specs/2026-07-28-legacy-entries-backfill-design.md.
+    '''
+    class State(models.TextChoices):
+        RUNNING = 'running', _('Running')
+        PAUSED = 'paused', _('Paused')
+        DONE = 'done', _('Done')
+        FAILED = 'failed', _('Failed')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('monitors.PipelineBackfillJob'))
+
+    state = models.CharField(_('state'), max_length=10, choices=State.choices, default=State.RUNNING)
+
+    cursor = models.DateTimeField(_('cursor'))
+    chunk_start = models.DateTimeField(_('chunk start'), null=True, blank=True)
+    chunk_days = models.PositiveSmallIntegerField(_('chunk days'), default=1)
+    range_start = models.DateTimeField(_('range start'))
+    range_end = models.DateTimeField(_('range end'))
+
+    pending_tasks = models.PositiveIntegerField(_('pending tasks'), default=0)
+    batch_id = models.PositiveIntegerField(_('batch id'), default=0)
+    phase_started_at = models.DateTimeField(_('phase started at'), null=True, blank=True)
+    locked_at = models.DateTimeField(_('locked at'), null=True, blank=True)
+
+    consecutive_failures = models.PositiveSmallIntegerField(_('consecutive failures'), default=0)
+    last_error = models.TextField(_('last error'), blank=True, default='')
+
+    entries_processed = models.PositiveIntegerField(_('entries processed'), default=0)
+
+    def __str__(self):
+        return f'{self.state} @ {self.cursor:%Y-%m-%d}'

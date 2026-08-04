@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from camp.apps.calibrations import processors
+from camp.apps.calibrations.core.processors.base import BaseProcessor
 from camp.apps.calibrations.utils import calibration_model_upload_to
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.bam.models import BAM1022
@@ -265,3 +266,83 @@ class ProcessorTests(TestCase):
         assert cleaned is not None
         assert cleaned.value == entry.value
         assert cleaned.stage == entry_models.PM25.Stage.CLEANED
+
+
+class _AlwaysDuplicateProcessor(BaseProcessor):
+    '''Minimal stand-in processor: process() returns a clone that will always
+    collide with an existing entry, to exercise the "already exists" path of
+    BaseProcessor.run() without depending on a specific real processor's math.
+    '''
+    entry_model = entry_models.PM25
+    required_stage = entry_models.PM25.Stage.RAW
+    next_stage = entry_models.PM25.Stage.CORRECTED
+    required_context = []
+
+    def process(self):
+        return self.build_entry(value=self.entry.value)
+
+
+class BaseProcessorRunIdempotencyTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.first()
+        self.raw = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp='2023-01-01T00:00:00Z',
+            location=self.monitor.location, stage=entry_models.PM25.Stage.RAW,
+            processor='', value=Decimal('10.00'),
+        )
+        self.existing_corrected = entry_models.PM25.objects.create(
+            monitor=self.monitor, sensor='a', timestamp=self.raw.timestamp,
+            location=self.monitor.location, stage=entry_models.PM25.Stage.CORRECTED,
+            processor='_AlwaysDuplicateProcessor', value=Decimal('10.00'), origin=self.raw,
+        )
+
+    def test_run_returns_existing_entry_instead_of_none(self):
+        processor = _AlwaysDuplicateProcessor(self.raw)
+        result = processor.run()
+        assert result is not None
+        assert result.pk == self.existing_corrected.pk
+
+    def test_run_does_not_create_a_duplicate(self):
+        processor = _AlwaysDuplicateProcessor(self.raw)
+        processor.run()
+        count = entry_models.PM25.objects.filter(
+            monitor=self.monitor, timestamp=self.raw.timestamp,
+            sensor='a', stage=entry_models.PM25.Stage.CORRECTED,
+        ).count()
+        assert count == 1
+
+    def test_run_updates_existing_entry_in_place_when_value_differs(self):
+        # Simulate a data correction or algorithm change: the RAW value (and
+        # therefore what the processor computes) is now different from what
+        # the existing CORRECTED row was saved with.
+        self.raw.value = Decimal('25.00')
+        self.raw.save()
+
+        processor = _AlwaysDuplicateProcessor(self.raw)
+        result = processor.run()
+
+        assert result.pk == self.existing_corrected.pk
+        assert result.value == Decimal('25.00')
+
+        self.existing_corrected.refresh_from_db()
+        assert self.existing_corrected.value == Decimal('25.00')
+
+        # Still exactly one row — an upsert, not a new duplicate.
+        count = entry_models.PM25.objects.filter(
+            monitor=self.monitor, timestamp=self.raw.timestamp,
+            sensor='a', stage=entry_models.PM25.Stage.CORRECTED,
+        ).count()
+        assert count == 1
+
+    def test_run_still_creates_when_nothing_exists(self):
+        self.existing_corrected.delete()
+        processor = _AlwaysDuplicateProcessor(self.raw)
+        result = processor.run()
+        assert result is not None
+        assert result.pk is not None
+        assert entry_models.PM25.objects.filter(
+            monitor=self.monitor, timestamp=self.raw.timestamp,
+            sensor='a', stage=entry_models.PM25.Stage.CORRECTED,
+        ).count() == 1
