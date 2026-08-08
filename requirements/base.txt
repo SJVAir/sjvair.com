@@ -26,7 +26,7 @@ django-vanilla-views==3.0.0
 django-widget-tweaks==1.5.1
 
 asciichartpy==1.5.25
-awscli==1.45.24
+awscli==1.45.28
 argon2-cffi==25.1.0
 boto3==1.43.24
 ckanapi==4.11
