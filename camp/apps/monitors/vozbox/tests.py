@@ -18,7 +18,7 @@ from camp.apps.calibrations import processors as cal_processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.vozbox.api import VozBoxClient
 from camp.apps.monitors.vozbox.models import VOZBox
-from camp.apps.monitors.vozbox.tasks import process_device, import_realtime, _bin_rows
+from camp.apps.monitors.vozbox.tasks import process_device, import_realtime, import_cal_range, _bin_rows
 
 
 DAILY_CSV = """\
@@ -384,7 +384,7 @@ class ProcessDeviceTests(TestCase):
     def test_process_device_skips_calibrated_o3_when_o3_cal_negative(self):
         coreid = 'e00fce68f12da1a0c5de6248'
         rows = self._make_rows(coreid, count=1)
-        rows[0]['o3_cal'] = -999.0   # sentinel for invalid calibration, same as import_vozbox_cal
+        rows[0]['o3_cal'] = -999.0   # sentinel for invalid calibration
         process_device(coreid, rows)
         monitor = VOZBox.objects.get(sensor_id=coreid)
         assert not entry_models.O3.objects.filter(monitor=monitor, stage=entry_models.O3.Stage.CALIBRATED).exists()
@@ -534,7 +534,13 @@ class BinRowsTests(TestCase):
         assert _bin_rows([]) == []
 
 
-class ImportVozboxCalTests(TestCase):
+class ImportCalRangeTests(TestCase):
+    """
+    import_vozbox_cal was removed -- import_vozbox_history now covers
+    both raw and calibrated data in one idempotent pass. These test the
+    shared import_cal_range() function directly instead of a command.
+    """
+
     def setUp(self):
         self.monitor = VOZBox.objects.create(
             sensor_id='e00fce682bbf742cd0b6768a',
@@ -558,14 +564,12 @@ class ImportVozboxCalTests(TestCase):
             }],
         }
 
-    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
-    def test_creates_calibrated_o3_entry(self, MockClient):
-        instance = MockClient.return_value.__enter__.return_value
-        instance.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
-        instance.get_cal_data.return_value = self._cal_rows()
+    def test_creates_calibrated_o3_entry(self):
+        client = MagicMock()
+        client.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
+        client.get_cal_data.return_value = self._cal_rows()
 
-        out = StringIO()
-        call_command('import_vozbox_cal', stdout=out)
+        import_cal_range(client)
 
         entry = entry_models.O3.objects.get(
             monitor=self.monitor,
@@ -574,63 +578,77 @@ class ImportVozboxCalTests(TestCase):
         )
         assert entry.processor == 'VOZBox_QuinnCal'
 
-    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
-    def test_skips_unknown_coreids(self, MockClient):
+    def test_skips_unknown_coreids(self):
         rows = self._cal_rows()
         rows['unknown_coreid_xyz'] = rows['e00fce682bbf742cd0b6768a']
-        instance = MockClient.return_value.__enter__.return_value
-        instance.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
-        instance.get_cal_data.return_value = rows
+        client = MagicMock()
+        client.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
+        client.get_cal_data.return_value = rows
 
-        out = StringIO()
-        call_command('import_vozbox_cal', stdout=out)
+        messages = []
+        import_cal_range(client, log=messages.append)
 
-        assert 'unknown_coreid_xyz' in out.getvalue()
+        assert any('unknown_coreid_xyz' in m for m in messages)
 
-    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
-    def test_date_range_filter(self, MockClient):
-        instance = MockClient.return_value.__enter__.return_value
-        instance.list_cal_files.return_value = [
+    def test_date_range_filter(self):
+        client = MagicMock()
+        client.list_cal_files.return_value = [
             (date(2025, 6, 19), 12),
             (date(2025, 6, 20), 15),
             (date(2025, 6, 21), 8),
         ]
-        instance.get_cal_data.return_value = {}
+        client.get_cal_data.return_value = {}
 
-        call_command('import_vozbox_cal', start='2025-06-20', end='2025-06-20')
+        import_cal_range(client, start=date(2025, 6, 20), end=date(2025, 6, 20))
 
-        assert instance.get_cal_data.call_count == 1
-        instance.get_cal_data.assert_called_once_with(date(2025, 6, 20), 15)
+        assert client.get_cal_data.call_count == 1
+        client.get_cal_data.assert_called_once_with(date(2025, 6, 20), 15)
 
-    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
-    def test_skips_row_when_o3_cal_is_negative(self, MockClient):
+    def test_skips_row_when_o3_cal_is_negative(self):
         rows = self._cal_rows()
         rows['e00fce682bbf742cd0b6768a'][0]['o3_cal'] = -999.0
-        instance = MockClient.return_value.__enter__.return_value
-        instance.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
-        instance.get_cal_data.return_value = rows
+        client = MagicMock()
+        client.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
+        client.get_cal_data.return_value = rows
 
-        call_command('import_vozbox_cal')
+        import_cal_range(client)
 
         assert not entry_models.O3.objects.filter(
             monitor=self.monitor,
             stage=entry_models.O3.Stage.CALIBRATED,
         ).exists()
 
-    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_cal.VozBoxClient')
-    def test_skips_row_when_o3_cal_is_none(self, MockClient):
+    def test_skips_row_when_o3_cal_is_none(self):
         rows = self._cal_rows()
         rows['e00fce682bbf742cd0b6768a'][0]['o3_cal'] = None
-        instance = MockClient.return_value.__enter__.return_value
-        instance.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
-        instance.get_cal_data.return_value = rows
+        client = MagicMock()
+        client.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
+        client.get_cal_data.return_value = rows
 
-        call_command('import_vozbox_cal')
+        import_cal_range(client)
 
         assert not entry_models.O3.objects.filter(
             monitor=self.monitor,
             stage=entry_models.O3.Stage.CALIBRATED,
         ).exists()
+
+    def test_rerun_updates_changed_value(self):
+        client = MagicMock()
+        client.list_cal_files.return_value = [(date(2025, 6, 20), 15)]
+        client.get_cal_data.return_value = self._cal_rows()
+        import_cal_range(client)
+
+        updated_rows = self._cal_rows()
+        updated_rows['e00fce682bbf742cd0b6768a'][0]['o3_cal'] = 30.0
+        client.get_cal_data.return_value = updated_rows
+        import_cal_range(client)
+
+        entries = entry_models.O3.objects.filter(
+            monitor=self.monitor,
+            stage=entry_models.O3.Stage.CALIBRATED,
+        )
+        assert entries.count() == 1
+        assert round(entries.first().value, 1) == 30.0
 
 
 class ImportVozboxHistoryTests(TestCase):
@@ -702,6 +720,61 @@ class ImportVozboxHistoryTests(TestCase):
         assert pm25_count == 1
 
     @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
+    def test_rerun_updates_changed_raw_value(self, MockClient):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_daily_files.return_value = [date(2025, 6, 9)]
+        instance.get_daily_data.return_value = self._daily_rows(coreid)
+
+        call_command('import_vozbox_history')
+
+        updated_rows = self._daily_rows(coreid)
+        updated_rows[coreid][0]['pm25_a'] = 99.0
+        instance.get_daily_data.return_value = updated_rows
+
+        call_command('import_vozbox_history')
+
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        entries = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw')
+        assert entries.count() == 1
+        assert round(entries.first().value, 1) == 99.0
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
     def test_invalid_date_raises_command_error(self, MockClient):
         with pytest.raises(CommandError):
             call_command('import_vozbox_history', start='not-a-date')
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
+    def test_also_backfills_calibrated_o3(self, MockClient):
+        coreid = 'e00fce68f12da1a0c5de6248'
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_daily_files.return_value = [date(2025, 6, 9)]
+        instance.get_daily_data.return_value = self._daily_rows(coreid)
+        instance.list_cal_files.return_value = [(date(2025, 6, 9), 0)]
+        instance.get_cal_data.return_value = {
+            coreid: [{
+                'timestamp': datetime(2025, 6, 9, 0, 0, 0, tzinfo=timezone.utc),
+                'o3_cal': 23.127,
+            }],
+        }
+
+        call_command('import_vozbox_history')
+
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        entry = entry_models.O3.objects.get(monitor=monitor, stage=entry_models.O3.Stage.CALIBRATED)
+        assert entry.processor == 'VOZBox_QuinnCal'
+
+    @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
+    def test_calibrated_o3_backfill_respects_date_range(self, MockClient):
+        instance = MockClient.return_value.__enter__.return_value
+        instance.list_daily_files.return_value = []
+        instance.list_cal_files.return_value = [
+            (date(2025, 6, 8), 0),
+            (date(2025, 6, 9), 0),
+            (date(2025, 6, 10), 0),
+        ]
+        instance.get_cal_data.return_value = {}
+
+        call_command('import_vozbox_history', start='2025-06-09', end='2025-06-09')
+
+        instance.get_cal_data.assert_called_once_with(date(2025, 6, 9), 0)

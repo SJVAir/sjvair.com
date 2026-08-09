@@ -192,6 +192,68 @@ class MonitorTests(TestCase):
         assert results == []
 
 
+class CreateEntryUpsertTests(TestCase):
+    """
+    create_entry() upserts unconditionally on a duplicate key -- no
+    opt-in flag. A no-op case costs one extra lookup query; there's no
+    integration where silently discarding a changed value is desired
+    (see the survey behind this decision: forward-only-cursor
+    integrations rarely hit duplicates at all, and CIMIS/VOZBox actively
+    need corrections applied).
+    """
+    fixtures = ['purple-air.yaml']
+
+    def get_purpleair(self):
+        return PurpleAir.objects.get(sensor_id=8892)
+
+    def test_creates_when_missing(self):
+        monitor = self.get_purpleair()
+        entry = monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW,
+            value=Decimal('12.0'),
+        )
+        assert entry is not None
+        assert entry.value == Decimal('12.0')
+
+    def test_updates_changed_value_on_existing_entry(self):
+        monitor = self.get_purpleair()
+        original = monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW,
+            value=Decimal('12.0'),
+        )
+
+        updated = monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW,
+            value=Decimal('99.0'),
+        )
+
+        assert updated is not None
+        assert updated.pk == original.pk
+        assert entry_models.PM25.objects.filter(monitor=monitor).count() == 1
+        original.refresh_from_db()
+        assert original.value == Decimal('99.0')
+
+    def test_returns_none_when_existing_value_unchanged(self):
+        monitor = self.get_purpleair()
+        monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW,
+            value=Decimal('12.0'),
+        )
+
+        result = monitor.create_entry(
+            entry_models.PM25, timestamp='2025-04-27T00:00:00Z',
+            sensor='a', stage=entry_models.PM25.Stage.RAW,
+            value=Decimal('12.0'),
+        )
+
+        assert result is None
+        assert entry_models.PM25.objects.filter(monitor=monitor).count() == 1
+
+
 class MonitorSaveCountyLookupTests(TestCase):
     fixtures = ['purple-air.yaml']
 

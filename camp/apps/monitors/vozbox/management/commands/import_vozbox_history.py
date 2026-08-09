@@ -4,11 +4,15 @@ from django.core.management.base import BaseCommand, CommandError
 
 from camp.apps.monitors.vozbox.api import VozBoxClient
 from camp.apps.monitors.vozbox.models import VOZBox
-from camp.apps.monitors.vozbox.tasks import _bin_rows
+from camp.apps.monitors.vozbox.tasks import _bin_rows, import_cal_range
 
 
 class Command(BaseCommand):
-    help = 'Backfill raw VOZbox sensor data (PM, temp/humidity, raw O3) from moospmV3_daily CSVs on GitHub'
+    help = (
+        'Backfill VOZbox sensor data (PM, temp/humidity, raw and calibrated O3) '
+        'from moospmV3_daily and moospmV3_cal CSVs on GitHub. Idempotent: creates '
+        'entries where none exist, updates the value of existing entries that changed.'
+    )
 
     def add_arguments(self, parser):
         parser.add_argument('--start', type=str, default=None, help='Start date YYYY-MM-DD (inclusive)')
@@ -43,15 +47,22 @@ class Command(BaseCommand):
 
                     monitor, _created = VOZBox.objects.get_or_create(sensor_id=coreid)
 
-                    entries_created = 0
+                    entries_touched = 0
                     for row in rows:
                         entries = monitor.create_entries(row)
                         for entry in entries:
                             monitor.process_entry_pipeline(entry)
-                            entries_created += 1
+                            entries_touched += 1
 
                     latest_row = max(rows, key=lambda r: r['timestamp'])
                     monitor.update_data(latest_row)
                     monitor.save()
 
-                    self.stdout.write(f'  {coreid}: {entries_created} entries')
+                    self.stdout.write(f'  {coreid}: {entries_touched} entries created/updated')
+
+            # No daily rollup exists for calibrated data -- only per-hour
+            # files -- so this is a separate hourly pass over the same
+            # date range, run after the raw backfill so monitors already
+            # exist for it to attach entries to.
+            self.stdout.write('Backfilling calibrated O3...')
+            import_cal_range(client, start, end, log=self.stdout.write)

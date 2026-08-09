@@ -26,6 +26,54 @@ def _bin_rows(rows, interval_minutes=10):
     return list(buckets.values())
 
 
+def _create_calibrated_o3(monitor, row):
+    """Create a CALIBRATED O3 entry from QuinnResearch's own o3_cal value, if present and valid."""
+    o3_cal = row.get('o3_cal')
+    if o3_cal is None or o3_cal < 0:
+        return None
+    return monitor.create_entry(
+        entry_models.O3,
+        timestamp=row['timestamp'],
+        sensor='1',
+        stage=entry_models.O3.Stage.CALIBRATED,
+        processor=processors.VOZBox_QuinnCal.name,
+        value=o3_cal,
+    )
+
+
+def import_cal_range(client, start=None, end=None, log=None):
+    """
+    Backfill calibrated O3 (o3_cal) from moospmV3_cal for the given date
+    range (inclusive on both ends; None means unbounded). There's no
+    daily rollup for calibrated data -- only per-hour files -- so this
+    always fetches hour by hour. Used by import_vozbox_history.
+    """
+    log = log or (lambda msg: None)
+    cal_files = client.list_cal_files()
+
+    for cal_date, hour_utc in sorted(cal_files):
+        if start and cal_date < start:
+            continue
+        if end and cal_date > end:
+            continue
+
+        data = client.get_cal_data(cal_date, hour_utc)
+        if not data:
+            continue
+
+        log(f'Processing {cal_date} T{hour_utc:02d}...')
+
+        for coreid, rows in data.items():
+            try:
+                monitor = VOZBox.objects.get(sensor_id=coreid)
+            except VOZBox.DoesNotExist:
+                log(f'  Skipping unknown coreid: {coreid}')
+                continue
+
+            for row in rows:
+                _create_calibrated_o3(monitor, row)
+
+
 @db_periodic_task(crontab(minute='*/10'), priority=50)
 def import_realtime():
     start = timezone.now()
@@ -82,16 +130,7 @@ def process_device(coreid, rows):
         for entry in entries:
             monitor.process_entry_pipeline(entry)
 
-        o3_cal = row.get('o3_cal')
-        if o3_cal is not None and o3_cal >= 0:
-            monitor.create_entry(
-                entry_models.O3,
-                timestamp=row['timestamp'],
-                sensor='1',
-                stage=entry_models.O3.Stage.CALIBRATED,
-                processor=processors.VOZBox_QuinnCal.name,
-                value=o3_cal,
-            )
+        _create_calibrated_o3(monitor, row)
 
     latest_row = max(rows, key=lambda r: r['timestamp'])
     monitor.update_data(latest_row)

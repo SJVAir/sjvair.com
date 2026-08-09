@@ -396,6 +396,39 @@ class Monitor(models.Model):
                 self.update_latest_entry(entry)
             return entry
 
+        if save:
+            # An entry with this (monitor, timestamp, sensor, stage,
+            # processor) already exists. Upsert: if upstream (or a
+            # reprocessing pass) produced a different value for it,
+            # update in place rather than silently discarding the
+            # correction. These are exactly the fields used in the
+            # lookup, so they're guaranteed equal by construction --
+            # comparing them against raw caller-supplied data (e.g. a
+            # string timestamp) would spuriously look "changed" against
+            # the DB-typed value on `existing`. Only compare the
+            # remaining value fields.
+            lookup_fields = {'timestamp', 'sensor', 'stage', 'processor'}
+            existing = EntryModel.objects.get(
+                monitor_id=self.pk,
+                timestamp=entry.timestamp,
+                sensor=entry.sensor,
+                stage=entry.stage,
+                processor=entry.processor,
+            )
+            changed = False
+            for key, value in data.items():
+                if key in lookup_fields:
+                    continue
+                if getattr(existing, key) != value:
+                    setattr(existing, key, value)
+                    changed = True
+            if changed:
+                existing.save()
+                existing.refresh_from_db()
+                self.update_latest_entry(existing)
+                return existing
+            return None
+
     def process_entries_ng(self, entries):
         processed_entries = []
         for entry in entries:

@@ -100,8 +100,10 @@ def finalize_cimis_data():
     or unfinalized by the time today's calendar date rolls over and
     import_cimis_data stops re-querying them. This re-pulls yesterday's
     full day once, after CIMIS's typical QC window has closed, to catch
-    anything that was missed. Safe to re-run: entries are deduplicated
-    on (monitor, timestamp, sensor, stage, processor).
+    anything that was missed. Safe to re-run: Monitor.create_entry()
+    upserts on (monitor, timestamp, sensor, stage, processor), so a
+    value CIMIS revised during QC gets applied here instead of silently
+    discarded, and an unchanged value is a no-op.
     """
     yesterday = timezone.localtime(timezone.now()).date() - timedelta(days=1)
     _ingest_cimis_data(yesterday)

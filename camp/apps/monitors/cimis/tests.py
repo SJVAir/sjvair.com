@@ -464,6 +464,44 @@ class FinalizeCimisDataTests(TestCase):
         entries = entry_models.Temperature.objects.filter(monitor=monitor)
         assert entries.count() == 1
 
+    @patch('camp.apps.monitors.cimis.tasks.CIMISAPI')
+    def test_rerun_applies_a_qc_revised_value(self, MockAPI):
+        # This is the whole point of finalize_cimis_data: re-pulling
+        # yesterday after CIMIS's QC window closes should actually apply
+        # a value CIMIS revised, not silently discard it as a duplicate.
+        monitor = CIMIS.objects.create(
+            name='Station A',
+            station_number='2',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=CIMIS.LOCATION.outside,
+        )
+        yesterday = timezone.localtime(timezone.now()).date() - timedelta(days=1)
+
+        def record(value):
+            return {
+                'Date': yesterday.strftime('%Y-%m-%d'),
+                'Hour': '2400',
+                'Station': '2',
+                'HlyAirTmp': {'Value': value, 'Qc': ' ', 'Unit': '(F)'},
+            }
+
+        mock_instance = MockAPI.return_value
+        mock_instance.get_hourly_data.return_value = [{'Records': [record('88.1')]}]
+
+        from camp.apps.monitors.cimis.tasks import finalize_cimis_data
+        finalize_cimis_data()
+
+        from camp.apps.entries import models as entry_models
+        entries = entry_models.Temperature.objects.filter(monitor=monitor)
+        original_value = entries.get().value
+
+        mock_instance.get_hourly_data.return_value = [{'Records': [record('91.4')]}]
+        finalize_cimis_data()
+
+        entries = entry_models.Temperature.objects.filter(monitor=monitor)
+        assert entries.count() == 1
+        assert entries.get().value != original_value
+
 
 class ImportCimisHistoryTests(TestCase):
     def test_no_op_when_no_monitors_exist(self):
