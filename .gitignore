@@ -115,3 +115,6 @@ node_modules/
 public/
 .DS_Store
 .worktrees
+
+# Local, uncommitted Claude Code notes
+CLAUDE.local.md
