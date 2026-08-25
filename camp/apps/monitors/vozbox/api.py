@@ -23,6 +23,7 @@ class VozBoxClient:
     def __init__(self):
         self._tmpdir = None
         self._session = None
+        self._root_tree_cache = None
 
     def __enter__(self):
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -50,6 +51,9 @@ class VozBoxClient:
 
     def _api_url(self, path):
         return f'{self.GITHUB_API}/repos/{self.OWNER}/{self.REPO}/contents/{path}'
+
+    def _trees_url(self, sha):
+        return f'{self.GITHUB_API}/repos/{self.OWNER}/{self.REPO}/git/trees/{sha}'
 
     def daily_filename(self, d: date) -> str:
         return f'{self.DAILY_PREFIX}_{d.strftime("%Y-%m-%d")}.csv'
@@ -131,13 +135,45 @@ class VozBoxClient:
             return None
         return self.parse_csv(path)
 
-    def list_daily_files(self) -> list:
-        url = self._api_url(self.DAILY_FOLDER)
-        response = self.session.get(url)
+    def _folder_sha(self, folder: str) -> Optional[str]:
+        # The contents API (used below for individual file downloads) also
+        # supports listing a directory, but silently caps out at 1000
+        # entries with no pagination -- both moospmV3_daily and
+        # moospmV3_cal blew past that long ago, so it always returns a
+        # stale, incomplete listing (sorted alphabetically, so it's the
+        # *oldest* files that show up, never the newest). The git trees
+        # API scoped to just this folder's tree sha doesn't have that cap.
+        if self._root_tree_cache is None:
+            response = self.session.get(self._trees_url(self.BRANCH))
+            response.raise_for_status()
+            self._root_tree_cache = response.json().get('tree', [])
+
+        for item in self._root_tree_cache:
+            if item.get('path') == folder and item.get('type') == 'tree':
+                return item.get('sha')
+        return None
+
+    def _list_folder_filenames(self, folder: str) -> list:
+        sha = self._folder_sha(folder)
+        if sha is None:
+            return []
+
+        response = self.session.get(self._trees_url(sha))
         response.raise_for_status()
+        data = response.json()
+
+        if data.get('truncated'):
+            raise RuntimeError(
+                f'{folder} tree listing was truncated by the GitHub API -- '
+                'it has grown too large for a single (non-recursive) trees '
+                'request and needs a paginated/incremental listing strategy.'
+            )
+
+        return [item['path'] for item in data.get('tree', []) if item.get('type') == 'blob']
+
+    def list_daily_files(self) -> list:
         results = []
-        for item in response.json():
-            name = item.get('name', '')
+        for name in self._list_folder_filenames(self.DAILY_FOLDER):
             if not (name.startswith(self.DAILY_PREFIX + '_') and name.endswith('.csv')):
                 continue
             try:
@@ -147,12 +183,8 @@ class VozBoxClient:
         return sorted(results)
 
     def list_cal_files(self) -> list:
-        url = self._api_url(self.CAL_FOLDER)
-        response = self.session.get(url)
-        response.raise_for_status()
         results = []
-        for item in response.json():
-            name = item.get('name', '')
+        for name in self._list_folder_filenames(self.CAL_FOLDER):
             if not (name.startswith(self.CAL_PREFIX + '_') and name.endswith('.csv')):
                 continue
             try:
