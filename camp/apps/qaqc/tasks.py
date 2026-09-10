@@ -13,12 +13,12 @@ from camp.apps.monitors.models import Monitor
 HEALTH_CHECK_LOOKBACK_HOURS = 3
 
 
-@db_periodic_task(crontab(hour='*', minute='30'), priority=50)
+@db_periodic_task(crontab(hour='*', minute='40'), priority=50)
 def hourly_health_checks(hour=None):
     """
     Run QA/QC health checks for all PM2.5 monitors with multiple sensors.
 
-    Runs at minute 30 (not right at the hour) because get_for_health_checks()
+    Runs at minute 40 (not right at the hour) because get_for_health_checks()
     only queues a monitor if it already has RAW PM2.5 entries for the target
     hour, and some networks deliver an hour's data well after it closes:
     VOZbox's upstream only publishes a batch ~65 min after each hour closes

@@ -42,7 +42,7 @@ def get_summarizable_entry_models():
 # Hourly summaries run late in the hour (:45/:50) rather than right after it
 # closes, so the previous hour has ~45 min to settle first: late-arriving
 # upstream batches (VOZbox lands ~:10, AirNow/AQView/CIMIS can lag longer)
-# and the hourly health checks (:30, camp/apps/qaqc/tasks.py) that weight
+# and the hourly health checks (:40, camp/apps/qaqc/tasks.py) that weight
 # LCS monitors in the region summaries. The daily and longer rollups start
 # at 01:00 so yesterday's final hour (summarized at 00:45) is in place.
 #
