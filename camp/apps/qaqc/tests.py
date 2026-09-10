@@ -169,3 +169,63 @@ class ChannelSanityTests(TestCase):
             sanity_max_a=True, sanity_flatline_a=True, sanity_completeness_a=True,
         )
         assert hc.channel_a_sanity is True
+
+
+class HourlyHealthChecksTaskTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
+    def setUp(self):
+        self.monitor = PurpleAir.objects.get(sensor_id=8892)
+        self.now = make_aware(datetime(2025, 7, 4, 13, 15, 0))
+        self.this_hour = self.now.replace(minute=0)
+        self.sensor_a, self.sensor_b = self.monitor.ENTRY_CONFIG[PM25]['sensors']
+
+    def create_hour_entries(self, hour):
+        for i in range(6):
+            timestamp = hour + timedelta(minutes=10 * i)
+            for sensor in (self.sensor_a, self.sensor_b):
+                PM25.objects.create(
+                    monitor=self.monitor,
+                    sensor=sensor,
+                    timestamp=timestamp,
+                    value=10.0,
+                    stage=PM25.Stage.RAW,
+                )
+
+    def run_task(self):
+        from camp.apps.qaqc.tasks import hourly_health_checks
+        with patch('camp.apps.qaqc.tasks.timezone.now', return_value=self.now):
+            hourly_health_checks.call_local()
+
+    def test_scores_previous_hour(self):
+        last_hour = self.this_hour - timedelta(hours=1)
+        self.create_hour_entries(last_hour)
+
+        self.run_task()
+
+        assert HealthCheck.objects.filter(monitor=self.monitor, hour=last_hour).exists()
+
+    def test_lookback_scores_late_arriving_hour_once(self):
+        # Hour H-2 had no entries when it was first scored (e.g. a late
+        # upstream publish); the data has since landed, so the next run
+        # should pick it up.
+        late_hour = self.this_hour - timedelta(hours=2)
+        self.create_hour_entries(late_hour)
+
+        self.run_task()
+        assert HealthCheck.objects.filter(monitor=self.monitor, hour=late_hour).count() == 1
+
+        # Already-scored lookback hours are left alone on subsequent runs.
+        with patch('camp.apps.qaqc.tasks.monitor_health_check') as mock_check:
+            with patch('camp.apps.qaqc.tasks.timezone.now', return_value=self.now):
+                from camp.apps.qaqc.tasks import hourly_health_checks
+                hourly_health_checks.call_local()
+        assert mock_check.call_count == 0
+
+    def test_lookback_ignores_hours_beyond_window(self):
+        old_hour = self.this_hour - timedelta(hours=5)
+        self.create_hour_entries(old_hour)
+
+        self.run_task()
+
+        assert not HealthCheck.objects.filter(monitor=self.monitor, hour=old_hour).exists()

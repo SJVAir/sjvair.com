@@ -153,7 +153,7 @@ Region tasks run after their corresponding monitor tasks, querying completed `Mo
 
 | Task | Schedule |
 |---|---|
-| `hourly_region_summaries` | `:15` each hour |
+| `hourly_region_summaries` | `:20` each hour |
 | `daily_region_summaries` | `00:25` each day |
 | `monthly_region_summaries` | `00:40` on 1st of month |
 | (and so on for quarterly, seasonal, yearly) | |

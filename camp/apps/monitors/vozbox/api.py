@@ -23,7 +23,6 @@ class VozBoxClient:
     def __init__(self):
         self._tmpdir = None
         self._session = None
-        self._root_tree_cache = None
 
     def __enter__(self):
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -49,11 +48,8 @@ class VozBoxClient:
     def _raw_url(self, folder, filename):
         return f'{self.RAW_BASE}/{self.OWNER}/{self.REPO}/{self.BRANCH}/{folder}/{filename}'
 
-    def _api_url(self, path):
-        return f'{self.GITHUB_API}/repos/{self.OWNER}/{self.REPO}/contents/{path}'
-
-    def _trees_url(self, sha):
-        return f'{self.GITHUB_API}/repos/{self.OWNER}/{self.REPO}/git/trees/{sha}'
+    def _trees_url(self, tree_ish):
+        return f'{self.GITHUB_API}/repos/{self.OWNER}/{self.REPO}/git/trees/{tree_ish}'
 
     def daily_filename(self, d: date) -> str:
         return f'{self.DAILY_PREFIX}_{d.strftime("%Y-%m-%d")}.csv'
@@ -135,30 +131,17 @@ class VozBoxClient:
             return None
         return self.parse_csv(path)
 
-    def _folder_sha(self, folder: str) -> Optional[str]:
-        # The contents API (used below for individual file downloads) also
-        # supports listing a directory, but silently caps out at 1000
-        # entries with no pagination -- both moospmV3_daily and
-        # moospmV3_cal blew past that long ago, so it always returns a
-        # stale, incomplete listing (sorted alphabetically, so it's the
-        # *oldest* files that show up, never the newest). The git trees
-        # API scoped to just this folder's tree sha doesn't have that cap.
-        if self._root_tree_cache is None:
-            response = self.session.get(self._trees_url(self.BRANCH))
-            response.raise_for_status()
-            self._root_tree_cache = response.json().get('tree', [])
-
-        for item in self._root_tree_cache:
-            if item.get('path') == folder and item.get('type') == 'tree':
-                return item.get('sha')
-        return None
-
     def _list_folder_filenames(self, folder: str) -> list:
-        sha = self._folder_sha(folder)
-        if sha is None:
-            return []
-
-        response = self.session.get(self._trees_url(sha))
+        # Don't use the contents API (/repos/.../contents/{path}) to list a
+        # directory: it silently caps out at 1000 entries with no
+        # pagination -- both moospmV3_daily and moospmV3_cal blew past that
+        # long ago, so it always returned a stale, incomplete listing
+        # (sorted alphabetically, so it's the *oldest* files that show up,
+        # never the newest). The git trees API accepts a `<ref>:<path>`
+        # tree-ish, so a single non-recursive request returns the folder's
+        # own subtree, which isn't subject to that cap. A missing/renamed
+        # folder is a 404 here, which raise_for_status() surfaces.
+        response = self.session.get(self._trees_url(f'{self.BRANCH}:{folder}'))
         response.raise_for_status()
         data = response.json()
 

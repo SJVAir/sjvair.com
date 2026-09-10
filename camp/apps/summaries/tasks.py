@@ -94,12 +94,17 @@ def summarize_monitor_hour(monitor_id, hour, entry_type, processor):
     )
 
 
-@db_periodic_task(crontab(hour='*', minute='15'), priority=90, queue='summaries')
+@db_periodic_task(crontab(hour='*', minute='20'), priority=90, queue='summaries')
 def hourly_region_summaries(hour=None):
     """
     Compute one hourly RegionSummary per region per entry_type found in
     MonitorSummary records for that hour. Uses each monitor's best available
     calibration — no processor fan-out needed at the region level.
+
+    Scheduled at :20 so it runs after hourly_health_checks (:15 on the
+    primary queue, camp/apps/qaqc/tasks.py) has scored the hour -- the
+    region weighting treats a monitor with no HealthCheck row as fully
+    healthy, so running before the checks land over-weights bad sensors.
     """
     if hour is None:
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
