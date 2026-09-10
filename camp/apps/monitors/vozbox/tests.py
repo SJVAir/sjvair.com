@@ -157,41 +157,58 @@ class VozBoxClientHTTPTests(TestCase):
         assert result is not None
         assert 'e00fce68f12da1a0c5de6248' in result
 
+    def _mock_tree_response(self, filenames, truncated=False):
+        # Listing a folder is a single git-trees request for the folder's
+        # `<branch>:<path>` subtree -- see VozBoxClient._list_folder_filenames().
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {
+            'truncated': truncated,
+            'tree': [{'path': name, 'type': 'blob'} for name in filenames],
+        }
+        return response
+
     @patch('camp.apps.monitors.vozbox.api.requests.Session')
     def test_list_daily_files_returns_sorted_dates(self, MockSession):
-        api_response = MagicMock()
-        api_response.status_code = 200
-        api_response.raise_for_status = MagicMock()
-        api_response.json.return_value = [
-            {'name': 'moospmV3_2025-06-09.csv'},
-            {'name': 'moospmV3_2025-06-08.csv'},
-            {'name': '.RData'},
-            {'name': 'carb_data_cleaning.Rout'},
-        ]
         MockSession.return_value.__enter__ = lambda s: s
-        MockSession.return_value.get.return_value = api_response
+        MockSession.return_value.get.return_value = self._mock_tree_response([
+            'moospmV3_2025-06-09.csv',
+            'moospmV3_2025-06-08.csv',
+            '.RData',
+            'carb_data_cleaning.Rout',
+        ])
 
         with VozBoxClient() as client:
             result = client.list_daily_files()
+
+        url = MockSession.return_value.get.call_args[0][0]
+        assert url.endswith('/git/trees/main:moospmV3_daily')
 
         assert result == [date(2025, 6, 8), date(2025, 6, 9)]
 
     @patch('camp.apps.monitors.vozbox.api.requests.Session')
     def test_list_cal_files_returns_sorted_date_hour_tuples(self, MockSession):
-        api_response = MagicMock()
-        api_response.status_code = 200
-        api_response.raise_for_status = MagicMock()
-        api_response.json.return_value = [
-            {'name': 'moospmV3_cal_2025-06-20T15.csv'},
-            {'name': 'moospmV3_cal_2025-06-20T14.csv'},
-        ]
         MockSession.return_value.__enter__ = lambda s: s
-        MockSession.return_value.get.return_value = api_response
+        MockSession.return_value.get.return_value = self._mock_tree_response([
+            'moospmV3_cal_2025-06-20T15.csv',
+            'moospmV3_cal_2025-06-20T14.csv',
+        ])
 
         with VozBoxClient() as client:
             result = client.list_cal_files()
 
         assert result == [(date(2025, 6, 20), 14), (date(2025, 6, 20), 15)]
+
+    @patch('camp.apps.monitors.vozbox.api.requests.Session')
+    def test_list_daily_files_raises_when_folder_tree_truncated(self, MockSession):
+        MockSession.return_value.__enter__ = lambda s: s
+        MockSession.return_value.get.return_value = self._mock_tree_response(
+            ['moospmV3_2025-06-09.csv'], truncated=True,
+        )
+
+        with VozBoxClient() as client:
+            with pytest.raises(RuntimeError):
+                client.list_daily_files()
 
     @patch('camp.apps.monitors.vozbox.api.requests.Session')
     def test_context_manager_cleans_up_tmpdir(self, MockSession):

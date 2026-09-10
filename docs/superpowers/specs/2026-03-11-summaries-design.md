@@ -140,12 +140,12 @@ Each resolution has its own independent periodic task. Tasks are independently r
 
 | Task | Schedule | Source |
 |---|---|---|
-| `hourly_monitor_summaries` | `:05` each hour | Entries table |
-| `daily_monitor_summaries` | `00:15` each day | Hourly MonitorSummary |
-| `monthly_monitor_summaries` | `00:30` on 1st of month | Daily MonitorSummary |
-| `quarterly_monitor_summaries` | `00:45` on 1st of quarter | Monthly MonitorSummary |
-| `seasonal_monitor_summaries` | `01:00` on season change | Monthly MonitorSummary |
-| `yearly_monitor_summaries` | `01:15` on Jan 1 | Monthly MonitorSummary |
+| `hourly_monitor_summaries` | `:45` each hour | Entries table |
+| `daily_monitor_summaries` | `01:00` each day | Hourly MonitorSummary |
+| `monthly_monitor_summaries` | `01:15` on 1st of month | Daily MonitorSummary |
+| `quarterly_monitor_summaries` | `01:30` on 1st of quarter | Monthly MonitorSummary |
+| `seasonal_monitor_summaries` | `01:45` on season change | Monthly MonitorSummary |
+| `yearly_monitor_summaries` | `02:00` on Jan 1 | Monthly MonitorSummary |
 
 ### Region Summaries
 
@@ -153,9 +153,9 @@ Region tasks run after their corresponding monitor tasks, querying completed `Mo
 
 | Task | Schedule |
 |---|---|
-| `hourly_region_summaries` | `:15` each hour |
-| `daily_region_summaries` | `00:25` each day |
-| `monthly_region_summaries` | `00:40` on 1st of month |
+| `hourly_region_summaries` | `:50` each hour |
+| `daily_region_summaries` | `01:10` each day |
+| `monthly_region_summaries` | `01:25` on 1st of month |
 | (and so on for quarterly, seasonal, yearly) | |
 
 ### Monitor Selection (hourly task)

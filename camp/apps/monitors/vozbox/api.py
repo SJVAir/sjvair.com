@@ -48,8 +48,8 @@ class VozBoxClient:
     def _raw_url(self, folder, filename):
         return f'{self.RAW_BASE}/{self.OWNER}/{self.REPO}/{self.BRANCH}/{folder}/{filename}'
 
-    def _api_url(self, path):
-        return f'{self.GITHUB_API}/repos/{self.OWNER}/{self.REPO}/contents/{path}'
+    def _trees_url(self, tree_ish):
+        return f'{self.GITHUB_API}/repos/{self.OWNER}/{self.REPO}/git/trees/{tree_ish}'
 
     def daily_filename(self, d: date) -> str:
         return f'{self.DAILY_PREFIX}_{d.strftime("%Y-%m-%d")}.csv'
@@ -131,13 +131,32 @@ class VozBoxClient:
             return None
         return self.parse_csv(path)
 
-    def list_daily_files(self) -> list:
-        url = self._api_url(self.DAILY_FOLDER)
-        response = self.session.get(url)
+    def _list_folder_filenames(self, folder: str) -> list:
+        # Don't use the contents API (/repos/.../contents/{path}) to list a
+        # directory: it silently caps out at 1000 entries with no
+        # pagination -- both moospmV3_daily and moospmV3_cal blew past that
+        # long ago, so it always returned a stale, incomplete listing
+        # (sorted alphabetically, so it's the *oldest* files that show up,
+        # never the newest). The git trees API accepts a `<ref>:<path>`
+        # tree-ish, so a single non-recursive request returns the folder's
+        # own subtree, which isn't subject to that cap. A missing/renamed
+        # folder is a 404 here, which raise_for_status() surfaces.
+        response = self.session.get(self._trees_url(f'{self.BRANCH}:{folder}'))
         response.raise_for_status()
+        data = response.json()
+
+        if data.get('truncated'):
+            raise RuntimeError(
+                f'{folder} tree listing was truncated by the GitHub API -- '
+                'it has grown too large for a single (non-recursive) trees '
+                'request and needs a paginated/incremental listing strategy.'
+            )
+
+        return [item['path'] for item in data.get('tree', []) if item.get('type') == 'blob']
+
+    def list_daily_files(self) -> list:
         results = []
-        for item in response.json():
-            name = item.get('name', '')
+        for name in self._list_folder_filenames(self.DAILY_FOLDER):
             if not (name.startswith(self.DAILY_PREFIX + '_') and name.endswith('.csv')):
                 continue
             try:
@@ -147,12 +166,8 @@ class VozBoxClient:
         return sorted(results)
 
     def list_cal_files(self) -> list:
-        url = self._api_url(self.CAL_FOLDER)
-        response = self.session.get(url)
-        response.raise_for_status()
         results = []
-        for item in response.json():
-            name = item.get('name', '')
+        for name in self._list_folder_filenames(self.CAL_FOLDER):
             if not (name.startswith(self.CAL_PREFIX + '_') and name.endswith('.csv')):
                 continue
             try:
