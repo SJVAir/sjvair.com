@@ -39,13 +39,20 @@ def get_summarizable_entry_models():
 
 # ---- Hourly tasks ----
 
+# Hourly summaries run late in the hour (:45/:50) rather than right after it
+# closes, so the previous hour has ~45 min to settle first: late-arriving
+# upstream batches (VOZbox lands ~:10, AirNow/AQView/CIMIS can lag longer)
+# and the hourly health checks (:30, camp/apps/qaqc/tasks.py) that weight
+# LCS monitors in the region summaries. The daily and longer rollups start
+# at 01:00 so yesterday's final hour (summarized at 00:45) is in place.
+#
 # Task priorities decrease with dependency depth so upstream data is always
 # ready before downstream aggregations consume it:
 #   hourly monitor (100) → hourly region (90) → daily monitor (80) → daily region (70)
 #   → monthly monitor (60) → monthly region (50) → quarterly monitor (40) → quarterly region (30)
 #   → seasonal monitor (20) → seasonal region (15) → yearly monitor (10) → yearly region (5)
 
-@db_periodic_task(crontab(hour='*', minute='5'), priority=100, queue='summaries')
+@db_periodic_task(crontab(hour='*', minute='45'), priority=100, queue='summaries')
 def hourly_monitor_summaries(hour=None):
     """
     Compute hourly MonitorSummary for every (monitor, entry_type, processor) combo
@@ -94,17 +101,17 @@ def summarize_monitor_hour(monitor_id, hour, entry_type, processor):
     )
 
 
-@db_periodic_task(crontab(hour='*', minute='20'), priority=90, queue='summaries')
+@db_periodic_task(crontab(hour='*', minute='50'), priority=90, queue='summaries')
 def hourly_region_summaries(hour=None):
     """
     Compute one hourly RegionSummary per region per entry_type found in
     MonitorSummary records for that hour. Uses each monitor's best available
     calibration — no processor fan-out needed at the region level.
 
-    Scheduled at :20 so it runs after hourly_health_checks (:15 on the
-    primary queue, camp/apps/qaqc/tasks.py) has scored the hour -- the
-    region weighting treats a monitor with no HealthCheck row as fully
-    healthy, so running before the checks land over-weights bad sensors.
+    Must stay scheduled after hourly_health_checks (camp/apps/qaqc/tasks.py)
+    has scored the hour -- the region weighting treats a monitor with no
+    HealthCheck row as fully healthy, so running before the checks land
+    over-weights bad sensors.
     """
     if hour is None:
         now = timezone.now().replace(minute=0, second=0, microsecond=0)
@@ -297,21 +304,21 @@ def _last_season_start():
 
 # ---- Rollup periodic tasks ----
 
-@db_periodic_task(crontab(hour='0', minute='15'), priority=80, queue='summaries')
+@db_periodic_task(crontab(hour='1', minute='0'), priority=80, queue='summaries')
 def daily_monitor_summaries(day=None):
     """Roll up yesterday's hourly MonitorSummary records into daily ones."""
     day = day or _yesterday()
     rollup_monitor_summaries(BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
 
 
-@db_periodic_task(crontab(hour='0', minute='25'), priority=70, queue='summaries')
+@db_periodic_task(crontab(hour='1', minute='10'), priority=70, queue='summaries')
 def daily_region_summaries(day=None):
     """Roll up yesterday's hourly RegionSummary records into daily ones."""
     day = day or _yesterday()
     rollup_region_summaries(BaseSummary.Resolution.DAILY, BaseSummary.Resolution.HOURLY, day, day + timedelta(days=1))
 
 
-@db_periodic_task(crontab(day='1', hour='0', minute='30'), priority=60, queue='summaries')
+@db_periodic_task(crontab(day='1', hour='1', minute='15'), priority=60, queue='summaries')
 def monthly_monitor_summaries(month_start=None):
     """Roll up last month's daily MonitorSummary records into monthly ones."""
     month_start = month_start or _last_month_start()
@@ -319,7 +326,7 @@ def monthly_monitor_summaries(month_start=None):
     rollup_monitor_summaries(BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY, month_start, month_start + timedelta(days=days_in_month))
 
 
-@db_periodic_task(crontab(day='1', hour='0', minute='40'), priority=50, queue='summaries')
+@db_periodic_task(crontab(day='1', hour='1', minute='25'), priority=50, queue='summaries')
 def monthly_region_summaries(month_start=None):
     """Roll up last month's daily RegionSummary records into monthly ones."""
     month_start = month_start or _last_month_start()
@@ -327,21 +334,21 @@ def monthly_region_summaries(month_start=None):
     rollup_region_summaries(BaseSummary.Resolution.MONTHLY, BaseSummary.Resolution.DAILY, month_start, month_start + timedelta(days=days_in_month))
 
 
-@db_periodic_task(crontab(month='1,4,7,10', day='1', hour='0', minute='45'), priority=40, queue='summaries')
+@db_periodic_task(crontab(month='1,4,7,10', day='1', hour='1', minute='30'), priority=40, queue='summaries')
 def quarterly_monitor_summaries(quarter_start=None):
     """Roll up last quarter's monthly MonitorSummary records into quarterly ones."""
     quarter_start = quarter_start or _last_quarter_start()
     rollup_monitor_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, _add_3_months(quarter_start))
 
 
-@db_periodic_task(crontab(month='1,4,7,10', day='1', hour='0', minute='50'), priority=30, queue='summaries')
+@db_periodic_task(crontab(month='1,4,7,10', day='1', hour='1', minute='35'), priority=30, queue='summaries')
 def quarterly_region_summaries(quarter_start=None):
     """Roll up last quarter's monthly RegionSummary records into quarterly ones."""
     quarter_start = quarter_start or _last_quarter_start()
     rollup_region_summaries(BaseSummary.Resolution.QUARTERLY, BaseSummary.Resolution.MONTHLY, quarter_start, _add_3_months(quarter_start))
 
 
-@db_periodic_task(crontab(month='3,6,9,12', day='1', hour='1', minute='0'), priority=20, queue='summaries')
+@db_periodic_task(crontab(month='3,6,9,12', day='1', hour='1', minute='45'), priority=20, queue='summaries')
 def seasonal_monitor_summaries(season_start=None):
     """
     Roll up the past 3 months of monthly MonitorSummary records into a seasonal one.
@@ -351,14 +358,14 @@ def seasonal_monitor_summaries(season_start=None):
     rollup_monitor_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, _add_3_months(season_start))
 
 
-@db_periodic_task(crontab(month='3,6,9,12', day='1', hour='1', minute='10'), priority=15, queue='summaries')
+@db_periodic_task(crontab(month='3,6,9,12', day='1', hour='1', minute='55'), priority=15, queue='summaries')
 def seasonal_region_summaries(season_start=None):
     """Roll up the past 3 months of monthly RegionSummary records into a seasonal one."""
     season_start = season_start or _last_season_start()
     rollup_region_summaries(BaseSummary.Resolution.SEASONAL, BaseSummary.Resolution.MONTHLY, season_start, _add_3_months(season_start))
 
 
-@db_periodic_task(crontab(month='1', day='1', hour='1', minute='15'), priority=10, queue='summaries')
+@db_periodic_task(crontab(month='1', day='1', hour='2', minute='0'), priority=10, queue='summaries')
 def yearly_monitor_summaries(year_start=None):
     """Roll up last year's monthly MonitorSummary records into yearly ones."""
     if year_start is None:
@@ -367,7 +374,7 @@ def yearly_monitor_summaries(year_start=None):
     rollup_monitor_summaries(BaseSummary.Resolution.YEARLY, BaseSummary.Resolution.MONTHLY, year_start, year_start.replace(year=year_start.year + 1))
 
 
-@db_periodic_task(crontab(month='1', day='1', hour='1', minute='20'), priority=5, queue='summaries')
+@db_periodic_task(crontab(month='1', day='1', hour='2', minute='5'), priority=5, queue='summaries')
 def yearly_region_summaries(year_start=None):
     """Roll up last year's monthly RegionSummary records into yearly ones."""
     if year_start is None:

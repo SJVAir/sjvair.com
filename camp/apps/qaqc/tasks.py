@@ -13,29 +13,30 @@ from camp.apps.monitors.models import Monitor
 HEALTH_CHECK_LOOKBACK_HOURS = 3
 
 
-@db_periodic_task(crontab(hour='*', minute='15'), priority=50)
+@db_periodic_task(crontab(hour='*', minute='30'), priority=50)
 def hourly_health_checks(hour=None):
     """
     Run QA/QC health checks for all PM2.5 monitors with multiple sensors.
 
-    Runs at minute 15 (not right at the hour) because get_for_health_checks()
+    Runs at minute 30 (not right at the hour) because get_for_health_checks()
     only queues a monitor if it already has RAW PM2.5 entries for the target
-    hour: VOZbox's upstream only publishes a batch ~65 min after each hour
-    closes (see VOZBox.LAST_ACTIVE_LIMIT in camp/apps/monitors/vozbox/models.py),
+    hour, and some networks deliver an hour's data well after it closes:
+    VOZbox's upstream only publishes a batch ~65 min after each hour closes
+    (see VOZBox.LAST_ACTIVE_LIMIT in camp/apps/monitors/vozbox/models.py),
     and import_realtime pulls it in on its next */10 min cycle -- landing in
     the DB around minute 10-11 of the following hour. Running at minute 1
     fired before that batch existed, so VOZbox never accumulated passing
     HealthCheck rows and was permanently excluded from filter_healthy()
     (e.g. the pm25/current/ API).
 
-    hourly_region_summaries (camp/apps/summaries/tasks.py) reads these
+    hourly_region_summaries (camp/apps/summaries/tasks.py, :50) reads these
     HealthCheck rows for the same hour and must stay scheduled after this.
 
-    That margin is only a few minutes, so when no explicit hour is given we
-    also look back over the previous few hours and score any monitor that
-    has entries for that hour but no HealthCheck row yet -- a late upstream
-    publish or a queue backlog then self-heals on the next run instead of
-    leaving a permanent hole in the 24h window.
+    When no explicit hour is given we also look back over the previous few
+    hours and score any monitor that has entries for that hour but no
+    HealthCheck row yet -- a late upstream publish or a queue backlog then
+    self-heals on the next run instead of leaving a permanent hole in the
+    24h window.
     """
     if hour is not None:
         for monitor in Monitor.objects.get_for_health_checks(hour):
