@@ -36,5 +36,4 @@ class DefaultCalibrationForm(forms.ModelForm):
             (str(proc.name), str(proc.name))
             for proc in instance.allowed_processors
         ]
-        print('\n.get_calibration_choices()', choices)
         return choices

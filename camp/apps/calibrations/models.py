@@ -17,6 +17,11 @@ from camp.apps.monitors.fields import MonitorTypeField
 from camp.apps.monitors.validators import validate_formula
 
 
+class DefaultCalibrationManager(models.Manager):
+    def get_by_natural_key(self, monitor_type, entry_type):
+        return self.get(monitor_type=monitor_type, entry_type=entry_type)
+
+
 class DefaultCalibration(models.Model):
     """
     Stores the default calibration processor to use for a given monitor type and entry type.
@@ -40,8 +45,16 @@ class DefaultCalibration(models.Model):
     entry_type = EntryTypeField()
     calibration = models.CharField(max_length=50, blank=True, default='')
 
+    objects = DefaultCalibrationManager()
+
     class Meta:
         unique_together = ('monitor_type', 'entry_type')
+
+    def natural_key(self):
+        # Lets fixtures/default-calibrations.yaml omit pks: loaddata matches
+        # existing rows on (monitor_type, entry_type) instead of colliding
+        # with the unique constraint.
+        return (self.monitor_type, self.entry_type)
 
     def __str__(self):
         return f'{self.monitor_type} → {self.entry_type} = {self.calibration}'
@@ -67,6 +80,13 @@ class DefaultCalibration(models.Model):
             for processor in stage_processors:
                 if processor.next_stage in target_stages:
                     processors.add(processor)
+
+        # Processors that produce CALIBRATED entries outside the per-entry
+        # pipeline (e.g. upstream-provided calibrations, hourly aggregators).
+        for processor in config.get('calibrations', []):
+            if processor.next_stage in target_stages:
+                processors.add(processor)
+
         return sorted(processors, key=lambda p: p.name)
 
 

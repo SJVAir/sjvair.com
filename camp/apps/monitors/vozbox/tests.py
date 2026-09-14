@@ -11,12 +11,14 @@ import pytest
 from django.core.management import call_command, CommandError
 
 from django.contrib.gis.geos import Point
+from django.db.models import Count as models_Count
 from django.test import TestCase
 from django.utils import timezone as django_timezone
 
 from camp.apps.calibrations import processors as cal_processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.vozbox.api import VozBoxClient
+from camp.apps.monitors.models import LatestEntry
 from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.monitors.vozbox.tasks import process_device, import_realtime, import_cal_range, _bin_rows
 
@@ -56,12 +58,12 @@ class VozBoxClientParseTests(TestCase):
 
         row = result['e00fce68f12da1a0c5de6248'][0]
         assert row['timestamp'] == datetime(2025, 6, 9, 0, 0, 0, tzinfo=timezone.utc)
-        assert row['pm1_a'] == 7.0
-        assert row['pm1_b'] == 4.0
-        assert row['pm25_a'] == 10.0
-        assert row['pm25_b'] == 4.0
-        assert row['pm10_a'] == 10.0
-        assert row['pm10_b'] == 4.0
+        assert row['pm1_plantower'] == 7.0
+        assert row['pm1_sensirion'] == 4.0
+        assert row['pm25_plantower'] == 10.0
+        assert row['pm25_sensirion'] == 4.0
+        assert row['pm10_plantower'] == 10.0
+        assert row['pm10_sensirion'] == 4.0
         assert row['temperature'] == 36.0
         assert row['humidity'] == 26.0
         assert row['o3'] == 70.0
@@ -75,8 +77,8 @@ class VozBoxClientParseTests(TestCase):
 
         row = result['e00fce682bbf742cd0b6768a'][0]
         assert row['o3_cal'] == 23.127
-        assert row['pm25_a'] == 5.0
-        assert row['pm1_a'] is None   # cal CSV has no m_PM1_ATM column
+        assert row['pm25_plantower'] == 5.0
+        assert row['pm1_plantower'] is None   # cal CSV has no m_PM1_ATM column
 
     def test_parse_cal_csv_returns_none_o3_cal_for_invalid_row(self):
         with VozBoxClient() as client:
@@ -119,12 +121,12 @@ class VozBoxClientParseTests(TestCase):
             result = client.parse_csv(path)
 
         row = result['e00fce68f12da1a0c5de6248'][0]
-        assert row['pm1_a'] is None    # 10000 > 9999
-        assert row['pm1_b'] is None    # 12000 > 9999
-        assert row['pm25_a'] is None   # 12196 > 9999
-        assert row['pm10_a'] is None   # 12807 > 9999
-        assert row['pm25_b'] == 4.0    # valid value unchanged
-        assert row['pm10_b'] == 4.0    # valid value unchanged
+        assert row['pm1_plantower'] is None    # 10000 > 9999
+        assert row['pm1_sensirion'] is None    # 12000 > 9999
+        assert row['pm25_plantower'] is None   # 12196 > 9999
+        assert row['pm10_plantower'] is None   # 12807 > 9999
+        assert row['pm25_sensirion'] == 4.0    # valid value unchanged
+        assert row['pm10_sensirion'] == 4.0    # valid value unchanged
 
 
 class VozBoxClientHTTPTests(TestCase):
@@ -222,9 +224,9 @@ class VOZBoxModelTests(TestCase):
     def _make_row(self, **kwargs):
         defaults = {
             'timestamp': datetime(2025, 6, 9, 0, 0, 0, tzinfo=timezone.utc),
-            'pm1_a': 7.0, 'pm1_b': 4.0,
-            'pm25_a': 10.0, 'pm25_b': 4.0,
-            'pm10_a': 10.0, 'pm10_b': 4.0,
+            'pm1_plantower': 7.0, 'pm1_sensirion': 4.0,
+            'pm25_plantower': 10.0, 'pm25_sensirion': 4.0,
+            'pm10_plantower': 10.0, 'pm10_sensirion': 4.0,
             'temperature': 36.0,
             'humidity': 26.0,
             'o3': 70.0,
@@ -255,9 +257,25 @@ class VOZBoxModelTests(TestCase):
         monitor.update_data(self._make_row())
         assert monitor.location == 'outside'
 
-    def test_supports_health_checks(self):
+    def test_does_not_support_health_checks(self):
+        # Plantower + Sensirion, not a matched A/B pair.
         monitor = VOZBox(sensor_id='e00fce68f12da1a0c5de6248')
-        assert monitor.supports_health_checks() is True
+        assert monitor.supports_health_checks() is False
+
+    def test_pm25_is_raw_only(self):
+        config = VOZBox.ENTRY_CONFIG[entry_models.PM25]
+        assert config['allowed_stages'] == [entry_models.PM25.Stage.RAW]
+        assert config['default_stage'] == entry_models.PM25.Stage.RAW
+        assert 'processors' not in config
+        assert 'alerts' not in config
+
+    def test_process_device_stores_both_pm25_sensors_raw_only(self):
+        monitor = VOZBox.objects.create(sensor_id='e00fce68f12da1a0c5de6248', name='Test', location='outside')
+        for entry in monitor.create_entries(self._make_row()):
+            monitor.process_entry_pipeline(entry)
+        pm25 = entry_models.PM25.objects.filter(monitor=monitor)
+        assert set(pm25.values_list('stage', flat=True)) == {entry_models.PM25.Stage.RAW}
+        assert set(pm25.values_list('sensor', flat=True)) == {'plantower', 'sensirion'}
 
     def test_create_entries_produces_all_types(self):
         monitor = VOZBox.objects.create(
@@ -285,7 +303,7 @@ class VOZBoxModelTests(TestCase):
         entries = monitor.create_entries(row)
         pm25_entries = [e for e in entries if isinstance(e, entry_models.PM25)]
         sensors = {e.sensor for e in pm25_entries}
-        assert sensors == {'a', 'b'}
+        assert sensors == {'plantower', 'sensirion'}
 
     def test_create_entries_skips_none_values(self):
         monitor = VOZBox.objects.create(
@@ -293,10 +311,10 @@ class VOZBoxModelTests(TestCase):
             name='Test',
             location='outside',
         )
-        row = self._make_row(pm25_a=None)
+        row = self._make_row(pm25_plantower=None)
         entries = monitor.create_entries(row)
-        pm25_a_entries = [e for e in entries if isinstance(e, entry_models.PM25) and e.sensor == 'a']
-        assert pm25_a_entries == []
+        pm25_plantower_entries = [e for e in entries if isinstance(e, entry_models.PM25) and e.sensor == 'plantower']
+        assert pm25_plantower_entries == []
 
 
 class ProcessDeviceTests(TestCase):
@@ -305,9 +323,9 @@ class ProcessDeviceTests(TestCase):
         for i in range(count):
             rows.append({
                 'timestamp': datetime(2025, 6, 9, i, 0, 0, tzinfo=timezone.utc),
-                'pm1_a': 7.0, 'pm1_b': 4.0,
-                'pm25_a': 10.0, 'pm25_b': 4.0,
-                'pm10_a': 10.0, 'pm10_b': 4.0,
+                'pm1_plantower': 7.0, 'pm1_sensirion': 4.0,
+                'pm25_plantower': 10.0, 'pm25_sensirion': 4.0,
+                'pm10_plantower': 10.0, 'pm10_sensirion': 4.0,
                 'temperature': 36.0,
                 'humidity': 26.0,
                 'o3': 70.0,
@@ -350,7 +368,7 @@ class ProcessDeviceTests(TestCase):
         process_device(coreid, rows)
         process_device(coreid, rows)   # second call with same rows
         monitor = VOZBox.objects.get(sensor_id=coreid)
-        pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').count()
+        pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='plantower', stage='raw').count()
         assert pm25_count == 1   # no duplicates
 
     def test_process_device_skips_rows_before_latest(self):
@@ -359,8 +377,27 @@ class ProcessDeviceTests(TestCase):
         process_device(coreid, rows[:2])   # process first 2
         process_device(coreid, rows)        # process all 3 (first 2 already exist)
         monitor = VOZBox.objects.get(sensor_id=coreid)
-        pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').count()
+        pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='plantower', stage='raw').count()
         assert pm25_count == 3
+
+    def test_process_device_cutoff_ignores_sensor_names(self):
+        # Legacy rows are named 'a'/'b' until cleanup_vozbox_pm runs.
+        # The cutoff must still see them, or the fetch window gets re-created
+        # under the new names (the unique constraint includes sensor, so it
+        # wouldn't stop that).
+        coreid = 'e00fce68f12da1a0c5de6248'
+        rows = self._make_rows(coreid, count=3)
+        process_device(coreid, rows[:2])
+        monitor = VOZBox.objects.get(sensor_id=coreid)
+        for EntryModel in (entry_models.PM10, entry_models.PM25, entry_models.PM100):
+            EntryModel.objects.filter(monitor=monitor, sensor='plantower').update(sensor='a')
+            EntryModel.objects.filter(monitor=monitor, sensor='sensirion').update(sensor='b')
+
+        process_device(coreid, rows)
+
+        pm25 = entry_models.PM25.objects.filter(monitor=monitor, stage='raw')
+        assert pm25.count() == 6   # 3 timestamps x 2 sensors, no duplicates
+        assert pm25.filter(timestamp=rows[2]['timestamp']).count() == 2
 
     def test_process_device_creates_calibrated_o3_when_o3_cal_present(self):
         coreid = 'e00fce68f12da1a0c5de6248'
@@ -504,7 +541,7 @@ class VOZBoxQuinnCalTests(TestCase):
 
 class BinRowsTests(TestCase):
     def _row(self, ts):
-        return {'timestamp': ts, 'pm25_a': 10.0}
+        return {'timestamp': ts, 'pm25_plantower': 10.0}
 
     def test_keeps_one_row_per_10min_bucket(self):
         rows = [
@@ -569,9 +606,9 @@ class ImportCalRangeTests(TestCase):
         return {
             'e00fce682bbf742cd0b6768a': [{
                 'timestamp': datetime(2025, 6, 20, 15, 0, 0, tzinfo=timezone.utc),
-                'pm25_a': 5.0, 'pm25_b': 4.0,
-                'pm10_a': 6.0, 'pm10_b': 4.0,
-                'pm1_a': None, 'pm1_b': None,
+                'pm25_plantower': 5.0, 'pm25_sensirion': 4.0,
+                'pm10_plantower': 6.0, 'pm10_sensirion': 4.0,
+                'pm1_plantower': None, 'pm1_sensirion': None,
                 'temperature': 16.0,
                 'humidity': 54.0,
                 'o3': 26.981,
@@ -673,9 +710,9 @@ class ImportVozboxHistoryTests(TestCase):
         return {
             coreid: [{
                 'timestamp': timestamp or datetime(2025, 6, 9, 0, 0, 0, tzinfo=timezone.utc),
-                'pm1_a': 7.0, 'pm1_b': 4.0,
-                'pm25_a': 10.0, 'pm25_b': 4.0,
-                'pm10_a': 10.0, 'pm10_b': 4.0,
+                'pm1_plantower': 7.0, 'pm1_sensirion': 4.0,
+                'pm25_plantower': 10.0, 'pm25_sensirion': 4.0,
+                'pm10_plantower': 10.0, 'pm10_sensirion': 4.0,
                 'temperature': 36.0,
                 'humidity': 26.0,
                 'o3': 70.0,
@@ -695,7 +732,7 @@ class ImportVozboxHistoryTests(TestCase):
         call_command('import_vozbox_history')
 
         monitor = VOZBox.objects.get(sensor_id=coreid)
-        assert entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').exists()
+        assert entry_models.PM25.objects.filter(monitor=monitor, sensor='plantower', stage='raw').exists()
         assert entry_models.O3.objects.filter(monitor=monitor, sensor='1', stage='raw').exists()
 
     @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
@@ -733,7 +770,7 @@ class ImportVozboxHistoryTests(TestCase):
         call_command('import_vozbox_history')
 
         monitor = VOZBox.objects.get(sensor_id=coreid)
-        pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw').count()
+        pm25_count = entry_models.PM25.objects.filter(monitor=monitor, sensor='plantower', stage='raw').count()
         assert pm25_count == 1
 
     @patch('camp.apps.monitors.vozbox.management.commands.import_vozbox_history.VozBoxClient')
@@ -746,13 +783,13 @@ class ImportVozboxHistoryTests(TestCase):
         call_command('import_vozbox_history')
 
         updated_rows = self._daily_rows(coreid)
-        updated_rows[coreid][0]['pm25_a'] = 99.0
+        updated_rows[coreid][0]['pm25_plantower'] = 99.0
         instance.get_daily_data.return_value = updated_rows
 
         call_command('import_vozbox_history')
 
         monitor = VOZBox.objects.get(sensor_id=coreid)
-        entries = entry_models.PM25.objects.filter(monitor=monitor, sensor='a', stage='raw')
+        entries = entry_models.PM25.objects.filter(monitor=monitor, sensor='plantower', stage='raw')
         assert entries.count() == 1
         assert round(entries.first().value, 1) == 99.0
 
@@ -795,3 +832,97 @@ class ImportVozboxHistoryTests(TestCase):
         call_command('import_vozbox_history', start='2025-06-09', end='2025-06-09')
 
         instance.get_cal_data.assert_called_once_with(date(2025, 6, 9), 0)
+
+
+class CleanupVozboxPmCommandTests(TestCase):
+    def setUp(self):
+        self.monitor = VOZBox.objects.create(sensor_id='e00fce68rename', name='Rename', location='outside')
+        base = datetime(2025, 6, 9, 0, 0, tzinfo=timezone.utc)
+        for i in range(7):
+            ts = base + timedelta(minutes=10 * i)
+            for EntryModel in (entry_models.PM10, entry_models.PM25, entry_models.PM100):
+                EntryModel.objects.create(monitor=self.monitor, timestamp=ts, sensor='a', stage='raw', value=1)
+                EntryModel.objects.create(monitor=self.monitor, timestamp=ts, sensor='b', stage='raw', value=2)
+        # Another monitor type's rows named 'a' must be untouched.
+        from camp.apps.monitors.purpleair.models import PurpleAir
+        self.other = PurpleAir.objects.create(name='PA', sensor_id=424242, location='outside')
+        entry_models.PM25.objects.create(monitor=self.other, timestamp=base, sensor='a', stage='raw', value=3)
+
+    def _sensors(self, EntryModel, monitor):
+        return dict(EntryModel.objects.filter(monitor=monitor).values_list('sensor').annotate(n=models_Count('id')))
+
+    def test_renames_in_batches_with_progress(self):
+        out = StringIO()
+        call_command('cleanup_vozbox_pm', batch_size=3, stdout=out)
+        for EntryModel in (entry_models.PM10, entry_models.PM25, entry_models.PM100):
+            assert self._sensors(EntryModel, self.monitor) == {'plantower': 7, 'sensirion': 7}
+        assert self._sensors(entry_models.PM25, self.other) == {'a': 1}
+        text = out.getvalue()
+        assert "e00fce68rename pm25 'a'->'plantower': 7 renamed, 0 duplicates removed" in text
+        assert 'Renamed 42 rows, removed 0 legacy rows' in text
+
+    def test_legacy_row_with_existing_renamed_twin_is_deleted(self):
+        # A reading already stored under the new name (e.g. re-imported by
+        # new code before the rename ran) would collide on unique_entry_*
+        # if the legacy copy were renamed -- drop the legacy copy instead.
+        ts = datetime(2025, 6, 9, 0, 0, tzinfo=timezone.utc)
+        entry_models.PM25.objects.create(monitor=self.monitor, timestamp=ts, sensor='plantower', stage='raw', value=1)
+        out = StringIO()
+        call_command('cleanup_vozbox_pm', batch_size=3, stdout=out)
+        pm25 = entry_models.PM25.objects.filter(monitor=self.monitor)
+        assert dict(pm25.values_list('sensor').annotate(n=models_Count('id'))) == {'plantower': 7, 'sensirion': 7}
+        assert pm25.filter(timestamp=ts, sensor='plantower').count() == 1
+        assert "pm25 'a'->'plantower': 6 renamed, 1 duplicates removed" in out.getvalue()
+
+    def test_idempotent(self):
+        call_command('cleanup_vozbox_pm', stdout=StringIO())
+        out = StringIO()
+        call_command('cleanup_vozbox_pm', stdout=out)
+        assert 'nothing to do' in out.getvalue()
+        assert 'Renamed 0 rows, removed 0 legacy rows' in out.getvalue()
+
+    def test_dry_run_writes_nothing(self):
+        out = StringIO()
+        call_command('cleanup_vozbox_pm', dry_run=True, stdout=out)
+        assert self._sensors(entry_models.PM25, self.monitor) == {'a': 7, 'b': 7}
+        assert 'Would rename 42 rows, removed 0 legacy rows' in out.getvalue()
+
+    def test_removes_legacy_pm25_stages_latest_entries_and_health_checks(self):
+        from camp.apps.monitors.models import LatestEntry
+        from camp.apps.qaqc.models import HealthCheck
+        PM25 = entry_models.PM25
+        ts = datetime(2025, 6, 9, 0, 0, tzinfo=timezone.utc)
+        for stage in (PM25.Stage.CORRECTED, PM25.Stage.CLEANED, PM25.Stage.CALIBRATED):
+            legacy = PM25.objects.create(monitor=self.monitor, timestamp=ts, sensor='', stage=stage, processor='X', value=1)
+        raw = PM25.objects.filter(monitor=self.monitor, sensor='a').first()
+        LatestEntry.objects.create(monitor=self.monitor, entry_type='pm25', stage=PM25.Stage.CLEANED, processor='X', entry_id=legacy.pk, timestamp=ts)
+        raw_latest = LatestEntry.objects.create(monitor=self.monitor, entry_type='pm25', stage=PM25.Stage.RAW, processor='', entry_id=raw.pk, timestamp=ts)
+        hc = HealthCheck.objects.create(monitor=self.monitor, hour=ts, score=1)
+        self.monitor.health = hc
+        self.monitor.save()
+        # Another type's health checks are untouched.
+        other_hc = HealthCheck.objects.create(monitor=self.other, hour=ts, score=2)
+
+        out = StringIO()
+        call_command('cleanup_vozbox_pm', batch_size=2, stdout=out)
+
+        assert set(PM25.objects.filter(monitor=self.monitor).values_list('stage', flat=True)) == {PM25.Stage.RAW}
+        assert list(LatestEntry.objects.filter(monitor=self.monitor, entry_type='pm25')) == [raw_latest]
+        assert not HealthCheck.objects.filter(monitor=self.monitor).exists()
+        assert HealthCheck.objects.filter(pk=other_hc.pk).exists()
+        self.monitor.refresh_from_db()
+        assert self.monitor.health is None
+        text = out.getvalue()
+        assert 'pm25 legacy stages: 3 removed' in text
+        assert 'pm25 legacy LatestEntry: 1 removed' in text
+        assert 'health checks: 1 removed' in text
+        assert 'removed 5 legacy rows' in text
+
+    def test_monitor_id_filter(self):
+        second = VOZBox.objects.create(sensor_id='e00fce68other', name='Other', location='outside')
+        entry_models.PM25.objects.create(
+            monitor=second, timestamp=datetime(2025, 6, 9, tzinfo=timezone.utc), sensor='a', stage='raw', value=1,
+        )
+        call_command('cleanup_vozbox_pm', monitor_ids=['e00fce68rename'], stdout=StringIO())
+        assert self._sensors(entry_models.PM25, second) == {'a': 1}
+        assert 'a' not in self._sensors(entry_models.PM25, self.monitor)

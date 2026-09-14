@@ -20,14 +20,10 @@ def hourly_health_checks(hour=None):
 
     Runs at minute 40 (not right at the hour) because get_for_health_checks()
     only queues a monitor if it already has RAW PM2.5 entries for the target
-    hour, and some networks deliver an hour's data well after it closes:
-    VOZbox's upstream only publishes a batch ~65 min after each hour closes
-    (see VOZBox.LAST_ACTIVE_LIMIT in camp/apps/monitors/vozbox/models.py),
-    and import_realtime pulls it in on its next */10 min cycle -- landing in
-    the DB around minute 10-11 of the following hour. Running at minute 1
-    fired before that batch existed, so VOZbox never accumulated passing
-    HealthCheck rows and was permanently excluded from filter_healthy()
-    (e.g. the pm25/current/ API).
+    hour, and some networks deliver an hour's data well after it closes.
+    Running right at the hour fired before late batches existed, so those
+    monitors never accumulated passing HealthCheck rows and were permanently
+    excluded from filter_healthy() (e.g. the pm25/current/ API).
 
     hourly_region_summaries (camp/apps/summaries/tasks.py, :50) reads these
     HealthCheck rows for the same hour and must stay scheduled after this.

@@ -561,6 +561,12 @@ class MonitorFilterDeviceTests(TestCase):
 
     def setUp(self):
         self.factory = RequestFactory()
+        # The map endpoints only surface (monitor type, entry type) pairs
+        # with a DefaultCalibration row; these tests exercise the device
+        # filter via temperature, so opt the types in.
+        from camp.apps.calibrations.models import DefaultCalibration
+        for monitor_type in ('cimis', 'purpleair'):
+            DefaultCalibration.objects.get_or_create(monitor_type=monitor_type, entry_type='temperature')
 
     @override_settings(MONITOR_ENABLED_TYPES=[])
     def test_filters_by_cimis_device(self):
@@ -732,3 +738,125 @@ class MonitorFilterDeviceTests(TestCase):
         assert str(cimis.pk) in ids
         assert str(purpleair.pk) not in ids
 
+
+
+class PublishedEntryTypeTests(TestCase):
+    """
+    A DefaultCalibration row is the publish switch for the map endpoints
+    (current/, at/, closest/): no row for (monitor type, entry type) means
+    the type is ingested but not displayed for that pollutant.
+    """
+
+    def setUp(self):
+        from django.contrib.gis.geos import Point
+        from camp.apps.calibrations import processors
+        from camp.apps.monitors.vozbox.models import VOZBox
+
+        self.factory = RequestFactory()
+        self.now = timezone.now()
+        self.vozbox = VOZBox.objects.create(
+            sensor_id='e00fce68published',
+            name='VOZbox',
+            position=Point(-119.7871, 36.7378, srid=4326),
+            location=VOZBox.LOCATION.outside,
+        )
+        self.vozbox.create_entry(entry_models.PM25, sensor='a', timestamp=self.now, value=Decimal('10.0'))
+        self.vozbox.create_entry(entry_models.PM25, sensor='b', timestamp=self.now, value=Decimal('4.0'))
+        self.vozbox.create_entry(
+            entry_models.O3,
+            sensor='1',
+            timestamp=self.now,
+            stage=entry_models.O3.Stage.CALIBRATED,
+            processor=processors.VOZBox_QuinnCal.name,
+            value=Decimal('35.0'),
+        )
+
+    def _current_ids(self, entry_type):
+        # CurrentData caches per URL (locmem persists across tests in-process).
+        from django.core.cache import cache
+        cache.clear()
+        kwargs = {'entry_type': entry_type}
+        url = reverse('api:v2:monitors:current-data', kwargs=kwargs)
+        response = current_data(self.factory.get(url), **kwargs)
+        assert response.status_code == 200
+        return [m['id'] for m in get_response_data(response)['data']]
+
+    def _at_ids(self, entry_type):
+        kwargs = {'entry_type': entry_type}
+        url = reverse('api:v2:monitors:monitor-at', kwargs=kwargs)
+        request = self.factory.get(url, {'timestamp': self.now.isoformat()})
+        response = monitors_at(request, **kwargs)
+        assert response.status_code == 200
+        return [m['id'] for m in get_response_data(response)['data']]
+
+    def _closest_ids(self, entry_type):
+        kwargs = {'entry_type': entry_type}
+        url = reverse('api:v2:monitors:monitor-closest', kwargs=kwargs)
+        params = {'latitude': self.vozbox.position.y, 'longitude': self.vozbox.position.x}
+        response = closest_monitor(self.factory.get(url, params), **kwargs)
+        assert response.status_code == 200
+        return [m['id'] for m in get_response_data(response)['data']]
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0.9)
+    def test_vozbox_o3_is_current_without_pm25_health_checks(self):
+        # Health checks score dual-channel PM2.5 only; they must not gate O3.
+        assert str(self.vozbox.pk) in self._current_ids('o3')
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0.9)
+    def test_vozbox_o3_is_at_without_pm25_health_checks(self):
+        assert str(self.vozbox.pk) in self._at_ids('o3')
+
+    def test_vozbox_o3_is_closest(self):
+        assert str(self.vozbox.pk) in self._closest_ids('o3')
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    def test_vozbox_pm25_is_not_published(self):
+        # Raw PM2.5 is stored (both sensors) but has no DefaultCalibration
+        # row, so it stays off every map endpoint even with health disabled.
+        assert entry_models.PM25.objects.filter(monitor=self.vozbox).count() == 2
+        assert str(self.vozbox.pk) not in self._current_ids('pm25')
+        assert str(self.vozbox.pk) not in self._at_ids('pm25')
+        assert str(self.vozbox.pk) not in self._closest_ids('pm25')
+
+    @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
+    def test_adding_a_row_publishes_the_type(self):
+        from camp.apps.calibrations.models import DefaultCalibration
+        DefaultCalibration.objects.create(monitor_type='vozbox', entry_type='pm25')
+        assert str(self.vozbox.pk) in self._current_ids('pm25')
+
+    def test_pm25_current_still_health_gated(self):
+        # Sanity: the PM2.5 gate is untouched -- the purpleair fixture has
+        # entries but no HealthCheck rows, so it's excluded at threshold 0.9
+        # and included at 0.
+        purpleair = PurpleAir.objects.get(sensor_id=8892)
+        with override_settings(MONITOR_HEALTHY_THRESHOLD=0.9):
+            assert str(purpleair.pk) not in self._current_ids('pm25')
+        with override_settings(MONITOR_HEALTHY_THRESHOLD=0):
+            assert str(purpleair.pk) in self._current_ids('pm25')
+
+    def test_meta_reports_published_flag(self):
+        url = reverse('api:v2:monitors:monitor-meta')
+        response = endpoints.MonitorMetaEndpoint.as_view()(self.factory.get(url))
+        content = get_response_data(response)
+        entries = content['data']['monitors']['vozbox']['entries']
+        assert entries['o3']['published'] is True
+        assert entries['pm25']['published'] is False
+
+
+class PublishedFixtureTests(TestCase):
+    def test_fixture_is_idempotent_and_matches_existing_rows(self):
+        from django.core.management import call_command
+        from camp.apps.calibrations.models import DefaultCalibration
+
+        # Already loaded once by the purpleair_monitor session fixture; the
+        # vozbox/o3 row also comes from migration 0007 with its own pk.
+        # Loading again must update in place, not collide on unique_together.
+        before = DefaultCalibration.objects.count()
+        call_command('loaddata', 'default-calibrations.yaml', verbosity=0)
+        assert DefaultCalibration.objects.count() == before
+
+        rows = {(d.monitor_type, d.entry_type): d.calibration for d in DefaultCalibration.objects.all()}
+        assert rows[('purpleair', 'pm25')] == 'PM25_EPA_Oct2021'
+        assert rows[('airnow', 'o3')] == ''
+        assert rows[('vozbox', 'o3')] == 'VOZBox_QuinnCal'
+        assert ('vozbox', 'pm25') not in rows

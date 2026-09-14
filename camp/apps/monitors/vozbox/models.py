@@ -28,35 +28,23 @@ class VOZBox(Monitor):
 
     ENTRY_CONFIG = {
         entry_models.PM10: {
-            'sensors': ['a', 'b'],
+            'sensors': ['plantower', 'sensirion'],
             'allowed_stages': [entry_models.PM10.Stage.RAW],
             'default_stage': entry_models.PM10.Stage.RAW,
         },
+        # Two physical PM sensors -- a Plantower PMS (m_PM*_ATM columns) and
+        # a Sensirion SEN5x (m_PM*_b columns). They are *not* a matched
+        # A/B pair, so the PurpleAir-style A/B correction + spike cleaning
+        # doesn't apply. Both are stored RAW only, for side-by-side
+        # comparison; neither is published on the map (no DefaultCalibration
+        # row for vozbox/pm25), and no health checks are scored.
         entry_models.PM25: {
-            'sensors': ['a', 'b'],
-            'allowed_stages': [
-                entry_models.PM25.Stage.RAW,
-                entry_models.PM25.Stage.CORRECTED,
-                entry_models.PM25.Stage.CLEANED,
-                entry_models.PM25.Stage.CALIBRATED,
-            ],
-            'default_stage': entry_models.PM25.Stage.CLEANED,
-            'processors': {
-                entry_models.PM25.Stage.RAW: [processors.PM25_LCS_Correction],
-                entry_models.PM25.Stage.CORRECTED: [processors.PM25_LCS_Cleaning],
-                entry_models.PM25.Stage.CLEANED: [
-                    processors.PM25_UnivariateLinearRegression,
-                    processors.PM25_MultivariateLinearRegression,
-                    processors.PM25_EPA_Oct2021,
-                ],
-            },
-            'alerts': {
-                'stage': entry_models.PM25.Stage.CALIBRATED,
-                'processor': processors.PM25_UnivariateLinearRegression,
-            },
+            'sensors': ['plantower', 'sensirion'],
+            'allowed_stages': [entry_models.PM25.Stage.RAW],
+            'default_stage': entry_models.PM25.Stage.RAW,
         },
         entry_models.PM100: {
-            'sensors': ['a', 'b'],
+            'sensors': ['plantower', 'sensirion'],
             'allowed_stages': [entry_models.PM100.Stage.RAW],
             'default_stage': entry_models.PM100.Stage.RAW,
         },
@@ -80,6 +68,10 @@ class VOZBox(Monitor):
             'processors': {
                 entry_models.O3.Stage.RAW: [processors.O3_VOZBox],
             },
+            # Calibrated entries created outside the per-entry pipeline
+            # (QuinnResearch's own o3_cal); listed so DefaultCalibration
+            # can offer it.
+            'calibrations': [processors.VOZBox_QuinnCal],
         },
     }
 
@@ -87,6 +79,11 @@ class VOZBox(Monitor):
 
     class Meta:
         verbose_name = 'VOZbox'
+
+    def supports_health_checks(self):
+        # Dual-channel health checks assume two identical PM2.5 sensors;
+        # the Plantower/Sensirion pair here isn't one. See ENTRY_CONFIG.
+        return False
 
     def update_data(self, row):
         if not self.name:
@@ -100,15 +97,15 @@ class VOZBox(Monitor):
         entries = []
 
         dual_channel = {
-            'a': {
-                entry_models.PM10: {'value': row.get('pm1_a')},
-                entry_models.PM25: {'value': row.get('pm25_a')},
-                entry_models.PM100: {'value': row.get('pm10_a')},
+            'plantower': {
+                entry_models.PM10: {'value': row.get('pm1_plantower')},
+                entry_models.PM25: {'value': row.get('pm25_plantower')},
+                entry_models.PM100: {'value': row.get('pm10_plantower')},
             },
-            'b': {
-                entry_models.PM10: {'value': row.get('pm1_b')},
-                entry_models.PM25: {'value': row.get('pm25_b')},
-                entry_models.PM100: {'value': row.get('pm10_b')},
+            'sensirion': {
+                entry_models.PM10: {'value': row.get('pm1_sensirion')},
+                entry_models.PM25: {'value': row.get('pm25_sensirion')},
+                entry_models.PM100: {'value': row.get('pm10_sensirion')},
             },
         }
         single_channel = {

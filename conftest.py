@@ -38,6 +38,7 @@ def purpleair_monitor(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         call_command('loaddata', 'purple-air.yaml', verbosity=0)
         call_command('loaddata', 'bam1022.yaml', verbosity=0)
+        call_command('loaddata', 'default-calibrations.yaml', verbosity=0)
         monitor = PurpleAir.objects.get(sensor_id=8892)
         bam = BAM1022.objects.get(pk='gO9_akFVTVW6mYBifOtoxg')
         create_hourly_data_for_monitor(monitor)
