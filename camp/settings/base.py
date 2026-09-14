@@ -42,6 +42,11 @@ if COMMIT_HASH is None:
 # Empty means all registered types are exposed.
 MONITOR_ENABLED_TYPES = ['purpleair', 'airgradient', 'bam1022', 'aqview', 'airnow', 'vozbox', 'aqlite']
 
+# Staging / local dev only: mirror BAM 1022 entries from production
+# (https://www.sjvair.com) via an hourly task and the `mirror_bam_entries`
+# command. Never enable in production.
+BAM_MIRROR_ENABLED = bool(int(env('BAM_MIRROR_ENABLED', 0)))
+
 MONITOR_ACTIVE_WINDOW_DAYS = int(env('MONITOR_ACTIVE_WINDOW_DAYS', '90'))
 
 MONITOR_HEALTHY_WINDOW_HOURS = int(env('MONITOR_HEALTHY_WINDOW_HOURS', '24'))

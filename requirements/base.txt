@@ -72,6 +72,7 @@ scout-apm==3.5.3
 sentry-sdk==2.62.0
 setuptools==80.10.2
 shapely==2.1.2
+sjvair==0.1.0a4
 simpleeval==1.0.7
 tqdm==4.67.3
 tdigest==0.5.2.2

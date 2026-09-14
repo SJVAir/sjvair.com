@@ -82,6 +82,26 @@ rather than duplicating them). Until step 2 has run, the daily
 a county — Kern, Tulare, and Sequoia rows are silently skipped (region not
 found) rather than failing.
 
+## BAM 1022 Mirror (staging / local dev only)
+
+Production is the only environment where BAM 1022 devices push data. Staging and
+local dev can mirror production's RAW BAM entries (and the monitors themselves,
+with matching IDs) and run them through the normal processing pipeline. Enable
+by setting `BAM_MIRROR_ENABLED=1` in the environment; leave it unset in production.
+When enabled, an hourly task (`:20`) is registered that mirrors the last 3 hours.
+The command alone defaults to the most recent hour. It reads production through
+the official `sjvair` PyPI client (SJVAir/sjvair-python).
+
+```bash
+# Backfill a specific range (timestamps are UTC unless an offset is given)
+docker compose run --rm web python manage.py mirror_bam_entries --start 2026-09-01T00:00 --end 2026-09-08T00:00
+
+# Only one monitor
+docker compose run --rm web python manage.py mirror_bam_entries --monitor-id GgeFGbo-Tjy3YYQqY0DLyA
+```
+
+Idempotent and safe to re-run.
+
 ## Architecture Overview
 
 SJVAir is a Django/PostGIS air quality monitoring platform for the San Joaquin Valley. It ingests data from multiple sensor networks, processes it through a calibration pipeline, and exposes it via a versioned REST API.
