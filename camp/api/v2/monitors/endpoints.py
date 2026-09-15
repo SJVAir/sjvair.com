@@ -16,7 +16,7 @@ from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.views.decorators.csrf import csrf_exempt
 
-from camp.apps.entries.models import BaseEntry
+from camp.apps.entries.models import BaseEntry, PM25
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
@@ -109,6 +109,9 @@ class MonitorMetaEndpoint(Endpoint):
     def get_monitors(self):
         payload = {}
 
+        from camp.apps.calibrations.models import DefaultCalibration
+        published = set(DefaultCalibration.objects.values_list('monitor_type', 'entry_type'))
+
         monitor_subclasses = sorted(Monitor.get_enabled_subclasses(), key=lambda c: c.monitor_type)
         for monitor_model in monitor_subclasses:
             payload[monitor_model.monitor_type] = {
@@ -122,6 +125,7 @@ class MonitorMetaEndpoint(Endpoint):
             for entry_model, config in config_items:
                 payload[monitor_model.monitor_type]['entries'][entry_model.entry_type] = {
                     'sensors': config.get('sensors'),
+                    'published': (monitor_model.monitor_type, entry_model.entry_type) in published,
                     'allowed_stages': config.get('allowed_stages', []),
                     'default_stage': monitor_model.get_default_stage(entry_model),
                     'default_calibration': monitor_model.get_default_calibration(entry_model),
@@ -308,6 +312,7 @@ class ClosestMonitor(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             .get_queryset()
             .get_active()
             .get_public()
+            .published_for(self.entry_model)
             .filter(location=Monitor.LOCATION.outside)
             .annotate(distance=Distance('position', form.point, spheroid=True))
             .order_by('distance')
@@ -352,6 +357,7 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
         queryset = (super()
             .get_queryset(*args, **kwargs)
             .get_public()
+            .published_for(self.entry_model)
             .filter(position__isnull=False)
         )
 
@@ -360,11 +366,14 @@ class CurrentData(CachedEndpointMixin, MonitorMixin, EntryTypeMixin, generics.Li
             days=settings.MONITOR_ACTIVE_WINDOW_DAYS
         ).total_seconds())
 
-        # ...and recently healthy.
-        queryset = queryset.filter_healthy(
-            hours=settings.MONITOR_HEALTHY_WINDOW_HOURS,
-            threshold=settings.MONITOR_HEALTHY_THRESHOLD,
-        )
+        # ...and, for PM2.5, recently healthy. Health checks score the
+        # dual-channel PM2.5 sensors only, so they don't gate other
+        # pollutants (e.g. a VOZbox's O3).
+        if self.entry_model is PM25:
+            queryset = queryset.filter_healthy(
+                hours=settings.MONITOR_HEALTHY_WINDOW_HOURS,
+                threshold=settings.MONITOR_HEALTHY_THRESHOLD,
+            )
 
         # Filter (e.g. ?device=) before with_latest_entry(), not via
         # filter_class - with_latest_entry() sets `latest_entry` by
@@ -403,6 +412,7 @@ class MonitorsAt(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         queryset = (super()
             .get_queryset(*args, **kwargs)
             .get_public()
+            .published_for(self.entry_model)
             .filter(position__isnull=False)
         )
 
@@ -419,11 +429,13 @@ class MonitorsAt(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
         if bbox:
             queryset = queryset.in_bbox(*bbox)
 
-        queryset = queryset.filter_healthy(
-            hours=settings.MONITOR_HEALTHY_WINDOW_HOURS,
-            threshold=settings.MONITOR_HEALTHY_THRESHOLD,
-            as_of=timestamp,
-        )
+        # PM2.5-only, same reasoning as CurrentData.
+        if self.entry_model is PM25:
+            queryset = queryset.filter_healthy(
+                hours=settings.MONITOR_HEALTHY_WINDOW_HOURS,
+                threshold=settings.MONITOR_HEALTHY_THRESHOLD,
+                as_of=timestamp,
+            )
 
         # Filter (e.g. ?device=) before with_entry_as_of(), not via
         # filter_class - with_entry_as_of() returns a plain list (it

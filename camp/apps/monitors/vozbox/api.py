@@ -103,12 +103,12 @@ class VozBoxClient:
 
         return {
             'timestamp': ts,
-            'pm1_a': _pm('m_PM1_ATM'),
-            'pm1_b': _pm('m_PM1_b'),
-            'pm25_a': _pm('m_PM25_ATM'),
-            'pm25_b': _pm('m_PM25_b'),
-            'pm10_a': _pm('m_PM10_ATM'),
-            'pm10_b': _pm('m_PM10_b'),
+            'pm1_plantower': _pm('m_PM1_ATM'),
+            'pm1_sensirion': _pm('m_PM1_b'),
+            'pm25_plantower': _pm('m_PM25_ATM'),
+            'pm25_sensirion': _pm('m_PM25_b'),
+            'pm10_plantower': _pm('m_PM10_ATM'),
+            'pm10_sensirion': _pm('m_PM10_b'),
             'temperature': _float('temp_C'),
             'humidity': _float('rh'),
             'o3': _float('o3'),

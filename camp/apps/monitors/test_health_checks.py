@@ -134,7 +134,7 @@ class MonitorHealthCheckTests(TestCase):
         )
         monitor.create_entry(
             PM25,
-            stage=PM25.Stage.CLEANED,
+            stage=PM25.Stage.RAW,
             sensor='a',
             timestamp=timezone.now() - timedelta(minutes=70),
             value=10,

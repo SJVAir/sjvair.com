@@ -52,6 +52,31 @@ class MonitorQuerySet(InheritanceQuerySet):
         super().__init__(*args, **kwargs)
         self._iterable_class = InheritanceIterable
 
+    def published_for(self, entry_model):
+        """
+        Monitors whose type publishes `entry_model` on the map endpoints
+        (current/, at/, closest/). A monitor type publishes an entry type
+        iff a calibrations.DefaultCalibration row exists for that pair --
+        a blank `calibration` means "publish the default stage". No row
+        means the data is still ingested and available via the monitor
+        detail / entries endpoints, just not surfaced on the map.
+        """
+        from camp.apps.calibrations.models import DefaultCalibration
+
+        published_types = set(DefaultCalibration.objects
+            .filter(entry_type=entry_model.entry_type)
+            .values_list('monitor_type', flat=True)
+        )
+
+        lookup = Q()
+        for subclass in self.model.get_subclasses():
+            if subclass.monitor_type in published_types:
+                lookup |= Q(**{f'{subclass.monitor_type}__isnull': False})
+
+        if not lookup:
+            return self.none()
+        return self.filter(lookup)
+
     def get_active(self, seconds=None):
         seconds = seconds or self.model.LAST_ACTIVE_LIMIT
         cutoff = timezone.now() - timedelta(seconds=seconds)

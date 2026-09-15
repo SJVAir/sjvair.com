@@ -1,0 +1,26 @@
+# Which (monitor type, entry type) pairs are published on the map endpoints
+# (current/, at/, closest/) and at which calibration. A blank calibration
+# means the default stage (raw for AirNow O3). No pks: rows are matched on
+# (monitor_type, entry_type), so loading is idempotent and safe to re-run on
+# an environment that already has some of these.
+#
+#   docker compose run --rm web python manage.py loaddata default-calibrations.yaml
+#
+# Deliberately absent: vozbox/pm25 (raw Plantower + Sensirion pair stored for
+# comparison only) and all met/gas types.
+- model: calibrations.defaultcalibration
+  fields: {monitor_type: airgradient, entry_type: pm25, calibration: PM25_EPA_Oct2021}
+- model: calibrations.defaultcalibration
+  fields: {monitor_type: airnow, entry_type: pm25, calibration: PM25_FEM_Cleaner}
+- model: calibrations.defaultcalibration
+  fields: {monitor_type: aqview, entry_type: pm25, calibration: PM25_FEM_Cleaner}
+- model: calibrations.defaultcalibration
+  fields: {monitor_type: bam1022, entry_type: pm25, calibration: PM25_FEM_Cleaner}
+- model: calibrations.defaultcalibration
+  fields: {monitor_type: purpleair, entry_type: pm25, calibration: PM25_EPA_Oct2021}
+- model: calibrations.defaultcalibration
+  fields: {monitor_type: airnow, entry_type: o3, calibration: ''}
+- model: calibrations.defaultcalibration
+  fields: {monitor_type: aqlite, entry_type: o3, calibration: AQLiteHourlyAggregator}
+- model: calibrations.defaultcalibration
+  fields: {monitor_type: vozbox, entry_type: o3, calibration: VOZBox_QuinnCal}

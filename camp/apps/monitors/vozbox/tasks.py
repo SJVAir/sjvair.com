@@ -8,6 +8,7 @@ from huey import crontab
 
 from camp.apps.calibrations import processors
 from camp.apps.entries import models as entry_models
+from camp.apps.monitors.models import LatestEntry
 from camp.apps.monitors.vozbox.api import VozBoxClient
 from camp.apps.monitors.vozbox.models import VOZBox
 
@@ -116,9 +117,13 @@ def process_device(coreid, rows):
     rows = _bin_rows(rows)
 
     # Cutoff: skip rows already in DB. validation_check() is the safety net.
-    latest_ts = (entry_models.PM25.objects
-        .filter(monitor=monitor, sensor='a', stage=entry_models.PM25.Stage.RAW)
-        .order_by('-timestamp')
+    # Read LatestEntry (one indexed row per monitor) rather than scanning
+    # the PM2.5 table -- and don't filter on sensor name, so the cutoff
+    # keeps working across the 'a'/'b' -> 'plantower'/'sensirion' rename
+    # (see cleanup_vozbox_pm) without re-creating rows under the
+    # new names.
+    latest_ts = (LatestEntry.objects
+        .filter(monitor=monitor, entry_type=entry_models.PM25.entry_type, stage=entry_models.PM25.Stage.RAW)
         .values_list('timestamp', flat=True)
         .first()
     )

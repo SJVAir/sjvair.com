@@ -63,6 +63,10 @@ class AQLite(Monitor):
             'processors': {
                 entry_models.O3.Stage.RAW: [processors.AQLiteRawCleaner],
             },
+            # Calibrated entries created outside the per-entry pipeline
+            # (hourly aggregation task); listed so DefaultCalibration can
+            # offer it.
+            'calibrations': [processors.AQLiteHourlyAggregator],
             'alerts': {'stage': entry_models.O3.Stage.CALIBRATED},
         },
         entry_models.Temperature: {
