@@ -82,6 +82,52 @@ rather than duplicating them). Until step 2 has run, the daily
 a county — Kern, Tulare, and Sequoia rows are silently skipped (region not
 found) rather than failing.
 
+## Published Map Entry Types (DefaultCalibration fixture)
+
+A `calibrations.DefaultCalibration` row for a (monitor type, entry type) pair is
+what makes that pair appear on the map endpoints (`current/`, `at/`, `closest/`).
+No row means the data is ingested and available via monitor detail / entries
+endpoints, but not displayed. Only PM2.5 and O3 are meant to be on the map.
+The rows live in `fixtures/default-calibrations.yaml` and are loaded manually,
+not by migration. The fixture is pk-less (natural key on the pair), so loading
+is idempotent and overwrites existing rows in place.
+
+```bash
+docker compose run --rm web python manage.py loaddata default-calibrations.yaml
+```
+
+Re-run whenever the fixture changes. To publish a new pair, add a row to the
+fixture (blank `calibration` = default stage) and reload.
+
+## VOZbox PM Cleanup
+
+VOZbox carries a Plantower PMS and a Sensirion SEN5x, not a matched A/B pair,
+so PM1/PM2.5/PM10 are stored RAW under sensors `plantower` / `sensirion` with
+no processors or health checks. Environments that ingested VOZbox before that
+change (any DB with VOZbox data from before PR #269) have rows named `a`/`b`
+plus leftover CORRECTED/CLEANED/CALIBRATED PM2.5 entries, stale `LatestEntry`
+rows, and `HealthCheck` rows. One command brings the data into the new shape:
+
+```bash
+# Count what would change; writes nothing
+docker compose run --rm web python manage.py cleanup_vozbox_pm --dry-run
+
+# Do it (batched, separately-committed, progress per batch)
+docker compose run --rm web python manage.py cleanup_vozbox_pm
+
+# Ease load / scope down if needed
+docker compose run --rm web python manage.py cleanup_vozbox_pm --batch-size 2000 --sleep 0.5
+docker compose run --rm web python manage.py cleanup_vozbox_pm --monitor-id e00fce6808784ceaf209f949
+```
+
+Idempotent and resumable; re-running reports `nothing to do`. It is deliberately
+a command rather than a data migration -- the PM entry tables are large and
+shared, and a one-shot UPDATE in the deploy path would hold locks against live
+ingestion. Locally ~2.2M rows renamed in ~5 min and ~700k legacy rows removed in
+~1.5 min while ingestion was running. On Heroku run it as a one-off dyno
+(`heroku run -a <app> -- python manage.py cleanup_vozbox_pm`) after deploying and
+loading the fixture above.
+
 ## BAM 1022 Mirror (staging / local dev only)
 
 Production is the only environment where BAM 1022 devices push data. Staging and
