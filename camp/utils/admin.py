@@ -1,5 +1,34 @@
+from django import forms
 from django.urls import reverse
 from django.utils.safestring import mark_safe
+
+
+class LeafletMapMixin:
+    """
+    Loads Leaflet and the admin map initializer for admins (and inlines)
+    that render maps via ``camp.utils.leaflet.LeafletMap``.
+
+    Implemented as a ``media`` property rather than an inner ``Media``
+    class so it still applies when the admin defines its own ``Media``
+    (which would otherwise shadow the mixin's). Must precede the
+    ModelAdmin / InlineModelAdmin base in the class's bases.
+    """
+    leaflet_media = forms.Media(
+        css={
+            'all': [
+                'js/admin/leaflet/leaflet.css',
+                'js/admin/leaflet-maps.css',
+            ],
+        },
+        js=[
+            'js/admin/leaflet/leaflet.js',
+            'js/admin/leaflet-maps.js',
+        ],
+    )
+
+    @property
+    def media(self):
+        return super().media + self.leaflet_media
 
 
 class ReadOnlyAdminMixin:
