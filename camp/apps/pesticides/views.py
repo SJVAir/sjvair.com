@@ -266,7 +266,7 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
         )
         return queryset.annotate(
             lbs_applied=lbs_subquery('commodity', year),
-            chemical_count=chemical_count,
+            chemical_count=Coalesce(chemical_count, 0),
         )
 
 

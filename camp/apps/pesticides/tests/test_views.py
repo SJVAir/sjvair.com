@@ -199,3 +199,19 @@ class CommodityListTests(TestCase):
     def test_related_product(self):
         product = Product.objects.get(pk=3)
         assert self.names(self.client.get(self.url, {'product': product.sqid})) == ['GRAPE']
+
+    def test_zero_chemical_count_sorts_correctly(self):
+        # A commodity with no PesticideUse rows at all (not just none in the
+        # latest year) should get chemical_count=0, not NULL -- NULL would
+        # always sort last regardless of direction under nulls_last.
+        Commodity.objects.create(site_code='9999', name='NOTHING')
+
+        response = self.client.get(self.url)
+        by_name = {c.name: (c.chemical_count, c.lbs_applied) for c in response.context['object_list']}
+        assert by_name['NOTHING'] == (0, None)
+
+        response = self.client.get(self.url, {'sort': 'chemicals'})
+        assert self.names(response)[0] == 'NOTHING'
+
+        response = self.client.get(self.url, {'sort': '-chemicals'})
+        assert self.names(response)[-1] == 'NOTHING'
