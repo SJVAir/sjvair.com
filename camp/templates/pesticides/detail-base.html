@@ -1,0 +1,56 @@
+{% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+
+{% block title %}{{ object.name }} | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} detail{% endblock %}
+
+{% block explorer-content %}
+<div class="content detail-header">
+    <h1 class="mb-1">{{ object.name }}</h1>
+    <p class="identifiers has-text-grey">{% block identifiers %}{% endblock %}</p>
+    <div class="tags are-medium">{% block badges %}{% endblock %}</div>
+</div>
+
+{% include 'pesticides/includes/stat-row.html' %}
+{% if summary_sentence %}<p class="summary-sentence is-size-5 mb-5">{{ summary_sentence }}</p>{% endif %}
+
+<div class="columns">
+    <div class="column">{% include 'pesticides/includes/related-card.html' with card=related_a %}</div>
+    <div class="column">{% include 'pesticides/includes/related-card.html' with card=related_b %}</div>
+</div>
+
+<section class="applications mt-6">
+    <h2 class="title is-4">Confirmed applications <small class="has-text-grey is-size-6">Pesticide Use Reporting (PUR)</small></h2>
+    {% if by_year %}
+        <div class="columns">
+            <div class="column">{% include 'pesticides/includes/by-year-table.html' %}</div>
+            <div class="column">{% if by_county %}{% include 'pesticides/includes/by-county-table.html' %}{% endif %}</div>
+        </div>
+        <h3 class="title is-5 mt-5">Most recent records</h3>
+        {% include 'pesticides/includes/recent-uses.html' %}
+        <p><a href="{{ api_uses_url }}">View all records in the API</a></p>
+    {% else %}
+        <p class="has-text-grey">No confirmed applications on record{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
+    {% endif %}
+</section>
+
+<section class="notices mt-6">
+    <h2 class="title is-4">Planned applications <small class="has-text-grey is-size-6">SprayDays notices of intent</small></h2>
+    {% if not has_notices %}
+        <p class="has-text-grey">SprayDays notices do not include the crop, so planned applications can't be listed by commodity. See the chemical or product pages instead.</p>
+    {% elif upcoming %}
+        {% include 'pesticides/includes/upcoming-notices.html' %}
+        <p><a href="{{ api_notices_url }}">View all notices in the API</a></p>
+    {% else %}
+        <p class="has-text-grey">No upcoming notices.</p>
+    {% endif %}
+</section>
+
+<footer class="sources mt-6 has-text-grey is-size-7">
+    <p>
+        Confirmed applications: CDPR Pesticide Use Reporting{% if years %}, {{ years.0 }}–{{ years.1 }}{% endif %}.
+        {% if notice_window %}Planned applications: SprayDays, {{ notice_window.count }} notices from {{ notice_window.first|date:'M j, Y' }} to {{ notice_window.last|date:'M j, Y' }}.{% endif %}
+        <a href="{% url 'pesticides:home' %}#about">About this data</a>.
+    </p>
+</footer>
+{% endblock %}

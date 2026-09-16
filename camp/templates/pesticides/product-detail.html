@@ -1,1 +1,13 @@
-{% extends 'pesticides/base.html' %}
+{% extends 'pesticides/detail-base.html' %}
+{% block breadcrumb-list %}
+    <li><a href="{% url 'pesticides:product-list' %}">Products</a></li>
+    <li class="is-active"><a aria-current="page">{{ object.name }}</a></li>
+{% endblock %}
+{% block identifiers %}Registration {{ object.reg_number }} · Product no. {{ object.prodno }}{% endblock %}
+{% block badges %}
+    {% if object.fumigant %}<a class="tag is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true">Fumigant</a>{% endif %}
+    {% if object.california_restricted %}<a class="tag is-danger is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true">CA restricted</a>{% endif %}
+    {% if object.contains_prop65 %}<a class="tag is-danger is-light" href="{% url 'pesticides:home' %}#prop65" title="Contains a Proposition 65 listed chemical">Prop 65</a>{% endif %}
+    {% if object.contains_tac %}<a class="tag is-warning is-light" href="{% url 'pesticides:home' %}#tac" title="Contains a CARB Toxic Air Contaminant">CARB TAC</a>{% endif %}
+    {% if object.contains_iarc %}<a class="tag is-danger" href="{% url 'pesticides:home' %}#iarc" title="Contains an IARC Group 1, 2A, or 2B chemical">IARC</a>{% endif %}
+{% endblock %}

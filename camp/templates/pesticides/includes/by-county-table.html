@@ -1,0 +1,9 @@
+{% load pesticides_explorer %}
+<table class="table is-fullwidth is-narrow is-striped">
+    <thead><tr><th>County ({{ latest_year }})</th><th class="has-text-right">Lbs</th><th class="has-text-right">Acres treated</th><th class="has-text-right">Applications</th></tr></thead>
+    <tbody>
+    {% for row in by_county %}
+        <tr><td>{{ row.county_name }}</td><td class="has-text-right">{{ row.lbs|lbs }}</td><td class="has-text-right">{{ row.acres|lbs }}</td><td class="has-text-right">{{ row.applications|lbs }}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>

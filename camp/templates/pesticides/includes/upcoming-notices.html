@@ -1,0 +1,22 @@
+{% if upcoming_by_county %}
+<div class="tags mb-3">
+    {% for row in upcoming_by_county %}<span class="tag is-medium">{{ row.county_name }} <strong class="ml-1">{{ row.count }}</strong></span>{% endfor %}
+</div>
+{% endif %}
+<table class="table is-fullwidth is-narrow is-striped">
+    <thead><tr><th>Scheduled</th><th>County</th><th>Method</th><th class="has-text-right">Treated</th><th>Also on this notice</th></tr></thead>
+    <tbody>
+    {% for notice in upcoming %}
+        <tr>
+            <td>{{ notice.scheduled_application|date:'M j, Y' }}</td>
+            <td>{{ notice.county.name|default:'—' }}</td>
+            <td>{{ notice.application_method|default:'—' }}</td>
+            <td class="has-text-right">{% if notice.treated_amount %}{{ notice.treated_amount|floatformat:1 }} {{ notice.treated_units|lower }}{% else %}—{% endif %}</td>
+            <td>
+                {% for chem in notice.chemicals.all %}{% if chem != object %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.name }}</a> {% endif %}{% endfor %}
+                {% for product in notice.products.all %}{% if product != object %}<a class="tag is-light" href="{{ product.get_absolute_url }}">{{ product.name }}</a> {% endif %}{% endfor %}
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>

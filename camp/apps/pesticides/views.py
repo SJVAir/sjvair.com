@@ -1,7 +1,10 @@
+from types import SimpleNamespace
+
 from django.db.models import Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.http import Http404
 from django.shortcuts import redirect
+from django.urls import reverse
 
 import vanilla
 
@@ -270,13 +273,162 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
         )
 
 
-class ChemicalDetail(vanilla.TemplateView):
+class ExplorerDetailMixin:
+    lookup_field = 'sqid'
+    lookup_url_kwarg = 'sqid'
+    section = None
+    lbs_field = 'lbs_chemical'
+    use_field = None          # PesticideUse FK name for this entity
+    api_param = None          # v2 API query param name
+    has_notices = True
+
+    def get_uses(self):
+        return PesticideUse.objects.filter(**{self.use_field: self.object})
+
+    def get_notices(self):
+        return PesticideNotice.objects.none()
+
+    def api_value(self):
+        raise NotImplementedError
+
+    def get_related(self, year):
+        """Return (related_a, related_b) dicts. Each: {title, kind, rows, show_all_url}."""
+        raise NotImplementedError
+
+    def related_card(self, title, kind, rows, list_url_name, param):
+        return {
+            'title': title,
+            'kind': kind,
+            'rows': rows,
+            'show_all_url': reverse(list_url_name) + f'?{param}={self.object.sqid}',
+        }
+
+    def get_summary_sentence(self, totals, year, top, verb='on'):
+        if not totals['applications'] or year is None:
+            return ''
+        sentence = f'Applied in {totals["counties"]} of {stats.SJV_COUNTY_COUNT} SJV counties in {year}'
+        names = [r.obj.name.title() for r in top[:2]]
+        if names:
+            joined = ' and '.join(names)
+            sentence += f', mostly {verb} {joined}' if verb else f', mostly {joined}'
+        return sentence + '.'
+
+    def get_context_data(self, **kwargs):
+        year = stats.latest_year()
+        uses = self.get_uses()
+        notices = self.get_notices()
+        totals = stats.year_totals(uses, year, self.lbs_field) if year else {'lbs': 0, 'applications': 0, 'counties': 0}
+        related_a, related_b = self.get_related(year)
+        context = super().get_context_data(
+            section=self.section,
+            latest_year=year,
+            years=stats.years_loaded(),
+            county_total=stats.SJV_COUNTY_COUNT,
+            totals=totals,
+            by_year=stats.by_year(uses, self.lbs_field),
+            by_county=stats.by_county(uses, year, self.lbs_field) if year else [],
+            related_a=related_a,
+            related_b=related_b,
+            recent_uses=stats.recent_uses(uses),
+            has_notices=self.has_notices,
+            upcoming=stats.upcoming_notices(notices) if self.has_notices else [],
+            upcoming_by_county=stats.upcoming_by_county(notices) if self.has_notices else [],
+            upcoming_count=stats.upcoming_count(notices) if self.has_notices else 0,
+            notice_window=stats.notice_window(),
+            api_uses_url=f'/api/2.0/pesticides/use/?{self.api_param}={self.api_value()}',
+            api_notices_url=f'/api/2.0/pesticides/notice/?{self.api_param}={self.api_value()}',
+            **kwargs,
+        )
+        context['summary_sentence'] = self.get_summary_sentence(totals, year, self.summary_top(context))
+        return context
+
+    def summary_top(self, context):
+        return context['related_b']['rows']
+
+
+def with_pct_active(rows, pct_by_pk):
+    for row in rows:
+        row.pct_active = pct_by_pk.get(row.obj.pk)
+    return rows
+
+
+class ChemicalDetail(ExplorerDetailMixin, vanilla.DetailView):
+    model = Chemical
     template_name = 'pesticides/chemical-detail.html'
+    section = 'chemicals'
+    use_field = 'chemical'
+    api_param = 'chemical'
+
+    def api_value(self):
+        return self.object.chem_code
+
+    def get_notices(self):
+        return PesticideNotice.objects.filter(chemicals=self.object)
+
+    def get_related(self, year):
+        uses = self.get_uses()
+        pct = dict(self.object.product_chemicals.values_list('product_id', 'pct_active'))
+        products = with_pct_active(stats.top_related(uses, year, 'product', self.lbs_field), pct)
+        commodities = stats.top_related(uses, year, 'commodity', self.lbs_field)
+        return (
+            self.related_card('Products containing this chemical', 'products', products, 'pesticides:product-list', 'chemical'),
+            self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'chemical'),
+        )
 
 
-class ProductDetail(vanilla.TemplateView):
+class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
+    model = Product
     template_name = 'pesticides/product-detail.html'
+    section = 'products'
+    use_field = 'product'
+    lbs_field = 'lbs_product'
+    api_param = 'product'
+
+    def get_queryset(self):
+        return Product.objects.prefetch_related('chemicals')
+
+    def api_value(self):
+        return self.object.prodno
+
+    def get_notices(self):
+        return PesticideNotice.objects.filter(products=self.object)
+
+    def get_related(self, year):
+        uses = self.get_uses()
+        pct = dict(self.object.product_chemicals.values_list('chemical_id', 'pct_active'))
+        # Active ingredients are a property of the product, not of use records,
+        # so list all of them (ranked by pct_active) rather than by pounds.
+        chemicals = [
+            SimpleNamespace(obj=c, lbs=None, pct_active=pct.get(c.pk))
+            for c in sorted(self.object.chemicals.all(), key=lambda c: -(pct.get(c.pk) or 0))
+        ]
+        commodities = stats.top_related(uses, year, 'commodity', self.lbs_field)
+        return (
+            self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product'),
+            self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'product'),
+        )
 
 
-class CommodityDetail(vanilla.TemplateView):
+class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
+    model = Commodity
     template_name = 'pesticides/commodity-detail.html'
+    section = 'commodities'
+    use_field = 'commodity'
+    api_param = 'commodity'
+    has_notices = False
+
+    def api_value(self):
+        return self.object.site_code
+
+    def get_related(self, year):
+        uses = self.get_uses()
+        return (
+            self.related_card('Chemicals applied', 'chemicals', stats.top_related(uses, year, 'chemical'), 'pesticides:chemical-list', 'commodity'),
+            self.related_card('Products applied', 'products', stats.top_related(uses, year, 'product', 'lbs_product'), 'pesticides:product-list', 'commodity'),
+        )
+
+    def summary_top(self, context):
+        return context['related_a']['rows']
+
+    def get_summary_sentence(self, totals, year, top, verb=None):
+        return super().get_summary_sentence(totals, year, top, verb=None)

@@ -215,3 +215,130 @@ class CommodityListTests(TestCase):
 
         response = self.client.get(self.url, {'sort': '-chemicals'})
         assert self.names(response)[-1] == 'NOTHING'
+
+
+class ChemicalDetailTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.chemical = Chemical.objects.get(pk=1)
+
+    def test_renders_with_slug(self):
+        response = self.client.get(self.chemical.get_absolute_url())
+        assert response.status_code == 200
+        self.assertTemplateUsed(response, 'pesticides/chemical-detail.html')
+        assert response.context['object'] == self.chemical
+
+    def test_wrong_slug_still_resolves(self):
+        url = reverse('pesticides:chemical-detail', kwargs={'sqid': self.chemical.sqid, 'slug': 'whatever'})
+        assert self.client.get(url).status_code == 200
+
+    def test_bare_sqid_redirects(self):
+        response = self.client.get(reverse('pesticides:chemical-redirect', kwargs={'sqid': self.chemical.sqid}))
+        assert response.status_code == 301
+        assert response['Location'] == self.chemical.get_absolute_url()
+
+    def test_bad_sqid_404(self):
+        assert self.client.get('/tools/pesticides/chemicals/nope/x/').status_code == 404
+        assert self.client.get('/tools/pesticides/chemicals/nope/').status_code == 404
+
+    def test_totals_and_tables(self):
+        ctx = self.client.get(self.chemical.get_absolute_url()).context
+        assert ctx['totals'] == {'lbs': 180.0, 'applications': 3, 'counties': 2}
+        assert [r['year'] for r in ctx['by_year']] == [2023, 2022]
+        assert [r['county_name'] for r in ctx['by_county']] == ['Fresno County', 'Kern County']
+        assert ctx['years'] == (2022, 2023)
+
+    def test_related(self):
+        ctx = self.client.get(self.chemical.get_absolute_url()).context
+        assert ctx['related_a']['kind'] == 'products'
+        assert [(r.obj.name, r.pct_active) for r in ctx['related_a']['rows']] == [('ROUNDUP PRO', 41.0)]
+        assert [r.obj.name for r in ctx['related_b']['rows']] == ['ALMOND', 'GRAPE']
+        assert ctx['related_b']['show_all_url'] == reverse('pesticides:commodity-list') + f'?chemical={self.chemical.sqid}'
+
+    def test_notices_split(self):
+        ctx = self.client.get(Chemical.objects.get(pk=2).get_absolute_url()).context
+        assert [n.pk for n in ctx['upcoming']] == [2, 3]
+        assert ctx['upcoming_count'] == 2
+        assert ctx['upcoming_by_county'][0]['county_name'] == 'Fresno County'
+
+    def test_summary_sentence(self):
+        ctx = self.client.get(self.chemical.get_absolute_url()).context
+        assert ctx['summary_sentence'] == 'Applied in 2 of 8 SJV counties in 2023, mostly on Almond and Grape.'
+
+    def test_badges_and_links_render(self):
+        html = self.client.get(self.chemical.get_absolute_url()).content.decode()
+        assert 'Prop 65' in html
+        assert 'IARC 2A' in html
+        assert 'comptox.epa.gov' in html
+        assert '/api/2.0/pesticides/use/?chemical=1855' in html
+        assert Product.objects.get(pk=1).get_absolute_url() in html
+
+    def test_query_ceiling(self):
+        # Honest count with the current implementation is 18 (verified
+        # query-by-query: every related-object fetch is batched via
+        # in_bulk/prefetch/select_related, no N+1s). The brief set the
+        # ceiling at 20; Task 8's county map is expected to add more, so
+        # this stays comfortably under 20 rather than padding queries to
+        # hit an arbitrary number.
+        with self.assertNumQueries(18):
+            self.client.get(self.chemical.get_absolute_url())
+
+    def test_no_uses_renders_empty_state(self):
+        chem = Chemical.objects.create(chem_code=4242, name='NOTHING')
+        response = self.client.get(chem.get_absolute_url())
+        assert response.status_code == 200
+        assert response.context['totals']['applications'] == 0
+        assert 'No confirmed applications' in response.content.decode()
+
+
+class ProductDetailTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.product = Product.objects.get(pk=2)
+
+    def test_renders_with_ingredients(self):
+        ctx = self.client.get(self.product.get_absolute_url()).context
+        assert ctx['related_a']['kind'] == 'chemicals'
+        assert [(r.obj.name, r.pct_active) for r in ctx['related_a']['rows']] == [('CHLORPYRIFOS', 44.9)]
+        assert [r.obj.name for r in ctx['related_b']['rows']] == ['COTTON', 'ALMOND']
+
+    def test_totals_use_lbs_product(self):
+        ctx = self.client.get(self.product.get_absolute_url()).context
+        assert ctx['totals']['lbs'] == 135.0
+
+    def test_inherited_badges(self):
+        html = self.client.get(self.product.get_absolute_url()).content.decode()
+        assert 'CARB TAC' in html
+        assert 'Fumigant' in html
+        assert 'CA restricted' in html
+
+    def test_bare_sqid_redirects(self):
+        response = self.client.get(reverse('pesticides:product-redirect', kwargs={'sqid': self.product.sqid}))
+        assert response.status_code == 301
+
+
+class CommodityDetailTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.commodity = Commodity.objects.get(pk=2)
+
+    def test_renders(self):
+        ctx = self.client.get(self.commodity.get_absolute_url()).context
+        assert ctx['totals'] == {'lbs': 550.0, 'applications': 2, 'counties': 1}
+        assert [r.obj.name for r in ctx['related_a']['rows']] == ['SULFUR', 'GLYPHOSATE']
+        assert [r.obj.name for r in ctx['related_b']['rows']] == ['SULFUR DUST', 'ROUNDUP PRO']
+        assert ctx['has_notices'] is False
+
+    def test_summary_sentence_uses_chemicals(self):
+        ctx = self.client.get(self.commodity.get_absolute_url()).context
+        assert ctx['summary_sentence'] == 'Applied in 1 of 8 SJV counties in 2023, mostly Sulfur and Glyphosate.'
+
+    def test_no_notice_section(self):
+        html = self.client.get(self.commodity.get_absolute_url()).content.decode()
+        assert 'do not include the crop' in html
