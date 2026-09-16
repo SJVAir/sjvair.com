@@ -1,5 +1,3 @@
-from base64 import b64encode
-
 import yaml
 
 from django.contrib import admin, messages
@@ -10,8 +8,8 @@ from django.utils.safestring import mark_safe
 from camp.apps.entries import models as entry_models
 from camp.apps.entries.levels import _blend_hex
 from camp.apps.regions.models import Region, Boundary
-from camp.utils import maps
-from camp.utils.admin import ReadOnlyAdminMixin
+from camp.utils import leaflet
+from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
 
 
 class CountyFilter(admin.SimpleListFilter):
@@ -40,7 +38,7 @@ class CountyFilter(admin.SimpleListFilter):
         return queryset.filter(boundary__geometry__intersects=county.boundary.geometry)
 
 
-class BoundaryInline(admin.TabularInline):
+class BoundaryInline(LeafletMapMixin, admin.TabularInline):
     model = Boundary
     readonly_fields = ['get_map', 'get_info']
     extra = 0
@@ -66,24 +64,17 @@ class BoundaryInline(admin.TabularInline):
             'portrait': (400, 600),
         }[instance.orientation]
 
-        static_map = maps.StaticMap(
-            width=width,
-            height=height,
-            buffer=0.3,
-            # zoom_adjust=-1,
-        )
-        static_map.add(maps.Area(
+        lmap = leaflet.LeafletMap(width=width, height=height)
+        lmap.add(leaflet.Area(
             geometry=instance.geometry,
             fill_color='dodgerblue',
             border_color='royalblue',
         ))
-        content = b64encode(static_map.render(format='png')).decode()
-        return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="v{instance.version} Map" />')
+        return lmap.render()
     get_map.short_description = 'Map'
 
-
 @admin.register(Region)
-class RegionAdmin(ReadOnlyAdminMixin, GISModelAdmin):
+class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
     inlines = [BoundaryInline]
     list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
     list_filter = ['type', CountyFilter, 'boundary__version']
@@ -134,30 +125,24 @@ class RegionAdmin(ReadOnlyAdminMixin, GISModelAdmin):
                 'portrait': (300, 400),
             }[county.orientation]
 
-            static_map = maps.StaticMap(
-                width=width,
-                height=height,
-                buffer=0.1,
-                zoom_adjust=-1,
-            )
+            lmap = leaflet.LeafletMap(width=width, height=height)
 
             if county.region_id != instance.pk:
-                static_map.add(maps.Area(
+                lmap.add(leaflet.Area(
                     geometry=county.geometry,
                     fill_color='white',
                     border_color='dimgrey',
-                    alpha=.5,
+                    fill_opacity=.5,
                 ))
 
-            static_map.add(maps.Area(
+            lmap.add(leaflet.Area(
                 geometry=instance.boundary.geometry,
                 fill_color='dodgerblue',
                 border_width=0,
-                alpha=1,
+                fill_opacity=1,
             ))
 
-            content = b64encode(static_map.render(format='png')).decode()
-            return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="v{instance.boundary.version} Map" />')
+            return lmap.render()
         except Exception:
             import traceback
             traceback.print_exc()
@@ -173,13 +158,8 @@ class RegionAdmin(ReadOnlyAdminMixin, GISModelAdmin):
                 'portrait': (450, 600),
             }[instance.boundary.orientation]
 
-            static_map = maps.StaticMap(
-                width=width,
-                height=height,
-                buffer=0.1,
-                zoom_adjust=-1,
-            )
-            static_map.add(maps.Area(
+            lmap = leaflet.LeafletMap(width=width, height=height)
+            lmap.add(leaflet.Area(
                 geometry=instance.boundary.geometry,
                 fill_color='dodgerblue',
                 border_color='royalblue',
@@ -205,19 +185,18 @@ class RegionAdmin(ReadOnlyAdminMixin, GISModelAdmin):
 
                 border_color = _blend_hex(fill_color, '#000000', .2) if monitor.is_active else 'dimgray'
 
-                static_map.add(maps.Marker(
+                lmap.add(leaflet.Marker(
                     geometry=monitor.position,
-                    size=100 if monitor.is_active else 50,
+                    size=14 if monitor.is_active else 10,
                     fill_color=fill_color,
                     border_color=border_color,
-                    shape='^' if monitor.is_regulatory else 'o' if monitor.is_sjvair else 's',
+                    shape='triangle' if monitor.is_regulatory else 'circle' if monitor.is_sjvair else 'square',
                     border_width=1,
                 ))
 
-            content = b64encode(static_map.render(format='png')).decode()
             return mark_safe(f'''
                 <div>{len(monitor_list)} Monitors ({active} Active, {len(monitor_list) - active} Inactive)</div>
-                <img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="v{instance.boundary.version} Map" />
+                {lmap.render()}
             ''')
         except Exception:
             import traceback

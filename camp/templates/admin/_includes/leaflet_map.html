@@ -1,0 +1,8 @@
+{{ geojson|json_script:map_id }}
+<div class="admin-leaflet-map"
+     style="width: {{ width }}px; height: {{ height }}px;"
+     data-geojson="{{ map_id }}"
+     data-tiles="{{ tile_url }}"
+     data-attribution="{{ attribution }}"
+     data-padding="{{ padding }}"
+     data-zoom="{{ zoom }}"></div>

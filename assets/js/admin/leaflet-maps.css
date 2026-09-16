@@ -1,0 +1,26 @@
+.admin-leaflet-map {
+  max-width: 100%;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 4px;
+  background: #e5e3df;
+}
+
+.admin-leaflet-map .leaflet-control-attribution {
+  font-size: 9px;
+}
+
+.admin-leaflet-marker {
+  background: none;
+  border: none;
+}
+
+.admin-leaflet-marker svg {
+  display: block;
+  filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.3));
+}
+
+.admin-leaflet-label {
+  font-size: 11px;
+  font-weight: bold;
+  padding: 2px 5px;
+}
