@@ -1,0 +1,6 @@
+{% if county_map %}
+<figure class="county-map">
+    {{ county_map }}
+    <figcaption class="is-size-7 has-text-grey">Pounds applied by county{% if latest_year %}, {{ latest_year }}{% endif %}. Darker is more.</figcaption>
+</figure>
+{% endif %}

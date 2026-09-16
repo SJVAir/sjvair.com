@@ -276,14 +276,21 @@ class ChemicalDetailTests(TestCase):
         assert Product.objects.get(pk=1).get_absolute_url() in html
 
     def test_query_ceiling(self):
-        # Honest count with the current implementation is 18 (verified
+        # Honest count with the current implementation is 20 (verified
         # query-by-query: every related-object fetch is batched via
-        # in_bulk/prefetch/select_related, no N+1s). The brief set the
-        # ceiling at 20; Task 8's county map is expected to add more, so
-        # this stays comfortably under 20 rather than padding queries to
-        # hit an arbitrary number.
-        with self.assertNumQueries(18):
+        # in_bulk/prefetch/select_related, no N+1s -- 18 base queries plus
+        # the county map's geometry build and the county names lookup).
+        with self.assertNumQueries(20):
             self.client.get(self.chemical.get_absolute_url())
+
+    def test_county_map_rendered(self):
+        html = self.client.get(self.chemical.get_absolute_url()).content.decode()
+        assert 'admin-leaflet-map' in html
+        assert 'Fresno County: 150 lbs' in html
+
+    def test_no_map_without_uses(self):
+        chem = Chemical.objects.create(chem_code=4243, name='NOTHING2')
+        assert self.client.get(chem.get_absolute_url()).context['county_map'] is None
 
     def test_no_uses_renders_empty_state(self):
         chem = Chemical.objects.create(chem_code=4242, name='NOTHING')

@@ -24,7 +24,12 @@
     {% if by_year %}
         <div class="columns">
             <div class="column">{% include 'pesticides/includes/by-year-table.html' %}</div>
-            <div class="column">{% if by_county %}{% include 'pesticides/includes/by-county-table.html' %}{% endif %}</div>
+            <div class="column">
+                {% if by_county %}
+                    {% include 'pesticides/includes/county-map.html' %}
+                    {% include 'pesticides/includes/by-county-table.html' %}
+                {% endif %}
+            </div>
         </div>
         <h3 class="title is-5 mt-5">Most recent records</h3>
         {% include 'pesticides/includes/recent-uses.html' %}

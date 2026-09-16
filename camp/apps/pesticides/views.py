@@ -8,7 +8,7 @@ from django.urls import reverse
 
 import vanilla
 
-from camp.apps.pesticides import stats
+from camp.apps.pesticides import maps, stats
 from camp.apps.pesticides.forms import ChemicalFilterForm, CommodityFilterForm, ProductFilterForm
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideUse, Product, ProductChemical,
@@ -340,6 +340,7 @@ class ExplorerDetailMixin:
             **kwargs,
         )
         context['summary_sentence'] = self.get_summary_sentence(totals, year, self.summary_top(context))
+        context['county_map'] = maps.county_map(context['by_county'], year) if context['by_county'] else None
         return context
 
     def summary_top(self, context):
