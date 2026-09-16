@@ -1,5 +1,7 @@
 from django.contrib.gis.db import models
 from django.contrib.postgres.fields import ArrayField
+from django.urls import reverse
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from django_sqids import SqidsField, shuffle_alphabet
@@ -59,6 +61,38 @@ class Chemical(TimeStampedModel):
     def __str__(self):
         return self.name
 
+    PROP65_CATEGORIES = {'carcinogen', 'reproductive_toxin', 'developmental_toxin'}
+    IARC_CONCERN_GROUPS = {'1', '2A', '2B'}
+
+    @property
+    def slug(self):
+        return slugify(self.name) or 'chemical'
+
+    def get_absolute_url(self):
+        return reverse('pesticides:chemical-detail', kwargs={'sqid': self.sqid, 'slug': self.slug})
+
+    @property
+    def is_prop65(self):
+        return bool(self.PROP65_CATEGORIES & set(self.categories or []))
+
+    @property
+    def is_tac(self):
+        return self.Category.TOXIC_AIR_CONTAMINANT in (self.categories or [])
+
+    @property
+    def is_iarc_concern(self):
+        return self.iarc_group in self.IARC_CONCERN_GROUPS
+
+    @property
+    def is_of_concern(self):
+        return self.is_prop65 or self.is_tac or self.is_iarc_concern
+
+    @property
+    def comptox_url(self):
+        if not self.dtxsid:
+            return None
+        return f'https://comptox.epa.gov/dashboard/chemical/details/{self.dtxsid}'
+
 
 class Commodity(TimeStampedModel):
     objects = CommodityQuerySet.as_manager()
@@ -75,6 +109,13 @@ class Commodity(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def slug(self):
+        return slugify(self.name) or 'commodity'
+
+    def get_absolute_url(self):
+        return reverse('pesticides:commodity-detail', kwargs={'sqid': self.sqid, 'slug': self.slug})
 
 
 class Product(TimeStampedModel):
@@ -109,6 +150,33 @@ class Product(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def slug(self):
+        return slugify(self.name) or 'product'
+
+    def get_absolute_url(self):
+        return reverse('pesticides:product-detail', kwargs={'sqid': self.sqid, 'slug': self.slug})
+
+    def _chemical_list(self):
+        # Uses the prefetch cache when the view prefetched 'chemicals'; otherwise one query.
+        return list(self.chemicals.all())
+
+    @property
+    def contains_prop65(self):
+        return any(c.is_prop65 for c in self._chemical_list())
+
+    @property
+    def contains_tac(self):
+        return any(c.is_tac for c in self._chemical_list())
+
+    @property
+    def contains_iarc(self):
+        return any(c.is_iarc_concern for c in self._chemical_list())
+
+    @property
+    def is_of_concern(self):
+        return any(c.is_of_concern for c in self._chemical_list())
 
 
 class ProductChemical(models.Model):
