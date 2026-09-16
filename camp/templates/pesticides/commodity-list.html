@@ -1,1 +1,45 @@
 {% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+
+{% block title %}Commodities | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} commodity-list{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Commodities</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="columns">
+    <div class="column is-3-desktop">
+        {% include 'pesticides/includes/filter-form.html' %}
+    </div>
+    <div class="column">
+        <p class="summary-sentence mb-3">
+            {{ summary_sentence }}
+            {% if related %}<a class="tag is-info is-light ml-2" href="{% qs_replace page=None chemical=None product=None %}">clear ×</a>{% endif %}
+        </p>
+        <div class="table-container">
+            <table class="table is-fullwidth is-striped is-hoverable data-table">
+                <thead>
+                    <tr>
+                        <th>{% sort_link 'name' 'Commodity' %}</th>
+                        <th>{% sort_link 'site' 'Site code' %}</th>
+                        <th class="has-text-right">{% sort_link 'chemicals' 'Chemicals' %}{% if latest_year %} <small>({{ latest_year }})</small>{% endif %}</th>
+                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}{% if latest_year %} <small>({{ latest_year }})</small>{% endif %}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for commodity in object_list %}
+                    <tr>
+                        <td><a href="{{ commodity.get_absolute_url }}">{{ commodity.name }}</a></td>
+                        <td>{{ commodity.site_code }}</td>
+                        <td class="has-text-right">{{ commodity.chemical_count|default:0 }}</td>
+                        <td class="has-text-right">{{ commodity.lbs_applied|lbs }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="has-text-centered has-text-grey">No commodities match.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include 'pesticides/includes/pagination.html' %}
+    </div>
+</div>
+{% endblock %}

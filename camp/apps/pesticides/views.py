@@ -198,12 +198,76 @@ class Home(vanilla.TemplateView):
     template_name = 'pesticides/home.html'
 
 
-class ProductList(vanilla.TemplateView):
+class ProductList(ExplorerListMixin, vanilla.ListView):
+    model = Product
+    form_class = ProductFilterForm
     template_name = 'pesticides/product-list.html'
+    section = 'products'
+    sort_fields = {'name': 'name', 'lbs': 'lbs_applied', 'chemicals': 'chemical_count', 'reg': 'reg_number'}
+    default_sort = 'name'
+    related_models = {'chemical': Chemical, 'commodity': Commodity}
+
+    def filter_related(self, queryset, param, obj):
+        if param == 'chemical':
+            return queryset.filter(product_chemicals__chemical=obj)
+        return queryset.filter(pk__in=related_pks('commodity', obj, 'product'))
+
+    def apply_filters(self, queryset, data):
+        for name in ('fumigant', 'california_restricted'):
+            value = self.form.bool_value(name)
+            if value is not None:
+                queryset = queryset.filter(**{name: value})
+        return queryset
+
+    def annotate_queryset(self, queryset, year):
+        queryset = queryset.annotate(
+            chemical_count=Coalesce(count_subquery(ProductChemical, 'product', 'chemical'), 0)
+        )
+        if year:
+            queryset = queryset.annotate(lbs_applied=lbs_subquery('product', year, lbs_field='lbs_product'))
+        else:
+            queryset = queryset.annotate(lbs_applied=F('prodno') * 0.0)
+        return queryset
+
+    def describe_filters(self, data):
+        parts = []
+        if self.form.bool_value('fumigant') is True:
+            parts.append('that are fumigants')
+        if self.form.bool_value('fumigant') is False:
+            parts.append('that are not fumigants')
+        if self.form.bool_value('california_restricted') is True:
+            parts.append('restricted in California')
+        if self.form.bool_value('california_restricted') is False:
+            parts.append('not restricted in California')
+        return parts
 
 
-class CommodityList(vanilla.TemplateView):
+class CommodityList(ExplorerListMixin, vanilla.ListView):
+    model = Commodity
+    form_class = CommodityFilterForm
     template_name = 'pesticides/commodity-list.html'
+    section = 'commodities'
+    sort_fields = {'name': 'name', 'lbs': 'lbs_applied', 'chemicals': 'chemical_count', 'site': 'site_code'}
+    default_sort = '-lbs'
+    related_models = {'chemical': Chemical, 'product': Product}
+
+    def filter_related(self, queryset, param, obj):
+        return queryset.filter(pk__in=related_pks(param, obj, 'commodity'))
+
+    def annotate_queryset(self, queryset, year):
+        if not year:
+            return queryset.annotate(lbs_applied=F('pk') * 0.0, chemical_count=F('pk') * 0)
+        chemical_count = Subquery(
+            PesticideUse.objects
+            .filter(commodity=OuterRef('pk'), year=year)
+            .values('commodity')
+            .annotate(n=Count('chemical', distinct=True))
+            .values('n'),
+        )
+        return queryset.annotate(
+            lbs_applied=lbs_subquery('commodity', year),
+            chemical_count=chemical_count,
+        )
 
 
 class ChemicalDetail(vanilla.TemplateView):
