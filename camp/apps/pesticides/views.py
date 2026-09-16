@@ -1,4 +1,5 @@
-from django.db.models import Count, F, FloatField, OuterRef, Subquery, Sum
+from django.db.models import Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum
+from django.db.models.functions import Coalesce
 from django.http import Http404
 from django.shortcuts import redirect
 
@@ -6,7 +7,9 @@ import vanilla
 
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.forms import ChemicalFilterForm, CommodityFilterForm, ProductFilterForm
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.pesticides.models import (
+    Chemical, Commodity, PesticideNotice, PesticideUse, Product, ProductChemical,
+)
 
 # Sentinel for "sqid didn't resolve to an object" in ExplorerListMixin.related.
 # Not Http404 -- that's an exception class, not a value, and using it as a
@@ -23,6 +26,17 @@ def lbs_subquery(field, year, lbs_field='lbs_chemical'):
         .annotate(total=Sum(lbs_field))
         .values('total'),
         output_field=FloatField(),
+    )
+
+
+def count_subquery(model, field, count_field):
+    """Count of `model` rows whose `field` points at the outer row, independent of outer joins."""
+    return Subquery(
+        model.objects.filter(**{field: OuterRef('pk')})
+        .values(field)
+        .annotate(n=Count(count_field))
+        .values('n'),
+        output_field=IntegerField(),
     )
 
 
@@ -151,7 +165,9 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
         return queryset
 
     def annotate_queryset(self, queryset, year):
-        queryset = queryset.annotate(product_count=Count('product_chemicals', distinct=True))
+        queryset = queryset.annotate(
+            product_count=Coalesce(count_subquery(ProductChemical, 'chemical', 'product'), 0)
+        )
         if year:
             queryset = queryset.annotate(lbs_applied=lbs_subquery('chemical', year))
         else:

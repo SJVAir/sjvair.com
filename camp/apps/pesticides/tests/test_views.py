@@ -2,7 +2,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.pesticides.models import Chemical, Commodity, Product
+from camp.apps.pesticides.models import Chemical, Commodity, Product, ProductChemical
 
 
 class ChemicalListTests(TestCase):
@@ -59,6 +59,26 @@ class ChemicalListTests(TestCase):
     def test_product_count_annotation(self):
         response = self.client.get(self.url, {'sort': 'name'})
         assert [c.product_count for c in response.context['object_list']] == [1, 1, 1]
+
+    def test_product_count_not_collapsed_by_related_filter(self):
+        # GLYPHOSATE (pk=1) already sits in ROUNDUP PRO (pk=1); give it a
+        # second product so the true product_count is 2, then filter the
+        # list by ROUNDUP PRO and confirm the count isn't restricted to the
+        # filtered join.
+        second_product = Product.objects.create(
+            prodno=999, reg_number='999-999', name='WEED-B-GON',
+        )
+        ProductChemical.objects.create(product=second_product, chemical_id=1, pct_active=10.0)
+
+        roundup = Product.objects.get(pk=1)
+        response = self.client.get(self.url, {'product': roundup.sqid})
+        by_name = {c.name: c.product_count for c in response.context['object_list']}
+        assert by_name['GLYPHOSATE'] == 2
+
+        # Unfiltered counts are unaffected.
+        response = self.client.get(self.url, {'sort': 'name'})
+        by_name = {c.name: c.product_count for c in response.context['object_list']}
+        assert by_name == {'CHLORPYRIFOS': 1, 'GLYPHOSATE': 2, 'SULFUR': 1}
 
     def test_related_filter_by_product(self):
         product = Product.objects.get(pk=2)
