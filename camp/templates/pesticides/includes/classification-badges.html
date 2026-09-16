@@ -1,0 +1,9 @@
+{% if chemical.is_prop65 %}
+    <a class="tag is-danger is-light" href="{% url 'pesticides:home' %}#prop65" title="Listed under California's Proposition 65 as a carcinogen, reproductive toxin, or developmental toxin">Prop 65</a>
+{% endif %}
+{% if chemical.is_tac %}
+    <a class="tag is-warning is-light" href="{% url 'pesticides:home' %}#tac" title="Designated a Toxic Air Contaminant by the California Air Resources Board">CARB TAC</a>
+{% endif %}
+{% if chemical.iarc_group %}
+    <a class="tag {% if chemical.is_iarc_concern %}is-danger{% else %}is-light{% endif %}" href="{% url 'pesticides:home' %}#iarc" title="{{ chemical.get_iarc_group_display }}">IARC {{ chemical.iarc_group }}</a>
+{% endif %}

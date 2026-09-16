@@ -1,0 +1,52 @@
+{% extends 'page.html' %}
+{% load static %}
+
+{% block title %}Pesticides Explorer | {{ block.super }}{% endblock %}
+{% block body-class %}pesticides{% endblock %}
+
+{% block extra-head %}
+<link rel="stylesheet" href="{% static 'js/admin/leaflet/leaflet.css' %}">
+<link rel="stylesheet" href="{% static 'js/admin/leaflet-maps.css' %}">
+{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'js/admin/leaflet/leaflet.js' %}"></script>
+<script src="{% static 'js/admin/leaflet-maps.js' %}"></script>
+{% endblock %}
+
+{% block main %}
+<section class="section is-small hook">
+    <div class="container">
+        {% block explorer-header %}
+        <div class="content">
+            <h1 class="is-size-2 mb-1"><a href="{% url 'pesticides:home' %}">Pesticides Explorer</a></h1>
+            <p class="lede">Which pesticides are applied in the San Joaquin Valley, where, and on what.</p>
+        </div>
+        {% endblock %}
+        <div class="tabs is-boxed explorer-nav">
+            <ul>
+                <li class="{% if section == 'chemicals' %}is-active{% endif %}"><a href="{% url 'pesticides:chemical-list' %}">Chemicals</a></li>
+                <li class="{% if section == 'products' %}is-active{% endif %}"><a href="{% url 'pesticides:product-list' %}">Products</a></li>
+                <li class="{% if section == 'commodities' %}is-active{% endif %}"><a href="{% url 'pesticides:commodity-list' %}">Commodities</a></li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="breadcrumbs">
+    <div class="container">
+        <nav class="breadcrumb" aria-label="breadcrumbs">
+            <ul>
+                <li><a href="{% url 'pesticides:home' %}">Pesticides Explorer</a></li>
+                {% block breadcrumb-list %}{% endblock %}
+            </ul>
+        </nav>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        {% block explorer-content %}{% endblock %}
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% load pesticides_explorer %}
+{% if is_paginated %}
+<nav class="pagination is-centered mt-5" role="navigation" aria-label="pagination">
+    {% if page_obj.has_previous %}
+        <a class="pagination-previous" href="{% qs_replace page=page_obj.previous_page_number %}">Previous</a>
+    {% else %}
+        <a class="pagination-previous" disabled>Previous</a>
+    {% endif %}
+    {% if page_obj.has_next %}
+        <a class="pagination-next" href="{% qs_replace page=page_obj.next_page_number %}">Next</a>
+    {% else %}
+        <a class="pagination-next" disabled>Next</a>
+    {% endif %}
+    <ul class="pagination-list">
+        <li><span class="pagination-ellipsis">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+    </ul>
+</nav>
+{% endif %}
