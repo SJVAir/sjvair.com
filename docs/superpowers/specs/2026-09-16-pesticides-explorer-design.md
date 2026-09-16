@@ -28,7 +28,7 @@ per-year and per-county totals, links into the raw API).
 - Postgres full-text `.search()` queryset methods on the three
   models, following the helpdesk pattern.
 - `get_absolute_url()` on `Chemical`, `Product`, `Commodity`.
-- A "Data Tools" navbar dropdown containing "Pesticides Explorer", plus a
+- A "Data Tools" navbar dropdown containing "Pesticide Data", plus a
   footer link.
 - Tests for querysets, views, templates, and query counts.
 
@@ -41,7 +41,7 @@ per-year and per-county totals, links into the raw API).
 - Precomputed summary tables. v1 aggregates live over `PesticideUse`. See
   Performance.
 - Changes to the v2 API filters (they keep `icontains`).
-- Charts.
+- Charts. (A static county map is in scope; see County map.)
 
 ## Data facts that shape the design
 
@@ -283,6 +283,27 @@ top to bottom:
 Section 4 is omitted with an empty-state message when the entity has no use
 records; section 5 likewise when there are no upcoming notices.
 
+### County map
+
+`camp/utils/leaflet.py` (merged to main 2026-09-16) renders a non-interactive
+Leaflet map from `Area`/`Marker` elements plus a GeoJSON payload; the browser
+draws it with the bundled `js/admin/leaflet/*` assets. The explorer reuses it
+for a county choropleth:
+
+- `camp/apps/pesticides/maps.py` exposes `county_geometries()` (the eight
+  county boundaries simplified to ~0.005°, as GeoJSON strings keyed by region
+  pk, cached 24h under `pesticides:county-geometries`; about 33 KB total) and
+  `county_map(by_county_rows)` which shades each county by its share of the
+  max `lbs` on a five-step sequential ramp, greys counties with no rows, labels
+  each with name and pounds, and returns the rendered HTML (or `None` when no
+  county has a boundary).
+- Detail pages show it beside the by-county table for the latest year.
+- The landing page shows it for total pounds in the latest year (the rows come
+  from `landing_stats()['by_county']`, so they're cached; the map HTML itself
+  is rendered per request and is cheap).
+- `pesticides/base.html` includes the Leaflet CSS/JS via the `extra-head` and
+  `javascripts` blocks. A style rule makes the fixed-pixel container fluid.
+
 ### Aggregate helpers (`stats.py`)
 
 All take a base `PesticideUse` queryset already filtered to the entity, so the
@@ -297,6 +318,7 @@ same functions serve all three detail pages.
 | `upcoming_notices(qs, limit=10)` | `filter(scheduled_application__gte=now()).select_related('county').prefetch_related('chemicals','products')[:limit]` |
 | `upcoming_by_county(qs)` | `filter(scheduled_application__gte=now()).values('county__name','county__sqid').annotate(n=Count('id'))` |
 | `landing_stats()` | see Landing page |
+| `county_map(...)` | see County map (`maps.py`) |
 
 Sum fields: `lbs_chemical` for chemical/commodity pages, `lbs_product` for
 product pages. Application count is `Count('id')` (rows), not
@@ -320,7 +342,11 @@ for the counties we load and `application_count` is nullable.
    lags roughly a year; SprayDays covers notices of intent for restricted
    materials only; v1 location resolution is county.
 
-`landing_stats()` returns a dict with all of the above numbers and lists. The
+Between the stat row and the cards, the county map of total pounds in the
+latest year.
+
+`landing_stats()` returns a dict with all of the above numbers and lists, plus
+`by_county` rows for the map. The
 chemicals-of-concern board is computed in Python by filtering the top-N query
 result, since `is_of_concern` is derived; the query pulls top 50 and filters to
 10, falling back to a second query with `categories__overlap` if fewer than 10.
@@ -382,7 +408,8 @@ Every number is formatted with `intcomma` and floats rounded to whole pounds
 
 ## Testing
 
-Fixture `fixtures/pesticides-explorer.yaml`: 2 counties, 3 chemicals (one
+Fixture `fixtures/pesticides-explorer.yaml`: 2 counties (each with a simple
+square boundary so the map renders), 3 chemicals (one
 Group 1 + carcinogen, one TAC-only, one unclassified), 3 products (one
 fumigant + restricted), 3 commodities, ~12 `PesticideUse` rows across 2022 and
 2023 spanning both counties, 3 notices (one past, two upcoming in different
