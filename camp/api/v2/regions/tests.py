@@ -80,6 +80,13 @@ class RegionDetailTests(TestCase):
         assert data['data']['boundary'] is not None
         assert data['data']['boundary']['geometry'] is not None
 
+    def test_detail_has_bbox(self):
+        request = self.factory.get('/')
+        response = region_detail(request, region_id=self.region.sqid)
+        data = get_response_data(response)
+        bbox = data['data']['boundary']['bbox']
+        assert bbox == list(self.region.boundary.geometry.extent)
+
     def test_detail_fields(self):
         request = self.factory.get('/')
         response = region_detail(request, region_id=self.region.sqid)
