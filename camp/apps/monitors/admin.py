@@ -1,7 +1,5 @@
 import csv
 
-from base64 import b64encode
-
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.admin.options import csrf_protect_m
@@ -15,7 +13,8 @@ from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
 from camp.apps.qaqc.admin import HealthCheckInline
 from camp.template_tags import admin_changelist_url
-from camp.utils import maps
+from camp.utils import leaflet
+from camp.utils.admin import LeafletMapMixin
 
 from .forms import MonitorAdminForm, EntryExportForm
 from .models import Group, Host, LatestEntry, Monitor
@@ -77,7 +76,7 @@ class MonitorIsActiveFilter(admin.SimpleListFilter):
             return queryset
 
 
-class MonitorAdmin(gisadmin.GISModelAdmin):
+class MonitorAdmin(LeafletMapMixin, gisadmin.GISModelAdmin):
     inlines = [HealthCheckInline]
     actions = ['export_monitor_list_csv']
     form = MonitorAdminForm
@@ -148,19 +147,14 @@ class MonitorAdmin(gisadmin.GISModelAdmin):
         if not instance or not instance.position:
             return '-'
 
-        image = maps.from_geometries(
-            instance.position,
-            marker_size=350,
-            marker_shape='*',
-            marker_fill_color='dodgerblue',
-            marker_shadow=True,
-            height=400,
-            width=600,
-            buffer=1500,
-            format='png',
-        )
-        content = b64encode(image).decode()
-        return mark_safe(f'<img src="data:image/png;base64,{content}" data-key="{instance.pk}" alt="Position" />')
+        lmap = leaflet.LeafletMap(width=600, height=400, zoom=15)
+        lmap.add(leaflet.Marker(
+            geometry=instance.position,
+            shape='star',
+            size=28,
+            fill_color='dodgerblue',
+        ))
+        return lmap.render()
     get_map.short_description = 'Map'
 
     def get_alerts(self, object_id):

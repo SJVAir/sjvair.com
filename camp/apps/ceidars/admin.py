@@ -1,5 +1,3 @@
-from base64 import b64encode
-
 from django.contrib import admin as base_admin
 from django.contrib.gis import admin
 from django.db.models import Max
@@ -7,8 +5,8 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 
 from camp.apps.regions.models import Region
-from camp.utils import maps
-from camp.utils.admin import ReadOnlyAdminMixin
+from camp.utils import leaflet
+from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
 
 from .models import EmissionsRecord, Facility
 
@@ -91,7 +89,7 @@ class EmissionsRecordInline(admin.TabularInline):
 
 
 @admin.register(Facility)
-class FacilityAdmin(ReadOnlyAdminMixin, admin.GISModelAdmin):
+class FacilityAdmin(LeafletMapMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
     list_display = ['name', 'get_county', 'get_city', 'get_zipcode', 'sic_code', 'is_minor_source', 'has_point', 'latest_year']
     list_filter = [CountyFilter, EmissionsYearFilter, SourceTypeFilter]
     search_fields = ['name', 'address__street', 'address__city']
@@ -125,25 +123,24 @@ class FacilityAdmin(ReadOnlyAdminMixin, admin.GISModelAdmin):
             return None
         boundary = region.boundary
         width, height = {'landscape': (400, 300), 'portrait': (300, 400)}[boundary.orientation]
-        static_map = maps.StaticMap(width=width, height=height, buffer=0.1, zoom_adjust=-1)
-        static_map.add(maps.Area(
+        lmap = leaflet.LeafletMap(width=width, height=height)
+        lmap.add(leaflet.Area(
             geometry=boundary.geometry,
             fill_color='DodgerBlue',
             border_color='MidnightBlue',
             border_width=1,
-            alpha=0.2,
+            fill_opacity=0.2,
         ))
         if facility.point:
-            static_map.add(maps.Marker(
+            lmap.add(leaflet.Marker(
                 geometry=facility.point,
-                shape='*',
-                size=200,
+                shape='star',
+                size=22,
                 fill_color='Crimson',
                 border_color='White',
                 border_width=1,
-                outline=True,
             ))
-        return b64encode(static_map.render(format='png')).decode()
+        return lmap.render()
 
     def _render_region_display(self, facility, region):
         if not region:
@@ -152,7 +149,7 @@ class FacilityAdmin(ReadOnlyAdminMixin, admin.GISModelAdmin):
         html = f'<a href="{url}">{region.name}</a>'
         map_content = self._render_region_map(facility, region)
         if map_content:
-            html += f'<br><img src="data:image/png;base64,{map_content}" alt="{region.name} map" />'
+            html += f'<br>{map_content}'
         return mark_safe(html)
 
     @admin.display(description='County')
