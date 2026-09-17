@@ -1,0 +1,19 @@
+{% load pesticides_explorer %}
+<div class="card leaderboard">
+    <header class="card-header"><p class="card-header-title">{{ title }}{% if latest_year %} · {{ latest_year }}{% endif %}</p></header>
+    <div class="card-content">
+        {% if rows %}
+        <ol class="leaderboard-list">
+            {% for row in rows %}
+            <li>
+                <a href="{{ row.obj.get_absolute_url }}">{{ row.obj.name }}</a>
+                {% if kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
+                <span class="lbs is-pulled-right">{{ row.lbs|lbs }} lbs</span>
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <p class="has-text-grey">No use data loaded.</p>
+        {% endif %}
+    </div>
+</div>

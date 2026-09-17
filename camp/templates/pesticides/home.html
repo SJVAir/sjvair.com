@@ -1,1 +1,91 @@
 {% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+
+{% block body-class %}{{ block.super }} home{% endblock %}
+{% block breadcrumb-list %}{% endblock %}
+
+{% block explorer-content %}
+<div class="content intro">
+    <p class="is-size-5">
+        Browse the pesticides applied across the eight San Joaquin Valley counties: which chemicals, in which products,
+        on which crops, and where. Confirmed applications come from the California Department of Pesticide Regulation's
+        <a href="#pur">Pesticide Use Reporting</a> program. Planned applications come from <a href="#spraydays">SprayDays</a>
+        notices of intent.
+    </p>
+</div>
+
+<div class="level stat-row box">
+    <div class="level-item has-text-centered"><div><p class="heading">PUR years loaded</p><p class="title">{% if years %}{{ years.0 }}–{{ years.1 }}{% else %}—{% endif %}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Chemicals</p><p class="title">{{ chemical_count|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Products</p><p class="title">{{ product_count|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Commodities</p><p class="title">{{ commodity_count|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Lbs applied{% if latest_year %} in {{ latest_year }}{% endif %}</p><p class="title">{{ total_lbs|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Notices next 7 days</p><p class="title">{{ upcoming_week }}</p></div></div>
+</div>
+
+{% if county_map %}
+<div class="columns is-centered">
+    <div class="column is-8">{% include 'pesticides/includes/county-map.html' %}</div>
+</div>
+{% endif %}
+
+<div class="columns section-cards">
+    <div class="column">
+        <a class="box section-card" href="{% url 'pesticides:chemical-list' %}">
+            <h3 class="title is-5">Chemicals</h3>
+            <p>Active ingredients, with Prop 65, IARC, and CARB classifications.</p>
+            <p class="is-size-7 has-text-grey">Try: <em>glyphosate</em></p>
+        </a>
+    </div>
+    <div class="column">
+        <a class="box section-card" href="{% url 'pesticides:product-list' %}">
+            <h3 class="title is-5">Products</h3>
+            <p>Registered formulations, flagged when fumigant or California-restricted.</p>
+            <p class="is-size-7 has-text-grey">Try: <em>roundup</em></p>
+        </a>
+    </div>
+    <div class="column">
+        <a class="box section-card" href="{% url 'pesticides:commodity-list' %}">
+            <h3 class="title is-5">Commodities</h3>
+            <p>Crops and sites pesticides are applied to.</p>
+            <p class="is-size-7 has-text-grey">Try: <em>almond</em></p>
+        </a>
+    </div>
+</div>
+
+<div class="columns leaderboards">
+    <div class="column">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals' rows=top_chemicals kind='chemicals' %}</div>
+    <div class="column">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals of concern' rows=top_chemicals_of_concern kind='chemicals' %}</div>
+    <div class="column">{% include 'pesticides/includes/leaderboard.html' with title='Most treated commodities' rows=top_commodities kind='commodities' %}</div>
+</div>
+
+<div class="content explainer mt-6" id="about">
+    <h2>About this data</h2>
+
+    <h3 id="pur">Pesticide Use Reporting (PUR)</h3>
+    <p>California requires agricultural pesticide applications to be reported to the county agricultural commissioner, who forwards them to the Department of Pesticide Regulation (DPR). DPR publishes the records about a year after the fact. Each record gives the product, active ingredient, crop, county, one-square-mile section, date, and amount. This explorer loads the records for Fresno, Kern, Kings, Madera, Merced, San Joaquin, Stanislaus, and Tulare counties{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
+
+    <h3 id="spraydays">SprayDays notices of intent</h3>
+    <p>Growers must file a notice of intent before applying a California-restricted material. DPR's SprayDays system publishes those notices, usually a day or more ahead of the scheduled application. Notices cover only restricted materials, list the product and chemical but not the crop, and are not confirmation that the application happened.</p>
+
+    <h3 id="categories">DPR chemical categories</h3>
+    <p>DPR tags active ingredients with regulatory categories: biopesticide, carcinogen, cholinesterase inhibitor, developmental toxin, fumigant, groundwater contaminant, oil, reproductive toxin, and toxic air contaminant. A chemical can carry several.</p>
+
+    <h3 id="prop65">Proposition 65</h3>
+    <p>California's Safe Drinking Water and Toxic Enforcement Act of 1986 maintains a list of chemicals known to the state to cause cancer, birth defects, or other reproductive harm. Here, a chemical shows a <span class="tag is-danger is-light">Prop 65</span> badge when DPR categorizes it as a carcinogen, reproductive toxin, or developmental toxin.</p>
+
+    <h3 id="iarc">IARC groups</h3>
+    <p>The International Agency for Research on Cancer classifies agents by the strength of evidence that they cause cancer in humans: <strong>Group 1</strong> carcinogenic, <strong>Group 2A</strong> probably carcinogenic, <strong>Group 2B</strong> possibly carcinogenic, <strong>Group 3</strong> not classifiable. Most chemicals have not been evaluated by IARC at all, which is not the same as being found safe.</p>
+
+    <h3 id="tac">CARB Toxic Air Contaminants</h3>
+    <p>The California Air Resources Board designates air pollutants that may cause serious illness or death as Toxic Air Contaminants. Pesticides on that list are shown with a <span class="tag is-warning is-light">CARB TAC</span> badge.</p>
+
+    <h3>Caveats</h3>
+    <ul>
+        <li>PUR data lags roughly a year; the most recent full year loaded is {% if latest_year %}{{ latest_year }}{% else %}not yet available{% endif %}.</li>
+        <li>Location is shown at the county level in this version.</li>
+        <li>Pounds are pounds of active ingredient for chemicals and commodities, and pounds of product for products.</li>
+        <li>Developers can pull the underlying records from the <a href="/api/2.0/pesticides/use/">pesticides API</a>.</li>
+    </ul>
+</div>
+{% endblock %}

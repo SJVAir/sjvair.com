@@ -200,6 +200,11 @@ class ExplorerRedirect(vanilla.GenericView):
 class Home(vanilla.TemplateView):
     template_name = 'pesticides/home.html'
 
+    def get_context_data(self, **kwargs):
+        data = stats.landing_stats()
+        county_map = maps.county_map(data['by_county'], data['latest_year']) if data['by_county'] else None
+        return super().get_context_data(section=None, county_map=county_map, **data, **kwargs)
+
 
 class ProductList(ExplorerListMixin, vanilla.ListView):
     model = Product

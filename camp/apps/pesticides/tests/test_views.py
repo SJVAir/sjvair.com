@@ -349,3 +349,46 @@ class CommodityDetailTests(TestCase):
     def test_no_notice_section(self):
         html = self.client.get(self.commodity.get_absolute_url()).content.decode()
         assert 'do not include the crop' in html
+
+
+class HomeTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('pesticides:home')
+
+    def test_renders(self):
+        response = self.client.get(self.url)
+        assert response.status_code == 200
+        self.assertTemplateUsed(response, 'pesticides/home.html')
+        assert response.context['latest_year'] == 2023
+        assert response.context['total_lbs'] == 740.0
+
+    def test_leaderboards_link_to_details(self):
+        html = self.client.get(self.url).content.decode()
+        assert Chemical.objects.get(pk=3).get_absolute_url() in html
+        assert Commodity.objects.get(pk=2).get_absolute_url() in html
+
+    def test_county_map(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'Fresno County: 670 lbs' in html
+        assert 'Kern County: 70 lbs' in html
+
+    def test_explainer_anchors(self):
+        html = self.client.get(self.url).content.decode()
+        for anchor in ('id="pur"', 'id="spraydays"', 'id="categories"', 'id="prop65"', 'id="iarc"', 'id="tac"', 'id="about"'):
+            assert anchor in html
+
+    def test_empty_database(self):
+        from camp.apps.pesticides.models import PesticideNotice, PesticideUse
+        PesticideNotice.objects.all().delete()
+        PesticideUse.objects.all().delete()
+        response = self.client.get(self.url)
+        assert response.status_code == 200
+        assert 'No use data loaded' in response.content.decode()
+
+    def test_navbar_has_data_tools(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'Data Tools' in html
+        assert 'Pesticides Explorer' in html
