@@ -33,8 +33,8 @@
                         <td><a href="{{ product.get_absolute_url }}{{ year_qs }}">{{ product.reg_number }}</a></td>
                         <td>
                             <div class="tags">
-                                {% if product.fumigant %}<a class="tag is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" title="{{ 'fumigant'|note_summary }}">Fumigant</a>{% endif %}
-                                {% if product.california_restricted %}<a class="tag is-danger is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" title="{{ 'restricted_material'|note_summary }}">CA restricted</a>{% endif %}
+                                {% if product.fumigant %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" data-tooltip="{{ 'fumigant'|note_summary }}">Fumigant</a>{% endif %}
+                                {% if product.california_restricted %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" data-tooltip="{{ 'restricted_material'|note_summary }}">CA restricted</a>{% endif %}
                             </div>
                         </td>
                         <td class="has-text-right">{{ product.chemical_count }}</td>

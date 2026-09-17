@@ -6,6 +6,7 @@
         "heroku-postbuild": "invoke build"
     },
     "dependencies": {
+        "@creativebulma/bulma-tooltip": "^1.2.0",
         "@sjvair/web-widget": "^2.0.1",
         "bulma": "^0.9.4",
         "bulma-list": "^1.2.0"

@@ -37,7 +37,7 @@ class NotesRenderingTests(RollupTestMixin, TestCase):
     def test_badge_tooltips_and_block_on_chemical_page(self):
         html = self.client.get(Chemical.objects.get(pk=1).get_absolute_url()).content.decode()
         prop65 = notes.note('prop65')['summary']
-        assert f'title="{prop65}"' in html
+        assert f'data-tooltip="{prop65}"' in html
         assert 'What this means' in html and notes.note('iarc_2a')['title'] in html
 
     def test_no_block_without_badges(self):
@@ -60,4 +60,4 @@ class NotesRenderingTests(RollupTestMixin, TestCase):
 
     def test_list_pages_have_tooltips(self):
         html = self.client.get(reverse('pesticides:product-list')).content.decode()
-        assert f'title="{notes.note("fumigant")["summary"]}"' in html
+        assert f'data-tooltip="{notes.note("fumigant")["summary"]}"' in html

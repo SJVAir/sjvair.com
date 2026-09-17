@@ -399,7 +399,7 @@ class ProductDetailTests(RollupTestMixin, TestCase):
         # this fixture can exercise.
         html = self.client.get(self.product.get_absolute_url()).content.decode()
         summary = escape(notes.note('carb_tac')['summary'])
-        assert f'title="{summary}"' in html
+        assert f'data-tooltip="{summary}"' in html
 
     def test_bare_sqid_redirects(self):
         response = self.client.get(reverse('pesticides:product-redirect', kwargs={'sqid': self.product.sqid}))
