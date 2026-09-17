@@ -93,7 +93,7 @@ class NetworkOverview(BaseReport):
         total = queryset.count()
         sjvair = queryset.filter(is_sjvair=True).count()
         active = queryset.with_last_entry_timestamp().filter(last_entry_timestamp__gte=cutoff).count()
-        return {'total': total, 'active': active, 'sjvair': sjvair, 'partner': total - sjvair}
+        return {'total': total, 'active': active, 'sjvair': sjvair}
 
     def get_context_data(self, **kwargs):
         return {

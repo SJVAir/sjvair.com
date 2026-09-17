@@ -97,7 +97,7 @@ Slug `network-overview`. Hidden monitors are excluded unless
 `?include_hidden=1`.
 
 **Tiles:** total monitors, active in the last hour, SJVAir-owned
-(`is_sjvair`), partner (everything else).
+(`is_sjvair`).
 
 **Primary table (rows):** one row per monitor type (the enabled
 subclasses from `Monitor.get_subclasses()`, ordered by display name)

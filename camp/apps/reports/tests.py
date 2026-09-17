@@ -107,7 +107,7 @@ class NetworkOverviewTests(StaffClientMixin, TestCase):
     def test_tiles(self):
         response = self.client.get(reverse('reports:network-overview'))
         assert response.status_code == 200
-        assert response.context['tiles'] == {'total': 3, 'active': 1, 'sjvair': 2, 'partner': 1}
+        assert response.context['tiles'] == {'total': 3, 'active': 1, 'sjvair': 2}
 
     def test_rows_by_type_and_county(self):
         response = self.client.get(reverse('reports:network-overview'))
