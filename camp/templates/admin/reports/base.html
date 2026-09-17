@@ -4,10 +4,18 @@
 {% block extrastyle %}
     {{ block.super }}
     <style>
+        /* The admin stylesheet styles tfoot cells like header cells (small,
+           quiet). Match the body cells instead and just make them bold. */
         #content-main tfoot th,
         #content-main tfoot td {
+            color: var(--body-fg);
+            font-size: 0.8125rem;
             font-weight: bold;
+            padding: 8px;
+            vertical-align: top;
+            background: transparent;
             border-top: 2px solid var(--border-color);
+            border-bottom: none;
         }
     </style>
 {% endblock %}
