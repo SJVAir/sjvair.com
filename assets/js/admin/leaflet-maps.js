@@ -97,10 +97,10 @@
       },
       onEachFeature: function (feature, featureLayer) {
         if (feature.properties.label) {
-          var onHover = feature.properties.labelOnHover === true;
+          // Non-permanent tooltips anchor at the feature's center on hover
+          // (sticky is left off so they don't follow the cursor).
           featureLayer.bindTooltip(feature.properties.label, {
-            permanent: !onHover,
-            sticky: onHover,
+            permanent: feature.properties.labelOnHover !== true,
             direction: 'top',
             className: 'admin-leaflet-label'
           });
