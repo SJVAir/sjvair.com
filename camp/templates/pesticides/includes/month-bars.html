@@ -1,0 +1,11 @@
+{% load pesticides_explorer %}
+{% with max_lbs=by_month|max_lbs %}
+<div class="month-bars">
+    {% for month in by_month %}
+    <div class="bar" title="{{ month.lbs|lbs }} lbs{% if year %} in {{ month.month|month_name }} {{ year }}{% endif %}">
+        <span class="fill" style="height: {% if max_lbs %}{% widthratio month.lbs max_lbs 100 %}{% else %}0{% endif %}%"></span>
+        <span class="label">{{ month.month|month_abbr }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endwith %}

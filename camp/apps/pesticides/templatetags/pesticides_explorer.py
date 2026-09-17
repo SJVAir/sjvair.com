@@ -1,3 +1,5 @@
+import calendar
+
 from django import template
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.utils.html import format_html
@@ -50,6 +52,21 @@ def lbs(value):
     if value is None:
         return '—'
     return intcomma(int(round(value)))
+
+
+@register.filter
+def month_abbr(value):
+    return calendar.month_abbr[value]
+
+
+@register.filter
+def month_name(value):
+    return calendar.month_name[value]
+
+
+@register.filter
+def max_lbs(by_month):
+    return max((month['lbs'] for month in by_month), default=0)
 
 
 @register.filter

@@ -1,3 +1,4 @@
+import calendar
 import hashlib
 from datetime import date
 from types import SimpleNamespace
@@ -863,15 +864,104 @@ class RecordsBrowser(vanilla.ListView):
         )
 
 
-class SectionDetail(vanilla.TemplateView):
+def _section_card(title, kind, rows, show_all_url):
     """
-    Placeholder so pesticides:section-detail resolves for record/map links.
-    Filled in with the real section detail page in a later task.
+    related-card.html dict for a section page's top lists. Unlike
+    ExplorerDetailMixin.related_card (which links "Show all" to the
+    chemical/product/commodity list filtered on this entity), a section's
+    "Show all" always points at the records browser filtered to the section
+    itself -- there's no single entity to filter by.
     """
+    return {
+        'title': title,
+        'kind': kind,
+        'rows': rows,
+        'show_pct': False,
+        'show_lbs': True,
+        'complete': False,
+        'show_all_url': show_all_url,
+    }
+
+
+class SectionDetail(vanilla.DetailView):
+    """
+    A single MTRS square-mile section: stats, a 12-month bar chart, top
+    chemicals/products/commodities, active notices, and a link into the
+    records browser pre-filtered to this section.
+    """
+    model = Region
+    lookup_field = 'sqid'
+    lookup_url_kwarg = 'sqid'
     template_name = 'pesticides/section-detail.html'
 
+    def get_queryset(self):
+        return Region.objects.filter(type=Region.Type.MTRS)
+
     def get_context_data(self, **kwargs):
-        section = Region.objects.filter(type=Region.Type.MTRS, sqid=kwargs['sqid']).first()
-        if section is None:
-            raise Http404
-        return super().get_context_data(section=section, **kwargs)
+        section = self.object
+        year = stats.resolve_year(self.request.GET.get('year'))
+        rows = PesticideUseRollup.objects.filter(mtrs=section)
+
+        county_name = (
+            rows.exclude(county__isnull=True)
+            .order_by('county__name')
+            .values_list('county__name', flat=True)
+            .first()
+        )
+
+        if year:
+            totals = stats.year_totals(rows, year)
+            by_month = stats.by_month(rows, year)
+            recent_uses = stats.recent_uses(PesticideUse.objects.filter(mtrs=section, year=year), limit=5)
+            chemical_count = rows.filter(year=year, chemical__isnull=False).values('chemical').distinct().count()
+        else:
+            totals = {'lbs': 0, 'applications': 0, 'counties': 0}
+            by_month = []
+            recent_uses = PesticideUse.objects.none()
+            chemical_count = 0
+
+        peak_month = None
+        if by_month and any(month['lbs'] for month in by_month):
+            peak = max(by_month, key=lambda month: month['lbs'])
+            peak_month = calendar.month_name[peak['month']]
+
+        top_chemicals = stats.top_related(rows, year, 'chemical', limit=10)
+        top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10)
+        top_commodities = stats.top_related(rows, year, 'commodity', limit=10)
+
+        notices = PesticideNotice.objects.filter(mtrs=section)
+        upcoming = stats.upcoming_notices(notices)
+
+        records_url = reverse('pesticides:records') + f'?section={section.sqid}' + (
+            f'&year={year}' if stats.year_query(year) else ''
+        )
+
+        center = zoom = None
+        if section.boundary_id:
+            center, zoom = RecordsBrowser._centroid(section), 13
+        map_config = section_map_config(year, center=center, zoom=zoom)
+
+        return super().get_context_data(
+            section='sections',
+            county_name=county_name,
+            years=stats.years_loaded(),
+            **year_context(year),
+            totals=totals,
+            chemical_count=chemical_count,
+            by_year=stats.by_year(rows),
+            by_month=by_month,
+            peak_month=peak_month,
+            top_chemicals=top_chemicals,
+            top_products=top_products,
+            top_commodities=top_commodities,
+            chemicals_card=_section_card('Top chemicals', 'chemicals', top_chemicals, records_url),
+            products_card=_section_card('Top products', 'products', top_products, records_url),
+            commodities_card=_section_card('Top commodities', 'commodities', top_commodities, records_url),
+            upcoming=upcoming,
+            recent_uses=recent_uses,
+            records_url=records_url,
+            map_config=map_config,
+            api_docs_url=API_DOCS_URL,
+            client_docs_url=CLIENT_DOCS_URL,
+            **kwargs,
+        )

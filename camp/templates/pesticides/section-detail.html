@@ -1,12 +1,90 @@
 {% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
 
-{% block title %}{{ section.external_id }} | {{ block.super }}{% endblock %}
+{% block title %}Section {{ object.external_id }} | {{ block.super }}{% endblock %}
 {% block body-class %}{{ block.super }} section-detail{% endblock %}
-{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ section.external_id }}</a></li>{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Section {{ object.external_id }}</a></li>{% endblock %}
 
 {% block explorer-content %}
-<div class="content">
-    <h1 class="title is-4">{{ section.external_id }}</h1>
-    <p class="has-text-grey">Section detail is coming soon.</p>
+<div class="content detail-header">
+    <h1 class="mb-1">Section {{ object.external_id }}</h1>
+    <p class="identifiers has-text-grey">{% if county_name %}{{ county_name }}{% endif %}</p>
 </div>
+
+<div class="level stat-row box">
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Lbs applied{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Applications{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ totals.applications|lbs }}</p></div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Chemicals used{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ chemical_count|lbs }}</p></div>
+    </div>
+</div>
+
+{% include 'pesticides/includes/section-map.html' %}
+
+<section class="month-bars-section mt-6">
+    <h2 class="title is-4">Applications by month{% if year %} <small class="has-text-grey is-size-6">{{ year }}</small>{% endif %}</h2>
+    {% if by_month %}
+        {% include 'pesticides/includes/month-bars.html' %}
+        {% if peak_month %}<p class="mt-2">Spraying here peaks in {{ peak_month }}.</p>{% endif %}
+    {% else %}
+        <p class="has-text-grey">No confirmed applications on record{% if year %} for {{ year }}{% endif %}.</p>
+    {% endif %}
+</section>
+
+<section class="top-lists mt-6">
+    <div class="columns">
+        <div class="column">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
+        <div class="column">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
+        <div class="column">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
+    </div>
+</section>
+
+<section class="by-year mt-6">
+    <h2 class="title is-4">Applications by year</h2>
+    {% if by_year %}
+        {% include 'pesticides/includes/by-year-table.html' %}
+    {% else %}
+        <p class="has-text-grey">No confirmed applications on record{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
+    {% endif %}
+</section>
+
+{% if recent_uses %}
+<section class="recent-uses mt-6">
+    <h2 class="title is-4">Most recent records</h2>
+    {% include 'pesticides/includes/recent-uses.html' %}
+</section>
+{% endif %}
+
+<section class="notices mt-6">
+    <h2 class="title is-4">
+        Planned applications
+        <small class="has-text-grey is-size-6">SprayDays notices of intent</small>
+        <span class="tag is-info is-light is-medium ml-2">{{ upcoming|length }} scheduled</span>
+    </h2>
+    {% if upcoming %}
+        {% include 'pesticides/includes/upcoming-notices.html' %}
+    {% else %}
+        <p class="has-text-grey">No upcoming notices in this section.</p>
+    {% endif %}
+    <p class="mt-2"><a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
+</section>
+
+<p class="mt-6"><a href="{{ records_url }}">Browse all records in this section</a></p>
+
+<footer class="sources mt-6 has-text-grey is-size-7">
+    <p>
+        Confirmed applications: CDPR Pesticide Use Reporting{% if years %}, {{ years.0 }}–{{ years.1 }}{% endif %}.
+        <a href="{% url 'pesticides:home' %}#about">About this data</a>.
+    </p>
+    <p>
+        Developers: the full records are available through the
+        <a href="{{ api_docs_url }}">pesticides API</a> or the
+        <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>,
+        filtered with <code>section={{ object.sqid }}</code>.
+    </p>
+</footer>
 {% endblock %}
