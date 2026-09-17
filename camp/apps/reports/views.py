@@ -10,6 +10,7 @@ from django.utils import timezone
 from camp.apps.alerts.models import Subscription
 from camp.apps.ces.models import CES4, CES5
 from camp.apps.monitors.models import Monitor
+from camp.apps.regions.models import Boundary, Region
 from camp.apps.reports.base import BaseReport, register
 from camp.utils import leaflet
 from camp.utils.counties import County
@@ -28,7 +29,10 @@ MAP_BOUNDS = Polygon.from_bbox((-123.0, 34.0, -117.0, 39.5))
 
 
 def county_outlines():
-    """Unfilled SJV county boundaries to draw under report map markers."""
+    """Unfilled SJV county boundaries (from the county Regions) to draw under map markers."""
+    geometries = (Boundary.objects
+        .filter(current_for__in=Region.objects.counties())
+        .values_list('geometry', flat=True))
     return [
         leaflet.Area(
             geometry=geometry.simplify(0.002, preserve_topology=True),
@@ -36,7 +40,7 @@ def county_outlines():
             border_color='#2c3e50',
             border_width=1.5,
         )
-        for geometry in County.counties.values()
+        for geometry in geometries
     ]
 
 

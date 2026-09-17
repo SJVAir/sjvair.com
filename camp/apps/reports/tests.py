@@ -222,6 +222,7 @@ class FleetHealthTests(StaffClientMixin, TestCase):
 
 
 class DegradedMonitorsTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml']
     def setUp(self):
         super().setUp()
         now = timezone.now()
@@ -294,7 +295,7 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
 
 
 class CoverageTests(StaffClientMixin, TestCase):
-    fixtures = ['calenviroscreen.yaml']
+    fixtures = ['regions.yaml', 'calenviroscreen.yaml']
 
     def setUp(self):
         super().setUp()
@@ -387,6 +388,7 @@ class CoverageTests(StaffClientMixin, TestCase):
 
 
 class CoverageNoCESTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml']
     """The report still renders when no CalEnviroScreen data has been imported."""
 
     def setUp(self):
