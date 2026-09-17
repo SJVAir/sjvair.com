@@ -16,7 +16,7 @@
 - Tests: `django.test.TestCase`, Django fixtures, plain `assert` statements, `pytest.raises` for exceptions. Never `self.assertFoo()` except `assertNumQueries` (context manager, no plain-assert equivalent) and `assertTemplateUsed`.
 - Field definitions: verbose name is the first positional arg via `_()`, no aligned `=` signs.
 - Never `git add -A`; list files explicitly.
-- No AI-authorship attribution anywhere. Commit messages end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` per the session reminder; nothing else.
+- No AI-authorship attribution anywhere. Commit messages carry no co-author trailer.
 - The DB container is shared across worktrees; an unrelated-looking full-suite failure may be contention from another session. Re-run before treating as real.
 - Timezone is `America/Los_Angeles`.
 - Public identifiers are `sqid`; never expose integer PKs in URLs.
@@ -271,9 +271,7 @@ Expected: 3 passed. If `categories` fails to deserialize, change the YAML value 
 
 ```bash
 git add camp/apps/pesticides/tests/__init__.py camp/apps/pesticides/tests/test_spraydays.py camp/apps/pesticides/tests/test_fixture.py fixtures/pesticides-explorer.yaml
-git commit -m "test(pesticides): convert tests to a package and add explorer fixture
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "test(pesticides): convert tests to a package and add explorer fixture"
 ```
 
 ---
@@ -465,9 +463,7 @@ Expected: classification tests pass; the 4 `AbsoluteUrlTests` fail with `NoRever
 
 ```bash
 git add camp/apps/pesticides/models.py camp/apps/pesticides/tests/test_models.py
-git commit -m "feat(pesticides): add classification properties and absolute URLs
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add classification properties and absolute URLs"
 ```
 
 ---
@@ -610,9 +606,7 @@ Expected: 10 passed. If `test_exact_name_ranks_first` fails because both rank eq
 
 ```bash
 git add camp/apps/pesticides/querysets.py camp/apps/pesticides/tests/test_querysets.py
-git commit -m "feat(pesticides): add full-text search to chemical, product, and commodity querysets
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add full-text search to chemical, product, and commodity querysets"
 ```
 
 ---
@@ -991,9 +985,7 @@ Expected: 17 passed. `landing_stats` caches a dict containing model instances; t
 
 ```bash
 git add camp/apps/pesticides/stats.py camp/apps/pesticides/tests/test_stats.py
-git commit -m "feat(pesticides): add aggregate helpers for the explorer
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add aggregate helpers for the explorer"
 ```
 
 ---
@@ -1681,9 +1673,7 @@ Expected: all `ChemicalListTests` and the `AbsoluteUrlTests` from Task 2 pass. I
 
 ```bash
 git add camp/apps/pesticides/urls.py camp/apps/pesticides/forms.py camp/apps/pesticides/views.py camp/apps/pesticides/templatetags/ camp/templates/pesticides/ camp/urls.py camp/apps/pesticides/tests/test_views.py
-git commit -m "feat(pesticides): add explorer URLs, list mixin, and chemical list page
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add explorer URLs, list mixin, and chemical list page"
 ```
 
 ---
@@ -1978,9 +1968,7 @@ Expected: all list tests pass.
 
 ```bash
 git add camp/apps/pesticides/views.py camp/templates/pesticides/product-list.html camp/templates/pesticides/commodity-list.html camp/apps/pesticides/tests/test_views.py
-git commit -m "feat(pesticides): add product and commodity list pages
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add product and commodity list pages"
 ```
 
 ---
@@ -2554,9 +2542,7 @@ Expected: all pass. If `test_query_ceiling` fails, print the queries with `--cap
 
 ```bash
 git add camp/apps/pesticides/views.py camp/templates/pesticides/ camp/apps/pesticides/tests/test_views.py
-git commit -m "feat(pesticides): add chemical, product, and commodity detail pages
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add chemical, product, and commodity detail pages"
 ```
 
 ---
@@ -2797,9 +2783,7 @@ Expected: all pass. `LeafletMap.render()` reads `settings.MAPTILER_API_KEY`; the
 
 ```bash
 git add camp/apps/pesticides/maps.py camp/apps/pesticides/tests/test_maps.py camp/apps/pesticides/views.py camp/templates/pesticides/includes/county-map.html camp/templates/pesticides/detail-base.html camp/apps/pesticides/tests/test_views.py
-git commit -m "feat(pesticides): add county choropleth to detail pages
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add county choropleth to detail pages"
 ```
 
 
@@ -3015,9 +2999,7 @@ Expected: 5 pass, `test_navbar_has_data_tools` still fails.
 
 ```bash
 git add camp/apps/pesticides/views.py camp/templates/pesticides/home.html camp/templates/pesticides/includes/leaderboard.html camp/apps/pesticides/tests/test_views.py
-git commit -m "feat(pesticides): add explorer landing page
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add explorer landing page"
 ```
 
 ---
@@ -3160,9 +3142,7 @@ Expected: all pass, including `test_navbar_has_data_tools`.
 
 ```bash
 git add camp/templates/page.html assets/sass/sjvair/pages/pesticides.sass assets/sass/style.sass
-git commit -m "feat(pesticides): add Data Tools navigation and explorer styles
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add Data Tools navigation and explorer styles"
 ```
 
 ---
@@ -3192,9 +3172,7 @@ Invoke `frontend-design` with the explorer templates and sass as the target and 
 
 ```bash
 git add camp/templates/pesticides/ assets/sass/sjvair/pages/pesticides.sass
-git commit -m "style(pesticides): design pass on explorer templates
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "style(pesticides): design pass on explorer templates"
 ```
 
 - [ ] **Step 5: Full test run**

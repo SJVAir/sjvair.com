@@ -18,7 +18,7 @@
 - Notices: "active" = `scheduled_application >= now - 4 days` (`stats._upcoming`, `stats.NOTICE_GRACE_DAYS`). Never a "next N days" window. Every notice page carries a "Sign up with SprayDays" link (`https://spraydays.cdpr.ca.gov/`). No alert features of our own.
 - Explorer pages never link to raw API endpoints (docs links only).
 - URLs are the only state; `qs_replace` preserves params in sort/pagination links; the year picker applies to year-binned data only.
-- Never `git add -A`; commit trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; no other AI attribution.
+- Never `git add -A`. No AI attribution in commits (no co-author trailers).
 - Shared db; port 8001 belongs to another worktree; use 8002 for this worktree if a server is needed.
 
 ---
@@ -151,7 +151,7 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
 
 - [ ] **Step 2: Implement** the form, `area_filter`, `RecordsBrowser`, templates, sub-nav, sass (`.records-filters` compact form; `.records-table td` nowrap for date/lbs), URL entries (`records/`, `sections/<str:sqid>/` → placeholder `SectionDetail(vanilla.TemplateView)`). For the county centroid use `Region.objects.filter(type=COUNTY, slug=...).select_related('boundary')` and `boundary.geometry.centroid` (y = lat, x = lng); format center as `f'{lat:.4f},{lng:.4f}'`. For the radius filter parse floats and validate ranges like the API does.
 - [ ] **Step 3: GREEN** on `tests/test_records.py` and the pesticides package; `invoke styles`.
-- [ ] **Step 4: Commit** — `feat(pesticides): add the PUR records browser` + trailer.
+- [ ] **Step 4: Commit** — `feat(pesticides): add the PUR records browser`.
 
 ---
 
@@ -206,7 +206,7 @@ class SectionDetailTests(RollupTestMixin, TestCase):
 
 - [ ] **Step 2: Implement**; month names via `calendar.month_name`. Sass: `.month-bars { display:flex; align-items:flex-end; gap:4px; height:120px }`, `.bar { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center }`, `.fill { width:100%; background:$primary; min-height:2px; border-radius:2px 2px 0 0 }`, `.label { font-size: $size-7; color: $grey }`.
 - [ ] **Step 3: GREEN**; `invoke styles`.
-- [ ] **Step 4: Commit** — `feat(pesticides): add section pages with monthly bars` + trailer.
+- [ ] **Step 4: Commit** — `feat(pesticides): add section pages with monthly bars`.
 
 ---
 
@@ -295,7 +295,7 @@ class EntityPageLinksTests(RollupTestMixin, TestCase):
 
 - [ ] **Step 2: Implement**; archive month labels via `calendar.month_name[m] + ' ' + str(y)`; `archive_months` from `PesticideNotice.objects.annotate(month=TruncMonth('scheduled_application', tzinfo=ZoneInfo('America/Los_Angeles')))...values('month').annotate(count=Count('id')).order_by('-month')[:24]`.
 - [ ] **Step 3: GREEN** on the whole `camp/apps/pesticides/tests/`; `invoke styles`.
-- [ ] **Step 4: Commit** — `feat(pesticides): add notice pages and link entity pages into the records browser` + trailer.
+- [ ] **Step 4: Commit** — `feat(pesticides): add notice pages and link entity pages into the records browser`.
 
 ---
 

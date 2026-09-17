@@ -16,7 +16,7 @@
 - Tests: `django.test.TestCase`, Django fixtures, plain `assert`. `assertNumQueries` allowed.
 - New models use integer PKs; **no `SqidsField` on the rollup** (never exposed by id). `SqidsField` on other models is not a DB column: never use `sqid` in `.values()`, `.filter()` on related paths, or `order_by`.
 - Field definitions: verbose name first via `_()`, no aligned `=`.
-- Never `git add -A`; list files. Commit trailer exactly: `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. No other AI attribution.
+- Never `git add -A`; list files. No AI attribution in commits (no co-author trailers).
 - The `db` container is shared across worktrees. **Do not run `migrate` against it during this plan** except where a task says so; local rebuilds over 6.5M rows are run once, timed, and recorded.
 - MTRS `Region` rows: `type='mtrs'`, `external_id` like `MDM-T13S-R14E-08`, `boundary.geometry` is a 5-point `MultiPolygon` square in SRID 4326. All 27,917 have boundaries.
 - Existing explorer behavior (tests in `camp/apps/pesticides/tests/`) must stay green; assertions on exact query counts may change and are updated with the honest count.
@@ -225,9 +225,7 @@ Expected: all pass.
 
 ```bash
 git add fixtures/pesticides-explorer.yaml camp/apps/pesticides/models.py camp/apps/pesticides/migrations/0004_pesticideuserollup.py camp/apps/pesticides/tests/test_rollup.py camp/apps/pesticides/tests/test_fixture.py
-git commit -m "feat(pesticides): add PesticideUseRollup model and fixture sections
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): add PesticideUseRollup model and fixture sections"
 ```
 
 ---
@@ -455,9 +453,7 @@ docker compose run --rm web python manage.py shell -c "from camp.apps.pesticides
 
 ```bash
 git add camp/apps/pesticides/rollup.py camp/apps/pesticides/management/commands/rebuild_pesticide_rollup.py camp/apps/pesticides/management/commands/import_pur.py camp/apps/pesticides/tests/rollup_mixin.py camp/apps/pesticides/tests/test_rollup.py
-git commit -m "feat(pesticides): rebuild a per-section monthly rollup after each PUR import
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): rebuild a per-section monthly rollup after each PUR import"
 ```
 
 ---
@@ -551,9 +547,7 @@ Expected: all pass. The views tests will now fail (they still pass `PesticideUse
 
 ```bash
 git add camp/apps/pesticides/stats.py camp/apps/pesticides/tests/test_stats.py
-git commit -m "feat(pesticides): read explorer aggregates from the rollup
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): read explorer aggregates from the rollup"
 ```
 
 ---
@@ -618,9 +612,7 @@ Record the timings in the report; the spec's acceptance is "well under a second"
 
 ```bash
 git add camp/apps/pesticides/views.py camp/apps/pesticides/tests/test_views.py
-git commit -m "feat(pesticides): list and detail pages aggregate from the rollup
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(pesticides): list and detail pages aggregate from the rollup"
 ```
 
 ---
@@ -962,9 +954,7 @@ The last should be a fast 400. Record counts and timings (cold and warm) in the 
 
 ```bash
 git add camp/api/v2/pesticides/sections.py camp/api/v2/pesticides/urls.py camp/api/v2/pesticides/tests.py camp/api/v2/tests/test_openapi.py
-git commit -m "feat(api): add pesticide section endpoints backed by the rollup
-
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git commit -m "feat(api): add pesticide section endpoints backed by the rollup"
 ```
 
 ---

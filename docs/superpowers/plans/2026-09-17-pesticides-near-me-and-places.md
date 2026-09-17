@@ -18,7 +18,7 @@
 - Notices: "active" = `stats._upcoming` (scheduled ≥ now − 4 days). Never a "next N days" window. Every place page links to SprayDays sign-up (`https://spraydays.cdpr.ca.gov/`). No alert features of our own.
 - **Privacy:** the server never geocodes and never stores a location; near-me state lives only in the URL, and the page says so in one sentence.
 - Explorer pages never link to raw API endpoints (docs links only). URLs are the only state.
-- Never `git add -A`; commit trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; no other AI attribution.
+- Never `git add -A`. No AI attribution in commits (no co-author trailers).
 - Shared db; a dev server for this worktree runs on port 8002 (do not start/stop servers).
 
 ---
@@ -206,7 +206,7 @@ class RegionPageTests(RollupTestMixin, TestCase):
 - [ ] **Step 2: Run** `docker compose run --rm test pytest camp/apps/pesticides/tests/test_places.py -q` → fails on import.
 - [ ] **Step 3: Implement** `places.py`, the views, URLs (`path('near/', NearMe.as_view(), name='near-me')`, `path('region/<str:sqid>/<slug:slug>/', RegionPage.as_view(), name='region')`), the tag, `by_county` sqids, `place.html`, sass (`.right-now` box with a left border in `$info`; `.stat-row .fraction` tabular-nums). Read `MapPage`, `SectionDetail`, and `RecordsBrowser` in `views.py` first and follow their conventions.
 - [ ] **Step 4: GREEN** on `tests/test_places.py`, then `camp/apps/pesticides`; `invoke styles`.
-- [ ] **Step 5: Commit** — `feat(pesticides): add near-me and region place pages` + trailer.
+- [ ] **Step 5: Commit** — `feat(pesticides): add near-me and region place pages`.
 
 ---
 
@@ -303,7 +303,7 @@ class FindAreaTests(RollupTestMixin, TestCase):
 - [ ] **Step 2: Run** → fails (no block, no redirect).
 - [ ] **Step 3: Implement** form, view changes, templates, script, sass (`.find-area-results` as an absolutely positioned dropdown list under the input: `position:relative` on `.find-area .field`, `.find-area-results { position:absolute; z-index:30; left:0; right:0; background:$white; border:1px solid $grey-lighter; border-radius:4px; box-shadow: 0 4px 12px rgba($black,.12); list-style:none; margin:0; padding:.25rem 0 } li { padding:.4rem .75rem; cursor:pointer } li[aria-selected=true], li:hover { background:$grey-lightest }`).
 - [ ] **Step 4: GREEN** on `camp/apps/pesticides`; `invoke styles`. Syntax-check the script with `node --check assets/js/pesticides/find-area.js`.
-- [ ] **Step 5: Commit** — `feat(pesticides): add "Find your area" to the landing page and link county names to county pages` + trailer.
+- [ ] **Step 5: Commit** — `feat(pesticides): add "Find your area" to the landing page and link county names to county pages`.
 
 ---
 

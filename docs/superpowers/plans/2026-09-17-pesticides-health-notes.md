@@ -15,7 +15,7 @@
 - Commands from the worktree root inside Docker: `docker compose run --rm test pytest <path> -q`; `docker compose run --rm web invoke styles` after sass edits (`dist/css/style.css` is git-ignored; do not try to commit it).
 - Tests: `django.test.TestCase`, fixtures (`pesticides-explorer`), plain `assert`. Fixture chemical 1 GLYPHOSATE (categories `[carcinogen]`, IARC 2A → Prop 65 + IARC badges), 2 CHLORPYRIFOS (`[toxic_air_contaminant, cholinesterase_inhibitor]` → CARB TAC badge + cholinesterase tag), 3 SULFUR (none). Product 2 LORSBAN 4E is `fumigant` + `california_restricted`.
 - Copy rules: every `summary` is one or two sentences, plain words, no jargon without a gloss; never claims a specific exposure is harmful; every entry has a `source_url` on an official site (OEHHA, IARC, CARB, DPR, SprayDays).
-- Explorer pages never link to raw API endpoints. Never `git add -A`; commit trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; no other AI attribution.
+- Explorer pages never link to raw API endpoints. Never `git add -A`. No AI attribution in commits (no co-author trailers).
 - Shared db; a dev server for this worktree runs on port 8002 (do not start/stop servers).
 
 ---
@@ -228,7 +228,7 @@ class NotesRenderingTests(RollupTestMixin, TestCase):
 - [ ] **Step 2: Run** → fails (no module).
 - [ ] **Step 3: Implement** the datafile, module, tag/filter, includes, view context, template edits, sass. Keep `all_notes()` an `lru_cache` (copy changes ship with a deploy, like the rest of `datafiles/`).
 - [ ] **Step 4: GREEN** on `camp/apps/pesticides`; `invoke styles`.
-- [ ] **Step 5: Commit** — `feat(pesticides): add plain-language health notes from a datafile` + trailer.
+- [ ] **Step 5: Commit** — `feat(pesticides): add plain-language health notes from a datafile`.
 
 ---
 

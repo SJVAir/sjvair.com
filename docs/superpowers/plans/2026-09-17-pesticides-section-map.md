@@ -17,7 +17,7 @@
 - `SqidsField` is not a DB column.
 - No new JS dependencies; no build step. Static files live under `assets/` and are served by `STATICFILES_DIRS`; reference them with `{% static 'js/pesticides/section-map.js' %}`.
 - The sections API caps at 2,500 sections and returns 400 with `{"error": "... zoom in"}` beyond that; a near-cap response is ~2.2 MB. The map must not request below zoom 9 and should keep the viewport small enough at zoom 9–10 (Fresno-county scale ≈ 1,500 sections).
-- Never `git add -A`; list files. Commit trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; no other AI attribution.
+- Never `git add -A`; list files. No AI attribution in commits (no co-author trailers).
 - Shared db container; re-run once before treating an unrelated failure as real. Do not restart other people's dev servers; port 8001 belongs to another worktree. Use port 8002 for this worktree when a server is needed: `docker compose run --rm -p 8002:8000 web python manage.py runserver 0:8000`.
 - Notice timing: "active" means `scheduled_application >= now - 4 days` (`stats.NOTICE_GRACE_DAYS`).
 
@@ -152,7 +152,7 @@ class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
 `.distinct()` matters because the M2M filters can duplicate rows. URL: `path('notices/active/', sections.ActiveNoticeList.as_view(), name='notice-active')` — place it **before** `notice/<str:notice_id>/` isn't needed (different prefix), but keep it above any catch-all.
 
 - [ ] **Step 3: GREEN** — `docker compose run --rm test pytest camp/api/v2/pesticides/tests.py camp/api/v2/tests/test_openapi.py -q`.
-- [ ] **Step 4: Commit** — `feat(api): add active pesticide notices as GeoJSON` + trailer.
+- [ ] **Step 4: Commit** — `feat(api): add active pesticide notices as GeoJSON`.
 
 ---
 
@@ -292,7 +292,7 @@ CSS (`assets/css/pesticides/section-map.css`): `.section-map { width: 100%; heig
 ```
 
 - [ ] **Step 5: GREEN** — `docker compose run --rm test pytest camp/apps/pesticides/tests/ -q`; rebuild sass (`invoke styles`); `node -e "new Function(require('fs').readFileSync('assets/js/pesticides/section-map.js','utf8'))"` to syntax-check.
-- [ ] **Step 6: Commit** — `feat(pesticides): add the interactive section map and Map page` + trailer.
+- [ ] **Step 6: Commit** — `feat(pesticides): add the interactive section map and Map page`.
 
 ---
 
