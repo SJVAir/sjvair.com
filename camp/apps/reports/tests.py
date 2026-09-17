@@ -269,6 +269,7 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
         assert 'class="admin-leaflet-map"' in content
         assert 'js/admin/leaflet-maps.js' in content
         assert content.count('"kind": "marker"') == 5
+        assert content.count('"kind": "area"') == 8  # county outlines
         rows = {r['name']: r for r in response.context['rows']}
         assert rows['Grade F']['map_color'] == '#c0392b'
         assert rows['Silent']['map_color'] == '#7f8c8d'
@@ -346,7 +347,7 @@ class CoverageTests(StaffClientMixin, TestCase):
         response = self.client.get(reverse('reports:coverage'))
         content = response.content.decode()
         assert 'class="admin-leaflet-map"' in content
-        assert content.count('"kind": "area"') == 2
+        assert content.count('"kind": "area"') == 2 + 8  # two fixture tracts plus county outlines
         assert content.count('"kind": "marker"') == 2
         assert '"fillColor": "#c0392b"' in content  # the DAC tract
 
@@ -395,7 +396,7 @@ class CoverageNoCESTests(StaffClientMixin, TestCase):
     def test_map_shows_monitors_without_ces_data(self):
         response = self.client.get(reverse('reports:coverage'))
         content = response.content.decode()
-        assert content.count('"kind": "area"') == 0
+        assert content.count('"kind": "area"') == 8  # county outlines only
         assert content.count('"kind": "marker"') == 1
 
     def test_renders_without_ces_data(self):

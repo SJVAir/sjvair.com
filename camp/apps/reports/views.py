@@ -27,6 +27,19 @@ OUTSIDE_SJV = 'Outside SJV'
 MAP_BOUNDS = Polygon.from_bbox((-123.0, 34.0, -117.0, 39.5))
 
 
+def county_outlines():
+    """Unfilled SJV county boundaries to draw under report map markers."""
+    return [
+        leaflet.Area(
+            geometry=geometry.simplify(0.002, preserve_topology=True),
+            fill_opacity=0,
+            border_color='#2c3e50',
+            border_width=1.5,
+        )
+        for geometry in County.counties.values()
+    ]
+
+
 def monitor_types():
     """Concrete Monitor subclasses, sorted by class name."""
     return Monitor.get_subclasses()
@@ -265,6 +278,7 @@ class Coverage(BaseReport):
     def get_map(self):
         """Valley-wide map: DAC tracts shaded, other tracts light, monitors as dots."""
         lmap = leaflet.LeafletMap(width=900, height=700, padding=10)
+        lmap.add(*county_outlines())
         tracts = self.tracts()
         if tracts is not None:
             for dac, geometry in tracts.values_list('dac_sb535', 'boundary__geometry').iterator(chunk_size=500):
@@ -277,7 +291,7 @@ class Coverage(BaseReport):
                 ))
         for position in self.monitors().filter(position__within=MAP_BOUNDS).values_list('position', flat=True):
             lmap.add(leaflet.Marker(geometry=position, size=7, fill_color='#1f4e79', border_width=1))
-        return lmap.render() if lmap.elements else None
+        return lmap.render()
 
     def get_context_data(self, **kwargs):
         model, version = self.ces()
@@ -487,7 +501,10 @@ class DegradedMonitors(BaseReport):
         for row in rows:
             if row['position'] and MAP_BOUNDS.contains(row['position']):
                 lmap.add(leaflet.Marker(geometry=row['position'], size=9, fill_color=row['map_color']))
-        return lmap.render() if lmap.elements else None
+        if not lmap.elements:
+            return None
+        lmap.add(*county_outlines())
+        return lmap.render()
 
     def admin_url(self, cls, monitor):
         """Change-page URL, or '' when the subclass isn't registered in the admin."""
