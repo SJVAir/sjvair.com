@@ -235,4 +235,120 @@ fixtures from `/fixtures` where they fit (`purple-air.yaml`,
 - Alerts and subscription growth (pending rework).
 - Caching.
 - Charts or any client-side rendering.
-- Data volume and host roster reports (candidates for the next batch).
+- Data volume and host roster reports (candidates for a later batch).
+
+## Batch two (2026-09-17)
+
+Four more reports on the same branch and PR, using `BaseReport` unchanged.
+Registered after the first five, ED-facing first: Coverage by Community,
+then Data Completeness, Data Quality Problems, Pipeline Coverage.
+
+Shared conventions from batch one carry over: `?sjvair_only=1|0` (ED
+reports default off, ops reports default on with the hidden-input
+pattern), `?include_hidden=1`, `?county=<name>`, `Outside SJV` for a
+blank or non-SJV county, totals rows in `<tfoot>`, admin change-page
+links via `DegradedMonitors.admin_url`-style fail-soft reverse.
+
+### 5. Coverage by Community (ED)
+
+Slug `coverage-community`. One row per city and CDP `Region`
+(`Region.Type.CITY`, `Region.Type.CDP`) that has a current boundary:
+name, type ("City" / "CDP"), county (the county Region containing the
+place's centroid, via `Region.objects.get_county_region`, or the
+in-process `County.lookup` fallback if that is simpler; report which),
+population, monitors, monitors per 10k, and for places with no monitor
+the distance in km to the nearest counted monitor.
+
+- Population is the sum of CES tract population for tracts (newest CES
+  version present, same rule as Coverage) whose centroid is inside the
+  place boundary. Places with no tract centroid inside them show the
+  population of the tract containing the place centroid instead, so
+  small CDPs are not reported as zero-population.
+- Monitors counted are the same set as Coverage: positioned, enabled
+  types, not hidden unless `?include_hidden=1`, active in the last hour
+  unless `?include_inactive=1`, SJVAir-only when `?sjvair_only=1`.
+  A monitor counts for a place when its position is inside the boundary.
+- Nearest-monitor distance uses `Distance` between the place centroid and
+  the nearest counted monitor, one indexed query per uncovered place.
+- `?uncovered=1` shows only places with zero monitors. Default sort is
+  population descending; `?sort=name` sorts alphabetically.
+- Tiles: places with a monitor, places without, population living in
+  places without a monitor, and the share that is of the total.
+- No map in this batch.
+
+### 6. Data Completeness (ops)
+
+Slug `data-completeness`. Uses `MonitorSummary` rows at
+`Resolution.DAILY`, RAW processor (`processor=''`), for one entry type
+(`?entry_type=`, default `pm25`; choices are every entry type with any
+daily summary). "Expected" is the summary's own `expected_count`.
+
+- Primary table: one row per monitor type with received, expected, and
+  percent for the last 7 days and the last 30 days (calendar days ending
+  yesterday, Pacific time, so today's partial day does not drag the
+  number down), plus a monitor count.
+- Secondary table `low`: monitors whose 7-day percent is below
+  `?threshold=` (default 80) with type, county, host, received, expected,
+  percent, and admin link; worst first. Monitors with no summary rows in
+  the window appear with 0 received and are listed first.
+- Filters `?county=`, `?sjvair_only` (default on), `?include_hidden=1`
+  (hidden excluded by default, unlike Fleet Health, because this is
+  about live data quality).
+
+### 7. Data Quality Problems (ops)
+
+Slug `data-quality`. Every subclass, hidden included. One row per monitor
+failing any check, with a `condition` column joining the labels:
+
+- `No position` — `position` is null.
+- `Bogus position` — outside the fallback valley box used by the maps,
+  including (0, 0).
+- `No name` — blank `name`.
+- `No county` — blank `county` but the position is inside some SJV county
+  Region boundary (a monitor legitimately outside the valley is not
+  flagged).
+- `Wrong county` — `county` set but the position is not inside that
+  county's Region boundary.
+- `Hidden but reporting` — `is_hidden` and a `LatestEntry` within
+  `Monitor.LAST_ACTIVE_LIMIT`.
+- `No host` — `is_sjvair` and `host` is null.
+
+Sorted by the first failing check in the order above, then name. Columns:
+name (admin link, or the pk when the name is blank), type, county,
+position as "lat, lon" to 4 places, condition. Filters `?type=` and
+`?county=` (county filter matches the stored field). Tiles: total
+flagged, and a count per condition.
+
+County containment uses the county Region boundaries only; monitors are
+tested with one `Exists` per check where possible, and never one query
+per monitor.
+
+### 8. Pipeline Coverage (config)
+
+Slug `pipeline-coverage`. No filters. A matrix of enabled monitor types
+(rows) against every entry type any of them produces (columns, from
+`Monitor.ENTRY_CONFIG` keys, ordered by `entry_type`). Each cell:
+
+- blank when the type does not produce that entry type;
+- otherwise the stages the config allows (`allowed_stages`, e.g.
+  "RAW → CLEANED"), the default stage, and one of:
+  - `published: <calibration or default stage>` when a
+    `DefaultCalibration` row exists for the pair;
+  - `not published` when data is produced but no row exists.
+
+Below the matrix, a list of `DefaultCalibration` rows whose
+(monitor type, entry type) pair no enabled type produces ("orphaned
+publish rows"), and a count of pairs produced but unpublished. The
+`rows` payload for the base class is the matrix (one dict per type, one
+key per entry type holding the cell label), so the page renders through
+the same template pattern as Network Overview.
+
+### Testing (batch two)
+
+Same file and conventions. Coverage by Community uses `regions.yaml`
+(it has a Fresno city region with a real boundary) and
+`calenviroscreen.yaml`; Data Completeness creates daily `MonitorSummary`
+rows directly; Data Quality creates monitors that trip each check exactly
+once, including one legitimately outside the valley that must not be
+flagged; Pipeline Coverage loads `default-calibrations.yaml` and asserts
+on PurpleAir PM2.5 (published) and a produced-but-unpublished pair.
