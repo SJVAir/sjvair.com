@@ -18,7 +18,7 @@ from django.utils import timezone as django_timezone
 from camp.apps.calibrations import processors as cal_processors
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.vozbox.api import VozBoxClient
-from camp.apps.monitors.models import LatestEntry
+from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.monitors.vozbox.tasks import process_device, import_realtime, import_cal_range, _bin_rows
 
@@ -261,6 +261,15 @@ class VOZBoxModelTests(TestCase):
         # Plantower + Sensirion, not a matched A/B pair.
         monitor = VOZBox(sensor_id='e00fce68f12da1a0c5de6248')
         assert monitor.supports_health_checks() is False
+
+    def test_health_checks_not_enabled_for_type(self):
+        assert VOZBox.health_checks_enabled() is False
+
+    def test_get_for_health_checks_excludes_vozbox(self):
+        # Two PM2.5 sensors are listed in ENTRY_CONFIG, but they are not a
+        # matched pair, so the hourly task must not pick these monitors up.
+        VOZBox.objects.create(sensor_id='e00fce68f12da1a0c5de6248', name='Coalinga', location='outside')
+        assert Monitor.objects.get_for_health_checks().count() == 0
 
     def test_pm25_is_raw_only(self):
         config = VOZBox.ENTRY_CONFIG[entry_models.PM25]

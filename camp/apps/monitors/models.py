@@ -553,13 +553,22 @@ class Monitor(models.Model):
         """Returns kwargs to filter health-check-eligible monitors of this type."""
         return {f'{cls.monitor_type}__isnull': False}
 
-    def supports_health_checks(self):
-        """Returns True if this monitor instance supports health checks."""
+    @classmethod
+    def health_checks_enabled(cls):
+        """
+        Returns True if this monitor type can run dual-channel health checks,
+        i.e. it reports PM2.5 from two matched sensors. Types whose two PM2.5
+        sensors are not a matched pair (VOZbox) override this to opt out.
+        """
         from camp.apps.entries.models import PM25
-        config = type(self).ENTRY_CONFIG.get(PM25)
+        config = cls.ENTRY_CONFIG.get(PM25)
         if not config:
             return False
         return len(config.get('sensors', [])) >= 2
+
+    def supports_health_checks(self):
+        """Returns True if this monitor instance supports health checks."""
+        return type(self).health_checks_enabled()
 
 
     def run_health_check(self, hour):

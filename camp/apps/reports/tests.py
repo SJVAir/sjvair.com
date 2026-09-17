@@ -12,6 +12,7 @@ from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.models import Host, LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.qaqc.models import HealthCheck
 
 
@@ -208,6 +209,12 @@ class FleetHealthTests(StaffClientMixin, TestCase):
         assert row['active'] == 1
         assert row['silent_1d'] == 1
         assert row['total'] == 2
+
+    def test_grades_exclude_types_without_health_checks(self):
+        # VOZbox lists two PM2.5 sensors but they are not a matched pair.
+        VOZBox.objects.create(sensor_id='e00fce68f12da1a0c5de6248', name='VOZ', position=Point(-119.75, 36.75), location='outside')
+        response = self.client.get(reverse('reports:fleet-health'))
+        assert 'VOZBox' not in {g['type'] for g in response.context['grades']}
 
     def test_grade_distribution(self):
         response = self.client.get(reverse('reports:fleet-health'))
