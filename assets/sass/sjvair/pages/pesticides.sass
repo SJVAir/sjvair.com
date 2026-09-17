@@ -5,25 +5,20 @@ body.pesticides
             margin-bottom: 0
         h1 a
             font-weight: 700
-        .explorer-nav
+        .explorer-nav.tabs
             margin-top: $size-6
             margin-bottom: 0
-            .tabs.is-boxed
-                a
+            li.is-active a
+                color: $primary
+                background-color: $white
+                border-color: $white
+            li:not(.is-active) a
+                color: rgba($white, 0.85)
+                border-bottom-color: transparent
+                &:hover
                     color: $white
-                    opacity: 0.85
-                    border-bottom-color: transparent
-                    &:hover
-                        opacity: 1
-                        background-color: rgba($black, 0.08)
-                li.is-active a
-                    background-color: $white
-                    border-color: $white
-                    color: $primary
-                    opacity: 1
-                    &:hover
-                        background-color: $white
-                        color: $primary
+                    background-color: rgba($black, 0.08)
+                    border-bottom-color: rgba($white, 0.5)
 
     .breadcrumbs
         background-color: $grey-lightest
