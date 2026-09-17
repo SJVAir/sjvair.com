@@ -125,10 +125,12 @@ sections with rollup totals, for one of:
 Filters: `year` (default latest), `month`, `chemical` (chem code),
 `product` (prodno), `commodity` (site code), `county` (slug). Each feature:
 `properties = {mtrs, sqid, county, lbs_chemical, lbs_product, acres_treated,
-applications, top_chemicals: [{name, sqid, lbs}] (top 3)}`. Section geometries
-are simplified (tolerance 0.001) and cached per section for a day; the totals
-come from one grouped rollup query. Response cached for an hour keyed on the
-full query string (the rollup only changes at import).
+applications}` (the popup fetches `sections/<sqid>/` on click for top
+chemicals/products/commodities). MTRS boundaries are 5-point squares in SRID
+4326, so they are served as stored; no simplification or per-section geometry
+cache is needed. The totals come from one grouped rollup query. Response
+cached for an hour keyed on the full query string (the rollup only changes at
+import).
 
 Also: `GET /api/2.0/pesticides/sections/<sqid>/` for one section's yearly and
 monthly totals and top chemicals/products/commodities (feeds the popup and a
