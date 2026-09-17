@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from django.conf import settings
 from django.db.models import Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.http import Http404
@@ -13,6 +14,8 @@ from camp.apps.pesticides.forms import ChemicalFilterForm, CommodityFilterForm, 
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product, ProductChemical,
 )
+from camp.apps.regions.models import Region
+from camp.utils import leaflet
 
 # Sentinel for "sqid didn't resolve to an object" in ExplorerListMixin.related.
 # Not Http404 -- that's an exception class, not a value, and using it as a
@@ -478,3 +481,86 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
 
     def get_summary_sentence(self, totals, year, top, verb=None):
         return super().get_summary_sentence(totals, year, top, verb=None)
+
+
+SJV_CENTER = '36.75,-119.80'
+SJV_ZOOM = 8
+
+
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None):
+    return {
+        'sections_url': '/api/2.0/pesticides/sections/',
+        'notices_url': '/api/2.0/pesticides/notices/active/',
+        'section_url_pattern': '/api/2.0/pesticides/sections/{id}/',
+        'tile_url': leaflet.TILE_URL.format(key=settings.MAPTILER_API_KEY, z='{z}', x='{x}', y='{y}'),
+        'attribution': leaflet.TILE_ATTRIBUTION,
+        'year': year or '',
+        'center': center or SJV_CENTER,
+        'zoom': zoom or SJV_ZOOM,
+        'radius': radius or '',
+        'chemical': str(chemical.chem_code) if chemical else '',
+        'product': str(product.prodno) if product else '',
+        'commodity': commodity.site_code if commodity else '',
+        'county': county or '',
+    }
+
+
+class MapPage(vanilla.TemplateView):
+    template_name = 'pesticides/map.html'
+
+    def get_context_data(self, **kwargs):
+        request = self.request
+        year = stats.resolve_year(request.GET.get('year'))
+
+        chemical = None
+        chemical_sqid = request.GET.get('chemical')
+        if chemical_sqid:
+            chemical = Chemical.objects.filter(sqid=chemical_sqid).first()
+
+        product = None
+        product_sqid = request.GET.get('product')
+        if product_sqid:
+            product = Product.objects.filter(sqid=product_sqid).first()
+
+        commodity = None
+        commodity_sqid = request.GET.get('commodity')
+        if commodity_sqid:
+            commodity = Commodity.objects.filter(sqid=commodity_sqid).first()
+
+        county = None
+        county_slug = request.GET.get('county')
+        if county_slug:
+            county = Region.objects.filter(type=Region.Type.COUNTY, slug=county_slug).first()
+
+        map_config = section_map_config(
+            year,
+            chemical=chemical,
+            product=product,
+            commodity=commodity,
+            county=county.slug if county else None,
+        )
+
+        filters = []
+        for param, obj in (('chemical', chemical), ('product', product), ('commodity', commodity), ('county', county)):
+            if obj is None:
+                continue
+            params = request.GET.copy()
+            params.pop(param, None)
+            encoded = params.urlencode()
+            filters.append({
+                'label': obj.name,
+                'clear_url': f'?{encoded}' if encoded else '?',
+            })
+
+        county_map = None
+        if year:
+            county_map = maps.county_map(stats.by_county(PesticideUseRollup.objects.all(), year))
+
+        return super().get_context_data(
+            section='map',
+            map_config=map_config,
+            filters=filters,
+            county_map=county_map,
+            **year_context(year),
+            **kwargs,
+        )

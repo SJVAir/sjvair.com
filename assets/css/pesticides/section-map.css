@@ -1,0 +1,59 @@
+.section-map {
+  width: 100%;
+  height: 70vh;
+  min-height: 480px;
+  border: 1px solid #dbdbdb;
+  border-radius: 4px;
+}
+
+.section-map-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.section-map-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.section-map-controls .section-map-status {
+  color: #7a7a7a;
+  margin-left: auto;
+}
+
+.leaflet-popup .section-popup h4,
+.leaflet-popup .notice-popup h4 {
+  margin: 0 0 .25rem;
+}
+
+.section-popup .section-popup-totals,
+.notice-popup .notice-popup-meta {
+  font-size: 0.85rem;
+  color: #4a4a4a;
+}
+
+.section-popup ul,
+.notice-popup ul {
+  margin: 0.25rem 0;
+  padding-left: 1.1rem;
+}
+
+.section-popup .is-of-concern::before {
+  content: '\25CF';
+  color: #d35400;
+  margin-right: 0.25rem;
+}
+
+.notice-popup .spraydays-link {
+  display: inline-block;
+  margin-top: 0.35rem;
+}
+
+.section-map-marker-notice {
+  /* Placeholder hook: markers are drawn as L.circleMarker directly, not divIcon. */
+}

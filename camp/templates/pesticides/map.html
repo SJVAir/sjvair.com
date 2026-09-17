@@ -1,0 +1,18 @@
+{% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+{% block title %}Map | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} map-page{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Map</a></li>{% endblock %}
+{% block explorer-content %}
+<div class="content">
+    <h1 class="title is-4 mb-2">Pesticide use by square mile{% if year %}, {{ year }}{% endif %}</h1>
+    <p class="has-text-grey">Each square is one MTRS section. Shades are quantile classes over the sections in view; click a section for its top chemicals. Orange dots are SprayDays notices of intent currently scheduled.</p>
+    {% if filters %}
+    <div class="tags">
+        {% for f in filters %}<span class="tag is-info is-light is-medium">{{ f.label }} <a class="delete is-small ml-1" href="{{ f.clear_url }}" aria-label="Remove filter"></a></span>{% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% include 'pesticides/includes/section-map.html' %}
+<p class="is-size-7 has-text-grey mt-3">Sections with no reported use in {{ year }} are outlined only. Want to be told about notices near you? <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">Sign up with SprayDays</a>.</p>
+{% endblock %}

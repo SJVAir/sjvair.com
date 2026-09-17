@@ -7,11 +7,13 @@
 {% block extra-head %}
 <link rel="stylesheet" href="{% static 'js/admin/leaflet/leaflet.css' %}">
 <link rel="stylesheet" href="{% static 'js/admin/leaflet-maps.css' %}">
+<link rel="stylesheet" href="{% static 'css/pesticides/section-map.css' %}">
 {% endblock %}
 
 {% block javascripts %}
 <script src="{% static 'js/admin/leaflet/leaflet.js' %}"></script>
 <script src="{% static 'js/admin/leaflet-maps.js' %}"></script>
+<script src="{% static 'js/pesticides/section-map.js' %}"></script>
 {% endblock %}
 
 {% block main %}
@@ -25,6 +27,7 @@
         {% endblock %}
         <div class="tabs is-boxed explorer-nav">
             <ul>
+                <li class="{% if section == 'map' %}is-active{% endif %}"><a href="{% url 'pesticides:map' %}{{ year_qs }}">Map</a></li>
                 <li class="{% if section == 'chemicals' %}is-active{% endif %}"><a href="{% url 'pesticides:chemical-list' %}{{ year_qs }}">Chemicals</a></li>
                 <li class="{% if section == 'products' %}is-active{% endif %}"><a href="{% url 'pesticides:product-list' %}{{ year_qs }}">Products</a></li>
                 <li class="{% if section == 'commodities' %}is-active{% endif %}"><a href="{% url 'pesticides:commodity-list' %}{{ year_qs }}">Commodities</a></li>

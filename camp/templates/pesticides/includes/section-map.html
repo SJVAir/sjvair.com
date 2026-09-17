@@ -1,0 +1,23 @@
+<div class="section-map-wrap">
+  <div class="section-map" id="section-map-{{ map_config.year }}"
+       data-sections-url="{{ map_config.sections_url }}"
+       data-notices-url="{{ map_config.notices_url }}"
+       data-section-url-pattern="{{ map_config.section_url_pattern }}"
+       data-tiles="{{ map_config.tile_url }}"
+       data-attribution="{{ map_config.attribution }}"
+       data-year="{{ map_config.year }}"
+       data-chemical="{{ map_config.chemical }}"
+       data-product="{{ map_config.product }}"
+       data-commodity="{{ map_config.commodity }}"
+       data-county="{{ map_config.county }}"
+       data-center="{{ map_config.center }}"
+       data-zoom="{{ map_config.zoom }}"
+       data-radius="{{ map_config.radius }}"></div>
+  <div class="section-map-controls" hidden>
+    <label><input type="radio" name="metric" value="lbs_chemical" checked> Pounds</label>
+    <label><input type="radio" name="metric" value="applications"> Applications</label>
+    <span class="section-map-status" aria-live="polite"></span>
+  </div>
+  <ul class="county-legend section-map-legend" hidden></ul>
+  <noscript>{% if county_map %}{% include 'pesticides/includes/county-map.html' %}{% endif %}</noscript>
+</div>

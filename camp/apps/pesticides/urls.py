@@ -6,6 +6,8 @@ from camp.apps.pesticides.models import Chemical, Commodity, Product
 urlpatterns = [
     path('', views.Home.as_view(), name='home'),
 
+    path('map/', views.MapPage.as_view(), name='map'),
+
     path('chemicals/', views.ChemicalList.as_view(), name='chemical-list'),
     path('chemicals/<str:sqid>/', views.ExplorerRedirect.as_view(model=Chemical), name='chemical-redirect'),
     path('chemicals/<str:sqid>/<slug:slug>/', views.ChemicalDetail.as_view(), name='chemical-detail'),

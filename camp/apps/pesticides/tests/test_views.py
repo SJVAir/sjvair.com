@@ -483,3 +483,42 @@ class HomeTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert 'Data Tools' in html
         assert 'Pesticides Explorer' in html
+
+
+class MapPageTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('pesticides:map')
+
+    def test_renders_with_defaults(self):
+        response = self.client.get(self.url)
+        assert response.status_code == 200
+        self.assertTemplateUsed(response, 'pesticides/map.html')
+        cfg = response.context['map_config']
+        assert cfg['year'] == 2023
+        assert cfg['center'] == '36.75,-119.80' and cfg['zoom'] == 8
+        assert cfg['sections_url'] == '/api/2.0/pesticides/sections/'
+        assert cfg['notices_url'] == '/api/2.0/pesticides/notices/active/'
+        html = response.content.decode()
+        assert 'class="section-map"' in html and 'data-year="2023"' in html
+        assert 'section-map.js' in html
+        assert '<noscript>' in html and 'admin-leaflet-map' in html   # static fallback
+
+    def test_entity_filters_resolve_to_api_identifiers(self):
+        chem = Chemical.objects.get(pk=1)
+        response = self.client.get(self.url, {'chemical': chem.sqid, 'year': 2022, 'county': 'fresno'})
+        cfg = response.context['map_config']
+        assert cfg['chemical'] == '1855' and cfg['county'] == 'fresno' and cfg['year'] == 2022
+        assert [f['label'] for f in response.context['filters']] == ['GLYPHOSATE', 'Fresno County']
+        assert 'year=2022' in response.context['filters'][0]['clear_url']
+
+    def test_unknown_filter_ignored(self):
+        response = self.client.get(self.url, {'product': 'nope'})
+        assert response.status_code == 200
+        assert response.context['map_config']['product'] == ''
+
+    def test_nav_has_map_tab(self):
+        html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
+        assert reverse('pesticides:map') in html
