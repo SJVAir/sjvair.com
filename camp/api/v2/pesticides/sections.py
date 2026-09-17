@@ -5,19 +5,23 @@ Totals come from PesticideUseRollup; geometry from the MTRS Region boundaries.
 import json
 import math
 
+from datetime import timedelta
+
 from django.contrib.gis.geos import Point, Polygon
 from django.contrib.gis.measure import D
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from resticus import generics, http
 
 from camp.apps.pesticides import stats
-from camp.apps.pesticides.models import PesticideUseRollup
+from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup
 from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
 
 MAX_SECTIONS = 2500
+NOTICE_CACHE_TTL = 300
 RADII = (1, 3, 5)
 TOTALS = {
     'lbs_chemical': Sum('lbs_chemical'),
@@ -226,3 +230,58 @@ class SectionDetailBase(generics.Endpoint):
 class SectionDetail(CachedEndpointMixin, SectionDetailBase):
     """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest)."""
     cache_timeout = 60 * 60
+
+
+class ActiveNoticeListBase(generics.Endpoint):
+    # See the comment on SectionListBase: the get() implementation lives on
+    # this un-cached base so CachedEndpointMixin.get() on ActiveNoticeList
+    # below is the one actually dispatched to.
+    def get(self, request):
+        params = request.GET
+        notices = stats._upcoming(PesticideNotice.objects.all()).select_related(
+            'county', 'mtrs',
+        ).prefetch_related('chemicals', 'products').order_by('scheduled_application', 'pk')
+        if params.get('bbox'):
+            try:
+                west, south, east, north = (float(v) for v in params['bbox'].split(','))
+            except ValueError:
+                return bad_request('bbox must be west,south,east,north')
+            if not (west < east and south < north):
+                return bad_request('bbox must be west,south,east,north')
+            notices = notices.filter(point__bboverlaps=Polygon.from_bbox((west, south, east, north)))
+        for param, lookup, cast in (
+            ('chemical', 'chemicals__chem_code', int),
+            ('product', 'products__prodno', int),
+            ('county', 'county__slug', str),
+        ):
+            value = params.get(param)
+            if value:
+                try:
+                    notices = notices.filter(**{lookup: cast(value)})
+                except ValueError:
+                    return bad_request(f'{param} is invalid')
+        grace = timedelta(days=stats.NOTICE_GRACE_DAYS)
+        features = [{
+            'type': 'Feature',
+            'id': n.sqid,
+            'geometry': json.loads(n.point.geojson) if n.point else None,
+            'properties': {
+                'id': n.sqid,
+                'scheduled_application': n.scheduled_application.isoformat(),
+                'scheduled_end': (n.scheduled_application + grace).isoformat(),
+                'county': n.county.name if n.county else None,
+                'application_method': n.application_method,
+                'treated_amount': n.treated_amount,
+                'treated_units': n.treated_units,
+                'section': n.mtrs.external_id if n.mtrs else None,
+                'products': [{'id': p.sqid, 'name': p.name} for p in n.products.all()],
+                'chemicals': [{'id': c.sqid, 'name': c.name, 'is_of_concern': c.is_of_concern} for c in n.chemicals.all()],
+            },
+        } for n in notices.distinct()]
+        # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
+        return {'type': 'FeatureCollection', 'as_of': timezone.now().isoformat(), 'features': features}
+
+
+class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
+    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug)."""
+    cache_timeout = NOTICE_CACHE_TTL

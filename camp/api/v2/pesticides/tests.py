@@ -877,3 +877,52 @@ class SectionEndpointTests(TestCase):
 
     def test_detail_404(self):
         assert self.client.get(reverse('api:v2:pesticides:section-detail', kwargs={'section_id': 'nope'})).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Active notices GeoJSON endpoint
+# ---------------------------------------------------------------------------
+
+class ActiveNoticeEndpointTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:notice-active')
+
+    def test_returns_active_notices_as_geojson(self):
+        from camp.apps.pesticides.models import PesticideNotice
+        from django.contrib.gis.geos import Point
+        PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326))
+        data = self.client.get(self.url).json()
+        assert data['type'] == 'FeatureCollection'
+        ids = {f['properties']['id'] for f in data['features']}
+        assert ids == {PesticideNotice.objects.get(pk=2).sqid, PesticideNotice.objects.get(pk=3).sqid}
+        two = next(f for f in data['features'] if f['properties']['id'] == PesticideNotice.objects.get(pk=2).sqid)
+        assert two['geometry'] == {'type': 'Point', 'coordinates': [-119.79, 36.71]}
+        assert two['properties']['county'] == 'Fresno County'
+        assert two['properties']['scheduled_end'] > two['properties']['scheduled_application']
+        assert [c['name'] for c in two['properties']['chemicals']] == ['CHLORPYRIFOS']
+        assert two['properties']['chemicals'][0]['is_of_concern'] is True
+        assert [p['name'] for p in two['properties']['products']] == ['LORSBAN 4E']
+
+    def test_past_notice_excluded(self):
+        from camp.apps.pesticides.models import PesticideNotice
+        data = self.client.get(self.url).json()
+        assert PesticideNotice.objects.get(pk=1).sqid not in {f['properties']['id'] for f in data['features']}
+
+    def test_bbox_and_filters(self):
+        from camp.apps.pesticides.models import PesticideNotice
+        from django.contrib.gis.geos import Point
+        PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326))
+        PesticideNotice.objects.filter(pk=3).update(point=Point(-119.04, 35.36, srid=4326))
+        data = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8'}).json()
+        assert [f['properties']['county'] for f in data['features']] == ['Fresno County']
+        data = self.client.get(self.url, {'chemical': 1855}).json()   # glyphosate: only notice 3
+        assert [f['properties']['id'] for f in data['features']] == [PesticideNotice.objects.get(pk=3).sqid]
+        assert self.client.get(self.url, {'bbox': 'nope'}).status_code == 400
+
+    def test_notice_without_point_has_null_geometry(self):
+        data = self.client.get(self.url).json()
+        assert all(f['geometry'] is None or f['geometry']['type'] == 'Point' for f in data['features'])
