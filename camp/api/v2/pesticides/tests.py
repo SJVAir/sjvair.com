@@ -906,6 +906,23 @@ class ActiveNoticeEndpointTests(TestCase):
         assert [c['name'] for c in two['properties']['chemicals']] == ['CHLORPYRIFOS']
         assert two['properties']['chemicals'][0]['is_of_concern'] is True
         assert [p['name'] for p in two['properties']['products']] == ['LORSBAN 4E']
+        # No MTRS on the fixture notices, so no section to link.
+        assert two['properties']['section'] is None
+        assert two['properties']['section_id'] is None
+
+    def test_section_id_is_the_mtrs_sqid(self):
+        # The map popup links the section name, so the sqid rides along.
+        from django.core.cache import cache
+
+        from camp.apps.pesticides.models import PesticideNotice
+        from camp.apps.regions.models import Region
+        section = Region.objects.get(pk=9101)
+        PesticideNotice.objects.filter(pk=2).update(mtrs=section)
+        cache.clear()
+        data = self.client.get(self.url).json()
+        two = next(f for f in data['features'] if f['properties']['id'] == PesticideNotice.objects.get(pk=2).sqid)
+        assert two['properties']['section'] == section.external_id
+        assert two['properties']['section_id'] == section.sqid
 
     def test_past_notice_excluded(self):
         from camp.apps.pesticides.models import PesticideNotice

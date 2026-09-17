@@ -28,6 +28,25 @@
     applications: 'applications',
   };
 
+  var METRIC_LABELS = {
+    lbs_chemical: 'Pounds applied',
+    applications: 'Applications',
+  };
+
+  // Fetch a bbox padded by half a viewport on each side, then skip the next
+  // fetch while the viewport is still inside what we already have. Without
+  // this, opening a popup near the edge auto-pans the map, which refetched and
+  // rebuilt the layers out from under the popup.
+  var BBOX_PAD = 0.5;
+
+  // Shared popup options: wide enough for the table, padded enough that
+  // auto-pan doesn't tuck the popup against the map edge.
+  var POPUP_OPTIONS = {
+    maxWidth: 320,
+    autoPanPadding: [24, 24],
+    closeButton: true,
+  };
+
   var LEVEL_TEXT = {
     section: 'Each square is one square-mile section.',
     township: 'Each square is a 6 × 6 mile township; zoom in for square-mile sections.',
@@ -58,6 +77,30 @@
   function fillUrl(pattern, id) {
     if (!pattern) return '';
     return pattern.replace('{id}', encodeURIComponent(id));
+  }
+
+  // Popups are laid out as a two-column table (label / value) so a notice and
+  // a section read the same way. `valueHtml` is already-escaped markup.
+  function popupRow(label, valueHtml) {
+    if (valueHtml === '' || valueHtml === null || valueHtml === undefined) return '';
+    return '<tr><th scope="row">' + escapeHtml(label) + '</th><td>' + valueHtml + '</td></tr>';
+  }
+
+  function popupTable(rows) {
+    var body = rows.join('');
+    if (!body) return '';
+    return '<table class="table is-narrow section-popup-table"><tbody>' + body + '</tbody></table>';
+  }
+
+  function popupList(items) {
+    if (!items.length) return '';
+    return '<ul class="section-popup-list">' + items.join('') + '</ul>';
+  }
+
+  function linkHtml(url, text, extraClass) {
+    if (!url) return escapeHtml(text);
+    return '<a' + (extraClass ? ' class="' + extraClass + '"' : '') +
+      ' href="' + escapeHtml(url) + '">' + escapeHtml(text) + '</a>';
   }
 
   function formatNumber(value) {
@@ -203,6 +246,14 @@
     this.currentClasses = { breaks: [], colors: [], members: [] };
     this.gridAbort = null;
     this.noticesAbort = null;
+    // What the last successful fetch covers, so a pan inside it doesn't
+    // refetch (and so doesn't rebuild a layer under an open popup).
+    this.loadedBounds = null;
+    this.loadedLevel = null;
+    this.loadedNoticeBounds = null;
+    // Feature ids of the popups that are open, so a rebuild can put them back.
+    this.openGridId = null;
+    this.openNoticeId = null;
 
     this.controlsEl = null;
     this.legendEl = null;
@@ -343,6 +394,14 @@
     return fillUrl(this.data.sectionPageUrl, id);
   };
 
+  SectionMap.prototype.productUrl = function (id) {
+    return fillUrl(this.data.productPageUrl, id);
+  };
+
+  SectionMap.prototype.noticeUrl = function (id) {
+    return fillUrl(this.data.noticePageUrl, id);
+  };
+
   SectionMap.prototype.setStatus = function (message) {
     if (this.statusEl) this.statusEl.textContent = message || '';
   };
@@ -365,11 +424,21 @@
   // Picks the grid for the current zoom: sections up close, townships further
   // out. Either way exactly one grid layer is on the map.
   SectionMap.prototype.loadGrid = function () {
-    if (this.map.getZoom() >= SECTION_ZOOM) {
+    var level = this.map.getZoom() >= SECTION_ZOOM ? 'section' : 'township';
+    // Crossing the section/township threshold always refetches; otherwise the
+    // padded bbox we already hold may still cover the viewport.
+    if (level === this.loadedLevel && this.covers(this.loadedBounds)) return;
+    if (level === 'section') {
       this.loadSections();
     } else {
       this.loadTownships();
     }
+  };
+
+  // True when `bounds` (from a previous padded fetch) still contains the
+  // current viewport.
+  SectionMap.prototype.covers = function (bounds) {
+    return !!bounds && bounds.contains(this.map.getBounds());
   };
 
   SectionMap.prototype.clearGrid = function () {
@@ -379,12 +448,16 @@
     }
   };
 
-  SectionMap.prototype.viewportBbox = function () {
+  SectionMap.prototype.fetchBounds = function (unpadded) {
     var bounds = this.map.getBounds();
+    return unpadded ? bounds : bounds.pad(BBOX_PAD);
+  };
+
+  function bboxParam(bounds) {
     return [
       bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth(),
     ].join(',');
-  };
+  }
 
   // One AbortController covers both grid levels: a pending section request is
   // stale the moment we decide to draw townships, and vice versa.
@@ -395,12 +468,13 @@
     return abort;
   };
 
-  SectionMap.prototype.loadSections = function () {
+  SectionMap.prototype.loadSections = function (unpadded) {
     if (!this.data.sectionsUrl) return;
 
     var abort = this.startGridRequest();
+    var bounds = this.fetchBounds(unpadded);
     var params = this.commonParams();
-    params.bbox = this.viewportBbox();
+    params.bbox = bboxParam(bounds);
     var query = buildQuery(params);
     var url = this.data.sectionsUrl + (query ? '?' + query : '');
 
@@ -416,25 +490,36 @@
       .then(function (result) {
         if (self.gridAbort !== abort) return; // stale response
         if (!result.response.ok) {
-          // The endpoint caps how many sections it will return, and a very
-          // wide viewport at this zoom can still trip that cap. Fall back to
-          // the township grid rather than leaving the map bare.
+          // The endpoint caps how many sections it will return, and the padded
+          // bbox asks for more than the viewport needs. Try the bare viewport
+          // once, then fall back to the township grid rather than leaving the
+          // map bare.
           if (result.response.status === 400) {
-            self.loadTownships();
+            if (!unpadded) {
+              self.loadSections(true);
+            } else {
+              self.loadTownships();
+            }
             return;
           }
           self.clearGrid();
+          self.loadedBounds = null;
+          self.loadedLevel = null;
           if (self.legendEl) self.legendEl.innerHTML = '';
           self.setStatus('Couldn\'t load sections; try again');
           return;
         }
         self.setStatus('');
+        self.loadedBounds = bounds;
+        self.loadedLevel = 'section';
         self.renderGrid(result.body, 'section');
       })
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;
         if (self.gridAbort !== abort) return;
         window.console && console.error && console.error('section-map: failed to load sections', err);
+        self.loadedBounds = null;
+        self.loadedLevel = null;
         self.setStatus('Couldn\'t load sections; try again');
       });
   };
@@ -443,8 +528,9 @@
     if (!this.data.townshipsUrl) return;
 
     var abort = this.startGridRequest();
+    var bounds = this.fetchBounds();
     var params = this.commonParams();
-    params.bbox = this.viewportBbox();
+    params.bbox = bboxParam(bounds);
     var query = buildQuery(params);
     var url = this.data.townshipsUrl + (query ? '?' + query : '');
 
@@ -459,6 +545,8 @@
       .then(function (geojson) {
         if (self.gridAbort !== abort) return; // stale response
         self.setStatus('');
+        self.loadedBounds = bounds;
+        self.loadedLevel = 'township';
         self.renderGrid(geojson, 'township');
       })
       .catch(function (err) {
@@ -466,6 +554,8 @@
         if (self.gridAbort !== abort) return;
         window.console && console.error && console.error('section-map: failed to load townships', err);
         self.clearGrid();
+        self.loadedBounds = null;
+        self.loadedLevel = null;
         if (self.legendEl) self.legendEl.innerHTML = '';
         self.setStatus('Couldn\'t load the grid; try again');
       });
@@ -510,8 +600,20 @@
     });
   };
 
+  // Remembers which feature's popup is open so a rebuilt layer can re-open it.
+  // Removing a layer closes its popup, so the id has to be captured before the
+  // old layer goes away (see renderGrid/renderNotices).
+  SectionMap.prototype.trackPopup = function (layer, id, key) {
+    var self = this;
+    layer.on('popupopen', function () { self[key] = id; });
+    layer.on('popupclose', function () {
+      if (self[key] === id) self[key] = null;
+    });
+  };
+
   SectionMap.prototype.renderGrid = function (geojson, level) {
     var self = this;
+    var reopenId = this.openGridId;
     this.level = level;
     var features = (geojson && geojson.features) || [];
     var values = [];
@@ -528,6 +630,7 @@
         return self.featureStyle(feature);
       },
       onEachFeature: function (feature, layer) {
+        self.trackPopup(layer, feature.properties.id, 'openGridId');
         if (level === 'township') {
           self.bindTownshipPopup(feature, layer);
           return;
@@ -540,6 +643,23 @@
 
     this.bringHighlightToFront();
     this.updateLegend();
+    this.reopenGridPopup(reopenId);
+  };
+
+  // A refetch rebuilds the grid; if the popup that was open belongs to a
+  // feature that's still there, put it back rather than making the reader
+  // click again.
+  SectionMap.prototype.reopenGridPopup = function (id) {
+    if (!id || !this.gridLayer) return;
+    var self = this;
+    this.gridLayer.eachLayer(function (layer) {
+      if (!layer.feature || layer.feature.properties.id !== id) return;
+      if (self.level === 'township') {
+        layer.openPopup();
+      } else {
+        self.showSectionPopup(layer.feature, layer);
+      }
+    });
   };
 
   SectionMap.prototype.restyle = function () {
@@ -570,15 +690,24 @@
     return (
       '<div class="section-popup">' +
       '<h4>' + escapeHtml(props.name || props.id) + '</h4>' +
-      '<p>' + formatNumber(sections) + (sections === 1 ? ' section' : ' sections') + '</p>' +
-      '<p class="section-popup-totals">' + formatNumber(props[this.metric]) + ' ' + escapeHtml(unit) + '</p>' +
+      popupTable([
+        popupRow('Sections', formatNumber(sections)),
+        popupRow(METRIC_LABELS[this.metric] || 'Total', formatNumber(props[this.metric]) + ' ' + escapeHtml(unit)),
+      ]) +
       '<p><button type="button" class="section-map-zoom" data-lat="' + center.lat + '" data-lng="' + center.lng + '">Zoom in</button></p>' +
       '</div>'
     );
   };
 
+  SectionMap.prototype.popupOptions = function (className) {
+    return Object.assign({ className: className }, POPUP_OPTIONS);
+  };
+
   SectionMap.prototype.bindTownshipPopup = function (feature, layer) {
-    layer.bindPopup(this.townshipPopupHtml(feature.properties, layer.getBounds().getCenter()), { className: 'section-popup-wrap' });
+    layer.bindPopup(
+      this.townshipPopupHtml(feature.properties, layer.getBounds().getCenter()),
+      this.popupOptions('section-popup-wrap'),
+    );
   };
 
   // The "Zoom in" handler is delegated on each popup's outer element, which
@@ -607,11 +736,14 @@
     var totalValue = props[this.metric];
     return (
       '<div class="section-popup">' +
-      '<h4>MTRS ' + escapeHtml(props.mtrs) + '</h4>' +
-      '<p>' + escapeHtml(props.county || '') + '</p>' +
-      '<p class="section-popup-totals">' + formatNumber(totalValue) + ' ' + escapeHtml(unit) + '</p>' +
-      '<div class="section-popup-detail">' + detailHtml + '</div>' +
-      '<p><a href="' + this.sectionUrl(props.id) + '">This section</a></p>' +
+      '<h4>Section</h4>' +
+      popupTable([
+        popupRow('MTRS', escapeHtml(props.mtrs)),
+        popupRow('County', escapeHtml(props.county || '')),
+        popupRow(METRIC_LABELS[this.metric] || 'Total', formatNumber(totalValue) + ' ' + escapeHtml(unit)),
+        popupRow('Top chemicals', detailHtml),
+      ]) +
+      '<p class="section-popup-links">' + linkHtml(this.sectionUrl(props.id), 'This section') + '</p>' +
       '</div>'
     );
   };
@@ -619,7 +751,7 @@
   SectionMap.prototype.showSectionPopup = function (feature, layer) {
     var props = feature.properties;
     var html = this.sectionPopupHtml(props, 'Loading…');
-    layer.bindPopup(html, { className: 'section-popup-wrap' }).openPopup();
+    layer.bindPopup(html, this.popupOptions('section-popup-wrap')).openPopup();
 
     if (!this.data.sectionUrlPattern) return;
     var year = this.data.year;
@@ -633,12 +765,11 @@
         var chemicals = (detail && detail.top_chemicals) || [];
         var detailHtml = '';
         if (chemicals.length) {
-          var items = chemicals.slice(0, 3).map(function (c) {
-            var concernClass = c.is_of_concern ? ' is-of-concern' : '';
-            return '<li class="' + concernClass.trim() + '"><a href="' + self.chemicalUrl(c.id) + '">' +
-              escapeHtml(c.name) + '</a> — ' + formatNumber(c.lbs) + ' lbs</li>';
-          }).join('');
-          detailHtml = '<ul>' + items + '</ul>';
+          detailHtml = popupList(chemicals.slice(0, 3).map(function (c) {
+            return '<li class="' + (c.is_of_concern ? 'is-of-concern' : '') + '">' +
+              linkHtml(self.chemicalUrl(c.id), c.name) +
+              ' — ' + formatNumber(c.lbs) + ' lbs</li>';
+          }));
         }
         layer.getPopup().setContent(self.sectionPopupHtml(props, detailHtml));
       })
@@ -651,18 +782,18 @@
 
   SectionMap.prototype.loadNotices = function () {
     if (!this.data.noticesUrl) return;
+    // Same padded-fetch/skip deal as the grid: don't rebuild the markers (and
+    // drop an open popup) for a pan we already have data for.
+    if (this.covers(this.loadedNoticeBounds)) return;
 
     if (this.noticesAbort) this.noticesAbort.abort();
     var abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     this.noticesAbort = abort;
 
-    var bounds = this.map.getBounds();
-    var bbox = [
-      bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth(),
-    ].join(',');
+    var bounds = this.fetchBounds();
 
     var params = {
-      bbox: bbox,
+      bbox: bboxParam(bounds),
       chemical: this.data.chemical,
       product: this.data.product,
       county: this.data.county,
@@ -678,6 +809,7 @@
       })
       .then(function (geojson) {
         if (self.noticesAbort !== abort) return; // stale response
+        self.loadedNoticeBounds = bounds;
         self.renderNotices(geojson);
       })
       .catch(function (err) {
@@ -686,6 +818,7 @@
         // Zoomed way out the bbox can cover more notices than the endpoint
         // will return (it 400s past its cap); drop the markers and move on.
         window.console && console.error && console.error('section-map: failed to load notices', err);
+        self.loadedNoticeBounds = null;
         self.clearNotices();
       });
   };
@@ -699,13 +832,14 @@
 
   SectionMap.prototype.renderNotices = function (geojson) {
     var self = this;
+    var reopenId = this.openNoticeId;
     this.clearNotices();
     var features = ((geojson && geojson.features) || []).filter(function (f) { return f.geometry; });
     this.noticesLayer = L.geoJSON({ type: 'FeatureCollection', features: features }, {
       pointToLayer: function (feature, latlng) {
         return L.circleMarker(latlng, {
           pane: 'pesticide-notices',
-          radius: 7,
+          radius: 8,
           fillColor: NOTICE_COLOR,
           fillOpacity: 0.9,
           color: '#fff',
@@ -713,32 +847,51 @@
         });
       },
       onEachFeature: function (feature, layer) {
-        layer.bindPopup(self.noticePopupHtml(feature.properties), { className: 'notice-popup-wrap' });
+        self.trackPopup(layer, feature.properties.id, 'openNoticeId');
+        layer.bindPopup(self.noticePopupHtml(feature.properties), self.popupOptions('notice-popup-wrap'));
       },
     }).addTo(this.map);
+
+    if (reopenId) {
+      this.noticesLayer.eachLayer(function (layer) {
+        if (layer.feature && layer.feature.properties.id === reopenId) layer.openPopup();
+      });
+    }
   };
 
   SectionMap.prototype.noticePopupHtml = function (props) {
     var self = this;
-    var chemicals = (props.chemicals || []).map(function (c) {
-      var concernClass = c.is_of_concern ? ' is-of-concern' : '';
-      return '<li class="' + concernClass.trim() + '"><a href="' + self.chemicalUrl(c.id) + '">' + escapeHtml(c.name) + '</a></li>';
-    }).join('');
-    var products = (props.products || []).map(function (p) {
-      return '<li>' + escapeHtml(p.name) + '</li>';
-    }).join('');
+    var chemicals = popupList((props.chemicals || []).map(function (c) {
+      return '<li class="' + (c.is_of_concern ? 'is-of-concern' : '') + '">' +
+        linkHtml(self.chemicalUrl(c.id), c.name) + '</li>';
+    }));
+    var products = popupList((props.products || []).map(function (p) {
+      return '<li>' + linkHtml(self.productUrl(p.id), p.name) + '</li>';
+    }));
+    var section = props.section
+      ? linkHtml(props.section_id ? this.sectionUrl(props.section_id) : '', props.section)
+      : '';
+    var noticeUrl = props.id ? this.noticeUrl(props.id) : '';
 
     return (
       '<div class="notice-popup">' +
-      '<h4>Notice of intent</h4>' +
-      '<p class="notice-popup-meta">' + escapeHtml(formatDateTime(props.scheduled_application)) +
-      ', may begin through ' + escapeHtml(formatDate(props.scheduled_end)) + '</p>' +
-      '<p class="notice-popup-meta">' + escapeHtml(props.county || '') + '</p>' +
-      (props.application_method ? '<p class="notice-popup-meta">' + escapeHtml(props.application_method) + '</p>' : '') +
-      (props.treated_amount ? '<p class="notice-popup-meta">' + formatNumber(props.treated_amount) + ' ' + escapeHtml(props.treated_units || '') + '</p>' : '') +
-      (products ? '<p>Products</p><ul>' + products + '</ul>' : '') +
-      (chemicals ? '<p>Chemicals</p><ul>' + chemicals + '</ul>' : '') +
+      '<h4>Notice of intent <span class="tag is-warning is-light">Active</span></h4>' +
+      popupTable([
+        popupRow('Scheduled', escapeHtml(formatDateTime(props.scheduled_application))),
+        popupRow('May begin through', escapeHtml(formatDate(props.scheduled_end))),
+        popupRow('County', escapeHtml(props.county || '')),
+        popupRow('Section', section),
+        popupRow('Method', escapeHtml(props.application_method || '')),
+        popupRow('Treated', props.treated_amount
+          ? formatNumber(props.treated_amount) + ' ' + escapeHtml(props.treated_units || '')
+          : ''),
+        popupRow('Products', products),
+        popupRow('Chemicals', chemicals),
+      ]) +
+      '<p class="notice-popup-links">' +
+      (noticeUrl ? linkHtml(noticeUrl, 'Full notice') + ' · ' : '') +
       '<a class="spraydays-link" href="' + SPRAYDAYS_URL + '" target="_blank" rel="noopener">Sign up with SprayDays</a>' +
+      '</p>' +
       '</div>'
     );
   };

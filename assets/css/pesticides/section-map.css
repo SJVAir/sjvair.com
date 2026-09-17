@@ -31,16 +31,47 @@
   margin: 0 0 .25rem;
 }
 
-.section-popup .section-popup-totals,
-.notice-popup .notice-popup-meta {
+.notice-popup h4 .tag {
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+/* Popups read as a label/value table, so a notice and a section look alike. */
+.leaflet-popup .section-popup-table {
+  width: 100%;
+  margin-bottom: 0.35rem;
   font-size: 0.85rem;
+  background: none;
+}
+
+.leaflet-popup .section-popup-table th,
+.leaflet-popup .section-popup-table td {
+  padding: 0.15rem 0.35rem 0.15rem 0;
+  border: 0;
+  vertical-align: top;
+}
+
+.leaflet-popup .section-popup-table th {
+  width: 8.5rem;
   color: #4a4a4a;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .section-popup ul,
 .notice-popup ul {
-  margin: 0.25rem 0;
+  margin: 0;
   padding-left: 1.1rem;
+}
+
+.notice-popup .notice-popup-links {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+}
+
+/* Notice markers are clickable; the pane's paths get the pointer. */
+.leaflet-pesticide-notices-pane path {
+  cursor: pointer;
 }
 
 .section-popup .is-of-concern::before,

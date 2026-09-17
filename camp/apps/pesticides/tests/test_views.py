@@ -517,6 +517,9 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'class="section-map"' in html and 'data-year="2023"' in html
         assert 'data-counties-url="/api/2.0/pesticides/counties/"' in html
         assert 'data-townships-url="/api/2.0/pesticides/townships/"' in html
+        # Popup links are built client-side from these URL patterns.
+        assert 'data-product-page-url="/tools/pesticides/products/{id}/"' in html
+        assert 'data-notice-page-url="/tools/pesticides/notices/{id}/"' in html
         assert 'section-map.js' in html
         assert '<noscript>' in html and 'admin-leaflet-map' in html   # static fallback
 

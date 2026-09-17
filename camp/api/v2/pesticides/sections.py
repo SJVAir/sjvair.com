@@ -304,6 +304,7 @@ class ActiveNoticeListBase(generics.Endpoint):
                 'treated_amount': n.treated_amount,
                 'treated_units': n.treated_units,
                 'section': n.mtrs.external_id if n.mtrs else None,
+                'section_id': n.mtrs.sqid if n.mtrs else None,
                 'products': [{'id': p.sqid, 'name': p.name} for p in n.products.all()],
                 'chemicals': [{'id': c.sqid, 'name': c.name, 'is_of_concern': c.is_of_concern} for c in n.chemicals.all()],
             },

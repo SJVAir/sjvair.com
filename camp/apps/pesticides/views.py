@@ -704,6 +704,8 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # The bare-sqid redirect: it 301s to the slugged detail URL, so the
         # JS doesn't need the slug.
         'chemical_page_url': page_url_pattern('pesticides:chemical-redirect'),
+        'product_page_url': page_url_pattern('pesticides:product-redirect'),
+        'notice_page_url': page_url_pattern('pesticides:notice-detail'),
         'tile_url': leaflet.TILE_URL.format(key=settings.MAPTILER_API_KEY, z='{z}', x='{x}', y='{y}'),
         'attribution': leaflet.TILE_ATTRIBUTION,
         'year': year or '',
