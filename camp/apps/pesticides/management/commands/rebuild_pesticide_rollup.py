@@ -21,3 +21,7 @@ class Command(BaseCommand):
             started = time.monotonic()
             written = rollup.rebuild_year(year)
             self.stdout.write(f'{year}: {written:,} rollup rows in {time.monotonic() - started:.1f}s')
+
+        from camp.apps.pesticides import stats
+        stats.refresh_landing_stats()
+        self.stdout.write('Refreshed cached year facts and landing stats.')

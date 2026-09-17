@@ -31,7 +31,7 @@ class RollupModelTests(TestCase):
 from django.core.management import call_command
 from io import StringIO
 
-from camp.apps.pesticides import rollup
+from camp.apps.pesticides import rollup, stats
 from camp.apps.pesticides.models import PesticideUse
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 
@@ -83,10 +83,16 @@ class RebuildTests(TestCase):
         assert rollup.rebuild_all() == {2022: 3, 2023: 6}
 
     def test_command(self):
+        PesticideUseRollup.objects.all().delete()
+        assert stats.latest_year() is None  # primes the cache while the rollup is empty
+
         out = StringIO()
         call_command('rebuild_pesticide_rollup', '--all', stdout=out)
         assert PesticideUseRollup.objects.count() == 9
         assert '2023' in out.getvalue()
+        assert 'Refreshed cached year facts and landing stats.' in out.getvalue()
+        assert stats.latest_year() == 2023  # refreshed by the command, not by clearing the cache here
+
         call_command('rebuild_pesticide_rollup', '--year', '2022', stdout=out)
         assert PesticideUseRollup.objects.filter(year=2022).count() == 3
 

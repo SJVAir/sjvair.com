@@ -27,6 +27,11 @@ SELECT
     COUNT(*)
 FROM pesticides_pesticideuse
 WHERE year = %s
+-- `month` here resolves to the SELECT alias, not a source column --
+-- pesticides_pesticideuse has no `month` column of its own. If one is ever
+-- added, this GROUP BY silently starts grouping by the real column instead
+-- of the derived one; switch to positional `GROUP BY 1, 2, ...` to keep
+-- grouping on the alias.
 GROUP BY year, month, county_id, mtrs_id, chemical_id, product_id, commodity_id
 """
 
