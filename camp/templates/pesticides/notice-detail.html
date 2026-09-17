@@ -1,5 +1,5 @@
 {% extends 'pesticides/base.html' %}
-{% load pesticides_explorer %}
+{% load humanize pesticides_explorer %}
 
 {% block title %}Notice of intent · {{ object.scheduled_application|date:'M j, Y' }} | {{ block.super }}{% endblock %}
 {% block body-class %}{{ block.super }} notice-detail{% endblock %}
@@ -32,7 +32,7 @@
                     <th>Products</th>
                     <td>{% for product in object.products.all %}<a class="tag is-light" href="{{ product.get_absolute_url }}">{{ product.name }}</a> {% endfor %}</td>
                 </tr>
-                <tr><th>Treated</th><td>{% if object.treated_amount %}{{ object.treated_amount|floatformat:1 }} {{ object.treated_units|lower }}{% else %}—{% endif %}</td></tr>
+                <tr><th>Treated</th><td>{% if object.treated_amount %}{{ object.treated_amount|floatformat:'-1'|intcomma }} {{ object.treated_units|lower }}{% else %}—{% endif %}</td></tr>
                 <tr><th>Method</th><td>{{ object.application_method|default:'—' }}</td></tr>
                 <tr><th>County</th><td>{{ object.county.name|default:'—' }}</td></tr>
                 <tr>

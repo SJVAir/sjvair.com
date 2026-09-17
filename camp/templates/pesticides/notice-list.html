@@ -27,7 +27,11 @@
             {{ form.lat }}
             {{ form.lng }}
             {{ form.radius }}
-            {% if mode == 'past' %}<input type="hidden" name="past" value="1">{% endif %}
+            {% if mode == 'past' %}
+            <input type="hidden" name="past" value="1">
+            {% if filter_year %}<input type="hidden" name="year" value="{{ filter_year }}">{% endif %}
+            {% if filter_month %}<input type="hidden" name="month" value="{{ filter_month }}">{% endif %}
+            {% endif %}
             <div class="field">
                 <label class="label" for="{{ form.county.id_for_label }}">{{ form.county.label }}</label>
                 <div class="control">

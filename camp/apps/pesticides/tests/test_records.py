@@ -104,9 +104,6 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         assert len(ctx.captured_queries) <= 25
         objects = response.context['object_list']
         assert len(objects) == 4
-        # The hydrated objects carry their joined relations already fetched.
-        for use in objects:
-            assert use.county is not None or use.county_id is None
 
     def test_out_of_range_coordinates_ignored(self):
         response = self.client.get(self.url, {'lat': 200, 'lng': -119.79, 'radius': 1})

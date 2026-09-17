@@ -361,12 +361,17 @@
     this.sectionsLayer = L.geoJSON(geojson, {
       style: function (feature) {
         var value = feature.properties[self.metric];
-        return {
+        var style = {
           fillColor: colorFor(self.currentClasses, value),
           fillOpacity: value ? 0.7 : 0.25,
           color: '#555',
           weight: 0.5,
         };
+        if (self.data.highlight && feature.id === self.data.highlight) {
+          style.color = '#d35400';
+          style.weight = 3;
+        }
+        return style;
       },
       onEachFeature: function (feature, layer) {
         layer.on('click', function () {
@@ -374,6 +379,14 @@
         });
       },
     }).addTo(this.map);
+
+    if (this.data.highlight) {
+      this.sectionsLayer.eachLayer(function (layer) {
+        if (layer.feature && layer.feature.id === self.data.highlight && layer.bringToFront) {
+          layer.bringToFront();
+        }
+      });
+    }
 
     if (this.legendEl) {
       renderLegend(this.legendEl, this.currentClasses, METRIC_UNITS[this.metric] || '');
@@ -391,13 +404,25 @@
     this.currentClasses = quantileClasses(values);
     this.sectionsLayer.eachLayer(function (layer) {
       var value = layer.feature.properties[self.metric];
-      layer.setStyle({
+      var style = {
         fillColor: colorFor(self.currentClasses, value),
         fillOpacity: value ? 0.7 : 0.25,
         color: '#555',
         weight: 0.5,
-      });
+      };
+      if (self.data.highlight && layer.feature.id === self.data.highlight) {
+        style.color = '#d35400';
+        style.weight = 3;
+      }
+      layer.setStyle(style);
     });
+    if (this.data.highlight) {
+      this.sectionsLayer.eachLayer(function (layer) {
+        if (layer.feature && layer.feature.id === self.data.highlight && layer.bringToFront) {
+          layer.bringToFront();
+        }
+      });
+    }
     if (this.legendEl) {
       renderLegend(this.legendEl, this.currentClasses, METRIC_UNITS[this.metric] || '');
     }

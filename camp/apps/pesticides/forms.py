@@ -1,7 +1,8 @@
 from django import forms
+from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 
-from camp.apps.pesticides.models import Chemical, PesticideUse
+from camp.apps.pesticides.models import Chemical, PesticideNotice, PesticideUse
 from camp.apps.regions.models import Region
 
 BOOL_CHOICES = [('', _('Any')), ('true', _('Yes')), ('false', _('No'))]
@@ -41,7 +42,7 @@ class CommodityFilterForm(SearchForm):
 
 class NoticeFilterForm(forms.Form):
     county = forms.ChoiceField(label=_('County'), required=False, choices=[('', _('Any'))])
-    method = forms.CharField(label=_('Method'), required=False, max_length=128)
+    method = forms.ChoiceField(label=_('Method'), required=False, choices=[('', _('Any'))])
     past = forms.BooleanField(label=_('Archive'), required=False)
     month = forms.IntegerField(required=False, min_value=1, max_value=12)
     year = forms.IntegerField(required=False)
@@ -60,6 +61,18 @@ class NoticeFilterForm(forms.Form):
         super().__init__(*args, **kwargs)
         counties = Region.objects.filter(type=Region.Type.COUNTY).order_by('name').values_list('slug', 'name')
         self.fields['county'].choices = [('', _('Any'))] + list(counties)
+
+        methods = cache.get('pesticides:notice-methods')
+        if methods is None:
+            methods = list(
+                PesticideNotice.objects
+                .exclude(application_method='')
+                .order_by()
+                .values_list('application_method', flat=True)
+                .distinct()
+            )
+            cache.set('pesticides:notice-methods', methods, 60 * 60)
+        self.fields['method'].choices = [('', _('Any'))] + [(method, method) for method in sorted(methods)]
 
 
 class RecordsFilterForm(forms.Form):

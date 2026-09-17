@@ -591,7 +591,7 @@ SJV_CENTER = '36.75,-119.80'
 SJV_ZOOM = 8
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None):
     return {
         'sections_url': '/api/2.0/pesticides/sections/',
         'notices_url': '/api/2.0/pesticides/notices/active/',
@@ -606,6 +606,7 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'product': str(product.prodno) if product else '',
         'commodity': commodity.site_code if commodity else '',
         'county': county or '',
+        'highlight': highlight or '',
     }
 
 
@@ -850,6 +851,9 @@ class RecordsBrowser(vanilla.ListView):
         objects = PesticideUse.objects.select_related(
             'county', 'mtrs', 'chemical', 'product', 'commodity',
         ).in_bulk(page_pks)
+        # A row deleted between the pk query above and this hydration query
+        # (an import can delete/reimport a year mid-request) is dropped from
+        # the page rather than raising a KeyError.
         page.object_list = [objects[pk] for pk in page_pks if pk in objects]
         return page
 
@@ -1061,7 +1065,7 @@ class SectionDetail(vanilla.DetailView):
         center = zoom = None
         if section.boundary_id:
             center, zoom = RecordsBrowser._centroid(section), 13
-        map_config = section_map_config(year, center=center, zoom=zoom)
+        map_config = section_map_config(year, center=center, zoom=zoom, highlight=section.sqid)
 
         return super().get_context_data(
             section='sections',
@@ -1251,7 +1255,7 @@ class NoticeDetail(vanilla.DetailView):
             related_notices = (
                 stats._upcoming(PesticideNotice.objects.filter(mtrs_id=notice.mtrs_id))
                 .exclude(pk=notice.pk)
-                .select_related('county')
+                .select_related('county', 'mtrs')
                 .prefetch_related('chemicals', 'products')
                 .order_by('scheduled_application')[:5]
             )

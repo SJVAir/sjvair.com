@@ -37,6 +37,13 @@ class NoticeListTests(TestCase):
         # list(...) forces evaluation for a real comparison.
         assert list(self.client.get(self.url, {'past': 1, 'year': 2020, 'month': 2}).context['object_list']) == []
 
+    def test_archive_filter_form_carries_year_and_month(self):
+        html = self.client.get(
+            self.url, {'past': 1, 'year': 2020, 'month': 1, 'county': 'fresno'},
+        ).content.decode()
+        assert '<input type="hidden" name="year" value="2020">' in html
+        assert '<input type="hidden" name="month" value="1">' in html
+
     def test_no_year_picker_in_active_mode(self):
         html = self.client.get(self.url).content.decode()
         assert 'year-picker' not in html
