@@ -9,6 +9,7 @@ from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Subscription
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.bam.models import BAM1022
+from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.models import Host, LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.qaqc.models import HealthCheck
@@ -34,6 +35,13 @@ class ReportIndexTests(StaffClientMixin, TestCase):
 
     def test_index_redirects_anonymous(self):
         self.client.logout()
+        response = self.client.get(reverse('reports:index'))
+        assert response.status_code == 302
+        assert '/login/' in response['Location']
+
+    def test_index_redirects_non_staff(self):
+        self.user.is_staff = False
+        self.user.save()
         response = self.client.get(reverse('reports:index'))
         assert response.status_code == 302
         assert '/login/' in response['Location']
@@ -129,10 +137,32 @@ class NetworkOverviewTests(StaffClientMixin, TestCase):
         assert len(deployments) == 5  # a year ago through now spans 5 quarter buckets
         assert sum(d['new'] for d in deployments) == 3
 
+    def test_outside_sjv_monitors_are_counted(self):
+        PurpleAir.objects.create(name='SF PA', sensor_id=9, position=Point(-122.4, 37.8), location='outside')
+        response = self.client.get(reverse('reports:network-overview'))
+        rows = {row['type']: row for row in response.context['rows']}
+        assert rows['PurpleAir']['Outside SJV'] == 1
+        assert rows['PurpleAir']['total'] == 3
+        assert rows['All types']['Outside SJV'] == 1
+        assert rows['All types']['total'] == 4
+
+    def test_disabled_monitor_types_are_excluded(self):
+        CIMIS.objects.create(
+            name='CIMIS Fresno',
+            station_number='2',
+            position=Point(-119.75, 36.75),
+            location='outside',
+        )
+        response = self.client.get(reverse('reports:network-overview'))
+        rows = {row['type']: row for row in response.context['rows']}
+        assert 'CIMIS' not in rows
+        assert rows['All types']['total'] == 3
+        assert response.context['tiles']['total'] == 3
+
     def test_csv_columns(self):
         response = self.client.get(reverse('reports:network-overview'), {'format': 'csv'})
         header = response.content.decode().splitlines()[0]
-        assert header == 'type,Fresno,Kern,Kings,Madera,Merced,San Joaquin,Stanislaus,Tulare,total'
+        assert header == 'type,Fresno,Kern,Kings,Madera,Merced,San Joaquin,Stanislaus,Tulare,Outside SJV,total'
 
 
 def give_health(monitor, score, flatline_a=None, flatline_b=None):
@@ -273,6 +303,11 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert kern['monitors'] == 1
         assert kern['population'] == 0
         assert kern['per_10k'] is None
+        outside = rows['Outside SJV']
+        assert outside['monitors'] == 0
+        assert outside['dac_monitors'] == 0
+        assert outside['population'] == 0
+        assert outside['per_10k'] is None
         total = rows['All counties']
         assert total['monitors'] == 2
         assert total['population'] == 8000

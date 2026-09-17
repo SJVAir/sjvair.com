@@ -26,6 +26,7 @@
             <tr>
                 <th>Type</th>
                 {% for county in counties %}<th>{{ county }}</th>{% endfor %}
+                <th>Outside SJV</th>
                 <th>Total</th>
             </tr>
         </thead>
@@ -34,6 +35,7 @@
             <tr>
                 <th>{{ row.type }}</th>
                 {% for county in counties %}<td>{{ row|get_item:county|intcomma }}</td>{% endfor %}
+                <td>{{ row|get_item:"Outside SJV"|intcomma }}</td>
                 <td><strong>{{ row.total|intcomma }}</strong></td>
             </tr>
             {% endfor %}

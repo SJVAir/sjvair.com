@@ -4,7 +4,7 @@ from django.contrib.gis.db.models.functions import Centroid
 from django.contrib.gis.measure import D
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.db.models.functions import TruncQuarter
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from camp.apps.alerts.models import Subscription
@@ -14,9 +14,32 @@ from camp.apps.reports.base import BaseReport, register
 from camp.utils.counties import County
 
 
+OUTSIDE_SJV = 'Outside SJV'
+
+
+# The ops reports (fleet health, degraded monitors) show every monitor subclass,
+# including types that aren't on the public API. The ED-facing reports (network
+# overview, coverage) count only enabled types -- see settings.MONITOR_ENABLED_TYPES.
 def monitor_types():
     """Concrete Monitor subclasses, sorted by class name."""
     return Monitor.get_subclasses()
+
+
+def enabled_only(queryset):
+    """Restrict a base-Monitor queryset to enabled types, as get_public() does."""
+    enabled = Monitor.get_enabled_subclasses()
+    if len(enabled) >= len(Monitor.get_subclasses()):
+        return queryset
+
+    lookup = Q()
+    for subclass in enabled:
+        lookup |= Q(**subclass.health_check_queryset_filter())
+    return queryset.filter(lookup) if enabled else queryset.none()
+
+
+def county_column(county):
+    """Bucket a monitor's county field into a table column."""
+    return county if county in County.names else OUTSIDE_SJV
 
 
 def type_label(cls):
@@ -46,29 +69,31 @@ class NetworkOverview(BaseReport):
         return self.request.GET.get('include_hidden') == '1'
 
     def base_queryset(self):
-        queryset = Monitor.objects.all()
+        queryset = enabled_only(Monitor.objects.all())
         if not self.include_hidden:
             queryset = queryset.filter(is_hidden=False)
         return queryset
 
     def get_rows(self):
+        columns = [*County.names, OUTSIDE_SJV]
         counts = {}
-        for cls in monitor_types():
+        for cls in Monitor.get_enabled_subclasses():
             queryset = cls.objects.all()
             if not self.include_hidden:
                 queryset = queryset.filter(is_hidden=False)
             for item in queryset.values('county').annotate(n=Count('pk')):
-                counts[(type_label(cls), item['county'])] = item['n']
+                key = (type_label(cls), county_column(item['county']))
+                counts[key] = counts.get(key, 0) + item['n']
 
         rows = []
-        totals = {county: 0 for county in County.names}
-        for cls in monitor_types():
+        totals = {county: 0 for county in columns}
+        for cls in Monitor.get_enabled_subclasses():
             label = type_label(cls)
             row = {'type': label}
-            for county in County.names:
+            for county in columns:
                 row[county] = counts.get((label, county), 0)
                 totals[county] += row[county]
-            row['total'] = sum(row[county] for county in County.names)
+            row['total'] = sum(row[county] for county in columns)
             rows.append(row)
 
         rows.append({'type': 'All types', **totals, 'total': sum(totals.values())})
@@ -143,7 +168,7 @@ class Coverage(BaseReport):
             return self.DEFAULT_RADIUS
 
     def monitors(self):
-        queryset = Monitor.objects.filter(position__isnull=False)
+        queryset = enabled_only(Monitor.objects.filter(position__isnull=False))
         if not self.include_hidden:
             queryset = queryset.filter(is_hidden=False)
         return queryset
@@ -171,7 +196,10 @@ class Coverage(BaseReport):
     def covered(self, tracts):
         """Annotate tracts with whether any monitor is within `radius` meters."""
         nearby = self.monitors().filter(
-            position__distance_lte=(OuterRef('boundary__geometry'), D(m=self.radius))
+            # ST_DWithin in degrees uses the spatial index; ~88 km per degree at SJV
+            # latitudes, so this is a generous superset of the exact meters filter below.
+            position__dwithin=(OuterRef('boundary__geometry'), self.radius / 88000),
+            position__distance_lte=(OuterRef('boundary__geometry'), D(m=self.radius)),
         )
         return tracts.annotate(covered=Exists(nearby))
 
@@ -205,6 +233,17 @@ class Coverage(BaseReport):
                 )
                 stats['population'] = stats.pop('total_population')
             rows.append(self.build_row(county, counts['monitors'], counts['dac_monitors'], stats))
+
+        outside = [
+            item for county, item in monitor_counts.items()
+            if county not in County.names
+        ]
+        rows.append(self.build_row(
+            OUTSIDE_SJV,
+            sum(item['monitors'] for item in outside),
+            sum(item['dac_monitors'] for item in outside),
+            {'population': 0, 'dac_tracts': 0, 'dac_population': 0, 'dac_population_covered': 0},
+        ))
 
         rows.append(self.build_row(
             'All counties',
@@ -445,9 +484,16 @@ class DegradedMonitors(BaseReport):
             'grade': health.grade if health is not None else '',
             'last_seen': last_seen,
             'condition': ', '.join(conditions),
-            'admin_url': reverse(f'admin:{cls._meta.app_label}_{cls._meta.model_name}_change', args=[monitor.pk]),
+            'admin_url': self.admin_url(cls, monitor),
             'sort_key': sort_key,
         }
+
+    def admin_url(self, cls, monitor):
+        """Change-page URL, or '' when the subclass isn't registered in the admin."""
+        try:
+            return reverse(f'admin:{cls._meta.app_label}_{cls._meta.model_name}_change', args=[monitor.pk])
+        except NoReverseMatch:
+            return ''
 
     def get_context_data(self, **kwargs):
         return {
