@@ -329,3 +329,58 @@ class PesticideNotice(TimeStampedModel):
 
     def __str__(self):
         return f'{self.application_id} / {self.comtrs}'
+
+
+class PesticideUseRollup(models.Model):
+    """
+    Per-section, per-month rollup of PesticideUse, rebuilt per year by
+    camp.apps.pesticides.rollup. Every explorer aggregate reads this instead
+    of the raw records. Never exposed by id, so no sqid.
+    """
+    year = models.IntegerField(_('Year'))
+    month = models.IntegerField(_('Month'), help_text=_('1-12, or 0 when the record has no application date'))
+    county = models.ForeignKey(
+        'regions.Region',
+        on_delete=models.CASCADE,
+        related_name='pesticide_rollups',
+        verbose_name=_('County'),
+        limit_choices_to={'type': Region.Type.COUNTY},
+    )
+    mtrs = models.ForeignKey(
+        'regions.Region',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='pesticide_rollups_mtrs',
+        verbose_name=_('MTRS Section'),
+        limit_choices_to={'type': Region.Type.MTRS},
+    )
+    chemical = models.ForeignKey('pesticides.Chemical', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Chemical'))
+    product = models.ForeignKey('pesticides.Product', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Product'))
+    commodity = models.ForeignKey('pesticides.Commodity', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Commodity'))
+    lbs_chemical = models.FloatField(_('Pounds of Chemical'), default=0)
+    lbs_product = models.FloatField(_('Pounds of Product'), default=0)
+    acres_treated = models.FloatField(_('Acres Treated'), default=0)
+    applications = models.IntegerField(_('Applications'), default=0)
+
+    class Meta:
+        verbose_name = _('Pesticide Use Rollup')
+        verbose_name_plural = _('Pesticide Use Rollups')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['year', 'month', 'county', 'mtrs', 'chemical', 'product', 'commodity'],
+                nulls_distinct=False,
+                name='pesticides_rollup_key',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['year', 'mtrs']),
+            models.Index(fields=['year', 'county']),
+            models.Index(fields=['year', 'chemical']),
+            models.Index(fields=['year', 'product']),
+            models.Index(fields=['year', 'commodity']),
+            models.Index(fields=['mtrs', 'year', 'month']),
+        ]
+
+    def __str__(self):
+        return f'{self.year}-{self.month:02d} / {self.mtrs_id or "no section"}'

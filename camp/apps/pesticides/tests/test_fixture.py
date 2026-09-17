@@ -24,3 +24,9 @@ class FixtureTests(TestCase):
         assert 'toxic_air_contaminant' in chlorpyrifos.categories
         notice = PesticideNotice.objects.get(pk=3)
         assert set(notice.chemicals.values_list('pk', flat=True)) == {1, 2}
+
+    def test_use_rows_have_sections(self):
+        from camp.apps.regions.models import Region
+        assert Region.objects.filter(type='mtrs').count() == 2
+        assert PesticideUse.objects.filter(mtrs__isnull=True).count() == 0
+        assert PesticideUse.objects.filter(mtrs_id=9101).count() == 6
