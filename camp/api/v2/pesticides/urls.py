@@ -1,10 +1,12 @@
 from django.urls import path
 
-from . import endpoints
+from . import endpoints, sections
 
 app_name = 'pesticides'
 
 urlpatterns = [
+    path('sections/', sections.SectionList.as_view(), name='section-list'),
+    path('sections/<str:section_id>/', sections.SectionDetail.as_view(), name='section-detail'),
     path('region/<str:region_id>/summary/', endpoints.PesticideRegionSummary.as_view(), name='region-summary'),
     path('region/<str:region_id>/notice/', endpoints.PesticideRegionNotice.as_view(), name='region-notice'),
     path('region/<str:region_id>/use/', endpoints.PesticideRegionUse.as_view(), name='region-use'),
