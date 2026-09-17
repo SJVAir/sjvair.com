@@ -6,7 +6,9 @@
  *   data-geojson      id of a <script type="application/json"> holding a
  *                     FeatureCollection; each feature's `properties` has
  *                     `kind` ('marker' | 'area'), a Leaflet `style` object,
- *                     and for markers `shape` and `size`.
+ *                     for markers `shape` and `size`, and optionally a
+ *                     `label` shown permanently, or only on hover when
+ *                     `labelOnHover` is true.
  *   data-tiles        raster tile URL template
  *   data-attribution  attribution HTML
  *   data-padding      pixels of padding when fitting bounds
@@ -88,14 +90,17 @@
       pointToLayer: function (feature, latlng) {
         return L.marker(latlng, {
           icon: markerIcon(feature.properties),
-          interactive: false,
+          // Hover labels need pointer events; permanent-label markers stay inert.
+          interactive: feature.properties.labelOnHover === true,
           keyboard: false
         });
       },
       onEachFeature: function (feature, featureLayer) {
         if (feature.properties.label) {
+          var onHover = feature.properties.labelOnHover === true;
           featureLayer.bindTooltip(feature.properties.label, {
-            permanent: true,
+            permanent: !onHover,
+            sticky: onHover,
             direction: 'top',
             className: 'admin-leaflet-label'
           });

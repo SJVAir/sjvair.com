@@ -50,6 +50,7 @@ class Marker:
     size: int = 14
     shape: Literal['circle', 'square', 'triangle', 'star'] = 'circle'
     label: Optional[str] = None
+    label_on_hover: bool = False
 
     def properties(self) -> dict:
         return {
@@ -57,6 +58,7 @@ class Marker:
             'shape': self.shape,
             'size': self.size,
             'label': self.label,
+            'labelOnHover': self.label_on_hover,
             'style': {
                 'fillColor': self.fill_color,
                 'fillOpacity': self.fill_opacity,
@@ -75,11 +77,13 @@ class Area:
     border_color: str = 'black'
     border_width: float = 1
     label: Optional[str] = None
+    label_on_hover: bool = False
 
     def properties(self) -> dict:
         return {
             'kind': 'area',
             'label': self.label,
+            'labelOnHover': self.label_on_hover,
             'style': {
                 'fillColor': self.fill_color,
                 'fillOpacity': self.fill_opacity,

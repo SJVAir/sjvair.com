@@ -132,6 +132,7 @@ def county_map(by_county, width=600, height=420):
             border_color='#555',
             border_width=1,
             label=label,
+            label_on_hover=True,
         ))
     legend = render_to_string('pesticides/includes/county-legend.html', {
         'legend': classes.legend(),

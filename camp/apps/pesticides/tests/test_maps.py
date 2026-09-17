@@ -117,3 +117,8 @@ class CountyMapTests(TestCase):
         assert '150 lbs' in html
         assert 'No data' in html
         assert html.index('county-legend') > html.index('admin-leaflet-map')
+
+    def test_labels_are_hover_only(self):
+        html = maps.county_map(self.rows)
+        assert '"labelOnHover": true' in html
+        assert '"labelOnHover": false' not in html
