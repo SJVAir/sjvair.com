@@ -154,6 +154,32 @@ class MonitorQuerySet(InheritanceQuerySet):
         bbox = Polygon.from_bbox((west, south, east, north))
         return self.filter(position__within=bbox)
 
+    def scope_to(self, region_ids=None, bbox=None):
+        """
+        Scope to monitors covered by any of the `region_ids` (sqids) and/or
+        within `bbox` (west, south, east, north). Raises Http404 for an
+        unknown region id. Shared by the map-style endpoints (at/, bulk
+        summaries) that accept `?region=` and `?bbox=`.
+        """
+        from django.http import Http404
+        from camp.apps.regions.models import Region
+
+        queryset = self.filter(position__isnull=False)
+
+        if region_ids:
+            regions = []
+            for region_id in region_ids:
+                try:
+                    regions.append(Region.objects.get(sqid=region_id))
+                except Region.DoesNotExist:
+                    raise Http404(f'"{region_id}" is not a valid region id')
+            queryset = queryset.in_regions(regions)
+
+        if bbox:
+            queryset = queryset.in_bbox(*bbox)
+
+        return queryset
+
     def with_grade(self):
         from django.db.models import CharField
         from camp.apps.monitors.models import Monitor

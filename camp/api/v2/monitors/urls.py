@@ -7,10 +7,10 @@ app_name = 'monitors'
 urlpatterns = [
     path('', endpoints.MonitorList.as_view(), name='monitor-list'),
     path('meta/', endpoints.MonitorMetaEndpoint.as_view(), name='monitor-meta'),
-    path('summaries/bulk/', include('camp.api.v2.summaries.bulk_urls')),
     path('<entry_type>/closest/', endpoints.ClosestMonitor.as_view(), name='monitor-closest'),
     path('<entry_type>/current/', endpoints.CurrentData.as_view(), name='current-data'),
     path('<entry_type>/at/', endpoints.MonitorsAt.as_view(), name='monitor-at'),
+    path('<entry_type>/summaries/', include('camp.api.v2.summaries.bulk_urls')),
 
     path('<monitor_id>/', endpoints.MonitorDetail.as_view(), name='monitor-detail'),
     path('<monitor_id>/entries/', endpoints.CreateEntry.as_view(), name='entry-create'),

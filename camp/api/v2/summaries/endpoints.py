@@ -2,12 +2,15 @@ import calendar as cal
 from datetime import datetime, timedelta
 
 from resticus import generics
+from resticus.http import Http400
 
 from django.conf import settings
+from django.db.models import Q
 from django.http import Http404
 from django.utils.functional import cached_property
 
 from camp.api.v2.monitors.filters import MonitorFilter
+from camp.apps.calibrations.models import DefaultCalibration
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Region
@@ -95,14 +98,22 @@ class MonitorSummaryList(SummaryMixin, generics.ListEndpoint):
 
 
 class BulkMonitorSummaryList(SummaryMixin, generics.ListEndpoint):
-    """Summary statistics for all monitors matching a `start`/`end` date range, optionally
-    scoped to one or more `region` ids (covered by any of their boundaries) or a `bbox`
-    (`west,south,east,north`). Each result is a monitor (same shape as the other monitor
-    endpoints) with its matching rows nested under `summaries`.
+    """Summary statistics for every published monitor matching an inclusive `start`/`end` date
+    range, optionally scoped to one or more `region` ids (covered by any of their boundaries)
+    or a `bbox` (`west,south,east,north`). Each result is a monitor (same shape as the other
+    monitor endpoints) with its matching rows nested under `summaries`.
+
+    `start` and `end` are required, and the span is capped per resolution (31 days for
+    hourly, 366 days for daily); invalid parameters return a 400 with form errors.
+
+    By default each monitor's published series is returned - the same calibration the map
+    endpoints display for that monitor type (e.g. EPA-calibrated PM2.5 for PurpleAir, raw for
+    reference monitors whose default processor isn't summarized). Pass `processor` to select
+    one exact processor across all monitors instead (blank for raw).
 
     Pagination is by summary row, not by monitor, to keep response size bounded regardless
     of how many monitors or rows-per-monitor a request matches - rows are ordered by
-    monitor then timestamp, so a monitor with more rows than fit on one page is split
+    monitor id then timestamp, so a monitor with more rows than fit on one page is split
     across pages rather than truncated. To detect a split: if the last monitor `id` on a
     page matches the first monitor `id` on the next page, concatenate their `summaries`
     arrays - it's the same monitor continued, not a duplicate.
@@ -113,45 +124,66 @@ class BulkMonitorSummaryList(SummaryMixin, generics.ListEndpoint):
     form_class = BulkMonitorSummaryForm
     filter_class = BulkMonitorSummaryFilter
 
-    def get_date_filter(self):
-        form = self.get_form(self.request.GET)
-        if not form.is_valid():
-            return {}
+    @cached_property
+    def form(self):
+        return self.get_form(self.request.GET, resolution=self.resolution)
 
+    def get(self, request, *args, **kwargs):
+        if not self.form.is_valid():
+            return Http400({'errors': self.form.errors.get_json_data()})
+        return super().get(request, *args, **kwargs)
+
+    def get_date_filter(self):
         tz = settings.DEFAULT_TIMEZONE
-        start = make_aware(datetime.combine(form.cleaned_data['start'], datetime.min.time()), tz)
-        end = make_aware(datetime.combine(form.cleaned_data['end'], datetime.min.time()), tz) + timedelta(days=1)
+        start = make_aware(datetime.combine(self.form.cleaned_data['start'], datetime.min.time()), tz)
+        end = make_aware(datetime.combine(self.form.cleaned_data['end_exclusive'], datetime.min.time()), tz)
         return {'timestamp__gte': start, 'timestamp__lt': end}
 
+    def get_processor_filter(self):
+        """
+        Which summary series to return. An explicit `?processor=` (blank
+        included) is an exact match across all monitors. Otherwise, per
+        monitor type, use the DefaultCalibration the map publishes when it
+        names a CALIBRATED processor (those are summarized), else raw -
+        FEM cleaners produce CLEANED entries, which are never summarized.
+        """
+        if 'processor' in self.request.GET:
+            return Q(processor=self.request.GET['processor'])
+
+        lookup = Q()
+        defaults = DefaultCalibration.objects.filter(entry_type=self.entry_model.entry_type)
+        for default in defaults:
+            if default.monitor_model is None:
+                continue
+            processor = ''
+            for candidate in default.allowed_processors:
+                if candidate.name == default.calibration and candidate.next_stage == self.entry_model.Stage.CALIBRATED:
+                    processor = candidate.name
+                    break
+            lookup |= Q(**{f'monitor__{default.monitor_type}__isnull': False}, processor=processor)
+
+        return lookup if lookup else Q(processor='')
+
     def get_queryset(self):
-        form = self.get_form(self.request.GET)
-        if not form.is_valid():
-            return self.model.objects.none()
-
-        monitors = Monitor.objects.get_queryset().get_public().published_for(self.entry_model)
-
-        region_ids = self.request.GET.getlist('region')
-        if region_ids:
-            regions = []
-            for region_id in region_ids:
-                try:
-                    regions.append(Region.objects.get(sqid=region_id))
-                except Region.DoesNotExist:
-                    raise Http404(f'"{region_id}" is not a valid region id')
-            monitors = monitors.in_regions(regions)
-
-        bbox = form.cleaned_data.get('bbox')
-        if bbox:
-            monitors = monitors.in_bbox(*bbox)
-
+        monitors = (Monitor.objects.get_queryset()
+            .get_public()
+            .published_for(self.entry_model)
+            .scope_to(
+                region_ids=self.request.GET.getlist('region'),
+                bbox=self.form.cleaned_data.get('bbox'),
+            )
+        )
         monitors = MonitorFilter(self.request.GET, queryset=monitors).qs
 
-        processor = self.request.GET.get('processor', '')
-        # super() → SummaryMixin.get_queryset() → ListEndpoint → MonitorSummary.objects.all()
-        # SummaryMixin applies resolution/entry_type/date filters (get_date_filter() above)
-        return super().get_queryset().filter(
-            monitor__in=monitors, processor=processor,
-        ).order_by('monitor', 'timestamp')
+        # super() -> SummaryMixin.get_queryset() -> ListEndpoint -> MonitorSummary.objects.all()
+        # SummaryMixin applies resolution/entry_type/date filters (get_date_filter() above).
+        # Order by monitor_id, not `monitor`: the latter resolves to Monitor.Meta.ordering
+        # (name), which is neither unique nor stable enough to paginate on.
+        return (super()
+            .get_queryset()
+            .filter(self.get_processor_filter(), monitor__in=monitors)
+            .order_by('monitor_id', 'timestamp')
+        )
 
     def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
         # `source` is this page's flat, monitor-ordered MonitorSummary rows.
@@ -159,23 +191,25 @@ class BulkMonitorSummaryList(SummaryMixin, generics.ListEndpoint):
         # that name is claimed by the FK's reverse related manager) so
         # BulkMonitorSummaryGroupSerializer can nest them under each monitor.
         grouped = {}
-        order = []
         for row in source:
-            if row.monitor_id not in grouped:
-                grouped[row.monitor_id] = []
-                order.append(row.monitor_id)
-            grouped[row.monitor_id].append(row)
+            grouped.setdefault(row.monitor_id, []).append(row)
 
-        monitors_by_id = Monitor.objects.in_bulk(order)
+        # Same related loads as MonitorMixin, so MonitorSerializer's health
+        # and is_active lookups don't cost a query per monitor.
+        monitors_by_id = (Monitor.objects
+            .select_related('health')
+            .with_last_entry_timestamp()
+            .in_bulk(list(grouped))
+        )
         monitors = []
-        for monitor_id in order:
+        for monitor_id, rows in grouped.items():
             monitor = monitors_by_id.get(monitor_id)
             if monitor is None:
                 continue
-            monitor.summary_rows = grouped[monitor_id]
+            monitor.summary_rows = rows
             monitors.append(monitor)
 
-        return self.serializer_class(monitors).serialize()
+        return super().serialize(monitors, fields, include, exclude, fixup)
 
 
 class RegionSummaryList(SummaryMixin, generics.ListEndpoint):
