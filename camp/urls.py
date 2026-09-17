@@ -47,6 +47,7 @@ urlpatterns = [
     path('batcave/stats.json', views.AdminStats.as_view(), name='admin-stats'),
     path('batcave/flush-queue/<str:key>/', views.FlushQueue.as_view(), name='flush-queue'),
 
+    path('batcave/reports/', include(('camp.apps.reports.urls', 'reports'), namespace='reports')),
     path('batcave/', admin.site.urls),
 ]
 

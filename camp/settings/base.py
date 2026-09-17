@@ -132,6 +132,7 @@ INSTALLED_APPS = [
     'camp.apps.monitors.purpleair',
     'camp.apps.monitors.vozbox',
     'camp.apps.regions',
+    'camp.apps.reports',
     'camp.apps.summaries',
     'camp.apps.tempo',
     'camp.apps.qaqc',

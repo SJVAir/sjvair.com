@@ -1,0 +1,24 @@
+{% extends 'admin/base_site.html' %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    &rsaquo; <a href="{% url 'reports:index' %}">Reports</a>
+    &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    {% if report.description %}<p>{{ report.description }}</p>{% endif %}
+
+    <form method="get" class="report-filters">
+        {% block filters %}{% endblock %}
+    </form>
+
+    <p><a class="button" href="?{{ csv_query }}">Download CSV</a></p>
+
+    {% block report %}{% endblock %}
+</div>
+{% endblock %}
