@@ -22,23 +22,35 @@ OUTSIDE_SJV = 'Outside SJV'
 # The ops reports (fleet health, degraded monitors) show every monitor subclass,
 # including types that aren't on the public API. The ED-facing reports (network
 # overview, coverage) count only enabled types -- see settings.MONITOR_ENABLED_TYPES.
-# Generous box around the San Joaquin Valley. Map markers outside it are
-# dropped: a device reporting a bogus fix (e.g. 0, 0) would otherwise force
-# the map to fit the whole planet.
-MAP_BOUNDS = Polygon.from_bbox((-123.0, 34.0, -117.0, 39.5))
+# Fallback box around the San Joaquin Valley, used only when no county
+# Regions are loaded. Map markers outside the map bounds are dropped: a
+# device reporting a bogus fix (e.g. 0, 0) would otherwise force the map
+# to fit the whole planet, and out-of-valley monitors would zoom it out.
+DEFAULT_MAP_BOUNDS = Polygon.from_bbox((-122.0, 34.7, -117.5, 38.5))
 
 
-def county_outlines(county=''):
-    """
-    Unfilled SJV county boundaries (from the county Regions) to draw under
-    map markers. Pass a county name (as in County.names) to draw only that one.
-    """
+def county_boundaries(county=''):
+    """Current boundary geometries of the SJV county Regions, or just one county's."""
     regions = Region.objects.counties()
     if county:
         regions = regions.filter(name=f'{county} County')
-    geometries = (Boundary.objects
-        .filter(current_for__in=regions)
-        .values_list('geometry', flat=True))
+    return list(Boundary.objects.filter(current_for__in=regions).values_list('geometry', flat=True))
+
+
+def map_bounds(boundaries):
+    """Bounding box of the drawn counties (slightly padded), or the valley fallback."""
+    if not boundaries:
+        return DEFAULT_MAP_BOUNDS
+    xmin, ymin, xmax, ymax = boundaries[0].extent
+    for geometry in boundaries[1:]:
+        x0, y0, x1, y1 = geometry.extent
+        xmin, ymin, xmax, ymax = min(xmin, x0), min(ymin, y0), max(xmax, x1), max(ymax, y1)
+    pad = 0.05
+    return Polygon.from_bbox((xmin - pad, ymin - pad, xmax + pad, ymax + pad))
+
+
+def county_outlines(boundaries):
+    """Unfilled county outlines to draw under map markers."""
     return [
         leaflet.Area(
             geometry=geometry.simplify(0.002, preserve_topology=True),
@@ -46,7 +58,7 @@ def county_outlines(county=''):
             border_color='#2c3e50',
             border_width=1.5,
         )
-        for geometry in geometries
+        for geometry in boundaries
     ]
 
 
@@ -188,7 +200,7 @@ class Coverage(BaseReport):
             return None
         return model._base_manager.filter(boundary__version=version)
 
-    def county_boundaries(self):
+    def county_boundaries_by_name(self):
         """County name (as in County.names) -> current boundary geometry, from the county Regions."""
         return {
             region.name.removesuffix(' County'): region.boundary.geometry
@@ -219,7 +231,7 @@ class Coverage(BaseReport):
         }
 
         rows = []
-        county_boundaries = self.county_boundaries()
+        county_boundaries = self.county_boundaries_by_name()
         for county in County.names:
             counts = monitor_counts.get(county, {'monitors': 0, 'dac_monitors': 0})
             stats = {'population': 0, 'dac_tracts': 0, 'dac_population': 0, 'dac_population_covered': 0}
@@ -297,7 +309,9 @@ class Coverage(BaseReport):
     def get_map(self):
         """Valley-wide map: DAC tracts shaded, other tracts light, monitors as dots."""
         lmap = leaflet.LeafletMap(width=900, height=700, padding=10)
-        lmap.add(*county_outlines())
+        boundaries = county_boundaries()
+        bounds = map_bounds(boundaries)
+        lmap.add(*county_outlines(boundaries))
         tracts = self.tracts()
         if tracts is not None:
             for dac, geometry in tracts.values_list('dac_sb535', 'boundary__geometry').iterator(chunk_size=500):
@@ -308,7 +322,7 @@ class Coverage(BaseReport):
                     border_color='#7f8c8d',
                     border_width=0.5,
                 ))
-        for position in self.monitors().filter(position__within=MAP_BOUNDS).values_list('position', flat=True):
+        for position in self.monitors().filter(position__within=bounds).values_list('position', flat=True):
             lmap.add(leaflet.Marker(geometry=position, size=7, fill_color='#1f4e79', border_width=1))
         return lmap.render()
 
@@ -517,12 +531,14 @@ class DegradedMonitors(BaseReport):
 
     def get_map(self, rows):
         lmap = leaflet.LeafletMap(width=900, height=700, padding=10)
+        boundaries = county_boundaries(self.county)
+        bounds = map_bounds(boundaries)
         for row in rows:
-            if row['position'] and MAP_BOUNDS.contains(row['position']):
+            if row['position'] and bounds.contains(row['position']):
                 lmap.add(leaflet.Marker(geometry=row['position'], size=9, fill_color=row['map_color']))
         if not lmap.elements:
             return None
-        lmap.add(*county_outlines(self.county))
+        lmap.add(*county_outlines(boundaries))
         return lmap.render()
 
     def admin_url(self, cls, monitor):

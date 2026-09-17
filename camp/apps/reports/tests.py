@@ -282,6 +282,13 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
         assert content.count('"kind": "area"') == 1
         assert content.count('"kind": "marker"') == 2
 
+    def test_map_drops_markers_outside_the_drawn_counties(self):
+        # Fits the map to the valley instead of stretching it to far-away monitors.
+        PurpleAir.objects.create(name='Chico', sensor_id=8, position=Point(-121.84, 39.73), location='outside')
+        response = self.client.get(reverse('reports:degraded-monitors'))
+        assert 'Chico' in {r['name'] for r in response.context['rows']}
+        assert response.content.decode().count('"kind": "marker"') == 5
+
     def test_map_ignores_bogus_positions(self):
         # A device reporting a (0, 0) fix would otherwise fit the map to the whole planet.
         PurpleAir.objects.create(name='Null island', sensor_id=7, position=Point(0, 0), location='outside')
