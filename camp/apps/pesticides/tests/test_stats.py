@@ -1,11 +1,12 @@
 from django.core.cache import cache
 from django.test import TestCase
 
-from camp.apps.pesticides import stats, tasks
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.pesticides import rollup, stats, tasks
+from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product
+from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 
 
-class StatsTests(TestCase):
+class StatsTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
     def setUp(self):
@@ -17,6 +18,7 @@ class StatsTests(TestCase):
     def test_latest_year_is_cached(self):
         assert stats.latest_year() == 2023
         PesticideUse.objects.all().delete()
+        PesticideUseRollup.objects.all().delete()
         assert stats.latest_year() == 2023
         cache.clear()
         assert stats.latest_year() is None
@@ -25,51 +27,64 @@ class StatsTests(TestCase):
         assert stats.years_loaded() == (2022, 2023)
 
     def test_by_year_for_chemical(self):
-        rows = stats.by_year(PesticideUse.objects.filter(chemical_id=1))
+        rows = stats.by_year(PesticideUseRollup.objects.filter(chemical_id=1))
         assert [(r['year'], r['lbs'], r['acres'], r['applications']) for r in rows] == [
             (2023, 180.0, 18.0, 3),
             (2022, 80.0, 8.0, 1),
         ]
 
     def test_by_year_uses_lbs_product_for_products(self):
-        rows = stats.by_year(PesticideUse.objects.filter(product_id=1), lbs_field='lbs_product')
+        rows = stats.by_year(PesticideUseRollup.objects.filter(product_id=1), lbs_field='lbs_product')
         assert rows[0]['lbs'] == 450.0
 
     def test_by_county(self):
-        rows = stats.by_county(PesticideUse.objects.filter(chemical_id=1), 2023)
+        rows = stats.by_county(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
         assert [(r['county_name'], r['lbs'], r['applications']) for r in rows] == [
             ('Fresno County', 150.0, 2),
             ('Kern County', 30.0, 1),
         ]
 
     def test_year_totals(self):
-        totals = stats.year_totals(PesticideUse.objects.filter(chemical_id=1), 2023)
+        totals = stats.year_totals(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
         assert totals == {'lbs': 180.0, 'applications': 3, 'counties': 2}
 
     def test_year_totals_empty(self):
-        totals = stats.year_totals(PesticideUse.objects.none(), 2023)
+        totals = stats.year_totals(PesticideUseRollup.objects.none(), 2023)
         assert totals == {'lbs': 0, 'applications': 0, 'counties': 0}
 
     def test_top_related_commodities_for_chemical(self):
-        rows = stats.top_related(PesticideUse.objects.filter(chemical_id=1), 2023, 'commodity')
+        rows = stats.top_related(PesticideUseRollup.objects.filter(chemical_id=1), 2023, 'commodity')
         assert [(r.obj.name, r.lbs) for r in rows] == [('ALMOND', 130.0), ('GRAPE', 50.0)]
         assert isinstance(rows[0].obj, Commodity)
 
     def test_top_related_ignores_rows_with_unknown_pounds(self):
-        # PUR reports confidential active ingredients with no pounds; a NULL sum
-        # must not float to the top of a ranking.
+        # PUR reports confidential active ingredients with no pounds; the
+        # rollup sums those to 0 (COALESCE), so a zero-pound row must rank
+        # last, not float to the top.
         secret = Chemical.objects.create(chem_code=9999, name='AI IS CONFIDENTIAL')
         PesticideUse.objects.create(
             year=2023, use_no=99, county_id=9001, chemical=secret, commodity_id=1,
             lbs_chemical=None, application_date='2023-09-01',
         )
-        rows = stats.top_related(PesticideUse.objects.all(), 2023, 'chemical')
-        assert [r.obj.name for r in rows] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
+        rollup.rebuild_year(2023)
+        rows = stats.top_related(PesticideUseRollup.objects.all(), 2023, 'chemical')
+        assert [r.obj.name for r in rows] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS', 'AI IS CONFIDENTIAL']
+        assert rows[-1].obj.name == 'AI IS CONFIDENTIAL'
 
     def test_top_related_respects_limit(self):
-        rows = stats.top_related(PesticideUse.objects.all(), 2023, 'chemical', limit=2)
+        rows = stats.top_related(PesticideUseRollup.objects.all(), 2023, 'chemical', limit=2)
         assert [r.obj.name for r in rows] == ['SULFUR', 'GLYPHOSATE']
         assert isinstance(rows[0].obj, Chemical)
+
+    def test_by_month_fills_twelve(self):
+        rows = stats.by_month(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
+        assert [r['month'] for r in rows] == list(range(1, 13))
+        assert [r['lbs'] for r in rows][2:5] == [100.0, 50.0, 30.0]   # Mar, Apr, May
+        assert sum(r['applications'] for r in rows) == 3
+
+    def test_by_section(self):
+        rows = stats.by_section(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
+        assert [(r['mtrs_id'], r['lbs'], r['applications']) for r in rows] == [(9101, 150.0, 2), (9102, 30.0, 1)]
 
     def test_recent_uses_newest_first(self):
         uses = list(stats.recent_uses(PesticideUse.objects.filter(chemical_id=1), limit=2))
@@ -133,6 +148,7 @@ class StatsTests(TestCase):
 
     def test_resolve_year_empty_db(self):
         PesticideUse.objects.all().delete()
+        PesticideUseRollup.objects.all().delete()
         assert stats.available_years() == []
         assert stats.resolve_year('2022') is None
         assert stats.year_query(None) == ''
@@ -157,11 +173,13 @@ class StatsTests(TestCase):
             year=2023, use_no=97, county_id=9001, chemical=new, commodity_id=1,
             lbs_chemical=5, application_date='2023-10-01',
         )
+        rollup.rebuild_year(2023)
         assert stats.landing_stats()['chemical_count'] == 3
 
     def test_landing_stats_empty_db(self):
         PesticideNotice.objects.all().delete()
         PesticideUse.objects.all().delete()
+        PesticideUseRollup.objects.all().delete()
         data = stats.landing_stats()
         assert data['latest_year'] is None
         assert data['total_lbs'] == 0
@@ -176,6 +194,7 @@ class StatsTests(TestCase):
             year=2023, use_no=98, county_id=9001, chemical=new, commodity_id=1,
             lbs_chemical=5, application_date='2023-10-01',
         )
+        rollup.rebuild_year(2023)
         assert stats.landing_stats()['chemical_count'] == 3   # still the cached value
         refreshed = stats.refresh_landing_stats()
         assert refreshed['chemical_count'] == 4

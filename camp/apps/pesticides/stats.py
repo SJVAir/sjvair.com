@@ -1,9 +1,8 @@
 """
 Aggregate helpers for the pesticides explorer. Every function takes an
 already-filtered queryset so the same code serves chemical, product, and
-commodity pages. Aggregates run live over PesticideUse (see the spec's
-Performance section); if that gets slow, this module is the seam where a
-summary table gets swapped in.
+commodity pages. Aggregates run over PesticideUseRollup, the per-section,
+per-month rollup of PesticideUse rebuilt by camp.apps.pesticides.rollup.
 """
 from datetime import timedelta
 from types import SimpleNamespace
@@ -12,7 +11,7 @@ from django.core.cache import cache
 from django.db.models import Count, F, Max, Min, Q, Sum
 from django.utils import timezone
 
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product
 
 LATEST_YEAR_KEY = 'pesticides:latest-year'
 LANDING_KEY = 'pesticides:landing-stats'
@@ -28,23 +27,23 @@ _MISSING = object()
 def latest_year():
     value = cache.get(LATEST_YEAR_KEY, _MISSING)
     if value is _MISSING:
-        value = PesticideUse.objects.aggregate(year=Max('year'))['year']
+        value = PesticideUseRollup.objects.aggregate(year=Max('year'))['year']
         cache.set(LATEST_YEAR_KEY, value, LATEST_YEAR_TTL)
     return value
 
 
 def years_loaded():
-    data = PesticideUse.objects.aggregate(first=Min('year'), last=Max('year'))
+    data = PesticideUseRollup.objects.aggregate(first=Min('year'), last=Max('year'))
     if data['first'] is None:
         return None
     return (data['first'], data['last'])
 
 
 def available_years():
-    """Ascending list of years with PUR data, cached alongside latest_year."""
+    """Ascending list of years with a rollup built, cached alongside latest_year."""
     value = cache.get(YEARS_KEY, _MISSING)
     if value is _MISSING:
-        value = list(PesticideUse.objects.order_by('year').values_list('year', flat=True).distinct())
+        value = list(PesticideUseRollup.objects.order_by('year').values_list('year', flat=True).distinct())
         cache.set(YEARS_KEY, value, LATEST_YEAR_TTL)
     return value
 
@@ -75,21 +74,21 @@ def _totals(lbs_field):
     return {
         'lbs': Sum(lbs_field),
         'acres': Sum('acres_treated'),
-        'applications': Count('id'),
+        'applications': Sum('applications'),
     }
 
 
-def by_year(uses, lbs_field='lbs_chemical'):
+def by_year(rows, lbs_field='lbs_chemical'):
     return list(
-        uses.values('year')
+        rows.values('year')
         .annotate(**_totals(lbs_field))
         .order_by('-year')
     )
 
 
-def by_county(uses, year, lbs_field='lbs_chemical'):
-    rows = (
-        uses.filter(year=year)
+def by_county(rows, year, lbs_field='lbs_chemical'):
+    counties = (
+        rows.filter(year=year)
         .values('county_id', 'county__name', 'county__slug')
         .annotate(**_totals(lbs_field))
         .order_by(F('lbs').desc(nulls_last=True), 'county__name')
@@ -103,14 +102,41 @@ def by_county(uses, year, lbs_field='lbs_chemical'):
             'acres': row['acres'],
             'applications': row['applications'],
         }
-        for row in rows
+        for row in counties
     ]
 
 
-def year_totals(uses, year, lbs_field='lbs_chemical'):
-    data = uses.filter(year=year).aggregate(
+def by_month(rows, year, lbs_field='lbs_chemical'):
+    """
+    Twelve entries, one per month, zero-filled. Month 0 (undated) is folded
+    into the totals elsewhere, not shown here.
+    """
+    found = {
+        row['month']: row
+        for row in rows.filter(year=year, month__gte=1).values('month').annotate(**_totals(lbs_field))
+    }
+    return [
+        {
+            'month': m,
+            'lbs': (found.get(m) or {}).get('lbs') or 0,
+            'acres': (found.get(m) or {}).get('acres') or 0,
+            'applications': (found.get(m) or {}).get('applications') or 0,
+        }
+        for m in range(1, 13)
+    ]
+
+
+def by_section(rows, year, lbs_field='lbs_chemical'):
+    return [
+        {'mtrs_id': r['mtrs'], 'lbs': r['lbs'] or 0, 'acres': r['acres'] or 0, 'applications': r['applications'] or 0}
+        for r in rows.filter(year=year, mtrs__isnull=False).values('mtrs').annotate(**_totals(lbs_field)).order_by(F('lbs').desc(nulls_last=True), 'mtrs')
+    ]
+
+
+def year_totals(rows, year, lbs_field='lbs_chemical'):
+    data = rows.filter(year=year).aggregate(
         lbs=Sum(lbs_field),
-        applications=Count('id'),
+        applications=Sum('applications'),
         counties=Count('county', distinct=True),
     )
     return {
@@ -120,7 +146,7 @@ def year_totals(uses, year, lbs_field='lbs_chemical'):
     }
 
 
-def top_related(uses, year, field, lbs_field='lbs_chemical', limit=10):
+def top_related(rows, year, field, lbs_field='lbs_chemical', limit=10):
     """
     Rank the related objects on `field` ('chemical' | 'product' | 'commodity')
     by pounds in `year`. Returns SimpleNamespace(obj=<instance>, lbs=<float>).
@@ -129,17 +155,17 @@ def top_related(uses, year, field, lbs_field='lbs_chemical', limit=10):
     """
     if year is None:
         return []
-    rows = list(
-        uses.filter(year=year, **{f'{field}__isnull': False, f'{lbs_field}__isnull': False})
+    found = list(
+        rows.filter(year=year, **{f'{field}__isnull': False})
         .values(field)
         .annotate(lbs=Sum(lbs_field))
         .order_by(F('lbs').desc(nulls_last=True), field)[:limit]
     )
-    model = PesticideUse._meta.get_field(field).related_model
-    objects = model.objects.in_bulk([row[field] for row in rows])
+    model = PesticideUseRollup._meta.get_field(field).related_model
+    objects = model.objects.in_bulk([row[field] for row in found])
     return [
         SimpleNamespace(obj=objects[row[field]], lbs=row['lbs'] or 0)
-        for row in rows if row[field] in objects
+        for row in found if row[field] in objects
     ]
 
 
@@ -209,7 +235,7 @@ def _top_chemicals_of_concern(top_chemicals, year, limit=10):
     # comes up short (a concern chemical outside the top 50 by pounds).
     rows = [r for r in top_chemicals if r.obj.is_of_concern]
     if len(rows) < limit:
-        concern = PesticideUse.objects.filter(chemical__in=Chemical.objects.filter(_of_concern_query()))
+        concern = PesticideUseRollup.objects.filter(chemical__in=Chemical.objects.filter(_of_concern_query()))
         rows = top_related(concern, year, 'chemical', limit=limit)
     return rows[:limit]
 
@@ -219,12 +245,12 @@ def landing_key(year):
 
 
 def _build_landing_stats(year):
-    uses = PesticideUse.objects.all()
+    uses = PesticideUseRollup.objects.all()
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50)
     year_uses = uses.filter(year=year) if year else uses.none()
     year_totals_ = year_uses.aggregate(
         lbs=Sum('lbs_chemical'),
-        applications=Count('id'),
+        applications=Sum('applications'),
         chemicals=Count('chemical', distinct=True),
         products=Count('product', distinct=True),
         commodities=Count('commodity', distinct=True),
