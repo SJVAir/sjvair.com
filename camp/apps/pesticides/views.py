@@ -1,6 +1,6 @@
 import calendar
 import hashlib
-from datetime import date
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 from django.conf import settings
@@ -9,17 +9,20 @@ from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db.models import Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, TruncMonth
 from django.http import Http404
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.functional import cached_property
 
 import vanilla
 
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import maps, stats
-from camp.apps.pesticides.forms import ChemicalFilterForm, CommodityFilterForm, ProductFilterForm, RecordsFilterForm
+from camp.apps.pesticides.forms import (
+    ChemicalFilterForm, CommodityFilterForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
+)
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product, ProductChemical,
 )
@@ -74,6 +77,98 @@ def related_pks(field, obj, target):
     return PesticideUseRollup.objects.filter(**{field: obj}).values(target)
 
 
+def resolve_related(get, models):
+    """
+    Resolve `{param: obj}` from sqid query params for `models` ({param: Model}).
+    An unresolved sqid maps to MISSING rather than being silently ignored, so
+    callers can turn that into an empty queryset instead of a 500 or a
+    filter that quietly matches everything.
+    """
+    related = {}
+    for param, model in models.items():
+        value = get.get(param)
+        if value:
+            related[param] = model.objects.filter(sqid=value).first() or MISSING
+    return related
+
+
+def resolve_county(slug):
+    if not slug:
+        return None
+    return Region.objects.filter(type=Region.Type.COUNTY, slug=slug).select_related('boundary').first()
+
+
+def resolve_point_and_radius(data):
+    """
+    lat/lng come off a form's FloatFields, which already reject `nan`/`inf`
+    strings during is_valid() -- that's what keeps GEOS from being handed a
+    non-finite coordinate below. Range-check the parsed floats the same way
+    the sections API does (camp/api/v2/pesticides/sections.py) so an
+    out-of-range lat/lng (e.g. lat=200) is treated as "no point" rather than
+    reaching Point(). An off-list radius is clamped to 1 mile.
+    """
+    lat, lng = data.get('lat'), data.get('lng')
+    if lat is None or lng is None:
+        return None, None
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return None, None
+    try:
+        radius = int(data.get('radius') or 1)
+    except (TypeError, ValueError):
+        radius = 1
+    if radius not in (1, 3, 5):
+        radius = 1
+    return Point(lng, lat, srid=4326), radius
+
+
+def clear_url(request, *params):
+    data = request.GET.copy()
+    for param in params:
+        data.pop(param, None)
+    data.pop('page', None)
+    encoded = data.urlencode()
+    return f'{request.path}?{encoded}' if encoded else request.path
+
+
+def paginated_count(kwargs):
+    paginator = kwargs.get('paginator')
+    return paginator.count if paginator else len(kwargs.get('object_list', []))
+
+
+def local_month_bounds(year, month=None):
+    """
+    [start, end) as America/Los_Angeles-aware datetimes for `year` (or
+    `year`/`month`), for filtering `scheduled_application` directly. Filtering
+    a raw field with these bounds -- rather than comparing a
+    TruncMonth(..., tzinfo=...) annotation via `__year`/`__month` -- sidesteps
+    a Django/Postgres quirk: TruncMonth's tzinfo shifts the value with
+    `AT TIME ZONE`, producing a naive timestamp that a later `__year`/`__month`
+    lookup then re-interprets in the DB session's timezone (UTC here), which
+    silently shifts the match window by the UTC offset.
+    """
+    tz = settings.DEFAULT_TIMEZONE
+    start = datetime(year, month or 1, 1, tzinfo=tz)
+    if month:
+        end = datetime(year + 1, 1, 1, tzinfo=tz) if month == 12 else datetime(year, month + 1, 1, tzinfo=tz)
+    else:
+        end = datetime(year + 1, 1, 1, tzinfo=tz)
+    return start, end
+
+
+def resolve_map_center(*, section=None, region=None, point=None, radius=None, county=None):
+    """(center, zoom, radius) for section_map_config, in priority order: an
+    explicit section, then region, then point+radius, then county."""
+    if section not in (None, MISSING) and section.boundary_id:
+        return RecordsBrowser._centroid(section), 13, None
+    if region not in (None, MISSING) and region.boundary_id:
+        return RecordsBrowser._centroid(region), 10, None
+    if point is not None:
+        return f'{point.y:.4f},{point.x:.4f}', 12, radius
+    if county is not None and county.boundary_id:
+        return RecordsBrowser._centroid(county), 9, None
+    return None, None, None
+
+
 class ExplorerListMixin:
     paginate_by = 50
     form_class = None
@@ -93,12 +188,7 @@ class ExplorerListMixin:
         return (self.form.cleaned_data.get('q') or '').strip()
 
     def get_related_objects(self):
-        related = {}
-        for param, model in self.related_models.items():
-            value = self.request.GET.get(param)
-            if value:
-                related[param] = model.objects.filter(sqid=value).first() or MISSING
-        return related
+        return resolve_related(self.request.GET, self.related_models)
 
     def apply_related(self, queryset):
         for param, obj in self.related.items():
@@ -158,7 +248,7 @@ class ExplorerListMixin:
         return []
 
     def get_context_data(self, **kwargs):
-        count = kwargs['paginator'].count if kwargs.get('paginator') else len(kwargs.get('object_list', []))
+        count = paginated_count(kwargs)
         return super().get_context_data(
             form=self.form,
             query=self.get_search_query(),
@@ -385,8 +475,12 @@ class ExplorerDetailMixin:
             by_month=stats.by_month(rows, year, self.lbs_field) if year else [],
             related_a=related_a,
             related_b=related_b,
-            recent_uses=stats.recent_uses(uses.filter(year=year)) if year else [],
+            recent_uses=stats.recent_uses(uses.filter(year=year), limit=5) if year else [],
+            records_url=reverse('pesticides:records') + f'?{self.use_field}={self.object.sqid}' + (
+                f'&year={year}' if stats.year_query(year) else ''
+            ),
             has_notices=self.has_notices,
+            notices_url=reverse('pesticides:notice-list') + f'?{self.use_field}={self.object.sqid}' if self.has_notices else '',
             upcoming=stats.upcoming_notices(notices) if self.has_notices else [],
             upcoming_by_county=stats.upcoming_by_county(notices) if self.has_notices else [],
             upcoming_count=stats.upcoming_count(notices) if self.has_notices else 0,
@@ -675,42 +769,13 @@ class RecordsBrowser(vanilla.ListView):
         return data
 
     def _get_related_objects(self):
-        related = {}
-        for param, model in self.RELATED_MODELS.items():
-            value = self.request.GET.get(param)
-            if value:
-                related[param] = model.objects.filter(sqid=value).first() or MISSING
-        return related
+        return resolve_related(self.request.GET, self.RELATED_MODELS)
 
     def _get_county(self):
-        slug = self.form.cleaned_data.get('county')
-        if not slug:
-            return None
-        return Region.objects.filter(type=Region.Type.COUNTY, slug=slug).select_related('boundary').first()
+        return resolve_county(self.form.cleaned_data.get('county'))
 
     def _get_point_and_radius(self):
-        """
-        lat/lng come off `RecordsFilterForm`'s FloatFields, which already
-        reject `nan`/`inf` strings during is_valid() -- that's what keeps
-        GEOS from being handed a non-finite coordinate below. Range-check
-        the parsed floats the same way the sections API does
-        (camp/api/v2/pesticides/sections.py) so an out-of-range lat/lng
-        (e.g. lat=200) is treated as "no point" rather than reaching Point().
-        An off-list radius is clamped to 1 mile.
-        """
-        data = self.form.cleaned_data
-        lat, lng = data.get('lat'), data.get('lng')
-        if lat is None or lng is None:
-            return None, None
-        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
-            return None, None
-        try:
-            radius = int(data.get('radius') or 1)
-        except (TypeError, ValueError):
-            radius = 1
-        if radius not in (1, 3, 5):
-            radius = 1
-        return Point(lng, lat, srid=4326), radius
+        return resolve_point_and_radius(self.form.cleaned_data)
 
     def get_filtered_queryset(self):
         if any(value is MISSING for value in self.related.values()):
@@ -823,12 +888,7 @@ class RecordsBrowser(vanilla.ListView):
         return totals
 
     def _clear_url(self, *params):
-        data = self.request.GET.copy()
-        for param in params:
-            data.pop(param, None)
-        data.pop('page', None)
-        encoded = data.urlencode()
-        return f'{self.request.path}?{encoded}' if encoded else self.request.path
+        return clear_url(self.request, *params)
 
     def get_active_filters(self):
         filters = []
@@ -877,15 +937,9 @@ class RecordsBrowser(vanilla.ListView):
         section = self.related.get('section')
         region = self.related.get('region')
 
-        center = zoom = radius = None
-        if section and section is not MISSING and section.boundary_id:
-            center, zoom = self._centroid(section), 13
-        elif region and region is not MISSING and region.boundary_id:
-            center, zoom = self._centroid(region), 10
-        elif self.point:
-            center, zoom, radius = f'{self.point.y:.4f},{self.point.x:.4f}', 12, self.radius
-        elif self.county and self.county.boundary_id:
-            center, zoom = self._centroid(self.county), 9
+        center, zoom, radius = resolve_map_center(
+            section=section, region=region, point=self.point, radius=self.radius, county=self.county,
+        )
 
         return section_map_config(
             self.year,
@@ -1018,5 +1072,190 @@ class SectionDetail(vanilla.DetailView):
             map_config=map_config,
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
+            **kwargs,
+        )
+
+
+NOTICE_RELATED_MODELS = {'chemical': Chemical, 'product': Product, 'region': Region, 'section': Region}
+NOTICE_FIELD_MAP = {'chemical': 'chemicals', 'product': 'products'}
+
+
+class NoticeList(vanilla.ListView):
+    """
+    SprayDays notices of intent -- active by default (still within the grace
+    period, soonest first), or the archive (past the grace period, newest
+    first, optionally narrowed to a year/month) with `?past=1`. Filters via
+    `area_filter` and chemical/product sqids, same shape as RecordsBrowser.
+    """
+    model = PesticideNotice
+    paginate_by = 50
+    template_name = 'pesticides/notice-list.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        self.form = NoticeFilterForm(request.GET)
+        self.form.is_valid()
+        self.related = resolve_related(request.GET, NOTICE_RELATED_MODELS)
+        self.county = resolve_county(self.form.cleaned_data.get('county'))
+        self.point, self.radius = resolve_point_and_radius(self.form.cleaned_data)
+        self.mode = 'past' if self.form.cleaned_data.get('past') else 'active'
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        if any(value is MISSING for value in self.related.values()):
+            return PesticideNotice.objects.none()
+
+        queryset = PesticideNotice.objects.select_related('county', 'mtrs').prefetch_related('chemicals', 'products')
+        queryset = area_filter(
+            queryset,
+            county=self.county,
+            region=self.related.get('region'),
+            section=self.related.get('section'),
+            point=self.point,
+            radius=self.radius,
+        )
+
+        data = self.form.cleaned_data
+        if data.get('method'):
+            queryset = queryset.filter(application_method__iexact=data['method'])
+        for param, field in NOTICE_FIELD_MAP.items():
+            obj = self.related.get(param)
+            if obj:
+                queryset = queryset.filter(**{field: obj})
+
+        if self.mode == 'past':
+            cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
+            queryset = queryset.filter(scheduled_application__lt=cutoff)
+            if data.get('year'):
+                start, end = local_month_bounds(data['year'], data.get('month'))
+                queryset = queryset.filter(scheduled_application__gte=start, scheduled_application__lt=end)
+            queryset = queryset.order_by('-scheduled_application')
+        else:
+            queryset = stats._upcoming(queryset).order_by('scheduled_application')
+
+        return queryset
+
+    def get_archive_months(self):
+        """Last 24 months (in America/Los_Angeles) with an archived notice, newest first."""
+        cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
+        months = (
+            PesticideNotice.objects
+            .filter(scheduled_application__lt=cutoff)
+            .annotate(month=TruncMonth('scheduled_application', tzinfo=settings.DEFAULT_TIMEZONE))
+            .values('month')
+            .annotate(count=Count('id'))
+            .order_by('-month')[:24]
+        )
+        return [
+            {
+                'year': row['month'].year,
+                'month': row['month'].month,
+                'label': f"{calendar.month_name[row['month'].month]} {row['month'].year}",
+                'count': row['count'],
+            }
+            for row in months
+        ]
+
+    def get_active_filters(self):
+        filters = []
+        for param in ('chemical', 'product'):
+            obj = self.related.get(param)
+            if obj and obj is not MISSING:
+                filters.append({'label': obj.name, 'clear_url': clear_url(self.request, param)})
+        if self.county:
+            filters.append({'label': self.county.name, 'clear_url': clear_url(self.request, 'county')})
+        for param in ('region', 'section'):
+            obj = self.related.get(param)
+            if obj and obj is not MISSING:
+                filters.append({'label': obj.name, 'clear_url': clear_url(self.request, param)})
+        if self.point:
+            filters.append({'label': f'Within {self.radius} mi', 'clear_url': clear_url(self.request, 'lat', 'lng', 'radius')})
+        return filters
+
+    def get_map_config(self):
+        chemical = self.related.get('chemical')
+        product = self.related.get('product')
+        section = self.related.get('section')
+        region = self.related.get('region')
+
+        center, zoom, radius = resolve_map_center(
+            section=section, region=region, point=self.point, radius=self.radius, county=self.county,
+        )
+
+        return section_map_config(
+            stats.latest_year(),
+            center=center,
+            zoom=zoom,
+            radius=radius,
+            chemical=chemical if chemical and chemical is not MISSING else None,
+            product=product if product and product is not MISSING else None,
+            county=self.county.slug if self.county else None,
+        )
+
+    def get_context_data(self, **kwargs):
+        data = self.form.cleaned_data
+        return super().get_context_data(
+            form=self.form,
+            section='notices',
+            mode=self.mode,
+            count=paginated_count(kwargs),
+            map_config=self.get_map_config(),
+            active_filters=self.get_active_filters(),
+            archive_months=self.get_archive_months(),
+            filter_year=data.get('year'),
+            filter_month=data.get('month'),
+            **kwargs,
+        )
+
+
+class NoticeDetail(vanilla.DetailView):
+    """
+    A single notice of intent: whether it's still active (within the 4-day
+    grace period), its area/method/materials, a map, other active notices in
+    the same section, and the SprayDays sign-up link.
+    """
+    model = PesticideNotice
+    lookup_field = 'sqid'
+    lookup_url_kwarg = 'sqid'
+    template_name = 'pesticides/notice-detail.html'
+
+    def get_queryset(self):
+        return PesticideNotice.objects.select_related('county', 'mtrs').prefetch_related('chemicals', 'products')
+
+    def get_context_data(self, **kwargs):
+        notice = self.object
+        is_active = notice.scheduled_application >= timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
+        window_end = notice.scheduled_application + timedelta(days=stats.NOTICE_GRACE_DAYS)
+
+        center = None
+        if notice.point:
+            center = f'{notice.point.y:.4f},{notice.point.x:.4f}'
+        elif notice.mtrs_id and notice.mtrs.boundary_id:
+            center = RecordsBrowser._centroid(notice.mtrs)
+        map_config = section_map_config(stats.latest_year(), center=center, zoom=13 if center else None)
+
+        related_notices = PesticideNotice.objects.none()
+        if notice.mtrs_id:
+            related_notices = (
+                stats._upcoming(PesticideNotice.objects.filter(mtrs_id=notice.mtrs_id))
+                .exclude(pk=notice.pk)
+                .select_related('county')
+                .prefetch_related('chemicals', 'products')
+                .order_by('scheduled_application')[:5]
+            )
+
+        if notice.mtrs_id:
+            records_url = reverse('pesticides:records') + f'?section={notice.mtrs.sqid}'
+        elif notice.county_id:
+            records_url = reverse('pesticides:records') + f'?county={notice.county.slug}'
+        else:
+            records_url = reverse('pesticides:records')
+
+        return super().get_context_data(
+            section='notices',
+            is_active=is_active,
+            window_end=window_end,
+            map_config=map_config,
+            related_notices=related_notices,
+            records_url=records_url,
             **kwargs,
         )

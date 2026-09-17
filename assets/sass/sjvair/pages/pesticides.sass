@@ -64,7 +64,7 @@ body.pesticides
                 color: $white
                 font-weight: 600
 
-    .explorer-filters, .records-filters
+    .explorer-filters, .records-filters, .notice-filters
         padding: 1.25rem
         .label
             @extend .is-size-7
@@ -80,11 +80,15 @@ body.pesticides
                 display: block
                 margin-bottom: 0.25em
 
-    .records-table
+    .records-table, .notice-rows
         // Date (1st column), Section (3rd column, MTRS names like
         // "MDM-T17S-R15E-10"), and the Lbs/Acres columns should never wrap.
         td.has-text-right, td:first-child, td:nth-child(3)
             white-space: nowrap
+
+    .notice-signup
+        border-left: 3px solid $link
+        background-color: $grey-lightest
 
     .summary-sentence
         @extend .has-text-grey-dark

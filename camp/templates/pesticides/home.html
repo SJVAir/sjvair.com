@@ -25,7 +25,7 @@
 <p class="notice-callout">
     <span class="icon has-text-info"><span class="fa-regular fa-fw fa-calendar-clock"></span></span>
     <span>
-        <strong>{{ active_notices }}</strong> SprayDays notice{{ active_notices|pluralize }} of intent currently scheduled.
+        <a href="{% url 'pesticides:notice-list' %}"><strong>{{ active_notices }}</strong></a> SprayDays notice{{ active_notices|pluralize }} of intent currently scheduled.
         <a href="#spraydays">What are notices of intent?</a>
     </span>
 </p>

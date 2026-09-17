@@ -11,6 +11,9 @@ urlpatterns = [
     path('records/', views.RecordsBrowser.as_view(), name='records'),
     path('sections/<str:sqid>/', views.SectionDetail.as_view(), name='section-detail'),
 
+    path('notices/', views.NoticeList.as_view(), name='notice-list'),
+    path('notices/<str:sqid>/', views.NoticeDetail.as_view(), name='notice-detail'),
+
     path('chemicals/', views.ChemicalList.as_view(), name='chemical-list'),
     path('chemicals/<str:sqid>/', views.ExplorerRedirect.as_view(model=Chemical), name='chemical-redirect'),
     path('chemicals/<str:sqid>/<slug:slug>/', views.ChemicalDetail.as_view(), name='chemical-detail'),

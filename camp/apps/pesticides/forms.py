@@ -39,6 +39,29 @@ class CommodityFilterForm(SearchForm):
     pass
 
 
+class NoticeFilterForm(forms.Form):
+    county = forms.ChoiceField(label=_('County'), required=False, choices=[('', _('Any'))])
+    method = forms.CharField(label=_('Method'), required=False, max_length=128)
+    past = forms.BooleanField(label=_('Archive'), required=False)
+    month = forms.IntegerField(required=False, min_value=1, max_value=12)
+    year = forms.IntegerField(required=False)
+
+    # Carried as hidden inputs -- set by entity pages / the section map, not
+    # edited directly in this form.
+    chemical = forms.CharField(required=False, widget=forms.HiddenInput)
+    product = forms.CharField(required=False, widget=forms.HiddenInput)
+    region = forms.CharField(required=False, widget=forms.HiddenInput)
+    section = forms.CharField(required=False, widget=forms.HiddenInput)
+    lat = forms.FloatField(required=False, widget=forms.HiddenInput)
+    lng = forms.FloatField(required=False, widget=forms.HiddenInput)
+    radius = forms.ChoiceField(required=False, choices=RADIUS_CHOICES, widget=forms.HiddenInput)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        counties = Region.objects.filter(type=Region.Type.COUNTY).order_by('name').values_list('slug', 'name')
+        self.fields['county'].choices = [('', _('Any'))] + list(counties)
+
+
 class RecordsFilterForm(forms.Form):
     start = forms.DateField(label=_('Start date'), required=False)
     end = forms.DateField(label=_('End date'), required=False)
