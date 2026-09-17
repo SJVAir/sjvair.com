@@ -54,3 +54,22 @@
   display: inline-block;
   margin-top: 0.35rem;
 }
+
+.section-map-level {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: #7a7a7a;
+}
+
+/* Link-styled button: the township popup's "Zoom in" is an action, not a
+   navigation, so it's a button that reads as a link. */
+.section-popup .section-map-zoom {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: #3273dc;
+  cursor: pointer;
+  text-decoration: underline;
+}

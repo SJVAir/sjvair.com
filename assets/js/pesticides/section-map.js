@@ -13,7 +13,9 @@
 (function () {
   'use strict';
 
-  var MIN_SECTION_ZOOM = 9;
+  // At this zoom and closer the map draws square-mile (MTRS) sections; further
+  // out it draws the 6x6 mile township grid instead, so there's always a grid.
+  var SECTION_ZOOM = 11;
   var DEBOUNCE_MS = 300;
   var RAMP = ['#deebf7', '#9ecae1', '#6baed6', '#3182bd', '#08519c'];
   var NO_DATA_COLOR = '#f0f0f0';
@@ -25,6 +27,13 @@
     lbs_chemical: 'lbs',
     applications: 'applications',
   };
+
+  var LEVEL_TEXT = {
+    section: 'Each square is one square-mile section.',
+    township: 'Each square is a 6 × 6 mile township; zoom in for square-mile sections.',
+  };
+
+  var COUNTY_COLOR = '#1f2d3d';
 
   function prefersReducedMotion() {
     try {
@@ -186,14 +195,18 @@
     this.data = el.dataset;
     this.reducedMotion = prefersReducedMotion();
     this.metric = 'lbs_chemical';
-    this.sectionsLayer = null;
+    // Only one grid is ever on the map at a time; `level` says which one.
+    this.level = 'section';
+    this.gridLayer = null;
+    this.countiesLayer = null;
     this.noticesLayer = null;
     this.currentClasses = { breaks: [], colors: [], members: [] };
-    this.sectionsAbort = null;
+    this.gridAbort = null;
     this.noticesAbort = null;
 
     this.controlsEl = null;
     this.legendEl = null;
+    this.levelEl = null;
     this.statusEl = null;
 
     this.init();
@@ -203,6 +216,7 @@
     var wrap = this.el.closest('.section-map-wrap') || this.el.parentNode;
     this.controlsEl = wrap.querySelector('.section-map-controls');
     this.legendEl = wrap.querySelector('.section-map-legend');
+    this.levelEl = wrap.querySelector('.section-map-level');
     if (this.controlsEl) this.statusEl = this.controlsEl.querySelector('.section-map-status');
 
     var center = this.parseCenter(this.data.center) || [36.75, -119.80];
@@ -228,6 +242,11 @@
 
     this.map.setView(center, zoom, { animate: !this.reducedMotion });
 
+    // County outlines sit above the grid fills (overlayPane, 400) but below
+    // the notice markers (450) so nothing hides a notice.
+    var countiesPane = this.map.createPane('pesticide-counties');
+    countiesPane.style.zIndex = 420;
+
     var noticesPane = this.map.createPane('pesticide-notices');
     noticesPane.style.zIndex = 450;
 
@@ -241,6 +260,7 @@
 
     if (this.controlsEl) this.controlsEl.hidden = false;
     if (this.legendEl) this.legendEl.hidden = false;
+    if (this.levelEl) this.levelEl.hidden = false;
 
     if (this.controlsEl) {
       var radios = this.controlsEl.querySelectorAll('input[name="metric"]');
@@ -249,13 +269,51 @@
       }
     }
 
-    var debouncedLoad = debounce(this.loadSections.bind(this), DEBOUNCE_MS);
+    var debouncedLoad = debounce(this.loadGrid.bind(this), DEBOUNCE_MS);
     var debouncedNotices = debounce(this.loadNotices.bind(this), DEBOUNCE_MS);
     this.map.on('moveend zoomend', debouncedLoad);
     this.map.on('moveend zoomend', debouncedNotices);
+    this.map.on('zoomend', this.restyleCounties.bind(this));
 
-    this.loadSections();
+    this.loadCounties();
+    this.loadGrid();
     this.loadNotices();
+  };
+
+  SectionMap.prototype.countyStyle = function () {
+    return {
+      color: COUNTY_COLOR,
+      weight: 1.5,
+      fill: false,
+      opacity: 0.8,
+      // Dashed once the section grid is on, so the two don't compete.
+      dashArray: this.map.getZoom() >= SECTION_ZOOM ? '4 3' : null,
+    };
+  };
+
+  // County outlines never change with the filters, so they're fetched once.
+  SectionMap.prototype.loadCounties = function () {
+    if (!this.data.countiesUrl) return;
+    var self = this;
+    fetch(this.data.countiesUrl)
+      .then(function (response) {
+        if (!response.ok) throw new Error('bad response');
+        return response.json();
+      })
+      .then(function (geojson) {
+        self.countiesLayer = L.geoJSON(geojson, {
+          pane: 'pesticide-counties',
+          interactive: false,
+          style: self.countyStyle(),
+        }).addTo(self.map);
+      })
+      .catch(function (err) {
+        window.console && console.error && console.error('section-map: failed to load counties', err);
+      });
+  };
+
+  SectionMap.prototype.restyleCounties = function () {
+    if (this.countiesLayer) this.countiesLayer.setStyle(this.countyStyle());
   };
 
   SectionMap.prototype.enableScrollZoom = function () {
@@ -303,29 +361,45 @@
     };
   };
 
-  SectionMap.prototype.loadSections = function () {
-    if (!this.data.sectionsUrl) return;
-    var zoom = this.map.getZoom();
-    if (zoom < MIN_SECTION_ZOOM) {
-      if (this.sectionsLayer) {
-        this.map.removeLayer(this.sectionsLayer);
-        this.sectionsLayer = null;
-      }
-      this.setStatus('Zoom in to see square-mile sections');
-      return;
+  // Picks the grid for the current zoom: sections up close, townships further
+  // out. Either way exactly one grid layer is on the map.
+  SectionMap.prototype.loadGrid = function () {
+    if (this.map.getZoom() >= SECTION_ZOOM) {
+      this.loadSections();
+    } else {
+      this.loadTownships();
     }
+  };
 
-    if (this.sectionsAbort) this.sectionsAbort.abort();
-    var abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    this.sectionsAbort = abort;
+  SectionMap.prototype.clearGrid = function () {
+    if (this.gridLayer) {
+      this.map.removeLayer(this.gridLayer);
+      this.gridLayer = null;
+    }
+  };
 
+  SectionMap.prototype.viewportBbox = function () {
     var bounds = this.map.getBounds();
-    var bbox = [
+    return [
       bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth(),
     ].join(',');
+  };
 
+  // One AbortController covers both grid levels: a pending section request is
+  // stale the moment we decide to draw townships, and vice versa.
+  SectionMap.prototype.startGridRequest = function () {
+    if (this.gridAbort) this.gridAbort.abort();
+    var abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    this.gridAbort = abort;
+    return abort;
+  };
+
+  SectionMap.prototype.loadSections = function () {
+    if (!this.data.sectionsUrl) return;
+
+    var abort = this.startGridRequest();
     var params = this.commonParams();
-    params.bbox = bbox;
+    params.bbox = this.viewportBbox();
     var query = buildQuery(params);
     var url = this.data.sectionsUrl + (query ? '?' + query : '');
 
@@ -339,33 +413,105 @@
         });
       })
       .then(function (result) {
-        if (self.sectionsAbort !== abort) return; // stale response
+        if (self.gridAbort !== abort) return; // stale response
         if (!result.response.ok) {
-          if (self.sectionsLayer) {
-            self.map.removeLayer(self.sectionsLayer);
-            self.sectionsLayer = null;
-          }
-          if (self.legendEl) self.legendEl.innerHTML = '';
+          // The endpoint caps how many sections it will return, and a very
+          // wide viewport at this zoom can still trip that cap. Fall back to
+          // the township grid rather than leaving the map bare.
           if (result.response.status === 400) {
-            self.setStatus('Zoom in to see square-mile sections');
-          } else {
-            self.setStatus('Couldn\'t load sections; try again');
+            self.loadTownships();
+            return;
           }
+          self.clearGrid();
+          if (self.legendEl) self.legendEl.innerHTML = '';
+          self.setStatus('Couldn\'t load sections; try again');
           return;
         }
         self.setStatus('');
-        self.renderSections(result.body);
+        self.renderGrid(result.body, 'section');
       })
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;
-        if (self.sectionsAbort !== abort) return;
+        if (self.gridAbort !== abort) return;
         window.console && console.error && console.error('section-map: failed to load sections', err);
         self.setStatus('Couldn\'t load sections; try again');
       });
   };
 
-  SectionMap.prototype.renderSections = function (geojson) {
+  SectionMap.prototype.loadTownships = function () {
+    if (!this.data.townshipsUrl) return;
+
+    var abort = this.startGridRequest();
+    var params = this.commonParams();
+    params.bbox = this.viewportBbox();
+    var query = buildQuery(params);
+    var url = this.data.townshipsUrl + (query ? '?' + query : '');
+
+    this.setStatus('Loading grid…');
+
     var self = this;
+    fetch(url, abort ? { signal: abort.signal } : undefined)
+      .then(function (response) {
+        if (!response.ok) throw new Error('bad response');
+        return response.json();
+      })
+      .then(function (geojson) {
+        if (self.gridAbort !== abort) return; // stale response
+        self.setStatus('');
+        self.renderGrid(geojson, 'township');
+      })
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') return;
+        if (self.gridAbort !== abort) return;
+        window.console && console.error && console.error('section-map: failed to load townships', err);
+        self.clearGrid();
+        if (self.legendEl) self.legendEl.innerHTML = '';
+        self.setStatus('Couldn\'t load the grid; try again');
+      });
+  };
+
+  SectionMap.prototype.isHighlighted = function (feature) {
+    return this.level === 'section' && !!this.data.highlight && feature.id === this.data.highlight;
+  };
+
+  SectionMap.prototype.featureStyle = function (feature) {
+    var value = feature.properties[this.metric];
+    var style = {
+      fillColor: colorFor(this.currentClasses, value),
+      fillOpacity: value ? 0.7 : 0.25,
+      color: this.level === 'township' ? '#7a869a' : '#555',
+      weight: this.level === 'township' ? 1 : 0.5,
+    };
+    if (this.isHighlighted(feature)) {
+      style.color = '#d35400';
+      style.weight = 3;
+    }
+    return style;
+  };
+
+  SectionMap.prototype.legendUnit = function () {
+    var unit = METRIC_UNITS[this.metric] || '';
+    return this.level === 'township' ? unit + ' per township' : unit;
+  };
+
+  SectionMap.prototype.updateLegend = function () {
+    if (this.legendEl) renderLegend(this.legendEl, this.currentClasses, this.legendUnit());
+    if (this.levelEl) this.levelEl.textContent = LEVEL_TEXT[this.level] || '';
+  };
+
+  SectionMap.prototype.bringHighlightToFront = function () {
+    if (!this.data.highlight || !this.gridLayer) return;
+    var self = this;
+    this.gridLayer.eachLayer(function (layer) {
+      if (layer.feature && self.isHighlighted(layer.feature) && layer.bringToFront) {
+        layer.bringToFront();
+      }
+    });
+  };
+
+  SectionMap.prototype.renderGrid = function (geojson, level) {
+    var self = this;
+    this.level = level;
     var features = (geojson && geojson.features) || [];
     var values = [];
     features.forEach(function (feature) {
@@ -374,79 +520,75 @@
     });
     this.currentClasses = quantileClasses(values);
 
-    if (this.sectionsLayer) {
-      this.map.removeLayer(this.sectionsLayer);
-      this.sectionsLayer = null;
-    }
+    this.clearGrid();
 
-    this.sectionsLayer = L.geoJSON(geojson, {
+    this.gridLayer = L.geoJSON(geojson, {
       style: function (feature) {
-        var value = feature.properties[self.metric];
-        var style = {
-          fillColor: colorFor(self.currentClasses, value),
-          fillOpacity: value ? 0.7 : 0.25,
-          color: '#555',
-          weight: 0.5,
-        };
-        if (self.data.highlight && feature.id === self.data.highlight) {
-          style.color = '#d35400';
-          style.weight = 3;
-        }
-        return style;
+        return self.featureStyle(feature);
       },
       onEachFeature: function (feature, layer) {
+        if (level === 'township') {
+          self.bindTownshipPopup(feature, layer);
+          return;
+        }
         layer.on('click', function () {
           self.showSectionPopup(feature, layer);
         });
       },
     }).addTo(this.map);
 
-    if (this.data.highlight) {
-      this.sectionsLayer.eachLayer(function (layer) {
-        if (layer.feature && layer.feature.id === self.data.highlight && layer.bringToFront) {
-          layer.bringToFront();
-        }
-      });
-    }
-
-    if (this.legendEl) {
-      renderLegend(this.legendEl, this.currentClasses, METRIC_UNITS[this.metric] || '');
-    }
+    this.bringHighlightToFront();
+    this.updateLegend();
   };
 
   SectionMap.prototype.restyle = function () {
-    if (!this.sectionsLayer) return;
+    if (!this.gridLayer) return;
     var self = this;
     var values = [];
-    this.sectionsLayer.eachLayer(function (layer) {
+    this.gridLayer.eachLayer(function (layer) {
       var value = layer.feature.properties[self.metric];
       if (value) values.push(value);
     });
     this.currentClasses = quantileClasses(values);
-    this.sectionsLayer.eachLayer(function (layer) {
-      var value = layer.feature.properties[self.metric];
-      var style = {
-        fillColor: colorFor(self.currentClasses, value),
-        fillOpacity: value ? 0.7 : 0.25,
-        color: '#555',
-        weight: 0.5,
-      };
-      if (self.data.highlight && layer.feature.id === self.data.highlight) {
-        style.color = '#d35400';
-        style.weight = 3;
+    this.gridLayer.eachLayer(function (layer) {
+      layer.setStyle(self.featureStyle(layer.feature));
+      if (self.level === 'township' && layer.getPopup()) {
+        layer.setPopupContent(self.townshipPopupHtml(layer.feature.properties));
       }
-      layer.setStyle(style);
     });
-    if (this.data.highlight) {
-      this.sectionsLayer.eachLayer(function (layer) {
-        if (layer.feature && layer.feature.id === self.data.highlight && layer.bringToFront) {
-          layer.bringToFront();
-        }
+    this.bringHighlightToFront();
+    this.updateLegend();
+  };
+
+  SectionMap.prototype.townshipPopupHtml = function (props) {
+    var unit = METRIC_UNITS[this.metric] || '';
+    var sections = props.sections || 0;
+    return (
+      '<div class="section-popup">' +
+      '<h4>' + escapeHtml(props.name || props.id) + '</h4>' +
+      '<p>' + formatNumber(sections) + (sections === 1 ? ' section' : ' sections') + '</p>' +
+      '<p class="section-popup-totals">' + formatNumber(props[this.metric]) + ' ' + escapeHtml(unit) + '</p>' +
+      '<p><button type="button" class="section-map-zoom">Zoom in</button></p>' +
+      '</div>'
+    );
+  };
+
+  SectionMap.prototype.bindTownshipPopup = function (feature, layer) {
+    var self = this;
+    layer.bindPopup(this.townshipPopupHtml(feature.properties), { className: 'section-popup-wrap' });
+    // The button lives inside the popup, which Leaflet builds when it opens,
+    // so the handler is wired on each open.
+    layer.on('popupopen', function (event) {
+      var el = event.popup.getElement();
+      var button = el && el.querySelector('.section-map-zoom');
+      if (!button) return;
+      button.addEventListener('click', function () {
+        self.map.closePopup();
+        self.map.setView(layer.getBounds().getCenter(), SECTION_ZOOM, {
+          animate: !self.reducedMotion,
+        });
       });
-    }
-    if (this.legendEl) {
-      renderLegend(this.legendEl, this.currentClasses, METRIC_UNITS[this.metric] || '');
-    }
+    });
   };
 
   SectionMap.prototype.sectionPopupHtml = function (props, detailHtml) {
@@ -499,17 +641,6 @@
   SectionMap.prototype.loadNotices = function () {
     if (!this.data.noticesUrl) return;
 
-    // Same zoom gate as loadSections(): zoomed further out than this, the
-    // bbox covers more notices than the endpoint will return (it 400s past
-    // its cap), so don't ask.
-    if (this.map.getZoom() < MIN_SECTION_ZOOM) {
-      if (this.noticesLayer) {
-        this.map.removeLayer(this.noticesLayer);
-        this.noticesLayer = null;
-      }
-      return;
-    }
-
     if (this.noticesAbort) this.noticesAbort.abort();
     var abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     this.noticesAbort = abort;
@@ -541,16 +672,23 @@
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;
         if (self.noticesAbort !== abort) return;
+        // Zoomed way out the bbox can cover more notices than the endpoint
+        // will return (it 400s past its cap); drop the markers and move on.
         window.console && console.error && console.error('section-map: failed to load notices', err);
+        self.clearNotices();
       });
   };
 
-  SectionMap.prototype.renderNotices = function (geojson) {
-    var self = this;
+  SectionMap.prototype.clearNotices = function () {
     if (this.noticesLayer) {
       this.map.removeLayer(this.noticesLayer);
       this.noticesLayer = null;
     }
+  };
+
+  SectionMap.prototype.renderNotices = function (geojson) {
+    var self = this;
+    this.clearNotices();
     var features = ((geojson && geojson.features) || []).filter(function (f) { return f.geometry; });
     this.noticesLayer = L.geoJSON({ type: 'FeatureCollection', features: features }, {
       pointToLayer: function (feature, latlng) {
