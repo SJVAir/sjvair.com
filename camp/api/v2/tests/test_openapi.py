@@ -45,6 +45,14 @@ class OpenAPISchemaTests(TestCase):
         assert 'region' in description
         assert 'bbox' in description
 
+    def test_monitor_summary_bulk_is_documented(self):
+        assert any(p.endswith('/monitors/summaries/bulk/{entry_type}/daily/') for p in self.paths)
+        path = self.paths['/monitors/summaries/bulk/{entry_type}/daily/']['get']
+        assert 'region' in path['description']
+        assert 'bbox' in path['description']
+        param_names = {p['name'] for p in path['parameters']}
+        assert {'start', 'end', 'bbox'} <= param_names
+
     def test_task_status_is_not_documented(self):
         assert not any('task' in p for p in self.paths)
 

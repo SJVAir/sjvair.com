@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from unittest import mock
 
 import pytest
 
@@ -6,7 +7,8 @@ from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
-from camp.api.v2.summaries.endpoints import MonitorSummaryList, RegionSummaryList
+from camp.api.v2.summaries.endpoints import BulkMonitorSummaryList, MonitorSummaryList, RegionSummaryList
+from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
@@ -14,6 +16,7 @@ from camp.utils.test import get_response_data
 
 monitor_summary_list = MonitorSummaryList.as_view()
 region_summary_list = RegionSummaryList.as_view()
+bulk_monitor_summary_list = BulkMonitorSummaryList.as_view()
 
 pytestmark = [
     pytest.mark.usefixtures('purpleair_monitor'),
@@ -178,6 +181,147 @@ class MonitorSummaryListTests(TestCase):
         response = self._get('monitor-summary-hourly-day', 'pm25', 'hour', year=2026, month=3, day=15)
         data = get_response_data(response)
         assert len(data['data']) == 1
+
+
+class BulkMonitorSummaryListTests(TestCase):
+    fixtures = ['purple-air.yaml', 'bam1022.yaml']
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.purpleair = PurpleAir.objects.get(sensor_id=8892)
+        self.bam = BAM1022.objects.get(pk='gO9_akFVTVW6mYBifOtoxg')
+        self.day = timezone.make_aware(datetime(2026, 3, 15, 0, 0, 0))
+        make_monitor_summary(self.purpleair, self.day, resolution='day')
+        make_monitor_summary(self.bam, self.day, resolution='day')
+
+    def _get(self, url_name, entry_type, resolution, query=None):
+        kwargs = {'entry_type': entry_type}
+        url = reverse(f'api:v2:monitors:{url_name}', kwargs=kwargs)
+        request = self.factory.get(url, query or {})
+        return bulk_monitor_summary_list(request, entry_type=entry_type, resolution=resolution)
+
+    def test_returns_200(self):
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+        })
+        assert response.status_code == 200
+
+    def test_missing_date_range_returns_empty(self):
+        # No start/end - invalid form, mirrors MonitorsAt's missing-timestamp behavior.
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day')
+        data = get_response_data(response)
+        assert data['data'] == []
+
+    def test_results_are_monitors_with_nested_summaries(self):
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+        })
+        data = get_response_data(response)
+        result = next(r for r in data['data'] if r['id'] == str(self.purpleair.pk))
+        # Same shape as MonitorSerializer (id, name, position, ...) plus nested summaries.
+        assert result['name'] == self.purpleair.name
+        assert 'position' in result
+        assert len(result['summaries']) == 1
+        assert result['summaries'][0]['mean'] == 10.0
+        assert 'monitor' not in result['summaries'][0]
+
+    def test_includes_summaries_from_multiple_monitors(self):
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+        })
+        data = get_response_data(response)
+        monitor_ids = {r['id'] for r in data['data']}
+        assert monitor_ids == {str(self.purpleair.pk), str(self.bam.pk)}
+
+    def test_date_range_excludes_records_outside_it(self):
+        make_monitor_summary(self.purpleair, timezone.make_aware(datetime(2026, 4, 1)), resolution='day')
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+        })
+        data = get_response_data(response)
+        total_rows = sum(len(r['summaries']) for r in data['data'])
+        assert total_rows == 2
+
+    def test_date_range_is_inclusive_of_end_date(self):
+        make_monitor_summary(self.purpleair, timezone.make_aware(datetime(2026, 3, 31)), resolution='day')
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+        })
+        data = get_response_data(response)
+        total_rows = sum(len(r['summaries']) for r in data['data'])
+        assert total_rows == 3
+
+    def test_filters_by_bbox(self):
+        lon, lat = self.purpleair.position.x, self.purpleair.position.y
+        # bam1022.yaml fixture places the BAM at the same coordinates as the
+        # PurpleAir - move it away so the bbox actually distinguishes them.
+        from django.contrib.gis.geos import Point
+        self.bam.position = Point(lon + 10, lat + 10, srid=4326)
+        self.bam.save()
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+            'bbox': f'{lon - 0.01},{lat - 0.01},{lon + 0.01},{lat + 0.01}',
+        })
+        data = get_response_data(response)
+        monitor_ids = {r['id'] for r in data['data']}
+        assert monitor_ids == {str(self.purpleair.pk)}
+
+    def test_bad_region_id_404s(self):
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+            'region': 'not-a-real-sqid',
+        })
+        assert response.status_code == 404
+
+    def test_invalid_entry_type_returns_404(self):
+        response = self._get('monitor-summary-bulk-daily', 'badtype', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+        })
+        assert response.status_code == 404
+
+    def test_invalid_bbox_returns_empty(self):
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+            'bbox': 'not-a-bbox',
+        })
+        data = get_response_data(response)
+        assert data['data'] == []
+
+    def test_ordered_by_timestamp_within_monitor(self):
+        make_monitor_summary(self.purpleair, self.day + timedelta(days=1), resolution='day')
+        response = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+            'start': '2026-03-01', 'end': '2026-03-31',
+        })
+        data = get_response_data(response)
+        result = next(r for r in data['data'] if r['id'] == str(self.purpleair.pk))
+        timestamps = [row['timestamp'] for row in result['summaries']]
+        assert timestamps == sorted(timestamps)
+
+    def test_monitor_split_across_pages_is_detectable(self):
+        # purpleair gets a second row so it has more rows than fit on a
+        # page of size 1 - it should show up (partially) on both pages,
+        # under the same `id`, so a client can detect and merge the split
+        # per the endpoint's docstring.
+        make_monitor_summary(self.purpleair, self.day + timedelta(days=1), resolution='day')
+
+        # Rows are ordered by monitor pk, then timestamp - purpleair's two
+        # rows land on pages 2 and 3 here (bam's single row takes page 1).
+        with mock.patch.object(BulkMonitorSummaryList, 'page_size', 1):
+            page2 = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+                'start': '2026-03-01', 'end': '2026-03-31', 'page': 2,
+            })
+            page3 = self._get('monitor-summary-bulk-daily', 'pm25', 'day', query={
+                'start': '2026-03-01', 'end': '2026-03-31', 'page': 3,
+            })
+
+        page2_data = get_response_data(page2)['data']
+        page3_data = get_response_data(page3)['data']
+
+        assert len(page2_data) == 1
+        assert len(page3_data) == 1
+        assert page2_data[0]['id'] == page3_data[0]['id'] == str(self.purpleair.pk)
+        assert len(page2_data[0]['summaries']) == 1
+        assert len(page3_data[0]['summaries']) == 1
 
 
 class RegionSummaryListTests(TestCase):

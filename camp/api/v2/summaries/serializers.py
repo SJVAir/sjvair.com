@@ -2,6 +2,8 @@ from django.conf import settings
 
 from resticus import serializers
 
+from camp.api.v2.monitors.serializers import MonitorSerializer
+
 
 def _timestamp(s):
     return s.timestamp.astimezone(settings.DEFAULT_TIMEZONE).isoformat()
@@ -22,6 +24,24 @@ class MonitorSummarySerializer(serializers.Serializer):
         'p25',
         'p75',
         'is_complete',
+    ]
+
+
+class BulkMonitorSummaryGroupSerializer(MonitorSerializer):
+    """A monitor (same shape as MonitorSerializer) with a nested `summaries`
+    list - the summary rows for that monitor within the requested page.
+
+    The endpoint paginates by summary row (not by monitor) to keep response
+    size bounded regardless of how many monitors/rows-per-monitor a request
+    matches; see BulkMonitorSummaryList's docstring for what that means for
+    a monitor whose rows span a page boundary.
+    """
+    include = [
+        # monitor.summary_rows is stashed by BulkMonitorSummaryList.serialize();
+        # not `monitor.summaries` - that name is taken by the FK's reverse
+        # related manager (Monitor.summaries), which would run an unscoped,
+        # unbounded query instead of using the current page's filtered rows.
+        ('summaries', lambda monitor: MonitorSummarySerializer(monitor.summary_rows).serialize()),
     ]
 
 
