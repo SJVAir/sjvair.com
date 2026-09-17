@@ -188,6 +188,14 @@ class Coverage(BaseReport):
             return None
         return model._base_manager.filter(boundary__version=version)
 
+    def county_boundaries(self):
+        """County name (as in County.names) -> current boundary geometry, from the county Regions."""
+        return {
+            region.name.removesuffix(' County'): region.boundary.geometry
+            for region in Region.objects.counties().select_related('boundary')
+            if region.boundary_id
+        }
+
     def covered(self, tracts):
         """Annotate tracts with whether any monitor is within `radius` meters."""
         nearby = self.monitors().filter(
@@ -211,13 +219,14 @@ class Coverage(BaseReport):
         }
 
         rows = []
+        county_boundaries = self.county_boundaries()
         for county in County.names:
             counts = monitor_counts.get(county, {'monitors': 0, 'dac_monitors': 0})
             stats = {'population': 0, 'dac_tracts': 0, 'dac_population': 0, 'dac_population_covered': 0}
-            if tracts is not None:
+            if tracts is not None and county in county_boundaries:
                 county_tracts = (self.covered(tracts)
                     .annotate(centroid=Centroid('boundary__geometry'))
-                    .filter(centroid__within=County.counties[county]))
+                    .filter(centroid__within=county_boundaries[county]))
                 # The total is aliased to avoid shadowing the `population` field
                 # for the DAC aggregates resolved alongside it.
                 stats = county_tracts.aggregate(

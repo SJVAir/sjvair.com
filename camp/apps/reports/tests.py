@@ -15,6 +15,7 @@ from camp.apps.monitors.models import Host, LatestEntry
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.qaqc.models import HealthCheck
+from camp.apps.regions.models import Region
 from camp.apps.reports.base import REPORTS
 
 
@@ -357,6 +358,14 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert content.count('"kind": "area"') == 2 + 8  # two fixture tracts plus county outlines
         assert content.count('"kind": "marker"') == 2
         assert '"fillColor": "#c0392b"' in content  # the DAC tract
+
+    def test_county_without_region_row_has_no_population(self):
+        Region.objects.counties().filter(name='Fresno County').delete()
+        response = self.client.get(reverse('reports:coverage'))
+        fresno = {row['county']: row for row in response.context['rows']}['Fresno']
+        assert fresno['monitors'] == 1
+        assert fresno['population'] == 0
+        assert fresno['per_10k'] is None
 
     def test_map_ignores_bogus_positions(self):
         PurpleAir.objects.create(name='Null island', sensor_id=9, position=Point(0, 0), location='outside')
