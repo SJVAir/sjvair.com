@@ -320,6 +320,23 @@ class CoverageTests(StaffClientMixin, TestCase):
         self.near_dac = PurpleAir.objects.create(name='Near DAC', sensor_id=1, position=Point(-119.69, 36.75), location='outside')
         # Kern, outside any fixture tract.
         self.kern = PurpleAir.objects.create(name='Kern', sensor_id=2, position=Point(-119.0, 35.4), location='outside')
+        # Only monitors that reported recently count toward coverage.
+        for monitor in (self.near_dac, self.kern):
+            touch(monitor, timezone.now() - timedelta(minutes=5))
+
+    def test_inactive_monitors_do_not_count_by_default(self):
+        PurpleAir.objects.create(name='Dead', sensor_id=3, position=Point(-119.72, 36.75), location='outside')
+        stale = PurpleAir.objects.create(name='Stale', sensor_id=4, position=Point(-119.73, 36.75), location='outside')
+        touch(stale, timezone.now() - timedelta(days=2))
+        response = self.client.get(reverse('reports:coverage'))
+        rows = {row['county']: row for row in response.context['rows']}
+        assert rows['Fresno']['monitors'] == 1
+        assert response.content.decode().count('"kind": "marker"') == 2
+
+        response = self.client.get(reverse('reports:coverage'), {'include_inactive': '1'})
+        rows = {row['county']: row for row in response.context['rows']}
+        assert rows['Fresno']['monitors'] == 3
+        assert response.content.decode().count('"kind": "marker"') == 4
 
     def test_uses_newest_ces_version(self):
         response = self.client.get(reverse('reports:coverage'))
@@ -352,7 +369,7 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert total['population'] == 8000
 
     def test_monitor_inside_a_dac_tract_is_counted(self):
-        PurpleAir.objects.create(name='In DAC', sensor_id=3, position=Point(-119.75, 36.75), location='outside')
+        touch(PurpleAir.objects.create(name='In DAC', sensor_id=3, position=Point(-119.75, 36.75), location='outside'), timezone.now())
         response = self.client.get(reverse('reports:coverage'))
         rows = {row['county']: row for row in response.context['rows']}
         assert rows['Fresno']['monitors'] == 2
@@ -375,7 +392,7 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert fresno['per_10k'] is None
 
     def test_map_ignores_bogus_positions(self):
-        PurpleAir.objects.create(name='Null island', sensor_id=9, position=Point(0, 0), location='outside')
+        touch(PurpleAir.objects.create(name='Null island', sensor_id=9, position=Point(0, 0), location='outside'), timezone.now())
         response = self.client.get(reverse('reports:coverage'))
         assert response.content.decode().count('"kind": "marker"') == 2
 
@@ -416,6 +433,7 @@ class CoverageNoCESTests(StaffClientMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.monitor = PurpleAir.objects.create(name='Fresno', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        touch(self.monitor, timezone.now() - timedelta(minutes=5))
 
     def test_map_shows_monitors_without_ces_data(self):
         response = self.client.get(reverse('reports:coverage'))

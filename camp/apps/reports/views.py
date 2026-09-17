@@ -157,7 +157,7 @@ def per_10k(monitors, population):
 class Coverage(BaseReport):
     slug = 'coverage'
     title = 'Coverage and Equity'
-    description = 'Monitors relative to population and disadvantaged-community (SB535 DAC) census tracts, from the newest CalEnviroScreen data loaded.'
+    description = 'Active monitors relative to population and disadvantaged-community (SB535 DAC) census tracts, from the newest CalEnviroScreen data loaded.'
     template_name = 'admin/reports/coverage.html'
 
     DEFAULT_RADIUS = 1000
@@ -174,10 +174,22 @@ class Coverage(BaseReport):
         except (TypeError, ValueError):
             return self.DEFAULT_RADIUS
 
+    @property
+    def include_inactive(self):
+        return self.request.GET.get('include_inactive') == '1'
+
     def monitors(self):
+        """
+        Positioned monitors of enabled types. By default only monitors that
+        reported within the last hour count toward coverage; a dead monitor
+        does not cover anyone.
+        """
         queryset = enabled_only(Monitor.objects.filter(position__isnull=False))
         if not self.include_hidden:
             queryset = queryset.filter(is_hidden=False)
+        if not self.include_inactive:
+            cutoff = timezone.now() - timedelta(seconds=Monitor.LAST_ACTIVE_LIMIT)
+            queryset = queryset.with_last_entry_timestamp().filter(last_entry_timestamp__gte=cutoff)
         return queryset
 
     def ces(self):
@@ -333,6 +345,7 @@ class Coverage(BaseReport):
             'ces_version': f'{model.__name__} ({version})' if model else None,
             'radius': self.radius,
             'include_hidden': self.include_hidden,
+            'include_inactive': self.include_inactive,
             'percentile_bands': self.get_percentile_bands(),
             'map': self.get_map(),
         }

@@ -116,8 +116,9 @@ pick whichever reads cleaner).
 
 ### 2. Coverage and Equity (ED)
 
-Slug `coverage`. Hidden monitors excluded as above. Query param
-`radius` in meters, default `1000`.
+Slug `coverage`. Hidden monitors excluded as above. Only monitors active
+in the last hour count toward coverage unless `?include_inactive=1`; a
+dead monitor covers nobody. Query param `radius` in meters, default `1000`.
 
 **Primary table (rows):** one row per SJV county:
 

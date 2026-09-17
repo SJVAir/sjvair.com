@@ -4,6 +4,7 @@
 {% block filters %}
 <label>Coverage radius (m) <input type="number" name="radius" value="{{ radius }}" min="0" step="100"></label>
 <label><input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %}> Include hidden monitors</label>
+<label><input type="checkbox" name="include_inactive" value="1" {% if include_inactive %}checked{% endif %}> Include inactive monitors (no data in the last hour)</label>
 <button type="submit">Apply</button>
 {% endblock %}
 
