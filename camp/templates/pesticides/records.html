@@ -1,0 +1,57 @@
+{% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+
+{% block title %}Records | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} records-page{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Records</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="columns">
+    <div class="column is-3-desktop">
+        <form method="GET" class="records-filters box">
+            {{ form.region }}
+            {{ form.section }}
+            {{ form.chemical }}
+            {{ form.product }}
+            {{ form.commodity }}
+            {{ form.lat }}
+            {{ form.lng }}
+            {{ form.radius }}
+            <div class="field">
+                <label class="label" for="{{ form.start.id_for_label }}">{{ form.start.label }}</label>
+                <div class="control">{{ form.start }}</div>
+            </div>
+            <div class="field">
+                <label class="label" for="{{ form.end.id_for_label }}">{{ form.end.label }}</label>
+                <div class="control">{{ form.end }}</div>
+            </div>
+            <div class="field">
+                <label class="label" for="{{ form.county.id_for_label }}">{{ form.county.label }}</label>
+                <div class="control">
+                    <div class="select is-fullwidth">{{ form.county }}</div>
+                </div>
+            </div>
+            <div class="field">
+                <label class="label" for="{{ form.method.id_for_label }}">{{ form.method.label }}</label>
+                <div class="control">
+                    <div class="select is-fullwidth">{{ form.method }}</div>
+                </div>
+            </div>
+            <div class="field is-grouped">
+                <div class="control"><button class="button is-link" type="submit">Apply</button></div>
+                <div class="control"><a class="button is-light" href="{{ request.path }}">Clear</a></div>
+            </div>
+        </form>
+    </div>
+    <div class="column">
+        {% if active_filters %}
+        <div class="tags">
+            {% for f in active_filters %}<span class="tag is-info is-light is-medium">{{ f.label }} <a class="delete is-small ml-1" href="{{ f.clear_url }}" aria-label="Remove filter"></a></span>{% endfor %}
+        </div>
+        {% endif %}
+        {% include 'pesticides/includes/section-map.html' %}
+        <p class="summary-sentence mt-4 mb-3">{{ summary_sentence }}</p>
+        {% include 'pesticides/includes/records-table.html' %}
+    </div>
+</div>
+{% endblock %}

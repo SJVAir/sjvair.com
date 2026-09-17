@@ -1,0 +1,49 @@
+{% load pesticides_explorer %}
+<div class="table-container">
+    <table class="table is-fullwidth is-striped is-hoverable data-table records-table">
+        <thead>
+            <tr>
+                <th>{% sort_link 'date' 'Date' %}</th>
+                <th>County</th>
+                <th>Section</th>
+                <th>Commodity</th>
+                <th>Product</th>
+                <th>Chemical</th>
+                <th class="has-text-right">{% sort_link 'lbs' 'Lbs' %}</th>
+                <th class="has-text-right">{% sort_link 'acres' 'Acres' %}</th>
+                <th>Method</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for use in object_list %}
+            <tr>
+                <td>{{ use.application_date|date:'M j, Y'|default:'—' }}</td>
+                <td>{{ use.county.name|default:'—' }}</td>
+                <td>
+                    {% if use.mtrs %}
+                        <a href="{% url 'pesticides:section-detail' sqid=use.mtrs.sqid %}">{{ use.mtrs.external_id }}</a>
+                    {% else %}—{% endif %}
+                </td>
+                <td>
+                    {% if use.commodity %}<a href="{{ use.commodity.get_absolute_url }}">{{ use.commodity.name }}</a>{% else %}—{% endif %}
+                </td>
+                <td>
+                    {% if use.product %}<a href="{{ use.product.get_absolute_url }}">{{ use.product.name }}</a>{% else %}—{% endif %}
+                </td>
+                <td>
+                    {% if use.chemical %}
+                        <a href="{{ use.chemical.get_absolute_url }}">{{ use.chemical.name }}</a>
+                        <div class="tags is-inline">{% include 'pesticides/includes/classification-badges.html' with chemical=use.chemical hide_iarc=True %}</div>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="has-text-right">{{ use.lbs_chemical|lbs }}</td>
+                <td class="has-text-right">{{ use.acres_treated|lbs }}</td>
+                <td>{{ use.get_aerial_ground_display|default:'—' }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="9" class="has-text-centered has-text-grey">No records match.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% include 'pesticides/includes/pagination.html' %}

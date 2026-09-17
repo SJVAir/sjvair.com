@@ -8,6 +8,9 @@ urlpatterns = [
 
     path('map/', views.MapPage.as_view(), name='map'),
 
+    path('records/', views.RecordsBrowser.as_view(), name='records'),
+    path('sections/<str:sqid>/', views.SectionDetail.as_view(), name='section-detail'),
+
     path('chemicals/', views.ChemicalList.as_view(), name='chemical-list'),
     path('chemicals/<str:sqid>/', views.ExplorerRedirect.as_view(model=Chemical), name='chemical-redirect'),
     path('chemicals/<str:sqid>/<slug:slug>/', views.ChemicalDetail.as_view(), name='chemical-detail'),

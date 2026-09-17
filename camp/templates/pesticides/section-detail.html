@@ -1,0 +1,12 @@
+{% extends 'pesticides/base.html' %}
+
+{% block title %}{{ section.external_id }} | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} section-detail{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ section.external_id }}</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="content">
+    <h1 class="title is-4">{{ section.external_id }}</h1>
+    <p class="has-text-grey">Section detail is coming soon.</p>
+</div>
+{% endblock %}

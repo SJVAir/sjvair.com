@@ -28,6 +28,7 @@ class RollupModelTests(TestCase):
         assert row.pk
 
 
+from django.core.cache import cache
 from django.core.management import call_command
 from io import StringIO
 
@@ -38,6 +39,15 @@ from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 
 class RebuildTests(TestCase):
     fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        # test_command primes stats.latest_year()'s cache while the rollup is
+        # empty and asserts it comes back None -- that only holds if nothing
+        # else populated LATEST_YEAR_KEY first. Every other pesticides test
+        # class that touches the stats cache clears it in setUp for the same
+        # reason; this one just hadn't needed to until another test file
+        # sorting before this one started calling stats.resolve_year().
+        cache.clear()
 
     def test_rebuild_year_sums_by_key(self):
         written = rollup.rebuild_year(2023)

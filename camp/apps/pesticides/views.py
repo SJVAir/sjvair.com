@@ -1,6 +1,11 @@
+import hashlib
+from datetime import date
 from types import SimpleNamespace
 
 from django.conf import settings
+from django.contrib.gis.geos import Point
+from django.contrib.gis.measure import D
+from django.core.cache import cache
 from django.db.models import Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.http import Http404
@@ -9,8 +14,9 @@ from django.urls import reverse
 
 import vanilla
 
+from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import maps, stats
-from camp.apps.pesticides.forms import ChemicalFilterForm, CommodityFilterForm, ProductFilterForm
+from camp.apps.pesticides.forms import ChemicalFilterForm, CommodityFilterForm, ProductFilterForm, RecordsFilterForm
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product, ProductChemical,
 )
@@ -564,3 +570,308 @@ class MapPage(vanilla.TemplateView):
             **year_context(year),
             **kwargs,
         )
+
+
+def area_filter(queryset, *, county=None, region=None, section=None, point=None, radius=None, field_prefix=''):
+    """
+    Restrict `queryset` (PesticideUse or PesticideNotice -- both have
+    `county`/`mtrs` FKs) to an area. `county` combines with any of the other
+    three, but only one of region/section/point applies (section wins over
+    region over point). `field_prefix` lets callers reach these fields
+    through a relation (e.g. 'monitor__').
+    """
+    def field(name):
+        return f'{field_prefix}{name}'
+
+    if county is not None:
+        queryset = queryset.filter(**{field('county'): county})
+
+    if section is not None:
+        queryset = queryset.filter(**{field('mtrs'): section})
+    elif region is not None:
+        if not region.boundary_id:
+            return queryset.none()
+        queryset = queryset.filter(**{
+            field('mtrs__boundary__geometry__intersects'): region.boundary.geometry,
+        })
+    elif point is not None and radius is not None:
+        queryset = queryset.filter(**{
+            # Bbox prefilter first -- see radius_bbox's docstring: the planner
+            # can use the geometry GiST index on bboverlaps but not on a raw
+            # distance_lte, so without it this forces a full table scan.
+            field('mtrs__boundary__geometry__bboverlaps'): radius_bbox(point.y, point.x, radius),
+            field('mtrs__boundary__geometry__distance_lte'): (point, D(mi=radius)),
+        })
+
+    return queryset
+
+
+RECORDS_SORT_FIELDS = {'date': 'application_date', 'lbs': 'lbs_chemical', 'acres': 'acres_treated'}
+RECORDS_DEFAULT_SORT = '-date'
+RECORDS_TOTALS_TTL = 60 * 10
+
+
+class RecordsBrowser(vanilla.ListView):
+    """
+    Filterable, paginated browser of individual PesticideUse records, with
+    the interactive section map above the table. Its own class (not
+    ExplorerListMixin) because the filter shape -- date range, area, method --
+    doesn't fit the search/related-entity pattern the chemical/product/
+    commodity lists share.
+    """
+    model = PesticideUse
+    paginate_by = 50
+    template_name = 'pesticides/records.html'
+
+    RELATED_MODELS = {
+        'chemical': Chemical,
+        'product': Product,
+        'commodity': Commodity,
+        'region': Region,
+        'section': Region,
+    }
+
+    def dispatch(self, request, *args, **kwargs):
+        self.year = stats.resolve_year(request.GET.get('year'))
+        self.form = RecordsFilterForm(self._build_form_data(request.GET))
+        self.form.is_valid()
+        self.related = self._get_related_objects()
+        self.county = self._get_county()
+        self.point, self.radius = self._get_point_and_radius()
+        return super().dispatch(request, *args, **kwargs)
+
+    def _build_form_data(self, get):
+        """
+        A mutable copy of the querystring with `start`/`end` defaulted to
+        Jan 1 / Dec 31 of the resolved year when neither is given, so the
+        page never silently lists every year's records. DateField.to_python
+        accepts a date object directly, so these round-trip through the form
+        (and render back out) exactly like an explicitly-submitted value.
+        """
+        data = get.copy()
+        if not data.get('start') and not data.get('end') and self.year:
+            data['start'] = date(self.year, 1, 1)
+            data['end'] = date(self.year, 12, 31)
+        return data
+
+    def _get_related_objects(self):
+        related = {}
+        for param, model in self.RELATED_MODELS.items():
+            value = self.request.GET.get(param)
+            if value:
+                related[param] = model.objects.filter(sqid=value).first() or MISSING
+        return related
+
+    def _get_county(self):
+        slug = self.form.cleaned_data.get('county')
+        if not slug:
+            return None
+        return Region.objects.filter(type=Region.Type.COUNTY, slug=slug).select_related('boundary').first()
+
+    def _get_point_and_radius(self):
+        data = self.form.cleaned_data
+        lat, lng = data.get('lat'), data.get('lng')
+        if lat is None or lng is None:
+            return None, None
+        try:
+            radius = int(data.get('radius') or 1)
+        except (TypeError, ValueError):
+            radius = 1
+        if radius not in (1, 3, 5):
+            radius = 1
+        return Point(lng, lat, srid=4326), radius
+
+    def get_filtered_queryset(self):
+        if any(value is MISSING for value in self.related.values()):
+            return PesticideUse.objects.none()
+
+        data = self.form.cleaned_data
+        queryset = PesticideUse.objects.select_related('county', 'mtrs', 'chemical', 'product', 'commodity')
+
+        if data.get('start'):
+            queryset = queryset.filter(application_date__gte=data['start'])
+        if data.get('end'):
+            queryset = queryset.filter(application_date__lte=data['end'])
+
+        queryset = area_filter(
+            queryset,
+            county=self.county,
+            region=self.related.get('region'),
+            section=self.related.get('section'),
+            point=self.point,
+            radius=self.radius,
+        )
+
+        if data.get('method'):
+            queryset = queryset.filter(aerial_ground=data['method'])
+
+        for param in ('chemical', 'product', 'commodity'):
+            obj = self.related.get(param)
+            if obj:
+                queryset = queryset.filter(**{param: obj})
+
+        return queryset
+
+    def _get_sort(self):
+        param = self.request.GET.get('sort') or RECORDS_DEFAULT_SORT
+        key = param.lstrip('-')
+        if key not in RECORDS_SORT_FIELDS:
+            param = RECORDS_DEFAULT_SORT
+            key = param.lstrip('-')
+        return param, RECORDS_SORT_FIELDS[key], param.startswith('-')
+
+    def get_queryset(self):
+        queryset = self.get_filtered_queryset()
+        self.sort, sort_field, desc = self._get_sort()
+        if desc:
+            expr = F(sort_field).desc(nulls_last=True)
+            queryset = queryset.order_by(expr, '-pk')
+        else:
+            expr = F(sort_field).asc(nulls_last=True)
+            queryset = queryset.order_by(expr, 'pk')
+        return queryset
+
+    def _totals_cache_key(self):
+        data = self.form.cleaned_data
+        params = {
+            'start': data.get('start'),
+            'end': data.get('end'),
+            'county': data.get('county'),
+            'method': data.get('method'),
+            'region': self.request.GET.get('region', ''),
+            'section': self.request.GET.get('section', ''),
+            'chemical': self.request.GET.get('chemical', ''),
+            'product': self.request.GET.get('product', ''),
+            'commodity': self.request.GET.get('commodity', ''),
+            'lat': data.get('lat'),
+            'lng': data.get('lng'),
+            'radius': data.get('radius'),
+        }
+        normalized = sorted((key, str(value)) for key, value in params.items())
+        digest = hashlib.sha1(repr(normalized).encode()).hexdigest()
+        return f'pesticides:records-totals:{digest}'
+
+    def get_totals(self):
+        key = self._totals_cache_key()
+        totals = cache.get(key)
+        if totals is None:
+            aggregate = self.get_filtered_queryset().order_by().aggregate(
+                applications=Count('id'), lbs=Sum('lbs_chemical'), acres=Sum('acres_treated'),
+            )
+            totals = {
+                'applications': aggregate['applications'] or 0,
+                'lbs': aggregate['lbs'] or 0,
+                'acres': aggregate['acres'] or 0,
+            }
+            cache.set(key, totals, RECORDS_TOTALS_TTL)
+        return totals
+
+    def _clear_url(self, *params):
+        data = self.request.GET.copy()
+        for param in params:
+            data.pop(param, None)
+        data.pop('page', None)
+        encoded = data.urlencode()
+        return f'{self.request.path}?{encoded}' if encoded else self.request.path
+
+    def get_active_filters(self):
+        filters = []
+        for param in ('chemical', 'product', 'commodity'):
+            obj = self.related.get(param)
+            if obj and obj is not MISSING:
+                filters.append({'label': obj.name, 'clear_url': self._clear_url(param)})
+        if self.county:
+            filters.append({'label': self.county.name, 'clear_url': self._clear_url('county')})
+        for param in ('region', 'section'):
+            obj = self.related.get(param)
+            if obj and obj is not MISSING:
+                filters.append({'label': obj.name, 'clear_url': self._clear_url(param)})
+        if self.point:
+            filters.append({'label': f'Within {self.radius} mi', 'clear_url': self._clear_url('lat', 'lng', 'radius')})
+        return filters
+
+    def get_summary_sentence(self, totals):
+        sentence = (
+            f"{totals['applications']:,} applications, "
+            f"{totals['lbs']:,.0f} lbs, "
+            f"{totals['acres']:,.0f} acres treated"
+        )
+        descriptors = []
+        if self.year:
+            descriptors.append(str(self.year))
+        if self.county:
+            descriptors.append(self.county.name)
+        for param in ('chemical', 'product', 'commodity'):
+            obj = self.related.get(param)
+            if obj and obj is not MISSING:
+                descriptors.append(obj.name.title())
+        if descriptors:
+            sentence += ' — ' + ', '.join(descriptors)
+        return sentence
+
+    @staticmethod
+    def _centroid(region):
+        point = region.boundary.geometry.centroid
+        return f'{point.y:.4f},{point.x:.4f}'
+
+    def get_map_config(self):
+        chemical = self.related.get('chemical')
+        product = self.related.get('product')
+        commodity = self.related.get('commodity')
+        section = self.related.get('section')
+        region = self.related.get('region')
+
+        center = zoom = radius = None
+        if section and section is not MISSING and section.boundary_id:
+            center, zoom = self._centroid(section), 13
+        elif region and region is not MISSING and region.boundary_id:
+            center, zoom = self._centroid(region), 10
+        elif self.point:
+            center, zoom, radius = f'{self.point.y:.4f},{self.point.x:.4f}', 12, self.radius
+        elif self.county and self.county.boundary_id:
+            center, zoom = self._centroid(self.county), 9
+
+        return section_map_config(
+            self.year,
+            center=center,
+            zoom=zoom,
+            radius=radius,
+            chemical=chemical if chemical and chemical is not MISSING else None,
+            product=product if product and product is not MISSING else None,
+            commodity=commodity if commodity and commodity is not MISSING else None,
+            county=self.county.slug if self.county else None,
+        )
+
+    def get_context_data(self, **kwargs):
+        totals = self.get_totals()
+        county_map = None
+        if self.year:
+            county_map = maps.county_map(stats.by_county(PesticideUseRollup.objects.all(), self.year))
+        return super().get_context_data(
+            form=self.form,
+            totals=totals,
+            summary_sentence=self.get_summary_sentence(totals),
+            sort=self.sort,
+            active_filters=self.get_active_filters(),
+            map_config=self.get_map_config(),
+            county_map=county_map,
+            api_docs_url=API_DOCS_URL,
+            client_docs_url=CLIENT_DOCS_URL,
+            section='records',
+            **year_context(self.year),
+            **kwargs,
+        )
+
+
+class SectionDetail(vanilla.TemplateView):
+    """
+    Placeholder so pesticides:section-detail resolves for record/map links.
+    Filled in with the real section detail page in a later task.
+    """
+    template_name = 'pesticides/section-detail.html'
+
+    def get_context_data(self, **kwargs):
+        section = Region.objects.filter(type=Region.Type.MTRS, sqid=kwargs['sqid']).first()
+        if section is None:
+            raise Http404
+        return super().get_context_data(section=section, **kwargs)

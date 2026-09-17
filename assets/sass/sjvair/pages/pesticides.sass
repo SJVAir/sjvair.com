@@ -64,7 +64,7 @@ body.pesticides
                 color: $white
                 font-weight: 600
 
-    .explorer-filters
+    .explorer-filters, .records-filters
         padding: 1.25rem
         .label
             @extend .is-size-7
@@ -79,6 +79,10 @@ body.pesticides
             li
                 display: block
                 margin-bottom: 0.25em
+
+    .records-table
+        td.has-text-right, td:first-child
+            white-space: nowrap
 
     .summary-sentence
         @extend .has-text-grey-dark

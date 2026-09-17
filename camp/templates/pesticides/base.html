@@ -31,6 +31,7 @@
                 <li class="{% if section == 'chemicals' %}is-active{% endif %}"><a href="{% url 'pesticides:chemical-list' %}{{ year_qs }}">Chemicals</a></li>
                 <li class="{% if section == 'products' %}is-active{% endif %}"><a href="{% url 'pesticides:product-list' %}{{ year_qs }}">Products</a></li>
                 <li class="{% if section == 'commodities' %}is-active{% endif %}"><a href="{% url 'pesticides:commodity-list' %}{{ year_qs }}">Commodities</a></li>
+                <li class="{% if section == 'records' %}is-active{% endif %}"><a href="{% url 'pesticides:records' %}{{ year_qs }}">Records</a></li>
             </ul>
         </div>
         {% include 'pesticides/includes/year-picker.html' %}
