@@ -268,6 +268,9 @@ class PesticideUse(TimeStampedModel):
             models.Index(fields=['chemical']),
             models.Index(fields=['commodity']),
             models.Index(fields=['application_date']),
+            models.Index(fields=['chemical', 'year']),
+            models.Index(fields=['product', 'year']),
+            models.Index(fields=['commodity', 'year']),
         ]
         verbose_name = _('Pesticide Use')
         verbose_name_plural = _('Pesticide Uses')
