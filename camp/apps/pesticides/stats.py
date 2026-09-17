@@ -60,7 +60,7 @@ def by_county(uses, year, lbs_field='lbs_chemical'):
         uses.filter(year=year)
         .values('county_id', 'county__name', 'county__slug')
         .annotate(**_totals(lbs_field))
-        .order_by('-lbs')
+        .order_by(F('lbs').desc(nulls_last=True), 'county__name')
     )
     return [
         {
@@ -98,10 +98,10 @@ def top_related(uses, year, field, lbs_field='lbs_chemical', limit=10):
     if year is None:
         return []
     rows = list(
-        uses.filter(year=year, **{f'{field}__isnull': False})
+        uses.filter(year=year, **{f'{field}__isnull': False, f'{lbs_field}__isnull': False})
         .values(field)
         .annotate(lbs=Sum(lbs_field))
-        .order_by('-lbs')[:limit]
+        .order_by(F('lbs').desc(nulls_last=True), field)[:limit]
     )
     model = PesticideUse._meta.get_field(field).related_model
     objects = model.objects.in_bulk([row[field] for row in rows])

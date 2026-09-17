@@ -80,6 +80,12 @@ class Chemical(TimeStampedModel):
         return self.Category.TOXIC_AIR_CONTAMINANT in (self.categories or [])
 
     @property
+    def other_categories(self):
+        """Categories not already expressed by the Prop 65 / CARB TAC badges."""
+        implied = self.PROP65_CATEGORIES | {self.Category.TOXIC_AIR_CONTAMINANT}
+        return [c for c in (self.categories or []) if c not in implied]
+
+    @property
     def is_iarc_concern(self):
         return self.iarc_group in self.IARC_CONCERN_GROUPS
 

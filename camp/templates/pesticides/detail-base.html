@@ -23,8 +23,8 @@
     <h2 class="title is-4">Confirmed applications <small class="has-text-grey is-size-6">Pesticide Use Reporting (PUR)</small></h2>
     {% if by_year %}
         <div class="columns">
-            <div class="column">{% include 'pesticides/includes/by-year-table.html' %}</div>
-            <div class="column">
+            <div class="column is-4-desktop">{% include 'pesticides/includes/by-year-table.html' %}</div>
+            <div class="column is-8-desktop">
                 {% if by_county %}
                     {% include 'pesticides/includes/county-map.html' %}
                     {% include 'pesticides/includes/by-county-table.html' %}

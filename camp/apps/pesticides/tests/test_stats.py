@@ -55,6 +55,17 @@ class StatsTests(TestCase):
         assert [(r.obj.name, r.lbs) for r in rows] == [('ALMOND', 130.0), ('GRAPE', 50.0)]
         assert isinstance(rows[0].obj, Commodity)
 
+    def test_top_related_ignores_rows_with_unknown_pounds(self):
+        # PUR reports confidential active ingredients with no pounds; a NULL sum
+        # must not float to the top of a ranking.
+        secret = Chemical.objects.create(chem_code=9999, name='AI IS CONFIDENTIAL')
+        PesticideUse.objects.create(
+            year=2023, use_no=99, county_id=9001, chemical=secret, commodity_id=1,
+            lbs_chemical=None, application_date='2023-09-01',
+        )
+        rows = stats.top_related(PesticideUse.objects.all(), 2023, 'chemical')
+        assert [r.obj.name for r in rows] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
+
     def test_top_related_respects_limit(self):
         rows = stats.top_related(PesticideUse.objects.all(), 2023, 'chemical', limit=2)
         assert [r.obj.name for r in rows] == ['SULFUR', 'GLYPHOSATE']

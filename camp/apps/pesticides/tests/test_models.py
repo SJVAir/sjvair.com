@@ -25,6 +25,13 @@ class ChemicalClassificationTests(TestCase):
         chem.iarc_group = Chemical.IARCGroup.GROUP_3
         assert chem.is_of_concern is False
 
+    def test_other_categories_excludes_badge_implied_ones(self):
+        chlorpyrifos = Chemical.objects.get(pk=2)   # TAC + cholinesterase inhibitor
+        assert chlorpyrifos.other_categories == ['cholinesterase_inhibitor']
+        glyphosate = Chemical.objects.get(pk=1)     # carcinogen only
+        assert glyphosate.other_categories == []
+        assert Chemical.objects.get(pk=3).other_categories == []
+
     def test_comptox_url(self):
         assert Chemical.objects.get(pk=1).comptox_url == 'https://comptox.epa.gov/dashboard/chemical/details/DTXSID1024143'
         assert Chemical.objects.get(pk=2).comptox_url is None

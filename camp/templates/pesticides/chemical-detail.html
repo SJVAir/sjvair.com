@@ -9,5 +9,5 @@
 {% endblock %}
 {% block badges %}
     {% include 'pesticides/includes/classification-badges.html' with chemical=object %}
-    {% for category in object.categories %}<a class="tag" href="{% url 'pesticides:chemical-list' %}?category={{ category }}">{{ category|category_label }}</a>{% endfor %}
+    {% for category in object.other_categories %}<a class="tag" href="{% url 'pesticides:chemical-list' %}?category={{ category }}">{{ category|category_label }}</a>{% endfor %}
 {% endblock %}

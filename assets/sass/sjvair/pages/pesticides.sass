@@ -5,9 +5,12 @@ body.pesticides
             margin-bottom: 0
         h1 a
             font-weight: 700
+            text-decoration: none
         .explorer-nav.tabs
             margin-top: $size-6
             margin-bottom: 0
+            a
+                text-decoration: none
             li.is-active a
                 color: $primary
                 background-color: $white
@@ -59,6 +62,9 @@ body.pesticides
                     @extend .has-text-link
         tbody td
             vertical-align: middle
+        td .tags
+            flex-wrap: nowrap
+            margin-bottom: 0
 
     .stat-row
         .heading
@@ -89,17 +95,38 @@ body.pesticides
 
     .leaderboard-list
         margin: 0
-        padding-left: 1.75em
+        padding-left: 0
+        list-style: none
+        counter-reset: rank
         li
+            display: flex
+            align-items: baseline
+            gap: 0.6rem
             padding: 0.4em 0
             border-bottom: 1px solid $grey-lightest
-            &::marker
+            // Flex items lose their list marker, so number them with a counter.
+            &::before
+                counter-increment: rank
+                content: counter(rank) "."
+                flex: 0 0 1.6em
+                text-align: right
                 color: $primary
                 font-weight: 600
+                font-variant-numeric: tabular-nums
             &:last-child
                 border-bottom: none
+            .entry
+                flex: 1 1 auto
+                min-width: 0
+                .tags
+                    display: inline-flex
+                    flex-wrap: wrap
+                    vertical-align: middle
+                    margin-bottom: 0
             .lbs
                 @extend .has-text-grey
+                flex: 0 0 auto
+                white-space: nowrap
                 font-variant-numeric: tabular-nums
 
     .county-map

@@ -6,9 +6,11 @@
         <ol class="leaderboard-list">
             {% for row in rows %}
             <li>
-                <a href="{{ row.obj.get_absolute_url }}">{{ row.obj.name }}</a>
-                {% if kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
-                <span class="lbs is-pulled-right">{{ row.lbs|lbs }} lbs</span>
+                <span class="entry">
+                    <a href="{{ row.obj.get_absolute_url }}">{{ row.obj.name }}</a>
+                    {% if kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
+                </span>
+                <span class="lbs">{{ row.lbs|lbs }} lbs</span>
             </li>
             {% endfor %}
         </ol>

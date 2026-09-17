@@ -32,8 +32,8 @@
                         <td><a href="{{ chemical.get_absolute_url }}">{{ chemical.name }}</a></td>
                         <td>
                             <div class="tags">
-                                {% include 'pesticides/includes/classification-badges.html' %}
-                                {% for category in chemical.categories %}
+                                {% include 'pesticides/includes/classification-badges.html' with chemical=chemical hide_iarc=True %}
+                                {% for category in chemical.other_categories %}
                                     <a class="tag" href="{% url 'pesticides:chemical-list' %}?category={{ category }}">{{ category|category_label }}</a>
                                 {% endfor %}
                             </div>
