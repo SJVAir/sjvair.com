@@ -7,11 +7,13 @@ from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
 from django.core.cache import cache
+from django.core.paginator import Paginator
 from django.db.models import Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.http import Http404
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils.functional import cached_property
 
 import vanilla
 
@@ -612,6 +614,23 @@ RECORDS_DEFAULT_SORT = '-date'
 RECORDS_TOTALS_TTL = 60 * 10
 
 
+class RecordsPaginator(Paginator):
+    """
+    `Paginator.count` normally runs its own COUNT(*) query. `RecordsBrowser`
+    already has the row count from `get_totals()` (cached, computed once per
+    filter set), so this takes it as a forced value instead of querying again.
+    """
+    def __init__(self, *args, count=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._forced_count = count
+
+    @cached_property
+    def count(self):
+        if self._forced_count is not None:
+            return self._forced_count
+        return super().count
+
+
 class RecordsBrowser(vanilla.ListView):
     """
     Filterable, paginated browser of individual PesticideUse records, with
@@ -670,9 +689,20 @@ class RecordsBrowser(vanilla.ListView):
         return Region.objects.filter(type=Region.Type.COUNTY, slug=slug).select_related('boundary').first()
 
     def _get_point_and_radius(self):
+        """
+        lat/lng come off `RecordsFilterForm`'s FloatFields, which already
+        reject `nan`/`inf` strings during is_valid() -- that's what keeps
+        GEOS from being handed a non-finite coordinate below. Range-check
+        the parsed floats the same way the sections API does
+        (camp/api/v2/pesticides/sections.py) so an out-of-range lat/lng
+        (e.g. lat=200) is treated as "no point" rather than reaching Point().
+        An off-list radius is clamped to 1 mile.
+        """
         data = self.form.cleaned_data
         lat, lng = data.get('lat'), data.get('lng')
         if lat is None or lng is None:
+            return None, None
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
             return None, None
         try:
             radius = int(data.get('radius') or 1)
@@ -687,7 +717,13 @@ class RecordsBrowser(vanilla.ListView):
             return PesticideUse.objects.none()
 
         data = self.form.cleaned_data
-        queryset = PesticideUse.objects.select_related('county', 'mtrs', 'chemical', 'product', 'commodity')
+        # Deliberately unjoined -- see get_paginator()/paginate_queryset() below:
+        # with the county/date filters here, Postgres badly misestimates the
+        # matching row count and picks nested-loop joins across all matching
+        # rows before the top-N sort/limit, even though only a page's worth
+        # ever gets rendered. Ordering/filtering pks first and hydrating just
+        # the page's objects afterward avoids that.
+        queryset = PesticideUse.objects.all()
 
         if data.get('start'):
             queryset = queryset.filter(application_date__gte=data['start'])
@@ -731,6 +767,25 @@ class RecordsBrowser(vanilla.ListView):
             expr = F(sort_field).asc(nulls_last=True)
             queryset = queryset.order_by(expr, 'pk')
         return queryset
+
+    def get_paginator(self, queryset, page_size):
+        # Reuse the cached totals count instead of a second COUNT(*) query.
+        return RecordsPaginator(queryset, page_size, count=self.get_totals()['applications'])
+
+    def paginate_queryset(self, queryset, page_size):
+        """
+        `queryset` here is unjoined (see get_filtered_queryset()). Evaluating
+        the page slice pulls just that page's pks/local columns, then a
+        second query hydrates the related objects for those specific rows --
+        two cheap queries instead of one that joins across every matching row.
+        """
+        page = super().paginate_queryset(queryset, page_size)
+        page_pks = [obj.pk for obj in page.object_list]
+        objects = PesticideUse.objects.select_related(
+            'county', 'mtrs', 'chemical', 'product', 'commodity',
+        ).in_bulk(page_pks)
+        page.object_list = [objects[pk] for pk in page_pks if pk in objects]
+        return page
 
     def _totals_cache_key(self):
         data = self.form.cleaned_data

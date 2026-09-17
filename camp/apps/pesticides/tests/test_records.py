@@ -1,7 +1,9 @@
 from datetime import date
 
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideUse, Product
@@ -91,3 +93,24 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
     def test_nav_has_records(self):
         html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
         assert reverse('pesticides:records') in html
+
+    def test_page_is_hydrated_without_a_query_per_row(self):
+        # Two-step hydration (unjoined page of pks, then one select_related
+        # in_bulk() for that page) means the query count shouldn't grow with
+        # the number of rows on the page -- a per-row N+1 would blow well
+        # past this bound.
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(self.url, {'county': 'fresno'})
+        assert len(ctx.captured_queries) <= 25
+        objects = response.context['object_list']
+        assert len(objects) == 4
+        # The hydrated objects carry their joined relations already fetched.
+        for use in objects:
+            assert use.county is not None or use.county_id is None
+
+    def test_out_of_range_coordinates_ignored(self):
+        response = self.client.get(self.url, {'lat': 200, 'lng': -119.79, 'radius': 1})
+        assert response.status_code == 200
+        assert self.pks(response) == [6, 5, 4, 3, 2, 1]
+        assert response.context['map_config']['radius'] == ''
+        assert [f['label'] for f in response.context['active_filters']] == []
