@@ -1,0 +1,61 @@
+{% extends 'admin/reports/base.html' %}
+{% load humanize %}
+
+{% block filters %}
+<label>Coverage radius (m) <input type="number" name="radius" value="{{ radius }}" min="0" step="100"></label>
+<label><input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %}> Include hidden monitors</label>
+<button type="submit">Apply</button>
+{% endblock %}
+
+{% block report %}
+{% if not ces_version %}
+<p class="errornote">No CalEnviroScreen data loaded. Run the CES import first.</p>
+{% else %}
+<p>Source: {{ ces_version }}. "Covered" means within {{ radius|intcomma }} m of a monitor.</p>
+{% endif %}
+
+<div class="module">
+    <table>
+        <caption>By county</caption>
+        <thead>
+            <tr>
+                <th>County</th><th>Monitors</th><th>Population</th><th>Per 10k</th>
+                <th>DAC tracts</th><th>Monitors in DAC</th><th>DAC population</th><th>DAC pop. covered</th><th>Covered %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <th>{{ row.county }}</th>
+                <td>{{ row.monitors|intcomma }}</td>
+                <td>{{ row.population|intcomma }}</td>
+                <td>{{ row.per_10k|default_if_none:"—" }}</td>
+                <td>{{ row.dac_tracts|intcomma }}</td>
+                <td>{{ row.dac_monitors|intcomma }}</td>
+                <td>{{ row.dac_population|intcomma }}</td>
+                <td>{{ row.dac_population_covered|intcomma }}</td>
+                <td>{{ row.dac_covered_pct|default_if_none:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>By CES score percentile</caption>
+        <thead><tr><th>Percentile</th><th>Tracts</th><th>Population</th><th>Monitors</th><th>Per 10k</th></tr></thead>
+        <tbody>
+            {% for row in percentile_bands %}
+            <tr>
+                <th>{{ row.band }}</th>
+                <td>{{ row.tracts|intcomma }}</td>
+                <td>{{ row.population|intcomma }}</td>
+                <td>{{ row.monitors|intcomma }}</td>
+                <td>{{ row.per_10k|default_if_none:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

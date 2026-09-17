@@ -1,11 +1,14 @@
 from datetime import timedelta
 
-from django.db.models import Count, Q
+from django.contrib.gis.db.models.functions import Centroid
+from django.contrib.gis.measure import D
+from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.db.models.functions import TruncQuarter
 from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.alerts.models import Subscription
+from camp.apps.ces.models import CES4, CES5
 from camp.apps.monitors.models import Monitor
 from camp.apps.reports.base import BaseReport, register
 from camp.utils.counties import County
@@ -309,4 +312,149 @@ class DegradedMonitors(BaseReport):
             'monitor_type': self.monitor_type,
             'types': [(cls.monitor_type, type_label(cls)) for cls in monitor_types()],
             'include_hidden': self.include_hidden,
+        }
+
+
+def per_10k(monitors, population):
+    if not population:
+        return None
+    return round(monitors / population * 10000, 2)
+
+
+@register
+class Coverage(BaseReport):
+    slug = 'coverage'
+    title = 'Coverage and Equity'
+    description = 'Monitors relative to population and disadvantaged-community (SB535 DAC) census tracts, from the newest CalEnviroScreen data loaded.'
+    template_name = 'admin/reports/coverage.html'
+
+    DEFAULT_RADIUS = 1000
+    BANDS = [('0–25', 0, 25), ('25–50', 25, 50), ('50–75', 50, 75), ('75–100', 75, 100.0001)]
+
+    @property
+    def include_hidden(self):
+        return self.request.GET.get('include_hidden') == '1'
+
+    @property
+    def radius(self):
+        try:
+            return max(0, int(self.request.GET.get('radius', self.DEFAULT_RADIUS)))
+        except (TypeError, ValueError):
+            return self.DEFAULT_RADIUS
+
+    def monitors(self):
+        queryset = Monitor.objects.filter(position__isnull=False)
+        if not self.include_hidden:
+            queryset = queryset.filter(is_hidden=False)
+        return queryset
+
+    def ces(self):
+        """(model, version) for the newest CES data present, or (None, None)."""
+        if not hasattr(self, '_ces'):
+            self._ces = (None, None)
+            for model in (CES5, CES4):
+                version = (model._base_manager
+                    .order_by('-boundary__version')
+                    .values_list('boundary__version', flat=True)
+                    .first())
+                if version:
+                    self._ces = (model, version)
+                    break
+        return self._ces
+
+    def tracts(self):
+        model, version = self.ces()
+        if model is None:
+            return None
+        return model._base_manager.filter(boundary__version=version)
+
+    def covered(self, tracts):
+        """Annotate tracts with whether any monitor is within `radius` meters."""
+        nearby = self.monitors().filter(
+            position__distance_lte=(OuterRef('boundary__geometry'), D(m=self.radius))
+        )
+        return tracts.annotate(covered=Exists(nearby))
+
+    def get_rows(self):
+        tracts = self.tracts()
+        monitor_counts = {
+            item['county']: item
+            for item in (self.monitors()
+                .annotate(in_dac=Exists(
+                    tracts.filter(dac_sb535=True, boundary__geometry__contains=OuterRef('position'))
+                ) if tracts is not None else Exists(Monitor.objects.none()))
+                .values('county')
+                .annotate(monitors=Count('pk'), dac_monitors=Count('pk', filter=Q(in_dac=True))))
+        }
+
+        rows = []
+        for county in County.names:
+            counts = monitor_counts.get(county, {'monitors': 0, 'dac_monitors': 0})
+            stats = {'population': 0, 'dac_tracts': 0, 'dac_population': 0, 'dac_population_covered': 0}
+            if tracts is not None:
+                county_tracts = (self.covered(tracts)
+                    .annotate(centroid=Centroid('boundary__geometry'))
+                    .filter(centroid__within=County.counties[county]))
+                # The total is aliased to avoid shadowing the `population` field
+                # for the DAC aggregates resolved alongside it.
+                stats = county_tracts.aggregate(
+                    total_population=Sum('population', default=0),
+                    dac_tracts=Count('pk', filter=Q(dac_sb535=True)),
+                    dac_population=Sum('population', filter=Q(dac_sb535=True), default=0),
+                    dac_population_covered=Sum('population', filter=Q(dac_sb535=True, covered=True), default=0),
+                )
+                stats['population'] = stats.pop('total_population')
+            rows.append(self.build_row(county, counts['monitors'], counts['dac_monitors'], stats))
+
+        rows.append(self.build_row(
+            'All counties',
+            sum(row['monitors'] for row in rows),
+            sum(row['dac_monitors'] for row in rows),
+            {key: sum(row[key] for row in rows) for key in ('population', 'dac_tracts', 'dac_population', 'dac_population_covered')},
+        ))
+        return rows
+
+    def build_row(self, county, monitors, dac_monitors, stats):
+        dac_population = stats['dac_population']
+        covered = stats['dac_population_covered']
+        return {
+            'county': county,
+            'monitors': monitors,
+            'population': stats['population'],
+            'per_10k': per_10k(monitors, stats['population']),
+            'dac_tracts': stats['dac_tracts'],
+            'dac_monitors': dac_monitors,
+            'dac_population': dac_population,
+            'dac_population_covered': covered,
+            'dac_covered_pct': round(covered / dac_population * 100, 1) if dac_population else None,
+        }
+
+    def get_percentile_bands(self):
+        tracts = self.tracts()
+        if tracts is None:
+            return []
+        rows = []
+        for label, low, high in self.BANDS:
+            band = tracts.filter(ci_score_p__gte=low, ci_score_p__lt=high)
+            stats = band.aggregate(tracts=Count('pk'), total_population=Sum('population', default=0))
+            monitors = self.monitors().filter(
+                Exists(band.filter(boundary__geometry__contains=OuterRef('position')))
+            ).count()
+            rows.append({
+                'band': label,
+                'tracts': stats['tracts'],
+                'population': stats['total_population'],
+                'monitors': monitors,
+                'per_10k': per_10k(monitors, stats['total_population']),
+            })
+        return rows
+
+    def get_context_data(self, **kwargs):
+        model, version = self.ces()
+        return {
+            **super().get_context_data(**kwargs),
+            'ces_version': f'{model.__name__} ({version})' if model else None,
+            'radius': self.radius,
+            'include_hidden': self.include_hidden,
+            'percentile_bands': self.get_percentile_bands(),
         }

@@ -150,11 +150,11 @@ boundaries live in `regions.Boundary` with `Region.type == 'tract'`.
 **Spatial work:** monitor-in-tract is `Boundary.geometry.contains(
 monitor.position)`; "within radius" is a `dwithin` between the tract
 geometry and a union of monitor points, or equivalently an `exists`
-subquery per tract. County assignment for tracts uses the county
-`Region` boundaries via centroid containment, not `Monitor.county`,
-because tracts are not monitors. All of this is a handful of PostGIS
-queries over a few hundred monitors and a few thousand tracts. No
-caching for now; add it if the page proves slow.
+subquery per tract. County assignment for tracts uses the in-process
+county polygons in `camp/utils/counties.py` (the same ones
+`Monitor.save()` uses), via centroid containment. All of this is a
+handful of PostGIS queries over a few hundred monitors and a few
+thousand tracts. No caching for now; add it if the page proves slow.
 
 ### 3. Fleet Health (ops)
 
