@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Commands from the worktree root inside Docker: `docker compose run --rm test pytest <path> -q`; `docker compose run --rm web invoke styles` after sass edits (commit `dist/css/style.css` with the sass).
+- Commands from the worktree root inside Docker: `docker compose run --rm test pytest <path> -q`; `docker compose run --rm web invoke styles` after sass edits (`dist/css/style.css` is git-ignored; do not try to commit it).
 - Tests: `django.test.TestCase`, fixtures (`pesticides-explorer`), plain `assert`; aggregate-reading classes use `RollupTestMixin`. Fixture: counties 9001 Fresno (square lon −120.5..−119.0, lat 36.0..37.0, slug `fresno`) / 9002 Kern (lon −120.0..−118.0, lat 35.0..35.9, slug `kern`); MTRS 9101 (lon −119.80..−119.78, lat 36.70..36.72, inside Fresno) / 9102 (lon −119.05..−119.03, lat 35.35..35.37, inside Kern); uses 1,2,4,6 (2023 Fresno/9101: 100+50+20+500 lbs, months 3,4,6,8), 3,5 (2023 Kern/9102), 7,9 (2022 Fresno), 8 (2022 Kern); notices 1 (past, Fresno), 2 (2099, Fresno), 3 (2099, Kern). Fixture notices have no `point`/`mtrs`; tests set them with `update()`.
 - `SqidsField` is not a DB column: resolve sqids only via `Model.objects.filter(sqid=...)`.
 - Notices: "active" = `stats._upcoming` (scheduled ≥ now − 4 days). Never a "next N days" window. Every place page links to SprayDays sign-up (`https://spraydays.cdpr.ca.gov/`). No alert features of our own.
