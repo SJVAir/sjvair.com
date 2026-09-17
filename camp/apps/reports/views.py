@@ -136,3 +136,67 @@ class NetworkOverview(BaseReport):
             'tiles': self.get_tiles(),
             'deployments': self.get_deployments(),
         }
+
+
+@register
+class FleetHealth(BaseReport):
+    slug = 'fleet-health'
+    title = 'Fleet Health'
+    description = 'How recently each monitor type reported, and the current health grade distribution for dual-channel monitors.'
+    template_name = 'admin/reports/fleet_health.html'
+
+    @property
+    def county(self):
+        county = self.request.GET.get('county', '')
+        return county if county in County.names else ''
+
+    def scoped(self, queryset):
+        if self.county:
+            queryset = queryset.filter(county=self.county)
+        return queryset
+
+    def get_rows(self):
+        now = timezone.now()
+        hour = now - timedelta(hours=1)
+        day = now - timedelta(days=1)
+        week = now - timedelta(days=7)
+        visible = Q(is_hidden=False)
+
+        rows = []
+        for cls in monitor_types():
+            stats = self.scoped(cls.objects.get_queryset().with_last_entry_timestamp()).aggregate(
+                active=Count('pk', filter=visible & Q(last_entry_timestamp__gte=hour)),
+                silent_1d=Count('pk', filter=visible & Q(last_entry_timestamp__lt=hour, last_entry_timestamp__gte=day)),
+                silent_7d=Count('pk', filter=visible & Q(last_entry_timestamp__lt=day, last_entry_timestamp__gte=week)),
+                silent_long=Count('pk', filter=visible & Q(last_entry_timestamp__lt=week)),
+                never=Count('pk', filter=visible & Q(last_entry_timestamp__isnull=True)),
+                hidden=Count('pk', filter=Q(is_hidden=True)),
+                total=Count('pk'),
+            )
+            rows.append({'type': type_label(cls), **stats})
+        return rows
+
+    def get_grades(self):
+        eligible = Monitor.objects.get_for_health_checks()
+        rows = []
+        for cls in monitor_types():
+            queryset = self.scoped(eligible.filter(**cls.health_check_queryset_filter()))
+            if not queryset.exists():
+                continue
+            stats = queryset.aggregate(
+                A=Count('pk', filter=Q(health__score=3)),
+                B=Count('pk', filter=Q(health__score=2)),
+                C=Count('pk', filter=Q(health__score=1)),
+                F=Count('pk', filter=Q(health__score=0)),
+                none=Count('pk', filter=Q(health__isnull=True)),
+            )
+            rows.append({'type': type_label(cls), **stats})
+        return rows
+
+    def get_context_data(self, **kwargs):
+        return {
+            **super().get_context_data(**kwargs),
+            'counties': County.names,
+            'county': self.county,
+            'grades': self.get_grades(),
+        }

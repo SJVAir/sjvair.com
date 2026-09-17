@@ -11,6 +11,7 @@ from camp.apps.entries.models import PM25
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.qaqc.models import HealthCheck
 
 
 class StaffClientMixin:
@@ -132,3 +133,54 @@ class NetworkOverviewTests(StaffClientMixin, TestCase):
         response = self.client.get(reverse('reports:network-overview'), {'format': 'csv'})
         header = response.content.decode().splitlines()[0]
         assert header == 'type,Fresno,Kern,Kings,Madera,Merced,San Joaquin,Stanislaus,Tulare,total'
+
+
+def give_health(monitor, score, flatline_a=None, flatline_b=None):
+    check = HealthCheck.objects.create(
+        monitor=monitor, hour=timezone.now().replace(minute=0, second=0, microsecond=0),
+        score=score, sanity_flatline_a=flatline_a, sanity_flatline_b=flatline_b,
+    )
+    monitor.health = check
+    monitor.save()
+    return check
+
+
+class FleetHealthTests(StaffClientMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        now = timezone.now()
+        self.active = PurpleAir.objects.create(name='Active', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        self.day = PurpleAir.objects.create(name='Day', sensor_id=2, position=Point(-119.75, 36.75), location='outside')
+        self.week = PurpleAir.objects.create(name='Week', sensor_id=3, position=Point(-119.0, 35.4), location='outside')
+        self.long = PurpleAir.objects.create(name='Long', sensor_id=4, position=Point(-119.0, 35.4), location='outside')
+        self.never = PurpleAir.objects.create(name='Never', sensor_id=5, position=Point(-119.0, 35.4), location='outside')
+        self.hidden = PurpleAir.objects.create(name='Hidden', sensor_id=6, position=Point(-119.0, 35.4), location='outside', is_hidden=True)
+        touch(self.active, now - timedelta(minutes=5))
+        touch(self.day, now - timedelta(hours=6))
+        touch(self.week, now - timedelta(days=3))
+        touch(self.long, now - timedelta(days=30))
+        touch(self.hidden, now - timedelta(minutes=5))
+        give_health(self.active, 3)
+        give_health(self.day, 1)
+
+    def test_silence_buckets(self):
+        response = self.client.get(reverse('reports:fleet-health'))
+        assert response.status_code == 200
+        row = {r['type']: r for r in response.context['rows']}['PurpleAir']
+        assert row == {
+            'type': 'PurpleAir', 'active': 1, 'silent_1d': 1, 'silent_7d': 1,
+            'silent_long': 1, 'never': 1, 'hidden': 1, 'total': 6,
+        }
+
+    def test_county_filter(self):
+        response = self.client.get(reverse('reports:fleet-health'), {'county': 'Fresno'})
+        row = {r['type']: r for r in response.context['rows']}['PurpleAir']
+        assert row['active'] == 1
+        assert row['silent_1d'] == 1
+        assert row['total'] == 2
+
+    def test_grade_distribution(self):
+        response = self.client.get(reverse('reports:fleet-health'))
+        grades = {g['type']: g for g in response.context['grades']}
+        assert grades['PurpleAir'] == {'type': 'PurpleAir', 'A': 1, 'B': 0, 'C': 1, 'F': 0, 'none': 4}
+        assert 'BAM1022' not in grades
