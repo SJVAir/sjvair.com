@@ -23,9 +23,41 @@ body.pesticides
                     background-color: rgba($black, 0.08)
                     border-bottom-color: rgba($white, 0.5)
 
+        .year-picker
+            display: flex
+            align-items: center
+            gap: 0.75rem
+            margin-top: $size-6
+            .year-picker-label
+                @extend .is-size-7
+                color: rgba($white, 0.85)
+                text-transform: uppercase
+                letter-spacing: 0.04em
+            .buttons
+                margin-bottom: 0
+            .button
+                text-decoration: none
+                background-color: rgba($white, 0.12)
+                border-color: rgba($white, 0.35)
+                color: $white
+                &:hover
+                    background-color: rgba($white, 0.22)
+                &.is-selected
+                    background-color: $white
+                    border-color: $white
+                    color: $primary
+
     .breadcrumbs
         background-color: $grey-lightest
         padding: $size-6 0px
+
+    .by-year-table
+        tr.is-selected
+            background-color: $primary
+            color: $white
+            a
+                color: $white
+                font-weight: 600
 
     .explorer-filters
         padding: 1.25rem

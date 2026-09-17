@@ -23,14 +23,14 @@
                         <th>{% sort_link 'reg' 'Reg. number' %}</th>
                         <th>Flags</th>
                         <th class="has-text-right">{% sort_link 'chemicals' 'Active ingredients' %}</th>
-                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}{% if latest_year %} <small>({{ latest_year }})</small>{% endif %}</th>
+                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}{% if year %} <small>({{ year }})</small>{% endif %}</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for product in object_list %}
                     <tr>
-                        <td><a href="{{ product.get_absolute_url }}">{{ product.name }}</a></td>
-                        <td><a href="{{ product.get_absolute_url }}">{{ product.reg_number }}</a></td>
+                        <td><a href="{{ product.get_absolute_url }}{{ year_qs }}">{{ product.name }}</a></td>
+                        <td><a href="{{ product.get_absolute_url }}{{ year_qs }}">{{ product.reg_number }}</a></td>
                         <td>
                             <div class="tags">
                                 {% if product.fumigant %}<a class="tag is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true">Fumigant</a>{% endif %}

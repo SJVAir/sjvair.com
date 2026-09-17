@@ -19,7 +19,7 @@
     <div class="level-item has-text-centered"><div><p class="heading">Chemicals</p><p class="title">{{ chemical_count|lbs }}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Products</p><p class="title">{{ product_count|lbs }}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Commodities</p><p class="title">{{ commodity_count|lbs }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Lbs applied{% if latest_year %} in {{ latest_year }}{% endif %}</p><p class="title">{{ total_lbs|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Lbs applied{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ total_lbs|lbs }}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Notices next 7 days</p><p class="title">{{ upcoming_week }}</p></div></div>
 </div>
 
@@ -31,21 +31,21 @@
 
 <div class="columns section-cards">
     <div class="column">
-        <a class="box section-card" href="{% url 'pesticides:chemical-list' %}">
+        <a class="box section-card" href="{% url 'pesticides:chemical-list' %}{{ year_qs }}">
             <h3 class="title is-5">Chemicals</h3>
             <p>Active ingredients, with Prop 65, IARC, and CARB classifications.</p>
             <p class="is-size-7 has-text-grey">Try: <em>glyphosate</em></p>
         </a>
     </div>
     <div class="column">
-        <a class="box section-card" href="{% url 'pesticides:product-list' %}">
+        <a class="box section-card" href="{% url 'pesticides:product-list' %}{{ year_qs }}">
             <h3 class="title is-5">Products</h3>
             <p>Registered formulations, flagged when fumigant or California-restricted.</p>
             <p class="is-size-7 has-text-grey">Try: <em>roundup</em></p>
         </a>
     </div>
     <div class="column">
-        <a class="box section-card" href="{% url 'pesticides:commodity-list' %}">
+        <a class="box section-card" href="{% url 'pesticides:commodity-list' %}{{ year_qs }}">
             <h3 class="title is-5">Commodities</h3>
             <p>Crops and sites pesticides are applied to.</p>
             <p class="is-size-7 has-text-grey">Try: <em>almond</em></p>

@@ -106,6 +106,33 @@ class StatsTests(TestCase):
         assert [r.obj.name for r in data['top_commodities']] == ['GRAPE', 'ALMOND', 'COTTON']
         assert [(r['county_name'], r['lbs']) for r in data['by_county']] == [('Fresno County', 670.0), ('Kern County', 70.0)]
 
+    def test_available_years_and_resolve(self):
+        assert stats.available_years() == [2022, 2023]
+        assert stats.resolve_year('2022') == 2022
+        assert stats.resolve_year('2023') == 2023
+        assert stats.resolve_year('1999') == 2023
+        assert stats.resolve_year('abc') == 2023
+        assert stats.resolve_year(None) == 2023
+        assert stats.year_query(2023) == ''
+        assert stats.year_query(2022) == '?year=2022'
+
+    def test_resolve_year_empty_db(self):
+        PesticideUse.objects.all().delete()
+        assert stats.available_years() == []
+        assert stats.resolve_year('2022') is None
+        assert stats.year_query(None) == ''
+
+    def test_landing_stats_for_an_earlier_year(self):
+        data = stats.landing_stats(2022)
+        assert data['year'] == 2022
+        assert data['latest_year'] == 2023
+        assert data['total_lbs'] == 540.0
+        assert [r.obj.name for r in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
+        assert [(r['county_name'], r['lbs']) for r in data['by_county']] == [('Fresno County', 480.0), ('Kern County', 60.0)]
+        # Cached under its own key; the latest year is untouched.
+        assert cache.get(stats.landing_key(2022)) is not None
+        assert cache.get(stats.landing_key(2023)) is None
+
     def test_landing_stats_cached(self):
         stats.landing_stats()
         Chemical.objects.create(chem_code=1, name='NEW')
@@ -129,6 +156,6 @@ class StatsTests(TestCase):
         assert stats.landing_stats()['chemical_count'] == 4
 
     def test_refresh_pesticide_landing_stats_task_populates_cache(self):
-        cache.delete(stats.LANDING_KEY)
+        cache.delete(stats.landing_key(2023))
         tasks.refresh_pesticide_landing_stats.call_local()
-        assert cache.get(stats.LANDING_KEY) is not None
+        assert cache.get(stats.landing_key(2023)) is not None

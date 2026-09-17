@@ -17,6 +17,7 @@ from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, Pe
 LATEST_YEAR_KEY = 'pesticides:latest-year'
 LANDING_KEY = 'pesticides:landing-stats'
 NOTICE_WINDOW_KEY = 'pesticides:notice-window'
+YEARS_KEY = 'pesticides:years'
 LATEST_YEAR_TTL = 60 * 60
 LANDING_TTL = 60 * 60 * 24
 NOTICE_WINDOW_TTL = 60 * 60
@@ -37,6 +38,37 @@ def years_loaded():
     if data['first'] is None:
         return None
     return (data['first'], data['last'])
+
+
+def available_years():
+    """Ascending list of years with PUR data, cached alongside latest_year."""
+    value = cache.get(YEARS_KEY, _MISSING)
+    if value is _MISSING:
+        value = list(PesticideUse.objects.order_by('year').values_list('year', flat=True).distinct())
+        cache.set(YEARS_KEY, value, LATEST_YEAR_TTL)
+    return value
+
+
+def resolve_year(requested):
+    """
+    The year a page should show: the requested one if it has data, otherwise
+    the latest. None only when no data is loaded at all.
+    """
+    years = available_years()
+    if not years:
+        return None
+    try:
+        year = int(requested)
+    except (TypeError, ValueError):
+        return years[-1]
+    return year if year in years else years[-1]
+
+
+def year_query(year):
+    """Query string that pins links to a non-default year ('' for the latest)."""
+    if year is None or year == latest_year():
+        return ''
+    return f'?year={year}'
 
 
 def _totals(lbs_field):
@@ -176,13 +208,17 @@ def _top_chemicals_of_concern(top_chemicals, year, limit=10):
     return rows[:limit]
 
 
-def _build_landing_stats():
-    year = latest_year()
+def landing_key(year):
+    return f'{LANDING_KEY}:{year}'
+
+
+def _build_landing_stats(year):
     uses = PesticideUse.objects.all()
     now = timezone.now()
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50)
     return {
-        'latest_year': year,
+        'year': year,
+        'latest_year': latest_year(),
         'years': years_loaded(),
         'chemical_count': Chemical.objects.count(),
         'product_count': Product.objects.count(),
@@ -199,20 +235,29 @@ def _build_landing_stats():
     }
 
 
-def landing_stats():
-    data = cache.get(LANDING_KEY)
+def landing_stats(year=None):
+    """Landing-page numbers for `year` (default: latest), cached per year."""
+    if year is None:
+        year = latest_year()
+    key = landing_key(year)
+    data = cache.get(key)
     if data is None:
-        data = _build_landing_stats()
-        cache.set(LANDING_KEY, data, LANDING_TTL)
+        data = _build_landing_stats(year)
+        cache.set(key, data, LANDING_TTL)
     return data
 
 
 def refresh_landing_stats():
-    """Rebuild and cache landing stats and their dependent cached values."""
+    """
+    Reset the cached year facts and rebuild the latest year's landing stats.
+    Older years are rebuilt lazily on request; their data doesn't change.
+    """
     cache.delete(LATEST_YEAR_KEY)
+    cache.delete(YEARS_KEY)
     cache.delete(NOTICE_WINDOW_KEY)
-    latest_year()
+    year = latest_year()
+    available_years()
     notice_window()
-    data = _build_landing_stats()
-    cache.set(LANDING_KEY, data, LANDING_TTL)
+    data = _build_landing_stats(year)
+    cache.set(landing_key(year), data, LANDING_TTL)
     return data

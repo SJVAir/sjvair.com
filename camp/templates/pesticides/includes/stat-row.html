@@ -1,10 +1,10 @@
 {% load pesticides_explorer %}
 <div class="level stat-row box">
     <div class="level-item has-text-centered">
-        <div><p class="heading">Lbs applied{% if latest_year %} in {{ latest_year }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
+        <div><p class="heading">Lbs applied{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
     </div>
     <div class="level-item has-text-centered">
-        <div><p class="heading">Applications{% if latest_year %} in {{ latest_year }}{% endif %}</p><p class="title">{{ totals.applications|lbs }}</p></div>
+        <div><p class="heading">Applications{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ totals.applications|lbs }}</p></div>
     </div>
     <div class="level-item has-text-centered">
         <div><p class="heading">Counties</p><p class="title">{{ totals.counties }} <span class="is-size-5 has-text-grey">of {{ county_total }}</span></p></div>

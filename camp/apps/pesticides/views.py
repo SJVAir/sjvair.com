@@ -19,6 +19,16 @@ from camp.apps.pesticides.models import (
 # dict value / membership check reads as if it might be raised.
 MISSING = object()
 
+def year_context(year):
+    """Context every explorer page needs for the year picker and year-pinned links."""
+    return {
+        'year': year,
+        'latest_year': stats.latest_year(),
+        'year_options': stats.available_years(),
+        'year_qs': stats.year_query(year),
+    }
+
+
 # Public pages link developers to the documentation, never to raw endpoints.
 API_DOCS_URL = '/api/2.0/docs/#tag/pesticides'
 CLIENT_DOCS_URL = 'https://sjvair.github.io/sjvair-python/client/resources/pesticides.html'
@@ -63,7 +73,7 @@ class ExplorerListMixin:
     def dispatch(self, request, *args, **kwargs):
         self.form = self.form_class(request.GET)
         self.form.is_valid()
-        self.latest_year = stats.latest_year()
+        self.year = stats.resolve_year(request.GET.get('year'))
         self.related = self.get_related_objects()
         return super().dispatch(request, *args, **kwargs)
 
@@ -111,7 +121,7 @@ class ExplorerListMixin:
             queryset = queryset.search(query)
         queryset = self.apply_related(queryset)
         queryset = self.apply_filters(queryset, self.form.cleaned_data)
-        queryset = self.annotate_queryset(queryset, self.latest_year)
+        queryset = self.annotate_queryset(queryset, self.year)
         self.sort, field, desc = self.get_sort()
         if field:
             expr = F(field).desc(nulls_last=True) if desc else F(field).asc(nulls_last=True)
@@ -141,8 +151,8 @@ class ExplorerListMixin:
             form=self.form,
             query=self.get_search_query(),
             sort=self.sort,
-            latest_year=self.latest_year,
             result_count=count,
+            **year_context(self.year),
             summary_sentence=self.get_summary_sentence(count),
             related={k: v for k, v in self.related.items() if v is not MISSING},
             section=self.section,
@@ -205,14 +215,16 @@ class Home(vanilla.TemplateView):
     template_name = 'pesticides/home.html'
 
     def get_context_data(self, **kwargs):
-        data = stats.landing_stats()
+        year = stats.resolve_year(self.request.GET.get('year'))
+        data = stats.landing_stats(year)
         county_map = maps.county_map(data['by_county']) if data['by_county'] else None
+        # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
         return super().get_context_data(
             section=None,
             county_map=county_map,
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
-            **data,
+            **{**data, **year_context(year)},
             **kwargs,
         )
 
@@ -324,7 +336,9 @@ class ExplorerDetailMixin:
             'show_pct': show_pct,
             'show_lbs': show_lbs,
             'complete': complete,
-            'show_all_url': reverse(list_url_name) + f'?{param}={self.object.sqid}',
+            'show_all_url': reverse(list_url_name) + f'?{param}={self.object.sqid}' + (
+                f'&year={self.year}' if stats.year_query(self.year) else ''
+            ),
         }
 
     def get_summary_sentence(self, totals, year, top, verb='on'):
@@ -338,22 +352,23 @@ class ExplorerDetailMixin:
         return sentence + '.'
 
     def get_context_data(self, **kwargs):
-        year = stats.latest_year()
+        year = stats.resolve_year(self.request.GET.get('year'))
+        self.year = year
         uses = self.get_uses()
         notices = self.get_notices()
         totals = stats.year_totals(uses, year, self.lbs_field) if year else {'lbs': 0, 'applications': 0, 'counties': 0}
         related_a, related_b = self.get_related(year)
         context = super().get_context_data(
             section=self.section,
-            latest_year=year,
             years=stats.years_loaded(),
+            **year_context(year),
             county_total=stats.SJV_COUNTY_COUNT,
             totals=totals,
             by_year=stats.by_year(uses, self.lbs_field),
             by_county=stats.by_county(uses, year, self.lbs_field) if year else [],
             related_a=related_a,
             related_b=related_b,
-            recent_uses=stats.recent_uses(uses),
+            recent_uses=stats.recent_uses(uses.filter(year=year)) if year else [],
             has_notices=self.has_notices,
             upcoming=stats.upcoming_notices(notices) if self.has_notices else [],
             upcoming_by_county=stats.upcoming_by_county(notices) if self.has_notices else [],

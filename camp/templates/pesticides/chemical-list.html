@@ -23,13 +23,13 @@
                         <th>Categories</th>
                         <th>{% sort_link 'iarc' 'IARC' %}</th>
                         <th class="has-text-right">{% sort_link 'products' 'Products' %}</th>
-                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}{% if latest_year %} <small>({{ latest_year }})</small>{% endif %}</th>
+                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}{% if year %} <small>({{ year }})</small>{% endif %}</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for chemical in object_list %}
                     <tr>
-                        <td><a href="{{ chemical.get_absolute_url }}">{{ chemical.name }}</a></td>
+                        <td><a href="{{ chemical.get_absolute_url }}{{ year_qs }}">{{ chemical.name }}</a></td>
                         <td>
                             <div class="tags">
                                 {% include 'pesticides/includes/classification-badges.html' with chemical=chemical hide_iarc=True %}

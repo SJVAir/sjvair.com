@@ -25,11 +25,12 @@
         {% endblock %}
         <div class="tabs is-boxed explorer-nav">
             <ul>
-                <li class="{% if section == 'chemicals' %}is-active{% endif %}"><a href="{% url 'pesticides:chemical-list' %}">Chemicals</a></li>
-                <li class="{% if section == 'products' %}is-active{% endif %}"><a href="{% url 'pesticides:product-list' %}">Products</a></li>
-                <li class="{% if section == 'commodities' %}is-active{% endif %}"><a href="{% url 'pesticides:commodity-list' %}">Commodities</a></li>
+                <li class="{% if section == 'chemicals' %}is-active{% endif %}"><a href="{% url 'pesticides:chemical-list' %}{{ year_qs }}">Chemicals</a></li>
+                <li class="{% if section == 'products' %}is-active{% endif %}"><a href="{% url 'pesticides:product-list' %}{{ year_qs }}">Products</a></li>
+                <li class="{% if section == 'commodities' %}is-active{% endif %}"><a href="{% url 'pesticides:commodity-list' %}{{ year_qs }}">Commodities</a></li>
             </ul>
         </div>
+        {% include 'pesticides/includes/year-picker.html' %}
     </div>
 </section>
 

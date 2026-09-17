@@ -21,14 +21,14 @@
                     <tr>
                         <th>{% sort_link 'name' 'Commodity' %}</th>
                         <th>{% sort_link 'site' 'Site code' %}</th>
-                        <th class="has-text-right">{% sort_link 'chemicals' 'Chemicals' %}{% if latest_year %} <small>({{ latest_year }})</small>{% endif %}</th>
-                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}{% if latest_year %} <small>({{ latest_year }})</small>{% endif %}</th>
+                        <th class="has-text-right">{% sort_link 'chemicals' 'Chemicals' %}{% if year %} <small>({{ year }})</small>{% endif %}</th>
+                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}{% if year %} <small>({{ year }})</small>{% endif %}</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for commodity in object_list %}
                     <tr>
-                        <td><a href="{{ commodity.get_absolute_url }}">{{ commodity.name }}</a></td>
+                        <td><a href="{{ commodity.get_absolute_url }}{{ year_qs }}">{{ commodity.name }}</a></td>
                         <td>{{ commodity.site_code }}</td>
                         <td class="has-text-right">{{ commodity.chemical_count|default:0 }}</td>
                         <td class="has-text-right">{{ commodity.lbs_applied|lbs }}</td>

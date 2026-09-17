@@ -22,6 +22,24 @@ class ChemicalListTests(TestCase):
         assert response.context['result_count'] == 3
         assert response.context['latest_year'] == 2023
 
+    def test_year_param_switches_the_pounds_column(self):
+        response = self.client.get(self.url, {'year': '2022'})
+        assert response.context['year'] == 2022
+        assert response.context['latest_year'] == 2023
+        assert response.context['year_options'] == [2022, 2023]
+        assert response.context['year_qs'] == '?year=2022'
+        assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
+            ('SULFUR', 400.0), ('GLYPHOSATE', 80.0), ('CHLORPYRIFOS', 60.0),
+        ]
+        html = response.content.decode()
+        assert Chemical.objects.get(pk=1).get_absolute_url() + '?year=2022' in html
+        assert 'year=2022' in html and 'aria-current="page"' in html
+
+    def test_unknown_year_falls_back_to_latest(self):
+        response = self.client.get(self.url, {'year': '1999'})
+        assert response.context['year'] == 2023
+        assert response.context['year_qs'] == ''
+
     def test_default_sort_is_lbs_desc(self):
         response = self.client.get(self.url)
         assert self.names(response) == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
@@ -281,6 +299,18 @@ class ChemicalDetailTests(TestCase):
         assert ctx['upcoming_count'] == 2
         assert ctx['upcoming_by_county'][0]['county_name'] == 'Fresno County'
 
+    def test_year_param_on_detail(self):
+        ctx = self.client.get(self.chemical.get_absolute_url(), {'year': '2022'}).context
+        assert ctx['year'] == 2022
+        assert ctx['totals'] == {'lbs': 80.0, 'applications': 1, 'counties': 1}
+        assert [r['county_name'] for r in ctx['by_county']] == ['Fresno County']
+        assert [r.obj.name for r in ctx['related_b']['rows']] == ['ALMOND']
+        assert [u.pk for u in ctx['recent_uses']] == [7]
+        assert ctx['summary_sentence'] == 'Applied in 1 of 8 SJV counties in 2022, mostly on Almond.'
+        assert ctx['related_b']['show_all_url'].endswith(f'?chemical={self.chemical.sqid}&year=2022')
+        html = self.client.get(self.chemical.get_absolute_url(), {'year': '2022'}).content.decode()
+        assert 'is-selected' in html and 'year=2023' in html
+
     def test_summary_sentence(self):
         ctx = self.client.get(self.chemical.get_absolute_url()).context
         assert ctx['summary_sentence'] == 'Applied in 2 of 8 SJV counties in 2023, mostly on Almond and Grape.'
@@ -297,11 +327,13 @@ class ChemicalDetailTests(TestCase):
         assert Product.objects.get(pk=1).get_absolute_url() in html
 
     def test_query_ceiling(self):
-        # Honest count with the current implementation is 20 (verified
+        # Honest count with the current implementation is 21 (verified
         # query-by-query: every related-object fetch is batched via
         # in_bulk/prefetch/select_related, no N+1s -- 18 base queries plus
-        # the county map's geometry build and the county names lookup).
-        with self.assertNumQueries(20):
+        # the county map's geometry build, the county names lookup, and the
+        # available-years lookup for the year picker; all cached after the
+        # first request).
+        with self.assertNumQueries(21):
             self.client.get(self.chemical.get_absolute_url())
 
     def test_county_map_rendered(self):
@@ -392,6 +424,16 @@ class HomeTests(TestCase):
         self.assertTemplateUsed(response, 'pesticides/home.html')
         assert response.context['latest_year'] == 2023
         assert response.context['total_lbs'] == 740.0
+
+    def test_year_param_on_home(self):
+        response = self.client.get(self.url, {'year': '2022'})
+        assert response.context['year'] == 2022
+        assert response.context['total_lbs'] == 540.0
+        html = response.content.decode()
+        assert 'Fresno County: 480 lbs' in html
+        assert Chemical.objects.get(pk=3).get_absolute_url() + '?year=2022' in html
+        # The caveat still names the latest loaded year.
+        assert 'most recent full year loaded is 2023' in html
 
     def test_leaderboards_link_to_details(self):
         html = self.client.get(self.url).content.decode()
