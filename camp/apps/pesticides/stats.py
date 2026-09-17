@@ -216,14 +216,25 @@ def _build_landing_stats(year):
     uses = PesticideUse.objects.all()
     now = timezone.now()
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50)
+    year_uses = uses.filter(year=year) if year else uses.none()
+    year_totals_ = year_uses.aggregate(
+        lbs=Sum('lbs_chemical'),
+        applications=Count('id'),
+        chemicals=Count('chemical', distinct=True),
+        products=Count('product', distinct=True),
+        commodities=Count('commodity', distinct=True),
+    )
     return {
         'year': year,
         'latest_year': latest_year(),
         'years': years_loaded(),
-        'chemical_count': Chemical.objects.count(),
-        'product_count': Product.objects.count(),
-        'commodity_count': Commodity.objects.count(),
-        'total_lbs': (uses.filter(year=year).aggregate(lbs=Sum('lbs_chemical'))['lbs'] or 0) if year else 0,
+        # Everything below is for the selected year, so the stat row reads
+        # consistently next to the year picker.
+        'chemical_count': year_totals_['chemicals'] or 0,
+        'product_count': year_totals_['products'] or 0,
+        'commodity_count': year_totals_['commodities'] or 0,
+        'applications': year_totals_['applications'] or 0,
+        'total_lbs': year_totals_['lbs'] or 0,
         'upcoming_week': PesticideNotice.objects.filter(
             scheduled_application__gte=now,
             scheduled_application__lt=now + timedelta(days=7),

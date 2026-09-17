@@ -47,6 +47,11 @@ body.pesticides
                     border-color: $white
                     color: $primary
 
+    // Flex columns can't shrink below their content by default, so a card with
+    // long names would widen its column and knock the row out of alignment.
+    .columns > .column
+        min-width: 0
+
     .breadcrumbs
         background-color: $grey-lightest
         padding: $size-6 0px

@@ -127,6 +127,8 @@ class StatsTests(TestCase):
         assert data['year'] == 2022
         assert data['latest_year'] == 2023
         assert data['total_lbs'] == 540.0
+        assert data['applications'] == 3
+        assert (data['chemical_count'], data['product_count'], data['commodity_count']) == (3, 3, 3)
         assert [r.obj.name for r in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
         assert [(r['county_name'], r['lbs']) for r in data['by_county']] == [('Fresno County', 480.0), ('Kern County', 60.0)]
         # Cached under its own key; the latest year is untouched.
@@ -135,7 +137,11 @@ class StatsTests(TestCase):
 
     def test_landing_stats_cached(self):
         stats.landing_stats()
-        Chemical.objects.create(chem_code=1, name='NEW')
+        new = Chemical.objects.create(chem_code=999, name='NEW')
+        PesticideUse.objects.create(
+            year=2023, use_no=97, county_id=9001, chemical=new, commodity_id=1,
+            lbs_chemical=5, application_date='2023-10-01',
+        )
         assert stats.landing_stats()['chemical_count'] == 3
 
     def test_landing_stats_empty_db(self):
@@ -150,7 +156,12 @@ class StatsTests(TestCase):
     def test_refresh_landing_stats_repopulates_cache(self):
         first = stats.landing_stats()
         assert first['chemical_count'] == 3
-        Chemical.objects.create(chem_code=999, name='NEW')
+        new = Chemical.objects.create(chem_code=999, name='NEW')
+        PesticideUse.objects.create(
+            year=2023, use_no=98, county_id=9001, chemical=new, commodity_id=1,
+            lbs_chemical=5, application_date='2023-10-01',
+        )
+        assert stats.landing_stats()['chemical_count'] == 3   # still the cached value
         refreshed = stats.refresh_landing_stats()
         assert refreshed['chemical_count'] == 4
         assert stats.landing_stats()['chemical_count'] == 4
