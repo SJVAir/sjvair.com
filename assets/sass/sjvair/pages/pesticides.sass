@@ -38,13 +38,16 @@ body.pesticides
             .button
                 text-decoration: none
                 background-color: rgba($white, 0.12)
-                border-color: rgba($white, 0.35)
+                border-color: rgba($white, 0.55)
                 color: $white
                 &:hover
                     background-color: rgba($white, 0.22)
+                // The selected button keeps a faint visible edge: with a white
+                // border on a white fill its box read as 1px taller than its
+                // translucent-bordered neighbours.
                 &.is-selected
                     background-color: $white
-                    border-color: $white
+                    border-color: rgba($black, 0.2)
                     color: $primary
 
     // Flex columns can't shrink below their content by default, so a card with
