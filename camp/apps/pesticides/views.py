@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from django.db.models import Count, F, FilteredRelation, IntegerField, OuterRef, Q, Subquery, Sum
+from django.db.models import Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.http import Http404
 from django.shortcuts import redirect
@@ -34,17 +34,16 @@ API_DOCS_URL = '/api/2.0/docs/#tag/pesticides'
 CLIENT_DOCS_URL = 'https://sjvair.github.io/sjvair-python/client/resources/pesticides.html'
 
 
-def annotate_lbs_applied(queryset, year, lbs_field='lbs_chemical'):
-    """
-    Sum of pounds in `year` via a filtered join on the reverse `rollups`
-    relation, instead of a per-row correlated subquery -- one hash/group
-    aggregate over the join rather than a SubPlan re-run for every row.
-    Rows with no matching rollup keep `lbs_applied = None` (the join drops
-    out entirely, so Sum() over no rows is NULL, not 0).
-    """
-    return queryset.annotate(
-        year_rollups=FilteredRelation('rollups', condition=Q(rollups__year=year)),
-    ).annotate(lbs_applied=Sum(f'year_rollups__{lbs_field}'))
+def lbs_subquery(field, year, lbs_field='lbs_chemical'):
+    """Sum of pounds in `year` for the outer row, via `PesticideUseRollup.<field>`."""
+    return Subquery(
+        PesticideUseRollup.objects
+        .filter(**{field: OuterRef('pk')}, year=year)
+        .values(field)
+        .annotate(total=Sum(lbs_field))
+        .values('total'),
+        output_field=FloatField(),
+    )
 
 
 def count_subquery(model, field, count_field):
@@ -187,7 +186,7 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
             product_count=Coalesce(count_subquery(ProductChemical, 'chemical', 'product'), 0)
         )
         if year:
-            queryset = annotate_lbs_applied(queryset, year)
+            queryset = queryset.annotate(lbs_applied=lbs_subquery('chemical', year))
         else:
             queryset = queryset.annotate(lbs_applied=F('chem_code') * 0.0)
         return queryset
@@ -256,7 +255,7 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
             chemical_count=Coalesce(count_subquery(ProductChemical, 'product', 'chemical'), 0)
         )
         if year:
-            queryset = annotate_lbs_applied(queryset, year, lbs_field='lbs_product')
+            queryset = queryset.annotate(lbs_applied=lbs_subquery('product', year, lbs_field='lbs_product'))
         else:
             queryset = queryset.annotate(lbs_applied=F('prodno') * 0.0)
         return queryset
@@ -296,8 +295,10 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
             .annotate(n=Count('chemical', distinct=True))
             .values('n'),
         )
-        queryset = annotate_lbs_applied(queryset, year)
-        return queryset.annotate(chemical_count=Coalesce(chemical_count, 0))
+        return queryset.annotate(
+            lbs_applied=lbs_subquery('commodity', year),
+            chemical_count=Coalesce(chemical_count, 0),
+        )
 
 
 class ExplorerDetailMixin:
