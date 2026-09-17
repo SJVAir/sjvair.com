@@ -28,10 +28,16 @@ OUTSIDE_SJV = 'Outside SJV'
 MAP_BOUNDS = Polygon.from_bbox((-123.0, 34.0, -117.0, 39.5))
 
 
-def county_outlines():
-    """Unfilled SJV county boundaries (from the county Regions) to draw under map markers."""
+def county_outlines(county=''):
+    """
+    Unfilled SJV county boundaries (from the county Regions) to draw under
+    map markers. Pass a county name (as in County.names) to draw only that one.
+    """
+    regions = Region.objects.counties()
+    if county:
+        regions = regions.filter(name=f'{county} County')
     geometries = (Boundary.objects
-        .filter(current_for__in=Region.objects.counties())
+        .filter(current_for__in=regions)
         .values_list('geometry', flat=True))
     return [
         leaflet.Area(
@@ -507,7 +513,7 @@ class DegradedMonitors(BaseReport):
                 lmap.add(leaflet.Marker(geometry=row['position'], size=9, fill_color=row['map_color']))
         if not lmap.elements:
             return None
-        lmap.add(*county_outlines())
+        lmap.add(*county_outlines(self.county))
         return lmap.render()
 
     def admin_url(self, cls, monitor):

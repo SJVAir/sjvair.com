@@ -275,6 +275,12 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
         assert rows['Grade F']['map_color'] == '#c0392b'
         assert rows['Silent']['map_color'] == '#7f8c8d'
 
+    def test_map_draws_only_the_selected_county(self):
+        response = self.client.get(reverse('reports:degraded-monitors'), {'county': 'Fresno'})
+        content = response.content.decode()
+        assert content.count('"kind": "area"') == 1
+        assert content.count('"kind": "marker"') == 2
+
     def test_map_ignores_bogus_positions(self):
         # A device reporting a (0, 0) fix would otherwise fit the map to the whole planet.
         PurpleAir.objects.create(name='Null island', sensor_id=7, position=Point(0, 0), location='outside')
