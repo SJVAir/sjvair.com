@@ -228,13 +228,13 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
         super().setUp()
         now = timezone.now()
         host = Host.objects.create(name='Library')
-        self.fine = PurpleAir.objects.create(name='Fine', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
-        self.grade_f = PurpleAir.objects.create(name='Grade F', sensor_id=2, position=Point(-119.75, 36.75), location='outside', host=host)
-        self.grade_c = PurpleAir.objects.create(name='Grade C', sensor_id=3, position=Point(-119.75, 36.75), location='outside')
-        self.flat = PurpleAir.objects.create(name='Flat', sensor_id=4, position=Point(-119.0, 35.4), location='outside')
-        self.silent = PurpleAir.objects.create(name='Silent', sensor_id=5, position=Point(-119.0, 35.4), location='outside')
-        self.never = BAM1022.objects.create(name='Never', position=Point(-119.0, 35.4), location='outside')
-        self.hidden = PurpleAir.objects.create(name='Hidden', sensor_id=6, position=Point(-119.0, 35.4), location='outside', is_hidden=True)
+        self.fine = PurpleAir.objects.create(name='Fine', sensor_id=1, position=Point(-119.75, 36.75), location='outside', is_sjvair=True)
+        self.grade_f = PurpleAir.objects.create(name='Grade F', sensor_id=2, position=Point(-119.75, 36.75), location='outside', host=host, is_sjvair=True)
+        self.grade_c = PurpleAir.objects.create(name='Grade C', sensor_id=3, position=Point(-119.75, 36.75), location='outside', is_sjvair=True)
+        self.flat = PurpleAir.objects.create(name='Flat', sensor_id=4, position=Point(-119.0, 35.4), location='outside', is_sjvair=True)
+        self.silent = PurpleAir.objects.create(name='Silent', sensor_id=5, position=Point(-119.0, 35.4), location='outside', is_sjvair=True)
+        self.never = BAM1022.objects.create(name='Never', position=Point(-119.0, 35.4), location='outside', is_sjvair=True)
+        self.hidden = PurpleAir.objects.create(name='Hidden', sensor_id=6, position=Point(-119.0, 35.4), location='outside', is_hidden=True, is_sjvair=True)
         for monitor in (self.fine, self.grade_f, self.grade_c, self.flat):
             touch(monitor, now - timedelta(minutes=5))
         touch(self.silent, now - timedelta(days=3))
@@ -284,14 +284,14 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
 
     def test_map_drops_markers_outside_the_drawn_counties(self):
         # Fits the map to the valley instead of stretching it to far-away monitors.
-        PurpleAir.objects.create(name='Chico', sensor_id=8, position=Point(-121.84, 39.73), location='outside')
+        PurpleAir.objects.create(name='Chico', sensor_id=8, position=Point(-121.84, 39.73), location='outside', is_sjvair=True)
         response = self.client.get(reverse('reports:degraded-monitors'))
         assert 'Chico' in {r['name'] for r in response.context['rows']}
         assert response.content.decode().count('"kind": "marker"') == 5
 
     def test_map_ignores_bogus_positions(self):
         # A device reporting a (0, 0) fix would otherwise fit the map to the whole planet.
-        PurpleAir.objects.create(name='Null island', sensor_id=7, position=Point(0, 0), location='outside')
+        PurpleAir.objects.create(name='Null island', sensor_id=7, position=Point(0, 0), location='outside', is_sjvair=True)
         response = self.client.get(reverse('reports:degraded-monitors'))
         assert 'Null island' in {r['name'] for r in response.context['rows']}
         assert response.content.decode().count('"kind": "marker"') == 5
@@ -300,6 +300,13 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
         response = self.client.get(reverse('reports:degraded-monitors'), {'type': 'aqlite'})
         assert response.context['map'] is None
         assert 'class="admin-leaflet-map"' not in response.content.decode()
+
+    def test_sjvair_only_by_default(self):
+        partner = PurpleAir.objects.create(name='Partner', sensor_id=10, position=Point(-119.75, 36.75), location='outside')
+        give_health(partner, 0)
+        assert 'Partner' not in [r['name'] for r in self.rows()]
+        assert 'Partner' in [r['name'] for r in self.rows(sjvair_only='0')]
+        assert 'Partner' not in [r['name'] for r in self.rows(sjvair_only='1')]
 
     def test_filters(self):
         assert [r['name'] for r in self.rows(county='Fresno')] == ['Grade F', 'Grade C']

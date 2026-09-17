@@ -13,6 +13,8 @@
         {% for value, label in types %}<option value="{{ value }}" {% if value == monitor_type %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
 </label>
+<input type="hidden" name="sjvair_only" value="0">
+<label><input type="checkbox" name="sjvair_only" value="1" {% if sjvair_only %}checked{% endif %} onchange="this.form.submit()"> SJVAir monitors only</label>
 <label><input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %} onchange="this.form.submit()"> Include hidden</label>
 {% endblock %}
 

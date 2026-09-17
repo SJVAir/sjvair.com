@@ -446,12 +446,17 @@ class FleetHealth(BaseReport):
 class DegradedMonitors(BaseReport):
     slug = 'degraded-monitors'
     title = 'Degraded Monitors'
-    description = 'Monitors graded C or F, flatlined on a channel, or silent for more than 24 hours. Worst first.'
+    description = 'Monitors graded C or F, flatlined on a channel, or silent for more than 24 hours. Worst first. SJVAir monitors only unless toggled.'
     template_name = 'admin/reports/degraded_monitors.html'
 
     @property
     def include_hidden(self):
         return self.request.GET.get('include_hidden') == '1'
+
+    @property
+    def sjvair_only(self):
+        # On by default; the form submits sjvair_only=0 when unchecked.
+        return self.request.GET.get('sjvair_only', '1') == '1'
 
     @property
     def county(self):
@@ -486,6 +491,8 @@ class DegradedMonitors(BaseReport):
             )
             if not self.include_hidden:
                 queryset = queryset.filter(is_hidden=False)
+            if self.sjvair_only:
+                queryset = queryset.filter(is_sjvair=True)
             if self.county:
                 queryset = queryset.filter(county=self.county)
 
@@ -569,6 +576,7 @@ class DegradedMonitors(BaseReport):
             'monitor_type': self.monitor_type,
             'types': [(cls.monitor_type, type_label(cls)) for cls in monitor_types()],
             'include_hidden': self.include_hidden,
+            'sjvair_only': self.sjvair_only,
             'legend': self.MAP_LEGEND,
         }
         context['map'] = self.get_map(context['rows'])

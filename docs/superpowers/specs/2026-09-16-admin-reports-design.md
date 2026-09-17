@@ -185,8 +185,9 @@ of:
   set to `False`
 - last entry older than 24 hours (including never reported)
 
-Excludes hidden monitors unless `?include_hidden=1`. Filters `?county=`
-and `?type=` (monitor type slug).
+Excludes hidden monitors unless `?include_hidden=1`, and shows only
+SJVAir-owned monitors (`is_sjvair`) unless `?sjvair_only=0`. Filters
+`?county=` and `?type=` (monitor type slug).
 
 Columns: monitor name linking to its admin change page, type, county,
 host, grade, last seen, condition (a short label: "Grade F",
