@@ -273,6 +273,13 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
         assert rows['Grade F']['map_color'] == '#c0392b'
         assert rows['Silent']['map_color'] == '#7f8c8d'
 
+    def test_map_ignores_bogus_positions(self):
+        # A device reporting a (0, 0) fix would otherwise fit the map to the whole planet.
+        PurpleAir.objects.create(name='Null island', sensor_id=7, position=Point(0, 0), location='outside')
+        response = self.client.get(reverse('reports:degraded-monitors'))
+        assert 'Null island' in {r['name'] for r in response.context['rows']}
+        assert response.content.decode().count('"kind": "marker"') == 5
+
     def test_no_map_when_nothing_is_degraded(self):
         response = self.client.get(reverse('reports:degraded-monitors'), {'type': 'aqlite'})
         assert response.context['map'] is None
@@ -342,6 +349,11 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert content.count('"kind": "area"') == 2
         assert content.count('"kind": "marker"') == 2
         assert '"fillColor": "#c0392b"' in content  # the DAC tract
+
+    def test_map_ignores_bogus_positions(self):
+        PurpleAir.objects.create(name='Null island', sensor_id=9, position=Point(0, 0), location='outside')
+        response = self.client.get(reverse('reports:coverage'))
+        assert response.content.decode().count('"kind": "marker"') == 2
 
     def test_totals_row_is_in_the_table_footer(self):
         response = self.client.get(reverse('reports:coverage'))

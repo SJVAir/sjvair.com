@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.contrib.gis.db.models.functions import Centroid
+from django.contrib.gis.geos import Polygon
 from django.contrib.gis.measure import D
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.urls import NoReverseMatch, reverse
@@ -20,6 +21,12 @@ OUTSIDE_SJV = 'Outside SJV'
 # The ops reports (fleet health, degraded monitors) show every monitor subclass,
 # including types that aren't on the public API. The ED-facing reports (network
 # overview, coverage) count only enabled types -- see settings.MONITOR_ENABLED_TYPES.
+# Generous box around the San Joaquin Valley. Map markers outside it are
+# dropped: a device reporting a bogus fix (e.g. 0, 0) would otherwise force
+# the map to fit the whole planet.
+MAP_BOUNDS = Polygon.from_bbox((-123.0, 34.0, -117.0, 39.5))
+
+
 def monitor_types():
     """Concrete Monitor subclasses, sorted by class name."""
     return Monitor.get_subclasses()
@@ -268,7 +275,7 @@ class Coverage(BaseReport):
                     border_color='#7f8c8d',
                     border_width=0.5,
                 ))
-        for position in self.monitors().values_list('position', flat=True):
+        for position in self.monitors().filter(position__within=MAP_BOUNDS).values_list('position', flat=True):
             lmap.add(leaflet.Marker(geometry=position, size=7, fill_color='#1f4e79', border_width=1))
         return lmap.render() if lmap.elements else None
 
@@ -478,7 +485,7 @@ class DegradedMonitors(BaseReport):
     def get_map(self, rows):
         lmap = leaflet.LeafletMap(width=900, height=700, padding=10)
         for row in rows:
-            if row['position']:
+            if row['position'] and MAP_BOUNDS.contains(row['position']):
                 lmap.add(leaflet.Marker(geometry=row['position'], size=9, fill_color=row['map_color']))
         return lmap.render() if lmap.elements else None
 
