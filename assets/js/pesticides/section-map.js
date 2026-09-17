@@ -274,6 +274,7 @@
     this.map.on('moveend zoomend', debouncedLoad);
     this.map.on('moveend zoomend', debouncedNotices);
     this.map.on('zoomend', this.restyleCounties.bind(this));
+    this.bindZoomButtons();
 
     this.loadCounties();
     this.loadGrid();
@@ -553,40 +554,50 @@
     this.gridLayer.eachLayer(function (layer) {
       layer.setStyle(self.featureStyle(layer.feature));
       if (self.level === 'township' && layer.getPopup()) {
-        layer.setPopupContent(self.townshipPopupHtml(layer.feature.properties));
+        layer.setPopupContent(self.townshipPopupHtml(layer.feature.properties, layer.getBounds().getCenter()));
       }
     });
     this.bringHighlightToFront();
     this.updateLegend();
   };
 
-  SectionMap.prototype.townshipPopupHtml = function (props) {
+  SectionMap.prototype.townshipPopupHtml = function (props, center) {
     var unit = METRIC_UNITS[this.metric] || '';
     var sections = props.sections || 0;
+    // The target is carried on the button so a delegated listener (see init)
+    // can serve it; per-popup listeners would be lost when restyle() swaps
+    // the popup content.
     return (
       '<div class="section-popup">' +
       '<h4>' + escapeHtml(props.name || props.id) + '</h4>' +
       '<p>' + formatNumber(sections) + (sections === 1 ? ' section' : ' sections') + '</p>' +
       '<p class="section-popup-totals">' + formatNumber(props[this.metric]) + ' ' + escapeHtml(unit) + '</p>' +
-      '<p><button type="button" class="section-map-zoom">Zoom in</button></p>' +
+      '<p><button type="button" class="section-map-zoom" data-lat="' + center.lat + '" data-lng="' + center.lng + '">Zoom in</button></p>' +
       '</div>'
     );
   };
 
   SectionMap.prototype.bindTownshipPopup = function (feature, layer) {
+    layer.bindPopup(this.townshipPopupHtml(feature.properties, layer.getBounds().getCenter()), { className: 'section-popup-wrap' });
+  };
+
+  // The "Zoom in" handler is delegated on each popup's outer element, which
+  // survives restyle() replacing the popup's inner content (Leaflet stops
+  // click propagation at that element, so it can't live any higher up).
+  SectionMap.prototype.bindZoomButtons = function () {
     var self = this;
-    layer.bindPopup(this.townshipPopupHtml(feature.properties), { className: 'section-popup-wrap' });
-    // The button lives inside the popup, which Leaflet builds when it opens,
-    // so the handler is wired on each open.
-    layer.on('popupopen', function (event) {
-      var el = event.popup.getElement();
-      var button = el && el.querySelector('.section-map-zoom');
-      if (!button) return;
-      button.addEventListener('click', function () {
+    this.map.on('popupopen', function (event) {
+      var container = event.popup.getElement();
+      if (!container || container.getAttribute('data-zoom-bound')) return;
+      container.setAttribute('data-zoom-bound', '1');
+      container.addEventListener('click', function (click) {
+        var button = click.target.closest ? click.target.closest('.section-map-zoom') : null;
+        if (!button) return;
+        var lat = parseFloat(button.getAttribute('data-lat'));
+        var lng = parseFloat(button.getAttribute('data-lng'));
+        if (!isFinite(lat) || !isFinite(lng)) return;
         self.map.closePopup();
-        self.map.setView(layer.getBounds().getCenter(), SECTION_ZOOM, {
-          animate: !self.reducedMotion,
-        });
+        self.map.setView([lat, lng], SECTION_ZOOM, { animate: !self.reducedMotion });
       });
     });
   };
