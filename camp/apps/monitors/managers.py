@@ -95,7 +95,7 @@ class MonitorQuerySet(InheritanceQuerySet):
         if len(enabled_subclasses) < len(self.model.get_subclasses()):
             lookup = Q()
             for subclass in enabled_subclasses:
-                lookup |= Q(**subclass.health_check_queryset_filter())
+                lookup |= Q(**subclass.type_queryset_filter())
             queryset = queryset.filter(lookup) if enabled_subclasses else queryset.none()
 
         return queryset

@@ -8,6 +8,7 @@ from django.utils import timezone
 from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Subscription
 from camp.apps.entries.models import PM25
+from camp.apps.monitors.airgradient.models import AirGradient
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.models import Host, LatestEntry
@@ -119,6 +120,13 @@ class NetworkOverviewTests(StaffClientMixin, TestCase):
         assert rows['BAM1022']['total'] == 1
         assert rows['All types']['Fresno'] == 2
         assert rows['All types']['total'] == 3
+
+    def test_single_channel_airgradient_counts_in_tiles(self):
+        AirGradient.objects.create(name='AG single', device='O-1PS', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        response = self.client.get(reverse('reports:network-overview'))
+        rows = {row['type']: row for row in response.context['rows']}
+        assert rows['AirGradient']['total'] == 1
+        assert response.context['tiles']['total'] == rows['All types']['total'] == 4
 
     def test_totals_row_is_in_the_table_footer(self):
         response = self.client.get(reverse('reports:network-overview'))

@@ -32,7 +32,7 @@ def enabled_only(queryset):
 
     lookup = Q()
     for subclass in enabled:
-        lookup |= Q(**subclass.health_check_queryset_filter())
+        lookup |= Q(**subclass.type_queryset_filter())
     return queryset.filter(lookup) if enabled else queryset.none()
 
 

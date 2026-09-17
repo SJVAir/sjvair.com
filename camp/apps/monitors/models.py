@@ -549,9 +549,18 @@ class Monitor(models.Model):
         return data
 
     @classmethod
-    def health_check_queryset_filter(cls):
-        """Returns kwargs to filter health-check-eligible monitors of this type."""
+    def type_queryset_filter(cls):
+        """Returns kwargs to select monitors of this type from a base Monitor queryset."""
         return {f'{cls.monitor_type}__isnull': False}
+
+    @classmethod
+    def health_check_queryset_filter(cls):
+        """
+        Returns kwargs to filter health-check-eligible monitors of this type.
+        Subclasses narrow this further (AirGradient requires the dual-channel
+        device); use type_queryset_filter() when you just want the type.
+        """
+        return cls.type_queryset_filter()
 
     @classmethod
     def health_checks_enabled(cls):
