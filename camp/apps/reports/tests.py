@@ -62,14 +62,6 @@ class SubscriptionCountyStatsTests(StaffClientMixin, TestCase):
         assert rows['Fresno'] == {'county': 'Fresno', 'total_monitors': 1, 'subscription_monitors': 1, 'total_subscriptions': 1}
         assert rows['Kern'] == {'county': 'Kern', 'total_monitors': 1, 'subscription_monitors': 0, 'total_subscriptions': 0}
 
-    def test_csv_export(self):
-        response = self.client.get(reverse('reports:subscription-county-stats'), {'format': 'csv'})
-        assert response.status_code == 200
-        assert response['Content-Type'] == 'text/csv'
-        assert 'subscription-county-stats-' in response['Content-Disposition']
-        lines = response.content.decode().splitlines()
-        assert lines[0] == 'county,total_monitors,subscription_monitors,total_subscriptions'
-        assert 'Fresno,1,1,1' in lines
 
     def test_old_admin_url_redirects(self):
         response = self.client.get(reverse('admin:alerts_subscription_county_stats'))
@@ -146,10 +138,6 @@ class NetworkOverviewTests(StaffClientMixin, TestCase):
         assert rows['All types']['total'] == 3
         assert response.context['tiles']['total'] == 3
 
-    def test_csv_columns(self):
-        response = self.client.get(reverse('reports:network-overview'), {'format': 'csv'})
-        header = response.content.decode().splitlines()[0]
-        assert header == 'type,Fresno,Kern,Kings,Madera,Merced,San Joaquin,Stanislaus,Tulare,Outside SJV,total'
 
 
 def give_health(monitor, score, flatline_a=None, flatline_b=None):
@@ -256,10 +244,6 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
         assert [r['name'] for r in self.rows(type='bam1022')] == ['Never']
         assert 'Hidden' in [r['name'] for r in self.rows(include_hidden='1')]
 
-    def test_csv_columns(self):
-        response = self.client.get(reverse('reports:degraded-monitors'), {'format': 'csv'})
-        header = response.content.decode().splitlines()[0]
-        assert header == 'name,type,county,host,grade,last_seen,condition'
 
 
 class CoverageTests(StaffClientMixin, TestCase):
@@ -334,10 +318,6 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert bands['50–75'] == {'band': '50–75', 'tracts': 1, 'population': 3350, 'monitors': 1, 'per_10k': 2.99}
         assert bands['0–25']['tracts'] == 0
 
-    def test_csv_columns(self):
-        response = self.client.get(reverse('reports:coverage'), {'format': 'csv'})
-        header = response.content.decode().splitlines()[0]
-        assert header == 'county,monitors,population,per_10k,dac_tracts,dac_monitors,dac_population,dac_population_covered,dac_covered_pct'
 
 
 class CoverageNoCESTests(StaffClientMixin, TestCase):
@@ -356,9 +336,3 @@ class CoverageNoCESTests(StaffClientMixin, TestCase):
         assert fresno['monitors'] == 1
         assert fresno['population'] == 0
         assert fresno['per_10k'] is None
-
-    def test_csv_export_without_ces_data(self):
-        response = self.client.get(reverse('reports:coverage'), {'format': 'csv'})
-        assert response.status_code == 200
-        header = response.content.decode().splitlines()[0]
-        assert header == 'county,monitors,population,per_10k,dac_tracts,dac_monitors,dac_population,dac_population_covered,dac_covered_pct'

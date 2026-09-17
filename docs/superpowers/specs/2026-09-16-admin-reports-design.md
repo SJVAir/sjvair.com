@@ -30,7 +30,7 @@ camp/apps/reports/
     tests.py
 camp/templates/admin/reports/
     index.html
-    base.html        # shared chrome: breadcrumbs, title, CSV link, filters
+    base.html        # shared chrome: breadcrumbs, title, filters
     network_overview.html
     coverage.html
     fleet_health.html
@@ -51,19 +51,15 @@ the existing `SubscriptionCountyStats` view. Class attributes:
 Methods:
 
 - `get_rows()` — returns a list of dicts. Required. This is the
-  tabular payload used for both HTML and CSV.
+  primary table.
 - `get_context_data()` — supplies `admin.site.each_context(request)`,
   `title`, `rows`, `report` (the view instance), and anything a
   subclass adds for summary tiles or secondary tables.
-- `get_csv_columns()` — defaults to the keys of the first row.
-- `render_to_response()` — if `?format=csv`, streams `get_rows()` as
-  CSV with a `Content-Disposition` filename of `<slug>-<YYYY-MM-DD>.csv`.
-  Otherwise the template.
 
 Reports that have more than one table (network overview, fleet health,
 coverage) expose the primary table via `get_rows()` and the secondary
-tables via named context keys. CSV export covers the primary table only;
-that is enough for the slide-deck use case and keeps the base simple.
+tables via named context keys. There is no CSV export; the pages are
+read on screen.
 
 ### Registry and URLs
 
@@ -86,7 +82,7 @@ reports index instead of the county stats page.
 
 `SubscriptionCountyStats` moves from `camp/apps/alerts/views.py` to
 `camp/apps/reports/views.py`, subclassing `BaseReport`, behavior
-unchanged, plus CSV support for free. The `get_urls` override in
+unchanged. The `get_urls` override in
 `SubscriptionAdmin` is replaced by a `RedirectView` under the same
 `alerts_subscription_county_stats` URL name pointing at the new page,
 so existing bookmarks keep working. The old template is moved, not
@@ -205,10 +201,9 @@ fine for a list in the low hundreds.
 
 All report templates extend `admin/reports/base.html`, which extends
 `admin/base_site.html` and provides breadcrumbs (Home › Reports ›
-Title), the title, the description, a "Download CSV" link that
-preserves the current query string, and a block for filters. Tables use
+Title), the title, the description, and a block for filters. Tables use
 the admin's default table styling as the county stats page does. No
-JavaScript, no charts; the ED-facing numbers go into slides via CSV.
+JavaScript, no charts.
 
 ## Testing
 
@@ -220,7 +215,7 @@ fixtures from `/fixtures` where they fit (`purple-air.yaml`,
 - Index page lists every registered report and requires staff.
 - Old county stats URL redirects to the new page; the new page returns
   the same rows as before.
-- Each report: HTML 200, CSV 200 with expected header row, and a
+- Each report: HTML 200 and a
   handful of value assertions (e.g. a monitor placed inside a DAC tract
   counts as in-DAC; a monitor with no entries lands in "never
   reported"; a monitor with score 0 appears in degraded with condition

@@ -360,7 +360,6 @@ class DegradedMonitors(BaseReport):
     title = 'Degraded Monitors'
     description = 'Monitors graded C or F, flatlined on a channel, or silent for more than 24 hours. Worst first.'
     template_name = 'admin/reports/degraded_monitors.html'
-    csv_columns = ['name', 'type', 'county', 'host', 'grade', 'last_seen', 'condition']
 
     @property
     def include_hidden(self):
@@ -375,9 +374,6 @@ class DegradedMonitors(BaseReport):
     def monitor_type(self):
         wanted = self.request.GET.get('type', '')
         return wanted if wanted in {cls.monitor_type for cls in monitor_types()} else ''
-
-    def get_csv_columns(self, rows):
-        return self.csv_columns
 
     def get_rows(self):
         now = timezone.now()
