@@ -42,16 +42,4 @@
         </tbody>
     </table>
 </div>
-
-<div class="module">
-    <table>
-        <caption>Deployments by quarter</caption>
-        <thead><tr><th>Quarter</th><th>New</th><th>Cumulative</th></tr></thead>
-        <tbody>
-            {% for row in deployments %}
-            <tr><th>{{ row.quarter }}</th><td>{{ row.new|intcomma }}</td><td>{{ row.cumulative|intcomma }}</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
 {% endblock %}

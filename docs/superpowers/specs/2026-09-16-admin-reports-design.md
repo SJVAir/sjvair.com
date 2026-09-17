@@ -107,17 +107,15 @@ subclasses from `Monitor.get_subclasses()`, ordered by display name)
 with a column per SJV county plus a total. Values are monitor counts.
 A final "All types" row sums the columns.
 
-**Secondary table `deployments`:** one row per calendar quarter from the
-earliest `Monitor.created` to now: new monitors that quarter and the
-cumulative total. Quarters with no deployments still appear so the line
-is continuous.
+No deployments-over-time table: `Monitor.created` records when the row was
+registered, often months before the device is actually installed, so it is
+not a meaningful deployment date.
 
 Queries: one `aggregate()` over `Monitor` for the tiles, one
 `values(type, county).annotate(Count)` for the matrix (type derived via
 the existing `with_grade`-style `Case` over subclass joins, or by
 iterating subclasses and issuing one small count each; either is fine,
-pick whichever reads cleaner), and one `TruncQuarter` group-by for
-deployments.
+pick whichever reads cleaner).
 
 ### 2. Coverage and Equity (ED)
 
@@ -223,8 +221,7 @@ fixtures from `/fixtures` where they fit (`purple-air.yaml`,
 - Old county stats URL redirects to the new page; the new page returns
   the same rows as before.
 - Each report: HTML 200, CSV 200 with expected header row, and a
-  handful of value assertions (e.g. a monitor with `created` last
-  quarter shows in that quarter; a monitor placed inside a DAC tract
+  handful of value assertions (e.g. a monitor placed inside a DAC tract
   counts as in-DAC; a monitor with no entries lands in "never
   reported"; a monitor with score 0 appears in degraded with condition
   "Grade F").

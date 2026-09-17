@@ -10,7 +10,7 @@ from camp.apps.alerts.models import Subscription
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
-from camp.apps.monitors.models import Host, LatestEntry, Monitor
+from camp.apps.monitors.models import Host, LatestEntry
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.qaqc.models import HealthCheck
@@ -101,11 +101,6 @@ class NetworkOverviewTests(StaffClientMixin, TestCase):
         self.hidden = PurpleAir.objects.create(name='Hidden', sensor_id=3, position=Point(-119.77, 36.77), location='outside', is_hidden=True)
         touch(self.pa_fresno, now - timedelta(minutes=10))
         touch(self.pa_kern, now - timedelta(days=3))
-        # created is auto_now_add; push one monitor back a year for the deployments table.
-        # Updated via the base Monitor queryset (not PurpleAir) to avoid a Django ORM quirk
-        # where a multi-table-inheritance UPDATE joining back to the parent table for a
-        # SmallUUIDField pk re-runs the pk through a bare psycopg2 uuid.UUID.
-        Monitor.objects.filter(pk=self.pa_kern.pk).update(created=now - timedelta(days=365))
 
     def test_tiles(self):
         response = self.client.get(reverse('reports:network-overview'))
@@ -128,15 +123,6 @@ class NetworkOverviewTests(StaffClientMixin, TestCase):
         rows = {row['type']: row for row in response.context['rows']}
         assert rows['PurpleAir']['total'] == 3
         assert response.context['tiles']['total'] == 4
-
-    def test_deployments_are_contiguous_and_cumulative(self):
-        response = self.client.get(reverse('reports:network-overview'))
-        deployments = response.context['deployments']
-        assert deployments[0]['new'] == 1
-        assert deployments[0]['cumulative'] == 1
-        assert deployments[-1]['cumulative'] == 3
-        assert len(deployments) == 5  # a year ago through now spans 5 quarter buckets
-        assert sum(d['new'] for d in deployments) == 3
 
     def test_outside_sjv_monitors_are_counted(self):
         PurpleAir.objects.create(name='SF PA', sensor_id=9, position=Point(-122.4, 37.8), location='outside')

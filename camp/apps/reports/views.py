@@ -3,7 +3,6 @@ from datetime import timedelta
 from django.contrib.gis.db.models.functions import Centroid
 from django.contrib.gis.measure import D
 from django.db.models import Count, Exists, OuterRef, Q, Sum
-from django.db.models.functions import TruncQuarter
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
@@ -46,22 +45,11 @@ def type_label(cls):
     return cls.__name__
 
 
-def quarter_label(dt):
-    return f'{dt.year} Q{(dt.month - 1) // 3 + 1}'
-
-
-def next_quarter(dt):
-    month = dt.month + 3
-    year = dt.year + (month - 1) // 12
-    month = (month - 1) % 12 + 1
-    return dt.replace(year=year, month=month, day=1)
-
-
 @register
 class NetworkOverview(BaseReport):
     slug = 'network-overview'
     title = 'Network Overview'
-    description = 'Monitor counts by type and county, and deployments per quarter. Hidden monitors are excluded unless requested.'
+    description = 'Monitor counts by type and county. Hidden monitors are excluded unless requested.'
     template_name = 'admin/reports/network_overview.html'
 
     @property
@@ -107,36 +95,12 @@ class NetworkOverview(BaseReport):
         active = queryset.with_last_entry_timestamp().filter(last_entry_timestamp__gte=cutoff).count()
         return {'total': total, 'active': active, 'sjvair': sjvair, 'partner': total - sjvair}
 
-    def get_deployments(self):
-        per_quarter = {
-            item['quarter']: item['n']
-            for item in (self.base_queryset()
-                .annotate(quarter=TruncQuarter('created'))
-                .values('quarter')
-                .annotate(n=Count('pk'))
-                .order_by('quarter'))
-        }
-        if not per_quarter:
-            return []
-
-        rows = []
-        cumulative = 0
-        quarter = min(per_quarter)
-        last = max(max(per_quarter), timezone.now())
-        while quarter <= last:
-            new = per_quarter.get(quarter, 0)
-            cumulative += new
-            rows.append({'quarter': quarter_label(quarter), 'new': new, 'cumulative': cumulative})
-            quarter = next_quarter(quarter)
-        return rows
-
     def get_context_data(self, **kwargs):
         return {
             **super().get_context_data(**kwargs),
             'counties': County.names,
             'include_hidden': self.include_hidden,
             'tiles': self.get_tiles(),
-            'deployments': self.get_deployments(),
         }
 
 
