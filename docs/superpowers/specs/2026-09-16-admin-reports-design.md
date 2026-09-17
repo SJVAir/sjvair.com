@@ -94,7 +94,8 @@ duplicated.
 ### 1. Network Overview (ED)
 
 Slug `network-overview`. Hidden monitors are excluded unless
-`?include_hidden=1`.
+`?include_hidden=1`; `?sjvair_only=1` restricts to SJVAir-owned monitors
+(off by default).
 
 **Tiles:** total monitors, active in the last hour, SJVAir-owned
 (`is_sjvair`).
@@ -158,7 +159,8 @@ thousand tracts. No caching for now; add it if the page proves slow.
 ### 3. Fleet Health (ops)
 
 Slug `fleet-health`. Hidden monitors are included here, in their own
-column, because ops cares about them.
+column, because ops cares about them. Shows only SJVAir-owned monitors
+unless `?sjvair_only=0`.
 
 **Primary table (rows):** one row per monitor type with columns:
 

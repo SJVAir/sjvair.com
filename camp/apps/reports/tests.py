@@ -106,6 +106,13 @@ class NetworkOverviewTests(StaffClientMixin, TestCase):
         touch(self.pa_fresno, now - timedelta(minutes=10))
         touch(self.pa_kern, now - timedelta(days=3))
 
+    def test_sjvair_only_toggle(self):
+        response = self.client.get(reverse('reports:network-overview'), {'sjvair_only': '1'})
+        rows = {row['type']: row for row in response.context['rows']}
+        assert response.context['tiles']['total'] == 2
+        assert rows['PurpleAir']['total'] == 1
+        assert rows['All types']['total'] == 2
+
     def test_tiles(self):
         response = self.client.get(reverse('reports:network-overview'))
         assert response.status_code == 200
@@ -179,12 +186,12 @@ class FleetHealthTests(StaffClientMixin, TestCase):
     def setUp(self):
         super().setUp()
         now = timezone.now()
-        self.active = PurpleAir.objects.create(name='Active', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
-        self.day = PurpleAir.objects.create(name='Day', sensor_id=2, position=Point(-119.75, 36.75), location='outside')
-        self.week = PurpleAir.objects.create(name='Week', sensor_id=3, position=Point(-119.0, 35.4), location='outside')
-        self.long = PurpleAir.objects.create(name='Long', sensor_id=4, position=Point(-119.0, 35.4), location='outside')
-        self.never = PurpleAir.objects.create(name='Never', sensor_id=5, position=Point(-119.0, 35.4), location='outside')
-        self.hidden = PurpleAir.objects.create(name='Hidden', sensor_id=6, position=Point(-119.0, 35.4), location='outside', is_hidden=True)
+        self.active = PurpleAir.objects.create(name='Active', sensor_id=1, position=Point(-119.75, 36.75), location='outside', is_sjvair=True)
+        self.day = PurpleAir.objects.create(name='Day', sensor_id=2, position=Point(-119.75, 36.75), location='outside', is_sjvair=True)
+        self.week = PurpleAir.objects.create(name='Week', sensor_id=3, position=Point(-119.0, 35.4), location='outside', is_sjvair=True)
+        self.long = PurpleAir.objects.create(name='Long', sensor_id=4, position=Point(-119.0, 35.4), location='outside', is_sjvair=True)
+        self.never = PurpleAir.objects.create(name='Never', sensor_id=5, position=Point(-119.0, 35.4), location='outside', is_sjvair=True)
+        self.hidden = PurpleAir.objects.create(name='Hidden', sensor_id=6, position=Point(-119.0, 35.4), location='outside', is_hidden=True, is_sjvair=True)
         touch(self.active, now - timedelta(minutes=5))
         touch(self.day, now - timedelta(hours=6))
         touch(self.week, now - timedelta(days=3))
@@ -192,6 +199,19 @@ class FleetHealthTests(StaffClientMixin, TestCase):
         touch(self.hidden, now - timedelta(minutes=5))
         give_health(self.active, 3)
         give_health(self.day, 1)
+
+    def test_sjvair_only_by_default(self):
+        partner = PurpleAir.objects.create(name='Partner', sensor_id=7, position=Point(-119.75, 36.75), location='outside')
+        touch(partner, timezone.now() - timedelta(minutes=5))
+        give_health(partner, 3)
+
+        response = self.client.get(reverse('reports:fleet-health'))
+        assert {r['type']: r for r in response.context['rows']}['PurpleAir']['total'] == 6
+        assert {g['type']: g for g in response.context['grades']}['PurpleAir']['A'] == 1
+
+        response = self.client.get(reverse('reports:fleet-health'), {'sjvair_only': '0'})
+        assert {r['type']: r for r in response.context['rows']}['PurpleAir']['total'] == 7
+        assert {g['type']: g for g in response.context['grades']}['PurpleAir']['A'] == 2
 
     def test_silence_buckets(self):
         response = self.client.get(reverse('reports:fleet-health'))
@@ -211,7 +231,7 @@ class FleetHealthTests(StaffClientMixin, TestCase):
 
     def test_grades_exclude_types_without_health_checks(self):
         # VOZbox lists two PM2.5 sensors but they are not a matched pair.
-        VOZBox.objects.create(sensor_id='e00fce68f12da1a0c5de6248', name='VOZ', position=Point(-119.75, 36.75), location='outside')
+        VOZBox.objects.create(sensor_id='e00fce68f12da1a0c5de6248', name='VOZ', position=Point(-119.75, 36.75), location='outside', is_sjvair=True)
         response = self.client.get(reverse('reports:fleet-health'))
         assert 'VOZBox' not in {g['type'] for g in response.context['grades']}
 

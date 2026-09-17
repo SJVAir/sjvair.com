@@ -8,6 +8,8 @@
         {% for name in counties %}<option value="{{ name }}" {% if name == county %}selected{% endif %}>{{ name }}</option>{% endfor %}
     </select>
 </label>
+<input type="hidden" name="sjvair_only" value="0">
+<label><input type="checkbox" name="sjvair_only" value="1" {% if sjvair_only %}checked{% endif %} onchange="this.form.submit()"> SJVAir monitors only</label>
 {% endblock %}
 
 {% block report %}

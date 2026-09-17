@@ -99,19 +99,25 @@ class NetworkOverview(BaseReport):
     def include_hidden(self):
         return self.request.GET.get('include_hidden') == '1'
 
-    def base_queryset(self):
-        queryset = enabled_only(Monitor.objects.all())
+    @property
+    def sjvair_only(self):
+        return self.request.GET.get('sjvair_only') == '1'
+
+    def scoped(self, queryset):
         if not self.include_hidden:
             queryset = queryset.filter(is_hidden=False)
+        if self.sjvair_only:
+            queryset = queryset.filter(is_sjvair=True)
         return queryset
+
+    def base_queryset(self):
+        return self.scoped(enabled_only(Monitor.objects.all()))
 
     def get_rows(self):
         columns = [*County.names, OUTSIDE_SJV]
         counts = {}
         for cls in Monitor.get_enabled_subclasses():
-            queryset = cls.objects.all()
-            if not self.include_hidden:
-                queryset = queryset.filter(is_hidden=False)
+            queryset = self.scoped(cls.objects.all())
             for item in queryset.values('county').annotate(n=Count('pk')):
                 key = (type_label(cls), county_column(item['county']))
                 counts[key] = counts.get(key, 0) + item['n']
@@ -143,6 +149,7 @@ class NetworkOverview(BaseReport):
             **super().get_context_data(**kwargs),
             'counties': County.names,
             'include_hidden': self.include_hidden,
+            'sjvair_only': self.sjvair_only,
             'tiles': self.get_tiles(),
         }
 
@@ -389,7 +396,7 @@ class SubscriptionCountyStats(BaseReport):
 class FleetHealth(BaseReport):
     slug = 'fleet-health'
     title = 'Fleet Health'
-    description = 'How recently each monitor type reported, and the current health grade distribution for dual-channel monitors.'
+    description = 'How recently each monitor type reported, and the current health grade distribution for dual-channel monitors. SJVAir monitors only unless toggled.'
     template_name = 'admin/reports/fleet_health.html'
 
     @property
@@ -397,9 +404,16 @@ class FleetHealth(BaseReport):
         county = self.request.GET.get('county', '')
         return county if county in County.names else ''
 
+    @property
+    def sjvair_only(self):
+        # On by default; the form submits sjvair_only=0 when unchecked.
+        return self.request.GET.get('sjvair_only', '1') == '1'
+
     def scoped(self, queryset):
         if self.county:
             queryset = queryset.filter(county=self.county)
+        if self.sjvair_only:
+            queryset = queryset.filter(is_sjvair=True)
         return queryset
 
     def get_rows(self):
@@ -445,6 +459,7 @@ class FleetHealth(BaseReport):
             **super().get_context_data(**kwargs),
             'counties': County.names,
             'county': self.county,
+            'sjvair_only': self.sjvair_only,
             'grades': self.get_grades(),
         }
 
