@@ -1,5 +1,5 @@
 {% extends 'admin/index.html' %}
-{% load i18n static %}
+{% load i18n static reports %}
 
 {% block extrastyle %}
     {{ block.super }}
@@ -137,9 +137,12 @@
 {% block sidebar %}
 <div id="content-related">
     <div class="module">
-        <h2>Quick Links</h2>
+        <h2>Reports</h2>
         <ul>
-            <li><a href="{% url 'reports:index' %}">Reports</a></li>
+            {% report_list as reports %}
+            {% for report in reports %}
+            <li><a href="{% url 'reports:'|add:report.slug %}">{{ report.title }}</a></li>
+            {% endfor %}
         </ul>
     </div>
 

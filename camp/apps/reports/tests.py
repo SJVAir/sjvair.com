@@ -14,6 +14,7 @@ from camp.apps.monitors.models import Host, LatestEntry
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.qaqc.models import HealthCheck
+from camp.apps.reports.base import REPORTS
 
 
 class StaffClientMixin:
@@ -39,6 +40,15 @@ class ReportIndexTests(StaffClientMixin, TestCase):
         response = self.client.get(reverse('reports:index'))
         assert response.status_code == 302
         assert '/login/' in response['Location']
+
+    def test_admin_index_lists_every_report(self):
+        response = self.client.get(reverse('admin:index'))
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert '<h2>Reports</h2>' in content
+        for report in REPORTS:
+            assert reverse(f'reports:{report.slug}') in content
+            assert report.title in content
 
     def test_index_redirects_non_staff(self):
         self.user.is_staff = False

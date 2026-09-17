@@ -75,8 +75,9 @@ off.
 
 ### Admin index
 
-The Quick Links block in `camp/templates/admin/index.html` links to the
-reports index instead of the county stats page.
+The Quick Links block in `camp/templates/admin/index.html` becomes a
+"Reports" block listing every registered report by title, fed by a
+`report_list` simple tag in the `reports` template tag library.
 
 ### Moving county stats
 
