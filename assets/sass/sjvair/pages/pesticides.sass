@@ -1,21 +1,43 @@
 body.pesticides
     .hook
         .lede
-            @extend .has-text-grey
+            color: rgba($white, 0.92)
             margin-bottom: 0
+        h1 a
+            font-weight: 700
         .explorer-nav
             margin-top: $size-6
             margin-bottom: 0
+            .tabs.is-boxed
+                a
+                    color: $white
+                    opacity: 0.85
+                    border-bottom-color: transparent
+                    &:hover
+                        opacity: 1
+                        background-color: rgba($black, 0.08)
+                li.is-active a
+                    background-color: $white
+                    border-color: $white
+                    color: $primary
+                    opacity: 1
+                    &:hover
+                        background-color: $white
+                        color: $primary
 
     .breadcrumbs
         background-color: $grey-lightest
         padding: $size-6 0px
 
     .explorer-filters
+        padding: 1.25rem
         .label
             @extend .is-size-7
+            @extend .has-text-grey
             text-transform: uppercase
             letter-spacing: 0.04em
+        .field:not(:last-child)
+            margin-bottom: 1rem
         ul
             list-style: none
             margin-left: 0
@@ -27,6 +49,10 @@ body.pesticides
         @extend .has-text-grey-dark
 
     .data-table
+        thead th
+            border-bottom-width: 2px
+            border-bottom-color: $grey-lighter
+            vertical-align: middle
         th .sort-link
             @extend .has-text-grey-dark
             white-space: nowrap
@@ -36,14 +62,20 @@ body.pesticides
                 @extend .has-text-link
                 .icon
                     @extend .has-text-link
+        tbody td
+            vertical-align: middle
 
     .stat-row
         .heading
             @extend .has-text-grey
+            letter-spacing: 0.02em
         .title
             @extend .has-text-weight-semibold
+            font-variant-numeric: tabular-nums
 
     .detail-header
+        h1
+            font-weight: 700
         .identifiers
             margin-bottom: $size-7
         .tags
@@ -51,18 +83,29 @@ body.pesticides
 
     .related-card, .leaderboard
         height: 100%
+        .card-header
+            box-shadow: none
+            border-bottom: 2px solid $primary
+        .card-header-title
+            font-weight: 600
         .tags.is-inline
             display: inline-flex
             vertical-align: middle
 
     .leaderboard-list
         margin: 0
-        padding-left: 1.5em
+        padding-left: 1.75em
         li
-            padding: 0.25em 0
+            padding: 0.4em 0
             border-bottom: 1px solid $grey-lightest
+            &::marker
+                color: $primary
+                font-weight: 600
+            &:last-child
+                border-bottom: none
             .lbs
                 @extend .has-text-grey
+                font-variant-numeric: tabular-nums
 
     .county-map
         .admin-leaflet-map
@@ -75,5 +118,12 @@ body.pesticides
         display: block
         height: 100%
         color: inherit
+        border-top: 3px solid transparent
+        transition: border-color 0.15s ease, box-shadow 0.15s ease
         &:hover
+            border-top-color: $primary
             box-shadow: 0 0.5em 1em -0.125em rgba($black, 0.15)
+
+    @media (prefers-reduced-motion: reduce)
+        .section-card
+            transition: none
