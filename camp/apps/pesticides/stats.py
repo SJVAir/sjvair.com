@@ -9,15 +9,17 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 from django.core.cache import cache
-from django.db.models import Count, Max, Min, Q, Sum
+from django.db.models import Count, F, Max, Min, Q, Sum
 from django.utils import timezone
 
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
 
 LATEST_YEAR_KEY = 'pesticides:latest-year'
 LANDING_KEY = 'pesticides:landing-stats'
+NOTICE_WINDOW_KEY = 'pesticides:notice-window'
 LATEST_YEAR_TTL = 60 * 60
 LANDING_TTL = 60 * 60 * 24
+NOTICE_WINDOW_TTL = 60 * 60
 SJV_COUNTY_COUNT = 8
 _MISSING = object()
 
@@ -112,7 +114,7 @@ def top_related(uses, year, field, lbs_field='lbs_chemical', limit=10):
 def recent_uses(uses, limit=10):
     return (
         uses.select_related('county', 'product', 'chemical', 'commodity')
-        .order_by('-application_date', '-pk')[:limit]
+        .order_by(F('application_date').desc(nulls_last=True), '-pk')[:limit]
     )
 
 
@@ -144,14 +146,16 @@ def upcoming_by_county(notices):
 
 
 def notice_window():
-    data = PesticideNotice.objects.aggregate(
-        count=Count('id'),
-        first=Min('scheduled_application'),
-        last=Max('scheduled_application'),
-    )
-    if not data['count']:
-        return None
-    return data
+    value = cache.get(NOTICE_WINDOW_KEY, _MISSING)
+    if value is _MISSING:
+        data = PesticideNotice.objects.aggregate(
+            count=Count('id'),
+            first=Min('scheduled_application'),
+            last=Max('scheduled_application'),
+        )
+        value = data if data['count'] else None
+        cache.set(NOTICE_WINDOW_KEY, value, NOTICE_WINDOW_TTL)
+    return value
 
 
 def _of_concern_query():
@@ -161,10 +165,11 @@ def _of_concern_query():
     )
 
 
-def _top_chemicals_of_concern(year, limit=10):
-    # is_of_concern is derived in Python, so over-fetch then filter; fall back
-    # to a category/IARC-restricted query if the first pass comes up short.
-    rows = [r for r in top_related(PesticideUse.objects.all(), year, 'chemical', limit=limit * 5) if r.obj.is_of_concern]
+def _top_chemicals_of_concern(top_chemicals, year, limit=10):
+    # is_of_concern is derived in Python, so filter the already-fetched top-50
+    # group-by; fall back to a category/IARC-restricted query if that pass
+    # comes up short (a concern chemical outside the top 50 by pounds).
+    rows = [r for r in top_chemicals if r.obj.is_of_concern]
     if len(rows) < limit:
         concern = PesticideUse.objects.filter(chemical__in=Chemical.objects.filter(_of_concern_query()))
         rows = top_related(concern, year, 'chemical', limit=limit)
@@ -175,6 +180,7 @@ def _build_landing_stats():
     year = latest_year()
     uses = PesticideUse.objects.all()
     now = timezone.now()
+    top_chemicals_all = top_related(uses, year, 'chemical', limit=50)
     return {
         'latest_year': year,
         'years': years_loaded(),
@@ -186,8 +192,8 @@ def _build_landing_stats():
             scheduled_application__gte=now,
             scheduled_application__lt=now + timedelta(days=7),
         ).count(),
-        'top_chemicals': top_related(uses, year, 'chemical'),
-        'top_chemicals_of_concern': _top_chemicals_of_concern(year),
+        'top_chemicals': top_chemicals_all[:10],
+        'top_chemicals_of_concern': _top_chemicals_of_concern(top_chemicals_all, year),
         'top_commodities': top_related(uses, year, 'commodity'),
         'by_county': by_county(uses, year) if year else [],
     }
@@ -198,4 +204,15 @@ def landing_stats():
     if data is None:
         data = _build_landing_stats()
         cache.set(LANDING_KEY, data, LANDING_TTL)
+    return data
+
+
+def refresh_landing_stats():
+    """Rebuild and cache landing stats and their dependent cached values."""
+    cache.delete(LATEST_YEAR_KEY)
+    cache.delete(NOTICE_WINDOW_KEY)
+    latest_year()
+    notice_window()
+    data = _build_landing_stats()
+    cache.set(LANDING_KEY, data, LANDING_TTL)
     return data

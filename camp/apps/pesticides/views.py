@@ -111,7 +111,7 @@ class ExplorerListMixin:
         self.sort, field, desc = self.get_sort()
         if field:
             expr = F(field).desc(nulls_last=True) if desc else F(field).asc(nulls_last=True)
-            queryset = queryset.order_by(expr, 'name')
+            queryset = queryset.order_by(expr, 'name', 'pk')
         return queryset
 
     def get_summary_sentence(self, count):
@@ -202,7 +202,7 @@ class Home(vanilla.TemplateView):
 
     def get_context_data(self, **kwargs):
         data = stats.landing_stats()
-        county_map = maps.county_map(data['by_county'], data['latest_year']) if data['by_county'] else None
+        county_map = maps.county_map(data['by_county']) if data['by_county'] else None
         return super().get_context_data(section=None, county_map=county_map, **data, **kwargs)
 
 
@@ -345,7 +345,7 @@ class ExplorerDetailMixin:
             **kwargs,
         )
         context['summary_sentence'] = self.get_summary_sentence(totals, year, self.summary_top(context))
-        context['county_map'] = maps.county_map(context['by_county'], year) if context['by_county'] else None
+        context['county_map'] = maps.county_map(context['by_county']) if context['by_county'] else None
         return context
 
     def summary_top(self, context):

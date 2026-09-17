@@ -113,6 +113,21 @@ class ChemicalListTests(TestCase):
         assert response.status_code == 200
         assert response.context['result_count'] == 0
 
+    def test_ties_break_on_pk_for_stable_pagination(self):
+        # Two chemicals with identical names (and no uses, so lbs_applied
+        # ties too) must still come back in a deterministic order so
+        # pagination doesn't skip/duplicate rows across pages.
+        a = Chemical.objects.create(chem_code=20001, name='DUPLICATE')
+        b = Chemical.objects.create(chem_code=20002, name='DUPLICATE')
+
+        response = self.client.get(self.url, {'sort': 'name'})
+        ids = [c.pk for c in response.context['object_list'] if c.name == 'DUPLICATE']
+        assert ids == sorted([a.pk, b.pk])
+
+        response = self.client.get(self.url, {'sort': '-lbs'})
+        ids = [c.pk for c in response.context['object_list'] if c.name == 'DUPLICATE']
+        assert ids == sorted([a.pk, b.pk])
+
 
 class ProductListTests(TestCase):
     fixtures = ['pesticides-explorer']

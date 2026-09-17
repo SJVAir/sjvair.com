@@ -25,7 +25,7 @@ class SearchMixin:
         return (self
             .annotate(search=search_vector, rank=SearchRank(search_vector, search_query))
             .filter(Q(search=search_query) | substring)
-            .order_by('-rank', self.search_primary)
+            .order_by('-rank', self.search_primary, 'pk')
         )
 
 

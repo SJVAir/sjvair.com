@@ -29,6 +29,9 @@ class Chemical(TimeStampedModel):
         GROUP_2B = '2B', _('Group 2B – Possibly carcinogenic to humans')
         GROUP_3  = '3',  _('Group 3 – Not classifiable as to carcinogenicity')
 
+    PROP65_CATEGORIES = {Category.CARCINOGEN, Category.REPRODUCTIVE_TOXIN, Category.DEVELOPMENTAL_TOXIN}
+    IARC_CONCERN_GROUPS = {IARCGroup.GROUP_1, IARCGroup.GROUP_2A, IARCGroup.GROUP_2B}
+
     objects = ChemicalQuerySet.as_manager()
 
     sqid = SqidsField(alphabet=shuffle_alphabet('pesticides.Chemical'))
@@ -60,9 +63,6 @@ class Chemical(TimeStampedModel):
 
     def __str__(self):
         return self.name
-
-    PROP65_CATEGORIES = {'carcinogen', 'reproductive_toxin', 'developmental_toxin'}
-    IARC_CONCERN_GROUPS = {'1', '2A', '2B'}
 
     @property
     def slug(self):

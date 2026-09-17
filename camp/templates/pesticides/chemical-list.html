@@ -13,9 +13,7 @@
     <div class="column">
         <p class="summary-sentence mb-3">
             {{ summary_sentence }}
-            {% for param, obj in related.items %}
-                <a class="tag is-info is-light ml-2" href="{% qs_replace page=None product=None commodity=None %}">clear ×</a>
-            {% endfor %}
+            {% if related %}<a class="tag is-info is-light ml-2" href="{% qs_replace page=None product=None commodity=None %}">clear ×</a>{% endif %}
         </p>
         <div class="table-container">
             <table class="table is-fullwidth is-striped is-hoverable data-table">

@@ -1,7 +1,7 @@
 from django.core.cache import cache
 from django.test import TestCase
 
-from camp.apps.pesticides import stats
+from camp.apps.pesticides import stats, tasks
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
 
 
@@ -108,3 +108,16 @@ class StatsTests(TestCase):
         assert data['total_lbs'] == 0
         assert data['top_chemicals'] == []
         assert data['by_county'] == []
+
+    def test_refresh_landing_stats_repopulates_cache(self):
+        first = stats.landing_stats()
+        assert first['chemical_count'] == 3
+        Chemical.objects.create(chem_code=999, name='NEW')
+        refreshed = stats.refresh_landing_stats()
+        assert refreshed['chemical_count'] == 4
+        assert stats.landing_stats()['chemical_count'] == 4
+
+    def test_refresh_pesticide_landing_stats_task_populates_cache(self):
+        cache.delete(stats.LANDING_KEY)
+        tasks.refresh_pesticide_landing_stats.call_local()
+        assert cache.get(stats.LANDING_KEY) is not None

@@ -47,7 +47,7 @@ def ramp_color(value, maximum):
     return RAMP[max(0, min(step, len(RAMP) - 1))]
 
 
-def county_map(by_county, year=None, width=600, height=420):
+def county_map(by_county, width=600, height=420):
     geometries = county_geometries()
     if not geometries:
         return None

@@ -101,6 +101,9 @@ class Command(BaseCommand):
                 self.stdout.write('')
 
             self._import_use_records(paths, year)
+
+            from camp.apps.pesticides import stats
+            stats.refresh_landing_stats()
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
