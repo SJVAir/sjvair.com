@@ -106,6 +106,26 @@ body.pesticides
         .admin-leaflet-map
             width: 100% !important
             border-color: $grey-lighter
+        .county-legend
+            display: flex
+            flex-wrap: wrap
+            gap: 0.25rem 1rem
+            margin: 0.5rem 0 0
+            padding: 0
+            list-style: none
+            font-size: $size-7
+            li
+                display: inline-flex
+                align-items: center
+                gap: 0.35rem
+            .swatch
+                display: inline-block
+                width: 1rem
+                height: 1rem
+                border: 1px solid rgba($black, 0.25)
+                border-radius: 2px
+            .range
+                font-variant-numeric: tabular-nums
         figcaption
             margin-top: $size-7
 

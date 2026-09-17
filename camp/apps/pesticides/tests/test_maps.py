@@ -29,6 +29,55 @@ class CountyGeometryTests(TestCase):
         assert set(maps.county_geometries()) == {9001}
 
 
+class QuantileClassTests(TestCase):
+    def test_skewed_values_use_every_class(self):
+        # One county dwarfs the rest; share-of-max would put 7 of 8 in the
+        # lightest bin. Quantiles spread them across all five classes.
+        values = {1: 1_000_000, 2: 5000, 3: 4000, 4: 3000, 5: 2000, 6: 1000, 7: 500, 8: 100}
+        classes = maps.quantile_classes(values)
+        assert len(classes.breaks) == 5
+        assert classes.index_for(1_000_000) == 4
+        assert classes.index_for(100) == 0
+        assert {classes.index_for(v) for v in values.values()} == {0, 1, 2, 3, 4}
+
+    def test_ties_share_a_class(self):
+        values = {1: 10, 2: 10, 3: 10, 4: 50, 5: 50, 6: 900}
+        classes = maps.quantile_classes(values)
+        assert classes.index_for(10) == classes.index_for(10)
+        assert len({classes.index_for(v) for v in values.values()}) == 3
+        assert classes.index_for(900) == len(classes.breaks) - 1
+
+    def test_fewer_values_than_classes(self):
+        classes = maps.quantile_classes({1: 150.0, 2: 30.0})
+        assert len(classes.breaks) == 2
+        assert classes.index_for(30.0) == 0
+        assert classes.index_for(150.0) == 1
+        assert classes.colors[-1] == maps.RAMP[-1]
+
+    def test_zero_and_none_are_no_data(self):
+        classes = maps.quantile_classes({1: 0, 2: None, 3: 40})
+        assert len(classes.breaks) == 1
+        assert classes.color_for(0) == maps.NO_DATA
+        assert classes.color_for(None) == maps.NO_DATA
+        assert classes.color_for(40) == maps.RAMP[-1]
+
+    def test_empty(self):
+        classes = maps.quantile_classes({})
+        assert classes.breaks == []
+        assert classes.legend() == []
+
+    def test_legend_ranges_cover_members(self):
+        values = {1: 100, 2: 250, 3: 400, 4: 4000, 5: 90_000}
+        classes = maps.quantile_classes(values)
+        legend = classes.legend()
+        assert len(legend) == len(classes.breaks)
+        assert legend[0]['low'] == 100
+        assert legend[-1]['high'] == 90_000
+        assert legend[-1]['color'] == maps.RAMP[-1]
+        for row in legend:
+            assert row['low'] <= row['high']
+
+
 class CountyMapTests(TestCase):
     fixtures = ['pesticides-explorer']
 
@@ -46,14 +95,8 @@ class CountyMapTests(TestCase):
 
     def test_shading(self):
         html = maps.county_map(self.rows)
-        assert maps.RAMP[-1] in html      # the max county gets the darkest step
+        assert maps.RAMP[-1] in html      # the only county with data gets the darkest step
         assert maps.NO_DATA in html       # a county with no rows is grey
-
-    def test_ramp_steps(self):
-        assert maps.ramp_color(0, 100) == maps.NO_DATA
-        assert maps.ramp_color(1, 100) == maps.RAMP[0]
-        assert maps.ramp_color(50, 100) == maps.RAMP[2]
-        assert maps.ramp_color(100, 100) == maps.RAMP[-1]
 
     def test_none_without_geometries(self):
         Region.objects.filter(type='county').update(boundary=None)
@@ -63,3 +106,14 @@ class CountyMapTests(TestCase):
         html = maps.county_map(self.rows)
         assert 'Fresno County: 150 lbs' in html
         assert 'Kern County: no data' in html
+
+    def test_legend_rendered_from_breaks(self):
+        rows = self.rows + [
+            {'county_id': 9002, 'county_name': 'Kern County', 'county_slug': 'kern', 'lbs': 20.0, 'acres': 2, 'applications': 1},
+        ]
+        html = maps.county_map(rows)
+        assert 'county-legend' in html
+        assert '20 lbs' in html
+        assert '150 lbs' in html
+        assert 'No data' in html
+        assert html.index('county-legend') > html.index('admin-leaflet-map')
