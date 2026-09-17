@@ -29,15 +29,15 @@ carb_tac:
 fumigant:
   title: Fumigant
   summary: A fumigant is applied as a gas to soil or stored crops and can drift beyond the field. Fumigant applications need extra setbacks and buffer zones, and they are the notices SprayDays publishes 48 hours ahead.
-  source_url: https://www.cdpr.ca.gov/docs/emon/fumigants/
+  source_url: https://spraydays.cdpr.ca.gov/Home/About
 cholinesterase_inhibitor:
   title: Cholinesterase inhibitor
   summary: This chemical works by blocking an enzyme the nervous system needs, in insects and in people. Farmworkers who handle it are required to have regular blood tests.
-  source_url: https://www.cdpr.ca.gov/docs/whs/cholinesterase.htm
+  source_url: https://www.cdpr.ca.gov/worker-health-and-safety/medical-supervision/
 groundwater_contaminant:
   title: Groundwater contaminant
   summary: This chemical has been found in California groundwater or can reach it, so the state restricts where and how it is used to protect drinking-water wells.
-  source_url: https://www.cdpr.ca.gov/docs/emon/grndwtr/
+  source_url: https://www.cdpr.ca.gov/environmental-monitoring/groundwater-protection/
 biopesticide:
   title: Biopesticide
   summary: A biopesticide comes from natural materials such as bacteria, minerals, or plant extracts. They are generally lower-toxicity to people than conventional pesticides, though not always harmless.
@@ -45,11 +45,11 @@ biopesticide:
 oil:
   title: Oil
   summary: Petroleum or plant oils used to smother insects and mites. They are low in toxicity to people, but they are counted by weight, so they often top the pounds-applied lists.
-  source_url: https://www.cdpr.ca.gov/docs/pur/purmain.htm
+  source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
 restricted_material:
   title: California restricted material
   summary: This product can only be used with a permit from the county agricultural commissioner, and a notice of intent must be filed before each application. That is why it shows up in SprayDays.
-  source_url: https://www.cdpr.ca.gov/docs/enforce/permitting.htm
+  source_url: https://www.cdpr.ca.gov/enforcement/restricted-materials/
 noi_meaning:
   title: Notice of intent
   summary: A notice of intent is a grower telling the county they plan to apply a restricted pesticide. It is a plan, not proof that spraying happened, and the grower may begin any time up to four days after the scheduled date.
@@ -58,11 +58,11 @@ noi_meaning:
 pur_lag:
   title: Why the latest year is last year
   summary: Growers report applications to the county, which sends them to the state, which checks and publishes them about a year later. The most recent full year here is the newest the state has released.
-  source_url: https://www.cdpr.ca.gov/docs/pur/purmain.htm
+  source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
 shades:
   title: What the shades mean
   summary: Darker squares and counties had more pounds applied that year. Shades rank the areas shown against each other, so the same color can mean different amounts on different maps; read the legend for the actual range.
-  source_url: https://www.cdpr.ca.gov/docs/pur/purmain.htm
+  source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
 badges:
   title: What the badges mean
   summary: Badges mark chemicals that an official list flags for cancer, reproductive harm, or air toxicity. A badge says the chemical is on a list, not how much of it reached anyone.
