@@ -244,8 +244,11 @@ class CoverageTests(StaffClientMixin, TestCase):
 
     def setUp(self):
         super().setUp()
-        # Inside tract 1.01 (DAC, pop 4650). Tract 1.02 (pop 3350) has no monitor.
-        self.in_dac = PurpleAir.objects.create(name='In DAC', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        # Fixture tracts, both Fresno: 1.01 (DAC, pop 4650) spans lon -119.8..-119.7,
+        # lat 36.7..36.8; 1.02 (not a DAC, pop 3350) spans lon -119.7..-119.6.
+        # This monitor sits inside 1.02, ~890 m east of the DAC tract's edge
+        # (at lat 36.75, 0.01 degrees of longitude is ~890 m).
+        self.near_dac = PurpleAir.objects.create(name='Near DAC', sensor_id=1, position=Point(-119.69, 36.75), location='outside')
         # Kern, outside any fixture tract.
         self.kern = PurpleAir.objects.create(name='Kern', sensor_id=2, position=Point(-119.0, 35.4), location='outside')
 
@@ -262,7 +265,7 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert fresno['population'] == 8000
         assert fresno['per_10k'] == 1.25
         assert fresno['dac_tracts'] == 1
-        assert fresno['dac_monitors'] == 1
+        assert fresno['dac_monitors'] == 0
         assert fresno['dac_population'] == 4650
         assert fresno['dac_population_covered'] == 4650
         assert fresno['dac_covered_pct'] == 100.0
@@ -274,26 +277,60 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert total['monitors'] == 2
         assert total['population'] == 8000
 
+    def test_monitor_inside_a_dac_tract_is_counted(self):
+        PurpleAir.objects.create(name='In DAC', sensor_id=3, position=Point(-119.75, 36.75), location='outside')
+        response = self.client.get(reverse('reports:coverage'))
+        rows = {row['county']: row for row in response.context['rows']}
+        assert rows['Fresno']['monitors'] == 2
+        assert rows['Fresno']['dac_monitors'] == 1
+
     def test_radius_param_changes_coverage(self):
-        # A monitor in tract 1.01 is at most ~11km from tract 1.02's edge? No: tract 1.02 starts at
-        # lon -119.7, the monitor is at -119.75, about 4.5 km away. A 5 km radius reaches it.
-        response = self.client.get(reverse('reports:coverage'), {'radius': '5000'})
-        bands = {b['band']: b for b in response.context['percentile_bands']}
-        assert response.context['radius'] == 5000
-        assert bands['75–100']['tracts'] == 1
-        assert bands['50–75']['tracts'] == 1
-        assert bands['50–75']['monitors'] == 0
-        assert bands['75–100']['monitors'] == 1
+        # The only monitor near the DAC tract is ~890 m outside it, so the DAC
+        # population counts as covered at the default 1000 m but not at 500 m.
+        # This is what pins the radius to meters rather than degrees.
+        def covered(**params):
+            response = self.client.get(reverse('reports:coverage'), params)
+            assert response.context['radius'] == int(params.get('radius', 1000))
+            rows = {row['county']: row for row in response.context['rows']}
+            return rows['Fresno']['dac_population_covered']
+
+        assert covered() == 4650
+        assert covered(radius='500') == 0
+        assert covered(radius='5000') == 4650
 
     def test_percentile_bands(self):
         response = self.client.get(reverse('reports:coverage'))
         bands = {b['band']: b for b in response.context['percentile_bands']}
         assert set(bands) == {'0–25', '25–50', '50–75', '75–100'}
-        assert bands['75–100'] == {'band': '75–100', 'tracts': 1, 'population': 4650, 'monitors': 1, 'per_10k': 2.15}
-        assert bands['50–75'] == {'band': '50–75', 'tracts': 1, 'population': 3350, 'monitors': 0, 'per_10k': 0.0}
+        assert bands['75–100'] == {'band': '75–100', 'tracts': 1, 'population': 4650, 'monitors': 0, 'per_10k': 0.0}
+        assert bands['50–75'] == {'band': '50–75', 'tracts': 1, 'population': 3350, 'monitors': 1, 'per_10k': 2.99}
         assert bands['0–25']['tracts'] == 0
 
     def test_csv_columns(self):
         response = self.client.get(reverse('reports:coverage'), {'format': 'csv'})
+        header = response.content.decode().splitlines()[0]
+        assert header == 'county,monitors,population,per_10k,dac_tracts,dac_monitors,dac_population,dac_population_covered,dac_covered_pct'
+
+
+class CoverageNoCESTests(StaffClientMixin, TestCase):
+    """The report still renders when no CalEnviroScreen data has been imported."""
+
+    def setUp(self):
+        super().setUp()
+        self.monitor = PurpleAir.objects.create(name='Fresno', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+
+    def test_renders_without_ces_data(self):
+        response = self.client.get(reverse('reports:coverage'))
+        assert response.status_code == 200
+        assert response.context['ces_version'] is None
+        assert response.context['percentile_bands'] == []
+        fresno = {row['county']: row for row in response.context['rows']}['Fresno']
+        assert fresno['monitors'] == 1
+        assert fresno['population'] == 0
+        assert fresno['per_10k'] is None
+
+    def test_csv_export_without_ces_data(self):
+        response = self.client.get(reverse('reports:coverage'), {'format': 'csv'})
+        assert response.status_code == 200
         header = response.content.decode().splitlines()[0]
         assert header == 'county,monitors,population,per_10k,dac_tracts,dac_monitors,dac_population,dac_population_covered,dac_covered_pct'
