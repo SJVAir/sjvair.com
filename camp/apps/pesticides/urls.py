@@ -8,6 +8,9 @@ urlpatterns = [
 
     path('map/', views.MapPage.as_view(), name='map'),
 
+    path('near/', views.NearMe.as_view(), name='near-me'),
+    path('region/<str:sqid>/<slug:slug>/', views.RegionPage.as_view(), name='region'),
+
     path('records/', views.RecordsBrowser.as_view(), name='records'),
     path('sections/<str:sqid>/', views.SectionDetail.as_view(), name='section-detail'),
 

@@ -12,9 +12,13 @@ from django.db.models import Count, F, Max, Min, Q, Sum
 from django.utils import timezone
 
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product
+from camp.apps.regions.models import Region
 
 LATEST_YEAR_KEY = 'pesticides:latest-year'
-LANDING_KEY = 'pesticides:landing-stats'
+# Bumped whenever the cached shape changes -- v2 added `county_sqid` to
+# by_county() rows, so a landing-stats entry cached under the old key would
+# be missing it.
+LANDING_KEY = 'pesticides:landing-stats:v2'
 NOTICE_WINDOW_KEY = 'pesticides:notice-window'
 YEARS_KEY = 'pesticides:years'
 LATEST_YEAR_TTL = 60 * 60
@@ -87,17 +91,21 @@ def by_year(rows, lbs_field='lbs_chemical'):
 
 
 def by_county(rows, year, lbs_field='lbs_chemical'):
-    counties = (
+    counties = list(
         rows.filter(year=year)
         .values('county_id', 'county__name', 'county__slug')
         .annotate(**_totals(lbs_field))
         .order_by(F('lbs').desc(nulls_last=True), 'county__name')
     )
+    # sqid isn't a DB column, so it can't come off the aggregate above --
+    # one in_bulk() for the (at most eight) counties involved.
+    regions = Region.objects.in_bulk([row['county_id'] for row in counties])
     return [
         {
             'county_id': row['county_id'],
             'county_name': row['county__name'],
             'county_slug': row['county__slug'],
+            'county_sqid': regions[row['county_id']].sqid if row['county_id'] in regions else None,
             'lbs': row['lbs'],
             'acres': row['acres'],
             'applications': row['applications'],

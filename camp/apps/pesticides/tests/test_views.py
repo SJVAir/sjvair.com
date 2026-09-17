@@ -331,14 +331,15 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         assert Product.objects.get(pk=1).get_absolute_url() in html
 
     def test_query_ceiling(self):
-        # Honest count with the current implementation is 22 (verified
+        # Honest count with the current implementation is 23 (verified
         # query-by-query: every related-object fetch is batched via
         # in_bulk/prefetch/select_related, no N+1s -- 19 base queries
         # (including the by_month rollup aggregate for the future month
-        # chart) plus the county map's geometry build, the county names
-        # lookup, and the available-years lookup for the year picker; all
-        # cached after the first request).
-        with self.assertNumQueries(22):
+        # chart) plus the county map's geometry build, the by-county
+        # region-name lookup, the by-county-table's in_bulk() for
+        # county_sqid, and the available-years lookup for the year picker;
+        # all cached after the first request).
+        with self.assertNumQueries(23):
             self.client.get(self.chemical.get_absolute_url())
 
     def test_by_month_in_context(self):

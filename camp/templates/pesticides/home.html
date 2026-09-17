@@ -32,7 +32,10 @@
 
 {% if county_map %}
 <div class="columns is-centered">
-    <div class="column is-8">{% include 'pesticides/includes/county-map.html' %}</div>
+    <div class="column is-8">
+        {% include 'pesticides/includes/county-map.html' %}
+        {% include 'pesticides/includes/by-county-table.html' %}
+    </div>
 </div>
 {% endif %}
 

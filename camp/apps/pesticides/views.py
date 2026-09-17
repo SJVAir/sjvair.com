@@ -1,5 +1,6 @@
 import calendar
 import hashlib
+import math
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -19,7 +20,7 @@ from django.utils.functional import cached_property
 import vanilla
 
 from camp.api.v2.pesticides.sections import radius_bbox
-from camp.apps.pesticides import maps, stats
+from camp.apps.pesticides import maps, places, stats
 from camp.apps.pesticides.forms import (
     ChemicalFilterForm, CommodityFilterForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
 )
@@ -992,6 +993,18 @@ def _section_card(title, kind, rows, show_all_url):
     }
 
 
+def _place_cards(context):
+    """chemicals_card/products_card/commodities_card for place.html, all
+    pointing "Show all" at the area's records browser -- there's no single
+    entity to filter by, same as a section page's top lists."""
+    records_url = context['records_url']
+    return {
+        'chemicals_card': _section_card('Top chemicals', 'chemicals', context['top_chemicals'], records_url),
+        'products_card': _section_card('Top products', 'products', context['top_products'], records_url),
+        'commodities_card': _section_card('Top commodities', 'commodities', context['top_commodities'], records_url),
+    }
+
+
 class SectionDetail(vanilla.DetailView):
     """
     A single MTRS square-mile section: stats, a 12-month bar chart, top
@@ -1257,5 +1270,114 @@ class NoticeDetail(vanilla.DetailView):
             map_config=map_config,
             related_notices=related_notices,
             records_url=records_url,
+            **kwargs,
+        )
+
+
+class NearMe(vanilla.TemplateView):
+    """
+    A place page centered on a lat/lng from the address bar (?lat=&lng=&
+    radius=&label=), never stored server-side. Coordinates are validated in
+    get() -- an invalid or missing pair bounces to the landing page's find
+    form rather than rendering a broken page.
+    """
+    template_name = 'pesticides/place.html'
+
+    def _parse_coords(self, data):
+        try:
+            lat = float(data['lat'])
+            lng = float(data['lng'])
+        except (KeyError, TypeError, ValueError):
+            return None, None, None
+        if not (math.isfinite(lat) and math.isfinite(lng)):
+            return None, None, None
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            return None, None, None
+        try:
+            radius = int(data.get('radius', 1))
+        except (TypeError, ValueError):
+            return None, None, None
+        if radius not in places.RADIUS_CHOICES:
+            return None, None, None
+        return lat, lng, radius
+
+    def get(self, request, *args, **kwargs):
+        lat, lng, radius = self._parse_coords(request.GET)
+        if lat is None:
+            return redirect(reverse('pesticides:home') + '?find=1')
+        self.lat, self.lng, self.radius = lat, lng, radius
+        # Truncate here, on the request's own GET, so every link built from
+        # it below (year picker, radius switcher) carries the same
+        # already-truncated label instead of the raw oversized one.
+        label = request.GET.get('label')
+        if label and len(label) > 120:
+            request.GET = request.GET.copy()
+            request.GET['label'] = label[:120]
+        return super().get(request, *args, **kwargs)
+
+    def _radius_url(self, miles):
+        params = self.request.GET.copy()
+        params['radius'] = miles
+        return f'{self.request.path}?{params.urlencode()}'
+
+    def get_context_data(self, **kwargs):
+        year = stats.resolve_year(self.request.GET.get('year'))
+        label = (self.request.GET.get('label') or f'{self.lat:.3f}, {self.lng:.3f}')[:120]
+        area = places.point_area(self.lat, self.lng, self.radius, label=label)
+        context = places.place_context(area, year)
+        radius_options = [
+            {'miles': miles, 'url': self._radius_url(miles)}
+            for miles in places.RADIUS_CHOICES if miles != self.radius
+        ]
+        return super().get_context_data(
+            section=None,
+            years=stats.years_loaded(),
+            **context,
+            **_place_cards(context),
+            **year_context(year),
+            privacy_note=True,
+            radius_options=radius_options,
+            api_docs_url=API_DOCS_URL,
+            client_docs_url=CLIENT_DOCS_URL,
+            **kwargs,
+        )
+
+
+class RegionPage(vanilla.TemplateView):
+    """
+    A place page for a county/city/ZIP/place `Region`. MTRS sections aren't
+    included -- SectionDetail already covers those -- so an out-of-range
+    `type` (including MTRS) 404s the same as an unresolved sqid.
+    """
+    template_name = 'pesticides/place.html'
+
+    def get(self, request, *args, **kwargs):
+        region = (
+            Region.objects
+            .filter(sqid=kwargs['sqid'], type__in=places.PLACE_REGION_TYPES)
+            .select_related('boundary')
+            .first()
+        )
+        if region is None or not region.boundary_id:
+            raise Http404
+        if region.slug != kwargs['slug']:
+            canonical = reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug})
+            return redirect(canonical, permanent=True)
+        self.region = region
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        year = stats.resolve_year(self.request.GET.get('year'))
+        area = places.region_area(self.region)
+        context = places.place_context(area, year)
+        return super().get_context_data(
+            section=None,
+            years=stats.years_loaded(),
+            **context,
+            **_place_cards(context),
+            **year_context(year),
+            privacy_note=False,
+            api_docs_url=API_DOCS_URL,
+            client_docs_url=CLIENT_DOCS_URL,
             **kwargs,
         )

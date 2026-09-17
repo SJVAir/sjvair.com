@@ -2,9 +2,17 @@ import calendar
 
 from django import template
 from django.contrib.humanize.templatetags.humanize import intcomma
+from django.urls import reverse
 from django.utils.html import format_html
 
 register = template.Library()
+
+
+@register.simple_tag
+def region_url(region):
+    if region is None:
+        return ''
+    return reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug})
 
 
 @register.simple_tag(takes_context=True)
