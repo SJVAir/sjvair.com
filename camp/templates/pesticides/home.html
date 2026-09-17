@@ -25,7 +25,7 @@
 <p class="notice-callout">
     <span class="icon has-text-info"><span class="fa-regular fa-fw fa-calendar-clock"></span></span>
     <span>
-        <strong>{{ upcoming_week }}</strong> SprayDays notice{{ upcoming_week|pluralize }} of intent scheduled for the next 7 days.
+        <strong>{{ active_notices }}</strong> SprayDays notice{{ active_notices|pluralize }} of intent currently scheduled.
         <a href="#spraydays">What are notices of intent?</a>
     </span>
 </p>
@@ -73,7 +73,7 @@
     <p>California requires agricultural pesticide applications to be reported to the county agricultural commissioner, who forwards them to the Department of Pesticide Regulation (DPR). DPR publishes the records about a year after the fact. Each record gives the product, active ingredient, crop, county, one-square-mile section, date, and amount. This explorer loads the records for Fresno, Kern, Kings, Madera, Merced, San Joaquin, Stanislaus, and Tulare counties{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
 
     <h3 id="spraydays">SprayDays notices of intent</h3>
-    <p>Growers must file a notice of intent before applying a California-restricted material. DPR's SprayDays system publishes those notices, usually a day or more ahead of the scheduled application. Notices cover only restricted materials, list the product and chemical but not the crop, and are not confirmation that the application happened.</p>
+    <p>Growers must file a notice of intent before applying a California-restricted material. DPR's SprayDays system publishes those notices 48 hours ahead for fumigants and 24 hours ahead for other restricted materials, and the grower then has up to four days after the scheduled date to begin. Notices cover only restricted materials, list the product and chemical but not the crop, and are not confirmation that the application happened. To be notified about notices near an address, <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">sign up with SprayDays</a>.</p>
 
     <h3 id="categories">DPR chemical categories</h3>
     <p>DPR tags active ingredients with regulatory categories: biopesticide, carcinogen, cholinesterase inhibitor, developmental toxin, fumigant, groundwater contaminant, oil, reproductive toxin, and toxic air contaminant. A chemical can carry several.</p>

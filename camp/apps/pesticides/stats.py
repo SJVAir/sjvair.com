@@ -150,8 +150,14 @@ def recent_uses(uses, limit=10):
     )
 
 
+# SprayDays posts a notice 24-48 hours before the scheduled application, and
+# the grower then has up to four days after that date to start. A notice is
+# "active" until that grace period has passed.
+NOTICE_GRACE_DAYS = 4
+
+
 def _upcoming(notices):
-    return notices.filter(scheduled_application__gte=timezone.now())
+    return notices.filter(scheduled_application__gte=timezone.now() - timedelta(days=NOTICE_GRACE_DAYS))
 
 
 def upcoming_notices(notices, limit=10):
@@ -214,7 +220,6 @@ def landing_key(year):
 
 def _build_landing_stats(year):
     uses = PesticideUse.objects.all()
-    now = timezone.now()
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50)
     year_uses = uses.filter(year=year) if year else uses.none()
     year_totals_ = year_uses.aggregate(
@@ -235,10 +240,7 @@ def _build_landing_stats(year):
         'commodity_count': year_totals_['commodities'] or 0,
         'applications': year_totals_['applications'] or 0,
         'total_lbs': year_totals_['lbs'] or 0,
-        'upcoming_week': PesticideNotice.objects.filter(
-            scheduled_application__gte=now,
-            scheduled_application__lt=now + timedelta(days=7),
-        ).count(),
+        'active_notices': upcoming_count(PesticideNotice.objects.all()),
         'top_chemicals': top_chemicals_all[:10],
         'top_chemicals_of_concern': _top_chemicals_of_concern(top_chemicals_all, year),
         'top_commodities': top_related(uses, year, 'commodity'),

@@ -24,7 +24,7 @@ usable by two audiences:
 | Fork | Decision |
 |---|---|
 | Geography | Section level (MTRS, one square mile). Region pages aggregate their sections; "near me" is sections within a radius of a point. |
-| Time | Year stays the primary bin with a month breakdown inside it. Records browser gets a free date range. NOIs use live windows (next 7 / 30 days) plus a monthly archive. |
+| Time | Year stays the primary bin with a month breakdown inside it. Records browser gets a free date range. NOIs use one live window, **active** (scheduled from four days ago onward; see NOI timing), plus a monthly archive. |
 | Location search | MapTiler geocoding called directly from the browser (the key is already exposed by tile URLs), plus browser geolocation, plus county/city/ZIP pickers as fallback. Location lives in the URL; nothing is stored server-side. |
 | Front door | Near-me first. Place page is the primary resident destination; entity browsing is the "explore the data" tier. |
 | Health notes | Category-level plain-language notes, editable in the admin, shown wherever a badge appears. |
@@ -32,6 +32,22 @@ usable by two audiences:
 | Records browser | Two paginated, filterable record tables (PUR, NOI) with a map; no CSV button, exports go through the API/client. |
 | Maps | Interactive plain-Leaflet section maps for place pages and the records browser, fed by a new sections API. Entity pages keep the static county choropleth. |
 | Storage | A per-section, per-month rollup table rebuilt at import time replaces live aggregation everywhere. |
+
+## NOI timing (from SprayDays' About page and our ingested data)
+
+SprayDays publishes a notice of intent 48 hours before a fumigant application
+and 24 hours before other restricted-material applications, "or as soon as
+practicable". Once a notice is approved the grower has **up to four days after
+the scheduled date** to start. In our ingested notices the lead time between
+filing and the scheduled time is 0–2 days, and some arrive after the scheduled
+time because our fetch runs once daily.
+
+Therefore the explorer never offers a "next 7 / 30 days" window. The live
+window is **active**: `scheduled_application >= now - 4 days`. Notice pages
+say "Scheduled <date>; may begin any time through <date + 4 days>". The
+monthly archive covers everything older. Residents who want advance warning are
+sent to SprayDays' own sign-up, which notifies by address for the square-mile
+section and its neighbors.
 
 ## Sub-projects and build order
 
@@ -148,7 +164,7 @@ Behavior:
   with the same five-step quantile ramp and legend the county map uses,
   recomputed from the sections in view. Sections with no data are outlined
   only.
-- Draws upcoming NOIs (next 30 days) as points within the viewport, with a
+- Draws active NOIs as points within the viewport, with a
   distinct marker and a popup: scheduled date, products, method, link to the
   notice page.
 - Click a section: popup with pounds, applications, top three chemicals with
@@ -212,8 +228,7 @@ where map popups and record rows link.
 
 ### NOI section
 
-- `/tools/pesticides/notices/`: upcoming notices, default window next 7 days
-  with a 30-day option, filterable by county, region, chemical, product,
+- `/tools/pesticides/notices/`: active notices (see NOI timing), filterable by county, region, chemical, product,
   method, and near. Table plus map (points). A second tab, "Past notices",
   is the monthly archive with the same filters plus month/year.
 - `/tools/pesticides/notices/<sqid>/`: one notice: scheduled date and time,
@@ -269,7 +284,7 @@ tables, notice rows), replacing plain text with links.
 ### Place-page layout (shared by near me and region pages)
 
 1. Header: place name, radius or region type, the year picker.
-2. **Right now**: upcoming NOIs within the area for the next 7 days ("3 notices
+2. **Right now**: active NOIs within the area ("3 notices
    scheduled nearby"), each linking to its notice page; SprayDays sign-up link.
    Visually separated from the year-binned sections below, as on the landing
    page.
@@ -331,7 +346,7 @@ one breath, and staff can fix the wording without a deploy.
 ## Cross-cutting
 
 - **Year picker** on every page with year-binned data; NOIs always shown in
-  live windows and visually separated from year-binned blocks.
+  the active window and visually separated from year-binned blocks.
 - **URLs are the only state.** Every view is shareable. No cookies or sessions
   for location or filters.
 - **Privacy:** the near-me page explains that the location is only in the URL.

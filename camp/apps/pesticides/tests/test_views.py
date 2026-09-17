@@ -298,7 +298,7 @@ class ChemicalDetailTests(TestCase):
         assert [n.pk for n in ctx['upcoming']] == [2, 3]
         assert ctx['upcoming_count'] == 2
         html = self.client.get(Chemical.objects.get(pk=2).get_absolute_url()).content.decode()
-        assert '2 upcoming' in html
+        assert '2 scheduled' in html
         assert 'Upcoming notices' not in html   # not part of the year-binned stat row
         assert ctx['upcoming_by_county'][0]['county_name'] == 'Fresno County'
 
@@ -439,7 +439,7 @@ class HomeTests(TestCase):
         assert 'most recent full year loaded is 2023' in html
         # Live notice count sits outside the year-binned stat row.
         assert 'Notices next 7 days' not in html
-        assert 'notice-callout' in html and 'next 7 days' in html
+        assert 'notice-callout' in html and 'currently scheduled' in html
 
     def test_leaderboards_link_to_details(self):
         html = self.client.get(self.url).content.decode()

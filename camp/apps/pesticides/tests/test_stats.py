@@ -79,6 +79,21 @@ class StatsTests(TestCase):
         notices = list(stats.upcoming_notices(PesticideNotice.objects.filter(chemicals=2)))
         assert [n.pk for n in notices] == [2, 3]
 
+    def test_notice_stays_active_through_the_four_day_grace_period(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        recent = PesticideNotice.objects.create(
+            application_id=9001, comtrs='10M13S14E10', county_id=9001,
+            scheduled_application=timezone.now() - timedelta(days=3),
+        )
+        stale = PesticideNotice.objects.create(
+            application_id=9002, comtrs='10M13S14E11', county_id=9001,
+            scheduled_application=timezone.now() - timedelta(days=5),
+        )
+        active = set(stats.upcoming_notices(PesticideNotice.objects.all(), limit=50).values_list('pk', flat=True))
+        assert recent.pk in active
+        assert stale.pk not in active
+
     def test_upcoming_by_county(self):
         rows = stats.upcoming_by_county(PesticideNotice.objects.filter(chemicals=2))
         assert rows == [
@@ -100,7 +115,7 @@ class StatsTests(TestCase):
         assert data['product_count'] == 3
         assert data['commodity_count'] == 3
         assert data['total_lbs'] == 740.0
-        assert data['upcoming_week'] == 0
+        assert data['active_notices'] == 2   # the two 2099 notices; the 2020 one is long past
         assert [r.obj.name for r in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
         assert [r.obj.name for r in data['top_chemicals_of_concern']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         assert [r.obj.name for r in data['top_commodities']] == ['GRAPE', 'ALMOND', 'COTTON']
