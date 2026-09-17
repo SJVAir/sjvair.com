@@ -311,11 +311,19 @@ class ExplorerDetailMixin:
         """Return (related_a, related_b) dicts. Each: {title, kind, rows, show_all_url}."""
         raise NotImplementedError
 
-    def related_card(self, title, kind, rows, list_url_name, param):
+    def related_card(self, title, kind, rows, list_url_name, param, show_pct=False, show_lbs=True, complete=False):
+        """
+        show_pct: rows carry pct_active (only product<->chemical relations do).
+        show_lbs: rows carry pounds (a product's ingredient list does not).
+        complete: every related object is already listed, so no "Show all".
+        """
         return {
             'title': title,
             'kind': kind,
             'rows': rows,
+            'show_pct': show_pct,
+            'show_lbs': show_lbs,
+            'complete': complete,
             'show_all_url': reverse(list_url_name) + f'?{param}={self.object.sqid}',
         }
 
@@ -389,7 +397,7 @@ class ChemicalDetail(ExplorerDetailMixin, vanilla.DetailView):
         products = with_pct_active(stats.top_related(uses, year, 'product', self.lbs_field), pct)
         commodities = stats.top_related(uses, year, 'commodity', self.lbs_field)
         return (
-            self.related_card('Products containing this chemical', 'products', products, 'pesticides:product-list', 'chemical'),
+            self.related_card('Products containing this chemical', 'products', products, 'pesticides:product-list', 'chemical', show_pct=True),
             self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'chemical'),
         )
 
@@ -422,7 +430,7 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
         ]
         commodities = stats.top_related(uses, year, 'commodity', self.lbs_field)
         return (
-            self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product'),
+            self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product', show_pct=True, show_lbs=False, complete=True),
             self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'product'),
         )
 

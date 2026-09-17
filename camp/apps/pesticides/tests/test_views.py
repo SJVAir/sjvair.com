@@ -271,6 +271,9 @@ class ChemicalDetailTests(TestCase):
         assert [(r.obj.name, r.pct_active) for r in ctx['related_a']['rows']] == [('ROUNDUP PRO', 41.0)]
         assert [r.obj.name for r in ctx['related_b']['rows']] == ['ALMOND', 'GRAPE']
         assert ctx['related_b']['show_all_url'] == reverse('pesticides:commodity-list') + f'?chemical={self.chemical.sqid}'
+        assert ctx['related_a']['show_pct'] is True
+        assert ctx['related_b']['show_pct'] is False
+        assert ctx['related_a']['complete'] is False
 
     def test_notices_split(self):
         ctx = self.client.get(Chemical.objects.get(pk=2).get_absolute_url()).context
@@ -330,6 +333,11 @@ class ProductDetailTests(TestCase):
         assert ctx['related_a']['kind'] == 'chemicals'
         assert [(r.obj.name, r.pct_active) for r in ctx['related_a']['rows']] == [('CHLORPYRIFOS', 44.9)]
         assert [r.obj.name for r in ctx['related_b']['rows']] == ['COTTON', 'ALMOND']
+        # Ingredients are a complete list with no pounds of their own.
+        card = ctx['related_a']
+        assert (card['show_pct'], card['show_lbs'], card['complete']) == (True, False, True)
+        html = self.client.get(self.product.get_absolute_url()).content.decode()
+        assert html.count('Show all') == 1
 
     def test_totals_use_lbs_product(self):
         ctx = self.client.get(self.product.get_absolute_url()).context
@@ -359,6 +367,8 @@ class CommodityDetailTests(TestCase):
         assert [r.obj.name for r in ctx['related_a']['rows']] == ['SULFUR', 'GLYPHOSATE']
         assert [r.obj.name for r in ctx['related_b']['rows']] == ['SULFUR DUST', 'ROUNDUP PRO']
         assert ctx['has_notices'] is False
+        assert ctx['related_a']['show_pct'] is False
+        assert ctx['related_b']['show_pct'] is False
 
     def test_summary_sentence_uses_chemicals(self):
         ctx = self.client.get(self.commodity.get_absolute_url()).context
