@@ -157,8 +157,32 @@ body.pesticides
                 cursor: pointer
                 &[aria-selected="true"], &:hover
                     background: $grey-lightest
-        .find-area-pickers
+            li.find-area-group
+                cursor: default
+                padding: 0.4rem 0.75rem 0.15rem
+                font-size: $size-7
+                font-weight: 600
+                text-transform: uppercase
+                letter-spacing: 0.03em
+                color: $grey
+                &:hover
+                    background: transparent
+            .find-area-result-type
+                margin-left: 0.4rem
+                font-size: $size-7
+                color: $grey
+                &::before
+                    content: '· '
+        .find-area-counties
             margin-top: 0.75rem
+            font-size: $size-7
+            a
+                font-weight: 600
+            .find-area-sep
+                color: $grey-light
+                margin: 0 0.15rem
+            > span:first-child
+                margin-right: 0.25rem
 
     .how-to-read
         margin: 1rem 0 1.5rem

@@ -1,11 +1,16 @@
 /*
  * "Find your area" block on the Pesticides Explorer landing page.
  *
- * Turns each `.find-area` container into a MapTiler-backed address/city/ZIP
- * search plus a "Use my location" button. All geocoding happens directly in
- * the browser against MapTiler -- the server never sees or stores the
- * query text or the resolved coordinates. The only thing that carries the
- * location forward is the near-me URL this script builds and navigates to.
+ * One search box over two sources:
+ *
+ *   1. Our own place pages (counties, cities, ZIPs, places). The whole list
+ *      is embedded in the page as JSON and matched here in the browser, so
+ *      it answers on every keystroke with no network at all.
+ *   2. Addresses, via MapTiler geocoding (debounced, aborted, >= 3 chars).
+ *      This is the only thing that leaves the browser, and even then the
+ *      server never sees the query text or the resolved coordinates -- the
+ *      only thing carrying the location forward is the near-me URL this
+ *      script builds and navigates to.
  *
  * Plain ES2017, no framework/bundler, single global side effect: none (IIFE).
  */
@@ -16,6 +21,8 @@
   var MIN_QUERY_LENGTH = 3;
   var GEOCODE_BBOX = '-121.9,34.8,-117.5,38.4';
   var MAX_LABEL_LENGTH = 120;
+  var MAX_PLACES = 6;
+  var MAX_ADDRESSES = 4;
 
   function escapeText(el, text) {
     el.textContent = text == null ? '' : String(text);
@@ -38,6 +45,46 @@
     return 'near ' + name + (county && county.text ? ', ' + county.text : '');
   }
 
+  // Prefix/word match against our own place list. ZIPs only match on a
+  // prefix of the code -- "937" should find 93725, but "725" shouldn't.
+  // Whole-name prefix matches rank above matches on a later word, so
+  // "fresno" puts "Fresno County" ahead of "West Fresno".
+  function matchPlaces(places, query) {
+    var q = query.trim().toLowerCase();
+    if (!q) return [];
+
+    var starts = [];
+    var words = [];
+
+    for (var i = 0; i < places.length; i++) {
+      var place = places[i];
+      var name = String(place.name || '').toLowerCase();
+      if (name.indexOf(q) === 0) {
+        starts.push(place);
+      } else if (place.type !== 'zipcode' && new RegExp('\\b' + escapeRegExp(q)).test(name)) {
+        words.push(place);
+      }
+      if (starts.length >= MAX_PLACES) break;
+    }
+
+    return starts.concat(words).slice(0, MAX_PLACES);
+  }
+
+  function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function readPlaces() {
+    var el = document.getElementById('find-area-places');
+    if (!el) return [];
+    try {
+      var data = JSON.parse(el.textContent);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
   function FindArea(el) {
     this.el = el;
     this.key = el.dataset.maptilerKey || '';
@@ -49,11 +96,18 @@
     this.resultsEl = el.querySelector('#find-area-results');
     this.statusEl = el.querySelector('#find-area-status');
 
-    this.features = [];
+    this.places = readPlaces();
+
+    // `items` is the flat, keyboard-navigable list -- place items and
+    // address items in the order they're rendered.
+    this.items = [];
+    this.placeMatches = [];
+    this.addressFeatures = [];
     this.activeIndex = -1;
     this.debounceTimer = null;
     this.searchAbort = null;
     this.searchRequestId = 0;
+    this.searching = false;
 
     this.bindEvents();
   }
@@ -90,7 +144,9 @@
   };
 
   FindArea.prototype.hideResults = function () {
-    this.features = [];
+    this.items = [];
+    this.placeMatches = [];
+    this.addressFeatures = [];
     this.activeIndex = -1;
     if (this.resultsEl) {
       this.resultsEl.hidden = true;
@@ -107,16 +163,27 @@
     var query = this.input.value.trim();
 
     window.clearTimeout(this.debounceTimer);
+    this.searchRequestId++; // invalidate any in-flight address search
+    if (this.searchAbort) this.searchAbort.abort();
+    this.addressFeatures = [];
+    this.searching = false;
 
-    if (query.length < MIN_QUERY_LENGTH) {
+    if (!query) {
       this.hideResults();
       this.setStatus('');
       return;
     }
 
-    this.debounceTimer = window.setTimeout(function () {
-      self.search(query);
-    }, DEBOUNCE_MS);
+    this.placeMatches = matchPlaces(this.places, query);
+
+    if (query.length >= MIN_QUERY_LENGTH && this.key) {
+      this.searching = true;
+      this.debounceTimer = window.setTimeout(function () {
+        self.searchAddresses(query);
+      }, DEBOUNCE_MS);
+    }
+
+    this.render();
   };
 
   FindArea.prototype.onKeyDown = function (event) {
@@ -126,49 +193,40 @@
       return;
     }
 
-    if (!this.features.length) {
+    if (!this.items.length) {
       return;
     }
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      this.setActiveIndex(this.activeIndex + 1 >= this.features.length ? 0 : this.activeIndex + 1);
+      this.setActiveIndex(this.activeIndex + 1 >= this.items.length ? 0 : this.activeIndex + 1);
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
-      this.setActiveIndex(this.activeIndex <= 0 ? this.features.length - 1 : this.activeIndex - 1);
+      this.setActiveIndex(this.activeIndex <= 0 ? this.items.length - 1 : this.activeIndex - 1);
     } else if (event.key === 'Enter') {
-      if (this.activeIndex >= 0 && this.activeIndex < this.features.length) {
+      if (this.activeIndex >= 0 && this.activeIndex < this.items.length) {
         event.preventDefault();
-        this.selectFeature(this.features[this.activeIndex]);
+        this.selectItem(this.items[this.activeIndex]);
       }
     }
   };
 
   FindArea.prototype.setActiveIndex = function (index) {
     this.activeIndex = index;
-    var items = this.resultsEl ? this.resultsEl.querySelectorAll('li') : [];
-    for (var i = 0; i < items.length; i++) {
-      var active = i === index;
-      items[i].setAttribute('aria-selected', active ? 'true' : 'false');
+    var options = this.resultsEl ? this.resultsEl.querySelectorAll('li[role="option"]') : [];
+    for (var i = 0; i < options.length; i++) {
+      options[i].setAttribute('aria-selected', i === index ? 'true' : 'false');
     }
-    if (index >= 0 && items[index] && this.input) {
-      this.input.setAttribute('aria-activedescendant', items[index].id);
+    if (index >= 0 && options[index] && this.input) {
+      this.input.setAttribute('aria-activedescendant', options[index].id);
     } else if (this.input) {
       this.input.removeAttribute('aria-activedescendant');
     }
   };
 
-  FindArea.prototype.search = function (query) {
+  FindArea.prototype.searchAddresses = function (query) {
     var self = this;
 
-    if (!this.key) {
-      this.setStatus('Search is unavailable.');
-      return;
-    }
-
-    this.setStatus('Searching…');
-
-    if (this.searchAbort) this.searchAbort.abort();
     var abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     this.searchAbort = abort;
     var requestId = ++this.searchRequestId;
@@ -186,18 +244,21 @@
       })
       .then(function (data) {
         if (requestId !== self.searchRequestId) return; // a newer search superseded this one
-        self.renderResults((data && data.features) || []);
+        self.searching = false;
+        self.addressFeatures = ((data && data.features) || []).slice(0, MAX_ADDRESSES);
+        self.render();
       })
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;
         if (requestId !== self.searchRequestId) return;
-        self.hideResults();
-        self.setStatus("Couldn't search right now. Try again in a moment.");
+        self.searching = false;
+        self.addressFeatures = [];
+        self.render("Couldn't search addresses right now. Try again in a moment.");
       });
   };
 
-  FindArea.prototype.renderResults = function (features) {
-    this.features = features;
+  FindArea.prototype.render = function (errorMessage) {
+    this.items = [];
     this.activeIndex = -1;
 
     if (!this.resultsEl) {
@@ -206,31 +267,94 @@
 
     this.resultsEl.innerHTML = '';
 
-    if (!features.length) {
+    if (this.placeMatches.length) {
+      this.renderGroup('Places we have pages for');
+      for (var i = 0; i < this.placeMatches.length; i++) {
+        var place = this.placeMatches[i];
+        this.renderOption({ kind: 'place', place: place }, place.name, place.type_label);
+      }
+    }
+
+    if (this.addressFeatures.length) {
+      this.renderGroup('Addresses');
+      for (var j = 0; j < this.addressFeatures.length; j++) {
+        var feature = this.addressFeatures[j];
+        this.renderOption(
+          { kind: 'address', feature: feature },
+          feature.place_name || feature.text || '',
+          null
+        );
+      }
+    }
+
+    if (!this.items.length) {
       this.resultsEl.hidden = true;
       if (this.input) this.input.setAttribute('aria-expanded', 'false');
-      this.setStatus('No matches found.');
+      this.setStatus(errorMessage || (this.searching ? 'Searching addresses…' : 'No matches found.'));
       return;
     }
 
-    var self = this;
-    features.forEach(function (feature, index) {
-      var li = document.createElement('li');
-      li.id = 'find-area-result-' + index;
-      li.setAttribute('role', 'option');
-      li.setAttribute('aria-selected', 'false');
-      escapeText(li, feature.place_name || feature.text || '');
-      li.addEventListener('mousedown', function (event) {
-        // mousedown (not click) fires before the input's blur handler hides the list.
-        event.preventDefault();
-        self.selectFeature(feature);
-      });
-      self.resultsEl.appendChild(li);
-    });
-
     this.resultsEl.hidden = false;
     if (this.input) this.input.setAttribute('aria-expanded', 'true');
-    this.setStatus('');
+    this.setStatus(errorMessage || (this.searching ? 'Searching addresses…' : ''));
+  };
+
+  FindArea.prototype.renderGroup = function (label) {
+    var li = document.createElement('li');
+    li.className = 'find-area-group';
+    li.setAttribute('role', 'presentation');
+    escapeText(li, label);
+    this.resultsEl.appendChild(li);
+  };
+
+  FindArea.prototype.renderOption = function (item, label, meta) {
+    var self = this;
+    var index = this.items.length;
+    this.items.push(item);
+
+    var li = document.createElement('li');
+    li.id = 'find-area-result-' + index;
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', 'false');
+
+    var name = document.createElement('span');
+    name.className = 'find-area-result-name';
+    escapeText(name, label);
+    li.appendChild(name);
+
+    if (meta) {
+      var metaEl = document.createElement('span');
+      metaEl.className = 'find-area-result-type';
+      escapeText(metaEl, meta);
+      li.appendChild(metaEl);
+    }
+
+    li.addEventListener('mousedown', function (event) {
+      // mousedown (not click) fires before the input's blur handler hides the list.
+      event.preventDefault();
+      self.selectItem(item);
+    });
+
+    this.resultsEl.appendChild(li);
+  };
+
+  FindArea.prototype.selectItem = function (item) {
+    if (!item) return;
+    if (item.kind === 'place') {
+      this.selectPlace(item.place);
+    } else {
+      this.selectFeature(item.feature);
+    }
+  };
+
+  FindArea.prototype.selectPlace = function (place) {
+    if (!place || !place.url) return;
+    var url = place.url;
+    if (this.year) {
+      url += '?year=' + encodeURIComponent(this.year);
+    }
+    this.hideResults();
+    window.location.assign(url);
   };
 
   FindArea.prototype.selectFeature = function (feature) {

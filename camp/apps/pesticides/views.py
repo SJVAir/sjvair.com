@@ -23,7 +23,7 @@ import vanilla
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import maps, notes, places, stats
 from camp.apps.pesticides.forms import (
-    ChemicalFilterForm, CommodityFilterForm, FindAreaForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
+    ChemicalFilterForm, CommodityFilterForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
 )
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product, ProductChemical,
@@ -336,57 +336,65 @@ class ExplorerRedirect(vanilla.GenericView):
         return redirect(obj.get_absolute_url(), permanent=True)
 
 
+FIND_AREA_PLACES_CACHE_KEY = 'pesticides:find-area-places'
+FIND_AREA_PLACES_TTL = 60 * 60 * 24
+
+# Short, human labels for the "Find your area" dropdown. Region.Type's own
+# labels read a little long there ("ZIP Code"), and the dropdown shows the
+# type as a trailing tag: "93725 · ZIP".
+FIND_AREA_TYPE_LABELS = {
+    Region.Type.COUNTY: 'County',
+    Region.Type.CITY: 'City',
+    Region.Type.ZIPCODE: 'ZIP',
+    Region.Type.PLACE: 'Place',
+}
+
+
+def find_area_place_list():
+    """
+    Every place we have a page for, as `{name, type, type_label, short_name,
+    url}` sorted by name. Embedded in the landing page as JSON so the search
+    box can match our own places in the browser, with no request per
+    keystroke. Cached for a day -- regions change on import, not on traffic.
+    """
+    place_list = cache.get(FIND_AREA_PLACES_CACHE_KEY)
+    if place_list is None:
+        regions = (Region.objects
+            .filter(type__in=places.PLACE_REGION_TYPES, boundary__isnull=False)
+            .order_by('name')
+            .values_list('sqid', 'slug', 'name', 'type')
+        )
+        place_list = [{
+            'name': name,
+            'type': region_type,
+            'type_label': FIND_AREA_TYPE_LABELS.get(region_type, region_type),
+            # "Fresno County" -> "Fresno" for the county links row.
+            'short_name': name[:-len(' County')] if name.endswith(' County') else name,
+            'url': reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug}),
+        } for sqid, slug, name, region_type in regions]
+        cache.set(FIND_AREA_PLACES_CACHE_KEY, place_list, FIND_AREA_PLACES_TTL)
+    return place_list
+
+
 class Home(vanilla.TemplateView):
     template_name = 'pesticides/home.html'
-
-    # Picker field name -> Region type it selects from.
-    PICKER_FIELDS = {
-        'county': Region.Type.COUNTY,
-        'city': Region.Type.CITY,
-        'zipcode': Region.Type.ZIPCODE,
-    }
-
-    def get(self, request, *args, **kwargs):
-        redirect_to = self._picker_redirect(request.GET)
-        if redirect_to:
-            return redirect(redirect_to)
-        return super().get(request, *args, **kwargs)
-
-    def _picker_redirect(self, data):
-        """
-        When exactly one region picker is set to a valid `sqid:slug` value,
-        redirect straight to that region's page. Anything else (nothing set,
-        more than one set, or a value that doesn't resolve) falls through to
-        rendering the landing page normally.
-        """
-        picked = [(field, data[field]) for field in self.PICKER_FIELDS if data.get(field)]
-        if len(picked) != 1:
-            return None
-        field, value = picked[0]
-        try:
-            sqid, slug = value.split(':', 1)
-        except ValueError:
-            return None
-        region = Region.objects.filter(sqid=sqid, slug=slug, type=self.PICKER_FIELDS[field]).first()
-        if region is None:
-            return None
-        url = reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug})
-        year = data.get('year')
-        if year and year.isdigit():
-            url += '?' + urlencode({'year': year})
-        return url
 
     def get_context_data(self, **kwargs):
         year = stats.resolve_year(self.request.GET.get('year'))
         data = stats.landing_stats(year)
         county_map = maps.county_map(data['by_county']) if data['by_county'] else None
+        find_area_places = find_area_place_list()
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
         return super().get_context_data(
             section=None,
             county_map=county_map,
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
-            find_area_form=FindAreaForm(),
+            find_area_places=find_area_places,
+            find_area_counties=[
+                place for place in find_area_places
+                if place['type'] == Region.Type.COUNTY
+            ],
             maptiler_key=settings.MAPTILER_API_KEY,
             focus_find=self.request.GET.get('find') == '1',
             **{**data, **year_context(year)},

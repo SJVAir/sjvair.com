@@ -1,3 +1,5 @@
+import json
+
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -14,6 +16,11 @@ class FindAreaTests(RollupTestMixin, TestCase):
         cache.clear()
         self.url = reverse('pesticides:home')
 
+    def embedded_places(self, html):
+        start = html.index('id="find-area-places"')
+        start = html.index('>', start) + 1
+        return json.loads(html[start:html.index('</script>', start)])
+
     def test_landing_has_find_area_block(self):
         response = self.client.get(self.url)
         html = response.content.decode()
@@ -21,17 +28,42 @@ class FindAreaTests(RollupTestMixin, TestCase):
         assert reverse('pesticides:near-me') in html
         assert 'find-area.js' in html
         assert 'How to read this page' in html
-        fresno = Region.objects.get(pk=9001)
-        assert f'<option value="{fresno.sqid}:fresno">Fresno County</option>' in html
+        assert 'Search a city, ZIP, county, or address' in html
         assert html.index('id="find"') < html.index('stat-row')
 
-    def test_picker_redirects_to_region_page(self):
-        fresno = Region.objects.get(pk=9001)
-        response = self.client.get(self.url, {'county': f'{fresno.sqid}:fresno', 'year': 2022})
-        assert response.status_code == 302
-        assert response['Location'] == reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'}) + '?year=2022'
+    def test_embedded_places_include_counties_with_their_region_urls(self):
+        html = self.client.get(self.url).content.decode()
+        places = self.embedded_places(html)
+        by_name = {place['name']: place for place in places}
 
-    def test_bad_picker_value_renders_landing(self):
+        for pk, slug in [(9001, 'fresno'), (9002, 'kern')]:
+            region = Region.objects.get(pk=pk)
+            place = by_name[region.name]
+            assert place['type'] == Region.Type.COUNTY
+            assert place['type_label'] == 'County'
+            assert place['url'] == reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': slug})
+
+        # Sorted by name, and only places that have a boundary to scope.
+        assert [place['name'] for place in places] == sorted(place['name'] for place in places)
+
+    def test_county_links_row(self):
+        html = self.client.get(self.url).content.decode()
+        fresno = Region.objects.get(pk=9001)
+        assert 'find-area-counties' in html
+        assert reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'}) in html
+        # Links use the short name, not "Fresno County".
+        assert '>Fresno</a>' in html
+
+    def test_county_links_keep_the_year(self):
+        html = self.client.get(self.url, {'year': 2022}).content.decode()
+        fresno = Region.objects.get(pk=9001)
+        url = reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'})
+        assert f'{url}?year=2022' in html
+
+    def test_no_picker_form(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'find-area-pickers' not in html
+        # The old pickers redirected on ?county=; that GET handling is gone.
         assert self.client.get(self.url, {'county': 'nope:x'}).status_code == 200
 
     def test_focus_flag(self):
