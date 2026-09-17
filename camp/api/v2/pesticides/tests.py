@@ -923,6 +923,23 @@ class ActiveNoticeEndpointTests(TestCase):
         assert [f['properties']['id'] for f in data['features']] == [PesticideNotice.objects.get(pk=3).sqid]
         assert self.client.get(self.url, {'bbox': 'nope'}).status_code == 400
 
+    def test_capped_by_count(self):
+        from django.core.cache import cache
+
+        from camp.api.v2.pesticides import sections
+        old = sections.MAX_NOTICES
+        sections.MAX_NOTICES = 1
+        try:
+            response = self.client.get(self.url)
+        finally:
+            sections.MAX_NOTICES = old
+        assert response.status_code == 400
+        assert 'zoom' in response.json()['error']
+        # Under the cap (the whole fixture, no bbox) it still answers. Same
+        # querystring, so drop the cached 400 first.
+        cache.clear()
+        assert self.client.get(self.url).status_code == 200
+
     def test_notice_without_point_has_null_geometry(self):
         data = self.client.get(self.url).json()
         assert all(f['geometry'] is None or f['geometry']['type'] == 'Point' for f in data['features'])

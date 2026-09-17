@@ -12,7 +12,7 @@
 
 <div class="tabs is-toggle is-small mb-4">
     <ul>
-        <li class="{% if mode == 'active' %}is-active{% endif %}"><a href="{% qs_replace past=None year=None month=None page=None %}">Active</a></li>
+        <li class="{% if mode == 'active' %}is-active{% endif %}"><a href="{% qs_replace past=None archive_year=None month=None page=None %}">Active</a></li>
         <li class="{% if mode == 'past' %}is-active{% endif %}"><a href="{% qs_replace past=1 page=None %}">Archive</a></li>
     </ul>
 </div>
@@ -29,7 +29,7 @@
             {{ form.radius }}
             {% if mode == 'past' %}
             <input type="hidden" name="past" value="1">
-            {% if filter_year %}<input type="hidden" name="year" value="{{ filter_year }}">{% endif %}
+            {% if filter_year %}<input type="hidden" name="archive_year" value="{{ filter_year }}">{% endif %}
             {% if filter_month %}<input type="hidden" name="month" value="{{ filter_month }}">{% endif %}
             {% endif %}
             <div class="field">
@@ -53,7 +53,7 @@
             <p class="menu-label">Archive</p>
             <ul class="menu-list">
                 {% for m in archive_months %}
-                <li><a href="{% qs_replace past=1 year=m.year month=m.month page=None %}"{% if filter_year == m.year and filter_month == m.month %} class="is-active"{% endif %}>{{ m.label }} <span class="tag is-light">{{ m.count }}</span></a></li>
+                <li><a href="{% qs_replace past=1 archive_year=m.year month=m.month page=None %}"{% if filter_year == m.year and filter_month == m.month %} class="is-active"{% endif %}>{{ m.label }} <span class="tag is-light">{{ m.count }}</span></a></li>
                 {% endfor %}
             </ul>
         </div>

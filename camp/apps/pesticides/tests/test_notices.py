@@ -30,18 +30,32 @@ class NoticeListTests(TestCase):
         assert response.context['mode'] == 'past'
         assert [n.pk for n in response.context['object_list']] == [1]
         assert response.context['archive_months'][0]['year'] == 2020
-        assert [n.pk for n in self.client.get(self.url, {'past': 1, 'year': 2020, 'month': 1}).context['object_list']] == [1]
+        assert [n.pk for n in self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 1}).context['object_list']] == [1]
         # `object_list` in a paginated ListView's context is a (lazy) sliced
         # QuerySet, not a plain list -- QuerySet.__eq__ falls back to object
         # identity, so `queryset == []` is always False even when empty.
         # list(...) forces evaluation for a real comparison.
-        assert list(self.client.get(self.url, {'past': 1, 'year': 2020, 'month': 2}).context['object_list']) == []
+        assert list(self.client.get(self.url, {'past': 1, 'archive_year': 2020, 'month': 2}).context['object_list']) == []
+
+    def test_archive_months_only_built_for_the_archive(self):
+        assert self.client.get(self.url).context['archive_months'] == []
+
+    def test_out_of_range_archive_year_is_ignored_not_a_500(self):
+        for params in (
+            {'past': 1, 'year': 9999},
+            {'past': 1, 'archive_year': 9999},
+            {'past': 1, 'archive_year': -5},
+            {'past': 1, 'archive_year': 9999, 'month': 1},
+        ):
+            response = self.client.get(self.url, params)
+            assert response.status_code == 200, params
+            assert [n.pk for n in response.context['object_list']] == [1], params
 
     def test_archive_filter_form_carries_year_and_month(self):
         html = self.client.get(
-            self.url, {'past': 1, 'year': 2020, 'month': 1, 'county': 'fresno'},
+            self.url, {'past': 1, 'archive_year': 2020, 'month': 1, 'county': 'fresno'},
         ).content.decode()
-        assert '<input type="hidden" name="year" value="2020">' in html
+        assert '<input type="hidden" name="archive_year" value="2020">' in html
         assert '<input type="hidden" name="month" value="1">' in html
 
     def test_no_year_picker_in_active_mode(self):
@@ -50,6 +64,20 @@ class NoticeListTests(TestCase):
 
     def test_spraydays_link_present(self):
         assert 'spraydays.cdpr.ca.gov' in self.client.get(self.url).content.decode()
+
+
+class NoticeListYearContextTests(RollupTestMixin, TestCase):
+    """`?year=` steers the nav links here, but never the (absent) year picker."""
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('pesticides:notice-list')
+
+    def test_nav_links_keep_the_year_param_without_a_year_picker(self):
+        html = self.client.get(self.url, {'year': 2022}).content.decode()
+        assert reverse('pesticides:records') + '?year=2022' in html
+        assert 'year-picker' not in html
 
 
 class NoticeDetailTests(TestCase):

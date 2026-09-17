@@ -36,8 +36,12 @@ class SectionDetailTests(RollupTestMixin, TestCase):
     def test_notices_in_section(self):
         from camp.apps.pesticides.models import PesticideNotice
         PesticideNotice.objects.filter(pk=2).update(mtrs=self.section)
-        ctx = self.client.get(self.url).context
+        response = self.client.get(self.url)
+        ctx = response.context
         assert [n.pk for n in ctx['upcoming']] == [2]
+        # The badge counts every scheduled notice, not just the listed ones.
+        assert ctx['upcoming_count'] == 1
+        assert '1 scheduled' in response.content.decode()
 
     def test_404_for_non_section(self):
         county = Region.objects.get(pk=9001)

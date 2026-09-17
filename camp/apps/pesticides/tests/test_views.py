@@ -1,6 +1,7 @@
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
+from django.utils.html import escape
 
 from camp.apps.pesticides.models import Chemical, Commodity, Product, ProductChemical
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
@@ -392,6 +393,14 @@ class ProductDetailTests(RollupTestMixin, TestCase):
         assert 'Fumigant' in html
         assert 'CA restricted' in html
 
+    def test_badge_tooltips_come_from_the_notes_datafile(self):
+        from camp.apps.pesticides import notes
+        # Product 2's only chemical is a TAC, so that's the "contains" badge
+        # this fixture can exercise.
+        html = self.client.get(self.product.get_absolute_url()).content.decode()
+        summary = escape(notes.note('carb_tac')['summary'])
+        assert f'title="{summary}"' in html
+
     def test_bare_sqid_redirects(self):
         response = self.client.get(reverse('pesticides:product-redirect', kwargs={'sqid': self.product.sqid}))
         assert response.status_code == 301
@@ -514,6 +523,14 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert cfg['chemical'] == '1855' and cfg['county'] == 'fresno' and cfg['year'] == 2022
         assert [f['label'] for f in response.context['filters']] == ['GLYPHOSATE', 'Fresno County']
         assert 'year=2022' in response.context['filters'][0]['clear_url']
+
+    def test_unresolved_filter_says_so_instead_of_showing_everything(self):
+        response = self.client.get(self.url, {'chemical': 'nope'})
+        assert response.status_code == 200
+        assert response.context['no_matches'] is True
+        assert response.context['map_config']['chemical'] == ''
+        assert response.context['county_map'] is None
+        assert 'No matches for that filter' in response.content.decode()
 
     def test_unknown_filter_ignored(self):
         response = self.client.get(self.url, {'product': 'nope'})

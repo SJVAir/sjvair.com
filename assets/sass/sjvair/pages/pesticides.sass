@@ -134,8 +134,9 @@ body.pesticides
             font-variant-numeric: tabular-nums
 
     .find-area
-        .field.has-addons
-            position: relative
+        // The results list is a sibling of the field, not a child, so the
+        // positioned ancestor has to be .find-area itself.
+        position: relative
         .find-area-results
             position: absolute
             z-index: 30

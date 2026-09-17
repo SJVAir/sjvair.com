@@ -40,6 +40,13 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'start': '2023-05-01', 'end': '2023-07-31'})
         assert self.pks(response) == [5, 4, 3]
 
+    def test_invalid_date_keeps_the_year_guard_and_shows_the_error(self):
+        response = self.client.get(self.url, {'start': 'garbage'})
+        assert response.status_code == 200
+        assert self.pks(response) == [6, 5, 4, 3, 2, 1]
+        assert 'is-danger' in response.content.decode()
+        assert response.context['form'].errors['start']
+
     def test_county_and_method(self):
         assert self.pks(self.client.get(self.url, {'county': 'kern'})) == [5, 3]
         assert self.pks(self.client.get(self.url, {'method': 'A'})) == [5, 3]
@@ -52,6 +59,12 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         assert self.pks(self.client.get(self.url, {'commodity': Commodity.objects.get(pk=2).sqid})) == [6, 2]
         assert self.pks(self.client.get(self.url, {'chemical': 'nope'})) == []
         assert [f['label'] for f in self.client.get(self.url, {'chemical': chem.sqid}).context['active_filters']] == ['GLYPHOSATE']
+
+    def test_section_and_region_params_only_accept_their_own_region_types(self):
+        county = Region.objects.get(pk=9001)
+        section = Region.objects.get(pk=9101)
+        assert self.pks(self.client.get(self.url, {'section': county.sqid})) == []
+        assert self.pks(self.client.get(self.url, {'region': section.sqid})) == []
 
     def test_section_filter_centers_map(self):
         section = Region.objects.get(pk=9102)

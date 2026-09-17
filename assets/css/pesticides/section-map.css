@@ -54,7 +54,3 @@
   display: inline-block;
   margin-top: 0.35rem;
 }
-
-.section-map-marker-notice {
-  /* Placeholder hook: markers are drawn as L.circleMarker directly, not divIcon. */
-}

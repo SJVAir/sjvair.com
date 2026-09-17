@@ -3,7 +3,7 @@ import hashlib
 import math
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
@@ -81,16 +81,20 @@ def related_pks(field, obj, target):
 
 def resolve_related(get, models):
     """
-    Resolve `{param: obj}` from sqid query params for `models` ({param: Model}).
-    An unresolved sqid maps to MISSING rather than being silently ignored, so
-    callers can turn that into an empty queryset instead of a 500 or a
-    filter that quietly matches everything.
+    Resolve `{param: obj}` from sqid query params for `models`
+    ({param: Model or QuerySet}). A queryset constrains what the param may
+    resolve to -- e.g. `section` only ever matches an MTRS region, so a
+    county's sqid passed as `?section=` is MISSING rather than a silent
+    mismatch. An unresolved sqid maps to MISSING rather than being silently
+    ignored, so callers can turn that into an empty queryset instead of a 500
+    or a filter that quietly matches everything.
     """
     related = {}
-    for param, model in models.items():
+    for param, source in models.items():
         value = get.get(param)
         if value:
-            related[param] = model.objects.filter(sqid=value).first() or MISSING
+            queryset = source if hasattr(source, 'filter') else source.objects.all()
+            related[param] = queryset.filter(sqid=value).first() or MISSING
     return related
 
 
@@ -118,7 +122,7 @@ def resolve_point_and_radius(data):
         radius = int(data.get('radius') or 1)
     except (TypeError, ValueError):
         radius = 1
-    if radius not in (1, 3, 5):
+    if radius not in places.RADIUS_CHOICES:
         radius = 1
     return Point(lng, lat, srid=4326), radius
 
@@ -137,9 +141,18 @@ def paginated_count(kwargs):
     return paginator.count if paginator else len(kwargs.get('object_list', []))
 
 
+# Years `datetime()` can safely bracket (and that a notice could plausibly
+# carry). Anything outside is treated as "no year filter" rather than raising.
+MIN_FILTER_YEAR = 1900
+MAX_FILTER_YEAR = 2100
+
+
 def local_month_bounds(year, month=None):
     """
-    [start, end) as America/Los_Angeles-aware datetimes for `year` (or
+    None for a year outside MIN/MAX_FILTER_YEAR -- callers treat that as "no
+    year filter" instead of letting `datetime(year + 1, ...)` raise.
+
+    Otherwise [start, end) as America/Los_Angeles-aware datetimes for `year` (or
     `year`/`month`), for filtering `scheduled_application` directly. Filtering
     a raw field with these bounds -- rather than comparing a
     TruncMonth(..., tzinfo=...) annotation via `__year`/`__month` -- sidesteps
@@ -148,6 +161,8 @@ def local_month_bounds(year, month=None):
     lookup then re-interprets in the DB session's timezone (UTC here), which
     silently shifts the match window by the UTC offset.
     """
+    if year is None or not (MIN_FILTER_YEAR <= year <= MAX_FILTER_YEAR):
+        return None
     tz = settings.DEFAULT_TIMEZONE
     start = datetime(year, month or 1, 1, tzinfo=tz)
     if month:
@@ -157,17 +172,23 @@ def local_month_bounds(year, month=None):
     return start, end
 
 
+def centroid(region):
+    """'lat,lng' of a region's boundary, as section_map_config wants it."""
+    point = region.boundary.geometry.centroid
+    return f'{point.y:.4f},{point.x:.4f}'
+
+
 def resolve_map_center(*, section=None, region=None, point=None, radius=None, county=None):
     """(center, zoom, radius) for section_map_config, in priority order: an
     explicit section, then region, then point+radius, then county."""
     if section not in (None, MISSING) and section.boundary_id:
-        return RecordsBrowser._centroid(section), 13, None
+        return centroid(section), 13, None
     if region not in (None, MISSING) and region.boundary_id:
-        return RecordsBrowser._centroid(region), 10, None
+        return centroid(region), 10, None
     if point is not None:
         return f'{point.y:.4f},{point.x:.4f}', 12, radius
     if county is not None and county.boundary_id:
-        return RecordsBrowser._centroid(county), 9, None
+        return centroid(county), 9, None
     return None, None, None
 
 
@@ -642,11 +663,23 @@ SJV_CENTER = '36.75,-119.80'
 SJV_ZOOM = 8
 
 
+def page_url_pattern(name):
+    """
+    A page URL with `{id}` where the sqid goes, for the map JS to fill in
+    client-side. `reverse()` percent-encodes the braces, so put them back.
+    """
+    return unquote(reverse(name, kwargs={'sqid': '{id}'}))
+
+
 def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None):
     return {
         'sections_url': '/api/2.0/pesticides/sections/',
         'notices_url': '/api/2.0/pesticides/notices/active/',
         'section_url_pattern': '/api/2.0/pesticides/sections/{id}/',
+        'section_page_url': page_url_pattern('pesticides:section-detail'),
+        # The bare-sqid redirect: it 301s to the slugged detail URL, so the
+        # JS doesn't need the slug.
+        'chemical_page_url': page_url_pattern('pesticides:chemical-redirect'),
         'tile_url': leaflet.TILE_URL.format(key=settings.MAPTILER_API_KEY, z='{z}', x='{x}', y='{y}'),
         'attribution': leaflet.TILE_ATTRIBUTION,
         'year': year or '',
@@ -664,40 +697,33 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
 class MapPage(vanilla.TemplateView):
     template_name = 'pesticides/map.html'
 
+    RELATED_MODELS = {'chemical': Chemical, 'product': Product, 'commodity': Commodity}
+
     def get_context_data(self, **kwargs):
         request = self.request
         year = stats.resolve_year(request.GET.get('year'))
 
-        chemical = None
-        chemical_sqid = request.GET.get('chemical')
-        if chemical_sqid:
-            chemical = Chemical.objects.filter(sqid=chemical_sqid).first()
+        # A filter that doesn't resolve says so on the page: showing the
+        # statewide map instead would look like "no use here", not "no such
+        # chemical".
+        related = resolve_related(request.GET, self.RELATED_MODELS)
+        no_matches = any(obj is MISSING for obj in related.values())
+        resolved = {param: obj for param, obj in related.items() if obj is not MISSING}
 
-        product = None
-        product_sqid = request.GET.get('product')
-        if product_sqid:
-            product = Product.objects.filter(sqid=product_sqid).first()
-
-        commodity = None
-        commodity_sqid = request.GET.get('commodity')
-        if commodity_sqid:
-            commodity = Commodity.objects.filter(sqid=commodity_sqid).first()
-
-        county = None
-        county_slug = request.GET.get('county')
-        if county_slug:
-            county = Region.objects.filter(type=Region.Type.COUNTY, slug=county_slug).first()
+        county = resolve_county(request.GET.get('county'))
+        if request.GET.get('county') and county is None:
+            no_matches = True
 
         map_config = section_map_config(
             year,
-            chemical=chemical,
-            product=product,
-            commodity=commodity,
+            chemical=resolved.get('chemical'),
+            product=resolved.get('product'),
+            commodity=resolved.get('commodity'),
             county=county.slug if county else None,
         )
 
         filters = []
-        for param, obj in (('chemical', chemical), ('product', product), ('commodity', commodity), ('county', county)):
+        for param, obj in list(resolved.items()) + [('county', county)]:
             if obj is None:
                 continue
             params = request.GET.copy()
@@ -709,13 +735,14 @@ class MapPage(vanilla.TemplateView):
             })
 
         county_map = None
-        if year:
+        if year and not no_matches:
             county_map = maps.county_map(stats.by_county(PesticideUseRollup.objects.all(), year))
 
         return super().get_context_data(
             section='map',
             map_config=map_config,
             filters=filters,
+            no_matches=no_matches,
             county_map=county_map,
             **year_context(year),
             **kwargs,
@@ -739,11 +766,16 @@ def area_filter(queryset, *, county=None, region=None, section=None, point=None,
     if section is not None:
         queryset = queryset.filter(**{field('mtrs'): section})
     elif region is not None:
-        if not region.boundary_id:
-            return queryset.none()
-        queryset = queryset.filter(**{
-            field('mtrs__boundary__geometry__intersects'): region.boundary.geometry,
-        })
+        if region.type == Region.Type.COUNTY:
+            queryset = queryset.filter(**{field('county'): region})
+        else:
+            # The cached section pks for the region, rather than a spatial
+            # join evaluated per row: places.region_area() computes the
+            # intersection once and caches it.
+            pks = places.region_area(region).section_pks
+            if not pks:
+                return queryset.none()
+            queryset = queryset.filter(**{field('mtrs_id__in'): pks})
     elif point is not None and radius is not None:
         queryset = queryset.filter(**{
             # Bbox prefilter first -- see radius_bbox's docstring: the planner
@@ -755,6 +787,12 @@ def area_filter(queryset, *, county=None, region=None, section=None, point=None,
 
     return queryset
 
+
+# What a `?section=` / `?region=` sqid is allowed to resolve to. Sections are
+# always MTRS squares; a "region" is a place (county/city/ZIP/place), never an
+# MTRS square -- `?section=` covers those.
+SECTION_REGIONS = Region.objects.filter(type=Region.Type.MTRS)
+PLACE_REGIONS = Region.objects.filter(type__in=places.PLACE_REGION_TYPES)
 
 RECORDS_SORT_FIELDS = {'date': 'application_date', 'lbs': 'lbs_chemical', 'acres': 'acres_treated'}
 RECORDS_DEFAULT_SORT = '-date'
@@ -794,8 +832,8 @@ class RecordsBrowser(vanilla.ListView):
         'chemical': Chemical,
         'product': Product,
         'commodity': Commodity,
-        'region': Region,
-        'section': Region,
+        'region': PLACE_REGIONS,
+        'section': SECTION_REGIONS,
     }
 
     def dispatch(self, request, *args, **kwargs):
@@ -821,6 +859,20 @@ class RecordsBrowser(vanilla.ListView):
             data['end'] = date(self.year, 12, 31)
         return data
 
+    def get_date_range(self):
+        """
+        The (start, end) actually filtered on. Decided from the *validated*
+        form, not the raw querystring: a value that fails validation (e.g.
+        `?start=garbage`) leaves `cleaned_data` without it, and falling back
+        to the year default there keeps the page from quietly scanning every
+        year. The form still renders the bad value and its error.
+        """
+        data = self.form.cleaned_data
+        start, end = data.get('start'), data.get('end')
+        if start is None and end is None and self.year:
+            return date(self.year, 1, 1), date(self.year, 12, 31)
+        return start, end
+
     def _get_related_objects(self):
         return resolve_related(self.request.GET, self.RELATED_MODELS)
 
@@ -843,10 +895,11 @@ class RecordsBrowser(vanilla.ListView):
         # the page's objects afterward avoids that.
         queryset = PesticideUse.objects.all()
 
-        if data.get('start'):
-            queryset = queryset.filter(application_date__gte=data['start'])
-        if data.get('end'):
-            queryset = queryset.filter(application_date__lte=data['end'])
+        start, end = self.get_date_range()
+        if start:
+            queryset = queryset.filter(application_date__gte=start)
+        if end:
+            queryset = queryset.filter(application_date__lte=end)
 
         queryset = area_filter(
             queryset,
@@ -910,9 +963,10 @@ class RecordsBrowser(vanilla.ListView):
 
     def _totals_cache_key(self):
         data = self.form.cleaned_data
+        start, end = self.get_date_range()
         params = {
-            'start': data.get('start'),
-            'end': data.get('end'),
+            'start': start,
+            'end': end,
             'county': data.get('county'),
             'method': data.get('method'),
             'region': self.request.GET.get('region', ''),
@@ -980,11 +1034,6 @@ class RecordsBrowser(vanilla.ListView):
         if descriptors:
             sentence += ' — ' + ', '.join(descriptors)
         return sentence
-
-    @staticmethod
-    def _centroid(region):
-        point = region.boundary.geometry.centroid
-        return f'{point.y:.4f},{point.x:.4f}'
 
     def get_map_config(self):
         chemical = self.related.get('chemical')
@@ -1108,6 +1157,7 @@ class SectionDetail(vanilla.DetailView):
 
         notices = PesticideNotice.objects.filter(mtrs=section)
         upcoming = stats.upcoming_notices(notices)
+        upcoming_count = stats.upcoming_count(notices)
 
         records_url = reverse('pesticides:records') + f'?section={section.sqid}' + (
             f'&year={year}' if stats.year_query(year) else ''
@@ -1115,7 +1165,7 @@ class SectionDetail(vanilla.DetailView):
 
         center = zoom = None
         if section.boundary_id:
-            center, zoom = RecordsBrowser._centroid(section), 13
+            center, zoom = centroid(section), 13
         map_config = section_map_config(year, center=center, zoom=zoom, highlight=section.sqid)
 
         return super().get_context_data(
@@ -1135,6 +1185,7 @@ class SectionDetail(vanilla.DetailView):
             products_card=_section_card('Top products', 'products', top_products, records_url),
             commodities_card=_section_card('Top commodities', 'commodities', top_commodities, records_url),
             upcoming=upcoming,
+            upcoming_count=upcoming_count,
             recent_uses=recent_uses,
             records_url=records_url,
             map_config=map_config,
@@ -1145,7 +1196,7 @@ class SectionDetail(vanilla.DetailView):
         )
 
 
-NOTICE_RELATED_MODELS = {'chemical': Chemical, 'product': Product, 'region': Region, 'section': Region}
+NOTICE_RELATED_MODELS = {'chemical': Chemical, 'product': Product, 'region': PLACE_REGIONS, 'section': SECTION_REGIONS}
 NOTICE_FIELD_MAP = {'chemical': 'chemicals', 'product': 'products'}
 
 
@@ -1167,6 +1218,7 @@ class NoticeList(vanilla.ListView):
         self.county = resolve_county(self.form.cleaned_data.get('county'))
         self.point, self.radius = resolve_point_and_radius(self.form.cleaned_data)
         self.mode = 'past' if self.form.cleaned_data.get('past') else 'active'
+        self.year = stats.resolve_year(request.GET.get('year'))
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
@@ -1194,8 +1246,9 @@ class NoticeList(vanilla.ListView):
         if self.mode == 'past':
             cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
             queryset = queryset.filter(scheduled_application__lt=cutoff)
-            if data.get('year'):
-                start, end = local_month_bounds(data['year'], data.get('month'))
+            bounds = local_month_bounds(data.get('archive_year'), data.get('month'))
+            if bounds is not None:
+                start, end = bounds
                 queryset = queryset.filter(scheduled_application__gte=start, scheduled_application__lt=end)
             queryset = queryset.order_by('-scheduled_application')
         else:
@@ -1205,6 +1258,8 @@ class NoticeList(vanilla.ListView):
 
     def get_archive_months(self):
         """Last 24 months (in America/Los_Angeles) with an archived notice, newest first."""
+        if self.mode != 'past':
+            return []
         cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
         months = (
             PesticideNotice.objects
@@ -1262,6 +1317,12 @@ class NoticeList(vanilla.ListView):
 
     def get_context_data(self, **kwargs):
         data = self.form.cleaned_data
+        # The site-wide `?year=` picker doesn't apply to notices (they're
+        # scheduled, not reported by year), but the nav links still carry it,
+        # so take year_qs and drop year_options -- that's what keeps
+        # year-picker.html from rendering here.
+        year_ctx = year_context(self.year)
+        year_ctx.pop('year_options', None)
         return super().get_context_data(
             form=self.form,
             section='notices',
@@ -1270,8 +1331,9 @@ class NoticeList(vanilla.ListView):
             map_config=self.get_map_config(),
             active_filters=self.get_active_filters(),
             archive_months=self.get_archive_months(),
-            filter_year=data.get('year'),
+            filter_year=data.get('archive_year'),
             filter_month=data.get('month'),
+            **year_ctx,
             **kwargs,
         )
 
@@ -1299,7 +1361,7 @@ class NoticeDetail(vanilla.DetailView):
         if notice.point:
             center = f'{notice.point.y:.4f},{notice.point.x:.4f}'
         elif notice.mtrs_id and notice.mtrs.boundary_id:
-            center = RecordsBrowser._centroid(notice.mtrs)
+            center = centroid(notice.mtrs)
         map_config = section_map_config(stats.latest_year(), center=center, zoom=13 if center else None)
 
         related_notices = PesticideNotice.objects.none()
@@ -1383,8 +1445,8 @@ class NearMe(vanilla.TemplateView):
         area = places.point_area(self.lat, self.lng, self.radius, label=label)
         context = places.place_context(area, year)
         radius_options = [
-            {'miles': miles, 'url': self._radius_url(miles)}
-            for miles in places.RADIUS_CHOICES if miles != self.radius
+            {'miles': miles, 'url': self._radius_url(miles), 'current': miles == self.radius}
+            for miles in places.RADIUS_CHOICES
         ]
         return super().get_context_data(
             section=None,
@@ -1419,7 +1481,8 @@ class RegionPage(vanilla.TemplateView):
             raise Http404
         if region.slug != kwargs['slug']:
             canonical = reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug})
-            return redirect(canonical, permanent=True)
+            query = request.GET.urlencode()
+            return redirect(f'{canonical}?{query}' if query else canonical, permanent=True)
         self.region = region
         return super().get(request, *args, **kwargs)
 

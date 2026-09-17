@@ -59,7 +59,14 @@ class NearMeTests(RollupTestMixin, TestCase):
         assert 'near Selma, Fresno County' in html and 'Within 3 miles' in html
         assert 'only in this page' in html and 'spraydays.cdpr.ca.gov' in html
         assert response.context['map_config']['radius'] == 3
-        assert [o['miles'] for o in response.context['radius_options']] == [1, 5]
+        assert [o['miles'] for o in response.context['radius_options']] == [1, 3, 5]
+        assert [o['miles'] for o in response.context['radius_options'] if o['current']] == [3]
+
+    def test_radius_switcher_links_to_the_other_radii(self):
+        html = self.client.get(self.url, {'lat': 36.71, 'lng': -119.79, 'radius': 3}).content.decode()
+        assert 'radius-switcher' in html
+        for miles in (1, 5):
+            assert f'radius={miles}' in html
 
     def test_label_is_escaped_and_truncated(self):
         html = self.client.get(self.url, {'lat': 36.71, 'lng': -119.79, 'label': '<b>x</b>' + 'y' * 200}).content.decode()
@@ -92,6 +99,11 @@ class RegionPageTests(RollupTestMixin, TestCase):
     def test_slug_redirect_and_404s(self):
         response = self.client.get(reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'wrong'}))
         assert response.status_code == 301 and response['Location'] == self.url
+        # The canonical redirect keeps the query string, so ?year= survives it.
+        response = self.client.get(
+            reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'wrong'}), {'year': 2022},
+        )
+        assert response['Location'] == self.url + '?year=2022'
         section = Region.objects.get(pk=9101)
         assert self.client.get(reverse('pesticides:region', kwargs={'sqid': section.sqid, 'slug': section.slug})).status_code == 404
         assert self.client.get(reverse('pesticides:region', kwargs={'sqid': 'nope', 'slug': 'x'})).status_code == 404

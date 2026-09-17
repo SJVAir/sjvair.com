@@ -64,7 +64,7 @@
     <h2 class="title is-4">
         Planned applications
         <small class="has-text-grey is-size-6">SprayDays notices of intent</small>
-        <span class="tag is-info is-light is-medium ml-2">{{ upcoming|length }} scheduled</span>
+        <span class="tag is-info is-light is-medium ml-2">{{ upcoming_count }} scheduled</span>
     </h2>
     {% if upcoming %}
         {% include 'pesticides/includes/upcoming-notices.html' %}
@@ -85,7 +85,7 @@
         Developers: the full records are available through the
         <a href="{{ api_docs_url }}">pesticides API</a> or the
         <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>,
-        filtered with <code>section={{ object.sqid }}</code>.
+        filtered with <code>region_id={{ object.sqid }}</code>.
     </p>
 </footer>
 {% endblock %}

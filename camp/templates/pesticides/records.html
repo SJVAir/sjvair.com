@@ -20,10 +20,12 @@
             <div class="field">
                 <label class="label" for="{{ form.start.id_for_label }}">{{ form.start.label }}</label>
                 <div class="control">{{ form.start }}</div>
+                {% for error in form.start.errors %}<p class="help is-danger">{{ error }}</p>{% endfor %}
             </div>
             <div class="field">
                 <label class="label" for="{{ form.end.id_for_label }}">{{ form.end.label }}</label>
                 <div class="control">{{ form.end }}</div>
+                {% for error in form.end.errors %}<p class="help is-danger">{{ error }}</p>{% endfor %}
             </div>
             <div class="field">
                 <label class="label" for="{{ form.county.id_for_label }}">{{ form.county.label }}</label>

@@ -15,6 +15,15 @@
             {{ area.region.get_type_display }}
         {% endif %}
     </p>
+    {% if area.kind == 'point' and radius_options %}
+    <nav class="radius-switcher" aria-label="Radius">
+        <div class="buttons has-addons are-small">
+            {% for option in radius_options %}
+            <a class="button{% if option.current %} is-selected is-primary{% endif %}" href="{{ option.url }}"{% if option.current %} aria-current="page"{% endif %}>{{ option.miles }} mi</a>
+            {% endfor %}
+        </div>
+    </nav>
+    {% endif %}
     {% include 'pesticides/includes/what-this-means.html' %}
 </div>
 

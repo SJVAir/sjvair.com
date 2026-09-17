@@ -21,8 +21,8 @@ from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
 
 MAX_SECTIONS = 2500
+MAX_NOTICES = 2000
 NOTICE_CACHE_TTL = 300
-RADII = (1, 3, 5)
 TOTALS = {
     'lbs_chemical': Sum('lbs_chemical'),
     'lbs_product': Sum('lbs_product'),
@@ -30,6 +30,16 @@ TOTALS = {
     'applications': Sum('applications'),
 }
 ZERO = {'lbs_chemical': 0, 'lbs_product': 0, 'acres_treated': 0, 'applications': 0}
+
+
+def allowed_radii():
+    """
+    The one list of allowed radii, `places.RADIUS_CHOICES`. Imported lazily:
+    `places` imports this module for `radius_bbox`, so a module-level import
+    here would be circular.
+    """
+    from camp.apps.pesticides.places import RADIUS_CHOICES
+    return RADIUS_CHOICES
 
 
 def bad_request(message):
@@ -129,8 +139,9 @@ class SectionListBase(generics.Endpoint):
                 return None, 'lat and lng must be numbers'
             if not (-90 <= lat <= 90 and -180 <= lng <= 180):
                 return None, 'lat must be -90..90 and lng -180..180'
-            if radius not in RADII:
-                return None, f'radius must be one of {", ".join(str(r) for r in RADII)}'
+            radii = allowed_radii()
+            if radius not in radii:
+                return None, f'radius must be one of {", ".join(str(r) for r in radii)}'
             point = Point(lng, lat, srid=4326)
             return sections.filter(
                 boundary__geometry__bboverlaps=radius_bbox(lat, lng, radius),
@@ -260,6 +271,14 @@ class ActiveNoticeListBase(generics.Endpoint):
                     notices = notices.filter(**{lookup: cast(value)})
                 except ValueError:
                     return bad_request(f'{param} is invalid')
+        # Same shape of cap as SectionList's MAX_SECTIONS: an unbounded
+        # response (no bbox, or one covering the whole valley) would serialize
+        # every active notice in the state. Counting first keeps that off the
+        # serialization path entirely.
+        notices = notices.distinct()
+        if notices.count() > MAX_NOTICES:
+            return bad_request('bbox too large; zoom in')
+
         grace = timedelta(days=stats.NOTICE_GRACE_DAYS)
         features = [{
             'type': 'Feature',
@@ -277,11 +296,11 @@ class ActiveNoticeListBase(generics.Endpoint):
                 'products': [{'id': p.sqid, 'name': p.name} for p in n.products.all()],
                 'chemicals': [{'id': c.sqid, 'name': c.name, 'is_of_concern': c.is_of_concern} for c in n.chemicals.all()],
             },
-        } for n in notices.distinct()]
+        } for n in notices]
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
         return {'type': 'FeatureCollection', 'as_of': timezone.now().isoformat(), 'features': features}
 
 
 class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
-    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug)."""
+    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug). A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
     cache_timeout = NOTICE_CACHE_TTL

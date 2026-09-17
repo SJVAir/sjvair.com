@@ -8,7 +8,7 @@
 {% block badges %}
     {% if object.fumigant %}<a class="tag is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" title="{{ 'fumigant'|note_summary }}">Fumigant</a>{% endif %}
     {% if object.california_restricted %}<a class="tag is-danger is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" title="{{ 'restricted_material'|note_summary }}">CA restricted</a>{% endif %}
-    {% if object.contains_prop65 %}<a class="tag is-danger is-light" href="{% url 'pesticides:home' %}#prop65" title="Contains a Proposition 65 listed chemical">Prop 65</a>{% endif %}
-    {% if object.contains_tac %}<a class="tag is-warning is-light" href="{% url 'pesticides:home' %}#tac" title="Contains a CARB Toxic Air Contaminant">CARB TAC</a>{% endif %}
-    {% if object.contains_iarc %}<a class="tag is-danger" href="{% url 'pesticides:home' %}#iarc" title="Contains an IARC Group 1, 2A, or 2B chemical">IARC</a>{% endif %}
+    {% if object.contains_prop65 %}<a class="tag is-danger is-light" href="{% url 'pesticides:home' %}#prop65" title="{{ 'prop65'|note_summary }}">Prop 65</a>{% endif %}
+    {% if object.contains_tac %}<a class="tag is-warning is-light" href="{% url 'pesticides:home' %}#tac" title="{{ 'carb_tac'|note_summary }}">CARB TAC</a>{% endif %}
+    {% if object.contains_iarc %}<a class="tag is-danger" href="{% url 'pesticides:home' %}#iarc" title="{{ 'badges'|note_summary }}">IARC</a>{% endif %}
 {% endblock %}

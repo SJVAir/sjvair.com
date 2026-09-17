@@ -3,10 +3,13 @@ from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 
 from camp.apps.pesticides.models import Chemical, PesticideNotice, PesticideUse
+from camp.apps.pesticides.places import RADIUS_CHOICES as RADIUS_MILES
 from camp.apps.regions.models import Region
 
 BOOL_CHOICES = [('', _('Any')), ('true', _('Yes')), ('false', _('No'))]
-RADIUS_CHOICES = [('1', '1'), ('3', '3'), ('5', '5')]
+# The allowed radii live in places.RADIUS_CHOICES; these are just their
+# form-field (string) spellings.
+RADIUS_CHOICES = [(str(miles), str(miles)) for miles in RADIUS_MILES]
 
 
 class SearchForm(forms.Form):
@@ -45,7 +48,11 @@ class NoticeFilterForm(forms.Form):
     method = forms.ChoiceField(label=_('Method'), required=False, choices=[('', _('Any'))])
     past = forms.BooleanField(label=_('Archive'), required=False)
     month = forms.IntegerField(required=False, min_value=1, max_value=12)
-    year = forms.IntegerField(required=False)
+    # Narrows the archive to a year. Bounded so an out-of-range value is a
+    # validation error (and so no filter) rather than a ValueError out of
+    # `datetime()`. Named `archive_year` to keep it off the site-wide
+    # `?year=` picker, which means something else entirely.
+    archive_year = forms.IntegerField(required=False, min_value=1900, max_value=2100)
 
     # Carried as hidden inputs -- set by entity pages / the section map, not
     # edited directly in this form.

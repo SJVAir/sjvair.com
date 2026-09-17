@@ -44,14 +44,11 @@
     return div.innerHTML;
   }
 
-  function chemicalUrl(id) {
-    // /chemicals/<sqid>/ 301s to the slugged detail URL, so the slug isn't needed here.
-    return '/tools/pesticides/chemicals/' + encodeURIComponent(id) + '/';
-  }
-
-  function sectionUrl(id) {
-    // Sub-project 3 (per-section pages) hasn't landed yet; this 404s until it does.
-    return '/tools/pesticides/sections/' + encodeURIComponent(id) + '/';
+  // Page URLs come from the container as patterns with `{id}` in them (see
+  // views.section_map_config), so the routes live in the URLconf only.
+  function fillUrl(pattern, id) {
+    if (!pattern) return '';
+    return pattern.replace('{id}', encodeURIComponent(id));
   }
 
   function formatNumber(value) {
@@ -279,6 +276,14 @@
     return [lat, lng];
   };
 
+  SectionMap.prototype.chemicalUrl = function (id) {
+    return fillUrl(this.data.chemicalPageUrl, id);
+  };
+
+  SectionMap.prototype.sectionUrl = function (id) {
+    return fillUrl(this.data.sectionPageUrl, id);
+  };
+
   SectionMap.prototype.setStatus = function (message) {
     if (this.statusEl) this.statusEl.textContent = message || '';
   };
@@ -453,7 +458,7 @@
       '<p>' + escapeHtml(props.county || '') + '</p>' +
       '<p class="section-popup-totals">' + formatNumber(totalValue) + ' ' + escapeHtml(unit) + '</p>' +
       '<div class="section-popup-detail">' + detailHtml + '</div>' +
-      '<p><a href="' + sectionUrl(props.id) + '">This section</a></p>' +
+      '<p><a href="' + this.sectionUrl(props.id) + '">This section</a></p>' +
       '</div>'
     );
   };
@@ -477,7 +482,7 @@
         if (chemicals.length) {
           var items = chemicals.slice(0, 3).map(function (c) {
             var concernClass = c.is_of_concern ? ' is-of-concern' : '';
-            return '<li class="' + concernClass.trim() + '"><a href="' + chemicalUrl(c.id) + '">' +
+            return '<li class="' + concernClass.trim() + '"><a href="' + self.chemicalUrl(c.id) + '">' +
               escapeHtml(c.name) + '</a> — ' + formatNumber(c.lbs) + ' lbs</li>';
           }).join('');
           detailHtml = '<ul>' + items + '</ul>';
@@ -493,6 +498,17 @@
 
   SectionMap.prototype.loadNotices = function () {
     if (!this.data.noticesUrl) return;
+
+    // Same zoom gate as loadSections(): zoomed further out than this, the
+    // bbox covers more notices than the endpoint will return (it 400s past
+    // its cap), so don't ask.
+    if (this.map.getZoom() < MIN_SECTION_ZOOM) {
+      if (this.noticesLayer) {
+        this.map.removeLayer(this.noticesLayer);
+        this.noticesLayer = null;
+      }
+      return;
+    }
 
     if (this.noticesAbort) this.noticesAbort.abort();
     var abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
@@ -554,9 +570,10 @@
   };
 
   SectionMap.prototype.noticePopupHtml = function (props) {
+    var self = this;
     var chemicals = (props.chemicals || []).map(function (c) {
       var concernClass = c.is_of_concern ? ' is-of-concern' : '';
-      return '<li class="' + concernClass.trim() + '"><a href="' + chemicalUrl(c.id) + '">' + escapeHtml(c.name) + '</a></li>';
+      return '<li class="' + concernClass.trim() + '"><a href="' + self.chemicalUrl(c.id) + '">' + escapeHtml(c.name) + '</a></li>';
     }).join('');
     var products = (props.products || []).map(function (p) {
       return '<li>' + escapeHtml(p.name) + '</li>';
