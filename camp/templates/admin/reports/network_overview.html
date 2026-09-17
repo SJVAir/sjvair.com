@@ -1,0 +1,55 @@
+{% extends 'admin/reports/base.html' %}
+{% load humanize %}
+{% load reports %}
+
+{% block filters %}
+<label><input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %} onchange="this.form.submit()"> Include hidden monitors</label>
+{% endblock %}
+
+{% block report %}
+<div class="module">
+    <table>
+        <caption>Totals</caption>
+        <tr>
+            <th>Monitors</th><td>{{ tiles.total|intcomma }}</td>
+            <th>Active (last hour)</th><td>{{ tiles.active|intcomma }}</td>
+            <th>SJVAir-owned</th><td>{{ tiles.sjvair|intcomma }}</td>
+            <th>Partner</th><td>{{ tiles.partner|intcomma }}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Monitors by type and county</caption>
+        <thead>
+            <tr>
+                <th>Type</th>
+                {% for county in counties %}<th>{{ county }}</th>{% endfor %}
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <th>{{ row.type }}</th>
+                {% for county in counties %}<td>{{ row|get_item:county|intcomma }}</td>{% endfor %}
+                <td><strong>{{ row.total|intcomma }}</strong></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Deployments by quarter</caption>
+        <thead><tr><th>Quarter</th><th>New</th><th>Cumulative</th></tr></thead>
+        <tbody>
+            {% for row in deployments %}
+            <tr><th>{{ row.quarter }}</th><td>{{ row.new|intcomma }}</td><td>{{ row.cumulative|intcomma }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
