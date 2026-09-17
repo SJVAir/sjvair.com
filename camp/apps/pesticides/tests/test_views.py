@@ -297,6 +297,9 @@ class ChemicalDetailTests(TestCase):
         ctx = self.client.get(Chemical.objects.get(pk=2).get_absolute_url()).context
         assert [n.pk for n in ctx['upcoming']] == [2, 3]
         assert ctx['upcoming_count'] == 2
+        html = self.client.get(Chemical.objects.get(pk=2).get_absolute_url()).content.decode()
+        assert '2 upcoming' in html
+        assert 'Upcoming notices' not in html   # not part of the year-binned stat row
         assert ctx['upcoming_by_county'][0]['county_name'] == 'Fresno County'
 
     def test_year_param_on_detail(self):
@@ -434,6 +437,9 @@ class HomeTests(TestCase):
         assert Chemical.objects.get(pk=3).get_absolute_url() + '?year=2022' in html
         # The caveat still names the latest loaded year.
         assert 'most recent full year loaded is 2023' in html
+        # Live notice count sits outside the year-binned stat row.
+        assert 'Notices next 7 days' not in html
+        assert 'notice-callout' in html and 'next 7 days' in html
 
     def test_leaderboards_link_to_details(self):
         html = self.client.get(self.url).content.decode()
