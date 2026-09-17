@@ -56,7 +56,7 @@
 
   function formatNumber(value) {
     try {
-      return Number(value || 0).toLocaleString();
+      return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
     } catch (err) {
       return String(value);
     }
@@ -223,6 +223,9 @@
 
     this.map.setView(center, zoom, { animate: !this.reducedMotion });
 
+    var noticesPane = this.map.createPane('pesticide-notices');
+    noticesPane.style.zIndex = 450;
+
     if (this.data.radius) {
       var radiusMiles = parseFloat(this.data.radius);
       if (radiusMiles > 0) {
@@ -317,7 +320,16 @@
       .then(function (result) {
         if (self.sectionsAbort !== abort) return; // stale response
         if (!result.response.ok) {
-          self.setStatus((result.body && result.body.error) || 'Couldn\'t load sections; try again');
+          if (self.sectionsLayer) {
+            self.map.removeLayer(self.sectionsLayer);
+            self.sectionsLayer = null;
+          }
+          if (self.legendEl) self.legendEl.innerHTML = '';
+          if (result.response.status === 400) {
+            self.setStatus('Zoom in to see square-mile sections');
+          } else {
+            self.setStatus('Couldn\'t load sections; try again');
+          }
           return;
         }
         self.setStatus('');
@@ -391,49 +403,50 @@
     }
   };
 
-  SectionMap.prototype.showSectionPopup = function (feature, layer) {
-    var props = feature.properties;
+  SectionMap.prototype.sectionPopupHtml = function (props, detailHtml) {
     var unit = METRIC_UNITS[this.metric] || '';
     var totalValue = props[this.metric];
-    var html =
+    return (
       '<div class="section-popup">' +
       '<h4>MTRS ' + escapeHtml(props.mtrs) + '</h4>' +
       '<p>' + escapeHtml(props.county || '') + '</p>' +
       '<p class="section-popup-totals">' + formatNumber(totalValue) + ' ' + escapeHtml(unit) + '</p>' +
-      '<div class="section-popup-detail">Loading…</div>' +
+      '<div class="section-popup-detail">' + detailHtml + '</div>' +
       '<p><a href="' + sectionUrl(props.id) + '">This section</a></p>' +
-      '</div>';
-    var popup = layer.bindPopup(html, { className: 'section-popup-wrap' }).openPopup();
+      '</div>'
+    );
+  };
+
+  SectionMap.prototype.showSectionPopup = function (feature, layer) {
+    var props = feature.properties;
+    var html = this.sectionPopupHtml(props, 'Loading…');
+    layer.bindPopup(html, { className: 'section-popup-wrap' }).openPopup();
 
     if (!this.data.sectionUrlPattern) return;
     var year = this.data.year;
     var url = this.data.sectionUrlPattern.replace('{id}', props.id) + '?year=' + encodeURIComponent(year || '');
 
+    var self = this;
     fetch(url)
       .then(function (response) { return response.json(); })
       .then(function (detail) {
-        var container = popup.getPopup().getElement();
-        if (!container) return; // popup was closed before this resolved
-        var el = container.querySelector('.section-popup-detail');
-        if (!el) return;
+        if (!layer.getPopup() || !layer.isPopupOpen()) return; // popup was closed before this resolved
         var chemicals = (detail && detail.top_chemicals) || [];
-        if (!chemicals.length) {
-          el.innerHTML = '';
-          return;
+        var detailHtml = '';
+        if (chemicals.length) {
+          var items = chemicals.slice(0, 3).map(function (c) {
+            var concernClass = c.is_of_concern ? ' is-of-concern' : '';
+            return '<li class="' + concernClass.trim() + '"><a href="' + chemicalUrl(c.id) + '">' +
+              escapeHtml(c.name) + '</a> — ' + formatNumber(c.lbs) + ' lbs</li>';
+          }).join('');
+          detailHtml = '<ul>' + items + '</ul>';
         }
-        var items = chemicals.slice(0, 3).map(function (c) {
-          var concernClass = c.is_of_concern ? ' is-of-concern' : '';
-          return '<li class="' + concernClass.trim() + '"><a href="' + chemicalUrl(c.id) + '">' +
-            escapeHtml(c.name) + '</a> — ' + formatNumber(c.lbs) + ' lbs</li>';
-        }).join('');
-        el.innerHTML = '<ul>' + items + '</ul>';
-        layer.getPopup().update();
+        layer.getPopup().setContent(self.sectionPopupHtml(props, detailHtml));
       })
       .catch(function (err) {
         window.console && console.error && console.error('section-map: failed to load section detail', err);
-        var container = popup.getPopup().getElement();
-        var el = container && container.querySelector('.section-popup-detail');
-        if (el) el.textContent = '';
+        if (!layer.getPopup() || !layer.isPopupOpen()) return;
+        layer.getPopup().setContent(self.sectionPopupHtml(props, ''));
       });
   };
 
@@ -485,6 +498,7 @@
     this.noticesLayer = L.geoJSON({ type: 'FeatureCollection', features: features }, {
       pointToLayer: function (feature, latlng) {
         return L.circleMarker(latlng, {
+          pane: 'pesticide-notices',
           radius: 7,
           fillColor: NOTICE_COLOR,
           fillOpacity: 0.9,
