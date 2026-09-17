@@ -326,7 +326,7 @@ class Coverage(BaseReport):
 
     def get_map(self):
         """Valley-wide map: DAC tracts shaded, other tracts light, monitors as dots."""
-        lmap = leaflet.LeafletMap(width=900, height=700, padding=10)
+        lmap = leaflet.LeafletMap(width=800, height=800, padding=10)
         boundaries = county_boundaries()
         bounds = map_bounds(boundaries)
         lmap.add(*county_outlines(boundaries))
@@ -557,7 +557,7 @@ class DegradedMonitors(BaseReport):
     MAP_LEGEND = [('Silent / never reported', '#7f8c8d'), ('Grade F', '#c0392b'), ('Grade C', '#e67e22'), ('Flatline', '#8e44ad')]
 
     def get_map(self, rows):
-        lmap = leaflet.LeafletMap(width=900, height=700, padding=10)
+        lmap = leaflet.LeafletMap(width=800, height=800, padding=10)
         boundaries = county_boundaries(self.county)
         bounds = map_bounds(boundaries)
         for row in rows:

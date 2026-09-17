@@ -67,6 +67,9 @@
     var map = L.map(container, {
       attributionControl: true,
       zoomControl: false,
+      // Fractional zoom so fitBounds fills the frame instead of snapping
+      // out to the next whole zoom level and leaving a wide margin.
+      zoomSnap: 0,
       dragging: false,
       touchZoom: false,
       scrollWheelZoom: false,
