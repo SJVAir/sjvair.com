@@ -25,6 +25,7 @@
         </thead>
         <tbody>
             {% for row in rows %}
+            {% if not forloop.last %}
             <tr>
                 <th>{{ row.county }}</th>
                 <td>{{ row.monitors|intcomma }}</td>
@@ -36,8 +37,24 @@
                 <td>{{ row.dac_population_covered|intcomma }}</td>
                 <td>{{ row.dac_covered_pct|default_if_none:"—" }}</td>
             </tr>
+            {% endif %}
             {% endfor %}
         </tbody>
+        {% with total=rows|last %}
+        <tfoot>
+            <tr>
+                <th>{{ total.county }}</th>
+                <td>{{ total.monitors|intcomma }}</td>
+                <td>{{ total.population|intcomma }}</td>
+                <td>{{ total.per_10k|default_if_none:"—" }}</td>
+                <td>{{ total.dac_tracts|intcomma }}</td>
+                <td>{{ total.dac_monitors|intcomma }}</td>
+                <td>{{ total.dac_population|intcomma }}</td>
+                <td>{{ total.dac_population_covered|intcomma }}</td>
+                <td>{{ total.dac_covered_pct|default_if_none:"—" }}</td>
+            </tr>
+        </tfoot>
+        {% endwith %}
     </table>
 </div>
 

@@ -120,6 +120,12 @@ class NetworkOverviewTests(StaffClientMixin, TestCase):
         assert rows['All types']['Fresno'] == 2
         assert rows['All types']['total'] == 3
 
+    def test_totals_row_is_in_the_table_footer(self):
+        response = self.client.get(reverse('reports:network-overview'))
+        content = response.content.decode()
+        assert '<tfoot>' in content
+        assert content.index('All types') > content.index('<tfoot>')
+
     def test_include_hidden(self):
         response = self.client.get(reverse('reports:network-overview'), {'include_hidden': '1'})
         rows = {row['type']: row for row in response.context['rows']}
@@ -305,6 +311,12 @@ class CoverageTests(StaffClientMixin, TestCase):
         rows = {row['county']: row for row in response.context['rows']}
         assert rows['Fresno']['monitors'] == 2
         assert rows['Fresno']['dac_monitors'] == 1
+
+    def test_totals_row_is_in_the_table_footer(self):
+        response = self.client.get(reverse('reports:coverage'))
+        content = response.content.decode()
+        assert content.index('All counties') > content.index('<tfoot>')
+        assert content.index('Outside SJV') < content.index('<tfoot>')
 
     def test_radius_param_changes_coverage(self):
         # The only monitor near the DAC tract is ~890 m outside it, so the DAC

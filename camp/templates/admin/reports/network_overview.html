@@ -32,14 +32,26 @@
         </thead>
         <tbody>
             {% for row in rows %}
+            {% if not forloop.last %}
             <tr>
                 <th>{{ row.type }}</th>
                 {% for county in counties %}<td>{{ row|get_item:county|intcomma }}</td>{% endfor %}
                 <td>{{ row|get_item:"Outside SJV"|intcomma }}</td>
-                <td><strong>{{ row.total|intcomma }}</strong></td>
+                <td>{{ row.total|intcomma }}</td>
             </tr>
+            {% endif %}
             {% endfor %}
         </tbody>
+        {% with total=rows|last %}
+        <tfoot>
+            <tr>
+                <th>{{ total.type }}</th>
+                {% for county in counties %}<td>{{ total|get_item:county|intcomma }}</td>{% endfor %}
+                <td>{{ total|get_item:"Outside SJV"|intcomma }}</td>
+                <td>{{ total.total|intcomma }}</td>
+            </tr>
+        </tfoot>
+        {% endwith %}
     </table>
 </div>
 {% endblock %}
