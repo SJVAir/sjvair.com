@@ -2,12 +2,12 @@
     <h2 class="title is-5">Find your area</h2>
     <div class="field has-addons">
         <div class="control is-expanded has-icons-left">
-            <input class="input" type="search" id="find-area-query" placeholder="Address, city, or ZIP in the San Joaquin Valley" autocomplete="off" aria-label="Address, city, or ZIP"{% if focus_find %} autofocus{% endif %}>
+            <input class="input" type="search" id="find-area-query" placeholder="Address, city, or ZIP in the San Joaquin Valley" autocomplete="off" aria-label="Address, city, or ZIP" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="find-area-results"{% if focus_find %} autofocus{% endif %}>
             <span class="icon is-left"><span class="fa-regular fa-magnifying-glass"></span></span>
         </div>
         <div class="control"><button type="button" class="button is-primary" id="find-area-locate"><span class="icon"><span class="fa-regular fa-location-crosshairs"></span></span><span>Use my location</span></button></div>
     </div>
-    <ul class="find-area-results" id="find-area-results" hidden></ul>
+    <ul class="find-area-results" id="find-area-results" role="listbox" hidden></ul>
     <p class="help" id="find-area-status"></p>
     <form method="get" action="{% url 'pesticides:home' %}" class="find-area-pickers">
         {% if year %}<input type="hidden" name="year" value="{{ year }}">{% endif %}

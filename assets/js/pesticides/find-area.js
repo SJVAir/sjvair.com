@@ -15,9 +15,27 @@
   var DEBOUNCE_MS = 300;
   var MIN_QUERY_LENGTH = 3;
   var GEOCODE_BBOX = '-121.9,34.8,-117.5,38.4';
+  var MAX_LABEL_LENGTH = 120;
 
   function escapeText(el, text) {
     el.textContent = text == null ? '' : String(text);
+  }
+
+  // Builds a "near X, Y County" label from a MapTiler feature: the feature's
+  // own text plus, when present, the `text` of its `county.*` context entry.
+  function labelForFeature(feature, fallback) {
+    if (!feature) return fallback;
+    var name = feature.text || feature.place_name;
+    if (!name) return fallback;
+    var county = null;
+    var context = feature.context || [];
+    for (var i = 0; i < context.length; i++) {
+      if (context[i].id && context[i].id.indexOf('county.') === 0) {
+        county = context[i];
+        break;
+      }
+    }
+    return 'near ' + name + (county && county.text ? ', ' + county.text : '');
   }
 
   function FindArea(el) {
@@ -34,6 +52,8 @@
     this.features = [];
     this.activeIndex = -1;
     this.debounceTimer = null;
+    this.searchAbort = null;
+    this.searchRequestId = 0;
 
     this.bindEvents();
   }
@@ -78,6 +98,7 @@
     }
     if (this.input) {
       this.input.removeAttribute('aria-activedescendant');
+      this.input.setAttribute('aria-expanded', 'false');
     }
   };
 
@@ -147,11 +168,16 @@
 
     this.setStatus('Searching…');
 
+    if (this.searchAbort) this.searchAbort.abort();
+    var abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    this.searchAbort = abort;
+    var requestId = ++this.searchRequestId;
+
     var url = 'https://api.maptiler.com/geocoding/' + encodeURIComponent(query) + '.json'
       + '?key=' + encodeURIComponent(this.key)
       + '&country=us&bbox=' + GEOCODE_BBOX + '&limit=5&language=en';
 
-    fetch(url)
+    fetch(url, abort ? { signal: abort.signal } : undefined)
       .then(function (response) {
         if (!response.ok) {
           throw new Error('geocoding request failed');
@@ -159,9 +185,12 @@
         return response.json();
       })
       .then(function (data) {
+        if (requestId !== self.searchRequestId) return; // a newer search superseded this one
         self.renderResults((data && data.features) || []);
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') return;
+        if (requestId !== self.searchRequestId) return;
         self.hideResults();
         self.setStatus("Couldn't search right now. Try again in a moment.");
       });
@@ -179,6 +208,7 @@
 
     if (!features.length) {
       this.resultsEl.hidden = true;
+      if (this.input) this.input.setAttribute('aria-expanded', 'false');
       this.setStatus('No matches found.');
       return;
     }
@@ -199,6 +229,7 @@
     });
 
     this.resultsEl.hidden = false;
+    if (this.input) this.input.setAttribute('aria-expanded', 'true');
     this.setStatus('');
   };
 
@@ -208,7 +239,7 @@
     }
     var lng = feature.center[0];
     var lat = feature.center[1];
-    var label = 'near ' + (feature.text || feature.place_name || 'here');
+    var label = labelForFeature(feature, 'near here').slice(0, MAX_LABEL_LENGTH);
     this.hideResults();
     if (this.input) {
       this.input.value = feature.place_name || feature.text || '';
@@ -270,7 +301,7 @@
       })
       .then(function (data) {
         var feature = data && data.features && data.features[0];
-        var label = feature ? 'near ' + (feature.text || feature.place_name || 'you') : 'near you';
+        var label = (feature ? labelForFeature(feature, 'near you') : 'near you').slice(0, MAX_LABEL_LENGTH);
         self.goToLocation(lat, lng, label);
       })
       .catch(function () {

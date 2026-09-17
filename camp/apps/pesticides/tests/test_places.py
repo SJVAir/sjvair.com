@@ -35,6 +35,7 @@ class AreaTests(RollupTestMixin, TestCase):
         assert [r.obj.name for r in ctx['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
         assert ctx['records_url'].startswith(reverse('pesticides:records') + '?')
         assert 'county=fresno' in ctx['records_url'] and 'year=2023' in ctx['records_url']
+        assert 'upcoming_by_county' not in ctx  # single-county area: would just restate the total
 
     def test_place_context_active_notices(self):
         PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326), mtrs_id=9101)

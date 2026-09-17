@@ -211,7 +211,15 @@
     var center = this.parseCenter(this.data.center) || [36.75, -119.80];
     var zoom = parseInt(this.data.zoom, 10) || 8;
 
-    this.map = L.map(this.el, { zoomControl: true, scrollWheelZoom: true });
+    this.map = L.map(this.el, { zoomControl: true, scrollWheelZoom: false });
+
+    // Wheel-zoom is off by default so the map doesn't hijack page scrolling
+    // on long pages; enable it only while the map has focus/is being
+    // interacted with directly.
+    this.el.addEventListener('click', this.enableScrollZoom.bind(this));
+    this.el.addEventListener('focus', this.enableScrollZoom.bind(this), true);
+    this.el.addEventListener('mouseleave', this.disableScrollZoom.bind(this));
+    this.el.addEventListener('blur', this.disableScrollZoom.bind(this), true);
 
     var tileUrl = this.data.tiles;
     if (tileUrl) {
@@ -251,6 +259,14 @@
 
     this.loadSections();
     this.loadNotices();
+  };
+
+  SectionMap.prototype.enableScrollZoom = function () {
+    this.map.scrollWheelZoom.enable();
+  };
+
+  SectionMap.prototype.disableScrollZoom = function () {
+    this.map.scrollWheelZoom.disable();
   };
 
   SectionMap.prototype.parseCenter = function (value) {

@@ -3,6 +3,7 @@ import hashlib
 import math
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib.gis.geos import Point
@@ -350,8 +351,8 @@ class Home(vanilla.TemplateView):
             return None
         url = reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug})
         year = data.get('year')
-        if year:
-            url += f'?year={year}'
+        if year and year.isdigit():
+            url += '?' + urlencode({'year': year})
         return url
 
     def get_context_data(self, **kwargs):

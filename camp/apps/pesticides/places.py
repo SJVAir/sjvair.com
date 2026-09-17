@@ -178,7 +178,7 @@ def place_context(area, year):
     )
     upcoming_count = upcoming_qs.count()
 
-    return {
+    context = {
         'area': area,
         'totals': totals,
         'by_month': by_month,
@@ -193,3 +193,10 @@ def place_context(area, year):
         'map_config': section_map_config(year, **area.map_kwargs()),
         'spraydays_url': SPRAYDAYS_URL,
     }
+
+    # A single-county area's per-county breakdown is just that one county
+    # (== the total); only surface it when the area spans multiple counties.
+    if area.kind == 'region' and area.region.type != Region.Type.COUNTY:
+        context['upcoming_by_county'] = stats.upcoming_by_county(notices)
+
+    return context
