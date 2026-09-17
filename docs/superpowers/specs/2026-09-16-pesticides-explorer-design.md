@@ -270,13 +270,13 @@ top to bottom:
    applications) across all loaded years; by-county table for the latest year
    (county, lbs, acres, applications); then the 10 most recent use records
    (date, county, commodity, product/chemical, lbs, method), each linked.
-   "View all records in the API" links to `/api/2.0/pesticides/uses/?chemical=<chem_code>`
+   A developer note in the footer links to the API docs and the Python client docs, with the filter hint `chemical=<chem_code>`
    (or `product=`, `commodity=`).
 5. **Planned applications (SprayDays).** Chemical and product pages only.
    Upcoming count by county, then the next 10 notices (scheduled date, county,
    method, treated amount + units, other chemicals/products on the notice,
    linked). Commodity pages show a one-line note that notices do not include
-   the crop. "View all notices in the API" link.
+   the crop.
 6. **Sources and caveats.** PUR years loaded (min–max), SprayDays window (count
    of notices and date range), link to landing page methodology.
 

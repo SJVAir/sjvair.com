@@ -33,7 +33,6 @@
         </div>
         <h3 class="title is-5 mt-5">Most recent records</h3>
         {% include 'pesticides/includes/recent-uses.html' %}
-        <p><a href="{{ api_uses_url }}">View all records in the API</a></p>
     {% else %}
         <p class="has-text-grey">No confirmed applications on record{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
     {% endif %}
@@ -45,7 +44,6 @@
         <p class="has-text-grey">SprayDays notices do not include the crop, so planned applications can't be listed by commodity. See the chemical or product pages instead.</p>
     {% elif upcoming %}
         {% include 'pesticides/includes/upcoming-notices.html' %}
-        <p><a href="{{ api_notices_url }}">View all notices in the API</a></p>
     {% else %}
         <p class="has-text-grey">No upcoming notices.</p>
     {% endif %}
@@ -56,6 +54,12 @@
         Confirmed applications: CDPR Pesticide Use Reporting{% if years %}, {{ years.0 }}–{{ years.1 }}{% endif %}.
         {% if notice_window %}Planned applications: SprayDays, {{ notice_window.count }} notices from {{ notice_window.first|date:'M j, Y' }} to {{ notice_window.last|date:'M j, Y' }}.{% endif %}
         <a href="{% url 'pesticides:home' %}#about">About this data</a>.
+    </p>
+    <p>
+        Developers: the full records are available through the
+        <a href="{{ api_docs_url }}">pesticides API</a> or the
+        <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>,
+        filtered with <code>{{ api_filter }}</code>.
     </p>
 </footer>
 {% endblock %}

@@ -287,7 +287,10 @@ class ChemicalDetailTests(TestCase):
         assert 'Prop 65' in html
         assert 'IARC 2A' in html
         assert 'comptox.epa.gov' in html
-        assert '/api/2.0/pesticides/use/?chemical=1855' in html
+        assert '/api/2.0/pesticides/use/' not in html
+        assert '/api/2.0/docs/#tag/pesticides' in html
+        assert 'sjvair.github.io/sjvair-python' in html
+        assert 'chemical=1855' in html
         assert Product.objects.get(pk=1).get_absolute_url() in html
 
     def test_query_ceiling(self):
@@ -402,6 +405,12 @@ class HomeTests(TestCase):
         response = self.client.get(self.url)
         assert response.status_code == 200
         assert 'No use data loaded' in response.content.decode()
+
+    def test_links_to_api_docs_not_raw_endpoints(self):
+        html = self.client.get(self.url).content.decode()
+        assert '/api/2.0/docs/#tag/pesticides' in html
+        assert 'sjvair.github.io/sjvair-python' in html
+        assert '/api/2.0/pesticides/' not in html
 
     def test_navbar_has_data_tools(self):
         html = self.client.get(self.url).content.decode()

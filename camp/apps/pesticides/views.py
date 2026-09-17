@@ -19,6 +19,10 @@ from camp.apps.pesticides.models import (
 # dict value / membership check reads as if it might be raised.
 MISSING = object()
 
+# Public pages link developers to the documentation, never to raw endpoints.
+API_DOCS_URL = '/api/2.0/docs/#tag/pesticides'
+CLIENT_DOCS_URL = 'https://sjvair.github.io/sjvair-python/client/resources/pesticides.html'
+
 
 def lbs_subquery(field, year, lbs_field='lbs_chemical'):
     """Sum of pounds in `year` for the outer row, via `PesticideUse.<field>`."""
@@ -203,7 +207,14 @@ class Home(vanilla.TemplateView):
     def get_context_data(self, **kwargs):
         data = stats.landing_stats()
         county_map = maps.county_map(data['by_county']) if data['by_county'] else None
-        return super().get_context_data(section=None, county_map=county_map, **data, **kwargs)
+        return super().get_context_data(
+            section=None,
+            county_map=county_map,
+            api_docs_url=API_DOCS_URL,
+            client_docs_url=CLIENT_DOCS_URL,
+            **data,
+            **kwargs,
+        )
 
 
 class ProductList(ExplorerListMixin, vanilla.ListView):
@@ -284,7 +295,7 @@ class ExplorerDetailMixin:
     section = None
     lbs_field = 'lbs_chemical'
     use_field = None          # PesticideUse FK name for this entity
-    api_param = None          # v2 API query param name
+    api_param = None          # v2 API query param name, shown as a hint for developers
     has_notices = True
 
     def get_uses(self):
@@ -340,8 +351,9 @@ class ExplorerDetailMixin:
             upcoming_by_county=stats.upcoming_by_county(notices) if self.has_notices else [],
             upcoming_count=stats.upcoming_count(notices) if self.has_notices else 0,
             notice_window=stats.notice_window(),
-            api_uses_url=f'/api/2.0/pesticides/use/?{self.api_param}={self.api_value()}',
-            api_notices_url=f'/api/2.0/pesticides/notice/?{self.api_param}={self.api_value()}',
+            api_docs_url=API_DOCS_URL,
+            client_docs_url=CLIENT_DOCS_URL,
+            api_filter=f'{self.api_param}={self.api_value()}',
             **kwargs,
         )
         context['summary_sentence'] = self.get_summary_sentence(totals, year, self.summary_top(context))
