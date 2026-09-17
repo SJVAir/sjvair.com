@@ -15,7 +15,7 @@
         {% for notice in object_list %}
             <tr>
                 <td><a href="{% url 'pesticides:notice-detail' sqid=notice.sqid %}">{{ notice.scheduled_application|date:'M j, Y g:i A' }}</a></td>
-                <td>{{ notice.county.name|default:'—' }}</td>
+                <td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.name }}</a>{% else %}—{% endif %}</td>
                 <td>
                     {% if notice.mtrs %}
                         <a href="{% url 'pesticides:section-detail' sqid=notice.mtrs.sqid %}">{{ notice.mtrs.external_id }}</a>

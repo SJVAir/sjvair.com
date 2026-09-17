@@ -75,6 +75,22 @@ class NoticeFilterForm(forms.Form):
         self.fields['method'].choices = [('', _('Any'))] + [(method, method) for method in sorted(methods)]
 
 
+class FindAreaForm(forms.Form):
+    county = forms.ChoiceField(label=_('County'), required=False, choices=[('', _('County'))])
+    city = forms.ChoiceField(label=_('City'), required=False, choices=[('', _('City'))])
+    zipcode = forms.ChoiceField(label=_('ZIP'), required=False, choices=[('', _('ZIP'))])
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['county'].choices = [('', _('County'))] + self._region_choices(Region.Type.COUNTY)
+        self.fields['city'].choices = [('', _('City'))] + self._region_choices(Region.Type.CITY)
+        self.fields['zipcode'].choices = [('', _('ZIP'))] + self._region_choices(Region.Type.ZIPCODE)
+
+    def _region_choices(self, region_type):
+        regions = Region.objects.filter(type=region_type).order_by('name').values_list('sqid', 'slug', 'name')
+        return [(f'{sqid}:{slug}', name) for sqid, slug, name in regions]
+
+
 class RecordsFilterForm(forms.Form):
     start = forms.DateField(label=_('Start date'), required=False)
     end = forms.DateField(label=_('End date'), required=False)

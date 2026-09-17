@@ -133,6 +133,38 @@ body.pesticides
         .fraction
             font-variant-numeric: tabular-nums
 
+    .find-area
+        .field
+            position: relative
+        .find-area-results
+            position: absolute
+            z-index: 30
+            left: 0
+            right: 0
+            background: $white
+            border: 1px solid $grey-lighter
+            border-radius: 4px
+            box-shadow: 0 4px 12px rgba($black, 0.12)
+            list-style: none
+            margin: 0
+            padding: 0.25rem 0
+            li
+                padding: 0.4rem 0.75rem
+                cursor: pointer
+                &[aria-selected="true"], &:hover
+                    background: $grey-lightest
+        .find-area-pickers
+            margin-top: 0.75rem
+
+    .how-to-read
+        margin: 1rem 0 1.5rem
+        summary
+            cursor: pointer
+            font-weight: 600
+        p
+            @extend .has-text-grey-dark
+            margin-top: 0.5rem
+
     .detail-header
         h1
             font-weight: 700

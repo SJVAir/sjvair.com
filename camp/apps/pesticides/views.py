@@ -22,7 +22,7 @@ import vanilla
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import maps, places, stats
 from camp.apps.pesticides.forms import (
-    ChemicalFilterForm, CommodityFilterForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
+    ChemicalFilterForm, CommodityFilterForm, FindAreaForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
 )
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product, ProductChemical,
@@ -317,6 +317,43 @@ class ExplorerRedirect(vanilla.GenericView):
 class Home(vanilla.TemplateView):
     template_name = 'pesticides/home.html'
 
+    # Picker field name -> Region type it selects from.
+    PICKER_FIELDS = {
+        'county': Region.Type.COUNTY,
+        'city': Region.Type.CITY,
+        'zipcode': Region.Type.ZIPCODE,
+    }
+
+    def get(self, request, *args, **kwargs):
+        redirect_to = self._picker_redirect(request.GET)
+        if redirect_to:
+            return redirect(redirect_to)
+        return super().get(request, *args, **kwargs)
+
+    def _picker_redirect(self, data):
+        """
+        When exactly one region picker is set to a valid `sqid:slug` value,
+        redirect straight to that region's page. Anything else (nothing set,
+        more than one set, or a value that doesn't resolve) falls through to
+        rendering the landing page normally.
+        """
+        picked = [(field, data[field]) for field in self.PICKER_FIELDS if data.get(field)]
+        if len(picked) != 1:
+            return None
+        field, value = picked[0]
+        try:
+            sqid, slug = value.split(':', 1)
+        except ValueError:
+            return None
+        region = Region.objects.filter(sqid=sqid, slug=slug, type=self.PICKER_FIELDS[field]).first()
+        if region is None:
+            return None
+        url = reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug})
+        year = data.get('year')
+        if year:
+            url += f'?year={year}'
+        return url
+
     def get_context_data(self, **kwargs):
         year = stats.resolve_year(self.request.GET.get('year'))
         data = stats.landing_stats(year)
@@ -327,6 +364,9 @@ class Home(vanilla.TemplateView):
             county_map=county_map,
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
+            find_area_form=FindAreaForm(),
+            maptiler_key=settings.MAPTILER_API_KEY,
+            focus_find=self.request.GET.get('find') == '1',
             **{**data, **year_context(year)},
             **kwargs,
         )
