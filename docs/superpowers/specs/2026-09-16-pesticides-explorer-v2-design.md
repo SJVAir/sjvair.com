@@ -307,7 +307,7 @@ tables, notice rows), replacing plain text with links.
 
 Everything on the place page comes from the rollup grouped by section id, with
 the section ids for the area resolved once per request (radius: spatial query
-against the cached simplified section geometries; region: the existing MTRS
+against the MTRS section boundaries; region: the existing MTRS
 join, cached per region for a day). Target under one second per page on the
 local dataset.
 
