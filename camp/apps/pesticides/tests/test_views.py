@@ -3,9 +3,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from camp.apps.pesticides.models import Chemical, Commodity, Product, ProductChemical
+from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 
 
-class ChemicalListTests(TestCase):
+class ChemicalListTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
     def setUp(self):
@@ -147,7 +148,7 @@ class ChemicalListTests(TestCase):
         assert ids == sorted([a.pk, b.pk])
 
 
-class ProductListTests(TestCase):
+class ProductListTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
     def setUp(self):
@@ -203,7 +204,7 @@ class ProductListTests(TestCase):
         assert by_name['ROUNDUP PRO'] == 2
 
 
-class CommodityListTests(TestCase):
+class CommodityListTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
     def setUp(self):
@@ -250,7 +251,7 @@ class CommodityListTests(TestCase):
         assert self.names(response)[-1] == 'NOTHING'
 
 
-class ChemicalDetailTests(TestCase):
+class ChemicalDetailTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
     def setUp(self):
@@ -330,14 +331,20 @@ class ChemicalDetailTests(TestCase):
         assert Product.objects.get(pk=1).get_absolute_url() in html
 
     def test_query_ceiling(self):
-        # Honest count with the current implementation is 21 (verified
+        # Honest count with the current implementation is 22 (verified
         # query-by-query: every related-object fetch is batched via
-        # in_bulk/prefetch/select_related, no N+1s -- 18 base queries plus
-        # the county map's geometry build, the county names lookup, and the
-        # available-years lookup for the year picker; all cached after the
-        # first request).
-        with self.assertNumQueries(21):
+        # in_bulk/prefetch/select_related, no N+1s -- 19 base queries
+        # (including the by_month rollup aggregate for the future month
+        # chart) plus the county map's geometry build, the county names
+        # lookup, and the available-years lookup for the year picker; all
+        # cached after the first request).
+        with self.assertNumQueries(22):
             self.client.get(self.chemical.get_absolute_url())
+
+    def test_by_month_in_context(self):
+        ctx = self.client.get(self.chemical.get_absolute_url()).context
+        assert len(ctx['by_month']) == 12
+        assert ctx['by_month'][2]['lbs'] == 100.0
 
     def test_county_map_rendered(self):
         html = self.client.get(self.chemical.get_absolute_url()).content.decode()
@@ -356,7 +363,7 @@ class ChemicalDetailTests(TestCase):
         assert 'No confirmed applications' in response.content.decode()
 
 
-class ProductDetailTests(TestCase):
+class ProductDetailTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
     def setUp(self):
@@ -389,7 +396,7 @@ class ProductDetailTests(TestCase):
         assert response.status_code == 301
 
 
-class CommodityDetailTests(TestCase):
+class CommodityDetailTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
     def setUp(self):
@@ -414,7 +421,7 @@ class CommodityDetailTests(TestCase):
         assert 'do not include the crop' in html
 
 
-class HomeTests(TestCase):
+class HomeTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
     def setUp(self):
@@ -457,9 +464,11 @@ class HomeTests(TestCase):
             assert anchor in html
 
     def test_empty_database(self):
-        from camp.apps.pesticides.models import PesticideNotice, PesticideUse
+        from camp.apps.pesticides.models import PesticideNotice, PesticideUse, PesticideUseRollup
         PesticideNotice.objects.all().delete()
         PesticideUse.objects.all().delete()
+        PesticideUseRollup.objects.all().delete()
+        cache.clear()
         response = self.client.get(self.url)
         assert response.status_code == 200
         assert 'No use data loaded' in response.content.decode()

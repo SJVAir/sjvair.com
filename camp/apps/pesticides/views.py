@@ -11,7 +11,7 @@ import vanilla
 from camp.apps.pesticides import maps, stats
 from camp.apps.pesticides.forms import ChemicalFilterForm, CommodityFilterForm, ProductFilterForm
 from camp.apps.pesticides.models import (
-    Chemical, Commodity, PesticideNotice, PesticideUse, Product, ProductChemical,
+    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product, ProductChemical,
 )
 
 # Sentinel for "sqid didn't resolve to an object" in ExplorerListMixin.related.
@@ -35,9 +35,9 @@ CLIENT_DOCS_URL = 'https://sjvair.github.io/sjvair-python/client/resources/pesti
 
 
 def lbs_subquery(field, year, lbs_field='lbs_chemical'):
-    """Sum of pounds in `year` for the outer row, via `PesticideUse.<field>`."""
+    """Sum of pounds in `year` for the outer row, via `PesticideUseRollup.<field>`."""
     return Subquery(
-        PesticideUse.objects
+        PesticideUseRollup.objects
         .filter(**{field: OuterRef('pk')}, year=year)
         .values(field)
         .annotate(total=Sum(lbs_field))
@@ -58,8 +58,8 @@ def count_subquery(model, field, count_field):
 
 
 def related_pks(field, obj, target):
-    """PKs of `target` (a PesticideUse FK name) that share a use record with obj."""
-    return PesticideUse.objects.filter(**{field: obj}).values(target)
+    """PKs of `target` (a PesticideUseRollup FK name) that share a rollup row with obj."""
+    return PesticideUseRollup.objects.filter(**{field: obj}).values(target)
 
 
 class ExplorerListMixin:
@@ -289,7 +289,7 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
         if not year:
             return queryset.annotate(lbs_applied=F('pk') * 0.0, chemical_count=F('pk') * 0)
         chemical_count = Subquery(
-            PesticideUse.objects
+            PesticideUseRollup.objects
             .filter(commodity=OuterRef('pk'), year=year)
             .values('commodity')
             .annotate(n=Count('chemical', distinct=True))
@@ -312,6 +312,9 @@ class ExplorerDetailMixin:
 
     def get_uses(self):
         return PesticideUse.objects.filter(**{self.use_field: self.object})
+
+    def get_rollup(self):
+        return PesticideUseRollup.objects.filter(**{self.use_field: self.object})
 
     def get_notices(self):
         return PesticideNotice.objects.none()
@@ -355,8 +358,9 @@ class ExplorerDetailMixin:
         year = stats.resolve_year(self.request.GET.get('year'))
         self.year = year
         uses = self.get_uses()
+        rows = self.get_rollup()
         notices = self.get_notices()
-        totals = stats.year_totals(uses, year, self.lbs_field) if year else {'lbs': 0, 'applications': 0, 'counties': 0}
+        totals = stats.year_totals(rows, year, self.lbs_field) if year else {'lbs': 0, 'applications': 0, 'counties': 0}
         related_a, related_b = self.get_related(year)
         context = super().get_context_data(
             section=self.section,
@@ -364,8 +368,9 @@ class ExplorerDetailMixin:
             **year_context(year),
             county_total=stats.SJV_COUNTY_COUNT,
             totals=totals,
-            by_year=stats.by_year(uses, self.lbs_field),
-            by_county=stats.by_county(uses, year, self.lbs_field) if year else [],
+            by_year=stats.by_year(rows, self.lbs_field),
+            by_county=stats.by_county(rows, year, self.lbs_field) if year else [],
+            by_month=stats.by_month(rows, year, self.lbs_field) if year else [],
             related_a=related_a,
             related_b=related_b,
             recent_uses=stats.recent_uses(uses.filter(year=year)) if year else [],
@@ -407,10 +412,10 @@ class ChemicalDetail(ExplorerDetailMixin, vanilla.DetailView):
         return PesticideNotice.objects.filter(chemicals=self.object)
 
     def get_related(self, year):
-        uses = self.get_uses()
+        rows = self.get_rollup()
         pct = dict(self.object.product_chemicals.values_list('product_id', 'pct_active'))
-        products = with_pct_active(stats.top_related(uses, year, 'product', self.lbs_field), pct)
-        commodities = stats.top_related(uses, year, 'commodity', self.lbs_field)
+        products = with_pct_active(stats.top_related(rows, year, 'product', self.lbs_field), pct)
+        commodities = stats.top_related(rows, year, 'commodity', self.lbs_field)
         return (
             self.related_card('Products containing this chemical', 'products', products, 'pesticides:product-list', 'chemical', show_pct=True),
             self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'chemical'),
@@ -435,7 +440,7 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
         return PesticideNotice.objects.filter(products=self.object)
 
     def get_related(self, year):
-        uses = self.get_uses()
+        rows = self.get_rollup()
         pct = dict(self.object.product_chemicals.values_list('chemical_id', 'pct_active'))
         # Active ingredients are a property of the product, not of use records,
         # so list all of them (ranked by pct_active) rather than by pounds.
@@ -443,7 +448,7 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
             SimpleNamespace(obj=c, lbs=None, pct_active=pct.get(c.pk))
             for c in sorted(self.object.chemicals.all(), key=lambda c: -(pct.get(c.pk) or 0))
         ]
-        commodities = stats.top_related(uses, year, 'commodity', self.lbs_field)
+        commodities = stats.top_related(rows, year, 'commodity', self.lbs_field)
         return (
             self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product', show_pct=True, show_lbs=False, complete=True),
             self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'product'),
@@ -462,10 +467,10 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
         return self.object.site_code
 
     def get_related(self, year):
-        uses = self.get_uses()
+        rows = self.get_rollup()
         return (
-            self.related_card('Chemicals applied', 'chemicals', stats.top_related(uses, year, 'chemical'), 'pesticides:chemical-list', 'commodity'),
-            self.related_card('Products applied', 'products', stats.top_related(uses, year, 'product', 'lbs_product'), 'pesticides:product-list', 'commodity'),
+            self.related_card('Chemicals applied', 'chemicals', stats.top_related(rows, year, 'chemical'), 'pesticides:chemical-list', 'commodity'),
+            self.related_card('Products applied', 'products', stats.top_related(rows, year, 'product', 'lbs_product'), 'pesticides:product-list', 'commodity'),
         )
 
     def summary_top(self, context):
