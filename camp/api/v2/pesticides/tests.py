@@ -943,3 +943,56 @@ class ActiveNoticeEndpointTests(TestCase):
     def test_notice_without_point_has_null_geometry(self):
         data = self.client.get(self.url).json()
         assert all(f['geometry'] is None or f['geometry']['type'] == 'Point' for f in data['features'])
+
+
+# ---------------------------------------------------------------------------
+# County outlines and township grid GeoJSON endpoints
+# ---------------------------------------------------------------------------
+
+from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
+from camp.apps.pesticides.townships import township_of
+
+
+class TownshipAndCountyTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_township_of(self):
+        assert township_of('MDM-T14S-R20E-01') == 'MDM-T14S-R20E'
+        assert township_of('MDM-T14S-R20E') == 'MDM-T14S-R20E'
+
+    def test_counties_geojson(self):
+        response = self.client.get('/api/2.0/pesticides/counties/')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['type'] == 'FeatureCollection'
+        names = sorted(f['properties']['name'] for f in data['features'])
+        assert names == ['Fresno County', 'Kern County']
+        assert data['features'][0]['geometry']['type'] in ('Polygon', 'MultiPolygon')
+
+    def test_townships_geojson_totals(self):
+        response = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023})
+        assert response.status_code == 200
+        features = {f['properties']['id']: f['properties'] for f in response.json()['features']}
+        # 2023 in section 9101 (township MDM-T14S-R20E): uses 1, 2, 4, 6.
+        assert features['MDM-T14S-R20E']['lbs_chemical'] == 670.0
+        assert features['MDM-T14S-R20E']['applications'] == 4
+        assert features['MDM-T14S-R20E']['sections'] == 1
+        # Section 9102 (township MDM-T30S-R28E): uses 3, 5.
+        assert features['MDM-T30S-R28E']['lbs_chemical'] == 70.0
+
+    def test_townships_bbox_and_filters(self):
+        kern_only = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023, 'bbox': '-119.1,35.3,-119.0,35.4'}).json()
+        assert [f['properties']['id'] for f in kern_only['features']] == ['MDM-T30S-R28E']
+        chem = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023, 'chemical': 253}).json()
+        by_id = {f['properties']['id']: f['properties'] for f in chem['features']}
+        assert by_id['MDM-T14S-R20E']['lbs_chemical'] == 20.0
+        assert self.client.get('/api/2.0/pesticides/townships/', {'bbox': 'nope'}).status_code == 400
+
+    def test_section_coordinates_rounded(self):
+        response = self.client.get('/api/2.0/pesticides/sections/', {'year': 2023, 'bbox': '-119.9,36.6,-119.7,36.8'})
+        ring = response.json()['features'][0]['geometry']['coordinates'][0][0]
+        assert all(len(str(abs(v)).split('.')[-1]) <= 5 for pair in ring for v in pair)

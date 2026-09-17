@@ -86,6 +86,23 @@ class StatsTests(RollupTestMixin, TestCase):
         rows = stats.by_section(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
         assert [(r['mtrs_id'], r['lbs'], r['applications']) for r in rows] == [(9101, 150.0, 2), (9102, 30.0, 1)]
 
+    def test_by_township(self):
+        totals = stats.by_township(PesticideUseRollup.objects.all(), 2023)
+        assert set(totals) == {'MDM-T14S-R20E', 'MDM-T30S-R28E'}
+        # Section 9101 rolls up into MDM-T14S-R20E: uses 1, 2, 4, 6.
+        assert totals['MDM-T14S-R20E']['lbs_chemical'] == 670.0
+        assert totals['MDM-T14S-R20E']['lbs_product'] == 970.0
+        assert totals['MDM-T14S-R20E']['acres_treated'] == 67.0
+        assert totals['MDM-T14S-R20E']['applications'] == 4
+        # Section 9102 rolls up into MDM-T30S-R28E: uses 3, 5.
+        assert totals['MDM-T30S-R28E']['lbs_chemical'] == 70.0
+        assert totals['MDM-T30S-R28E']['applications'] == 2
+
+    def test_by_township_respects_filters(self):
+        totals = stats.by_township(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
+        assert totals['MDM-T14S-R20E']['lbs_chemical'] == 150.0
+        assert totals['MDM-T30S-R28E']['lbs_chemical'] == 30.0
+
     def test_recent_uses_newest_first(self):
         uses = list(stats.recent_uses(PesticideUse.objects.filter(chemical_id=1), limit=2))
         assert [u.pk for u in uses] == [3, 2]

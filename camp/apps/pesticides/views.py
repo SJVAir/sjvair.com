@@ -674,6 +674,8 @@ def page_url_pattern(name):
 def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None):
     return {
         'sections_url': '/api/2.0/pesticides/sections/',
+        'counties_url': '/api/2.0/pesticides/counties/',
+        'townships_url': '/api/2.0/pesticides/townships/',
         'notices_url': '/api/2.0/pesticides/notices/active/',
         'section_url_pattern': '/api/2.0/pesticides/sections/{id}/',
         'section_page_url': page_url_pattern('pesticides:section-detail'),

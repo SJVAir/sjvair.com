@@ -15,8 +15,9 @@ from django.utils import timezone
 
 from resticus import generics, http
 
-from camp.apps.pesticides import stats
+from camp.apps.pesticides import maps, stats
 from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup
+from camp.apps.pesticides.townships import round_coords, township_geometries
 from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
 
@@ -84,6 +85,22 @@ def parse_year(params):
     return stats.resolve_year(params.get('year'))
 
 
+def parse_bbox(value):
+    """((west, south, east, north), None) or (None, error). NaN fails the ordering check."""
+    try:
+        west, south, east, north = (float(v) for v in value.split(','))
+    except ValueError:
+        return None, 'bbox must be west,south,east,north'
+    if not (west < east and south < north):
+        return None, 'bbox must be west,south,east,north'
+    return (west, south, east, north), None
+
+
+def bbox_overlaps(a, b):
+    """Do two (west, south, east, north) boxes overlap? Edge contact counts."""
+    return not (a[2] < b[0] or a[0] > b[2] or a[3] < b[1] or a[1] > b[3])
+
+
 def radius_bbox(lat, lng, miles):
     """
     Degree bbox that contains a circle of `miles` around (lat, lng), slightly
@@ -122,13 +139,10 @@ class SectionListBase(generics.Endpoint):
     def get_sections(self, params):
         sections = Region.objects.filter(type=Region.Type.MTRS, boundary__isnull=False).select_related('boundary')
         if params.get('bbox'):
-            try:
-                west, south, east, north = (float(v) for v in params['bbox'].split(','))
-            except ValueError:
-                return None, 'bbox must be west,south,east,north'
-            if not (west < east and south < north):
-                return None, 'bbox must be west,south,east,north'
-            return sections.filter(boundary__geometry__bboverlaps=Polygon.from_bbox((west, south, east, north))), None
+            bbox, error = parse_bbox(params['bbox'])
+            if error:
+                return None, error
+            return sections.filter(boundary__geometry__bboverlaps=Polygon.from_bbox(bbox)), None
         if params.get('lat') and params.get('lng'):
             try:
                 lat, lng = float(params['lat']), float(params['lng'])
@@ -177,7 +191,7 @@ class SectionListBase(generics.Endpoint):
             features.append({
                 'type': 'Feature',
                 'id': section.sqid,
-                'geometry': json.loads(section.boundary.geometry.geojson),
+                'geometry': round_coords(json.loads(section.boundary.geometry.geojson)),
                 'properties': {
                     'id': section.sqid,
                     'mtrs': section.external_id,
@@ -253,13 +267,10 @@ class ActiveNoticeListBase(generics.Endpoint):
             'county', 'mtrs',
         ).prefetch_related('chemicals', 'products').order_by('scheduled_application', 'pk')
         if params.get('bbox'):
-            try:
-                west, south, east, north = (float(v) for v in params['bbox'].split(','))
-            except ValueError:
-                return bad_request('bbox must be west,south,east,north')
-            if not (west < east and south < north):
-                return bad_request('bbox must be west,south,east,north')
-            notices = notices.filter(point__bboverlaps=Polygon.from_bbox((west, south, east, north)))
+            bbox, error = parse_bbox(params['bbox'])
+            if error:
+                return bad_request(error)
+            notices = notices.filter(point__bboverlaps=Polygon.from_bbox(bbox))
         for param, lookup, cast in (
             ('chemical', 'chemicals__chem_code', int),
             ('product', 'products__prodno', int),
@@ -299,6 +310,92 @@ class ActiveNoticeListBase(generics.Endpoint):
         } for n in notices]
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
         return {'type': 'FeatureCollection', 'as_of': timezone.now().isoformat(), 'features': features}
+
+
+class CountyListBase(generics.Endpoint):
+    # See the comment on SectionListBase: the get() implementation lives on
+    # this un-cached base so CachedEndpointMixin.get() on CountyList below is
+    # the one actually dispatched to.
+    def get(self, request):
+        # Already simplified and cached by maps.county_geometries(); one
+        # in_bulk() for the names, which aren't part of the geometry cache.
+        geometries = maps.county_geometries()
+        regions = Region.objects.in_bulk(list(geometries))
+        features = [{
+            'type': 'Feature',
+            'id': regions[pk].sqid,
+            'geometry': round_coords(json.loads(geojson)),
+            'properties': {
+                'id': regions[pk].sqid,
+                'name': regions[pk].name,
+                'slug': regions[pk].slug,
+            },
+        } for pk, geojson in geometries.items() if pk in regions]
+        features.sort(key=lambda feature: feature['properties']['name'])
+        # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
+        return {'type': 'FeatureCollection', 'features': features}
+
+
+class CountyList(CachedEndpointMixin, CountyListBase):
+    """The eight San Joaquin Valley county outlines as GeoJSON, simplified for display. No parameters."""
+    cache_timeout = 60 * 60 * 24
+
+
+class TownshipListBase(generics.Endpoint):
+    # See the comment on SectionListBase: the get() implementation lives on
+    # this un-cached base so CachedEndpointMixin.get() on TownshipList below
+    # is the one actually dispatched to.
+    def get(self, request):
+        params = request.GET
+        bbox = None
+        if params.get('bbox'):
+            bbox, error = parse_bbox(params['bbox'])
+            if error:
+                return bad_request(error)
+        year = parse_year(params)
+
+        rows = PesticideUseRollup.objects.filter(year=year)
+        rows, error = apply_filters(rows, params)
+        if error:
+            return bad_request(error)
+        totals = stats.by_township(rows, year)
+
+        # No cap: there are only a few hundred townships in the valley, and
+        # each one is a four-corner envelope, so the whole grid is a small
+        # response even unfiltered.
+        features = []
+        for township, geometry in sorted(township_geometries().items()):
+            if bbox and not bbox_overlaps(bbox, geometry['bbox']):
+                continue
+            t = totals.get(township, ZERO)
+            features.append({
+                'type': 'Feature',
+                'id': township,
+                'geometry': geometry['geometry'],
+                'properties': {
+                    'id': township,
+                    'name': township,
+                    'sections': geometry['sections'],
+                    'lbs_chemical': t['lbs_chemical'] or 0,
+                    'lbs_product': t['lbs_product'] or 0,
+                    'acres_treated': t['acres_treated'] or 0,
+                    'applications': t['applications'] or 0,
+                },
+            })
+        # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
+        return {'type': 'FeatureCollection', 'year': year, 'features': features}
+
+
+class TownshipList(CachedEndpointMixin, TownshipListBase):
+    """
+    PLSS townships (6x6 blocks of MTRS sections) with pesticide-use totals, as GeoJSON.
+
+    Each township is drawn as the envelope of its sections. Optional
+    `bbox=west,south,east,north` limits the grid to what's on screen.
+    Filters: `year` (default latest), `month`, `chemical` (chem code),
+    `product` (prodno), `commodity` (site code), `county` (slug).
+    """
+    cache_timeout = 60 * 60
 
 
 class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):

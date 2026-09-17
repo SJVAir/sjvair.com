@@ -12,6 +12,7 @@ from django.db.models import Count, F, Max, Min, Q, Sum
 from django.utils import timezone
 
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product
+from camp.apps.pesticides.townships import township_index
 from camp.apps.regions.models import Region
 
 LATEST_YEAR_KEY = 'pesticides:latest-year'
@@ -25,6 +26,7 @@ LATEST_YEAR_TTL = 60 * 60
 LANDING_TTL = 60 * 60 * 24
 NOTICE_WINDOW_TTL = 60 * 60
 SJV_COUNTY_COUNT = 8
+TOWNSHIP_FIELDS = ('lbs_chemical', 'lbs_product', 'acres_treated', 'applications')
 _MISSING = object()
 
 
@@ -139,6 +141,39 @@ def by_section(rows, year, lbs_field='lbs_chemical'):
         {'mtrs_id': r['mtrs'], 'lbs': r['lbs'] or 0, 'acres': r['acres'] or 0, 'applications': r['applications'] or 0}
         for r in rows.filter(year=year, mtrs__isnull=False).values('mtrs').annotate(**_totals(lbs_field)).order_by(F('lbs').desc(nulls_last=True), 'mtrs')
     ]
+
+
+def by_township(rows, year):
+    """
+    {township: {'lbs_chemical', 'lbs_product', 'acres_treated', 'applications'}}.
+
+    One section-level group-by, folded into townships through the cached
+    section -> township index, so the number of queries doesn't grow with the
+    number of townships on screen. Both pound columns are summed because the
+    map lets the viewer switch metrics without refetching.
+    """
+    if year is None:
+        return {}
+    index = township_index()
+    totals = {}
+    section_rows = (
+        rows.filter(year=year, mtrs__isnull=False)
+        .values('mtrs')
+        .annotate(
+            lbs_chemical=Sum('lbs_chemical'),
+            lbs_product=Sum('lbs_product'),
+            acres_treated=Sum('acres_treated'),
+            applications=Sum('applications'),
+        )
+    )
+    for row in section_rows:
+        township = index.get(row['mtrs'])
+        if township is None:
+            continue
+        total = totals.setdefault(township, {field: 0 for field in TOWNSHIP_FIELDS})
+        for field in TOWNSHIP_FIELDS:
+            total[field] += row[field] or 0
+    return totals
 
 
 def year_totals(rows, year, lbs_field='lbs_chemical'):
