@@ -1,0 +1,79 @@
+body.pesticides
+    .hook
+        .lede
+            @extend .has-text-grey
+            margin-bottom: 0
+        .explorer-nav
+            margin-top: $size-6
+            margin-bottom: 0
+
+    .breadcrumbs
+        background-color: $grey-lightest
+        padding: $size-6 0px
+
+    .explorer-filters
+        .label
+            @extend .is-size-7
+            text-transform: uppercase
+            letter-spacing: 0.04em
+        ul
+            list-style: none
+            margin-left: 0
+            li
+                display: block
+                margin-bottom: 0.25em
+
+    .summary-sentence
+        @extend .has-text-grey-dark
+
+    .data-table
+        th .sort-link
+            @extend .has-text-grey-dark
+            white-space: nowrap
+            .icon
+                @extend .has-text-grey-light
+            &.is-active
+                @extend .has-text-link
+                .icon
+                    @extend .has-text-link
+
+    .stat-row
+        .heading
+            @extend .has-text-grey
+        .title
+            @extend .has-text-weight-semibold
+
+    .detail-header
+        .identifiers
+            margin-bottom: $size-7
+        .tags
+            margin-bottom: 0
+
+    .related-card, .leaderboard
+        height: 100%
+        .tags.is-inline
+            display: inline-flex
+            vertical-align: middle
+
+    .leaderboard-list
+        margin: 0
+        padding-left: 1.5em
+        li
+            padding: 0.25em 0
+            border-bottom: 1px solid $grey-lightest
+            .lbs
+                @extend .has-text-grey
+
+    .county-map
+        .admin-leaflet-map
+            width: 100% !important
+            border-color: $grey-lighter
+        figcaption
+            margin-top: $size-7
+
+    .section-card
+        display: block
+        height: 100%
+        color: inherit
+        &:hover
+            box-shadow: 0 0.5em 1em -0.125em rgba($black, 0.15)
