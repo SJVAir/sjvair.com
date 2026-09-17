@@ -8,6 +8,17 @@
 {% endblock %}
 
 {% block report %}
+{% if map %}
+<div class="report-map">
+    {{ map }}
+    <ul class="report-legend">
+        <li><span class="swatch" style="background: rgba(192, 57, 43, 0.35);"></span>SB535 DAC tract</li>
+        <li><span class="swatch" style="background: rgba(189, 195, 199, 0.15);"></span>Other tract</li>
+        <li><span class="swatch" style="background: #1f4e79; border-radius: 50%;"></span>Monitor</li>
+    </ul>
+</div>
+{% endif %}
+
 {% if not ces_version %}
 <p class="errornote">No CalEnviroScreen data loaded. Run the CES import first.</p>
 {% else %}

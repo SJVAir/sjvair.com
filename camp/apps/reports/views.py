@@ -10,6 +10,7 @@ from camp.apps.alerts.models import Subscription
 from camp.apps.ces.models import CES4, CES5
 from camp.apps.monitors.models import Monitor
 from camp.apps.reports.base import BaseReport, register
+from camp.utils import leaflet
 from camp.utils.counties import County
 
 
@@ -252,6 +253,25 @@ class Coverage(BaseReport):
             })
         return rows
 
+    MAP_TRACT_TOLERANCE = 0.0005  # degrees (~50 m); keeps ~1k polygons to a few hundred KB
+
+    def get_map(self):
+        """Valley-wide map: DAC tracts shaded, other tracts light, monitors as dots."""
+        lmap = leaflet.LeafletMap(width=900, height=700, padding=10)
+        tracts = self.tracts()
+        if tracts is not None:
+            for dac, geometry in tracts.values_list('dac_sb535', 'boundary__geometry').iterator(chunk_size=500):
+                lmap.add(leaflet.Area(
+                    geometry=geometry.simplify(self.MAP_TRACT_TOLERANCE, preserve_topology=True),
+                    fill_color='#c0392b' if dac else '#bdc3c7',
+                    fill_opacity=0.35 if dac else 0.15,
+                    border_color='#7f8c8d',
+                    border_width=0.5,
+                ))
+        for position in self.monitors().values_list('position', flat=True):
+            lmap.add(leaflet.Marker(geometry=position, size=7, fill_color='#1f4e79', border_width=1))
+        return lmap.render() if lmap.elements else None
+
     def get_context_data(self, **kwargs):
         model, version = self.ces()
         return {
@@ -260,6 +280,7 @@ class Coverage(BaseReport):
             'radius': self.radius,
             'include_hidden': self.include_hidden,
             'percentile_bands': self.get_percentile_bands(),
+            'map': self.get_map(),
         }
 
 
@@ -446,7 +467,20 @@ class DegradedMonitors(BaseReport):
             'condition': ', '.join(conditions),
             'admin_url': self.admin_url(cls, monitor),
             'sort_key': sort_key,
+            'position': monitor.position,
+            'map_color': self.MAP_COLORS[sort_key[0]],
         }
+
+    # Keyed by the first element of sort_key: silent, grade F, grade C, flatline.
+    MAP_COLORS = {0: '#7f8c8d', 1: '#c0392b', 2: '#e67e22', 3: '#8e44ad'}
+    MAP_LEGEND = [('Silent / never reported', '#7f8c8d'), ('Grade F', '#c0392b'), ('Grade C', '#e67e22'), ('Flatline', '#8e44ad')]
+
+    def get_map(self, rows):
+        lmap = leaflet.LeafletMap(width=900, height=700, padding=10)
+        for row in rows:
+            if row['position']:
+                lmap.add(leaflet.Marker(geometry=row['position'], size=9, fill_color=row['map_color']))
+        return lmap.render() if lmap.elements else None
 
     def admin_url(self, cls, monitor):
         """Change-page URL, or '' when the subclass isn't registered in the admin."""
@@ -456,11 +490,14 @@ class DegradedMonitors(BaseReport):
             return ''
 
     def get_context_data(self, **kwargs):
-        return {
+        context = {
             **super().get_context_data(**kwargs),
             'counties': County.names,
             'county': self.county,
             'monitor_type': self.monitor_type,
             'types': [(cls.monitor_type, type_label(cls)) for cls in monitor_types()],
             'include_hidden': self.include_hidden,
+            'legend': self.MAP_LEGEND,
         }
+        context['map'] = self.get_map(context['rows'])
+        return context

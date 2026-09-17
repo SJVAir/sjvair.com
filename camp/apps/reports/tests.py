@@ -263,6 +263,21 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
         assert rows['Never']['type'] == 'BAM1022'
         assert rows['Never']['admin_url'] == reverse('admin:bam_bam1022_change', args=[self.never.pk])
 
+    def test_map_marks_each_degraded_monitor(self):
+        response = self.client.get(reverse('reports:degraded-monitors'))
+        content = response.content.decode()
+        assert 'class="admin-leaflet-map"' in content
+        assert 'js/admin/leaflet-maps.js' in content
+        assert content.count('"kind": "marker"') == 5
+        rows = {r['name']: r for r in response.context['rows']}
+        assert rows['Grade F']['map_color'] == '#c0392b'
+        assert rows['Silent']['map_color'] == '#7f8c8d'
+
+    def test_no_map_when_nothing_is_degraded(self):
+        response = self.client.get(reverse('reports:degraded-monitors'), {'type': 'aqlite'})
+        assert response.context['map'] is None
+        assert 'class="admin-leaflet-map"' not in response.content.decode()
+
     def test_filters(self):
         assert [r['name'] for r in self.rows(county='Fresno')] == ['Grade F', 'Grade C']
         assert [r['name'] for r in self.rows(type='bam1022')] == ['Never']
@@ -320,6 +335,14 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert rows['Fresno']['monitors'] == 2
         assert rows['Fresno']['dac_monitors'] == 1
 
+    def test_map_shades_tracts_and_marks_monitors(self):
+        response = self.client.get(reverse('reports:coverage'))
+        content = response.content.decode()
+        assert 'class="admin-leaflet-map"' in content
+        assert content.count('"kind": "area"') == 2
+        assert content.count('"kind": "marker"') == 2
+        assert '"fillColor": "#c0392b"' in content  # the DAC tract
+
     def test_totals_row_is_in_the_table_footer(self):
         response = self.client.get(reverse('reports:coverage'))
         content = response.content.decode()
@@ -356,6 +379,12 @@ class CoverageNoCESTests(StaffClientMixin, TestCase):
     def setUp(self):
         super().setUp()
         self.monitor = PurpleAir.objects.create(name='Fresno', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+
+    def test_map_shows_monitors_without_ces_data(self):
+        response = self.client.get(reverse('reports:coverage'))
+        content = response.content.decode()
+        assert content.count('"kind": "area"') == 0
+        assert content.count('"kind": "marker"') == 1
 
     def test_renders_without_ces_data(self):
         response = self.client.get(reverse('reports:coverage'))

@@ -17,6 +17,17 @@
 {% endblock %}
 
 {% block report %}
+{% if map %}
+<div class="report-map">
+    {{ map }}
+    <ul class="report-legend">
+        {% for label, color in legend %}
+        <li><span class="swatch" style="background: {{ color }}; border-radius: 50%;"></span>{{ label }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 <div class="module">
     <table>
         <caption>{{ rows|length }} degraded monitor{{ rows|length|pluralize }}</caption>
