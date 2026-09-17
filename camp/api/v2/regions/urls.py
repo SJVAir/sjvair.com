@@ -6,6 +6,7 @@ app_name = 'regions'
 
 urlpatterns = [
     path('', endpoints.RegionList.as_view(), name='region-list'),
+    path('meta/', endpoints.RegionMetaEndpoint.as_view(), name='region-meta'),
     path('places/search/', endpoints.PlaceSearch.as_view(), name='place-search'),
     path('places/lookup/', endpoints.PlaceLookup.as_view(), name='place-lookup'),
     path('<region_id>/', endpoints.RegionDetail.as_view(), name='region-detail'),
