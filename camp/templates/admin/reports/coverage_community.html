@@ -1,0 +1,50 @@
+{% extends 'admin/reports/base.html' %}
+{% load humanize %}
+
+{% block filters %}
+<label><input type="checkbox" name="uncovered" value="1" {% if uncovered %}checked{% endif %} onchange="this.form.submit()"> Only places with no monitor</label>
+<label>Sort
+    <select name="sort" onchange="this.form.submit()">
+        <option value="population" {% if sort == 'population' %}selected{% endif %}>Population</option>
+        <option value="name" {% if sort == 'name' %}selected{% endif %}>Name</option>
+    </select>
+</label>
+<label><input type="checkbox" name="sjvair_only" value="1" {% if sjvair_only %}checked{% endif %} onchange="this.form.submit()"> SJVAir monitors only</label>
+<label><input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %} onchange="this.form.submit()"> Include hidden monitors</label>
+<label><input type="checkbox" name="include_inactive" value="1" {% if include_inactive %}checked{% endif %} onchange="this.form.submit()"> Include inactive monitors</label>
+{% endblock %}
+
+{% block report %}
+<div class="module">
+    <table>
+        <caption>Communities</caption>
+        <tr><th>With a monitor</th><td>{{ tiles.covered|intcomma }}</td></tr>
+        <tr><th>Without a monitor</th><td>{{ tiles.uncovered|intcomma }}</td></tr>
+        <tr><th>Population without a monitor</th><td>{{ tiles.uncovered_population|intcomma }}{% if tiles.uncovered_pct is not None %} ({{ tiles.uncovered_pct }}%){% endif %}</td></tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>{{ rows|length }} cities and census-designated places</caption>
+        <thead>
+            <tr><th>Place</th><th>Type</th><th>County</th><th>Population</th><th>Monitors</th><th>Per 10k</th><th>Nearest monitor</th></tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <th>{{ row.name }}</th>
+                <td>{{ row.type }}</td>
+                <td>{{ row.county }}</td>
+                <td>{{ row.population|intcomma }}</td>
+                <td>{{ row.monitors|intcomma }}</td>
+                <td>{{ row.per_10k|default_if_none:"—" }}</td>
+                <td>{% if row.nearest_km is not None %}{{ row.nearest_km }} km{% else %}—{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7">No city or CDP regions loaded. Run the regions imports first.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

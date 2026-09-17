@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -11,11 +11,11 @@ from camp.apps.entries.models import PM25
 from camp.apps.monitors.airgradient.models import AirGradient
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
-from camp.apps.monitors.models import Host, LatestEntry
+from camp.apps.monitors.models import Host, LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.qaqc.models import HealthCheck
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Boundary, Region
 from camp.apps.reports.base import REPORTS
 
 
@@ -489,3 +489,86 @@ class CoverageNoCESTests(StaffClientMixin, TestCase):
         assert fresno['monitors'] == 1
         assert fresno['population'] == 0
         assert fresno['per_10k'] is None
+
+
+def make_place(name, region_type, bbox, external_id):
+    """A city/CDP Region with a rectangular current boundary (lon/lat bbox)."""
+    region = Region.objects.create(name=name, slug=name.lower(), type=region_type, external_id=external_id)
+    boundary = Boundary.objects.create(region=region, version='latest', geometry=MultiPolygon(Polygon.from_bbox(bbox)))
+    region.boundary = boundary
+    region.save()
+    return region
+
+
+class CoverageCommunityTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml', 'calenviroscreen.yaml']
+
+    def setUp(self):
+        super().setUp()
+        # Testville covers fixture tract 1.01 (pop 4650); Emptyville covers tract 1.02 (pop 3350).
+        self.testville = make_place('Testville', Region.Type.CDP, (-119.8, 36.7, -119.7, 36.8), '9001')
+        self.emptyville = make_place('Emptyville', Region.Type.CITY, (-119.7, 36.7, -119.6, 36.8), '9002')
+        self.monitor = PurpleAir.objects.create(name='In Testville', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        touch(self.monitor, timezone.now() - timedelta(minutes=5))
+
+    def rows(self, **params):
+        response = self.client.get(reverse('reports:coverage-community'), params)
+        assert response.status_code == 200
+        return response.context['rows'], response.context
+
+    def test_rows_and_tiles(self):
+        rows, context = self.rows()
+        by_name = {row['name']: row for row in rows}
+        assert by_name['Testville']['type'] == 'CDP'
+        assert by_name['Testville']['county'] == 'Fresno'
+        assert by_name['Testville']['population'] == 4650
+        assert by_name['Testville']['monitors'] == 1
+        assert by_name['Testville']['per_10k'] == 2.15
+        assert by_name['Testville']['nearest_km'] is None
+        assert by_name['Emptyville']['type'] == 'City'
+        assert by_name['Emptyville']['population'] == 3350
+        assert by_name['Emptyville']['monitors'] == 0
+        assert by_name['Emptyville']['per_10k'] == 0.0
+        assert 8.5 < by_name['Emptyville']['nearest_km'] < 9.5  # centroid (-119.65, 36.75) to the monitor
+        # The regions fixture also ships a real Fresno city region, whose boundary
+        # holds the monitor and tract 1.01's centroid, so it is a second covered row
+        # with a population of its own. `covered` and the percentage are therefore
+        # derived from the rows; the uncovered side is all Emptyville.
+        total_population = sum(row['population'] for row in rows)
+        assert context['tiles'] == {
+            'covered': sum(1 for row in rows if row['monitors']),
+            'uncovered': 1,
+            'uncovered_population': 3350,
+            'uncovered_pct': round(3350 / total_population * 100, 1),
+        }
+        assert context['tiles']['covered'] == 2  # Testville and the fixture's Fresno
+        assert context['tiles']['uncovered_pct'] == 26.5
+        # Fixture city regions (real Fresno etc.) are also listed; the two test places sort by population.
+        assert rows[0]['population'] >= rows[1]['population']
+
+    def test_uncovered_filter_and_name_sort(self):
+        rows, _ = self.rows(uncovered='1')
+        assert 'Testville' not in {row['name'] for row in rows}
+        assert 'Emptyville' in {row['name'] for row in rows}
+        rows, _ = self.rows(sort='name')
+        names = [row['name'] for row in rows]
+        assert names == sorted(names)
+
+    def test_inactive_monitor_does_not_cover(self):
+        Monitor.objects.filter(pk=self.monitor.pk)  # keep import used
+        LatestEntry.objects.filter(monitor=self.monitor).update(timestamp=timezone.now() - timedelta(days=2))
+        rows, context = self.rows()
+        assert {row['name']: row for row in rows}['Testville']['monitors'] == 0
+        assert context['tiles']['covered'] == 0
+        rows, _ = self.rows(include_inactive='1')
+        assert {row['name']: row for row in rows}['Testville']['monitors'] == 1
+
+    def test_place_with_no_tract_centroid_uses_containing_tract(self):
+        # A tiny CDP inside tract 1.01 has no tract centroid of its own.
+        make_place('Tinyville', Region.Type.CDP, (-119.76, 36.74, -119.74, 36.745), '9003')
+        rows, _ = self.rows()
+        assert {row['name']: row for row in rows}['Tinyville']['population'] == 4650
+
+    def test_listed_on_index(self):
+        response = self.client.get(reverse('reports:index'))
+        assert reverse('reports:coverage-community') in response.content.decode()

@@ -1,9 +1,10 @@
 from datetime import timedelta
 
-from django.contrib.gis.db.models.functions import Centroid
+from django.contrib.gis.db.models.functions import Centroid, Distance
 from django.contrib.gis.geos import Polygon
 from django.contrib.gis.measure import D
-from django.db.models import Count, Exists, OuterRef, Q, Sum
+from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
@@ -160,26 +161,24 @@ def per_10k(monitors, population):
     return round(monitors / population * 10000, 2)
 
 
-@register
-class Coverage(BaseReport):
-    slug = 'coverage'
-    title = 'Coverage and Equity'
-    description = 'Active monitors relative to population and disadvantaged-community (SB535 DAC) census tracts, from the newest CalEnviroScreen data loaded.'
-    template_name = 'admin/reports/coverage.html'
+def ces_tracts():
+    """(model, version, tract queryset) for the newest CES data present, or (None, None, None)."""
+    for model in (CES5, CES4):
+        version = (model._base_manager
+            .order_by('-boundary__version')
+            .values_list('boundary__version', flat=True)
+            .first())
+        if version:
+            return model, version, model._base_manager.filter(boundary__version=version)
+    return None, None, None
 
-    DEFAULT_RADIUS = 1000
-    BANDS = [('0–25', 0, 25), ('25–50', 25, 50), ('50–75', 50, 75), ('75–100', 75, 100.0001)]
+
+class MonitorScopeMixin:
+    """Query-param toggles shared by the coverage reports."""
 
     @property
     def include_hidden(self):
         return self.request.GET.get('include_hidden') == '1'
-
-    @property
-    def radius(self):
-        try:
-            return max(0, int(self.request.GET.get('radius', self.DEFAULT_RADIUS)))
-        except (TypeError, ValueError):
-            return self.DEFAULT_RADIUS
 
     @property
     def include_inactive(self):
@@ -205,18 +204,35 @@ class Coverage(BaseReport):
             queryset = queryset.with_last_entry_timestamp().filter(last_entry_timestamp__gte=cutoff)
         return queryset
 
+    def scope_context(self):
+        return {
+            'include_hidden': self.include_hidden,
+            'include_inactive': self.include_inactive,
+            'sjvair_only': self.sjvair_only,
+        }
+
+
+@register
+class Coverage(MonitorScopeMixin, BaseReport):
+    slug = 'coverage'
+    title = 'Coverage and Equity'
+    description = 'Active monitors relative to population and disadvantaged-community (SB535 DAC) census tracts, from the newest CalEnviroScreen data loaded.'
+    template_name = 'admin/reports/coverage.html'
+
+    DEFAULT_RADIUS = 1000
+    BANDS = [('0–25', 0, 25), ('25–50', 25, 50), ('50–75', 50, 75), ('75–100', 75, 100.0001)]
+
+    @property
+    def radius(self):
+        try:
+            return max(0, int(self.request.GET.get('radius', self.DEFAULT_RADIUS)))
+        except (TypeError, ValueError):
+            return self.DEFAULT_RADIUS
+
     def ces(self):
-        """(model, version) for the newest CES data present, or (None, None)."""
         if not hasattr(self, '_ces'):
-            self._ces = (None, None)
-            for model in (CES5, CES4):
-                version = (model._base_manager
-                    .order_by('-boundary__version')
-                    .values_list('boundary__version', flat=True)
-                    .first())
-                if version:
-                    self._ces = (model, version)
-                    break
+            model, version, _tracts = ces_tracts()
+            self._ces = (model, version)
         return self._ces
 
     def tracts(self):
@@ -356,12 +372,136 @@ class Coverage(BaseReport):
         return {
             **super().get_context_data(**kwargs),
             'ces_version': f'{model.__name__} ({version})' if model else None,
+            **self.scope_context(),
             'radius': self.radius,
-            'include_hidden': self.include_hidden,
-            'include_inactive': self.include_inactive,
-            'sjvair_only': self.sjvair_only,
             'percentile_bands': self.get_percentile_bands(),
             'map': self.get_map(),
+        }
+
+
+@register
+class CoverageCommunity(MonitorScopeMixin, BaseReport):
+    slug = 'coverage-community'
+    title = 'Coverage by Community'
+    description = 'Active monitors per city and census-designated place, with population from CalEnviroScreen tracts. Places with no monitor show the distance to the nearest one.'
+    template_name = 'admin/reports/coverage_community.html'
+
+    TYPE_LABELS = {Region.Type.CITY: 'City', Region.Type.CDP: 'CDP'}
+
+    @property
+    def uncovered(self):
+        return self.request.GET.get('uncovered') == '1'
+
+    @property
+    def sort(self):
+        return 'name' if self.request.GET.get('sort') == 'name' else 'population'
+
+    def places(self):
+        """City and CDP regions with a current boundary, annotated with everything the row needs."""
+        _model, _version, tracts = ces_tracts()
+        monitors = self.monitors()
+
+        def count_within(queryset, geometry_ref):
+            return Coalesce(Subquery(
+                queryset.filter(position__within=OuterRef(geometry_ref))
+                .order_by().annotate(one=Value(1)).values('one')
+                .annotate(n=Count('pk')).values('n'),
+                output_field=IntegerField(),
+            ), 0)
+
+        places = (Region.objects
+            .filter(type__in=[Region.Type.CITY, Region.Type.CDP], boundary__isnull=False)
+            .annotate(
+                geometry=F('boundary__geometry'),
+                centroid=Centroid('boundary__geometry'),
+                monitor_count=count_within(monitors, 'geometry'),
+                county_name=Subquery(
+                    Region.objects.counties()
+                    .filter(boundary__geometry__contains=OuterRef('centroid'))
+                    .values('name')[:1]
+                ),
+            ))
+
+        if tracts is not None:
+            places = places.annotate(
+                tract_population=Subquery(
+                    tracts.annotate(tract_centroid=Centroid('boundary__geometry'))
+                    .filter(tract_centroid__within=OuterRef('geometry'))
+                    .order_by().annotate(one=Value(1)).values('one')
+                    .annotate(p=Sum('population')).values('p'),
+                    output_field=IntegerField(),
+                ),
+                containing_population=Subquery(
+                    tracts.filter(boundary__geometry__contains=OuterRef('centroid'))
+                    .values('population')[:1],
+                    output_field=IntegerField(),
+                ),
+            )
+        else:
+            places = places.annotate(
+                tract_population=Value(None, output_field=IntegerField()),
+                containing_population=Value(None, output_field=IntegerField()),
+            )
+
+        return places.values('sqid', 'name', 'type', 'centroid', 'monitor_count', 'county_name',
+                             'tract_population', 'containing_population')
+
+    def nearest_km(self, centroid):
+        distance = (self.monitors()
+            .annotate(distance=Distance('position', centroid))
+            .order_by('distance')
+            .values_list('distance', flat=True)
+            .first())
+        return round(distance.km, 1) if distance is not None else None
+
+    def get_rows(self):
+        all_rows = []
+        for place in self.places():
+            population = place['tract_population']
+            if population is None:
+                population = place['containing_population'] or 0
+            county_name = place['county_name'] or ''
+            all_rows.append({
+                'name': place['name'],
+                'type': self.TYPE_LABELS.get(place['type'], place['type']),
+                'county': county_column(county_name.removesuffix(' County')),
+                'population': population,
+                'monitors': place['monitor_count'],
+                'per_10k': per_10k(place['monitor_count'], population),
+                'nearest_km': None if place['monitor_count'] else self.nearest_km(place['centroid']),
+                'sqid': place['sqid'],
+            })
+
+        # The tiles describe every place, even when ?uncovered=1 narrows the table.
+        self.all_rows = all_rows
+        rows = [row for row in all_rows if not (self.uncovered and row['monitors'])]
+
+        if self.sort == 'name':
+            rows.sort(key=lambda row: row['name'])
+        else:
+            rows.sort(key=lambda row: (-row['population'], row['name']))
+        return rows
+
+    def get_tiles(self, rows):
+        all_rows = rows if not self.uncovered else self.all_rows
+        covered = sum(1 for row in all_rows if row['monitors'])
+        uncovered_population = sum(row['population'] for row in all_rows if not row['monitors'])
+        total_population = sum(row['population'] for row in all_rows)
+        return {
+            'covered': covered,
+            'uncovered': len(all_rows) - covered,
+            'uncovered_population': uncovered_population,
+            'uncovered_pct': round(uncovered_population / total_population * 100, 1) if total_population else None,
+        }
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        return {
+            **context,
+            **self.scope_context(),
+            'uncovered': self.uncovered,
+            'sort': self.sort,
+            'tiles': self.get_tiles(context['rows']),
         }
 
 
