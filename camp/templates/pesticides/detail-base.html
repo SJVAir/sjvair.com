@@ -9,6 +9,7 @@
     <h1 class="mb-1">{{ object.name }}</h1>
     <p class="identifiers has-text-grey">{% block identifiers %}{% endblock %}</p>
     <div class="tags are-medium">{% block badges %}{% endblock %}</div>
+    {% block notes %}{% include 'pesticides/includes/what-this-means.html' %}{% endblock %}
 </div>
 
 {% include 'pesticides/includes/stat-row.html' %}

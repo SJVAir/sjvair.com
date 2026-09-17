@@ -18,6 +18,7 @@
         Scheduled for {{ object.scheduled_application|date:'M j, Y g:i A' }}; the grower may begin any time through
         {{ window_end|date:'M j, Y' }}. A notice is an intention, not a confirmation that spraying happened.
     </p>
+    {% include 'pesticides/includes/what-this-means.html' %}
 </div>
 
 <div class="columns">

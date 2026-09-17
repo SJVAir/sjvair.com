@@ -34,7 +34,7 @@
                             <div class="tags">
                                 {% include 'pesticides/includes/classification-badges.html' with chemical=chemical hide_iarc=True %}
                                 {% for category in chemical.other_categories %}
-                                    <a class="tag" href="{% url 'pesticides:chemical-list' %}?category={{ category }}">{{ category|category_label }}</a>
+                                    <a class="tag" href="{% url 'pesticides:chemical-list' %}?category={{ category }}" title="{{ category|note_summary }}">{{ category|category_label }}</a>
                                 {% endfor %}
                             </div>
                         </td>

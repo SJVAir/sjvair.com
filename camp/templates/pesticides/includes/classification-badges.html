@@ -1,9 +1,13 @@
+{% load pesticides_explorer %}
 {% if chemical.is_prop65 %}
-    <a class="tag is-danger is-light" href="{% url 'pesticides:home' %}#prop65" title="Listed under California's Proposition 65 as a carcinogen, reproductive toxin, or developmental toxin">Prop 65</a>
+    {% health_note 'prop65' as prop65_note %}
+    <a class="tag is-danger is-light" href="{% url 'pesticides:home' %}#prop65" title="{{ prop65_note.summary }}">Prop 65</a>
 {% endif %}
 {% if chemical.is_tac %}
-    <a class="tag is-warning is-light" href="{% url 'pesticides:home' %}#tac" title="Designated a Toxic Air Contaminant by the California Air Resources Board">CARB TAC</a>
+    {% health_note 'carb_tac' as carb_tac_note %}
+    <a class="tag is-warning is-light" href="{% url 'pesticides:home' %}#tac" title="{{ carb_tac_note.summary }}">CARB TAC</a>
 {% endif %}
 {% if chemical.iarc_group and not hide_iarc %}
-    <a class="tag {% if chemical.is_iarc_concern %}is-danger{% else %}is-light{% endif %}" href="{% url 'pesticides:home' %}#iarc" title="{{ chemical.get_iarc_group_display }}">IARC {{ chemical.iarc_group }}</a>
+    {% iarc_note chemical as iarc_note %}
+    <a class="tag {% if chemical.is_iarc_concern %}is-danger{% else %}is-light{% endif %}" href="{% url 'pesticides:home' %}#iarc" title="{{ iarc_note.summary }}">IARC {{ chemical.iarc_group }}</a>
 {% endif %}

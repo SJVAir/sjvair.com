@@ -21,6 +21,7 @@ from django.core.cache import cache
 from django.urls import reverse
 
 from camp.api.v2.pesticides.sections import radius_bbox
+from camp.apps.pesticides import notes as notes_module
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup
 from camp.apps.regions.models import Region
@@ -192,6 +193,7 @@ def place_context(area, year):
         'notices_url': area.notices_url(),
         'map_config': section_map_config(year, **area.map_kwargs()),
         'spraydays_url': SPRAYDAYS_URL,
+        'notes': notes_module.notes_for(notes_module.keys_for_chemicals(row.obj for row in top_chemicals)),
     }
 
     # A single-county area's per-county breakdown is just that one county

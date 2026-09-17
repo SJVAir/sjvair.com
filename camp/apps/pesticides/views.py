@@ -21,7 +21,7 @@ from django.utils.functional import cached_property
 import vanilla
 
 from camp.api.v2.pesticides.sections import radius_bbox
-from camp.apps.pesticides import maps, places, stats
+from camp.apps.pesticides import maps, notes, places, stats
 from camp.apps.pesticides.forms import (
     ChemicalFilterForm, CommodityFilterForm, FindAreaForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
 )
@@ -463,6 +463,9 @@ class ExplorerDetailMixin:
     def get_notices(self):
         return PesticideNotice.objects.none()
 
+    def get_notes(self):
+        return []
+
     def api_value(self):
         raise NotImplementedError
 
@@ -530,6 +533,7 @@ class ExplorerDetailMixin:
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
             api_filter=f'{self.api_param}={self.api_value()}',
+            notes=notes.notes_for(self.get_notes()),
             **kwargs,
         )
         context['summary_sentence'] = self.get_summary_sentence(totals, year, self.summary_top(context))
@@ -559,6 +563,9 @@ class ChemicalDetail(ExplorerDetailMixin, vanilla.DetailView):
     def get_notices(self):
         return PesticideNotice.objects.filter(chemicals=self.object)
 
+    def get_notes(self):
+        return notes.keys_for_chemical(self.object)
+
     def get_related(self, year):
         rows = self.get_rollup()
         pct = dict(self.object.product_chemicals.values_list('product_id', 'pct_active'))
@@ -586,6 +593,9 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
 
     def get_notices(self):
         return PesticideNotice.objects.filter(products=self.object)
+
+    def get_notes(self):
+        return notes.keys_for_product(self.object)
 
     def get_related(self, year):
         rows = self.get_rollup()
@@ -1130,6 +1140,7 @@ class SectionDetail(vanilla.DetailView):
             map_config=map_config,
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
+            notes=notes.notes_for(notes.keys_for_chemicals(row.obj for row in top_chemicals)),
             **kwargs,
         )
 
@@ -1315,6 +1326,7 @@ class NoticeDetail(vanilla.DetailView):
             map_config=map_config,
             related_notices=related_notices,
             records_url=records_url,
+            notes=notes.notes_for(notes.keys_for_notice(notice)),
             **kwargs,
         )
 

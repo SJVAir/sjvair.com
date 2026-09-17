@@ -9,6 +9,7 @@
 <div class="content detail-header">
     <h1 class="mb-1">Section {{ object.external_id }}</h1>
     <p class="identifiers has-text-grey">{% if county_name %}{{ county_name }}{% endif %}</p>
+    {% include 'pesticides/includes/what-this-means.html' %}
 </div>
 
 <div class="level stat-row box">

@@ -5,6 +5,8 @@ from django.contrib.humanize.templatetags.humanize import intcomma
 from django.urls import reverse
 from django.utils.html import format_html
 
+from camp.apps.pesticides import notes as notes_module
+
 register = template.Library()
 
 
@@ -81,3 +83,21 @@ def max_lbs(by_month):
 def category_label(value):
     from camp.apps.pesticides.models import Chemical
     return dict(Chemical.Category.choices).get(value, value)
+
+
+@register.simple_tag
+def health_note(key):
+    return notes_module.note(key)
+
+
+@register.simple_tag
+def iarc_note(chemical):
+    if not chemical.iarc_group:
+        return None
+    return notes_module.note(f'iarc_{chemical.iarc_group.lower()}')
+
+
+@register.filter
+def note_summary(key):
+    entry = notes_module.note(key)
+    return entry['summary'] if entry else ''

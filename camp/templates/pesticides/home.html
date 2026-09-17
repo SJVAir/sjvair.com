@@ -83,16 +83,40 @@
     <p>Growers must file a notice of intent before applying a California-restricted material. DPR's SprayDays system publishes those notices 48 hours ahead for fumigants and 24 hours ahead for other restricted materials, and the grower then has up to four days after the scheduled date to begin. Notices cover only restricted materials, list the product and chemical but not the crop, and are not confirmation that the application happened. To be notified about notices near an address, <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">sign up with SprayDays</a>.</p>
 
     <h3 id="categories">DPR chemical categories</h3>
-    <p>DPR tags active ingredients with regulatory categories: biopesticide, carcinogen, cholinesterase inhibitor, developmental toxin, fumigant, groundwater contaminant, oil, reproductive toxin, and toxic air contaminant. A chemical can carry several.</p>
+    <p>DPR tags active ingredients with regulatory categories. A chemical can carry several; here's what each of the ones this explorer calls out means:</p>
+    <ul>
+        {% health_note 'fumigant' as fumigant_note %}
+        <li><strong>{{ fumigant_note.title }}:</strong> {{ fumigant_note.summary }}</li>
+        {% health_note 'cholinesterase_inhibitor' as cholinesterase_note %}
+        <li><strong>{{ cholinesterase_note.title }}:</strong> {{ cholinesterase_note.summary }}</li>
+        {% health_note 'groundwater_contaminant' as groundwater_note %}
+        <li><strong>{{ groundwater_note.title }}:</strong> {{ groundwater_note.summary }}</li>
+        {% health_note 'biopesticide' as biopesticide_note %}
+        <li><strong>{{ biopesticide_note.title }}:</strong> {{ biopesticide_note.summary }}</li>
+        {% health_note 'oil' as oil_note %}
+        <li><strong>{{ oil_note.title }}:</strong> {{ oil_note.summary }}</li>
+    </ul>
 
     <h3 id="prop65">Proposition 65</h3>
-    <p>California's Safe Drinking Water and Toxic Enforcement Act of 1986 maintains a list of chemicals known to the state to cause cancer, birth defects, or other reproductive harm. Here, a chemical shows a <span class="tag is-danger is-light">Prop 65</span> badge when DPR categorizes it as a carcinogen, reproductive toxin, or developmental toxin.</p>
+    {% health_note 'prop65' as prop65_note %}
+    <p>{{ prop65_note.summary }} {{ prop65_note.detail }}</p>
 
     <h3 id="iarc">IARC groups</h3>
-    <p>The International Agency for Research on Cancer classifies agents by the strength of evidence that they cause cancer in humans: <strong>Group 1</strong> carcinogenic, <strong>Group 2A</strong> probably carcinogenic, <strong>Group 2B</strong> possibly carcinogenic, <strong>Group 3</strong> not classifiable. Most chemicals have not been evaluated by IARC at all, which is not the same as being found safe.</p>
+    {% health_note 'iarc_1' as iarc_1_note %}
+    {% health_note 'iarc_2a' as iarc_2a_note %}
+    {% health_note 'iarc_2b' as iarc_2b_note %}
+    {% health_note 'iarc_3' as iarc_3_note %}
+    <p>The International Agency for Research on Cancer classifies agents by the strength of evidence that they cause cancer in humans.</p>
+    <ul>
+        <li><strong>{{ iarc_1_note.title }}:</strong> {{ iarc_1_note.summary }}</li>
+        <li><strong>{{ iarc_2a_note.title }}:</strong> {{ iarc_2a_note.summary }}</li>
+        <li><strong>{{ iarc_2b_note.title }}:</strong> {{ iarc_2b_note.summary }}</li>
+        <li><strong>{{ iarc_3_note.title }}:</strong> {{ iarc_3_note.summary }}</li>
+    </ul>
 
     <h3 id="tac">CARB Toxic Air Contaminants</h3>
-    <p>The California Air Resources Board designates air pollutants that may cause serious illness or death as Toxic Air Contaminants. Pesticides on that list are shown with a <span class="tag is-warning is-light">CARB TAC</span> badge.</p>
+    {% health_note 'carb_tac' as carb_tac_note %}
+    <p>{{ carb_tac_note.summary }}</p>
 
     <h3>Caveats</h3>
     <ul>
