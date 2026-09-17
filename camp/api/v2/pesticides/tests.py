@@ -797,6 +797,14 @@ class SectionEndpointTests(TestCase):
     def test_radius_must_be_allowed_value(self):
         assert self.client.get(self.url, {'lat': 35.36, 'lng': -119.04, 'radius': 2}).status_code == 400
 
+    def test_lat_lng_nan_is_bad_request_not_500(self):
+        response = self.client.get(self.url, {'lat': 'nan', 'lng': 'nan', 'radius': 1})
+        assert response.status_code == 400
+
+    def test_lat_lng_out_of_range_is_bad_request(self):
+        response = self.client.get(self.url, {'lat': 95, 'lng': -119, 'radius': 1})
+        assert response.status_code == 400
+
     def test_radius_bbox_prefilter_keeps_exact_distance(self):
         # Section 9102's square spans lng -119.05..-119.03, lat 35.35..35.37,
         # so its southwest corner is (-119.05, 35.35). Point (35.339,

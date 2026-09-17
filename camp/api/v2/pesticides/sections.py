@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404
 from resticus import generics, http
 
 from camp.apps.pesticides import stats
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideUseRollup, Product
+from camp.apps.pesticides.models import PesticideUseRollup
 from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
 
@@ -44,19 +44,25 @@ def apply_filters(rows, params):
         if not 1 <= month <= 12:
             return rows, 'month must be 1-12'
         rows = rows.filter(month=month)
-    lookups = {
+    cast_lookups = {
         'chemical': ('chemical__chem_code', int),
         'product': ('product__prodno', int),
-        'commodity': ('commodity__site_code', str),
-        'county': ('county__slug', str),
     }
-    for param, (lookup, cast) in lookups.items():
+    for param, (lookup, cast) in cast_lookups.items():
         value = params.get(param)
         if value:
             try:
                 rows = rows.filter(**{lookup: cast(value)})
             except ValueError:
                 return rows, f'{param} is invalid'
+    direct_lookups = {
+        'commodity': 'commodity__site_code',
+        'county': 'county__slug',
+    }
+    for param, lookup in direct_lookups.items():
+        value = params.get(param)
+        if value:
+            rows = rows.filter(**{lookup: value})
     return rows, None
 
 
@@ -78,11 +84,17 @@ def radius_bbox(lat, lng, miles):
     return Polygon.from_bbox((lng - lng_deg, lat - lat_deg, lng + lng_deg, lat + lat_deg))
 
 
-def county_name_for(sections):
+def county_name_for(section_pks, year):
     """{mtrs_id: county_name} built once from the rollup, not spatially."""
     return {
         row['mtrs']: row['county__name']
-        for row in PesticideUseRollup.objects.filter(mtrs__in=sections).values('mtrs', 'county__name').distinct()
+        for row in (
+            PesticideUseRollup.objects
+            .filter(mtrs__in=section_pks, year=year)
+            .values('mtrs', 'county__name')
+            .order_by('mtrs', 'county__name')
+            .distinct()
+        )
     }
 
 
@@ -109,6 +121,10 @@ class SectionListBase(generics.Endpoint):
                 radius = int(params.get('radius', 1))
             except ValueError:
                 return None, 'lat, lng, and radius must be numbers'
+            if not (math.isfinite(lat) and math.isfinite(lng)):
+                return None, 'lat and lng must be numbers'
+            if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+                return None, 'lat must be -90..90 and lng -180..180'
             if radius not in RADII:
                 return None, f'radius must be one of {", ".join(str(r) for r in RADII)}'
             point = Point(lng, lat, srid=4326)
@@ -123,19 +139,25 @@ class SectionListBase(generics.Endpoint):
         sections, error = self.get_sections(params)
         if error:
             return bad_request(error)
-        if sections.count() > MAX_SECTIONS:
-            return bad_request('bbox too large; zoom in')
+        # Evaluate the spatial query exactly once: .count() on a queryset and
+        # then iterating it again would run the same (expensive) spatial
+        # lookup twice.
+        section_pks = list(sections.values_list('pk', flat=True))
+        if len(section_pks) > MAX_SECTIONS:
+            too_large = 'bbox too large; zoom in' if params.get('bbox') else 'radius too large'
+            return bad_request(too_large)
         year = parse_year(params)
 
-        rows = PesticideUseRollup.objects.filter(year=year, mtrs__in=sections)
+        rows = PesticideUseRollup.objects.filter(year=year, mtrs__in=section_pks)
         rows, error = apply_filters(rows, params)
         if error:
             return bad_request(error)
         totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**TOTALS)}
-        counties = county_name_for(sections)
+        counties = county_name_for(section_pks, year)
 
+        section_qs = Region.objects.filter(pk__in=section_pks).select_related('boundary').order_by('external_id')
         features = []
-        for section in sections.order_by('external_id'):
+        for section in section_qs:
             t = totals.get(section.pk, ZERO)
             features.append({
                 'type': 'Feature',
@@ -178,9 +200,9 @@ class SectionDetailBase(generics.Endpoint):
         rows = PesticideUseRollup.objects.filter(mtrs=section)
         years = list(rows.values('year').annotate(**TOTALS).order_by('-year'))
         months = stats.by_month(rows, year) if year else []
-        county = rows.values_list('county__name', flat=True).first()
+        county = rows.values_list('county__name', flat=True).order_by('county__name').first()
 
-        def top(field, model, lbs_field='lbs_chemical', limit=5):
+        def top(field, lbs_field='lbs_chemical', limit=5):
             related = stats.top_related(rows, year, field, lbs_field=lbs_field, limit=limit) if year else []
             return [{'id': r.obj.sqid, 'name': r.obj.name, 'lbs': r.lbs} for r in related]
 
@@ -195,9 +217,9 @@ class SectionDetailBase(generics.Endpoint):
                 {'month': m['month'], 'lbs_chemical': m['lbs'], 'acres_treated': m['acres'], 'applications': m['applications']}
                 for m in months
             ],
-            'top_chemicals': top('chemical', Chemical),
-            'top_products': top('product', Product, lbs_field='lbs_product'),
-            'top_commodities': top('commodity', Commodity),
+            'top_chemicals': top('chemical'),
+            'top_products': top('product', lbs_field='lbs_product'),
+            'top_commodities': top('commodity'),
         }
 
 
