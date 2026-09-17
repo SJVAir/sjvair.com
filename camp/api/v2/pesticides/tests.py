@@ -797,6 +797,22 @@ class SectionEndpointTests(TestCase):
     def test_radius_must_be_allowed_value(self):
         assert self.client.get(self.url, {'lat': 35.36, 'lng': -119.04, 'radius': 2}).status_code == 400
 
+    def test_radius_bbox_prefilter_keeps_exact_distance(self):
+        # Section 9102's square spans lng -119.05..-119.03, lat 35.35..35.37.
+        # A point at lat=35.36, lng=-119.07 sits due west of the square along
+        # that same latitude, 0.02 degrees of longitude from its west edge.
+        # At lat 35.36, one degree of longitude is about 69 * cos(35.36deg)
+        # ~= 56.3 miles, so the gap is about 0.02 * 56.3 ~= 1.13 miles: just
+        # outside a 1-mile radius, comfortably inside a 3-mile radius. The
+        # radius_bbox() prefilter (sized to the same radius) still overlaps
+        # this section's bbox at both radii, so this only passes if the
+        # exact ST_Distance filter -- not just the bbox prefilter -- is the
+        # one deciding inclusion.
+        response = self.client.get(self.url, {'lat': 35.36, 'lng': -119.07, 'radius': 1, 'year': 2023})
+        assert response.json()['features'] == []
+        response = self.client.get(self.url, {'lat': 35.36, 'lng': -119.07, 'radius': 3, 'year': 2023})
+        assert [f['properties']['mtrs'] for f in response.json()['features']] == ['MDM-T30S-R28E-01']
+
     def test_requires_bbox_or_point(self):
         assert self.client.get(self.url, {'year': 2023}).status_code == 400
 

@@ -3,6 +3,7 @@ Section-level (MTRS, one square mile) pesticide use for the explorer maps.
 Totals come from PesticideUseRollup; geometry from the MTRS Region boundaries.
 """
 import json
+import math
 
 from django.contrib.gis.geos import Point, Polygon
 from django.contrib.gis.measure import D
@@ -63,6 +64,20 @@ def parse_year(params):
     return stats.resolve_year(params.get('year'))
 
 
+def radius_bbox(lat, lng, miles):
+    """
+    Degree bbox that contains a circle of `miles` around (lat, lng), slightly
+    generous. Used as an index-friendly prefilter for the radius query --
+    `boundary__geometry__distance_lte` alone forces a full scan of
+    regions_boundary because the planner can't use the geometry GiST index
+    on a raw distance filter. Bounding-box overlap can, so we apply it first
+    and keep the exact distance check as the real filter.
+    """
+    lat_deg = miles / 69.0
+    lng_deg = miles / (69.0 * max(math.cos(math.radians(lat)), 0.01))
+    return Polygon.from_bbox((lng - lng_deg, lat - lat_deg, lng + lng_deg, lat + lat_deg))
+
+
 def county_name_for(sections):
     """{mtrs_id: county_name} built once from the rollup, not spatially."""
     return {
@@ -97,7 +112,10 @@ class SectionListBase(generics.Endpoint):
             if radius not in RADII:
                 return None, f'radius must be one of {", ".join(str(r) for r in RADII)}'
             point = Point(lng, lat, srid=4326)
-            return sections.filter(boundary__geometry__distance_lte=(point, D(mi=radius))), None
+            return sections.filter(
+                boundary__geometry__bboverlaps=radius_bbox(lat, lng, radius),
+                boundary__geometry__distance_lte=(point, D(mi=radius)),
+            ), None
         return None, 'give bbox=west,south,east,north or lat, lng, and radius'
 
     def get(self, request):
