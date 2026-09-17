@@ -2,7 +2,7 @@ import django_filters
 
 from resticus.filters import FilterSet
 
-from camp.apps.summaries.models import MonitorSummary
+from camp.apps.summaries.models import MonitorSummary, RegionSummary
 
 
 class BulkMonitorSummaryFilter(FilterSet):
@@ -27,4 +27,17 @@ class BulkMonitorSummaryFilter(FilterSet):
 
     class Meta:
         model = MonitorSummary
+        fields = []
+
+
+class BulkRegionSummaryFilter(FilterSet):
+    start = django_filters.DateFilter(method='noop', help_text='Inclusive start date (required).')
+    end = django_filters.DateFilter(method='noop', help_text='Inclusive end date (required).')
+    region = django_filters.CharFilter(method='noop', help_text='Region id; repeatable, at least one required.')
+
+    def noop(self, queryset, name, value):
+        return queryset
+
+    class Meta:
+        model = RegionSummary
         fields = []
