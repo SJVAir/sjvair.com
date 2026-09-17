@@ -118,7 +118,9 @@ pick whichever reads cleaner).
 
 Slug `coverage`. Hidden monitors excluded as above. Only monitors active
 in the last hour count toward coverage unless `?include_inactive=1`; a
-dead monitor covers nobody. Query param `radius` in meters, default `1000`.
+dead monitor covers nobody. `?sjvair_only=1` restricts to SJVAir-owned
+monitors (off by default: coverage is about what the public map shows).
+Query param `radius` in meters, default `1000`.
 
 **Primary table (rows):** one row per SJV county:
 

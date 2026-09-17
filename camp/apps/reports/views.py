@@ -178,6 +178,10 @@ class Coverage(BaseReport):
     def include_inactive(self):
         return self.request.GET.get('include_inactive') == '1'
 
+    @property
+    def sjvair_only(self):
+        return self.request.GET.get('sjvair_only') == '1'
+
     def monitors(self):
         """
         Positioned monitors of enabled types. By default only monitors that
@@ -187,6 +191,8 @@ class Coverage(BaseReport):
         queryset = enabled_only(Monitor.objects.filter(position__isnull=False))
         if not self.include_hidden:
             queryset = queryset.filter(is_hidden=False)
+        if self.sjvair_only:
+            queryset = queryset.filter(is_sjvair=True)
         if not self.include_inactive:
             cutoff = timezone.now() - timedelta(seconds=Monitor.LAST_ACTIVE_LIMIT)
             queryset = queryset.with_last_entry_timestamp().filter(last_entry_timestamp__gte=cutoff)
@@ -346,6 +352,7 @@ class Coverage(BaseReport):
             'radius': self.radius,
             'include_hidden': self.include_hidden,
             'include_inactive': self.include_inactive,
+            'sjvair_only': self.sjvair_only,
             'percentile_bands': self.get_percentile_bands(),
             'map': self.get_map(),
         }

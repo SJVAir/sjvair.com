@@ -331,6 +331,18 @@ class CoverageTests(StaffClientMixin, TestCase):
         for monitor in (self.near_dac, self.kern):
             touch(monitor, timezone.now() - timedelta(minutes=5))
 
+    def test_sjvair_only_toggle(self):
+        self.near_dac.is_sjvair = True
+        self.near_dac.save()
+        response = self.client.get(reverse('reports:coverage'))
+        assert {row['county']: row for row in response.context['rows']}['All counties']['monitors'] == 2
+
+        response = self.client.get(reverse('reports:coverage'), {'sjvair_only': '1'})
+        rows = {row['county']: row for row in response.context['rows']}
+        assert rows['All counties']['monitors'] == 1
+        assert rows['Kern']['monitors'] == 0
+        assert response.content.decode().count('"kind": "marker"') == 1
+
     def test_inactive_monitors_do_not_count_by_default(self):
         PurpleAir.objects.create(name='Dead', sensor_id=3, position=Point(-119.72, 36.75), location='outside')
         stale = PurpleAir.objects.create(name='Stale', sensor_id=4, position=Point(-119.73, 36.75), location='outside')
