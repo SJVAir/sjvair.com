@@ -798,19 +798,37 @@ class SectionEndpointTests(TestCase):
         assert self.client.get(self.url, {'lat': 35.36, 'lng': -119.04, 'radius': 2}).status_code == 400
 
     def test_radius_bbox_prefilter_keeps_exact_distance(self):
-        # Section 9102's square spans lng -119.05..-119.03, lat 35.35..35.37.
-        # A point at lat=35.36, lng=-119.07 sits due west of the square along
-        # that same latitude, 0.02 degrees of longitude from its west edge.
-        # At lat 35.36, one degree of longitude is about 69 * cos(35.36deg)
-        # ~= 56.3 miles, so the gap is about 0.02 * 56.3 ~= 1.13 miles: just
-        # outside a 1-mile radius, comfortably inside a 3-mile radius. The
-        # radius_bbox() prefilter (sized to the same radius) still overlaps
-        # this section's bbox at both radii, so this only passes if the
-        # exact ST_Distance filter -- not just the bbox prefilter -- is the
-        # one deciding inclusion.
-        response = self.client.get(self.url, {'lat': 35.36, 'lng': -119.07, 'radius': 1, 'year': 2023})
+        # Section 9102's square spans lng -119.05..-119.03, lat 35.35..35.37,
+        # so its southwest corner is (-119.05, 35.35). Point (35.339,
+        # -119.0635) sits diagonally off that corner:
+        #   - 0.011 deg south of the corner's latitude -> 0.011 * 69 ~= 0.76 mi
+        #   - 0.0135 deg west of the corner's longitude, at ~35.345 deg lat,
+        #     where a degree of longitude is ~69.17 * cos(35.345 deg) ~= 56.3
+        #     mi -> 0.0135 * 56.3 ~= 0.76 mi
+        #   - straight-line distance to the corner: sqrt(0.76^2 + 0.76^2)
+        #     ~= 1.07 mi -- outside a 1-mile radius, inside a 3-mile radius.
+        # radius_bbox(35.339, -119.0635, 1) has lat_deg = 1/69 ~= 0.0145 and
+        # lng_deg = 1/(69 * cos(35.339 deg)) ~= 0.0178, so the box spans
+        # lat 35.339 +/- 0.0145 (north edge 35.3535 > 35.35) and
+        # lng -119.0635 +/- 0.0178 (east edge -119.0457 > -119.05): the box
+        # overlaps section 9102's bbox at radius 1 even though the point is
+        # actually ~1.07 mi away. So a bbox-only implementation would wrongly
+        # include this section at radius 1; only the exact ST_Distance filter
+        # correctly excludes it. The second assertion below proves the bbox
+        # alone really would have matched, so the first assertion is only
+        # passing because of the distance filter, not despite it being a
+        # no-op.
+        from camp.api.v2.pesticides import sections
+
+        bbox_only = Region.objects.filter(
+            type=Region.Type.MTRS,
+            boundary__geometry__bboverlaps=sections.radius_bbox(35.339, -119.0635, 1),
+        )
+        assert Region.objects.get(pk=9102) in bbox_only
+
+        response = self.client.get(self.url, {'lat': 35.339, 'lng': -119.0635, 'radius': 1, 'year': 2023})
         assert response.json()['features'] == []
-        response = self.client.get(self.url, {'lat': 35.36, 'lng': -119.07, 'radius': 3, 'year': 2023})
+        response = self.client.get(self.url, {'lat': 35.339, 'lng': -119.0635, 'radius': 3, 'year': 2023})
         assert [f['properties']['mtrs'] for f in response.json()['features']] == ['MDM-T30S-R28E-01']
 
     def test_requires_bbox_or_point(self):
