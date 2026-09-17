@@ -9,7 +9,7 @@ from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Subscription
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.bam.models import BAM1022
-from camp.apps.monitors.models import LatestEntry, Monitor
+from camp.apps.monitors.models import Host, LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.qaqc.models import HealthCheck
 
@@ -184,3 +184,56 @@ class FleetHealthTests(StaffClientMixin, TestCase):
         grades = {g['type']: g for g in response.context['grades']}
         assert grades['PurpleAir'] == {'type': 'PurpleAir', 'A': 1, 'B': 0, 'C': 1, 'F': 0, 'none': 4}
         assert 'BAM1022' not in grades
+
+
+class DegradedMonitorsTests(StaffClientMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        now = timezone.now()
+        host = Host.objects.create(name='Library')
+        self.fine = PurpleAir.objects.create(name='Fine', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        self.grade_f = PurpleAir.objects.create(name='Grade F', sensor_id=2, position=Point(-119.75, 36.75), location='outside', host=host)
+        self.grade_c = PurpleAir.objects.create(name='Grade C', sensor_id=3, position=Point(-119.75, 36.75), location='outside')
+        self.flat = PurpleAir.objects.create(name='Flat', sensor_id=4, position=Point(-119.0, 35.4), location='outside')
+        self.silent = PurpleAir.objects.create(name='Silent', sensor_id=5, position=Point(-119.0, 35.4), location='outside')
+        self.never = BAM1022.objects.create(name='Never', position=Point(-119.0, 35.4), location='outside')
+        self.hidden = PurpleAir.objects.create(name='Hidden', sensor_id=6, position=Point(-119.0, 35.4), location='outside', is_hidden=True)
+        for monitor in (self.fine, self.grade_f, self.grade_c, self.flat):
+            touch(monitor, now - timedelta(minutes=5))
+        touch(self.silent, now - timedelta(days=3))
+        give_health(self.fine, 3)
+        give_health(self.grade_f, 0)
+        give_health(self.grade_c, 1)
+        give_health(self.flat, 3, flatline_b=False)
+
+    def rows(self, **params):
+        response = self.client.get(reverse('reports:degraded-monitors'), params)
+        assert response.status_code == 200
+        return response.context['rows']
+
+    def test_lists_only_degraded_monitors_worst_first(self):
+        rows = self.rows()
+        assert [r['name'] for r in rows] == ['Never', 'Silent', 'Grade F', 'Grade C', 'Flat']
+
+    def test_conditions_and_columns(self):
+        rows = {r['name']: r for r in self.rows()}
+        assert rows['Grade F']['condition'] == 'Grade F'
+        assert rows['Grade F']['host'] == 'Library'
+        assert rows['Grade F']['type'] == 'PurpleAir'
+        assert rows['Grade F']['county'] == 'Fresno'
+        assert rows['Flat']['condition'] == 'Flatline B'
+        assert rows['Silent']['condition'] == 'Silent 3d'
+        assert rows['Never']['condition'] == 'Never reported'
+        assert rows['Never']['last_seen'] is None
+        assert rows['Never']['type'] == 'BAM1022'
+        assert rows['Never']['admin_url'] == reverse('admin:bam_bam1022_change', args=[self.never.pk])
+
+    def test_filters(self):
+        assert [r['name'] for r in self.rows(county='Fresno')] == ['Grade F', 'Grade C']
+        assert [r['name'] for r in self.rows(type='bam1022')] == ['Never']
+        assert 'Hidden' in [r['name'] for r in self.rows(include_hidden='1')]
+
+    def test_csv_columns(self):
+        response = self.client.get(reverse('reports:degraded-monitors'), {'format': 'csv'})
+        header = response.content.decode().splitlines()[0]
+        assert header == 'name,type,county,host,grade,last_seen,condition'

@@ -1,0 +1,43 @@
+{% extends 'admin/reports/base.html' %}
+
+{% block filters %}
+<label>County
+    <select name="county" onchange="this.form.submit()">
+        <option value="">All counties</option>
+        {% for name in counties %}<option value="{{ name }}" {% if name == county %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+</label>
+<label>Type
+    <select name="type" onchange="this.form.submit()">
+        <option value="">All types</option>
+        {% for value, label in types %}<option value="{{ value }}" {% if value == monitor_type %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+</label>
+<label><input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %} onchange="this.form.submit()"> Include hidden</label>
+{% endblock %}
+
+{% block report %}
+<div class="module">
+    <table>
+        <caption>{{ rows|length }} degraded monitor{{ rows|length|pluralize }}</caption>
+        <thead>
+            <tr><th>Monitor</th><th>Type</th><th>County</th><th>Host</th><th>Grade</th><th>Last seen</th><th>Condition</th></tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <th><a href="{{ row.admin_url }}">{{ row.name }}</a></th>
+                <td>{{ row.type }}</td>
+                <td>{{ row.county }}</td>
+                <td>{{ row.host }}</td>
+                <td>{{ row.grade }}</td>
+                <td>{% if row.last_seen %}{{ row.last_seen|date:"Y-m-d H:i" }}{% else %}&mdash;{% endif %}</td>
+                <td>{{ row.condition }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7">Nothing degraded. Nice.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

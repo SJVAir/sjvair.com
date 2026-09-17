@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.db.models import Count, Q
 from django.db.models.functions import TruncQuarter
+from django.urls import reverse
 from django.utils import timezone
 
 from camp.apps.alerts.models import Subscription
@@ -199,4 +200,113 @@ class FleetHealth(BaseReport):
             'counties': County.names,
             'county': self.county,
             'grades': self.get_grades(),
+        }
+
+
+@register
+class DegradedMonitors(BaseReport):
+    slug = 'degraded-monitors'
+    title = 'Degraded Monitors'
+    description = 'Monitors graded C or F, flatlined on a channel, or silent for more than 24 hours. Worst first.'
+    template_name = 'admin/reports/degraded_monitors.html'
+    csv_columns = ['name', 'type', 'county', 'host', 'grade', 'last_seen', 'condition']
+
+    @property
+    def include_hidden(self):
+        return self.request.GET.get('include_hidden') == '1'
+
+    @property
+    def county(self):
+        county = self.request.GET.get('county', '')
+        return county if county in County.names else ''
+
+    @property
+    def monitor_type(self):
+        wanted = self.request.GET.get('type', '')
+        return wanted if wanted in {cls.monitor_type for cls in monitor_types()} else ''
+
+    def get_csv_columns(self, rows):
+        return self.csv_columns
+
+    def get_rows(self):
+        now = timezone.now()
+        day = now - timedelta(days=1)
+        degraded = (
+            Q(health__score__lte=1)
+            | Q(health__sanity_flatline_a=False)
+            | Q(health__sanity_flatline_b=False)
+            | Q(last_entry_timestamp__lt=day)
+            | Q(last_entry_timestamp__isnull=True)
+        )
+
+        rows = []
+        for cls in monitor_types():
+            if self.monitor_type and cls.monitor_type != self.monitor_type:
+                continue
+            queryset = (cls.objects
+                .get_queryset()
+                .with_last_entry_timestamp()
+                .select_related('health', 'host')
+                .filter(degraded)
+            )
+            if not self.include_hidden:
+                queryset = queryset.filter(is_hidden=False)
+            if self.county:
+                queryset = queryset.filter(county=self.county)
+
+            for monitor in queryset:
+                rows.append(self.build_row(cls, monitor, now))
+
+        rows.sort(key=lambda row: row['sort_key'])
+        return rows
+
+    def build_row(self, cls, monitor, now):
+        health = monitor.health
+        last_seen = monitor.last_entry_timestamp
+        conditions = []
+        # sort_key: lower sorts first. (0, -silence) silent, (1,) grade F, (2,) grade C, (3,) flatline only
+        sort_key = (4, 0)
+
+        if last_seen is None:
+            conditions.append('Never reported')
+            sort_key = (0, -float('inf'))
+        elif last_seen < now - timedelta(days=1):
+            silence = now - last_seen
+            conditions.append(f'Silent {silence.days}d')
+            sort_key = (0, -silence.total_seconds())
+
+        if health is not None:
+            if health.score == 0:
+                conditions.append('Grade F')
+                sort_key = min(sort_key, (1, 0))
+            elif health.score == 1:
+                conditions.append('Grade C')
+                sort_key = min(sort_key, (2, 0))
+            if health.sanity_flatline_a is False:
+                conditions.append('Flatline A')
+                sort_key = min(sort_key, (3, 0))
+            if health.sanity_flatline_b is False:
+                conditions.append('Flatline B')
+                sort_key = min(sort_key, (3, 0))
+
+        return {
+            'name': monitor.name,
+            'type': type_label(cls),
+            'county': monitor.county,
+            'host': monitor.host.name if monitor.host_id else '',
+            'grade': health.grade if health is not None else '',
+            'last_seen': last_seen,
+            'condition': ', '.join(conditions),
+            'admin_url': reverse(f'admin:{cls._meta.app_label}_{cls._meta.model_name}_change', args=[monitor.pk]),
+            'sort_key': sort_key,
+        }
+
+    def get_context_data(self, **kwargs):
+        return {
+            **super().get_context_data(**kwargs),
+            'counties': County.names,
+            'county': self.county,
+            'monitor_type': self.monitor_type,
+            'types': [(cls.monitor_type, type_label(cls)) for cls in monitor_types()],
+            'include_hidden': self.include_hidden,
         }
