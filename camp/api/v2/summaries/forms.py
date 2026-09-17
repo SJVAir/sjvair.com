@@ -50,3 +50,7 @@ class BulkSummaryDateRangeForm(forms.Form):
 
 class BulkMonitorSummaryForm(BulkSummaryDateRangeForm):
     bbox = BboxField()
+
+
+class BulkRegionSummaryForm(BulkSummaryDateRangeForm):
+    pass

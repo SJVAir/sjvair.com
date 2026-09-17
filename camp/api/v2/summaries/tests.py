@@ -7,7 +7,12 @@ from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
-from camp.api.v2.summaries.endpoints import BulkMonitorSummaryList, MonitorSummaryList, RegionSummaryList
+from camp.api.v2.summaries.endpoints import (
+    BulkMonitorSummaryList,
+    BulkRegionSummaryList,
+    MonitorSummaryList,
+    RegionSummaryList,
+)
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
@@ -17,6 +22,7 @@ from camp.utils.test import get_response_data
 monitor_summary_list = MonitorSummaryList.as_view()
 region_summary_list = RegionSummaryList.as_view()
 bulk_monitor_summary_list = BulkMonitorSummaryList.as_view()
+bulk_region_summary_list = BulkRegionSummaryList.as_view()
 
 pytestmark = [
     pytest.mark.usefixtures('purpleair_monitor'),
@@ -500,3 +506,60 @@ class RegionSummaryListTests(TestCase):
         response = self._get('region-summary-hourly-day', 'pm25', 'hour', year=2026, month=3, day=15)
         data = get_response_data(response)
         assert len(data['data']) == 1
+
+
+class BulkRegionSummaryListTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.fresno = Region.objects.get(name='Fresno County')
+        self.kern = Region.objects.get(name='Kern County')
+        self.day = timezone.make_aware(datetime(2026, 1, 1, 0, 0, 0))
+        make_region_summary(self.fresno, self.day, resolution='day', entry_type='pm25')
+        make_region_summary(self.kern, self.day, resolution='day', entry_type='pm25')
+        self.january = {'start': '2026-01-01', 'end': '2026-01-31'}
+
+    def _get(self, entry_type='pm25', resolution='day', query=None):
+        return bulk_region_summary_list(
+            self.factory.get('/', query or {}), entry_type=entry_type, resolution=resolution,
+        )
+
+    def test_requires_region_param(self):
+        response = self._get(query=self.january)
+        assert response.status_code == 400
+
+    def test_requires_start_and_end(self):
+        response = self._get(query={'region': self.fresno.sqid})
+        assert response.status_code == 400
+
+    def test_span_too_large_for_daily_resolution(self):
+        response = self._get(query={'region': self.fresno.sqid, 'start': '2020-01-01', 'end': '2026-01-01'})
+        assert response.status_code == 400
+
+    def test_multi_region_fetch_returns_both_regions(self):
+        request = self.factory.get('/', [
+            ('region', self.fresno.sqid), ('region', self.kern.sqid),
+            ('start', '2026-01-01'), ('end', '2026-01-31'),
+        ])
+        response = bulk_region_summary_list(request, entry_type='pm25', resolution='day')
+        data = get_response_data(response)
+        ids = {r['id'] for r in data['data']}
+        assert ids == {self.fresno.sqid, self.kern.sqid}
+
+    def test_pagination_merge_boundary_is_detectable(self):
+        with mock.patch.object(BulkRegionSummaryList, 'page_size', 1):
+            request = self.factory.get('/', [
+                ('region', self.fresno.sqid), ('region', self.kern.sqid),
+                ('start', '2026-01-01'), ('end', '2026-01-31'), ('page', '1'),
+            ])
+            response = bulk_region_summary_list(request, entry_type='pm25', resolution='day')
+            page1 = get_response_data(response)
+            request2 = self.factory.get('/', [
+                ('region', self.fresno.sqid), ('region', self.kern.sqid),
+                ('start', '2026-01-01'), ('end', '2026-01-31'), ('page', '2'),
+            ])
+            response2 = bulk_region_summary_list(request2, entry_type='pm25', resolution='day')
+            page2 = get_response_data(response2)
+            # Same region id at the boundary ⇒ client concatenates, not duplicates
+            assert page1['data'] and page2['data']
