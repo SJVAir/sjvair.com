@@ -31,6 +31,26 @@ class RegionDetail(RegionMixin, generics.DetailEndpoint):
     lookup_url_kwarg = 'region_id'
 
 
+class RegionMetaEndpoint(generics.Endpoint):
+    """Metadata describing all region types supported by the API."""
+
+    def get_types(self):
+        payload = {}
+        for region_type, label in Region.Type.choices:
+            category = Region.TYPE_CATEGORIES[region_type]
+            payload[region_type] = {
+                'type': region_type,
+                'label': label,
+                'category': category.value,
+            }
+        return payload
+
+    def get(self, request, *args, **kwargs):
+        return {'data': {
+            'types': self.get_types(),
+        }}
+
+
 class PlaceSearch(generics.Endpoint):
     """Search regions by name, returning all high-confidence matches ordered by similarity.
     Accepts ?q=<name> and optional ?type=<type> to scope to a specific region type."""

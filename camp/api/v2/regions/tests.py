@@ -4,12 +4,13 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
-from camp.api.v2.regions.endpoints import RegionDetail, RegionList
+from camp.api.v2.regions.endpoints import RegionDetail, RegionList, RegionMetaEndpoint
 from camp.apps.regions.models import Boundary, Region
 from camp.utils.test import get_response_data
 
 region_list = RegionList.as_view()
 region_detail = RegionDetail.as_view()
+region_meta = RegionMetaEndpoint.as_view()
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -59,6 +60,39 @@ class RegionListTests(TestCase):
         data = get_response_data(response)
         assert len(data['data']) > 0
         assert all(r['slug'] == 'fresno' for r in data['data'])
+
+
+class RegionMetaTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _fetch_region_meta(self):
+        url = reverse('api:v2:regions:region-meta')
+        request = self.factory.get(url)
+        response = region_meta(request)
+        return response, get_response_data(response)
+
+    def test_returns_200(self):
+        response, content = self._fetch_region_meta()
+        assert response.status_code == 200
+
+    def test_includes_every_region_type(self):
+        response, content = self._fetch_region_meta()
+        assert set(content['data']['types'].keys()) == set(Region.Type.values)
+
+    def test_type_fields(self):
+        response, content = self._fetch_region_meta()
+        county = content['data']['types']['county']
+        assert county == {
+            'type': 'county',
+            'label': 'County',
+            'category': 'administrative',
+        }
+
+    def test_category_matches_model_mapping(self):
+        response, content = self._fetch_region_meta()
+        for region_type, category in Region.TYPE_CATEGORIES.items():
+            assert content['data']['types'][region_type]['category'] == category.value
 
 
 class RegionDetailTests(TestCase):
