@@ -27,7 +27,7 @@ usable by two audiences:
 | Time | Year stays the primary bin with a month breakdown inside it. Records browser gets a free date range. NOIs use one live window, **active** (scheduled from four days ago onward; see NOI timing), plus a monthly archive. |
 | Location search | MapTiler geocoding called directly from the browser (the key is already exposed by tile URLs), plus browser geolocation, plus county/city/ZIP pickers as fallback. Location lives in the URL; nothing is stored server-side. |
 | Front door | Near-me first. Place page is the primary resident destination; entity browsing is the "explore the data" tier. |
-| Health notes | Category-level plain-language notes, editable in the admin, shown wherever a badge appears. |
+| Health notes | Category-level plain-language notes kept in a datafile (no model, no admin), shown wherever a badge appears. |
 | NOI alerts | **Explicitly out.** NOI pages link residents to SprayDays' own sign-up. |
 | Records browser | Two paginated, filterable record tables (PUR, NOI) with a map; no CSV button, exports go through the API/client. |
 | Maps | Interactive plain-Leaflet section maps for place pages and the records browser, fed by a new sections API. Entity pages keep the static county choropleth. |
@@ -55,7 +55,7 @@ section and its neighbors.
 2. Interactive section map
 3. Records browser and NOI section
 4. Near me and place pages
-5. Plain-language layer (can run alongside 4)
+5. Plain-language layer (datafile-driven; can run alongside 4)
 
 Each sub-project ships independently and leaves the site working. Later ones
 depend on earlier ones as noted.
@@ -313,20 +313,27 @@ local dataset.
 
 ## 5. Plain-language layer
 
-### Content model
+### Content
 
-`pesticides.HealthNote` (admin-editable, sqid not needed):
+No new model. Notes live in `datafiles/pesticide-health-notes.yaml`, loaded
+with the existing `datafile()` helper / `{% load_datafile %}` tag like the
+other site content (partners, data providers), and cached in-process for the
+request. One entry per key:
 
-| Field | Notes |
+| Key | Covers |
 |---|---|
-| `key` | one of: `prop65`, `iarc_1`, `iarc_2a`, `iarc_2b`, `iarc_3`, `carb_tac`, `fumigant`, `cholinesterase_inhibitor`, `restricted_material`, `groundwater_contaminant`, `noi_meaning`, `pur_lag` |
-| `title` | short label |
-| `summary` | one to two plain-language sentences |
-| `detail` | optional longer paragraph, markdown allowed (rendered with the existing `prose` pipeline) |
-| `source_url` | link to the authority (OEHHA, IARC, CARB, DPR) |
+| `prop65` | the Prop 65 badge |
+| `iarc_1`, `iarc_2a`, `iarc_2b`, `iarc_3` | the IARC badges |
+| `carb_tac` | the CARB TAC badge |
+| `fumigant`, `cholinesterase_inhibitor`, `groundwater_contaminant`, `biopesticide`, `oil` | DPR category tags |
+| `restricted_material` | the product "CA restricted" badge |
+| `noi_meaning` | what a notice of intent is (and isn't) |
+| `pur_lag` | why the latest year is last year |
 
-Loaded from a fixture with a first-draft text for every key; CCAC staff edit in
-the admin. Cached for an hour.
+Each entry: `title` (short label), `summary` (one to two plain-language
+sentences), optional `detail` (a paragraph, markdown allowed), `source_url`
+(OEHHA, IARC, CARB, or DPR). Wording changes are a datafile edit and deploy,
+the same as the rest of the site's copy.
 
 ### Presentation
 
@@ -339,7 +346,7 @@ the admin. Cached for an hour.
   place.
 
 Deliverable: no badge anywhere without an explanation a resident can read in
-one breath, and staff can fix the wording without a deploy.
+one breath, with the copy in one datafile.
 
 ---
 
