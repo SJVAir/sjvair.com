@@ -20,7 +20,6 @@ from camp.apps.entries.models import BaseEntry, PM25
 from camp.apps.entries.tasks import data_export
 from camp.apps.entries.utils import get_entry_model_by_name
 from camp.apps.monitors.models import Monitor
-from camp.apps.regions.models import Region
 from camp.utils.forms import LatLonForm
 from camp.utils.datetime import make_aware
 from camp.utils.views import CachedEndpointMixin
@@ -413,21 +412,8 @@ class MonitorsAt(MonitorMixin, EntryTypeMixin, generics.ListEndpoint):
             .get_queryset(*args, **kwargs)
             .get_public()
             .published_for(self.entry_model)
-            .filter(position__isnull=False)
+            .scope_to(region_ids=self.request.GET.getlist('region'), bbox=bbox)
         )
-
-        region_ids = self.request.GET.getlist('region')
-        if region_ids:
-            regions = []
-            for region_id in region_ids:
-                try:
-                    regions.append(Region.objects.get(sqid=region_id))
-                except Region.DoesNotExist:
-                    raise Http404(f'"{region_id}" is not a valid region id')
-            queryset = queryset.in_regions(regions)
-
-        if bbox:
-            queryset = queryset.in_bbox(*bbox)
 
         # PM2.5-only, same reasoning as CurrentData.
         if self.entry_model is PM25:

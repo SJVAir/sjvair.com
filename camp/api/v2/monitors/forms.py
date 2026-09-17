@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db.models import enums
 from django.utils import timezone
 
+from camp.api.v2.forms import BboxField
 from camp.utils.datetime import make_aware
 
 
@@ -42,24 +43,10 @@ class EntryExportForm(forms.Form):
 
 class MonitorAtForm(forms.Form):
     timestamp = forms.DateTimeField(required=True)
-    bbox = forms.CharField(required=False)
+    bbox = BboxField()
 
     def clean_timestamp(self):
         value = self.cleaned_data.get('timestamp')
         if value is not None and timezone.is_naive(value):
             value = make_aware(value, tz=settings.DEFAULT_TIMEZONE)
         return value
-
-    def clean_bbox(self):
-        value = self.cleaned_data.get('bbox')
-        if not value:
-            return None
-
-        parts = value.split(',')
-        if len(parts) != 4:
-            raise forms.ValidationError('bbox must be "west,south,east,north"')
-
-        try:
-            return tuple(float(p) for p in parts)
-        except ValueError:
-            raise forms.ValidationError('bbox values must be numbers')
