@@ -394,6 +394,20 @@ class Home(vanilla.TemplateView):
         )
 
 
+class About(vanilla.TemplateView):
+    template_name = 'pesticides/about.html'
+
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(
+            section=None,
+            years=stats.years_loaded(),
+            latest_year=stats.latest_year(),
+            api_docs_url=API_DOCS_URL,
+            client_docs_url=CLIENT_DOCS_URL,
+            **kwargs,
+        )
+
+
 class ProductList(ExplorerListMixin, vanilla.ListView):
     model = Product
     form_class = ProductFilterForm

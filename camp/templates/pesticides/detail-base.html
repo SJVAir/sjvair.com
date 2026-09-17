@@ -60,7 +60,7 @@
     <p>
         Confirmed applications: CDPR Pesticide Use Reporting{% if years %}, {{ years.0 }}–{{ years.1 }}{% endif %}.
         {% if notice_window %}Planned applications: SprayDays, {{ notice_window.count }} notices from {{ notice_window.first|date:'M j, Y' }} to {{ notice_window.last|date:'M j, Y' }}.{% endif %}
-        <a href="{% url 'pesticides:home' %}#about">About this data</a>.
+        <a href="{% url 'pesticides:about' %}#about">About this data</a>.
     </p>
     <p>
         Developers: the full records are available through the

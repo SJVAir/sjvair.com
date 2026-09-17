@@ -1,13 +1,13 @@
 {% load pesticides_explorer %}
 {% if chemical.is_prop65 %}
     {% health_note 'prop65' as prop65_note %}
-    <a class="tag is-danger is-light" href="{% url 'pesticides:home' %}#prop65" title="{{ prop65_note.summary }}">Prop 65</a>
+    <a class="tag is-danger is-light" href="{% url 'pesticides:about' %}#prop65" title="{{ prop65_note.summary }}">Prop 65</a>
 {% endif %}
 {% if chemical.is_tac %}
     {% health_note 'carb_tac' as carb_tac_note %}
-    <a class="tag is-warning is-light" href="{% url 'pesticides:home' %}#tac" title="{{ carb_tac_note.summary }}">CARB TAC</a>
+    <a class="tag is-warning is-light" href="{% url 'pesticides:about' %}#tac" title="{{ carb_tac_note.summary }}">CARB TAC</a>
 {% endif %}
 {% if chemical.iarc_group and not hide_iarc %}
     {% iarc_note chemical as iarc_note %}
-    <a class="tag {% if chemical.is_iarc_concern %}is-danger{% else %}is-light{% endif %}" href="{% url 'pesticides:home' %}#iarc" title="{{ iarc_note.summary }}">IARC {{ chemical.iarc_group }}</a>
+    <a class="tag {% if chemical.is_iarc_concern %}is-danger{% else %}is-light{% endif %}" href="{% url 'pesticides:about' %}#iarc" title="{{ iarc_note.summary }}">IARC {{ chemical.iarc_group }}</a>
 {% endif %}

@@ -56,8 +56,8 @@ noi_meaning:
   detail: SprayDays publishes notices 48 hours ahead for fumigants and 24 hours ahead for other restricted materials. Notices list the product and chemical but not the crop. To be told about notices near an address, sign up with SprayDays.
   source_url: https://spraydays.cdpr.ca.gov/Home/About
 pur_lag:
-  title: Why the latest year is last year
-  summary: Growers report applications to the county, which sends them to the state, which checks and publishes them about a year later. The most recent full year here is the newest the state has released.
+  title: Why the newest data is a year or more old
+  summary: Growers report applications to the county, which sends them to the state, which checks and publishes them one to two years later. The most recent full year here is the newest the state has released, so the newest records are always at least a year old.
   source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
 shades:
   title: What the shades mean

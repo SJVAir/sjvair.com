@@ -6,6 +6,7 @@ from camp.apps.pesticides.models import Chemical, Commodity, Product
 urlpatterns = [
     path('', views.Home.as_view(), name='home'),
 
+    path('about/', views.About.as_view(), name='about'),
     path('map/', views.MapPage.as_view(), name='map'),
 
     path('near/', views.NearMe.as_view(), name='near-me'),

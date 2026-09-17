@@ -453,7 +453,7 @@ class HomeTests(RollupTestMixin, TestCase):
         assert 'Fresno County: 480 lbs' in html
         assert Chemical.objects.get(pk=3).get_absolute_url() + '?year=2022' in html
         # The caveat still names the latest loaded year.
-        assert 'most recent full year loaded is 2023' in html
+        assert 'the newest full year here is 2023' in html
         # Live notice count sits outside the year-binned stat row.
         assert 'Notices next 7 days' not in html
         assert 'notice-callout' in html and 'currently scheduled' in html
@@ -468,10 +468,10 @@ class HomeTests(RollupTestMixin, TestCase):
         assert 'Fresno County: 670 lbs' in html
         assert 'Kern County: 70 lbs' in html
 
-    def test_explainer_anchors(self):
+    def test_about_teaser(self):
         html = self.client.get(self.url).content.decode()
-        for anchor in ('id="pur"', 'id="spraydays"', 'id="categories"', 'id="prop65"', 'id="iarc"', 'id="tac"', 'id="about"'):
-            assert anchor in html
+        assert 'id="about"' in html
+        assert reverse('pesticides:about') + '#spraydays' in html
 
     def test_empty_database(self):
         from camp.apps.pesticides.models import PesticideNotice, PesticideUse, PesticideUseRollup
@@ -544,3 +544,24 @@ class MapPageTests(RollupTestMixin, TestCase):
     def test_nav_has_map_tab(self):
         html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
         assert reverse('pesticides:map') in html
+
+
+class AboutTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_renders_with_anchors_and_lag_caveat(self):
+        response = self.client.get(reverse('pesticides:about'))
+        assert response.status_code == 200
+        self.assertTemplateUsed(response, 'pesticides/about.html')
+        html = response.content.decode()
+        for anchor in ('id="pur"', 'id="spraydays"', 'id="prop65"', 'id="iarc"', 'id="tac"', 'id="categories"'):
+            assert anchor in html
+        assert 'one to two years after the fact' in html and '2023' in html
+
+    def test_home_teaser_links_to_about(self):
+        html = self.client.get(reverse('pesticides:home')).content.decode()
+        assert reverse('pesticides:about') + '#pur' in html
+        assert 'id="pur"' not in html

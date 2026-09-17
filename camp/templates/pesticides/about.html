@@ -1,0 +1,60 @@
+{% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+{% block title %}About this data | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} about{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">About this data</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="content explainer" id="about">
+    <h1 class="title is-3">About this data</h1>
+
+    <h3 id="pur">Pesticide Use Reporting (PUR)</h3>
+    <p>California requires agricultural pesticide applications to be reported to the county agricultural commissioner, who forwards them to the Department of Pesticide Regulation (DPR). DPR checks and publishes each year's records well after the fact, often more than a year later. Each record gives the product, active ingredient, crop, county, one-square-mile section, date, and amount. This explorer loads the records for Fresno, Kern, Kings, Madera, Merced, San Joaquin, Stanislaus, and Tulare counties{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
+
+    <h3 id="spraydays">SprayDays notices of intent</h3>
+    <p>Growers must file a notice of intent before applying a California-restricted material. DPR's SprayDays system publishes those notices 48 hours ahead for fumigants and 24 hours ahead for other restricted materials, and the grower then has up to four days after the scheduled date to begin. Notices cover only restricted materials, list the product and chemical but not the crop, and are not confirmation that the application happened. To be notified about notices near an address, <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">sign up with SprayDays</a>.</p>
+
+    <h3 id="categories">DPR chemical categories</h3>
+    <p>DPR tags active ingredients with regulatory categories. A chemical can carry several; here's what each of the ones this explorer calls out means:</p>
+    <ul>
+        {% health_note 'fumigant' as fumigant_note %}
+        <li><strong>{{ fumigant_note.title }}:</strong> {{ fumigant_note.summary }}</li>
+        {% health_note 'cholinesterase_inhibitor' as cholinesterase_note %}
+        <li><strong>{{ cholinesterase_note.title }}:</strong> {{ cholinesterase_note.summary }}</li>
+        {% health_note 'groundwater_contaminant' as groundwater_note %}
+        <li><strong>{{ groundwater_note.title }}:</strong> {{ groundwater_note.summary }}</li>
+        {% health_note 'biopesticide' as biopesticide_note %}
+        <li><strong>{{ biopesticide_note.title }}:</strong> {{ biopesticide_note.summary }}</li>
+        {% health_note 'oil' as oil_note %}
+        <li><strong>{{ oil_note.title }}:</strong> {{ oil_note.summary }}</li>
+    </ul>
+
+    <h3 id="prop65">Proposition 65</h3>
+    {% health_note 'prop65' as prop65_note %}
+    <p>{{ prop65_note.summary }} {{ prop65_note.detail }}</p>
+
+    <h3 id="iarc">IARC groups</h3>
+    {% health_note 'iarc_1' as iarc_1_note %}
+    {% health_note 'iarc_2a' as iarc_2a_note %}
+    {% health_note 'iarc_2b' as iarc_2b_note %}
+    {% health_note 'iarc_3' as iarc_3_note %}
+    <p>The International Agency for Research on Cancer classifies agents by the strength of evidence that they cause cancer in humans.</p>
+    <ul>
+        <li><strong>{{ iarc_1_note.title }}:</strong> {{ iarc_1_note.summary }}</li>
+        <li><strong>{{ iarc_2a_note.title }}:</strong> {{ iarc_2a_note.summary }}</li>
+        <li><strong>{{ iarc_2b_note.title }}:</strong> {{ iarc_2b_note.summary }}</li>
+        <li><strong>{{ iarc_3_note.title }}:</strong> {{ iarc_3_note.summary }}</li>
+    </ul>
+
+    <h3 id="tac">CARB Toxic Air Contaminants</h3>
+    {% health_note 'carb_tac' as carb_tac_note %}
+    <p>{{ carb_tac_note.summary }}</p>
+
+    <h3>Caveats</h3>
+    <ul>
+        <li>PUR data lags: DPR releases each year's records one to two years after the fact, so the most recent full year available is {% if latest_year %}{{ latest_year }}{% else %}not yet available{% endif %}.</li>
+        <li>Pounds are pounds of active ingredient for chemicals and commodities, and pounds of product for products.</li>
+        <li>Developers can pull the underlying records through the <a href="{{ api_docs_url }}">pesticides API</a> or the <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.</li>
+    </ul>
+</div>
+{% endblock %}
