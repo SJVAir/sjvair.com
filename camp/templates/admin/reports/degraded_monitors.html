@@ -26,7 +26,7 @@
         <tbody>
             {% for row in rows %}
             <tr>
-                <th><a href="{{ row.admin_url }}">{{ row.name }}</a></th>
+                <th>{% if row.admin_url %}<a href="{{ row.admin_url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</th>
                 <td>{{ row.type }}</td>
                 <td>{{ row.county }}</td>
                 <td>{{ row.host }}</td>

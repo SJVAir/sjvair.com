@@ -21,7 +21,9 @@ class SubscriptionAdmin(admin.ModelAdmin):
         return [
             path(
                 'county-stats/',
-                RedirectView.as_view(url=reverse_lazy('reports:subscription-county-stats')),
+                self.admin_site.admin_view(
+                    RedirectView.as_view(url=reverse_lazy('reports:subscription-county-stats'))
+                ),
                 name='alerts_subscription_county_stats',
             ),
             *super().get_urls(),
