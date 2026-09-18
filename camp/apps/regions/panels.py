@@ -96,6 +96,28 @@ def monitors_inside(geometry):
     return rows
 
 
+def type_rows(rows, county=''):
+    """Per monitor type: totals, actives, and a link to that type's admin changelist (filtered by county)."""
+    out = []
+    for cls in Monitor.get_enabled_subclasses():
+        mine = [row for row in rows if row['type'] == cls.__name__]
+        if not mine:
+            continue
+        try:
+            url = reverse(f'admin:{cls._meta.app_label}_{cls._meta.model_name}_changelist')
+            if county:
+                url += f'?county={county}'
+        except NoReverseMatch:
+            url = ''
+        out.append({
+            'label': cls.__name__,
+            'total': len(mine),
+            'active': sum(1 for row in mine if row['status'] == 'Active'),
+            'changelist_url': url,
+        })
+    return out
+
+
 def status_counts(rows):
     return {
         'total': len(rows),
@@ -132,6 +154,13 @@ class TractPanel(Panel):
     template_name = 'admin/regions/panels/tract.html'
 
     SKIP_FIELDS = {'id', 'boundary'}
+    HEADLINE_FIELDS = ('population', 'ci_score', 'ci_score_p', 'dac_sb535', 'dac_category')
+
+    @staticmethod
+    def field_value(record, field):
+        if field.choices:
+            return getattr(record, f'get_{field.name}_display')()
+        return getattr(record, field.name)
 
     def records(self):
         records = []
@@ -140,12 +169,17 @@ class TractPanel(Panel):
                 record = getattr(boundary, attr, None)
                 if record is None:
                     continue
+                by_name = {field.name: field for field in record._meta.fields}
                 fields = [
-                    (field.verbose_name, getattr(record, f'get_{field.name}_display')() if field.choices else getattr(record, field.name))
+                    (field.verbose_name, self.field_value(record, field))
                     for field in record._meta.fields
                     if field.name not in self.SKIP_FIELDS
                 ]
-                records.append({'label': f'{label} ({boundary.version} tracts)', 'fields': fields})
+                headline = [
+                    (by_name[name].verbose_name, self.field_value(record, by_name[name]))
+                    for name in self.HEADLINE_FIELDS if name in by_name
+                ]
+                records.append({'label': f'{label} ({boundary.version} tracts)', 'headline': headline, 'fields': fields})
         return records
 
     def get_context(self):

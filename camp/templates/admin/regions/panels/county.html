@@ -6,8 +6,20 @@
         <th>Without a monitor</th><td>{{ tiles.uncovered|intcomma }}</td>
         <th>Population without a monitor</th><td>{{ tiles.uncovered_population|intcomma }}{% if tiles.uncovered_pct is not None %} ({{ tiles.uncovered_pct }}%){% endif %}</td></tr>
 </table>
+{% include "admin/regions/panels/_monitors.html" with show_list=False %}
+<table>
+    <caption>Monitors by type</caption>
+    <thead><tr><th>Type</th><th>Total</th><th>Active</th><th></th></tr></thead>
+    <tbody>
+        {% for row in type_rows %}
+        <tr><th>{{ row.label }}</th><td>{{ row.total|intcomma }}</td><td>{{ row.active|intcomma }}</td>
+            <td>{% if row.changelist_url %}<a href="{{ row.changelist_url }}">Browse in admin</a>{% endif %}</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if communities|length > 15 %}<details class="region-panel-details" open><summary>{{ communities|length|intcomma }} cities and census-designated places</summary>{% endif %}
 <table class="wide">
-    <caption>{{ communities|length }} cities and census-designated places</caption>
+    {% if communities|length <= 15 %}<caption>{{ communities|length }} cities and census-designated places</caption>{% endif %}
     <thead><tr><th>Place</th><th>Type</th><th>Population</th><th>Monitors</th><th>Per 10k</th><th>Nearest monitor</th></tr></thead>
     <tbody>
         {% for row in communities %}
@@ -24,4 +36,4 @@
         {% endfor %}
     </tbody>
 </table>
-{% include "admin/regions/panels/_monitors.html" %}
+{% if communities|length > 15 %}</details>{% endif %}

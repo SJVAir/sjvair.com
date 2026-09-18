@@ -7,6 +7,8 @@
         <th>Hidden</th><td>{{ counts.hidden|intcomma }}</td>
         <th>SJVAir-owned</th><td>{{ counts.sjvair|intcomma }}</td></tr>
 </table>
+{% if show_list|default_if_none:True and rows %}
+{% if rows|length > 10 %}<details class="region-panel-details"><summary>Show all {{ rows|length|intcomma }} monitors</summary>{% endif %}
 <table class="wide">
     <thead><tr><th>Monitor</th><th>Type</th><th>Status</th><th>Last seen</th><th>Host</th><th>SJVAir</th></tr></thead>
     <tbody>
@@ -19,8 +21,8 @@
             <td>{{ row.host }}</td>
             <td>{% if row.is_sjvair %}yes{% endif %}</td>
         </tr>
-        {% empty %}
-        <tr><td colspan="6">No monitors inside this boundary.</td></tr>
         {% endfor %}
     </tbody>
 </table>
+{% if rows|length > 10 %}</details>{% endif %}
+{% endif %}

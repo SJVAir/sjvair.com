@@ -7,7 +7,7 @@ from django.db.models import Avg, Count, Max, Q, Sum
 from django.urls import reverse
 
 from camp.apps.regions.models import Region
-from camp.apps.regions.panels import Panel, monitors_inside, register, status_counts
+from camp.apps.regions.panels import Panel, monitors_inside, register, status_counts, type_rows
 from camp.apps.reports.scope import MonitorScope
 from camp.apps.reports.views import (
     Centroid, CoverageCommunity, ces_tracts, county_column, per_10k, sphere_km, to_radians,
@@ -125,6 +125,7 @@ class CountyCoveragePanel(ScopedPanel):
             },
             'counts': status_counts(rows),
             'rows': rows,
+            'type_rows': type_rows(rows, county=county),
             'scope': self.scope,
             'scope_links': self.scope_links(),
         }

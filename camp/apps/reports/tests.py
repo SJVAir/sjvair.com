@@ -760,12 +760,18 @@ class CountyPanelTests(StaffClientMixin, TestCase):
         assert names['Emptyville']['detail_url'] == reverse('admin:regions_region_change', args=[self.emptyville.pk])
         assert context['tiles']['uncovered'] >= 1
         assert context['counts']['active'] == 1
+        types = {row['label']: row for row in context['type_rows']}
+        assert types['PurpleAir']['total'] == 1
+        assert types['PurpleAir']['changelist_url'] == reverse('admin:purpleair_purpleair_changelist') + '?county=Fresno'
         assert 'Testville' not in {row['name'] for row in self.panel(self.kern)['communities']}
 
     def test_admin_change_page_renders_the_panel(self):
         response = self.client.get(reverse('admin:regions_region_change', args=[self.fresno.pk]))
         assert response.status_code == 200
-        assert '<h2>Communities and coverage</h2>' in response.content.decode()
+        content = response.content.decode()
+        assert '<h2>Communities and coverage</h2>' in content
+        assert 'Browse in admin' in content
+        assert 'In Testville</a>' not in content  # counties link to the admin instead of listing monitors
 
 
 class CoverageCommunityNoCESTests(StaffClientMixin, TestCase):

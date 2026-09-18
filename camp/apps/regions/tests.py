@@ -260,6 +260,21 @@ class RegionPanelTests(TestCase):
         assert fields['Total Population'] == 4650
         assert fields['SB535 DAC'] is True
         assert 'DAC Category' in fields
+        headline = dict(context['records'][0]['headline'])
+        assert set(headline) == {'Total Population', 'CES Score', 'CES Score Percentile', 'SB535 DAC', 'DAC Category'}
+        assert headline['CES Score Percentile'] == 89.2
+        assert len(context['records'][0]['fields']) > len(headline)
+
+    def test_long_monitor_lists_are_collapsed(self):
+        square = Region.objects.create(name='Square', slug='square', type=Region.Type.CUSTOM, external_id='sq')
+        square.boundary = Boundary.objects.create(region=square, version='latest',
+            geometry=MultiPolygon(Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8))))
+        square.save()
+        for i in range(2, 13):
+            PurpleAir.objects.create(name=f'PA {i}', sensor_id=i, position=Point(-119.75, 36.75), location='outside')
+        content = self.client.get(reverse('admin:regions_region_change', args=[square.pk])).content.decode()
+        assert 'Show all 12 monitors' in content
+        assert '<details' in content
 
     def test_monitors_panel_lists_monitors_inside(self):
         context = MonitorsPanel(self.district, self.request).get_context()
