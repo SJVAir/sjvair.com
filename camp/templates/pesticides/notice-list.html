@@ -19,7 +19,7 @@
 
 <div class="columns">
     <div class="column is-3-desktop">
-        <form method="GET" class="notice-filters box">
+        <form method="GET" class="notice-filters box" hx-trigger="submit, change delay:250ms">
             {{ form.chemical }}
             {{ form.product }}
             {{ form.region }}

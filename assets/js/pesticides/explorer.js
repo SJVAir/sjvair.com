@@ -34,6 +34,28 @@
     if (window.PesticidesFindArea) window.PesticidesFindArea.init(root);
   });
 
+  // Typing in the filter search box swaps the region out from under the input
+  // that has focus, so put the caret back where the user left it.
+  var refocusSearch = false;
+
+  document.body.addEventListener('htmx:beforeRequest', function (evt) {
+    var elt = evt.detail && evt.detail.elt;
+    refocusSearch = !!(elt && elt.id === 'id_q');
+  });
+
+  document.body.addEventListener('htmx:afterSwap', function () {
+    if (!refocusSearch) return;
+    refocusSearch = false;
+    var input = document.getElementById('id_q');
+    if (!input) return;
+    input.focus();
+    try {
+      input.selectionStart = input.selectionEnd = input.value.length;
+    } catch (err) {
+      // `selectionStart` throws on some input types; focus alone is enough.
+    }
+  });
+
   // Don't swap anything but a successful response: a 404 or 500 page has no
   // `#explorer` to select, which would blank the region.
   document.body.addEventListener('htmx:beforeSwap', function (evt) {

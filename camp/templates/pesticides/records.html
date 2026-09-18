@@ -8,7 +8,7 @@
 {% block explorer-content %}
 <div class="columns">
     <div class="column is-3-desktop">
-        <form method="GET" class="records-filters box">
+        <form method="GET" class="records-filters box" hx-trigger="submit, change delay:250ms">
             {{ form.region }}
             {{ form.section }}
             {{ form.chemical }}

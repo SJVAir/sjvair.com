@@ -330,3 +330,36 @@ body.pesticides
             .label
                 font-size: $size-7
                 color: $grey
+
+    // htmx swap feedback. `#explorer` sets hx-indicator="body", so htmx puts
+    // `htmx-request` on <body> for the duration of every boosted request.
+    &.htmx-request::before
+        content: ''
+        position: fixed
+        top: 0
+        left: 0
+        right: 0
+        height: 2px
+        z-index: 100
+        background: $primary
+        transform-origin: 0 50%
+        animation: pesticides-progress 1.2s ease-in-out infinite
+
+    #explorer
+        transition: opacity 150ms ease-in-out
+        &.htmx-swapping
+            opacity: 0.6
+
+    @media (prefers-reduced-motion: reduce)
+        &.htmx-request::before
+            animation: none
+        #explorer
+            transition: none
+
+@keyframes pesticides-progress
+    0%
+        transform: scaleX(0)
+    50%
+        transform: scaleX(0.7)
+    100%
+        transform: scaleX(1)

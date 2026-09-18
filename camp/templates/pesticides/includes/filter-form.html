@@ -1,11 +1,12 @@
-<form method="GET" class="explorer-filters box">
+<form method="GET" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
     {% for param, obj in related.items %}
         <input type="hidden" name="{{ param }}" value="{{ obj.sqid }}">
     {% endfor %}
     <div class="field">
         <label class="label" for="id_q">Search</label>
         <div class="control has-icons-left">
-            <input id="id_q" class="input" type="search" name="q" value="{{ form.q.value|default:'' }}" placeholder="Name or ID">
+            <input id="id_q" class="input" type="search" name="q" value="{{ form.q.value|default:'' }}" placeholder="Name or ID"
+                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
             <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
         </div>
     </div>
