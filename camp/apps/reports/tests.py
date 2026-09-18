@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from camp.apps.accounts.models import User
 from camp.apps.alerts.models import Subscription
+from camp.apps.calibrations.models import DefaultCalibration
 from camp.apps.entries.models import PM25
 from camp.apps.monitors.airgradient.models import AirGradient
 from camp.apps.monitors.bam.models import BAM1022
@@ -705,3 +706,28 @@ class DataQualityTests(StaffClientMixin, TestCase):
         assert row['admin_url'] == reverse('admin:purpleair_purpleair_change', args=[self.wrong_county.pk])
         assert [r['name'] for r in self.rows(type='bam1022')['rows']] == ['No host']
         assert [r['name'] for r in self.rows(county='Kern')['rows']] == ['Wrong county']
+
+
+class PipelineCoverageTests(StaffClientMixin, TestCase):
+    fixtures = ['default-calibrations.yaml']
+
+    def test_matrix_cells(self):
+        response = self.client.get(reverse('reports:pipeline-coverage'))
+        assert response.status_code == 200
+        rows = {row['type']: row for row in response.context['rows']}
+        pm25 = rows['PurpleAir']['pm25']
+        assert pm25['published'] is True
+        assert pm25['calibration'] == DefaultCalibration.objects.get(monitor_type='purpleair', entry_type='pm25').calibration
+        assert 'Raw' in pm25['stages']
+        assert rows['PurpleAir']['humidity']['published'] is False
+        assert rows['VOZBox']['pm25']['published'] is False
+        assert rows['BAM1022']['humidity'] is None or rows['BAM1022']['humidity']['published'] is False
+        assert ('pm25', 'PM2.5') in response.context['entry_types']
+        assert response.context['unpublished_count'] > 0
+
+    def test_orphaned_publish_rows(self):
+        DefaultCalibration.objects.create(monitor_type='purpleair', entry_type='co2', calibration='')
+        response = self.client.get(reverse('reports:pipeline-coverage'))
+        orphans = [(o['monitor_type'], o['entry_type']) for o in response.context['orphans']]
+        assert ('purpleair', 'co2') in orphans
+        assert ('purpleair', 'pm25') not in orphans

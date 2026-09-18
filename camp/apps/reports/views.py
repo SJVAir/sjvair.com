@@ -9,6 +9,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from camp.apps.alerts.models import Subscription
+from camp.apps.calibrations.models import DefaultCalibration
 from camp.apps.ces.models import CES4, CES5
 from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.apps.regions.models import Boundary, Region
@@ -973,4 +974,60 @@ class DataQuality(BaseReport):
             'county': self.county,
             'monitor_type': self.monitor_type,
             'types': [(cls.monitor_type, type_label(cls)) for cls in monitor_types()],
+        }
+
+
+@register
+class PipelineCoverage(BaseReport):
+    slug = 'pipeline-coverage'
+    title = 'Pipeline Coverage'
+    description = 'Which entry types each enabled monitor type produces, the stages its config allows, and whether the pair is published on the map (a DefaultCalibration row).'
+    template_name = 'admin/reports/pipeline_coverage.html'
+
+    def entry_models(self, types):
+        models = {model for cls in types for model in cls.ENTRY_CONFIG}
+        return sorted(models, key=lambda model: model.entry_type)
+
+    def get_rows(self):
+        types = Monitor.get_enabled_subclasses()
+        published = {(d.monitor_type, d.entry_type): d.calibration for d in DefaultCalibration.objects.all()}
+        self.produced = set()
+        self.unpublished_count = 0
+
+        rows = []
+        for cls in types:
+            row = {'type': type_label(cls)}
+            for model in self.entry_models(types):
+                config = cls.ENTRY_CONFIG.get(model)
+                if not config:
+                    row[model.entry_type] = None
+                    continue
+                key = (cls.monitor_type, model.entry_type)
+                self.produced.add(key)
+                stages = config.get('allowed_stages') or [model.Stage.RAW]
+                is_published = key in published
+                if not is_published:
+                    self.unpublished_count += 1
+                row[model.entry_type] = {
+                    'stages': ' → '.join(str(stage.label) for stage in stages),
+                    'default': config.get('default_stage', model.Stage.RAW).label,
+                    'published': is_published,
+                    'calibration': published.get(key) or '',
+                }
+            rows.append(row)
+        return rows
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        types = Monitor.get_enabled_subclasses()
+        orphans = [
+            {'monitor_type': d.monitor_type, 'entry_type': d.entry_type, 'calibration': d.calibration}
+            for d in DefaultCalibration.objects.order_by('monitor_type', 'entry_type')
+            if (d.monitor_type, d.entry_type) not in self.produced
+        ]
+        return {
+            **context,
+            'entry_types': [(model.entry_type, model.label) for model in self.entry_models(types)],
+            'orphans': orphans,
+            'unpublished_count': self.unpublished_count,
         }
