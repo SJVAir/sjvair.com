@@ -701,7 +701,7 @@ def page_url_pattern(name):
     return unquote(reverse(name, kwargs={'sqid': '{id}'}))
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None):
     return {
         'sections_url': '/api/2.0/pesticides/sections/',
         'counties_url': '/api/2.0/pesticides/counties/',
@@ -725,6 +725,8 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'commodity': commodity.site_code if commodity else '',
         'county': county or '',
         'highlight': highlight or '',
+        # A regions-API URL whose boundary the map draws and fits to (place pages).
+        'outline_url': outline_url or '',
     }
 
 

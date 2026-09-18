@@ -101,7 +101,12 @@ class Area:
         center = f'{centroid.y:.4f},{centroid.x:.4f}'
         if self.region.type == Region.Type.COUNTY:
             return {'center': center, 'zoom': 9, 'radius': None, 'county': self.region.slug}
-        return {'center': center, 'zoom': 11, 'radius': None, 'county': None}
+        # Cities, ZIPs, and places are drawn on the map from the regions API
+        # (counties already have outlines on every map).
+        return {
+            'center': center, 'zoom': 11, 'radius': None, 'county': None,
+            'outline_url': f'/api/2.0/regions/{self.region.sqid}/',
+        }
 
 
 def point_area(lat, lng, radius, label=''):

@@ -301,6 +301,11 @@
     var noticesPane = this.map.createPane('pesticide-notices');
     noticesPane.style.zIndex = 450;
 
+    // The page's own region (a city, ZIP, or place) sits between the
+    // county lines and the notices.
+    var outlinePane = this.map.createPane('pesticide-outline');
+    outlinePane.style.zIndex = 430;
+
     if (this.data.radius) {
       var radiusMiles = parseFloat(this.data.radius);
       if (radiusMiles > 0) {
@@ -328,6 +333,7 @@
     this.bindZoomButtons();
 
     this.loadCounties();
+    this.loadOutline();
     this.loadGrid();
     this.loadNotices();
   };
@@ -361,6 +367,32 @@
       })
       .catch(function (err) {
         window.console && console.error && console.error('section-map: failed to load counties', err);
+      });
+  };
+
+  // Draws the region this page is about (from the regions API) and fits the
+  // map to it, so a city or ZIP page opens on the whole area, shaded.
+  SectionMap.prototype.loadOutline = function () {
+    if (!this.data.outlineUrl) return;
+    var self = this;
+    fetch(this.data.outlineUrl)
+      .then(function (response) {
+        if (!response.ok) throw new Error('bad response');
+        return response.json();
+      })
+      .then(function (payload) {
+        var region = payload && payload.data;
+        var geometry = region && region.boundary && region.boundary.geometry;
+        if (!geometry) return;
+        self.outlineLayer = L.geoJSON(geometry, {
+          pane: 'pesticide-outline',
+          interactive: false,
+          style: { color: '#d35400', weight: 2.5, opacity: 0.9, fillColor: '#d35400', fillOpacity: 0.08 },
+        }).addTo(self.map);
+        self.map.fitBounds(self.outlineLayer.getBounds(), { padding: [24, 24], animate: !self.reducedMotion });
+      })
+      .catch(function (err) {
+        window.console && console.error && console.error('section-map: failed to load the region outline', err);
       });
   };
 

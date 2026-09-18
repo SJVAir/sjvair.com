@@ -44,6 +44,24 @@ class AreaTests(RollupTestMixin, TestCase):
         assert 'lat=36.71' in ctx['notices_url'] and 'radius=1' in ctx['notices_url']
 
 
+class RegionOutlineTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_non_county_regions_get_an_outline_url(self):
+        from camp.apps.regions.models import Boundary
+        city = Region.objects.create(name='Selma', slug='selma', type=Region.Type.CITY, external_id='c-selma')
+        boundary = Boundary.objects.create(region=city, version='t', geometry='SRID=4326;MULTIPOLYGON (((-119.85 36.65, -119.75 36.65, -119.75 36.75, -119.85 36.75, -119.85 36.65)))')
+        city.boundary = boundary
+        city.save()
+        assert places.region_area(city).map_kwargs()['outline_url'] == f'/api/2.0/regions/{city.sqid}/'
+        assert 'outline_url' not in places.region_area(Region.objects.get(pk=9001)).map_kwargs()
+        html = self.client.get(reverse('pesticides:region', kwargs={'sqid': city.sqid, 'slug': 'selma'})).content.decode()
+        assert f'data-outline-url="/api/2.0/regions/{city.sqid}/"' in html
+
+
 class NearMeTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
