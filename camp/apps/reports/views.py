@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.contrib.gis.db.models.functions import Centroid, Distance
 from django.contrib.gis.geos import Polygon
@@ -13,6 +13,7 @@ from camp.apps.ces.models import CES4, CES5
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.reports.base import BaseReport, register
+from camp.apps.summaries.models import MonitorSummary
 from camp.utils import leaflet
 from camp.utils.counties import County
 
@@ -87,6 +88,14 @@ def county_column(county):
 
 def type_label(cls):
     return cls.__name__
+
+
+def admin_change_url(cls, monitor):
+    """Change-page URL, or '' when the subclass isn't registered in the admin."""
+    try:
+        return reverse(f'admin:{cls._meta.app_label}_{cls._meta.model_name}_change', args=[monitor.pk])
+    except NoReverseMatch:
+        return ''
 
 
 @register
@@ -606,6 +615,138 @@ class FleetHealth(BaseReport):
 
 
 @register
+class DataCompleteness(BaseReport):
+    slug = 'data-completeness'
+    title = 'Data Completeness'
+    description = 'Share of expected readings actually received, from the daily summaries. Calendar days ending yesterday. SJVAir monitors only unless toggled.'
+    template_name = 'admin/reports/data_completeness.html'
+
+    DEFAULT_ENTRY_TYPE = 'pm25'
+    DEFAULT_THRESHOLD = 80
+    WINDOWS = (7, 30)
+
+    @property
+    def county(self):
+        county = self.request.GET.get('county', '')
+        return county if county in County.names else ''
+
+    @property
+    def sjvair_only(self):
+        return self.request.GET.get('sjvair_only', '1') == '1'
+
+    @property
+    def include_hidden(self):
+        return self.request.GET.get('include_hidden') == '1'
+
+    @property
+    def threshold(self):
+        try:
+            return min(100, max(0, int(self.request.GET.get('threshold', self.DEFAULT_THRESHOLD))))
+        except (TypeError, ValueError):
+            return self.DEFAULT_THRESHOLD
+
+    def entry_types(self):
+        """(entry_type, label) for every entry type any monitor type produces."""
+        models = {model for cls in monitor_types() for model in cls.ENTRY_CONFIG}
+        return sorted(((model.entry_type, model.label) for model in models), key=lambda item: item[1])
+
+    @property
+    def entry_type(self):
+        wanted = self.request.GET.get('entry_type', self.DEFAULT_ENTRY_TYPE)
+        return wanted if wanted in {key for key, _label in self.entry_types()} else self.DEFAULT_ENTRY_TYPE
+
+    def window(self, days):
+        """(start, end) aware datetimes covering the `days` calendar days ending yesterday."""
+        end_date = timezone.localdate()
+        end = timezone.make_aware(datetime.combine(end_date, datetime.min.time()))
+        return end - timedelta(days=days), end
+
+    def scoped(self, queryset):
+        if not self.include_hidden:
+            queryset = queryset.filter(is_hidden=False)
+        if self.sjvair_only:
+            queryset = queryset.filter(is_sjvair=True)
+        if self.county:
+            queryset = queryset.filter(county=self.county)
+        return queryset
+
+    def producing_types(self):
+        """Monitor types whose config produces the selected entry type."""
+        return [cls for cls in monitor_types() if any(m.entry_type == self.entry_type for m in cls.ENTRY_CONFIG)]
+
+    def summaries(self, days):
+        start, end = self.window(days)
+        return MonitorSummary.objects.filter(
+            resolution=MonitorSummary.Resolution.DAILY,
+            processor='',
+            entry_type=self.entry_type,
+            timestamp__gte=start,
+            timestamp__lt=end,
+        )
+
+    @staticmethod
+    def pct(received, expected):
+        return round(received / expected * 100, 1) if expected else 0.0
+
+    def get_rows(self):
+        rows = []
+        for cls in self.producing_types():
+            monitors = self.scoped(cls.objects.all())
+            row = {'type': type_label(cls), 'monitors': monitors.count()}
+            for days in self.WINDOWS:
+                stats = self.summaries(days).filter(monitor__in=monitors.values('pk')).aggregate(
+                    received=Coalesce(Sum('count'), 0), expected=Coalesce(Sum('expected_count'), 0),
+                )
+                row[f'received_{days}'] = stats['received']
+                row[f'expected_{days}'] = stats['expected']
+                row[f'pct_{days}'] = self.pct(stats['received'], stats['expected'])
+            rows.append(row)
+        return rows
+
+    def get_low(self):
+        days = self.WINDOWS[0]
+        totals = {
+            item['monitor']: item
+            for item in (self.summaries(days)
+                .values('monitor')
+                .annotate(received=Sum('count'), expected=Sum('expected_count')))
+        }
+        low = []
+        for cls in self.producing_types():
+            for monitor in self.scoped(cls.objects.all()).select_related('host'):
+                stats = totals.get(monitor.pk, {'received': 0, 'expected': 0})
+                pct = self.pct(stats['received'], stats['expected'])
+                if pct >= self.threshold:
+                    continue
+                low.append({
+                    'name': monitor.name,
+                    'type': type_label(cls),
+                    'county': monitor.county,
+                    'host': monitor.host.name if monitor.host_id else '',
+                    'received': stats['received'],
+                    'expected': stats['expected'],
+                    'pct_7': pct,
+                    'admin_url': admin_change_url(cls, monitor),
+                })
+        low.sort(key=lambda row: (row['pct_7'], row['name']))
+        return low
+
+    def get_context_data(self, **kwargs):
+        return {
+            **super().get_context_data(**kwargs),
+            'counties': County.names,
+            'county': self.county,
+            'sjvair_only': self.sjvair_only,
+            'include_hidden': self.include_hidden,
+            'entry_type': self.entry_type,
+            'entry_types': self.entry_types(),
+            'threshold': self.threshold,
+            'windows': self.WINDOWS,
+            'low': self.get_low(),
+        }
+
+
+@register
 class DegradedMonitors(BaseReport):
     slug = 'degraded-monitors'
     title = 'Degraded Monitors'
@@ -725,11 +866,7 @@ class DegradedMonitors(BaseReport):
         return lmap.render()
 
     def admin_url(self, cls, monitor):
-        """Change-page URL, or '' when the subclass isn't registered in the admin."""
-        try:
-            return reverse(f'admin:{cls._meta.app_label}_{cls._meta.model_name}_change', args=[monitor.pk])
-        except NoReverseMatch:
-            return ''
+        return admin_change_url(cls, monitor)
 
     def get_context_data(self, **kwargs):
         context = {

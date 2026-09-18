@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.test import TestCase
@@ -11,12 +11,13 @@ from camp.apps.entries.models import PM25
 from camp.apps.monitors.airgradient.models import AirGradient
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
-from camp.apps.monitors.models import Host, LatestEntry
+from camp.apps.monitors.models import Host, LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.qaqc.models import HealthCheck
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.reports.base import REPORTS
+from camp.apps.summaries.models import MonitorSummary
 
 
 class StaffClientMixin:
@@ -574,3 +575,78 @@ class CoverageCommunityTests(StaffClientMixin, TestCase):
     def test_listed_on_index(self):
         response = self.client.get(reverse('reports:index'))
         assert reverse('reports:coverage-community') in response.content.decode()
+
+
+def daily_summary(monitor, day, count, expected, entry_type='pm25'):
+    """A RAW daily MonitorSummary for `day` (a date) with the given count/expected."""
+    timestamp = timezone.make_aware(datetime.combine(day, datetime.min.time()))
+    return MonitorSummary.objects.create(
+        monitor=monitor, entry_type=entry_type, processor='',
+        resolution=MonitorSummary.Resolution.DAILY, timestamp=timestamp,
+        count=count, expected_count=expected, sum_value=float(count), sum_of_squares=float(count),
+        tdigest={}, minimum=1.0, maximum=1.0, mean=1.0, stddev=0.0, p25=1.0, p75=1.0,
+        is_complete=count >= expected,
+    )
+
+
+class DataCompletenessTests(StaffClientMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.good = PurpleAir.objects.create(name='Good', sensor_id=1, position=Point(-119.75, 36.75), location='outside', is_sjvair=True)
+        self.bad = PurpleAir.objects.create(name='Bad', sensor_id=2, position=Point(-119.0, 35.4), location='outside', is_sjvair=True)
+        self.partner = PurpleAir.objects.create(name='Partner', sensor_id=3, position=Point(-119.75, 36.75), location='outside')
+        self.silent = PurpleAir.objects.create(name='Silent', sensor_id=4, position=Point(-119.75, 36.75), location='outside', is_sjvair=True)
+        self.bam = BAM1022.objects.create(name='BAM', position=Point(-119.75, 36.75), location='outside', is_sjvair=True)
+        yesterday = timezone.localdate() - timedelta(days=1)
+        for offset in range(7):
+            day = yesterday - timedelta(days=offset)
+            daily_summary(self.good, day, 720, 720)
+            daily_summary(self.bad, day, 360, 720)
+            daily_summary(self.partner, day, 720, 720)
+            daily_summary(self.bam, day, 24, 24)
+        for offset in range(7, 30):
+            daily_summary(self.good, yesterday - timedelta(days=offset), 720, 720)
+        # Today's partial day must not count.
+        daily_summary(self.good, timezone.localdate(), 10, 720)
+
+    def rows(self, **params):
+        response = self.client.get(reverse('reports:data-completeness'), params)
+        assert response.status_code == 200
+        return response.context
+
+    def test_per_type_windows(self):
+        context = self.rows()
+        purpleair = {r['type']: r for r in context['rows']}['PurpleAir']
+        # SJVAir only by default: Good, Bad, Silent (no rows) -> 7d: (720+360)*7 / 720*14 ... Silent has no expected rows.
+        assert purpleair['monitors'] == 3
+        assert purpleair['received_7'] == (720 + 360) * 7
+        assert purpleair['expected_7'] == 720 * 14
+        assert purpleair['pct_7'] == 75.0
+        assert purpleair['received_30'] == 720 * 30 + 360 * 7
+        assert purpleair['expected_30'] == 720 * 30 + 720 * 7
+        bam = {r['type']: r for r in context['rows']}['BAM1022']
+        assert bam['pct_7'] == 100.0
+        assert context['entry_type'] == 'pm25'
+
+    def test_low_table_worst_first_with_silent_monitors_on_top(self):
+        context = self.rows()
+        low = [(r['name'], r['pct_7']) for r in context['low']]
+        assert low == [('Silent', 0.0), ('Bad', 50.0)]
+        assert context['low'][1]['admin_url'] == reverse('admin:purpleair_purpleair_change', args=[self.bad.pk])
+
+    def test_threshold_and_scope_filters(self):
+        assert [r['name'] for r in self.rows(threshold='40')['low']] == ['Silent']
+        assert 'Partner' not in [r['name'] for r in self.rows(sjvair_only='0')['low']]  # Partner is at 100%, never low
+        purpleair = {r['type']: r for r in self.rows(sjvair_only='0')['rows']}['PurpleAir']
+        assert purpleair['monitors'] == 4
+        purpleair = {r['type']: r for r in self.rows(county='Kern')['rows']}['PurpleAir']
+        assert purpleair['monitors'] == 1
+        assert purpleair['pct_7'] == 50.0
+
+    def test_entry_type_selector(self):
+        daily_summary(self.good, timezone.localdate() - timedelta(days=1), 100, 200, entry_type='humidity')
+        context = self.rows(entry_type='humidity')
+        purpleair = {r['type']: r for r in context['rows']}['PurpleAir']
+        assert purpleair['pct_7'] == 50.0
+        assert ('humidity', 'Humidity') in context['entry_types']
+        assert self.rows(entry_type='nope')['entry_type'] == 'pm25'
