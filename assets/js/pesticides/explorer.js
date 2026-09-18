@@ -34,6 +34,23 @@
     if (window.PesticidesFindArea) window.PesticidesFindArea.init(root);
   });
 
+  // Filter forms carry hidden fields that are usually empty; dropping empty
+  // values keeps the pushed URL to the parameters that mean something.
+  document.body.addEventListener('htmx:configRequest', function (evt) {
+    var params = evt.detail && evt.detail.parameters;
+    if (!params) return;
+    if (typeof params.keys === 'function' && typeof params.getAll === 'function') {
+      Array.from(new Set(Array.from(params.keys()))).forEach(function (key) {
+        var values = params.getAll(key);
+        if (values.every(function (value) { return value === ''; })) params.delete(key);
+      });
+    } else {
+      Object.keys(params).forEach(function (key) {
+        if (params[key] === '') delete params[key];
+      });
+    }
+  });
+
   // Typing in the filter search box swaps the region out from under the input
   // that has focus, so put the caret back where the user left it.
   var refocusSearch = false;

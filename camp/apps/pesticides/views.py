@@ -876,6 +876,12 @@ class RecordsBrowser(vanilla.ListView):
         self.year = stats.resolve_year(request.GET.get('year'))
         self.form = RecordsFilterForm(self._build_form_data(request.GET))
         self.form.is_valid()
+        # The year picker follows the dates being browsed: a filter change
+        # drops `?year=` from the URL, and a start date is the more specific
+        # statement of which year the reader is looking at anyway.
+        start = self.form.cleaned_data.get('start')
+        if start and start.year in stats.available_years():
+            self.year = start.year
         self.related = self._get_related_objects()
         self.county = self._get_county()
         self.point, self.radius = self._get_point_and_radius()

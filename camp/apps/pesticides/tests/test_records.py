@@ -124,3 +124,8 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         assert self.pks(response) == [6, 5, 4, 3, 2, 1]
         assert response.context['map_config']['radius'] == ''
         assert [f['label'] for f in response.context['active_filters']] == []
+
+    def test_year_picker_follows_the_start_date(self):
+        response = self.client.get(self.url, {'start': '2022-03-01', 'end': '2022-09-30'})
+        assert response.context['year'] == 2022
+        assert self.pks(response) == [9, 8, 7]
