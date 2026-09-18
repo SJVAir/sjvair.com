@@ -26,8 +26,8 @@ def enabled_only(queryset):
 class MonitorScope:
     """
     Query-param toggles: `include_hidden=1`, `include_inactive=1`,
-    `sjvair_only=1`. By default only monitors that reported within the last
-    hour count toward coverage; a dead monitor does not cover anyone.
+    `sjvair_only=1`. By default only outdoor monitors that reported within
+    the last hour count toward coverage; a dead monitor does not cover anyone.
     """
 
     PARAMS = ('include_hidden', 'include_inactive', 'sjvair_only')
@@ -48,8 +48,12 @@ class MonitorScope:
         return self.params.get('sjvair_only') == '1'
 
     def monitors(self):
-        """Positioned monitors of enabled types that count under this scope."""
-        queryset = enabled_only(Monitor.objects.filter(position__isnull=False))
+        """
+        Positioned outdoor monitors of enabled types that count under this
+        scope. Indoor monitors never count toward coverage: the reports are
+        about outdoor air quality.
+        """
+        queryset = enabled_only(Monitor.objects.filter(position__isnull=False).exclude(location=Monitor.LOCATION.inside))
         if not self.include_hidden:
             queryset = queryset.filter(is_hidden=False)
         if self.sjvair_only:

@@ -267,9 +267,11 @@ the distance in km to the nearest counted monitor.
   place boundary. Places with no tract centroid inside them show the
   population of the tract containing the place centroid instead, so
   small CDPs are not reported as zero-population.
-- Monitors counted are the same set as Coverage: positioned, enabled
-  types, not hidden unless `?include_hidden=1`, active in the last hour
-  unless `?include_inactive=1`, SJVAir-only when `?sjvair_only=1`.
+- Monitors counted are the same set as Coverage: positioned, outdoor
+  (indoor monitors never count toward coverage), enabled types, not hidden
+  unless `?include_hidden=1`, active in the last hour unless
+  `?include_inactive=1`, SJVAir-only when `?sjvair_only=1`. The Region
+  admin panels list outdoor monitors only, for the same reason.
   A monitor counts for a place when its position is inside the boundary.
 - Nearest-monitor distance uses `Distance` between the place centroid and
   the nearest counted monitor, one indexed query per uncovered place.

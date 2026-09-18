@@ -64,8 +64,9 @@ def admin_change_url(cls, monitor):
 
 def monitors_inside(geometry):
     """
-    Every positioned monitor of an enabled type inside `geometry`, as row
-    dicts with a status (Active / Inactive / Hidden), sorted active first.
+    Every positioned outdoor monitor of an enabled type inside `geometry`,
+    as row dicts with a status (Active / Inactive / Hidden), sorted active
+    first. Indoor monitors are left out: these pages are about outdoor air.
     One query per monitor type.
     """
     cutoff = timezone.now() - timedelta(seconds=Monitor.LAST_ACTIVE_LIMIT)
@@ -74,6 +75,7 @@ def monitors_inside(geometry):
         queryset = (cls.objects.get_queryset()
             .with_last_entry_timestamp()
             .filter(position__within=geometry)
+            .exclude(location=Monitor.LOCATION.inside)
             .select_related('host'))
         for monitor in queryset:
             if monitor.is_hidden:

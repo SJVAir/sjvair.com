@@ -621,6 +621,12 @@ class CoverageCommunityTests(StaffClientMixin, TestCase):
         names = [row['name'] for row in rows]
         assert names == sorted(names)
 
+    def test_indoor_monitors_do_not_cover(self):
+        PurpleAir.objects.create(name='Indoor', sensor_id=8, position=Point(-119.65, 36.75), location='inside')
+        touch(PurpleAir.objects.get(name='Indoor'), timezone.now())
+        rows, _ = self.rows(include_inactive='1', include_hidden='1')
+        assert {row['name']: row for row in rows}['Emptyville']['monitors'] == 0
+
     def test_inactive_monitor_does_not_cover(self):
         LatestEntry.objects.filter(monitor=self.monitor).update(timestamp=timezone.now() - timedelta(days=2))
         rows, context = self.rows()
@@ -684,8 +690,10 @@ class CommunityPanelTests(StaffClientMixin, TestCase):
         assert context['has_holes'] is False
 
     def test_monitor_rows(self):
+        indoor = PurpleAir.objects.create(name='Indoor PA', sensor_id=9, position=Point(-119.75, 36.75), location='inside')
+        touch(indoor, timezone.now())
         rows = {row['name']: row for row in self.panel(self.testville)['rows']}
-        assert set(rows) == {'Active PA', 'Stale PA', 'Hidden BAM'}
+        assert set(rows) == {'Active PA', 'Stale PA', 'Hidden BAM'}  # the indoor monitor is not listed
         assert rows['Active PA']['status'] == 'Active'
         assert rows['Stale PA']['status'] == 'Inactive'
         assert rows['Hidden BAM']['status'] == 'Hidden'
@@ -763,6 +771,8 @@ class CountyPanelTests(StaffClientMixin, TestCase):
         types = {row['label']: row for row in context['type_rows']}
         assert types['PurpleAir']['total'] == 1
         assert types['PurpleAir']['changelist_url'] == reverse('admin:purpleair_purpleair_changelist') + '?county=Fresno'
+        content = self.client.get(reverse('admin:regions_region_change', args=[self.fresno.pk])).content.decode()
+        assert f'<a href="{types["PurpleAir"]["changelist_url"]}">PurpleAir</a>' in content
         assert 'Testville' not in {row['name'] for row in self.panel(self.kern)['communities']}
 
     def test_admin_change_page_renders_the_panel(self):
@@ -770,7 +780,7 @@ class CountyPanelTests(StaffClientMixin, TestCase):
         assert response.status_code == 200
         content = response.content.decode()
         assert '<h2>Communities and coverage</h2>' in content
-        assert 'Browse in admin' in content
+        assert 'Browse in admin' not in content
         assert 'In Testville</a>' not in content  # counties link to the admin instead of listing monitors
 
 

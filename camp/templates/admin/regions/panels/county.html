@@ -2,18 +2,18 @@
 {% include "admin/regions/panels/_scope_links.html" %}
 <table>
     <caption>Communities</caption>
-    <tr><th>With a monitor</th><td>{{ tiles.covered|intcomma }}</td>
-        <th>Without a monitor</th><td>{{ tiles.uncovered|intcomma }}</td>
-        <th>Population without a monitor</th><td>{{ tiles.uncovered_population|intcomma }}{% if tiles.uncovered_pct is not None %} ({{ tiles.uncovered_pct }}%){% endif %}</td></tr>
+    <tr><th>With a monitor</th><td>{{ tiles.covered|intcomma }}</td></tr>
+    <tr><th>Without a monitor</th><td>{{ tiles.uncovered|intcomma }}</td></tr>
+    <tr><th>Population without a monitor</th><td>{{ tiles.uncovered_population|intcomma }}{% if tiles.uncovered_pct is not None %} ({{ tiles.uncovered_pct }}%){% endif %}</td></tr>
 </table>
 {% include "admin/regions/panels/_monitors.html" with show_list=False %}
 <table>
     <caption>Monitors by type</caption>
-    <thead><tr><th>Type</th><th>Total</th><th>Active</th><th></th></tr></thead>
+    <thead><tr><th>Type</th><th>Total</th><th>Active</th></tr></thead>
     <tbody>
         {% for row in type_rows %}
-        <tr><th>{{ row.label }}</th><td>{{ row.total|intcomma }}</td><td>{{ row.active|intcomma }}</td>
-            <td>{% if row.changelist_url %}<a href="{{ row.changelist_url }}">Browse in admin</a>{% endif %}</td></tr>
+        <tr><th>{% if row.changelist_url %}<a href="{{ row.changelist_url }}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}</th>
+            <td>{{ row.total|intcomma }}</td><td>{{ row.active|intcomma }}</td></tr>
         {% endfor %}
     </tbody>
 </table>

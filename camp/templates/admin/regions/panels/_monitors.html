@@ -1,11 +1,11 @@
 {% load humanize %}
 <table>
-    <caption>Monitors inside</caption>
-    <tr><th>Total</th><td>{{ counts.total|intcomma }}</td>
-        <th>Active (last hour)</th><td>{{ counts.active|intcomma }}</td>
-        <th>Inactive</th><td>{{ counts.inactive|intcomma }}</td>
-        <th>Hidden</th><td>{{ counts.hidden|intcomma }}</td>
-        <th>SJVAir-owned</th><td>{{ counts.sjvair|intcomma }}</td></tr>
+    <caption>Outdoor monitors inside</caption>
+    <tr><th>Total</th><td>{{ counts.total|intcomma }}</td></tr>
+    <tr><th>Active (last hour)</th><td>{{ counts.active|intcomma }}</td></tr>
+    <tr><th>Inactive</th><td>{{ counts.inactive|intcomma }}</td></tr>
+    <tr><th>Hidden</th><td>{{ counts.hidden|intcomma }}</td></tr>
+    <tr><th>SJVAir-owned</th><td>{{ counts.sjvair|intcomma }}</td></tr>
 </table>
 {% if show_list|default_if_none:True and rows %}
 {% if rows|length > 10 %}<details class="region-panel-details"><summary>Show all {{ rows|length|intcomma }} monitors</summary>{% endif %}
