@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
+from math import asin, cos, radians, sin, sqrt
 
-from django.contrib.gis.db.models.functions import Centroid, Distance
+from django.contrib.gis.db.models.functions import Centroid
 from django.contrib.gis.geos import Polygon
 from django.contrib.gis.measure import D
 from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
@@ -163,6 +164,16 @@ class NetworkOverview(BaseReport):
             'sjvair_only': self.sjvair_only,
             'tiles': self.get_tiles(),
         }
+
+
+EARTH_RADIUS_KM = 6371.0088
+
+
+def sphere_km(a, b):
+    """Great-circle distance in km between two lon/lat points."""
+    lon1, lat1, lon2, lat2 = (radians(value) for value in (a.x, a.y, b.x, b.y))
+    h = sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * asin(sqrt(h))
 
 
 def per_10k(monitors, population):
@@ -406,8 +417,15 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
     def sort(self):
         return 'name' if self.request.GET.get('sort') == 'name' else 'population'
 
+    @staticmethod
+    def place_queryset():
+        return Region.objects.filter(
+            type__in=[Region.Type.CITY, Region.Type.CDP],
+            boundary__isnull=False,
+        )
+
     def places(self):
-        """City and CDP regions with a current boundary, annotated with everything the row needs."""
+        """City and CDP regions inside an SJV county, annotated with everything the row needs."""
         _model, _version, tracts = ces_tracts()
         monitors = self.monitors()
 
@@ -419,8 +437,7 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
                 output_field=IntegerField(),
             ), 0)
 
-        places = (Region.objects
-            .filter(type__in=[Region.Type.CITY, Region.Type.CDP], boundary__isnull=False)
+        places = (self.place_queryset()
             .annotate(
                 geometry=F('boundary__geometry'),
                 centroid=Centroid('boundary__geometry'),
@@ -430,17 +447,13 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
                     .filter(boundary__geometry__contains=OuterRef('centroid'))
                     .values('name')[:1]
                 ),
-            ))
+            )
+            # Only places in the valley: a city whose centroid is in no SJV
+            # county Region is not a community this report covers.
+            .filter(county_name__isnull=False))
 
         if tracts is not None:
             places = places.annotate(
-                tract_population=Subquery(
-                    tracts.annotate(tract_centroid=Centroid('boundary__geometry'))
-                    .filter(tract_centroid__within=OuterRef('geometry'))
-                    .order_by().annotate(one=Value(1)).values('one')
-                    .annotate(p=Sum('population')).values('p'),
-                    output_field=IntegerField(),
-                ),
                 containing_population=Subquery(
                     tracts.filter(boundary__geometry__contains=OuterRef('centroid'))
                     .values('population')[:1],
@@ -449,25 +462,54 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
             )
         else:
             places = places.annotate(
-                tract_population=Value(None, output_field=IntegerField()),
                 containing_population=Value(None, output_field=IntegerField()),
             )
 
-        return places.values('sqid', 'name', 'type', 'centroid', 'monitor_count', 'county_name',
-                             'tract_population', 'containing_population')
+        return places.values('pk', 'name', 'type', 'centroid', 'monitor_count',
+                             'county_name', 'containing_population')
 
-    def nearest_km(self, centroid):
-        distance = (self.monitors()
-            .annotate(distance=Distance('position', centroid))
-            .order_by('distance')
-            .values_list('distance', flat=True)
-            .first())
-        return round(distance.km, 1) if distance is not None else None
+    def tract_populations(self):
+        """
+        Place pk -> summed population of the CES tracts inside it.
+
+        One query over the tracts rather than a tract-wide subquery per place:
+        each tract is matched to the place containing its centroid, and the
+        populations are summed per place here. Places that win no tract fall
+        back to the population of the tract containing their own centroid.
+        """
+        _model, _version, tracts = ces_tracts()
+        if tracts is None:
+            return {}
+
+        rows = (tracts
+            .annotate(tract_centroid=Centroid('boundary__geometry'))
+            .annotate(place_pk=Subquery(
+                self.place_queryset()
+                .filter(boundary__geometry__contains=OuterRef('tract_centroid'))
+                .values('pk')[:1],
+                output_field=IntegerField(),
+            ))
+            .values_list('place_pk', 'population'))
+
+        totals = {}
+        for place_pk, population in rows:
+            if place_pk is not None:
+                totals[place_pk] = totals.get(place_pk, 0) + (population or 0)
+        return totals
+
+    @staticmethod
+    def nearest_km(centroid, positions):
+        if not positions:
+            return None
+        return round(min(sphere_km(centroid, position) for position in positions), 1)
 
     def get_rows(self):
+        tract_populations = self.tract_populations()
+        positions = list(self.monitors().values_list('position', flat=True))
+
         all_rows = []
         for place in self.places():
-            population = place['tract_population']
+            population = tract_populations.get(place['pk'])
             if population is None:
                 population = place['containing_population'] or 0
             county_name = place['county_name'] or ''
@@ -478,8 +520,7 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
                 'population': population,
                 'monitors': place['monitor_count'],
                 'per_10k': per_10k(place['monitor_count'], population),
-                'nearest_km': None if place['monitor_count'] else self.nearest_km(place['centroid']),
-                'sqid': place['sqid'],
+                'nearest_km': None if place['monitor_count'] else self.nearest_km(place['centroid'], positions),
             })
 
         self.all_rows = all_rows

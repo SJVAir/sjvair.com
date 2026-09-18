@@ -573,9 +573,34 @@ class CoverageCommunityTests(StaffClientMixin, TestCase):
         rows, _ = self.rows()
         assert {row['name']: row for row in rows}['Tinyville']['population'] == 4650
 
+    def test_places_outside_the_valley_are_excluded(self):
+        # A place whose centroid is in no SJV county Region is not a community we cover.
+        make_place('Outerville', Region.Type.CITY, (-122.5, 37.7, -122.4, 37.8), '9004')
+        rows, _ = self.rows()
+        assert 'Outerville' not in {row['name'] for row in rows}
+
     def test_listed_on_index(self):
         response = self.client.get(reverse('reports:index'))
         assert reverse('reports:coverage-community') in response.content.decode()
+
+
+class CoverageCommunityNoCESTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        super().setUp()
+        make_place('Testville', Region.Type.CDP, (-119.8, 36.7, -119.7, 36.8), '9001')
+        self.monitor = PurpleAir.objects.create(name='In Testville', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        touch(self.monitor, timezone.now() - timedelta(minutes=5))
+
+    def test_renders_without_ces_data(self):
+        response = self.client.get(reverse('reports:coverage-community'))
+        assert response.status_code == 200
+        row = {r['name']: r for r in response.context['rows']}['Testville']
+        assert row['population'] == 0
+        assert row['per_10k'] is None
+        assert row['monitors'] == 1
+        assert response.context['tiles']['uncovered_pct'] is None
 
 
 def daily_summary(monitor, day, count, expected, entry_type='pm25'):
