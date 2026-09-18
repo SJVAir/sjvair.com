@@ -2,7 +2,7 @@
 {% if year_options|length > 1 %}
 <nav class="year-picker" aria-label="Year">
     <span class="year-picker-label">Year</span>
-    <div class="buttons has-addons are-small">
+    <div class="buttons are-small year-picker-buttons">
         {% for option in year_options %}
         <a class="button{% if option == year %} is-selected is-primary{% endif %}" href="{% qs_replace year=option page=None %}"{% if option == year %} aria-current="page"{% endif %}>{{ option }}</a>
         {% endfor %}

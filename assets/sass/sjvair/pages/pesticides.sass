@@ -35,19 +35,24 @@ body.pesticides
                 letter-spacing: 0.04em
             .buttons
                 margin-bottom: 0
+                gap: 0.35rem
+                .button
+                    margin: 0
+            // Separate pills rather than an addon group: with shared edges the
+            // white selected button read a device pixel taller than its
+            // translucent neighbours at fractional zoom levels, and no border
+            // trick fixed that reliably.
             .button
                 text-decoration: none
-                background-color: rgba($white, 0.12)
-                border-color: rgba($white, 0.55)
+                background-color: rgba($white, 0.14)
+                border-color: transparent
+                border-radius: $radius
                 color: $white
                 &:hover
-                    background-color: rgba($white, 0.22)
-                // The selected button keeps a faint visible edge: with a white
-                // border on a white fill its box read as 1px taller than its
-                // translucent-bordered neighbours.
+                    background-color: rgba($white, 0.24)
                 &.is-selected
                     background-color: $white
-                    border-color: rgba($black, 0.2)
+                    border-color: $white
                     color: $primary
 
     // Flex columns can't shrink below their content by default, so a card with
