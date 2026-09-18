@@ -10,6 +10,10 @@ from django.shortcuts import get_object_or_404
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
+from shapely import STRtree
+from shapely.geometry import Point as ShapelyPoint
+from shapely.wkb import loads as load_wkb
+
 from camp.apps.alerts.models import Subscription
 from camp.apps.ces.models import CES4, CES5
 from camp.apps.monitors.models import Monitor
@@ -168,10 +172,18 @@ class NetworkOverview(BaseReport):
 EARTH_RADIUS_KM = 6371.0088
 
 
+def to_radians(point):
+    """(lon, lat) in radians for a GEOS point, ready for sphere_km."""
+    return radians(point.x), radians(point.y)
+
+
 def sphere_km(a, b):
-    """Great-circle distance in km between two lon/lat points."""
-    lon1, lat1, lon2, lat2 = (radians(value) for value in (a.x, a.y, b.x, b.y))
-    h = sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2
+    """Great-circle distance in km between two (lon, lat) radian tuples."""
+    lon1, lat1 = a
+    lon2, lat2 = b
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    h = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
     return 2 * EARTH_RADIUS_KM * asin(sqrt(h))
 
 
@@ -519,42 +531,46 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
 
     def tract_populations(self):
         """
-        Place pk -> summed population of the CES tracts inside it.
+        Place pk -> summed population of the CES tracts whose centroid is
+        inside it.
 
-        One query over the tracts rather than a tract-wide subquery per place:
-        each tract is matched to the place containing its centroid, and the
-        populations are summed per place here. Places that win no tract fall
-        back to the population of the tract containing their own centroid.
+        Done in Python with a spatial index: one query for the ~1k tract
+        centroids, one for the place boundaries, then an STRtree lookup per
+        place. The SQL version (a correlated ST_Contains per tract) took
+        seconds; this takes tens of milliseconds. A tract is credited to
+        every place containing its centroid, which matters only if place
+        boundaries ever overlap.
         """
         _model, _version, tracts = ces_tracts()
         if tracts is None:
             return {}
 
-        rows = (tracts
-            .annotate(tract_centroid=Centroid('boundary__geometry'))
-            .annotate(place_pk=Subquery(
-                self.place_queryset()
-                .filter(boundary__geometry__contains=OuterRef('tract_centroid'))
-                .values('pk')[:1],
-                output_field=IntegerField(),
-            ))
-            .values_list('place_pk', 'population'))
+        centroids = list(tracts.annotate(c=Centroid('boundary__geometry')).values_list('c', 'population'))
+        if not centroids:
+            return {}
+        tree = STRtree([ShapelyPoint(point.x, point.y) for point, _population in centroids])
 
         totals = {}
-        for place_pk, population in rows:
-            if place_pk is not None:
-                totals[place_pk] = totals.get(place_pk, 0) + (population or 0)
+        boundaries = (Boundary.objects
+            .filter(current_for__in=self.place_queryset())
+            .values_list('current_for__pk', 'geometry'))
+        for place_pk, geometry in boundaries:
+            polygon = load_wkb(bytes(geometry.wkb))
+            for index in tree.query(polygon, predicate='contains'):
+                totals[place_pk] = totals.get(place_pk, 0) + (centroids[index][1] or 0)
         return totals
 
     @staticmethod
     def nearest_km(centroid, positions):
+        """Distance to the nearest of `positions` (radian tuples from to_radians), or None."""
         if not positions:
             return None
-        return round(min(sphere_km(centroid, position) for position in positions), 1)
+        here = to_radians(centroid)
+        return round(min(sphere_km(here, position) for position in positions), 1)
 
     def get_rows(self):
         tract_populations = self.tract_populations()
-        positions = list(self.monitors().values_list('position', flat=True))
+        positions = [to_radians(point) for point in self.monitors().values_list('position', flat=True)]
 
         places = self.places()
         if self.place_type:
@@ -721,9 +737,9 @@ class CommunityDetail(MonitorScopeMixin, BaseReport):
             .values_list('name', flat=True).first())
         nearest = None
         if not counted:
-            centroid = self.geometry.centroid
+            here = to_radians(self.geometry.centroid)
             candidates = [
-                (sphere_km(centroid, position), name)
+                (sphere_km(here, to_radians(position)), name)
                 for name, position in self.monitors().values_list('name', 'position')
             ]
             if candidates:
