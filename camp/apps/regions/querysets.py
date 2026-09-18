@@ -49,6 +49,21 @@ class RegionQuerySet(models.QuerySet):
         """
         return self.filter(boundary__geometry__intersects=geometry)
 
+    def overlapping_area(self, geometry: GEOSGeometry):
+        """
+        Filters regions that share actual area with the given geometry - unlike
+        `intersects()`, this excludes regions that only touch it along a shared
+        border with zero overlapping area (e.g. a neighboring county's city that
+        happens to sit right on the county line). Plain ST_Intersects treats
+        boundary-only touching as a match, which is never what "regions within
+        this area" callers actually want.
+        """
+        return self.filter(
+            boundary__geometry__intersects=geometry
+        ).exclude(
+            boundary__geometry__touches=geometry
+        )
+
     def combined_geometry(self) -> GEOSGeometry:
         """
         Returns a MultiPolygon representing the union of all geometries in the queryset.

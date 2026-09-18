@@ -31,7 +31,7 @@ class RegionList(RegionMixin, generics.ListEndpoint):
         if within_ids:
             geometry = Region.objects.filter(sqid__in=within_ids).combined_geometry()
             if geometry:
-                qs = qs.intersects(geometry)
+                qs = qs.overlapping_area(geometry)
         return qs
 
 

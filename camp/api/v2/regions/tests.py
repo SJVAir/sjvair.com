@@ -317,3 +317,23 @@ class RegionWithinFilterTests(TestCase):
         data = get_response_data(response)
         ids = {r['id'] for r in data['data']}
         self.assertEqual(ids, {self.inside_a.sqid, self.inside_b.sqid, self.outside.sqid})
+
+    def test_within_excludes_a_region_that_only_touches_the_border(self):
+        # Shares the exact edge (x=-119.0) with FRESNO_COUNTY_WKT's eastern
+        # boundary but has zero interior overlap with it - the real-world
+        # case this reproduces is a city like Avenal (Kings County) sharing
+        # a border with Fresno County: ST_Intersects (plain `.intersects()`)
+        # matches boundary-only touching with no actual area overlap, which
+        # `within=` must not treat as "inside" the selected parent region.
+        touching_neighbor = make_tract(
+            'Tract touching Fresno border',
+            'MULTIPOLYGON(((-119.0 36.8, -118.8 36.8, -118.8 37.0, -119.0 37.0, -119.0 36.8)))',
+        )
+
+        request = RequestFactory().get('/', {'type': 'tract', 'within': self.parent_a.sqid})
+        response = region_list(request)
+        data = get_response_data(response)
+        ids = {r['id'] for r in data['data']}
+
+        self.assertEqual(ids, {self.inside_a.sqid})
+        self.assertNotIn(touching_neighbor.sqid, ids)
