@@ -239,9 +239,12 @@ fixtures from `/fixtures` where they fit (`purple-air.yaml`,
 
 ## Batch two (2026-09-17)
 
-Four more reports on the same branch and PR, using `BaseReport` unchanged.
-Registered after the first five, ED-facing first: Coverage by Community,
-then Data Completeness, Data Quality Problems, Pipeline Coverage.
+Four more reports were built on the same branch and PR, using `BaseReport`
+unchanged. After trying them, Derek kept only Coverage by Community (§5,
+grouped with the ED reports on the index) and removed Data Completeness,
+Data Quality Problems, and Pipeline Coverage on 2026-09-18 as not telling
+staff much. Their sections (§6–8) are kept below for the record; the code
+is gone.
 
 Shared conventions from batch one carry over: `?sjvair_only=1|0` (ED
 reports default off, ops reports default on with the hidden-input
