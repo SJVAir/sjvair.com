@@ -76,6 +76,6 @@
 <div class="content about-teaser mt-6" id="about">
     <h2>About this data</h2>
     <p>Confirmed applications come from DPR's <a href="{% url 'pesticides:about' %}#pur">Pesticide Use Reporting</a> program, which releases each year's records one to two years after the fact{% if latest_year %} (the newest full year here is {{ latest_year }}){% endif %}. Planned applications are <a href="{% url 'pesticides:about' %}#spraydays">SprayDays notices of intent</a>, which are plans, not confirmations. Badges mark chemicals on official lists (Prop 65, IARC, CARB); they say a chemical is listed, not how much of it reached anyone.</p>
-    <p><a href="{% url 'pesticides:about' %}">Read more about the data, the badges, and the caveats</a>. Developers can pull the records through the <a href="{{ api_docs_url }}">pesticides API</a> or the <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.</p>
+    <p><a href="{% url 'pesticides:about' %}">Read more about the data, the badges, and the caveats</a>. Developers can pull the records through the <a href="{{ api_docs_url }}" hx-boost="false">pesticides API</a> or the <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.</p>
 </div>
 {% endblock %}

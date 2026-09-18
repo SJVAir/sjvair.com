@@ -13,11 +13,19 @@
 {% block javascripts %}
 <script src="{% static 'js/admin/leaflet/leaflet.js' %}"></script>
 <script src="{% static 'js/admin/leaflet-maps.js' %}"></script>
+<script src="{% static 'js/vendor/htmx.min.js' %}"></script>
 <script src="{% static 'js/pesticides/section-map.js' %}"></script>
 <script src="{% static 'js/pesticides/find-area.js' %}"></script>
+<script src="{% static 'js/pesticides/explorer.js' %}"></script>
 {% endblock %}
 
 {% block main %}
+<div id="explorer"
+    hx-boost="true"
+    hx-target="#explorer"
+    hx-select="#explorer"
+    hx-swap="outerHTML show:window:top"
+    hx-push-url="true">
 <section class="section is-small hook">
     <div class="container">
         {% block explorer-header %}
@@ -56,4 +64,5 @@
         {% block explorer-content %}{% endblock %}
     </div>
 </section>
+</div>
 {% endblock %}

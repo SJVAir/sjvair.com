@@ -463,6 +463,21 @@ class HomeTests(RollupTestMixin, TestCase):
         assert Chemical.objects.get(pk=3).get_absolute_url() in html
         assert Commodity.objects.get(pk=2).get_absolute_url() in html
 
+    def test_explorer_region_is_boosted(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'id="explorer"' in html
+        assert 'hx-boost="true"' in html
+        assert 'hx-select="#explorer"' in html
+
+    def test_htmx_request_gets_full_page(self):
+        # Boosted requests are ordinary GETs: the server renders the whole
+        # page (title included) and htmx selects the explorer region from it.
+        response = self.client.get(self.url, HTTP_HX_REQUEST='true')
+        assert response.status_code == 200
+        html = response.content.decode()
+        assert '<title>' in html
+        assert 'id="explorer"' in html
+
     def test_county_map(self):
         html = self.client.get(self.url).content.decode()
         assert 'Fresno County: 670 lbs' in html

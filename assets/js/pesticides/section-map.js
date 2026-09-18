@@ -942,9 +942,22 @@
     );
   };
 
-  function init() {
+  // Collect the `.section-map` containers at or under `root`. `root` may be a
+  // document or an element (htmx hands us the element it just swapped in, and
+  // that element can itself be a container).
+  function containersUnder(root) {
+    var found = [];
+    if (root.matches && root.matches('.section-map')) found.push(root);
+    var nested = root.querySelectorAll ? root.querySelectorAll('.section-map') : [];
+    for (var i = 0; i < nested.length; i++) found.push(nested[i]);
+    return found;
+  }
+
+  // Idempotent: containers already initialised carry `data-rendered`, so this
+  // is safe to call repeatedly (page load plus every htmx swap).
+  function init(root) {
     if (typeof L === 'undefined') return;
-    var containers = document.querySelectorAll('.section-map');
+    var containers = containersUnder(root || document);
     for (var i = 0; i < containers.length; i++) {
       var el = containers[i];
       if (el.dataset.rendered) continue;
@@ -957,9 +970,15 @@
     }
   }
 
+  window.PesticidesSectionMap = { init: init };
+
+  function initDocument() {
+    init(document);
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', initDocument);
   } else {
-    init();
+    initDocument();
   }
 })();

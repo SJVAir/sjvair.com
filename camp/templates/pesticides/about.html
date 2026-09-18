@@ -54,7 +54,7 @@
     <ul>
         <li>PUR data lags: DPR releases each year's records one to two years after the fact, so the most recent full year available is {% if latest_year %}{{ latest_year }}{% else %}not yet available{% endif %}.</li>
         <li>Pounds are pounds of active ingredient for chemicals and commodities, and pounds of product for products.</li>
-        <li>Developers can pull the underlying records through the <a href="{{ api_docs_url }}">pesticides API</a> or the <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.</li>
+        <li>Developers can pull the underlying records through the <a href="{{ api_docs_url }}" hx-boost="false">pesticides API</a> or the <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.</li>
     </ul>
 </div>
 {% endblock %}
