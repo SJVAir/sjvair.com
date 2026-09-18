@@ -1,19 +1,24 @@
 {% load humanize %}
-{% for record in records %}
-<table>
-    <caption>{{ record.label }}</caption>
-    {% for label, value in record.headline %}
-    <tr><th>{{ label }}</th><td>{{ value|default_if_none:"—" }}</td></tr>
+<div class="panel-stats">
+    {% for record in records %}
+    <table>
+        <caption>{{ record.label }}</caption>
+        {% for label, value in record.headline %}
+        <tr><th>{{ label }}</th><td>{{ value|default_if_none:"—" }}</td></tr>
+        {% endfor %}
+    </table>
+    {% empty %}
+    <p>No CalEnviroScreen records for this tract. Run the CES imports first.</p>
     {% endfor %}
-</table>
-<details class="region-panel-details"><summary>All {{ record.fields|length }} fields</summary>
+    {% include "admin/regions/panels/_monitor_counts.html" %}
+</div>
+{% for record in records %}
+<details class="region-panel-details"><summary>{{ record.label }}: all {{ record.fields|length }} fields</summary>
 <table>
     {% for label, value in record.fields %}
     <tr><th>{{ label }}</th><td>{{ value|default_if_none:"—" }}</td></tr>
     {% endfor %}
 </table>
 </details>
-{% empty %}
-<p>No CalEnviroScreen records for this tract. Run the CES imports first.</p>
 {% endfor %}
-{% include "admin/regions/panels/_monitors.html" %}
+{% include "admin/regions/panels/_monitor_list.html" %}

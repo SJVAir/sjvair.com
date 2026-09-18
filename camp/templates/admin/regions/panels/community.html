@@ -1,6 +1,7 @@
 {% load humanize %}
 <p>{{ type_label }} in {{ county }} County.{% if has_holes %} This boundary has holes (county islands); for coverage they count as part of the community.{% endif %}</p>
 {% include "admin/regions/panels/_scope_links.html" %}
+<div class="panel-stats">
 <table>
     <caption>Coverage</caption>
     <tr><th>Population</th><td>{{ tracts.population|intcomma }}</td></tr>
@@ -16,4 +17,6 @@
     <tr><th>CES percentile, average</th><td>{{ tracts.avg_percentile|default_if_none:"—" }}</td></tr>
     <tr><th>CES percentile, highest</th><td>{{ tracts.max_percentile|default_if_none:"—" }}</td></tr>
 </table>
-{% include "admin/regions/panels/_monitors.html" %}
+{% include "admin/regions/panels/_monitor_counts.html" %}
+</div>
+{% include "admin/regions/panels/_monitor_list.html" %}
