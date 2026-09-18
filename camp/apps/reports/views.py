@@ -4,13 +4,13 @@ from django.contrib.gis.db.models.functions import Centroid, Distance
 from django.contrib.gis.geos import Polygon
 from django.contrib.gis.measure import D
 from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Concat
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from camp.apps.alerts.models import Subscription
 from camp.apps.ces.models import CES4, CES5
-from camp.apps.monitors.models import Monitor
+from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.reports.base import BaseReport, register
 from camp.apps.summaries.models import MonitorSummary
@@ -881,3 +881,96 @@ class DegradedMonitors(BaseReport):
         }
         context['map'] = self.get_map(context['rows'])
         return context
+
+
+@register
+class DataQuality(BaseReport):
+    slug = 'data-quality'
+    title = 'Data Quality Problems'
+    description = 'Monitors with broken metadata: missing or bogus positions, blank names, county mismatches, hidden monitors still reporting, SJVAir monitors with no host. Every type, hidden included.'
+    template_name = 'admin/reports/data_quality.html'
+
+    # (annotation/lookup name, label) in severity order. Each maps to a boolean annotation.
+    CHECKS = [
+        ('no_position', 'No position'),
+        ('bogus_position', 'Bogus position'),
+        ('no_name', 'No name'),
+        ('no_county', 'No county'),
+        ('wrong_county', 'Wrong county'),
+        ('hidden_reporting', 'Hidden but reporting'),
+        ('no_host', 'No host'),
+    ]
+
+    @property
+    def county(self):
+        county = self.request.GET.get('county', '')
+        return county if county in County.names else ''
+
+    @property
+    def monitor_type(self):
+        wanted = self.request.GET.get('type', '')
+        return wanted if wanted in {cls.monitor_type for cls in monitor_types()} else ''
+
+    def annotated(self, queryset):
+        cutoff = timezone.now() - timedelta(seconds=Monitor.LAST_ACTIVE_LIMIT)
+        county_boundaries = Boundary.objects.filter(current_for__in=Region.objects.counties())
+        return queryset.annotate(
+            county_region_name=Concat('county', Value(' County')),
+            in_sjv=Exists(county_boundaries.filter(geometry__contains=OuterRef('position'))),
+            in_own_county=Exists(county_boundaries.filter(
+                current_for__name=OuterRef('county_region_name'),
+                geometry__contains=OuterRef('position'),
+            )),
+            reporting=Exists(LatestEntry.objects.filter(monitor=OuterRef('pk'), timestamp__gte=cutoff)),
+        ).annotate(
+            no_position=Q(position__isnull=True),
+            bogus_position=Q(position__isnull=False) & ~Q(position__within=DEFAULT_MAP_BOUNDS),
+            no_name=Q(name=''),
+            no_county=Q(county='') & Q(in_sjv=True),
+            wrong_county=~Q(county='') & Q(position__isnull=False) & Q(in_own_county=False),
+            hidden_reporting=Q(is_hidden=True) & Q(reporting=True),
+            no_host=Q(is_sjvair=True) & Q(host__isnull=True),
+        )
+
+    def get_rows(self):
+        flagged = Q()
+        for key, _label in self.CHECKS:
+            flagged |= Q(**{key: True})
+
+        rows = []
+        for cls in monitor_types():
+            if self.monitor_type and cls.monitor_type != self.monitor_type:
+                continue
+            queryset = self.annotated(cls.objects.all()).filter(flagged)
+            if self.county:
+                queryset = queryset.filter(county=self.county)
+            for monitor in queryset:
+                conditions = [label for key, label in self.CHECKS if getattr(monitor, key)]
+                first = next(i for i, (key, _l) in enumerate(self.CHECKS) if getattr(monitor, key))
+                rows.append({
+                    'name': monitor.name or monitor.pk,
+                    'type': type_label(cls),
+                    'county': monitor.county,
+                    'position': f'{monitor.position.y:.4f}, {monitor.position.x:.4f}' if monitor.position else '',
+                    'condition': ', '.join(conditions),
+                    'conditions': conditions,
+                    'admin_url': admin_change_url(cls, monitor),
+                    'sort_key': (first, str(monitor.name or monitor.pk)),
+                })
+        rows.sort(key=lambda row: row['sort_key'])
+        return rows
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        tiles = {'total': len(context['rows'])}
+        for _key, label in self.CHECKS:
+            tiles[label] = sum(1 for row in context['rows'] if label in row['conditions'])
+        return {
+            **context,
+            'tiles': tiles,
+            'checks': [label for _key, label in self.CHECKS],
+            'counties': County.names,
+            'county': self.county,
+            'monitor_type': self.monitor_type,
+            'types': [(cls.monitor_type, type_label(cls)) for cls in monitor_types()],
+        }

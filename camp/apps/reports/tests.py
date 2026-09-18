@@ -650,3 +650,58 @@ class DataCompletenessTests(StaffClientMixin, TestCase):
         assert purpleair['pct_7'] == 50.0
         assert ('humidity', 'Humidity') in context['entry_types']
         assert self.rows(entry_type='nope')['entry_type'] == 'pm25'
+
+
+class DataQualityTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        super().setUp()
+        host = Host.objects.create(name='Library')
+        fresno = Point(-119.75, 36.75)
+        self.fine = PurpleAir.objects.create(name='Fine', sensor_id=1, position=fresno, location='outside', is_sjvair=True, host=host)
+        self.outsider = PurpleAir.objects.create(name='Paso Robles', sensor_id=2, position=Point(-120.69, 35.63), location='outside')
+        self.no_position = PurpleAir.objects.create(name='No position', sensor_id=3, location='outside')
+        self.bogus = PurpleAir.objects.create(name='Bogus', sensor_id=4, position=Point(0, 0), location='outside')
+        self.no_name = PurpleAir.objects.create(name='', sensor_id=5, position=fresno, location='outside')
+        self.no_county = PurpleAir.objects.create(name='No county', sensor_id=6, position=fresno, location='outside')
+        Monitor.objects.filter(pk=self.no_county.pk).update(county='')
+        self.wrong_county = PurpleAir.objects.create(name='Wrong county', sensor_id=7, position=fresno, location='outside')
+        Monitor.objects.filter(pk=self.wrong_county.pk).update(county='Kern')
+        self.hidden = PurpleAir.objects.create(name='Hidden reporting', sensor_id=8, position=fresno, location='outside', is_hidden=True)
+        touch(self.hidden, timezone.now() - timedelta(minutes=5))
+        self.no_host = BAM1022.objects.create(name='No host', position=fresno, location='outside', is_sjvair=True)
+
+    def rows(self, **params):
+        response = self.client.get(reverse('reports:data-quality'), params)
+        assert response.status_code == 200
+        return response.context
+
+    def test_each_check_fires_once_and_clean_monitors_are_absent(self):
+        context = self.rows()
+        by_name = {row['name']: row['condition'] for row in context['rows']}
+        assert by_name == {
+            'No position': 'No position',
+            'Bogus': 'Bogus position',
+            self.no_name.pk: 'No name',
+            'No county': 'No county',
+            'Wrong county': 'Wrong county',
+            'Hidden reporting': 'Hidden but reporting',
+            'No host': 'No host',
+        }
+        assert context['tiles']['total'] == 7
+        assert context['tiles']['No county'] == 1
+
+    def test_sorted_by_check_order_then_name(self):
+        names = [row['name'] for row in self.rows()['rows']]
+        assert names == ['No position', 'Bogus', self.no_name.pk, 'No county', 'Wrong county', 'Hidden reporting', 'No host']
+
+    def test_columns_and_filters(self):
+        context = self.rows()
+        row = {r['name']: r for r in context['rows']}['Wrong county']
+        assert row['type'] == 'PurpleAir'
+        assert row['county'] == 'Kern'
+        assert row['position'] == '36.7500, -119.7500'
+        assert row['admin_url'] == reverse('admin:purpleair_purpleair_change', args=[self.wrong_county.pk])
+        assert [r['name'] for r in self.rows(type='bam1022')['rows']] == ['No host']
+        assert [r['name'] for r in self.rows(county='Kern')['rows']] == ['Wrong county']
