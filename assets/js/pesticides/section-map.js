@@ -103,6 +103,17 @@
       ' href="' + escapeHtml(url) + '">' + escapeHtml(text) + '</a>';
   }
 
+  // Leaflet's bindPopup opens the popup wherever the cell was clicked; a
+  // grid cell reads better with the popup rising from its centre.
+  function openPopupAtCenter(layer) {
+    if (layer._openPopup) layer.off('click', layer._openPopup, layer);
+    if (layer._centerPopupBound) return;
+    layer._centerPopupBound = true;
+    layer.on('click', function () {
+      layer.openPopup(layer.getBounds().getCenter());
+    });
+  }
+
   function formatNumber(value) {
     try {
       return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -687,7 +698,7 @@
     this.gridLayer.eachLayer(function (layer) {
       if (!layer.feature || layer.feature.properties.id !== id) return;
       if (self.level === 'township') {
-        layer.openPopup();
+        layer.openPopup(layer.getBounds().getCenter());
       } else {
         self.showSectionPopup(layer.feature, layer);
       }
@@ -740,6 +751,7 @@
       this.townshipPopupHtml(feature.properties, layer.getBounds().getCenter()),
       this.popupOptions('section-popup-wrap'),
     );
+    openPopupAtCenter(layer);
   };
 
   // The "Zoom in" handler is delegated on each popup's outer element, which
@@ -783,7 +795,9 @@
   SectionMap.prototype.showSectionPopup = function (feature, layer) {
     var props = feature.properties;
     var html = this.sectionPopupHtml(props, 'Loading…');
-    layer.bindPopup(html, this.popupOptions('section-popup-wrap')).openPopup();
+    layer.bindPopup(html, this.popupOptions('section-popup-wrap'));
+    openPopupAtCenter(layer);
+    layer.openPopup(layer.getBounds().getCenter());
 
     if (!this.data.sectionUrlPattern) return;
     var year = this.data.year;
