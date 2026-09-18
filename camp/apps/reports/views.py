@@ -4,9 +4,8 @@ from math import asin, cos, radians, sin, sqrt
 from django.contrib.gis.db.models.functions import Centroid
 from django.contrib.gis.geos import Polygon
 from django.contrib.gis.measure import D
-from django.db.models import Avg, Count, Exists, F, IntegerField, Max, OuterRef, Q, Subquery, Sum, Value
+from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
-from django.shortcuts import get_object_or_404
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
@@ -19,8 +18,10 @@ from camp.apps.ces.models import CES4, CES5
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.reports.base import BaseReport, register
+from camp.apps.reports.scope import MonitorScope
 from camp.utils import leaflet
 from camp.utils.counties import County
+from camp.utils.gis import fill_holes
 
 
 OUTSIDE_SJV = 'Outside SJV'
@@ -74,16 +75,7 @@ def monitor_types():
     return Monitor.get_subclasses()
 
 
-def enabled_only(queryset):
-    """Restrict a base-Monitor queryset to enabled types, as get_public() does."""
-    enabled = Monitor.get_enabled_subclasses()
-    if len(enabled) >= len(Monitor.get_subclasses()):
-        return queryset
-
-    lookup = Q()
-    for subclass in enabled:
-        lookup |= Q(**subclass.type_queryset_filter())
-    return queryset.filter(lookup) if enabled else queryset.none()
+from camp.apps.reports.scope import enabled_only  # noqa: E402 -- re-exported for callers
 
 
 def county_column(county):
@@ -206,42 +198,31 @@ def ces_tracts():
 
 
 class MonitorScopeMixin:
-    """Query-param toggles shared by the coverage reports."""
+    """Query-param toggles shared by the coverage reports (see MonitorScope)."""
+
+    @property
+    def scope(self):
+        if not hasattr(self, '_scope'):
+            self._scope = MonitorScope(self.request.GET)
+        return self._scope
 
     @property
     def include_hidden(self):
-        return self.request.GET.get('include_hidden') == '1'
+        return self.scope.include_hidden
 
     @property
     def include_inactive(self):
-        return self.request.GET.get('include_inactive') == '1'
+        return self.scope.include_inactive
 
     @property
     def sjvair_only(self):
-        return self.request.GET.get('sjvair_only') == '1'
+        return self.scope.sjvair_only
 
     def monitors(self):
-        """
-        Positioned monitors of enabled types. By default only monitors that
-        reported within the last hour count toward coverage; a dead monitor
-        does not cover anyone.
-        """
-        queryset = enabled_only(Monitor.objects.filter(position__isnull=False))
-        if not self.include_hidden:
-            queryset = queryset.filter(is_hidden=False)
-        if self.sjvair_only:
-            queryset = queryset.filter(is_sjvair=True)
-        if not self.include_inactive:
-            cutoff = timezone.now() - timedelta(seconds=Monitor.LAST_ACTIVE_LIMIT)
-            queryset = queryset.with_last_entry_timestamp().filter(last_entry_timestamp__gte=cutoff)
-        return queryset
+        return self.scope.monitors()
 
     def scope_context(self):
-        return {
-            'include_hidden': self.include_hidden,
-            'include_inactive': self.include_inactive,
-            'sjvair_only': self.sjvair_only,
-        }
+        return self.scope.context()
 
 
 @register
@@ -485,24 +466,14 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
             boundary__isnull=False,
         )
 
-    def places(self):
-        """City and CDP regions inside an SJV county, annotated with everything the row needs."""
+    @classmethod
+    def places(cls):
+        """City and CDP regions inside an SJV county, with what the row needs from SQL."""
         _model, _version, tracts = ces_tracts()
-        monitors = self.monitors()
 
-        def count_within(queryset, geometry_ref):
-            return Coalesce(Subquery(
-                queryset.filter(position__within=OuterRef(geometry_ref))
-                .order_by().annotate(one=Value(1)).values('one')
-                .annotate(n=Count('pk')).values('n'),
-                output_field=IntegerField(),
-            ), 0)
-
-        places = (self.place_queryset()
+        places = (cls.place_queryset()
             .annotate(
-                geometry=F('boundary__geometry'),
                 centroid=Centroid('boundary__geometry'),
-                monitor_count=count_within(monitors, 'geometry'),
                 county_name=Subquery(
                     Region.objects.counties()
                     .filter(boundary__geometry__contains=OuterRef('centroid'))
@@ -526,39 +497,47 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
                 containing_population=Value(None, output_field=IntegerField()),
             )
 
-        return places.values('pk', 'sqid', 'name', 'type', 'centroid', 'monitor_count',
-                             'county_name', 'containing_population')
+        return places.values('pk', 'name', 'type', 'centroid', 'county_name', 'containing_population')
 
-    def tract_populations(self):
+    @classmethod
+    def coverage_polygons(cls):
+        """
+        Place pk -> shapely polygon used for containment, with holes filled:
+        a county island inside a city is part of that community for coverage.
+        """
+        boundaries = (Boundary.objects
+            .filter(current_for__in=cls.place_queryset())
+            .values_list('current_for__pk', 'geometry'))
+        return {pk: load_wkb(bytes(fill_holes(geometry).wkb)) for pk, geometry in boundaries}
+
+    @staticmethod
+    def tract_populations(polygons):
         """
         Place pk -> summed population of the CES tracts whose centroid is
-        inside it.
-
-        Done in Python with a spatial index: one query for the ~1k tract
-        centroids, one for the place boundaries, then an STRtree lookup per
-        place. The SQL version (a correlated ST_Contains per tract) took
-        seconds; this takes tens of milliseconds. A tract is credited to
-        every place containing its centroid, which matters only if place
-        boundaries ever overlap.
+        inside it, via a spatial index over the tract centroids (one query
+        for the ~1k centroids, then an STRtree lookup per place). A tract is
+        credited to every place containing its centroid.
         """
         _model, _version, tracts = ces_tracts()
         if tracts is None:
             return {}
-
         centroids = list(tracts.annotate(c=Centroid('boundary__geometry')).values_list('c', 'population'))
         if not centroids:
             return {}
         tree = STRtree([ShapelyPoint(point.x, point.y) for point, _population in centroids])
-
         totals = {}
-        boundaries = (Boundary.objects
-            .filter(current_for__in=self.place_queryset())
-            .values_list('current_for__pk', 'geometry'))
-        for place_pk, geometry in boundaries:
-            polygon = load_wkb(bytes(geometry.wkb))
+        for place_pk, polygon in polygons.items():
             for index in tree.query(polygon, predicate='contains'):
                 totals[place_pk] = totals.get(place_pk, 0) + (centroids[index][1] or 0)
         return totals
+
+    @staticmethod
+    def monitor_counts(polygons, points):
+        """Place pk -> number of counted monitors inside its coverage polygon."""
+        if not points:
+            return {}
+        tree = STRtree([ShapelyPoint(point.x, point.y) for point in points])
+        return {pk: len(tree.query(polygon, predicate='contains')) for pk, polygon in polygons.items()}
 
     @staticmethod
     def nearest_km(centroid, positions):
@@ -568,35 +547,44 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
         here = to_radians(centroid)
         return round(min(sphere_km(here, position) for position in positions), 1)
 
-    def get_rows(self):
-        tract_populations = self.tract_populations()
-        positions = [to_radians(point) for point in self.monitors().values_list('position', flat=True)]
+    @classmethod
+    def build_rows(cls, scope, county='', place_type='', min_population=0):
+        """Every community row under `scope`, unsorted. Also used by the county admin panel."""
+        polygons = cls.coverage_polygons()
+        tract_populations = cls.tract_populations(polygons)
+        points = list(scope.monitors().values_list('position', flat=True))
+        monitor_counts = cls.monitor_counts(polygons, points)
+        positions = [to_radians(point) for point in points]
 
-        places = self.places()
-        if self.place_type:
-            places = places.filter(type=self.PLACE_TYPES[self.place_type])
-        if self.county:
-            places = places.filter(county_name=f'{self.county} County')
+        places = cls.places()
+        if place_type:
+            places = places.filter(type=cls.PLACE_TYPES[place_type])
+        if county:
+            places = places.filter(county_name=f'{county} County')
 
-        all_rows = []
+        rows = []
         for place in places:
             population = tract_populations.get(place['pk'])
             if population is None:
                 population = place['containing_population'] or 0
-            if population < self.min_population:
+            if population < min_population:
                 continue
             county_name = place['county_name'] or ''
-            all_rows.append({
+            monitors = monitor_counts.get(place['pk'], 0)
+            rows.append({
                 'name': place['name'],
-                'type': self.TYPE_LABELS.get(place['type'], place['type']),
+                'type': cls.TYPE_LABELS.get(place['type'], place['type']),
                 'county': county_column(county_name.removesuffix(' County')),
                 'population': population,
-                'monitors': place['monitor_count'],
-                'per_10k': per_10k(place['monitor_count'], population),
-                'nearest_km': None if place['monitor_count'] else self.nearest_km(place['centroid'], positions),
-                'detail_url': reverse('reports:coverage-community-detail', args=[place['sqid']]),
+                'monitors': monitors,
+                'per_10k': per_10k(monitors, population),
+                'nearest_km': None if monitors else cls.nearest_km(place['centroid'], positions),
+                'detail_url': reverse('admin:regions_region_change', args=[place['pk']]),
             })
+        return rows
 
+    def get_rows(self):
+        all_rows = self.build_rows(self.scope, self.county, self.place_type, self.min_population)
         # The tiles describe every place that passes the scoping filters; only
         # the "uncovered" toggle narrows the table without touching them.
         self.all_rows = all_rows
@@ -639,155 +627,6 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
             'direction': self.direction,
             'columns': self.columns(),
             'tiles': self.get_tiles(),
-        }
-
-
-class CommunityDetail(MonitorScopeMixin, BaseReport):
-    """
-    One city or CDP: a map of its tracts and monitors, the coverage numbers
-    broken out, and every monitor inside the boundary. Not a registered
-    report; reached from the Coverage by Community rows.
-    """
-    slug = 'coverage-community'
-    template_name = 'admin/reports/coverage_community_detail.html'
-
-    STATUS_COLORS = {'Active': '#27ae60', 'Inactive': '#7f8c8d', 'Hidden': '#8e44ad'}
-
-    @property
-    def region(self):
-        if not hasattr(self, '_region'):
-            self._region = get_object_or_404(
-                CoverageCommunity.place_queryset().select_related('boundary'),
-                sqid=self.kwargs['sqid'],
-            )
-        return self._region
-
-    @property
-    def title(self):
-        return self.region.name
-
-    @property
-    def geometry(self):
-        return self.region.boundary.geometry
-
-    def inside(self, queryset):
-        return queryset.filter(position__within=self.geometry)
-
-    def all_monitors(self):
-        """Every positioned monitor of an enabled type inside the boundary, regardless of scope."""
-        cutoff = timezone.now() - timedelta(seconds=Monitor.LAST_ACTIVE_LIMIT)
-        monitors = []
-        for cls in Monitor.get_enabled_subclasses():
-            queryset = (self.inside(cls.objects.get_queryset().with_last_entry_timestamp())
-                .filter(position__isnull=False)
-                .select_related('host'))
-            for monitor in queryset:
-                if monitor.is_hidden:
-                    status = 'Hidden'
-                elif monitor.last_entry_timestamp and monitor.last_entry_timestamp >= cutoff:
-                    status = 'Active'
-                else:
-                    status = 'Inactive'
-                monitors.append({
-                    'name': monitor.name,
-                    'type': type_label(cls),
-                    'status': status,
-                    'last_seen': monitor.last_entry_timestamp,
-                    'host': monitor.host.name if monitor.host_id else '',
-                    'is_sjvair': monitor.is_sjvair,
-                    'position': monitor.position,
-                    'admin_url': admin_change_url(cls, monitor),
-                })
-        monitors.sort(key=lambda row: (row['status'] != 'Active', row['status'], row['name']))
-        return monitors
-
-    def get_rows(self):
-        return self.all_monitors()
-
-    def tract_stats(self):
-        _model, _version, tracts = ces_tracts()
-        empty = {'tracts': 0, 'dac_tracts': 0, 'population': 0, 'dac_population': 0,
-                 'avg_percentile': None, 'max_percentile': None}
-        if tracts is None:
-            return empty, None
-        inside = tracts.annotate(c=Centroid('boundary__geometry')).filter(c__within=self.geometry)
-        stats = inside.aggregate(
-            tracts=Count('pk'),
-            dac_tracts=Count('pk', filter=Q(dac_sb535=True)),
-            total_population=Sum('population', default=0),
-            dac_population=Sum('population', filter=Q(dac_sb535=True), default=0),
-            avg_percentile=Avg('ci_score_p'),
-            max_percentile=Max('ci_score_p'),
-        )
-        stats['population'] = stats.pop('total_population')
-        if stats['tracts'] == 0:
-            # No tract centroid inside: use the tract the place centroid sits in.
-            containing = tracts.filter(boundary__geometry__contains=self.geometry.centroid).first()
-            if containing is not None:
-                stats['population'] = containing.population or 0
-        for key in ('avg_percentile', 'max_percentile'):
-            stats[key] = round(stats[key], 1) if stats[key] is not None else None
-        return stats, inside
-
-    def get_stats(self, monitors):
-        tract_stats, _inside = self.tract_stats()
-        counted = list(self.inside(self.monitors()).values_list('name', flat=True))
-        county = (Region.objects.counties()
-            .filter(boundary__geometry__contains=self.geometry.centroid)
-            .values_list('name', flat=True).first())
-        nearest = None
-        if not counted:
-            here = to_radians(self.geometry.centroid)
-            candidates = [
-                (sphere_km(here, to_radians(position)), name)
-                for name, position in self.monitors().values_list('name', 'position')
-            ]
-            if candidates:
-                km, name = min(candidates)
-                nearest = {'name': name, 'km': round(km, 1)}
-        return {
-            'county': county_column((county or '').removesuffix(' County')),
-            'type': CoverageCommunity.TYPE_LABELS.get(self.region.type, self.region.type),
-            **tract_stats,
-            'monitors_total': len(monitors),
-            'monitors_active': sum(1 for m in monitors if m['status'] == 'Active'),
-            'monitors_inactive': sum(1 for m in monitors if m['status'] == 'Inactive'),
-            'monitors_hidden': sum(1 for m in monitors if m['status'] == 'Hidden'),
-            'monitors_sjvair': sum(1 for m in monitors if m['is_sjvair']),
-            'monitors': len(counted),
-            'per_10k': per_10k(len(counted), tract_stats['population']),
-            'nearest': nearest,
-        }
-
-    def get_map(self, monitors):
-        lmap = leaflet.LeafletMap(width=800, height=600, padding=20, zoom=12)
-        lmap.add(leaflet.Area(geometry=self.geometry, fill_opacity=0, border_color='#1f4e79', border_width=2.5))
-        _stats, inside = self.tract_stats()
-        if inside is not None:
-            for dac, geometry in inside.values_list('dac_sb535', 'boundary__geometry'):
-                lmap.add(leaflet.Area(
-                    geometry=geometry.simplify(0.0002, preserve_topology=True),
-                    fill_color='#c0392b' if dac else '#bdc3c7',
-                    fill_opacity=0.35 if dac else 0.15,
-                    border_color='#7f8c8d',
-                    border_width=0.5,
-                ))
-        for monitor in monitors:
-            lmap.add(leaflet.Marker(geometry=monitor['position'], size=10, fill_color=self.STATUS_COLORS[monitor['status']]))
-        return lmap.render()
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        monitors = context['rows']
-        back = self.request.GET.copy()
-        return {
-            **context,
-            **self.scope_context(),
-            'region': self.region,
-            'stats': self.get_stats(monitors),
-            'map': self.get_map(monitors),
-            'legend': [(label, color) for label, color in self.STATUS_COLORS.items()],
-            'back_url': reverse('reports:coverage-community') + ('?' + back.urlencode() if back else ''),
         }
 
 

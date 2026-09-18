@@ -2,12 +2,15 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-from django.contrib.gis.geos import Polygon, MultiPolygon
-from django.test import TestCase
+from django.contrib.gis.geos import Point, Polygon, MultiPolygon
+from django.test import RequestFactory, TestCase
+from django.urls import reverse
 from shapely.geometry import Polygon as ShapelyPolygon
 
+from camp.apps.accounts.models import User
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region, Boundary
+from camp.apps.regions.panels import MonitorsPanel, TractPanel, panels_for
 from camp.apps.regions.management.commands.import_mtrs import build_mtrs
 from camp.apps.regions.forecast_zones import (
     MIN_ACCEPTABLE_IOU,
@@ -224,3 +227,60 @@ class DeriveForecastZonesTests(TestCase):
         with patch('camp.apps.regions.forecast_zones.GROUND_CONTROL_COUNTIES', scrambled):
             with pytest.raises(RuntimeError, match='IoU'):
                 derive_forecast_zones(SVG_PATH)
+
+
+class RegionPanelTests(TestCase):
+    fixtures = ['regions.yaml', 'calenviroscreen.yaml']
+
+    def setUp(self):
+        self.user = User.objects.create_superuser(
+            email='admin@example.com', password='password', phone='+15595551234', full_name='Admin',
+        )
+        self.client.force_login(self.user)
+        self.request = RequestFactory().get('/')
+        self.request.user = self.user
+        self.tract = Region.objects.get(external_id='06019000101', type=Region.Type.TRACT)
+        self.district = Region.objects.get(type=Region.Type.SCHOOL_DISTRICT)
+        self.monitor = PurpleAir.objects.create(name='Downtown', sensor_id=1, position=Point(-119.79, 36.74), location='outside')
+
+    def test_panels_are_chosen_by_region_type(self):
+        assert [type(p) for p in panels_for(self.tract, self.request)] == [TractPanel]
+        assert [type(p) for p in panels_for(self.district, self.request)] == [MonitorsPanel]
+
+    def test_region_without_boundary_gets_no_panels(self):
+        region = Region.objects.create(name='Nowhere', slug='nowhere', type=Region.Type.TRACT, external_id='0')
+        assert panels_for(region, self.request) == []
+
+    def test_tract_panel_lists_ces_records_newest_first(self):
+        context = TractPanel(self.tract, self.request).get_context()
+        labels = [record['label'] for record in context['records']]
+        assert labels[0] == 'CalEnviroScreen 5.0 (2020 tracts)'
+        assert 'CalEnviroScreen 4.0 (2010 tracts)' in labels
+        fields = dict(context['records'][0]['fields'])
+        assert fields['Total Population'] == 4650
+        assert fields['SB535 DAC'] is True
+        assert 'DAC Category' in fields
+
+    def test_monitors_panel_lists_monitors_inside(self):
+        context = MonitorsPanel(self.district, self.request).get_context()
+        names = {row['name'] for row in context['rows']}
+        assert context['counts']['total'] == len(context['rows'])
+        # The fixture district is Fresno Unified; whether Downtown is inside depends on
+        # its real boundary, so only assert the shape here and the containment on a
+        # region we control.
+        square = Region.objects.create(name='Square', slug='square', type=Region.Type.CUSTOM, external_id='sq')
+        square.boundary = Boundary.objects.create(region=square, version='latest',
+            geometry=MultiPolygon(Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8))))
+        square.save()
+        context = MonitorsPanel(square, self.request).get_context()
+        assert [row['name'] for row in context['rows']] == ['Downtown']
+        assert context['rows'][0]['status'] == 'Inactive'
+        assert context['counts'] == {'total': 1, 'active': 0, 'inactive': 1, 'hidden': 0, 'sjvair': 0}
+        assert names is not None
+
+    def test_admin_change_page_renders_panels(self):
+        response = self.client.get(reverse('admin:regions_region_change', args=[self.tract.pk]))
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert '<h2>CalEnviroScreen</h2>' in content
+        assert 'CalEnviroScreen 5.0 (2020 tracts)' in content

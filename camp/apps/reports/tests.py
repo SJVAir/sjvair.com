@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -16,7 +16,9 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.qaqc.models import HealthCheck
 from camp.apps.regions.models import Boundary, Region
+from camp.apps.regions.panels import panels_for
 from camp.apps.reports.base import REPORTS
+from camp.apps.reports.panels import CommunityCoveragePanel, CountyCoveragePanel
 
 
 class StaffClientMixin:
@@ -546,12 +548,26 @@ class CoverageCommunityTests(StaffClientMixin, TestCase):
         # Fixture city regions (real Fresno etc.) are also listed; the two test places sort by population.
         assert rows[0]['population'] >= rows[1]['population']
 
-    def test_rows_link_to_detail_pages(self):
+    def test_rows_link_to_the_region_admin(self):
         rows, _ = self.rows()
         by_name = {row['name']: row for row in rows}
-        assert by_name['Testville']['detail_url'] == reverse('reports:coverage-community-detail', args=[self.testville.sqid])
+        assert by_name['Testville']['detail_url'] == reverse('admin:regions_region_change', args=[self.testville.pk])
         response = self.client.get(reverse('reports:coverage-community'))
         assert by_name['Testville']['detail_url'] in response.content.decode()
+
+    def test_county_islands_count_as_part_of_the_city(self):
+        # Holeyville is Testville's square with a hole punched in the middle;
+        # the monitor sits in the hole. For coverage the hole is filled.
+        outer = Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8))
+        hole = Polygon.from_bbox((-119.76, 36.74, -119.74, 36.76))
+        holey = Region.objects.create(name='Holeyville', slug='holeyville', type=Region.Type.CITY, external_id='9004')
+        boundary = Boundary.objects.create(region=holey, version='latest', geometry=MultiPolygon(Polygon(outer.exterior_ring, hole.exterior_ring)))
+        holey.boundary = boundary
+        holey.save()
+        rows, _ = self.rows()
+        row = {r['name']: r for r in rows}['Holeyville']
+        assert row['monitors'] == 1
+        assert row['population'] == 4650  # tract 1.01's centroid is in the hole too
 
     def test_county_type_and_population_filters(self):
         assert [r['name'] for r in self.rows(county='Kern')[0]] == []
@@ -630,7 +646,7 @@ class CoverageCommunityTests(StaffClientMixin, TestCase):
         assert reverse('reports:coverage-community') in response.content.decode()
 
 
-class CommunityDetailTests(StaffClientMixin, TestCase):
+class CommunityPanelTests(StaffClientMixin, TestCase):
     fixtures = ['regions.yaml', 'calenviroscreen.yaml']
 
     def setUp(self):
@@ -645,34 +661,30 @@ class CommunityDetailTests(StaffClientMixin, TestCase):
         touch(self.stale, timezone.now() - timedelta(days=3))
         touch(self.hidden, timezone.now() - timedelta(minutes=5))
 
-    def detail(self, region, **params):
-        response = self.client.get(reverse('reports:coverage-community-detail', args=[region.sqid]), params)
-        assert response.status_code == 200
-        return response
+    def panel(self, region, **params):
+        request = RequestFactory().get('/', params)
+        request.user = self.user
+        panels = [p for p in panels_for(region, request) if isinstance(p, CommunityCoveragePanel)]
+        assert len(panels) == 1
+        return panels[0].get_context()
 
     def test_stats_for_a_covered_place(self):
-        response = self.detail(self.testville)
-        stats = response.context['stats']
-        assert stats['county'] == 'Fresno'
-        assert stats['type'] == 'CDP'
-        assert stats['population'] == 4650
-        assert stats['tracts'] == 1
-        assert stats['dac_tracts'] == 1
-        assert stats['dac_population'] == 4650
-        assert stats['max_percentile'] == 89.2
-        assert stats['monitors_total'] == 3
-        assert stats['monitors_active'] == 1
-        assert stats['monitors_inactive'] == 1
-        assert stats['monitors_hidden'] == 1
-        assert stats['monitors_sjvair'] == 1
-        assert stats['monitors'] == 1  # counted under the default scope: active, not hidden
-        assert stats['per_10k'] == 2.15
-        assert stats['nearest'] is None
-        assert response.context['title'] == 'Testville'
+        context = self.panel(self.testville)
+        assert context['county'] == 'Fresno'
+        assert context['type_label'] == 'CDP'
+        assert context['tracts']['population'] == 4650
+        assert context['tracts']['tracts'] == 1
+        assert context['tracts']['dac_tracts'] == 1
+        assert context['tracts']['dac_population'] == 4650
+        assert context['tracts']['max_percentile'] == 89.2
+        assert context['counts'] == {'total': 3, 'active': 1, 'inactive': 1, 'hidden': 1, 'sjvair': 1}
+        assert context['monitors'] == 1  # default scope: active, not hidden
+        assert context['per_10k'] == 2.15
+        assert context['nearest'] is None
+        assert context['has_holes'] is False
 
-    def test_monitor_list_and_map(self):
-        response = self.detail(self.testville)
-        rows = {row['name']: row for row in response.context['rows']}
+    def test_monitor_rows(self):
+        rows = {row['name']: row for row in self.panel(self.testville)['rows']}
         assert set(rows) == {'Active PA', 'Stale PA', 'Hidden BAM'}
         assert rows['Active PA']['status'] == 'Active'
         assert rows['Stale PA']['status'] == 'Inactive'
@@ -680,29 +692,80 @@ class CommunityDetailTests(StaffClientMixin, TestCase):
         assert rows['Active PA']['host'] == 'Library'
         assert rows['Active PA']['type'] == 'PurpleAir'
         assert rows['Active PA']['admin_url'] == reverse('admin:purpleair_purpleair_change', args=[self.active.pk])
-        content = response.content.decode()
-        assert 'class="admin-leaflet-map"' in content
-        assert content.count('"kind": "marker"') == 3
-        assert content.count('"kind": "area"') == 2  # the place outline and its one tract
 
     def test_uncovered_place_reports_nearest_monitor(self):
-        response = self.detail(self.emptyville)
-        stats = response.context['stats']
-        assert stats['monitors'] == 0
-        assert stats['nearest']['name'] == 'Active PA'
-        assert 8.0 < stats['nearest']['km'] < 10.0
-        assert stats['per_10k'] == 0.0
+        context = self.panel(self.emptyville)
+        assert context['monitors'] == 0
+        assert context['nearest']['name'] == 'Active PA'
+        assert 8.0 < context['nearest']['km'] < 10.0
+        assert context['per_10k'] == 0.0
 
     def test_scope_toggles_change_counted_monitors(self):
-        response = self.detail(self.testville, include_inactive='1', include_hidden='1')
-        assert response.context['stats']['monitors'] == 3
-        response = self.detail(self.testville, sjvair_only='1')
-        assert response.context['stats']['monitors'] == 1
+        assert self.panel(self.testville, include_inactive='1', include_hidden='1')['monitors'] == 3
+        assert self.panel(self.testville, sjvair_only='1')['monitors'] == 1
+        links = {label: (url, on) for label, url, on in self.panel(self.testville, sjvair_only='1')['scope_links']}
+        assert links['SJVAir monitors only'][1] is True
+        assert 'sjvair_only' not in links['SJVAir monitors only'][0]  # clicking it turns it off
+        assert 'include_hidden=1' in links['Include hidden monitors'][0]
+        assert 'sjvair_only=1' in links['Include hidden monitors'][0]  # keeps the other toggle
 
-    def test_not_a_place_is_404(self):
-        county = Region.objects.counties().first()
-        response = self.client.get(reverse('reports:coverage-community-detail', args=[county.sqid]))
-        assert response.status_code == 404
+    def test_county_islands_are_inside(self):
+        outer = Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8))
+        hole = Polygon.from_bbox((-119.76, 36.74, -119.74, 36.76))
+        holey = Region.objects.create(name='Holeyville', slug='holeyville', type=Region.Type.CITY, external_id='9004')
+        boundary = Boundary.objects.create(region=holey, version='latest', geometry=MultiPolygon(Polygon(outer.exterior_ring, hole.exterior_ring)))
+        holey.boundary = boundary
+        holey.save()
+        context = self.panel(holey)
+        assert context['has_holes'] is True
+        assert context['monitors'] == 1  # Active PA sits in the hole
+        assert context['tracts']['population'] == 4650
+
+    def test_admin_change_page_renders_the_panel(self):
+        response = self.client.get(reverse('admin:regions_region_change', args=[self.testville.pk]))
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert '<h2>Coverage</h2>' in content
+        assert 'Active PA' in content
+        assert 'Nearest counted monitor' not in content
+        response = self.client.get(reverse('admin:regions_region_change', args=[self.emptyville.pk]))
+        assert 'Nearest counted monitor' in response.content.decode()
+
+
+class CountyPanelTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml', 'calenviroscreen.yaml']
+
+    def setUp(self):
+        super().setUp()
+        self.testville = make_place('Testville', Region.Type.CDP, (-119.8, 36.7, -119.7, 36.8), '9001')
+        self.emptyville = make_place('Emptyville', Region.Type.CITY, (-119.7, 36.7, -119.6, 36.8), '9002')
+        self.monitor = PurpleAir.objects.create(name='In Testville', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        touch(self.monitor, timezone.now() - timedelta(minutes=5))
+        self.fresno = Region.objects.counties().get(name='Fresno County')
+        self.kern = Region.objects.counties().get(name='Kern County')
+
+    def panel(self, region, **params):
+        request = RequestFactory().get('/', params)
+        request.user = self.user
+        panels = [p for p in panels_for(region, request) if isinstance(p, CountyCoveragePanel)]
+        assert len(panels) == 1
+        return panels[0].get_context()
+
+    def test_lists_the_communities_in_the_county(self):
+        context = self.panel(self.fresno)
+        names = {row['name']: row for row in context['communities']}
+        assert {'Testville', 'Emptyville'} <= set(names)
+        assert names['Testville']['monitors'] == 1
+        assert names['Emptyville']['monitors'] == 0
+        assert names['Emptyville']['detail_url'] == reverse('admin:regions_region_change', args=[self.emptyville.pk])
+        assert context['tiles']['uncovered'] >= 1
+        assert context['counts']['active'] == 1
+        assert 'Testville' not in {row['name'] for row in self.panel(self.kern)['communities']}
+
+    def test_admin_change_page_renders_the_panel(self):
+        response = self.client.get(reverse('admin:regions_region_change', args=[self.fresno.pk]))
+        assert response.status_code == 200
+        assert '<h2>Communities and coverage</h2>' in response.content.decode()
 
 
 class CoverageCommunityNoCESTests(StaffClientMixin, TestCase):

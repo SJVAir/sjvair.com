@@ -1,0 +1,27 @@
+{% load humanize %}
+{% include "admin/regions/panels/_scope_links.html" %}
+<table>
+    <caption>Communities</caption>
+    <tr><th>With a monitor</th><td>{{ tiles.covered|intcomma }}</td>
+        <th>Without a monitor</th><td>{{ tiles.uncovered|intcomma }}</td>
+        <th>Population without a monitor</th><td>{{ tiles.uncovered_population|intcomma }}{% if tiles.uncovered_pct is not None %} ({{ tiles.uncovered_pct }}%){% endif %}</td></tr>
+</table>
+<table class="wide">
+    <caption>{{ communities|length }} cities and census-designated places</caption>
+    <thead><tr><th>Place</th><th>Type</th><th>Population</th><th>Monitors</th><th>Per 10k</th><th>Nearest monitor</th></tr></thead>
+    <tbody>
+        {% for row in communities %}
+        <tr>
+            <th><a href="{{ row.detail_url }}">{{ row.name }}</a></th>
+            <td>{{ row.type }}</td>
+            <td>{{ row.population|intcomma }}</td>
+            <td>{{ row.monitors|intcomma }}</td>
+            <td>{{ row.per_10k|default_if_none:"—" }}</td>
+            <td>{% if row.nearest_km is not None %}{{ row.nearest_km }} km{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">No city or CDP regions in this county. Run the regions imports first.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% include "admin/regions/panels/_monitors.html" %}

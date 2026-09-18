@@ -279,17 +279,40 @@ the distance in km to the nearest counted monitor.
 - Every column header sorts: `?sort=<column>&dir=asc|desc`, clicking the
   active column flips it; rows with no value for the column sort last.
   Default is population descending.
-- Each place links to a detail page at `coverage-community/<sqid>/`
-  (`CommunityDetail`, staff-gated, not a registered report): a map of the
-  place outline, its CES tracts (DAC shaded) and every monitor inside
-  colored active/inactive/hidden; coverage numbers (population, counted
-  monitors under the same scope toggles, per 10k, nearest counted monitor
-  when uncovered); CES tract stats (count, DAC count, DAC population,
-  average and highest percentile); monitor counts by status; and the list
-  of monitors inside with admin links. Non-place regions 404.
-- Tiles: places with a monitor, places without, population living in
-  places without a monitor, and the share that is of the total.
-- No map in this batch.
+- Each place links to its Region admin change page, where type-specific
+  panels (below) show the detail. Containment for coverage uses the place
+  boundary with its holes filled (`camp.utils.gis.fill_holes`): a county
+  island inside a city is part of that community. Monitor counts and
+  tract-centroid assignment run in Python over spatial indexes
+  (shapely `STRtree`) from two queries, not per-place SQL.
+- Urban areas are excluded from the list (they overlap cities and CDPs)
+  but get the same panel on their own admin page.
+
+### Region admin panels
+
+`camp/apps/regions/panels.py` holds a registry of `Panel` classes keyed by
+region type; `RegionAdmin.change_view` passes `panels_for(region, request)`
+to `admin/regions/region/change_form.html`, which renders each panel's
+template under the fields. Apps register their own panels on import
+(`ReportsConfig.ready` imports `camp.apps.reports.panels`). Scope toggles on
+a panel are links (the admin change page cannot host a second form),
+built by `MonitorScope.toggle_links`, so the numbers agree with the
+Coverage by Community report under the same toggles.
+
+- **Coverage** (city, CDP, urban area; `camp.apps.reports.panels`):
+  population from CES tracts, counted monitors under the scope, per 10k,
+  nearest counted monitor when uncovered, CES tract stats (count, DAC
+  count, DAC population, average and highest percentile), monitor status
+  counts, and every monitor inside with admin links. Holes filled, with a
+  note when the boundary has any.
+- **Communities and coverage** (county): the Coverage by Community rows
+  for that county with tiles, plus the county's monitors.
+- **CalEnviroScreen** (tract; `camp.apps.regions.panels`): every CES4/CES5
+  record on the tract's boundaries, newest first, as field tables, plus
+  the monitors inside.
+- **Monitors inside** (zipcode, school district, legislative districts,
+  protected areas, land use, place, custom, MTRS): status counts and the
+  monitor list.
 
 ### 6. Data Completeness (ops)
 

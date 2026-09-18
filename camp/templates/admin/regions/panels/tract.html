@@ -1,0 +1,12 @@
+{% load humanize %}
+{% for record in records %}
+<table>
+    <caption>{{ record.label }}</caption>
+    {% for label, value in record.fields %}
+    <tr><th>{{ label }}</th><td>{{ value|default_if_none:"—" }}</td></tr>
+    {% endfor %}
+</table>
+{% empty %}
+<p>No CalEnviroScreen records for this tract. Run the CES imports first.</p>
+{% endfor %}
+{% include "admin/regions/panels/_monitors.html" %}

@@ -1,4 +1,4 @@
-from django.contrib.gis.geos import GEOSGeometry, MultiPolygon as GEOSMultiPolygon
+from django.contrib.gis.geos import GEOSGeometry, MultiPolygon as GEOSMultiPolygon, Polygon as GEOSPolygon
 from shapely.geometry import Polygon, MultiPolygon
 
 # Common EPSG codes
@@ -39,3 +39,20 @@ def to_multipolygon(geom, srid=4326):
         return make_valid(geom)
     else:
         raise TypeError(f'Unsupported geometry type: {geom.geom_type}')
+
+
+def fill_holes(geometry: GEOSGeometry) -> GEOSMultiPolygon:
+    """
+    The geometry with every interior ring removed: a city's county islands
+    become part of the city. Accepts a GEOS Polygon or MultiPolygon and
+    returns a MultiPolygon with the same SRID.
+    """
+    polygons = [geometry] if geometry.geom_type == 'Polygon' else list(geometry)
+    filled = GEOSMultiPolygon([GEOSPolygon(polygon.exterior_ring.clone()) for polygon in polygons])
+    filled.srid = geometry.srid
+    return filled
+
+
+def has_holes(geometry: GEOSGeometry) -> bool:
+    polygons = [geometry] if geometry.geom_type == 'Polygon' else list(geometry)
+    return any(polygon.num_interior_rings for polygon in polygons)
