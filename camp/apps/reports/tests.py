@@ -11,7 +11,7 @@ from camp.apps.entries.models import PM25
 from camp.apps.monitors.airgradient.models import AirGradient
 from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.cimis.models import CIMIS
-from camp.apps.monitors.models import Host, LatestEntry, Monitor
+from camp.apps.monitors.models import Host, LatestEntry
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.monitors.vozbox.models import VOZBox
 from camp.apps.qaqc.models import HealthCheck
@@ -547,15 +547,17 @@ class CoverageCommunityTests(StaffClientMixin, TestCase):
         assert rows[0]['population'] >= rows[1]['population']
 
     def test_uncovered_filter_and_name_sort(self):
-        rows, _ = self.rows(uncovered='1')
+        rows, context = self.rows(uncovered='1')
         assert 'Testville' not in {row['name'] for row in rows}
         assert 'Emptyville' in {row['name'] for row in rows}
+        # The tiles still describe every place, not just the filtered rows.
+        assert context['tiles']['covered'] == 2
+        assert context['tiles']['uncovered'] == 1
         rows, _ = self.rows(sort='name')
         names = [row['name'] for row in rows]
         assert names == sorted(names)
 
     def test_inactive_monitor_does_not_cover(self):
-        Monitor.objects.filter(pk=self.monitor.pk)  # keep import used
         LatestEntry.objects.filter(monitor=self.monitor).update(timestamp=timezone.now() - timedelta(days=2))
         rows, context = self.rows()
         assert {row['name']: row for row in rows}['Testville']['monitors'] == 0

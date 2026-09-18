@@ -472,7 +472,6 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
                 'sqid': place['sqid'],
             })
 
-        # The tiles describe every place, even when ?uncovered=1 narrows the table.
         self.all_rows = all_rows
         rows = [row for row in all_rows if not (self.uncovered and row['monitors'])]
 
@@ -482,8 +481,10 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
             rows.sort(key=lambda row: (-row['population'], row['name']))
         return rows
 
-    def get_tiles(self, rows):
-        all_rows = rows if not self.uncovered else self.all_rows
+    def get_tiles(self):
+        # Always the full set: the tiles describe every place, even when
+        # ?uncovered=1 narrows the table.
+        all_rows = self.all_rows
         covered = sum(1 for row in all_rows if row['monitors'])
         uncovered_population = sum(row['population'] for row in all_rows if not row['monitors'])
         total_population = sum(row['population'] for row in all_rows)
@@ -501,7 +502,7 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
             **self.scope_context(),
             'uncovered': self.uncovered,
             'sort': self.sort,
-            'tiles': self.get_tiles(context['rows']),
+            'tiles': self.get_tiles(),
         }
 
 
