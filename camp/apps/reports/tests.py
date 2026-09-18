@@ -546,6 +546,54 @@ class CoverageCommunityTests(StaffClientMixin, TestCase):
         # Fixture city regions (real Fresno etc.) are also listed; the two test places sort by population.
         assert rows[0]['population'] >= rows[1]['population']
 
+    def test_rows_link_to_detail_pages(self):
+        rows, _ = self.rows()
+        by_name = {row['name']: row for row in rows}
+        assert by_name['Testville']['detail_url'] == reverse('reports:coverage-community-detail', args=[self.testville.sqid])
+        response = self.client.get(reverse('reports:coverage-community'))
+        assert by_name['Testville']['detail_url'] in response.content.decode()
+
+    def test_county_type_and_population_filters(self):
+        assert [r['name'] for r in self.rows(county='Kern')[0]] == []
+        names = {r['name'] for r in self.rows(county='Fresno')[0]}
+        assert {'Testville', 'Emptyville'} <= names
+        assert {r['name'] for r in self.rows(place_type='cdp')[0]} == {'Testville'}
+        assert 'Emptyville' in {r['name'] for r in self.rows(place_type='city')[0]}
+        rows, context = self.rows(min_population='4000')
+        assert 'Emptyville' not in {r['name'] for r in rows}
+        assert 'Testville' in {r['name'] for r in rows}
+        # Tiles follow the scoping filters (but not the uncovered toggle).
+        assert context['tiles']['uncovered'] == 0
+        assert self.rows(min_population='abc')[1]['min_population'] == 0
+
+    def test_column_sorting(self):
+        rows, context = self.rows(sort='monitors', dir='desc')
+        assert rows[0]['name'] == 'Testville' or rows[0]['monitors'] >= rows[-1]['monitors']
+        assert context['sort'] == 'monitors' and context['direction'] == 'desc'
+        rows, _ = self.rows(sort='name', dir='asc')
+        names = [r['name'] for r in rows]
+        assert names == sorted(names)
+        rows, _ = self.rows(sort='name', dir='desc')
+        assert [r['name'] for r in rows] == sorted(names, reverse=True)
+        # Unknown sort/dir fall back to population descending.
+        rows, context = self.rows(sort='bogus', dir='sideways')
+        assert context['sort'] == 'population' and context['direction'] == 'desc'
+        assert rows[0]['population'] >= rows[-1]['population']
+        # None values (covered places have no nearest distance) always sort last.
+        rows, _ = self.rows(sort='nearest_km', dir='asc')
+        assert rows[-1]['nearest_km'] is None
+        rows, _ = self.rows(sort='nearest_km', dir='desc')
+        assert rows[-1]['nearest_km'] is None
+
+    def test_header_links_carry_filters_and_flip_direction(self):
+        response = self.client.get(reverse('reports:coverage-community'), {'county': 'Fresno', 'sort': 'population', 'dir': 'desc'})
+        columns = {c['key']: c for c in response.context['columns']}
+        assert columns['population']['active'] is True
+        assert 'county=Fresno' in columns['population']['url']
+        assert 'dir=asc' in columns['population']['url']  # clicking the active column flips it
+        assert 'dir=asc' in columns['name']['url']
+        assert 'dir=desc' in columns['monitors']['url']  # numeric columns start descending
+
     def test_uncovered_filter_and_name_sort(self):
         rows, context = self.rows(uncovered='1')
         assert 'Testville' not in {row['name'] for row in rows}
@@ -580,6 +628,81 @@ class CoverageCommunityTests(StaffClientMixin, TestCase):
     def test_listed_on_index(self):
         response = self.client.get(reverse('reports:index'))
         assert reverse('reports:coverage-community') in response.content.decode()
+
+
+class CommunityDetailTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml', 'calenviroscreen.yaml']
+
+    def setUp(self):
+        super().setUp()
+        self.testville = make_place('Testville', Region.Type.CDP, (-119.8, 36.7, -119.7, 36.8), '9001')
+        self.emptyville = make_place('Emptyville', Region.Type.CITY, (-119.7, 36.7, -119.6, 36.8), '9002')
+        host = Host.objects.create(name='Library')
+        self.active = PurpleAir.objects.create(name='Active PA', sensor_id=1, position=Point(-119.75, 36.75), location='outside', is_sjvair=True, host=host)
+        self.stale = PurpleAir.objects.create(name='Stale PA', sensor_id=2, position=Point(-119.76, 36.76), location='outside')
+        self.hidden = BAM1022.objects.create(name='Hidden BAM', position=Point(-119.77, 36.77), location='outside', is_hidden=True)
+        touch(self.active, timezone.now() - timedelta(minutes=5))
+        touch(self.stale, timezone.now() - timedelta(days=3))
+        touch(self.hidden, timezone.now() - timedelta(minutes=5))
+
+    def detail(self, region, **params):
+        response = self.client.get(reverse('reports:coverage-community-detail', args=[region.sqid]), params)
+        assert response.status_code == 200
+        return response
+
+    def test_stats_for_a_covered_place(self):
+        response = self.detail(self.testville)
+        stats = response.context['stats']
+        assert stats['county'] == 'Fresno'
+        assert stats['type'] == 'CDP'
+        assert stats['population'] == 4650
+        assert stats['tracts'] == 1
+        assert stats['dac_tracts'] == 1
+        assert stats['dac_population'] == 4650
+        assert stats['max_percentile'] == 89.2
+        assert stats['monitors_total'] == 3
+        assert stats['monitors_active'] == 1
+        assert stats['monitors_inactive'] == 1
+        assert stats['monitors_hidden'] == 1
+        assert stats['monitors_sjvair'] == 1
+        assert stats['monitors'] == 1  # counted under the default scope: active, not hidden
+        assert stats['per_10k'] == 2.15
+        assert stats['nearest'] is None
+        assert response.context['title'] == 'Testville'
+
+    def test_monitor_list_and_map(self):
+        response = self.detail(self.testville)
+        rows = {row['name']: row for row in response.context['rows']}
+        assert set(rows) == {'Active PA', 'Stale PA', 'Hidden BAM'}
+        assert rows['Active PA']['status'] == 'Active'
+        assert rows['Stale PA']['status'] == 'Inactive'
+        assert rows['Hidden BAM']['status'] == 'Hidden'
+        assert rows['Active PA']['host'] == 'Library'
+        assert rows['Active PA']['type'] == 'PurpleAir'
+        assert rows['Active PA']['admin_url'] == reverse('admin:purpleair_purpleair_change', args=[self.active.pk])
+        content = response.content.decode()
+        assert 'class="admin-leaflet-map"' in content
+        assert content.count('"kind": "marker"') == 3
+        assert content.count('"kind": "area"') == 2  # the place outline and its one tract
+
+    def test_uncovered_place_reports_nearest_monitor(self):
+        response = self.detail(self.emptyville)
+        stats = response.context['stats']
+        assert stats['monitors'] == 0
+        assert stats['nearest']['name'] == 'Active PA'
+        assert 8.0 < stats['nearest']['km'] < 10.0
+        assert stats['per_10k'] == 0.0
+
+    def test_scope_toggles_change_counted_monitors(self):
+        response = self.detail(self.testville, include_inactive='1', include_hidden='1')
+        assert response.context['stats']['monitors'] == 3
+        response = self.detail(self.testville, sjvair_only='1')
+        assert response.context['stats']['monitors'] == 1
+
+    def test_not_a_place_is_404(self):
+        county = Region.objects.counties().first()
+        response = self.client.get(reverse('reports:coverage-community-detail', args=[county.sqid]))
+        assert response.status_code == 404
 
 
 class CoverageCommunityNoCESTests(StaffClientMixin, TestCase):

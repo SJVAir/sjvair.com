@@ -273,8 +273,20 @@ the distance in km to the nearest counted monitor.
   A monitor counts for a place when its position is inside the boundary.
 - Nearest-monitor distance uses `Distance` between the place centroid and
   the nearest counted monitor, one indexed query per uncovered place.
-- `?uncovered=1` shows only places with zero monitors. Default sort is
-  population descending; `?sort=name` sorts alphabetically.
+- Filters: `?county=` (the place's county), `?place_type=city|cdp`,
+  `?min_population=`, and `?uncovered=1` (only places with zero monitors).
+  The tiles follow the scoping filters but ignore `uncovered`.
+- Every column header sorts: `?sort=<column>&dir=asc|desc`, clicking the
+  active column flips it; rows with no value for the column sort last.
+  Default is population descending.
+- Each place links to a detail page at `coverage-community/<sqid>/`
+  (`CommunityDetail`, staff-gated, not a registered report): a map of the
+  place outline, its CES tracts (DAC shaded) and every monitor inside
+  colored active/inactive/hidden; coverage numbers (population, counted
+  monitors under the same scope toggles, per 10k, nearest counted monitor
+  when uncovered); CES tract stats (count, DAC count, DAC population,
+  average and highest percentile); monitor counts by status; and the list
+  of monitors inside with admin links. Non-place regions 404.
 - Tiles: places with a monitor, places without, population living in
   places without a monitor, and the share that is of the total.
 - No map in this batch.

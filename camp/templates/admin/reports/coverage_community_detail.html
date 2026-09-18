@@ -1,0 +1,88 @@
+{% extends 'admin/reports/base.html' %}
+{% load humanize %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'reports:index' %}">Reports</a>
+    &rsaquo; <a href="{{ back_url }}">Coverage by Community</a>
+    &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block filters %}
+<label><input type="checkbox" name="sjvair_only" value="1" {% if sjvair_only %}checked{% endif %} onchange="this.form.submit()"> SJVAir monitors only</label>
+<label><input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %} onchange="this.form.submit()"> Include hidden monitors</label>
+<label><input type="checkbox" name="include_inactive" value="1" {% if include_inactive %}checked{% endif %} onchange="this.form.submit()"> Include inactive monitors</label>
+{% endblock %}
+
+{% block report %}
+<p>{{ stats.type }} in {{ stats.county }} County. Counted monitors follow the toggles above, the same way the list page counts them.</p>
+
+<div class="report-map">
+    {{ map }}
+    <ul class="report-legend">
+        <li><span class="swatch" style="border: 2.5px solid #1f4e79;"></span>{{ title }}</li>
+        <li><span class="swatch" style="background: rgba(192, 57, 43, 0.35);"></span>SB535 DAC tract</li>
+        <li><span class="swatch" style="background: rgba(189, 195, 199, 0.15);"></span>Other tract</li>
+        {% for label, color in legend %}
+        <li><span class="swatch" style="background: {{ color }}; border-radius: 50%;"></span>{{ label }} monitor</li>
+        {% endfor %}
+    </ul>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Coverage</caption>
+        <tr><th>Population</th><td>{{ stats.population|intcomma }}</td></tr>
+        <tr><th>Counted monitors</th><td>{{ stats.monitors|intcomma }}</td></tr>
+        <tr><th>Monitors per 10k residents</th><td>{{ stats.per_10k|default_if_none:"—" }}</td></tr>
+        {% if stats.nearest %}
+        <tr><th>Nearest counted monitor</th><td>{{ stats.nearest.name }}, {{ stats.nearest.km }} km from the center</td></tr>
+        {% endif %}
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>CalEnviroScreen tracts inside</caption>
+        <tr><th>Tracts</th><td>{{ stats.tracts|intcomma }}</td></tr>
+        <tr><th>SB535 DAC tracts</th><td>{{ stats.dac_tracts|intcomma }}</td></tr>
+        <tr><th>Population in DAC tracts</th><td>{{ stats.dac_population|intcomma }}</td></tr>
+        <tr><th>CES percentile, average</th><td>{{ stats.avg_percentile|default_if_none:"—" }}</td></tr>
+        <tr><th>CES percentile, highest</th><td>{{ stats.max_percentile|default_if_none:"—" }}</td></tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Monitors inside the boundary</caption>
+        <tr><th>Total</th><td>{{ stats.monitors_total|intcomma }}</td></tr>
+        <tr><th>Active (last hour)</th><td>{{ stats.monitors_active|intcomma }}</td></tr>
+        <tr><th>Inactive</th><td>{{ stats.monitors_inactive|intcomma }}</td></tr>
+        <tr><th>Hidden</th><td>{{ stats.monitors_hidden|intcomma }}</td></tr>
+        <tr><th>SJVAir-owned</th><td>{{ stats.monitors_sjvair|intcomma }}</td></tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>{{ rows|length }} monitor{{ rows|length|pluralize }} inside {{ title }}</caption>
+        <thead><tr><th>Monitor</th><th>Type</th><th>Status</th><th>Last seen</th><th>Host</th><th>SJVAir</th></tr></thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <th>{% if row.admin_url %}<a href="{{ row.admin_url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</th>
+                <td>{{ row.type }}</td>
+                <td>{{ row.status }}</td>
+                <td>{% if row.last_seen %}{{ row.last_seen|date:"Y-m-d H:i" }}{% else %}&mdash;{% endif %}</td>
+                <td>{{ row.host }}</td>
+                <td>{% if row.is_sjvair %}yes{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6">No monitors inside this boundary.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
