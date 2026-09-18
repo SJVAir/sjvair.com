@@ -1,0 +1,93 @@
+{% extends 'admin/reports/base.html' %}
+{% load humanize %}
+
+{% block filters %}
+<label>Coverage radius (m) <input type="number" name="radius" value="{{ radius }}" min="0" step="100"></label>
+<label><input type="checkbox" name="sjvair_only" value="1" {% if sjvair_only %}checked{% endif %}> SJVAir monitors only</label>
+<label><input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %}> Include hidden monitors</label>
+<label><input type="checkbox" name="include_inactive" value="1" {% if include_inactive %}checked{% endif %}> Include inactive monitors (no data in the last hour)</label>
+<button type="submit">Apply</button>
+{% endblock %}
+
+{% block report %}
+{% if map %}
+<div class="report-map">
+    {{ map }}
+    <ul class="report-legend">
+        <li><span class="swatch" style="background: rgba(192, 57, 43, 0.35);"></span>SB535 DAC tract</li>
+        <li><span class="swatch" style="background: rgba(189, 195, 199, 0.15);"></span>Other tract</li>
+        <li><span class="swatch" style="background: #1f4e79; border-radius: 50%;"></span>Monitor</li>
+        <li><span class="swatch" style="border: 1.5px solid #2c3e50;"></span>County</li>
+    </ul>
+</div>
+{% endif %}
+
+{% if not ces_version %}
+<p class="errornote">No CalEnviroScreen data loaded. Run the CES import first.</p>
+{% else %}
+<p>Source: {{ ces_version }}. A tract counts as covered when any part of it comes within {{ radius|intcomma }} m of a monitor; its whole population is then counted.</p>
+{% endif %}
+
+<div class="module">
+    <table>
+        <caption>By county</caption>
+        <thead>
+            <tr>
+                <th>County</th><th>Monitors</th><th>Population</th><th>Per 10k</th>
+                <th>DAC tracts</th><th>Monitors in DAC</th><th>DAC population</th><th>DAC pop. in covered tracts</th><th>Covered %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            {% if not forloop.last %}
+            <tr>
+                <th>{{ row.county }}</th>
+                <td>{{ row.monitors|intcomma }}</td>
+                <td>{{ row.population|intcomma }}</td>
+                <td>{{ row.per_10k|default_if_none:"—" }}</td>
+                <td>{{ row.dac_tracts|intcomma }}</td>
+                <td>{{ row.dac_monitors|intcomma }}</td>
+                <td>{{ row.dac_population|intcomma }}</td>
+                <td>{{ row.dac_population_covered|intcomma }}</td>
+                <td>{{ row.dac_covered_pct|default_if_none:"—" }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+        {% with total=rows|last %}
+        <tfoot>
+            <tr>
+                <th>{{ total.county }}</th>
+                <td>{{ total.monitors|intcomma }}</td>
+                <td>{{ total.population|intcomma }}</td>
+                <td>{{ total.per_10k|default_if_none:"—" }}</td>
+                <td>{{ total.dac_tracts|intcomma }}</td>
+                <td>{{ total.dac_monitors|intcomma }}</td>
+                <td>{{ total.dac_population|intcomma }}</td>
+                <td>{{ total.dac_population_covered|intcomma }}</td>
+                <td>{{ total.dac_covered_pct|default_if_none:"—" }}</td>
+            </tr>
+        </tfoot>
+        {% endwith %}
+    </table>
+</div>
+
+<div class="module">
+    <p>Monitors are placed in a tract by position; county rows use each monitor's county field.</p>
+    <table>
+        <caption>By CES score percentile</caption>
+        <thead><tr><th>Percentile</th><th>Tracts</th><th>Population</th><th>Monitors</th><th>Per 10k</th></tr></thead>
+        <tbody>
+            {% for row in percentile_bands %}
+            <tr>
+                <th>{{ row.band }}</th>
+                <td>{{ row.tracts|intcomma }}</td>
+                <td>{{ row.population|intcomma }}</td>
+                <td>{{ row.monitors|intcomma }}</td>
+                <td>{{ row.per_10k|default_if_none:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends 'admin/base_site.html' %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    &rsaquo; Reports
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <div class="module">
+        <table>
+            <caption>Reports</caption>
+            {% for report in reports %}
+            <tr>
+                <td>
+                    <h3><a href="{% url 'reports:'|add:report.slug %}">{{ report.title }}</a></h3>
+                    <p>{{ report.description }}</p>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td>No reports registered.</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+{% endblock %}

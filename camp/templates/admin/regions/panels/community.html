@@ -1,0 +1,22 @@
+{% load humanize %}
+<p>{{ type_label }} in {{ county }} County.{% if has_holes %} This boundary has holes (county islands); for coverage they count as part of the community.{% endif %}</p>
+{% include "admin/regions/panels/_scope_links.html" %}
+<div class="panel-stats">
+<table>
+    <caption>Coverage</caption>
+    <tr><th>Population</th><td>{{ tracts.population|intcomma }}</td></tr>
+    <tr><th>Counted monitors</th><td>{{ monitors|intcomma }}</td></tr>
+    <tr><th>Monitors per 10k residents</th><td>{{ per_10k|default_if_none:"—" }}</td></tr>
+    {% if nearest %}<tr><th>Nearest counted monitor</th><td>{{ nearest.name }}, {{ nearest.km }} km from the center</td></tr>{% endif %}
+</table>
+<table>
+    <caption>CalEnviroScreen tracts inside</caption>
+    <tr><th>Tracts</th><td>{{ tracts.tracts|intcomma }}</td></tr>
+    <tr><th>SB535 DAC tracts</th><td>{{ tracts.dac_tracts|intcomma }}</td></tr>
+    <tr><th>Population in DAC tracts</th><td>{{ tracts.dac_population|intcomma }}</td></tr>
+    <tr><th>CES percentile, average</th><td>{{ tracts.avg_percentile|default_if_none:"—" }}</td></tr>
+    <tr><th>CES percentile, highest</th><td>{{ tracts.max_percentile|default_if_none:"—" }}</td></tr>
+</table>
+{% include "admin/regions/panels/_monitor_counts.html" %}
+</div>
+{% include "admin/regions/panels/_monitor_list.html" %}

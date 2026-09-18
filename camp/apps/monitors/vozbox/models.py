@@ -80,7 +80,8 @@ class VOZBox(Monitor):
     class Meta:
         verbose_name = 'VOZbox'
 
-    def supports_health_checks(self):
+    @classmethod
+    def health_checks_enabled(cls):
         # Dual-channel health checks assume two identical PM2.5 sensors;
         # the Plantower/Sensirion pair here isn't one. See ENTRY_CONFIG.
         return False

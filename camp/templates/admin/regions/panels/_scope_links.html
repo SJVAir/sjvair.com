@@ -1,0 +1,3 @@
+<p class="scope-links">Counted monitors:
+    {% for label, url, on in scope_links %}<a href="{{ url }}" class="{% if on %}is-on{% endif %}">{{ label }}</a>{% endfor %}
+</p>

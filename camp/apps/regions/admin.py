@@ -8,6 +8,7 @@ from django.utils.safestring import mark_safe
 from camp.apps.entries import models as entry_models
 from camp.apps.entries.levels import _blend_hex
 from camp.apps.regions.models import Region, Boundary
+from camp.apps.regions.panels import panels_for
 from camp.utils import leaflet
 from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
 
@@ -88,6 +89,16 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
             .with_monitor_count()
         )
         return queryset
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        # Type-specific detail panels (camp.apps.regions.panels) render below
+        # the fields; see admin/regions/region/change_form.html.
+        region = self.get_object(request, object_id)
+        extra_context = {
+            **(extra_context or {}),
+            'panels': panels_for(region, request) if region is not None else [],
+        }
+        return super().change_view(request, object_id, form_url, extra_context)
 
     def monitor_count(self, instance):
         return instance.monitor_count

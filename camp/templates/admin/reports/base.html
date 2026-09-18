@@ -1,0 +1,57 @@
+{% extends 'admin/base_site.html' %}
+{% load i18n static %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'js/admin/leaflet/leaflet.css' %}">
+    <link rel="stylesheet" href="{% static 'js/admin/leaflet-maps.css' %}">
+    <style>
+        .report-map { margin: 0 0 20px; }
+        .report-map .admin-leaflet-map { max-width: 100%; }
+        .report-legend { list-style: none; padding: 0; margin: 8px 0 0; }
+        .report-legend li { display: inline-block; margin-right: 16px; }
+        .report-legend .swatch {
+            display: inline-block; width: 12px; height: 12px; margin-right: 4px;
+            border: 1px solid #7f8c8d; vertical-align: middle;
+        }
+        /* The admin stylesheet styles tfoot cells like header cells (small,
+           quiet). Match the body cells instead and just make them bold. */
+        #content-main tfoot th,
+        #content-main tfoot td {
+            color: var(--body-fg);
+            font-size: 0.8125rem;
+            font-weight: bold;
+            padding: 8px;
+            vertical-align: top;
+            background: transparent;
+            border-top: 2px solid var(--border-color);
+            border-bottom: none;
+        }
+    </style>
+{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script src="{% static 'js/admin/leaflet/leaflet.js' %}"></script>
+    <script src="{% static 'js/admin/leaflet-maps.js' %}"></script>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    &rsaquo; <a href="{% url 'reports:index' %}">Reports</a>
+    &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    {% if report.description %}<p>{{ report.description }}</p>{% endif %}
+
+    <form method="get" class="report-filters">
+        {% block filters %}{% endblock %}
+    </form>
+
+    {% block report %}{% endblock %}
+</div>
+{% endblock %}

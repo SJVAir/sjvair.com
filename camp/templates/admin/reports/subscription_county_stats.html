@@ -1,0 +1,25 @@
+{% extends 'admin/reports/base.html' %}
+{% load humanize %}
+
+{% block report %}
+<table>
+    <thead>
+        <tr>
+            <th>County</th>
+            <th>Total Monitors</th>
+            <th>Monitors with Subscription</th>
+            <th>Total Subscriptions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+        <tr>
+            <th>{{ row.county }}</th>
+            <td>{{ row.total_monitors|intcomma }}</td>
+            <td>{{ row.subscription_monitors|intcomma }}</td>
+            <td>{{ row.total_subscriptions|intcomma }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

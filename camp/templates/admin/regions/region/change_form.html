@@ -1,0 +1,30 @@
+{% extends "admin/change_form.html" %}
+
+{% block after_field_sets %}
+{{ block.super }}
+{% for panel in panels %}
+<fieldset class="module aligned region-panel">
+    <h2>{{ panel.title }}</h2>
+    <div class="form-row">
+        {{ panel.render }}
+    </div>
+</fieldset>
+{% endfor %}
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .region-panel .form-row { display: block; }
+    .region-panel table { width: auto; margin-bottom: 12px; }
+    .region-panel .panel-stats { display: flex; flex-wrap: wrap; gap: 0 24px; align-items: flex-start; }
+    .region-panel table.wide { width: 100%; }
+    .region-panel caption { text-align: left; }
+    .region-panel details { margin-bottom: 12px; }
+    .region-panel summary { cursor: pointer; color: var(--link-fg); margin-bottom: 6px; }
+    .region-panel .scope-links a { margin-right: 12px; }
+    .region-panel .scope-links a.is-on { font-weight: bold; }
+    .region-panel .scope-links a.is-on::before { content: "\2611\00a0"; }
+    .region-panel .scope-links a:not(.is-on)::before { content: "\2610\00a0"; }
+</style>
+{% endblock %}

@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from unittest.mock import patch
 
 from camp.apps.monitors.airgradient.api import AirGradientAPI
@@ -26,6 +26,16 @@ class HealthCheckSupportTests(TestCase):
         f = AirGradient.health_check_queryset_filter()
         assert f.get('airgradient__isnull') is False
         assert f.get('airgradient__device') == 'O-1PP'
+
+    def test_type_queryset_filter_has_no_device_condition(self):
+        assert AirGradient.type_queryset_filter() == {'airgradient__isnull': False}
+
+    @override_settings(MONITOR_ENABLED_TYPES=['airgradient'])
+    def test_get_public_includes_single_channel(self):
+        # Enabled-type filtering is about the type, not health-check eligibility.
+        self.make_monitor('O-1PS')
+        self.make_monitor('O-1PP')
+        assert Monitor.objects.get_queryset().get_public().count() == 2
 
     def test_get_for_health_checks_includes_dual_channel(self):
         self.make_monitor('O-1PP')

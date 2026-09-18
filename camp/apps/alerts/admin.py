@@ -1,8 +1,8 @@
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, reverse_lazy
+from django.views.generic import RedirectView
 
 from .models import Subscription, Alert
-from .views import SubscriptionCountyStats
 
 
 class SubscriptionInline(admin.TabularInline):
@@ -20,9 +20,11 @@ class SubscriptionAdmin(admin.ModelAdmin):
     def get_urls(self):
         return [
             path(
-                "county-stats/",
-                self.admin_site.admin_view(SubscriptionCountyStats.as_view()),
-                name=f"alerts_subscription_county_stats",
+                'county-stats/',
+                self.admin_site.admin_view(
+                    RedirectView.as_view(url=reverse_lazy('reports:subscription-county-stats'))
+                ),
+                name='alerts_subscription_county_stats',
             ),
             *super().get_urls(),
         ]
