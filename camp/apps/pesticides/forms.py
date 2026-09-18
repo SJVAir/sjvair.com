@@ -83,8 +83,8 @@ class NoticeFilterForm(forms.Form):
 
 
 class RecordsFilterForm(forms.Form):
-    start = forms.DateField(label=_('Start date'), required=False)
-    end = forms.DateField(label=_('End date'), required=False)
+    start = forms.DateField(label=_('Start date'), required=False, widget=forms.DateInput(attrs={'type': 'date', 'class': 'input'}, format='%Y-%m-%d'))
+    end = forms.DateField(label=_('End date'), required=False, widget=forms.DateInput(attrs={'type': 'date', 'class': 'input'}, format='%Y-%m-%d'))
     county = forms.ChoiceField(label=_('County'), required=False, choices=[('', _('Any'))])
     method = forms.ChoiceField(
         label=_('Method'),
