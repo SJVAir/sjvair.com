@@ -72,6 +72,14 @@ def import_monitor_map(ctx, mode):
     ctx.run(f'bash ./scripts/import-monitor-map.sh {mode}')
 
 
+@task
+def vendor(ctx):
+    """Copy browser-served yarn packages into dist/ (git-ignored)."""
+    mkdir(path('dist'))
+    import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
+    import_node_module(ctx, 'htmx.org/dist', 'htmx')
+
+
 @task()
 def build(ctx, mode='production'):
     # Directory prep
@@ -79,7 +87,7 @@ def build(ctx, mode='production'):
     mkdir(path('dist'))
 
     import_monitor_map(ctx, mode)
-    import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
+    vendor(ctx)
     styles(ctx)
     collectstatic(ctx)
     optimize_images(ctx)

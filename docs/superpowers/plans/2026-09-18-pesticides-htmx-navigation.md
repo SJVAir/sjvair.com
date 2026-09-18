@@ -6,7 +6,7 @@
 
 **Architecture:** htmx `hx-boost` on the explorer wrapper. Boosted requests fetch the same full page the server already renders; `hx-select` pulls out the explorer region (hero + breadcrumbs + content) and swaps it in place, `hx-push-url` updates the address bar, and htmx sets the document title from the response. No server changes to rendering. Our two component scripts (section map, find-your-area) initialise on `htmx:load` as well as on page load, and history navigation refetches rather than restoring a cached snapshot (Leaflet-generated DOM must not be re-hydrated from a snapshot). Filter forms auto-submit on change.
 
-**Tech Stack:** htmx 2.x vendored under `assets/js/vendor/` (no build step), Django templates, plain ES2017.
+**Tech Stack:** htmx 2.x installed with yarn and copied into `dist/htmx/` by `invoke vendor` (part of `invoke build`; no bundler), Django templates, plain ES2017.
 
 **Spec:** `docs/superpowers/specs/2026-09-16-pesticides-explorer-v2-design.md` (cross-cutting: URLs are the only state; no new framework or build step). Derek 2026-09-18: "constant whole page refreshes … using the history api and updating the url so everything is transparent to the user and still linkable" — "I was just gonna mention htmx. I'm down for it."
 
@@ -22,7 +22,7 @@
 
 | File | Responsibility |
 |---|---|
-| `assets/js/vendor/htmx.min.js` | vendored htmx 2.x (copied from `node_modules/htmx.org/dist/htmx.min.js` after `yarn add htmx.org`) |
+| `tasks.py` | `vendor` task copies `node_modules/htmx.org/dist` to `dist/htmx/` (run by `invoke build`) |
 | `camp/templates/pesticides/base.html` | `#explorer` wrapper with the boost attributes around hero + breadcrumbs + content; htmx script tag; config |
 | `assets/js/pesticides/explorer.js` | htmx config (`historyCacheSize = 0`, `scrollBehavior`), progress indicator hooks, auto-submit wiring, and `htmx:load` → init of components |
 | `assets/js/pesticides/section-map.js`, `find-area.js` | export `init(root)` that initialises only uninitialised containers under `root` (mark with `data-initialised`), called on `DOMContentLoaded` and from `explorer.js` |
@@ -34,8 +34,8 @@
 
 ### Task 1: Vendor htmx and boost the explorer region
 
-- [ ] `docker compose run --rm web yarn add htmx.org@^2.0.4`; copy `node_modules/htmx.org/dist/htmx.min.js` to `assets/js/vendor/htmx.min.js` (commit the copy; `node_modules` is not served).
-- [ ] `base.html`: wrap the three sections (hero, breadcrumbs, content) in `<div id="explorer" hx-boost="true" hx-target="#explorer" hx-select="#explorer" hx-swap="outerHTML show:window:top" hx-push-url="true">`. Load `vendor/htmx.min.js` before the pesticides scripts and add `assets/js/pesticides/explorer.js` after them. Keep the `<title>` block as is (htmx applies the response title).
+- [ ] `docker compose run --rm web yarn add htmx.org@^2.0.4`; add `import_node_module(ctx, 'htmx.org/dist', 'htmx')` to a `vendor` task in `tasks.py` that `build` calls; run `invoke vendor` locally so `dist/htmx/htmx.min.js` exists (dist is git-ignored).
+- [ ] `base.html`: wrap the three sections (hero, breadcrumbs, content) in `<div id="explorer" hx-boost="true" hx-target="#explorer" hx-select="#explorer" hx-swap="outerHTML show:window:top" hx-push-url="true">`. Load `htmx/htmx.min.js` before the pesticides scripts and add `assets/js/pesticides/explorer.js` after them. Keep the `<title>` block as is (htmx applies the response title).
 - [ ] `explorer.js` (plain ES2017 IIFE): `htmx.config.historyCacheSize = 0` (history navigation refetches), `htmx.config.scrollBehavior = 'instant'`; on `htmx:load` call `window.PesticidesSectionMap.init(evt.detail.elt)` and `window.PesticidesFindArea.init(evt.detail.elt)` when those globals exist; on `htmx:responseError` fall back to a full navigation (`window.location = evt.detail.pathInfo.requestPath`) so a 500 never leaves the page half-swapped; on `htmx:beforeSwap` for non-2xx/3xx responses set `evt.detail.shouldSwap = false`.
 - [ ] `section-map.js` / `find-area.js`: refactor the bottom `init` to accept a root element, skip containers with `data-initialised`, set it, and expose `window.PesticidesSectionMap = { init }` / `window.PesticidesFindArea = { init }`. The existing `DOMContentLoaded` call becomes `init(document)`.
 - [ ] Links that must not be boosted: external links already have `target="_blank"`; add `hx-boost="false"` on the API docs / client docs / SprayDays links inside `#explorer` if they are not `target="_blank"` (check `detail-base.html`, `section-detail.html`, `place.html`, `home.html`, `about.html`).
