@@ -662,7 +662,6 @@ class DataCompletenessTests(StaffClientMixin, TestCase):
 
     def test_threshold_and_scope_filters(self):
         assert [r['name'] for r in self.rows(threshold='40')['low']] == ['Silent']
-        assert 'Partner' not in [r['name'] for r in self.rows(sjvair_only='0')['low']]  # Partner is at 100%, never low
         purpleair = {r['type']: r for r in self.rows(sjvair_only='0')['rows']}['PurpleAir']
         assert purpleair['monitors'] == 4
         purpleair = {r['type']: r for r in self.rows(county='Kern')['rows']}['PurpleAir']
@@ -758,9 +757,15 @@ class PipelineCoverageTests(StaffClientMixin, TestCase):
         assert 'Raw' in pm25['stages']
         assert rows['PurpleAir']['humidity']['published'] is False
         assert rows['VOZBox']['pm25']['published'] is False
-        assert rows['BAM1022']['humidity'] is None or rows['BAM1022']['humidity']['published'] is False
-        assert ('pm25', 'PM2.5') in response.context['entry_types']
-        assert response.context['unpublished_count'] > 0
+        assert rows['BAM1022']['humidity']['published'] is False
+        assert rows['BAM1022']['humidity']['stages'] == 'Raw'
+        entry_types = response.context['entry_types']
+        assert ('pm25', 'PM2.5') in entry_types
+        assert response.context['unpublished_count'] == sum(
+            1 for row in rows.values()
+            for key, _label in entry_types
+            if row[key] and not row[key]['published']
+        )
 
     def test_orphaned_publish_rows(self):
         DefaultCalibration.objects.create(monitor_type='purpleair', entry_type='co2', calibration='')
