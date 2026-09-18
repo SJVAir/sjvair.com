@@ -19,7 +19,7 @@
 {% block report %}
 <div class="module">
     <table>
-        <caption>Problems found</caption>
+        <caption>Problems found (a monitor can appear under more than one problem)</caption>
         <tr><th>Monitors flagged</th><td>{{ tiles.total|intcomma }}</td></tr>
         {% for label in checks %}
         <tr><th>{{ label }}</th><td>{{ tiles|get_item:label|intcomma }}</td></tr>

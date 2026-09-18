@@ -32,8 +32,8 @@
             <tr>
                 <th>{{ row.type }}</th>
                 <td>{{ row.monitors|intcomma }}</td>
-                <td>{{ row.received_7|intcomma }}</td><td>{{ row.expected_7|intcomma }}</td><td>{{ row.pct_7 }}%</td>
-                <td>{{ row.received_30|intcomma }}</td><td>{{ row.expected_30|intcomma }}</td><td>{{ row.pct_30 }}%</td>
+                <td>{{ row.received_7|intcomma }}</td><td>{{ row.expected_7|intcomma }}</td><td>{{ row.pct_7|default_if_none:"—" }}</td>
+                <td>{{ row.received_30|intcomma }}</td><td>{{ row.expected_30|intcomma }}</td><td>{{ row.pct_30|default_if_none:"—" }}</td>
             </tr>
             {% empty %}
             <tr><td colspan="8">No monitor type produces this entry type.</td></tr>

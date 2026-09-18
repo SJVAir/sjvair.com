@@ -733,6 +733,18 @@ class DataQualityTests(StaffClientMixin, TestCase):
         assert [r['name'] for r in self.rows(county='Kern')['rows']] == ['Wrong county']
 
 
+class DataQualityNoRegionsTests(StaffClientMixin, TestCase):
+    """With no county Regions loaded, the county checks must not flag everything."""
+
+    def test_county_checks_need_county_regions(self):
+        monitor = PurpleAir.objects.create(name='Fine', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        assert monitor.county == 'Fresno'
+        response = self.client.get(reverse('reports:data-quality'))
+        assert response.status_code == 200
+        assert response.context['rows'] == []
+        assert response.context['tiles']['total'] == 0
+
+
 class PipelineCoverageTests(StaffClientMixin, TestCase):
     fixtures = ['default-calibrations.yaml']
 

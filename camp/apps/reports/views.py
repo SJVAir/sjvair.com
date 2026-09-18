@@ -728,7 +728,8 @@ class DataCompleteness(BaseReport):
 
     @staticmethod
     def pct(received, expected):
-        return round(received / expected * 100, 1) if expected else 0.0
+        """Percent received, or None when nothing was expected (no summary rows at all)."""
+        return round(received / expected * 100, 1) if expected else None
 
     def get_rows(self):
         rows = []
@@ -757,7 +758,9 @@ class DataCompleteness(BaseReport):
         for cls in self.producing_types():
             for monitor in self.scoped(cls.objects.all()).select_related('host'):
                 stats = totals.get(monitor.pk, {'received': 0, 'expected': 0})
-                pct = self.pct(stats['received'], stats['expected'])
+                # A monitor with nothing expected is silent, not perfect: it sorts
+                # to the top of the low table with 0%.
+                pct = self.pct(stats['received'], stats['expected']) or 0.0
                 if pct >= self.threshold:
                     continue
                 low.append({
@@ -955,11 +958,11 @@ class DataQuality(BaseReport):
 
     def annotated(self, queryset):
         cutoff = timezone.now() - timedelta(seconds=Monitor.LAST_ACTIVE_LIMIT)
-        county_boundaries = Boundary.objects.filter(current_for__in=Region.objects.counties())
+        boundaries = Boundary.objects.filter(current_for__in=Region.objects.counties())
         return queryset.annotate(
             county_region_name=Concat('county', Value(' County')),
-            in_sjv=Exists(county_boundaries.filter(geometry__contains=OuterRef('position'))),
-            in_own_county=Exists(county_boundaries.filter(
+            in_sjv=Exists(boundaries.filter(geometry__contains=OuterRef('position'))),
+            in_own_county=Exists(boundaries.filter(
                 current_for__name=OuterRef('county_region_name'),
                 geometry__contains=OuterRef('position'),
             )),
@@ -969,7 +972,9 @@ class DataQuality(BaseReport):
             bogus_position=Q(position__isnull=False) & ~Q(position__within=DEFAULT_MAP_BOUNDS),
             no_name=Q(name=''),
             no_county=Q(county='') & Q(in_sjv=True),
-            wrong_county=~Q(county='') & Q(position__isnull=False) & Q(in_own_county=False),
+            # in_sjv guards the case of no county Regions loaded, where every
+            # positioned monitor would otherwise look like a county mismatch.
+            wrong_county=~Q(county='') & Q(position__isnull=False) & Q(in_sjv=True) & Q(in_own_county=False),
             hidden_reporting=Q(is_hidden=True) & Q(reporting=True),
             no_host=Q(is_sjvair=True) & Q(host__isnull=True),
         )
@@ -1029,26 +1034,28 @@ class PipelineCoverage(BaseReport):
         models = {model for cls in types for model in cls.ENTRY_CONFIG}
         return sorted(models, key=lambda model: model.entry_type)
 
-    def get_rows(self):
+    def matrix(self):
+        """(rows, produced pairs, unpublished count) -- the whole matrix in one pass."""
         types = Monitor.get_enabled_subclasses()
+        models = self.entry_models(types)
         published = {(d.monitor_type, d.entry_type): d.calibration for d in DefaultCalibration.objects.all()}
-        self.produced = set()
-        self.unpublished_count = 0
+        produced = set()
+        unpublished_count = 0
 
         rows = []
         for cls in types:
             row = {'type': type_label(cls)}
-            for model in self.entry_models(types):
+            for model in models:
                 config = cls.ENTRY_CONFIG.get(model)
                 if not config:
                     row[model.entry_type] = None
                     continue
                 key = (cls.monitor_type, model.entry_type)
-                self.produced.add(key)
+                produced.add(key)
                 stages = config.get('allowed_stages') or [model.Stage.RAW]
                 is_published = key in published
                 if not is_published:
-                    self.unpublished_count += 1
+                    unpublished_count += 1
                 row[model.entry_type] = {
                     'stages': ' → '.join(str(stage.label) for stage in stages),
                     'default': config.get('default_stage', model.Stage.RAW).label,
@@ -1056,19 +1063,23 @@ class PipelineCoverage(BaseReport):
                     'calibration': published.get(key) or '',
                 }
             rows.append(row)
-        return rows
+        return rows, produced, unpublished_count
+
+    def get_rows(self):
+        return self.matrix()[0]
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+        rows, produced, unpublished_count = self.matrix()
         types = Monitor.get_enabled_subclasses()
         orphans = [
             {'monitor_type': d.monitor_type, 'entry_type': d.entry_type, 'calibration': d.calibration}
             for d in DefaultCalibration.objects.order_by('monitor_type', 'entry_type')
-            if (d.monitor_type, d.entry_type) not in self.produced
+            if (d.monitor_type, d.entry_type) not in produced
         ]
         return {
-            **context,
+            **super().get_context_data(**kwargs),
+            'rows': rows,
             'entry_types': [(model.entry_type, model.label) for model in self.entry_models(types)],
             'orphans': orphans,
-            'unpublished_count': self.unpublished_count,
+            'unpublished_count': unpublished_count,
         }
