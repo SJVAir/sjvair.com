@@ -12,15 +12,26 @@ class Command(BaseCommand):
         group = parser.add_mutually_exclusive_group(required=True)
         group.add_argument('--year', type=int)
         group.add_argument('--all', action='store_true')
+        parser.add_argument('--totals-only', action='store_true',
+            help='Rebuild only the per-county entity totals from the existing rollup.')
 
     def handle(self, *args, **options):
-        years = rollup.loaded_years() if options['all'] else [options['year']]
+        totals_only = options['totals_only']
+        if options['all']:
+            years = rollup.rollup_years() if totals_only else rollup.loaded_years()
+        else:
+            years = [options['year']]
         if not years:
-            raise CommandError('No PesticideUse rows loaded.')
+            raise CommandError('No PesticideUseRollup rows loaded.' if totals_only else 'No PesticideUse rows loaded.')
         for year in years:
             started = time.monotonic()
-            written = rollup.rebuild_year(year)
-            self.stdout.write(f'{year}: {written:,} rollup rows in {time.monotonic() - started:.1f}s')
+            if totals_only:
+                written = rollup.rebuild_totals_year(year)
+                label = 'total rows'
+            else:
+                written = rollup.rebuild_year(year)
+                label = 'rollup rows'
+            self.stdout.write(f'{year}: {written:,} {label} in {time.monotonic() - started:.1f}s')
 
         from camp.apps.pesticides import stats
         stats.refresh_landing_stats()

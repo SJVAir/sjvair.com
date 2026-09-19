@@ -2,7 +2,7 @@ import pytest
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
-from camp.apps.pesticides.models import PesticideUseRollup
+from camp.apps.pesticides.models import PesticideUseRollup, PesticideUseTotal
 
 
 class RollupModelTests(TestCase):
@@ -107,8 +107,60 @@ class RebuildTests(TestCase):
         assert PesticideUseRollup.objects.filter(year=2022).count() == 3
 
 
+class TotalsTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        rollup.rebuild_all()
+
+    def test_chemical_totals_per_county(self):
+        # Fresno 2023 glyphosate: uses 1 (100 lbs) + 2 (50 lbs).
+        row = PesticideUseTotal.objects.get(year=2023, county_id=9001, chemical_id=1)
+        assert (row.lbs_chemical, row.applications) == (150.0, 2)
+        assert (row.product_id, row.commodity_id) == (None, None)
+        # Kern 2023 glyphosate: use 3 only.
+        assert PesticideUseTotal.objects.get(year=2023, county_id=9002, chemical_id=1).lbs_chemical == 30.0
+
+    def test_commodity_totals(self):
+        # Fresno 2023 almond: uses 1 (100 lbs) + 4 (20 lbs).
+        row = PesticideUseTotal.objects.get(year=2023, county_id=9001, commodity_id=1)
+        assert row.lbs_chemical == 120.0
+        assert (row.chemical_id, row.product_id) == (None, None)
+
+    def test_product_totals(self):
+        # Kern 2023 LORSBAN 4E: use 5, 90 lbs of product.
+        row = PesticideUseTotal.objects.get(year=2023, county_id=9002, product_id=2)
+        assert row.lbs_product == 90.0
+        assert (row.chemical_id, row.commodity_id) == (None, None)
+
+    def test_rebuild_year_replaces_only_that_year(self):
+        before = PesticideUseTotal.objects.filter(year=2022).count()
+        rollup.rebuild_year(2023)
+        assert PesticideUseTotal.objects.filter(year=2022).count() == before
+        assert PesticideUseTotal.objects.filter(year=2023).exists()
+
+    def test_totals_only_rebuilds_without_touching_the_rollup(self):
+        rollup_rows = PesticideUseRollup.objects.count()
+        PesticideUseTotal.objects.all().delete()
+
+        out = StringIO()
+        call_command('rebuild_pesticide_rollup', '--all', '--totals-only', stdout=out)
+        assert PesticideUseRollup.objects.count() == rollup_rows
+        assert PesticideUseTotal.objects.filter(year=2023, county_id=9001, chemical_id=1).get().lbs_chemical == 150.0
+        assert 'total rows' in out.getvalue()
+
+    def test_rebuild_totals_year_is_idempotent(self):
+        written = rollup.rebuild_totals_year(2023)
+        assert written == PesticideUseTotal.objects.filter(year=2023).count()
+        assert rollup.rebuild_totals_year(2023) == written
+
+
 class MixinTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
     def test_mixin_builds_rows_before_tests(self):
         assert PesticideUseRollup.objects.count() == 9
+
+    def test_mixin_builds_totals_before_tests(self):
+        assert PesticideUseTotal.objects.filter(year=2023, county_id=9001, chemical_id=1).get().lbs_chemical == 150.0
