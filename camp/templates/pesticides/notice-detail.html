@@ -1,0 +1,56 @@
+{% extends 'pesticides/base.html' %}
+{% load humanize pesticides_explorer %}
+
+{% block title %}Notice of intent · {{ object.scheduled_application|date:'M j, Y' }} | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} notice-detail{% endblock %}
+{% block breadcrumb-list %}
+<li><a href="{% url 'pesticides:notice-list' %}">Notices</a></li>
+<li class="is-active"><a aria-current="page">{{ object.scheduled_application|date:'M j, Y' }}</a></li>
+{% endblock %}
+
+{% block explorer-content %}
+<div class="content detail-header">
+    <h1 class="mb-1">Notice of intent &middot; {{ object.scheduled_application|date:'M j, Y' }}</h1>
+    <p class="tags are-medium">
+        {% if is_active %}<span class="tag is-info">Active</span>{% else %}<span class="tag is-light">Past</span>{% endif %}
+    </p>
+    <p class="is-size-5">
+        Scheduled for {{ object.scheduled_application|date:'M j, Y g:i A' }}; the grower may begin any time through
+        {{ window_end|date:'M j, Y' }}. A notice is an intention, not a confirmation that spraying happened.
+    </p>
+</div>
+
+<div class="columns">
+    <div class="column is-5-desktop">
+        <table class="table is-fullwidth is-narrow notice-facts">
+            <tbody>
+                <tr>
+                    <th>Products</th>
+                    <td>{% for product in object.products.all %}<a class="tag is-light" href="{{ product.get_absolute_url }}">{{ product.name }}</a> {% endfor %}</td>
+                </tr>
+                <tr>
+                    <th>Chemicals</th>
+                    <td>{% for chem in object.chemicals.all %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.name }}</a> {% endfor %}</td>
+                </tr>
+                <tr><th>Treated</th><td>{% if object.treated_amount %}{{ object.treated_amount|floatformat:'-1'|intcomma }} {{ object.treated_units|lower }}{% else %}—{% endif %}</td></tr>
+                <tr><th>Method</th><td>{{ object.application_method|default:'—' }}</td></tr>
+                <tr><th>County</th><td>{% if object.county %}<a href="{% region_url object.county %}">{{ object.county.name }}</a>{% else %}—{% endif %}</td></tr>
+                <tr>
+                    <th>Section</th>
+                    <td>{% if object.mtrs %}<a href="{% url 'pesticides:section-detail' sqid=object.mtrs.sqid %}">{{ object.mtrs.external_id }}</a>{% else %}—{% endif %}</td>
+                </tr>
+            </tbody>
+        </table>
+        {% include 'pesticides/includes/spraydays-signup.html' with extra_class='mt-5 notice-signup-side' %}
+        {% if related_notices %}
+        <section class="related-notices mt-5">
+            <h2 class="title is-6">Other active notices in this section</h2>
+            {% include 'pesticides/includes/notice-rows.html' with object_list=related_notices compact=True %}
+        </section>
+        {% endif %}
+        <p class="mt-4"><a href="{{ records_url }}">Browse confirmed records for this area</a></p>
+    </div>
+    <div class="column">{% include 'pesticides/includes/section-map.html' %}</div>
+</div>
+
+{% endblock %}

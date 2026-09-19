@@ -1,0 +1,52 @@
+{% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+
+{% block title %}Products | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} product-list{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Products</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="columns">
+    <div class="column is-3-desktop">
+        {% include 'pesticides/includes/filter-form.html' %}
+    </div>
+    <div class="column">
+        <p class="summary-sentence mb-3">
+            {{ summary_sentence }}
+            {% if related %}<a class="tag is-info is-light ml-2" href="{% qs_replace page=None chemical=None commodity=None %}">clear ×</a>{% endif %}
+        </p>
+        <div class="table-container">
+            <table class="table is-fullwidth is-striped is-hoverable data-table">
+                <thead>
+                    <tr>
+                        <th>{% sort_link 'name' 'Product' %}</th>
+                        <th>{% sort_link 'reg' 'Reg. number' %}</th>
+                        <th>Flags</th>
+                        <th class="has-text-right">{% sort_link 'chemicals' 'Active ingredients' %}</th>
+                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in object_list %}
+                    <tr>
+                        <td><a href="{{ product.get_absolute_url }}{{ year_qs }}">{{ product.name }}</a></td>
+                        <td><a href="{{ product.get_absolute_url }}{{ year_qs }}">{{ product.reg_number }}</a></td>
+                        <td>
+                            <div class="tags">
+                                {% if product.fumigant %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" data-tooltip="{{ 'fumigant'|note_summary }}">Fumigant</a>{% endif %}
+                                {% if product.california_restricted %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" data-tooltip="{{ 'restricted_material'|note_summary }}">CA restricted</a>{% endif %}
+                            </div>
+                        </td>
+                        <td class="has-text-right">{{ product.chemical_count }}</td>
+                        <td class="has-text-right">{{ product.lbs_applied|lbs }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="has-text-centered has-text-grey">No products match.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include 'pesticides/includes/pagination.html' %}
+    </div>
+</div>
+{% endblock %}

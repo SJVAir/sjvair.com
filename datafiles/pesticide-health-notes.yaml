@@ -1,0 +1,69 @@
+# Plain-language notes for the pesticides explorer. One entry per key.
+# title: short label. summary: one or two sentences a resident can read in one breath.
+# detail: optional paragraph. source_url: an official source.
+prop65:
+  title: Proposition 65
+  summary: California lists this chemical as known to cause cancer, birth defects, or other reproductive harm. Being on the list means the state has evidence of a hazard, not that any particular exposure will hurt you.
+  detail: Proposition 65 (the Safe Drinking Water and Toxic Enforcement Act of 1986) requires the state to keep a public list of chemicals with evidence of causing cancer or reproductive harm. Here the badge appears when the Department of Pesticide Regulation tags the chemical as a carcinogen, reproductive toxin, or developmental toxin.
+  source_url: https://oehha.ca.gov/proposition-65/proposition-65-list
+iarc_1:
+  title: IARC Group 1
+  summary: The World Health Organization's cancer agency has found that this chemical causes cancer in people. The rating describes the strength of the evidence, not how risky a given amount is.
+  source_url: https://monographs.iarc.who.int/agents-classified-by-the-iarc/
+iarc_2a:
+  title: IARC Group 2A
+  summary: The World Health Organization's cancer agency rates this chemical as probably causing cancer in people. The rating describes the strength of the evidence, not how risky a given amount is.
+  source_url: https://monographs.iarc.who.int/agents-classified-by-the-iarc/
+iarc_2b:
+  title: IARC Group 2B
+  summary: The World Health Organization's cancer agency rates this chemical as possibly causing cancer in people. The evidence is limited, and the rating says nothing about how risky a given amount is.
+  source_url: https://monographs.iarc.who.int/agents-classified-by-the-iarc/
+iarc_3:
+  title: IARC Group 3
+  summary: The World Health Organization's cancer agency looked at this chemical and could not classify it either way. That is not the same as being found safe.
+  source_url: https://monographs.iarc.who.int/agents-classified-by-the-iarc/
+carb_tac:
+  title: Toxic Air Contaminant
+  summary: The California Air Resources Board lists this chemical as an air pollutant that may cause serious illness. Pesticides on the list get extra monitoring and rules when they are sprayed.
+  source_url: https://ww2.arb.ca.gov/resources/documents/carb-identified-toxic-air-contaminants
+fumigant:
+  title: Fumigant
+  summary: A fumigant is applied as a gas to soil or stored crops and can drift beyond the field. Fumigant applications need extra setbacks and buffer zones, and they are the notices SprayDays publishes 48 hours ahead.
+  source_url: https://spraydays.cdpr.ca.gov/Home/About
+cholinesterase_inhibitor:
+  title: Cholinesterase inhibitor
+  summary: This chemical works by blocking an enzyme the nervous system needs, in insects and in people. Farmworkers who handle it are required to have regular blood tests.
+  source_url: https://www.cdpr.ca.gov/worker-health-and-safety/medical-supervision/
+groundwater_contaminant:
+  title: Groundwater contaminant
+  summary: This chemical has been found in California groundwater or can reach it, so the state restricts where and how it is used to protect drinking-water wells.
+  source_url: https://www.cdpr.ca.gov/environmental-monitoring/groundwater-protection/
+biopesticide:
+  title: Biopesticide
+  summary: A biopesticide comes from natural materials such as bacteria, minerals, or plant extracts. They are generally lower-toxicity to people than conventional pesticides, though not always harmless.
+  source_url: https://www.epa.gov/ingredients-used-pesticide-products/what-are-biopesticides
+oil:
+  title: Oil
+  summary: Petroleum or plant oils used to smother insects and mites. They are low in toxicity to people, but they are counted by weight, so they often top the pounds-applied lists.
+  source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
+restricted_material:
+  title: California restricted material
+  summary: This product can only be used with a permit from the county agricultural commissioner, and a notice of intent must be filed before each application. That is why it shows up in SprayDays.
+  source_url: https://www.cdpr.ca.gov/enforcement/restricted-materials/
+noi_meaning:
+  title: Notice of intent
+  summary: A notice of intent is a grower telling the county they plan to apply a restricted pesticide. It is a plan, not proof that spraying happened, and the grower may begin any time up to four days after the scheduled date.
+  detail: SprayDays publishes notices 48 hours ahead for fumigants and 24 hours ahead for other restricted materials. Notices list the product and chemical but not the crop. To be told about notices near an address, sign up with SprayDays.
+  source_url: https://spraydays.cdpr.ca.gov/Home/About
+pur_lag:
+  title: Why the newest data is a year or more old
+  summary: Growers report applications to the county, which sends them to the state, which checks and publishes them one to two years later. The most recent full year here is the newest the state has released, so the newest records are always at least a year old.
+  source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
+shades:
+  title: What the shades mean
+  summary: Darker squares and counties had more pounds applied that year. Shades rank the areas shown against each other, so the same color can mean different amounts on different maps; read the legend for the actual range.
+  source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
+badges:
+  title: What the badges mean
+  summary: Badges mark chemicals that an official list flags for cancer, reproductive harm, or air toxicity. A badge says the chemical is on a list, not how much of it reached anyone.
+  source_url: https://oehha.ca.gov/proposition-65

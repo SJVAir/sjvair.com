@@ -1,12 +1,13 @@
 from types import SimpleNamespace
 
-from django.db.models import Count, Sum
+from django.db.models import Case, Count, Sum, When
 from django.shortcuts import get_object_or_404
 
-from resticus import generics
+from resticus import generics, http
 
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseTotal, Product
 from camp.apps.regions.models import Region
+from camp.utils.views import CachedEndpointMixin
 
 from .filters import ChemicalFilter, CommodityFilter, PesticideNoticeFilter, PesticideSummaryFilter, PesticideUseFilter, ProductFilter
 from .serializers import (
@@ -219,3 +220,68 @@ class PesticideRegionUse(PesticideRegionMixin, PesticideUseMixin, generics.ListE
 
     def get_queryset(self):
         return self.get_region_queryset(super().get_queryset())
+
+
+# Backs the entity picker (`includes/entity-picker.html`) on the explorer's
+# list and records pages. One endpoint for all three kinds, so the picker JS
+# only needs a single URL plus a `type`.
+SEARCH_KINDS = {
+    'chemical': (Chemical, 'chem_code'),
+    'product': (Product, 'reg_number'),
+    'commodity': (Commodity, 'site_code'),
+}
+SEARCH_DEFAULT_LIMIT = 10
+SEARCH_MAX_LIMIT = 25
+SEARCH_MIN_LENGTH = 2
+
+
+class EntitySearchBase(generics.Endpoint):
+    # See the comment on sections.SectionListBase: the get() implementation
+    # lives on this un-cached base so CachedEndpointMixin.get() on
+    # EntitySearch below is the one actually dispatched to.
+    def get(self, request):
+        params = request.GET
+        kind = params.get('type') or ''
+        if kind not in SEARCH_KINDS:
+            return http.Http400({'error': f'type must be one of {", ".join(sorted(SEARCH_KINDS))}'})
+
+        model, detail_field = SEARCH_KINDS[kind]
+
+        try:
+            limit = int(params.get('limit') or SEARCH_DEFAULT_LIMIT)
+        except ValueError:
+            return http.Http400({'error': 'limit must be a number'})
+        limit = max(1, min(limit, SEARCH_MAX_LIMIT))
+
+        query = (params.get('q') or '').strip()
+        if len(query) < SEARCH_MIN_LENGTH:
+            return {'results': []}
+
+        # Only names that actually appear in the use data: suggesting one that
+        # filters every list down to nothing isn't a useful suggestion.
+        used = PesticideUseTotal.objects.filter(**{f'{kind}__isnull': False}).values(kind)
+        # Prefix matches first: an autocomplete for "gly" should lead with
+        # the glyphosates, not with every glycol that contains the letters.
+        queryset = (model.objects.search(query)
+            .filter(pk__in=used)
+            .annotate(prefix=Case(When(name__istartswith=query, then=0), default=1))
+            .order_by('prefix', '-rank', 'name', 'pk'))
+
+        # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
+        return {'results': [{
+            'id': obj.sqid,
+            'name': obj.name,
+            'detail': str(getattr(obj, detail_field) or ''),
+        } for obj in queryset[:limit]]}
+
+
+class EntitySearch(CachedEndpointMixin, EntitySearchBase):
+    """
+    Autocomplete over the chemicals, products, and commodities that appear in the use data.
+
+    `type=chemical|product|commodity` (required), `q` (the search text; fewer
+    than two characters returns no results), and `limit` (default 10, capped
+    at 25). Each result carries the entity's `id` (sqid), `name`, and a
+    `detail` string -- chem code, registration number, or site code.
+    """
+    cache_timeout = 60 * 5

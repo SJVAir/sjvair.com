@@ -1,5 +1,7 @@
 from django.contrib.gis.db import models
 from django.contrib.postgres.fields import ArrayField
+from django.urls import reverse
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from django_sqids import SqidsField, shuffle_alphabet
@@ -26,6 +28,9 @@ class Chemical(TimeStampedModel):
         GROUP_2A = '2A', _('Group 2A – Probably carcinogenic to humans')
         GROUP_2B = '2B', _('Group 2B – Possibly carcinogenic to humans')
         GROUP_3  = '3',  _('Group 3 – Not classifiable as to carcinogenicity')
+
+    PROP65_CATEGORIES = {Category.CARCINOGEN, Category.REPRODUCTIVE_TOXIN, Category.DEVELOPMENTAL_TOXIN}
+    IARC_CONCERN_GROUPS = {IARCGroup.GROUP_1, IARCGroup.GROUP_2A, IARCGroup.GROUP_2B}
 
     objects = ChemicalQuerySet.as_manager()
 
@@ -59,6 +64,41 @@ class Chemical(TimeStampedModel):
     def __str__(self):
         return self.name
 
+    @property
+    def slug(self):
+        return slugify(self.name) or 'chemical'
+
+    def get_absolute_url(self):
+        return reverse('pesticides:chemical-detail', kwargs={'sqid': self.sqid, 'slug': self.slug})
+
+    @property
+    def is_prop65(self):
+        return bool(self.PROP65_CATEGORIES & set(self.categories or []))
+
+    @property
+    def is_tac(self):
+        return self.Category.TOXIC_AIR_CONTAMINANT in (self.categories or [])
+
+    @property
+    def other_categories(self):
+        """Categories not already expressed by the Prop 65 / CARB TAC badges."""
+        implied = self.PROP65_CATEGORIES | {self.Category.TOXIC_AIR_CONTAMINANT}
+        return [c for c in (self.categories or []) if c not in implied]
+
+    @property
+    def is_iarc_concern(self):
+        return self.iarc_group in self.IARC_CONCERN_GROUPS
+
+    @property
+    def is_of_concern(self):
+        return self.is_prop65 or self.is_tac or self.is_iarc_concern
+
+    @property
+    def comptox_url(self):
+        if not self.dtxsid:
+            return None
+        return f'https://comptox.epa.gov/dashboard/chemical/details/{self.dtxsid}'
+
 
 class Commodity(TimeStampedModel):
     objects = CommodityQuerySet.as_manager()
@@ -75,6 +115,13 @@ class Commodity(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def slug(self):
+        return slugify(self.name) or 'commodity'
+
+    def get_absolute_url(self):
+        return reverse('pesticides:commodity-detail', kwargs={'sqid': self.sqid, 'slug': self.slug})
 
 
 class Product(TimeStampedModel):
@@ -109,6 +156,33 @@ class Product(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def slug(self):
+        return slugify(self.name) or 'product'
+
+    def get_absolute_url(self):
+        return reverse('pesticides:product-detail', kwargs={'sqid': self.sqid, 'slug': self.slug})
+
+    def _chemical_list(self):
+        # Uses the prefetch cache when the view prefetched 'chemicals'; otherwise one query.
+        return list(self.chemicals.all())
+
+    @property
+    def contains_prop65(self):
+        return any(c.is_prop65 for c in self._chemical_list())
+
+    @property
+    def contains_tac(self):
+        return any(c.is_tac for c in self._chemical_list())
+
+    @property
+    def contains_iarc(self):
+        return any(c.is_iarc_concern for c in self._chemical_list())
+
+    @property
+    def is_of_concern(self):
+        return any(c.is_of_concern for c in self._chemical_list())
 
 
 class ProductChemical(models.Model):
@@ -200,6 +274,9 @@ class PesticideUse(TimeStampedModel):
             models.Index(fields=['chemical']),
             models.Index(fields=['commodity']),
             models.Index(fields=['application_date']),
+            models.Index(fields=['chemical', 'year']),
+            models.Index(fields=['product', 'year']),
+            models.Index(fields=['commodity', 'year']),
         ]
         verbose_name = _('Pesticide Use')
         verbose_name_plural = _('Pesticide Uses')
@@ -252,3 +329,122 @@ class PesticideNotice(TimeStampedModel):
 
     def __str__(self):
         return f'{self.application_id} / {self.comtrs}'
+
+
+class PesticideUseRollup(models.Model):
+    """
+    Per-section, per-month rollup of PesticideUse, rebuilt per year by
+    camp.apps.pesticides.rollup. Every explorer aggregate reads this instead
+    of the raw records. Never exposed by id, so no sqid.
+    """
+    year = models.IntegerField(_('Year'))
+    month = models.IntegerField(_('Month'), help_text=_('1-12, or 0 when the record has no application date'))
+    county = models.ForeignKey(
+        'regions.Region',
+        on_delete=models.CASCADE,
+        related_name='pesticide_rollups',
+        verbose_name=_('County'),
+        limit_choices_to={'type': Region.Type.COUNTY},
+    )
+    mtrs = models.ForeignKey(
+        'regions.Region',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='pesticide_rollups_mtrs',
+        verbose_name=_('MTRS Section'),
+        limit_choices_to={'type': Region.Type.MTRS},
+    )
+    chemical = models.ForeignKey('pesticides.Chemical', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Chemical'))
+    product = models.ForeignKey('pesticides.Product', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Product'))
+    commodity = models.ForeignKey('pesticides.Commodity', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Commodity'))
+    lbs_chemical = models.FloatField(_('Pounds of Chemical'), default=0)
+    lbs_product = models.FloatField(_('Pounds of Product'), default=0)
+    acres_treated = models.FloatField(_('Acres Treated'), default=0)
+    applications = models.IntegerField(_('Applications'), default=0)
+
+    class Meta:
+        verbose_name = _('Pesticide Use Rollup')
+        verbose_name_plural = _('Pesticide Use Rollups')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['year', 'month', 'county', 'mtrs', 'chemical', 'product', 'commodity'],
+                nulls_distinct=False,
+                name='pesticides_rollup_key',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['year', 'mtrs']),
+            models.Index(fields=['year', 'county']),
+            models.Index(fields=['year', 'chemical']),
+            models.Index(fields=['year', 'product']),
+            models.Index(fields=['year', 'commodity']),
+            models.Index(fields=['mtrs', 'year', 'month']),
+            # County-filtered entity lists: membership and pounds per entity
+            # within one county and year.
+            models.Index(fields=['year', 'county', 'chemical']),
+            models.Index(fields=['year', 'county', 'product']),
+            models.Index(fields=['year', 'county', 'commodity']),
+            # Distinct chemicals per commodity -- the one commodity-list
+            # aggregate the totals table can't answer. Covering, so the count
+            # is an index-only scan instead of a bitmap heap scan over every
+            # section row for the commodity.
+            models.Index(fields=['year', 'commodity', 'chemical']),
+            models.Index(fields=['year', 'county', 'commodity', 'chemical']),
+        ]
+
+    def __str__(self):
+        return f'{self.year}-{self.month:02d} / {self.mtrs_id or "no section"}'
+
+
+class PesticideUseTotal(models.Model):
+    """
+    Per-year, per-county totals for one chemical, product, or commodity --
+    what the explorer list pages sort and filter on. Rebuilt from
+    PesticideUseRollup by camp.apps.pesticides.rollup. Exactly one of
+    chemical/product/commodity is set on each row. Never exposed by id, so no sqid.
+    """
+    year = models.IntegerField(_('Year'))
+    county = models.ForeignKey(
+        'regions.Region',
+        on_delete=models.CASCADE,
+        related_name='pesticide_totals',
+        verbose_name=_('County'),
+        limit_choices_to={'type': Region.Type.COUNTY},
+    )
+    chemical = models.ForeignKey('pesticides.Chemical', on_delete=models.CASCADE, null=True, blank=True, related_name='totals', verbose_name=_('pesticides.Chemical'))
+    product = models.ForeignKey('pesticides.Product', on_delete=models.CASCADE, null=True, blank=True, related_name='totals', verbose_name=_('pesticides.Product'))
+    commodity = models.ForeignKey('pesticides.Commodity', on_delete=models.CASCADE, null=True, blank=True, related_name='totals', verbose_name=_('pesticides.Commodity'))
+    lbs_chemical = models.FloatField(_('Pounds of Chemical'), default=0)
+    lbs_product = models.FloatField(_('Pounds of Product'), default=0)
+    acres_treated = models.FloatField(_('Acres Treated'), default=0)
+    applications = models.IntegerField(_('Applications'), default=0)
+
+    class Meta:
+        verbose_name = _('Pesticide Use Total')
+        verbose_name_plural = _('Pesticide Use Totals')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['year', 'county', 'chemical', 'product', 'commodity'],
+                nulls_distinct=False,
+                name='pesticides_total_key',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(chemical__isnull=False, product__isnull=True, commodity__isnull=True)
+                    | models.Q(chemical__isnull=True, product__isnull=False, commodity__isnull=True)
+                    | models.Q(chemical__isnull=True, product__isnull=True, commodity__isnull=False)
+                ),
+                name='pesticides_total_one_entity',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['year', 'chemical']),
+            models.Index(fields=['year', 'product']),
+            models.Index(fields=['year', 'commodity']),
+            models.Index(fields=['year', 'county']),
+        ]
+
+    def __str__(self):
+        entity = self.chemical_id or self.product_id or self.commodity_id
+        return f'{self.year} / {self.county_id} / {entity}'

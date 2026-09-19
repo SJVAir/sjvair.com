@@ -1,0 +1,34 @@
+<form method="GET" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
+    <div class="field">
+        <label class="label" for="id_q">Search</label>
+        <div class="control has-icons-left">
+            <input id="id_q" class="input" type="search" name="q" value="{{ form.q.value|default:'' }}" placeholder="Name or ID"
+                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
+            <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+        </div>
+    </div>
+    {% for field in form %}
+        {% if field.name != 'q' %}
+        <div class="field">
+            <label class="label">{{ field.label }}</label>
+            <div class="control">
+                {% if field.field.widget.input_type == 'select' %}
+                    <div class="select is-fullwidth">{{ field }}</div>
+                {% else %}
+                    {{ field }}
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% if field.name == 'county' %}
+            {# Pickers for the other two entities; products come before chemicals. #}
+            {% if section != 'products' %}{% include 'pesticides/includes/entity-picker.html' with kind='product' label='Product' selected=related.product autosubmit=1 %}{% endif %}
+            {% if section != 'chemicals' %}{% include 'pesticides/includes/entity-picker.html' with kind='chemical' label='Chemical' selected=related.chemical autosubmit=1 %}{% endif %}
+            {% if section != 'commodities' %}{% include 'pesticides/includes/entity-picker.html' with kind='commodity' label='Commodity' selected=related.commodity autosubmit=1 %}{% endif %}
+        {% endif %}
+    {% endfor %}
+    <div class="field is-grouped">
+        <div class="control"><button class="button is-link" type="submit">Apply</button></div>
+        <div class="control"><a class="button is-light" href="{{ request.path }}">Clear</a></div>
+    </div>
+</form>

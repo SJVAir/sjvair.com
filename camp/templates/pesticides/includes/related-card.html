@@ -1,0 +1,32 @@
+{% load pesticides_explorer %}
+<div class="card related-card">
+    <header class="card-header"><p class="card-header-title">{{ card.title }}</p></header>
+    <div class="card-content">
+        {% if card.rows %}
+        <table class="table is-fullwidth is-narrow">
+            <thead><tr>
+                <th>Name</th>
+                {% if card.show_pct %}<th class="has-text-right">% active</th>{% endif %}
+                {% if card.show_lbs %}<th class="has-text-right">Lbs{% if year_label %} ({{ year_label }}){% endif %}</th>{% endif %}
+            </tr></thead>
+            <tbody>
+            {% for row in card.rows %}
+                <tr>
+                    <td>
+                        <a href="{{ row.obj.get_absolute_url }}{{ year_qs }}">{{ row.obj.name }}</a>
+                        {% if card.kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
+                    </td>
+                    {% if card.show_pct %}<td class="has-text-right">{% if row.pct_active is not None %}{{ row.pct_active|floatformat:1 }}%{% else %}—{% endif %}</td>{% endif %}
+                    {% if card.show_lbs %}<td class="has-text-right">{{ row.lbs|lbs }}</td>{% endif %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="has-text-grey">None{% if year_label %} in {{ year_label }}{% endif %}.</p>
+        {% endif %}
+    </div>
+    {% if not card.complete %}
+    <footer class="card-footer"><a class="card-footer-item" href="{{ card.show_all_url }}">Show all</a></footer>
+    {% endif %}
+</div>

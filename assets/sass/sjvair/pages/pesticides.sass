@@ -1,0 +1,514 @@
+// The combobox dropdown shared by "Find your area" and the entity pickers:
+// an absolutely-positioned list hanging off the field above it. Both lists
+// are siblings of their field, so whatever they hang from has to be
+// `position: relative` itself.
+%combobox-results
+    position: absolute
+    z-index: 30
+    left: 0
+    right: 0
+    background: $white
+    border: 1px solid $grey-lighter
+    border-radius: 4px
+    box-shadow: 0 4px 12px rgba($black, 0.12)
+    list-style: none
+    margin: 0
+    padding: 0.25rem 0
+    max-height: 18rem
+    overflow-y: auto
+    li
+        padding: 0.4rem 0.75rem
+        cursor: pointer
+        &[aria-selected="true"], &:hover
+            background: $grey-lightest
+
+
+body.pesticides
+    .hook
+        // Photo: "Aerial View of Tractor Spraying Field" on Pexels
+        // (https://www.pexels.com/photo/37993891/), free to use. Darkened so
+        // the white text, tabs, and year pills stay readable.
+        // Darker toward the bottom, where the tabs and year pills sit, lighter
+        // behind the title so the photo shows through.
+        background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.55) 100%), url('/static/img/tractor-spraying-field.jpg')
+        background-position: center 48%
+        padding-bottom: 1.25rem
+        .lede
+            color: rgba($white, 0.92)
+            margin-bottom: 0
+        h1 a
+            font-weight: 700
+            text-decoration: none
+        .explorer-nav.tabs
+            margin-top: $size-6
+            margin-bottom: 0
+            // Six boxed tabs don't fit a phone; the coloured icons carry them.
+            +mobile
+                .tab-label
+                    display: none
+                .icon.is-small
+                    margin: 0
+                li a
+                    padding-left: 0.75em
+                    padding-right: 0.75em
+            a
+                text-decoration: none
+            li.is-active a
+                color: $primary
+                background-color: $white
+                border-color: $white
+            li:not(.is-active) a
+                color: rgba($white, 0.85)
+                border-bottom-color: transparent
+                &:hover
+                    color: $white
+                    background-color: rgba($black, 0.08)
+                    border-bottom-color: rgba($white, 0.5)
+
+        .year-picker
+            display: flex
+            align-items: center
+            gap: 0.75rem
+            margin-top: 0.75rem
+            .year-picker-select select
+                background-color: rgba($white, 0.14)
+                border-color: transparent
+                color: $white
+                option
+                    color: $text
+            .year-picker-label
+                @extend .is-size-7
+                color: rgba($white, 0.85)
+                text-transform: uppercase
+                letter-spacing: 0.04em
+            .buttons
+                margin-bottom: 0
+                gap: 0.35rem
+                .button
+                    margin: 0
+            // Separate pills rather than an addon group: with shared edges the
+            // white selected button read a device pixel taller than its
+            // translucent neighbours at fractional zoom levels, and no border
+            // trick fixed that reliably.
+            .button
+                text-decoration: none
+                background-color: rgba($white, 0.14)
+                border-color: transparent
+                border-radius: $radius
+                color: $white
+                &:hover
+                    background-color: rgba($white, 0.24)
+                &.is-selected
+                    background-color: $white
+                    border-color: $white
+                    color: $primary
+
+
+    // Duotone icon colours for the explorer's sections (same palette on the
+    // landing cards and the tab bar).
+    .explorer-icon
+        --fa-secondary-opacity: 1
+        &.is-map
+            --fa-primary-color: #{$primary}
+            --fa-secondary-color: #9ed0f5
+        &.is-chemicals
+            --fa-primary-color: #7b4fb8
+            --fa-secondary-color: #c9a7ff
+        &.is-products
+            --fa-primary-color: #6b8e23
+            --fa-secondary-color: #b7f542
+        &.is-commodities
+            --fa-primary-color: #2e8b57
+            --fa-secondary-color: #9acd32
+        &.is-records
+            --fa-primary-color: #5a6b7b
+            --fa-secondary-color: #c8d1da
+        &.is-notices
+            --fa-primary-color: #d35400
+            --fa-secondary-color: #ffc078
+    // On the blue hero the dark primaries vanish, so inactive tabs use a
+    // white primary with the section's accent as the secondary.
+    .hook .explorer-nav li:not(.is-active) .explorer-icon
+        --fa-primary-color: rgba(255, 255, 255, 0.92)
+
+    // Flex columns can't shrink below their content by default, so a card with
+    // long names would widen its column and knock the row out of alignment.
+    .columns > .column
+        min-width: 0
+
+    .breadcrumbs
+        background-color: $grey-lightest
+        padding: $size-6 0px
+
+    .by-year-table
+        tr.is-selected
+            background-color: $primary
+            color: $white
+            a
+                color: $white
+                font-weight: 600
+
+    .explorer-filters, .records-filters, .notice-filters
+        padding: 1.25rem
+        .label
+            @extend .is-size-7
+            @extend .has-text-grey
+            text-transform: uppercase
+            letter-spacing: 0.04em
+        .field:not(:last-child)
+            margin-bottom: 1rem
+        ul
+            list-style: none
+            margin-left: 0
+            li
+                display: block
+                margin-bottom: 0.25em
+
+    .records-table, .notice-rows
+        // Date (1st column), Section (3rd column, MTRS names like
+        // "MDM-T17S-R15E-10"), and the Lbs/Acres columns should never wrap.
+        td.has-text-right, td:first-child, td:nth-child(3)
+            white-space: nowrap
+
+    .notice-signup
+        border-left: 3px solid $link
+        background-color: $grey-lightest
+        .notice-signup-logo
+            display: block
+            margin: 0 auto 0.75rem
+            max-width: 220px
+            img
+                display: block
+                width: 100%
+                height: auto
+        // Beside a table: logo on the left, copy and link stacked on the right.
+        &.notice-signup-side
+            +tablet
+                display: flex
+                align-items: center
+                gap: 1.25rem
+                .notice-signup-logo
+                    flex: 0 0 150px
+                    margin: 0
+                .notice-signup-copy
+                    flex: 1 1 auto
+                    p
+                        margin: 0
+                    p + p
+                        margin-top: 0.35rem
+
+    // Landing: "Find your area" beside the SprayDays box, same height.
+    .landing-top
+        .column > .box
+            height: 100%
+            margin-bottom: 0
+        .notice-signup
+            display: flex
+            flex-direction: column
+            justify-content: center
+            .notice-signup-logo
+                max-width: 150px
+
+    .within
+        .within-panels
+            +tablet
+                .within-panel + .within-panel
+                    border-left: 1px solid $grey-lighter
+        .within-panel
+            padding: 0.75rem 1.25rem
+        .within-heading
+            display: flex
+            align-items: center
+            gap: 0.4rem
+            font-weight: 600
+            margin-bottom: 0.5rem
+            .tag
+                margin-left: 0.25rem
+        .within-list
+            list-style: none
+            margin: 0
+            font-size: $size-7
+            line-height: 1.35
+            li
+                break-inside: avoid
+                padding: 0.2em 0
+            &.is-two-column
+                columns: 2
+                column-gap: 1.25rem
+        .within-zips
+            max-width: 24rem
+            .tags
+                gap: 0.3rem
+                .tag
+                    font-variant-numeric: tabular-nums
+
+    .right-now
+        border-left: 3px solid $info
+
+    .summary-sentence
+        @extend .has-text-grey-dark
+
+    .data-table
+        thead th
+            border-bottom-width: 2px
+            border-bottom-color: $grey-lighter
+            vertical-align: middle
+        th .sort-link
+            @extend .has-text-grey-dark
+            white-space: nowrap
+            .icon
+                @extend .has-text-grey-light
+            &.is-active
+                @extend .has-text-link
+                .icon
+                    @extend .has-text-link
+        tbody td
+            vertical-align: middle
+        td .tags
+            flex-wrap: nowrap
+            margin-bottom: 0
+
+    .notice-callout
+        display: flex
+        align-items: center
+        gap: 0.5rem
+        margin: -0.5rem 0 1.5rem
+        @extend .has-text-grey-dark
+
+    .stat-row
+        .heading
+            @extend .has-text-grey
+            letter-spacing: 0.02em
+        .title
+            @extend .has-text-weight-semibold
+            font-variant-numeric: tabular-nums
+        .fraction
+            font-variant-numeric: tabular-nums
+
+    .find-area
+        // The results list is a sibling of the field, not a child, so the
+        // positioned ancestor has to be .find-area itself.
+        position: relative
+        .find-area-results
+            @extend %combobox-results
+            li.find-area-group
+                cursor: default
+                padding: 0.4rem 0.75rem 0.15rem
+                font-size: $size-7
+                font-weight: 600
+                text-transform: uppercase
+                letter-spacing: 0.03em
+                color: $grey
+                &:hover
+                    background: transparent
+            .find-area-result-type
+                margin-left: 0.4rem
+                font-size: $size-7
+                color: $grey
+                &::before
+                    content: '· '
+        .find-area-counties
+            margin-top: 0.75rem
+            font-size: $size-7
+            a
+                font-weight: 600
+            .find-area-sep
+                color: $grey-light
+                margin: 0 0.15rem
+            > span:first-child
+                margin-right: 0.25rem
+
+    .entity-picker
+        // Same deal as .find-area: the results list is a sibling of the
+        // field's control, so the picker itself is the positioned ancestor.
+        position: relative
+        .entity-picker-results
+            @extend %combobox-results
+            li.entity-picker-empty
+                cursor: default
+                color: $grey
+                &:hover
+                    background: transparent
+            .entity-picker-result-detail
+                margin-left: 0.4rem
+                font-size: $size-7
+                color: $grey
+                &::before
+                    content: '· '
+        .tag .delete
+            margin-left: 0.35rem
+
+    .how-to-read
+        margin: 1rem 0 1.5rem
+        summary
+            cursor: pointer
+            font-weight: 600
+        p
+            @extend .has-text-grey-dark
+            margin-top: 0.5rem
+
+    .what-this-means
+        margin: .5rem 0 1rem
+        summary
+            cursor: pointer
+            font-weight: 600
+            color: $primary
+        dl
+            margin: .5rem 0 0
+        dt
+            font-weight: 600
+            margin-top: .5rem
+        dd
+            margin-left: 0
+            @extend .has-text-grey-dark
+
+    .detail-header
+        h1
+            font-weight: 700
+        .identifiers
+            margin-bottom: $size-7
+        .tags
+            margin-bottom: 0
+
+    .related-card, .leaderboard
+        height: 100%
+        .card-header
+            box-shadow: none
+            border-bottom: 2px solid $primary
+        .card-header-title
+            font-weight: 600
+        .tags.is-inline
+            display: inline-flex
+            vertical-align: middle
+
+    .leaderboard-list
+        margin: 0
+        padding-left: 0
+        list-style: none
+        counter-reset: rank
+        li
+            display: flex
+            align-items: baseline
+            gap: 0.6rem
+            padding: 0.4em 0
+            border-bottom: 1px solid $grey-lightest
+            // Flex items lose their list marker, so number them with a counter.
+            &::before
+                counter-increment: rank
+                content: counter(rank) "."
+                flex: 0 0 1.6em
+                text-align: right
+                color: $primary
+                font-weight: 600
+                font-variant-numeric: tabular-nums
+            &:last-child
+                border-bottom: none
+            .entry
+                flex: 1 1 auto
+                min-width: 0
+                .tags
+                    display: inline-flex
+                    flex-wrap: wrap
+                    vertical-align: middle
+                    margin-bottom: 0
+            .lbs
+                @extend .has-text-grey
+                flex: 0 0 auto
+                white-space: nowrap
+                font-variant-numeric: tabular-nums
+
+    .county-map
+        .admin-leaflet-map
+            width: 100% !important
+            border-color: $grey-lighter
+        figcaption
+            margin-top: $size-7
+
+    .county-legend, .section-map-legend
+        display: flex
+        flex-wrap: wrap
+        gap: 0.25rem 1rem
+        margin: 0.5rem 0 0
+        padding: 0
+        list-style: none
+        font-size: $size-7
+        li
+            display: inline-flex
+            align-items: center
+            gap: 0.35rem
+        .swatch
+            display: inline-block
+            width: 1rem
+            height: 1rem
+            border: 1px solid rgba($black, 0.25)
+            border-radius: 2px
+        .range
+            font-variant-numeric: tabular-nums
+
+    .section-card
+        display: block
+        height: 100%
+        color: inherit
+        border-top: 3px solid transparent
+        transition: border-color 0.15s ease, box-shadow 0.15s ease
+        &:hover
+            border-top-color: $primary
+            box-shadow: 0 0.5em 1em -0.125em rgba($black, 0.15)
+
+    @media (prefers-reduced-motion: reduce)
+        .section-card
+            transition: none
+
+    .month-bars
+        display: flex
+        align-items: flex-end
+        gap: 4px
+        height: 120px
+        .bar
+            flex: 1
+            display: flex
+            flex-direction: column
+            justify-content: flex-end
+            align-items: center
+            height: 100%
+            .fill
+                width: 100%
+                background: $primary
+                min-height: 2px
+                border-radius: 2px 2px 0 0
+            .label
+                font-size: $size-7
+                color: $grey
+
+    // htmx swap feedback. `#explorer` sets hx-indicator="body", so htmx puts
+    // `htmx-request` on <body> for the duration of every boosted request.
+    &.htmx-request::before
+        content: ''
+        position: fixed
+        top: 0
+        left: 0
+        right: 0
+        height: 2px
+        z-index: 100
+        background: $primary
+        transform-origin: 0 50%
+        animation: pesticides-progress 1.2s ease-in-out infinite
+
+    #explorer
+        transition: opacity 150ms ease-in-out
+        &.htmx-swapping
+            opacity: 0.6
+
+    @media (prefers-reduced-motion: reduce)
+        &.htmx-request::before
+            animation: none
+        #explorer
+            transition: none
+
+@keyframes pesticides-progress
+    0%
+        transform: scaleX(0)
+    50%
+        transform: scaleX(0.7)
+    100%
+        transform: scaleX(1)

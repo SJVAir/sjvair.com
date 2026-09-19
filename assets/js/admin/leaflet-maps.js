@@ -6,7 +6,9 @@
  *   data-geojson      id of a <script type="application/json"> holding a
  *                     FeatureCollection; each feature's `properties` has
  *                     `kind` ('marker' | 'area'), a Leaflet `style` object,
- *                     and for markers `shape` and `size`.
+ *                     for markers `shape` and `size`, and optionally a
+ *                     `label` shown permanently, or only on hover when
+ *                     `labelOnHover` is true.
  *   data-tiles        raster tile URL template
  *   data-attribution  attribution HTML
  *   data-padding      pixels of padding when fitting bounds
@@ -91,14 +93,17 @@
       pointToLayer: function (feature, latlng) {
         return L.marker(latlng, {
           icon: markerIcon(feature.properties),
-          interactive: false,
+          // Hover labels need pointer events; permanent-label markers stay inert.
+          interactive: feature.properties.labelOnHover === true,
           keyboard: false
         });
       },
       onEachFeature: function (feature, featureLayer) {
         if (feature.properties.label) {
+          // Non-permanent tooltips anchor at the feature's center on hover
+          // (sticky is left off so they don't follow the cursor).
           featureLayer.bindTooltip(feature.properties.label, {
-            permanent: true,
+            permanent: feature.properties.labelOnHover !== true,
             direction: 'top',
             className: 'admin-leaflet-label'
           });
@@ -125,6 +130,10 @@
       }
     }
   }
+
+  // Exposed so content swapped in later (htmx on the pesticides explorer)
+  // can render the maps it brought with it; `data-rendered` keeps it idempotent.
+  window.SJVAirLeafletMaps = { init: init };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

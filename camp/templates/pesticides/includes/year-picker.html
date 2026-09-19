@@ -1,0 +1,20 @@
+{% load pesticides_explorer %}
+{% if year_options|length > 1 %}
+<nav class="year-picker" aria-label="Year">
+    <span class="year-picker-label">Year</span>
+    <div class="buttons are-small year-picker-buttons is-hidden-mobile">
+        <a class="button{% if all_years %} is-selected is-primary{% endif %}" href="{% qs_replace year='all' page=None %}"{% if all_years %} aria-current="page"{% endif %}>All</a>
+        {% for option in year_options reversed %}
+        <a class="button{% if option == year %} is-selected is-primary{% endif %}" href="{% qs_replace year=option page=None %}"{% if option == year %} aria-current="page"{% endif %}>{{ option }}</a>
+        {% endfor %}
+    </div>
+    <div class="select is-small year-picker-select is-hidden-tablet">
+        <select aria-label="Year" onchange="window.location.assign(this.value)">
+            <option value="{% qs_replace year='all' page=None %}"{% if all_years %} selected{% endif %}>All years</option>
+            {% for option in year_options reversed %}
+            <option value="{% qs_replace year=option page=None %}"{% if option == year %} selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</nav>
+{% endif %}

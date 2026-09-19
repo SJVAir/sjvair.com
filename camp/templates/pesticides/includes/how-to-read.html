@@ -1,0 +1,12 @@
+{% load pesticides_explorer %}
+<details class="how-to-read">
+    <summary>How to read this page</summary>
+    {% health_note 'pur_lag' as pur_lag_note %}
+    <p>{{ pur_lag_note.summary }}</p>
+    {% health_note 'noi_meaning' as noi_meaning_note %}
+    <p>{{ noi_meaning_note.summary }}</p>
+    {% health_note 'shades' as shades_note %}
+    <p>{{ shades_note.summary }}</p>
+    {% health_note 'badges' as badges_note %}
+    <p>{{ badges_note.summary }}</p>
+</details>

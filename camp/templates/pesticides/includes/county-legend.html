@@ -1,0 +1,13 @@
+{% load pesticides_explorer %}
+<ul class="county-legend" aria-label="Map legend">
+    {% for row in legend %}
+    <li>
+        <span class="swatch" style="background-color: {{ row.color }};"></span>
+        <span class="range">{% if row.low == row.high %}{{ row.low|lbs }} lbs{% else %}{{ row.low|lbs }}–{{ row.high|lbs }} lbs{% endif %}</span>
+    </li>
+    {% endfor %}
+    <li>
+        <span class="swatch" style="background-color: {{ no_data }};"></span>
+        <span class="range">No data</span>
+    </li>
+</ul>

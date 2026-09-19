@@ -46,6 +46,16 @@ class GeoJSONTests(TestCase):
             'weight': 2,
         }
 
+    def test_labels_are_permanent_by_default_and_hover_on_request(self):
+        lmap = leaflet.LeafletMap()
+        lmap.add(
+            leaflet.Area(geometry=Polygon(((0, 0), (0, 1), (1, 1), (0, 0)), srid=4326), label='a'),
+            leaflet.Area(geometry=Polygon(((0, 0), (0, 1), (1, 1), (0, 0)), srid=4326), label='b', label_on_hover=True),
+            leaflet.Marker(geometry=Point(0, 0, srid=4326), label='c', label_on_hover=True),
+        )
+        flags = [f['properties']['labelOnHover'] for f in lmap.to_geojson()['features']]
+        assert flags == [False, True, True]
+
     def test_shapely_geometry_is_accepted(self):
         lmap = leaflet.LeafletMap()
         lmap.add(leaflet.Marker(geometry=ShapelyPoint(-119.0, 36.0)))

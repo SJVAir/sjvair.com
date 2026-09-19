@@ -101,6 +101,11 @@ class Command(BaseCommand):
                 self.stdout.write('')
 
             self._import_use_records(paths, year)
+
+            from camp.apps.pesticides import rollup, stats
+            written = rollup.rebuild_year(year)
+            self.stdout.write(f'Rollup: {written:,} rows for {year}')
+            stats.refresh_landing_stats()
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 

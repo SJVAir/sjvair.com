@@ -735,3 +735,348 @@ class PesticideNoticeRegionFilterTests(TestCase):
     def test_invalid_region_id_returns_empty(self):
         data = self.client.get(self.url, {'region_id': 'BOGUS'}).json()
         assert data['count'] == 0
+
+
+# ---------------------------------------------------------------------------
+# Section endpoints (bbox/radius GeoJSON list + detail), backed by the fixture
+# rollup
+# ---------------------------------------------------------------------------
+
+from camp.apps.pesticides import rollup
+from camp.apps.pesticides.models import PesticideUseRollup
+
+
+class SectionEndpointTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        rollup.rebuild_all()
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:section-list')
+
+    def test_bbox_returns_geojson_with_totals(self):
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023})
+        assert response.status_code == 200
+        data = response.json()
+        assert data['type'] == 'FeatureCollection'
+        assert len(data['features']) == 1
+        feature = data['features'][0]
+        assert feature['id'] == Region.objects.get(pk=9101).sqid
+        assert feature['geometry']['type'] == 'MultiPolygon'
+        assert feature['properties']['mtrs'] == 'MDM-T14S-R20E-01'
+        assert feature['properties']['county'] == 'Fresno County'
+        # 2023 in section 9101: uses 1, 2, 4, 6 = 100 + 50 + 20 + 500 lbs, 4 applications
+        assert feature['properties']['lbs_chemical'] == 670.0
+        assert feature['properties']['applications'] == 4
+
+    def test_bbox_includes_empty_sections_with_zeros(self):
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2022, 'chemical': 253})
+        feature = response.json()['features'][0]
+        assert feature['properties']['lbs_chemical'] == 0
+        assert feature['properties']['applications'] == 0
+
+    def test_filters(self):
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023, 'chemical': 1855})
+        assert response.json()['features'][0]['properties']['lbs_chemical'] == 150.0
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023, 'month': 8})
+        assert response.json()['features'][0]['properties']['lbs_chemical'] == 500.0
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023, 'commodity': '3001'})
+        assert response.json()['features'][0]['properties']['lbs_chemical'] == 120.0
+
+    def test_radius(self):
+        response = self.client.get(self.url, {'lat': 35.36, 'lng': -119.04, 'radius': 1, 'year': 2023})
+        data = response.json()
+        assert [f['properties']['mtrs'] for f in data['features']] == ['MDM-T30S-R28E-01']
+        assert data['features'][0]['properties']['lbs_chemical'] == 70.0
+
+    def test_radius_must_be_allowed_value(self):
+        assert self.client.get(self.url, {'lat': 35.36, 'lng': -119.04, 'radius': 2}).status_code == 400
+
+    def test_lat_lng_nan_is_bad_request_not_500(self):
+        response = self.client.get(self.url, {'lat': 'nan', 'lng': 'nan', 'radius': 1})
+        assert response.status_code == 400
+
+    def test_lat_lng_out_of_range_is_bad_request(self):
+        response = self.client.get(self.url, {'lat': 95, 'lng': -119, 'radius': 1})
+        assert response.status_code == 400
+
+    def test_radius_bbox_prefilter_keeps_exact_distance(self):
+        # Section 9102's square spans lng -119.05..-119.03, lat 35.35..35.37,
+        # so its southwest corner is (-119.05, 35.35). Point (35.339,
+        # -119.0635) sits diagonally off that corner:
+        #   - 0.011 deg south of the corner's latitude -> 0.011 * 69 ~= 0.76 mi
+        #   - 0.0135 deg west of the corner's longitude, at ~35.345 deg lat,
+        #     where a degree of longitude is ~69.17 * cos(35.345 deg) ~= 56.3
+        #     mi -> 0.0135 * 56.3 ~= 0.76 mi
+        #   - straight-line distance to the corner: sqrt(0.76^2 + 0.76^2)
+        #     ~= 1.07 mi -- outside a 1-mile radius, inside a 3-mile radius.
+        # radius_bbox(35.339, -119.0635, 1) has lat_deg = 1/69 ~= 0.0145 and
+        # lng_deg = 1/(69 * cos(35.339 deg)) ~= 0.0178, so the box spans
+        # lat 35.339 +/- 0.0145 (north edge 35.3535 > 35.35) and
+        # lng -119.0635 +/- 0.0178 (east edge -119.0457 > -119.05): the box
+        # overlaps section 9102's bbox at radius 1 even though the point is
+        # actually ~1.07 mi away. So a bbox-only implementation would wrongly
+        # include this section at radius 1; only the exact ST_Distance filter
+        # correctly excludes it. The second assertion below proves the bbox
+        # alone really would have matched, so the first assertion is only
+        # passing because of the distance filter, not despite it being a
+        # no-op.
+        from camp.api.v2.pesticides import sections
+
+        bbox_only = Region.objects.filter(
+            type=Region.Type.MTRS,
+            boundary__geometry__bboverlaps=sections.radius_bbox(35.339, -119.0635, 1),
+        )
+        assert Region.objects.get(pk=9102) in bbox_only
+
+        response = self.client.get(self.url, {'lat': 35.339, 'lng': -119.0635, 'radius': 1, 'year': 2023})
+        assert response.json()['features'] == []
+        response = self.client.get(self.url, {'lat': 35.339, 'lng': -119.0635, 'radius': 3, 'year': 2023})
+        assert [f['properties']['mtrs'] for f in response.json()['features']] == ['MDM-T30S-R28E-01']
+
+    def test_requires_bbox_or_point(self):
+        assert self.client.get(self.url, {'year': 2023}).status_code == 400
+
+    def test_bbox_cap(self):
+        from camp.api.v2.pesticides import sections
+        old = sections.MAX_SECTIONS
+        sections.MAX_SECTIONS = 1
+        try:
+            response = self.client.get(self.url, {'bbox': '-120,35,-118,37', 'year': 2023})
+        finally:
+            sections.MAX_SECTIONS = old
+        assert response.status_code == 400
+        assert 'zoom' in response.json()['error']
+
+    def test_default_year_is_latest(self):
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8'})
+        assert response.json()['year'] == 2023
+
+    def test_cached(self):
+        self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023})
+        PesticideUseRollup.objects.all().delete()
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023})
+        assert response.json()['features'][0]['properties']['applications'] == 4
+
+    def test_detail(self):
+        section = Region.objects.get(pk=9101)
+        response = self.client.get(reverse('api:v2:pesticides:section-detail', kwargs={'section_id': section.sqid}))
+        assert response.status_code == 200
+        data = response.json()
+        assert data['mtrs'] == 'MDM-T14S-R20E-01'
+        assert data['geometry']['type'] == 'MultiPolygon'
+        assert [(y['year'], y['lbs_chemical'], y['applications']) for y in data['years']] == [(2023, 670.0, 4), (2022, 480.0, 2)]
+        assert len(data['months']) == 12 and data['months'][7]['lbs_chemical'] == 500.0
+        assert [c['name'] for c in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
+        assert data['top_commodities'][0]['name'] == 'GRAPE'
+
+    def test_detail_404(self):
+        assert self.client.get(reverse('api:v2:pesticides:section-detail', kwargs={'section_id': 'nope'})).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Active notices GeoJSON endpoint
+# ---------------------------------------------------------------------------
+
+class ActiveNoticeEndpointTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:notice-active')
+
+    def test_returns_active_notices_as_geojson(self):
+        from camp.apps.pesticides.models import PesticideNotice
+        from django.contrib.gis.geos import Point
+        PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326))
+        data = self.client.get(self.url).json()
+        assert data['type'] == 'FeatureCollection'
+        ids = {f['properties']['id'] for f in data['features']}
+        assert ids == {PesticideNotice.objects.get(pk=2).sqid, PesticideNotice.objects.get(pk=3).sqid}
+        two = next(f for f in data['features'] if f['properties']['id'] == PesticideNotice.objects.get(pk=2).sqid)
+        assert two['geometry'] == {'type': 'Point', 'coordinates': [-119.79, 36.71]}
+        assert two['properties']['county'] == 'Fresno County'
+        assert two['properties']['scheduled_end'] > two['properties']['scheduled_application']
+        assert [c['name'] for c in two['properties']['chemicals']] == ['CHLORPYRIFOS']
+        assert two['properties']['chemicals'][0]['is_of_concern'] is True
+        assert [p['name'] for p in two['properties']['products']] == ['LORSBAN 4E']
+        # No MTRS on the fixture notices, so no section to link.
+        assert two['properties']['section'] is None
+        assert two['properties']['section_id'] is None
+
+    def test_section_id_is_the_mtrs_sqid(self):
+        # The map popup links the section name, so the sqid rides along.
+        from django.core.cache import cache
+
+        from camp.apps.pesticides.models import PesticideNotice
+        from camp.apps.regions.models import Region
+        section = Region.objects.get(pk=9101)
+        PesticideNotice.objects.filter(pk=2).update(mtrs=section)
+        cache.clear()
+        data = self.client.get(self.url).json()
+        two = next(f for f in data['features'] if f['properties']['id'] == PesticideNotice.objects.get(pk=2).sqid)
+        assert two['properties']['section'] == section.external_id
+        assert two['properties']['section_id'] == section.sqid
+
+    def test_past_notice_excluded(self):
+        from camp.apps.pesticides.models import PesticideNotice
+        data = self.client.get(self.url).json()
+        assert PesticideNotice.objects.get(pk=1).sqid not in {f['properties']['id'] for f in data['features']}
+
+    def test_bbox_and_filters(self):
+        from camp.apps.pesticides.models import PesticideNotice
+        from django.contrib.gis.geos import Point
+        PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326))
+        PesticideNotice.objects.filter(pk=3).update(point=Point(-119.04, 35.36, srid=4326))
+        data = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8'}).json()
+        assert [f['properties']['county'] for f in data['features']] == ['Fresno County']
+        data = self.client.get(self.url, {'chemical': 1855}).json()   # glyphosate: only notice 3
+        assert [f['properties']['id'] for f in data['features']] == [PesticideNotice.objects.get(pk=3).sqid]
+        assert self.client.get(self.url, {'bbox': 'nope'}).status_code == 400
+
+    def test_capped_by_count(self):
+        from django.core.cache import cache
+
+        from camp.api.v2.pesticides import sections
+        old = sections.MAX_NOTICES
+        sections.MAX_NOTICES = 1
+        try:
+            response = self.client.get(self.url)
+        finally:
+            sections.MAX_NOTICES = old
+        assert response.status_code == 400
+        assert 'zoom' in response.json()['error']
+        # Under the cap (the whole fixture, no bbox) it still answers. Same
+        # querystring, so drop the cached 400 first.
+        cache.clear()
+        assert self.client.get(self.url).status_code == 200
+
+    def test_notice_without_point_has_null_geometry(self):
+        data = self.client.get(self.url).json()
+        assert all(f['geometry'] is None or f['geometry']['type'] == 'Point' for f in data['features'])
+
+
+# ---------------------------------------------------------------------------
+# County outlines and township grid GeoJSON endpoints
+# ---------------------------------------------------------------------------
+
+from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
+from camp.apps.pesticides.townships import township_of
+
+
+class TownshipAndCountyTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_township_of(self):
+        assert township_of('MDM-T14S-R20E-01') == 'MDM-T14S-R20E'
+        assert township_of('MDM-T14S-R20E') == 'MDM-T14S-R20E'
+
+    def test_counties_geojson(self):
+        response = self.client.get('/api/2.0/pesticides/counties/')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['type'] == 'FeatureCollection'
+        names = sorted(f['properties']['name'] for f in data['features'])
+        assert names == ['Fresno County', 'Kern County']
+        assert data['features'][0]['geometry']['type'] in ('Polygon', 'MultiPolygon')
+
+    def test_townships_geojson_totals(self):
+        response = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023})
+        assert response.status_code == 200
+        features = {f['properties']['id']: f['properties'] for f in response.json()['features']}
+        # 2023 in section 9101 (township MDM-T14S-R20E): uses 1, 2, 4, 6.
+        assert features['MDM-T14S-R20E']['lbs_chemical'] == 670.0
+        assert features['MDM-T14S-R20E']['applications'] == 4
+        assert features['MDM-T14S-R20E']['sections'] == 1
+        # Section 9102 (township MDM-T30S-R28E): uses 3, 5.
+        assert features['MDM-T30S-R28E']['lbs_chemical'] == 70.0
+
+    def test_townships_bbox_and_filters(self):
+        kern_only = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023, 'bbox': '-119.1,35.3,-119.0,35.4'}).json()
+        assert [f['properties']['id'] for f in kern_only['features']] == ['MDM-T30S-R28E']
+        chem = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023, 'chemical': 253}).json()
+        by_id = {f['properties']['id']: f['properties'] for f in chem['features']}
+        assert by_id['MDM-T14S-R20E']['lbs_chemical'] == 20.0
+        assert self.client.get('/api/2.0/pesticides/townships/', {'bbox': 'nope'}).status_code == 400
+
+    def test_section_coordinates_rounded(self):
+        response = self.client.get('/api/2.0/pesticides/sections/', {'year': 2023, 'bbox': '-119.9,36.6,-119.7,36.8'})
+        ring = response.json()['features'][0]['geometry']['coordinates'][0][0]
+        assert all(len(str(abs(v)).split('.')[-1]) <= 5 for pair in ring for v in pair)
+
+
+# ---------------------------------------------------------------------------
+# Entity search (the explorer's cross-entity autocomplete filters)
+# ---------------------------------------------------------------------------
+
+class EntitySearchTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:entity-search')
+
+    def results(self, **params):
+        response = self.client.get(self.url, params)
+        assert response.status_code == 200
+        return response.json()['results']
+
+    def test_chemical_search_returns_name_and_chem_code(self):
+        results = self.results(type='chemical', q='glyphosate')
+        assert [r['name'] for r in results] == ['GLYPHOSATE']
+        chemical = Chemical.objects.get(name='GLYPHOSATE')
+        assert results[0]['id'] == chemical.sqid
+        assert results[0]['detail'] == str(chemical.chem_code)
+
+    def test_product_search_detail_is_the_reg_number(self):
+        results = self.results(type='product', q='roundup')
+        assert [(r['name'], r['detail']) for r in results] == [('ROUNDUP PRO', '524-475')]
+
+    def test_commodity_search_detail_is_the_site_code(self):
+        results = self.results(type='commodity', q='grape')
+        commodity = Commodity.objects.get(name='GRAPE')
+        assert [(r['name'], r['detail']) for r in results] == [('GRAPE', commodity.site_code)]
+
+    def test_partial_match_falls_back_to_icontains(self):
+        assert 'CHLORPYRIFOS' in [r['name'] for r in self.results(type='chemical', q='chlorpy')]
+
+    def test_unused_entities_are_not_offered(self):
+        Chemical.objects.create(chem_code=30001, name='NEVER USED')
+        assert self.results(type='chemical', q='never') == []
+
+    def test_short_query_returns_nothing(self):
+        assert self.results(type='chemical', q='g') == []
+        assert self.results(type='chemical') == []
+
+    def test_limit_is_honoured_and_capped(self):
+        assert len(self.results(type='chemical', q='o', limit=1)) <= 1
+        # Over the cap is clamped, not rejected.
+        assert self.client.get(self.url, {'type': 'chemical', 'q': 'glyphosate', 'limit': 500}).status_code == 200
+
+    def test_bad_type_is_a_400(self):
+        response = self.client.get(self.url, {'type': 'nope', 'q': 'glyphosate'})
+        assert response.status_code == 400
+        assert 'type' in response.json()['error']
+
+    def test_missing_type_is_a_400(self):
+        assert self.client.get(self.url, {'q': 'glyphosate'}).status_code == 400
+
+    def test_bad_limit_is_a_400(self):
+        response = self.client.get(self.url, {'type': 'chemical', 'q': 'glyphosate', 'limit': 'nope'})
+        assert response.status_code == 400
+
+    def test_cached(self):
+        assert len(self.results(type='chemical', q='glyphosate')) == 1
+        Chemical.objects.filter(name='GLYPHOSATE').delete()
+        assert [r['name'] for r in self.results(type='chemical', q='glyphosate')] == ['GLYPHOSATE']
