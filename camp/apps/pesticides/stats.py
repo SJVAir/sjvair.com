@@ -11,7 +11,9 @@ from django.core.cache import cache
 from django.db.models import Count, F, Max, Min, Q, Sum
 from django.utils import timezone
 
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product
+from camp.apps.pesticides.models import (
+    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal, Product,
+)
 from camp.apps.pesticides.townships import township_index
 from camp.apps.regions.models import Region
 
@@ -22,6 +24,11 @@ LATEST_YEAR_KEY = 'pesticides:latest-year'
 LANDING_KEY = 'pesticides:landing-stats:v2'
 NOTICE_WINDOW_KEY = 'pesticides:notice-window'
 YEARS_KEY = 'pesticides:years'
+ALL_YEARS = 'all'
+# Aggregates that read more than one year of rollup rows for a whole county or
+# the whole valley. They only change on import, so an hour is plenty.
+ALL_YEARS_KEY = 'pesticides:all-years'
+ALL_YEARS_TTL = 60 * 60
 LATEST_YEAR_TTL = 60 * 60
 LANDING_TTL = 60 * 60 * 24
 NOTICE_WINDOW_TTL = 60 * 60
@@ -69,11 +76,69 @@ def resolve_year(requested):
     return year if year in years else years[-1]
 
 
-def year_query(year):
+def resolve_year_param(requested):
+    """
+    `(year, all_years)` for a raw `?year=` value. `?year=all` is the only way
+    to get `all_years=True`; anything else resolves to a concrete year exactly
+    as `resolve_year()` does, so a missing or bogus value still lands on the
+    latest loaded year.
+    """
+    years = available_years()
+    if not years:
+        return None, False
+    if isinstance(requested, str) and requested.strip().lower() == ALL_YEARS:
+        return None, True
+    return resolve_year(requested), False
+
+
+def year_label(year, all_years=False):
+    """'2023', '2014–2023', or '' when nothing is loaded -- for page headings."""
+    if all_years:
+        years = years_loaded()
+        if years is None:
+            return ''
+        first, last = years
+        return str(first) if first == last else f'{first}–{last}'
+    return str(year) if year else ''
+
+
+def year_query(year, all_years=False):
     """Query string that pins links to a non-default year ('' for the latest)."""
+    if all_years:
+        return f'?year={ALL_YEARS}'
     if year is None or year == latest_year():
         return ''
     return f'?year={year}'
+
+
+def year_param(year, all_years=False):
+    """`year_query()` without the leading '?', for appending to an existing query string."""
+    return year_query(year, all_years).lstrip('?')
+
+
+def all_years_key(*parts):
+    return ':'.join([ALL_YEARS_KEY, *(str(part) for part in parts)])
+
+
+def cached(key, build, ttl=ALL_YEARS_TTL):
+    value = cache.get(key)
+    if value is None:
+        value = build()
+        cache.set(key, value, ttl)
+    return value
+
+
+def in_year(rows, year, all_years=False):
+    """
+    The `rows` an aggregate should run over: every year when `all_years`, the
+    one year otherwise. No year at all (nothing loaded) means no rows, rather
+    than silently aggregating everything.
+    """
+    if all_years:
+        return rows
+    if year is None:
+        return rows.none()
+    return rows.filter(year=year)
 
 
 def _totals(lbs_field):
@@ -92,9 +157,9 @@ def by_year(rows, lbs_field='lbs_chemical'):
     )
 
 
-def by_county(rows, year, lbs_field='lbs_chemical'):
+def by_county(rows, year, lbs_field='lbs_chemical', all_years=False):
     counties = list(
-        rows.filter(year=year)
+        in_year(rows, year, all_years)
         .values('county_id', 'county__name', 'county__slug')
         .annotate(**_totals(lbs_field))
         .order_by(F('lbs').desc(nulls_last=True), 'county__name')
@@ -116,14 +181,14 @@ def by_county(rows, year, lbs_field='lbs_chemical'):
     ]
 
 
-def by_month(rows, year, lbs_field='lbs_chemical'):
+def by_month(rows, year, lbs_field='lbs_chemical', all_years=False):
     """
     Twelve entries, one per month, zero-filled. Month 0 (undated) is folded
     into the totals elsewhere, not shown here.
     """
     found = {
         row['month']: row
-        for row in rows.filter(year=year, month__gte=1).values('month').annotate(**_totals(lbs_field))
+        for row in in_year(rows, year, all_years).filter(month__gte=1).values('month').annotate(**_totals(lbs_field))
     }
     return [
         {
@@ -176,8 +241,8 @@ def by_township(rows, year):
     return totals
 
 
-def year_totals(rows, year, lbs_field='lbs_chemical'):
-    data = rows.filter(year=year).aggregate(
+def year_totals(rows, year, lbs_field='lbs_chemical', all_years=False):
+    data = in_year(rows, year, all_years).aggregate(
         lbs=Sum(lbs_field),
         applications=Sum('applications'),
         counties=Count('county', distinct=True),
@@ -189,22 +254,21 @@ def year_totals(rows, year, lbs_field='lbs_chemical'):
     }
 
 
-def top_related(rows, year, field, lbs_field='lbs_chemical', limit=10):
+def top_related(rows, year, field, lbs_field='lbs_chemical', limit=10, all_years=False):
     """
     Rank the related objects on `field` ('chemical' | 'product' | 'commodity')
-    by pounds in `year`. Returns SimpleNamespace(obj=<instance>, lbs=<float>).
-    Two queries: the group-by, then in_bulk for the instances (needed because
-    sqid is not a DB column and templates need get_absolute_url()).
+    by pounds in `year` (or across every loaded year, with `all_years`).
+    Returns SimpleNamespace(obj=<instance>, lbs=<float>). Two queries: the
+    group-by, then in_bulk for the instances (needed because sqid is not a DB
+    column and templates need get_absolute_url()).
     """
-    if year is None:
-        return []
     found = list(
-        rows.filter(year=year, **{f'{field}__isnull': False})
+        in_year(rows, year, all_years).filter(**{f'{field}__isnull': False})
         .values(field)
         .annotate(lbs=Sum(lbs_field))
         .order_by(F('lbs').desc(nulls_last=True), field)[:limit]
     )
-    model = PesticideUseRollup._meta.get_field(field).related_model
+    model = rows.model._meta.get_field(field).related_model
     objects = model.objects.in_bulk([row[field] for row in found])
     return [
         SimpleNamespace(obj=objects[row[field]], lbs=row['lbs'] or 0)
@@ -272,34 +336,79 @@ def _of_concern_query():
     )
 
 
-def _top_chemicals_of_concern(top_chemicals, year, limit=10):
+def _top_chemicals_of_concern(top_chemicals, uses, year, limit=10, all_years=False):
     # is_of_concern is derived in Python, so filter the already-fetched top-50
     # group-by; fall back to a category/IARC-restricted query if that pass
     # comes up short (a concern chemical outside the top 50 by pounds).
     rows = [r for r in top_chemicals if r.obj.is_of_concern]
     if len(rows) < limit:
-        concern = PesticideUseRollup.objects.filter(chemical__in=Chemical.objects.filter(_of_concern_query()))
-        rows = top_related(concern, year, 'chemical', limit=limit)
+        concern = uses.filter(chemical__in=Chemical.objects.filter(_of_concern_query()))
+        rows = top_related(concern, year, 'chemical', limit=limit, all_years=all_years)
     return rows[:limit]
+
+
+def county_totals(year=None, all_years=False):
+    """
+    Valley-wide pounds by county. Read from PesticideUseTotal (one row per
+    year/county/entity) rather than the ~800k rollup rows a single year spans,
+    and restricted to the chemical rows so the product and commodity rows
+    don't count the same pounds again. Cached, because the all-years pass
+    reads every year at once.
+    """
+    rows = PesticideUseTotal.objects.filter(chemical__isnull=False)
+    return cached(
+        all_years_key('county-totals', ALL_YEARS if all_years else year),
+        lambda: by_county(rows, year, all_years=all_years),
+    )
+
+
+def commodity_chemical_counts(county=None):
+    """
+    {commodity_id: distinct chemicals applied to it, across every loaded
+    year}. One group-by over the rollup, cached -- the per-commodity
+    correlated subquery the single-year list uses has no usable index without
+    a year to lead with.
+    """
+    rows = PesticideUseRollup.objects.filter(commodity__isnull=False, chemical__isnull=False)
+    if county is not None:
+        rows = rows.filter(county=county)
+    return cached(
+        all_years_key('commodity-chemicals', county.pk if county is not None else ALL_YEARS),
+        lambda: dict(
+            rows.values('commodity')
+            .annotate(n=Count('chemical', distinct=True))
+            .values_list('commodity', 'n')
+        ),
+    )
 
 
 def landing_key(year):
     return f'{LANDING_KEY}:{year}'
 
 
-def _build_landing_stats(year):
-    uses = PesticideUseRollup.objects.all()
-    top_chemicals_all = top_related(uses, year, 'chemical', limit=50)
-    year_uses = uses.filter(year=year) if year else uses.none()
-    year_totals_ = year_uses.aggregate(
-        lbs=Sum('lbs_chemical'),
-        applications=Sum('applications'),
-        chemicals=Count('chemical', distinct=True),
-        products=Count('product', distinct=True),
-        commodities=Count('commodity', distinct=True),
-    )
+def _build_landing_stats(year, all_years=False):
+    # All years reads PesticideUseTotal instead of the rollup: the same
+    # numbers out of ~200k rows rather than ~8M. Pounds and applications come
+    # off the chemical rows only, since the product and commodity rows of a
+    # year carry the same pounds again.
+    uses = PesticideUseTotal.objects.all() if all_years else PesticideUseRollup.objects.all()
+    top_chemicals_all = top_related(uses, year, 'chemical', limit=50, all_years=all_years)
+    year_uses = in_year(uses, year, all_years)
+    counts = {
+        'chemicals': Count('chemical', distinct=True),
+        'products': Count('product', distinct=True),
+        'commodities': Count('commodity', distinct=True),
+    }
+    sums = {'lbs': Sum('lbs_chemical'), 'applications': Sum('applications')}
+    if all_years:
+        year_totals_ = year_uses.aggregate(**counts)
+        year_totals_ |= year_uses.filter(chemical__isnull=False).aggregate(**sums)
+    else:
+        year_totals_ = year_uses.aggregate(**sums, **counts)
     return {
-        'year': year,
+        'year': None if all_years else year,
+        'all_years': all_years,
+        'year_label': year_label(year, all_years),
         'latest_year': latest_year(),
         'years': years_loaded(),
         # Everything below is for the selected year, so the stat row reads
@@ -311,20 +420,23 @@ def _build_landing_stats(year):
         'total_lbs': year_totals_['lbs'] or 0,
         'active_notices': upcoming_count(PesticideNotice.objects.all()),
         'top_chemicals': top_chemicals_all[:10],
-        'top_chemicals_of_concern': _top_chemicals_of_concern(top_chemicals_all, year),
-        'top_commodities': top_related(uses, year, 'commodity'),
-        'by_county': by_county(uses, year) if year else [],
+        'top_chemicals_of_concern': _top_chemicals_of_concern(top_chemicals_all, uses, year, all_years=all_years),
+        'top_commodities': top_related(uses, year, 'commodity', all_years=all_years),
+        'by_county': county_totals(year, all_years) if (year or all_years) else [],
     }
 
 
-def landing_stats(year=None):
-    """Landing-page numbers for `year` (default: latest), cached per year."""
-    if year is None:
-        year = latest_year()
-    key = landing_key(year)
+def landing_stats(year=None, all_years=False):
+    """Landing-page numbers for `year` (default: latest) or every loaded year, cached per key."""
+    if all_years:
+        key = landing_key(ALL_YEARS)
+    else:
+        if year is None:
+            year = latest_year()
+        key = landing_key(year)
     data = cache.get(key)
     if data is None:
-        data = _build_landing_stats(year)
+        data = _build_landing_stats(year, all_years)
         cache.set(key, data, LANDING_TTL)
     return data
 
@@ -340,6 +452,10 @@ def refresh_landing_stats():
     year = latest_year()
     available_years()
     notice_window()
+    cache.delete(all_years_key('county-totals', ALL_YEARS))
+    cache.delete(all_years_key('county-totals', year))
+    all_data = _build_landing_stats(None, all_years=True)
+    cache.set(landing_key(ALL_YEARS), all_data, LANDING_TTL)
     data = _build_landing_stats(year)
     cache.set(landing_key(year), data, LANDING_TTL)
     return data

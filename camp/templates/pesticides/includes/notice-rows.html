@@ -4,8 +4,10 @@
         <thead>
             <tr>
                 <th>Scheduled</th>
+                {% if not compact %}
                 <th>County</th>
                 <th>Section</th>
+                {% endif %}
                 <th>Method</th>
                 <th class="has-text-right">Treated</th>
                 <th>Materials</th>
@@ -15,21 +17,23 @@
         {% for notice in object_list %}
             <tr>
                 <td><a href="{% url 'pesticides:notice-detail' sqid=notice.sqid %}">{{ notice.scheduled_application|date:'M j, Y g:i A' }}</a></td>
+                {% if not compact %}
                 <td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.name }}</a>{% else %}—{% endif %}</td>
                 <td>
                     {% if notice.mtrs %}
                         <a href="{% url 'pesticides:section-detail' sqid=notice.mtrs.sqid %}">{{ notice.mtrs.external_id }}</a>
                     {% else %}—{% endif %}
                 </td>
+                {% endif %}
                 <td>{{ notice.application_method|default:'—' }}</td>
                 <td class="has-text-right">{% if notice.treated_amount %}{{ notice.treated_amount|floatformat:'-1'|intcomma }} {{ notice.treated_units|lower }}{% else %}—{% endif %}</td>
                 <td>
-                    {% for chem in notice.chemicals.all %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.name }}</a> {% endfor %}
                     {% for product in notice.products.all %}<a class="tag is-light" href="{{ product.get_absolute_url }}">{{ product.name }}</a> {% endfor %}
+                    {% for chem in notice.chemicals.all %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.name }}</a> {% endfor %}
                 </td>
             </tr>
         {% empty %}
-            <tr><td colspan="6" class="has-text-centered has-text-grey">No notices match.</td></tr>
+            <tr><td colspan="{% if compact %}4{% else %}6{% endif %}" class="has-text-centered has-text-grey">No notices match.</td></tr>
         {% endfor %}
         </tbody>
     </table>

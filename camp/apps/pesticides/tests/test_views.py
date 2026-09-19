@@ -3,7 +3,9 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils.html import escape
 
-from camp.apps.pesticides.models import Chemical, Commodity, Product, ProductChemical
+from camp.apps.pesticides.models import (
+    Chemical, Commodity, PesticideUseRollup, PesticideUseTotal, Product, ProductChemical,
+)
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 
 
@@ -16,6 +18,20 @@ class ChemicalListTests(RollupTestMixin, TestCase):
 
     def names(self, response):
         return [c.name for c in response.context['object_list']]
+
+    def test_unused_in_year_is_hidden(self):
+        Chemical.objects.create(chem_code=30001, name='NEVER USED')
+        assert 'NEVER USED' not in self.names(self.client.get(self.url, {'sort': 'name'}))
+        assert self.client.get(self.url, {'q': 'never'}).context['result_count'] == 0
+
+    def test_county_filter_limits_rows_and_pounds(self):
+        # Kern 2023: uses 3 (glyphosate, 30 lbs) and 5 (chlorpyrifos, 40 lbs); no sulfur.
+        response = self.client.get(self.url, {'county': 'kern'})
+        assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
+            ('CHLORPYRIFOS', 40.0), ('GLYPHOSATE', 30.0),
+        ]
+        assert 'used in Kern County' in response.context['summary_sentence']
+        assert self.client.get(self.url, {'county': 'nope'}).context['result_count'] == 3
 
     def test_renders(self):
         response = self.client.get(self.url)
@@ -41,6 +57,35 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'year': '1999'})
         assert response.context['year'] == 2023
         assert response.context['year_qs'] == ''
+
+    def test_all_years_sums_every_loaded_year(self):
+        response = self.client.get(self.url, {'year': 'all'})
+        assert response.context['all_years'] is True
+        assert response.context['year'] is None
+        assert response.context['year_label'] == '2022\u20132023'
+        assert response.context['year_qs'] == '?year=all'
+        assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
+            ('SULFUR', 900.0), ('GLYPHOSATE', 260.0), ('CHLORPYRIFOS', 120.0),
+        ]
+        assert response.context['summary_sentence'] == '3 chemicals used 2022\u20132023'
+        html = response.content.decode()
+        assert 'Lbs applied' in html  # the year lives in the summary line, not the column header
+        # The hero gains an All pill and a matching option in the mobile select.
+        assert '>All<' in html and '>All years</option>' in html
+        assert Chemical.objects.get(pk=1).get_absolute_url() + '?year=all' in html
+
+    def test_all_years_with_a_county(self):
+        response = self.client.get(self.url, {'year': 'all', 'county': 'kern'})
+        assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
+            ('CHLORPYRIFOS', 100.0), ('GLYPHOSATE', 30.0),
+        ]
+        assert response.context['summary_sentence'] == '2 chemicals used in Kern County 2022\u20132023'
+
+    def test_year_select_shows_the_resolved_year(self):
+        html = self.client.get(self.url).content.decode()
+        assert '<option value="2023" selected>2023</option>' in html
+        html = self.client.get(self.url, {'year': 'all'}).content.decode()
+        assert '<option value="all" selected>All years</option>' in html
 
     def test_default_sort_is_lbs_desc(self):
         response = self.client.get(self.url)
@@ -115,9 +160,33 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'product': 'nope'})
         assert response.context['result_count'] == 0
 
+    def test_entity_pickers_for_the_other_two_kinds(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'data-kind="product"' in html
+        assert 'data-kind="commodity"' in html
+        assert 'data-kind="chemical"' not in html
+        # The lists submit on select: their form is the boosted one.
+        assert 'data-autosubmit="1"' in html
+        assert 'data-search-url="/api/2.0/pesticides/search/"' in html
+
+    def test_selected_entity_renders_as_a_tag(self):
+        product = Product.objects.get(pk=2)
+        html = self.client.get(self.url, {'product': product.sqid}).content.decode()
+        assert f'<input type="hidden" name="product" value="{product.sqid}">' in html
+        assert escape(product.name) in html
+        assert 'entity-picker-clear' in html
+
+    def used_chemical(self, **fields):
+        # Lists only show entities with use in the year, and read their pounds
+        # off the totals table, so give each a rollup row and its total.
+        chemical = Chemical.objects.create(**fields)
+        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1)
+        PesticideUseTotal.objects.create(year=2023, county_id=9001, chemical=chemical, lbs_chemical=1, applications=1)
+        return chemical
+
     def test_pagination_links_keep_filters(self):
         for i in range(60):
-            Chemical.objects.create(chem_code=10000 + i, name=f'TEST {i}', categories=['oil'])
+            self.used_chemical(chem_code=10000 + i, name=f'TEST {i}', categories=['oil'])
         response = self.client.get(self.url, {'category': 'oil', 'sort': 'name'})
         assert response.context['is_paginated'] is True
         assert 'category=oil' in response.content.decode()
@@ -137,8 +206,8 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         # Two chemicals with identical names (and no uses, so lbs_applied
         # ties too) must still come back in a deterministic order so
         # pagination doesn't skip/duplicate rows across pages.
-        a = Chemical.objects.create(chem_code=20001, name='DUPLICATE')
-        b = Chemical.objects.create(chem_code=20002, name='DUPLICATE')
+        a = self.used_chemical(chem_code=20001, name='DUPLICATE')
+        b = self.used_chemical(chem_code=20002, name='DUPLICATE')
 
         response = self.client.get(self.url, {'sort': 'name'})
         ids = [c.pk for c in response.context['object_list'] if c.name == 'DUPLICATE']
@@ -186,6 +255,12 @@ class ProductListTests(RollupTestMixin, TestCase):
     def test_related_commodity(self):
         commodity = Commodity.objects.get(pk=2)   # GRAPE: roundup + sulfur dust
         assert self.names(self.client.get(self.url, {'commodity': commodity.sqid})) == ['ROUNDUP PRO', 'SULFUR DUST']
+
+    def test_entity_pickers_for_the_other_two_kinds(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'data-kind="chemical"' in html
+        assert 'data-kind="commodity"' in html
+        assert 'data-kind="product"' not in html
 
     def test_chemical_count(self):
         response = self.client.get(self.url)
@@ -235,21 +310,17 @@ class CommodityListTests(RollupTestMixin, TestCase):
         product = Product.objects.get(pk=3)
         assert self.names(self.client.get(self.url, {'product': product.sqid})) == ['GRAPE']
 
-    def test_zero_chemical_count_sorts_correctly(self):
-        # A commodity with no PesticideUse rows at all (not just none in the
-        # latest year) should get chemical_count=0, not NULL -- NULL would
-        # always sort last regardless of direction under nulls_last.
+    def test_entity_pickers_for_the_other_two_kinds(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'data-kind="product"' in html
+        assert 'data-kind="chemical"' in html
+        assert 'data-kind="commodity"' not in html
+
+    def test_unused_commodity_is_hidden(self):
+        # Lists only show entities with reported use in the selected year.
         Commodity.objects.create(site_code='9999', name='NOTHING')
-
-        response = self.client.get(self.url)
-        by_name = {c.name: (c.chemical_count, c.lbs_applied) for c in response.context['object_list']}
-        assert by_name['NOTHING'] == (0, None)
-
-        response = self.client.get(self.url, {'sort': 'chemicals'})
-        assert self.names(response)[0] == 'NOTHING'
-
-        response = self.client.get(self.url, {'sort': '-chemicals'})
-        assert self.names(response)[-1] == 'NOTHING'
+        assert 'NOTHING' not in self.names(self.client.get(self.url, {'sort': 'chemicals'}))
+        assert self.client.get(self.url).context['result_count'] == 3
 
 
 class ChemicalDetailTests(RollupTestMixin, TestCase):
@@ -310,7 +381,6 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         assert ctx['totals'] == {'lbs': 80.0, 'applications': 1, 'counties': 1}
         assert [r['county_name'] for r in ctx['by_county']] == ['Fresno County']
         assert [r.obj.name for r in ctx['related_b']['rows']] == ['ALMOND']
-        assert [u.pk for u in ctx['recent_uses']] == [7]
         assert ctx['summary_sentence'] == 'Applied in 1 of 8 SJV counties in 2022, mostly on Almond.'
         assert ctx['related_b']['show_all_url'].endswith(f'?chemical={self.chemical.sqid}&year=2022')
         html = self.client.get(self.chemical.get_absolute_url(), {'year': '2022'}).content.decode()
@@ -319,6 +389,24 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
     def test_summary_sentence(self):
         ctx = self.client.get(self.chemical.get_absolute_url()).context
         assert ctx['summary_sentence'] == 'Applied in 2 of 8 SJV counties in 2023, mostly on Almond and Grape.'
+
+    def test_all_years_on_detail(self):
+        url = self.chemical.get_absolute_url()
+        ctx = self.client.get(url, {'year': 'all'}).context
+        assert ctx['all_years'] is True and ctx['year'] is None
+        # Uses 1, 2, 3 in 2023 (180 lbs) plus use 7 in 2022 (80 lbs).
+        assert ctx['totals'] == {'lbs': 260.0, 'applications': 4, 'counties': 2}
+        assert [r['year'] for r in ctx['by_year']] == [2023, 2022]
+        assert [(r['county_name'], r['lbs']) for r in ctx['by_county']] == [
+            ('Fresno County', 230.0), ('Kern County', 30.0),
+        ]
+        assert ctx['by_month'][2]['lbs'] == 180.0   # March in both years
+        assert [(r.obj.name, r.lbs) for r in ctx['related_b']['rows']] == [('ALMOND', 210.0), ('GRAPE', 50.0)]
+        assert ctx['summary_sentence'] == 'Applied in 2 of 8 SJV counties in 2022\u20132023, mostly on Almond and Grape.'
+        assert ctx['related_b']['show_all_url'].endswith(f'?chemical={self.chemical.sqid}&year=all')
+        assert ctx['records_url'].endswith(f'?chemical={self.chemical.sqid}&year=all')
+        html = self.client.get(url, {'year': 'all'}).content.decode()
+        assert 'Lbs applied in 2022\u20132023' in html
 
     def test_badges_and_links_render(self):
         html = self.client.get(self.chemical.get_absolute_url()).content.decode()
@@ -334,13 +422,13 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
     def test_query_ceiling(self):
         # Honest count with the current implementation is 23 (verified
         # query-by-query: every related-object fetch is batched via
-        # in_bulk/prefetch/select_related, no N+1s -- 19 base queries
+        # in_bulk/prefetch/select_related, no N+1s -- 18 base queries
         # (including the by_month rollup aggregate for the future month
         # chart) plus the county map's geometry build, the by-county
         # region-name lookup, the by-county-table's in_bulk() for
         # county_sqid, and the available-years lookup for the year picker;
         # all cached after the first request).
-        with self.assertNumQueries(23):
+        with self.assertNumQueries(22):
             self.client.get(self.chemical.get_absolute_url())
 
     def test_by_month_in_context(self):
@@ -428,7 +516,8 @@ class CommodityDetailTests(RollupTestMixin, TestCase):
 
     def test_no_notice_section(self):
         html = self.client.get(self.commodity.get_absolute_url()).content.decode()
-        assert 'do not include the crop' in html
+        assert 'SprayDays notices of intent' not in html
+        assert 'See all notices for' not in html
 
 
 class HomeTests(RollupTestMixin, TestCase):
@@ -458,6 +547,18 @@ class HomeTests(RollupTestMixin, TestCase):
         assert 'Notices next 7 days' not in html
         assert 'notice-callout' in html and 'currently scheduled' in html
 
+    def test_all_years_on_home(self):
+        response = self.client.get(self.url, {'year': 'all'})
+        assert response.context['all_years'] is True
+        assert response.context['total_lbs'] == 1280.0
+        assert response.context['applications'] == 9
+        html = response.content.decode()
+        assert 'Lbs applied in 2022\u20132023' in html
+        assert 'Fresno County: 1,150 lbs' in html
+        assert Chemical.objects.get(pk=3).get_absolute_url() + '?year=all' in html
+        # The caveat still names the latest loaded year.
+        assert 'the newest full year here is 2023' in html
+
     def test_leaderboards_link_to_details(self):
         html = self.client.get(self.url).content.decode()
         assert Chemical.objects.get(pk=3).get_absolute_url() in html
@@ -467,7 +568,11 @@ class HomeTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert 'id="explorer"' in html
         assert 'hx-boost="true"' in html
-        assert 'hx-select="#explorer"' in html
+        # Only the body swaps; the hero's tabs and year picker refresh out of band.
+        assert 'hx-target="#explorer-body"' in html
+        assert 'hx-select-oob="#explorer-tabs,#year-picker"' in html
+        assert 'id="explorer-body"' in html and 'id="explorer-tabs"' in html and 'id="year-picker"' in html
+        assert 'hx-select="#explorer-body"' in html
 
     def test_htmx_request_gets_full_page(self):
         # Boosted requests are ordinary GETs: the server renders the whole
@@ -558,6 +663,13 @@ class MapPageTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'product': 'nope'})
         assert response.status_code == 200
         assert response.context['map_config']['product'] == ''
+
+    def test_notices_are_on_by_default(self):
+        response = self.client.get(self.url)
+        assert response.context['map_config']['show_notices'] == '1'
+        html = response.content.decode()
+        assert 'data-show-notices="1"' in html
+        assert 'name="notices" checked' in html
 
     def test_nav_has_map_tab(self):
         html = self.client.get(reverse('pesticides:chemical-list')).content.decode()

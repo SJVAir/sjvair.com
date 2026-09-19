@@ -48,10 +48,11 @@ class NotesRenderingTests(RollupTestMixin, TestCase):
         html = self.client.get(Product.objects.get(pk=2).get_absolute_url()).content.decode()
         assert notes.note('restricted_material')['summary'] in html
 
-    def test_notice_page(self):
+    def test_notice_page_has_no_notes_block(self):
+        # Badges carry their own tooltips; the block only lives on chemical and product pages.
         notice = PesticideNotice.objects.get(pk=3)
         html = self.client.get(reverse('pesticides:notice-detail', kwargs={'sqid': notice.sqid})).content.decode()
-        assert notes.note('noi_meaning')['summary'] in html and notes.note('fumigant')['title'] in html
+        assert 'What this means' not in html
 
     def test_landing_and_how_to_read_use_notes(self):
         html = self.client.get(reverse('pesticides:home')).content.decode()

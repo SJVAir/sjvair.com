@@ -21,12 +21,15 @@ from django.core.cache import cache
 from django.urls import reverse
 
 from camp.api.v2.pesticides.sections import radius_bbox
-from camp.apps.pesticides import notes as notes_module
 from camp.apps.pesticides import stats
-from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup
+from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup, PesticideUseTotal
 from camp.apps.regions.models import Region
 
-PLACE_REGION_TYPES = (Region.Type.COUNTY, Region.Type.CITY, Region.Type.ZIPCODE, Region.Type.PLACE)
+PLACE_REGION_TYPES = (
+    Region.Type.COUNTY, Region.Type.CITY, Region.Type.ZIPCODE, Region.Type.PLACE, Region.Type.SCHOOL_DISTRICT,
+)
+WITHIN_KEY = 'pesticides:within'
+WITHIN_TTL = 60 * 60 * 24
 RADIUS_CHOICES = (1, 3, 5)
 AREA_SECTIONS_TTL = 60 * 60 * 24
 SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/'
@@ -61,6 +64,24 @@ class Area:
             return PesticideUseRollup.objects.filter(county=county)
         return PesticideUseRollup.objects.filter(mtrs__in=self.section_pks)
 
+    def total_rows(self):
+        """
+        The pre-summed PesticideUseTotal rows for this area, or None when the
+        area isn't a whole county (totals are only binned by county, so a
+        city, ZIP, or radius still has to go through the rollup). Restricted
+        to the chemical rows, which carry each application's pounds once.
+        """
+        county = self.county
+        if county is None:
+            return None
+        return PesticideUseTotal.objects.filter(county=county, chemical__isnull=False)
+
+    def cache_key(self):
+        """Stable identity for this area, for keying its cached all-years aggregates."""
+        if self.kind == 'region':
+            return f'region:{self.region.pk}'
+        return f'point:{self.point.y:.4f}:{self.point.x:.4f}:{self.radius}'
+
     def notices(self):
         # Imported here, not at module scope, to avoid a circular import --
         # views.py imports `places` and calls `place_context()`.
@@ -81,9 +102,9 @@ class Area:
             return {'region': self.region.sqid}
         return {'lat': self.point.y, 'lng': self.point.x, 'radius': self.radius}
 
-    def records_url(self, year):
+    def records_url(self, year, all_years=False):
         params = self._area_params()
-        params['year'] = year
+        params['year'] = stats.ALL_YEARS if all_years else year
         return reverse('pesticides:records') + '?' + urlencode(params)
 
     def notices_url(self):
@@ -127,6 +148,52 @@ def point_area(lat, lng, radius, label=''):
     return Area(label=label, kind='point', point=point, radius=radius, section_pks=section_pks)
 
 
+def regions_within(county):
+    """
+    Quick-navigation lists for a county page: the cities and places, school
+    districts, and ZIP codes whose boundary centroid falls inside the county.
+    Each entry is {'name', 'url'}; cities and places are merged by name (the
+    synthetic Place regions duplicate city names). Cached a day per county.
+    """
+    from django.contrib.gis.db.models.functions import Centroid
+
+    key = f'{WITHIN_KEY}:{county.pk}'
+    data = cache.get(key)
+    if data is not None:
+        return data
+    geometry = county.boundary.geometry
+    rows = (
+        Region.objects
+        .filter(
+            type__in=(Region.Type.CITY, Region.Type.PLACE, Region.Type.SCHOOL_DISTRICT, Region.Type.ZIPCODE),
+            boundary__isnull=False,
+        )
+        .annotate(centroid=Centroid('boundary__geometry'))
+        .filter(centroid__within=geometry)
+        .order_by('name')
+    )
+    groups = {'places': {}, 'school_districts': [], 'zipcodes': []}
+    for region in rows:
+        entry = {
+            'name': region.name,
+            'url': reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug}),
+        }
+        if region.type == Region.Type.SCHOOL_DISTRICT:
+            groups['school_districts'].append(entry)
+        elif region.type == Region.Type.ZIPCODE:
+            groups['zipcodes'].append(entry)
+        elif region.type == Region.Type.CITY or region.name not in groups['places']:
+            # A city wins over the synthetic place of the same name.
+            groups['places'][region.name] = entry
+    data = {
+        'places': [groups['places'][name] for name in sorted(groups['places'])],
+        'school_districts': groups['school_districts'],
+        'zipcodes': groups['zipcodes'],
+    }
+    cache.set(key, data, WITHIN_TTL)
+    return data
+
+
 def region_area(region):
     cache_key = f'pesticides:area-sections:{region.pk}'
     section_pks = cache.get(cache_key)
@@ -149,30 +216,56 @@ def region_area(region):
     return Area(label=label, kind='region', region=region, section_pks=section_pks)
 
 
-def place_context(area, year):
-    from camp.apps.pesticides.views import section_map_config
-
+def _place_stats(area, year, all_years):
+    """
+    The year-binned half of a place page. Across every loaded year a county
+    spans millions of rollup rows, so the whole block is cached per area --
+    it only changes on import. The stat row's pounds and applications come
+    from PesticideUseTotal when the area is a whole county; the section and
+    chemical counts and the month bars have to read the rollup either way.
+    """
     rows = area.rollup_rows()
-    year_rows = rows.filter(year=year)
-    year_totals = stats.year_totals(rows, year)
+    scoped = stats.in_year(rows, year, all_years)
+    # Only across every year: a single year's rollup rows are cheap, and a
+    # totals row exists only where a chemical was identified, so switching
+    # sources would quietly drop unattributed applications from the count.
+    total_rows = area.total_rows() if all_years else None
+    totals_source = rows if total_rows is None else total_rows
+    summed = stats.year_totals(totals_source, year, all_years=all_years)
 
-    totals = {
-        'lbs': year_totals['lbs'],
-        'applications': year_totals['applications'],
-        'sections_used': year_rows.filter(mtrs__isnull=False).values('mtrs').distinct().count(),
-        'sections_total': len(area.section_pks),
-        'chemicals': year_rows.filter(chemical__isnull=False).values('chemical').distinct().count(),
-    }
-
-    by_month = stats.by_month(rows, year)
+    by_month = stats.by_month(rows, year, all_years=all_years)
     peak_month = None
     if by_month and any(month['lbs'] for month in by_month):
         peak = max(by_month, key=lambda month: month['lbs'])
         peak_month = calendar.month_name[peak['month']]
 
-    top_chemicals = stats.top_related(rows, year, 'chemical', limit=10)
-    top_commodities = stats.top_related(rows, year, 'commodity', limit=10)
-    top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10)
+    return {
+        'totals': {
+            'lbs': summed['lbs'],
+            'applications': summed['applications'],
+            'sections_used': scoped.filter(mtrs__isnull=False).values('mtrs').distinct().count(),
+            'sections_total': len(area.section_pks),
+            'chemicals': scoped.filter(chemical__isnull=False).values('chemical').distinct().count(),
+        },
+        'by_month': by_month,
+        'peak_month': peak_month,
+        'top_chemicals': stats.top_related(rows, year, 'chemical', limit=10, all_years=all_years),
+        'top_commodities': stats.top_related(rows, year, 'commodity', limit=10, all_years=all_years),
+        'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10, all_years=all_years),
+    }
+
+
+def place_context(area, year, all_years=False):
+    from camp.apps.pesticides.views import section_map_config
+
+    def build():
+        return _place_stats(area, year, all_years)
+
+    if all_years:
+        data = stats.cached(stats.all_years_key('place', area.cache_key()), build)
+    else:
+        data = build()
+    totals = data['totals']
 
     notices = area.notices()
     upcoming_qs = stats._upcoming(notices)
@@ -186,19 +279,13 @@ def place_context(area, year):
 
     context = {
         'area': area,
-        'totals': totals,
-        'by_month': by_month,
-        'peak_month': peak_month,
-        'top_chemicals': top_chemicals,
-        'top_commodities': top_commodities,
-        'top_products': top_products,
+        **data,
         'upcoming': upcoming,
         'upcoming_count': upcoming_count,
-        'records_url': area.records_url(year),
+        'records_url': area.records_url(year, all_years),
         'notices_url': area.notices_url(),
-        'map_config': section_map_config(year, **area.map_kwargs()),
+        'map_config': section_map_config(year, all_years=all_years, **area.map_kwargs()),
         'spraydays_url': SPRAYDAYS_URL,
-        'notes': notes_module.notes_for(notes_module.keys_for_chemicals(row.obj for row in top_chemicals)),
     }
 
     # A single-county area's per-county breakdown is just that one county

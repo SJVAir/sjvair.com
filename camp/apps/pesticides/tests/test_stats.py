@@ -163,6 +163,58 @@ class StatsTests(RollupTestMixin, TestCase):
         assert stats.year_query(2023) == ''
         assert stats.year_query(2022) == '?year=2022'
 
+    def test_resolve_year_param(self):
+        assert stats.resolve_year_param('all') == (None, True)
+        assert stats.resolve_year_param('ALL') == (None, True)
+        assert stats.resolve_year_param('2022') == (2022, False)
+        assert stats.resolve_year_param('1999') == (2023, False)
+        assert stats.resolve_year_param(None) == (2023, False)
+        assert stats.year_query(None, True) == '?year=all'
+        assert stats.year_param(None, True) == 'year=all'
+        assert stats.year_label(None, True) == '2022\u20132023'
+        assert stats.year_label(2022) == '2022'
+        assert stats.year_label(None) == ''
+
+    def test_resolve_year_param_empty_db(self):
+        PesticideUse.objects.all().delete()
+        PesticideUseRollup.objects.all().delete()
+        cache.clear()
+        assert stats.resolve_year_param('all') == (None, False)
+        assert stats.year_label(None, True) == ''
+
+    def test_all_years_aggregates_span_every_year(self):
+        rows = PesticideUseRollup.objects.filter(chemical_id=1)
+        assert stats.year_totals(rows, None, all_years=True) == {'lbs': 260.0, 'applications': 4, 'counties': 2}
+        assert [(r['county_name'], r['lbs']) for r in stats.by_county(rows, None, all_years=True)] == [
+            ('Fresno County', 230.0), ('Kern County', 30.0),
+        ]
+        by_month = stats.by_month(rows, None, all_years=True)
+        assert by_month[2]['lbs'] == 180.0   # March 2023 (100) + March 2022 (80)
+        assert sum(r['applications'] for r in by_month) == 4
+        assert [(r.obj.name, r.lbs) for r in stats.top_related(rows, None, 'commodity', all_years=True)] == [
+            ('ALMOND', 210.0), ('GRAPE', 50.0),
+        ]
+
+    def test_landing_stats_for_all_years(self):
+        data = stats.landing_stats(all_years=True)
+        assert data['all_years'] is True
+        assert data['year'] is None
+        assert data['year_label'] == '2022\u20132023'
+        assert data['total_lbs'] == 1280.0      # 740 in 2023 + 540 in 2022
+        assert data['applications'] == 9
+        assert (data['chemical_count'], data['product_count'], data['commodity_count']) == (3, 3, 3)
+        assert [r.obj.name for r in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
+        assert [(r['county_name'], r['lbs']) for r in data['by_county']] == [
+            ('Fresno County', 1150.0), ('Kern County', 130.0),
+        ]
+        # Its own cache key, alongside the per-year ones.
+        assert cache.get(stats.landing_key('all')) is not None
+        assert cache.get(stats.landing_key(2023)) is None
+
+    def test_refresh_landing_stats_also_builds_the_all_years_entry(self):
+        stats.refresh_landing_stats()
+        assert cache.get(stats.landing_key('all'))['total_lbs'] == 1280.0
+
     def test_resolve_year_empty_db(self):
         PesticideUse.objects.all().delete()
         PesticideUseRollup.objects.all().delete()

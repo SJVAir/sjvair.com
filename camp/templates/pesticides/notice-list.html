@@ -1,5 +1,5 @@
 {% extends 'pesticides/base.html' %}
-{% load pesticides_explorer %}
+{% load static pesticides_explorer %}
 
 {% block title %}Notices | {{ block.super }}{% endblock %}
 {% block body-class %}{{ block.super }} notice-list{% endblock %}
@@ -58,6 +58,7 @@
             </ul>
         </div>
         {% endif %}
+        {% include 'pesticides/includes/spraydays-signup.html' %}
     </div>
     <div class="column">
         {% if active_filters %}
@@ -75,8 +76,4 @@
     </div>
 </div>
 
-<div class="box notice-signup mt-6">
-    <p><strong>Sign up with SprayDays</strong> to be told about notices near you.</p>
-    <p><a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">spraydays.cdpr.ca.gov</a></p>
-</div>
 {% endblock %}

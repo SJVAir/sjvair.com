@@ -1,5 +1,38 @@
+// The combobox dropdown shared by "Find your area" and the entity pickers:
+// an absolutely-positioned list hanging off the field above it. Both lists
+// are siblings of their field, so whatever they hang from has to be
+// `position: relative` itself.
+%combobox-results
+    position: absolute
+    z-index: 30
+    left: 0
+    right: 0
+    background: $white
+    border: 1px solid $grey-lighter
+    border-radius: 4px
+    box-shadow: 0 4px 12px rgba($black, 0.12)
+    list-style: none
+    margin: 0
+    padding: 0.25rem 0
+    max-height: 18rem
+    overflow-y: auto
+    li
+        padding: 0.4rem 0.75rem
+        cursor: pointer
+        &[aria-selected="true"], &:hover
+            background: $grey-lightest
+
+
 body.pesticides
     .hook
+        // Photo: "Aerial View of Tractor Spraying Field" on Pexels
+        // (https://www.pexels.com/photo/37993891/), free to use. Darkened so
+        // the white text, tabs, and year pills stay readable.
+        // Darker toward the bottom, where the tabs and year pills sit, lighter
+        // behind the title so the photo shows through.
+        background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.55) 100%), url('/static/img/tractor-spraying-field.jpg')
+        background-position: center 48%
+        padding-bottom: 1.25rem
         .lede
             color: rgba($white, 0.92)
             margin-bottom: 0
@@ -9,6 +42,15 @@ body.pesticides
         .explorer-nav.tabs
             margin-top: $size-6
             margin-bottom: 0
+            // Six boxed tabs don't fit a phone; the coloured icons carry them.
+            +mobile
+                .tab-label
+                    display: none
+                .icon.is-small
+                    margin: 0
+                li a
+                    padding-left: 0.75em
+                    padding-right: 0.75em
             a
                 text-decoration: none
             li.is-active a
@@ -27,7 +69,13 @@ body.pesticides
             display: flex
             align-items: center
             gap: 0.75rem
-            margin-top: $size-6
+            margin-top: 0.75rem
+            .year-picker-select select
+                background-color: rgba($white, 0.14)
+                border-color: transparent
+                color: $white
+                option
+                    color: $text
             .year-picker-label
                 @extend .is-size-7
                 color: rgba($white, 0.85)
@@ -54,6 +102,34 @@ body.pesticides
                     background-color: $white
                     border-color: $white
                     color: $primary
+
+
+    // Duotone icon colours for the explorer's sections (same palette on the
+    // landing cards and the tab bar).
+    .explorer-icon
+        --fa-secondary-opacity: 1
+        &.is-map
+            --fa-primary-color: #{$primary}
+            --fa-secondary-color: #9ed0f5
+        &.is-chemicals
+            --fa-primary-color: #7b4fb8
+            --fa-secondary-color: #c9a7ff
+        &.is-products
+            --fa-primary-color: #6b8e23
+            --fa-secondary-color: #b7f542
+        &.is-commodities
+            --fa-primary-color: #2e8b57
+            --fa-secondary-color: #9acd32
+        &.is-records
+            --fa-primary-color: #5a6b7b
+            --fa-secondary-color: #c8d1da
+        &.is-notices
+            --fa-primary-color: #d35400
+            --fa-secondary-color: #ffc078
+    // On the blue hero the dark primaries vanish, so inactive tabs use a
+    // white primary with the section's accent as the secondary.
+    .hook .explorer-nav li:not(.is-active) .explorer-icon
+        --fa-primary-color: rgba(255, 255, 255, 0.92)
 
     // Flex columns can't shrink below their content by default, so a card with
     // long names would widen its column and knock the row out of alignment.
@@ -97,6 +173,74 @@ body.pesticides
     .notice-signup
         border-left: 3px solid $link
         background-color: $grey-lightest
+        .notice-signup-logo
+            display: block
+            margin: 0 auto 0.75rem
+            max-width: 220px
+            img
+                display: block
+                width: 100%
+                height: auto
+        // Beside a table: logo on the left, copy and link stacked on the right.
+        &.notice-signup-side
+            +tablet
+                display: flex
+                align-items: center
+                gap: 1.25rem
+                .notice-signup-logo
+                    flex: 0 0 150px
+                    margin: 0
+                .notice-signup-copy
+                    flex: 1 1 auto
+                    p
+                        margin: 0
+                    p + p
+                        margin-top: 0.35rem
+
+    // Landing: "Find your area" beside the SprayDays box, same height.
+    .landing-top
+        .column > .box
+            height: 100%
+            margin-bottom: 0
+        .notice-signup
+            display: flex
+            flex-direction: column
+            justify-content: center
+            .notice-signup-logo
+                max-width: 150px
+
+    .within
+        .within-panels
+            +tablet
+                .within-panel + .within-panel
+                    border-left: 1px solid $grey-lighter
+        .within-panel
+            padding: 0.75rem 1.25rem
+        .within-heading
+            display: flex
+            align-items: center
+            gap: 0.4rem
+            font-weight: 600
+            margin-bottom: 0.5rem
+            .tag
+                margin-left: 0.25rem
+        .within-list
+            list-style: none
+            margin: 0
+            font-size: $size-7
+            line-height: 1.35
+            li
+                break-inside: avoid
+                padding: 0.2em 0
+            &.is-two-column
+                columns: 2
+                column-gap: 1.25rem
+        .within-zips
+            max-width: 24rem
+            .tags
+                gap: 0.3rem
+                .tag
+                    font-variant-numeric: tabular-nums
 
     .right-now
         border-left: 3px solid $info
@@ -146,22 +290,7 @@ body.pesticides
         // positioned ancestor has to be .find-area itself.
         position: relative
         .find-area-results
-            position: absolute
-            z-index: 30
-            left: 0
-            right: 0
-            background: $white
-            border: 1px solid $grey-lighter
-            border-radius: 4px
-            box-shadow: 0 4px 12px rgba($black, 0.12)
-            list-style: none
-            margin: 0
-            padding: 0.25rem 0
-            li
-                padding: 0.4rem 0.75rem
-                cursor: pointer
-                &[aria-selected="true"], &:hover
-                    background: $grey-lightest
+            @extend %combobox-results
             li.find-area-group
                 cursor: default
                 padding: 0.4rem 0.75rem 0.15rem
@@ -188,6 +317,26 @@ body.pesticides
                 margin: 0 0.15rem
             > span:first-child
                 margin-right: 0.25rem
+
+    .entity-picker
+        // Same deal as .find-area: the results list is a sibling of the
+        // field's control, so the picker itself is the positioned ancestor.
+        position: relative
+        .entity-picker-results
+            @extend %combobox-results
+            li.entity-picker-empty
+                cursor: default
+                color: $grey
+                &:hover
+                    background: transparent
+            .entity-picker-result-detail
+                margin-left: 0.4rem
+                font-size: $size-7
+                color: $grey
+                &::before
+                    content: '· '
+        .tag .delete
+            margin-left: 0.35rem
 
     .how-to-read
         margin: 1rem 0 1.5rem

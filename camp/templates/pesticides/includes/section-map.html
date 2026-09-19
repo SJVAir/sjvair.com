@@ -20,13 +20,16 @@
        data-outline-url="{{ map_config.outline_url }}"
        data-center="{{ map_config.center }}"
        data-zoom="{{ map_config.zoom }}"
-       data-radius="{{ map_config.radius }}"></div>
+       data-radius="{{ map_config.radius }}"
+       data-show-notices="{{ map_config.show_notices }}"></div>
   <div class="section-map-controls" hidden>
     <label><input type="radio" name="metric" value="lbs_chemical" checked> Pounds</label>
     <label><input type="radio" name="metric" value="applications"> Applications</label>
+    <label class="section-map-notices-toggle"><input type="checkbox" name="notices"{% if map_config.show_notices == '1' %} checked{% endif %}> Show notices</label>
     <span class="section-map-status" aria-live="polite"></span>
   </div>
   <ul class="county-legend section-map-legend" hidden></ul>
+  {% if map_config.note %}<p class="section-map-note is-size-7 has-text-grey">{{ map_config.note }}</p>{% endif %}
   <span class="section-map-level" hidden></span>
   <noscript>{% if county_map %}{% include 'pesticides/includes/county-map.html' %}{% endif %}</noscript>
 </div>

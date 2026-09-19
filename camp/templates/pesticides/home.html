@@ -1,8 +1,9 @@
 {% extends 'pesticides/base.html' %}
 {% load pesticides_explorer %}
 
+{% block explorer-lede %}<p class="lede">Which pesticides are applied in the San Joaquin Valley, where, and on what.</p>{% endblock %}
 {% block body-class %}{{ block.super }} home{% endblock %}
-{% block breadcrumb-list %}{% endblock %}
+{% block breadcrumbs %}{% endblock %}
 
 {% block explorer-content %}
 <div class="content intro">
@@ -14,7 +15,10 @@
     </p>
 </div>
 
-{% include 'pesticides/includes/find-area.html' %}
+<div class="columns landing-top">
+    <div class="column is-8">{% include 'pesticides/includes/find-area.html' %}</div>
+    <div class="column is-4">{% include 'pesticides/includes/spraydays-signup.html' %}</div>
+</div>
 
 <p class="notice-callout">
     <span class="icon has-text-info"><span class="fa-regular fa-fw fa-calendar-clock"></span></span>
@@ -25,8 +29,8 @@
 </p>
 
 <div class="level stat-row box">
-    <div class="level-item has-text-centered"><div><p class="heading">Lbs applied{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ total_lbs|lbs }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Applications{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ applications|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ total_lbs|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ applications|lbs }}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Chemicals used</p><p class="title">{{ chemical_count|lbs }}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Products used</p><p class="title">{{ product_count|lbs }}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Commodities treated</p><p class="title">{{ commodity_count|lbs }}</p></div></div>
@@ -35,32 +39,34 @@
 {% include 'pesticides/includes/how-to-read.html' %}
 
 {% if county_map %}
-<div class="columns is-centered">
-    <div class="column is-8">
-        {% include 'pesticides/includes/county-map.html' %}
+<div class="columns">
+    <div class="column is-5-tablet is-4-widescreen">
         {% include 'pesticides/includes/by-county-table.html' %}
+    </div>
+    <div class="column is-7-tablet is-8-widescreen">
+        {% include 'pesticides/includes/county-map.html' %}
     </div>
 </div>
 {% endif %}
 
 <div class="columns section-cards">
     <div class="column">
-        <a class="box section-card" href="{% url 'pesticides:chemical-list' %}{{ year_qs }}">
-            <h3 class="title is-5">Chemicals</h3>
-            <p>Active ingredients, with Prop 65, IARC, and CARB classifications.</p>
-            <p class="is-size-7 has-text-grey">Try: <em>glyphosate</em></p>
-        </a>
-    </div>
-    <div class="column">
         <a class="box section-card" href="{% url 'pesticides:product-list' %}{{ year_qs }}">
-            <h3 class="title is-5">Products</h3>
+            <h3 class="title is-5"><span class="icon-text"><span class="icon"><span class="fa-duotone fa-fw fa-lg fa-spray-can-sparkles explorer-icon is-products"></span></span><span>Products</span></span></h3>
             <p>Registered formulations, flagged when fumigant or California-restricted.</p>
             <p class="is-size-7 has-text-grey">Try: <em>roundup</em></p>
         </a>
     </div>
     <div class="column">
+        <a class="box section-card" href="{% url 'pesticides:chemical-list' %}{{ year_qs }}">
+            <h3 class="title is-5"><span class="icon-text"><span class="icon"><span class="fa-duotone fa-fw fa-lg fa-flask explorer-icon is-chemicals"></span></span><span>Chemicals</span></span></h3>
+            <p>Active ingredients, with Prop 65, IARC, and CARB classifications.</p>
+            <p class="is-size-7 has-text-grey">Try: <em>glyphosate</em></p>
+        </a>
+    </div>
+    <div class="column">
         <a class="box section-card" href="{% url 'pesticides:commodity-list' %}{{ year_qs }}">
-            <h3 class="title is-5">Commodities</h3>
+            <h3 class="title is-5"><span class="icon-text"><span class="icon"><span class="fa-duotone fa-fw fa-lg fa-seedling explorer-icon is-commodities"></span></span><span>Commodities</span></span></h3>
             <p>Crops and sites pesticides are applied to.</p>
             <p class="is-size-7 has-text-grey">Try: <em>almond</em></p>
         </a>

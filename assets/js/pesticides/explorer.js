@@ -24,6 +24,10 @@
   // refetch from the server instead.
   window.htmx.config.historyCacheSize = 0;
   window.htmx.config.scrollBehavior = 'instant';
+  // Boosted swaps scroll the target into view by default. A filter, sort, or
+  // year change on the same page should leave the reader where they are;
+  // only a move to a different page scrolls to the top (see afterSwap).
+  window.htmx.config.scrollIntoViewOnBoost = false;
 
   // Re-run the component initialisers over freshly swapped content. htmx fires
   // htmx:load once on page load and again for each swapped-in element.
@@ -32,6 +36,9 @@
     if (!root) return;
     if (window.PesticidesSectionMap) window.PesticidesSectionMap.init(root);
     if (window.PesticidesFindArea) window.PesticidesFindArea.init(root);
+    if (window.PesticidesEntityPicker) window.PesticidesEntityPicker.init(root);
+    // The static county choropleths on detail pages (admin/leaflet-maps.js).
+    if (window.SJVAirLeafletMaps) window.SJVAirLeafletMaps.init();
   });
 
   // Filter forms carry hidden fields that are usually empty; dropping empty
@@ -54,13 +61,19 @@
   // Typing in the filter search box swaps the region out from under the input
   // that has focus, so put the caret back where the user left it.
   var refocusSearch = false;
+  var pathBeforeRequest = window.location.pathname;
 
   document.body.addEventListener('htmx:beforeRequest', function (evt) {
     var elt = evt.detail && evt.detail.elt;
     refocusSearch = !!(elt && elt.id === 'id_q');
+    pathBeforeRequest = window.location.pathname;
   });
 
   document.body.addEventListener('htmx:afterSwap', function () {
+    // hx-push-url has already updated the address by now.
+    if (window.location.pathname !== pathBeforeRequest) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
     if (!refocusSearch) return;
     refocusSearch = false;
     var input = document.getElementById('id_q');

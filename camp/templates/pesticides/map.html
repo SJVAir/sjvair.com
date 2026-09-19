@@ -4,7 +4,7 @@
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Map</a></li>{% endblock %}
 {% block explorer-content %}
 <div class="content">
-    <h1 class="title is-4 mb-2">Pesticide use by square mile{% if year %}, {{ year }}{% endif %}</h1>
+    <h1 class="title is-4 mb-2">Pesticide use by square mile{% if map_config.year %}, {{ map_config.year }}{% endif %}</h1>
     <p class="has-text-grey">Zoomed out, each square is a 6 &times; 6 mile township; zoom in and each square becomes one square-mile MTRS section. Shades are quantile classes over the squares in view; click a section for its top chemicals. Orange dots are SprayDays notices of intent currently scheduled.</p>
     {% if no_matches %}
     <p class="notification is-warning is-light">No matches for that filter.</p>
@@ -16,5 +16,5 @@
     {% endif %}
 </div>
 {% include 'pesticides/includes/section-map.html' %}
-<p class="is-size-7 has-text-grey mt-3">Squares with no reported use{% if year %} in {{ year }}{% endif %} are outlined only; dark lines are county boundaries. Want to be told about notices near you? <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">Sign up with SprayDays</a>.</p>
+<p class="is-size-7 has-text-grey mt-3">Squares with no reported use{% if map_config.year %} in {{ map_config.year }}{% endif %} are outlined only; dark lines are county boundaries. Want to be told about notices near you? <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">Sign up with SprayDays</a>.</p>
 {% endblock %}

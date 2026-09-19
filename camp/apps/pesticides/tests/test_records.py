@@ -33,6 +33,27 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'year': 2022})
         assert self.pks(response) == [9, 8, 7]
 
+    def test_all_years_spans_the_whole_loaded_range(self):
+        response = self.client.get(self.url, {'year': 'all'})
+        assert response.context['all_years'] is True
+        assert response.context['form']['start'].value() == date(2022, 1, 1)
+        assert response.context['form']['end'].value() == date(2023, 12, 31)
+        assert self.pks(response) == [6, 5, 4, 3, 2, 1, 9, 8, 7]
+        assert response.context['totals'] == {'applications': 9, 'lbs': 1280.0, 'acres': 128.0}
+        assert '2022\u20132023' in response.context['summary_sentence']
+        # The map can only show one year, and says so under its legend.
+        assert response.context['map_config']['year'] == 2023
+        assert response.context['map_config']['note'] == (
+            "The map shows 2023; year-by-year sections aren't summed across years."
+        )
+        assert 'section-map-note' in response.content.decode()
+
+    def test_an_explicit_start_date_still_wins_over_all_years(self):
+        response = self.client.get(self.url, {'year': 'all', 'start': '2022-03-01', 'end': '2022-09-30'})
+        assert response.context['all_years'] is False
+        assert response.context['year'] == 2022
+        assert self.pks(response) == [9, 8, 7]
+
     def test_explicit_dates_win(self):
         # pk=4 (2023-06-01) falls inside this range too, so it belongs in the
         # result alongside 3 (05-01) and 5 (07-01); the brief's expected [5, 3]
@@ -65,6 +86,30 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         section = Region.objects.get(pk=9101)
         assert self.pks(self.client.get(self.url, {'section': county.sqid})) == []
         assert self.pks(self.client.get(self.url, {'region': section.sqid})) == []
+
+    def test_notices_are_off_by_default(self):
+        # Records are use data; the notice markers are opt-in here.
+        response = self.client.get(self.url)
+        assert response.context['map_config']['show_notices'] == '0'
+        html = response.content.decode()
+        assert 'data-show-notices="0"' in html
+        assert 'name="notices" checked' not in html
+
+    def test_entity_pickers_render_for_all_three_kinds(self):
+        response = self.client.get(self.url)
+        html = response.content.decode()
+        for kind in ('product', 'chemical', 'commodity'):
+            assert f'data-kind="{kind}"' in html
+        # This form submits on Apply only.
+        assert 'data-autosubmit="1"' not in html
+
+    def test_entity_picker_shows_the_selected_chemical(self):
+        chemical = Chemical.objects.get(pk=1)
+        response = self.client.get(self.url, {'chemical': chemical.sqid})
+        assert response.context['related']['chemical'] == chemical
+        html = response.content.decode()
+        assert f'<input type="hidden" name="chemical" value="{chemical.sqid}">' in html
+        assert 'entity-picker-clear' in html
 
     def test_section_filter_centers_map(self):
         section = Region.objects.get(pk=9102)

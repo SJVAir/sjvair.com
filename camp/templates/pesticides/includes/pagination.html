@@ -12,7 +12,16 @@
         <a class="pagination-next" disabled>Next</a>
     {% endif %}
     <ul class="pagination-list">
-        <li><span class="pagination-ellipsis">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+        {% elided_page_range page_obj as pages %}
+        {% for number in pages %}
+            {% if number is None %}
+                <li><span class="pagination-ellipsis">&hellip;</span></li>
+            {% elif number == page_obj.number %}
+                <li><a class="pagination-link is-current" aria-label="Page {{ number }}" aria-current="page">{{ number }}</a></li>
+            {% else %}
+                <li><a class="pagination-link" href="{% qs_replace page=number %}" aria-label="Go to page {{ number }}">{{ number }}</a></li>
+            {% endif %}
+        {% endfor %}
     </ul>
 </nav>
 {% endif %}

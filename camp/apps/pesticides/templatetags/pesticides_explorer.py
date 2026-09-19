@@ -101,3 +101,13 @@ def iarc_note(chemical):
 def note_summary(key):
     entry = notes_module.note(key)
     return entry['summary'] if entry else ''
+
+
+@register.simple_tag
+def elided_page_range(page_obj):
+    """Page numbers around the current page with ellipses, for Bulma's pagination list."""
+    paginator = page_obj.paginator
+    return [
+        (None if item == paginator.ELLIPSIS else item)
+        for item in paginator.get_elided_page_range(page_obj.number, on_each_side=2, on_ends=1)
+    ]

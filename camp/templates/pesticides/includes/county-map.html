@@ -1,6 +1,6 @@
 {% if county_map %}
 <figure class="county-map">
     {{ county_map }}
-    <figcaption class="is-size-7 has-text-grey">Pounds applied by county{% if year %}, {{ year }}{% endif %}. Shades are quantile classes, so they show each county's rank; the legend gives the actual range for each shade.</figcaption>
+    <figcaption class="is-size-7 has-text-grey">Pounds applied by county{% if year_label %}, {{ year_label }}{% endif %}. Shades are quantile classes, so they show each county's rank; the legend gives the actual range for each shade.</figcaption>
 </figure>
 {% endif %}

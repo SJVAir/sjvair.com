@@ -86,6 +86,12 @@
   margin-top: 0.35rem;
 }
 
+/* Shown when the page is reporting every loaded year but the map, whose
+   aggregates are per-year, can only show one. */
+.section-map-note {
+  margin-top: 0.35rem;
+}
+
 .section-map-level {
   display: block;
   margin-top: 0.25rem;

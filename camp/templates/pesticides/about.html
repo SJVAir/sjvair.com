@@ -1,6 +1,7 @@
 {% extends 'pesticides/base.html' %}
 {% load pesticides_explorer %}
 {% block title %}About this data | {{ block.super }}{% endblock %}
+{% block explorer-lede %}<p class="lede">Which pesticides are applied in the San Joaquin Valley, where, and on what.</p>{% endblock %}
 {% block body-class %}{{ block.super }} about{% endblock %}
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">About this data</a></li>{% endblock %}
 
@@ -9,7 +10,7 @@
     <h1 class="title is-3">About this data</h1>
 
     <h3 id="pur">Pesticide Use Reporting (PUR)</h3>
-    <p>California requires agricultural pesticide applications to be reported to the county agricultural commissioner, who forwards them to the Department of Pesticide Regulation (DPR). DPR checks and publishes each year's records well after the fact, often more than a year later. Each record gives the product, active ingredient, crop, county, one-square-mile section, date, and amount. This explorer loads the records for Fresno, Kern, Kings, Madera, Merced, San Joaquin, Stanislaus, and Tulare counties{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
+    <p>California requires agricultural pesticide applications to be reported to the county agricultural commissioner, who forwards them to the Department of Pesticide Regulation (DPR). DPR checks and publishes each year's records well after the fact, often more than a year later. Each record gives the product, active ingredient, crop or use site, county, one-square-mile section, date, and amount. The commodity list therefore includes non-crop sites alongside crops: rights of way, public health treatments such as mosquito control, structural and landscape work, food processing plants, and commodity fumigation chambers. This explorer loads the records for Fresno, Kern, Kings, Madera, Merced, San Joaquin, Stanislaus, and Tulare counties{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
 
     <h3 id="spraydays">SprayDays notices of intent</h3>
     <p>Growers must file a notice of intent before applying a California-restricted material. DPR's SprayDays system publishes those notices 48 hours ahead for fumigants and 24 hours ahead for other restricted materials, and the grower then has up to four days after the scheduled date to begin. Notices cover only restricted materials, list the product and chemical but not the crop, and are not confirmation that the application happened. To be notified about notices near an address, <a href="https://spraydays.cdpr.ca.gov/" target="_blank" rel="noopener">sign up with SprayDays</a>.</p>

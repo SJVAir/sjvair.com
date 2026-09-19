@@ -9,37 +9,36 @@
 <div class="content detail-header">
     <h1 class="mb-1">Section {{ object.external_id }}</h1>
     <p class="identifiers has-text-grey">{% if county_name %}{{ county_name }}{% endif %}</p>
-    {% include 'pesticides/includes/what-this-means.html' %}
 </div>
 
 <div class="level stat-row box">
     <div class="level-item has-text-centered">
-        <div><p class="heading">Lbs applied{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
+        <div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
     </div>
     <div class="level-item has-text-centered">
-        <div><p class="heading">Applications{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ totals.applications|lbs }}</p></div>
+        <div><p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.applications|lbs }}</p></div>
     </div>
     <div class="level-item has-text-centered">
-        <div><p class="heading">Chemicals used{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ chemical_count|lbs }}</p></div>
+        <div><p class="heading">Chemicals used{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ chemical_count|lbs }}</p></div>
     </div>
 </div>
 
 {% include 'pesticides/includes/section-map.html' %}
 
 <section class="month-bars-section mt-6">
-    <h2 class="title is-4">Applications by month{% if year %} <small class="has-text-grey is-size-6">{{ year }}</small>{% endif %}</h2>
+    <h2 class="title is-4">Applications by month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
     {% if by_month %}
         {% include 'pesticides/includes/month-bars.html' %}
         {% if peak_month %}<p class="mt-2">Spraying here peaks in {{ peak_month }}.</p>{% endif %}
     {% else %}
-        <p class="has-text-grey">No confirmed applications on record{% if year %} for {{ year }}{% endif %}.</p>
+        <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
     {% endif %}
 </section>
 
 <section class="top-lists mt-6">
     <div class="columns">
-        <div class="column">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
         <div class="column">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
+        <div class="column">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
         <div class="column">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
     </div>
 </section>
@@ -52,13 +51,6 @@
         <p class="has-text-grey">No confirmed applications on record{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
     {% endif %}
 </section>
-
-{% if recent_uses %}
-<section class="recent-uses mt-6">
-    <h2 class="title is-4">Most recent records</h2>
-    {% include 'pesticides/includes/recent-uses.html' %}
-</section>
-{% endif %}
 
 <section class="notices mt-6">
     <h2 class="title is-4">

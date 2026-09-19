@@ -1,4 +1,4 @@
-<section class="box find-area" id="find" data-maptiler-key="{{ maptiler_key }}" data-near-url="{% url 'pesticides:near-me' %}" data-year="{{ year }}">
+<section class="box find-area" id="find" data-maptiler-key="{{ maptiler_key }}" data-near-url="{% url 'pesticides:near-me' %}" data-year="{% if all_years %}all{% else %}{{ year }}{% endif %}">
     <h2 class="title is-5">Find your area</h2>
     <div class="field has-addons">
         <div class="control is-expanded has-icons-left">
@@ -12,7 +12,7 @@
     {% if find_area_counties %}
         <p class="find-area-counties">
             <span class="has-text-grey">Or jump to a county:</span>
-            {% for county in find_area_counties %}<a href="{{ county.url }}{% if year %}?year={{ year }}{% endif %}">{{ county.short_name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
+            {% for county in find_area_counties %}<a href="{{ county.url }}{{ year_qs }}">{{ county.short_name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
         </p>
     {% endif %}
     <p class="is-size-7 has-text-grey">Address searches are sent to MapTiler; place names are matched here in your browser. We don't store locations.</p>

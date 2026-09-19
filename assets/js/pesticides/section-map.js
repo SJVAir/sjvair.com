@@ -249,6 +249,10 @@
     this.data = el.dataset;
     this.reducedMotion = prefersReducedMotion();
     this.metric = 'lbs_chemical';
+    // Notice markers are on by default only where notices are the subject of
+    // the page; `data-show-notices` says which this is, and the "Show
+    // notices" checkbox flips it from there.
+    this.showNotices = this.data.showNotices !== '0';
     // Only one grid is ever on the map at a time; `level` says which one.
     this.level = 'section';
     this.gridLayer = null;
@@ -274,12 +278,47 @@
     this.init();
   }
 
-  SectionMap.prototype.init = function () {
+  // The controls, legend, and level note live beside the map container, so
+  // they are re-found (and re-wired) whenever the container gets a new home.
+  SectionMap.prototype.attachControls = function () {
     var wrap = this.el.closest('.section-map-wrap') || this.el.parentNode;
     this.controlsEl = wrap.querySelector('.section-map-controls');
     this.legendEl = wrap.querySelector('.section-map-legend');
     this.levelEl = wrap.querySelector('.section-map-level');
-    if (this.controlsEl) this.statusEl = this.controlsEl.querySelector('.section-map-status');
+    this.statusEl = this.controlsEl ? this.controlsEl.querySelector('.section-map-status') : null;
+
+    if (this.controlsEl) this.controlsEl.hidden = false;
+    if (this.legendEl) this.legendEl.hidden = false;
+    if (this.levelEl) this.levelEl.hidden = false;
+
+    if (this.controlsEl) {
+      var radios = this.controlsEl.querySelectorAll('input[name="metric"]');
+      for (var i = 0; i < radios.length; i++) {
+        radios[i].checked = radios[i].value === this.metric;
+        radios[i].addEventListener('change', this.onMetricChange.bind(this));
+      }
+
+      var noticesToggle = this.controlsEl.querySelector('input[name="notices"]');
+      if (noticesToggle) {
+        noticesToggle.checked = this.showNotices;
+        noticesToggle.addEventListener('change', this.onNoticesToggle.bind(this));
+      }
+    }
+  };
+
+  SectionMap.prototype.onNoticesToggle = function (event) {
+    this.showNotices = !!event.target.checked;
+    if (this.showNotices) {
+      this.loadNotices();
+    } else {
+      this.loadedNoticeBounds = null;
+      if (this.noticesAbort) this.noticesAbort.abort();
+      this.clearNotices();
+    }
+  };
+
+  SectionMap.prototype.init = function () {
+    this.attachControls();
 
     var center = this.parseCenter(this.data.center) || [36.75, -119.80];
     var zoom = parseInt(this.data.zoom, 10) || 8;
@@ -317,24 +356,7 @@
     var outlinePane = this.map.createPane('pesticide-outline');
     outlinePane.style.zIndex = 430;
 
-    if (this.data.radius) {
-      var radiusMiles = parseFloat(this.data.radius);
-      if (radiusMiles > 0) {
-        var circle = L.circle(center, { radius: milesToMeters(radiusMiles) }).addTo(this.map);
-        this.map.fitBounds(circle.getBounds(), { animate: !this.reducedMotion });
-      }
-    }
-
-    if (this.controlsEl) this.controlsEl.hidden = false;
-    if (this.legendEl) this.legendEl.hidden = false;
-    if (this.levelEl) this.levelEl.hidden = false;
-
-    if (this.controlsEl) {
-      var radios = this.controlsEl.querySelectorAll('input[name="metric"]');
-      for (var i = 0; i < radios.length; i++) {
-        radios[i].addEventListener('change', this.onMetricChange.bind(this));
-      }
-    }
+    this.drawRadius(center);
 
     var debouncedLoad = debounce(this.loadGrid.bind(this), DEBOUNCE_MS);
     var debouncedNotices = debounce(this.loadNotices.bind(this), DEBOUNCE_MS);
@@ -347,6 +369,86 @@
     this.loadOutline();
     this.loadGrid();
     this.loadNotices();
+  };
+
+  SectionMap.prototype.drawRadius = function (center) {
+    if (this.radiusCircle) {
+      this.map.removeLayer(this.radiusCircle);
+      this.radiusCircle = null;
+    }
+    var radiusMiles = parseFloat(this.data.radius);
+    if (!(radiusMiles > 0)) return;
+    this.radiusCircle = L.circle(center, { radius: milesToMeters(radiusMiles) }).addTo(this.map);
+    this.map.fitBounds(this.radiusCircle.getBounds(), { animate: !this.reducedMotion });
+  };
+
+  // Keys whose change means the data on the map is different.
+  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county'];
+
+  // Take over a freshly rendered container (an htmx swap put a new page in
+  // place): move this live map into its slot, read its data attributes, and
+  // refetch only what changed. Keeping the Leaflet instance avoids the grey
+  // flash of tearing the map down and reloading its tiles on every filter
+  // change.
+  SectionMap.prototype.adopt = function (newEl) {
+    var oldData = {};
+    var key;
+    for (key in this.el.dataset) oldData[key] = this.el.dataset[key];
+    var newData = {};
+    for (key in newEl.dataset) newData[key] = newEl.dataset[key];
+
+    newEl.parentNode.replaceChild(this.el, newEl);
+    for (key in oldData) {
+      if (!(key in newData) && key !== 'rendered') delete this.el.dataset[key];
+    }
+    for (key in newData) this.el.dataset[key] = newData[key];
+    this.el.dataset.rendered = '1';
+    this.el.id = newEl.id;
+
+    // A swap to a different page brings its own notices default with it;
+    // adopt it so the checkbox and the layer agree with the page the reader
+    // is now on. An unchanged attribute leaves their own toggle alone.
+    var noticesDefaultChanged = (oldData.showNotices || '') !== (newData.showNotices || '');
+    if (noticesDefaultChanged) {
+      this.showNotices = newData.showNotices !== '0';
+      this.loadedNoticeBounds = null;
+      if (!this.showNotices) this.clearNotices();
+    }
+
+    this.attachControls();
+    this.map.invalidateSize();
+
+    var dataChanged = DATA_KEYS.some(function (k) { return (oldData[k] || '') !== (newData[k] || ''); });
+    var viewChanged = (oldData.center || '') !== (newData.center || '') || (oldData.zoom || '') !== (newData.zoom || '');
+    var radiusChanged = (oldData.radius || '') !== (newData.radius || '');
+    var outlineChanged = (oldData.outlineUrl || '') !== (newData.outlineUrl || '');
+
+    if (outlineChanged) {
+      if (this.outlineLayer) {
+        this.map.removeLayer(this.outlineLayer);
+        this.outlineLayer = null;
+      }
+      this.loadOutline();
+    }
+
+    var center = this.parseCenter(this.data.center) || [36.75, -119.80];
+    if (radiusChanged) {
+      this.drawRadius(center);
+    } else if (viewChanged) {
+      this.map.setView(center, parseInt(this.data.zoom, 10) || 8, { animate: !this.reducedMotion });
+    }
+
+    if (dataChanged) {
+      this.loadedBounds = null;
+      this.loadedNoticeBounds = null;
+      this.loadGrid();
+      this.loadNotices();
+    } else {
+      if (noticesDefaultChanged && this.showNotices) this.loadNotices();
+      // Same data; the legend/level notes are new elements and need filling.
+      this.updateLegend();
+      this.restyle();
+    }
   };
 
   SectionMap.prototype.countyStyle = function () {
@@ -828,6 +930,7 @@
 
   SectionMap.prototype.loadNotices = function () {
     if (!this.data.noticesUrl) return;
+    if (!this.showNotices) return;
     // Same padded-fetch/skip deal as the grid: don't rebuild the markers (and
     // drop an open popup) for a pan we already have data for.
     if (this.covers(this.loadedNoticeBounds)) return;
@@ -955,15 +1058,23 @@
 
   // Idempotent: containers already initialised carry `data-rendered`, so this
   // is safe to call repeatedly (page load plus every htmx swap).
+  // The one live map on the page, so a swap can hand its container over
+  // rather than building a second Leaflet instance.
+  var liveMap = null;
+
   function init(root) {
     if (typeof L === 'undefined') return;
     var containers = containersUnder(root || document);
     for (var i = 0; i < containers.length; i++) {
       var el = containers[i];
       if (el.dataset.rendered) continue;
-      el.dataset.rendered = '1';
       try {
-        new SectionMap(el);
+        if (liveMap && !document.body.contains(liveMap.el)) {
+          liveMap.adopt(el);
+          continue;
+        }
+        el.dataset.rendered = '1';
+        liveMap = new SectionMap(el);
       } catch (err) {
         window.console && console.error && console.error('section-map: failed to initialize', err);
       }

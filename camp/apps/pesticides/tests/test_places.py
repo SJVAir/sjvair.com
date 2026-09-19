@@ -3,7 +3,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.pesticides import places
+from camp.apps.pesticides import places, stats
 from camp.apps.pesticides.models import PesticideNotice
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Region
@@ -36,6 +36,19 @@ class AreaTests(RollupTestMixin, TestCase):
         assert ctx['records_url'].startswith(reverse('pesticides:records') + '?')
         assert 'county=fresno' in ctx['records_url'] and 'year=2023' in ctx['records_url']
         assert 'upcoming_by_county' not in ctx  # single-county area: would just restate the total
+
+    def test_place_context_all_years(self):
+        area = places.region_area(Region.objects.get(pk=9001))
+        ctx = places.place_context(area, None, all_years=True)
+        assert ctx['totals'] == {
+            'lbs': 1150.0, 'applications': 6, 'sections_used': 1, 'sections_total': 1, 'chemicals': 3,
+        }
+        assert ctx['by_month'][7]['lbs'] == 900.0
+        assert 'year=all' in ctx['records_url']
+        assert ctx['map_config']['year'] == 2023
+        assert ctx['map_config']['note']
+        # Built once and cached; a later import is what clears it.
+        assert cache.get(stats.all_years_key('place', 'region:9001')) is not None
 
     def test_place_context_active_notices(self):
         PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326), mtrs_id=9101)
@@ -96,6 +109,44 @@ class NearMeTests(RollupTestMixin, TestCase):
             response = self.client.get(self.url, params)
             assert response.status_code == 302, params
             assert response['Location'] == reverse('pesticides:home') + '?find=1'
+
+
+class RegionsWithinTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        from camp.apps.regions.models import Boundary
+        self.fresno = Region.objects.get(pk=9001)
+        square = 'SRID=4326;MULTIPOLYGON (((-119.85 36.65, -119.75 36.65, -119.75 36.75, -119.85 36.75, -119.85 36.65)))'
+        outside = 'SRID=4326;MULTIPOLYGON (((-118.5 35.2, -118.4 35.2, -118.4 35.3, -118.5 35.3, -118.5 35.2)))'
+        for name, slug, kind, geom in (
+            ('Selma', 'selma', Region.Type.CITY, square),
+            ('Selma', 'selma-place', Region.Type.PLACE, square),
+            ('Selma Unified', 'selma-unified', Region.Type.SCHOOL_DISTRICT, square),
+            ('93662', '93662', Region.Type.ZIPCODE, square),
+            ('Tehachapi', 'tehachapi', Region.Type.CITY, outside),
+        ):
+            region = Region.objects.create(name=name, slug=slug, type=kind, external_id=f'x-{slug}')
+            region.boundary = Boundary.objects.create(region=region, version='t', geometry=geom)
+            region.save()
+
+    def test_county_lists_places_districts_and_zips_inside_it(self):
+        within = places.regions_within(self.fresno)
+        assert [p['name'] for p in within['places']] == ['Selma']
+        assert '/selma/' in within['places'][0]['url']
+        assert [d['name'] for d in within['school_districts']] == ['Selma Unified']
+        assert [z['name'] for z in within['zipcodes']] == ['93662']
+
+    def test_county_page_renders_the_lists(self):
+        html = self.client.get(reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})).content.decode()
+        assert 'In Fresno County' in html and 'Selma Unified' in html and '93662' in html
+        assert 'Tehachapi' not in html
+
+    def test_school_district_pages_render(self):
+        district = Region.objects.get(slug='selma-unified')
+        response = self.client.get(reverse('pesticides:region', kwargs={'sqid': district.sqid, 'slug': 'selma-unified'}))
+        assert response.status_code == 200
 
 
 class RegionPageTests(RollupTestMixin, TestCase):

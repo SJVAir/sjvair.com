@@ -24,7 +24,6 @@
         </div>
     </nav>
     {% endif %}
-    {% include 'pesticides/includes/what-this-means.html' %}
 </div>
 
 <div class="box right-now">
@@ -43,7 +42,7 @@
 
 <div class="level stat-row box">
     <div class="level-item has-text-centered">
-        <div><p class="heading">Lbs applied{% if year %} in {{ year }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
+        <div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
     </div>
     <div class="level-item has-text-centered">
         <div><p class="heading">Applications</p><p class="title">{{ totals.applications|lbs }}</p></div>
@@ -61,23 +60,55 @@
 {% include 'pesticides/includes/section-map.html' %}
 
 <section class="month-bars-section mt-6">
-    <h2 class="title is-4">By month{% if year %} <small class="has-text-grey is-size-6">{{ year }}</small>{% endif %}</h2>
+    <h2 class="title is-4">By month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
     {% if by_month %}
         {% include 'pesticides/includes/month-bars.html' %}
         {% if peak_month %}<p class="mt-2">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
     {% else %}
-        <p class="has-text-grey">No confirmed applications on record{% if year %} for {{ year }}{% endif %}.</p>
+        <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
     {% endif %}
 </section>
 
 <section class="top-lists mt-6">
     <h2 class="title is-4">What's applied here</h2>
     <div class="columns">
-        <div class="column">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
         <div class="column">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
+        <div class="column">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
         <div class="column">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
     </div>
 </section>
+
+{% if within %}
+<section class="within mt-6">
+    <h2 class="title is-4">In {{ area.label }}</h2>
+    <div class="columns within-panels">
+        {% if within.places %}
+        <div class="column within-panel">
+            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-city explorer-icon is-map"></span></span> Cities and places <span class="tag is-light is-rounded">{{ within.places|length }}</span></h3>
+            <ul class="within-list is-two-column">
+                {% for place in within.places %}<li><a href="{{ place.url }}{{ year_qs }}">{{ place.name }}</a></li>{% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if within.school_districts %}
+        <div class="column within-panel">
+            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-school explorer-icon is-commodities"></span></span> School districts <span class="tag is-light is-rounded">{{ within.school_districts|length }}</span></h3>
+            <ul class="within-list is-two-column">
+                {% for district in within.school_districts %}<li><a href="{{ district.url }}{{ year_qs }}">{{ district.name }}</a></li>{% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if within.zipcodes %}
+        <div class="column within-panel is-narrow within-zips">
+            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-envelope explorer-icon is-records"></span></span> ZIP codes <span class="tag is-light is-rounded">{{ within.zipcodes|length }}</span></h3>
+            <div class="tags">
+                {% for zip in within.zipcodes %}<a class="tag is-light" href="{{ zip.url }}{{ year_qs }}">{{ zip.name }}</a>{% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
 
 <p class="mt-6">
     <a href="{{ records_url }}">Browse all records for this area</a>

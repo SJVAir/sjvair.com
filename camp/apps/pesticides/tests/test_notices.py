@@ -60,7 +60,7 @@ class NoticeListTests(TestCase):
 
     def test_no_year_picker_in_active_mode(self):
         html = self.client.get(self.url).content.decode()
-        assert 'year-picker' not in html
+        assert 'class="year-picker"' not in html
 
     def test_spraydays_link_present(self):
         assert 'spraydays.cdpr.ca.gov' in self.client.get(self.url).content.decode()
@@ -77,7 +77,7 @@ class NoticeListYearContextTests(RollupTestMixin, TestCase):
     def test_nav_links_keep_the_year_param_without_a_year_picker(self):
         html = self.client.get(self.url, {'year': 2022}).content.decode()
         assert reverse('pesticides:records') + '?year=2022' in html
-        assert 'year-picker' not in html
+        assert 'class="year-picker"' not in html
 
 
 class NoticeDetailTests(TestCase):
@@ -110,10 +110,10 @@ class NoticeDetailTests(TestCase):
 class EntityPageLinksTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
 
-    def test_recent_records_are_five_with_browse_link(self):
+    def test_entity_page_links_to_its_records(self):
         chem = Chemical.objects.get(pk=1)
         response = self.client.get(chem.get_absolute_url())
-        assert len(response.context['recent_uses']) <= 5
+        assert 'recent_uses' not in response.context
         html = response.content.decode()
         assert reverse('pesticides:records') + f'?chemical={chem.sqid}' in html
         assert reverse('pesticides:notice-list') + f'?chemical={chem.sqid}' in html

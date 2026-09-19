@@ -2,6 +2,7 @@ from django import forms
 from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 
+from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, PesticideNotice, PesticideUse
 from camp.apps.pesticides.places import RADIUS_CHOICES as RADIUS_MILES
 from camp.apps.regions.models import Region
@@ -12,8 +13,31 @@ BOOL_CHOICES = [('', _('Any')), ('true', _('Yes')), ('false', _('No'))]
 RADIUS_CHOICES = [(str(miles), str(miles)) for miles in RADIUS_MILES]
 
 
+def county_choices():
+    counties = Region.objects.filter(type=Region.Type.COUNTY).order_by('name').values_list('slug', 'name')
+    return [('', _('Any'))] + list(counties)
+
+
+def year_choices():
+    """The hero year pills as a select: 'All years' first, then newest year first."""
+    years = stats.available_years()
+    if not years:
+        return []
+    return [(stats.ALL_YEARS, _('All years'))] + [(str(year), str(year)) for year in reversed(years)]
+
+
 class SearchForm(forms.Form):
     q = forms.CharField(label=_('Search'), required=False, max_length=128)
+    county = forms.ChoiceField(label=_('County'), required=False, choices=[('', _('Any'))])
+    # The same `?year=` the hero pills set -- the view resolves it and hands
+    # the form the resolved value, so this select always shows what the page
+    # is actually displaying.
+    year = forms.ChoiceField(label=_('Year'), required=False, choices=[])
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['county'].choices = county_choices()
+        self.fields['year'].choices = year_choices()
 
     def bool_value(self, name):
         value = self.cleaned_data.get(name)
@@ -93,12 +117,11 @@ class RecordsFilterForm(forms.Form):
     )
 
     # Carried as hidden inputs -- set by the section map / entity pages, not
-    # edited directly in this form.
+    # edited directly in this form. (chemical/product/commodity are filters
+    # too, but the template renders them as entity pickers and the view
+    # resolves them straight off the querystring, so they aren't form fields.)
     region = forms.CharField(required=False, widget=forms.HiddenInput)
     section = forms.CharField(required=False, widget=forms.HiddenInput)
-    chemical = forms.CharField(required=False, widget=forms.HiddenInput)
-    product = forms.CharField(required=False, widget=forms.HiddenInput)
-    commodity = forms.CharField(required=False, widget=forms.HiddenInput)
     lat = forms.FloatField(required=False, widget=forms.HiddenInput)
     lng = forms.FloatField(required=False, widget=forms.HiddenInput)
     radius = forms.ChoiceField(required=False, choices=RADIUS_CHOICES, widget=forms.HiddenInput)

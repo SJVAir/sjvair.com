@@ -23,4 +23,5 @@ urlpatterns = [
     path('notice/', endpoints.PesticideNoticeList.as_view(), name='notice-list'),
     path('notice/<str:notice_id>/', endpoints.PesticideNoticeDetail.as_view(), name='notice-detail'),
     path('notices/active/', sections.ActiveNoticeList.as_view(), name='notice-active'),
+    path('search/', endpoints.EntitySearch.as_view(), name='entity-search'),
 ]

@@ -10,7 +10,7 @@ from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum
+from django.db.models import Case, Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce, TruncMonth
 from django.http import Http404
 from django.shortcuts import redirect
@@ -26,7 +26,8 @@ from camp.apps.pesticides.forms import (
     ChemicalFilterForm, CommodityFilterForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
 )
 from camp.apps.pesticides.models import (
-    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product, ProductChemical,
+    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal,
+    Product, ProductChemical,
 )
 from camp.apps.regions.models import Region
 from camp.utils import leaflet
@@ -36,13 +37,17 @@ from camp.utils import leaflet
 # dict value / membership check reads as if it might be raised.
 MISSING = object()
 
-def year_context(year):
+def year_context(year, all_years=False):
     """Context every explorer page needs for the year picker and year-pinned links."""
     return {
         'year': year,
+        'all_years': all_years,
+        # '2023' or '2014-2023' -- what headings say instead of the raw year,
+        # and the flag templates test for "is a year in play at all".
+        'year_label': stats.year_label(year, all_years),
         'latest_year': stats.latest_year(),
         'year_options': stats.available_years(),
-        'year_qs': stats.year_query(year),
+        'year_qs': stats.year_query(year, all_years),
     }
 
 
@@ -51,11 +56,15 @@ API_DOCS_URL = '/api/2.0/docs/#tag/pesticides'
 CLIENT_DOCS_URL = 'https://sjvair.github.io/sjvair-python/client/resources/pesticides.html'
 
 
-def lbs_subquery(field, year, lbs_field='lbs_chemical'):
-    """Sum of pounds in `year` for the outer row, via `PesticideUseRollup.<field>`."""
+def lbs_subquery(field, year, lbs_field='lbs_chemical', county=None, all_years=False):
+    """Sum of pounds in `year` (or every loaded year) and `county`, when given, for the outer row, via `PesticideUseTotal.<field>`."""
+    rows = PesticideUseTotal.objects.filter(**{field: OuterRef('pk')})
+    if not all_years:
+        rows = rows.filter(year=year)
+    if county is not None:
+        rows = rows.filter(county=county)
     return Subquery(
-        PesticideUseRollup.objects
-        .filter(**{field: OuterRef('pk')}, year=year)
+        rows
         .values(field)
         .annotate(total=Sum(lbs_field))
         .values('total'),
@@ -199,13 +208,37 @@ class ExplorerListMixin:
     sort_fields = {}
     default_sort = 'name'
     related_models = {}
+    # The PesticideUseTotal/PesticideUseRollup FK that points at this list's model.
+    rollup_field = None
 
     def dispatch(self, request, *args, **kwargs):
-        self.form = self.form_class(request.GET)
+        self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
+        # The year select in the filter panel is the same `?year=` the hero
+        # pills set, so it has to render the *resolved* year rather than the
+        # raw (possibly missing or bogus) parameter.
+        data = request.GET.copy()
+        data['year'] = stats.ALL_YEARS if self.all_years else (self.year or '')
+        self.form = self.form_class(data)
         self.form.is_valid()
-        self.year = stats.resolve_year(request.GET.get('year'))
+        self.county = resolve_county(self.form.cleaned_data.get('county'))
         self.related = self.get_related_objects()
         return super().dispatch(request, *args, **kwargs)
+
+    def apply_usage(self, queryset):
+        """
+        Keep only entities with reported use in the selected year -- or in any
+        loaded year, with `?year=all` -- and county, when one is chosen, so the
+        list matches its pounds column and the landing page's "used" counts
+        rather than listing every registered name.
+        """
+        if not self.rollup_field or not (self.year or self.all_years):
+            return queryset
+        used = PesticideUseTotal.objects.all()
+        if not self.all_years:
+            used = used.filter(year=self.year)
+        if self.county is not None:
+            used = used.filter(county=self.county)
+        return queryset.filter(pk__in=used.values(self.rollup_field))
 
     def get_search_query(self):
         return (self.form.cleaned_data.get('q') or '').strip()
@@ -246,6 +279,7 @@ class ExplorerListMixin:
             queryset = queryset.search(query)
         queryset = self.apply_related(queryset)
         queryset = self.apply_filters(queryset, self.form.cleaned_data)
+        queryset = self.apply_usage(queryset)
         queryset = self.annotate_queryset(queryset, self.year)
         self.sort, field, desc = self.get_sort()
         if field:
@@ -262,6 +296,13 @@ class ExplorerListMixin:
         if query:
             parts.append(f'matching "{query}"')
         parts.extend(self.describe_filters(self.form.cleaned_data))
+        where = f' in {self.county.name}' if self.county is not None else ''
+        if self.all_years:
+            parts.append(f'used{where} {stats.year_label(None, True)}')
+        elif self.year:
+            parts.append(f'used{where} in {self.year}')
+        elif where:
+            parts.append(f'used{where}')
         for param, obj in self.related.items():
             if obj is not MISSING:
                 parts.append(f'linked to {obj.name}')
@@ -277,7 +318,7 @@ class ExplorerListMixin:
             query=self.get_search_query(),
             sort=self.sort,
             result_count=count,
-            **year_context(self.year),
+            **year_context(self.year, self.all_years),
             summary_sentence=self.get_summary_sentence(count),
             related={k: v for k, v in self.related.items() if v is not MISSING},
             section=self.section,
@@ -293,6 +334,7 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
     sort_fields = {'name': 'name', 'lbs': 'lbs_applied', 'products': 'product_count', 'iarc': 'iarc_group'}
     default_sort = '-lbs'
     related_models = {'product': Product, 'commodity': Commodity}
+    rollup_field = 'chemical'
 
     def filter_related(self, queryset, param, obj):
         if param == 'product':
@@ -310,8 +352,10 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
         queryset = queryset.annotate(
             product_count=Coalesce(count_subquery(ProductChemical, 'chemical', 'product'), 0)
         )
-        if year:
-            queryset = queryset.annotate(lbs_applied=lbs_subquery('chemical', year))
+        if year or self.all_years:
+            queryset = queryset.annotate(
+                lbs_applied=lbs_subquery('chemical', year, county=self.county, all_years=self.all_years)
+            )
         else:
             queryset = queryset.annotate(lbs_applied=F('chem_code') * 0.0)
         return queryset
@@ -347,6 +391,7 @@ FIND_AREA_TYPE_LABELS = {
     Region.Type.CITY: 'City',
     Region.Type.ZIPCODE: 'ZIP',
     Region.Type.PLACE: 'Place',
+    Region.Type.SCHOOL_DISTRICT: 'School district',
 }
 
 
@@ -388,8 +433,8 @@ class Home(vanilla.TemplateView):
     template_name = 'pesticides/home.html'
 
     def get_context_data(self, **kwargs):
-        year = stats.resolve_year(self.request.GET.get('year'))
-        data = stats.landing_stats(year)
+        year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
+        data = stats.landing_stats(year, all_years)
         county_map = maps.county_map(data['by_county']) if data['by_county'] else None
         find_area_places = find_area_place_list()
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
@@ -405,7 +450,7 @@ class Home(vanilla.TemplateView):
             ],
             maptiler_key=settings.MAPTILER_API_KEY,
             focus_find=self.request.GET.get('find') == '1',
-            **{**data, **year_context(year)},
+            **{**data, **year_context(year, all_years)},
             **kwargs,
         )
 
@@ -432,6 +477,7 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
     sort_fields = {'name': 'name', 'lbs': 'lbs_applied', 'chemicals': 'chemical_count', 'reg': 'reg_number'}
     default_sort = 'name'
     related_models = {'chemical': Chemical, 'commodity': Commodity}
+    rollup_field = 'product'
 
     def filter_related(self, queryset, param, obj):
         if param == 'chemical':
@@ -449,8 +495,10 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
         queryset = queryset.annotate(
             chemical_count=Coalesce(count_subquery(ProductChemical, 'product', 'chemical'), 0)
         )
-        if year:
-            queryset = queryset.annotate(lbs_applied=lbs_subquery('product', year, lbs_field='lbs_product'))
+        if year or self.all_years:
+            queryset = queryset.annotate(
+                lbs_applied=lbs_subquery('product', year, lbs_field='lbs_product', county=self.county, all_years=self.all_years)
+            )
         else:
             queryset = queryset.annotate(lbs_applied=F('prodno') * 0.0)
         return queryset
@@ -470,6 +518,7 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
 
 class CommodityList(ExplorerListMixin, vanilla.ListView):
     model = Commodity
+    rollup_field = 'commodity'
     form_class = CommodityFilterForm
     template_name = 'pesticides/commodity-list.html'
     section = 'commodities'
@@ -481,19 +530,39 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
         return queryset.filter(pk__in=related_pks(param, obj, 'commodity'))
 
     def annotate_queryset(self, queryset, year):
-        if not year:
+        if not year and not self.all_years:
             return queryset.annotate(lbs_applied=F('pk') * 0.0, chemical_count=F('pk') * 0)
-        chemical_count = Subquery(
-            PesticideUseRollup.objects
-            .filter(commodity=OuterRef('pk'), year=year)
+        return queryset.annotate(
+            lbs_applied=lbs_subquery('commodity', year, county=self.county, all_years=self.all_years),
+            chemical_count=self.chemical_count(year),
+        )
+
+    def chemical_count(self, year):
+        """
+        Distinct chemicals applied to each commodity, still sortable in SQL.
+        For one year that's a correlated subquery on the (year, county,
+        commodity, chemical) index. Across every year there's no year to lead
+        with, so the counts come from one cached group-by, inlined here as a
+        CASE over the ~250 commodities that have any use at all.
+        """
+        if self.all_years:
+            counts = stats.commodity_chemical_counts(self.county)
+            if not counts:
+                return Value(0, output_field=IntegerField())
+            return Case(
+                *[When(pk=pk, then=Value(n)) for pk, n in counts.items()],
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        rows = PesticideUseRollup.objects.filter(commodity=OuterRef('pk'), year=year)
+        if self.county is not None:
+            rows = rows.filter(county=self.county)
+        return Coalesce(Subquery(
+            rows
             .values('commodity')
             .annotate(n=Count('chemical', distinct=True))
             .values('n'),
-        )
-        return queryset.annotate(
-            lbs_applied=lbs_subquery('commodity', year),
-            chemical_count=Coalesce(chemical_count, 0),
-        )
+        ), 0)
 
 
 class ExplorerDetailMixin:
@@ -520,9 +589,26 @@ class ExplorerDetailMixin:
     def api_value(self):
         raise NotImplementedError
 
-    def get_related(self, year):
+    def get_related(self):
         """Return (related_a, related_b) dicts. Each: {title, kind, rows, show_all_url}."""
         raise NotImplementedError
+
+    def cached_stat(self, name, build):
+        """
+        An all-years aggregate reads every loaded year of this entity's rollup
+        rows -- hundreds of thousands for a widely-used chemical, and seconds
+        per page. They only change on import, so cache them; a single year is
+        cheap enough to compute per request.
+        """
+        if not self.all_years:
+            return build()
+        return stats.cached(stats.all_years_key('detail', self.use_field, self.object.pk, name), build)
+
+    def top_related(self, field, lbs_field=None, limit=10):
+        lbs_field = lbs_field or self.lbs_field
+        return self.cached_stat(f'top:{field}:{lbs_field}:{limit}', lambda: stats.top_related(
+            self.get_rollup(), self.year, field, lbs_field, limit, all_years=self.all_years,
+        ))
 
     def related_card(self, title, kind, rows, list_url_name, param, show_pct=False, show_lbs=True, complete=False):
         """
@@ -530,6 +616,7 @@ class ExplorerDetailMixin:
         show_lbs: rows carry pounds (a product's ingredient list does not).
         complete: every related object is already listed, so no "Show all".
         """
+        year_param = stats.year_param(self.year, self.all_years)
         return {
             'title': title,
             'kind': kind,
@@ -538,14 +625,14 @@ class ExplorerDetailMixin:
             'show_lbs': show_lbs,
             'complete': complete,
             'show_all_url': reverse(list_url_name) + f'?{param}={self.object.sqid}' + (
-                f'&year={self.year}' if stats.year_query(self.year) else ''
+                f'&{year_param}' if year_param else ''
             ),
         }
 
-    def get_summary_sentence(self, totals, year, top, verb='on'):
-        if not totals['applications'] or year is None:
+    def get_summary_sentence(self, totals, label, top, verb='on'):
+        if not totals['applications'] or not label:
             return ''
-        sentence = f'Applied in {totals["counties"]} of {stats.SJV_COUNTY_COUNT} SJV counties in {year}'
+        sentence = f'Applied in {totals["counties"]} of {stats.SJV_COUNTY_COUNT} SJV counties in {label}'
         names = [r.obj.name.title() for r in top[:2]]
         if names:
             joined = ' and '.join(names)
@@ -553,27 +640,27 @@ class ExplorerDetailMixin:
         return sentence + '.'
 
     def get_context_data(self, **kwargs):
-        year = stats.resolve_year(self.request.GET.get('year'))
-        self.year = year
+        year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
+        self.year, self.all_years = year, all_years
         uses = self.get_uses()
         rows = self.get_rollup()
         notices = self.get_notices()
-        totals = stats.year_totals(rows, year, self.lbs_field) if year else {'lbs': 0, 'applications': 0, 'counties': 0}
-        related_a, related_b = self.get_related(year)
+        year_param = stats.year_param(year, all_years)
+        totals = self.cached_stat('totals', lambda: stats.year_totals(rows, year, self.lbs_field, all_years=all_years))
+        related_a, related_b = self.get_related()
         context = super().get_context_data(
             section=self.section,
             years=stats.years_loaded(),
-            **year_context(year),
+            **year_context(year, all_years),
             county_total=stats.SJV_COUNTY_COUNT,
             totals=totals,
             by_year=stats.by_year(rows, self.lbs_field),
-            by_county=stats.by_county(rows, year, self.lbs_field) if year else [],
-            by_month=stats.by_month(rows, year, self.lbs_field) if year else [],
+            by_county=self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years)),
+            by_month=self.cached_stat('by_month', lambda: stats.by_month(rows, year, self.lbs_field, all_years=all_years)) if (year or all_years) else [],
             related_a=related_a,
             related_b=related_b,
-            recent_uses=stats.recent_uses(uses.filter(year=year), limit=5) if year else [],
             records_url=reverse('pesticides:records') + f'?{self.use_field}={self.object.sqid}' + (
-                f'&year={year}' if stats.year_query(year) else ''
+                f'&{year_param}' if year_param else ''
             ),
             has_notices=self.has_notices,
             notices_url=reverse('pesticides:notice-list') + f'?{self.use_field}={self.object.sqid}' if self.has_notices else '',
@@ -587,7 +674,7 @@ class ExplorerDetailMixin:
             notes=notes.notes_for(self.get_notes()),
             **kwargs,
         )
-        context['summary_sentence'] = self.get_summary_sentence(totals, year, self.summary_top(context))
+        context['summary_sentence'] = self.get_summary_sentence(totals, context['year_label'], self.summary_top(context))
         context['county_map'] = maps.county_map(context['by_county']) if context['by_county'] else None
         return context
 
@@ -617,11 +704,10 @@ class ChemicalDetail(ExplorerDetailMixin, vanilla.DetailView):
     def get_notes(self):
         return notes.keys_for_chemical(self.object)
 
-    def get_related(self, year):
-        rows = self.get_rollup()
+    def get_related(self):
         pct = dict(self.object.product_chemicals.values_list('product_id', 'pct_active'))
-        products = with_pct_active(stats.top_related(rows, year, 'product', self.lbs_field), pct)
-        commodities = stats.top_related(rows, year, 'commodity', self.lbs_field)
+        products = with_pct_active(self.top_related('product'), pct)
+        commodities = self.top_related('commodity')
         return (
             self.related_card('Products containing this chemical', 'products', products, 'pesticides:product-list', 'chemical', show_pct=True),
             self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'chemical'),
@@ -648,8 +734,7 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
     def get_notes(self):
         return notes.keys_for_product(self.object)
 
-    def get_related(self, year):
-        rows = self.get_rollup()
+    def get_related(self):
         pct = dict(self.object.product_chemicals.values_list('chemical_id', 'pct_active'))
         # Active ingredients are a property of the product, not of use records,
         # so list all of them (ranked by pct_active) rather than by pounds.
@@ -657,7 +742,7 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
             SimpleNamespace(obj=c, lbs=None, pct_active=pct.get(c.pk))
             for c in sorted(self.object.chemicals.all(), key=lambda c: -(pct.get(c.pk) or 0))
         ]
-        commodities = stats.top_related(rows, year, 'commodity', self.lbs_field)
+        commodities = self.top_related('commodity')
         return (
             self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product', show_pct=True, show_lbs=False, complete=True),
             self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'product'),
@@ -675,18 +760,17 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
     def api_value(self):
         return self.object.site_code
 
-    def get_related(self, year):
-        rows = self.get_rollup()
+    def get_related(self):
         return (
-            self.related_card('Chemicals applied', 'chemicals', stats.top_related(rows, year, 'chemical'), 'pesticides:chemical-list', 'commodity'),
-            self.related_card('Products applied', 'products', stats.top_related(rows, year, 'product', 'lbs_product'), 'pesticides:product-list', 'commodity'),
+            self.related_card('Chemicals applied', 'chemicals', self.top_related('chemical'), 'pesticides:chemical-list', 'commodity'),
+            self.related_card('Products applied', 'products', self.top_related('product', 'lbs_product'), 'pesticides:product-list', 'commodity'),
         )
 
     def summary_top(self, context):
         return context['related_a']['rows']
 
-    def get_summary_sentence(self, totals, year, top, verb=None):
-        return super().get_summary_sentence(totals, year, top, verb=None)
+    def get_summary_sentence(self, totals, label, top, verb=None):
+        return super().get_summary_sentence(totals, label, top, verb=None)
 
 
 SJV_CENTER = '36.75,-119.80'
@@ -701,8 +785,20 @@ def page_url_pattern(name):
     return unquote(reverse(name, kwargs={'sqid': '{id}'}))
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None):
+# The section/township aggregates behind the map are per-year, so a map is
+# always one concrete year. Said out loud under the legend when the rest of
+# the page is showing every year.
+ALL_YEARS_MAP_NOTE = "The map shows {year}; year-by-year sections aren't summed across years."
+
+
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True):
+    year = year or stats.latest_year()
     return {
+        # Upcoming-notice markers start on where notices are the subject of
+        # the page, off where the reader came for the use data (records, and
+        # the entity pages). Either way the map's own checkbox flips it.
+        'show_notices': '1' if show_notices else '0',
+        'note': ALL_YEARS_MAP_NOTE.format(year=year) if all_years and year else '',
         'sections_url': '/api/2.0/pesticides/sections/',
         'counties_url': '/api/2.0/pesticides/counties/',
         'townships_url': '/api/2.0/pesticides/townships/',
@@ -737,7 +833,7 @@ class MapPage(vanilla.TemplateView):
 
     def get_context_data(self, **kwargs):
         request = self.request
-        year = stats.resolve_year(request.GET.get('year'))
+        year, all_years = stats.resolve_year_param(request.GET.get('year'))
 
         # A filter that doesn't resolve says so on the page: showing the
         # statewide map instead would look like "no use here", not "no such
@@ -756,6 +852,7 @@ class MapPage(vanilla.TemplateView):
             product=resolved.get('product'),
             commodity=resolved.get('commodity'),
             county=county.slug if county else None,
+            all_years=all_years,
         )
 
         filters = []
@@ -771,8 +868,8 @@ class MapPage(vanilla.TemplateView):
             })
 
         county_map = None
-        if year and not no_matches:
-            county_map = maps.county_map(stats.by_county(PesticideUseRollup.objects.all(), year))
+        if (year or all_years) and not no_matches:
+            county_map = maps.county_map(stats.county_totals(year, all_years))
 
         return super().get_context_data(
             section='map',
@@ -780,7 +877,7 @@ class MapPage(vanilla.TemplateView):
             filters=filters,
             no_matches=no_matches,
             county_map=county_map,
-            **year_context(year),
+            **year_context(year, all_years),
             **kwargs,
         )
 
@@ -873,32 +970,50 @@ class RecordsBrowser(vanilla.ListView):
     }
 
     def dispatch(self, request, *args, **kwargs):
-        self.year = stats.resolve_year(request.GET.get('year'))
+        self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
         self.form = RecordsFilterForm(self._build_form_data(request.GET))
         self.form.is_valid()
         # The year picker follows the dates being browsed: a filter change
         # drops `?year=` from the URL, and a start date is the more specific
-        # statement of which year the reader is looking at anyway.
+        # statement of which year the reader is looking at anyway. Only a
+        # start date the reader actually submitted counts -- the ones
+        # _build_form_data() fills in are derived from the year, not the
+        # other way around.
         start = self.form.cleaned_data.get('start')
-        if start and start.year in stats.available_years():
-            self.year = start.year
+        if request.GET.get('start') and start and start.year in stats.available_years():
+            self.year, self.all_years = start.year, False
         self.related = self._get_related_objects()
         self.county = self._get_county()
         self.point, self.radius = self._get_point_and_radius()
         return super().dispatch(request, *args, **kwargs)
 
+    def _default_range(self):
+        """
+        Jan 1 / Dec 31 of the resolved year, or of the whole loaded range with
+        `?year=all`. (None, None) only when no data is loaded at all.
+        """
+        if self.all_years:
+            years = stats.years_loaded()
+            if years is None:
+                return None, None
+            return date(years[0], 1, 1), date(years[1], 12, 31)
+        if not self.year:
+            return None, None
+        return date(self.year, 1, 1), date(self.year, 12, 31)
+
     def _build_form_data(self, get):
         """
-        A mutable copy of the querystring with `start`/`end` defaulted to
-        Jan 1 / Dec 31 of the resolved year when neither is given, so the
-        page never silently lists every year's records. DateField.to_python
+        A mutable copy of the querystring with `start`/`end` defaulted to the
+        resolved year's range when neither is given, so the page never
+        silently lists every year's records by accident. DateField.to_python
         accepts a date object directly, so these round-trip through the form
         (and render back out) exactly like an explicitly-submitted value.
         """
         data = get.copy()
-        if not data.get('start') and not data.get('end') and self.year:
-            data['start'] = date(self.year, 1, 1)
-            data['end'] = date(self.year, 12, 31)
+        start, end = self._default_range()
+        if not data.get('start') and not data.get('end') and start:
+            data['start'] = start
+            data['end'] = end
         return data
 
     def get_date_range(self):
@@ -911,8 +1026,8 @@ class RecordsBrowser(vanilla.ListView):
         """
         data = self.form.cleaned_data
         start, end = data.get('start'), data.get('end')
-        if start is None and end is None and self.year:
-            return date(self.year, 1, 1), date(self.year, 12, 31)
+        if start is None and end is None:
+            return self._default_range()
         return start, end
 
     def _get_related_objects(self):
@@ -1048,8 +1163,8 @@ class RecordsBrowser(vanilla.ListView):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
                 filters.append({'label': obj.name, 'clear_url': self._clear_url(param)})
-        if self.county:
-            filters.append({'label': self.county.name, 'clear_url': self._clear_url('county')})
+        # The county is visible (and clearable) in the filter form itself, so
+        # it doesn't get a chip; chips are for the hidden entity/area filters.
         for param in ('region', 'section'):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
@@ -1065,8 +1180,9 @@ class RecordsBrowser(vanilla.ListView):
             f"{totals['acres']:,.0f} acres treated"
         )
         descriptors = []
-        if self.year:
-            descriptors.append(str(self.year))
+        label = stats.year_label(self.year, self.all_years)
+        if label:
+            descriptors.append(label)
         if self.county:
             descriptors.append(self.county.name)
         for param in ('chemical', 'product', 'commodity'):
@@ -1097,13 +1213,15 @@ class RecordsBrowser(vanilla.ListView):
             product=product if product and product is not MISSING else None,
             commodity=commodity if commodity and commodity is not MISSING else None,
             county=self.county.slug if self.county else None,
+            all_years=self.all_years,
+            show_notices=False,
         )
 
     def get_context_data(self, **kwargs):
         totals = self.get_totals()
         county_map = None
-        if self.year:
-            county_map = maps.county_map(stats.by_county(PesticideUseRollup.objects.all(), self.year))
+        if self.year or self.all_years:
+            county_map = maps.county_map(stats.county_totals(self.year, self.all_years))
         return super().get_context_data(
             form=self.form,
             totals=totals,
@@ -1112,10 +1230,13 @@ class RecordsBrowser(vanilla.ListView):
             active_filters=self.get_active_filters(),
             map_config=self.get_map_config(),
             county_map=county_map,
+            # The entity pickers render the resolved objects; an unresolved
+            # sqid has nothing to show, so it stays a plain hidden value.
+            related={k: v for k, v in self.related.items() if v is not MISSING},
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
             section='records',
-            **year_context(self.year),
+            **year_context(self.year, self.all_years),
             **kwargs,
         )
 
@@ -1167,7 +1288,7 @@ class SectionDetail(vanilla.DetailView):
 
     def get_context_data(self, **kwargs):
         section = self.object
-        year = stats.resolve_year(self.request.GET.get('year'))
+        year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         rows = PesticideUseRollup.objects.filter(mtrs=section)
 
         county_name = (
@@ -1177,15 +1298,18 @@ class SectionDetail(vanilla.DetailView):
             .first()
         )
 
-        if year:
-            totals = stats.year_totals(rows, year)
-            by_month = stats.by_month(rows, year)
-            recent_uses = stats.recent_uses(PesticideUse.objects.filter(mtrs=section, year=year), limit=5)
-            chemical_count = rows.filter(year=year, chemical__isnull=False).values('chemical').distinct().count()
+        # A single section is at most a few thousand rollup rows even across
+        # every loaded year, so these stay live aggregates.
+        if year or all_years:
+            totals = stats.year_totals(rows, year, all_years=all_years)
+            by_month = stats.by_month(rows, year, all_years=all_years)
+            chemical_count = (
+                stats.in_year(rows, year, all_years)
+                .filter(chemical__isnull=False).values('chemical').distinct().count()
+            )
         else:
             totals = {'lbs': 0, 'applications': 0, 'counties': 0}
             by_month = []
-            recent_uses = PesticideUse.objects.none()
             chemical_count = 0
 
         peak_month = None
@@ -1193,28 +1317,31 @@ class SectionDetail(vanilla.DetailView):
             peak = max(by_month, key=lambda month: month['lbs'])
             peak_month = calendar.month_name[peak['month']]
 
-        top_chemicals = stats.top_related(rows, year, 'chemical', limit=10)
-        top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10)
-        top_commodities = stats.top_related(rows, year, 'commodity', limit=10)
+        top_chemicals = stats.top_related(rows, year, 'chemical', limit=10, all_years=all_years)
+        top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10, all_years=all_years)
+        top_commodities = stats.top_related(rows, year, 'commodity', limit=10, all_years=all_years)
 
         notices = PesticideNotice.objects.filter(mtrs=section)
         upcoming = stats.upcoming_notices(notices)
         upcoming_count = stats.upcoming_count(notices)
 
+        year_param = stats.year_param(year, all_years)
         records_url = reverse('pesticides:records') + f'?section={section.sqid}' + (
-            f'&year={year}' if stats.year_query(year) else ''
+            f'&{year_param}' if year_param else ''
         )
 
         center = zoom = None
         if section.boundary_id:
             center, zoom = centroid(section), 13
-        map_config = section_map_config(year, center=center, zoom=zoom, highlight=section.sqid)
+        map_config = section_map_config(
+            year, center=center, zoom=zoom, highlight=section.sqid, all_years=all_years,
+        )
 
         return super().get_context_data(
             section='sections',
             county_name=county_name,
             years=stats.years_loaded(),
-            **year_context(year),
+            **year_context(year, all_years),
             totals=totals,
             chemical_count=chemical_count,
             by_year=stats.by_year(rows),
@@ -1228,12 +1355,10 @@ class SectionDetail(vanilla.DetailView):
             commodities_card=_section_card('Top commodities', 'commodities', top_commodities, records_url),
             upcoming=upcoming,
             upcoming_count=upcoming_count,
-            recent_uses=recent_uses,
             records_url=records_url,
             map_config=map_config,
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
-            notes=notes.notes_for(notes.keys_for_chemicals(row.obj for row in top_chemicals)),
             **kwargs,
         )
 
@@ -1260,7 +1385,7 @@ class NoticeList(vanilla.ListView):
         self.county = resolve_county(self.form.cleaned_data.get('county'))
         self.point, self.radius = resolve_point_and_radius(self.form.cleaned_data)
         self.mode = 'past' if self.form.cleaned_data.get('past') else 'active'
-        self.year = stats.resolve_year(request.GET.get('year'))
+        self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
@@ -1363,7 +1488,7 @@ class NoticeList(vanilla.ListView):
         # scheduled, not reported by year), but the nav links still carry it,
         # so take year_qs and drop year_options -- that's what keeps
         # year-picker.html from rendering here.
-        year_ctx = year_context(self.year)
+        year_ctx = year_context(self.year, self.all_years)
         year_ctx.pop('year_options', None)
         return super().get_context_data(
             form=self.form,
@@ -1430,7 +1555,6 @@ class NoticeDetail(vanilla.DetailView):
             map_config=map_config,
             related_notices=related_notices,
             records_url=records_url,
-            notes=notes.notes_for(notes.keys_for_notice(notice)),
             **kwargs,
         )
 
@@ -1482,10 +1606,10 @@ class NearMe(vanilla.TemplateView):
         return f'{self.request.path}?{params.urlencode()}'
 
     def get_context_data(self, **kwargs):
-        year = stats.resolve_year(self.request.GET.get('year'))
+        year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         label = (self.request.GET.get('label') or f'{self.lat:.3f}, {self.lng:.3f}')[:120]
         area = places.point_area(self.lat, self.lng, self.radius, label=label)
-        context = places.place_context(area, year)
+        context = places.place_context(area, year, all_years)
         radius_options = [
             {'miles': miles, 'url': self._radius_url(miles), 'current': miles == self.radius}
             for miles in places.RADIUS_CHOICES
@@ -1495,7 +1619,7 @@ class NearMe(vanilla.TemplateView):
             years=stats.years_loaded(),
             **context,
             **_place_cards(context),
-            **year_context(year),
+            **year_context(year, all_years),
             privacy_note=True,
             radius_options=radius_options,
             api_docs_url=API_DOCS_URL,
@@ -1529,15 +1653,17 @@ class RegionPage(vanilla.TemplateView):
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
-        year = stats.resolve_year(self.request.GET.get('year'))
+        year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         area = places.region_area(self.region)
-        context = places.place_context(area, year)
+        context = places.place_context(area, year, all_years)
+        within = places.regions_within(self.region) if self.region.type == Region.Type.COUNTY else None
         return super().get_context_data(
             section=None,
             years=stats.years_loaded(),
+            within=within,
             **context,
             **_place_cards(context),
-            **year_context(year),
+            **year_context(year, all_years),
             privacy_note=False,
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,

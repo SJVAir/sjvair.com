@@ -1013,3 +1013,70 @@ class TownshipAndCountyTests(RollupTestMixin, TestCase):
         response = self.client.get('/api/2.0/pesticides/sections/', {'year': 2023, 'bbox': '-119.9,36.6,-119.7,36.8'})
         ring = response.json()['features'][0]['geometry']['coordinates'][0][0]
         assert all(len(str(abs(v)).split('.')[-1]) <= 5 for pair in ring for v in pair)
+
+
+# ---------------------------------------------------------------------------
+# Entity search (the explorer's cross-entity autocomplete filters)
+# ---------------------------------------------------------------------------
+
+class EntitySearchTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:entity-search')
+
+    def results(self, **params):
+        response = self.client.get(self.url, params)
+        assert response.status_code == 200
+        return response.json()['results']
+
+    def test_chemical_search_returns_name_and_chem_code(self):
+        results = self.results(type='chemical', q='glyphosate')
+        assert [r['name'] for r in results] == ['GLYPHOSATE']
+        chemical = Chemical.objects.get(name='GLYPHOSATE')
+        assert results[0]['id'] == chemical.sqid
+        assert results[0]['detail'] == str(chemical.chem_code)
+
+    def test_product_search_detail_is_the_reg_number(self):
+        results = self.results(type='product', q='roundup')
+        assert [(r['name'], r['detail']) for r in results] == [('ROUNDUP PRO', '524-475')]
+
+    def test_commodity_search_detail_is_the_site_code(self):
+        results = self.results(type='commodity', q='grape')
+        commodity = Commodity.objects.get(name='GRAPE')
+        assert [(r['name'], r['detail']) for r in results] == [('GRAPE', commodity.site_code)]
+
+    def test_partial_match_falls_back_to_icontains(self):
+        assert 'CHLORPYRIFOS' in [r['name'] for r in self.results(type='chemical', q='chlorpy')]
+
+    def test_unused_entities_are_not_offered(self):
+        Chemical.objects.create(chem_code=30001, name='NEVER USED')
+        assert self.results(type='chemical', q='never') == []
+
+    def test_short_query_returns_nothing(self):
+        assert self.results(type='chemical', q='g') == []
+        assert self.results(type='chemical') == []
+
+    def test_limit_is_honoured_and_capped(self):
+        assert len(self.results(type='chemical', q='o', limit=1)) <= 1
+        # Over the cap is clamped, not rejected.
+        assert self.client.get(self.url, {'type': 'chemical', 'q': 'glyphosate', 'limit': 500}).status_code == 200
+
+    def test_bad_type_is_a_400(self):
+        response = self.client.get(self.url, {'type': 'nope', 'q': 'glyphosate'})
+        assert response.status_code == 400
+        assert 'type' in response.json()['error']
+
+    def test_missing_type_is_a_400(self):
+        assert self.client.get(self.url, {'q': 'glyphosate'}).status_code == 400
+
+    def test_bad_limit_is_a_400(self):
+        response = self.client.get(self.url, {'type': 'chemical', 'q': 'glyphosate', 'limit': 'nope'})
+        assert response.status_code == 400
+
+    def test_cached(self):
+        assert len(self.results(type='chemical', q='glyphosate')) == 1
+        Chemical.objects.filter(name='GLYPHOSATE').delete()
+        assert [r['name'] for r in self.results(type='chemical', q='glyphosate')] == ['GLYPHOSATE']

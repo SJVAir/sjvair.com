@@ -128,6 +128,10 @@
     }
   }
 
+  // Exposed so content swapped in later (htmx on the pesticides explorer)
+  // can render the maps it brought with it; `data-rendered` keeps it idempotent.
+  window.SJVAirLeafletMaps = { init: init };
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
