@@ -337,3 +337,24 @@ class RegionWithinFilterTests(TestCase):
 
         self.assertEqual(ids, {self.inside_a.sqid})
         self.assertNotIn(touching_neighbor.sqid, ids)
+
+    def test_within_excludes_a_region_that_only_partially_overlaps(self):
+        # Straddles FRESNO_COUNTY_WKT's eastern boundary (x=-119.0) with
+        # substantial area on both sides (roughly half inside, half outside)
+        # - the real-world case this reproduces is a congressional district
+        # that crosses a county line: it genuinely intersects Fresno County
+        # (not just a border touch, like the case above), but it is not
+        # *within* Fresno County, so within= must exclude it too. Only a
+        # region entirely inside the selected parent(s) should match.
+        straddling_district = make_tract(
+            'District straddling Fresno border',
+            'MULTIPOLYGON(((-119.3 36.8, -118.7 36.8, -118.7 37.0, -119.3 37.0, -119.3 36.8)))',
+        )
+
+        request = RequestFactory().get('/', {'type': 'tract', 'within': self.parent_a.sqid})
+        response = region_list(request)
+        data = get_response_data(response)
+        ids = {r['id'] for r in data['data']}
+
+        self.assertEqual(ids, {self.inside_a.sqid})
+        self.assertNotIn(straddling_district.sqid, ids)
