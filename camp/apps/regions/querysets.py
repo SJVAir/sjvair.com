@@ -49,20 +49,17 @@ class RegionQuerySet(models.QuerySet):
         """
         return self.filter(boundary__geometry__intersects=geometry)
 
-    def overlapping_area(self, geometry: GEOSGeometry):
+    def contained_within(self, geometry: GEOSGeometry):
         """
-        Filters regions that share actual area with the given geometry - unlike
-        `intersects()`, this excludes regions that only touch it along a shared
-        border with zero overlapping area (e.g. a neighboring county's city that
-        happens to sit right on the county line). Plain ST_Intersects treats
-        boundary-only touching as a match, which is never what "regions within
-        this area" callers actually want.
+        Filters regions whose geometry is entirely inside the given geometry
+        (ST_Within) - unlike `intersects()`, this excludes any region that
+        only partially overlaps it, whether that's a border-only touch (e.g.
+        a neighboring county's city sitting right on the county line) or a
+        genuine partial overlap (e.g. a congressional district that spans
+        two counties). "Within this area" callers want regions that are
+        fully inside it, not merely touching or overlapping it.
         """
-        return self.filter(
-            boundary__geometry__intersects=geometry
-        ).exclude(
-            boundary__geometry__touches=geometry
-        )
+        return self.filter(boundary__geometry__within=geometry)
 
     def combined_geometry(self) -> GEOSGeometry:
         """
