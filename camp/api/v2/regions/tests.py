@@ -153,8 +153,37 @@ def make_city(name, slug, geom_wkt):
     return region
 
 
+def make_county(name, geom_wkt):
+    region = Region.objects.create(name=name, slug=name.lower().replace(' ', '-'), type=Region.Type.COUNTY)
+    boundary = Boundary.objects.create(
+        region=region,
+        version='2020',
+        geometry=GEOSGeometry(geom_wkt, srid=4326),
+    )
+    region.boundary = boundary
+    region.save(update_fields=['boundary'])
+    return region
+
+
+def make_tract(name, geom_wkt):
+    region = Region.objects.create(name=name, slug=name.lower().replace(' ', '-'), type=Region.Type.TRACT)
+    boundary = Boundary.objects.create(
+        region=region,
+        version='2020',
+        geometry=GEOSGeometry(geom_wkt, srid=4326),
+    )
+    region.boundary = boundary
+    region.save(update_fields=['boundary'])
+    return region
+
+
 FRESNO_PLACE_WKT = 'MULTIPOLYGON(((-119.9 36.7, -119.7 36.7, -119.7 36.9, -119.9 36.9, -119.9 36.7)))'
 CLOVIS_CITY_WKT = 'MULTIPOLYGON(((-119.83 36.75, -119.73 36.75, -119.73 36.85, -119.83 36.85, -119.83 36.75)))'
+FRESNO_COUNTY_WKT = 'MULTIPOLYGON(((-120.5 36.5, -119.0 36.5, -119.0 37.5, -120.5 37.5, -120.5 36.5)))'
+KERN_COUNTY_WKT = 'MULTIPOLYGON(((-119.5 34.5, -118.0 34.5, -118.0 35.5, -119.5 35.5, -119.5 34.5)))'
+FRESNO_TRACT_WKT = 'MULTIPOLYGON(((-120.2 36.8, -120.0 36.8, -120.0 37.0, -120.2 37.0, -120.2 36.8)))'
+KERN_TRACT_WKT = 'MULTIPOLYGON(((-119.2 34.8, -119.0 34.8, -119.0 35.0, -119.2 35.0, -119.2 34.8)))'
+ELSEWHERE_WKT = 'MULTIPOLYGON(((-116.0 33.0, -115.8 33.0, -115.8 33.2, -116.0 33.2, -116.0 33.0)))'
 
 
 class TestPlaceSearch(TestCase):
@@ -251,3 +280,81 @@ class TestPlaceLookup(TestCase):
         boundary = response.json()['data']['boundary']
         assert boundary is not None
         assert boundary['geometry']['type'] == 'MultiPolygon'
+
+
+class RegionWithinFilterTests(TestCase):
+    def setUp(self):
+        self.parent_a = make_county('Fresno County', FRESNO_COUNTY_WKT)
+        self.parent_b = make_county('Kern County', KERN_COUNTY_WKT)
+        self.inside_a = make_tract('Tract inside Fresno', FRESNO_TRACT_WKT)
+        self.inside_b = make_tract('Tract inside Kern', KERN_TRACT_WKT)
+        self.outside = make_tract('Tract elsewhere', ELSEWHERE_WKT)
+
+    def test_within_single_parent_narrows_to_intersecting_regions(self):
+        request = RequestFactory().get('/', {'type': 'tract', 'within': self.parent_a.sqid})
+        response = region_list(request)
+        data = get_response_data(response)
+        ids = {r['id'] for r in data['data']}
+        self.assertEqual(ids, {self.inside_a.sqid})
+
+    def test_within_multiple_parents_unions_geometries(self):
+        request = RequestFactory().get('/', [
+            ('type', 'tract'), ('within', self.parent_a.sqid), ('within', self.parent_b.sqid),
+        ])
+        response = region_list(request)
+        data = get_response_data(response)
+        ids = {r['id'] for r in data['data']}
+        self.assertEqual(ids, {self.inside_a.sqid, self.inside_b.sqid})
+
+    def test_within_unknown_id_is_ignored_not_error(self):
+        request = RequestFactory().get('/', {'type': 'tract', 'within': 'not-a-real-sqid'})
+        response = region_list(request)
+        self.assertEqual(response.status_code, 200)
+
+    def test_no_within_param_returns_unnarrowed_list(self):
+        request = RequestFactory().get('/', {'type': 'tract'})
+        response = region_list(request)
+        data = get_response_data(response)
+        ids = {r['id'] for r in data['data']}
+        self.assertEqual(ids, {self.inside_a.sqid, self.inside_b.sqid, self.outside.sqid})
+
+    def test_within_excludes_a_region_that_only_touches_the_border(self):
+        # Shares the exact edge (x=-119.0) with FRESNO_COUNTY_WKT's eastern
+        # boundary but has zero interior overlap with it - the real-world
+        # case this reproduces is a city like Avenal (Kings County) sharing
+        # a border with Fresno County: ST_Intersects (plain `.intersects()`)
+        # matches boundary-only touching with no actual area overlap, which
+        # `within=` must not treat as "inside" the selected parent region.
+        touching_neighbor = make_tract(
+            'Tract touching Fresno border',
+            'MULTIPOLYGON(((-119.0 36.8, -118.8 36.8, -118.8 37.0, -119.0 37.0, -119.0 36.8)))',
+        )
+
+        request = RequestFactory().get('/', {'type': 'tract', 'within': self.parent_a.sqid})
+        response = region_list(request)
+        data = get_response_data(response)
+        ids = {r['id'] for r in data['data']}
+
+        self.assertEqual(ids, {self.inside_a.sqid})
+        self.assertNotIn(touching_neighbor.sqid, ids)
+
+    def test_within_excludes_a_region_that_only_partially_overlaps(self):
+        # Straddles FRESNO_COUNTY_WKT's eastern boundary (x=-119.0) with
+        # substantial area on both sides (roughly half inside, half outside)
+        # - the real-world case this reproduces is a congressional district
+        # that crosses a county line: it genuinely intersects Fresno County
+        # (not just a border touch, like the case above), but it is not
+        # *within* Fresno County, so within= must exclude it too. Only a
+        # region entirely inside the selected parent(s) should match.
+        straddling_district = make_tract(
+            'District straddling Fresno border',
+            'MULTIPOLYGON(((-119.3 36.8, -118.7 36.8, -118.7 37.0, -119.3 37.0, -119.3 36.8)))',
+        )
+
+        request = RequestFactory().get('/', {'type': 'tract', 'within': self.parent_a.sqid})
+        response = region_list(request)
+        data = get_response_data(response)
+        ids = {r['id'] for r in data['data']}
+
+        self.assertEqual(ids, {self.inside_a.sqid})
+        self.assertNotIn(straddling_district.sqid, ids)

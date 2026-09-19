@@ -25,6 +25,15 @@ class RegionList(RegionMixin, generics.ListEndpoint):
     filter_class = RegionFilter
     paginate = False
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        within_ids = self.request.GET.getlist('within')
+        if within_ids:
+            geometry = Region.objects.filter(sqid__in=within_ids).combined_geometry()
+            if geometry:
+                qs = qs.contained_within(geometry)
+        return qs
+
 
 class RegionDetail(RegionMixin, generics.DetailEndpoint):
     lookup_field = 'sqid'

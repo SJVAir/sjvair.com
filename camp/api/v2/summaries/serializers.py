@@ -3,6 +3,7 @@ from django.conf import settings
 from resticus import serializers
 
 from camp.api.v2.monitors.serializers import MonitorSerializer
+from camp.api.v2.regions.serializers import RegionSerializer
 
 
 def _timestamp(s):
@@ -59,4 +60,13 @@ class RegionSummarySerializer(serializers.Serializer):
         'p25',
         'p75',
         'station_count',
+    ]
+
+
+class BulkRegionSummaryGroupSerializer(RegionSerializer):
+    """A region (same shape as RegionSerializer) with a nested `summaries`
+    list - the summary rows for that region within the requested page.
+    Mirrors BulkMonitorSummaryGroupSerializer's monitor/summaries relationship."""
+    include = [
+        ('summaries', lambda region: RegionSummarySerializer(region.summary_rows).serialize()),
     ]

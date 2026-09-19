@@ -6,7 +6,7 @@ from camp.api.v2.forms import BboxField
 from camp.apps.summaries.models import BaseSummary
 
 
-class BulkMonitorSummaryForm(forms.Form):
+class BulkSummaryDateRangeForm(forms.Form):
     """`start`/`end` are inclusive dates. The span is capped per resolution so a
     single request can't page through an unbounded number of rows (hourly and
     daily are the only resolutions dense enough to need it)."""
@@ -18,7 +18,6 @@ class BulkMonitorSummaryForm(forms.Form):
 
     start = forms.DateField(required=True)
     end = forms.DateField(required=True)
-    bbox = BboxField()
 
     def __init__(self, *args, resolution=None, **kwargs):
         self.resolution = resolution
@@ -47,3 +46,11 @@ class BulkMonitorSummaryForm(forms.Form):
             )
 
         return cleaned_data
+
+
+class BulkMonitorSummaryForm(BulkSummaryDateRangeForm):
+    bbox = BboxField()
+
+
+class BulkRegionSummaryForm(BulkSummaryDateRangeForm):
+    pass

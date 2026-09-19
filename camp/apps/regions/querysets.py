@@ -49,6 +49,18 @@ class RegionQuerySet(models.QuerySet):
         """
         return self.filter(boundary__geometry__intersects=geometry)
 
+    def contained_within(self, geometry: GEOSGeometry):
+        """
+        Filters regions whose geometry is entirely inside the given geometry
+        (ST_Within) - unlike `intersects()`, this excludes any region that
+        only partially overlaps it, whether that's a border-only touch (e.g.
+        a neighboring county's city sitting right on the county line) or a
+        genuine partial overlap (e.g. a congressional district that spans
+        two counties). "Within this area" callers want regions that are
+        fully inside it, not merely touching or overlapping it.
+        """
+        return self.filter(boundary__geometry__within=geometry)
+
     def combined_geometry(self) -> GEOSGeometry:
         """
         Returns a MultiPolygon representing the union of all geometries in the queryset.
