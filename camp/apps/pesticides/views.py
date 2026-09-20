@@ -10,8 +10,8 @@ from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, F, FloatField, IntegerField, OuterRef, Subquery, Sum, Value, When
-from django.db.models.functions import Coalesce, TruncMonth
+from django.db.models import Case, Count, F, FloatField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce, Lower, TruncMonth
 from django.http import Http404
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -305,7 +305,7 @@ class ExplorerListMixin:
             parts.append(f'used{where}')
         for param, obj in self.related.items():
             if obj is not MISSING:
-                parts.append(f'linked to {obj.name}')
+                parts.append(f'linked to {obj.display_name}')
         return ' '.join(parts)
 
     def describe_filters(self, data):
@@ -331,7 +331,7 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
     form_class = ChemicalFilterForm
     template_name = 'pesticides/chemical-list.html'
     section = 'chemicals'
-    sort_fields = {'name': 'name', 'lbs': 'lbs_applied', 'products': 'product_count', 'iarc': 'iarc_group'}
+    sort_fields = {'name': 'sort_name', 'lbs': 'lbs_applied', 'products': 'product_count', 'iarc': 'iarc_group'}
     default_sort = '-lbs'
     related_models = {'product': Product, 'commodity': Commodity}
     rollup_field = 'chemical'
@@ -349,8 +349,15 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
         return queryset
 
     def annotate_queryset(self, queryset, year):
+        # "Sort by name" follows the shown name (Chemical.display_name): a
+        # CDPR name with no letters sorts under its CompTox name; otherwise
+        # CDPR's, case-insensitively, since the shown name differs only in case.
         queryset = queryset.annotate(
-            product_count=Coalesce(count_subquery(ProductChemical, 'chemical', 'product'), 0)
+            product_count=Coalesce(count_subquery(ProductChemical, 'chemical', 'product'), 0),
+            sort_name=Lower(Case(
+                When(Q(name__regex=r'^[^A-Za-z]*$') & ~Q(preferred_name=''), then=F('preferred_name')),
+                default=F('name'),
+            )),
         )
         if year or self.all_years:
             queryset = queryset.annotate(
@@ -633,7 +640,7 @@ class ExplorerDetailMixin:
         if not totals['applications'] or not label:
             return ''
         sentence = f'Applied in {totals["counties"]} of {stats.SJV_COUNTY_COUNT} SJV counties in {label}'
-        names = [r.obj.name.title() for r in top[:2]]
+        names = [r.obj.display_name for r in top[:2]]
         if names:
             joined = ' and '.join(names)
             sentence += f', mostly {verb} {joined}' if verb else f', mostly {joined}'
@@ -863,7 +870,7 @@ class MapPage(vanilla.TemplateView):
             params.pop(param, None)
             encoded = params.urlencode()
             filters.append({
-                'label': obj.name,
+                'label': getattr(obj, 'display_name', obj.name),
                 'clear_url': f'?{encoded}' if encoded else '?',
             })
 
@@ -1162,13 +1169,13 @@ class RecordsBrowser(vanilla.ListView):
         for param in ('chemical', 'product', 'commodity'):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
-                filters.append({'label': obj.name, 'clear_url': self._clear_url(param)})
+                filters.append({'label': getattr(obj, 'display_name', obj.name), 'clear_url': self._clear_url(param)})
         # The county is visible (and clearable) in the filter form itself, so
         # it doesn't get a chip; chips are for the hidden entity/area filters.
         for param in ('region', 'section'):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
-                filters.append({'label': obj.name, 'clear_url': self._clear_url(param)})
+                filters.append({'label': getattr(obj, 'display_name', obj.name), 'clear_url': self._clear_url(param)})
         if self.point:
             filters.append({'label': f'Within {self.radius} mi', 'clear_url': self._clear_url('lat', 'lng', 'radius')})
         return filters
@@ -1188,7 +1195,7 @@ class RecordsBrowser(vanilla.ListView):
         for param in ('chemical', 'product', 'commodity'):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
-                descriptors.append(obj.name.title())
+                descriptors.append(obj.display_name)
         if descriptors:
             sentence += ' — ' + ', '.join(descriptors)
         return sentence
@@ -1451,13 +1458,13 @@ class NoticeList(vanilla.ListView):
         for param in ('chemical', 'product'):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
-                filters.append({'label': obj.name, 'clear_url': clear_url(self.request, param)})
+                filters.append({'label': getattr(obj, 'display_name', obj.name), 'clear_url': clear_url(self.request, param)})
         if self.county:
             filters.append({'label': self.county.name, 'clear_url': clear_url(self.request, 'county')})
         for param in ('region', 'section'):
             obj = self.related.get(param)
             if obj and obj is not MISSING:
-                filters.append({'label': obj.name, 'clear_url': clear_url(self.request, param)})
+                filters.append({'label': getattr(obj, 'display_name', obj.name), 'clear_url': clear_url(self.request, param)})
         if self.point:
             filters.append({'label': f'Within {self.radius} mi', 'clear_url': clear_url(self.request, 'lat', 'lng', 'radius')})
         return filters

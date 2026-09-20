@@ -117,8 +117,8 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         # Both names find it.
         assert self.names(self.client.get(self.url, {'q': 'fluoroacetate'})) == ['1080']
         assert self.names(self.client.get(self.url, {'q': '1080'})) == ['1080']
-        # Sorting by name is by CDPR's name (digits before letters here).
-        assert self.names(self.client.get(self.url, {'sort': 'name'})) == ['1080', 'CHLORPYRIFOS', 'GLYPHOSATE']
+        # Sorting by name follows the shown name: "Sodium fluoroacetate" sorts last.
+        assert self.names(self.client.get(self.url, {'sort': 'name'})) == ['CHLORPYRIFOS', 'GLYPHOSATE', '1080']
 
     def test_category_filter_is_or(self):
         response = self.client.get(self.url, {'category': ['carcinogen', 'toxic_air_contaminant']})
@@ -674,7 +674,7 @@ class MapPageTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'chemical': chem.sqid, 'year': 2022, 'county': 'fresno'})
         cfg = response.context['map_config']
         assert cfg['chemical'] == '1855' and cfg['county'] == 'fresno' and cfg['year'] == 2022
-        assert [f['label'] for f in response.context['filters']] == ['GLYPHOSATE', 'Fresno County']
+        assert [f['label'] for f in response.context['filters']] == ['Glyphosate', 'Fresno County']
         assert 'year=2022' in response.context['filters'][0]['clear_url']
 
     def test_unresolved_filter_says_so_instead_of_showing_everything(self):

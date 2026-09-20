@@ -103,18 +103,13 @@ class Command(BaseCommand):
                 completed += 1
                 for result in future.result():
                     search_value = unquote(result.get('searchValue') or '').lower()
-                    dtxsid = result.get('dtxsid', '')
                     casrn = result.get('casrn', '')
-                    preferred = (result.get('preferredName') or '').strip()
-                    if not dtxsid:
+                    if not result.get('dtxsid'):
                         continue
                     chem_ids = term_to_ids.get(search_value, set())
                     if not chem_ids:
                         continue
-                    fields = {'dtxsid': dtxsid}
-                    if preferred:
-                        fields['preferred_name'] = preferred[:256]
-                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(**fields)
+                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(**self._match_fields(result))
                     if casrn:
                         Chemical.objects.filter(pk__in=chem_ids, cas_number='').update(cas_number=casrn)
                     updated += rows
@@ -146,17 +141,12 @@ class Command(BaseCommand):
                 completed += 1
                 for result in future.result():
                     search_value = unquote(result.get('searchValue') or '').upper()
-                    dtxsid = result.get('dtxsid', '')
-                    preferred = (result.get('preferredName') or '').strip()
-                    if not dtxsid:
+                    if not result.get('dtxsid'):
                         continue
                     chem_ids = cas_to_ids.get(search_value, set())
                     if not chem_ids:
                         continue
-                    fields = {'dtxsid': dtxsid}
-                    if preferred:
-                        fields['preferred_name'] = preferred[:256]
-                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(**fields)
+                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(**self._match_fields(result))
                     updated += rows
                 self.stdout.write(f'  {completed:,} / {len(batches):,} batches', ending='\r')
 
@@ -177,12 +167,12 @@ class Command(BaseCommand):
             try:
                 results = self.chem_client.search(by='equals', query=chem['name']) or []
                 for r in results:
-                    dtxsid = r.get('dtxsid', '')
-                    casrn = r.get('casrn', '')
-                    preferred = (r.get('preferredName') or '').strip()
-                    if not dtxsid:
+                    if not r.get('dtxsid'):
                         continue
-                    return chem['id'], dtxsid, casrn if not chem['cas_number'] else '', preferred
+                    fields = self._match_fields(r)
+                    if r.get('casrn') and not chem['cas_number']:
+                        fields['cas_number'] = r['casrn']
+                    return chem['id'], fields
             except Exception:
                 pass
             return None
@@ -195,12 +185,7 @@ class Command(BaseCommand):
                 completed += 1
                 result = future.result()
                 if result:
-                    chem_id, dtxsid, casrn, preferred = result
-                    fields = {'dtxsid': dtxsid}
-                    if casrn:
-                        fields['cas_number'] = casrn
-                    if preferred:
-                        fields['preferred_name'] = preferred[:256]
+                    chem_id, fields = result
                     Chemical.objects.filter(pk=chem_id, dtxsid='').update(**fields)
                     updated += 1
                 if completed % 50 == 0:
@@ -208,15 +193,27 @@ class Command(BaseCommand):
 
         self.stdout.write(f'\n  Updated {updated:,} chemicals with DTXSID via equals search')
 
-    def _search_with_retry(self, batch, retries=3, backoff=5):
+    def _search_with_retry(self, batch):
+        return self._with_retry(self.chem_client.search, by='batch', query=batch)
+
+    def _with_retry(self, call, retries=3, backoff=5, **kwargs):
         for attempt in range(retries):
             try:
-                return self.chem_client.search(by='batch', query=batch) or []
+                return call(**kwargs) or []
             except Exception as e:
                 if attempt == retries - 1:
                     self.stderr.write(f'  Batch failed after {retries} attempts: {e}')
                     return []
                 time.sleep(backoff * (attempt + 1))
+
+    @staticmethod
+    def _match_fields(result):
+        """The Chemical fields a CompTox match fills in: the DTXSID, plus the preferred name when given."""
+        fields = {'dtxsid': result.get('dtxsid', '')}
+        preferred = (result.get('preferredName') or '').strip()
+        if preferred:
+            fields['preferred_name'] = preferred[:256]
+        return fields
 
     # --- Phase 1d: preferred names for chemicals matched before names were kept ---
 
@@ -236,14 +233,7 @@ class Command(BaseCommand):
         batches = [dtxsids[i:i + BATCH_SIZE] for i in range(0, len(dtxsids), BATCH_SIZE)]
 
         def lookup(batch):
-            for attempt in range(3):
-                try:
-                    return self.chem_client.details(by='batch-dtxsid', query=batch, subset='identifiers') or []
-                except Exception as e:
-                    if attempt == 2:
-                        self.stderr.write(f'  Batch failed after 3 attempts: {e}')
-                        return []
-                    time.sleep(5 * (attempt + 1))
+            return self._with_retry(self.chem_client.details, by='batch-dtxsid', query=batch, subset='identifiers')
 
         updated = 0
         completed = 0

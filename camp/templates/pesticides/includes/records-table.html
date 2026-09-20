@@ -25,7 +25,7 @@
                     {% else %}—{% endif %}
                 </td>
                 <td>
-                    {% if use.commodity %}<a href="{{ use.commodity.get_absolute_url }}">{{ use.commodity.name }}</a>{% else %}—{% endif %}
+                    {% if use.commodity %}<a href="{{ use.commodity.get_absolute_url }}">{{ use.commodity.display_name }}</a>{% else %}—{% endif %}
                 </td>
                 <td>
                     {% if use.product %}<a href="{{ use.product.get_absolute_url }}">{{ use.product.name }}</a>{% else %}—{% endif %}

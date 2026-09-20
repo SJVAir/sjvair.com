@@ -39,11 +39,9 @@ docker compose run --rm web python manage.py import_pur --year 2022 --skip-looku
 #    Requires COMPTOX_API_KEY in .env
 #    Phase 'search': batch name search + CAS lookup
 #    Phase 'equals': slower individual search for high-volume unmatched chemicals (run after search)
-#    Phase 'names': fills in CompTox preferred names for chemicals matched before names were kept
 #    Phase 'hazard': fetches IARC cancer classifications (requires DTXSIDs from search)
 docker compose run --rm web python manage.py import_comptox --phase search
 docker compose run --rm web python manage.py import_comptox --phase equals --limit 500 --workers 10
-docker compose run --rm web python manage.py import_comptox --phase names
 docker compose run --rm web python manage.py import_comptox --phase hazard
 
 # 3. Apply Prop 65 carcinogen/reproductive/developmental toxin classifications

@@ -88,6 +88,8 @@ class AbsoluteUrlTests(TestCase):
             'COPPER (II) SULFATE': 'Copper (II) sulfate',
             'WHEAT (FORAGE - FODDER)': 'Wheat (forage - fodder)',
             'AI IS CONFIDENTIAL': 'AI is confidential',
+            'BACILLUS SUBTILIS, STRAIN MBI 600': 'Bacillus subtilis, strain MBI 600',
+            'BACILLUS THURINGIENSIS, STRAIN ATCC 39555': 'Bacillus thuringiensis, strain ATCC 39555',
             'Already Cased': 'Already Cased',
             '': '',
         }

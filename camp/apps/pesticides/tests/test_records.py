@@ -79,7 +79,7 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         assert self.pks(self.client.get(self.url, {'product': Product.objects.get(pk=2).sqid})) == [5, 4]
         assert self.pks(self.client.get(self.url, {'commodity': Commodity.objects.get(pk=2).sqid})) == [6, 2]
         assert self.pks(self.client.get(self.url, {'chemical': 'nope'})) == []
-        assert [f['label'] for f in self.client.get(self.url, {'chemical': chem.sqid}).context['active_filters']] == ['GLYPHOSATE']
+        assert [f['label'] for f in self.client.get(self.url, {'chemical': chem.sqid}).context['active_filters']] == ['Glyphosate']
 
     def test_section_and_region_params_only_accept_their_own_region_types(self):
         county = Region.objects.get(pk=9001)

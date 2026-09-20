@@ -18,7 +18,7 @@ for the records form, which submits on Apply only.
     <label class="label" for="picker-{{ kind }}">{{ label }}</label>
     <input type="hidden" name="{{ kind }}" value="{{ selected.sqid|default:'' }}">
     {% if selected %}
-    <div class="control"><span class="tag is-info is-light is-medium">{{ selected.name }} <button type="button" class="delete is-small entity-picker-clear" aria-label="Clear"></button></span></div>
+    <div class="control"><span class="tag is-info is-light is-medium">{{ selected.display_name }} <button type="button" class="delete is-small entity-picker-clear" aria-label="Clear"></button></span></div>
     {% else %}
     <div class="control has-icons-left">
         <input class="input" type="search" id="picker-{{ kind }}" placeholder="Type to search…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="picker-{{ kind }}-results">

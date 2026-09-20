@@ -45,7 +45,7 @@
         <small class="has-text-grey is-size-6">SprayDays notices of intent</small>
         <span class="tag is-info is-light is-medium ml-2">{{ upcoming_count }} scheduled</span>
     </h2>
-    <p class="mb-3"><a href="{{ notices_url }}">See all notices for {{ object.display_name }}</a></p>
+    <p class="mb-3"><a href="{{ notices_url }}">See all notices for this {{ section|slice:":-1" }}</a></p>
     {% if upcoming %}
         {% include 'pesticides/includes/upcoming-notices.html' %}
     {% else %}

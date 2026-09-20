@@ -46,8 +46,11 @@ def humanize_name(name):
     def lower_word(match):
         word = match.group(0)
         start, end = match.span()
-        # Attached to a digit ("2,4-D", "4E", "65-52A"): a locant or a code.
-        if (start > 0 and name[start - 1].isdigit()) or (end < len(name) and name[end].isdigit()):
+        # Attached to a digit ("2,4-D", "4E", "65-52A"), or a space away from
+        # one ("strain MBI 600", "ATCC 39555"): a locant or a code.
+        before = name[:start].rstrip(' ')
+        after = name[end:].lstrip(' ')
+        if (before and before[-1].isdigit()) or (after and after[0].isdigit()):
             return word
         if word in NAME_SMALL_WORDS:
             return word.lower()
