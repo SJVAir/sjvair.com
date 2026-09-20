@@ -276,8 +276,9 @@ class EntitySearchBase(generics.Endpoint):
         # "Sodium fluoroacetate" came up.
         def entry(obj):
             detail = str(getattr(obj, detail_field) or '')
-            if obj.display_name != obj.name:
-                detail = f'{obj.name} · {detail}' if detail else obj.name
+            alias = getattr(obj, 'cdpr_alias', '')
+            if alias:
+                detail = f'{alias} · {detail}' if detail else alias
             return {'id': obj.sqid, 'name': obj.display_name, 'detail': detail}
 
         return {'results': [entry(obj) for obj in queryset[:limit]]}

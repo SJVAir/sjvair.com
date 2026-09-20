@@ -1,4 +1,6 @@
 from django.contrib.gis.db import models
+import re
+
 from django.contrib.postgres.fields import ArrayField
 from django.urls import reverse
 from django.utils.text import slugify
@@ -16,21 +18,66 @@ def _name_key(value):
     return ''.join(ch for ch in value.lower() if ch.isalnum())
 
 
+# Short all-caps words in CDPR names that are initialisms, not words, and so
+# keep their capitals when the rest of the name is brought down to sentence
+# case. Anything with a digit, one or two letters, or no vowel keeps its
+# capitals without needing a listing here.
+NAME_INITIALISMS = {
+    'ABS', 'ADBAC', 'ATMP', 'BAC', 'BHC', 'BIT', 'CMIT', 'DBCP', 'DCNA', 'DCOIT', 'DCPA', 'DDAC', 'DDD',
+    'DDE', 'DDT', 'DDVP', 'DEA', 'DEET', 'DEF', 'DMSO', 'DSMA', 'DTPA', 'EBDC', 'EDB', 'EDTA', 'EPTC',
+    'HEDP', 'IBA', 'IPBC', 'LAS', 'MCPA', 'MCPB', 'MCPP', 'MEA', 'MGK', 'MIT', 'MITC', 'MSMA', 'NAA',
+    'NPE', 'NTA', 'OIT', 'PBO', 'PBTC', 'PCNB', 'PCP', 'TBTO', 'TCMTB', 'TEA',
+}
+NAME_SMALL_WORDS = {'OF', 'IN', 'AND', 'OR', 'TO', 'AS', 'BY', 'ON', 'IS', 'FOR', 'THE'}
+_WORD_RE = re.compile(r'[A-Za-z]+')
+
+
+def humanize_name(name):
+    """
+    CDPR's reference names are shouted ("POTASSIUM N-METHYLDITHIOCARBAMATE");
+    this brings an all-caps name down to sentence case while leaving
+    locants, initialisms and codes alone: "Potassium N-methyldithiocarbamate",
+    "2,4-D", "MCPA", "Bacillus thuringiensis, subsp. israelensis, strain AM 65-52".
+    A name that isn't all caps is already someone's casing and is returned as is.
+    """
+    if not name or name != name.upper():
+        return name
+
+    def lower_word(match):
+        word = match.group(0)
+        start, end = match.span()
+        # Attached to a digit ("2,4-D", "4E", "65-52A"): a locant or a code.
+        if (start > 0 and name[start - 1].isdigit()) or (end < len(name) and name[end].isdigit()):
+            return word
+        if word in NAME_SMALL_WORDS:
+            return word.lower()
+        if len(word) <= 2 or word in NAME_INITIALISMS or not any(ch in 'AEIOUY' for ch in word):
+            return word
+        return word.lower()
+
+    lowered = _WORD_RE.sub(lower_word, name)
+    # Sentence case: the first letter goes back up.
+    for i, ch in enumerate(lowered):
+        if ch.isalpha():
+            return lowered[:i] + ch.upper() + lowered[i + 1:]
+    return lowered
+
+
 def display_chemical_name(name, preferred_name):
     """
     The name the explorer shows for a chemical. CDPR's name is the common
-    name and stays, except that CompTox's preferred name replaces it when
-    the two are the same name (so "GLYPHOSATE, ISOPROPYLAMINE SALT" reads
-    "Glyphosate isopropylamine salt") or when CDPR's has no letters at all
-    ("1080" for sodium fluoroacetate).
+    name and stays (in sentence case, see humanize_name), except that
+    CompTox's preferred name replaces it when the two are the same name (so
+    "GLYPHOSATE, ISOPROPYLAMINE SALT" reads "Glyphosate isopropylamine
+    salt") or when CDPR's has no letters at all ("1080" for sodium
+    fluoroacetate).
     """
-    if not preferred_name:
-        return name
-    if not any(ch.isalpha() for ch in name):
-        return preferred_name
-    if _name_key(name) == _name_key(preferred_name):
-        return preferred_name
-    return name
+    if preferred_name:
+        if not any(ch.isalpha() for ch in name):
+            return preferred_name
+        if _name_key(name) == _name_key(preferred_name):
+            return preferred_name
+    return humanize_name(name)
 
 
 class Chemical(TimeStampedModel):
@@ -97,6 +144,11 @@ class Chemical(TimeStampedModel):
         return display_chemical_name(self.name, self.preferred_name)
 
     @property
+    def cdpr_alias(self):
+        """CDPR's name when it's a different name from the one shown, not just a different casing."""
+        return self.name if _name_key(self.display_name) != _name_key(self.name) else ''
+
+    @property
     def slug(self):
         return slugify(self.display_name) or 'chemical'
 
@@ -150,7 +202,7 @@ class Commodity(TimeStampedModel):
 
     @property
     def display_name(self):
-        return self.name
+        return humanize_name(self.name)
 
     @property
     def slug(self):

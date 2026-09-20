@@ -89,7 +89,7 @@ class ChemicalListTests(TestCase):
         assert set(item.keys()) == {
             'id', 'chem_code', 'name', 'preferred_name', 'display_name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
         }
-        assert item['display_name'] == item['name']
+        assert item['display_name'] == item['name'].capitalize()
 
     def test_display_name_prefers_the_comptox_name(self):
         make_chemical(chem_code=633, name='1080', preferred_name='Sodium fluoroacetate')
@@ -1060,7 +1060,7 @@ class EntitySearchTests(RollupTestMixin, TestCase):
 
     def test_chemical_search_returns_name_and_chem_code(self):
         results = self.results(type='chemical', q='glyphosate')
-        assert [r['name'] for r in results] == ['GLYPHOSATE']
+        assert [r['name'] for r in results] == ['Glyphosate']
         chemical = Chemical.objects.get(name='GLYPHOSATE')
         assert results[0]['id'] == chemical.sqid
         assert results[0]['detail'] == str(chemical.chem_code)
@@ -1072,10 +1072,10 @@ class EntitySearchTests(RollupTestMixin, TestCase):
     def test_commodity_search_detail_is_the_site_code(self):
         results = self.results(type='commodity', q='grape')
         commodity = Commodity.objects.get(name='GRAPE')
-        assert [(r['name'], r['detail']) for r in results] == [('GRAPE', commodity.site_code)]
+        assert [(r['name'], r['detail']) for r in results] == [('Grape', commodity.site_code)]
 
     def test_partial_match_falls_back_to_icontains(self):
-        assert 'CHLORPYRIFOS' in [r['name'] for r in self.results(type='chemical', q='chlorpy')]
+        assert 'Chlorpyrifos' in [r['name'] for r in self.results(type='chemical', q='chlorpy')]
 
     def test_unused_entities_are_not_offered(self):
         Chemical.objects.create(chem_code=30001, name='NEVER USED')
@@ -1105,4 +1105,4 @@ class EntitySearchTests(RollupTestMixin, TestCase):
     def test_cached(self):
         assert len(self.results(type='chemical', q='glyphosate')) == 1
         Chemical.objects.filter(name='GLYPHOSATE').delete()
-        assert [r['name'] for r in self.results(type='chemical', q='glyphosate')] == ['GLYPHOSATE']
+        assert [r['name'] for r in self.results(type='chemical', q='glyphosate')] == ['Glyphosate']

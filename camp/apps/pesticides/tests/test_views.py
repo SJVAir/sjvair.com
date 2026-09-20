@@ -352,12 +352,19 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         url = reverse('pesticides:chemical-detail', kwargs={'sqid': self.chemical.sqid, 'slug': 'whatever'})
         assert self.client.get(url).status_code == 200
 
-    def test_preferred_name_heads_the_page_with_the_cdpr_name_noted(self):
+    def test_preferred_name_heads_the_page(self):
         Chemical.objects.filter(pk=1).update(preferred_name='Glyphosate')
         html = self.client.get(self.chemical.get_absolute_url()).content.decode()
         assert '<h1 class="mb-1">Glyphosate</h1>' in html
-        assert 'Listed by CDPR as “GLYPHOSATE”' in html
         assert '<title>Glyphosate |' in html
+        # Same name, different casing: not worth a note.
+        assert 'Listed by CDPR' not in html
+
+    def test_cdpr_name_noted_when_it_differs(self):
+        Chemical.objects.filter(pk=1).update(name='1080', preferred_name='Sodium fluoroacetate')
+        html = self.client.get(self.chemical.get_absolute_url()).content.decode()
+        assert '<h1 class="mb-1">Sodium fluoroacetate</h1>' in html
+        assert 'Listed by CDPR as “1080”' in html
 
     def test_bare_sqid_redirects(self):
         response = self.client.get(reverse('pesticides:chemical-redirect', kwargs={'sqid': self.chemical.sqid}))

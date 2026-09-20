@@ -291,7 +291,7 @@ class TestPesticideNoticeModel:
 class ChemicalModelTests(TestCase):
     def test_str(self):
         chem = Chemical.objects.create(chem_code=383, name='METHOMYL')
-        assert str(chem) == 'METHOMYL'
+        assert str(chem) == 'Methomyl'
 
     def test_categories_default_empty(self):
         chem = Chemical.objects.create(chem_code=9999, name='TEST')

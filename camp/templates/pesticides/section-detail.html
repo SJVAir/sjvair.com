@@ -27,7 +27,7 @@
 
 <section class="month-bars-section mt-6">
     <h2 class="title is-4">Applications by month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
-    {% if by_month %}
+    {% if totals.applications %}
         {% include 'pesticides/includes/month-bars.html' %}
         {% if peak_month %}<p class="mt-2">Spraying here peaks in {{ peak_month }}.</p>{% endif %}
     {% else %}
@@ -36,11 +36,13 @@
 </section>
 
 <section class="top-lists mt-6">
-    <div class="columns">
+    {% if totals.applications %}
+<div class="columns">
         <div class="column">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
         <div class="column">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
         <div class="column">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
     </div>
+{% endif %}
 </section>
 
 <section class="by-year mt-6">

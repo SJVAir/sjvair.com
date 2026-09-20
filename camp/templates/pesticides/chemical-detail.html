@@ -5,7 +5,7 @@
     <li class="is-active"><a aria-current="page">{{ object.display_name }}</a></li>
 {% endblock %}
 {% block identifiers %}
-    {% if object.preferred_name and object.preferred_name != object.name %}Listed by CDPR as “{{ object.name }}” · {% endif %}Chemical code {{ object.chem_code }}{% if object.cas_number %} · CAS {{ object.cas_number }}{% endif %}{% if object.comptox_url %} · <a href="{{ object.comptox_url }}" target="_blank" rel="noopener">CompTox {{ object.dtxsid }}</a>{% endif %}
+    {% if object.cdpr_alias %}Listed by CDPR as “{{ object.cdpr_alias }}” · {% endif %}Chemical code {{ object.chem_code }}{% if object.cas_number %} · CAS {{ object.cas_number }}{% endif %}{% if object.comptox_url %} · <a href="{{ object.comptox_url }}" target="_blank" rel="noopener">CompTox {{ object.dtxsid }}</a>{% endif %}
 {% endblock %}
 {% block badges %}
     {% include 'pesticides/includes/classification-badges.html' with chemical=object %}

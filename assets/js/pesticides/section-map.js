@@ -1646,6 +1646,9 @@
 
   SectionMap.prototype.updateLegend = function () {
     if (this.legendEl) renderLegend(this.legendEl, this.currentClasses, this.legendUnit());
+    // "All sections" only means something at the township zoom.
+    var sectionsToggle = this.controlsEl ? this.controlsEl.querySelector('input[name="sections"]') : null;
+    if (sectionsToggle) sectionsToggle.disabled = this.level === 'section';
     if (this.levelEl) {
       this.levelEl.textContent = this.allSectionsActive() ? LEVEL_TEXT.allSections : (LEVEL_TEXT[this.level] || '');
     }

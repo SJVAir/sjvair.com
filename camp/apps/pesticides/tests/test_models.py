@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from camp.apps.pesticides.models import Chemical, Commodity, Product, display_chemical_name
+from camp.apps.pesticides.models import Chemical, Commodity, Product, display_chemical_name, humanize_name
 
 
 class ChemicalClassificationTests(TestCase):
@@ -67,11 +67,32 @@ class AbsoluteUrlTests(TestCase):
         assert str(chem) == 'Sodium fluoroacetate'
         assert chem.slug == 'sodium-fluoroacetate'
         assert chem.get_absolute_url().endswith('/sodium-fluoroacetate/')
-        # Without one, the CDPR name stands.
+        # Without one, the CDPR name stands, in sentence case.
         plain = Chemical.objects.get(pk=1)
         assert plain.preferred_name == ''
-        assert plain.display_name == plain.name == 'GLYPHOSATE'
+        assert plain.display_name == 'Glyphosate'
+        assert plain.cdpr_alias == ''
+        assert chem.cdpr_alias == '1080'
+        # Commodities get the same treatment; product labels keep their casing.
+        assert Commodity.objects.get(pk=2).display_name == 'Grape'
         assert Product.objects.get(pk=2).display_name == 'LORSBAN 4E'
+
+    def test_humanize_name(self):
+        cases = {
+            'POTASSIUM N-METHYLDITHIOCARBAMATE': 'Potassium N-methyldithiocarbamate',
+            '2,4-D': '2,4-D',
+            '2,4-D, SODIUM SALT': '2,4-D, sodium salt',
+            'MCPA': 'MCPA',
+            'OIL OF CITRONELLA': 'Oil of citronella',
+            'BACILLUS THURINGIENSIS, SUBSP. ISRAELENSIS, STRAIN AM 65-52': 'Bacillus thuringiensis, subsp. israelensis, strain AM 65-52',
+            'COPPER (II) SULFATE': 'Copper (II) sulfate',
+            'WHEAT (FORAGE - FODDER)': 'Wheat (forage - fodder)',
+            'AI IS CONFIDENTIAL': 'AI is confidential',
+            'Already Cased': 'Already Cased',
+            '': '',
+        }
+        for raw, expected in cases.items():
+            assert humanize_name(raw) == expected, raw
 
     def test_preferred_name_only_replaces_the_same_name_or_a_bare_code(self):
         # Same name, better casing: CompTox's wins.
@@ -79,7 +100,7 @@ class AbsoluteUrlTests(TestCase):
         assert display_chemical_name('2,4-D, SODIUM SALT', '2,4-D sodium salt') == '2,4-D sodium salt'
         # A different name (CompTox's systematic name, or a mismatched DTXSID): CDPR's stays.
         assert display_chemical_name('2,4-D', '2,4-Dichlorophenoxyacetic acid') == '2,4-D'
-        assert display_chemical_name('2,4-DINITROPHENOL', '3-Iodo-2-propynyl-N-butylcarbamate') == '2,4-DINITROPHENOL'
+        assert display_chemical_name('2,4-DINITROPHENOL', '3-Iodo-2-propynyl-N-butylcarbamate') == '2,4-Dinitrophenol'
         # A CDPR name with no letters is a code, not a name: CompTox's wins.
         assert display_chemical_name('1080', 'Sodium fluoroacetate') == 'Sodium fluoroacetate'
         assert display_chemical_name('1080', '') == '1080'
