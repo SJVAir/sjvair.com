@@ -12,6 +12,9 @@ from camp.apps.regions.panels import panels_for
 from camp.utils import leaflet
 from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
 
+# Marker outline for SJVAir-owned monitors on the region map.
+SJVAIR_BORDER = '#0a84ff'
+
 
 class CountyFilter(admin.SimpleListFilter):
     title = 'county'
@@ -223,15 +226,20 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                     monitor.latest_entry.level.value
                 ) if monitor.is_active else 'darkgray'
 
-                border_color = _blend_hex(fill_color, '#000000', .2) if monitor.is_active else 'dimgray'
+                if monitor.is_sjvair:
+                    border_color = SJVAIR_BORDER
+                elif monitor.is_active:
+                    border_color = _blend_hex(fill_color, '#000000', .2)
+                else:
+                    border_color = 'dimgray'
 
                 lmap.add(leaflet.Marker(
                     geometry=monitor.position,
                     size=14 if monitor.is_active else 10,
                     fill_color=fill_color,
                     border_color=border_color,
-                    shape='triangle' if monitor.is_regulatory else 'circle' if monitor.is_sjvair else 'square',
-                    border_width=1,
+                    shape='triangle' if monitor.is_regulatory else 'circle',
+                    border_width=2 if monitor.is_sjvair else 1,
                 ))
 
             return mark_safe(lmap.render())

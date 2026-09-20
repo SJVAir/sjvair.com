@@ -251,7 +251,8 @@ class TractPanel(Panel):
         if isinstance(value, bool):
             return 'Yes' if value else 'No'
         if isinstance(value, float):
-            return round(value, 2)
+            # CES4 uses -999 for indicators with no data.
+            return None if value <= -999 else round(value, 2)
         return value
 
     def indicators(self):
@@ -313,7 +314,7 @@ class TractPanel(Panel):
         if record is None:
             return []
         return [
-            ('CES percentile', '—' if record.ci_score_p is None else f'{record.ci_score_p:g}'),
+            ('CES percentile', '—' if record.ci_score_p is None else f'{round(record.ci_score_p, 1):g}'),
             ('SB535 DAC', '—' if record.dac_sb535 is None else ('Yes' if record.dac_sb535 else 'No')),
         ]
 

@@ -388,6 +388,19 @@ class RegionPanelTests(TestCase):
         tiles = dict(TractPanel(self.tract, self.request).tiles())
         assert tiles == {'CES percentile': '89.2', 'SB535 DAC': 'Yes'}
 
+    def test_tract_grid_blanks_missing_sentinels_and_rounds_tile(self):
+        ces4 = CES4.objects.get(boundary__region=self.tract, boundary__version='2020')
+        ces4.char_lbw = -999.0
+        ces4.save()
+        ces5 = CES5.objects.get(boundary__region=self.tract, boundary__version='2020')
+        ces5.ci_score_p = 89.0955
+        ces5.save()
+        panel = TractPanel(self.tract, self.request)
+        groups = {group['label']: group for group in panel.context['indicators']['groups']}
+        rows = {row[0]: row for row in groups['Population characteristics']['rows']}
+        assert rows['Low Birth Weight'][3] is None
+        assert dict(panel.tiles())['CES percentile'] == '89.1'
+
 
 class PlaceNameOverrideTests(TestCase):
     def test_known_geoid_is_renamed(self):

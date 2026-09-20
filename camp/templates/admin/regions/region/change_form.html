@@ -13,10 +13,10 @@
     <div class="region-map">
         {{ monitor_map }}
         <p class="help region-map-legend">
-            <span class="key key-tri"></span> Regulatory &nbsp;
-            <span class="key key-circle"></span> SJVAir &nbsp;
-            <span class="key key-square"></span> Partner &nbsp;
-            Color: current PM2.5 level &nbsp; <span class="key key-gray"></span> Inactive
+            <span class="key key-tri"></span> FEM &nbsp;
+            <span class="key key-circle"></span> LCS &nbsp;
+            <span class="key key-sjvair"></span> SJVAir &nbsp;
+            <span class="key key-gray"></span> Inactive
         </p>
     </div>
     {% endif %}
@@ -81,6 +81,8 @@
     .region-panel td.num, .region-panel th.num { text-align: right; font-variant-numeric: tabular-nums; }
     .region-panel .panel-stats { display: flex; flex-wrap: wrap; gap: 0 24px; align-items: flex-start; }
     .region-panel table.wide { width: auto; min-width: 60%; max-width: 100%; }
+    .region-panel table.grid { width: auto; max-width: 100%; }
+    .region-panel table.grid td, .region-panel table.grid th { padding-left: 16px; padding-right: 16px; }
     .region-panel caption { text-align: left; }
     .region-panel details { margin-bottom: 12px; }
     .region-panel summary { cursor: pointer; color: var(--link-fg); margin-bottom: 6px; }
@@ -98,9 +100,9 @@
     .key { display: inline-block; width: 12px; height: 12px; vertical-align: middle; margin-right: 4px; }
     .key-solid { height: 3px; width: 18px; background: #1f4e79; }
     .key-dashed { height: 0; width: 18px; border-top: 3px dashed #7f8c8d; }
-    .key-tri { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 12px solid #1e90ff; }
-    .key-circle { border-radius: 50%; background: #1e90ff; }
-    .key-square { background: #1e90ff; }
+    .key-tri { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 12px solid #7f8c8d; }
+    .key-circle { border-radius: 50%; background: #7f8c8d; }
+    .key-sjvair { border-radius: 50%; background: #7f8c8d; box-sizing: border-box; border: 2px solid #0a84ff; }
     .key-gray { border-radius: 50%; background: darkgray; }
 </style>
 {% endblock %}

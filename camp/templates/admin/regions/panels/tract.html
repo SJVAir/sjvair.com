@@ -11,7 +11,7 @@
 {% include "admin/regions/panels/_monitor_counts.html" %}
 </div>
 {% for group in indicators.groups %}
-<table class="wide">
+<table class="grid">
     <caption>{{ group.label }}</caption>
     <thead><tr><th>Indicator</th>{% for version in indicators.versions %}<th class="num">{{ version }} value</th><th class="num">{{ version }} percentile</th>{% endfor %}</tr></thead>
     <tbody>
