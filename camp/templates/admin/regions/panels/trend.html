@@ -1,0 +1,17 @@
+{% if has_data %}
+<div class="panel-stats panel-chart-row">
+    <table>
+        <caption>{{ pollutant_label }}, {{ start|date:"M j" }} – {{ end|date:"M j, Y" }}</caption>
+        <tr><th>Period mean</th><td>{{ stats.mean }} {{ unit }}</td></tr>
+        <tr><th>Worst day</th><td>{{ stats.worst_mean }} on {{ stats.worst_day|date:"M j" }}</td></tr>
+        {% if stats.days_over is not None %}<tr><th>Days at or above "{{ stats.over_label }}"</th><td>{{ stats.days_over }}</td></tr>{% endif %}
+        <tr><th>Stations (latest day)</th><td>{{ stats.stations }}</td></tr>
+    </table>
+    <div class="chart-wrap">
+        {{ chart }}
+        <p class="help chart-legend"><span class="key key-solid"></span> {{ region.name }}{% if comparison_label %} &nbsp; <span class="key key-dashed"></span> {{ comparison_label }}{% endif %} &nbsp; Shaded bands: {{ pollutant_label }} AQI levels. Daily means.</p>
+    </div>
+</div>
+{% else %}
+<p>No daily {{ pollutant_label }} summaries for this region in the selected range. Region summaries need at least one monitor inside the boundary and the nightly rollup to have run.</p>
+{% endif %}

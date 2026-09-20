@@ -8,7 +8,7 @@ from tdigest import TDigest
 from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 # Fixed datetime for time-sensitive task tests.
@@ -24,7 +24,9 @@ from camp.apps.monitors.bam.models import BAM1022
 from camp.apps.monitors.models import Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.qaqc.models import HealthCheck
+from camp.apps.accounts.models import User
 from camp.apps.regions.models import Region
+from camp.apps.regions.panels import panels_for
 from camp.apps.summaries.aggregators import (
     FEM_WEIGHT,
     LCS_WEIGHT,
@@ -37,6 +39,7 @@ from camp.apps.summaries.aggregators import (
     tdigest_to_dict,
 )
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
+from camp.apps.summaries.panels import TrendPanel
 from camp.apps.summaries.tasks import (
     daily_monitor_summaries,
     get_summarizable_entry_models,
@@ -1192,3 +1195,76 @@ class QuarterlyMonitorSummariesTaskTests(TestCase):
             resolution=BaseSummary.Resolution.QUARTERLY,
         )
         assert quarterly.mean == pytest.approx(20.0)  # mean of (10, 20, 30)
+
+
+def daily_region_summary(region, day, mean, entry_type='pm25', station_count=1):
+    timestamp = timezone.make_aware(datetime.combine(day, datetime.min.time()))
+    return RegionSummary.objects.create(
+        region=region, entry_type=entry_type, resolution=RegionSummary.Resolution.DAILY, timestamp=timestamp,
+        count=24, expected_count=24, sum_value=mean * 24, sum_of_squares=mean * mean * 24, tdigest={},
+        minimum=mean, maximum=mean, mean=mean, stddev=0.0, p25=mean, p75=mean,
+        station_count=station_count, weight=float(station_count),
+    )
+
+
+class TrendPanelTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        self.user = User.objects.create_superuser(email='admin@example.com', password='password', phone='+15595551234', full_name='Admin')
+        self.city = Region.objects.get(pk=9)  # Fresno (city), inside Fresno County
+        self.county = Region.objects.counties().get(name='Fresno County')
+        self.kern = Region.objects.counties().get(name='Kern County')
+        yesterday = timezone.localdate() - timedelta(days=1)
+        for offset in range(10):
+            day = yesterday - timedelta(days=offset)
+            daily_region_summary(self.city, day, 40.0 if offset < 2 else 10.0, station_count=3)
+            daily_region_summary(self.county, day, 20.0)
+            daily_region_summary(self.kern, day, 30.0)
+        # A stale row outside every range must be ignored.
+        daily_region_summary(self.city, yesterday - timedelta(days=400), 999.0)
+
+    def panel(self, region, **params):
+        request = RequestFactory().get('/', params)
+        request.user = self.user
+        return [p for p in panels_for(region, request) if isinstance(p, TrendPanel)][0]
+
+    def test_city_tiles_and_comparison(self):
+        context = self.panel(self.city).context
+        assert context['has_data'] is True
+        assert context['pollutant'] == 'pm25'
+        assert context['range'] == '30d'
+        assert context['stats']['mean'] == 16.0   # (2*40 + 8*10) / 10
+        assert context['stats']['days_over'] == 2  # 40 >= 35.5
+        assert context['stats']['worst_mean'] == 40.0
+        assert context['stats']['stations'] == 3
+        assert context['unit'] == 'µg/m³'
+        assert context['comparison_label'] == 'Fresno County'
+        assert context['chart'].count('class="chart-line"') == 2
+        assert dict(self.panel(self.city).tiles())['Days unhealthy for sensitive groups'] == '2'
+
+    def test_county_compares_to_all_counties(self):
+        context = self.panel(self.county).context
+        assert context['comparison_label'] == 'All SJV counties'
+        # The window always spans the full range, so the leading days are None.
+        assert len(context['comparison_points']) == 30
+        # The comparison line is the mean of county means: (20 + 30) / 2 each day.
+        assert next(value for _day, value in context['comparison_points'] if value is not None) == 25.0
+
+    def test_ranges_and_pollutants_are_validated(self):
+        assert self.panel(self.city, range='12m').context['range'] == '12m'
+        assert self.panel(self.city, range='nope').context['range'] == '30d'
+        assert len(self.panel(self.county, range='90d').context['comparison_points']) == 90
+        context = self.panel(self.city, pollutant='o3').context
+        assert context['pollutant'] == 'pm25'  # no ozone rows for this region
+        assert context['pollutant_links'] == []
+        daily_region_summary(self.city, timezone.localdate() - timedelta(days=1), 0.05, entry_type='o3')
+        context = self.panel(self.city, pollutant='o3').context
+        assert context['pollutant'] == 'o3'
+        assert [label for label, _url, _on in context['pollutant_links']] == ['PM2.5', 'Ozone']
+
+    def test_no_data_message(self):
+        context = self.panel(Region.objects.get(pk=10)).context  # school district, no rows
+        assert context['has_data'] is False
+        assert context['chart'] == ''
+        assert self.panel(Region.objects.get(pk=10)).tiles() == []

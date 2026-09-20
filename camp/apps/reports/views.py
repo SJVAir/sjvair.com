@@ -572,6 +572,7 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
             county_name = place['county_name'] or ''
             monitors = monitor_counts.get(place['pk'], 0)
             rows.append({
+                'pk': place['pk'],
                 'name': place['name'],
                 'type': cls.TYPE_LABELS.get(place['type'], place['type']),
                 'county': county_column(county_name.removesuffix(' County')),

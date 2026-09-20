@@ -1,0 +1,20 @@
+{% load humanize %}
+<table class="wide">
+    <caption>{{ communities|length }} cities and census-designated places</caption>
+    <thead><tr><th>Place</th><th>Type</th><th>County</th><th class="num">Population</th><th class="num">Monitors</th><th class="num">Per 10k</th><th class="num">Nearest monitor</th></tr></thead>
+    <tbody>
+        {% for row in communities %}
+        <tr>
+            <th><a href="{{ row.detail_url }}">{{ row.name }}</a></th>
+            <td>{{ row.type }}</td>
+            <td>{{ row.county }}</td>
+            <td class="num">{{ row.population|intcomma }}</td>
+            <td class="num">{{ row.monitors|intcomma }}</td>
+            <td class="num">{{ row.per_10k|default_if_none:"—" }}</td>
+            <td class="num">{% if row.nearest_km is not None %}{{ row.nearest_km }} km{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">No city or CDP centroid falls inside this boundary.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>

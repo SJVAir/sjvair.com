@@ -79,9 +79,11 @@ class MonitorScope:
         links = []
         for name in self.PARAMS:
             on = getattr(self, name)
-            query = {key: '1' for key in self.PARAMS if getattr(self, key) and key != name}
-            if not on:
+            query = self.params.copy()
+            if on:
+                query.pop(name, None)
+            else:
                 query[name] = '1'
-            querystring = '&'.join(f'{key}=1' for key in self.PARAMS if key in query)
+            querystring = query.urlencode()
             links.append((labels[name], f'{base}?{querystring}' if querystring else base or '?', on))
         return links
