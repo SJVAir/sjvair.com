@@ -553,7 +553,7 @@ class HomeTests(RollupTestMixin, TestCase):
         assert response.context['total_lbs'] == 1280.0
         assert response.context['applications'] == 9
         html = response.content.decode()
-        assert 'Lbs applied in 2022\u20132023' in html
+        assert 'Pounds applied by county, 2022\u20132023' in html
         assert 'Fresno County: 1,150 lbs' in html
         assert Chemical.objects.get(pk=3).get_absolute_url() + '?year=all' in html
         # The caveat still names the latest loaded year.

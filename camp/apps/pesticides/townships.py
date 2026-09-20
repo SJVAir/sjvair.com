@@ -6,21 +6,29 @@ section polygons in the valley collapse to a few hundred townships. Drawing
 the township grid instead of the sections is what makes a zoomed-out map
 affordable: one envelope per township rather than thousands of rings.
 
-Township geometry is the *envelope* of its sections, not their union: the
-grid is drawn as a reference overlay, so a rectangle is both what a township
-is on the ground and far cheaper to build and serialize. Both lookups here
-are whole-table and change only when the MTRS regions are reimported, so
-they're cached for a day.
+Township geometry is the union of its sections, simplified to drop the
+collinear vertices the union leaves at every section corner. Most townships
+come out as plain rectangles; the ones along a county line, a river, or a
+survey irregularity keep their real outline instead of an envelope that would
+overlap the neighbouring township. Both lookups here are whole-table and
+change only when the MTRS regions are reimported, so they're cached for a day.
 """
 import json
 
-from django.contrib.gis.db.models import Collect
-from django.contrib.gis.db.models.functions import Envelope
+from django.contrib.gis.db.models import GeometryField, Union
+from django.contrib.gis.db.models.functions import GeoFunc
 from django.core.cache import cache
 from django.db.models import Count
 from django.db.models.functions import Length, Substr
 
 from camp.apps.regions.models import Region
+
+
+class SimplifyPreserveTopology(GeoFunc):
+    """ST_SimplifyPreserveTopology(geometry, tolerance); Django has no built-in for it."""
+    function = 'ST_SimplifyPreserveTopology'
+    arity = 2
+    output_field = GeometryField()
 
 TOWNSHIP_GEOMETRIES_KEY = 'pesticides:township-geometries'
 TOWNSHIP_SECTIONS_KEY = 'pesticides:township-sections'
@@ -28,6 +36,10 @@ TOWNSHIP_TTL = 60 * 60 * 24
 # Five decimals is a bit over a meter -- far finer than a square-mile grid
 # needs, and roughly half the bytes of the raw geometry.
 COORD_PRECISION = 5
+# Simplification tolerance in degrees: ~10 m, enough to drop the vertices at
+# each section corner along a straight township edge without moving a real
+# corner.
+SIMPLIFY_TOLERANCE = 0.0001
 # 'MDM-T14S-R20E-01' -> 'MDM-T14S-R20E': the trailing '-NN' section number.
 SECTION_SUFFIX_LENGTH = 3
 
@@ -74,7 +86,7 @@ def township_index():
 
 
 def _build_township_geometries():
-    # One GROUP BY: PostGIS builds each township's envelope, so no section
+    # One GROUP BY: PostGIS unions each township's sections, so no section
     # geometry is ever fetched into Python. Grouping on the name minus its
     # last three characters is township_of() expressed in SQL; every imported
     # MTRS region is named '<meridian>-T##S-R##E-##'.
@@ -83,16 +95,19 @@ def _build_township_geometries():
         .filter(type=Region.Type.MTRS, boundary__isnull=False)
         .annotate(township=Substr('name', 1, Length('name') - SECTION_SUFFIX_LENGTH))
         .values('township')
-        .annotate(envelope=Envelope(Collect('boundary__geometry')), sections=Count('pk'))
+        .annotate(
+            outline=SimplifyPreserveTopology(Union('boundary__geometry'), SIMPLIFY_TOLERANCE),
+            sections=Count('pk'),
+        )
         .order_by('township')
     )
     data = {}
     for row in rows:
-        envelope = row['envelope']
+        outline = row['outline']
         data[row['township']] = {
-            'geometry': round_coords(json.loads(envelope.geojson)),
+            'geometry': round_coords(json.loads(outline.geojson)),
             'sections': row['sections'],
-            'bbox': tuple(round(value, COORD_PRECISION) for value in envelope.extent),
+            'bbox': tuple(round(value, COORD_PRECISION) for value in outline.extent),
         }
     return data
 

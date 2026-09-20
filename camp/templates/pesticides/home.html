@@ -28,27 +28,6 @@
     </span>
 </p>
 
-<div class="level stat-row box">
-    <div class="level-item has-text-centered"><div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ total_lbs|lbs }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ applications|lbs }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Chemicals used</p><p class="title">{{ chemical_count|lbs }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Products used</p><p class="title">{{ product_count|lbs }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Commodities treated</p><p class="title">{{ commodity_count|lbs }}</p></div></div>
-</div>
-
-{% include 'pesticides/includes/how-to-read.html' %}
-
-{% if county_map %}
-<div class="columns">
-    <div class="column is-5-tablet is-4-widescreen">
-        {% include 'pesticides/includes/by-county-table.html' %}
-    </div>
-    <div class="column is-7-tablet is-8-widescreen">
-        {% include 'pesticides/includes/county-map.html' %}
-    </div>
-</div>
-{% endif %}
-
 <div class="columns section-cards">
     <div class="column">
         <a class="box section-card" href="{% url 'pesticides:product-list' %}{{ year_qs }}">
@@ -72,6 +51,30 @@
         </a>
     </div>
 </div>
+
+{% if show_stat_row %}
+<div class="level stat-row box">
+    <div class="level-item has-text-centered"><div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ total_lbs|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ applications|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Chemicals used</p><p class="title">{{ chemical_count|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Products used</p><p class="title">{{ product_count|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Commodities treated</p><p class="title">{{ commodity_count|lbs }}</p></div></div>
+</div>
+{% endif %}
+
+{% include 'pesticides/includes/how-to-read.html' %}
+
+{% if county_map %}
+<div class="columns">
+    <div class="column is-5-tablet is-4-widescreen">
+        {% include 'pesticides/includes/by-county-table.html' %}
+    </div>
+    <div class="column is-7-tablet is-8-widescreen">
+        {% include 'pesticides/includes/county-map.html' %}
+    </div>
+</div>
+{% endif %}
+
 
 <div class="columns leaderboards">
     <div class="column">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals' rows=top_chemicals kind='chemicals' %}</div>
