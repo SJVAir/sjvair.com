@@ -31,6 +31,108 @@
   margin: 0 0 .25rem;
 }
 
+/* Grid popups (section and township): a title, a grey subline, the headline
+   figure, then the top-chemicals list with the amounts right-aligned. */
+.leaflet-popup .section-popup h4 {
+  margin-bottom: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.section-popup .section-popup-sub {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: #7a7a7a;
+}
+
+.section-popup .section-popup-metric {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.section-popup .section-popup-metric strong {
+  font-size: 1.05rem;
+}
+
+.section-popup .section-popup-label {
+  margin: 0 0 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7a7a7a;
+}
+
+.section-popup .section-popup-chems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.section-popup .section-popup-chems li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.15rem 0;
+  border-top: 1px solid #f0f0f0;
+}
+
+.section-popup .section-popup-chems li:first-child {
+  border-top: 0;
+}
+
+.section-popup .section-popup-chems .amount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: #4a4a4a;
+}
+
+.section-popup .section-popup-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #7a7a7a;
+}
+
+/* Footer actions: small pill buttons, a link and a button styled alike. */
+.section-popup .section-popup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.section-popup .section-popup-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #dbdbdb;
+  border-radius: 999px;
+  background: #fff;
+  color: #363636;
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.section-popup .section-popup-action:hover {
+  border-color: #b5b5b5;
+  color: #3273dc;
+}
+
+.section-popup .section-popup-action .fa-regular {
+  color: #7a7a7a;
+}
+
+.section-popup .section-popup-action:hover .fa-regular {
+  color: inherit;
+}
+
 .notice-popup h4 .tag {
   margin-left: 0.35rem;
   vertical-align: middle;
@@ -97,16 +199,4 @@
   margin-top: 0.25rem;
   font-size: 0.8rem;
   color: #7a7a7a;
-}
-
-/* Link-styled button: the township popup's "Zoom in" is an action, not a
-   navigation, so it's a button that reads as a link. */
-.section-popup .section-map-zoom {
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  color: #3273dc;
-  cursor: pointer;
-  text-decoration: underline;
 }
