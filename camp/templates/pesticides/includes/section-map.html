@@ -22,15 +22,41 @@
        data-zoom="{{ map_config.zoom }}"
        data-radius="{{ map_config.radius }}"
        data-show-notices="{{ map_config.show_notices }}"></div>
-  <div class="section-map-controls" hidden>
-    <label><input type="radio" name="metric" value="lbs_chemical" checked> Pounds</label>
-    <label><input type="radio" name="metric" value="applications"> Applications</label>
-    <label class="section-map-notices-toggle"><input type="checkbox" name="notices"{% if map_config.show_notices == '1' %} checked{% endif %}> Show notices</label>
-    <label class="section-map-sections-toggle"><input type="checkbox" name="sections"> All sections</label>
-    <span class="section-map-status" aria-live="polite"></span>
+  {# Controls and legend sit over the map (top-right, bottom-left), so they stay usable when the map is expanded. #}
+  <div class="section-map-panel section-map-controls" data-panel="options" hidden>
+    <div class="section-map-panel-head">
+      <button type="button" class="section-map-panel-toggle" aria-expanded="true" aria-controls="section-map-options-{{ map_config.year }}">
+        <span class="fa-duotone fa-fw fa-gear section-map-panel-icon is-options" aria-hidden="true"></span>
+        <span class="section-map-panel-title">Options</span>
+        <span class="fa-regular fa-fw fa-chevron-up section-map-panel-chevron" aria-hidden="true"></span>
+      </button>
+    </div>
+    <div class="section-map-panel-body" id="section-map-options-{{ map_config.year }}">
+      <div class="section-map-metric" role="group" aria-label="Shade by">
+        <label><input type="radio" name="metric" value="lbs_chemical" checked> Pounds</label>
+        <label><input type="radio" name="metric" value="applications"> Applications</label>
+      </div>
+      <label class="section-map-notices-toggle"><input type="checkbox" name="notices"{% if map_config.show_notices == '1' %} checked{% endif %}> Show notices</label>
+      <label class="section-map-sections-toggle"><input type="checkbox" name="sections"> All sections</label>
+      <button type="button" class="section-map-expand" aria-pressed="false" title="Expand the map">
+        <span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span><span class="section-map-expand-label">Expand</span>
+      </button>
+      <span class="section-map-status" aria-live="polite"></span>
+    </div>
   </div>
-  <ul class="county-legend section-map-legend" hidden></ul>
-  {% if map_config.note %}<p class="section-map-note is-size-7 has-text-grey">{{ map_config.note }}</p>{% endif %}
-  <span class="section-map-level" hidden></span>
+  <div class="section-map-panel section-map-legend-panel" data-panel="legend" hidden>
+    <div class="section-map-panel-head">
+      <button type="button" class="section-map-panel-toggle" aria-expanded="true" aria-controls="section-map-legend-{{ map_config.year }}">
+        <span class="fa-duotone fa-fw fa-circle-info section-map-panel-icon is-legend" aria-hidden="true"></span>
+        <span class="section-map-panel-title">Legend</span>
+        <span class="fa-regular fa-fw fa-chevron-up section-map-panel-chevron" aria-hidden="true"></span>
+      </button>
+    </div>
+    <div class="section-map-panel-body" id="section-map-legend-{{ map_config.year }}">
+      <ul class="county-legend section-map-legend"></ul>
+      <span class="section-map-level"></span>
+      {% if map_config.note %}<p class="section-map-note">{{ map_config.note }}</p>{% endif %}
+    </div>
+  </div>
   <noscript>{% if county_map %}{% include 'pesticides/includes/county-map.html' %}{% endif %}</noscript>
 </div>

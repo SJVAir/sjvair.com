@@ -1,3 +1,7 @@
+.section-map-wrap {
+  position: relative;
+}
+
 .section-map {
   width: 100%;
   height: 70vh;
@@ -6,24 +10,229 @@
   border-radius: 4px;
 }
 
-.section-map-controls {
+/* Controls (top-right) and legend (bottom-left) float over the map, in the
+   same idiom as Leaflet's own controls, so they come along when the map is
+   expanded to the viewport. */
+.section-map-panel {
+  position: absolute;
+  z-index: 1000; /* level with Leaflet controls, above popups' pane order */
+  max-width: calc(100% - 1.5rem);
+  padding: 0;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+/* Each panel is a card: a header (icon, title, chevron at the right end)
+   with a bottom rule, over a body that can be folded away; the fold is
+   remembered per viewer in localStorage. */
+.section-map-panel-head {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.section-map-panel.is-collapsed .section-map-panel-head {
+  border-bottom: 0;
+}
+
+.section-map-panel-toggle {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-  margin-top: 0.5rem;
-  font-size: 0.85rem;
+  gap: 0.4rem;
+  width: 100%;
+  min-width: 9rem;
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: #363636;
+  text-align: left;
+  cursor: pointer;
+}
+
+.section-map-panel-toggle:hover {
+  color: #3273dc;
+}
+
+/* Duotone header icons, coloured as in the map toolbar mockup. */
+.section-map-panel-icon {
+  --fa-secondary-opacity: 1;
+}
+
+.section-map-panel-icon.is-options {
+  --fa-primary-color: darkgray;
+  --fa-secondary-color: dimgray;
+}
+
+.section-map-panel-icon.is-legend {
+  --fa-primary-color: slategray;
+  --fa-secondary-color: lightgray;
+}
+
+.section-map-panel-title {
+  flex: 1 1 auto;
+}
+
+.section-map-panel-chevron {
+  margin-left: auto;
+  color: #7a7a7a;
+  transition: transform 0.15s ease;
+}
+
+.section-map-panel.is-collapsed .section-map-panel-chevron {
+  transform: rotate(180deg);
+}
+
+.section-map-panel-body {
+  padding: 0.5rem 0.65rem 0.6rem;
+}
+
+.section-map-panel.is-collapsed .section-map-panel-body {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-map-panel-chevron {
+    transition: none;
+  }
+}
+
+.section-map-controls {
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+.section-map-controls .section-map-panel-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+
+/* Folded, the options panel is just its gear: a small square button, the
+   title and chevron hidden (the title stays in the accessible name). */
+.section-map-controls.is-collapsed .section-map-panel-toggle {
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+}
+
+.section-map-controls.is-collapsed .section-map-panel-title,
+.section-map-controls.is-collapsed .section-map-panel-chevron {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.section-map-controls .section-map-metric {
+  display: flex;
+  gap: 0.75rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  align-self: stretch;
 }
 
 .section-map-controls label {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.3rem;
+  white-space: nowrap;
 }
 
 .section-map-controls .section-map-status {
   color: #7a7a7a;
-  margin-left: auto;
+}
+
+.section-map-controls .section-map-status:empty {
+  display: none;
+}
+
+.section-map-controls .section-map-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid #dbdbdb;
+  border-radius: 999px;
+  background: #fff;
+  color: #363636;
+  font: inherit;
+  cursor: pointer;
+}
+
+.section-map-controls .section-map-expand:hover {
+  border-color: #b5b5b5;
+  color: #3273dc;
+}
+
+.section-map-legend-panel {
+  left: 0.75rem;
+  bottom: 1.6rem; /* clear of the attribution strip */
+}
+
+.section-map-wrap .section-map-legend-panel .section-map-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+}
+
+.section-map-legend-panel .section-map-level {
+  display: block;
+  margin-top: 0.35rem;
+  color: #7a7a7a;
+}
+
+.section-map-legend-panel .section-map-note {
+  margin: 0.25rem 0 0;
+  color: #7a7a7a;
+}
+
+/* Expanded: the map takes the viewport below the site navbar (same
+   arithmetic as the live map page), panels ride along. */
+.section-map-wrap.is-expanded {
+  position: fixed;
+  top: calc(var(--navbar-height, 3.25rem) - 1px); /* refined to the navbar's measured edge by the script */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 25;
+  background: #fff;
+  /* Same line as the navbar's bottom border; the two overlap (see fitBelowNavbar). */
+  border-top: 1px solid #dbdbdb;
+}
+
+.section-map-wrap.is-expanded .section-map {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+html.section-map-expanded,
+html.section-map-expanded body {
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .section-map-panel {
+    font-size: 0.75rem;
+  }
+  .section-map-panel-toggle {
+    padding: 0.35rem 0.5rem;
+  }
+  .section-map-panel-body {
+    padding: 0.4rem 0.5rem 0.5rem;
+  }
+  .section-map-controls .section-map-expand-label {
+    display: none;
+  }
 }
 
 .leaflet-popup .section-popup h4,
@@ -188,15 +397,26 @@
   margin-top: 0.35rem;
 }
 
-/* Shown when the page is reporting every loaded year but the map, whose
-   aggregates are per-year, can only show one. */
-.section-map-note {
-  margin-top: 0.35rem;
+
+/* Locate button under the zoom buttons, in Leaflet's bar style. */
+.section-map-locate a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #363636;
 }
 
-.section-map-level {
-  display: block;
-  margin-top: 0.25rem;
-  font-size: 0.8rem;
-  color: #7a7a7a;
+.section-map-locate.is-locating a {
+  color: #3273dc;
+  animation: section-map-locating 1s ease-in-out infinite;
+}
+
+@keyframes section-map-locating {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-map-locate.is-locating a {
+    animation: none;
+  }
 }

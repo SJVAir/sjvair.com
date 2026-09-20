@@ -317,14 +317,15 @@
   // they are re-found (and re-wired) whenever the container gets a new home.
   SectionMap.prototype.attachControls = function () {
     var wrap = this.el.closest('.section-map-wrap') || this.el.parentNode;
+    this.wrapEl = wrap;
     this.controlsEl = wrap.querySelector('.section-map-controls');
+    this.legendPanelEl = wrap.querySelector('.section-map-legend-panel');
     this.legendEl = wrap.querySelector('.section-map-legend');
     this.levelEl = wrap.querySelector('.section-map-level');
     this.statusEl = this.controlsEl ? this.controlsEl.querySelector('.section-map-status') : null;
 
     if (this.controlsEl) this.controlsEl.hidden = false;
-    if (this.legendEl) this.legendEl.hidden = false;
-    if (this.levelEl) this.levelEl.hidden = false;
+    if (this.legendPanelEl) this.legendPanelEl.hidden = false;
 
     if (this.controlsEl) {
       var radios = this.controlsEl.querySelectorAll('input[name="metric"]');
@@ -344,7 +345,130 @@
         sectionsToggle.checked = this.showAllSections;
         sectionsToggle.addEventListener('change', this.onSectionsToggle.bind(this));
       }
+
+      var expand = this.controlsEl.querySelector('.section-map-expand');
+      if (expand && !expand.getAttribute('data-bound')) {
+        expand.setAttribute('data-bound', '1');
+        expand.addEventListener('click', this.toggleExpanded.bind(this));
+      }
     }
+    this.bindPanelToggles(wrap);
+    this.setExpanded(!!this.expanded);
+  };
+
+  // The options and legend panels fold to their header. The fold is a
+  // per-viewer convenience kept in localStorage, so it's wrapped: storage
+  // can be absent or throw, and the panels must work regardless.
+  var PANEL_STORAGE_PREFIX = 'pesticides:section-map:panel:';
+
+  function readPanelState(name) {
+    try {
+      return window.localStorage.getItem(PANEL_STORAGE_PREFIX + name) === 'collapsed';
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function writePanelState(name, collapsed) {
+    try {
+      window.localStorage.setItem(PANEL_STORAGE_PREFIX + name, collapsed ? 'collapsed' : 'open');
+    } catch (err) {
+      // Nothing to do: the fold just won't be remembered.
+    }
+  }
+
+  SectionMap.prototype.bindPanelToggles = function (wrap) {
+    var panels = wrap.querySelectorAll('.section-map-panel[data-panel]');
+    for (var i = 0; i < panels.length; i++) {
+      this.setPanelCollapsed(panels[i], readPanelState(panels[i].getAttribute('data-panel')));
+      var toggle = panels[i].querySelector('.section-map-panel-toggle');
+      if (!toggle || toggle.getAttribute('data-bound')) continue;
+      toggle.setAttribute('data-bound', '1');
+      toggle.addEventListener('click', this.onPanelToggle.bind(this, panels[i]));
+    }
+  };
+
+  SectionMap.prototype.onPanelToggle = function (panel) {
+    var collapsed = !panel.classList.contains('is-collapsed');
+    this.setPanelCollapsed(panel, collapsed);
+    writePanelState(panel.getAttribute('data-panel'), collapsed);
+  };
+
+  SectionMap.prototype.setPanelCollapsed = function (panel, collapsed) {
+    panel.classList.toggle('is-collapsed', collapsed);
+    var toggle = panel.querySelector('.section-map-panel-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  };
+
+  // The expanded map starts exactly where the navbar ends, measured rather
+  // than assumed: the navbar's height varies by a pixel with its contents,
+  // and a guess a pixel short shows the hero through the gap.
+  SectionMap.prototype.fitBelowNavbar = function () {
+    if (!this.wrapEl) return;
+    // The wrap carries a 1px border in the navbar's colour and starts 1px
+    // above the navbar's measured bottom, so the two borders coincide:
+    // whatever fraction of a pixel the navbar ends on, the reader sees one
+    // grey line and never a sliver of the page beneath.
+    var nav = document.querySelector('nav.navbar');
+    var bottom = nav ? nav.getBoundingClientRect().bottom : 0;
+    this.wrapEl.style.top = Math.max(0, bottom - 1) + 'px';
+  };
+
+  // Expanded, the map fills the viewport under the site navbar; the panels
+  // over it are what keep it usable there. Escape brings the page back.
+  SectionMap.prototype.toggleExpanded = function () {
+    this.setExpanded(!this.expanded);
+  };
+
+  SectionMap.prototype.setExpanded = function (on) {
+    var self = this;
+    var was = !!this.expanded;
+    this.expanded = on;
+    // The site navbar isn't fixed, so the expanded map sits below it only
+    // while the page is scrolled to the top: go there on the way in, and
+    // come back to where the reader was on the way out.
+    if (on && !was) {
+      this.scrollBeforeExpand = window.scrollY || window.pageYOffset || 0;
+      window.scrollTo(0, 0);
+    }
+    if (this.wrapEl) {
+      this.wrapEl.classList.toggle('is-expanded', on);
+      if (on) {
+        this.fitBelowNavbar();
+      } else {
+        this.wrapEl.style.top = '';
+      }
+    }
+    document.documentElement.classList.toggle('section-map-expanded', on);
+    if (!on && was) {
+      window.scrollTo(0, this.scrollBeforeExpand || 0);
+    }
+    if (!this.resizeHandler) {
+      this.resizeHandler = function () {
+        if (self.expanded) self.fitBelowNavbar();
+      };
+    }
+    window.removeEventListener('resize', this.resizeHandler);
+    if (on) window.addEventListener('resize', this.resizeHandler);
+    var button = this.controlsEl ? this.controlsEl.querySelector('.section-map-expand') : null;
+    if (button) {
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      button.setAttribute('title', on ? 'Back to the page' : 'Expand the map');
+      var icon = button.querySelector('.fa-regular');
+      var label = button.querySelector('.section-map-expand-label');
+      if (icon) icon.className = 'fa-regular fa-fw ' + (on ? 'fa-compress' : 'fa-expand');
+      if (label) label.textContent = on ? 'Collapse' : 'Expand';
+    }
+    if (!this.escapeHandler) {
+      this.escapeHandler = function (event) {
+        if (event.key === 'Escape' && self.expanded) self.setExpanded(false);
+      };
+    }
+    document.removeEventListener('keydown', this.escapeHandler);
+    if (on) document.addEventListener('keydown', this.escapeHandler);
+    // The container changed size; Leaflet needs telling once the new
+    // layout has applied, and its moveend then fills in the wider grid.
+    setTimeout(function () { self.map.invalidateSize(); }, 0);
   };
 
   SectionMap.prototype.onSectionsToggle = function (event) {
@@ -434,10 +558,88 @@
     this.map.on('zoomend', this.restyleCounties.bind(this));
     this.bindZoomButtons();
 
+    this.addLocateControl();
+
     this.loadCounties();
     this.loadOutline();
     this.loadGrid();
     this.loadNotices();
+  };
+
+  // A locate button under the zoom buttons: zooms to the reader's square
+  // mile and selects it (popup and outline), with a dot at their position.
+  SectionMap.prototype.addLocateControl = function () {
+    if (!navigator.geolocation) return;
+    var self = this;
+    var Locate = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd: function () {
+        var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control section-map-locate');
+        var link = L.DomUtil.create('a', '', container);
+        link.href = '#';
+        link.setAttribute('role', 'button');
+        link.setAttribute('title', 'Zoom to my location');
+        link.setAttribute('aria-label', 'Zoom to my location');
+        link.innerHTML = '<span class="fa-regular fa-location-crosshairs" aria-hidden="true"></span>';
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.on(link, 'click', L.DomEvent.preventDefault);
+        L.DomEvent.on(link, 'click', function () { self.locate(); });
+        self.locateEl = container;
+        return container;
+      },
+    });
+    this.map.addControl(new Locate());
+  };
+
+  SectionMap.prototype.locate = function () {
+    var self = this;
+    if (this.locateEl) this.locateEl.classList.add('is-locating');
+    this.setStatus('Finding your location…');
+    navigator.geolocation.getCurrentPosition(function (position) {
+      var latlng = L.latLng(position.coords.latitude, position.coords.longitude);
+      self.showLocation(latlng);
+    }, function () {
+      if (self.locateEl) self.locateEl.classList.remove('is-locating');
+      self.setStatus('Couldn\'t get your location');
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  };
+
+  SectionMap.prototype.showLocation = function (latlng) {
+    if (this.locateEl) this.locateEl.classList.remove('is-locating');
+    this.setStatus('');
+    if (this.locationMarker) this.map.removeLayer(this.locationMarker);
+    this.locationMarker = L.circleMarker(latlng, {
+      pane: 'pesticide-notices',
+      radius: 6,
+      color: '#fff',
+      weight: 2,
+      fillColor: '#3273dc',
+      fillOpacity: 1,
+      interactive: false,
+    }).addTo(this.map);
+    // Selecting the section has to wait for the section grid to be on the
+    // map at this spot; renderGrid calls resolvePendingLocate when it is.
+    this.pendingLocate = latlng;
+    this.map.setView(latlng, this.sectionZoom(), { animate: !this.reducedMotion });
+    this.resolvePendingLocate();
+  };
+
+  SectionMap.prototype.resolvePendingLocate = function () {
+    var latlng = this.pendingLocate;
+    if (!latlng || this.level !== 'section' || !this.gridLayer) return;
+    if (!this.map.getBounds().contains(latlng)) return;
+    var hit = null;
+    this.gridLayer.eachLayer(function (layer) {
+      if (!hit && layer.feature && layer.getBounds && layer.getBounds().contains(latlng)) hit = layer;
+    });
+    if (!hit) {
+      // Grid loaded but nothing under the point (outside the valley's
+      // sections): nothing to select, and nothing more to wait for.
+      if (this.loadedBounds && this.loadedBounds.contains(latlng)) this.pendingLocate = null;
+      return;
+    }
+    this.pendingLocate = null;
+    this.showSectionPopup(hit.feature, hit);
   };
 
   SectionMap.prototype.drawRadius = function (center) {
@@ -1504,7 +1706,10 @@
     this.bringHighlightToFront();
     this.updateLegend();
     this.reopenGridPopup(reopenId);
-    if (level === 'section') this.reopenSelectedSection(this.gridLayer);
+    if (level === 'section') {
+      this.reopenSelectedSection(this.gridLayer);
+      this.resolvePendingLocate();
+    }
   };
 
   // A refetch rebuilds the grid; if the popup that was open belongs to a
