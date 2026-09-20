@@ -30,7 +30,7 @@
                 </tr>
                 <tr>
                     <th>Chemicals</th>
-                    <td>{% for chem in object.chemicals.all %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.name }}</a> {% endfor %}</td>
+                    <td>{% for chem in object.chemicals.all %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.display_name }}</a> {% endfor %}</td>
                 </tr>
                 <tr><th>Treated</th><td>{% if object.treated_amount %}{{ object.treated_amount|floatformat:'-1'|intcomma }} {{ object.treated_units|lower }}{% else %}—{% endif %}</td></tr>
                 <tr><th>Method</th><td>{{ object.application_method|default:'—' }}</td></tr>

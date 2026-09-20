@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from django.db.models import Case, Count, Sum, When
+from django.db.models import Case, Count, Q, Sum, When
 from django.shortcuts import get_object_or_404
 
 from resticus import generics, http
@@ -262,17 +262,25 @@ class EntitySearchBase(generics.Endpoint):
         used = PesticideUseTotal.objects.filter(**{f'{kind}__isnull': False}).values(kind)
         # Prefix matches first: an autocomplete for "gly" should lead with
         # the glyphosates, not with every glycol that contains the letters.
+        starts = Q(name__istartswith=query)
+        if kind == 'chemical':
+            starts |= Q(preferred_name__istartswith=query)
         queryset = (model.objects.search(query)
             .filter(pk__in=used)
-            .annotate(prefix=Case(When(name__istartswith=query, then=0), default=1))
+            .annotate(prefix=Case(When(starts, then=0), default=1))
             .order_by('prefix', '-rank', 'name', 'pk'))
 
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'results': [{
-            'id': obj.sqid,
-            'name': obj.name,
-            'detail': str(getattr(obj, detail_field) or ''),
-        } for obj in queryset[:limit]]}
+        # Chemicals show their preferred name; the CDPR name rides along as
+        # the detail when it differs, so a reader who typed "1080" sees why
+        # "Sodium fluoroacetate" came up.
+        def entry(obj):
+            detail = str(getattr(obj, detail_field) or '')
+            if obj.display_name != obj.name:
+                detail = f'{obj.name} · {detail}' if detail else obj.name
+            return {'id': obj.sqid, 'name': obj.display_name, 'detail': detail}
+
+        return {'results': [entry(obj) for obj in queryset[:limit]]}
 
 
 class EntitySearch(CachedEndpointMixin, EntitySearchBase):

@@ -1,12 +1,12 @@
 {% extends 'pesticides/base.html' %}
 {% load pesticides_explorer %}
 
-{% block title %}{{ object.name }} | {{ block.super }}{% endblock %}
+{% block title %}{{ object.display_name }} | {{ block.super }}{% endblock %}
 {% block body-class %}{{ block.super }} detail{% endblock %}
 
 {% block explorer-content %}
 <div class="content detail-header">
-    <h1 class="mb-1">{{ object.name }}</h1>
+    <h1 class="mb-1">{{ object.display_name }}</h1>
     <p class="identifiers has-text-grey">{% block identifiers %}{% endblock %}</p>
     <div class="tags are-medium">{% block badges %}{% endblock %}</div>
     {% block notes %}{% include 'pesticides/includes/what-this-means.html' %}{% endblock %}
@@ -45,7 +45,7 @@
         <small class="has-text-grey is-size-6">SprayDays notices of intent</small>
         <span class="tag is-info is-light is-medium ml-2">{{ upcoming_count }} scheduled</span>
     </h2>
-    <p class="mb-3"><a href="{{ notices_url }}">See all notices for {{ object.name|title }}</a></p>
+    <p class="mb-3"><a href="{{ notices_url }}">See all notices for {{ object.display_name }}</a></p>
     {% if upcoming %}
         {% include 'pesticides/includes/upcoming-notices.html' %}
     {% else %}

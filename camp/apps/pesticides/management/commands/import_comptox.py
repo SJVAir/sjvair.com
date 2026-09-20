@@ -25,12 +25,12 @@ def parse_iarc_group(cancer_call):
 
 
 class Command(BaseCommand):
-    help = 'Enrich Chemical records with CompTox data (DTXSID, CAS number, IARC group).'
+    help = 'Enrich Chemical records with CompTox data (DTXSID, CAS number, preferred name, IARC group).'
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--phase',
-            choices=['search', 'equals', 'hazard', 'all'],
+            choices=['search', 'equals', 'names', 'hazard', 'all'],
             default='all',
             help='Which phase to run (default: all)',
         )
@@ -70,6 +70,9 @@ class Command(BaseCommand):
         if phase in ('equals', 'all'):
             self._phase_equals(limit=options['limit'])
 
+        if phase in ('names', 'all'):
+            self._phase_names()
+
         if phase in ('hazard', 'all'):
             self._phase_hazard(inspect=options['inspect'])
 
@@ -102,12 +105,16 @@ class Command(BaseCommand):
                     search_value = unquote(result.get('searchValue') or '').lower()
                     dtxsid = result.get('dtxsid', '')
                     casrn = result.get('casrn', '')
+                    preferred = (result.get('preferredName') or '').strip()
                     if not dtxsid:
                         continue
                     chem_ids = term_to_ids.get(search_value, set())
                     if not chem_ids:
                         continue
-                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(dtxsid=dtxsid)
+                    fields = {'dtxsid': dtxsid}
+                    if preferred:
+                        fields['preferred_name'] = preferred[:256]
+                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(**fields)
                     if casrn:
                         Chemical.objects.filter(pk__in=chem_ids, cas_number='').update(cas_number=casrn)
                     updated += rows
@@ -140,12 +147,16 @@ class Command(BaseCommand):
                 for result in future.result():
                     search_value = unquote(result.get('searchValue') or '').upper()
                     dtxsid = result.get('dtxsid', '')
+                    preferred = (result.get('preferredName') or '').strip()
                     if not dtxsid:
                         continue
                     chem_ids = cas_to_ids.get(search_value, set())
                     if not chem_ids:
                         continue
-                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(dtxsid=dtxsid)
+                    fields = {'dtxsid': dtxsid}
+                    if preferred:
+                        fields['preferred_name'] = preferred[:256]
+                    rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(**fields)
                     updated += rows
                 self.stdout.write(f'  {completed:,} / {len(batches):,} batches', ending='\r')
 
@@ -168,9 +179,10 @@ class Command(BaseCommand):
                 for r in results:
                     dtxsid = r.get('dtxsid', '')
                     casrn = r.get('casrn', '')
+                    preferred = (r.get('preferredName') or '').strip()
                     if not dtxsid:
                         continue
-                    return chem['id'], dtxsid, casrn if not chem['cas_number'] else ''
+                    return chem['id'], dtxsid, casrn if not chem['cas_number'] else '', preferred
             except Exception:
                 pass
             return None
@@ -183,10 +195,12 @@ class Command(BaseCommand):
                 completed += 1
                 result = future.result()
                 if result:
-                    chem_id, dtxsid, casrn = result
+                    chem_id, dtxsid, casrn, preferred = result
                     fields = {'dtxsid': dtxsid}
                     if casrn:
                         fields['cas_number'] = casrn
+                    if preferred:
+                        fields['preferred_name'] = preferred[:256]
                     Chemical.objects.filter(pk=chem_id, dtxsid='').update(**fields)
                     updated += 1
                 if completed % 50 == 0:
@@ -203,6 +217,49 @@ class Command(BaseCommand):
                     self.stderr.write(f'  Batch failed after {retries} attempts: {e}')
                     return []
                 time.sleep(backoff * (attempt + 1))
+
+    # --- Phase 1d: preferred names for chemicals matched before names were kept ---
+
+    def _phase_names(self):
+        self.stdout.write('Phase 1d: preferred names for chemicals with a DTXSID...')
+        chemicals = list(
+            Chemical.objects.exclude(dtxsid='').filter(preferred_name='').values('id', 'dtxsid')
+        )
+        self.stdout.write(f'  {len(chemicals):,} chemicals without a preferred name')
+        if not chemicals:
+            return
+
+        ids_by_dtxsid = {}
+        for c in chemicals:
+            ids_by_dtxsid.setdefault(c['dtxsid'], set()).add(c['id'])
+        dtxsids = list(ids_by_dtxsid.keys())
+        batches = [dtxsids[i:i + BATCH_SIZE] for i in range(0, len(dtxsids), BATCH_SIZE)]
+
+        def lookup(batch):
+            for attempt in range(3):
+                try:
+                    return self.chem_client.details(by='batch-dtxsid', query=batch, subset='identifiers') or []
+                except Exception as e:
+                    if attempt == 2:
+                        self.stderr.write(f'  Batch failed after 3 attempts: {e}')
+                        return []
+                    time.sleep(5 * (attempt + 1))
+
+        updated = 0
+        completed = 0
+        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+            futures = {pool.submit(lookup, batch): batch for batch in batches}
+            for future in as_completed(futures):
+                completed += 1
+                for row in future.result():
+                    preferred = (row.get('preferredName') or '').strip()
+                    chem_ids = ids_by_dtxsid.get(row.get('dtxsid', ''), set())
+                    if not preferred or not chem_ids:
+                        continue
+                    updated += Chemical.objects.filter(pk__in=chem_ids, preferred_name='').update(preferred_name=preferred[:256])
+                self.stdout.write(f'  {completed:,} / {len(batches):,} batches', ending='\r')
+
+        self.stdout.write(f'\n  Updated {updated:,} chemicals with a preferred name')
 
     # --- Phase 2: hazard lookup → IARC group ---
 

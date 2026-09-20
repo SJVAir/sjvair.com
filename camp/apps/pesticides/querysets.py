@@ -11,6 +11,8 @@ class SearchMixin:
     """
     search_primary = 'name'
     search_secondary = None
+    # Further name columns matched like the primary (weight A + icontains).
+    search_aliases = ()
 
     def search(self, query):
         query = (query or '').strip()
@@ -19,6 +21,9 @@ class SearchMixin:
         search_query = SearchQuery(query)
         search_vector = SearchVector(self.search_primary, weight='A')
         substring = Q(**{f'{self.search_primary}__icontains': query})
+        for alias in self.search_aliases:
+            search_vector = search_vector + SearchVector(alias, weight='A')
+            substring = substring | Q(**{f'{alias}__icontains': query})
         if self.search_secondary:
             search_vector = search_vector + SearchVector(self.search_secondary, weight='B')
             substring = substring | Q(**{f'{self.search_secondary}__icontains': query})
@@ -31,6 +36,7 @@ class SearchMixin:
 
 class ChemicalQuerySet(SearchMixin, QuerySet):
     search_secondary = 'cas_number'
+    search_aliases = ('preferred_name',)
     def with_commodities(self, **filters):
         from camp.apps.pesticides.models import Commodity
         queryset = Commodity.objects.all()

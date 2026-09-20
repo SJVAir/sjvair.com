@@ -1917,7 +1917,7 @@
         if (chemicals.length) {
           detailHtml = '<ul class="section-popup-chems">' + chemicals.slice(0, 3).map(function (c) {
             return '<li>' +
-              '<span class="name' + (c.is_of_concern ? ' is-of-concern' : '') + '">' + linkHtml(self.chemicalUrl(c.id), c.name) + '</span>' +
+              '<span class="name' + (c.is_of_concern ? ' is-of-concern' : '') + '">' + linkHtml(self.chemicalUrl(c.id), c.display_name || c.name) + '</span>' +
               '<span class="amount">' + formatNumber(c.lbs) + ' lbs</span>' +
               '</li>';
           }).join('') + '</ul>';
@@ -2015,7 +2015,7 @@
     var self = this;
     var chemicals = popupList((props.chemicals || []).map(function (c) {
       return '<li class="' + (c.is_of_concern ? 'is-of-concern' : '') + '">' +
-        linkHtml(self.chemicalUrl(c.id), c.name) + '</li>';
+        linkHtml(self.chemicalUrl(c.id), c.display_name || c.name) + '</li>';
     }));
     var products = popupList((props.products || []).map(function (p) {
       return '<li>' + linkHtml(self.productUrl(p.id), p.name) + '</li>';

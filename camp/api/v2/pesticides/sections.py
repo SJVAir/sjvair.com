@@ -233,7 +233,7 @@ class SectionDetailBase(generics.Endpoint):
 
         def top(field, lbs_field='lbs_chemical', limit=5):
             related = stats.top_related(rows, year, field, lbs_field=lbs_field, limit=limit) if year else []
-            return [{'id': r.obj.sqid, 'name': r.obj.name, 'lbs': r.lbs} for r in related]
+            return [{'id': r.obj.sqid, 'name': r.obj.name, 'display_name': r.obj.display_name, 'lbs': r.lbs} for r in related]
 
         return {
             'id': section.sqid,
@@ -306,7 +306,7 @@ class ActiveNoticeListBase(generics.Endpoint):
                 'section': n.mtrs.external_id if n.mtrs else None,
                 'section_id': n.mtrs.sqid if n.mtrs else None,
                 'products': [{'id': p.sqid, 'name': p.name} for p in n.products.all()],
-                'chemicals': [{'id': c.sqid, 'name': c.name, 'is_of_concern': c.is_of_concern} for c in n.chemicals.all()],
+                'chemicals': [{'id': c.sqid, 'name': c.name, 'display_name': c.display_name, 'is_of_concern': c.is_of_concern} for c in n.chemicals.all()],
             },
         } for n in notices]
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.

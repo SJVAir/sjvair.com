@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from camp.apps.pesticides.models import Chemical, Commodity, Product
+from camp.apps.pesticides.models import Chemical, Commodity, Product, display_chemical_name
 
 
 class ChemicalClassificationTests(TestCase):
@@ -60,6 +60,29 @@ class AbsoluteUrlTests(TestCase):
         chem = Chemical.objects.get(pk=1)
         assert chem.slug == 'glyphosate'
         assert chem.get_absolute_url() == f'/tools/pesticides/chemicals/{chem.sqid}/glyphosate/'
+
+    def test_preferred_name_is_the_display_name_and_slug(self):
+        chem = Chemical.objects.create(chem_code=633, name='1080', preferred_name='Sodium fluoroacetate')
+        assert chem.display_name == 'Sodium fluoroacetate'
+        assert str(chem) == 'Sodium fluoroacetate'
+        assert chem.slug == 'sodium-fluoroacetate'
+        assert chem.get_absolute_url().endswith('/sodium-fluoroacetate/')
+        # Without one, the CDPR name stands.
+        plain = Chemical.objects.get(pk=1)
+        assert plain.preferred_name == ''
+        assert plain.display_name == plain.name == 'GLYPHOSATE'
+        assert Product.objects.get(pk=2).display_name == 'LORSBAN 4E'
+
+    def test_preferred_name_only_replaces_the_same_name_or_a_bare_code(self):
+        # Same name, better casing: CompTox's wins.
+        assert display_chemical_name('GLYPHOSATE, ISOPROPYLAMINE SALT', 'Glyphosate isopropylamine salt') == 'Glyphosate isopropylamine salt'
+        assert display_chemical_name('2,4-D, SODIUM SALT', '2,4-D sodium salt') == '2,4-D sodium salt'
+        # A different name (CompTox's systematic name, or a mismatched DTXSID): CDPR's stays.
+        assert display_chemical_name('2,4-D', '2,4-Dichlorophenoxyacetic acid') == '2,4-D'
+        assert display_chemical_name('2,4-DINITROPHENOL', '3-Iodo-2-propynyl-N-butylcarbamate') == '2,4-DINITROPHENOL'
+        # A CDPR name with no letters is a code, not a name: CompTox's wins.
+        assert display_chemical_name('1080', 'Sodium fluoroacetate') == 'Sodium fluoroacetate'
+        assert display_chemical_name('1080', '') == '1080'
 
     def test_product_url(self):
         product = Product.objects.get(pk=2)

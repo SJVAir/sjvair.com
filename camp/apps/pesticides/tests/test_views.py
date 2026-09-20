@@ -108,6 +108,18 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert self.names(response) == ['CHLORPYRIFOS']
         assert 'matching' in response.context['summary_sentence']
 
+    def test_preferred_name_is_shown_searched_and_sorted(self):
+        # CDPR calls it "1080"; CompTox's preferred name is what the reader sees.
+        Chemical.objects.filter(pk=3).update(preferred_name='Sodium fluoroacetate', name='1080')
+        html = self.client.get(self.url).content.decode()
+        assert 'Sodium fluoroacetate' in html
+        assert '>1080<' not in html
+        # Both names find it.
+        assert self.names(self.client.get(self.url, {'q': 'fluoroacetate'})) == ['1080']
+        assert self.names(self.client.get(self.url, {'q': '1080'})) == ['1080']
+        # Sorting by name is by CDPR's name (digits before letters here).
+        assert self.names(self.client.get(self.url, {'sort': 'name'})) == ['1080', 'CHLORPYRIFOS', 'GLYPHOSATE']
+
     def test_category_filter_is_or(self):
         response = self.client.get(self.url, {'category': ['carcinogen', 'toxic_air_contaminant']})
         assert set(self.names(response)) == {'GLYPHOSATE', 'CHLORPYRIFOS'}
@@ -339,6 +351,13 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
     def test_wrong_slug_still_resolves(self):
         url = reverse('pesticides:chemical-detail', kwargs={'sqid': self.chemical.sqid, 'slug': 'whatever'})
         assert self.client.get(url).status_code == 200
+
+    def test_preferred_name_heads_the_page_with_the_cdpr_name_noted(self):
+        Chemical.objects.filter(pk=1).update(preferred_name='Glyphosate')
+        html = self.client.get(self.chemical.get_absolute_url()).content.decode()
+        assert '<h1 class="mb-1">Glyphosate</h1>' in html
+        assert 'Listed by CDPR as “GLYPHOSATE”' in html
+        assert '<title>Glyphosate |' in html
 
     def test_bare_sqid_redirects(self):
         response = self.client.get(reverse('pesticides:chemical-redirect', kwargs={'sqid': self.chemical.sqid}))

@@ -86,7 +86,16 @@ class ChemicalListTests(TestCase):
         assert 'count' in data
         assert 'data' in data
         item = data['data'][0]
-        assert set(item.keys()) == {'id', 'chem_code', 'name', 'cas_number', 'dtxsid', 'iarc_group', 'categories'}
+        assert set(item.keys()) == {
+            'id', 'chem_code', 'name', 'preferred_name', 'display_name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
+        }
+        assert item['display_name'] == item['name']
+
+    def test_display_name_prefers_the_comptox_name(self):
+        make_chemical(chem_code=633, name='1080', preferred_name='Sodium fluoroacetate')
+        rows = {c['chem_code']: c for c in self.client.get(self.url).json()['data']}
+        assert rows[633]['name'] == '1080'
+        assert rows[633]['display_name'] == 'Sodium fluoroacetate'
 
     def test_filter_by_name(self):
         make_chemical(chem_code=200, name='COPPER SULFATE')
@@ -126,7 +135,7 @@ class ChemicalDetailTests(TestCase):
     def test_detail_fields(self):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
-            'id', 'chem_code', 'name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
+            'id', 'chem_code', 'name', 'preferred_name', 'display_name', 'cas_number', 'dtxsid', 'iarc_group', 'categories',
             'products', 'commodities',
         }
 
@@ -1040,6 +1049,14 @@ class EntitySearchTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, params)
         assert response.status_code == 200
         return response.json()['results']
+
+    def test_chemical_search_matches_and_shows_the_preferred_name(self):
+        Chemical.objects.filter(pk=3).update(name='1080', preferred_name='Sodium fluoroacetate')
+        by_name = self.results(type='chemical', q='fluoro')
+        assert [r['name'] for r in by_name] == ['Sodium fluoroacetate']
+        assert by_name[0]['detail'] == '1080 · 560'
+        by_cdpr = self.results(type='chemical', q='1080')
+        assert [r['name'] for r in by_cdpr] == ['Sodium fluoroacetate']
 
     def test_chemical_search_returns_name_and_chem_code(self):
         results = self.results(type='chemical', q='glyphosate')

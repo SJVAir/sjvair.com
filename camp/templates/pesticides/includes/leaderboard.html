@@ -7,7 +7,7 @@
             {% for row in rows %}
             <li>
                 <span class="entry">
-                    <a href="{{ row.obj.get_absolute_url }}{{ year_qs }}">{{ row.obj.name }}</a>
+                    <a href="{{ row.obj.get_absolute_url }}{{ year_qs }}">{{ row.obj.display_name }}</a>
                     {% if kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
                 </span>
                 <span class="lbs">{{ row.lbs|lbs }} lbs</span>

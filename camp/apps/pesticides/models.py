@@ -11,6 +11,28 @@ from camp.apps.regions.models import Region
 from camp.apps.pesticides.querysets import ChemicalQuerySet, CommodityQuerySet, ProductQuerySet
 
 
+def _name_key(value):
+    """Letters and digits only, lowercased: "2,4-D, SODIUM SALT" and "2,4-D sodium salt" agree."""
+    return ''.join(ch for ch in value.lower() if ch.isalnum())
+
+
+def display_chemical_name(name, preferred_name):
+    """
+    The name the explorer shows for a chemical. CDPR's name is the common
+    name and stays, except that CompTox's preferred name replaces it when
+    the two are the same name (so "GLYPHOSATE, ISOPROPYLAMINE SALT" reads
+    "Glyphosate isopropylamine salt") or when CDPR's has no letters at all
+    ("1080" for sodium fluoroacetate).
+    """
+    if not preferred_name:
+        return name
+    if not any(ch.isalpha() for ch in name):
+        return preferred_name
+    if _name_key(name) == _name_key(preferred_name):
+        return preferred_name
+    return name
+
+
 class Chemical(TimeStampedModel):
     class Category(models.TextChoices):
         BIOPESTICIDE             = 'biopesticide',             _('Biopesticide')
@@ -38,6 +60,12 @@ class Chemical(TimeStampedModel):
 
     chem_code = models.IntegerField(_('Chemical Code'), unique=True)
     name = models.CharField(_('Name'), max_length=256)
+    # CompTox's preferred name for the matched DTXSID. Shown in place of
+    # CDPR's name only when it's the same name in better casing, or when
+    # CDPR's is a bare code like "1080" (see display_name): CompTox often
+    # prefers the systematic name where CDPR uses the ISO common name, and a
+    # mismatched DTXSID would otherwise put the wrong name on the page.
+    preferred_name = models.CharField(_('Preferred Name'), max_length=256, blank=True)
     cas_number = models.CharField(_('CAS Number'), max_length=32, blank=True)
     dtxsid = models.CharField(_('DTXSID'), max_length=20, blank=True, db_index=True)
     iarc_group = models.CharField(_('IARC Group'), max_length=2, blank=True, choices=IARCGroup.choices)
@@ -62,11 +90,15 @@ class Chemical(TimeStampedModel):
         verbose_name_plural = _('Chemicals')
 
     def __str__(self):
-        return self.name
+        return self.display_name
+
+    @property
+    def display_name(self):
+        return display_chemical_name(self.name, self.preferred_name)
 
     @property
     def slug(self):
-        return slugify(self.name) or 'chemical'
+        return slugify(self.display_name) or 'chemical'
 
     def get_absolute_url(self):
         return reverse('pesticides:chemical-detail', kwargs={'sqid': self.sqid, 'slug': self.slug})
@@ -117,6 +149,10 @@ class Commodity(TimeStampedModel):
         return self.name
 
     @property
+    def display_name(self):
+        return self.name
+
+    @property
     def slug(self):
         return slugify(self.name) or 'commodity'
 
@@ -155,6 +191,10 @@ class Product(TimeStampedModel):
         verbose_name_plural = _('Products')
 
     def __str__(self):
+        return self.name
+
+    @property
+    def display_name(self):
         return self.name
 
     @property

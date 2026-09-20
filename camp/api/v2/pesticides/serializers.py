@@ -12,6 +12,8 @@ class ChemicalSerializer(serializers.Serializer):
         ('id', lambda c: c.sqid),
         'chem_code',
         'name',
+        'preferred_name',
+        'display_name',
         'cas_number',
         'dtxsid',
         'iarc_group',

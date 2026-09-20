@@ -15,7 +15,7 @@
             <td class="has-text-right">{% if notice.treated_amount %}{{ notice.treated_amount|floatformat:1 }} {{ notice.treated_units|lower }}{% else %}—{% endif %}</td>
             <td>
                 {% for product in notice.products.all %}{% if product != object %}<a class="tag is-light" href="{{ product.get_absolute_url }}">{{ product.name }}</a> {% endif %}{% endfor %}
-                {% for chem in notice.chemicals.all %}{% if chem != object %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.name }}</a> {% endif %}{% endfor %}
+                {% for chem in notice.chemicals.all %}{% if chem != object %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.display_name }}</a> {% endif %}{% endfor %}
             </td>
         </tr>
     {% endfor %}

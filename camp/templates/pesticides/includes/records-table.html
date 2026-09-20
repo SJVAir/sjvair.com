@@ -32,7 +32,7 @@
                 </td>
                 <td>
                     {% if use.chemical %}
-                        <a href="{{ use.chemical.get_absolute_url }}">{{ use.chemical.name }}</a>
+                        <a href="{{ use.chemical.get_absolute_url }}">{{ use.chemical.display_name }}</a>
                         <div class="tags is-inline">{% include 'pesticides/includes/classification-badges.html' with chemical=use.chemical hide_iarc=True %}</div>
                     {% else %}—{% endif %}
                 </td>
