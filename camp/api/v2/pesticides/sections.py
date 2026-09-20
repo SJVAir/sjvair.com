@@ -361,9 +361,13 @@ class TownshipListBase(generics.Endpoint):
             return bad_request(error)
         totals = stats.by_township(rows, year)
 
-        # No cap: there are only a few hundred townships in the valley, and
-        # each one is a four-corner envelope, so the whole grid is a small
-        # response even unfiltered.
+        # The map keeps township outlines from its first load and asks for
+        # `geometry=0` after that (a year or filter change only moves the
+        # numbers), so those responses are a few KB instead of a few hundred.
+        with_geometry = params.get('geometry') != '0'
+
+        # No cap: there are only a few hundred townships in the valley, so
+        # the whole grid is a small response even unfiltered.
         features = []
         for township, geometry in sorted(township_geometries().items()):
             if bbox and not bbox_overlaps(bbox, geometry['bbox']):
@@ -372,7 +376,7 @@ class TownshipListBase(generics.Endpoint):
             features.append({
                 'type': 'Feature',
                 'id': township,
-                'geometry': geometry['geometry'],
+                'geometry': geometry['geometry'] if with_geometry else None,
                 'properties': {
                     'id': township,
                     'name': township,
@@ -391,8 +395,10 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     """
     PLSS townships (6x6 blocks of MTRS sections) with pesticide-use totals, as GeoJSON.
 
-    Each township is drawn as the envelope of its sections. Optional
-    `bbox=west,south,east,north` limits the grid to what's on screen.
+    Each township is the union of its sections. Optional
+    `bbox=west,south,east,north` limits the grid to what's on screen, and
+    `geometry=0` returns the features with `null` geometry (values only) for
+    a client that already holds the outlines.
     Filters: `year` (default latest), `month`, `chemical` (chem code),
     `product` (prodno), `commodity` (site code), `county` (slug).
     """

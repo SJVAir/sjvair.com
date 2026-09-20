@@ -22,7 +22,16 @@
   // 2,500 cap with room for the padded bbox fetch to fall back unpadded.
   var MAX_VIEWPORT_SECTIONS = 2000;
   var METERS_PER_MILE = 1609.34;
+  // A full 6x6 mile township in degrees around 36°N, for the lens reach.
+  var TOWNSHIP_DEGREES = { lat: 0.087, lng: 0.108 };
   var DEBOUNCE_MS = 300;
+  // How long the cursor must rest on an uncached township before its lens
+  // block is fetched; cached blocks draw immediately.
+  var LENS_FETCH_DELAY_MS = 50;
+  // "All sections" mode: how many section blocks load at once.
+  var ALL_SECTIONS_CONCURRENCY = 4;
+  // ...and how often the growing layer is redrawn while they land.
+  var ALL_SECTIONS_REDRAW_MS = 600;
   // Candidate ramps, selectable with ?ramp=<name> while we pick one.
   var RAMPS = {
     blues: ['#deebf7', '#9ecae1', '#6baed6', '#3182bd', '#08519c'],
@@ -64,11 +73,14 @@
   var LEVEL_TEXT = {
     section: 'Each square is one square-mile section.',
     township: 'Each square is a 6 × 6 mile township; zoom in for square-mile sections.',
+    allSections: 'Each square is one square-mile section, across every township in view.',
   };
 
   var COUNTY_COLOR = '#1f2d3d';
   // The base grid: present, but barely, so the fills read as a surface.
   var GRID_LINE = { color: '#1f2d3d', opacity: 0.18 };
+  // The section whose popup is open keeps a modest outline until it closes.
+  var SELECTED_LINE = { stroke: true, color: '#1f2d3d', opacity: 0.9, weight: 1.5 };
 
   function prefersReducedMotion() {
     try {
@@ -273,6 +285,9 @@
     // overrides it, and the "Show notices" checkbox flips it from there.
     var noticesMatch = /[?&]notices=([01])/.exec(window.location.search || '');
     this.showNotices = noticesMatch ? noticesMatch[1] === '1' : this.data.showNotices !== '0';
+    // "All sections": at the township zoom, draw every section in view
+    // instead of the township grid (loaded in blocks, see loadAllSections).
+    this.showAllSections = /[?&]sections=1/.test(window.location.search || '');
     // Only one grid is ever on the map at a time; `level` says which one.
     this.level = 'section';
     this.gridLayer = null;
@@ -323,6 +338,23 @@
         noticesToggle.checked = this.showNotices;
         noticesToggle.addEventListener('change', this.onNoticesToggle.bind(this));
       }
+
+      var sectionsToggle = this.controlsEl.querySelector('input[name="sections"]');
+      if (sectionsToggle) {
+        sectionsToggle.checked = this.showAllSections;
+        sectionsToggle.addEventListener('change', this.onSectionsToggle.bind(this));
+      }
+    }
+  };
+
+  SectionMap.prototype.onSectionsToggle = function (event) {
+    this.showAllSections = !!event.target.checked;
+    this.syncViewParams();
+    if (this.showAllSections) {
+      this.clearLens();
+      this.loadAllSections();
+    } else {
+      this.clearAllSections();
     }
   };
 
@@ -347,6 +379,8 @@
     // A popup stays until its close button or another cell is clicked;
     // clicking empty map (or a pan that ends on it) doesn't dismiss it.
     this.map = L.map(this.el, { zoomControl: true, scrollWheelZoom: false, closePopupOnClick: false });
+    // For debugging from the console: document.querySelector('.section-map').sectionMap
+    this.el.sectionMap = this;
 
     // Wheel-zoom is off by default so the map doesn't hijack page scrolling
     // on long pages; enable it only while the map has focus/is being
@@ -384,6 +418,11 @@
     // lines.
     var lensPane = this.map.createPane('pesticide-lens');
     lensPane.style.zIndex = 410;
+    // The hovered township's outline is redrawn on top of the lens, since
+    // the lens sections would otherwise paint over its border.
+    var lensOutlinePane = this.map.createPane('pesticide-lens-outline');
+    lensOutlinePane.style.zIndex = 415;
+    lensOutlinePane.style.pointerEvents = 'none';
     this.lensCache = {};
 
     this.drawRadius(center);
@@ -408,7 +447,7 @@
     }
     var radiusMiles = parseFloat(this.data.radius);
     if (!(radiusMiles > 0)) return;
-    this.radiusCircle = L.circle(center, { radius: milesToMeters(radiusMiles) }).addTo(this.map);
+    this.radiusCircle = L.circle(center, { radius: milesToMeters(radiusMiles), interactive: false }).addTo(this.map);
     this.map.fitBounds(this.radiusCircle.getBounds(), { animate: !this.reducedMotion });
   };
 
@@ -605,6 +644,11 @@
       } else {
         url.searchParams.set('notices', this.showNotices ? '1' : '0');
       }
+      if (this.showAllSections) {
+        url.searchParams.set('sections', '1');
+      } else {
+        url.searchParams.delete('sections');
+      }
       window.history.replaceState(window.history.state, '', url.toString());
     } catch (err) {
       // A malformed location is nothing to break the map over.
@@ -644,9 +688,21 @@
 
   SectionMap.prototype.loadGrid = function () {
     var level = this.atSectionZoom() ? 'section' : 'township';
+    // Crossing into section zoom with "all sections" on: stop loading more
+    // blocks, but leave the layer up until the section grid replaces it
+    // (renderGrid clears it), so the townships don't flash in between.
+    if (level === 'section' && this.allSectionsRun) {
+      this.allSectionsRun = null;
+      this.cancelAllSectionsDraw();
+      this.setStatus('');
+    }
     // Crossing the section/township threshold always refetches; otherwise the
     // padded bbox we already hold may still cover the viewport.
-    if (level === this.loadedLevel && this.covers(this.loadedBounds)) return;
+    if (level === this.loadedLevel && this.covers(this.loadedBounds)) {
+      // Same township grid, new viewport: "all sections" may need more blocks.
+      if (level === 'township' && this.showAllSections) this.loadAllSections();
+      return;
+    }
     if (level === 'section') {
       this.loadSections();
     } else {
@@ -660,8 +716,28 @@
     return !!bounds && bounds.contains(this.map.getBounds());
   };
 
+  // A canvas renderer stays on the map after its last layer is removed,
+  // and an empty canvas still catches pointer events for whatever sits
+  // beneath it. So renderers go with their layers and are recreated on
+  // demand.
+  SectionMap.prototype.dropRenderer = function (name) {
+    if (this[name]) {
+      this.map.removeLayer(this[name]);
+      this[name] = null;
+    }
+  };
+
   SectionMap.prototype.clearGrid = function () {
     this.clearLens();
+    if (this.allSectionsLayer) {
+      this.map.removeLayer(this.allSectionsLayer);
+      this.allSectionsLayer = null;
+      this.allSectionsAdded = null;
+      this.allSectionsFeatures = [];
+      this.currentClassesAreSections = false;
+    }
+    this.dropRenderer('allSectionsRenderer');
+    this.dropRenderer('sectionRenderer');
     if (this.gridLayer) {
       this.map.removeLayer(this.gridLayer);
       this.gridLayer = null;
@@ -751,6 +827,12 @@
     var bounds = this.fetchBounds();
     var params = this.commonParams();
     params.bbox = bboxParam(bounds);
+    // Outlines don't change between years or filters, so after the first
+    // load only the numbers are requested and the outlines are re-attached
+    // from the cache (see attachTownshipGeometry). A township outside what
+    // was cached (a wider bbox) falls back to a full request.
+    var valuesOnly = !!this.townshipGeometry && this.townshipGeometryCovers(bounds);
+    if (valuesOnly) params.geometry = '0';
     var query = buildQuery(params);
     var url = this.data.townshipsUrl + (query ? '?' + query : '');
 
@@ -764,10 +846,18 @@
       })
       .then(function (geojson) {
         if (self.gridAbort !== abort) return; // stale response
+        if (valuesOnly && !self.attachTownshipGeometry(geojson)) {
+          // Something in view isn't in the outline cache: fetch it fully.
+          self.townshipGeometry = null;
+          self.loadTownships();
+          return;
+        }
+        if (!valuesOnly) self.rememberTownshipGeometry(geojson, bounds);
         self.setStatus('');
         self.loadedBounds = bounds;
         self.loadedLevel = 'township';
         self.renderGrid(geojson, 'township');
+        if (self.showAllSections) self.loadAllSections();
       })
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;
@@ -781,12 +871,47 @@
       });
   };
 
+  SectionMap.prototype.rememberTownshipGeometry = function (geojson, bounds) {
+    var cache = {};
+    (geojson.features || []).forEach(function (feature) {
+      cache[feature.id || feature.properties.id] = feature.geometry;
+    });
+    this.townshipGeometry = cache;
+    this.townshipGeometryBounds = L.latLngBounds([]).extend(bounds);
+  };
+
+  SectionMap.prototype.townshipGeometryCovers = function (bounds) {
+    return !!this.townshipGeometryBounds && this.townshipGeometryBounds.contains(bounds);
+  };
+
+  // Puts cached outlines back onto a values-only response; false if any
+  // feature has no cached outline.
+  SectionMap.prototype.attachTownshipGeometry = function (geojson) {
+    var cache = this.townshipGeometry || {};
+    var features = geojson.features || [];
+    for (var i = 0; i < features.length; i++) {
+      var geometry = cache[features[i].id || features[i].properties.id];
+      if (!geometry) return false;
+      features[i].geometry = geometry;
+    }
+    return true;
+  };
+
   SectionMap.prototype.isHighlighted = function (feature) {
     return this.level === 'section' && !!this.data.highlight && feature.id === this.data.highlight;
   };
 
+  SectionMap.prototype.allSectionsActive = function () {
+    return this.showAllSections && this.level === 'township';
+  };
+
   SectionMap.prototype.featureStyle = function (feature) {
     var value = feature.properties[this.metric];
+    // With every section drawn on top, the township grid steps aside: no
+    // fill, no line, just the interactive shape.
+    if (this.allSectionsActive()) {
+      return { fillOpacity: 0, stroke: false, fillColor: NO_DATA_COLOR };
+    }
     // A faint base grid; the fills carry the data. Only the page's own
     // section (orange) and a hovered cell with data get a real outline.
     var style = {
@@ -797,6 +922,7 @@
       opacity: GRID_LINE.opacity,
       weight: this.level === 'township' ? 0.75 : 0.5,
     };
+    if (this.isSelected(feature)) Object.assign(style, SELECTED_LINE);
     if (this.isHighlighted(feature)) {
       style.color = '#d35400';
       style.opacity = 1;
@@ -815,6 +941,7 @@
   SectionMap.prototype.bindHover = function (feature, layer) {
     var self = this;
     layer.on('mouseover', function () {
+      if (self.showAllSections && self.level === 'township') return;
       if (self.level === 'township') {
         self.cancelLensClear();
         if (self.lensId !== feature.properties.id) self.showLens(feature, layer);
@@ -849,14 +976,27 @@
   // township for the life of the map.
   // The townships whose bounds touch the hovered one (itself included): a
   // 3x3 block in the regular grid, fewer at the valley edge.
-  SectionMap.prototype.neighborhoodOf = function (layer) {
+  // `reach` is in townships from the centre: 1.5 is the 3x3 block, 2.5 the
+  // 5x5 block around it (used to prefetch the ring beyond the lens).
+  SectionMap.prototype.neighborhoodOf = function (layer, reach) {
     var hosts = [];
     if (!this.gridLayer) return hosts;
-    // Pad by a hair so shared edges count as touching; not by a whole
-    // township, which would pull in the ring beyond.
-    var bounds = layer.getBounds().pad(0.05);
+    reach = reach || 1.5;
+    // Neighbours by centre distance rather than touching bounds: diagonal
+    // townships meet the hovered one only at a corner, and survey offsets
+    // between ranges leave small gaps, so an intersection test drops them.
+    // Anything whose centre is within `reach` townships on both axes is in;
+    // the next ring starts a whole township further out.
+    var bounds = layer.getBounds();
+    var center = bounds.getCenter();
+    // A partial township (county edge, survey gap) has small bounds, so the
+    // reach is floored at a full township's size.
+    var maxDx = Math.max(bounds.getEast() - bounds.getWest(), TOWNSHIP_DEGREES.lng) * reach;
+    var maxDy = Math.max(bounds.getNorth() - bounds.getSouth(), TOWNSHIP_DEGREES.lat) * reach;
     this.gridLayer.eachLayer(function (other) {
-      if (other.feature && other.getBounds && other.getBounds().intersects(bounds)) hosts.push(other);
+      if (!other.feature || !other.getBounds) return;
+      var c = other.getBounds().getCenter();
+      if (Math.abs(c.lng - center.lng) <= maxDx && Math.abs(c.lat - center.lat) <= maxDy) hosts.push(other);
     });
     return hosts;
   };
@@ -875,15 +1015,43 @@
     var hosts = this.neighborhoodOf(layer);
     this.lensHosts = hosts;
     var ids = hosts.map(function (host) { return host.feature.properties.id; });
-    var missing = ids.filter(function (townshipId) { return !self.lensCache[townshipId]; });
-    if (!missing.length) {
-      this.drawLens(id, this.cachedLensSections(ids));
+    var draw = function () {
+      if (self.lensId === id) self.drawLens(id, self.cachedLensSections(ids));
+      self.prefetchRing(layer);
+    };
+    if (!this.uncached(ids).length) {
+      draw();
       return;
     }
+    // A cursor sweeping across the map crosses many townships; fetch only
+    // for the one it settles on. Cached blocks above draw at once.
+    this.cancelLensFetch();
+    this.lensFetchTimer = setTimeout(function () {
+      self.lensFetchTimer = null;
+      if (self.lensId !== id) return;
+      self.fetchLensSections(hosts, draw);
+    }, LENS_FETCH_DELAY_MS);
+  };
 
-    // One request for the whole block; the bbox is the union of the
-    // townships' bounds, and the response is filed per township so the
-    // next hover over any of them draws from cache.
+  SectionMap.prototype.cancelLensFetch = function () {
+    if (this.lensFetchTimer) {
+      clearTimeout(this.lensFetchTimer);
+      this.lensFetchTimer = null;
+    }
+  };
+
+  SectionMap.prototype.uncached = function (ids) {
+    var self = this;
+    return ids.filter(function (townshipId) { return !self.lensCache[townshipId]; });
+  };
+
+  // One request for a set of townships: the bbox is the union of their
+  // bounds, and the response is filed per township so any later hover over
+  // one of them draws from cache. `done` runs after filing (also on
+  // failure, so a draw can still proceed with whatever is cached).
+  SectionMap.prototype.fetchLensSections = function (hosts, done) {
+    var self = this;
+    var ids = hosts.map(function (host) { return host.feature.properties.id; });
     // Built from a fresh bounds: L.latLngBounds(bounds) hands back the same
     // object, and extend() mutates, so seeding with a layer's own getBounds()
     // would grow that layer's cached bounds with every hover.
@@ -904,9 +1072,36 @@
           if (byTownship[townshipId]) byTownship[townshipId].push(section);
         });
         ids.forEach(function (townshipId) { self.lensCache[townshipId] = byTownship[townshipId]; });
-        if (self.lensId === id) self.drawLens(id, self.cachedLensSections(ids));
       })
-      .catch(function () {});
+      .catch(function () {})
+      .then(function () { if (done) done(); });
+  };
+
+  // Once the lens is drawn, warm the cache for the ring of townships one
+  // step beyond it, in idle time, so recentring the lens in any direction
+  // draws without waiting on the network. One prefetch at a time; a lens
+  // that has moved on by the time it runs prefetches around its new centre
+  // instead.
+  SectionMap.prototype.prefetchRing = function (layer) {
+    if (this.prefetching || !this.data.sectionsUrl) return;
+    var self = this;
+    var run = function () {
+      if (self.prefetching) return;
+      var inner = {};
+      self.neighborhoodOf(layer, 1.5).forEach(function (host) { inner[host.feature.properties.id] = true; });
+      var ring = self.neighborhoodOf(layer, 2.5).filter(function (host) {
+        var townshipId = host.feature.properties.id;
+        return !inner[townshipId] && !self.lensCache[townshipId];
+      });
+      if (!ring.length) return;
+      self.prefetching = true;
+      self.fetchLensSections(ring, function () { self.prefetching = false; });
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(run, { timeout: 500 });
+    } else {
+      setTimeout(run, 150);
+    }
   };
 
   // The nine townships under the lens lose their fill while it's up, so the
@@ -917,11 +1112,224 @@
     (this.lensHosts || []).forEach(function (host) {
       var style = self.featureStyle(host.feature);
       if (!visible) style.fillOpacity = 0;
-      if (self.lensHost && host === self.lensHost.layer && !visible && host.feature.properties[self.metric]) {
-        Object.assign(style, self.hoverStyle());
-      }
       host.setStyle(style);
     });
+    this.drawLensOutline(!visible);
+  };
+
+  // The hovered township's outline, on its own pane above the lens sections
+  // (which would otherwise paint over the township's border). Only when the
+  // township has data, matching the hover rule elsewhere.
+  SectionMap.prototype.drawLensOutline = function (show) {
+    if (this.lensOutline) {
+      this.map.removeLayer(this.lensOutline);
+      this.lensOutline = null;
+    }
+    var host = this.lensHost;
+    if (!show || !host || !host.feature.properties[this.metric] || !host.layer.getLatLngs) return;
+    this.lensOutline = L.polygon(host.layer.getLatLngs(), Object.assign(
+      { pane: 'pesticide-lens-outline', interactive: false, fill: false },
+      this.hoverStyle()
+    )).addTo(this.map);
+  };
+
+  // Keeps the township under the pointer at the centre of the lens. Returns
+  // true when the lens was redrawn around a different township (the caller's
+  // section layer is gone by then). A pinned lens (popup open) stays put.
+  SectionMap.prototype.recentreLens = function (section) {
+    var mtrs = section.properties.mtrs || '';
+    var townshipId = mtrs.slice(0, mtrs.lastIndexOf('-'));
+    if (!townshipId || townshipId === this.lensId || this.openLensId || !this.gridLayer) return false;
+    var host = null;
+    this.gridLayer.eachLayer(function (layer) {
+      if (layer.feature && layer.feature.properties.id === townshipId) host = layer;
+    });
+    if (!host) return false;
+    this.showLens(host.feature, host);
+    return true;
+  };
+
+  // "All sections" mode. At the township zoom, every section in the padded
+  // viewport is drawn instead of the township grid. Sections load in the
+  // same 5x5 township blocks the lens prefetches, a few at a time, and go
+  // into the same per-township cache, so the two modes share their work.
+  // Drawing uses a canvas renderer: a valley-wide view is ~28k polygons,
+  // which SVG handles badly and canvas handles fine.
+  SectionMap.prototype.visibleTownships = function () {
+    var hosts = [];
+    if (!this.gridLayer) return hosts;
+    var bounds = this.map.getBounds().pad(0.15);
+    this.gridLayer.eachLayer(function (layer) {
+      if (layer.feature && layer.getBounds && layer.getBounds().intersects(bounds)) hosts.push(layer);
+    });
+    return hosts;
+  };
+
+  SectionMap.prototype.loadAllSections = function () {
+    if (!this.showAllSections || this.level !== 'township' || !this.gridLayer || !this.data.sectionsUrl) return;
+    var self = this;
+    // Uncached townships are tiled into a fixed 5x5-township grid of
+    // blocks, so a valley-wide view is ~36 requests of ~25 townships each
+    // (well under the endpoint's cap) rather than a request per hover-sized
+    // neighbourhood.
+    var tiles = {};
+    var blocks = [];
+    var tileLng = TOWNSHIP_DEGREES.lng * 5;
+    var tileLat = TOWNSHIP_DEGREES.lat * 5;
+    this.visibleTownships().forEach(function (host) {
+      if (self.lensCache[host.feature.properties.id]) return;
+      var c = host.getBounds().getCenter();
+      var key = Math.floor(c.lng / tileLng) + ':' + Math.floor(c.lat / tileLat);
+      if (!tiles[key]) {
+        tiles[key] = [];
+        blocks.push(tiles[key]);
+      }
+      tiles[key].push(host);
+    });
+
+    // Draw what's cached right away; the blocks fill in as they land.
+    this.drawAllSections();
+    if (!blocks.length) return;
+
+    // A new run supersedes any in flight: its callbacks see a different
+    // token and stop scheduling more work (fetches already started finish
+    // and still land in the cache).
+    var run = { total: blocks.length, done: 0 };
+    this.allSectionsRun = run;
+    var queue = blocks.slice();
+    var active = 0;
+    var next = function () {
+      if (self.allSectionsRun !== run) return;
+      while (active < ALL_SECTIONS_CONCURRENCY && queue.length) {
+        active += 1;
+        self.fetchLensSections(queue.shift(), function () {
+          active -= 1;
+          if (self.allSectionsRun !== run) return;
+          run.done += 1;
+          self.setStatus(run.done < run.total ? 'Loading sections… ' + run.done + ' of ' + run.total : '');
+          // New sections join the layer at once, styled by the current
+          // classes; the classes themselves (and so every section's shade)
+          // are refreshed on a throttle while blocks land, and once more
+          // when the last one has.
+          self.drawAllSections();
+          if (run.done < run.total) {
+            self.scheduleAllSectionsDraw();
+          } else {
+            self.cancelAllSectionsDraw();
+            self.restyleAllSections();
+          }
+          next();
+        });
+      }
+    };
+    this.setStatus('Loading sections… 0 of ' + run.total);
+    next();
+  };
+
+  SectionMap.prototype.scheduleAllSectionsDraw = function () {
+    if (this.allSectionsDrawTimer) return;
+    var self = this;
+    this.allSectionsDrawTimer = setTimeout(function () {
+      self.allSectionsDrawTimer = null;
+      self.restyleAllSections();
+    }, ALL_SECTIONS_REDRAW_MS);
+  };
+
+  SectionMap.prototype.cancelAllSectionsDraw = function () {
+    if (this.allSectionsDrawTimer) {
+      clearTimeout(this.allSectionsDrawTimer);
+      this.allSectionsDrawTimer = null;
+    }
+  };
+
+  // Adds any cached, visible sections that aren't in the layer yet. The
+  // layer is built once and grown, never rebuilt: rebuilding meant parsing
+  // and re-creating every polygon each time a block landed, which cost
+  // more than the requests did.
+  SectionMap.prototype.drawAllSections = function () {
+    if (!this.showAllSections || this.level !== 'township' || !this.gridLayer) return;
+    var self = this;
+    if (!this.allSectionsLayer) {
+      if (!this.allSectionsRenderer) this.allSectionsRenderer = L.canvas({ pane: 'pesticide-lens' });
+      this.allSectionsAdded = {};
+      this.allSectionsFeatures = [];
+      this.allSectionsLayer = L.geoJSON(null, {
+        pane: 'pesticide-lens',
+        renderer: this.allSectionsRenderer,
+        style: function (section) { return self.lensSectionStyle(section, self.currentClasses); },
+        onEachFeature: function (section, sectionLayer) {
+          sectionLayer.on('mouseover', function () {
+            if (!section.properties[self.metric]) return;
+            sectionLayer.setStyle({ stroke: true, color: '#111', opacity: 1, weight: 2 });
+            if (sectionLayer.bringToFront) sectionLayer.bringToFront();
+          });
+          sectionLayer.on('mouseout', function () {
+            sectionLayer.setStyle(self.lensSectionStyle(section, self.currentClasses));
+          });
+          sectionLayer.on('click', function (event) {
+            L.DomEvent.stopPropagation(event);
+            self.showSectionPopup(section, sectionLayer);
+          });
+          self.trackPopup(sectionLayer, section.properties.id, 'openAllSectionsId');
+        },
+      }).addTo(this.map);
+      // The township grid steps aside (see featureStyle) once the layer
+      // exists; the legend follows in restyleAllSections.
+      this.gridLayer.eachLayer(function (layer) { layer.setStyle(self.featureStyle(layer.feature)); });
+    }
+
+    var fresh = [];
+    this.visibleTownships().forEach(function (host) {
+      var id = host.feature.properties.id;
+      if (self.allSectionsAdded[id] || !self.lensCache[id]) return;
+      self.allSectionsAdded[id] = true;
+      fresh = fresh.concat(self.lensCache[id]);
+    });
+    if (!fresh.length) {
+      if (!this.currentClassesAreSections) this.restyleAllSections();
+      return;
+    }
+    this.allSectionsFeatures = this.allSectionsFeatures.concat(fresh);
+    // First sections in: classes over them so they don't draw unshaded.
+    if (!this.currentClassesAreSections) {
+      this.currentClasses = quantileClasses(this.allSectionsFeatures.map(function (f) { return f.properties[self.metric]; }));
+      this.currentClassesAreSections = true;
+      this.updateLegend();
+    }
+    this.allSectionsLayer.addData({ type: 'FeatureCollection', features: fresh });
+    this.reopenSelectedSection(this.allSectionsLayer);
+  };
+
+  // Recomputes the classes over everything in the layer and reshades it;
+  // also what a metric change calls.
+  SectionMap.prototype.restyleAllSections = function () {
+    if (!this.allSectionsLayer) return;
+    var self = this;
+    this.currentClasses = quantileClasses(this.allSectionsFeatures.map(function (f) { return f.properties[self.metric]; }));
+    this.currentClassesAreSections = true;
+    this.allSectionsLayer.eachLayer(function (layer) {
+      layer.setStyle(self.lensSectionStyle(layer.feature, self.currentClasses));
+    });
+    this.updateLegend();
+  };
+
+  // `keepFlag` leaves the toggle on (a zoom to section level, where the
+  // mode is moot) rather than turning it off.
+  SectionMap.prototype.clearAllSections = function (keepFlag) {
+    this.allSectionsRun = null;
+    this.cancelAllSectionsDraw();
+    if (!keepFlag) this.showAllSections = false;
+    if (this.allSectionsLayer) {
+      this.map.removeLayer(this.allSectionsLayer);
+      this.allSectionsLayer = null;
+      this.allSectionsAdded = null;
+      this.allSectionsFeatures = [];
+      this.currentClassesAreSections = false;
+      this.openAllSectionsId = null;
+      this.setStatus('');
+      if (this.gridLayer) this.restyle();
+    }
+    this.dropRenderer('allSectionsRenderer');
   };
 
   SectionMap.prototype.cachedLensSections = function (ids) {
@@ -933,7 +1341,7 @@
 
   SectionMap.prototype.lensSectionStyle = function (feature, classes) {
     var value = feature.properties[this.metric];
-    return {
+    var style = {
       fillColor: colorFor(classes, value),
       fillOpacity: value ? 0.85 : 0.35,
       stroke: true,
@@ -941,6 +1349,12 @@
       opacity: GRID_LINE.opacity,
       weight: 0.5,
     };
+    if (this.isSelected(feature)) Object.assign(style, SELECTED_LINE);
+    return style;
+  };
+
+  SectionMap.prototype.isSelected = function (feature) {
+    return !!this.selectedSectionId && feature.properties.id === this.selectedSectionId;
   };
 
   SectionMap.prototype.drawLens = function (id, features) {
@@ -949,18 +1363,23 @@
       this.lensLayer = null;
     }
     this.lensId = id;
+    this.lensDrawnAt = Date.now();
     if (!features.length) return;
     // The township shade stays until the sections are here to replace it,
     // so the lens never shows an empty grid while the request is in flight.
     this.setHostFills(false);
     var self = this;
     var classes = quantileClasses(features.map(function (section) { return section.properties[self.metric]; }));
+    this.lensClasses = classes;
     this.lensLayer = L.geoJSON({ type: 'FeatureCollection', features: features }, {
       pane: 'pesticide-lens',
       style: function (section) { return self.lensSectionStyle(section, classes); },
       onEachFeature: function (section, sectionLayer) {
         sectionLayer.on('mouseover', function () {
           self.cancelLensClear();
+          // The lens covers the townships, so this is where a move into a
+          // neighbouring township is noticed: recentre the lens on it.
+          if (self.recentreLens(section)) return;
           if (!section.properties[self.metric]) return;
           sectionLayer.setStyle({ stroke: true, color: '#111', opacity: 1, weight: 2 });
           if (sectionLayer.bringToFront) sectionLayer.bringToFront();
@@ -985,10 +1404,14 @@
   SectionMap.prototype.scheduleLensClear = function () {
     this.cancelLensClear();
     var self = this;
+    var scheduledAt = Date.now();
     this.lensClearTimer = setTimeout(function () {
       self.lensClearTimer = null;
-      // Keep the lens while one of its section popups is open.
+      // Keep the lens while one of its section popups is open, or when it
+      // was redrawn (recentred) after this clear was scheduled: that
+      // mouseout came from a section the redraw removed.
       if (self.openLensId) return;
+      if (self.lensDrawnAt && self.lensDrawnAt >= scheduledAt) return;
       self.clearLens();
     }, 120);
   };
@@ -1002,6 +1425,7 @@
 
   SectionMap.prototype.clearLens = function () {
     this.cancelLensClear();
+    this.cancelLensFetch();
     this.lensId = null;
     this.openLensId = null;
     this.setHostFills(true);
@@ -1015,12 +1439,14 @@
 
   SectionMap.prototype.legendUnit = function () {
     var unit = METRIC_UNITS[this.metric] || '';
-    return this.level === 'township' ? unit + ' per township' : unit;
+    return this.level === 'township' && !this.allSectionsActive() ? unit + ' per township' : unit;
   };
 
   SectionMap.prototype.updateLegend = function () {
     if (this.legendEl) renderLegend(this.legendEl, this.currentClasses, this.legendUnit());
-    if (this.levelEl) this.levelEl.textContent = LEVEL_TEXT[this.level] || '';
+    if (this.levelEl) {
+      this.levelEl.textContent = this.allSectionsActive() ? LEVEL_TEXT.allSections : (LEVEL_TEXT[this.level] || '');
+    }
   };
 
   SectionMap.prototype.bringHighlightToFront = function () {
@@ -1053,7 +1479,12 @@
 
     this.clearGrid();
 
+    // The section grid can run to a couple of thousand polygons, which SVG
+    // pans and restyles sluggishly; canvas handles it easily. Townships
+    // stay on SVG, where hover reordering is free.
+    if (level === 'section' && !this.sectionRenderer) this.sectionRenderer = L.canvas();
     this.gridLayer = L.geoJSON(geojson, {
+      renderer: level === 'section' ? this.sectionRenderer : undefined,
       style: function (feature) {
         return self.featureStyle(feature);
       },
@@ -1073,6 +1504,7 @@
     this.bringHighlightToFront();
     this.updateLegend();
     this.reopenGridPopup(reopenId);
+    if (level === 'section') this.reopenSelectedSection(this.gridLayer);
   };
 
   // A refetch rebuilds the grid; if the popup that was open belongs to a
@@ -1106,7 +1538,11 @@
       }
     });
     this.bringHighlightToFront();
-    this.updateLegend();
+    if (this.allSectionsActive() && this.allSectionsLayer) {
+      this.restyleAllSections();
+    } else {
+      this.updateLegend();
+    }
   };
 
   // The headline figure of a grid popup: "5,966 lbs applied in 2023" or
@@ -1204,6 +1640,55 @@
     );
   };
 
+  // The open popup's section wears SELECTED_LINE (see the style functions)
+  // for as long as the popup is up. Restyling goes through the normal style
+  // function so hover in and out doesn't lose it.
+  SectionMap.prototype.selectSection = function (id, layer) {
+    var self = this;
+    this.selectedSectionId = id;
+    this.restyleSection(layer);
+    if (layer.bringToFront) layer.bringToFront();
+    if (layer._selectionBound) return;
+    layer._selectionBound = true;
+    layer.on('popupclose', function () {
+      if (self.selectedSectionId !== id) return;
+      // A grid rebuild (zoom across the township threshold, a refetch)
+      // removes the layer and closes its popup with it; the selection
+      // outlives that and is reopened wherever the section next appears
+      // (see reopenSelectedSection). Only a close with the layer still on
+      // the map is the reader letting go.
+      if (!self.map.hasLayer(layer)) return;
+      self.selectedSectionId = null;
+      self.restyleSection(layer);
+    });
+  };
+
+  // After a layer of sections is (re)built, put the selected section's
+  // popup back on it if it's there.
+  SectionMap.prototype.reopenSelectedSection = function (group) {
+    var id = this.selectedSectionId;
+    if (!id || !group) return;
+    var self = this;
+    group.eachLayer(function (layer) {
+      if (!layer.feature || layer.feature.properties.id !== id) return;
+      if (layer.isPopupOpen && layer.isPopupOpen()) return;
+      self.showSectionPopup(layer.feature, layer);
+    });
+  };
+
+  // Re-applies whichever style function owns this layer: the grid's for the
+  // section grid, the lens one for lens and all-sections layers.
+  SectionMap.prototype.restyleSection = function (layer) {
+    if (!layer.feature || !this.map.hasLayer(layer)) return;
+    if (this.gridLayer && this.gridLayer.hasLayer(layer)) {
+      layer.setStyle(this.featureStyle(layer.feature));
+    } else if (this.lensLayer && this.lensLayer.hasLayer(layer)) {
+      layer.setStyle(this.lensSectionStyle(layer.feature, this.lensClasses));
+    } else {
+      layer.setStyle(this.lensSectionStyle(layer.feature, this.currentClasses));
+    }
+  };
+
   SectionMap.prototype.showSectionPopup = function (feature, layer) {
     var props = feature.properties;
     var center = layer.getBounds().getCenter();
@@ -1211,6 +1696,7 @@
     layer.bindPopup(html, this.popupOptions('section-popup-wrap'));
     openPopupAtCenter(layer);
     layer.openPopup(layer.getBounds().getCenter());
+    this.selectSection(props.id, layer);
 
     if (!this.data.sectionUrlPattern) return;
     var year = this.data.year;

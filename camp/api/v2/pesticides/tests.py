@@ -1009,6 +1009,15 @@ class TownshipAndCountyTests(RollupTestMixin, TestCase):
         assert by_id['MDM-T14S-R20E']['lbs_chemical'] == 20.0
         assert self.client.get('/api/2.0/pesticides/townships/', {'bbox': 'nope'}).status_code == 400
 
+    def test_townships_values_only(self):
+        full = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023}).json()
+        values = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023, 'geometry': '0'}).json()
+        assert [f['id'] for f in values['features']] == [f['id'] for f in full['features']]
+        assert all(f['geometry'] is None for f in values['features'])
+        assert all(f['geometry'] is not None for f in full['features'])
+        by_id = {f['properties']['id']: f['properties'] for f in values['features']}
+        assert by_id['MDM-T14S-R20E']['lbs_chemical'] == 670.0
+
     def test_section_coordinates_rounded(self):
         response = self.client.get('/api/2.0/pesticides/sections/', {'year': 2023, 'bbox': '-119.9,36.6,-119.7,36.8'})
         ring = response.json()['features'][0]['geometry']['coordinates'][0][0]
