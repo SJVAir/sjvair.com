@@ -1,6 +1,7 @@
 import calendar
 import hashlib
 import math
+import random
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from urllib.parse import unquote, urlencode
@@ -245,6 +246,9 @@ class ExplorerListMixin:
     sort_fields = {}
     default_sort = 'name'
     related_models = {}
+    # Names the search box suggests ("Try roundup"), one at random per page;
+    # nothing once the reader is searching.
+    search_examples = ()
     # The PesticideUseTotal/PesticideUseRollup FK that points at this list's model.
     rollup_field = None
 
@@ -363,9 +367,11 @@ class ExplorerListMixin:
 
     def get_context_data(self, **kwargs):
         count = paginated_count(kwargs)
+        query = self.get_search_query()
         return super().get_context_data(
             form=self.form,
-            query=self.get_search_query(),
+            query=query,
+            search_example='' if query or not self.search_examples else random.choice(self.search_examples),
             sort=self.sort,
             result_count=count,
             **year_context(self.year, self.all_years, self.county),
@@ -380,6 +386,7 @@ class ExplorerListMixin:
 class ChemicalList(ExplorerListMixin, vanilla.ListView):
     model = Chemical
     form_class = ChemicalFilterForm
+    search_examples = ('glyphosate', 'sulfur', 'chlorpyrifos', 'paraquat', 'malathion', 'copper', 'mineral oil', 'kaolin')
     template_name = 'pesticides/chemical-list.html'
     section = 'chemicals'
     sort_fields = {'name': 'sort_name', 'lbs': 'lbs_applied', 'products': 'product_count', 'iarc': 'iarc_group'}
@@ -532,6 +539,7 @@ class About(vanilla.TemplateView):
 class ProductList(ExplorerListMixin, vanilla.ListView):
     model = Product
     form_class = ProductFilterForm
+    search_examples = ('roundup', 'telone', 'lorsban', 'sevin', 'surround', 'gramoxone', 'kocide', 'dusting sulfur')
     template_name = 'pesticides/product-list.html'
     section = 'products'
     sort_fields = {'name': 'name', 'lbs': 'lbs_applied', 'chemicals': 'chemical_count', 'reg': 'reg_number'}
@@ -575,6 +583,7 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
     model = Commodity
     rollup_field = 'commodity'
     form_class = CommodityFilterForm
+    search_examples = ('almond', 'grape', 'pistachio', 'cotton', 'tomato', 'orange', 'alfalfa', 'strawberry')
     template_name = 'pesticides/commodity-list.html'
     section = 'commodities'
     sort_fields = {'name': 'name', 'lbs': 'lbs_applied', 'chemicals': 'chemical_count', 'site': 'site_code'}
