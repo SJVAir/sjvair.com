@@ -13,7 +13,7 @@
             {% for row in card.rows %}
                 <tr>
                     <td>
-                        <a href="{{ row.obj.get_absolute_url }}{{ year_qs }}">{{ row.obj.display_name }}</a>
+                        <a href="{{ row.obj.get_absolute_url }}{{ scope_qs }}">{{ row.obj.display_name }}</a>
                         {% if card.kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
                     </td>
                     {% if card.show_pct %}<td class="has-text-right">{% if row.pct_active is not None %}{{ row.pct_active|floatformat:1 }}%{% else %}—{% endif %}</td>{% endif %}

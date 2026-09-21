@@ -2,10 +2,8 @@ from django import forms
 from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 
-from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, PesticideNotice, PesticideUse
 from camp.apps.pesticides.places import RADIUS_CHOICES as RADIUS_MILES
-from camp.apps.regions.models import Region
 
 BOOL_CHOICES = [('', _('Any')), ('true', _('Yes')), ('false', _('No'))]
 # The allowed radii live in places.RADIUS_CHOICES; these are just their
@@ -13,31 +11,11 @@ BOOL_CHOICES = [('', _('Any')), ('true', _('Yes')), ('false', _('No'))]
 RADIUS_CHOICES = [(str(miles), str(miles)) for miles in RADIUS_MILES]
 
 
-def county_choices():
-    counties = Region.objects.filter(type=Region.Type.COUNTY).order_by('name').values_list('slug', 'name')
-    return [('', _('Any'))] + list(counties)
-
-
-def year_choices():
-    """The hero year pills as a select: 'All years' first, then newest year first."""
-    years = stats.available_years()
-    if not years:
-        return []
-    return [(stats.ALL_YEARS, _('All years'))] + [(str(year), str(year)) for year in reversed(years)]
-
-
+# The year and county are the explorer-wide scope (the pickers in the
+# scope bar), not fields of any filter form; forms carry them as hidden
+# inputs (includes/scope-hidden.html) so a submit keeps the scope.
 class SearchForm(forms.Form):
     q = forms.CharField(label=_('Search'), required=False, max_length=128)
-    county = forms.ChoiceField(label=_('County'), required=False, choices=[('', _('Any'))])
-    # The same `?year=` the hero pills set -- the view resolves it and hands
-    # the form the resolved value, so this select always shows what the page
-    # is actually displaying.
-    year = forms.ChoiceField(label=_('Year'), required=False, choices=[])
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['county'].choices = county_choices()
-        self.fields['year'].choices = year_choices()
 
     def bool_value(self, name):
         value = self.cleaned_data.get(name)
@@ -68,7 +46,6 @@ class CommodityFilterForm(SearchForm):
 
 
 class NoticeFilterForm(forms.Form):
-    county = forms.ChoiceField(label=_('County'), required=False, choices=[('', _('Any'))])
     method = forms.ChoiceField(label=_('Method'), required=False, choices=[('', _('Any'))])
     past = forms.BooleanField(label=_('Archive'), required=False)
     month = forms.IntegerField(required=False, min_value=1, max_value=12)
@@ -90,9 +67,6 @@ class NoticeFilterForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        counties = Region.objects.filter(type=Region.Type.COUNTY).order_by('name').values_list('slug', 'name')
-        self.fields['county'].choices = [('', _('Any'))] + list(counties)
-
         methods = cache.get('pesticides:notice-methods')
         if methods is None:
             methods = list(
@@ -109,7 +83,6 @@ class NoticeFilterForm(forms.Form):
 class RecordsFilterForm(forms.Form):
     start = forms.DateField(label=_('Start date'), required=False, widget=forms.DateInput(attrs={'type': 'date', 'class': 'input'}, format='%Y-%m-%d'))
     end = forms.DateField(label=_('End date'), required=False, widget=forms.DateInput(attrs={'type': 'date', 'class': 'input'}, format='%Y-%m-%d'))
-    county = forms.ChoiceField(label=_('County'), required=False, choices=[('', _('Any'))])
     method = forms.ChoiceField(
         label=_('Method'),
         required=False,
@@ -125,8 +98,3 @@ class RecordsFilterForm(forms.Form):
     lat = forms.FloatField(required=False, widget=forms.HiddenInput)
     lng = forms.FloatField(required=False, widget=forms.HiddenInput)
     radius = forms.ChoiceField(required=False, choices=RADIUS_CHOICES, widget=forms.HiddenInput)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        counties = Region.objects.filter(type=Region.Type.COUNTY).order_by('name').values_list('slug', 'name')
-        self.fields['county'].choices = [('', _('Any'))] + list(counties)

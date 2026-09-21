@@ -12,7 +12,7 @@
     {% if find_area_counties %}
         <p class="find-area-counties">
             <span class="has-text-grey">Or jump to a county:</span>
-            {% for county in find_area_counties %}<a href="{{ county.url }}{{ year_qs }}">{{ county.short_name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
+            {% for county in find_area_counties %}<a href="{{ county.url }}{{ scope_qs }}">{{ county.short_name }}</a>{% if not forloop.last %}<span class="find-area-sep" aria-hidden="true">·</span>{% endif %}{% endfor %}
         </p>
     {% endif %}
     <p class="is-size-7 has-text-grey">Address searches are sent to MapTiler; place names are matched here in your browser. We don't store locations.</p>

@@ -20,6 +20,7 @@
 <div class="columns">
     <div class="column is-3-desktop">
         <form method="GET" class="notice-filters box" hx-trigger="submit, change delay:250ms">
+            {% if county %}<input type="hidden" name="county" value="{{ county.slug }}">{% endif %}
             {{ form.chemical }}
             {{ form.product }}
             {{ form.region }}
@@ -32,12 +33,6 @@
             {% if filter_year %}<input type="hidden" name="archive_year" value="{{ filter_year }}">{% endif %}
             {% if filter_month %}<input type="hidden" name="month" value="{{ filter_month }}">{% endif %}
             {% endif %}
-            <div class="field">
-                <label class="label" for="{{ form.county.id_for_label }}">{{ form.county.label }}</label>
-                <div class="control">
-                    <div class="select is-fullwidth">{{ form.county }}</div>
-                </div>
-            </div>
             <div class="field">
                 <label class="label" for="{{ form.method.id_for_label }}">{{ form.method.label }}</label>
                 <div class="control"><div class="select is-fullwidth">{{ form.method }}</div></div>

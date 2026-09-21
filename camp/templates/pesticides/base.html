@@ -22,12 +22,12 @@
 
 {% block main %}
 {# Boosted navigation swaps only #explorer-body; the hero stays put and just #}
-{# has its tabs and year picker refreshed out of band, so it never flickers. #}
+{# has its tabs refreshed out of band, so it never flickers. #}
 <div id="explorer"
     hx-boost="true"
     hx-target="#explorer-body"
     hx-select="#explorer-body"
-    hx-select-oob="#explorer-tabs,#year-picker"
+    hx-select-oob="#explorer-tabs"
     hx-swap="outerHTML"
     hx-push-url="true"
     hx-indicator="body">
@@ -41,32 +41,36 @@
         {% endblock %}
         <div class="tabs is-boxed explorer-nav">
             <ul id="explorer-tabs">
-                <li class="{% if section == 'map' %}is-active{% endif %}"><a href="{% url 'pesticides:map' %}{{ year_qs }}" title="Map"><span class="icon is-small"><span class="fa-duotone fa-fw fa-map explorer-icon is-map"></span></span><span class="tab-label">Map</span></a></li>
-                <li class="{% if section == 'products' %}is-active{% endif %}"><a href="{% url 'pesticides:product-list' %}{{ year_qs }}" title="Products"><span class="icon is-small"><span class="fa-duotone fa-fw fa-spray-can-sparkles explorer-icon is-products"></span></span><span class="tab-label">Products</span></a></li>
-                <li class="{% if section == 'chemicals' %}is-active{% endif %}"><a href="{% url 'pesticides:chemical-list' %}{{ year_qs }}" title="Chemicals"><span class="icon is-small"><span class="fa-duotone fa-fw fa-flask explorer-icon is-chemicals"></span></span><span class="tab-label">Chemicals</span></a></li>
-                <li class="{% if section == 'commodities' %}is-active{% endif %}"><a href="{% url 'pesticides:commodity-list' %}{{ year_qs }}" title="Commodities"><span class="icon is-small"><span class="fa-duotone fa-fw fa-seedling explorer-icon is-commodities"></span></span><span class="tab-label">Commodities</span></a></li>
-                <li class="{% if section == 'records' %}is-active{% endif %}"><a href="{% url 'pesticides:records' %}{{ year_qs }}" title="Records"><span class="icon is-small"><span class="fa-duotone fa-fw fa-table-list explorer-icon is-records"></span></span><span class="tab-label">Records</span></a></li>
-                <li class="{% if section == 'notices' %}is-active{% endif %}"><a href="{% url 'pesticides:notice-list' %}" title="Notices"><span class="icon is-small"><span class="fa-duotone fa-fw fa-calendar-clock explorer-icon is-notices"></span></span><span class="tab-label">Notices</span></a></li>
+                <li class="{% if section == 'map' %}is-active{% endif %}"><a href="{% url 'pesticides:map' %}{{ scope_qs }}" title="Map"><span class="icon is-small"><span class="fa-duotone fa-fw fa-map explorer-icon is-map"></span></span><span class="tab-label">Map</span></a></li>
+                <li class="{% if section == 'products' %}is-active{% endif %}"><a href="{% url 'pesticides:product-list' %}{{ scope_qs }}" title="Products"><span class="icon is-small"><span class="fa-duotone fa-fw fa-spray-can-sparkles explorer-icon is-products"></span></span><span class="tab-label">Products</span></a></li>
+                <li class="{% if section == 'chemicals' %}is-active{% endif %}"><a href="{% url 'pesticides:chemical-list' %}{{ scope_qs }}" title="Chemicals"><span class="icon is-small"><span class="fa-duotone fa-fw fa-flask explorer-icon is-chemicals"></span></span><span class="tab-label">Chemicals</span></a></li>
+                <li class="{% if section == 'commodities' %}is-active{% endif %}"><a href="{% url 'pesticides:commodity-list' %}{{ scope_qs }}" title="Commodities"><span class="icon is-small"><span class="fa-duotone fa-fw fa-seedling explorer-icon is-commodities"></span></span><span class="tab-label">Commodities</span></a></li>
+                <li class="{% if section == 'records' %}is-active{% endif %}"><a href="{% url 'pesticides:records' %}{{ scope_qs }}" title="Records"><span class="icon is-small"><span class="fa-duotone fa-fw fa-table-list explorer-icon is-records"></span></span><span class="tab-label">Records</span></a></li>
+                <li class="{% if section == 'notices' %}is-active{% endif %}"><a href="{% url 'pesticides:notice-list' %}{% if county %}?county={{ county.slug }}{% endif %}" title="Notices"><span class="icon is-small"><span class="fa-duotone fa-fw fa-calendar-clock explorer-icon is-notices"></span></span><span class="tab-label">Notices</span></a></li>
             </ul>
         </div>
-        <div id="year-picker">{% include 'pesticides/includes/year-picker.html' %}</div>
     </div>
 </section>
 
 <div id="explorer-body">
-{# Detail pages get a breadcrumb trail; the six tab pages don't (the tab bar already says where you are). #}
-{% block breadcrumbs %}
-<section class="breadcrumbs">
+{# The scope bar: breadcrumbs on the left (the landing page has none), the #}
+{# year and county pickers on the right. It swaps with the body, so it always #}
+{# says what the page below it is scoped to. #}
+<section class="breadcrumbs explorer-scope-bar">
     <div class="container">
-        <nav class="breadcrumb" aria-label="breadcrumbs">
-            <ul>
-                <li><a href="{% url 'pesticides:home' %}">Pesticides</a></li>
-                {% block breadcrumb-list %}{% endblock %}
-            </ul>
-        </nav>
+        <div class="explorer-scope">
+            {% block breadcrumbs %}
+            <nav class="breadcrumb" aria-label="breadcrumbs">
+                <ul>
+                    <li><a href="{% url 'pesticides:home' %}{{ scope_qs }}">Pesticides</a></li>
+                    {% block breadcrumb-list %}{% endblock %}
+                </ul>
+            </nav>
+            {% endblock %}
+            {% include 'pesticides/includes/scope-picker.html' %}
+        </div>
     </div>
 </section>
-{% endblock %}
 
 <section class="section">
     <div class="container">

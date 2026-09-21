@@ -9,6 +9,7 @@
 <div class="columns">
     <div class="column is-3-desktop">
         <form method="GET" class="records-filters box">
+            {% include 'pesticides/includes/scope-hidden.html' %}
             {{ form.region }}
             {{ form.section }}
             {{ form.lat }}
@@ -25,12 +26,6 @@
                 {% for error in form.end.errors %}<p class="help is-danger">{{ error }}</p>{% endfor %}
             </div>
             <div class="field">
-                <label class="label" for="{{ form.county.id_for_label }}">{{ form.county.label }}</label>
-                <div class="control">
-                    <div class="select is-fullwidth">{{ form.county }}</div>
-                </div>
-            </div>
-            <div class="field">
                 <label class="label" for="{{ form.method.id_for_label }}">{{ form.method.label }}</label>
                 <div class="control">
                     <div class="select is-fullwidth">{{ form.method }}</div>
@@ -42,7 +37,7 @@
             {% include 'pesticides/includes/entity-picker.html' with kind='commodity' label='Commodity' selected=related.commodity autosubmit=0 %}
             <div class="field is-grouped">
                 <div class="control"><button class="button is-link" type="submit">Apply</button></div>
-                <div class="control"><a class="button is-light" href="{{ request.path }}">Clear</a></div>
+                <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}">Clear</a></div>
             </div>
         </form>
         {% include 'pesticides/includes/spraydays-signup.html' %}

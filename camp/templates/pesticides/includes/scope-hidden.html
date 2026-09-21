@@ -1,0 +1,7 @@
+{% comment %}
+The scope (year, county) as hidden inputs, for the filter forms: they submit
+with GET and would otherwise drop the scope from the URL. Only non-default
+values are carried, matching scope_qs.
+{% endcomment %}
+{% if all_years %}<input type="hidden" name="year" value="all">{% elif year and year != latest_year %}<input type="hidden" name="year" value="{{ year }}">{% endif %}
+{% if county %}<input type="hidden" name="county" value="{{ county.slug }}">{% endif %}

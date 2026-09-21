@@ -65,80 +65,52 @@ body.pesticides
                     background-color: rgba($black, 0.08)
                     border-bottom-color: rgba($white, 0.5)
 
-        .year-picker
-            display: flex
-            align-items: center
-            gap: 0.75rem
-            margin-top: 0.75rem
-            .year-picker-select select
-                background-color: rgba($white, 0.14)
-                border-color: transparent
-                color: $white
-                option
-                    color: $text
-            .year-picker-label
-                @extend .is-size-7
-                color: rgba($white, 0.85)
-                text-transform: uppercase
-                letter-spacing: 0.04em
-            .buttons
-                margin-bottom: 0
-                gap: 0.35rem
-                .button
-                    margin: 0
-            // Separate pills rather than an addon group: with shared edges the
-            // white selected button read a device pixel taller than its
-            // translucent neighbours at fractional zoom levels, and no border
-            // trick fixed that reliably.
-            .button
-                text-decoration: none
-                background-color: rgba($white, 0.14)
-                border-color: transparent
-                border-radius: $radius
-                color: $white
-                &:hover
-                    background-color: rgba($white, 0.24)
-                &.is-selected
-                    background-color: $white
-                    border-color: $white
-                    color: $primary
-
-
-    // Duotone icon colours for the explorer's sections (same palette on the
-    // landing cards and the tab bar).
-    .explorer-icon
-        --fa-secondary-opacity: 1
-        &.is-map
-            --fa-primary-color: #{$primary}
-            --fa-secondary-color: #9ed0f5
-        &.is-chemicals
-            --fa-primary-color: #7b4fb8
-            --fa-secondary-color: #c9a7ff
-        &.is-products
-            --fa-primary-color: #6b8e23
-            --fa-secondary-color: #b7f542
-        &.is-commodities
-            --fa-primary-color: #2e8b57
-            --fa-secondary-color: #9acd32
-        &.is-records
-            --fa-primary-color: #5a6b7b
-            --fa-secondary-color: #c8d1da
-        &.is-notices
-            --fa-primary-color: #d35400
-            --fa-secondary-color: #ffc078
-    // On the blue hero the dark primaries vanish, so inactive tabs use a
-    // white primary with the section's accent as the secondary.
-    .hook .explorer-nav li:not(.is-active) .explorer-icon
-        --fa-primary-color: rgba(255, 255, 255, 0.92)
-
-    // Flex columns can't shrink below their content by default, so a card with
-    // long names would widen its column and knock the row out of alignment.
     .columns > .column
         min-width: 0
 
+    // The scope bar under the hero: breadcrumbs on the left, the year and
+    // county pickers on the right.
     .breadcrumbs
         background-color: $grey-lightest
-        padding: $size-6 0px
+        padding: 0.75rem 0px
+    .explorer-scope
+        display: flex
+        align-items: center
+        justify-content: space-between
+        gap: 0.75rem
+        flex-wrap: wrap
+        min-height: 2rem
+        .breadcrumb
+            margin-bottom: 0
+    .explorer-scope-pickers
+        display: flex
+        gap: 0.5rem
+        margin-left: auto
+    .explorer-scope-picker
+        .button
+            background-color: $white
+            border-color: $grey-lighter
+            .explorer-scope-label
+                max-width: 10rem
+                overflow: hidden
+                text-overflow: ellipsis
+                white-space: nowrap
+        .dropdown-menu
+            min-width: 11rem
+        .dropdown-item.is-active
+            background-color: $link
+            color: $white
+        // The years as a compact grid, so the whole span is in view at once.
+        .explorer-scope-years
+            display: grid
+            grid-template-columns: repeat(2, 1fr)
+            .dropdown-item
+                text-align: center
+                padding-left: 0.5rem
+                padding-right: 0.5rem
+    .explorer-icon.is-scope
+        --fa-primary-color: #{$link}
+        --fa-secondary-color: #{$grey-light}
 
     .by-year-table
         // Four numeric columns in a narrow column: keep them on one line and

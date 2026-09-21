@@ -41,6 +41,31 @@
     if (window.SJVAirLeafletMaps) window.SJVAirLeafletMaps.init();
   });
 
+  // The scope bar's dropdowns (year, county): a click on a trigger opens its
+  // menu, a click anywhere else or Escape closes it. Delegated from the
+  // document, so it survives the body swaps that replace the bar.
+  document.addEventListener('click', function (evt) {
+    var trigger = evt.target.closest ? evt.target.closest('.explorer-scope-picker .dropdown-trigger .button') : null;
+    var open = trigger ? trigger.closest('.explorer-scope-picker') : null;
+    document.querySelectorAll('.explorer-scope-picker.is-active').forEach(function (picker) {
+      if (picker === open) return;
+      picker.classList.remove('is-active');
+      var button = picker.querySelector('.dropdown-trigger .button');
+      if (button) button.setAttribute('aria-expanded', 'false');
+    });
+    if (!open) return;
+    var active = open.classList.toggle('is-active');
+    trigger.setAttribute('aria-expanded', active ? 'true' : 'false');
+  });
+  document.addEventListener('keydown', function (evt) {
+    if (evt.key !== 'Escape') return;
+    document.querySelectorAll('.explorer-scope-picker.is-active').forEach(function (picker) {
+      picker.classList.remove('is-active');
+      var button = picker.querySelector('.dropdown-trigger .button');
+      if (button) button.setAttribute('aria-expanded', 'false');
+    });
+  });
+
   // Filter forms carry hidden fields that are usually empty; dropping empty
   // values keeps the pushed URL to the parameters that mean something.
   document.body.addEventListener('htmx:configRequest', function (evt) {

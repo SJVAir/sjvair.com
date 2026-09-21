@@ -116,6 +116,28 @@ def year_param(year, all_years=False):
     return year_query(year, all_years).lstrip('?')
 
 
+def scope_param(year, all_years=False, county=None):
+    """
+    The explorer's scope as query parameters: a non-default year and/or a
+    county ('year=2020&county=kern'), '' when both are the defaults. `county`
+    is a Region or a slug.
+    """
+    parts = []
+    year_part = year_param(year, all_years)
+    if year_part:
+        parts.append(year_part)
+    slug = getattr(county, 'slug', county)
+    if slug:
+        parts.append(f'county={slug}')
+    return '&'.join(parts)
+
+
+def scope_query(year, all_years=False, county=None):
+    """`scope_param()` with a leading '?', for appending to a bare path ('' when nothing is pinned)."""
+    param = scope_param(year, all_years, county)
+    return f'?{param}' if param else ''
+
+
 def all_years_key(*parts):
     return ':'.join([ALL_YEARS_KEY, *(str(part) for part in parts)])
 
@@ -386,12 +408,16 @@ def landing_key(year):
     return f'{LANDING_KEY}:{year}'
 
 
-def _build_landing_stats(year, all_years=False):
+def _build_landing_stats(year, all_years=False, county=None):
     # All years reads PesticideUseTotal instead of the rollup: the same
     # numbers out of ~200k rows rather than ~8M. Pounds and applications come
     # off the chemical rows only, since the product and commodity rows of a
     # year carry the same pounds again.
     uses = PesticideUseTotal.objects.all() if all_years else PesticideUseRollup.objects.all()
+    notices = PesticideNotice.objects.all()
+    if county is not None:
+        uses = uses.filter(county=county)
+        notices = notices.filter(county=county)
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50, all_years=all_years)
     year_uses = in_year(uses, year, all_years)
     counts = {
@@ -418,7 +444,7 @@ def _build_landing_stats(year, all_years=False):
         'commodity_count': year_totals_['commodities'] or 0,
         'applications': year_totals_['applications'] or 0,
         'total_lbs': year_totals_['lbs'] or 0,
-        'active_notices': upcoming_count(PesticideNotice.objects.all()),
+        'active_notices': upcoming_count(notices),
         'top_chemicals': top_chemicals_all[:10],
         'top_chemicals_of_concern': _top_chemicals_of_concern(top_chemicals_all, uses, year, all_years=all_years),
         'top_commodities': top_related(uses, year, 'commodity', all_years=all_years),
@@ -426,17 +452,22 @@ def _build_landing_stats(year, all_years=False):
     }
 
 
-def landing_stats(year=None, all_years=False):
-    """Landing-page numbers for `year` (default: latest) or every loaded year, cached per key."""
+def landing_stats(year=None, all_years=False, county=None):
+    """
+    Landing-page numbers for `year` (default: latest) or every loaded year,
+    cached per key; scoped to `county` (a Region) when the explorer is.
+    """
     if all_years:
         key = landing_key(ALL_YEARS)
     else:
         if year is None:
             year = latest_year()
         key = landing_key(year)
+    if county is not None:
+        key = f'{key}:{county.slug}'
     data = cache.get(key)
     if data is None:
-        data = _build_landing_stats(year, all_years)
+        data = _build_landing_stats(year, all_years, county)
         cache.set(key, data, LANDING_TTL)
     return data
 

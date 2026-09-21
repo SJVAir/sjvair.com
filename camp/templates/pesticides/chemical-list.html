@@ -29,7 +29,7 @@
                 <tbody>
                     {% for chemical in object_list %}
                     <tr>
-                        <td><a href="{{ chemical.get_absolute_url }}{{ year_qs }}">{{ chemical.display_name }}</a></td>
+                        <td><a href="{{ chemical.get_absolute_url }}{{ scope_qs }}">{{ chemical.display_name }}</a></td>
                         <td>
                             <div class="tags">
                                 {% include 'pesticides/includes/classification-badges.html' with chemical=chemical hide_iarc=True %}

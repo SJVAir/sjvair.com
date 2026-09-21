@@ -2,12 +2,12 @@
 Filter toolbar over the map (top-left, beside the zoom buttons), in the
 style of the map toolbar mockup: one button-styled dropdown per filter,
 each showing its current selection. The pickers inside submit the form
-(an htmx swap) when a name is chosen or cleared; the county select submits
-on change. Lives inside the map wrapper so it comes along in expanded mode.
-Context: related (dict of resolved entities), county, county_choices, year, all_years, year_qs.
+(an htmx swap) when a name is chosen or cleared. The county is part of the
+explorer's scope (the scope bar), not a toolbar filter. Lives inside the map wrapper so it comes along in expanded mode.
+Context: related (dict of resolved entities), year, all_years, latest_year, county.
 {% endcomment %}
 <form method="GET" class="section-map-toolbar-filters" hx-trigger="submit, change delay:250ms" aria-label="Map filters">
-    {% if year_qs %}<input type="hidden" name="year" value="{% if all_years %}all{% else %}{{ year }}{% endif %}">{% endif %}
+    {% include 'pesticides/includes/scope-hidden.html' %}
     <div class="field is-grouped is-grouped-multiline">
         {% for kind, label, icon, icon_class in toolbar_kinds %}
         <div class="control">
@@ -34,26 +34,5 @@ Context: related (dict of resolved entities), county, county_choices, year, all_
             </div>
         </div>
         {% endfor %}
-        <div class="control">
-            <div class="dropdown section-map-toolbar-dropdown{% if county %} is-set{% endif %}">
-                <div class="dropdown-trigger">
-                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
-                        <span class="icon"><span class="fa-duotone fa-fw fa-map explorer-icon is-map" aria-hidden="true"></span></span>
-                        <span class="section-map-toolbar-label">{% if county %}{{ county.name }}{% else %}All counties{% endif %}</span>
-                        <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
-                    </button>
-                </div>
-                <div class="dropdown-menu" role="menu">
-                    <div class="dropdown-content">
-                        <div class="field">
-                            <label class="label" for="map-county">County</label>
-                            <div class="control"><div class="select is-fullwidth"><select id="map-county" name="county">
-                                {% for slug, name in county_choices %}<option value="{{ slug }}"{% if county and county.slug == slug %} selected{% endif %}>{{ name }}</option>{% endfor %}
-                            </select></div></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 </form>

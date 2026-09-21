@@ -29,8 +29,8 @@
                 <tbody>
                     {% for product in object_list %}
                     <tr>
-                        <td><a href="{{ product.get_absolute_url }}{{ year_qs }}">{{ product.name }}</a></td>
-                        <td><a href="{{ product.get_absolute_url }}{{ year_qs }}">{{ product.reg_number }}</a></td>
+                        <td><a href="{{ product.get_absolute_url }}{{ scope_qs }}">{{ product.name }}</a></td>
+                        <td><a href="{{ product.get_absolute_url }}{{ scope_qs }}">{{ product.reg_number }}</a></td>
                         <td>
                             <div class="tags">
                                 {% if product.fumigant %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" data-tooltip="{{ 'fumigant'|note_summary }}">Fumigant</a>{% endif %}

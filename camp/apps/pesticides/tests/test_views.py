@@ -8,6 +8,7 @@ from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideUseRollup, PesticideUseTotal, Product, ProductChemical,
 )
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
+from camp.apps.regions.models import Region
 
 
 class ChemicalListTests(RollupTestMixin, TestCase):
@@ -46,7 +47,7 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert response.context['year'] == 2022
         assert response.context['latest_year'] == 2023
         assert response.context['year_options'] == [2022, 2023]
-        assert response.context['year_qs'] == '?year=2022'
+        assert response.context['scope_qs'] == '?year=2022'
         assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
             ('SULFUR', 400.0), ('GLYPHOSATE', 80.0), ('CHLORPYRIFOS', 60.0),
         ]
@@ -57,22 +58,22 @@ class ChemicalListTests(RollupTestMixin, TestCase):
     def test_unknown_year_falls_back_to_latest(self):
         response = self.client.get(self.url, {'year': '1999'})
         assert response.context['year'] == 2023
-        assert response.context['year_qs'] == ''
+        assert response.context['scope_qs'] == ''
 
     def test_all_years_sums_every_loaded_year(self):
         response = self.client.get(self.url, {'year': 'all'})
         assert response.context['all_years'] is True
         assert response.context['year'] is None
         assert response.context['year_label'] == '2022\u20132023'
-        assert response.context['year_qs'] == '?year=all'
+        assert response.context['scope_qs'] == '?year=all'
         assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
             ('SULFUR', 900.0), ('GLYPHOSATE', 260.0), ('CHLORPYRIFOS', 120.0),
         ]
         assert response.context['summary_sentence'] == '3 chemicals used 2022\u20132023'
         html = response.content.decode()
         assert 'Lbs applied' in html  # the year lives in the summary line, not the column header
-        # The hero gains an All pill and a matching option in the mobile select.
-        assert '>All<' in html and '>All years</option>' in html
+        # The scope bar's year picker shows "All years" as the current choice.
+        assert 'aria-current="page">All years</a>' in html
         assert Chemical.objects.get(pk=1).get_absolute_url() + '?year=all' in html
 
     def test_all_years_with_a_county(self):
@@ -82,11 +83,28 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         ]
         assert response.context['summary_sentence'] == '2 chemicals used in Kern County 2022\u20132023'
 
-    def test_year_select_shows_the_resolved_year(self):
+    def test_scope_pickers_show_the_resolved_scope(self):
         html = self.client.get(self.url).content.decode()
-        assert '<option value="2023" selected>2023</option>' in html
-        html = self.client.get(self.url, {'year': 'all'}).content.decode()
-        assert '<option value="all" selected>All years</option>' in html
+        assert '<span class="explorer-scope-label">2023</span>' in html
+        assert '<span class="explorer-scope-label">All counties</span>' in html
+        assert 'aria-current="page">2023</a>' in html
+        html = self.client.get(self.url, {'year': 'all', 'county': 'kern'}).content.decode()
+        assert '<span class="explorer-scope-label">All years</span>' in html
+        assert '<span class="explorer-scope-label">Kern County</span>' in html
+        assert 'aria-current="page">Kern County</a>' in html
+        # Switching one keeps the other; the filter form carries both as hidden inputs.
+        assert 'href="?year=2022&amp;county=kern"' in html
+        assert 'href="?year=all&amp;county=fresno"' in html
+        assert '<input type="hidden" name="year" value="all">' in html
+        assert '<input type="hidden" name="county" value="kern">' in html
+
+    def test_county_scope_is_left_off_pages_narrower_than_a_county(self):
+        region = Region.objects.get(pk=9001)
+        html = self.client.get(reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug}), {'county': 'kern'}).content.decode()
+        assert 'data-scope="year"' in html
+        assert 'data-scope="county"' not in html
+        # The scope still rides along in the page's links.
+        assert 'county=kern' in html
 
     def test_default_sort_is_lbs_desc(self):
         response = self.client.get(self.url)
@@ -411,6 +429,9 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         response = self.client.get(reverse('pesticides:chemical-redirect', kwargs={'sqid': self.chemical.sqid}))
         assert response.status_code == 301
         assert response['Location'] == self.chemical.get_absolute_url()
+        # The scope carries over (the map's popup links arrive this way).
+        response = self.client.get(reverse('pesticides:chemical-redirect', kwargs={'sqid': self.chemical.sqid}), {'year': 2022, 'county': 'kern'})
+        assert response['Location'] == self.chemical.get_absolute_url() + '?year=2022&county=kern'
 
     def test_bad_sqid_404(self):
         assert self.client.get('/tools/pesticides/chemicals/nope/x/').status_code == 404
@@ -493,9 +514,10 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         # (including the by_month rollup aggregate for the future month
         # chart) plus the county map's geometry build, the by-county
         # region-name lookup, the by-county-table's in_bulk() for
-        # county_sqid, and the available-years lookup for the year picker;
-        # all cached after the first request).
-        with self.assertNumQueries(22):
+        # county_sqid, the available-years lookup for the year picker, and
+        # the county list for the county picker; all cached after the first
+        # request).
+        with self.assertNumQueries(23):
             self.client.get(self.chemical.get_absolute_url())
 
     def test_by_month_in_context(self):
@@ -635,10 +657,12 @@ class HomeTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert 'id="explorer"' in html
         assert 'hx-boost="true"' in html
-        # Only the body swaps; the hero's tabs and year picker refresh out of band.
+        # Only the body swaps; the hero's tabs refresh out of band. The scope
+        # bar is inside the body, so it swaps with the page it describes.
         assert 'hx-target="#explorer-body"' in html
-        assert 'hx-select-oob="#explorer-tabs,#year-picker"' in html
-        assert 'id="explorer-body"' in html and 'id="explorer-tabs"' in html and 'id="year-picker"' in html
+        assert 'hx-select-oob="#explorer-tabs"' in html
+        assert 'id="explorer-body"' in html and 'id="explorer-tabs"' in html
+        assert html.index('id="explorer-body"') < html.index('class="explorer-scope-pickers"')
         assert 'hx-select="#explorer-body"' in html
 
     def test_htmx_request_gets_full_page(self):
@@ -689,15 +713,17 @@ class MapPageTests(RollupTestMixin, TestCase):
         cache.clear()
         self.url = reverse('pesticides:map')
 
-    def test_has_entity_pickers_and_a_county_select(self):
+    def test_has_entity_pickers_and_carries_the_scope(self):
         html = self.client.get(self.url).content.decode()
         assert html.index('data-kind="product"') < html.index('data-kind="chemical"') < html.index('data-kind="commodity"')
-        assert '<select id="map-county" name="county">' in html
+        # The county is the explorer's scope, picked in the scope bar, not a toolbar filter.
+        assert 'name="county"' not in html.split('class="section-map-toolbar-filters"')[1].split('</form>')[0]
         chemical = Chemical.objects.get(pk=1)
         html = self.client.get(self.url, {'chemical': chemical.sqid, 'county': 'fresno', 'year': '2022'}).content.decode()
         assert 'Glyphosate <button type="button" class="delete is-small entity-picker-clear"' in html
-        assert '<option value="fresno" selected>' in html
         assert '<input type="hidden" name="year" value="2022">' in html
+        assert '<input type="hidden" name="county" value="fresno">' in html
+        assert 'Fresno County</span>' in html
 
     def test_renders_with_defaults(self):
         response = self.client.get(self.url)
