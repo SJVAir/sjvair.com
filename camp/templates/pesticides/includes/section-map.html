@@ -22,10 +22,12 @@
        data-zoom="{{ map_config.zoom }}"
        data-radius="{{ map_config.radius }}"
        data-show-notices="{{ map_config.show_notices }}"></div>
-  {# One toolbar row over the map (top-left, beside the zoom buttons): the page's
-     filters when it has them, then Options, then Expand. The legend sits
-     bottom-left. Everything is inside the wrapper so it comes along when the
-     map is expanded. #}
+  {% comment %}
+  One toolbar row over the map (top-left, beside the zoom buttons): the page's
+  filters when it has them, then Options, then Expand. The legend sits
+  bottom-left. Everything is inside the wrapper so it comes along when the
+  map is expanded.
+  {% endcomment %}
   <div class="section-map-toolbar" hidden>
     {% if map_toolbar %}{% include 'pesticides/includes/map-toolbar.html' %}{% endif %}
     <div class="section-map-toolbar-end">
