@@ -35,6 +35,24 @@ class RegionListTests(TestCase):
         assert len(data['data']) > 0
         assert set(data['data'][0].keys()) == {'id', 'name', 'slug', 'type', 'boundary'}
 
+    def test_list_boundary_omits_geometry(self):
+        request = self.factory.get(reverse('api:v2:regions:region-list'))
+        response = region_list(request)
+        data = get_response_data(response)
+        boundaries = [r['boundary'] for r in data['data'] if r['boundary'] is not None]
+        assert len(boundaries) > 0
+        for boundary in boundaries:
+            assert set(boundary.keys()) == {'id', 'version', 'bbox'}
+            assert 'geometry' not in boundary
+
+    def test_list_boundary_keeps_bbox(self):
+        request = self.factory.get(reverse('api:v2:regions:region-list'))
+        response = region_list(request)
+        data = get_response_data(response)
+        region = next(r for r in data['data'] if r['boundary'] is not None)
+        expected = Region.objects.get(sqid=region['id'])
+        assert region['boundary']['bbox'] == list(expected.boundary.geometry.extent)
+
     def test_filter_by_type(self):
         request = self.factory.get(reverse('api:v2:regions:region-list'), {'type': 'county'})
         response = region_list(request)
