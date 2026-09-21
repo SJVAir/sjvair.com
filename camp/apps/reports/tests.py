@@ -18,7 +18,8 @@ from camp.apps.qaqc.models import HealthCheck
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.regions.panels import panels_for
 from camp.apps.reports.base import REPORTS
-from camp.apps.reports.panels import CommunityCoveragePanel, CountyCoveragePanel
+from camp.apps.reports.panels import CommunityCoveragePanel, CountyCoveragePanel, OverlapPanel
+from camp.apps.reports.views import CoverageCommunity
 
 
 class StaffClientMixin:
@@ -717,6 +718,14 @@ class CommunityPanelTests(StaffClientMixin, TestCase):
         assert 'include_hidden=1' in links['Include hidden monitors'][0]
         assert 'sjvair_only=1' in links['Include hidden monitors'][0]  # keeps the other toggle
 
+    def test_scope_toggles_keep_other_panels_params(self):
+        links = {label: url for label, url, _on in self.panel(self.testville, range='90d', sjvair_only='1')['scope_links']}
+        assert 'range=90d' in links['Include hidden monitors']
+        assert 'sjvair_only=1' in links['Include hidden monitors']
+        assert 'include_hidden=1' in links['Include hidden monitors']
+        assert 'range=90d' in links['SJVAir monitors only']
+        assert 'sjvair_only' not in links['SJVAir monitors only']
+
     def test_county_islands_are_inside(self):
         outer = Polygon.from_bbox((-119.8, 36.7, -119.7, 36.8))
         hole = Polygon.from_bbox((-119.76, 36.74, -119.74, 36.76))
@@ -738,6 +747,12 @@ class CommunityPanelTests(StaffClientMixin, TestCase):
         assert 'Nearest counted monitor' not in content
         response = self.client.get(reverse('admin:regions_region_change', args=[self.emptyville.pk]))
         assert 'Nearest counted monitor' in response.content.decode()
+
+    def test_tiles(self):
+        request = RequestFactory().get('/')
+        request.user = self.user
+        panel = [p for p in panels_for(self.testville, request) if isinstance(p, CommunityCoveragePanel)][0]
+        assert panel.tiles() == [('Population', '4,650'), ('Counted monitors', '1'), ('Per 10k', '2.15')]
 
 
 class CountyPanelTests(StaffClientMixin, TestCase):
@@ -783,6 +798,14 @@ class CountyPanelTests(StaffClientMixin, TestCase):
         assert 'Browse in admin' not in content
         assert 'In Testville</a>' not in content  # counties link to the admin instead of listing monitors
 
+    def test_tiles(self):
+        request = RequestFactory().get('/')
+        request.user = self.user
+        panel = [p for p in panels_for(self.fresno, request) if isinstance(p, CountyCoveragePanel)][0]
+        tiles = dict(panel.tiles())
+        assert set(tiles) == {'Communities without a monitor', 'Population without a monitor'}
+        assert tiles['Communities without a monitor'] == str(panel.context['tiles']['uncovered'])
+
 
 class CoverageCommunityNoCESTests(StaffClientMixin, TestCase):
     fixtures = ['regions.yaml']
@@ -801,3 +824,51 @@ class CoverageCommunityNoCESTests(StaffClientMixin, TestCase):
         assert row['per_10k'] is None
         assert row['monitors'] == 1
         assert response.context['tiles']['uncovered_pct'] is None
+
+
+class OverlapPanelTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml', 'calenviroscreen.yaml']
+
+    def setUp(self):
+        super().setUp()
+        self.testville = make_place('Testville', Region.Type.CDP, (-119.8, 36.7, -119.7, 36.8), '9001')
+        self.faraway = make_place('Faraway', Region.Type.CITY, (-119.2, 35.3, -119.1, 35.4), '9002')  # Kern
+        self.district = Region.objects.create(name='Square Unified', slug='square-unified', type=Region.Type.SCHOOL_DISTRICT, external_id='sq')
+        self.district.boundary = Boundary.objects.create(region=self.district, version='latest',
+            geometry=MultiPolygon(Polygon.from_bbox((-119.9, 36.6, -119.6, 36.9))))
+        self.district.save()
+        self.monitor = PurpleAir.objects.create(name='In Testville', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
+        touch(self.monitor, timezone.now() - timedelta(minutes=5))
+
+    def test_lists_places_whose_centroid_is_inside(self):
+        request = RequestFactory().get('/')
+        request.user = self.user
+        panels = panels_for(self.district, request)
+        panel = [p for p in panels if isinstance(p, OverlapPanel)][0]
+        names = {row['name']: row for row in panel.context['communities']}
+        assert 'Testville' in names and 'Faraway' not in names
+        assert names['Testville']['monitors'] == 1
+        assert names['Testville']['detail_url'] == reverse('admin:regions_region_change', args=[self.testville.pk])
+        assert panel.tiles() == [('Communities inside', str(len(names)))]
+        assert [type(p).__name__ for p in panels][-1] == 'MonitorsPanel'  # overlap (30) sorts before monitors (40)
+
+    def test_admin_change_page_renders_the_panel(self):
+        response = self.client.get(reverse('admin:regions_region_change', args=[self.district.pk]))
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert '<h2>Communities inside</h2>' in content
+        assert f'<a href="{reverse("admin:regions_region_change", args=[self.testville.pk])}">Testville</a>' in content
+
+    def test_centroid_not_intersection_decides_membership(self):
+        # Both straddle the district's western edge (lon -119.9); only the one
+        # whose centroid falls inside counts, so an intersects rule would be wrong.
+        make_place('Westville', Region.Type.CITY, (-120.0, 36.7, -119.85, 36.8), '9003')
+        make_place('Edgeville', Region.Type.CITY, (-119.94, 36.7, -119.84, 36.8), '9004')
+        request = RequestFactory().get('/')
+        request.user = self.user
+        panel = [p for p in panels_for(self.district, request) if isinstance(p, OverlapPanel)][0]
+        # Both are communities the report knows about, so only the centroid rule separates them.
+        assert {'Westville', 'Edgeville'} <= {row['name'] for row in CoverageCommunity.build_rows(panel.scope)}
+        names = {row['name'] for row in panel.context['communities']}
+        assert 'Edgeville' in names
+        assert 'Westville' not in names

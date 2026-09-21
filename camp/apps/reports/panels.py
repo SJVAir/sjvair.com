@@ -3,6 +3,7 @@ Coverage panels for the Region admin: what the Coverage by Community report
 knows about one city, CDP or urban area, and the communities inside a county.
 """
 
+from django.contrib.humanize.templatetags.humanize import intcomma
 from django.db.models import Avg, Count, Max, Q, Sum
 from django.urls import reverse
 
@@ -63,6 +64,9 @@ class ScopedPanel(Panel):
     def scope_links(self):
         return self.scope.toggle_links(reverse('admin:regions_region_change', args=[self.region.pk]))
 
+    def controls(self):
+        return [('Counted monitors', 'toggle', self.scope_links())]
+
 
 @register
 class CommunityCoveragePanel(ScopedPanel):
@@ -71,6 +75,7 @@ class CommunityCoveragePanel(ScopedPanel):
     types = (Region.Type.CITY, Region.Type.CDP, Region.Type.URBAN_AREA)
     title = 'Coverage'
     template_name = 'admin/regions/panels/community.html'
+    order = 20
 
     @property
     def coverage_geometry(self):
@@ -98,6 +103,15 @@ class CommunityCoveragePanel(ScopedPanel):
             'scope_links': self.scope_links(),
         }
 
+    def tiles(self):
+        context = self.context
+        per_10k = context['per_10k']
+        return [
+            ('Population', intcomma(context['tracts']['population'])),
+            ('Counted monitors', intcomma(context['monitors'])),
+            ('Per 10k', '—' if per_10k is None else str(per_10k)),
+        ]
+
 
 @register
 class CountyCoveragePanel(ScopedPanel):
@@ -106,6 +120,7 @@ class CountyCoveragePanel(ScopedPanel):
     types = (Region.Type.COUNTY,)
     title = 'Communities and coverage'
     template_name = 'admin/regions/panels/county.html'
+    order = 20
 
     def get_context(self):
         county = self.region.name.removesuffix(' County')
@@ -129,3 +144,33 @@ class CountyCoveragePanel(ScopedPanel):
             'scope': self.scope,
             'scope_links': self.scope_links(),
         }
+
+    def tiles(self):
+        tiles = self.context['tiles']
+        return [
+            ('Communities without a monitor', str(tiles['uncovered'])),
+            ('Population without a monitor', intcomma(tiles['uncovered_population'])),
+        ]
+
+
+@register
+class OverlapPanel(ScopedPanel):
+    """Cities and CDPs whose centroid falls inside a district or zip code, with their coverage."""
+
+    types = (Region.Type.SCHOOL_DISTRICT, Region.Type.ZIPCODE, Region.Type.CONGRESSIONAL_DISTRICT,
+             Region.Type.STATE_ASSEMBLY, Region.Type.STATE_SENATE)
+    title = 'Communities inside'
+    template_name = 'admin/regions/panels/overlap.html'
+    order = 30
+
+    def get_context(self):
+        inside = set(CoverageCommunity.place_queryset()
+            .annotate(c=Centroid('boundary__geometry'))
+            .filter(c__within=self.geometry)
+            .values_list('pk', flat=True))
+        rows = [row for row in CoverageCommunity.build_rows(self.scope) if row['pk'] in inside]
+        rows.sort(key=lambda row: (-row['population'], row['name']))
+        return {'communities': rows, 'scope': self.scope, 'scope_links': self.scope_links()}
+
+    def tiles(self):
+        return [('Communities inside', str(len(self.context['communities'])))]

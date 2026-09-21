@@ -9,6 +9,20 @@ from camp.utils.gis import to_multipolygon
 
 # CLASSFP: https://www.census.gov/library/reference/code-lists/class-codes.html
 
+# Local renames the Census place layer has not caught up with yet, keyed by
+# GEOID. The source name is still recorded in the region's metadata
+# (`name` / `namelsad`), so nothing is lost when Census updates and an
+# entry here becomes a no-op.
+NAME_OVERRIDES = {
+    # Renamed from Squaw Valley by the Board on Geographic Names (2022) and
+    # Fresno County; the Census CDP is still "Squaw Valley" as of TIGER 2023.
+    '0673794': 'Yokuts Valley',
+}
+
+
+def place_name(geoid, source_name):
+    return NAME_OVERRIDES.get(str(geoid), source_name)
+
 
 class Command(CountyFilterMixin, BaseCommand):
     help = 'Import California cities (places) into the Region table'
@@ -35,9 +49,10 @@ class Command(CountyFilterMixin, BaseCommand):
                 else:
                     continue
 
+                name = place_name(row.GEOID, row.NAME)
                 region, created = Region.objects.import_or_update(
-                    name=row.NAME,
-                    slug=slugify(row.NAME),
+                    name=name,
+                    slug=slugify(name),
                     type=region_type,
                     external_id=row.GEOID,
                     version='2023',

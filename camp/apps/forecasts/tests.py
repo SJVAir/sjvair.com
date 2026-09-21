@@ -1,14 +1,18 @@
-from datetime import date, datetime, timezone as dt_timezone
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from io import StringIO
 from unittest.mock import Mock, patch
 
 from django.core.management import call_command
 from django.db import IntegrityError
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
+from django.utils import timezone
 
+from camp.apps.accounts.models import User
 from camp.apps.regions.models import Region
+from camp.apps.regions.panels import panels_for
 
 from .models import Forecast
+from .panels import ForecastPanel
 from .tasks import fetch_forecasts
 
 
@@ -351,3 +355,46 @@ class FetchForecastsCommandTests(TestCase):
         call_command('fetch_forecasts', stdout=out)
         assert Forecast.objects.count() == 18
         assert 'Done' in out.getvalue()
+
+
+class ForecastPanelTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        self.user = User.objects.create_superuser(email='admin@example.com', password='password', phone='+15595551234', full_name='Admin')
+        self.county = Region.objects.counties().get(name='Fresno County')
+        self.today = timezone.localdate()
+        stale = self.today - timedelta(days=1)
+        for issued, pm, o3 in ((stale, 120, 60), (self.today, 62, 48)):
+            for pollutant, aqi in (('PM2.5', pm), ('O3', o3)):
+                for offset in (0, 1):
+                    Forecast.objects.create(
+                        region=self.county, zone_name='Fresno', forecast_date=self.today + timedelta(days=offset),
+                        issued_date=issued, published_at=timezone.now(), aqi_value=aqi + offset,
+                        aqi_category='Moderate' if aqi + offset < 101 else 'Unhealthy for Sensitive Groups',
+                        pollutant=pollutant, burn_status='burn' if offset else 'no-burn', burn_status_text='No burning',
+                        air_alert=offset == 1, air_alert_start=self.today if offset else None,
+                    )
+
+    def panel(self):
+        request = RequestFactory().get('/')
+        request.user = self.user
+        return [p for p in panels_for(self.county, request) if isinstance(p, ForecastPanel)][0]
+
+    def test_latest_issue_grouped_by_day(self):
+        context = self.panel().context
+        assert context['issued'] == self.today
+        assert [day['date'] for day in context['days']] == [self.today, self.today + timedelta(days=1)]
+        today = {item['pollutant']: item for item in context['days'][0]['items']}
+        assert today['PM2.5']['aqi'] == 62 and today['O3']['aqi'] == 48  # not the stale 120/60
+        assert today['PM2.5']['color']
+        assert context['days'][1]['items'][0]['alert'] is True
+
+    def test_tile_is_todays_worst_category(self):
+        assert self.panel().tiles() == [('Forecast today (AQI 62)', 'Moderate')]
+
+    def test_no_forecast(self):
+        Forecast.objects.all().delete()
+        panel = self.panel()
+        assert panel.context['days'] == []
+        assert panel.tiles() == []

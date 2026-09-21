@@ -1,6 +1,5 @@
 {% load humanize %}
 <p>{{ type_label }} in {{ county }} County.{% if has_holes %} This boundary has holes (county islands); for coverage they count as part of the community.{% endif %}</p>
-{% include "admin/regions/panels/_scope_links.html" %}
 <div class="panel-stats">
 <table>
     <caption>Coverage</caption>

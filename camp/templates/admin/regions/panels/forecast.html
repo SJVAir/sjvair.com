@@ -1,0 +1,20 @@
+{% if days %}
+<div class="panel-stats">
+{% for day in days %}
+<table>
+    <caption>{{ day.date|date:"l, M j" }}</caption>
+    {% for item in day.items %}
+    <tr><th>{{ item.label }}</th>
+        <td><span class="swatch" style="background: {{ item.color }};"></span>{{ item.category }} (AQI {{ item.aqi }})</td></tr>
+    {% endfor %}
+    {% with first=day.items.0 %}
+    {% if first.burn %}<tr><th>Burn status</th><td>{{ first.burn }}</td></tr>{% endif %}
+    {% if first.alert %}<tr><th>Air alert</th><td>{{ first.alert_start|date:"M j" }}{% if first.alert_end %} – {{ first.alert_end|date:"M j" }}{% endif %}</td></tr>{% endif %}
+    {% endwith %}
+</table>
+{% endfor %}
+</div>
+<p class="help">Issued {{ issued|date:"M j" }} by the San Joaquin Valley APCD.</p>
+{% else %}
+<p>No forecast on file for this county. The daily forecast task fills this in once the SJVAPCD zones are imported.</p>
+{% endif %}
