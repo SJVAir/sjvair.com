@@ -891,10 +891,12 @@
     });
     if (target) {
       this.map.fitBounds(target.getBounds(), { padding: [20, 20], animate: !this.reducedMotion });
-    } else if (this.countyFitted || (this.data.fit === 'valley' && !this.valleyFitted)) {
+    } else if (this.data.fit === 'valley' && (this.countyFitted || !this.valleyFitted)) {
       // Back out to the valley after a county filter, or frame it on first
-      // load when nothing else (a place, a section) frames the map. The
-      // first-load fit snaps rather than animating out from the placeholder view.
+      // load -- only on pages framed on the valley. A place or section page
+      // frames itself (adopt() sets its view), and clearing the county
+      // there must not zoom back out over it. The first-load fit snaps
+      // rather than animating out from the placeholder view.
       var animate = !!this.valleyFitted && !this.reducedMotion;
       this.map.fitBounds(this.countiesLayer.getBounds(), { padding: [20, 20], animate: animate });
       this.valleyFitted = true;
