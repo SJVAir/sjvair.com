@@ -1732,7 +1732,7 @@ class RegionPage(vanilla.TemplateView):
         year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         area = places.region_area(self.region)
         context = places.place_context(area, year, all_years)
-        within = places.regions_within(self.region) if self.region.type == Region.Type.COUNTY else None
+        within = places.regions_within(self.region) if self.region.boundary_id else None
         return super().get_context_data(
             section=None,
             years=stats.years_loaded(),

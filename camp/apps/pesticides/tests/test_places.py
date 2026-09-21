@@ -133,10 +133,21 @@ class RegionsWithinTests(RollupTestMixin, TestCase):
 
     def test_county_lists_places_districts_and_zips_inside_it(self):
         within = places.regions_within(self.fresno)
+        assert within['counties'] == []
         assert [p['name'] for p in within['places']] == ['Selma']
         assert '/selma/' in within['places'][0]['url']
         assert [d['name'] for d in within['school_districts']] == ['Selma Unified']
         assert [z['name'] for z in within['zipcodes']] == ['93662']
+
+    def test_other_regions_list_what_overlaps_them_and_their_county(self):
+        selma = Region.objects.get(slug='selma')
+        within = places.regions_within(selma)
+        assert [c['name'] for c in within['counties']] == ['Fresno County']
+        # Itself and its same-name place twin are left out; Tehachapi is elsewhere.
+        assert within['places'] == []
+        assert [d['name'] for d in within['school_districts']] == ['Selma Unified']
+        assert [z['name'] for z in within['zipcodes']] == ['93662']
+        assert within['any'] is True
 
     def test_county_page_renders_the_lists(self):
         html = self.client.get(reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})).content.decode()

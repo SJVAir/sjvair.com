@@ -148,47 +148,60 @@ def point_area(lat, lng, radius, label=''):
     return Area(label=label, kind='point', point=point, radius=radius, section_pks=section_pks)
 
 
-def regions_within(county):
+def regions_within(region):
     """
-    Quick-navigation lists for a county page: the cities and places, school
-    districts, and ZIP codes whose boundary centroid falls inside the county.
-    Each entry is {'name', 'url'}; cities and places are merged by name (the
-    synthetic Place regions duplicate city names). Cached a day per county.
+    Quick-navigation lists for a place page: the counties, cities and places,
+    school districts, and ZIP codes related to `region`. For a county that is
+    everything whose boundary centroid falls inside it; for any other region
+    it is everything whose boundary overlaps it (sharing only an edge doesn't
+    count), plus the county or counties it lies in. The region itself and
+    its same-name twin (a city and its synthetic place) are left out. Each
+    entry is {'name', 'url'}; cities and places are merged by name. Cached a
+    day per region.
     """
     from django.contrib.gis.db.models.functions import Centroid
 
-    key = f'{WITHIN_KEY}:{county.pk}'
+    key = f'{WITHIN_KEY}:{region.pk}'
     data = cache.get(key)
     if data is not None:
         return data
-    geometry = county.boundary.geometry
-    rows = (
-        Region.objects
-        .filter(
-            type__in=(Region.Type.CITY, Region.Type.PLACE, Region.Type.SCHOOL_DISTRICT, Region.Type.ZIPCODE),
-            boundary__isnull=False,
+    geometry = region.boundary.geometry
+    kinds = (Region.Type.CITY, Region.Type.PLACE, Region.Type.SCHOOL_DISTRICT, Region.Type.ZIPCODE)
+    if region.type == Region.Type.COUNTY:
+        rows = (
+            Region.objects.filter(type__in=kinds, boundary__isnull=False)
+            .annotate(centroid=Centroid('boundary__geometry'))
+            .filter(centroid__within=geometry)
         )
-        .annotate(centroid=Centroid('boundary__geometry'))
-        .filter(centroid__within=geometry)
-        .order_by('name')
-    )
-    groups = {'places': {}, 'school_districts': [], 'zipcodes': []}
-    for region in rows:
+    else:
+        rows = (
+            Region.objects.filter(type__in=kinds + (Region.Type.COUNTY,), boundary__isnull=False)
+            .filter(boundary__geometry__intersects=geometry)
+            .exclude(boundary__geometry__touches=geometry)
+            .exclude(pk=region.pk)
+            .exclude(type__in=(Region.Type.CITY, Region.Type.PLACE), name=region.name)
+        )
+    groups = {'counties': [], 'places': {}, 'school_districts': [], 'zipcodes': []}
+    for other in rows.order_by('name'):
         entry = {
-            'name': region.name,
-            'url': reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug}),
+            'name': other.name,
+            'url': reverse('pesticides:region', kwargs={'sqid': other.sqid, 'slug': other.slug}),
         }
-        if region.type == Region.Type.SCHOOL_DISTRICT:
+        if other.type == Region.Type.COUNTY:
+            groups['counties'].append(entry)
+        elif other.type == Region.Type.SCHOOL_DISTRICT:
             groups['school_districts'].append(entry)
-        elif region.type == Region.Type.ZIPCODE:
+        elif other.type == Region.Type.ZIPCODE:
             groups['zipcodes'].append(entry)
-        elif region.type == Region.Type.CITY or region.name not in groups['places']:
+        elif other.type == Region.Type.CITY or other.name not in groups['places']:
             # A city wins over the synthetic place of the same name.
-            groups['places'][region.name] = entry
+            groups['places'][other.name] = entry
     data = {
+        'counties': groups['counties'],
         'places': [groups['places'][name] for name in sorted(groups['places'])],
         'school_districts': groups['school_districts'],
         'zipcodes': groups['zipcodes'],
+        'any': bool(groups['counties'] or groups['places'] or groups['school_districts'] or groups['zipcodes']),
     }
     cache.set(key, data, WITHIN_TTL)
     return data
