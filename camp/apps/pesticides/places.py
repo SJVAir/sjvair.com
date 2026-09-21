@@ -28,7 +28,7 @@ from camp.apps.regions.models import Region
 PLACE_REGION_TYPES = (
     Region.Type.COUNTY, Region.Type.CITY, Region.Type.ZIPCODE, Region.Type.PLACE, Region.Type.SCHOOL_DISTRICT,
 )
-WITHIN_KEY = 'pesticides:within'
+WITHIN_KEY = 'pesticides:within:v2'  # bumped when the shape of the cached entry changes
 WITHIN_TTL = 60 * 60 * 24
 RADIUS_CHOICES = (1, 3, 5)
 AREA_SECTIONS_TTL = 60 * 60 * 24
