@@ -76,8 +76,10 @@
 Under the scope bar, and inside the swapped body with it: with the toggle on,
 every number on the page below is concern-only while the headings, stat rows
 and chart titles still read as unscoped. This is the one place that says so.
+Not on a page the scope can't narrow (concern_excluded) -- that one renders
+unscoped and carries its own note saying why, which this would contradict.
 {% endcomment %}
-{% if concern %}
+{% if concern and not concern_excluded %}
 <div class="explorer-scope-banner">
     <div class="container">
         <span class="icon"><span class="fa-duotone fa-fw fa-triangle-exclamation explorer-icon is-concern" aria-hidden="true"></span></span>

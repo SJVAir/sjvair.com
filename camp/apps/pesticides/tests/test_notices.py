@@ -103,6 +103,24 @@ class NoticeDetailTests(TestCase):
         ctx = self.client.get(reverse('pesticides:notice-detail', kwargs={'sqid': notice.sqid})).context
         assert ctx['is_active'] is False
 
+    def test_scope_bar_matches_the_notices_list(self):
+        # The toggle and the county picker render here as they do on the
+        # list; the year picker doesn't apply to a scheduled notice.
+        notice = PesticideNotice.objects.get(pk=2)
+        url = reverse('pesticides:notice-detail', kwargs={'sqid': notice.sqid})
+        response = self.client.get(url)
+        assert response.context['scope_concern'] is True
+        assert 'year_options' not in response.context
+        html = response.content.decode()
+        assert 'explorer-scope-toggle' in html
+        assert 'Chemicals of concern' in html
+        assert 'data-scope="county"' in html
+        assert 'data-scope="year"' not in html
+        # And it reflects the scope it was asked for.
+        html = self.client.get(url, {'concern': '1', 'county': 'kern'}).content.decode()
+        assert 'explorer-scope-toggle is-set' in html
+        assert 'Showing chemicals of concern only' in html
+
     def test_404(self):
         assert self.client.get(reverse('pesticides:notice-detail', kwargs={'sqid': 'nope'})).status_code == 404
 

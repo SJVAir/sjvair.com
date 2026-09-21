@@ -1801,8 +1801,19 @@ class NoticeDetail(vanilla.DetailView):
         else:
             records_url = reverse('pesticides:records')
 
+        # Same scope context as the notices list: the year picker doesn't
+        # apply to a notice (it's scheduled, not reported by year), so
+        # year_options comes back out, and the county picker and the
+        # chemicals-of-concern toggle stay. Without this the scope bar here
+        # would be breadcrumbs only, with the toggle appearing and
+        # disappearing between the list and a notice on it.
+        year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
+        scope = year_context(year, all_years, scope_county(self.request), concern=scope_concern(self.request))
+        scope.pop('year_options', None)
+
         return super().get_context_data(
             section='notices',
+            **scope,
             is_active=is_active,
             window_end=window_end,
             map_config=map_config,

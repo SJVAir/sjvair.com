@@ -1004,6 +1004,18 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
         assert reverse('pesticides:about') + '#concern' in html
 
+    def test_banner_stays_off_a_page_the_scope_cant_narrow(self):
+        # The page renders unscoped and says why; a banner claiming the
+        # numbers are concern-only would contradict its own note.
+        sulfur = Chemical.objects.get(name='SULFUR')
+        html = self.client.get(sulfur.get_absolute_url(), {'concern': '1'}).content.decode()
+        assert 'Showing chemicals of concern only' not in html
+        assert "so the chemicals-of-concern scope doesn't narrow this page" in html
+        # It's still there on a page the scope does narrow.
+        glyphosate = Chemical.objects.get(name='GLYPHOSATE')
+        html = self.client.get(glyphosate.get_absolute_url(), {'concern': '1'}).content.decode()
+        assert 'Showing chemicals of concern only' in html
+
     def test_product_page_without_a_concern_chemical_explains_itself(self):
         dust = Product.objects.get(name='SULFUR DUST')
         response = self.client.get(dust.get_absolute_url(), {'concern': '1'})
