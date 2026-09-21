@@ -122,3 +122,6 @@ class LocationList(CachedEndpointMixin, LocationListBase):
     `county` (a county slug) keeps only the locations in that county.
     """
     cache_timeout = 60 * 60 * 24
+    # v2: the GeoJSON property names changed. A day-long cache would keep
+    # handing the map the old ones long after the deploy.
+    cache_key_version = 2

@@ -141,6 +141,27 @@ class CachedEndpointTests(TestCase):
         assert Endpoint(ok_request).get(ok_request)['X-Cache-Status'] == 'HIT'
         assert len(calls) == 3
 
+    def test_cache_key_version_separates_the_entries(self):
+        # Bumping the version has to leave the old entry unread: a day-long
+        # cache would otherwise keep serving the shape the deploy changed.
+        class Endpoint(CachedEndpointMixin):
+            def __init__(self, request, version=None):
+                self.request = request
+                self.kwargs = {}
+                if version is not None:
+                    self.cache_key_version = version
+
+        request = self.factory.get('/x/?foo=1')
+        unversioned = Endpoint(request).get_view_cache_key()
+        v1 = Endpoint(request, version=1).get_view_cache_key()
+        v2 = Endpoint(request, version=2).get_view_cache_key()
+
+        assert '|v:' not in unversioned
+        assert '|v:1|' in v1
+        assert len({unversioned, v1, v2}) == 3
+        # The version is the only thing that moved.
+        assert v1.replace('|v:1', '') == unversioned
+
     def test_prewarm(self):
         results = CachedEndpointMixin.prewarm_all_registered()
         assert len(results)

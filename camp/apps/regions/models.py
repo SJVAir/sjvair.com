@@ -176,6 +176,15 @@ class Boundary(TimeStampedModel):
         )
 
 
+def _point_ewkb(point):
+    """
+    A comparable snapshot of a point. GEOSGeometry is mutable -- assigning
+    `location.point.coords` moves the very object a saved reference points
+    at -- so the snapshot has to be its bytes, not the geometry itself.
+    """
+    return point.ewkb if point is not None else None
+
+
 class Location(TimeStampedModel):
     """
     A point of interest near which pesticide use matters: schools and child
@@ -251,8 +260,11 @@ class Location(TimeStampedModel):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # The point the region links were last resolved against: nothing
-        # yet for a new instance, the loaded point for a row from the DB.
+        # The point the region links were last resolved against, as EWKB:
+        # nothing yet for a new instance, the loaded point for a row from
+        # the DB. It's a snapshot rather than the Point itself because a
+        # Point is mutable -- holding a reference to the live one would
+        # compare it against itself and never see a move.
         self._resolved_point = None
 
     @classmethod
@@ -263,7 +275,7 @@ class Location(TimeStampedModel):
         actually moved and only then pay for re-resolving them.
         """
         instance = super().from_db(db, field_names, values)
-        instance._resolved_point = instance.__dict__.get('point')
+        instance._resolved_point = _point_ewkb(instance.__dict__.get('point'))
         return instance
 
     def __str__(self):
@@ -275,6 +287,7 @@ class Location(TimeStampedModel):
         work on every write: a new row resolves whatever links it wasn't
         given, and an existing row re-resolves only when its point moved.
         """
+        resolved = False
         if self._state.adding:
             # An importer that resolved the links itself has already paid
             # for the spatial queries; don't run them a second time.
@@ -283,20 +296,39 @@ class Location(TimeStampedModel):
                     if getattr(self, f'{field}_id') is None]
                 if unset:
                     self.resolve_regions(fields=unset)
+                    resolved = True
         elif self._point_changed():
             self.resolve_regions()
+            resolved = True
+
+        if resolved:
+            # A caller saving a named subset of fields ("just the point")
+            # doesn't know we re-resolved the links; without adding them the
+            # new links live on the instance and never reach the database.
+            kwargs['update_fields'] = self._with_region_fields(
+                kwargs.get('update_fields'))
 
         super().save(*args, **kwargs)
-        self._resolved_point = self.__dict__.get('point')
+        self._resolved_point = _point_ewkb(self.__dict__.get('point'))
+
+    def _with_region_fields(self, update_fields):
+        if update_fields is None:
+            return None
+        names = list(update_fields)
+        for field in self.REGION_FIELDS:
+            name = f'{field}_id'
+            if name not in names:
+                names.append(name)
+        return names
 
     def _point_changed(self):
-        current = self.__dict__.get('point')
+        current = _point_ewkb(self.__dict__.get('point'))
         if current is None:
             # Deferred and never touched: it can't have moved.
             return False
         if self._resolved_point is None:
             return True
-        return current.ewkb != self._resolved_point.ewkb
+        return current != self._resolved_point
 
     def resolve_regions(self, cds_code=None, fields=None):
         """
@@ -319,7 +351,7 @@ class Location(TimeStampedModel):
         if 'school_district' in fields:
             self.school_district = self._school_district_for(cds_code)
 
-        self._resolved_point = self.point
+        self._resolved_point = _point_ewkb(self.point)
         return self
 
     def _containing(self, **kwargs):
@@ -370,8 +402,14 @@ class Location(TimeStampedModel):
         return self.county.name if self.county_id else None
 
     def get_city(self):
-        """The city Region's name, else the city the source gave us."""
-        return self.city.name if self.city_id else self.city_name
+        """
+        The city as people write it: the source's postal city, else the linked
+        city Region. The link is geographic and may be a census-designated
+        place inside a larger city's sphere (Old Fig Garden, Sunnyside) that
+        nobody would call their school's city; the postal city is the one
+        parents and reporters know.
+        """
+        return self.city_name or (self.city.name if self.city_id else '')
 
     def get_zipcode(self):
         return self.zipcode.name if self.zipcode_id else self.zip

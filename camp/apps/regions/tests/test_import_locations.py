@@ -2,6 +2,7 @@ import csv
 import os
 import tempfile
 
+from contextlib import ExitStack
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -456,9 +457,14 @@ class ChildCareImportTests(TestCase):
 class DownloadGuardTests(TestCase):
     config = {
         'label': 'Test source',
-        'url': 'https://example.com/file.txt',
+        'ckan_dataset': 'test-source',
         'page_url': 'https://example.com/downloads',
     }
+
+    def source_url(self):
+        """Skip the CKAN lookup: these tests are about the download itself."""
+        return mock.patch.object(locations, '_source_url',
+            return_value='https://example.com/file.txt')
 
     def response(self, body, content_type='text/html; charset=utf-8', status_code=200):
         response = mock.Mock()
@@ -468,8 +474,12 @@ class DownloadGuardTests(TestCase):
         response.iter_content.return_value = iter([body])
         return response
 
-    def read(self, config, response):
-        with mock.patch.object(locations.requests, 'get', return_value=response):
+    def read(self, config, response, resolve_url=True):
+        with ExitStack() as stack:
+            stack.enter_context(
+                mock.patch.object(locations.requests, 'get', return_value=response))
+            if resolve_url:
+                stack.enter_context(self.source_url())
             with locations._open_source(config, None) as handle:
                 return handle.read()
 
@@ -508,7 +518,7 @@ class DownloadGuardTests(TestCase):
         ready = self.response(b'CDS Code,School Name\n1,Orchard High\n',
             content_type='text/csv')
 
-        with mock.patch.object(locations, 'time') as clock:
+        with self.source_url(), mock.patch.object(locations, 'time') as clock:
             with mock.patch.object(locations.requests, 'get',
                     side_effect=[pending, ready]) as get:
                 with locations._open_source(self.config, None) as handle:
@@ -522,7 +532,7 @@ class DownloadGuardTests(TestCase):
         pending = [self.response(b'', status_code=202)
             for _ in range(locations.DOWNLOAD_ATTEMPTS)]
 
-        with mock.patch.object(locations, 'time'):
+        with self.source_url(), mock.patch.object(locations, 'time'):
             with mock.patch.object(locations.requests, 'get', side_effect=pending):
                 with pytest.raises(locations.DownloadError) as excinfo:
                     with locations._open_source(self.config, None) as handle:
@@ -534,11 +544,11 @@ class DownloadGuardTests(TestCase):
         response = mock.Mock()
         response.raise_for_status.return_value = None
         response.json.side_effect = ValueError('not json')
-        config = {'label': 'Test CKAN source', 'url': None,
+        config = {'label': 'Test CKAN source',
             'ckan_dataset': 'nope', 'page_url': 'https://example.com/dataset'}
 
         with pytest.raises(locations.DownloadError):
-            self.read(config, response)
+            self.read(config, response, resolve_url=False)
 
     def test_a_ckan_csv_that_serves_html_is_a_failed_download(self):
         lookup = mock.Mock()
@@ -547,7 +557,7 @@ class DownloadGuardTests(TestCase):
             {'format': 'CSV', 'url': 'https://example.com/facilities.csv'},
         ]}}
         page = self.response(b'<html>Blocked</html>')
-        config = {'label': 'Test CKAN source', 'url': None,
+        config = {'label': 'Test CKAN source',
             'ckan_dataset': 'yep', 'page_url': 'https://example.com/dataset'}
 
         with mock.patch.object(locations.requests, 'get', side_effect=[lookup, page]):

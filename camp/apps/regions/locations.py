@@ -138,11 +138,6 @@ GRADE_WORDS = {
 # A source that answers a download with a web page is a bot wall, not data.
 HTML_PREFIXES = (b'<html', b'<!doctype')
 
-# data.ca.gov's CDE datasets are ArcGIS Hub exports, generated on demand: a
-# request that arrives while one is being rebuilt is answered 202 with a
-# short "still processing" body rather than the file. That isn't an error
-# and isn't HTML either, so without this it reads as a successful import of
-# zero schools. Wait it out instead.
 # What the public schools' district cross-check found, tallied per import:
 # the file's district replaced a different spatial one, filled in where the
 # point fell outside every district we have, or named a district we don't
@@ -156,6 +151,11 @@ DISTRICT_TALLIES = (
     (DISTRICT_UNKNOWN, 'unknown district'),
 )
 
+# data.ca.gov's CDE datasets are ArcGIS Hub exports, generated on demand: a
+# request that arrives while one is being rebuilt is answered 202 with a
+# short "still processing" body rather than the file. That isn't an error
+# and isn't HTML either, so without this it reads as a successful import of
+# zero schools. Wait it out instead.
 DOWNLOAD_PENDING_STATUSES = (202,)
 DOWNLOAD_ATTEMPTS = 5
 DOWNLOAD_RETRY_WAIT = 10  # seconds, doubling per attempt
@@ -616,7 +616,6 @@ SOURCES = {
         # cde.ca.gov itself answers server-side downloads with a JS bot wall
         # (the same one that blocks the OEHHA Prop 65 list). CDE publishes
         # the same schools as a point file on data.ca.gov, which doesn't.
-        'url': None,
         'ckan_dataset': 'california-public-schools-2025-26',
         'page_url': 'https://data.ca.gov/dataset/california-public-schools-2025-26',
         'parse': parse_cde_public,
@@ -624,7 +623,6 @@ SOURCES = {
     'cde-private': {
         'label': 'CDE private schools (2024-25)',
         'type': Location.Type.PRIVATE_SCHOOL,
-        'url': None,
         'ckan_dataset': 'california-private-schools-2024-25',
         'page_url': 'https://data.ca.gov/dataset/california-private-schools-2024-25',
         'parse': parse_cde_private,
@@ -632,7 +630,6 @@ SOURCES = {
     'cdss-ccl': {
         'label': 'CDSS community care licensing facilities',
         'type': Location.Type.CHILD_CARE,
-        'url': None,
         'ckan_dataset': 'community-care-licensing-facilities1',
         'page_url': 'https://data.ca.gov/dataset/community-care-licensing-facilities1',
         'parse': parse_cdss_ccl,
@@ -642,28 +639,24 @@ SOURCES = {
 CKAN_PACKAGE_URL = 'https://data.ca.gov/api/3/action/package_show'
 
 
-def has_download(source):
-    """Can this source fetch its own file, or does it need --path?"""
-    config = SOURCES[source]
-    return bool(config.get('url') or config.get('ckan_dataset'))
-
-
 def _source_url(config):
-    if config.get('url'):
-        return config['url']
+    """
+    The CSV's URL, looked up in the source's CKAN package. The package lists
+    its resources by format, and a package that no longer offers a CSV is a
+    changed dataset rather than a transient failure -- say so instead of
+    importing nothing.
+    """
+    try:
+        response = requests.get(CKAN_PACKAGE_URL,
+            params={'id': config['ckan_dataset']}, timeout=60)
+        response.raise_for_status()
+        resources = response.json().get('result', {}).get('resources', [])
+    except (requests.RequestException, ValueError) as exc:
+        raise DownloadError(f'Could not look up {config["label"]}: {exc}')
 
-    dataset = config.get('ckan_dataset')
-    if dataset:
-        try:
-            response = requests.get(CKAN_PACKAGE_URL, params={'id': dataset}, timeout=60)
-            response.raise_for_status()
-            resources = response.json().get('result', {}).get('resources', [])
-        except (requests.RequestException, ValueError) as exc:
-            raise DownloadError(f'Could not look up {config["label"]}: {exc}')
-
-        for resource in resources:
-            if (resource.get('format') or '').upper() == 'CSV' and resource.get('url'):
-                return resource['url']
+    for resource in resources:
+        if (resource.get('format') or '').upper() == 'CSV' and resource.get('url'):
+            return resource['url']
 
     raise DownloadError(
         f'No download URL for {config["label"]}: get the file from'
@@ -839,7 +832,7 @@ def _cross_check_district(location, district_cds):
 
     prefix = str(district_cds)[:7]
     current = location.school_district
-    if current is not None and current.external_id[:7] == prefix:
+    if current is not None and (current.external_id or '')[:7] == prefix:
         return None
 
     district = Region.objects.filter(

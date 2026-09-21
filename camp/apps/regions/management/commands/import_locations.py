@@ -29,15 +29,6 @@ class Command(BaseCommand):
             raise CommandError('--path requires a single --source.')
 
         for source in sources:
-            if not path and not locations.has_download(source):
-                page_url = locations.SOURCES[source].get('page_url') or 'the source site'
-                message = (f'{source}: no download available; get the file from'
-                    f' {page_url} and pass it with --path.')
-                if len(sources) == 1:
-                    raise CommandError(message)
-                self.stdout.write(message)
-                continue
-
             try:
                 counts = locations.import_source(source, path=path,
                     geocode=not options['no_geocode'])

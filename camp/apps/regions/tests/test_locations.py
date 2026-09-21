@@ -188,6 +188,33 @@ class LocationSaveTests(TestCase):
         assert location.school_district == self.district
         assert location.county_id == 9001
 
+    def test_saving_only_the_point_still_persists_the_new_links(self):
+        # A caller narrowing the write to update_fields=['point'] doesn't
+        # know the links were re-resolved; without them in the list the new
+        # links would live on the instance and never reach the database.
+        location = self.create()
+        location = Location.objects.get(pk=location.pk)
+        location.point = self.outside
+        location.save(update_fields=['point'])
+
+        location.refresh_from_db()
+        assert location.county is None
+        assert location.city is None
+        assert location.school_district is None
+
+    def test_moving_the_point_in_place_re_resolves_the_links(self):
+        # GEOSGeometry is mutable: assigning .coords moves the same object
+        # the instance snapshotted, so a snapshot that isn't a copy would
+        # compare the point against itself and see no move.
+        location = self.create()
+        location = Location.objects.get(pk=location.pk)
+        location.point.coords = (self.outside.x, self.outside.y)
+        location.save()
+
+        location.refresh_from_db()
+        assert location.county is None
+        assert location.school_district is None
+
 
 class LocationAccessorTests(TestCase):
     fixtures = ['pesticides-explorer']
@@ -208,8 +235,8 @@ class LocationAccessorTests(TestCase):
         assert location.sqid
         assert str(location) == 'Selma High'
 
-    def test_accessors_prefer_the_linked_regions(self):
-        location = Location(
+    def linked_location(self, **kwargs):
+        fields = dict(
             type=Location.Type.PUBLIC_SCHOOL,
             name='Selma High',
             point=self.point,
@@ -221,11 +248,29 @@ class LocationAccessorTests(TestCase):
             school_district=make_district('Selma Unified', 'selma-unified',
                 '10621170000000', geometry=None),
         )
+        fields.update(kwargs)
+        return Location(**fields)
+
+    def test_accessors_prefer_the_linked_regions(self):
+        location = self.linked_location()
 
         assert location.get_county() == 'Fresno County'
-        assert location.get_city() == 'Selma'
         assert location.get_zipcode() == '93662'
         assert location.get_school_district() == 'Selma Unified'
+
+    def test_city_is_the_postal_city_over_the_linked_region(self):
+        # The link can be a census-designated place inside a bigger city's
+        # sphere (Old Fig Garden, Sunnyside) that nobody calls their city.
+        location = self.linked_location(
+            city=make_region(Region.Type.CDP, 'Old Fig Garden', 'old-fig-garden', '0653490'),
+        )
+
+        assert location.get_city() == 'SELMA'
+
+    def test_city_falls_back_to_the_linked_region_without_a_postal_city(self):
+        location = self.linked_location(city_name='')
+
+        assert location.get_city() == 'Selma'
 
     def test_accessors_fall_back_to_the_source_strings(self):
         location = Location(city_name='Selma', zip='93662-1000')
