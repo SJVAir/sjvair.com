@@ -6,7 +6,11 @@ county `Region` rows (imported by `import_counties`); this module carries the
 name forms and the point lookup that reads those rows.
 """
 
+import logging
+
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 # Short names, as stored on Monitor.county: 'Fresno', 'Kern', ...
 COUNTY_NAMES = sorted(settings.SJVAIR_COUNTIES)
@@ -28,4 +32,6 @@ def county_name(point, default=''):
         .filter(boundary__geometry__contains=point)
         .values_list('name', flat=True)
         .first())
+    if name is None and not Region.objects.counties().exists():
+        logger.warning('No county Regions are loaded; run import_counties. County lookups return %r.', default)
     return name.removesuffix(' County') if name else default

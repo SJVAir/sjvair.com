@@ -11,6 +11,7 @@ from unittest.mock import patch
 from camp.apps.entries import models as entry_models
 from camp.apps.monitors.models import LatestEntry, Monitor
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.regions.counties import county_name
 from camp.utils.datetime import make_aware
 
 
@@ -255,45 +256,67 @@ class CreateEntryUpsertTests(TestCase):
 
 
 class MonitorSaveCountyLookupTests(TestCase):
+    """Monitor.county is derived from the position; nothing else writes it."""
+
     fixtures = ['purple-air.yaml', 'regions.yaml']
+
+    FRESNO = Point(-119.7871, 36.7378, srid=4326)
+    KERN = Point(-118.7273, 35.3733, srid=4326)
 
     def get_purpleair(self):
         return PurpleAir.objects.get(sensor_id=8892)
 
-    def test_computes_county_on_first_save_with_position(self):
-        monitor = self.get_purpleair()
-        monitor.county = ''
-        monitor.position = Point(-119.7871, 36.7378)  # Fresno, CA
-
-        with patch('camp.apps.monitors.models.county_name', return_value='Fresno') as lookup:
-            monitor.save()
-
-        lookup.assert_called_once()
+    def test_county_is_looked_up_on_create(self):
+        monitor = PurpleAir.objects.create(name='New', sensor_id=424242, position=self.FRESNO, location='outside')
         assert monitor.county == 'Fresno'
+
+    def test_county_given_on_create_is_replaced_by_the_lookup(self):
+        monitor = PurpleAir.objects.create(name='New', sensor_id=424242, position=self.FRESNO, location='outside', county='Kern')
+        assert monitor.county == 'Fresno'
+
+    def test_create_with_explicit_pk_still_looks_up(self):
+        # update_or_create-style creation passes the pk, which snapshots the
+        # tracker at init; the lookup must not depend on it.
+        monitor = PurpleAir(id='TZi2R3xSQvOKyqXJqZ4tzw', name='New', sensor_id=424242, position=self.KERN, location='outside', county='Fresno')
+        monitor.save()
+        assert monitor.county == 'Kern'
+
+    def test_create_without_position_has_no_county(self):
+        with patch('camp.apps.monitors.models.county_name', wraps=county_name) as lookup:
+            monitor = PurpleAir.objects.create(name='New', sensor_id=424242, location='outside', county='Fresno')
+        assert monitor.county == ''
+        lookup.assert_called_once_with(None)
 
     def test_skips_lookup_when_position_unchanged(self):
         monitor = self.get_purpleair()
-        monitor.county = 'Fresno'
-        monitor.position = Point(-119.7871, 36.7378)
+        monitor.position = self.FRESNO
         monitor.save()
 
         monitor = self.get_purpleair()
+        monitor.county = ''  # even a blank county is left alone
         with patch('camp.apps.monitors.models.county_name') as lookup:
             monitor.name = 'Renamed'
             monitor.save()
 
         lookup.assert_not_called()
 
-    def test_recomputes_lookup_when_position_changes(self):
+    def test_recomputes_when_position_changes(self):
         monitor = self.get_purpleair()
-        monitor.county = 'Fresno'
-        monitor.position = Point(-119.7871, 36.7378)
+        monitor.position = self.FRESNO
+        monitor.save()
+        assert monitor.county == 'Fresno'
+
+        monitor = self.get_purpleair()
+        monitor.position = self.KERN
+        monitor.save()
+        assert monitor.county == 'Kern'
+
+    def test_clears_county_when_position_is_removed(self):
+        monitor = self.get_purpleair()
+        monitor.position = self.FRESNO
         monitor.save()
 
         monitor = self.get_purpleair()
-        with patch('camp.apps.monitors.models.county_name', return_value='Kern') as lookup:
-            monitor.position = Point(-118.7273, 35.3733)  # Kern, CA
-            monitor.save()
-
-        lookup.assert_called_once()
-        assert monitor.county == 'Kern'
+        monitor.position = None
+        monitor.save()
+        assert monitor.county == ''

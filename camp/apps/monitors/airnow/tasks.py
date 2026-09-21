@@ -64,7 +64,6 @@ def import_airnow_data(start_date=None, end_date=None):
                 monitor = AirNow.objects.create(
                     name=item['SiteName'],
                     position=latlon,
-                    county=' '.join(county.name.split()[:-1]),
                     data_provider=item.get('AgencyName', ''),
                     location=AirNow.LOCATION.outside
                 )
@@ -89,7 +88,6 @@ def import_airnow_data_legacy(timestamp=None, previous=None):
 
     for county in Region.objects.counties().select_related('boundary'):
         # {site_name: {timestamp: [{data}, ...]}}
-        county_name = ' '.join(county.name.split()[:-1])
         data = airnow_api.query_legacy(
             bbox=county.boundary.geometry.extent,
             timestamp=timestamp,
@@ -110,7 +108,6 @@ def import_airnow_data_legacy(timestamp=None, previous=None):
                 monitor = AirNow.objects.create(
                     name=site_name,
                     position=latlon,
-                    county=county_name,
                     data_provider=entry.get('AgencyName', ''),
                     location=AirNow.LOCATION.outside
                 )

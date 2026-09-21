@@ -39,7 +39,6 @@ def process_aqview_data(payload):
         monitor = AQview.objects.create(
             name=payload['sitename'],
             position=Point(payload['geometry'].x, payload['geometry'].y, srid=4326),
-            county=payload['countyname'],
             location=AQview.LOCATION.outside,
             device=payload.get('externalmonitorid'),
             data_provider=payload.get('dataprovidername', ''),

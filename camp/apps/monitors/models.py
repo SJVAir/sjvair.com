@@ -592,13 +592,11 @@ class Monitor(models.Model):
         return HealthCheck.objects.evaluate(monitor=self, hour=hour)
 
     def save(self, *args, **kwargs):
-        # The county comes from the county Region containing the position.
-        # save() runs on every process_data call for every monitor, so only
-        # pay for the query when there's no answer yet or the position moved.
-        # A county given on creation (imports carry it from their source) is
-        # trusted as-is.
-        moved = not self._state.adding and self.tracker.has_changed('position')
-        if self.position and (not self.county or moved):
+        # The county is derived from the position and nothing else writes
+        # it: it is looked up whenever a monitor is created or its position
+        # changes. save() runs on every process_data call for every monitor,
+        # so an unchanged position costs no query.
+        if self._state.adding or self.tracker.has_changed('position'):
             self.county = county_name(self.position)
         super().save(*args, **kwargs)
 

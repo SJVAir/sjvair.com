@@ -431,3 +431,10 @@ class CountyNameTests(TestCase):
     def test_name_lists(self):
         assert COUNTY_NAMES == ['Fresno', 'Kern', 'Kings', 'Madera', 'Merced', 'San Joaquin', 'Stanislaus', 'Tulare']
         assert COUNTY_KEYS['san_joaquin'] == 'San Joaquin'
+
+
+class CountyNameWithoutRegionsTests(TestCase):
+    def test_warns_when_no_county_regions_are_loaded(self):
+        with self.assertLogs('camp.apps.regions.counties', level='WARNING') as logs:
+            assert county_name(Point(-119.7871, 36.7378, srid=4326)) == ''
+        assert 'import_counties' in logs.output[0]
