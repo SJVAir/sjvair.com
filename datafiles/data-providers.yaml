@@ -24,9 +24,9 @@
       url: https://monographs.iarc.who.int/
       classes: is-6-mobile is-4-tablet is-4-desktop
 
-    - name: Public Health Alliance of Southern California (Healthy Places Index)
-      logo: img/logo/healthy-places-index.png
-      url: https://www.healthyplacesindex.org/
+    - name: Public Health Alliance of Southern California
+      logo: img/logo/public-health-alliance.png
+      url: https://www.thepublichealthalliance.org/
       classes: is-6-mobile is-4-tablet is-4-desktop
 
 
