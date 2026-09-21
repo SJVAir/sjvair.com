@@ -31,7 +31,7 @@
   <div class="section-map-toolbar" hidden>
     {% if map_toolbar %}{% include 'pesticides/includes/map-toolbar.html' %}{% endif %}
     <div class="section-map-toolbar-end">
-      <div class="dropdown section-map-toolbar-dropdown section-map-options">
+      <div class="dropdown is-right section-map-toolbar-dropdown section-map-options">
         <div class="dropdown-trigger">
           <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
             <span class="icon"><span class="fa-duotone fa-fw fa-gear section-map-panel-icon is-options" aria-hidden="true"></span></span>
@@ -39,7 +39,7 @@
             <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
           </button>
         </div>
-        <div class="dropdown-menu is-right" role="menu">
+        <div class="dropdown-menu" role="menu">
           <div class="dropdown-content section-map-controls">
             <div class="section-map-metric" role="group" aria-label="Shade by">
               <label><input type="radio" name="metric" value="lbs_chemical" checked> Pounds</label>
