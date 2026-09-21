@@ -19,6 +19,16 @@
       url: https://cimis.water.ca.gov/
       classes: is-6-mobile is-4-tablet is-4-desktop
 
+    - name: International Agency for Research on Cancer
+      logo: img/logo/iarc.svg
+      url: https://monographs.iarc.who.int/
+      classes: is-6-mobile is-4-tablet is-4-desktop
+
+    - name: Public Health Alliance of Southern California (Healthy Places Index)
+      logo: img/logo/healthy-places-index.png
+      url: https://www.healthyplacesindex.org/
+      classes: is-6-mobile is-4-tablet is-4-desktop
+
 
     - name: Central California Environmental Justice Network
       logo: img/logo/ccejn.png
