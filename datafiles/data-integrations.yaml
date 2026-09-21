@@ -54,12 +54,29 @@
       url: https://cimis.water.ca.gov/
       description: The California Irrigation Management Information System (CIMIS) is a network of automated weather stations operated by the California Department of Water Resources (DWR). Originally built to support agricultural irrigation scheduling, CIMIS stations also report hourly weather data — temperature, humidity, wind speed and direction, solar radiation, and precipitation — which SJVAir uses to add local weather context alongside air quality measurements across the San Joaquin Valley.
 
+- category: Environmental & Health Mapping
+  icon:
+    name: fa-earth-americas
+    primary: forestgreen
+    secondary: deepskyblue
+  description: Datasets that combine environmental, health, and socioeconomic indicators to identify communities most impacted by pollution and support equity-focused decision making.
+  integrations:
+    - name: CalEnvironScreen
+      logo: img/logo/calenviroscreen-logo.png
+      url: https://oehha.ca.gov/calenviroscreen
+      description: CalEnviroScreen is a mapping and screening tool developed by the California Office of Environmental Health Hazard Assessment (OEHHA). It combines environmental, health, and socioeconomic data from state and federal sources to identify communities most affected by pollution and socioeconomic burdens, helping guide California's environmental justice policies and investments.
+
+    - name: Healthy Places Index
+      logo: img/logo/healthy-places-index-logo.png
+      url: https://www.healthyplacesindex.org/
+      description: The Healthy Places Index (HPI), developed by the Public Health Alliance, maps social and environmental conditions that shape health outcomes across California. By combining indicators such as education, housing, job opportunities, and environmental quality, HPI highlights community factors strongly linked to life expectancy and supports efforts to advance health equity.
+
 - category: Pesticide Data
   icon:
     name: fa-spray-can
     primary: darkolivegreen
     secondary: yellowgreen
-  description: 'The state records behind the <a href="/tools/pesticides/">Pesticide Data Explorer</a>: every reported agricultural pesticide application in the San Joaquin Valley, the notices growers file before restricted applications, and the official lists that flag which chemicals are of concern to health. Schools and child care centers shown alongside this data come from the California Department of Education and the Department of Social Services, published through the state''s open data portal.'
+  description: 'The state records behind the <a href="/tools/pesticides/">Pesticide Data Explorer</a>: every reported agricultural pesticide application in the San Joaquin Valley, the notices growers file before restricted applications, and the official lists that flag which chemicals are of concern to health.'
   integrations:
     - name: Pesticide Use Reporting
       logo: img/logo/cdpr.png
@@ -91,19 +108,44 @@
       url: https://monographs.iarc.who.int/
       description: The International Agency for Research on Cancer (IARC), part of the World Health Organization, reviews the evidence on whether agents cause cancer in humans and classifies them into groups, from Group 1 (carcinogenic) through Group 2A and 2B (probably and possibly carcinogenic) to Group 3 (not classifiable). SJVAir shows a chemical's IARC group where one has been assigned and treats Groups 1, 2A, and 2B as chemicals of concern.
 
-- category: Environmental & Health Mapping
+- category: Geospatial Data
   icon:
-    name: fa-earth-americas
-    primary: forestgreen
-    secondary: deepskyblue
-  description: Datasets that combine environmental, health, and socioeconomic indicators to identify communities most impacted by pollution and support equity-focused decision making.
+    name: fa-map-location-dot
+    primary: steelblue
+    secondary: lightsteelblue
+  description: 'The boundaries and points every page is organized around: counties, cities and census-designated places, ZIP codes, urban areas, the square-mile sections pesticide use is reported by, school districts, and the schools and child care centers shown alongside pesticide data. Most of it comes through the <a href="https://data.ca.gov/">California Open Data Portal</a>, maintained there by the state department named on each dataset.'
   integrations:
-    - name: CalEnvironScreen
-      logo: img/logo/calenviroscreen-logo.png
-      url: https://oehha.ca.gov/calenviroscreen
-      description: CalEnviroScreen is a mapping and screening tool developed by the California Office of Environmental Health Hazard Assessment (OEHHA). It combines environmental, health, and socioeconomic data from state and federal sources to identify communities most affected by pollution and socioeconomic burdens, helping guide California's environmental justice policies and investments.
+    - name: U.S. Census Bureau
+      logo: img/logo/census.svg
+      url: https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html
+      description: The Census Bureau's TIGER/Line files are the reference geography for the United States. SJVAir takes its ZIP codes (as ZIP Code Tabulation Areas), census tracts, and congressional districts directly from TIGER/Line, and the county and place boundaries below are the Bureau's as well, republished by the state.
 
-    - name: Healthy Places Index
-      logo: img/logo/healthy-places-index-logo.png
-      url: https://www.healthyplacesindex.org/
-      description: The Healthy Places Index (HPI), developed by the Public Health Alliance, maps social and environmental conditions that shape health outcomes across California. By combining indicators such as education, housing, job opportunities, and environmental quality, HPI highlights community factors strongly linked to life expectancy and supports efforts to advance health equity.
+    - name: CA Geographic Boundaries
+      logo: img/logo/ca-open-data.png
+      url: https://data.ca.gov/dataset/ca-geographic-boundaries
+      description: The California Department of Technology publishes the state's county and place boundaries on the California Open Data Portal, drawn from the Census Bureau's TIGER/Line files. SJVAir's eight Valley counties and its cities and census-designated places come from this dataset.
+
+    - name: Caltrans
+      logo: img/logo/caltrans.png
+      url: https://data.ca.gov/dataset/2020-adjusted-urban-area
+      description: The California Department of Transportation maintains the 2020 Adjusted Urban Areas, the Census Bureau's urban areas as adjusted by Caltrans and the state's metropolitan planning organizations for transportation planning. SJVAir uses them to group cities and their surrounding communities into the places you can search for.
+
+    - name: Department of Conservation
+      logo: img/logo/conservation.svg
+      url: https://data.ca.gov/dataset/public-land-survey-system-plss-sections
+      description: The California Department of Conservation publishes the Public Land Survey System (PLSS) sections for the state — the square-mile grid of meridian, township, range, and section that pesticide use reports are located by. SJVAir's section maps and section pages use these official geometries unchanged.
+
+    - name: California Department of Education
+      logo: img/logo/cde.png
+      url: https://data.ca.gov/organization/california-department-of-education
+      description: The Department of Education publishes school district boundaries, with each district's enrollment and demographics, and the directory of public and private schools with their locations. SJVAir uses the district boundaries as regions and shows the schools alongside pesticide use in each district.
+
+    - name: Department of Social Services
+      logo: img/logo/cdss.png
+      url: https://data.ca.gov/dataset/community-care-licensing-facilities1
+      description: The California Department of Social Services licenses child care centers through its Community Care Licensing Division and publishes the facility list, with addresses and capacities. SJVAir shows the licensed child care centers in the Valley alongside schools on its pesticide maps and district pages.
+
+    - name: San Joaquin Valley Air Pollution Control District
+      logo: img/logo/sjvapcd.svg
+      url: https://www.valleyair.org/
+      description: The Valley Air District issues daily air quality forecasts by zone. SJVAir derives the forecast zones that do not follow county lines — the Valley portion of Kern County, the Valley portion of Tulare County, and the Sequoia National Park and Forest zone — from the District's forecast map, so each forecast can be shown for the area it covers.
