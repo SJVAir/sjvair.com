@@ -1,0 +1,6 @@
+Facility Number,Facility Type,Facility Name,Facility Address,Facility City,Facility Zip,County Name,Facility Status,Facility Capacity,Latitude,Longitude
+100400001,DAY CARE CENTER,Little Sprouts Learning Center,55 Orchard Way,Selma,93662,Fresno,LICENSED,84,36.7150,-119.7950
+100400002,INFANT CENTER,First Steps Infant Center,57 Orchard Way,Selma,93662,Fresno County,LICENSED,24,36.7160,-119.7960
+150400003,SCHOOL AGE DAY CARE CENTER,Mesa Afterschool Club,1210 Mesa Rd,Bakersfield,93301,Kern,LICENSED,40,35.4100,-119.0100
+100400004,FAMILY CHILD CARE HOME,Ramirez Family Child Care,,Selma,93662,Fresno,LICENSED,8,,
+100400005,DAY CARE CENTER,Closed Kids Center,9 Gone Rd,Selma,93662,Fresno,CLOSED,30,36.7000,-119.7800

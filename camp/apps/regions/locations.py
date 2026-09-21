@@ -1,0 +1,426 @@
+"""
+Import adapters for `regions.Location`: schools and child care facilities.
+
+Each source knows where to download its file, how to parse it into plain
+dicts, and which `Location.Type` its rows become. `import_source()` does the
+rest: geocoding the rows that arrive without coordinates, resolving the
+county and school district, upserting by (source, external_id), and removing
+the rows that have disappeared from the source.
+"""
+
+import csv
+import hashlib
+import io
+import tempfile
+
+from contextlib import contextmanager
+
+import requests
+
+from django.contrib.gis.geos import Point
+from django.core.cache import cache
+from django.db import transaction
+from django.utils import timezone
+
+from camp.apps.regions.models import Location
+from camp.utils.geocode import clean_address, resolve
+
+
+# The eight San Joaquin Valley counties, lowercased and without " County".
+SJV_COUNTIES = frozenset([
+    'fresno', 'kern', 'kings', 'madera',
+    'merced', 'san joaquin', 'stanislaus', 'tulare',
+])
+
+# Private schools this small are almost always a family homeschooling under
+# the affidavit, not a school with a campus.
+MIN_PRIVATE_ENROLLMENT = 6
+
+# CDSS facility types that are child care centers. Family child care homes
+# are private residences and carry no street address, so they're left out.
+CHILD_CARE_TYPES = ('DAY CARE CENTER', 'INFANT CENTER', 'SCHOOL AGE')
+FAMILY_CHILD_CARE = 'FAMILY CHILD CARE HOME'
+
+GEOCODE_CACHE_TTL = 60 * 60 * 24 * 30  # 30 days
+
+XLSX_MAGIC = b'PK\x03\x04'
+
+
+# -- Geocoding --
+
+def geocode_cached(address):
+    """A single-line address → (lat, lng) or None, cached for 30 days."""
+    cleaned = clean_address(address)
+    if not cleaned:
+        return None
+
+    digest = hashlib.sha1(cleaned.encode('utf-8', 'replace')).hexdigest()
+    key = f'regions:geocode:{digest}'
+
+    cached = cache.get(key)
+    if cached is not None:
+        return tuple(cached)
+
+    point = resolve(cleaned)
+    if point is None:
+        return None
+
+    result = (point.y, point.x)
+    cache.set(key, result, GEOCODE_CACHE_TTL)
+    return result
+
+
+# -- Row helpers --
+
+def _rows(file, delimiter=','):
+    """Yield dicts keyed by the lowercased header, from a binary file object."""
+    stream = io.TextIOWrapper(file, encoding='latin-1', errors='replace', newline='')
+    reader = csv.reader(stream, delimiter=delimiter)
+
+    header = next(reader, None)
+    if header is None:
+        return
+
+    keys = [_key(name) for name in header]
+    for row in reader:
+        if not any(cell.strip() for cell in row):
+            continue
+        yield dict(zip(keys, [cell.strip() for cell in row]))
+
+
+def _xlsx_rows(file):
+    """Yield dicts keyed by the lowercased header, from an XLSX file object."""
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        raise RuntimeError(
+            'Reading XLSX requires openpyxl. Export the file to CSV and pass'
+            ' it with --path instead.'
+        )
+
+    workbook = load_workbook(file, read_only=True, data_only=True)
+    rows = workbook[workbook.sheetnames[0]].iter_rows(values_only=True)
+
+    keys = None
+    for row in rows:
+        values = ['' if value is None else str(value).strip() for value in row]
+        if not any(values):
+            continue
+        if keys is None:
+            keys = [_key(value) for value in values]
+            continue
+        yield dict(zip(keys, values))
+
+
+def _key(name):
+    return str(name or '').strip().lower().lstrip('﻿ï»¿')
+
+
+def _get(row, *names, default=''):
+    for name in names:
+        value = row.get(name)
+        if value:
+            return value
+    return default
+
+
+def _float(value):
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _int(value):
+    try:
+        return int(float(str(value).strip().replace(',', '')))
+    except (TypeError, ValueError):
+        return None
+
+
+def _in_the_valley(county):
+    name = str(county or '').strip().lower()
+    if name.endswith(' county'):
+        name = name[:-len(' county')]
+    return name in SJV_COUNTIES
+
+
+def _address_string(row):
+    parts = [row.get('address') or '', row.get('city') or '']
+    zipcode = (row.get('zip') or '').strip()
+    parts.append(f'CA {zipcode}'.strip())
+    return ', '.join(part for part in parts if part.strip())
+
+
+# -- Parsers --
+
+def parse_cde_public(file):
+    """
+    CDE public schools and districts directory (tab-delimited, latin-1).
+    District rows carry an empty School; schools carry a 14-digit CDS code
+    whose first seven digits identify the district.
+    """
+    for row in _rows(file, delimiter='\t'):
+        name = _get(row, 'school')
+        if not name:
+            continue  # A district row, not a school.
+        if _get(row, 'statustype').lower() != 'active':
+            continue
+        if _get(row, 'virtual').upper() == 'F':
+            continue  # Exclusively virtual: no campus to stand next to.
+        if _get(row, 'eilcode').upper() == 'A':
+            continue  # Adult education.
+        if not _in_the_valley(_get(row, 'county')):
+            continue
+
+        cds_code = _get(row, 'cdscode')
+        yield {
+            'external_id': cds_code,
+            'cds_code': cds_code,
+            'name': name,
+            'address': _get(row, 'street'),
+            'city': _get(row, 'city'),
+            'zip': _get(row, 'zip'),
+            'lat': _float(_get(row, 'latitude')),
+            'lng': _float(_get(row, 'longitude')),
+            'metadata': {
+                'county': _get(row, 'county'),
+                'district': _get(row, 'district'),
+                'grades': _get(row, 'gsoffered'),
+                'soc_type': _get(row, 'soctype'),
+                'eil_code': _get(row, 'eilcode'),
+                'eil_name': _get(row, 'eilname'),
+                'charter': _get(row, 'charter').upper() == 'Y',
+                'virtual': _get(row, 'virtual'),
+                'status': _get(row, 'statustype'),
+            },
+        }
+
+
+def parse_cde_private(file):
+    """
+    CDE private school affidavit, school level. The columns are renamed most
+    years, so everything is read by header name with the known aliases, and
+    the file carries no coordinates: these rows are geocoded.
+    """
+    head = file.read(len(XLSX_MAGIC))
+    file.seek(0)
+    rows = _xlsx_rows(file) if head == XLSX_MAGIC else _rows(file)
+
+    for row in rows:
+        name = _get(row, 'school name', 'schoolname', 'name')
+        if not name:
+            continue
+        if not _in_the_valley(_get(row, 'county', 'county name')):
+            continue
+
+        enrollment = _int(_get(row, 'total enrollment', 'enrollment', 'total'))
+        if enrollment is not None and enrollment < MIN_PRIVATE_ENROLLMENT:
+            continue
+
+        address = _get(row, 'street', 'address', 'school street', 'mailing street')
+        external_id = _get(row, 'cds code', 'cdscode', 'school code', 'schoolcode',
+            'affidavit id', 'affidavitid')
+        if not external_id:
+            # Some years ship without any stable id. Name + address is the
+            # best identity available, and it's stable across re-runs.
+            external_id = hashlib.sha1(
+                f'{name}|{address}'.lower().encode('utf-8', 'replace')
+            ).hexdigest()
+
+        grade_low, grade_high = _grade_span(row)
+        yield {
+            'external_id': external_id,
+            'cds_code': None,
+            'name': name,
+            'address': address,
+            'city': _get(row, 'city', 'school city'),
+            'zip': _get(row, 'zip', 'zip code', 'school zip'),
+            'lat': _float(_get(row, 'latitude')),
+            'lng': _float(_get(row, 'longitude')),
+            'metadata': {
+                'county': _get(row, 'county', 'county name'),
+                'enrollment': enrollment,
+                'grade_low': grade_low,
+                'grade_high': grade_high,
+            },
+        }
+
+
+def _grade_span(row):
+    low = _get(row, 'low grade', 'lowgrade', 'grade low')
+    high = _get(row, 'high grade', 'highgrade', 'grade high')
+    if low or high:
+        return low, high
+
+    grades = _get(row, 'grades', 'grade span', 'gsoffered')
+    if '-' in grades:
+        low, _, high = grades.partition('-')
+        return low.strip(), high.strip()
+    return grades.strip(), grades.strip()
+
+
+def parse_cdss_ccl(file):
+    """
+    CDSS Community Care Licensing facilities. Only licensed child care
+    centers are imported; family child care homes are private residences.
+    """
+    for row in _rows(file):
+        facility_type = _get(row, 'facility type', 'facilitytype', 'type').upper()
+        if FAMILY_CHILD_CARE in facility_type:
+            continue
+        if not any(kind in facility_type for kind in CHILD_CARE_TYPES):
+            continue
+        if _get(row, 'facility status', 'status').upper() != 'LICENSED':
+            continue
+        if not _in_the_valley(_get(row, 'county name', 'county')):
+            continue
+
+        name = _get(row, 'facility name', 'facilityname', 'name')
+        if not name:
+            continue
+
+        yield {
+            'external_id': _get(row, 'facility number', 'facilitynumber', 'facility id'),
+            'cds_code': None,
+            'name': name,
+            'address': _get(row, 'facility address', 'address'),
+            'city': _get(row, 'facility city', 'city'),
+            'zip': _get(row, 'facility zip', 'zip'),
+            'lat': _float(_get(row, 'latitude', 'facility latitude')),
+            'lng': _float(_get(row, 'longitude', 'facility longitude')),
+            'metadata': {
+                'county': _get(row, 'county name', 'county'),
+                'facility_type': facility_type,
+                'capacity': _int(_get(row, 'facility capacity', 'capacity')),
+                'status': _get(row, 'facility status', 'status'),
+            },
+        }
+
+
+# -- Sources --
+
+SOURCES = {
+    'cde-public': {
+        'label': 'CDE public schools and districts directory',
+        'type': Location.Type.PUBLIC_SCHOOL,
+        'url': 'https://www.cde.ca.gov/schooldirectory/report?rid=dl1&tp=txt',
+        'parse': parse_cde_public,
+    },
+    'cde-private': {
+        'label': 'CDE private school affidavit (school level)',
+        'type': Location.Type.PRIVATE_SCHOOL,
+        # The affidavit file is published under a new per-year URL every
+        # year (https://www.cde.ca.gov/ds/si/ps/), so --path is the route.
+        'url': None,
+        'parse': parse_cde_private,
+    },
+    'cdss-ccl': {
+        'label': 'CDSS community care licensing facilities',
+        'type': Location.Type.CHILD_CARE,
+        'url': None,
+        'ckan_dataset': 'community-care-licensing-facilities1',
+        'parse': parse_cdss_ccl,
+    },
+}
+
+CKAN_PACKAGE_URL = 'https://data.ca.gov/api/3/action/package_show'
+
+
+def _source_url(config):
+    if config.get('url'):
+        return config['url']
+
+    dataset = config.get('ckan_dataset')
+    if dataset:
+        response = requests.get(CKAN_PACKAGE_URL, params={'id': dataset}, timeout=60)
+        response.raise_for_status()
+        resources = response.json().get('result', {}).get('resources', [])
+        for resource in resources:
+            if (resource.get('format') or '').upper() == 'CSV' and resource.get('url'):
+                return resource['url']
+
+    raise ValueError('No download URL for this source: pass --path.')
+
+
+@contextmanager
+def _open_source(config, path):
+    if path:
+        with open(path, 'rb') as handle:
+            yield handle
+        return
+
+    with tempfile.TemporaryFile() as handle:
+        response = requests.get(_source_url(config), timeout=300, stream=True)
+        response.raise_for_status()
+        for chunk in response.iter_content(chunk_size=1024 * 64):
+            handle.write(chunk)
+        handle.seek(0)
+        yield handle
+
+
+# -- Import --
+
+def import_source(source, path=None, geocode=True):
+    """
+    Import one source into `Location`, returning a dict of counts:
+    imported, updated, removed, geocoded, skipped.
+    """
+    try:
+        config = SOURCES[source]
+    except KeyError:
+        raise ValueError(f'Unknown location source: {source}')
+
+    counts = {'imported': 0, 'updated': 0, 'removed': 0, 'geocoded': 0, 'skipped': 0}
+
+    with _open_source(config, path) as handle:
+        rows = [row for row in config['parse'](handle) if row.get('external_id')]
+
+    if not rows:
+        # An empty parse means a failed download or a changed format, never
+        # that every school in the valley closed. Don't remove anything.
+        return counts
+
+    seen = set()
+    with transaction.atomic():
+        for row in rows:
+            lat, lng = row.get('lat'), row.get('lng')
+
+            if lat is None or lng is None:
+                if not geocode:
+                    counts['skipped'] += 1
+                    continue
+                result = geocode_cached(_address_string(row))
+                if result is None:
+                    counts['skipped'] += 1
+                    continue
+                lat, lng = result
+                counts['geocoded'] += 1
+
+            point = Point(float(lng), float(lat), srid=4326)
+            _, created = Location.objects.update_or_create(
+                source=source,
+                external_id=row['external_id'],
+                defaults={
+                    'type': config['type'],
+                    'name': row['name'][:200],
+                    'address': (row.get('address') or '')[:200],
+                    'city': (row.get('city') or '')[:100],
+                    'zip': (row.get('zip') or '')[:10],
+                    'point': point,
+                    'county': Location.county_for(point),
+                    'district': Location.district_for(point, cds_code=row.get('cds_code')),
+                    'metadata': row.get('metadata') or {},
+                    'imported_at': timezone.now(),
+                },
+            )
+
+            seen.add(row['external_id'])
+            counts['imported' if created else 'updated'] += 1
+
+        if seen:
+            stale = Location.objects.filter(source=source).exclude(external_id__in=seen)
+            counts['removed'] = stale.count()
+            stale.delete()
+
+    return counts
