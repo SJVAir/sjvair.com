@@ -85,18 +85,44 @@
 </section>
 
 {% if is_school_district %}
+{% if district_demographics %}
+<section class="district-demographics mt-6">
+    <h2 class="title is-4">Who goes to school here{% if district_demographics.year %} <small class="has-text-grey is-size-6">{{ district_demographics.year }}</small>{% endif %}</h2>
+    <div class="level stat-row box">
+        {% if district_demographics.enrollment != None %}
+        <div class="level-item has-text-centered">
+            <div><p class="heading">Students enrolled</p><p class="title">{{ district_demographics.enrollment|intcomma }}</p></div>
+        </div>
+        {% endif %}
+        {% for metric in district_demographics.metrics %}
+        <div class="level-item has-text-centered">
+            <div><p class="heading">{{ metric.label }}</p><p class="title">{{ metric.pct }}%</p></div>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="is-size-7 has-text-grey">Enrollment and student groups as the California Department of Education reports them for this district.</p>
+</section>
+{% endif %}
+
 <section class="schools-nearby mt-6">
     {# Most rows are child care, not schools, so the heading says both. #}
     <h2 class="title is-4">Schools &amp; child care in this district</h2>
-    {% if schools_nearby %}
-    {% include 'pesticides/includes/schools-table.html' with rows=schools_nearby|slice:":15" %}
-    {% if schools_nearby|length > 15 %}
-    {# A district can run to a couple of hundred sites; the rest are one click away rather than a page of scrolling. #}
-    <details class="schools-more">
-        <summary>Show all {{ schools_nearby|length }}</summary>
-        {% include 'pesticides/includes/schools-table.html' with rows=schools_nearby|slice:"15:" %}
-    </details>
+    {% if schools_nearby.run_by or schools_nearby.others %}
+    {% for group in school_groups %}
+    <h3 class="title is-5 mt-5">{{ group.title }}</h3>
+    {% if group.rows %}
+        {% include 'pesticides/includes/schools-table.html' with rows=group.rows|slice:":15" %}
+        {% if group.rows|length > 15 %}
+        {# A district can run to a couple of hundred sites; the rest are one click away rather than a page of scrolling. #}
+        <details class="schools-more">
+            <summary>Show all {{ group.rows|length }}</summary>
+            {% include 'pesticides/includes/schools-table.html' with rows=group.rows|slice:"15:" %}
+        </details>
+        {% endif %}
+    {% else %}
+        <p class="has-text-grey">{{ group.empty }}</p>
     {% endif %}
+    {% endfor %}
     <p class="is-size-7 has-text-grey">Pounds reported in the square-mile section each site sits in and the eight around it.</p>
     {% else %}
     <p class="has-text-grey">No schools or child care on record here.</p>

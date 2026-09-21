@@ -1,10 +1,12 @@
 {% load humanize pesticides_explorer %}
 {% comment %}
-The "Schools & child care in this district" rows. Rendered twice on a
-district page: the first 15 openly, the rest inside a <details>. `rows` is
-a slice of places.schools_nearby(); names are title-cased at display (the
-CDE and CDSS directories shout them) and every link carries the page's
-scope, so a section page opens on the same year and scope as the row.
+One group of the "Schools & child care in this district" rows. Rendered
+twice per group: the first 15 openly, the rest inside a <details>. `rows` is
+a slice of one group from places.schools_nearby(). CDE writes school names
+properly already, so only the CDSS child care directory (which shouts them)
+is title-cased -- driven off `source`, not the name's case. Every link
+carries the page's scope, so a section page opens on the same year and
+scope as the row.
 {% endcomment %}
 <div class="table-container">
     <table class="table is-fullwidth is-striped is-hoverable data-table schools-table">
@@ -21,9 +23,15 @@ scope, so a section page opens on the same year and scope as the row.
         <tbody>
             {% for row in rows %}
             <tr>
+                {% if row.location.source == 'cdss-ccl' %}
                 <td>{{ row.location.name|title_case_name }}</td>
                 <td>{{ row.location.short_type }}</td>
                 <td>{{ row.location.get_city|title_case_name|default:"—" }}</td>
+                {% else %}
+                <td>{{ row.location.name }}</td>
+                <td>{{ row.location.short_type }}</td>
+                <td>{{ row.location.get_city|default:"—" }}</td>
+                {% endif %}
                 <td class="has-text-right">{{ row.lbs|lbs }}</td>
                 <td class="has-text-right">{{ row.applications|intcomma }}</td>
                 <td>{% if row.section_sqid %}<a href="{% url 'pesticides:section-detail' sqid=row.section_sqid %}{{ scope_qs }}" title="Square-mile section {{ row.section_mtrs }}">Section details</a>{% else %}&mdash;{% endif %}</td>

@@ -23,7 +23,7 @@ from django.urls import reverse
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup, PesticideUseTotal
-from camp.apps.regions.models import Region
+from camp.apps.regions.models import Location, Region
 
 PLACE_REGION_TYPES = (
     Region.Type.COUNTY, Region.Type.CITY, Region.Type.ZIPCODE, Region.Type.PLACE, Region.Type.SCHOOL_DISTRICT,
@@ -239,39 +239,94 @@ def schools_nearby(region, year, all_years=False, concern=False):
     """
     The schools and child care centers in a school district, each with the
     pesticide use reported in the 3x3 block of sections around it (see
-    stats.block_totals) -- the "Schools in this district" panel. Sorted by
-    pounds, heaviest first, then by name.
+    stats.block_totals) -- the "Schools & child care in this district" panel.
+
+    Two groups: `run_by`, the public schools this district actually runs (the
+    school's `district_code` is the district's own CDS code, the first 7
+    digits of its `external_id`), and `others` -- charters run elsewhere,
+    county-office schools, private schools, and child care that merely sit
+    inside its boundary. Each is sorted by pounds, heaviest first, then name.
 
     Each entry is {'location', 'lbs', 'applications', 'section_sqid',
     'section_mtrs'}. Every location needs its own block lookup, so the whole
-    list is cached for a day per district and year; it only changes on import.
+    thing is cached for a day per district and year; it only changes on import.
     """
     key = ':'.join([
-        'pesticides:schools-nearby',
+        # v2: the flat list became two groups; old entries would render empty.
+        'pesticides:schools-nearby:v2',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
         stats.CONCERN_PARAM if concern else '',
     ])
 
+    district_code = (region.external_id or '')[:7]
+
     def build():
         rows = PesticideUseRollup.objects.all()
         if concern:
             rows = stats.concern_rows(rows)
-        entries = []
-        for location in region.district_locations.all().order_by('name', 'pk'):
+        groups = {'run_by': [], 'others': []}
+        # select_related: the table prints each location's city.
+        locations = region.district_locations.select_related('city').order_by('name', 'pk')
+        for location in locations:
             totals = stats.block_totals(rows, location.point, year, all_years)
             section = totals['section']
-            entries.append({
+            entry = {
                 'location': location,
                 'lbs': totals['lbs'],
                 'applications': totals['applications'],
                 'section_sqid': section.sqid if section is not None else None,
                 'section_mtrs': (section.external_id or section.name) if section is not None else None,
-            })
-        entries.sort(key=lambda entry: (-entry['lbs'], entry['location'].name))
-        return entries
+            }
+            groups['run_by' if _run_by(location, district_code) else 'others'].append(entry)
+        for entries in groups.values():
+            entries.sort(key=lambda entry: (-entry['lbs'], entry['location'].name))
+        return groups
 
     return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
+
+
+def _run_by(location, district_code):
+    """Is this a public school the district itself runs?"""
+    if not district_code or location.type != Location.Type.PUBLIC_SCHOOL:
+        return False
+    return str((location.metadata or {}).get('district_code') or '') == district_code
+
+
+# The "Who goes to school here" tiles, in the order they're shown: where the
+# percentage lives in the district Region's metadata, and its label.
+DISTRICT_METRICS = (
+    ('demographics', 'hispanic_latino', 'Hispanic or Latino'),
+    ('subgroups', 'english_learners', 'English learners'),
+    ('subgroups', 'socioeconomically_disadvantaged', 'Socioeconomically disadvantaged'),
+    ('subgroups', 'migrant', 'Migrant'),
+)
+
+
+def district_demographics(region):
+    """
+    The enrollment and student-subgroup percentages CDE publishes with the
+    district boundaries, for the stat strip on a district page. None when
+    the Region carries none of it, so the strip stays off rather than
+    printing a row of dashes.
+    """
+    metadata = region.metadata or {}
+    enrollment = (metadata.get('enrollment') or {}).get('total')
+    metrics = []
+    for group, field_name, label in DISTRICT_METRICS:
+        value = ((metadata.get(group) or {}).get(field_name) or {}).get('pct')
+        if value is not None:
+            metrics.append({'label': label, 'pct': value})
+
+    if enrollment is None and not metrics:
+        return None
+
+    return {
+        'enrollment': enrollment,
+        'metrics': metrics,
+        # The academic year the district data was published for.
+        'year': region.boundary.version if region.boundary_id else '',
+    }
 
 
 def _place_stats(area, year, all_years, concern=False):
@@ -385,7 +440,18 @@ def place_context(area, year, all_years=False, concern=False):
     }
 
     if is_district:
-        context['schools_nearby'] = schools_nearby(area.region, year, all_years, concern=concern)
+        groups = schools_nearby(area.region, year, all_years, concern=concern)
+        context['schools_nearby'] = groups
+        context['school_groups'] = [{
+            'title': f'Run by {area.region.short_name}',
+            'rows': groups['run_by'],
+            'empty': 'No schools are run by this district in the data.',
+        }, {
+            'title': 'Other schools and child care in the area',
+            'rows': groups['others'],
+            'empty': 'Nothing else in the area.',
+        }]
+        context['district_demographics'] = district_demographics(area.region)
 
     # A single-county area's per-county breakdown is just that one county
     # (== the total); only surface it when the area spans multiple counties.
