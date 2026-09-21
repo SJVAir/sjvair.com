@@ -100,33 +100,13 @@
   }
 }
 
+/* The Options menu's body (inside its toolbar dropdown). */
 .section-map-controls {
-  top: 0.75rem;
-  right: 0.75rem;
-}
-
-.section-map-controls .section-map-panel-body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.3rem;
-}
-
-/* Folded, the options panel is just its gear: a small square button, the
-   title and chevron hidden (the title stays in the accessible name). */
-.section-map-controls.is-collapsed .section-map-panel-toggle {
-  min-width: 0;
-  padding: 0.45rem 0.5rem;
-}
-
-.section-map-controls.is-collapsed .section-map-panel-title,
-.section-map-controls.is-collapsed .section-map-panel-chevron {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+  font-size: 0.85rem;
 }
 
 .section-map-controls .section-map-metric {
@@ -150,25 +130,6 @@
 
 .section-map-controls .section-map-status:empty {
   display: none;
-}
-
-.section-map-controls .section-map-expand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-top: 0.15rem;
-  padding: 0.25rem 0.55rem;
-  border: 1px solid #dbdbdb;
-  border-radius: 999px;
-  background: #fff;
-  color: #363636;
-  font: inherit;
-  cursor: pointer;
-}
-
-.section-map-controls .section-map-expand:hover {
-  border-color: #b5b5b5;
-  color: #3273dc;
 }
 
 .section-map-legend-panel {
@@ -230,7 +191,7 @@ html.section-map-expanded body {
   .section-map-panel-body {
     padding: 0.4rem 0.5rem 0.5rem;
   }
-  .section-map-controls .section-map-expand-label {
+  .section-map-expand .section-map-expand-label {
     display: none;
   }
 }
@@ -421,22 +382,35 @@ html.section-map-expanded body {
   }
 }
 
-/* Filter toolbar over the map: top-left, clear of the zoom and locate
-   buttons, one button-styled dropdown per filter (the map toolbar idiom). */
+/* The toolbar row over the map: top-left, clear of the zoom and locate
+   buttons; filters (when the page has them) at the start, Options and
+   Expand at the end, all button-styled dropdowns in the map toolbar idiom. */
 .section-map-toolbar {
   position: absolute;
   top: 0.75rem;
   left: 3.6rem;
-  right: 12.5rem; /* leave the Options panel its corner */
+  right: 0.75rem;
   z-index: 1000;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
   pointer-events: none; /* the gaps between buttons let the map through */
 }
 
-.section-map-toolbar > .field {
+.section-map-toolbar .section-map-toolbar-filters,
+.section-map-toolbar .section-map-toolbar-end {
   pointer-events: none;
 }
 
-.section-map-toolbar .control {
+.section-map-toolbar .section-map-toolbar-end {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.section-map-toolbar .control,
+.section-map-toolbar .section-map-toolbar-end > * {
   pointer-events: auto;
 }
 
@@ -466,6 +440,10 @@ html.section-map-expanded body {
   padding: 0.75rem;
 }
 
+.section-map-toolbar .section-map-options .dropdown-menu {
+  min-width: 12rem;
+}
+
 .section-map-toolbar .dropdown-content .field:last-child {
   margin-bottom: 0;
 }
@@ -476,10 +454,10 @@ html.section-map-expanded body {
 }
 
 @media (max-width: 768px) {
-  .section-map-toolbar {
-    right: 3.5rem;
-  }
   .section-map-toolbar .button .section-map-toolbar-label {
     max-width: 7rem;
+  }
+  .section-map-toolbar .section-map-options .section-map-toolbar-label {
+    display: none;
   }
 }

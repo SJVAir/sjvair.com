@@ -318,13 +318,14 @@
   SectionMap.prototype.attachControls = function () {
     var wrap = this.el.closest('.section-map-wrap') || this.el.parentNode;
     this.wrapEl = wrap;
+    this.toolbarEl = wrap.querySelector('.section-map-toolbar');
     this.controlsEl = wrap.querySelector('.section-map-controls');
     this.legendPanelEl = wrap.querySelector('.section-map-legend-panel');
     this.legendEl = wrap.querySelector('.section-map-legend');
     this.levelEl = wrap.querySelector('.section-map-level');
     this.statusEl = this.controlsEl ? this.controlsEl.querySelector('.section-map-status') : null;
 
-    if (this.controlsEl) this.controlsEl.hidden = false;
+    if (this.toolbarEl) this.toolbarEl.hidden = false;
     if (this.legendPanelEl) this.legendPanelEl.hidden = false;
 
     if (this.controlsEl) {
@@ -346,11 +347,11 @@
         sectionsToggle.addEventListener('change', this.onSectionsToggle.bind(this));
       }
 
-      var expand = this.controlsEl.querySelector('.section-map-expand');
-      if (expand && !expand.getAttribute('data-bound')) {
-        expand.setAttribute('data-bound', '1');
-        expand.addEventListener('click', this.toggleExpanded.bind(this));
-      }
+    }
+    var expand = wrap.querySelector('.section-map-expand');
+    if (expand && !expand.getAttribute('data-bound')) {
+      expand.setAttribute('data-bound', '1');
+      expand.addEventListener('click', this.toggleExpanded.bind(this));
     }
     this.bindPanelToggles(wrap);
     this.bindToolbar(wrap);
@@ -497,7 +498,7 @@
     }
     window.removeEventListener('resize', this.resizeHandler);
     if (on) window.addEventListener('resize', this.resizeHandler);
-    var button = this.controlsEl ? this.controlsEl.querySelector('.section-map-expand') : null;
+    var button = this.wrapEl ? this.wrapEl.querySelector('.section-map-expand') : null;
     if (button) {
       button.setAttribute('aria-pressed', on ? 'true' : 'false');
       button.setAttribute('title', on ? 'Back to the page' : 'Expand the map');

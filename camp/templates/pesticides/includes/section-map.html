@@ -22,27 +22,37 @@
        data-zoom="{{ map_config.zoom }}"
        data-radius="{{ map_config.radius }}"
        data-show-notices="{{ map_config.show_notices }}"></div>
-  {% if map_toolbar %}{% include 'pesticides/includes/map-toolbar.html' %}{% endif %}
-  {# Controls and legend sit over the map (top-right, bottom-left), so they stay usable when the map is expanded. #}
-  <div class="section-map-panel section-map-controls" data-panel="options" hidden>
-    <div class="section-map-panel-head">
-      <button type="button" class="section-map-panel-toggle" aria-expanded="true" aria-controls="section-map-options-{{ map_config.year }}">
-        <span class="fa-duotone fa-fw fa-gear section-map-panel-icon is-options" aria-hidden="true"></span>
-        <span class="section-map-panel-title">Options</span>
-        <span class="fa-regular fa-fw fa-chevron-up section-map-panel-chevron" aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="section-map-panel-body" id="section-map-options-{{ map_config.year }}">
-      <div class="section-map-metric" role="group" aria-label="Shade by">
-        <label><input type="radio" name="metric" value="lbs_chemical" checked> Pounds</label>
-        <label><input type="radio" name="metric" value="applications"> Applications</label>
+  {# One toolbar row over the map (top-left, beside the zoom buttons): the page's
+     filters when it has them, then Options, then Expand. The legend sits
+     bottom-left. Everything is inside the wrapper so it comes along when the
+     map is expanded. #}
+  <div class="section-map-toolbar" hidden>
+    {% if map_toolbar %}{% include 'pesticides/includes/map-toolbar.html' %}{% endif %}
+    <div class="section-map-toolbar-end">
+      <div class="dropdown section-map-toolbar-dropdown section-map-options">
+        <div class="dropdown-trigger">
+          <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+            <span class="icon"><span class="fa-duotone fa-fw fa-gear section-map-panel-icon is-options" aria-hidden="true"></span></span>
+            <span class="section-map-toolbar-label">Options</span>
+            <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+          </button>
+        </div>
+        <div class="dropdown-menu is-right" role="menu">
+          <div class="dropdown-content section-map-controls">
+            <div class="section-map-metric" role="group" aria-label="Shade by">
+              <label><input type="radio" name="metric" value="lbs_chemical" checked> Pounds</label>
+              <label><input type="radio" name="metric" value="applications"> Applications</label>
+            </div>
+            <label class="section-map-notices-toggle"><input type="checkbox" name="notices"{% if map_config.show_notices == '1' %} checked{% endif %}> Show notices</label>
+            <label class="section-map-sections-toggle"><input type="checkbox" name="sections"> All sections</label>
+            <span class="section-map-status" aria-live="polite"></span>
+          </div>
+        </div>
       </div>
-      <label class="section-map-notices-toggle"><input type="checkbox" name="notices"{% if map_config.show_notices == '1' %} checked{% endif %}> Show notices</label>
-      <label class="section-map-sections-toggle"><input type="checkbox" name="sections"> All sections</label>
-      <button type="button" class="section-map-expand" aria-pressed="false" title="Expand the map">
-        <span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span><span class="section-map-expand-label">Expand</span>
+      <button type="button" class="button section-map-expand" aria-pressed="false" title="Expand the map">
+        <span class="icon"><span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span></span>
+        <span class="section-map-expand-label">Expand</span>
       </button>
-      <span class="section-map-status" aria-live="polite"></span>
     </div>
   </div>
   <div class="section-map-panel section-map-legend-panel" data-panel="legend" hidden>
