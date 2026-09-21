@@ -110,11 +110,16 @@
 </section>
 {% endif %}
 
-<p class="mt-6">
-    <a href="{{ records_url }}">Browse all records for this area</a>
-    &middot;
-    <a href="{{ notices_url }}">See notices here</a>
-</p>
+<div class="buttons mt-6 explorer-actions">
+    <a class="button" href="{{ records_url }}">
+        <span class="icon"><span class="fa-duotone fa-fw fa-table-list explorer-icon is-records" aria-hidden="true"></span></span>
+        <span>Browse all records for this area</span>
+    </a>
+    <a class="button" href="{{ notices_url }}">
+        <span class="icon"><span class="fa-duotone fa-fw fa-calendar-clock explorer-icon is-notices" aria-hidden="true"></span></span>
+        <span>See notices here</span>
+    </a>
+</div>
 
 {% if privacy_note %}
 <p class="is-size-7 has-text-grey">Your location is only in this page's address bar; we don't store it.</p>
