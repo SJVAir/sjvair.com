@@ -40,6 +40,15 @@
     ylorbr: ['#ffffd4', '#fed98e', '#fe9929', '#d95f0e', '#993404'],
     putrid: ['#eef2b8', '#cfd96e', '#a3b53c', '#72871f', '#3f4f12'],
     bile: ['#f5f2a4', '#d9d95a', '#a9b62e', '#6b7615', '#3a400c'],
+    // Putrid with a paler, greyer light end and the middle steps spread apart.
+    putrid2: ['#eceedc', '#c9d18c', '#98ab3f', '#5f7a1c', '#2f3f0e'],
+    // Multi-hue sequential: yellow-green through teal to navy (ColorBrewer YlGnBu).
+    ylgnbu: ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494'],
+    // Cool teal-to-green (ColorBrewer PuBuGn).
+    pubugn: ['#f6eff7', '#bdc9e1', '#67a9cf', '#1c9099', '#016c59'],
+    // Perceptually uniform (matplotlib): mako and cividis.
+    mako: ['#def5e5', '#60ceac', '#3497a9', '#3e5ba9', '#382a54'],
+    cividis: ['#fde725', '#c7b76e', '#7f7c75', '#4b5a6a', '#00224e'],
   };
   var rampMatch = /[?&]ramp=([a-z]+)/.exec(window.location.search || '');
   var RAMP = RAMPS[rampMatch && rampMatch[1]] || RAMPS.blues;
@@ -2339,6 +2348,12 @@
   function init(root) {
     if (typeof L === 'undefined') return;
     var containers = containersUnder(root || document);
+    // A swap to a page without a map drops the live one; if it was
+    // expanded, the page-level state (html class, pinned scope bar) has to
+    // be undone here since no map remains to do it.
+    if (liveMap && liveMap.expanded && !document.body.contains(liveMap.el) && !containers.length) {
+      liveMap.setExpanded(false);
+    }
     for (var i = 0; i < containers.length; i++) {
       var el = containers[i];
       if (el.dataset.rendered) continue;
