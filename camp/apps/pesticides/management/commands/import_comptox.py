@@ -1,3 +1,4 @@
+import difflib
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -13,6 +14,49 @@ from camp.apps.pesticides.models import Chemical
 BATCH_SIZE = 200
 
 IARC_GROUP_RE = re.compile(r'group\s+(2[ab]|[13])', re.IGNORECASE)
+
+# Name corroboration. CompTox's name search matches on synonyms, and its
+# synonym lists are loose enough that "ACETIC ACID" once came back as
+# maleic hydrazide and "ALCOHOLS, C12-C14" as ethanol (IARC group 1). A
+# match is kept only when CompTox's preferred name agrees with CDPR's name
+# by one of these tests; anything else is dropped as a bad match.
+CORROBORATION_FUZZY_RATIO = 0.6
+CORROBORATION_SHORT_NAME = 6
+_TOKEN_RE = re.compile(r'[a-z]{4,}')
+
+
+def _name_key(value):
+    return ''.join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _name_tokens(value):
+    return set(_TOKEN_RE.findall(value.lower()))
+
+
+def corroborated(name, preferred_name):
+    """
+    Why a CompTox preferred name is accepted as naming the same chemical as
+    CDPR's `name`, or '' when it isn't: 'same' (same name modulo case and
+    punctuation), 'noletters' (CDPR's is a bare code such as "1080"),
+    'token' (a word of four or more letters in common), 'fuzzy' (the two
+    names' letters mostly line up: "8-QUINOLINOL" / "8-Hydroxyquinoline"),
+    'short' (a CDPR common name of six characters or fewer: "2,4-D", "EPTC",
+    whose systematic name shares nothing with it).
+    """
+    if not preferred_name:
+        return ''
+    if not any(ch.isalpha() for ch in name):
+        return 'noletters'
+    key, preferred_key = _name_key(name), _name_key(preferred_name)
+    if key == preferred_key:
+        return 'same'
+    if _name_tokens(name) & _name_tokens(preferred_name):
+        return 'token'
+    if difflib.SequenceMatcher(None, key, preferred_key).ratio() >= CORROBORATION_FUZZY_RATIO:
+        return 'fuzzy'
+    if len(name) <= CORROBORATION_SHORT_NAME:
+        return 'short'
+    return ''
 
 
 def parse_iarc_group(cancer_call):
@@ -30,7 +74,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             '--phase',
-            choices=['search', 'equals', 'names', 'hazard', 'all'],
+            choices=['search', 'equals', 'names', 'hazard', 'audit', 'all'],
             default='all',
             help='Which phase to run (default: all)',
         )
@@ -51,6 +95,11 @@ class Command(BaseCommand):
             action='store_true',
             help='Print raw hazard response for the first chemical and exit',
         )
+        parser.add_argument(
+            '--reset',
+            action='store_true',
+            help='With --phase audit: clear the DTXSID, preferred name, CAS number and IARC group of uncorroborated matches',
+        )
 
     def handle(self, *args, **options):
         api_key = settings.COMPTOX_API_KEY
@@ -62,6 +111,10 @@ class Command(BaseCommand):
         self.workers = options['workers']
 
         phase = options['phase']
+
+        if phase == 'audit':
+            self._phase_audit(reset=options['reset'])
+            return
 
         if phase in ('search', 'all'):
             self._phase_search()
@@ -83,14 +136,14 @@ class Command(BaseCommand):
         chemicals = list(Chemical.objects.filter(dtxsid='').values('id', 'name', 'cas_number'))
         self.stdout.write(f'  {len(chemicals):,} chemicals without DTXSID')
 
+        # Whole names only. Searching the part before the comma as well
+        # ("2,4-D, BUTOXYETHANOL ESTER" -> "2,4-d") matched salts and esters
+        # to their parent, or to whatever shares a synonym with the stem.
         term_to_ids = {}
+        name_by_id = {}
         for c in chemicals:
-            full = c['name'].lower()
-            term_to_ids.setdefault(full, set()).add(c['id'])
-            if ',' in c['name']:
-                base = c['name'].split(',')[0].strip().lower()
-                if base != full:
-                    term_to_ids.setdefault(base, set()).add(c['id'])
+            term_to_ids.setdefault(c['name'].lower(), set()).add(c['id'])
+            name_by_id[c['id']] = c['name']
 
         all_terms = list(term_to_ids.keys())
         batches = [all_terms[i:i + BATCH_SIZE] for i in range(0, len(all_terms), BATCH_SIZE)]
@@ -106,7 +159,10 @@ class Command(BaseCommand):
                     casrn = result.get('casrn', '')
                     if not result.get('dtxsid'):
                         continue
-                    chem_ids = term_to_ids.get(search_value, set())
+                    chem_ids = {
+                        chem_id for chem_id in term_to_ids.get(search_value, set())
+                        if corroborated(name_by_id[chem_id], result.get('preferredName') or '')
+                    }
                     if not chem_ids:
                         continue
                     rows = Chemical.objects.filter(pk__in=chem_ids, dtxsid='').update(**self._match_fields(result))
@@ -167,7 +223,7 @@ class Command(BaseCommand):
             try:
                 results = self.chem_client.search(by='equals', query=chem['name']) or []
                 for r in results:
-                    if not r.get('dtxsid'):
+                    if not r.get('dtxsid') or not corroborated(chem['name'], r.get('preferredName') or ''):
                         continue
                     fields = self._match_fields(r)
                     if r.get('casrn') and not chem['cas_number']:
@@ -250,6 +306,41 @@ class Command(BaseCommand):
                 self.stdout.write(f'  {completed:,} / {len(batches):,} batches', ending='\r')
 
         self.stdout.write(f'\n  Updated {updated:,} chemicals with a preferred name')
+
+    # --- Audit: which existing matches would the corroboration rule keep? ---
+
+    def _phase_audit(self, reset=False):
+        self.stdout.write('Audit: corroborating existing DTXSID matches by name...')
+        chemicals = list(Chemical.objects.exclude(dtxsid='').values('id', 'name', 'preferred_name', 'dtxsid', 'iarc_group'))
+        unnamed = [c for c in chemicals if not c['preferred_name']]
+        if unnamed:
+            self.stdout.write(f'  {len(unnamed):,} matches have no preferred name yet; run --phase names first to audit them')
+        reasons = {}
+        rejected = []
+        for c in chemicals:
+            if not c['preferred_name']:
+                continue
+            reason = corroborated(c['name'], c['preferred_name'])
+            reasons[reason or 'uncorroborated'] = reasons.get(reason or 'uncorroborated', 0) + 1
+            if not reason:
+                rejected.append(c)
+        for reason, count in sorted(reasons.items(), key=lambda item: -item[1]):
+            self.stdout.write(f'  {reason:>15}: {count:,}')
+        with_iarc = sum(1 for c in rejected if c['iarc_group'])
+        self.stdout.write(f'  Uncorroborated: {len(rejected):,} ({with_iarc:,} with an IARC group)')
+        for c in rejected[:20]:
+            self.stdout.write(f'    {c["name"]!r} -> {c["preferred_name"]!r} {c["dtxsid"]} {c["iarc_group"]}')
+        if len(rejected) > 20:
+            self.stdout.write(f'    ... and {len(rejected) - 20:,} more')
+        if not reset:
+            self.stdout.write('  Re-run with --reset to clear them (then run search, equals, names and hazard again).')
+            return
+        # The CAS number goes too: for these it most likely came from the
+        # bad match. import_pur restores CDPR's own CAS numbers.
+        cleared = Chemical.objects.filter(pk__in=[c['id'] for c in rejected]).update(
+            dtxsid='', preferred_name='', cas_number='', iarc_group='',
+        )
+        self.stdout.write(f'  Cleared {cleared:,} matches')
 
     # --- Phase 2: hazard lookup → IARC group ---
 

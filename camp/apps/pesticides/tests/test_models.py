@@ -118,3 +118,20 @@ class AbsoluteUrlTests(TestCase):
     def test_slug_never_empty(self):
         chem = Chemical(name='???', chem_code=999)
         assert chem.slug == 'chemical'
+
+
+class CompToxCorroborationTests(TestCase):
+    def test_corroborated(self):
+        from camp.apps.pesticides.management.commands.import_comptox import corroborated
+        assert corroborated('GLYPHOSATE, ISOPROPYLAMINE SALT', 'Glyphosate isopropylamine salt') == 'same'
+        assert corroborated('1080', 'Sodium fluoroacetate') == 'noletters'
+        assert corroborated('GLYPHOSATE, POTASSIUM SALT', 'Glyphosate potassium') == 'token'
+        assert corroborated('8-QUINOLINOL', '8-Hydroxyquinoline') == 'fuzzy'
+        assert corroborated('2,4-D', '2,4-Dichlorophenoxyacetic acid') == 'short'
+        assert corroborated('EPTC', 'S-Ethyl dipropylthiocarbamate') == 'short'
+        # The bad matches CompTox's synonym search produced.
+        assert corroborated('ACETIC ACID', 'Maleic hydrazide, potassium salt') == ''
+        assert corroborated('ALCOHOLS, C12-C14, ALIPHATIC', 'Ethanol') == ''
+        assert corroborated('2,4-DINITROPHENOL', '3-Iodo-2-propynyl-N-butylcarbamate') == ''
+        assert corroborated('AGROBACTERIUM RADIOBACTER', '2,3,4,5-Bisbutylene tetrafurfural') == ''
+        assert corroborated('ANYTHING', '') == ''
