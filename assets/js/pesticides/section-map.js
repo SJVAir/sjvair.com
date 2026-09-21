@@ -44,7 +44,27 @@
   var rampMatch = /[?&]ramp=([a-z]+)/.exec(window.location.search || '');
   var RAMP = RAMPS[rampMatch && rampMatch[1]] || RAMPS.blues;
   var NO_DATA_COLOR = '#f0f0f0';
-  var NUM_CLASSES = RAMP.length;
+  // How many quantile classes: ?bins=4|5|6|8|10 (quartiles ... deciles).
+  var BIN_OPTIONS = [[4, 'Quartiles'], [5, 'Quintiles'], [6, 'Sextiles'], [8, 'Octiles'], [10, 'Deciles']];
+  var binsMatch = /[?&]bins=(\d+)/.exec(window.location.search || '');
+  var NUM_CLASSES = binsMatch && BIN_OPTIONS.some(function (o) { return o[0] === +binsMatch[1]; }) ? +binsMatch[1] : 5;
+
+  // `count` colours evenly spaced along a ramp, interpolated in RGB
+  // between its stops, so a ramp serves any number of classes.
+  function sampleRamp(ramp, count) {
+    if (count <= 1) return [ramp[ramp.length - 1]];
+    var stops = ramp.map(function (hex) {
+      return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+    });
+    var out = [];
+    for (var i = 0; i < count; i++) {
+      var t = (i * (stops.length - 1)) / (count - 1);
+      var lo = Math.floor(t), hi = Math.min(stops.length - 1, lo + 1), f = t - lo;
+      var rgb = stops[lo].map(function (v, ch) { return Math.round(v + (stops[hi][ch] - v) * f); });
+      out.push('#' + rgb.map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join(''));
+    }
+    return out;
+  }
   // The tile styles the experiment control offers (see ?tiles= below).
   var TILE_STYLES = ['streets', 'basic-v2', 'bright-v2', 'dataviz', 'dataviz-light', 'topo-v2', 'outdoor-v2', 'toner-v2', 'hybrid'];
   function tileUrlFor(base, style) {
@@ -210,15 +230,7 @@
       var position = Math.ceil((k * distinct.length) / count) - 1;
       breaks.push(distinct[position]);
     }
-    var colors;
-    if (count === 1) {
-      colors = [RAMP[RAMP.length - 1]];
-    } else {
-      colors = [];
-      for (var c = 0; c < count; c++) {
-        colors.push(RAMP[Math.round((c * (RAMP.length - 1)) / (count - 1))]);
-      }
-    }
+    var colors = sampleRamp(RAMP, count);
     var members = [];
     for (var m = 0; m < breaks.length; m++) members.push([]);
     for (var v = 0; v < positive.length; v++) {
@@ -377,6 +389,17 @@
         });
         rampSelect.value = rampMatch && RAMPS[rampMatch[1]] ? rampMatch[1] : 'blues';
         rampSelect.addEventListener('change', this.onRampChange.bind(this));
+      }
+      var binsSelect = this.controlsEl.querySelector('select[name="bins"]');
+      if (binsSelect) {
+        BIN_OPTIONS.forEach(function (pair) {
+          var option = document.createElement('option');
+          option.value = pair[0];
+          option.textContent = pair[1] + ' (' + pair[0] + ')';
+          binsSelect.appendChild(option);
+        });
+        binsSelect.value = NUM_CLASSES;
+        binsSelect.addEventListener('change', this.onBinsChange.bind(this));
       }
 
       var sectionsToggle = this.controlsEl.querySelector('input[name="sections"]');
@@ -1026,8 +1049,15 @@
     var name = event.target.value;
     if (!RAMPS[name]) return;
     RAMP = RAMPS[name];
-    NUM_CLASSES = RAMP.length;
     this.rampName = name;
+    this.restyle();
+    if (this.lensLayer) this.clearLens();
+    this.syncViewParams();
+  };
+
+  SectionMap.prototype.onBinsChange = function (event) {
+    NUM_CLASSES = +event.target.value;
+    this.bins = NUM_CLASSES;
     this.restyle();
     if (this.lensLayer) this.clearLens();
     this.syncViewParams();
@@ -1066,6 +1096,11 @@
         url.searchParams.set('ramp', this.rampName);
       } else if (this.rampName) {
         url.searchParams.delete('ramp');
+      }
+      if (this.bins && this.bins !== 5) {
+        url.searchParams.set('bins', this.bins);
+      } else if (this.bins) {
+        url.searchParams.delete('bins');
       }
       window.history.replaceState(window.history.state, '', url.toString());
     } catch (err) {
