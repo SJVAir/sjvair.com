@@ -46,11 +46,18 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         assert response.context['map_config']['year_label'] == '2022\u20132023'
         assert 'data-year="all"' in response.content.decode()
 
-    def test_an_explicit_start_date_still_wins_over_all_years(self):
-        response = self.client.get(self.url, {'year': 'all', 'start': '2022-03-01', 'end': '2022-09-30'})
-        assert response.context['all_years'] is False
-        assert response.context['year'] == 2022
-        assert self.pks(response) == [9, 8, 7]
+    def test_dates_refine_within_the_scope_year_and_never_change_it(self):
+        # A 2022 start on a 2023 page clamps to Jan 1, 2023; the year stays put.
+        response = self.client.get(self.url, {'year': 2023, 'start': '2022-03-01', 'end': '2023-06-30'})
+        assert response.context['year'] == 2023 and response.context['all_years'] is False
+        assert self.pks(response) == [4, 3, 2, 1]
+        html = response.content.decode()
+        assert 'min="2023-01-01"' in html and 'max="2023-12-31"' in html
+        # Under All years the bounds are the loaded span, so a cross-year range works.
+        response = self.client.get(self.url, {'year': 'all', 'start': '2022-03-01', 'end': '2023-06-30'})
+        assert response.context['all_years'] is True
+        assert self.pks(response) == [4, 3, 2, 1, 9, 8, 7]
+        assert 'min="2022-01-01"' in response.content.decode()
 
     def test_explicit_dates_win(self):
         # pk=4 (2023-06-01) falls inside this range too, so it belongs in the
@@ -168,7 +175,9 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         assert response.context['map_config']['radius'] == ''
         assert [f['label'] for f in response.context['active_filters']] == []
 
-    def test_year_picker_follows_the_start_date(self):
+    def test_dates_outside_the_scope_year_clamp_to_it(self):
+        # No year in the URL means the latest year; 2022 dates clamp to its
+        # edges (an empty range, not another year's records).
         response = self.client.get(self.url, {'start': '2022-03-01', 'end': '2022-09-30'})
-        assert response.context['year'] == 2022
-        assert self.pks(response) == [9, 8, 7]
+        assert response.context['year'] == 2023
+        assert self.pks(response) == []

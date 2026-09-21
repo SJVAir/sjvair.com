@@ -98,3 +98,12 @@ class RecordsFilterForm(forms.Form):
     lat = forms.FloatField(required=False, widget=forms.HiddenInput)
     lng = forms.FloatField(required=False, widget=forms.HiddenInput)
     radius = forms.ChoiceField(required=False, choices=RADIUS_CHOICES, widget=forms.HiddenInput)
+
+    def set_bounds(self, low, high):
+        """Bound the date inputs to the scope's range (the browser's picker greys out the rest)."""
+        for name in ('start', 'end'):
+            attrs = self.fields[name].widget.attrs
+            if low is not None:
+                attrs['min'] = low.isoformat()
+            if high is not None:
+                attrs['max'] = high.isoformat()

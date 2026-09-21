@@ -1051,15 +1051,10 @@ class RecordsBrowser(vanilla.ListView):
         self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
         self.form = RecordsFilterForm(self._build_form_data(request.GET))
         self.form.is_valid()
-        # The year picker follows the dates being browsed: a filter change
-        # drops `?year=` from the URL, and a start date is the more specific
-        # statement of which year the reader is looking at anyway. Only a
-        # start date the reader actually submitted counts -- the ones
-        # _build_form_data() fills in are derived from the year, not the
-        # other way around.
-        start = self.form.cleaned_data.get('start')
-        if request.GET.get('start') and start and start.year in stats.available_years():
-            self.year, self.all_years = start.year, False
+        # The scope (the year picker) is the authority; the dates refine
+        # within it. The inputs are bounded to the scope's range, and
+        # get_date_range() clamps whatever arrives into it.
+        self.form.set_bounds(*self._default_range())
         self.related = self._get_related_objects()
         self.county = self._get_county()
         self.point, self.radius = self._get_point_and_radius()
@@ -1103,9 +1098,18 @@ class RecordsBrowser(vanilla.ListView):
         year. The form still renders the bad value and its error.
         """
         data = self.form.cleaned_data
+        low, high = self._default_range()
         start, end = data.get('start'), data.get('end')
         if start is None and end is None:
-            return self._default_range()
+            return low, high
+        # Clamp into the scope: a date outside the year (a hand-edited URL,
+        # a browser without min/max on date inputs) narrows to the year's
+        # edge rather than reaching into another year.
+        if low is not None:
+            start = max(start or low, low)
+            end = min(end or high, high)
+            if end < start:
+                end = start
         return start, end
 
     def _get_related_objects(self):
