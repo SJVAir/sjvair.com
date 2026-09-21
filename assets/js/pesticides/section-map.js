@@ -604,6 +604,7 @@
     this.bindZoomButtons();
 
     this.addLocateControl();
+    this.addResetControl();
 
     this.loadCounties();
     this.loadOutline();
@@ -634,6 +635,45 @@
       },
     });
     this.map.addControl(new Locate());
+  };
+
+  // A reset button under the locate button: back out to the map's home
+  // framing (the whole valley, or the filtered county).
+  SectionMap.prototype.addResetControl = function () {
+    var self = this;
+    var Reset = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd: function () {
+        var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control section-map-reset');
+        var link = L.DomUtil.create('a', '', container);
+        link.href = '#';
+        link.setAttribute('role', 'button');
+        link.setAttribute('title', 'Zoom out to the whole map');
+        link.setAttribute('aria-label', 'Zoom out to the whole map');
+        link.innerHTML = '<span class="fa-regular fa-house" aria-hidden="true"></span>';
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.on(link, 'click', L.DomEvent.preventDefault);
+        L.DomEvent.on(link, 'click', function () { self.resetView(); });
+        return container;
+      },
+    });
+    this.map.addControl(new Reset());
+  };
+
+  SectionMap.prototype.resetView = function () {
+    var slug = this.data.county;
+    var target = null;
+    if (this.countiesLayer) {
+      this.countiesLayer.eachLayer(function (layer) {
+        if (layer.feature && layer.feature.properties.slug === slug) target = layer;
+      });
+    }
+    var bounds = target ? target.getBounds() : (this.countiesLayer ? this.countiesLayer.getBounds() : null);
+    if (bounds && bounds.isValid()) {
+      this.map.fitBounds(bounds, { padding: [20, 20], animate: !this.reducedMotion });
+    } else {
+      this.map.setView(this.parseCenter(this.data.center) || [36.75, -119.80], parseInt(this.data.zoom, 10) || 8, { animate: !this.reducedMotion });
+    }
   };
 
   SectionMap.prototype.locate = function () {

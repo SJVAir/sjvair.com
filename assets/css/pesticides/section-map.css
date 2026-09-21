@@ -352,7 +352,8 @@ html.section-map-expanded body {
 
 
 /* Locate button under the zoom buttons, in Leaflet's bar style. */
-.section-map-locate a {
+.section-map-locate a,
+.section-map-reset a {
   display: flex;
   align-items: center;
   justify-content: center;
