@@ -280,6 +280,73 @@ class ChildCareImportTests(TestCase):
         assert counts['geocoded'] == 0
 
 
+class DownloadGuardTests(TestCase):
+    config = {
+        'label': 'Test source',
+        'url': 'https://example.com/file.txt',
+        'page_url': 'https://example.com/downloads',
+    }
+
+    def response(self, body, content_type='text/html; charset=utf-8'):
+        response = mock.Mock()
+        response.headers = {'Content-Type': content_type}
+        response.raise_for_status.return_value = None
+        response.iter_content.return_value = iter([body])
+        return response
+
+    def read(self, config, response):
+        with mock.patch.object(locations.requests, 'get', return_value=response):
+            with locations._open_source(config, None) as handle:
+                return handle.read()
+
+    def test_an_html_bot_wall_is_a_failed_download(self):
+        response = self.response(b'<!DOCTYPE html><html><title>Block</title></html>')
+
+        with pytest.raises(locations.DownloadError) as excinfo:
+            self.read(self.config, response)
+
+        message = str(excinfo.value)
+        assert 'blocks server-side downloads' in message
+        assert 'https://example.com/downloads' in message
+        assert '--path' in message
+
+    def test_html_wearing_a_plain_text_content_type_is_still_caught(self):
+        response = self.response(b'\n<html><body>Blocked</body></html>', content_type='text/plain')
+
+        with pytest.raises(locations.DownloadError):
+            self.read(self.config, response)
+
+    def test_a_real_file_downloads(self):
+        response = self.response(b'CDSCode\tSchool\n1\tOrchard High\n', content_type='text/plain')
+
+        assert self.read(self.config, response) == b'CDSCode\tSchool\n1\tOrchard High\n'
+
+    def test_a_ckan_lookup_that_returns_a_web_page_is_a_failed_download(self):
+        response = mock.Mock()
+        response.raise_for_status.return_value = None
+        response.json.side_effect = ValueError('not json')
+        config = {'label': 'Test CKAN source', 'url': None,
+            'ckan_dataset': 'nope', 'page_url': 'https://example.com/dataset'}
+
+        with pytest.raises(locations.DownloadError):
+            self.read(config, response)
+
+    def test_a_ckan_csv_that_serves_html_is_a_failed_download(self):
+        lookup = mock.Mock()
+        lookup.raise_for_status.return_value = None
+        lookup.json.return_value = {'result': {'resources': [
+            {'format': 'CSV', 'url': 'https://example.com/facilities.csv'},
+        ]}}
+        page = self.response(b'<html>Blocked</html>')
+        config = {'label': 'Test CKAN source', 'url': None,
+            'ckan_dataset': 'yep', 'page_url': 'https://example.com/dataset'}
+
+        with mock.patch.object(locations.requests, 'get', side_effect=[lookup, page]):
+            with pytest.raises(locations.DownloadError):
+                with locations._open_source(config, None) as handle:
+                    handle.read()
+
+
 class GeocodeCacheTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -331,18 +398,33 @@ class ImportLocationsCommandTests(TestCase):
             call_command('import_locations', stdout=stdout)
 
         imported = [call.args[0] for call in importer.call_args_list]
-        assert imported == ['cde-public', 'cdss-ccl']
-        assert 'cde-private: no download available' in stdout.getvalue()
+        assert imported == ['cdss-ccl']
+        output = stdout.getvalue()
+        assert 'cde-public: no download available' in output
+        assert 'cde-private: no download available' in output
+        assert 'https://www.cde.ca.gov/ds/si/ds/pubschls.asp' in output
 
     def test_a_single_source_without_a_download_is_an_error(self):
         with pytest.raises(CommandError):
             call_command('import_locations', source='cde-private', stdout=StringIO())
 
     def test_a_download_failure_is_a_command_error(self):
-        with mock.patch.object(locations, 'import_source',
-                side_effect=locations.DownloadError('boom')):
-            with pytest.raises(CommandError):
-                call_command('import_locations', source='cde-public', stdout=StringIO())
+        with mock.patch.object(locations, 'has_download', return_value=True):
+            with mock.patch.object(locations, 'import_source',
+                    side_effect=locations.DownloadError('boom')):
+                with pytest.raises(CommandError):
+                    call_command('import_locations', source='cde-public', stdout=StringIO())
+
+    def test_a_file_that_parses_to_nothing_warns(self):
+        stdout = StringIO()
+        path = trimmed(self, PUBLIC_PATH, set(), delimiter='\t', encoding='latin-1')
+
+        call_command('import_locations', source='cde-public', path=path, stdout=stdout)
+
+        output = stdout.getvalue()
+        assert 'no rows parsed' in output
+        assert path in output
+        assert 'imported=0' not in output
 
     def test_no_geocode_flag_is_passed_through(self):
         with mock.patch.object(locations, 'geocode_cached') as geocode:

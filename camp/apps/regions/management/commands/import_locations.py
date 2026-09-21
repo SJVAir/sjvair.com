@@ -6,11 +6,13 @@ from camp.apps.regions import locations
 class Command(BaseCommand):
     help = (
         'Import schools and child care facilities into regions.Location.\n'
-        'Sources download themselves unless --path is given. The CDE private'
-        ' school affidavit is published under a new URL every year, so it has'
-        ' no download and --path is the only way to import it (CSV; XLSX is'
-        ' read when openpyxl is installed). Under --source all it is skipped'
-        ' with a message when no --path is given.'
+        'The CDE files (public directory, private school affidavit) cannot be'
+        ' fetched server-side -- cde.ca.gov answers with a bot-protection page'
+        ' -- so download them in a browser from https://www.cde.ca.gov/ds/si/ds/pubschls.asp'
+        ' and https://www.cde.ca.gov/ds/si/ps/ and pass them with --path'
+        ' (CSV/tab-delimited; XLSX is read when openpyxl is installed).'
+        ' Under --source all, the sources that need --path are skipped with a'
+        ' message.'
     )
 
     def add_arguments(self, parser):
@@ -31,7 +33,9 @@ class Command(BaseCommand):
 
         for source in sources:
             if not path and not locations.has_download(source):
-                message = f'{source}: no download available, pass --path to import it.'
+                page_url = locations.SOURCES[source].get('page_url') or 'the source site'
+                message = (f'{source}: no download available; get the file from'
+                    f' {page_url} and pass it with --path.')
                 if len(sources) == 1:
                     raise CommandError(message)
                 self.stdout.write(message)
@@ -42,6 +46,14 @@ class Command(BaseCommand):
                     geocode=not options['no_geocode'])
             except locations.DownloadError as exc:
                 raise CommandError(str(exc))
+
+            if not any(counts.values()):
+                # Zero of everything means nothing parsed: a changed format,
+                # or the wrong file. Don't let it read as a clean import.
+                where = path or locations.SOURCES[source]['label']
+                self.stdout.write(self.style.WARNING(
+                    f'{source}: no rows parsed from {where}; nothing changed.'))
+                continue
 
             summary = ', '.join(f'{key}={value}' for key, value in counts.items())
             self.stdout.write(f'{source}: {summary}')

@@ -47,6 +47,9 @@ GEOCODE_CACHE_TTL = 60 * 60 * 24 * 30  # 30 days
 
 XLSX_MAGIC = b'PK\x03\x04'
 
+# A source that answers a download with a web page is a bot wall, not data.
+HTML_PREFIXES = (b'<html', b'<!doctype')
+
 
 class DownloadError(Exception):
     """A source file couldn't be fetched."""
@@ -329,15 +332,19 @@ SOURCES = {
     'cde-public': {
         'label': 'CDE public schools and districts directory',
         'type': Location.Type.PUBLIC_SCHOOL,
-        'url': 'https://www.cde.ca.gov/schooldirectory/report?rid=dl1&tp=txt',
+        # cde.ca.gov answers server-side downloads with a JS bot wall (the
+        # same one that blocks the OEHHA Prop 65 list), so --path only.
+        'url': None,
+        'page_url': 'https://www.cde.ca.gov/ds/si/ds/pubschls.asp',
         'parse': parse_cde_public,
     },
     'cde-private': {
         'label': 'CDE private school affidavit (school level)',
         'type': Location.Type.PRIVATE_SCHOOL,
         # The affidavit file is published under a new per-year URL every
-        # year (https://www.cde.ca.gov/ds/si/ps/), so --path is the route.
+        # year, so --path is the route for it too.
         'url': None,
+        'page_url': 'https://www.cde.ca.gov/ds/si/ps/',
         'parse': parse_cde_private,
     },
     'cdss-ccl': {
@@ -345,6 +352,7 @@ SOURCES = {
         'type': Location.Type.CHILD_CARE,
         'url': None,
         'ckan_dataset': 'community-care-licensing-facilities1',
+        'page_url': 'https://data.ca.gov/dataset/community-care-licensing-facilities1',
         'parse': parse_cdss_ccl,
     },
 }
@@ -375,7 +383,29 @@ def _source_url(config):
             if (resource.get('format') or '').upper() == 'CSV' and resource.get('url'):
                 return resource['url']
 
-    raise DownloadError(f'No download URL for {config["label"]}: pass --path.')
+    raise DownloadError(
+        f'No download URL for {config["label"]}: get the file from'
+        f' {config.get("page_url") or "the source site"} and pass it with --path.'
+    )
+
+
+def _reject_html(config, url, content_type, chunk):
+    """
+    A 200 that hands back a web page is a bot wall, not the file. Say so
+    loudly rather than parsing zero rows and calling it a successful import.
+    """
+    looks_like_html = (
+        'text/html' in content_type
+        or bytes(chunk or b'').lstrip()[:9].lower().startswith(HTML_PREFIXES)
+    )
+    if not looks_like_html:
+        return
+
+    raise DownloadError(
+        f'{config["label"]} returned a web page instead of a file: the site'
+        f' blocks server-side downloads ({url}). Download it in a browser from'
+        f' {config.get("page_url") or "the source site"} and pass it with --path.'
+    )
 
 
 @contextmanager
@@ -390,7 +420,10 @@ def _open_source(config, path):
         try:
             response = requests.get(url, timeout=300, stream=True)
             response.raise_for_status()
-            for chunk in response.iter_content(chunk_size=1024 * 64):
+            content_type = (response.headers.get('Content-Type') or '').lower()
+            for index, chunk in enumerate(response.iter_content(chunk_size=1024 * 64)):
+                if index == 0:
+                    _reject_html(config, url, content_type, chunk)
                 handle.write(chunk)
         except requests.RequestException as exc:
             raise DownloadError(f'Could not download {config["label"]}: {exc}')
