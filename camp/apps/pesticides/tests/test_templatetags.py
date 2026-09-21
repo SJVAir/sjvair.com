@@ -1,7 +1,7 @@
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase
 
-from camp.apps.pesticides.templatetags.pesticides_explorer import lbs, trend_chart
+from camp.apps.pesticides.templatetags.pesticides_explorer import lbs, title_case_name, trend_chart
 
 
 class LbsFilterTests(SimpleTestCase):
@@ -17,6 +17,23 @@ class LbsFilterTests(SimpleTestCase):
         assert lbs(0.0082) == '0.01'
         assert lbs(1.25) == '1.2'
         assert lbs(9.96) == '10.0'
+
+
+class TitleCaseNameTests(SimpleTestCase):
+    def test_all_caps_names_are_title_cased(self):
+        assert title_case_name('SELMA HIGH') == 'Selma High'
+        assert title_case_name("CHILDREN'S CENTER #2") == "Children's Center #2"
+
+    def test_runs_of_spaces_collapse(self):
+        assert title_case_name('ABC  PRESCHOOL   CENTER') == 'Abc Preschool Center'
+
+    def test_mixed_case_names_are_left_alone(self):
+        assert title_case_name('McKinley Elementary') == 'McKinley Elementary'
+        assert title_case_name('de Anza  Academy') == 'de Anza Academy'
+
+    def test_empty(self):
+        assert title_case_name('') == ''
+        assert title_case_name(None) == ''
 
 
 class TrendChartTests(SimpleTestCase):

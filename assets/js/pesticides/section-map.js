@@ -2683,11 +2683,25 @@
 
   // A school or child care popup in the section popup's idiom: name, grey
   // subline, the block headline, pill actions.
+  // The CDE and CDSS directories shout their names ("SELMA HIGH"). Same rule
+  // as the title_case_name template filter: only touch a name that is
+  // entirely upper case, so a deliberately-cased one (McKinley) is left be.
+  function titleCaseName(name) {
+    var text = (name || '').replace(/\s+/g, ' ').trim();
+    if (!text || text !== text.toUpperCase()) return text;
+    return text.replace(/[A-Za-z\u00C0-\u024F]+(?:'[A-Za-z\u00C0-\u024F]+)*/g, function (word) {
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    });
+  }
+
   SectionMap.prototype.locationPopupHtml = function (props, block) {
     // type · address, city. The district is already a pill action below, so
     // it doesn't take the sub-line's room -- the street address is what
     // tells two schools of the same name apart.
-    var where = [props.address, props.city].filter(function (part) { return !!part; }).join(', ');
+    var where = [props.address, props.city]
+      .filter(function (part) { return !!part; })
+      .map(titleCaseName)
+      .join(', ');
     var subParts = [];
     if (props.type_label) subParts.push(escapeHtml(props.type_label));
     if (where) subParts.push(escapeHtml(where));
@@ -2720,7 +2734,7 @@
 
     return (
       '<div class="section-popup location-popup">' +
-      '<h4>' + escapeHtml(props.name || '') + '</h4>' +
+      '<h4>' + escapeHtml(titleCaseName(props.name)) + '</h4>' +
       (sub ? '<p class="section-popup-sub">' + sub + '</p>' : '') +
       headline +
       (actions ? '<div class="section-popup-actions">' + actions + '</div>' : '') +

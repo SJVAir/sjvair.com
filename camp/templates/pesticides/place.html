@@ -82,35 +82,20 @@
 
 {% if is_school_district %}
 <section class="schools-nearby mt-6">
-    <h2 class="title is-4">Schools in this district</h2>
+    {# Most rows are child care, not schools, so the heading says both. #}
+    <h2 class="title is-4">Schools &amp; child care in this district</h2>
     {% if schools_nearby %}
-    <div class="table-container">
-        <table class="table is-fullwidth is-striped is-hoverable data-table schools-table">
-            <thead>
-                <tr>
-                    <th>School or child care</th>
-                    <th>Type</th>
-                    <th class="has-text-right">Lbs within about a mile{% if year_label %} <small class="has-text-grey">{{ year_label }}</small>{% endif %}</th>
-                    <th class="has-text-right">Applications</th>
-                    <th>Section</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in schools_nearby %}
-                <tr>
-                    <td>{{ row.location.name }}</td>
-                    <td>{{ row.location.short_type }}</td>
-                    <td class="has-text-right">{{ row.lbs|lbs }}</td>
-                    <td class="has-text-right">{{ row.applications|intcomma }}</td>
-                    <td>{% if row.section_sqid %}<a href="{% url 'pesticides:section-detail' sqid=row.section_sqid %}">{{ row.section_mtrs }}</a>{% else %}&mdash;{% endif %}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    {% include 'pesticides/includes/schools-table.html' with rows=schools_nearby|slice:":15" %}
+    {% if schools_nearby|length > 15 %}
+    {# A district can run to a couple of hundred sites; the rest are one click away rather than a page of scrolling. #}
+    <details class="schools-more">
+        <summary>Show all {{ schools_nearby|length }}</summary>
+        {% include 'pesticides/includes/schools-table.html' with rows=schools_nearby|slice:"15:" %}
+    </details>
+    {% endif %}
     <p class="is-size-7 has-text-grey">Pounds reported in the square-mile section each site sits in and the eight around it.</p>
     {% else %}
-    <p class="has-text-grey">No schools on record in this district.</p>
+    <p class="has-text-grey">No schools or child care on record here.</p>
     {% endif %}
 </section>
 {% endif %}

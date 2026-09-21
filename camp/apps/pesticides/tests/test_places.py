@@ -283,11 +283,44 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url)
         assert response.status_code == 200
         html = response.content.decode()
-        assert 'Schools in this district' in html
+        assert 'Schools &amp; child care in this district' in html
         assert 'Selma High' in html and 'Away Child Care' in html
         assert 'Public school' in html and 'Child care' in html
         assert reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid}) in html
         assert [r['lbs'] for r in response.context['schools_nearby']] == [695.0, 0]
+
+    def test_panel_titlecases_names_and_shows_the_city(self):
+        self.inside.name = 'SELMA  HIGH'
+        self.inside.city = 'SELMA'
+        self.inside.save()
+        cache.clear()
+        html = self.client.get(self.url).content.decode()
+        assert '<td>Selma High</td>' in html
+        assert '<td>Selma</td>' in html
+        assert 'SELMA  HIGH' not in html
+
+    def test_panel_section_links_carry_the_scope(self):
+        section_url = reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid})
+        html = self.client.get(self.url, {'year': '2022', 'concern': '1'}).content.decode()
+        assert f'{section_url}?year=2022&amp;concern=1' in html
+
+    def test_panel_caps_the_open_rows_and_offers_the_rest(self):
+        for index in range(20):
+            Location.objects.create(
+                type=Location.Type.CHILD_CARE,
+                name=f'EXTRA CARE {index:02d}',
+                external_id=f'extra-{index}',
+                source='cdss',
+                point=Point(-121.5, 38.5, srid=4326),
+                district=self.district,
+            )
+        cache.clear()
+        html = self.client.get(self.url).content.decode()
+        assert 'Show all 22' in html
+        # Fifteen rows open, the other seven behind the toggle.
+        assert html.count('schools-table') == 2
+        assert html.count('EXTRA CARE'.title()) == 20
+        assert html.split('<details class="schools-more">')[0].count('Extra Care') == 13  # plus Selma High and Away Child Care makes 15
 
     def test_page_opens_with_the_school_markers_on(self):
         response = self.client.get(self.url)
@@ -300,7 +333,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         Location.objects.all().delete()
         cache.clear()
         html = self.client.get(self.url).content.decode()
-        assert 'No schools on record in this district.' in html
+        assert 'No schools or child care on record here.' in html
 
     def test_schools_nearby_follows_the_concern_scope(self):
         rows = places.schools_nearby(self.district, 2023, concern=True)
@@ -311,7 +344,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
 
     def test_other_place_pages_have_no_panel(self):
         html = self.client.get(reverse('pesticides:region', kwargs={'sqid': Region.objects.get(pk=9001).sqid, 'slug': 'fresno'})).content.decode()
-        assert 'Schools in this district' not in html
+        assert 'child care in this district' not in html
         assert 'data-show-locations="0"' in html
 
 

@@ -576,6 +576,18 @@ body.pesticides
         .range
             font-variant-numeric: tabular-nums
 
+    // "Show all 174" under the first fifteen rows of a district's sites.
+    .schools-more
+        summary
+            cursor: pointer
+            color: $link
+            font-size: $size-7
+            margin-bottom: 0.5rem
+            &:hover
+                text-decoration: underline
+        &[open] summary
+            margin-bottom: 0.75rem
+
     .month-bars
         display: flex
         align-items: flex-end

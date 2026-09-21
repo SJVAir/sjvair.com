@@ -1,4 +1,5 @@
 import calendar
+import re
 
 from django import template
 from django.contrib.humanize.templatetags.humanize import intcomma
@@ -71,6 +72,26 @@ def lbs(value):
     if value and abs(value) < 10:
         return f'{value:.1f}'
     return intcomma(int(round(value)))
+
+
+# A word, with an apostrophe inside it kept ("CHILDREN'S" -> "Children's").
+# Letters rather than [A-Za-z] so an accented name ("CANADA" with a tilde)
+# doesn't come back out half-shouted.
+WORD_RE = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)*")
+
+
+@register.filter
+def title_case_name(value):
+    """
+    A shouted source name as a readable one: "SELMA  HIGH" -> "Selma High".
+    Runs of spaces collapse either way. A name that isn't entirely upper case
+    was cased deliberately (McKinley, de Anza) and is left alone. The source
+    names stay as imported; this is display only.
+    """
+    text = ' '.join(str(value or '').split())
+    if not text or text != text.upper():
+        return text
+    return WORD_RE.sub(lambda match: match.group(0).capitalize(), text)
 
 
 @register.filter
