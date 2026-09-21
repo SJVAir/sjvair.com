@@ -38,10 +38,17 @@ SJV_COUNTIES = frozenset([
 # the bar either: the spec's filter is enrollment >= 6.
 MIN_PRIVATE_ENROLLMENT = 6
 
-# CDSS facility types that are child care centers. Family child care homes
-# are private residences and carry no street address, so they're left out.
-CHILD_CARE_TYPES = ('DAY CARE CENTER', 'INFANT CENTER', 'SCHOOL AGE')
-FAMILY_CHILD_CARE = 'FAMILY CHILD CARE HOME'
+# CDSS facility types that are child care centers, as FAC_TYPE_DESC spells
+# them (the column is truncated at 20 characters, hence "SINGLE CHILD CARE CE"
+# for a single child care center). Family child care homes are private
+# residences and aren't in this dataset at all.
+CHILD_CARE_TYPES = (
+    'DAY CARE CENTER',
+    'INFANT CENTER',
+    'SCHOOL-AGE',
+    'SINGLE CHILD CARE',
+)
+CHILD_CARE_PROGRAM = 'CHILD CARE'
 
 GEOCODE_CACHE_TTL = 60 * 60 * 24 * 30  # 30 days
 
@@ -290,38 +297,43 @@ def _grade_span(row):
 
 def parse_cdss_ccl(file):
     """
-    CDSS Community Care Licensing facilities. Only licensed child care
-    centers are imported; family child care homes are private residences.
+    CDSS Community Care Licensing facilities, as published on data.ca.gov.
+    The file is every licensed facility in the state -- child care, adult and
+    senior care, residential -- so the child care centers are picked out by
+    PROGRAM_TYPE and FAC_TYPE_DESC. STATUS is a numeric code on the licensed
+    layer, so it's recorded rather than filtered on.
     """
     for row in _rows(file, encoding='utf-8'):
-        facility_type = _get(row, 'facility type', 'facilitytype', 'type').upper()
-        if FAMILY_CHILD_CARE in facility_type:
-            continue
-        if not any(kind in facility_type for kind in CHILD_CARE_TYPES):
-            continue
-        if _get(row, 'facility status', 'status').upper() != 'LICENSED':
-            continue
-        if not _in_the_valley(_get(row, 'county name', 'county')):
+        program = _get(row, 'program_type', 'program').upper()
+        if program and program != CHILD_CARE_PROGRAM:
             continue
 
-        name = _get(row, 'facility name', 'facilityname', 'name')
+        facility_type = _get(row, 'fac_type_desc', 'facility type', 'facilitytype', 'type').upper()
+        if not facility_type.startswith(CHILD_CARE_TYPES):
+            continue
+
+        if not _in_the_valley(_get(row, 'county', 'county name')):
+            continue
+
+        name = _get(row, 'name', 'facility name', 'facilityname')
         if not name:
             continue
 
         yield {
-            'external_id': _get(row, 'facility number', 'facilitynumber', 'facility id'),
+            'external_id': _get(row, 'fac_nbr', 'facility number', 'facilitynumber', 'facility id'),
             'cds_code': None,
             'name': name,
-            'address': _get(row, 'facility address', 'address'),
-            'city': _get(row, 'facility city', 'city'),
-            'zip': _get(row, 'facility zip', 'zip'),
-            'lat': _float(_get(row, 'latitude', 'facility latitude')),
-            'lng': _float(_get(row, 'longitude', 'facility longitude')),
+            'address': _get(row, 'res_street_addr', 'facility address', 'address'),
+            'city': _get(row, 'res_city', 'facility city', 'city'),
+            'zip': _get(row, 'res_zip_code', 'facility zip', 'zip'),
+            'lat': _float(_get(row, 'fac_latitude', 'latitude', 'facility latitude', 'y')),
+            'lng': _float(_get(row, 'fac_longitude', 'longitude', 'facility longitude', 'x')),
             'metadata': {
-                'county': _get(row, 'county name', 'county'),
+                'county': _get(row, 'county', 'county name'),
                 'facility_type': facility_type,
-                'capacity': _int(_get(row, 'facility capacity', 'capacity')),
-                'status': _get(row, 'facility status', 'status'),
+                'capacity': _int(_get(row, 'capacity', 'facility capacity')),
+                'status': _get(row, 'status', 'facility status'),
+                'client_served': _get(row, 'client_served'),
             },
         }
 

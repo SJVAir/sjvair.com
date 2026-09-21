@@ -255,8 +255,10 @@ class ChildCareImportTests(TestCase):
             'Niños Felices Learning Center',
             'Mesa Afterschool Club',
         }
-        assert not Location.objects.filter(name='Ramirez Family Child Care').exists()
-        assert not Location.objects.filter(name='Closed Kids Center').exists()
+        # Not child care, not a center, not in the valley.
+        assert not Location.objects.filter(name='Sunset Adult Day Program').exists()
+        assert not Location.objects.filter(name='Orchard Foster Family Agency').exists()
+        assert not Location.objects.filter(name='Riverbend Day Care Center').exists()
 
     def test_reads_the_utf_8_export_without_mojibake(self):
         locations.import_source('cdss-ccl', path=CCL_PATH)
@@ -268,9 +270,33 @@ class ChildCareImportTests(TestCase):
         facility = Location.objects.get(external_id='100400001')
 
         assert facility.type == Location.Type.CHILD_CARE
+        assert facility.name == 'Little Sprouts Learning Center'
+        assert facility.address == '55 Orchard Way'
+        assert facility.city == 'Selma'
+        assert facility.zip == '93662'
+        assert round(facility.point.y, 4) == 36.715
+        assert round(facility.point.x, 4) == -119.795
         assert facility.metadata['capacity'] == 84
         assert facility.metadata['facility_type'] == 'DAY CARE CENTER'
+        assert facility.metadata['status'] == '3'
+        assert facility.metadata['client_served'] == '950'
         assert facility.county == Region.objects.get(pk=9001)
+
+    def test_keeps_every_child_care_center_kind(self):
+        locations.import_source('cdss-ccl', path=CCL_PATH)
+
+        assert set(Location.objects.values_list('metadata__facility_type', flat=True)) == {
+            'DAY CARE CENTER',
+            'INFANT CENTER',
+            'SCHOOL-AGE DC CENTER',
+            'SINGLE CHILD CARE CE',
+        }
+
+    def test_does_not_filter_on_the_numeric_status_code(self):
+        # The export is the licensed layer; STATUS is a code, not a state.
+        locations.import_source('cdss-ccl', path=CCL_PATH)
+
+        assert Location.objects.filter(metadata__status='4').count() == 1
 
     def test_does_not_geocode_rows_that_carry_coordinates(self):
         with mock.patch.object(locations, 'geocode_cached') as geocode:
