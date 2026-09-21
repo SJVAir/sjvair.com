@@ -420,3 +420,66 @@ html.section-map-expanded body {
     animation: none;
   }
 }
+
+/* Filter toolbar over the map: top-left, clear of the zoom and locate
+   buttons, one button-styled dropdown per filter (the map toolbar idiom). */
+.section-map-toolbar {
+  position: absolute;
+  top: 0.75rem;
+  left: 3.6rem;
+  right: 12.5rem; /* leave the Options panel its corner */
+  z-index: 1000;
+  pointer-events: none; /* the gaps between buttons let the map through */
+}
+
+.section-map-toolbar > .field {
+  pointer-events: none;
+}
+
+.section-map-toolbar .control {
+  pointer-events: auto;
+}
+
+.section-map-toolbar .button {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  border-color: rgba(0, 0, 0, 0.12);
+  font-size: 0.85rem;
+  max-width: 16rem;
+}
+
+.section-map-toolbar .button .section-map-toolbar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-map-toolbar .section-map-toolbar-dropdown.is-set .button {
+  border-color: #3273dc;
+  color: #3273dc;
+}
+
+.section-map-toolbar .dropdown-menu {
+  min-width: 18rem;
+}
+
+.section-map-toolbar .dropdown-content {
+  padding: 0.75rem;
+}
+
+.section-map-toolbar .dropdown-content .field:last-child {
+  margin-bottom: 0;
+}
+
+/* The picker's results list drops below its input inside the menu. */
+.section-map-toolbar .entity-picker {
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .section-map-toolbar {
+    right: 3.5rem;
+  }
+  .section-map-toolbar .button .section-map-toolbar-label {
+    max-width: 7rem;
+  }
+}

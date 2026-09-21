@@ -919,6 +919,12 @@ class MapPage(vanilla.TemplateView):
             related=resolved,
             county=county,
             county_choices=county_choices(),
+            # Products before chemicals; icons match the explorer's tab icons.
+            toolbar_kinds=[
+                ('product', 'Product', 'fa-spray-can-sparkles', 'is-products'),
+                ('chemical', 'Chemical', 'fa-flask', 'is-chemicals'),
+                ('commodity', 'Commodity', 'fa-seedling', 'is-commodities'),
+            ],
             no_matches=no_matches,
             county_map=county_map,
             **year_context(year, all_years),

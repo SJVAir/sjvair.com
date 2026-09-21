@@ -353,7 +353,54 @@
       }
     }
     this.bindPanelToggles(wrap);
+    this.bindToolbar(wrap);
     this.setExpanded(!!this.expanded);
+  };
+
+  // The filter toolbar's dropdowns: a click on a trigger opens its menu
+  // (and focuses the picker's search box), a click anywhere else or Escape
+  // closes them. Bound once per toolbar element; a swapped-in toolbar is
+  // a new element and gets bound again.
+  SectionMap.prototype.bindToolbar = function (wrap) {
+    var toolbar = wrap.querySelector('.section-map-toolbar');
+    if (!toolbar || toolbar.getAttribute('data-bound')) return;
+    toolbar.setAttribute('data-bound', '1');
+    var dropdowns = toolbar.querySelectorAll('.dropdown');
+
+    var closeAll = function (except) {
+      for (var i = 0; i < dropdowns.length; i++) {
+        if (dropdowns[i] === except) continue;
+        dropdowns[i].classList.remove('is-active');
+        var trigger = dropdowns[i].querySelector('.dropdown-trigger .button');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      }
+    };
+
+    for (var i = 0; i < dropdowns.length; i++) {
+      (function (dropdown) {
+        var trigger = dropdown.querySelector('.dropdown-trigger .button');
+        if (!trigger) return;
+        trigger.addEventListener('click', function (event) {
+          event.stopPropagation();
+          var open = !dropdown.classList.contains('is-active');
+          closeAll(dropdown);
+          dropdown.classList.toggle('is-active', open);
+          trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+          if (open) {
+            var focusable = dropdown.querySelector('input[type="search"], select');
+            if (focusable) focusable.focus();
+          }
+        });
+        // Clicks inside the menu (typing, picking) shouldn't close it.
+        var menu = dropdown.querySelector('.dropdown-menu');
+        if (menu) menu.addEventListener('click', function (event) { event.stopPropagation(); });
+      })(dropdowns[i]);
+    }
+
+    document.addEventListener('click', function () { closeAll(null); });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') closeAll(null);
+    });
   };
 
   // The options and legend panels fold to their header. The fold is a

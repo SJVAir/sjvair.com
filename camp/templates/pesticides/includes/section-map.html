@@ -22,6 +22,7 @@
        data-zoom="{{ map_config.zoom }}"
        data-radius="{{ map_config.radius }}"
        data-show-notices="{{ map_config.show_notices }}"></div>
+  {% if map_toolbar %}{% include 'pesticides/includes/map-toolbar.html' %}{% endif %}
   {# Controls and legend sit over the map (top-right, bottom-left), so they stay usable when the map is expanded. #}
   <div class="section-map-panel section-map-controls" data-panel="options" hidden>
     <div class="section-map-panel-head">

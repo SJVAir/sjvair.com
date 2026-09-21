@@ -1,0 +1,59 @@
+{% comment %}
+Filter toolbar over the map (top-left, beside the zoom buttons), in the
+style of the map toolbar mockup: one button-styled dropdown per filter,
+each showing its current selection. The pickers inside submit the form
+(an htmx swap) when a name is chosen or cleared; the county select submits
+on change. Lives inside the map wrapper so it comes along in expanded mode.
+Context: related (dict of resolved entities), county, county_choices, year, all_years, year_qs.
+{% endcomment %}
+<form method="GET" class="section-map-toolbar" hx-trigger="submit, change delay:250ms" aria-label="Map filters">
+    {% if year_qs %}<input type="hidden" name="year" value="{% if all_years %}all{% else %}{{ year }}{% endif %}">{% endif %}
+    <div class="field is-grouped is-grouped-multiline">
+        {% for kind, label, icon, icon_class in toolbar_kinds %}
+        <div class="control">
+            <div class="dropdown section-map-toolbar-dropdown{% if kind == 'chemical' and related.chemical or kind == 'product' and related.product or kind == 'commodity' and related.commodity %} is-set{% endif %}">
+                <div class="dropdown-trigger">
+                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                        <span class="icon"><span class="fa-duotone fa-fw {{ icon }} explorer-icon {{ icon_class }}" aria-hidden="true"></span></span>
+                        <span class="section-map-toolbar-label">
+                            {% if kind == 'product' and related.product %}{{ related.product.display_name }}
+                            {% elif kind == 'chemical' and related.chemical %}{{ related.chemical.display_name }}
+                            {% elif kind == 'commodity' and related.commodity %}{{ related.commodity.display_name }}
+                            {% else %}{{ label }}{% endif %}
+                        </span>
+                        <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+                    </button>
+                </div>
+                <div class="dropdown-menu" role="menu">
+                    <div class="dropdown-content">
+                        {% if kind == 'product' %}{% include 'pesticides/includes/entity-picker.html' with kind='product' label='Product' selected=related.product autosubmit=1 %}
+                        {% elif kind == 'chemical' %}{% include 'pesticides/includes/entity-picker.html' with kind='chemical' label='Chemical' selected=related.chemical autosubmit=1 %}
+                        {% else %}{% include 'pesticides/includes/entity-picker.html' with kind='commodity' label='Commodity' selected=related.commodity autosubmit=1 %}{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        <div class="control">
+            <div class="dropdown section-map-toolbar-dropdown{% if county %} is-set{% endif %}">
+                <div class="dropdown-trigger">
+                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                        <span class="icon"><span class="fa-duotone fa-fw fa-map explorer-icon is-map" aria-hidden="true"></span></span>
+                        <span class="section-map-toolbar-label">{% if county %}{{ county.name }}{% else %}All counties{% endif %}</span>
+                        <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+                    </button>
+                </div>
+                <div class="dropdown-menu" role="menu">
+                    <div class="dropdown-content">
+                        <div class="field">
+                            <label class="label" for="map-county">County</label>
+                            <div class="control"><div class="select is-fullwidth"><select id="map-county" name="county">
+                                {% for slug, name in county_choices %}<option value="{{ slug }}"{% if county and county.slug == slug %} selected{% endif %}>{{ name }}</option>{% endfor %}
+                            </select></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
