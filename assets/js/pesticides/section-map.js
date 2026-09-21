@@ -1202,8 +1202,17 @@
   // Hovering a cell darkens and thickens its border so the reader can see
   // which square a click would open. The fill is left alone: it carries the
   // value. The highlighted section (the page's own) keeps its orange outline.
-  SectionMap.prototype.hoverStyle = function () {
-    return { stroke: true, color: '#222', opacity: 1, weight: this.level === 'township' ? 2.5 : 2 };
+  // Hovered cells get a dark outline; a cell with no reported use gets a
+  // lighter one, so the pointer still lands somewhere visible (a reader
+  // finding their own square mile) without drawing attention to nothing.
+  SectionMap.prototype.hoverStyle = function (feature) {
+    var weight = this.level === 'township' ? 2.5 : 2;
+    if (feature && !feature.properties[this.metric]) return { stroke: true, color: '#999', opacity: 1, weight: weight };
+    return { stroke: true, color: '#222', opacity: 1, weight: weight };
+  };
+
+  SectionMap.prototype.lensHoverStyle = function (section) {
+    return { stroke: true, color: section.properties[this.metric] ? '#111' : '#999', opacity: 1, weight: 2 };
   };
 
   SectionMap.prototype.bindHover = function (feature, layer) {
@@ -1215,10 +1224,7 @@
         if (self.lensId !== feature.properties.id) self.showLens(feature, layer);
       }
       if (self.isHighlighted(feature)) return;
-      // No-data cells stay as they are: still clickable, but nothing to
-      // draw attention to.
-      if (!feature.properties[self.metric]) return;
-      var hover = self.hoverStyle();
+      var hover = self.hoverStyle(feature);
       if (self.level === 'township' && self.lensLayer) hover.fillOpacity = 0;
       layer.setStyle(hover);
       if (layer.bringToFront) layer.bringToFront();
@@ -1394,10 +1400,10 @@
       this.lensOutline = null;
     }
     var host = this.lensHost;
-    if (!show || !host || !host.feature.properties[this.metric] || !host.layer.getLatLngs) return;
+    if (!show || !host || !host.layer.getLatLngs) return;
     this.lensOutline = L.polygon(host.layer.getLatLngs(), Object.assign(
       { pane: 'pesticide-lens-outline', interactive: false, fill: false },
-      this.hoverStyle()
+      this.hoverStyle(host.feature)
     )).addTo(this.map);
   };
 
@@ -1527,8 +1533,7 @@
         style: function (section) { return self.lensSectionStyle(section, self.currentClasses); },
         onEachFeature: function (section, sectionLayer) {
           sectionLayer.on('mouseover', function () {
-            if (!section.properties[self.metric]) return;
-            sectionLayer.setStyle({ stroke: true, color: '#111', opacity: 1, weight: 2 });
+            sectionLayer.setStyle(self.lensHoverStyle(section));
             if (sectionLayer.bringToFront) sectionLayer.bringToFront();
           });
           sectionLayer.on('mouseout', function () {
@@ -1648,8 +1653,7 @@
           // The lens covers the townships, so this is where a move into a
           // neighbouring township is noticed: recentre the lens on it.
           if (self.recentreLens(section)) return;
-          if (!section.properties[self.metric]) return;
-          sectionLayer.setStyle({ stroke: true, color: '#111', opacity: 1, weight: 2 });
+          sectionLayer.setStyle(self.lensHoverStyle(section));
           if (sectionLayer.bringToFront) sectionLayer.bringToFront();
         });
         sectionLayer.on('mouseout', function () {
