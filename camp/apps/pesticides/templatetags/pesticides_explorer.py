@@ -200,8 +200,10 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
                 'display': intcomma(value) if hide_lbs else lbs(value),
                 'is_selected': point_year == selected,
                 'label': (intcomma(value) if hide_lbs else lbs(value)) if index in labelled else '',
-                # Keep the end labels inside the box, and off the point.
-                'label_x': x,
+                # Keep the end labels inside the box, and off the point: the
+                # first year's label starts just right of its point, the last
+                # year's ends just left of its.
+                'label_x': (x + 5) if index == 0 and len(points) > 1 else ((x - 5) if index == len(points) - 1 and len(points) > 1 else x),
                 'label_y': max(round(y - 6, 1), 9),
                 'anchor': 'start' if index == 0 and len(points) > 1 else ('end' if index == len(points) - 1 and len(points) > 1 else 'middle'),
                 # The hover label sits under the point (above it near the baseline), pulled in at the ends.
