@@ -21,8 +21,8 @@
                     <tr>
                         <th>{% sort_link 'name' 'Commodity' %}</th>
                         <th>{% sort_link 'site' 'Site code' %}</th>
-                        <th class="has-text-right">{% sort_link 'chemicals' 'Chemicals' %}</th>
-                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}</th>
+                        {% if not related.chemical %}<th class="has-text-right">{% sort_link 'chemicals' 'Chemicals' %}</th>{% endif %}
+                        <th class="has-text-right">{% sort_link 'lbs' lbs_label %}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -30,11 +30,11 @@
                     <tr>
                         <td><a href="{{ commodity.get_absolute_url }}{{ year_qs }}">{{ commodity.display_name }}</a></td>
                         <td>{{ commodity.site_code }}</td>
-                        <td class="has-text-right">{{ commodity.chemical_count|default:0 }}</td>
+                        {% if not related.chemical %}<td class="has-text-right">{{ commodity.chemical_count|default:0 }}</td>{% endif %}
                         <td class="has-text-right">{{ commodity.lbs_applied|lbs }}</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="4" class="has-text-centered has-text-grey">No commodities match.</td></tr>
+                    <tr><td colspan="{% if related.chemical %}3{% else %}4{% endif %}" class="has-text-centered has-text-grey">No commodities match.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

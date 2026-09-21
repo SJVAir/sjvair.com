@@ -22,8 +22,8 @@
                         <th>{% sort_link 'name' 'Chemical' %}</th>
                         <th>Categories</th>
                         <th>{% sort_link 'iarc' 'IARC' %}</th>
-                        <th class="has-text-right">{% sort_link 'products' 'Products' %}</th>
-                        <th class="has-text-right">{% sort_link 'lbs' 'Lbs applied' %}</th>
+                        {% if not related.product %}<th class="has-text-right">{% sort_link 'products' 'Products' %}</th>{% endif %}
+                        <th class="has-text-right">{% sort_link 'lbs' lbs_label %}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -39,11 +39,11 @@
                             </div>
                         </td>
                         <td>{{ chemical.iarc_group|default:'—' }}</td>
-                        <td class="has-text-right">{{ chemical.product_count }}</td>
+                        {% if not related.product %}<td class="has-text-right">{{ chemical.product_count }}</td>{% endif %}
                         <td class="has-text-right">{{ chemical.lbs_applied|lbs }}</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="5" class="has-text-centered has-text-grey">No chemicals match.</td></tr>
+                    <tr><td colspan="{% if related.product %}4{% else %}5{% endif %}" class="has-text-centered has-text-grey">No chemicals match.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

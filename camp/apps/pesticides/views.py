@@ -325,6 +325,19 @@ class ExplorerListMixin:
     def describe_filters(self, data):
         return []
 
+    # Under an entity filter the pounds column is the pair's pounds (see
+    # lbs_subquery), and the header says so: "Lbs of Sodium fluoroacetate",
+    # "Lbs via Roundup Pro", "Lbs on Almond".
+    LBS_LABEL_PREPOSITIONS = {'chemical': 'of', 'product': 'via', 'commodity': 'on'}
+
+    def lbs_label(self):
+        parts = ['Lbs']
+        related = self.related_filters()
+        for param in ('chemical', 'product', 'commodity'):
+            if param in related:
+                parts.append(f'{self.LBS_LABEL_PREPOSITIONS[param]} {related[param].display_name}')
+        return ' '.join(parts) if len(parts) > 1 else 'Lbs applied'
+
     def get_context_data(self, **kwargs):
         count = paginated_count(kwargs)
         return super().get_context_data(
@@ -335,6 +348,7 @@ class ExplorerListMixin:
             **year_context(self.year, self.all_years),
             summary_sentence=self.get_summary_sentence(count),
             related={k: v for k, v in self.related.items() if v is not MISSING},
+            lbs_label=self.lbs_label(),
             section=self.section,
             **kwargs,
         )

@@ -164,6 +164,14 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert self.names(response) == ['CHLORPYRIFOS']
         assert response.context['related']['product'] == product
 
+    def test_related_filter_relabels_the_columns(self):
+        product = Product.objects.get(pk=2)
+        html = self.client.get(self.url, {'product': product.sqid}).content.decode()
+        assert 'Lbs via LORSBAN 4E' in html
+        assert 'sort=-products' not in html  # the Products column header (the nav tab stays)
+        plain = self.client.get(self.url).content.decode()
+        assert 'Lbs applied' in plain and 'sort=-products' in plain
+
     def test_related_filter_shows_the_pairs_pounds(self):
         # Filtered to a product, the pounds column is that product's share
         # of the chemical's pounds, not the chemical's total.
