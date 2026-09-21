@@ -503,8 +503,9 @@ class Home(vanilla.TemplateView):
         county = scope_county(self.request)
         data = stats.landing_stats(year, all_years, county)
         county_rank = maps.county_metric(self.request.GET.get('rank'))
-        by_county = maps.rank_counties(data['by_county'], county_rank)
-        county_map = maps.county_map(by_county, query=stats.year_param(year, all_years), metric=county_rank) if by_county else None
+        ramp = maps.ramp_for(self.request.GET.get('ramp'))
+        by_county = maps.rank_counties(data['by_county'], county_rank, ramp=ramp)
+        county_map = maps.county_map(by_county, query=stats.year_param(year, all_years), metric=county_rank, ramp=ramp) if by_county else None
         find_area_places = find_area_place_list()
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
         return super().get_context_data(
@@ -770,9 +771,10 @@ class ExplorerDetailMixin:
             f'&{scope}' if scope else ''
         )
         county_rank = maps.county_metric(self.request.GET.get('rank'))
-        context['by_county'] = maps.rank_counties(context['by_county'], county_rank)
+        ramp = maps.ramp_for(self.request.GET.get('ramp'))
+        context['by_county'] = maps.rank_counties(context['by_county'], county_rank, ramp=ramp)
         context['county_rank'] = county_rank
-        context['county_map'] = maps.county_map(context['by_county'], query=stats.year_param(year, all_years), metric=county_rank) if context['by_county'] else None
+        context['county_map'] = maps.county_map(context['by_county'], query=stats.year_param(year, all_years), metric=county_rank, ramp=ramp) if context['by_county'] else None
         return context
 
     def summary_top(self, context):

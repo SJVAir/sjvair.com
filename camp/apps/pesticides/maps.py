@@ -26,11 +26,25 @@ from camp.utils import leaflet
 COUNTY_GEOJSON_KEY = 'pesticides:county-geometries'
 COUNTY_GEOJSON_TTL = 60 * 60 * 24
 SIMPLIFY_TOLERANCE = 0.005
-# Eight steps (ColorBrewer Blues, minus the near-white): one per county, so
-# the county map is a straight ranking -- darker is more.
-RAMP = ['#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b']
+# Eight steps (ColorBrewer, minus the near-white): one per county, so the
+# county map is a straight ranking -- darker is more. Blues is the ramp;
+# the others are candidates, selectable with ?ramp=<name> while we pick.
+RAMPS = {
+    'blues': ['#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b'],
+    'purd': ['#f1eef6', '#d4b9da', '#c994c7', '#df65b0', '#e7298a', '#ce1256', '#980043', '#67001f'],
+    'bupu': ['#e0ecf4', '#bfd3e6', '#9ebcda', '#8c96c6', '#8c6bb1', '#88419d', '#810f7c', '#4d004b'],
+    'ylorbr': ['#fff7bc', '#fee391', '#fec44f', '#fe9929', '#ec7014', '#cc4c02', '#993404', '#662506'],
+    'greens': ['#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#006d2c', '#00441b'],
+    'viridis': ['#fde725', '#b5de2b', '#6ece58', '#35b779', '#1f9e89', '#26828e', '#31688e', '#3e4989'],
+}
+RAMP = RAMPS['blues']
 NO_DATA = '#f0f0f0'
 CLASSES = len(RAMP)
+
+
+def ramp_for(name):
+    """A candidate ramp by `?ramp=` name, or the default."""
+    return RAMPS.get(name or '', RAMP)
 
 # What the county map and table can rank counties by: by_county row key ->
 # the unit its labels say.
@@ -42,7 +56,7 @@ def county_metric(value):
     return value if value in COUNTY_METRICS else 'lbs'
 
 
-def rank_counties(by_county, metric='lbs'):
+def rank_counties(by_county, metric='lbs', ramp=None):
     """
     `by_county` rows sorted by `metric`, most to least (name breaks ties),
     each with a `color` (the map's fill for it) so a table beside the map
@@ -50,7 +64,7 @@ def rank_counties(by_county, metric='lbs'):
     """
     metric = county_metric(metric)
     rows = sorted(by_county, key=lambda row: (-(row.get(metric) or 0), row['county_name']))
-    classes = quantile_classes({row['county_id']: (row.get(metric) or 0) for row in rows})
+    classes = quantile_classes({row['county_id']: (row.get(metric) or 0) for row in rows}, ramp=ramp)
     return [{**row, 'color': classes.color_for(row.get(metric) or 0)} for row in rows]
 
 
@@ -106,13 +120,14 @@ class QuantileClasses:
         ]
 
 
-def quantile_classes(values_by_key, classes=CLASSES):
+def quantile_classes(values_by_key, classes=CLASSES, ramp=None):
     """
     Build QuantileClasses from a {key: pounds} mapping. Zero/None values are
     treated as no data and excluded. The number of classes is the smaller of
     `classes` and the number of distinct positive values, and the darkest
     ramp color is always assigned to the top class.
     """
+    ramp = ramp or RAMP
     values = sorted(v for v in values_by_key.values() if v)
     distinct = sorted(set(values))
     if not distinct:
@@ -126,9 +141,9 @@ def quantile_classes(values_by_key, classes=CLASSES):
 
     # Spread the chosen class count across the ramp, always ending on the darkest.
     if count == 1:
-        colors = [RAMP[-1]]
+        colors = [ramp[-1]]
     else:
-        colors = [RAMP[round(i * (len(RAMP) - 1) / (count - 1))] for i in range(count)]
+        colors = [ramp[round(i * (len(ramp) - 1) / (count - 1))] for i in range(count)]
 
     result = QuantileClasses(breaks=breaks, colors=colors, members=[[] for _ in breaks])
     for value in values:
@@ -136,7 +151,7 @@ def quantile_classes(values_by_key, classes=CLASSES):
     return result
 
 
-def county_map(by_county, width=600, height=420, query='', metric='lbs'):
+def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=None):
     """
     The county choropleth, shaded by `metric` (see COUNTY_METRICS) as a
     ranking: darker is more. Each county links to its page; `query` (a scope
@@ -150,7 +165,7 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs'):
     unit = COUNTY_METRICS[metric]
     counties = {region.pk: region for region in Region.objects.filter(pk__in=geometries)}
     value_by_pk = {row['county_id']: (row.get(metric) or 0) for row in by_county}
-    classes = quantile_classes(value_by_pk)
+    classes = quantile_classes(value_by_pk, ramp=ramp)
 
     lmap = leaflet.LeafletMap(width=width, height=height, padding=10)
     for pk, geojson in geometries.items():
