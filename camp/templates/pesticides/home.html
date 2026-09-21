@@ -28,29 +28,7 @@
     </span>
 </p>
 
-<div class="columns section-cards">
-    <div class="column">
-        <a class="box section-card" href="{% url 'pesticides:product-list' %}{{ scope_qs }}">
-            <h3 class="title is-5"><span class="icon-text"><span class="icon"><span class="fa-duotone fa-fw fa-lg fa-spray-can-sparkles explorer-icon is-products"></span></span><span>Products</span></span></h3>
-            <p>Registered formulations, flagged when fumigant or California-restricted.</p>
-            <p class="is-size-7 has-text-grey">Try: <em>roundup</em></p>
-        </a>
-    </div>
-    <div class="column">
-        <a class="box section-card" href="{% url 'pesticides:chemical-list' %}{{ scope_qs }}">
-            <h3 class="title is-5"><span class="icon-text"><span class="icon"><span class="fa-duotone fa-fw fa-lg fa-flask explorer-icon is-chemicals"></span></span><span>Chemicals</span></span></h3>
-            <p>Active ingredients, with Prop 65, IARC, and CARB classifications.</p>
-            <p class="is-size-7 has-text-grey">Try: <em>glyphosate</em></p>
-        </a>
-    </div>
-    <div class="column">
-        <a class="box section-card" href="{% url 'pesticides:commodity-list' %}{{ scope_qs }}">
-            <h3 class="title is-5"><span class="icon-text"><span class="icon"><span class="fa-duotone fa-fw fa-lg fa-seedling explorer-icon is-commodities"></span></span><span>Commodities</span></span></h3>
-            <p>Crops and sites pesticides are applied to.</p>
-            <p class="is-size-7 has-text-grey">Try: <em>almond</em></p>
-        </a>
-    </div>
-</div>
+<hr>
 
 {% if show_stat_row %}
 <div class="level stat-row box">
