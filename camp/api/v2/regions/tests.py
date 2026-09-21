@@ -290,71 +290,90 @@ class RegionWithinFilterTests(TestCase):
         self.inside_b = make_tract('Tract inside Kern', KERN_TRACT_WKT)
         self.outside = make_tract('Tract elsewhere', ELSEWHERE_WKT)
 
-    def test_within_single_parent_narrows_to_intersecting_regions(self):
-        request = RequestFactory().get('/', {'type': 'tract', 'within': self.parent_a.sqid})
+    def _ids(self, *params):
+        request = RequestFactory().get('/', list(params))
         response = region_list(request)
+        assert response.status_code == 200
         data = get_response_data(response)
-        ids = {r['id'] for r in data['data']}
-        self.assertEqual(ids, {self.inside_a.sqid})
+        return {r['id'] for r in data['data']}
+
+    def test_within_single_parent_narrows_to_contained_regions(self):
+        ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid))
+        assert ids == {self.inside_a.sqid}
 
     def test_within_multiple_parents_unions_geometries(self):
-        request = RequestFactory().get('/', [
-            ('type', 'tract'), ('within', self.parent_a.sqid), ('within', self.parent_b.sqid),
-        ])
-        response = region_list(request)
-        data = get_response_data(response)
-        ids = {r['id'] for r in data['data']}
-        self.assertEqual(ids, {self.inside_a.sqid, self.inside_b.sqid})
+        ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid), ('within', self.parent_b.sqid))
+        assert ids == {self.inside_a.sqid, self.inside_b.sqid}
 
-    def test_within_unknown_id_is_ignored_not_error(self):
-        request = RequestFactory().get('/', {'type': 'tract', 'within': 'not-a-real-sqid'})
-        response = region_list(request)
-        self.assertEqual(response.status_code, 200)
+    def test_within_unknown_id_returns_nothing(self):
+        # Nothing can be inside a parent that doesn't exist. Falling back to
+        # the unnarrowed list would hand back every region in the database.
+        ids = self._ids(('type', 'tract'), ('within', 'not-a-real-sqid'))
+        assert ids == set()
+
+    def test_within_parent_without_boundary_returns_nothing(self):
+        no_boundary = Region.objects.create(name='Boundless', slug='boundless', type=Region.Type.COUNTY)
+        ids = self._ids(('type', 'tract'), ('within', no_boundary.sqid))
+        assert ids == set()
+
+    def test_within_blank_value_is_ignored(self):
+        ids = self._ids(('type', 'tract'), ('within', ''))
+        assert ids == {self.inside_a.sqid, self.inside_b.sqid, self.outside.sqid}
 
     def test_no_within_param_returns_unnarrowed_list(self):
-        request = RequestFactory().get('/', {'type': 'tract'})
-        response = region_list(request)
-        data = get_response_data(response)
-        ids = {r['id'] for r in data['data']}
-        self.assertEqual(ids, {self.inside_a.sqid, self.inside_b.sqid, self.outside.sqid})
+        ids = self._ids(('type', 'tract'))
+        assert ids == {self.inside_a.sqid, self.inside_b.sqid, self.outside.sqid}
 
     def test_within_excludes_a_region_that_only_touches_the_border(self):
         # Shares the exact edge (x=-119.0) with FRESNO_COUNTY_WKT's eastern
-        # boundary but has zero interior overlap with it - the real-world
-        # case this reproduces is a city like Avenal (Kings County) sharing
-        # a border with Fresno County: ST_Intersects (plain `.intersects()`)
-        # matches boundary-only touching with no actual area overlap, which
-        # `within=` must not treat as "inside" the selected parent region.
+        # boundary but has zero interior overlap with it. ST_Intersects (plain
+        # `.intersects()`) matches boundary-only touching, which `within=`
+        # must not treat as "inside" the selected parent region.
         touching_neighbor = make_tract(
             'Tract touching Fresno border',
             'MULTIPOLYGON(((-119.0 36.8, -118.8 36.8, -118.8 37.0, -119.0 37.0, -119.0 36.8)))',
         )
+        ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid))
+        assert ids == {self.inside_a.sqid}
+        assert touching_neighbor.sqid not in ids
 
-        request = RequestFactory().get('/', {'type': 'tract', 'within': self.parent_a.sqid})
-        response = region_list(request)
-        data = get_response_data(response)
-        ids = {r['id'] for r in data['data']}
-
-        self.assertEqual(ids, {self.inside_a.sqid})
-        self.assertNotIn(touching_neighbor.sqid, ids)
+    def test_within_excludes_a_neighbor_overlapping_by_a_sliver(self):
+        # Real tract/ZIP boundaries come from different sources than county
+        # boundaries and overlap neighbors by hairline slivers - genuine area,
+        # so NOT ST_Touches doesn't help. This 0.2 x 0.2 tract pokes 0.0001
+        # (0.05% of its area) across Fresno's eastern edge at x=-119.0; the
+        # real-world case is a Kings/Madera/Tulare tract along the county line.
+        sliver_neighbor = make_tract(
+            'Tract overlapping Fresno by a sliver',
+            'MULTIPOLYGON(((-119.0001 36.8, -118.8001 36.8, -118.8001 37.0, -119.0001 37.0, -119.0001 36.8)))',
+        )
+        ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid))
+        assert ids == {self.inside_a.sqid}
+        assert sliver_neighbor.sqid not in ids
 
     def test_within_excludes_a_region_that_only_partially_overlaps(self):
         # Straddles FRESNO_COUNTY_WKT's eastern boundary (x=-119.0) with
         # substantial area on both sides (roughly half inside, half outside)
-        # - the real-world case this reproduces is a congressional district
-        # that crosses a county line: it genuinely intersects Fresno County
-        # (not just a border touch, like the case above), but it is not
-        # *within* Fresno County, so within= must exclude it too. Only a
-        # region entirely inside the selected parent(s) should match.
+        # - the real-world case is a congressional district crossing a
+        # county line: it genuinely intersects Fresno County, but it is not
+        # *within* it, so within= must exclude it too.
         straddling_district = make_tract(
             'District straddling Fresno border',
             'MULTIPOLYGON(((-119.3 36.8, -118.7 36.8, -118.7 37.0, -119.3 37.0, -119.3 36.8)))',
         )
+        ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid))
+        assert ids == {self.inside_a.sqid}
+        assert straddling_district.sqid not in ids
 
-        request = RequestFactory().get('/', {'type': 'tract', 'within': self.parent_a.sqid})
-        response = region_list(request)
-        data = get_response_data(response)
-        ids = {r['id'] for r in data['data']}
-
-        self.assertEqual(ids, {self.inside_a.sqid})
-        self.assertNotIn(straddling_district.sqid, ids)
+    def test_within_includes_a_region_poking_a_sliver_outside(self):
+        # The mirror of the sliver-neighbor case: a tract that is
+        # unambiguously inside Fresno but whose boundary disagrees with the
+        # county's by a hairline, poking 0.0001 (0.05% of its area) past the
+        # county line at x=-119.0. Strict ST_Within would drop it; on real
+        # data that loses ~15% of a county's tracts.
+        sliver_out = make_tract(
+            'Tract inside Fresno poking out',
+            'MULTIPOLYGON(((-119.2 36.8, -118.9999 36.8, -118.9999 37.0, -119.2 37.0, -119.2 36.8)))',
+        )
+        ids = self._ids(('type', 'tract'), ('within', self.parent_a.sqid))
+        assert ids == {self.inside_a.sqid, sliver_out.sqid}

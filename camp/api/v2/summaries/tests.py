@@ -520,46 +520,85 @@ class BulkRegionSummaryListTests(TestCase):
         make_region_summary(self.kern, self.day, resolution='day', entry_type='pm25')
         self.january = {'start': '2026-01-01', 'end': '2026-01-31'}
 
-    def _get(self, entry_type='pm25', resolution='day', query=None):
+    def _get(self, query, entry_type='pm25', resolution='day'):
         return bulk_region_summary_list(
-            self.factory.get('/', query or {}), entry_type=entry_type, resolution=resolution,
+            self.factory.get('/', query), entry_type=entry_type, resolution=resolution,
         )
 
+    def _both_regions(self, **extra):
+        return [
+            ('region', self.fresno.sqid), ('region', self.kern.sqid),
+            ('start', '2026-01-01'), ('end', '2026-01-31'),
+            *extra.items(),
+        ]
+
     def test_requires_region_param(self):
-        response = self._get(query=self.january)
+        response = self._get(self.january)
         assert response.status_code == 400
+        assert 'region' in get_response_data(response)['errors']
+
+    def test_blank_region_is_not_enough(self):
+        response = self._get({**self.january, 'region': ''})
+        assert response.status_code == 400
+        assert get_response_data(response)['errors']['region'][0]['code'] == 'required'
+
+    def test_unknown_region_id_is_an_error(self):
+        response = self._get({**self.january, 'region': 'not-a-real-sqid'})
+        assert response.status_code == 400
+        error = get_response_data(response)['errors']['region'][0]
+        assert error['code'] == 'unknown'
+        assert 'not-a-real-sqid' in error['message']
 
     def test_requires_start_and_end(self):
-        response = self._get(query={'region': self.fresno.sqid})
+        response = self._get({'region': self.fresno.sqid})
         assert response.status_code == 400
 
     def test_span_too_large_for_daily_resolution(self):
-        response = self._get(query={'region': self.fresno.sqid, 'start': '2020-01-01', 'end': '2026-01-01'})
+        response = self._get({'region': self.fresno.sqid, 'start': '2020-01-01', 'end': '2026-01-01'})
         assert response.status_code == 400
 
     def test_multi_region_fetch_returns_both_regions(self):
-        request = self.factory.get('/', [
-            ('region', self.fresno.sqid), ('region', self.kern.sqid),
-            ('start', '2026-01-01'), ('end', '2026-01-31'),
-        ])
-        response = bulk_region_summary_list(request, entry_type='pm25', resolution='day')
+        response = self._get(self._both_regions())
         data = get_response_data(response)
         ids = {r['id'] for r in data['data']}
         assert ids == {self.fresno.sqid, self.kern.sqid}
 
+    def test_region_shape_omits_boundary(self):
+        response = self._get(self._both_regions())
+        region = get_response_data(response)['data'][0]
+        assert set(region) == {'id', 'name', 'slug', 'type', 'summaries'}
+
     def test_pagination_merge_boundary_is_detectable(self):
+        # Pagination is by summary row: a region with more rows than fit on a
+        # page is split across pages, and the client detects the split by the
+        # same region id ending one page and starting the next.
+        day2 = self.day + timedelta(days=1)
+        make_region_summary(self.fresno, day2, resolution='day', entry_type='pm25')
+
         with mock.patch.object(BulkRegionSummaryList, 'page_size', 1):
-            request = self.factory.get('/', [
-                ('region', self.fresno.sqid), ('region', self.kern.sqid),
-                ('start', '2026-01-01'), ('end', '2026-01-31'), ('page', '1'),
-            ])
-            response = bulk_region_summary_list(request, entry_type='pm25', resolution='day')
-            page1 = get_response_data(response)
-            request2 = self.factory.get('/', [
-                ('region', self.fresno.sqid), ('region', self.kern.sqid),
-                ('start', '2026-01-01'), ('end', '2026-01-31'), ('page', '2'),
-            ])
-            response2 = bulk_region_summary_list(request2, entry_type='pm25', resolution='day')
-            page2 = get_response_data(response2)
-            # Same region id at the boundary ⇒ client concatenates, not duplicates
-            assert page1['data'] and page2['data']
+            pages = [
+                get_response_data(self._get(self._both_regions(page=str(n))))
+                for n in (1, 2, 3)
+            ]
+
+        # Rows are ordered by region_id then timestamp, so Fresno's two rows
+        # land on consecutive pages (same id at the boundary) with Kern's
+        # single row on the remaining page, whichever pk sorts first.
+        ordered = sorted([self.fresno, self.kern], key=lambda r: r.pk)
+        expected = [r.sqid for r in ordered for _ in range(2 if r == self.fresno else 1)]
+        assert [r['id'] for page in pages for r in page['data']] == expected
+
+        splits = [
+            n for n in range(2)
+            if pages[n]['data'][-1]['id'] == pages[n + 1]['data'][0]['id']
+        ]
+        assert len(splits) == 1
+        split = splits[0]
+        assert pages[split]['data'][-1]['id'] == self.fresno.sqid
+        fresno_timestamps = [
+            row['timestamp']
+            for page in pages[split:split + 2]
+            for row in page['data'][0]['summaries']
+        ]
+        assert len(fresno_timestamps) == 2
+        assert fresno_timestamps == sorted(fresno_timestamps)

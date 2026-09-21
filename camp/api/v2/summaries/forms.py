@@ -3,6 +3,7 @@ from datetime import timedelta
 from django import forms
 
 from camp.api.v2.forms import BboxField
+from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary
 
 
@@ -52,5 +53,30 @@ class BulkMonitorSummaryForm(BulkSummaryDateRangeForm):
     bbox = BboxField()
 
 
+class RegionListField(forms.Field):
+    """Repeatable `region=<sqid>` parameter, cleaned to a list of Region
+    instances. Blank values are dropped; unknown ids are an error rather than
+    being silently ignored, since a bulk request that quietly returns nothing
+    for a mistyped id is hard to debug from the client side."""
+
+    widget = forms.SelectMultiple  # pulls every value via QueryDict.getlist()
+    default_error_messages = {
+        'required': 'At least one region is required.',
+        'unknown': 'Unknown region id(s): %(ids)s',
+    }
+
+    def to_python(self, value):
+        ids = [v.strip() for v in (value or []) if v and v.strip()]
+        if not ids:
+            return []
+        regions = list(Region.objects.filter(sqid__in=ids))
+        unknown = sorted(set(ids) - {region.sqid for region in regions})
+        if unknown:
+            raise forms.ValidationError(
+                self.error_messages['unknown'], code='unknown', params={'ids': ', '.join(unknown)},
+            )
+        return regions
+
+
 class BulkRegionSummaryForm(BulkSummaryDateRangeForm):
-    pass
+    region = RegionListField(required=True)

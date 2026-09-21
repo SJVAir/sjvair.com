@@ -234,8 +234,10 @@ class RegionSummaryList(SummaryMixin, generics.ListEndpoint):
 class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
     """Summary statistics for one or more regions matching an inclusive `start`/`end`
     date range. Each result is a region (same shape as RegionList) with its matching
-    rows nested under `summaries`. `start`, `end`, and at least one `region` are
-    required; invalid/missing parameters return a 400 with form errors.
+    rows nested under `summaries` (without the region's `boundary` - fetch that from
+    the regions list, it would otherwise repeat on every page a region spans). `start`,
+    `end`, and at least one `region` are required, and every `region` id must exist;
+    invalid/missing parameters return a 400 with form errors.
 
     Pagination is by summary row, not by region, same cross-page merge contract
     as BulkMonitorSummaryList: if the last region `id` on a page matches the first
@@ -254,8 +256,6 @@ class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
     def get(self, request, *args, **kwargs):
         if not self.form.is_valid():
             return Http400({'errors': self.form.errors.get_json_data()})
-        if not self.request.GET.getlist('region'):
-            return Http400({'errors': {'region': [{'message': 'At least one region is required.', 'code': 'required'}]}})
         return super().get(request, *args, **kwargs)
 
     def get_date_filter(self):
@@ -265,11 +265,11 @@ class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
         return {'timestamp__gte': start, 'timestamp__lt': end}
 
     def get_queryset(self):
-        region_ids = self.request.GET.getlist('region')
-        regions = Region.objects.filter(sqid__in=region_ids)
+        # Order by region_id, not `region`: the latter resolves to Region.Meta.ordering,
+        # which isn't stable enough to paginate on (same reasoning as the monitor bulk).
         return (super()
             .get_queryset()
-            .filter(region__in=regions)
+            .filter(region__in=self.form.cleaned_data['region'])
             .order_by('region_id', 'timestamp')
         )
 
@@ -278,7 +278,7 @@ class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
         for row in source:
             grouped.setdefault(row.region_id, []).append(row)
 
-        regions_by_id = Region.objects.select_related('boundary').in_bulk(list(grouped))
+        regions_by_id = Region.objects.in_bulk(list(grouped))
         regions = []
         for region_id, rows in grouped.items():
             region = regions_by_id.get(region_id)

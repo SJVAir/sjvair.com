@@ -27,11 +27,16 @@ class RegionList(RegionMixin, generics.ListEndpoint):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        within_ids = self.request.GET.getlist('within')
+        within_ids = [value for value in self.request.GET.getlist('within') if value.strip()]
         if within_ids:
             geometry = Region.objects.filter(sqid__in=within_ids).combined_geometry()
-            if geometry:
-                qs = qs.contained_within(geometry)
+            if geometry is None or geometry.empty:
+                # `within` was asked for but nothing resolved (unknown ids, or
+                # parents with no boundary): nothing can be inside it. Falling
+                # back to the unnarrowed list here would silently hand back
+                # every region in the database.
+                return qs.none()
+            qs = qs.contained_within(geometry)
         return qs
 
 
