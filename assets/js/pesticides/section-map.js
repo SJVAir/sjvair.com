@@ -156,22 +156,6 @@
 
   // Popups are laid out as a two-column table (label / value) so a notice and
   // a section read the same way. `valueHtml` is already-escaped markup.
-  function popupRow(label, valueHtml) {
-    if (valueHtml === '' || valueHtml === null || valueHtml === undefined) return '';
-    return '<tr><th scope="row">' + escapeHtml(label) + '</th><td>' + valueHtml + '</td></tr>';
-  }
-
-  function popupTable(rows) {
-    var body = rows.join('');
-    if (!body) return '';
-    return '<table class="table is-narrow section-popup-table"><tbody>' + body + '</tbody></table>';
-  }
-
-  function popupList(items) {
-    if (!items.length) return '';
-    return '<ul class="section-popup-list">' + items.join('') + '</ul>';
-  }
-
   function linkHtml(url, text, extraClass) {
     if (!url) return escapeHtml(text);
     return '<a' + (extraClass ? ' class="' + extraClass + '"' : '') +
@@ -2327,39 +2311,51 @@
     }
   };
 
+  // A notice popup in the section popup's idiom: title, grey subline,
+  // headline, labelled lists, pill actions.
   SectionMap.prototype.noticePopupHtml = function (props) {
     var self = this;
-    var chemicals = popupList((props.chemicals || []).map(function (c) {
-      return '<li class="' + (c.is_of_concern ? 'is-of-concern' : '') + '">' +
-        linkHtml(self.chemicalUrl(c.id), c.display_name || c.name) + '</li>';
+    var list = function (items) {
+      return items.length
+        ? '<ul class="section-popup-chems">' + items.join('') + '</ul>'
+        : '<p class="section-popup-note">None listed.</p>';
+    };
+    var chemicals = list((props.chemicals || []).map(function (c) {
+      return '<li><span class="name' + (c.is_of_concern ? ' is-of-concern' : '') + '">' +
+        linkHtml(self.chemicalUrl(c.id), c.display_name || c.name) + '</span></li>';
     }));
-    var products = popupList((props.products || []).map(function (p) {
-      return '<li>' + linkHtml(self.productUrl(p.id), p.name) + '</li>';
+    var products = list((props.products || []).map(function (p) {
+      return '<li><span class="name">' + linkHtml(self.productUrl(p.id), p.name) + '</span></li>';
     }));
-    var section = props.section
-      ? linkHtml(props.section_id ? this.sectionUrl(props.section_id) : '', props.section)
+
+    var subParts = [];
+    if (props.county) subParts.push(escapeHtml(shortCounty(props.county)));
+    if (props.section) subParts.push(linkHtml(props.section_id ? this.sectionUrl(props.section_id) : '', props.section));
+    var sub = 'Notice of intent' + (subParts.length ? ' · ' + subParts.join(' · ') : '');
+
+    var when = escapeHtml(formatDateTime(props.scheduled_application));
+    var through = props.scheduled_end ? ', may begin through ' + escapeHtml(formatDate(props.scheduled_end)) : '';
+    var treated = props.treated_amount
+      ? '<strong>' + formatNumber(props.treated_amount) + ' ' + escapeHtml((props.treated_units || '').toLowerCase()) + '</strong>'
       : '';
+    var method = props.application_method ? escapeHtml(props.application_method.toLowerCase()) : '';
+    var headline = treated && method ? treated + ' by ' + method
+      : treated || (method ? method.charAt(0).toUpperCase() + method.slice(1) : '');
+
     var noticeUrl = props.id ? this.noticeUrl(props.id) : '';
+    var actions = (noticeUrl
+      ? '<a class="section-popup-action" href="' + escapeHtml(noticeUrl) + '"><span class="fa-regular fa-fw fa-circle-info"></span> Full notice</a>'
+      : '') +
+      '<a class="section-popup-action" href="' + SPRAYDAYS_URL + '" target="_blank" rel="noopener"><span class="fa-regular fa-fw fa-bell"></span> Sign up with SprayDays</a>';
 
     return (
-      '<div class="notice-popup">' +
-      '<h4>Notice of intent <span class="tag is-warning is-light">Active</span></h4>' +
-      popupTable([
-        popupRow('Scheduled', escapeHtml(formatDateTime(props.scheduled_application))),
-        popupRow('May begin through', escapeHtml(formatDate(props.scheduled_end))),
-        popupRow('County', escapeHtml(shortCounty(props.county || ''))),
-        popupRow('Section', section),
-        popupRow('Method', escapeHtml(props.application_method || '')),
-        popupRow('Treated', props.treated_amount
-          ? formatNumber(props.treated_amount) + ' ' + escapeHtml(props.treated_units || '')
-          : ''),
-        popupRow('Products', products),
-        popupRow('Chemicals', chemicals),
-      ]) +
-      '<p class="notice-popup-links">' +
-      (noticeUrl ? linkHtml(noticeUrl, 'Full notice') + ' · ' : '') +
-      '<a class="spraydays-link" href="' + SPRAYDAYS_URL + '" target="_blank" rel="noopener">Sign up with SprayDays</a>' +
-      '</p>' +
+      '<div class="section-popup notice-popup">' +
+      '<h4>' + when + ' <span class="tag is-warning is-light">Active</span></h4>' +
+      '<p class="section-popup-sub">' + sub + through + '</p>' +
+      (headline ? '<p class="section-popup-metric">' + headline + '</p>' : '') +
+      '<p class="section-popup-label">Products</p>' + products +
+      '<p class="section-popup-label mt">Chemicals</p>' + chemicals +
+      '<div class="section-popup-actions">' + actions + '</div>' +
       '</div>'
     );
   };
