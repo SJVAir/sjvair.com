@@ -421,6 +421,8 @@ body.pesticides
         td .tags
             flex-wrap: nowrap
             margin-bottom: 0
+            .tag
+                margin-bottom: 0
 
     .notice-callout
         display: flex
@@ -553,9 +555,16 @@ body.pesticides
             border-bottom: 2px solid $primary
         .card-header-title
             font-weight: 600
+        // Badges sit in the line, not under it: Bulma's tag groups carry
+        // bottom margins for wrapping rows, which here only make a badged row
+        // taller than its neighbours. A tag is 2em of 0.75rem, exactly the
+        // line box, so with the margins gone the rows all come out even.
         .tags.is-inline
             display: inline-flex
             vertical-align: middle
+            margin-bottom: 0
+            .tag
+                margin-bottom: 0
 
     .leaderboard-list
         // Pulled out half an em each side so the zebra stripes run past the
