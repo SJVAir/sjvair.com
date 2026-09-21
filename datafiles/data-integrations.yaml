@@ -25,6 +25,11 @@
       url: https://aqview.arb.ca.gov/
       description: AQview is the California Air Resources Board's (CARB) data platform for AB 617 communities, providing regulatory-grade PM2.5 measurements in areas most impacted by air pollution. Because AQview does not offer a public API, SJVAir is one of the only external platforms to integrate and display this data outside of CARB's own system.
 
+    - name: Valley Air District Forecasts
+      logo: img/logo/sjvapcd.svg
+      url: https://www.valleyair.org/
+      description: The San Joaquin Valley Air Pollution Control District is the regulatory agency for the Valley's air basin. Each day it issues an air quality forecast for every part of the basin, by county and by zone. SJVAir ingests these forecasts and shows each one for the area it covers, deriving the zones that do not follow county lines — the Valley portions of Kern and Tulare counties and the Sequoia National Park and Forest zone — from the District's own forecast map.
+
 - category: Satellite & Atmospheric Data
   icon:
     name: fa-satellite
@@ -58,6 +63,11 @@
       logo: img/logo/nws.svg
       url: https://www.weather.gov/
       description: The National Weather Service, part of NOAA, publishes forecasts, current conditions, and observations from its network of weather stations through a free public API at weather.gov. SJVAir's map uses it for the temperature shown alongside air quality readings, and we plan to bring its station observations into our own data pipeline alongside CIMIS.
+
+    - name: CalHeatScore
+      logo: img/logo/calepa.png
+      url: https://calheatscore.calepa.ca.gov/
+      description: CalHeatScore is California's heat-risk forecasting tool, developed by the Office of Environmental Health Hazard Assessment at CalEPA with the Department of Insurance and the Department of Public Health. It rates each ZIP code's heat risk for the coming week on a five-step scale, from low to severe, based on forecast temperatures and local health data. SJVAir imports the daily scores for every Valley ZIP code so heat risk can be shown alongside air quality.
 
 - category: Environmental & Health Mapping
   icon:
@@ -149,8 +159,3 @@
       logo: img/logo/cdss.png
       url: https://data.ca.gov/dataset/community-care-licensing-facilities1
       description: The California Department of Social Services licenses child care centers through its Community Care Licensing Division and publishes the facility list, with addresses and capacities. SJVAir shows the licensed child care centers in the Valley alongside schools on its pesticide maps and district pages.
-
-    - name: San Joaquin Valley Air Pollution Control District
-      logo: img/logo/sjvapcd.svg
-      url: https://www.valleyair.org/
-      description: The Valley Air District issues daily air quality forecasts by zone. SJVAir derives the forecast zones that do not follow county lines — the Valley portion of Kern County, the Valley portion of Tulare County, and the Sequoia National Park and Forest zone — from the District's forecast map, so each forecast can be shown for the area it covers.
