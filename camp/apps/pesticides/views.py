@@ -23,6 +23,7 @@ import vanilla
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import maps, notes, places, stats
 from camp.apps.pesticides.forms import (
+    county_choices,
     ChemicalFilterForm, CommodityFilterForm, NoticeFilterForm, ProductFilterForm, RecordsFilterForm,
 )
 from camp.apps.pesticides.models import (
@@ -915,6 +916,9 @@ class MapPage(vanilla.TemplateView):
             section='map',
             map_config=map_config,
             filters=filters,
+            related=resolved,
+            county=county,
+            county_choices=county_choices(),
             no_matches=no_matches,
             county_map=county_map,
             **year_context(year, all_years),

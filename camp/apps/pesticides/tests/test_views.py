@@ -689,6 +689,16 @@ class MapPageTests(RollupTestMixin, TestCase):
         cache.clear()
         self.url = reverse('pesticides:map')
 
+    def test_has_entity_pickers_and_a_county_select(self):
+        html = self.client.get(self.url).content.decode()
+        assert html.index('data-kind="product"') < html.index('data-kind="chemical"') < html.index('data-kind="commodity"')
+        assert '<select id="map-county" name="county">' in html
+        chemical = Chemical.objects.get(pk=1)
+        html = self.client.get(self.url, {'chemical': chemical.sqid, 'county': 'fresno', 'year': '2022'}).content.decode()
+        assert 'Glyphosate <button type="button" class="delete is-small entity-picker-clear"' in html
+        assert '<option value="fresno" selected>' in html
+        assert '<input type="hidden" name="year" value="2022">' in html
+
     def test_renders_with_defaults(self):
         response = self.client.get(self.url)
         assert response.status_code == 200

@@ -246,6 +246,12 @@
       var match = /[?&]year=([^&]+)/.exec(window.location.search || '');
       year = match ? decodeURIComponent(match[1]) : '';
     }
+    if (!year) {
+      // A page whose map is showing the latest year carries no ?year=; the
+      // map's own config knows which year that is.
+      var map = document.querySelector('.section-map[data-year]');
+      year = map ? map.dataset.year : '';
+    }
     if (year) params += '&year=' + encodeURIComponent(year);
     var county = form && form.elements.county ? form.elements.county.value : '';
     if (county) params += '&county=' + encodeURIComponent(county);
