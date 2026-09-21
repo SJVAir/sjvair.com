@@ -151,6 +151,7 @@ class StatsTests(RollupTestMixin, TestCase):
         assert [r.obj.name for r in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
         assert [r.obj.name for r in data['top_chemicals_of_concern']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         assert [r.obj.name for r in data['top_commodities']] == ['GRAPE', 'ALMOND', 'COTTON']
+        assert [r.obj.name for r in data['top_products']] and all(r.lbs >= 0 for r in data['top_products'])
         assert [(r['county_name'], r['lbs']) for r in data['by_county']] == [('Fresno County', 670.0), ('Kern County', 70.0)]
 
     def test_available_years_and_resolve(self):

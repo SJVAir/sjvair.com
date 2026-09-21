@@ -453,6 +453,7 @@ def _build_landing_stats(year, all_years=False, county=None):
         'applications': year_totals_['applications'] or 0,
         'total_lbs': year_totals_['lbs'] or 0,
         'active_notices': upcoming_count(notices),
+        'top_products': top_related(uses, year, 'product', lbs_field='lbs_product', all_years=all_years),
         'top_chemicals': top_chemicals_all[:10],
         'top_chemicals_of_concern': _top_chemicals_of_concern(top_chemicals_all, uses, year, all_years=all_years),
         'top_commodities': top_related(uses, year, 'commodity', all_years=all_years),
