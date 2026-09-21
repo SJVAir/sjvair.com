@@ -2681,8 +2681,6 @@
       });
   };
 
-  // A school or child care popup in the section popup's idiom: name, grey
-  // subline, the block headline, pill actions.
   // The CDE and CDSS directories shout their names ("SELMA HIGH"). Same rule
   // as the title_case_name template filter: only touch a name that is
   // entirely upper case, so a deliberately-cased one (McKinley) is left be.
@@ -2694,6 +2692,8 @@
     });
   }
 
+  // A school or child care popup in the section popup's idiom: name, grey
+  // subline, the block headline, pill actions.
   SectionMap.prototype.locationPopupHtml = function (props, block) {
     // type · address, city. The district is already a pill action below, so
     // it doesn't take the sub-line's room -- the street address is what
