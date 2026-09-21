@@ -1,5 +1,7 @@
 {% load pesticides_explorer %}
-<table class="table is-fullwidth is-narrow is-striped">
+{# Like the by-year table: numbers on one line, a touch smaller, and the wrapper scrolls before they overflow (all-years pounds run to ten digits). #}
+<div class="table-container">
+<table class="table is-fullwidth is-narrow is-striped by-county-table">
     <thead><tr><th>County</th><th class="has-text-right">Lbs</th><th class="has-text-right">Acres treated</th><th class="has-text-right">Applications</th></tr></thead>
     <tbody>
     {% for row in by_county %}
@@ -7,3 +9,4 @@
     {% endfor %}
     </tbody>
 </table>
+</div>
