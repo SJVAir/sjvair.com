@@ -1,5 +1,5 @@
 {% extends 'pesticides/base.html' %}
-{% load pesticides_explorer %}
+{% load humanize pesticides_explorer %}
 
 {% block title %}{{ area.label }} | {{ block.super }}{% endblock %}
 {% block body-class %}{{ block.super }} place{% endblock %}
@@ -99,7 +99,7 @@
                     <td>{{ row.location.name }}</td>
                     <td>{{ row.location.short_type }}</td>
                     <td class="has-text-right">{{ row.lbs|lbs }}</td>
-                    <td class="has-text-right">{{ row.applications|lbs }}</td>
+                    <td class="has-text-right">{{ row.applications|intcomma }}</td>
                     <td>{% if row.section_sqid %}<a href="{% url 'pesticides:section-detail' sqid=row.section_sqid %}">{{ row.section_mtrs }}</a>{% else %}&mdash;{% endif %}</td>
                 </tr>
                 {% endfor %}

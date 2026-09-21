@@ -916,14 +916,22 @@
     if (noticesDefaultChanged) {
       this.showNotices = newData.showNotices !== '0';
       this.loadedNoticeBounds = null;
-      if (!this.showNotices) this.clearNotices();
+      if (!this.showNotices) {
+        // A request already in flight would otherwise land after the swap
+        // and put the markers back on a page that doesn't want them.
+        if (this.noticesAbort) this.noticesAbort.abort();
+        this.clearNotices();
+      }
     }
 
     var locationsDefaultChanged = (oldData.showLocations || '') !== (newData.showLocations || '');
     if (locationsDefaultChanged) {
       this.showLocations = newData.showLocations === '1';
       this.loadedLocationBounds = null;
-      if (!this.showLocations) this.clearLocations();
+      if (!this.showLocations) {
+        if (this.locationsAbort) this.locationsAbort.abort();
+        this.clearLocations();
+      }
     }
 
     this.attachControls();
@@ -2345,6 +2353,10 @@
       })
       .then(function (geojson) {
         if (self.noticesAbort !== abort) return; // stale response
+        // The toggle (or a page swap) can turn the markers off while the
+        // request is in the air; AbortController isn't everywhere, and an
+        // already-resolved response isn't cancelled by aborting either.
+        if (!self.showNotices) return;
         self.loadedNoticeBounds = bounds;
         self.renderNotices(geojson);
       })
@@ -2473,6 +2485,7 @@
       })
       .then(function (geojson) {
         if (self.locationsAbort !== abort) return; // stale response
+        if (!self.showLocations) return;  // turned off while in flight
         self.loadedLocationBounds = bounds;
         self.renderLocations(geojson);
       })

@@ -6,7 +6,7 @@ from django.urls import reverse
 from camp.apps.pesticides import places, stats
 from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
-from camp.apps.regions.models import Location, Region
+from camp.apps.regions.models import Boundary, Location, Region
 from camp.apps.regions.tests.test_locations import make_district
 
 
@@ -203,8 +203,15 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
 
     fixtures = ['pesticides-explorer']
 
+    # Sections a mile and three miles east of the fixture's section 9101
+    # (centroid -119.79, 36.71): one in the ring around it, one outside.
+    NEIGHBOR = 'SRID=4326;MULTIPOLYGON (((-119.78 36.70, -119.76 36.70, -119.76 36.72, -119.78 36.72, -119.78 36.70)))'
+    FAR = 'SRID=4326;MULTIPOLYGON (((-119.745 36.70, -119.725 36.70, -119.725 36.72, -119.745 36.72, -119.745 36.70)))'
+
     def setUp(self):
         cache.clear()
+        self.neighbor = self.make_section('MDM-T14S-R20E-02', self.NEIGHBOR, lbs=25, applications=2)
+        self.far = self.make_section('MDM-T14S-R20E-03', self.FAR, lbs=999, applications=9)
         self.district = make_district('Selma Unified', 'selma-unified', '10621170000000')
         self.inside = Location.objects.create(
             type=Location.Type.PUBLIC_SCHOOL,
@@ -224,10 +231,31 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         )
         self.url = reverse('pesticides:region', kwargs={'sqid': self.district.sqid, 'slug': 'selma-unified'})
 
+    def make_section(self, name, geometry, lbs, applications):
+        """An MTRS section with one 2023 rollup row, for the ring around 9101."""
+        section = Region.objects.create(
+            name=name, slug=name.lower(), type=Region.Type.MTRS, external_id=name,
+        )
+        section.boundary = Boundary.objects.create(region=section, version='t', geometry=geometry)
+        section.save()
+        PesticideUseRollup.objects.create(
+            year=2023, month=8, county_id=9001, mtrs=section,
+            lbs_chemical=lbs, applications=applications,
+        )
+        return section
+
+    def test_block_sections_is_the_section_and_its_ring(self):
+        home, pks = stats.block_sections(self.inside.point)
+        assert home.pk == 9101
+        # The section a mile east is in the ring; the one three miles east isn't.
+        assert pks == sorted([9101, self.neighbor.pk])
+
     def test_block_totals_sum_the_sections_around_a_point(self):
         rows = PesticideUseRollup.objects.all()
         totals = stats.block_totals(rows, self.inside.point, 2023)
-        assert totals['lbs'] == 670.0 and totals['applications'] == 4
+        # 670 lbs / 4 applications in section 9101, 25 / 2 in the section a
+        # mile east; the section three miles east is left out.
+        assert totals['lbs'] == 695.0 and totals['applications'] == 6
         assert totals['section'].pk == 9101
 
     def test_block_totals_outside_any_section(self):
@@ -237,7 +265,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
     def test_schools_nearby_ranks_by_pounds(self):
         rows = places.schools_nearby(self.district, 2023)
         assert [r['location'].pk for r in rows] == [self.inside.pk, self.away.pk]
-        assert rows[0]['lbs'] == 670.0 and rows[0]['applications'] == 4
+        assert rows[0]['lbs'] == 695.0 and rows[0]['applications'] == 6
         assert rows[0]['section_mtrs'] == 'MDM-T14S-R20E-01'
         assert rows[1] == {
             'location': self.away, 'lbs': 0, 'applications': 0,
@@ -252,7 +280,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert 'Selma High' in html and 'Away Child Care' in html
         assert 'Public school' in html and 'Child care' in html
         assert reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid}) in html
-        assert [r['lbs'] for r in response.context['schools_nearby']] == [670.0, 0]
+        assert [r['lbs'] for r in response.context['schools_nearby']] == [695.0, 0]
 
     def test_page_opens_with_the_school_markers_on(self):
         response = self.client.get(self.url)
