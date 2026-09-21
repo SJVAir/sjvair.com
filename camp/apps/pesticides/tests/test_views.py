@@ -459,8 +459,8 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
 
     def test_trend_chart_above_the_by_year_table(self):
         html = self.client.get(self.chemical.get_absolute_url()).content.decode()
-        assert 'class="trend-chart"' in html
-        assert 'viewBox="0 0 320 90"' in html
+        assert 'class="explorer-chart trend-chart"' in html
+        assert 'class="chart-canvas" data-chart="chart-' in html
         # 2023: 180 lbs against 2022's 80. The first loaded year is the
         # previous one here, so it isn't repeated.
         assert 'Up 125% since 2022' in html
@@ -468,7 +468,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
 
     def test_trend_chart_under_all_years(self):
         html = self.client.get(self.chemical.get_absolute_url(), {'year': 'all'}).content.decode()
-        assert 'class="trend-chart"' in html
+        assert 'class="explorer-chart trend-chart"' in html
         assert 'Up 125% since 2022' in html
 
     def test_totals_and_tables(self):
@@ -686,7 +686,7 @@ class HomeTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url)
         assert [(r['year'], r['lbs']) for r in response.context['by_year']] == [(2023, 740.0), (2022, 540.0)]
         html = response.content.decode()
-        assert 'class="trend-chart"' in html
+        assert 'class="explorer-chart trend-chart"' in html
         assert 'Lbs applied by year' in html
         assert 'Up 37% since 2022' in html
 

@@ -193,14 +193,14 @@ class RegionPageTests(RollupTestMixin, TestCase):
         assert response.status_code == 200
         assert response.context['totals']['lbs'] == 670.0
         html = response.content.decode()
-        assert 'Fresno County' in html and 'Spraying peaks in August here' in html and 'month-bars' in html
+        assert 'Fresno County' in html and 'Spraying peaks in August here' in html and 'month-chart' in html
         assert 'only in this page' not in html
 
     def test_trend_chart(self):
         response = self.client.get(self.url)
         assert [(r['year'], r['lbs']) for r in response.context['by_year']] == [(2023, 670.0), (2022, 480.0)]
         html = response.content.decode()
-        assert 'class="trend-chart"' in html
+        assert 'class="explorer-chart trend-chart"' in html
         assert 'Up 40% since 2022' in html
 
     def test_slug_redirect_and_404s(self):

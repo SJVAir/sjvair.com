@@ -25,7 +25,7 @@ class SectionDetailTests(RollupTestMixin, TestCase):
         assert len(ctx['by_month']) == 12 and ctx['peak_month'] == 'August'
         assert ctx['map_config']['zoom'] == 13 and ctx['map_config']['center'] == '36.7100,-119.7900'
         html = response.content.decode()
-        assert 'month-bars' in html and 'Spraying here peaks in August' in html
+        assert 'month-chart' in html and 'Spraying here peaks in August' in html
         assert reverse('pesticides:records') + f'?section={self.section.sqid}' in html
 
     def test_year_param(self):

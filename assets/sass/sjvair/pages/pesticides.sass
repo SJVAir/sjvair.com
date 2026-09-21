@@ -203,72 +203,41 @@ body.pesticides
             text-decoration: underline
             white-space: nowrap
 
-    // The by-year trend: a server-rendered line, no axes, no grid -- the
-    // table under it carries the numbers.
-    .trend-chart
+    // The charts (assets/js/pesticides/charts.js draws them with uPlot). The
+    // palette lives here as custom properties the script reads.
+    .explorer-chart
+        --chart-color: #{$link}
+        --chart-grid: #{$grey-lightest}
+        --chart-muted: #{$grey}
+        --chart-text: #{$text}
         margin: 0 0 1rem
-        // Full width it's a huge box around a hairline; this is as wide as
-        // the line is worth reading, left-aligned in whatever column it's in.
-        max-width: 32rem
-        svg
-            display: block
-            width: 100%
-            height: auto
-            overflow: visible
-        .trend-title
+        .chart-title
             font-size: 0.8rem
             text-transform: uppercase
             letter-spacing: 0.04em
             color: $grey
-            margin-bottom: 0.25rem
-        .trend-line
-            stroke: $link
-            stroke-width: 1.5
-            stroke-linejoin: round
-            stroke-linecap: round
-            vector-effect: non-scaling-stroke
-        .trend-point
-            fill: $white
-            stroke: $link
-            stroke-width: 1.25
-            vector-effect: non-scaling-stroke
-            &.is-selected
-                fill: $link
-        .trend-baseline
-            stroke: $grey-lighter
-            stroke-width: 1
-            vector-effect: non-scaling-stroke
-        // Hover: a wide invisible target around each point, the point swells,
-        // and its year and value appear.
-        .trend-hit
-            fill: transparent
-            pointer-events: all
-        .trend-hover
-            font-size: 9px
-            fill: $text
+            margin-bottom: 0
+        // The hovered point's year and value. Reserved height, so the chart
+        // doesn't jump when the text appears.
+        .chart-readout
+            min-height: 1.4rem
+            font-size: $size-7
             font-weight: 600
             font-variant-numeric: tabular-nums
-            opacity: 0
-            pointer-events: none
-            transition: opacity 0.1s ease
-        .trend-node:hover
-            .trend-point
-                fill: $link
-                stroke-width: 2.5
-            .trend-hover
-                opacity: 1
-        .trend-axis
-            font-size: 9px
-            fill: $grey
-        .trend-value
-            font-size: 9px
-            fill: $grey-dark
-            font-variant-numeric: tabular-nums
+            color: $text
+        .chart-canvas
+            width: 100%
+        .u-over
+            cursor: crosshair
         .trend-delta
             margin-top: 0.35rem
             font-size: 0.9rem
             font-variant-numeric: tabular-nums
             color: $text
+    // Full width the trend is a huge box around a hairline; this is as wide
+    // as the line is worth reading, left-aligned in whatever column it's in.
+    .trend-chart
+        max-width: 32rem
 
     .by-year-table, .by-county-table
         // Four numeric columns in a narrow column: keep them on one line and
@@ -683,58 +652,6 @@ body.pesticides
 
     .schools-toggle
         margin-top: 0.25rem
-
-    .month-bars
-        display: flex
-        align-items: flex-end
-        gap: 4px
-        height: 120px
-        // Room above the tallest bar for its hover amount.
-        padding-top: 1.1rem
-        .bar
-            position: relative
-            flex: 1
-            display: flex
-            flex-direction: column
-            justify-content: flex-end
-            align-items: center
-            height: 100%
-            cursor: default
-            outline: none
-            .fill
-                width: 100%
-                background: $primary
-                min-height: 2px
-                border-radius: 2px 2px 0 0
-                transition: background-color 0.1s ease
-            .label
-                font-size: $size-7
-                color: $grey
-            // The amount sits just above the bar and appears on hover/focus,
-            // like the trend chart's point labels.
-            .amount
-                position: absolute
-                left: 50%
-                transform: translateX(-50%)
-                bottom: calc(100% - 1.1rem)
-                padding: 0.1rem 0.35rem
-                border-radius: 3px
-                background: $white
-                box-shadow: 0 1px 3px rgba($black, 0.15)
-                font-size: $size-7
-                font-weight: 600
-                font-variant-numeric: tabular-nums
-                white-space: nowrap
-                color: $text
-                opacity: 0
-                pointer-events: none
-                transition: opacity 0.1s ease
-                z-index: 1
-            &:hover, &:focus-visible
-                .fill
-                    background: $link
-                .amount
-                    opacity: 1
 
     // htmx swap feedback. `#explorer` sets hx-indicator="body", so htmx puts
     // `htmx-request` on <body> for the duration of every boosted request.

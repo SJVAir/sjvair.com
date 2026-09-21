@@ -238,36 +238,6 @@ def trend_deltas(by_year, year, field='lbs'):
     }
 
 
-def trend_points(by_year, field, width=320, height=90, pad=6, top=None):
-    """
-    `(x, y, year, value)` per loaded year, oldest first, for the trend chart's
-    polyline. The y axis runs from zero at the baseline to the largest year at
-    `top` (the room left above the plot, `pad` unless given -- the chart
-    reserves a band there for the value labels), so a flat or all-zero series
-    sits on the baseline rather than dividing by zero. A single year is
-    centred.
-    """
-    rows = sorted(by_year, key=lambda row: row['year'])
-    if not rows:
-        return []
-    if top is None:
-        top = pad
-    values = [row[field] or 0 for row in rows]
-    peak = max(values)
-    span = width - (pad * 2)
-    plot = height - top - pad
-    baseline = height - pad
-    points = []
-    for index, (row, value) in enumerate(zip(rows, values)):
-        if len(rows) == 1:
-            x = width / 2
-        else:
-            x = pad + (span * index / (len(rows) - 1))
-        y = baseline - (value / peak * plot) if peak else baseline
-        points.append((round(x, 1), round(y, 1), row['year'], value))
-    return points
-
-
 def by_county(rows, year, lbs_field='lbs_chemical', all_years=False):
     counties = list(
         in_year(rows, year, all_years)

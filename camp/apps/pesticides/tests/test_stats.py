@@ -277,7 +277,7 @@ class StatsTests(RollupTestMixin, TestCase):
 
 
 class TrendTests(TestCase):
-    """`trend_deltas` and `trend_points` are pure: by_year rows in, geometry out."""
+    """`trend_deltas` is pure: by_year rows in, comparisons out."""
 
     def rows(self, *pairs):
         return [{'year': year, 'lbs': lbs, 'acres': 0, 'applications': 1} for year, lbs in pairs]
@@ -333,29 +333,6 @@ class TrendTests(TestCase):
             {'year': 2022, 'lbs': None, 'acres': 0, 'applications': 2},
         ]
         assert stats.trend_deltas(rows, 2023, field='applications')['previous'] == {'year': 2022, 'pct': 100.0}
-
-    def test_points_run_oldest_to_newest_within_bounds(self):
-        rows = self.rows((2023, 100.0), (2022, 0.0), (2021, 50.0))
-        points = stats.trend_points(rows, 'lbs')
-        assert [p[2] for p in points] == [2021, 2022, 2023]
-        assert [p[0] for p in points] == [6.0, 160.0, 314.0]
-        assert [p[1] for p in points] == [45.0, 84.0, 6.0]
-        assert all(6 <= p[1] <= 84 for p in points)
-
-    def test_points_treat_missing_values_as_zero(self):
-        points = stats.trend_points(self.rows((2023, 10.0), (2022, None)), 'lbs')
-        assert [(p[1], p[3]) for p in points] == [(84.0, 0), (6.0, 10.0)]
-
-    def test_points_all_zero_sit_on_the_baseline(self):
-        points = stats.trend_points(self.rows((2023, 0.0), (2022, 0.0)), 'lbs')
-        assert [p[1] for p in points] == [84.0, 84.0]
-
-    def test_points_single_year_is_centered(self):
-        points = stats.trend_points(self.rows((2023, 10.0)), 'lbs')
-        assert [(p[0], p[1], p[2]) for p in points] == [(160.0, 6.0, 2023)]
-
-    def test_points_empty(self):
-        assert stats.trend_points([], 'lbs') == []
 
 
 class ConcernScopeTests(RollupTestMixin, TestCase):

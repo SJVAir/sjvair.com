@@ -1,7 +1,7 @@
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase
 
-from camp.apps.pesticides.templatetags.pesticides_explorer import compact, lbs, title_case_name, trend_chart
+from camp.apps.pesticides.templatetags.pesticides_explorer import lbs, month_chart, title_case_name, trend_chart
 
 
 class LbsFilterTests(SimpleTestCase):
@@ -68,39 +68,21 @@ class TrendChartTests(SimpleTestCase):
         data = trend_chart(self.rows((2023, 150.0), (2022, 100.0), (2014, 300.0)), None)
         assert data['sentence'] == 'Down 50% since 2014'
         # No year is being looked at, so no point is emphasised.
-        assert not any(point['is_selected'] for point in data['points'])
+        assert data['chart']['selected'] is None
 
-    def test_first_last_and_highest_values_are_written_on_the_chart(self):
+    def test_chart_data_runs_oldest_to_newest_with_the_scope_year_selected(self):
         data = trend_chart(self.rows((2023, 88.0), (2022, 300.0), (2021, 50.0), (2014, 128.0)), 2023)
-        assert [(p['year'], p['label']) for p in data['points']] == [
-            (2014, '128'), (2021, ''), (2022, '300'), (2023, '88'),
-        ]
-        assert [p['anchor'] for p in data['points']] == ['start', 'middle', 'middle', 'end']
+        assert data['chart'] == {
+            'type': 'line', 'unit': 'pounds',
+            'x': [2014, 2021, 2022, 2023], 'y': [128.0, 50.0, 300.0, 88.0],
+            'selected': 2023,
+        }
+        assert data['has_data'] and data['first_year'] == 2014 and data['last_year'] == 2023
+        assert data['chart_id'].startswith('chart-')
 
-    def test_labels_sit_above_their_points_even_at_the_peak(self):
-        # The first year is the highest: its label still goes above the
-        # point, into the label band, rather than down onto the line.
-        data = trend_chart(self.rows((2023, 88.0), (2022, 100.0), (2014, 128.0)), 2023)
-        first = data['points'][0]
-        assert first['y'] == 18.0
-        assert first['label_y'] == 11.0 and first['label_x'] == first['x']
-        assert all(p['label_y'] < p['y'] for p in data['points'])
-
-    def test_big_values_are_written_compactly(self):
-        data = trend_chart(self.rows((2023, 88_508_098.0), (2022, 45_210.0), (2014, 106_857_127.0)), 2023)
-        assert [p['label'] for p in data['points']] == ['107M', '', '88.5M']
-        # The full number stays on the hover.
-        assert data['points'][0]['display'] == '106,857,127'
-
-    def test_compact(self):
-        assert compact(4607.0) == '4,607'
-        assert compact(0.19) == '0.19'
-        assert compact(45_210.0) == '45.2k'
-        assert compact(452_100.0) == '452k'
-        assert compact(8_900_000.0) == '8.9M'
-        assert compact(107_000_000.0) == '107M'
-        assert compact(12, hide_lbs=True) == '12'
-        assert compact(None) == '—'
+    def test_a_scope_year_without_data_selects_nothing(self):
+        data = trend_chart(self.rows((2023, 88.0), (2022, 300.0)), 2019)
+        assert data['chart']['selected'] is None
 
     def test_delta_sentence_skips_an_undefined_delta(self):
         data = trend_chart(self.rows((2023, 150.0), (2022, 0.0), (2014, 100.0)), 2023)
@@ -111,16 +93,13 @@ class TrendChartTests(SimpleTestCase):
         assert data['sentence'] == 'Only one year of data.'
 
     def test_no_years(self):
-        assert trend_chart([], None)['points'] == []
+        data = trend_chart([], None)
+        assert data['has_data'] is False and data['chart']['x'] == []
 
-    def test_geometry_and_title(self):
+    def test_title(self):
         data = trend_chart(self.rows((2023, 100.0), (2022, 50.0)), 2023)
         assert data['title'] == 'Lbs applied by year'
-        # The plot stops 18 units short of the top: that band holds the labels.
-        assert data['polyline'] == '6.0,51.0 314.0,18.0'
-        assert [p['year'] for p in data['points']] == [2022, 2023]
-        assert [p['is_selected'] for p in data['points']] == [False, True]
-        assert data['first_year'] == 2022 and data['last_year'] == 2023
+        assert data['metric_label'] == 'pounds'
 
     def test_placeholder_pages_chart_applications(self):
         rows = [
@@ -130,18 +109,40 @@ class TrendChartTests(SimpleTestCase):
         data = trend_chart(rows, 2023, hide_lbs=True)
         assert data['title'] == 'Applications by year'
         assert data['metric_label'] == 'applications'
-        assert [p['value'] for p in data['points']] == [2, 4]
+        assert data['chart']['unit'] == 'applications'
+        assert data['chart']['y'] == [2, 4]
         assert data['sentence'] == 'Up 100% since 2022'
 
-    def test_renders_an_inline_svg(self):
+    def test_renders_the_chart_data_for_the_browser(self):
         rows = self.rows((2023, 88.0), (2022, 100.0), (2014, 128.0))
         html = render_to_string('pesticides/includes/trend-chart.html', trend_chart(rows, 2023))
-        assert '<svg' in html and 'viewBox="0 0 320 90"' in html
-        assert '<polyline' in html and '<circle' in html
+        assert 'class="explorer-chart trend-chart"' in html
+        assert 'class="chart-canvas" data-chart="chart-' in html
+        # The data rides in a json_script the chart module reads, keyed by the same id.
+        assert 'type="application/json"' in html and '"x": [2014, 2022, 2023]' in html
         assert 'Down 12% since 2022 · down 31% since 2014' in html
-        # Year labels at both ends, and the values on the points.
-        assert '>2014<' in html and '>2023<' in html
-        assert 'trend-value' in html and '>128<' in html and '>88<' in html
+        assert 'aria-label="Lbs applied by year, 2014 to 2023.' in html
+        assert '<svg' not in html
 
     def test_renders_nothing_without_years(self):
         assert render_to_string('pesticides/includes/trend-chart.html', trend_chart([], None)).strip() == ''
+
+
+class MonthChartTests(SimpleTestCase):
+    def rows(self, *triples):
+        return [{'month': month, 'lbs': lbs, 'acres': 0, 'applications': applications} for month, lbs, applications in triples]
+
+    def test_chart_data_is_ordered_by_month_with_labels(self):
+        data = month_chart(self.rows((3, 10.5, 2), (1, 0.0, 0), (2, None, 1)), '2023')
+        assert data['chart'] == {
+            'type': 'bars', 'unit': 'pounds',
+            'labels': ['Jan', 'Feb', 'Mar'], 'names': ['January', 'February', 'March'],
+            'x': [0, 1, 2], 'y': [0.0, 0, 10.5], 'applications': [0, 1, 2],
+        }
+        assert data['year_label'] == '2023'
+
+    def test_renders_the_chart_and_a_noscript_table(self):
+        html = render_to_string('pesticides/includes/month-chart.html', month_chart(self.rows((8, 1234.0, 7)), '2023'))
+        assert 'class="explorer-chart month-chart"' in html
+        assert 'aria-label="Lbs applied by month, 2023"' in html
+        assert '<noscript>' in html and '<td>August</td>' in html and '1,234' in html

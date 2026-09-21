@@ -78,6 +78,7 @@ def vendor(ctx):
     mkdir(path('dist'))
     import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
     import_node_module(ctx, 'htmx.org/dist', 'htmx')
+    import_node_module(ctx, 'uplot/dist', 'uplot')
 
 
 @task()

@@ -67,7 +67,7 @@
     <section class="column is-7-desktop month-bars-section">
         <h2 class="title is-4">By month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
         {% if by_month %}
-            {% include 'pesticides/includes/month-bars.html' %}
+            {% month_chart by_month year_label %}
             {% if peak_month %}<p class="mt-2">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
         {% else %}
             <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>

@@ -1,5 +1,6 @@
 import calendar
 import re
+import uuid
 
 from django import template
 from django.contrib.humanize.templatetags.humanize import intcomma
@@ -136,11 +137,6 @@ def month_name(value):
 
 
 @register.filter
-def max_lbs(by_month):
-    return max((month['lbs'] for month in by_month), default=0)
-
-
-@register.filter
 def category_label(value):
     from camp.apps.pesticides.models import Chemical
     return dict(Chemical.Category.choices).get(value, value)
@@ -191,44 +187,23 @@ def _delta_phrase(delta, lead):
     return phrase if lead else phrase[0].lower() + phrase[1:]
 
 
-def compact(value, hide_lbs=False):
-    """
-    A chart label that fits: "4,607" stays as it is, "45,210" becomes "45.2k",
-    "106,857,127" becomes "107M". The full number is a hover away. Values
-    under ten thousand are written out because they're short already and a
-    bait's few ounces would otherwise round to nothing.
-    """
-    if value is None:
-        return '—'
-    if abs(value) < 10_000:
-        return intcomma(value) if hide_lbs else lbs(value)
-    for threshold, suffix in ((1_000_000, 'M'), (1_000, 'k')):
-        if abs(value) >= threshold:
-            scaled = value / threshold
-            text = f'{scaled:.1f}' if abs(scaled) < 100 else f'{scaled:.0f}'
-            return text.removesuffix('.0') + suffix
-    return intcomma(value)
-
-
-# The band above the plot where the value labels sit, so the highest year's
-# label never has to be pushed down onto the line.
-TREND_LABEL_BAND = 18
+def _chart_id():
+    return f'chart-{uuid.uuid4().hex[:8]}'
 
 
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
 def trend_chart(by_year, year=None, hide_lbs=False, title=None):
     """
-    The by-year trend: an inline SVG line chart and the delta sentence under
-    it. Pounds, except on a placeholder chemical's page, which has none and
-    charts its applications instead.
+    The by-year trend: a uPlot line drawn in the browser from the data this
+    tag embeds (see assets/js/pesticides/charts.js), with the delta sentence
+    under it rendered here. Pounds, except on a placeholder chemical's page,
+    which has none and charts its applications instead.
     """
     field = 'applications' if hide_lbs else 'lbs'
     metric_label = 'applications' if hide_lbs else 'pounds'
-    width, height = 320, 90
-    points = stats.trend_points(by_year, field, width=width, height=height, top=TREND_LABEL_BAND)
-    # Under All years no single point is the one being looked at, so nothing
-    # is emphasised.
-    selected = year
+    rows = sorted(by_year, key=lambda row: row['year'])
+    years = [row['year'] for row in rows]
+    values = [row[field] or 0 for row in rows]
     deltas = stats.trend_deltas(by_year, year, field=field)
     previous = _delta_phrase(deltas['previous'], lead=True)
     first = _delta_phrase(deltas['first'], lead=previous is None)
@@ -236,48 +211,49 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
     if phrases:
         sentence = ' · '.join(phrases)
     else:
-        sentence = 'Only one year of data.' if len(points) == 1 else ''
-    # Three values are written on the chart -- the first year, the last, and
-    # the highest -- so the shape carries numbers without a hover. Each sits
-    # above its own point, in the band the plot leaves free, the first
-    # running right from its point and the last running left, so neither
-    # leaves the box.
-    labelled = set()
-    if points:
-        values = [point[3] for point in points]
-        peak = values.index(max(values))
-        labelled = {0, len(points) - 1}
-        # ...unless the peak sits near an end, where its label would run into
-        # that end's.
-        if width * 0.22 <= points[peak][0] <= width * 0.78:
-            labelled.add(peak)
-    last = len(points) - 1
+        sentence = 'Only one year of data.' if len(rows) == 1 else ''
+    title = title or ('Applications by year' if hide_lbs else 'Lbs applied by year')
+    first_year = years[0] if years else None
+    last_year = years[-1] if years else None
     return {
-        'points': [
-            {
-                'x': x, 'y': y, 'year': point_year, 'value': value,
-                'display': intcomma(value) if hide_lbs else lbs(value),
-                'is_selected': point_year == selected,
-                'label': compact(value, hide_lbs) if index in labelled else '',
-                'label_x': x,
-                'label_y': round(y - 7, 1),
-                'anchor': 'start' if index == 0 and last else ('end' if index == last and last else 'middle'),
-                # The hover label sits under the point, pulled in at the ends;
-                # near the baseline it goes above instead, clear of the
-                # written value.
-                'hover_y': round(y + 14, 1) if y < height - 22 else round(y - 17, 1),
-                'hover_anchor': 'start' if x < width * 0.15 else ('end' if x > width * 0.85 else 'middle'),
-            }
-            for index, (x, y, point_year, value) in enumerate(points)
-        ],
-        'polyline': ' '.join(f'{x},{y}' for x, y, _, _ in points),
-        'sentence': sentence,
-        'title': title or ('Applications by year' if hide_lbs else 'Lbs applied by year'),
+        'chart_id': _chart_id(),
+        'chart': {
+            'type': 'line',
+            'unit': metric_label,
+            'x': years,
+            'y': values,
+            # Under All years no single point is the one being looked at, so
+            # nothing is emphasised.
+            'selected': year if year in years else None,
+        },
+        'has_data': bool(rows),
+        'title': title,
         'metric_label': metric_label,
-        'width': width,
-        'height': height,
-        'pad': 6,
-        'baseline': height - 6,
-        'first_year': points[0][2] if points else None,
-        'last_year': points[-1][2] if points else None,
+        'sentence': sentence,
+        'first_year': first_year,
+        'last_year': last_year,
+    }
+
+
+@register.inclusion_tag('pesticides/includes/month-chart.html')
+def month_chart(by_month, year_label=None):
+    """
+    The by-month bars for a place or section, one bar per month of the scope
+    year (or of every year, summed), drawn in the browser from the embedded
+    data. Pounds on the bars; applications ride along for the hover readout.
+    """
+    rows = sorted(by_month, key=lambda row: row['month'])
+    return {
+        'chart_id': _chart_id(),
+        'chart': {
+            'type': 'bars',
+            'unit': 'pounds',
+            'labels': [calendar.month_abbr[row['month']] for row in rows],
+            'names': [calendar.month_name[row['month']] for row in rows],
+            'x': list(range(len(rows))),
+            'y': [row['lbs'] or 0 for row in rows],
+            'applications': [row.get('applications') or 0 for row in rows],
+        },
+        'rows': rows,
+        'year_label': year_label,
     }

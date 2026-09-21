@@ -1,0 +1,18 @@
+{% load pesticides_explorer %}
+<figure class="explorer-chart month-chart">
+    <p class="chart-readout" aria-live="polite"></p>
+    <div class="chart-canvas" data-chart="{{ chart_id }}" role="img"
+         aria-label="Lbs applied by month{% if year_label %}, {{ year_label }}{% endif %}"></div>
+    {{ chart|json_script:chart_id }}
+    {# Without JavaScript the numbers are still on the page. #}
+    <noscript>
+        <table class="table is-narrow is-size-7">
+            <thead><tr><th>Month</th><th class="has-text-right">Lbs</th><th class="has-text-right">Applications</th></tr></thead>
+            <tbody>
+            {% for row in rows %}
+                <tr><td>{{ row.month|month_name }}</td><td class="has-text-right">{{ row.lbs|lbs }}</td><td class="has-text-right">{{ row.applications|default:0 }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </noscript>
+</figure>
