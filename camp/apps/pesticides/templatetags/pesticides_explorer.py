@@ -191,6 +191,30 @@ def _delta_phrase(delta, lead):
     return phrase if lead else phrase[0].lower() + phrase[1:]
 
 
+def compact(value, hide_lbs=False):
+    """
+    A chart label that fits: "4,607" stays as it is, "45,210" becomes "45.2k",
+    "106,857,127" becomes "107M". The full number is a hover away. Values
+    under ten thousand are written out because they're short already and a
+    bait's few ounces would otherwise round to nothing.
+    """
+    if value is None:
+        return '—'
+    if abs(value) < 10_000:
+        return intcomma(value) if hide_lbs else lbs(value)
+    for threshold, suffix in ((1_000_000, 'M'), (1_000, 'k')):
+        if abs(value) >= threshold:
+            scaled = value / threshold
+            text = f'{scaled:.1f}' if abs(scaled) < 100 else f'{scaled:.0f}'
+            return text.removesuffix('.0') + suffix
+    return intcomma(value)
+
+
+# The band above the plot where the value labels sit, so the highest year's
+# label never has to be pushed down onto the line.
+TREND_LABEL_BAND = 18
+
+
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
 def trend_chart(by_year, year=None, hide_lbs=False, title=None):
     """
@@ -201,7 +225,7 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
     field = 'applications' if hide_lbs else 'lbs'
     metric_label = 'applications' if hide_lbs else 'pounds'
     width, height = 320, 90
-    points = stats.trend_points(by_year, field, width=width, height=height)
+    points = stats.trend_points(by_year, field, width=width, height=height, top=TREND_LABEL_BAND)
     # Under All years no single point is the one being looked at, so nothing
     # is emphasised.
     selected = year
@@ -214,7 +238,10 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
     else:
         sentence = 'Only one year of data.' if len(points) == 1 else ''
     # Three values are written on the chart -- the first year, the last, and
-    # the highest -- so the shape carries numbers without a hover.
+    # the highest -- so the shape carries numbers without a hover. Each sits
+    # above its own point, in the band the plot leaves free, the first
+    # running right from its point and the last running left, so neither
+    # leaves the box.
     labelled = set()
     if points:
         values = [point[3] for point in points]
@@ -224,21 +251,21 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
         # that end's.
         if width * 0.22 <= points[peak][0] <= width * 0.78:
             labelled.add(peak)
+    last = len(points) - 1
     return {
         'points': [
             {
                 'x': x, 'y': y, 'year': point_year, 'value': value,
                 'display': intcomma(value) if hide_lbs else lbs(value),
                 'is_selected': point_year == selected,
-                'label': (intcomma(value) if hide_lbs else lbs(value)) if index in labelled else '',
-                # Keep the end labels inside the box, and off the point: the
-                # first year's label starts just right of its point, the last
-                # year's ends just left of its.
-                'label_x': (x + 5) if index == 0 and len(points) > 1 else ((x - 5) if index == len(points) - 1 and len(points) > 1 else x),
-                'label_y': max(round(y - 6, 1), 9),
-                'anchor': 'start' if index == 0 and len(points) > 1 else ('end' if index == len(points) - 1 and len(points) > 1 else 'middle'),
-                # The hover label sits under the point (above it near the baseline), pulled in at the ends.
-                'hover_y': round(y + 14, 1) if y < height - 22 else round(y - 8, 1),
+                'label': compact(value, hide_lbs) if index in labelled else '',
+                'label_x': x,
+                'label_y': round(y - 7, 1),
+                'anchor': 'start' if index == 0 and last else ('end' if index == last and last else 'middle'),
+                # The hover label sits under the point, pulled in at the ends;
+                # near the baseline it goes above instead, clear of the
+                # written value.
+                'hover_y': round(y + 14, 1) if y < height - 22 else round(y - 17, 1),
                 'hover_anchor': 'start' if x < width * 0.15 else ('end' if x > width * 0.85 else 'middle'),
             }
             for index, (x, y, point_year, value) in enumerate(points)

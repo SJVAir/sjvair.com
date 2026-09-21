@@ -1,7 +1,7 @@
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase
 
-from camp.apps.pesticides.templatetags.pesticides_explorer import lbs, title_case_name, trend_chart
+from camp.apps.pesticides.templatetags.pesticides_explorer import compact, lbs, title_case_name, trend_chart
 
 
 class LbsFilterTests(SimpleTestCase):
@@ -77,6 +77,31 @@ class TrendChartTests(SimpleTestCase):
         ]
         assert [p['anchor'] for p in data['points']] == ['start', 'middle', 'middle', 'end']
 
+    def test_labels_sit_above_their_points_even_at_the_peak(self):
+        # The first year is the highest: its label still goes above the
+        # point, into the label band, rather than down onto the line.
+        data = trend_chart(self.rows((2023, 88.0), (2022, 100.0), (2014, 128.0)), 2023)
+        first = data['points'][0]
+        assert first['y'] == 18.0
+        assert first['label_y'] == 11.0 and first['label_x'] == first['x']
+        assert all(p['label_y'] < p['y'] for p in data['points'])
+
+    def test_big_values_are_written_compactly(self):
+        data = trend_chart(self.rows((2023, 88_508_098.0), (2022, 45_210.0), (2014, 106_857_127.0)), 2023)
+        assert [p['label'] for p in data['points']] == ['107M', '', '88.5M']
+        # The full number stays on the hover.
+        assert data['points'][0]['display'] == '106,857,127'
+
+    def test_compact(self):
+        assert compact(4607.0) == '4,607'
+        assert compact(0.19) == '0.19'
+        assert compact(45_210.0) == '45.2k'
+        assert compact(452_100.0) == '452k'
+        assert compact(8_900_000.0) == '8.9M'
+        assert compact(107_000_000.0) == '107M'
+        assert compact(12, hide_lbs=True) == '12'
+        assert compact(None) == '—'
+
     def test_delta_sentence_skips_an_undefined_delta(self):
         data = trend_chart(self.rows((2023, 150.0), (2022, 0.0), (2014, 100.0)), 2023)
         assert data['sentence'] == 'Up 50% since 2014'
@@ -91,7 +116,8 @@ class TrendChartTests(SimpleTestCase):
     def test_geometry_and_title(self):
         data = trend_chart(self.rows((2023, 100.0), (2022, 50.0)), 2023)
         assert data['title'] == 'Lbs applied by year'
-        assert data['polyline'] == '6.0,45.0 314.0,6.0'
+        # The plot stops 18 units short of the top: that band holds the labels.
+        assert data['polyline'] == '6.0,51.0 314.0,18.0'
         assert [p['year'] for p in data['points']] == [2022, 2023]
         assert [p['is_selected'] for p in data['points']] == [False, True]
         assert data['first_year'] == 2022 and data['last_year'] == 2023
