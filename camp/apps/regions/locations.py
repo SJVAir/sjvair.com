@@ -64,6 +64,15 @@ GEOCODE_MISS = 'miss'
 # facility). Neither has a campus children stand on.
 EXCLUSIVELY_VIRTUAL = ('V', 'F')
 
+# The grade code for adult education. This file has no "Adult" School Type
+# or School Level -- the types run Elementary…State Special and the levels
+# Elementary, Middle, High, Elem-High Combo, Ungraded -- so the adult sites
+# are the ones whose grade span starts at AD (8 statewide, 2 in the valley:
+# "Madera Unified Adult Transition Program" and "Rising Sun"). A school that
+# merely runs up to AD, like a K-AD special education campus, still teaches
+# children and stays.
+ADULT_GRADE = 'AD'
+
 # School Level values that belong to the elementary district, for a school
 # that isn't inside a unified district.
 ELEMENTARY_LEVELS = ('elementary', 'middle')
@@ -134,6 +143,19 @@ HTML_PREFIXES = (b'<html', b'<!doctype')
 # short "still processing" body rather than the file. That isn't an error
 # and isn't HTML either, so without this it reads as a successful import of
 # zero schools. Wait it out instead.
+# What the public schools' district cross-check found, tallied per import:
+# the file's district replaced a different spatial one, filled in where the
+# point fell outside every district we have, or named a district we don't
+# have a Region for at all (the location keeps the spatial answer).
+DISTRICT_CORRECTED = 'district_corrected'
+DISTRICT_FILLED_IN = 'district_filled_in'
+DISTRICT_UNKNOWN = 'district_unknown'
+DISTRICT_TALLIES = (
+    (DISTRICT_CORRECTED, 'corrected'),
+    (DISTRICT_FILLED_IN, 'filled in'),
+    (DISTRICT_UNKNOWN, 'unknown district'),
+)
+
 DOWNLOAD_PENDING_STATUSES = (202,)
 DOWNLOAD_ATTEMPTS = 5
 DOWNLOAD_RETRY_WAIT = 10  # seconds, doubling per attempt
@@ -300,11 +322,16 @@ def _address_string(row):
     """
     The single line to geocode a row by: the address the source gave us,
     unless the source already worked out a better one (`geocode_address`).
+    Empty when there's nothing to place the row by -- a state and a ZIP on
+    their own aren't an address.
     """
     if row.get('geocode_address'):
-        return row['geocode_address']
+        return row['geocode_address'].strip()
 
     parts = [row.get('address') or '', row.get('city') or '']
+    if not any(part.strip() for part in parts):
+        return ''
+
     zipcode = (row.get('zip') or '').strip()
     parts.append(f'CA {zipcode}'.strip())
     return ', '.join(part for part in parts if part.strip())
@@ -329,6 +356,8 @@ def parse_cde_public(file):
       documents 'P' (primarily classroom, some virtual), which doesn't
       appear in this year's file -- it's kept if it turns up.
 
+    Adult education sites are dropped as well; see ADULT_GRADE.
+
     Names arrive properly cased and are stored as they come.
     """
     for row in _rows(file, encoding='utf-8'):
@@ -339,6 +368,8 @@ def parse_cde_public(file):
             continue
         if _get(row, 'virtual').upper() in EXCLUSIVELY_VIRTUAL:
             continue
+        if _grade(_get(row, 'grade low')) == ADULT_GRADE:
+            continue  # Adult education: no children on the campus.
         if not _in_the_valley(_get(row, 'county name')):
             continue
 
@@ -715,7 +746,7 @@ def import_source(source, path=None, geocode=True):
         raise ValueError(f'Unknown location source: {source}')
 
     counts = {'imported': 0, 'updated': 0, 'removed': 0, 'geocoded': 0,
-        'skipped': 0, 'district_mismatch': 0}
+        'skipped': 0, **{key: 0 for key, _ in DISTRICT_TALLIES}}
 
     with _open_source(config, path) as handle:
         rows = [row for row in config['parse'](handle) if row.get('external_id')]
@@ -744,10 +775,11 @@ def import_source(source, path=None, geocode=True):
                 # Already imported: keep the coordinates we have.
                 resolved.append((row, current.point))
                 continue
-            if not geocode or not (row.get('address') or '').strip():
+            address = _address_string(row)
+            if not geocode or not address:
                 counts['skipped'] += 1
                 continue
-            result = geocode_cached(_address_string(row))
+            result = geocode_cached(address)
             if result is None:
                 counts['skipped'] += 1
                 continue
@@ -774,8 +806,9 @@ def import_source(source, path=None, geocode=True):
             # Always re-resolve rather than leaving it to save(): the
             # boundaries move between imports even where the location hasn't.
             location.resolve_regions()
-            if _prefer_the_files_district(location, row.get('district_cds')):
-                counts['district_mismatch'] += 1
+            outcome = _cross_check_district(location, row.get('district_cds'))
+            if outcome is not None:
+                counts[outcome] += 1
             location.save()
 
             counts['imported' if created else 'updated'] += 1
@@ -787,31 +820,37 @@ def import_source(source, path=None, geocode=True):
     return counts
 
 
-def _prefer_the_files_district(location, district_cds):
+def _cross_check_district(location, district_cds):
     """
     Cross-check the district resolved from the point against the one the
     source says the address sits in, and prefer the source's when they
     differ: elementary and high district boundaries overlap, and the CDS
-    code is CDE's own answer for the address. Returns True when the link
-    changed, so the caller can tally how often the two disagree.
+    code is CDE's own answer for the address.
+
+    Returns None when the two agree (or the source names no district), and
+    otherwise which of the three ways they parted: DISTRICT_CORRECTED,
+    DISTRICT_FILLED_IN or DISTRICT_UNKNOWN. They mean different things --
+    a correction is the overlap being settled, a fill-in is a point that
+    landed outside every boundary we have, and an unknown district is a
+    district missing from the Region table -- so they're counted apart.
     """
     if not district_cds:
-        return False
+        return None
 
     prefix = str(district_cds)[:7]
     current = location.school_district
     if current is not None and current.external_id[:7] == prefix:
-        return False
+        return None
 
     district = Region.objects.filter(
         type=Region.Type.SCHOOL_DISTRICT,
         external_id__startswith=prefix,
     ).first()
-    if district is None or district == current:
-        return False
+    if district is None:
+        return DISTRICT_UNKNOWN
 
     location.school_district = district
-    return True
+    return DISTRICT_CORRECTED if current is not None else DISTRICT_FILLED_IN
 
 
 def _point(lat, lng):

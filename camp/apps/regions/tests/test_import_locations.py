@@ -71,12 +71,15 @@ class PublicSchoolImportTests(TestCase):
             'Tumbleweed Middle',
         }
 
-    def test_drops_closed_virtual_and_out_of_valley_schools(self):
+    def test_drops_closed_virtual_adult_and_out_of_valley_schools(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
 
         assert not Location.objects.filter(name='Shuttered Elementary').exists()
         assert not Location.objects.filter(name='Orchard Online Academy').exists()
         assert not Location.objects.filter(name='Bayside High').exists()
+        # Grade span AD-AD: adult education, no children on the campus.
+        assert not Location.objects.filter(
+            name='Orchard Adult Transition Program').exists()
 
     def test_reads_the_utf_8_export_without_mojibake(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
@@ -157,21 +160,37 @@ class PublicSchoolImportTests(TestCase):
         assert kern.county == Region.objects.get(pk=9002)
         assert kern.school_district is None
 
-    def test_the_files_district_wins_over_the_spatial_one(self):
+    def test_the_files_district_corrects_the_spatial_one(self):
         # Almond Elementary's point is inside Orchard Unified's boundary,
         # but the file puts its address in the Almond Elementary district.
         counts = locations.import_source('cde-public', path=PUBLIC_PATH)
 
-        assert counts['district_mismatch'] == 1
+        assert counts['district_corrected'] == 1
         assert Location.objects.get(
             external_id='10621256059470').school_district == self.almond
 
-    def test_a_district_the_file_names_but_we_dont_have_leaves_the_spatial_answer(self):
+    def test_the_files_district_fills_in_where_the_point_is_outside_them_all(self):
+        # Tumbleweed Middle's point is in no district boundary at all.
+        tumbleweed = make_district('Tumbleweed Union', 'tumbleweed-union',
+            '15633210000000', geometry=None)
+
+        counts = locations.import_source('cde-public', path=PUBLIC_PATH)
+
+        assert counts['district_filled_in'] == 1
+        assert counts['district_corrected'] == 1
+        assert Location.objects.get(
+            external_id='15633216059455').school_district == tumbleweed
+
+    def test_a_district_the_file_names_but_we_dont_have_is_counted_apart(self):
         self.almond.delete()
 
         counts = locations.import_source('cde-public', path=PUBLIC_PATH)
 
-        assert counts['district_mismatch'] == 0
+        assert counts['district_corrected'] == 0
+        assert counts['district_filled_in'] == 0
+        # Almond Elementary's district and Tumbleweed Union's, neither of
+        # which has a Region here.
+        assert counts['district_unknown'] == 2
         assert Location.objects.get(
             external_id='10621256059470').school_district == self.district
 
@@ -231,7 +250,7 @@ class PrivateSchoolImportTests(TestCase):
         with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
             counts = locations.import_source('cde-private', path=PRIVATE_PATH)
 
-        assert counts['imported'] == 3
+        assert counts['imported'] == 4
         assert counts['skipped'] == 0
         assert not Location.objects.filter(name='Tiny Scholars Home School').exists()
 
@@ -253,11 +272,26 @@ class PrivateSchoolImportTests(TestCase):
                 return_value=FRESNO_POINT) as geocode:
             counts = locations.import_source('cde-private', path=PRIVATE_PATH)
 
-        assert counts['geocoded'] == 1
-        assert geocode.call_count == 1
-        assert geocode.call_args.args[0] == 'Highway 99, Selma, California, 93662'
+        assert counts['geocoded'] == 2
+        assert [call.args[0] for call in geocode.call_args_list] == [
+            'Highway 99, Selma, California, 93662',
+            '700 Rural Route 4, Selma, California, 93662',
+        ]
         school = Location.objects.get(external_id='10621170123472')
         assert round(school.point.y, 4) == 36.71
+
+    def test_a_row_without_a_street_address_still_geocodes_on_match_addr(self):
+        # Rural Route Montessori filed no street address, so the only thing
+        # to place it by is the address the geocoder matched.
+        with mock.patch.object(locations, 'geocode_cached',
+                return_value=FRESNO_POINT) as geocode:
+            locations.import_source('cde-private', path=PRIVATE_PATH)
+
+        school = Location.objects.get(external_id='10621170123498')
+        assert school.address == ''
+        assert round(school.point.y, 4) == 36.71
+        assert '700 Rural Route 4, Selma, California, 93662' in [
+            call.args[0] for call in geocode.call_args_list]
 
     def test_no_geocode_skips_the_rows_it_cannot_place(self):
         with mock.patch.object(locations, 'geocode_cached') as geocode:
@@ -266,7 +300,7 @@ class PrivateSchoolImportTests(TestCase):
 
         assert geocode.call_count == 0
         assert counts['imported'] == 2
-        assert counts['skipped'] == 1
+        assert counts['skipped'] == 2
 
     def test_a_failed_geocode_never_removes_a_row_thats_still_listed(self):
         with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
@@ -279,7 +313,7 @@ class PrivateSchoolImportTests(TestCase):
         # The row already imported keeps its point, and isn't re-geocoded.
         assert geocode.call_count == 0
         assert counts['removed'] == 0
-        assert counts['updated'] == 3
+        assert counts['updated'] == 4
         kept = Location.objects.get(external_id='10621170123472')
         assert kept.pk == existing.pk
         assert kept.point == existing.point
@@ -327,7 +361,9 @@ class PrivateSchoolImportTests(TestCase):
         assert school.county == Region.objects.get(pk=9001)
         assert school.school_district == self.district
         # No CDS cross-check for private schools: nothing to compare against.
-        assert counts['district_mismatch'] == 0
+        assert counts['district_corrected'] == 0
+        assert counts['district_filled_in'] == 0
+        assert counts['district_unknown'] == 0
 
     def test_rerun_updates_without_duplicating(self):
         with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
@@ -335,8 +371,8 @@ class PrivateSchoolImportTests(TestCase):
             counts = locations.import_source('cde-private', path=PRIVATE_PATH)
 
         assert counts['imported'] == 0
-        assert counts['updated'] == 3
-        assert Location.objects.count() == 3
+        assert counts['updated'] == 4
+        assert Location.objects.count() == 4
 
 
 class ChildCareImportTests(TestCase):
@@ -566,7 +602,8 @@ class ImportLocationsCommandTests(TestCase):
     def test_all_imports_every_source(self):
         stdout = StringIO()
         counts = {'imported': 1, 'updated': 0, 'removed': 0, 'geocoded': 0,
-            'skipped': 0, 'district_mismatch': 0}
+            'skipped': 0, 'district_corrected': 0, 'district_filled_in': 0,
+            'district_unknown': 0}
 
         with mock.patch.object(locations, 'import_source', return_value=counts) as importer:
             call_command('import_locations', stdout=stdout)
@@ -574,7 +611,7 @@ class ImportLocationsCommandTests(TestCase):
         assert [call.args[0] for call in importer.call_args_list] == [
             'cde-public', 'cde-private', 'cdss-ccl']
 
-    def test_reports_the_district_mismatch_tally(self):
+    def test_reports_the_district_tallies_apart_from_the_counts(self):
         stdout = StringIO()
         make_district('Orchard Unified', 'orchard-unified', '10621170000000')
         make_district('Almond Elementary', 'almond-elementary', '10621250000000',
@@ -584,9 +621,11 @@ class ImportLocationsCommandTests(TestCase):
             stdout=stdout)
 
         output = stdout.getvalue()
-        assert 'district mismatch: 1' in output
-        # The tally is its own line, not part of the counts summary.
-        assert 'district_mismatch' not in output
+        assert 'districts -- corrected: 1, unknown district: 1' in output
+        # Nothing was filled in, so that tally is left out entirely.
+        assert 'filled in' not in output
+        # The tallies are their own line, not part of the counts summary.
+        assert 'district_corrected' not in output
 
     def test_a_download_failure_is_a_command_error(self):
         with mock.patch.object(locations, 'import_source',

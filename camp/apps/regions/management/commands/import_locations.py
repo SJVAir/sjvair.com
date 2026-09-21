@@ -52,12 +52,16 @@ class Command(BaseCommand):
                     f'{source}: no rows parsed from {where}; nothing changed.'))
                 continue
 
-            mismatched = counts.get('district_mismatch') or 0
+            tallies = [key for key, _ in locations.DISTRICT_TALLIES]
             summary = ', '.join(f'{key}={value}' for key, value in counts.items()
-                if key != 'district_mismatch')
+                if key not in tallies)
             self.stdout.write(f'{source}: {summary}')
-            if mismatched:
-                # How often the district the point falls in isn't the one the
-                # file names for the address. A handful is normal; a jump
-                # means the boundaries and the directory are out of step.
-                self.stdout.write(f'{source}: district mismatch: {mismatched}')
+
+            # Where the district the point falls in isn't the one the file
+            # names for the address. A handful of corrections is normal --
+            # overlapping elementary and high districts -- while unknown
+            # districts mean the Region table is missing some.
+            found = [f'{label}: {counts[key]}'
+                for key, label in locations.DISTRICT_TALLIES if counts.get(key)]
+            if found:
+                self.stdout.write(f'{source}: districts -- ' + ', '.join(found))
