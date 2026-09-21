@@ -47,7 +47,8 @@
   // How many quantile classes: ?bins=4|5|6|8|10 (quartiles ... deciles).
   var BIN_OPTIONS = [[4, 'Quartiles'], [5, 'Quintiles'], [6, 'Sextiles'], [8, 'Octiles'], [10, 'Deciles']];
   var binsMatch = /[?&]bins=(\d+)/.exec(window.location.search || '');
-  var NUM_CLASSES = binsMatch && BIN_OPTIONS.some(function (o) { return o[0] === +binsMatch[1]; }) ? +binsMatch[1] : 5;
+  var DEFAULT_BINS = 6;
+  var NUM_CLASSES = binsMatch && BIN_OPTIONS.some(function (o) { return o[0] === +binsMatch[1]; }) ? +binsMatch[1] : DEFAULT_BINS;
 
   // `count` colours evenly spaced along a ramp, interpolated in RGB
   // between its stops, so a ramp serves any number of classes.
@@ -630,7 +631,8 @@
     // ?tiles=<style> swaps the MapTiler style while we pick one (see
     // leaflet-maps.js); known before the controls bind so the select shows it.
     var tilesMatch = /[?&]tiles=([a-z0-9-]+)/.exec(window.location.search || '');
-    this.tileStyle = tilesMatch ? tilesMatch[1] : (/\/maps\/([^/]+)\//.exec(this.data.tiles || '') || [])[1] || 'streets';
+    this.defaultTileStyle = (/\/maps\/([^/]+)\//.exec(this.data.tiles || '') || [])[1] || 'dataviz';
+    this.tileStyle = tilesMatch ? tilesMatch[1] : this.defaultTileStyle;
     this.attachControls();
 
     var center = this.parseCenter(this.data.center) || [36.75, -119.80];
@@ -651,7 +653,7 @@
     this.el.addEventListener('blur', this.disableScrollZoom.bind(this), true);
 
     var tileUrl = this.data.tiles;
-    if (tileUrl && this.tileStyle !== 'streets') tileUrl = tileUrlFor(tileUrl, this.tileStyle);
+    if (tileUrl && this.tileStyle !== this.defaultTileStyle) tileUrl = tileUrlFor(tileUrl, this.tileStyle);
     if (tileUrl) {
       this.tileLayer = L.tileLayer(tileUrl, {
         attribution: this.data.attribution || '',
@@ -1087,7 +1089,7 @@
         url.searchParams.delete('sections');
       }
       // The experiment controls (tile style, ramp) while a look is chosen.
-      if (this.tileStyle && this.tileStyle !== 'streets') {
+      if (this.tileStyle && this.tileStyle !== this.defaultTileStyle) {
         url.searchParams.set('tiles', this.tileStyle);
       } else {
         url.searchParams.delete('tiles');
@@ -1097,7 +1099,7 @@
       } else if (this.rampName) {
         url.searchParams.delete('ramp');
       }
-      if (this.bins && this.bins !== 5) {
+      if (this.bins && this.bins !== DEFAULT_BINS) {
         url.searchParams.set('bins', this.bins);
       } else if (this.bins) {
         url.searchParams.delete('bins');

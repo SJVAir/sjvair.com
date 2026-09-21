@@ -30,9 +30,10 @@ from shapely.geometry.base import BaseGeometry
 
 from camp.utils.maps import to_geos
 
-# The same MapTiler raster tiles the realtime map uses ("streets", 256px).
+# MapTiler's neutral grey "dataviz" raster (256px): a quiet ground for the
+# choropleths, whose light classes vanish into the greener street styles.
 # The scripts accept a `?tiles=<style>` override for trying other styles.
-TILE_URL = 'https://api.maptiler.com/maps/streets/256/{z}/{x}/{y}.png?key={key}'
+TILE_URL = 'https://api.maptiler.com/maps/dataviz/256/{z}/{x}/{y}.png?key={key}'
 TILE_ATTRIBUTION = (
     '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> '
     '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>'
