@@ -1,7 +1,6 @@
-{% load pesticides_explorer %}
 {% if points %}
 <figure class="trend-chart">
-    <figcaption class="trend-title">{{ title }}</figcaption>
+    <p class="trend-title">{{ title }}</p>
     <svg viewBox="0 0 {{ width }} {{ height }}" role="img"
          aria-label="{{ title }}, {{ first_year }} to {{ last_year }}{% if sentence %}. {{ sentence }}{% endif %}">
         {% if polyline %}<polyline class="trend-line" points="{{ polyline }}" fill="none" />{% endif %}

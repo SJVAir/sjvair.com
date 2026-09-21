@@ -352,11 +352,24 @@ def place_context(area, year, all_years=False, concern=False):
     is_district = area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT
 
     # The by-year series is the same whatever year is selected, so it's
-    # cached per area rather than per scope -- across every loaded year a
-    # county spans millions of rollup rows.
+    # cached per area rather than per scope. A whole county reads it off the
+    # totals table -- one row per year, county, and chemical instead of the
+    # millions of rollup rows those years span. The pounds match the rollup's
+    # exactly; only the application counts differ (a totals row exists only
+    # where a chemical was identified), and the chart plots pounds.
+    # Sub-county areas have no totals rows, and the concern scope stays on
+    # the rollup, so a page under it counts the same rows as the rest of the
+    # page does.
+    def build_by_year():
+        if concern:
+            return stats.by_year(stats.concern_rows(area.rollup_rows()))
+        rows = area.total_rows()
+        # `or` would evaluate the queryset; None is the only "no totals" case.
+        return stats.by_year(area.rollup_rows() if rows is None else rows)
+
     by_year = stats.cached(
         stats.all_years_key('place-by-year', area.cache_key(), *scope_key),
-        lambda: stats.by_year(stats.concern_rows(area.rollup_rows()) if concern else area.rollup_rows()),
+        build_by_year,
     )
 
     context = {
