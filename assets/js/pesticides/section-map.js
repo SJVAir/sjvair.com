@@ -45,6 +45,12 @@
   var RAMP = RAMPS[rampMatch && rampMatch[1]] || RAMPS.blues;
   var NO_DATA_COLOR = '#f0f0f0';
   var NUM_CLASSES = RAMP.length;
+  // The tile styles the experiment control offers (see ?tiles= below).
+  var TILE_STYLES = ['streets', 'basic-v2', 'bright-v2', 'dataviz', 'dataviz-light', 'topo-v2', 'outdoor-v2', 'toner-v2', 'hybrid'];
+  function tileUrlFor(base, style) {
+    return base.replace(/\/maps\/[^/]+\/(256\/)?/, '/maps/' + style + '/256/')
+      .replace(/\.(png|jpg)\?/, style === 'hybrid' ? '.jpg?' : '.png?');
+  }
   var NOTICE_COLOR = '#d35400';
   var SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/';
 
@@ -348,6 +354,31 @@
         noticesToggle.addEventListener('change', this.onNoticesToggle.bind(this));
       }
 
+      // Experiment controls: tile style and colour ramp, applied live and
+      // written to the URL (?tiles=, ?ramp=) so a combination can be linked.
+      var tilesSelect = this.controlsEl.querySelector('select[name="tiles"]');
+      if (tilesSelect) {
+        TILE_STYLES.forEach(function (style) {
+          var option = document.createElement('option');
+          option.value = style;
+          option.textContent = style;
+          tilesSelect.appendChild(option);
+        });
+        tilesSelect.value = this.tileStyle;
+        tilesSelect.addEventListener('change', this.onTilesChange.bind(this));
+      }
+      var rampSelect = this.controlsEl.querySelector('select[name="ramp"]');
+      if (rampSelect) {
+        Object.keys(RAMPS).forEach(function (name) {
+          var option = document.createElement('option');
+          option.value = name;
+          option.textContent = name;
+          rampSelect.appendChild(option);
+        });
+        rampSelect.value = rampMatch && RAMPS[rampMatch[1]] ? rampMatch[1] : 'blues';
+        rampSelect.addEventListener('change', this.onRampChange.bind(this));
+      }
+
       var sectionsToggle = this.controlsEl.querySelector('input[name="sections"]');
       if (sectionsToggle) {
         sectionsToggle.checked = this.showAllSections;
@@ -573,6 +604,10 @@
   };
 
   SectionMap.prototype.init = function () {
+    // ?tiles=<style> swaps the MapTiler style while we pick one (see
+    // leaflet-maps.js); known before the controls bind so the select shows it.
+    var tilesMatch = /[?&]tiles=([a-z0-9-]+)/.exec(window.location.search || '');
+    this.tileStyle = tilesMatch ? tilesMatch[1] : (/\/maps\/([^/]+)\//.exec(this.data.tiles || '') || [])[1] || 'streets';
     this.attachControls();
 
     var center = this.parseCenter(this.data.center) || [36.75, -119.80];
@@ -593,14 +628,9 @@
     this.el.addEventListener('blur', this.disableScrollZoom.bind(this), true);
 
     var tileUrl = this.data.tiles;
-    // ?tiles=<style> swaps the MapTiler style while we pick one (see leaflet-maps.js).
-    var tilesMatch = /[?&]tiles=([a-z0-9-]+)/.exec(window.location.search || '');
-    if (tileUrl && tilesMatch) {
-      tileUrl = tileUrl.replace(/\/maps\/[^/]+\/(256\/)?/, '/maps/' + tilesMatch[1] + '/256/')
-        .replace(/\.(png|jpg)\?/, tilesMatch[1] === 'hybrid' ? '.jpg?' : '.png?');
-    }
+    if (tileUrl && this.tileStyle !== 'streets') tileUrl = tileUrlFor(tileUrl, this.tileStyle);
     if (tileUrl) {
-      L.tileLayer(tileUrl, {
+      this.tileLayer = L.tileLayer(tileUrl, {
         attribution: this.data.attribution || '',
         maxZoom: 21,
       }).addTo(this.map);
@@ -986,6 +1016,23 @@
     this.syncViewParams();
   };
 
+  SectionMap.prototype.onTilesChange = function (event) {
+    this.tileStyle = event.target.value;
+    if (this.tileLayer) this.tileLayer.setUrl(tileUrlFor(this.data.tiles, this.tileStyle));
+    this.syncViewParams();
+  };
+
+  SectionMap.prototype.onRampChange = function (event) {
+    var name = event.target.value;
+    if (!RAMPS[name]) return;
+    RAMP = RAMPS[name];
+    NUM_CLASSES = RAMP.length;
+    this.rampName = name;
+    this.restyle();
+    if (this.lensLayer) this.clearLens();
+    this.syncViewParams();
+  };
+
   // Keep ?metric= and ?notices= in the address bar in step with the controls
   // so the current view can be linked to. Each is left off the URL while it
   // matches the page's default.
@@ -1008,6 +1055,17 @@
         url.searchParams.set('sections', '1');
       } else {
         url.searchParams.delete('sections');
+      }
+      // The experiment controls (tile style, ramp) while a look is chosen.
+      if (this.tileStyle && this.tileStyle !== 'streets') {
+        url.searchParams.set('tiles', this.tileStyle);
+      } else {
+        url.searchParams.delete('tiles');
+      }
+      if (this.rampName && this.rampName !== 'blues') {
+        url.searchParams.set('ramp', this.rampName);
+      } else if (this.rampName) {
+        url.searchParams.delete('ramp');
       }
       window.history.replaceState(window.history.state, '', url.toString());
     } catch (err) {
