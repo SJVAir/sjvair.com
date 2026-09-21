@@ -30,6 +30,15 @@
         <li><strong>{{ oil_note.title }}:</strong> {{ oil_note.summary }}</li>
     </ul>
 
+    <h3 id="concern">Chemicals of concern</h3>
+    <p>The scope bar's <strong>Chemicals of concern</strong> toggle narrows the whole explorer &mdash; every count, pounds figure, leaderboard, table and map square &mdash; to the active ingredients that appear on at least one of three official lists:</p>
+    <ul>
+        <li><strong>Proposition 65:</strong> California's list of chemicals known to the state to cause cancer, birth defects or other reproductive harm (see <a href="#prop65">below</a>).</li>
+        <li><strong>CARB Toxic Air Contaminants:</strong> air pollutants the California Air Resources Board has identified as posing a health hazard (see <a href="#tac">below</a>).</li>
+        <li><strong>IARC Groups 1, 2A and 2B:</strong> agents the International Agency for Research on Cancer rates as carcinogenic, probably carcinogenic, or possibly carcinogenic to humans (see <a href="#iarc">below</a>). Group 3 is not included.</li>
+    </ul>
+    <p>A chemical only has to be on one of them. This is the same idea as the chemicals list's <strong>Category</strong> filter, but broader: that filter picks out a single DPR category (carcinogen, reproductive toxin, toxic air contaminant and so on) one at a time, while the toggle is the union of all three lists above and follows you from page to page. Being listed says a chemical is <em>listed</em>, not how much of it reached anyone &mdash; see the caveats below.</p>
+
     <h3 id="prop65">Proposition 65</h3>
     {% health_note 'prop65' as prop65_note %}
     <p>{{ prop65_note.summary }} {{ prop65_note.detail }}</p>

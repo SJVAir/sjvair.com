@@ -906,11 +906,6 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert [r.obj.name for r in response.context['related_a']['rows']] == ['GLYPHOSATE']
         assert response.context['concern_excluded'] is False
 
-    def test_product_page_without_a_concern_chemical_reports_nothing(self):
-        dust = Product.objects.get(name='SULFUR DUST')
-        response = self.client.get(dust.get_absolute_url(), {'concern': '1'})
-        assert response.context['totals']['lbs'] == 0
-
     def test_chemical_page_not_of_concern_says_so_and_stays_unscoped(self):
         sulfur = Chemical.objects.get(name='SULFUR')
         response = self.client.get(sulfur.get_absolute_url(), {'concern': '1'})
@@ -963,8 +958,10 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         html = self.client.get(url, {'concern': '1'}).content.decode()
         assert 'explorer-scope-toggle is-set' in html
         assert 'aria-pressed="true"' in html
-        # Turning it off clears the param, keeping the rest of the scope.
-        assert 'href="?"' in html
+        assert 'role="button"' in html
+        # Turning it off clears the param, keeping the rest of the scope. With
+        # nothing left in the query string the link is the bare path.
+        assert f'href="{url}"' in html
         html = self.client.get(url, {'concern': '1', 'county': 'kern'}).content.decode()
         assert 'href="?county=kern"' in html
 
@@ -980,12 +977,57 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         html = self.client.get(reverse('pesticides:map')).content.decode()
         assert 'data-concern=""' in html
 
-    def test_landing_hides_the_of_concern_leaderboard_under_the_scope(self):
+    def test_landing_leaderboard_titles_follow_the_scope(self):
+        # Unscoped: a chemicals board and a dedicated of-concern board.
         html = self.client.get(reverse('pesticides:home')).content.decode()
-        assert 'Most applied chemicals of concern' in html
+        assert html.count('Most applied chemicals of concern') == 1
+        assert html.count('Most applied chemicals ·') == 1
+        # Scoped: one board, and its title says what it now is.
         html = self.client.get(reverse('pesticides:home'), {'concern': '1'}).content.decode()
-        assert 'Most applied chemicals of concern' not in html
-        assert 'Most applied chemicals' in html
+        assert html.count('Most applied chemicals of concern') == 1
+        assert 'Most applied chemicals ·' not in html
+
+    def test_scope_banner_says_the_numbers_are_concern_only(self):
+        url = reverse('pesticides:chemical-list')
+        banner = 'Showing chemicals of concern only'
+        assert banner not in self.client.get(url).content.decode()
+        html = self.client.get(url, {'concern': '1'}).content.decode()
+        assert banner in html
+        assert 'Show all chemicals' in html
+
+    def test_about_page_defines_the_scope_and_hides_the_toggle(self):
+        html = self.client.get(reverse('pesticides:about')).content.decode()
+        assert 'id="concern"' in html
+        assert 'explorer-scope-toggle' not in html
+        assert 'explorer-scope-pickers' not in html
+        # And the toggle links to that definition where it does render.
+        html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
+        assert reverse('pesticides:about') + '#concern' in html
+
+    def test_product_page_without_a_concern_chemical_explains_itself(self):
+        dust = Product.objects.get(name='SULFUR DUST')
+        response = self.client.get(dust.get_absolute_url(), {'concern': '1'})
+        assert response.context['concern_excluded'] is True
+        # Rendered unscoped rather than blanked to zeros.
+        assert response.context['totals']['lbs'] == 550.0
+        html = response.content.decode()
+        assert "None of this product's active ingredients is on the Prop 65" in html
+        assert 'Show all chemicals' in html
+
+    def test_product_page_active_ingredients_ignore_the_scope(self):
+        # What a product is made of is a registration fact, not a scoped one.
+        roundup = Product.objects.get(name='ROUNDUP PRO')
+        response = self.client.get(roundup.get_absolute_url(), {'concern': '1'})
+        assert response.context['concern_excluded'] is False
+        assert [r.obj.name for r in response.context['related_a']['rows']] == ['GLYPHOSATE']
+
+    def test_commodity_page_without_concern_use_explains_itself(self):
+        # In 2022 GRAPE carries sulfur only.
+        grape = Commodity.objects.get(name='GRAPE')
+        response = self.client.get(grape.get_absolute_url(), {'concern': '1', 'year': '2022'})
+        assert response.context['concern_excluded'] is True
+        assert response.context['totals']['lbs'] == 400.0
+        assert 'No chemical of concern was reported on this commodity' in response.content.decode()
 
     def test_excluded_chemical_page_explains_itself(self):
         sulfur = Chemical.objects.get(name='SULFUR')

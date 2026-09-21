@@ -21,17 +21,20 @@ def region_url(region):
 @register.simple_tag(takes_context=True)
 def qs_replace(context, **kwargs):
     """
-    Current query string with the given keys replaced. A value of None or ''
-    removes the key. Returns '' when nothing remains, otherwise '?a=b&c=d'.
+    Current URL with the given query-string keys replaced. A value of None or
+    '' removes the key. '?a=b&c=d' while anything remains, and the bare path
+    once nothing does -- a lone '?' would be a link to the same page that
+    still reads as a query string.
     """
-    params = context['request'].GET.copy()
+    request = context['request']
+    params = request.GET.copy()
     for key, value in kwargs.items():
         if value is None or value == '':
             params.pop(key, None)
         else:
             params[key] = value
     encoded = params.urlencode()
-    return f'?{encoded}' if encoded else '?'
+    return f'?{encoded}' if encoded else request.path
 
 
 @register.simple_tag(takes_context=True)

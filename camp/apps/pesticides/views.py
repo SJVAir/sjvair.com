@@ -43,13 +43,15 @@ def county_options():
     return list(Region.objects.filter(type=Region.Type.COUNTY).order_by('name').values_list('slug', 'name'))
 
 
-def year_context(year, all_years=False, county=None, county_scope=True, concern=False):
+def year_context(year, all_years=False, county=None, county_scope=True, concern=False, concern_scope=True):
     """
     Context every explorer page needs for the scope controls (year, county,
     and the chemicals-of-concern toggle) and the scope-pinned links.
     `county_scope=False` hides the county picker on pages that are already
     narrower than a county (a place, a section); the county still rides
-    along in their links.
+    along in their links. `concern_scope=False` hides the chemicals-of-concern
+    toggle on a page it can't narrow (the About page), the way an empty
+    `year_options` hides the year picker.
     """
     return {
         'year': year,
@@ -62,6 +64,7 @@ def year_context(year, all_years=False, county=None, county_scope=True, concern=
         'county': county,
         'county_options': county_options() if county_scope else [],
         'concern': concern,
+        'scope_concern': concern_scope,
         'scope_qs': stats.scope_query(year, all_years, county, concern),
     }
 
@@ -554,10 +557,16 @@ class About(vanilla.TemplateView):
     template_name = 'pesticides/about.html'
 
     def get_context_data(self, **kwargs):
+        # The page renders the scope bar, but nothing on it applies here:
+        # take the scope context with the year picker dropped (as the notices
+        # list does) and the concern toggle off, so the bar is breadcrumbs
+        # only rather than controls that do nothing.
+        scope = year_context(None, county_scope=False, concern_scope=False)
+        scope.pop('year_options', None)
         return super().get_context_data(
             section=None,
+            **scope,
             years=stats.years_loaded(),
-            latest_year=stats.latest_year(),
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
             **kwargs,
@@ -909,6 +918,16 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
     def get_notices(self):
         return PesticideNotice.objects.filter(products=self.object)
 
+    def concern_applies(self):
+        # A product whose active ingredients are all off the lists has no
+        # concern pounds at all, so scoping it would blank the page; it
+        # renders unscoped with a note instead, like a chemical that isn't
+        # of concern.
+        return ProductChemical.objects.filter(
+            product=self.object,
+            chemical__in=stats.of_concern_chemicals(),
+        ).exists()
+
     def get_notes(self):
         return notes.keys_for_product(self.object)
 
@@ -916,9 +935,10 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
         pct = dict(self.object.product_chemicals.values_list('chemical_id', 'pct_active'))
         # Active ingredients are a property of the product, not of use records,
         # so list all of them (ranked by pct_active) rather than by pounds.
+        # Always the full list, even under the chemicals-of-concern scope:
+        # what a product is made of is a registration fact, not something
+        # the scope should hide.
         ingredients = self.object.chemicals.all()
-        if self.concern_active:
-            ingredients = ingredients.filter(pk__in=stats.of_concern_chemicals())
         chemicals = [
             SimpleNamespace(obj=c, lbs=None, pct_active=pct.get(c.pk))
             for c in sorted(ingredients, key=lambda c: -(pct.get(c.pk) or 0))
@@ -940,6 +960,15 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
 
     def api_value(self):
         return self.object.site_code
+
+    def concern_applies(self):
+        # Nothing of concern reported on this commodity in the year and
+        # county on screen: the scoped page would be all zeros, so it
+        # renders unscoped with a note (see ProductDetail.concern_applies).
+        rows = PesticideUseRollup.objects.filter(commodity=self.object)
+        if self.county is not None:
+            rows = rows.filter(county=self.county)
+        return stats.in_year(stats.concern_rows(rows), self.year, self.all_years).exists()
 
     def get_related(self):
         return (

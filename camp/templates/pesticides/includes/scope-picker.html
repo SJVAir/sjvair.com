@@ -5,8 +5,11 @@ as two dropdowns in the scope bar. Each option is a link that keeps the rest
 of the querystring (minus the page number), so it works as a plain page and
 as a boosted swap. The year picker is left out where a page passes no
 year_options (notices), the county picker where it passes no county_options
-(a place or section page).
+(a place or section page), and the chemicals-of-concern toggle where a page
+passes scope_concern false (the About page). With none of the three, the row
+itself is left out rather than rendering an empty flex box.
 {% endcomment %}
+{% if year_options|length > 1 or county_options or scope_concern %}
 <div class="explorer-scope-pickers">
     {% if year_options|length > 1 %}
     <div class="dropdown is-right explorer-scope-picker" data-scope="year">
@@ -56,11 +59,23 @@ year_options (notices), the county picker where it passes no county_options
     the scope bar with the year and county pickers rather than in a page's
     filters.
     {% endcomment %}
-    <a class="button is-small explorer-scope-toggle{% if concern %} is-set{% endif %} has-tooltip-multiline has-tooltip-arrow"
-       href="{% if concern %}{% qs_replace concern=None page=None %}{% else %}{% qs_replace concern=1 page=None %}{% endif %}"
-       aria-pressed="{% if concern %}true{% else %}false{% endif %}"
-       data-tooltip="Prop 65, CARB toxic air contaminants, IARC 1/2A/2B">
-        <span class="icon"><span class="fa-duotone fa-fw fa-triangle-exclamation explorer-icon is-concern" aria-hidden="true"></span></span>
-        <span class="explorer-scope-label">Chemicals of concern</span>
-    </a>
+    {% if scope_concern %}
+    <span class="explorer-scope-concern">
+        <a class="button is-small explorer-scope-toggle{% if concern %} is-set{% endif %} has-tooltip-multiline has-tooltip-arrow"
+           role="button"
+           href="{% if concern %}{% qs_replace concern=None page=None %}{% else %}{% qs_replace concern=1 page=None %}{% endif %}"
+           aria-pressed="{% if concern %}true{% else %}false{% endif %}"
+           aria-label="Chemicals of concern: {% if concern %}on{% else %}off{% endif %}"
+           data-tooltip="Prop 65, CARB toxic air contaminants, IARC 1/2A/2B">
+            <span class="icon">{% if concern %}<span class="fa-regular fa-check" aria-hidden="true"></span>{% else %}<span class="fa-duotone fa-fw fa-triangle-exclamation explorer-icon is-concern" aria-hidden="true"></span>{% endif %}</span>
+            <span class="explorer-scope-label">Chemicals of concern</span>
+        </a>
+        {# The definition itself, for anyone who can't hover the tooltip. #}
+        <a class="explorer-scope-help has-tooltip-multiline has-tooltip-arrow"
+           href="{% url 'pesticides:about' %}#concern"
+           data-tooltip="What counts as a chemical of concern?"
+           aria-label="What counts as a chemical of concern?"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
+    </span>
+    {% endif %}
 </div>
+{% endif %}

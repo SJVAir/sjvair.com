@@ -127,6 +127,8 @@ body.pesticides
             margin-bottom: 0
     .explorer-scope-pickers
         display: flex
+        flex-wrap: wrap
+        align-items: center
         gap: 0.5rem
         margin-left: auto
     .explorer-scope-picker
@@ -154,14 +156,52 @@ body.pesticides
     .explorer-icon.is-scope
         --fa-primary-color: #{$link}
         --fa-secondary-color: #{$grey-light}
-    // The chemicals-of-concern toggle sits with the pickers; when it's on it
-    // takes the notices orange, the way the map toolbar's set filters take blue.
+    // The chemicals-of-concern toggle sits with the pickers, with the link to
+    // its definition beside it. When it's on it fills with the notices orange
+    // and shows a check, so the state doesn't ride on colour alone.
+    .explorer-scope-concern
+        display: inline-flex
+        align-items: center
+        gap: 0.25rem
     .explorer-scope-toggle
         background-color: $white
         border-color: $grey-lighter
         &.is-set
+            background-color: #d35400
             border-color: #d35400
-            color: #d35400
+            color: $white
+            &:hover
+                background-color: #b94800
+                border-color: #b94800
+                color: $white
+        // On a phone the scope bar has no room for three labelled controls:
+        // the toggle keeps its icon, and the tooltip and aria-label still
+        // say what it is.
+        +mobile
+            .explorer-scope-label
+                display: none
+    .explorer-scope-help
+        color: $grey
+        line-height: 1
+        &:hover
+            color: $link
+
+    // Says, once, that every number below is concern-only. Inside
+    // #explorer-body, so it swaps with the page it describes.
+    .explorer-scope-banner
+        background-color: #fdf3e7
+        border-bottom: 1px solid #f3d3ac
+        color: #7a3c06
+        font-size: 0.9rem
+        padding: 0.5rem 0
+        .container
+            display: flex
+            align-items: center
+            gap: 0.5rem
+        a
+            color: #7a3c06
+            text-decoration: underline
+            white-space: nowrap
 
     // The by-year trend: a server-rendered line, no axes, no grid -- the
     // table under it carries the numbers.

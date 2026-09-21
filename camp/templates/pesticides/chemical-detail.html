@@ -16,10 +16,7 @@
     </div>
     {% endif %}
     {% if concern_excluded %}
-    <div class="notification is-light placeholder-note">
-        <strong>This chemical isn't on the Prop 65, CARB toxic air contaminant or IARC lists,</strong>
-        so the chemicals-of-concern scope doesn't narrow this page.
-    </div>
+    {% include 'pesticides/includes/concern-note.html' with reason="This chemical isn't on the Prop 65, CARB toxic air contaminant or IARC lists," %}
     {% endif %}
     {{ block.super }}
 {% endblock %}

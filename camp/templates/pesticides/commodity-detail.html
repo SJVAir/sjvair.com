@@ -4,4 +4,10 @@
     <li class="is-active"><a aria-current="page">{{ object.display_name }}</a></li>
 {% endblock %}
 {% block identifiers %}Site code {{ object.site_code }}{% endblock %}
+{% block notes %}
+    {% if concern_excluded %}
+    {% include 'pesticides/includes/concern-note.html' with reason="No chemical of concern was reported on this commodity in this year and county," %}
+    {% endif %}
+    {{ block.super }}
+{% endblock %}
 {% block badges %}{% endblock %}
