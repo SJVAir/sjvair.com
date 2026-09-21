@@ -59,7 +59,7 @@
     name: fa-spray-can
     primary: darkolivegreen
     secondary: yellowgreen
-  description: The state records behind the <a href="/tools/pesticides/">Pesticide Data Explorer</a>&#58; every reported agricultural pesticide application in the San Joaquin Valley, the notices growers file before restricted applications, and the official lists that flag which chemicals are of concern to health. Schools and child care centers shown alongside this data come from the California Department of Education and the Department of Social Services, published through the state's open data portal.
+  description: 'The state records behind the <a href="/tools/pesticides/">Pesticide Data Explorer</a>: every reported agricultural pesticide application in the San Joaquin Valley, the notices growers file before restricted applications, and the official lists that flag which chemicals are of concern to health. Schools and child care centers shown alongside this data come from the California Department of Education and the Department of Social Services, published through the state''s open data portal.'
   integrations:
     - name: Pesticide Use Reporting
       logo: img/logo/cdpr.png
