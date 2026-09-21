@@ -141,6 +141,12 @@ body.pesticides
         padding: $size-6 0px
 
     .by-year-table
+        // Four numeric columns in a narrow column: keep them on one line and
+        // a touch smaller, and let the wrapper scroll before they overflow.
+        font-size: 0.9rem
+        th, td
+            white-space: nowrap
+            font-variant-numeric: tabular-nums
         tr.is-selected
             background-color: $primary
             color: $white
