@@ -54,6 +54,11 @@
       url: https://cimis.water.ca.gov/
       description: The California Irrigation Management Information System (CIMIS) is a network of automated weather stations operated by the California Department of Water Resources (DWR). Originally built to support agricultural irrigation scheduling, CIMIS stations also report hourly weather data — temperature, humidity, wind speed and direction, solar radiation, and precipitation — which SJVAir uses to add local weather context alongside air quality measurements across the San Joaquin Valley.
 
+    - name: National Weather Service
+      logo: img/logo/nws.svg
+      url: https://www.weather.gov/
+      description: The National Weather Service, part of NOAA, publishes forecasts, current conditions, and observations from its network of weather stations through a free public API at weather.gov. SJVAir's map uses it for the temperature shown alongside air quality readings, and we plan to bring its station observations into our own data pipeline alongside CIMIS.
+
 - category: Environmental & Health Mapping
   icon:
     name: fa-earth-americas
