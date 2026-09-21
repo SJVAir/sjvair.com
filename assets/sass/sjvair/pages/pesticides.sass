@@ -555,6 +555,16 @@ body.pesticides
             border-bottom: 2px solid $primary
         .card-header-title
             font-weight: 600
+        // The rank column, styled like the landing boards' counters: a
+        // narrow grey "1." hugging the name.
+        .rank
+            width: 1%
+            white-space: nowrap
+            text-align: right
+            padding-right: 0.15em
+            color: $grey
+            font-weight: 600
+            font-variant-numeric: tabular-nums
         // Badges sit in the line, not under it: Bulma's tag groups carry
         // bottom margins for wrapping rows, which here only make a badged row
         // taller than its neighbours. A tag is 2em of 0.75rem, exactly the

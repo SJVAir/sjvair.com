@@ -5,6 +5,7 @@
         {% if card.rows %}
         <table class="table is-fullwidth is-narrow is-striped">
             <thead><tr>
+                <th class="rank"><span class="is-sr-only">Rank</span></th>
                 <th>Name</th>
                 {% if card.show_pct %}<th class="has-text-right">% active</th>{% endif %}
                 {% if card.show_lbs %}<th class="has-text-right">Lbs{% if year_label %} ({{ year_label }}){% endif %}</th>{% endif %}
@@ -12,6 +13,7 @@
             <tbody>
             {% for row in card.rows %}
                 <tr>
+                    <td class="rank">{{ forloop.counter }}.</td>
                     <td>
                         <a href="{{ row.obj.get_absolute_url }}{{ scope_qs }}">{{ row.obj.display_name }}</a>
                         {% if card.kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
