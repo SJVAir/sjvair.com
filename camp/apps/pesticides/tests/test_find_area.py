@@ -29,7 +29,7 @@ class FindAreaTests(RollupTestMixin, TestCase):
         assert 'find-area.js' in html
         assert 'How to read this page' in html
         assert 'Search a city, ZIP, county, or address' in html
-        assert html.index('id="find"') < html.index('class="leaderboards')
+        assert html.index('id="find"') < html.index('leaderboards')
 
     def test_embedded_places_include_counties_with_their_region_urls(self):
         html = self.client.get(self.url).content.decode()

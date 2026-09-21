@@ -7,7 +7,7 @@
                 hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
             <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
         </div>
-        {% if search_hint %}<p class="help">{{ search_hint }} Try <em>{{ search_example }}</em>.</p>{% endif %}
+        {% if search_example %}<p class="help">Try <em>{{ search_example }}</em></p>{% endif %}
     </div>
     {# Pickers for the other two entities; products come before chemicals. #}
     {% if section != 'products' %}{% include 'pesticides/includes/entity-picker.html' with kind='product' label='Product' selected=related.product autosubmit=1 %}{% endif %}
