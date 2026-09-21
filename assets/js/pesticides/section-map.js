@@ -502,10 +502,7 @@
     if (button) {
       button.setAttribute('aria-pressed', on ? 'true' : 'false');
       button.setAttribute('title', on ? 'Back to the page' : 'Expand the map');
-      var icon = button.querySelector('.fa-regular');
-      var label = button.querySelector('.section-map-expand-label');
-      if (icon) icon.className = 'fa-regular fa-fw ' + (on ? 'fa-compress' : 'fa-expand');
-      if (label) label.textContent = on ? 'Collapse' : 'Expand';
+      button.setAttribute('aria-label', on ? 'Back to the page' : 'Expand the map');
     }
     if (!this.escapeHandler) {
       this.escapeHandler = function (event) {

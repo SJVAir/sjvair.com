@@ -49,9 +49,10 @@
           </div>
         </div>
       </div>
-      <button type="button" class="button section-map-expand" aria-pressed="false" title="Expand the map">
-        <span class="icon"><span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span></span>
-        <span class="section-map-expand-label">Expand</span>
+      {# Icon only; both icons are rendered and CSS shows the one for the current state (the icon font swaps spans for SVGs, so classes can't be toggled). #}
+      <button type="button" class="button section-map-expand" aria-pressed="false" aria-label="Expand the map" title="Expand the map">
+        <span class="icon section-map-expand-icon is-expand"><span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span></span>
+        <span class="icon section-map-expand-icon is-compress"><span class="fa-regular fa-fw fa-compress" aria-hidden="true"></span></span>
       </button>
     </div>
   </div>

@@ -191,9 +191,6 @@ html.section-map-expanded body {
   .section-map-panel-body {
     padding: 0.4rem 0.5rem 0.5rem;
   }
-  .section-map-expand .section-map-expand-label {
-    display: none;
-  }
 }
 
 .leaflet-popup .section-popup h4,
@@ -442,6 +439,25 @@ html.section-map-expanded body {
 
 .section-map-toolbar .section-map-options .dropdown-menu {
   min-width: 12rem;
+}
+
+/* Expand is icon-only; the icon follows the wrapper's expanded state. */
+.section-map-toolbar .section-map-expand {
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+.section-map-toolbar .section-map-expand .icon {
+  margin: 0;
+}
+
+.section-map-toolbar .section-map-expand .is-compress,
+.section-map-wrap.is-expanded .section-map-expand .is-expand {
+  display: none;
+}
+
+.section-map-wrap.is-expanded .section-map-expand .is-compress {
+  display: inline-flex;
 }
 
 .section-map-toolbar .dropdown-content .field:last-child {
