@@ -80,7 +80,7 @@ as the row.
 {% if schools.hidden %}
 {# A district can run to a couple of hundred sites; the rest are one click away rather than a page of scrolling. #}
 <button type="button" class="button is-small is-light schools-toggle"
-    data-schools-toggle
+    data-schools-toggle aria-expanded="false"
     data-show-label="Show the other {{ schools.hidden|intcomma }}"
     data-hide-label="Show fewer">Show the other {{ schools.hidden|intcomma }}</button>
 {% endif %}

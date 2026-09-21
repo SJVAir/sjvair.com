@@ -122,8 +122,8 @@
     <p class="is-size-7 has-text-grey mt-4">
         &ldquo;Lbs nearby&rdquo; is the pesticide use reported in the three-mile-square block of
         sections around each site &mdash; the section it sits in and the eight around it{% if year_label %}, in {{ year_label }}{% endif %}{% if concern %},
-        chemicals of concern only{% endif %}. Rows start with the highest pounds nearby first; click a
-        column heading to sort by something else.
+        chemicals of concern only{% endif %}.{% if schools.sort_is_default %} Rows start with the highest
+        pounds nearby first; click a column heading to sort by something else.{% endif %}
     </p>
     {% include 'pesticides/includes/schools-table.html' %}
     {% else %}

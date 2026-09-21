@@ -301,19 +301,16 @@ class Location(TimeStampedModel):
             self.resolve_regions()
             resolved = True
 
-        if resolved:
+        if resolved and kwargs.get('update_fields') is not None:
             # A caller saving a named subset of fields ("just the point")
             # doesn't know we re-resolved the links; without adding them the
             # new links live on the instance and never reach the database.
-            kwargs['update_fields'] = self._with_region_fields(
-                kwargs.get('update_fields'))
+            kwargs['update_fields'] = self._with_region_fields(kwargs['update_fields'])
 
         super().save(*args, **kwargs)
         self._resolved_point = _point_ewkb(self.__dict__.get('point'))
 
     def _with_region_fields(self, update_fields):
-        if update_fields is None:
-            return None
         names = list(update_fields)
         for field in self.REGION_FIELDS:
             name = f'{field}_id'

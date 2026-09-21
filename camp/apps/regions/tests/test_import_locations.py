@@ -494,6 +494,29 @@ class DownloadGuardTests(TestCase):
         assert 'https://example.com/downloads' in message
         assert '--path' in message
 
+    def test_a_package_without_a_csv_is_a_failed_download(self):
+        package = mock.Mock()
+        package.raise_for_status.return_value = None
+        package.json.return_value = {'result': {'resources': [
+            {'format': 'GeoJSON', 'url': 'https://example.com/file.geojson'},
+        ]}}
+
+        with mock.patch.object(locations.requests, 'get', return_value=package):
+            with pytest.raises(locations.DownloadError) as excinfo:
+                locations._source_url(self.config)
+
+        message = str(excinfo.value)
+        assert 'No download URL for Test source' in message
+        assert 'https://example.com/downloads' in message and '--path' in message
+
+    def test_a_source_without_a_dataset_says_to_pass_the_file(self):
+        with mock.patch.object(locations.requests, 'get') as get:
+            with pytest.raises(locations.DownloadError) as excinfo:
+                locations._source_url({'label': 'Test source', 'page_url': 'https://example.com/downloads'})
+
+        assert not get.called
+        assert 'has no download' in str(excinfo.value) and '--path' in str(excinfo.value)
+
     def test_html_wearing_a_plain_text_content_type_is_still_caught(self):
         response = self.response(b'\n<html><body>Blocked</body></html>', content_type='text/plain')
 

@@ -646,6 +646,11 @@ def _source_url(config):
     changed dataset rather than a transient failure -- say so instead of
     importing nothing.
     """
+    if not config.get('ckan_dataset'):
+        raise DownloadError(
+            f'{config["label"]} has no download: get the file from'
+            f' {config.get("page_url") or "the source site"} and pass it with --path.'
+        )
     try:
         response = requests.get(CKAN_PACKAGE_URL,
             params={'id': config['ckan_dataset']}, timeout=60)
