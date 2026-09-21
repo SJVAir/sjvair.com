@@ -100,9 +100,10 @@ def lbs_subquery(field, year, lbs_field='lbs_chemical', county=None, all_years=F
 
 
 def count_subquery(model, field, count_field):
-    """Count of `model` rows whose `field` points at the outer row, independent of outer joins."""
+    """Count of `model` (a model or a queryset) rows whose `field` points at the outer row, independent of outer joins."""
+    rows = model if hasattr(model, 'filter') else model.objects.all()
     return Subquery(
-        model.objects.filter(**{field: OuterRef('pk')})
+        rows.filter(**{field: OuterRef('pk')})
         .values(field)
         .annotate(n=Count(count_field))
         .values('n'),
@@ -387,6 +388,9 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
     rollup_field = 'chemical'
 
     def apply_filters(self, queryset, data):
+        # The placeholders aren't chemicals; their pages stay reachable from
+        # the records and product pages that cite them.
+        queryset = queryset.exclude(chem_code__in=Chemical.PLACEHOLDER_CODES)
         if data.get('category'):
             queryset = queryset.filter(categories__overlap=data['category'])
         if data.get('iarc_group'):
@@ -544,7 +548,7 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
 
     def annotate_queryset(self, queryset, year):
         queryset = queryset.annotate(
-            chemical_count=Coalesce(count_subquery(ProductChemical, 'product', 'chemical'), 0)
+            chemical_count=Coalesce(count_subquery(ProductChemical.objects.exclude(chemical__chem_code__in=Chemical.PLACEHOLDER_CODES), 'product', 'chemical'), 0)
         )
         if year or self.all_years:
             queryset = queryset.annotate(
@@ -677,12 +681,16 @@ class ExplorerDetailMixin:
             'kind': kind,
             'rows': rows,
             'show_pct': show_pct,
-            'show_lbs': show_lbs,
+            'show_lbs': show_lbs and not self.hide_lbs(),
             'complete': complete,
             'show_all_url': reverse(list_url_name) + f'?{param}={self.object.sqid}' + (
                 f'&{scope}' if scope else ''
             ),
         }
+
+    def hide_lbs(self):
+        """No pounds on a placeholder chemical's page: CDPR reports none for it."""
+        return getattr(self.object, 'is_placeholder', False)
 
     def get_summary_sentence(self, totals, label, top, verb='on'):
         if not totals['applications'] or not label:
@@ -691,7 +699,8 @@ class ExplorerDetailMixin:
             sentence = f'Applied in {self.county.name} in {label}'
         else:
             sentence = f'Applied in {totals["counties"]} of {stats.SJV_COUNTY_COUNT} SJV counties in {label}'
-        names = [r.obj.display_name for r in top[:2]]
+        # "Mostly on X" ranks by pounds, which a placeholder doesn't have.
+        names = [] if self.hide_lbs() else [r.obj.display_name for r in top[:2]]
         if names:
             joined = ' and '.join(names)
             sentence += f', mostly {verb} {joined}' if verb else f', mostly {joined}'
@@ -734,6 +743,7 @@ class ExplorerDetailMixin:
             client_docs_url=CLIENT_DOCS_URL,
             api_filter=f'{self.api_param}={self.api_value()}',
             notes=notes.notes_for(self.get_notes()),
+            hide_lbs=self.hide_lbs(),
             **kwargs,
         )
         context['summary_sentence'] = self.get_summary_sentence(totals, context['year_label'], self.summary_top(context))
@@ -1386,7 +1396,7 @@ class SectionDetail(vanilla.DetailView):
             totals = stats.year_totals(rows, year, all_years=all_years)
             by_month = stats.by_month(rows, year, all_years=all_years)
             chemical_count = (
-                stats.in_year(rows, year, all_years)
+                stats.real_chemicals(stats.in_year(rows, year, all_years))
                 .filter(chemical__isnull=False).values('chemical').distinct().count()
             )
         else:

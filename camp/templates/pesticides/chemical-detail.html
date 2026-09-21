@@ -7,6 +7,16 @@
 {% block identifiers %}
     {% if object.cdpr_alias %}Listed by CDPR as “{{ object.cdpr_alias }}” · {% endif %}Chemical code {{ object.chem_code }}{% if object.cas_number %} · CAS {{ object.cas_number }}{% endif %}{% if object.comptox_url %} · <a href="{{ object.comptox_url }}" target="_blank" rel="noopener">CompTox {{ object.dtxsid }}</a>{% endif %}
 {% endblock %}
+{% block notes %}
+    {% if object.is_placeholder %}
+    <div class="notification is-light placeholder-note">
+        <strong>“AI” is CDPR's shorthand for active ingredient.</strong>
+        {% if object.chem_code == -2 %}CDPR withholds this ingredient's identity, so its use reports carry this placeholder instead of a name.{% else %}CDPR couldn't identify the ingredient in these use reports, so they carry this placeholder instead of a name.{% endif %}
+        The applications are real and are counted; no pounds are reported for them, so this entry is left out of chemical rankings and counts.
+    </div>
+    {% endif %}
+    {{ block.super }}
+{% endblock %}
 {% block badges %}
     {% include 'pesticides/includes/classification-badges.html' with chemical=object %}
     {% for category in object.other_categories %}<a class="tag has-tooltip-multiline has-tooltip-arrow" href="{% url 'pesticides:chemical-list' %}?category={{ category }}" data-tooltip="{{ category|note_summary }}">{{ category|category_label }}</a>{% endfor %}

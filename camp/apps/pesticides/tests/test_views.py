@@ -106,6 +106,18 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert '>Kern</a>' in html
         assert 'Kern County' in html.split('summary-sentence')[1][:200]
 
+    def test_placeholder_chemicals_stay_out_of_the_list_and_explain_themselves(self):
+        placeholder = Chemical.objects.create(chem_code=-2, name='AI IS CONFIDENTIAL')
+        assert placeholder.is_placeholder and not Chemical.objects.get(pk=1).is_placeholder
+        html = self.client.get(self.url, {'year': 'all'}).content.decode()
+        assert 'AI IS CONFIDENTIAL' not in html
+        response = self.client.get(placeholder.get_absolute_url())
+        assert response.status_code == 200
+        html = response.content.decode()
+        assert 'shorthand for active ingredient' in html
+        assert response.context['hide_lbs'] is True
+        assert 'Lbs applied' not in html
+
     def test_county_scope_is_left_off_pages_narrower_than_a_county(self):
         region = Region.objects.get(pk=9001)
         html = self.client.get(reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug}), {'county': 'kern'}).content.decode()

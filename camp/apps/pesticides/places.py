@@ -258,7 +258,7 @@ def _place_stats(area, year, all_years):
             'applications': summed['applications'],
             'sections_used': scoped.filter(mtrs__isnull=False).values('mtrs').distinct().count(),
             'sections_total': len(area.section_pks),
-            'chemicals': scoped.filter(chemical__isnull=False).values('chemical').distinct().count(),
+            'chemicals': stats.real_chemicals(scoped.filter(chemical__isnull=False)).values('chemical').distinct().count(),
         },
         'by_month': by_month,
         'peak_month': peak_month,

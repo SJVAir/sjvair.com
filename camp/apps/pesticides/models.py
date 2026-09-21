@@ -139,8 +139,18 @@ class Chemical(TimeStampedModel):
         verbose_name = _('pesticides.Chemical')
         verbose_name_plural = _('Chemicals')
 
+    # CDPR's stand-ins for an ingredient it doesn't name: -2 "AI IS
+    # CONFIDENTIAL" (a confidential active ingredient) and -1 "UNKNOWN".
+    # Their use records are real applications, but they carry no pounds and
+    # aren't a chemical, so they stay out of chemical rankings and counts.
+    PLACEHOLDER_CODES = (-1, -2)
+
     def __str__(self):
         return self.display_name
+
+    @property
+    def is_placeholder(self):
+        return self.chem_code in self.PLACEHOLDER_CODES
 
     @property
     def display_name(self):

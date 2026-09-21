@@ -276,14 +276,22 @@ def year_totals(rows, year, lbs_field='lbs_chemical', all_years=False):
     }
 
 
+def real_chemicals(rows):
+    """`rows` without CDPR's placeholder chemicals (see Chemical.PLACEHOLDER_CODES)."""
+    return rows.exclude(chemical__chem_code__in=Chemical.PLACEHOLDER_CODES)
+
+
 def top_related(rows, year, field, lbs_field='lbs_chemical', limit=10, all_years=False):
     """
     Rank the related objects on `field` ('chemical' | 'product' | 'commodity')
     by pounds in `year` (or across every loaded year, with `all_years`).
     Returns SimpleNamespace(obj=<instance>, lbs=<float>). Two queries: the
     group-by, then in_bulk for the instances (needed because sqid is not a DB
-    column and templates need get_absolute_url()).
+    column and templates need get_absolute_url()). A chemical ranking leaves
+    out the placeholder chemicals.
     """
+    if field == 'chemical':
+        rows = real_chemicals(rows)
     found = list(
         in_year(rows, year, all_years).filter(**{f'{field}__isnull': False})
         .values(field)
@@ -391,7 +399,7 @@ def commodity_chemical_counts(county=None):
     correlated subquery the single-year list uses has no usable index without
     a year to lead with.
     """
-    rows = PesticideUseRollup.objects.filter(commodity__isnull=False, chemical__isnull=False)
+    rows = real_chemicals(PesticideUseRollup.objects.filter(commodity__isnull=False, chemical__isnull=False))
     if county is not None:
         rows = rows.filter(county=county)
     return cached(
@@ -421,7 +429,7 @@ def _build_landing_stats(year, all_years=False, county=None):
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50, all_years=all_years)
     year_uses = in_year(uses, year, all_years)
     counts = {
-        'chemicals': Count('chemical', distinct=True),
+        'chemicals': Count('chemical', distinct=True, filter=~Q(chemical__chem_code__in=Chemical.PLACEHOLDER_CODES)),
         'products': Count('product', distinct=True),
         'commodities': Count('commodity', distinct=True),
     }

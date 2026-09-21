@@ -1,8 +1,10 @@
 {% load pesticides_explorer %}
 <div class="level stat-row box">
+    {% if not hide_lbs %}
     <div class="level-item has-text-centered">
         <div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
     </div>
+    {% endif %}
     <div class="level-item has-text-centered">
         <div><p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.applications|lbs }}</p></div>
     </div>
