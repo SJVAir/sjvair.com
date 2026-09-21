@@ -1145,3 +1145,133 @@ class EntitySearchTests(RollupTestMixin, TestCase):
         assert len(self.results(type='chemical', q='glyphosate')) == 1
         Chemical.objects.filter(name='GLYPHOSATE').delete()
         assert [r['name'] for r in self.results(type='chemical', q='glyphosate')] == ['Glyphosate']
+
+
+# ---------------------------------------------------------------------------
+# Locations endpoint
+# ---------------------------------------------------------------------------
+
+from django.contrib.gis.geos import Point
+
+from camp.apps.regions.models import Location
+
+
+class LocationEndpointTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:location-list')
+        self.county = Region.objects.get(pk=9001)
+        self.district = Region.objects.create(
+            name='Fresno Unified',
+            slug='fresno-unified',
+            type=Region.Type.SCHOOL_DISTRICT,
+            external_id='0610170',
+        )
+        # Inside the fixture's Fresno square (-119.9,36.6 -> -119.7,36.8).
+        self.school = Location.objects.create(
+            type=Location.Type.PUBLIC_SCHOOL,
+            name='Alpha Elementary',
+            external_id='1',
+            source='cde-public',
+            address='1 Main St',
+            city='Fresno',
+            point=Point(-119.79, 36.71, srid=4326),
+            county=self.county,
+            district=self.district,
+            metadata={'grades': 'K-6'},
+            imported_at=timezone.now(),
+        )
+        self.daycare = Location.objects.create(
+            type=Location.Type.CHILD_CARE,
+            name='Bravo Child Care',
+            external_id='2',
+            source='cdss-ccl',
+            city='Fresno',
+            point=Point(-119.78, 36.72, srid=4326),
+            county=self.county,
+            metadata={'capacity': 42},
+            imported_at=timezone.now(),
+        )
+        # Outside that bbox, down in Kern.
+        self.private = Location.objects.create(
+            type=Location.Type.PRIVATE_SCHOOL,
+            name='Charlie Academy',
+            external_id='3',
+            source='cde-private',
+            point=Point(-119.04, 35.36, srid=4326),
+            county=Region.objects.get(pk=9002),
+            metadata={'grade_low': 'K', 'grade_high': '8'},
+            imported_at=timezone.now(),
+        )
+
+    def features(self, **params):
+        response = self.client.get(self.url, params)
+        assert response.status_code == 200, response.content
+        return response.json()['features']
+
+    def test_bbox_returns_geojson_points(self):
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8'})
+        assert response.status_code == 200
+        data = response.json()
+        assert data['type'] == 'FeatureCollection'
+        assert [f['properties']['name'] for f in data['features']] == ['Alpha Elementary', 'Bravo Child Care']
+        feature = data['features'][0]
+        assert feature['type'] == 'Feature'
+        assert feature['id'] == self.school.sqid
+        assert feature['geometry'] == {'type': 'Point', 'coordinates': [-119.79, 36.71]}
+        assert feature['properties'] == {
+            'id': self.school.sqid,
+            'name': 'Alpha Elementary',
+            'type': 'public_school',
+            'type_label': 'Public school',
+            'address': '1 Main St',
+            'city': 'Fresno',
+            'district': 'Fresno Unified',
+            'district_id': self.district.sqid,
+            'grade_span': 'K-6',
+            'capacity': None,
+        }
+
+    def test_child_care_properties(self):
+        features = self.features(bbox='-119.9,36.6,-119.7,36.8', type='child_care')
+        assert [f['properties']['name'] for f in features] == ['Bravo Child Care']
+        props = features[0]['properties']
+        assert props['capacity'] == 42
+        assert props['grade_span'] is None
+        assert props['district'] is None
+        assert props['district_id'] is None
+        assert props['type_label'] == 'Child care'
+
+    def test_private_school_grade_span_from_low_high(self):
+        features = self.features(bbox='-119.1,35.3,-119.0,35.4')
+        assert [f['properties']['name'] for f in features] == ['Charlie Academy']
+        assert features[0]['properties']['grade_span'] == 'K-8'
+
+    def test_type_filter_accepts_a_comma_list(self):
+        features = self.features(bbox='-120.0,35.0,-119.0,37.0', type='public_school,private_school')
+        assert [f['properties']['name'] for f in features] == ['Alpha Elementary', 'Charlie Academy']
+
+    def test_unknown_type_is_a_400(self):
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'type': 'nope'})
+        assert response.status_code == 400
+        assert 'type' in response.json()['error']
+
+    def test_missing_bbox_is_a_400(self):
+        assert self.client.get(self.url).status_code == 400
+
+    def test_bad_bbox_is_a_400(self):
+        assert self.client.get(self.url, {'bbox': '-119.9,36.6'}).status_code == 400
+        assert self.client.get(self.url, {'bbox': '-119.7,36.6,-119.9,36.8'}).status_code == 400
+
+    def test_huge_bbox_is_a_400(self):
+        response = self.client.get(self.url, {'bbox': '-124,32,-114,42'})
+        assert response.status_code == 400
+        assert response.json()['error'] == 'bbox too large; zoom in'
+
+    def test_cached(self):
+        assert len(self.features(bbox='-119.9,36.6,-119.7,36.8')) == 2
+        Location.objects.all().delete()
+        assert len(self.features(bbox='-119.9,36.6,-119.7,36.8')) == 2
