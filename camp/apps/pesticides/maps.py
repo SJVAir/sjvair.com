@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.core.cache import cache
-from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 
@@ -27,9 +26,32 @@ from camp.utils import leaflet
 COUNTY_GEOJSON_KEY = 'pesticides:county-geometries'
 COUNTY_GEOJSON_TTL = 60 * 60 * 24
 SIMPLIFY_TOLERANCE = 0.005
-RAMP = ['#deebf7', '#9ecae1', '#6baed6', '#3182bd', '#08519c']
+# Eight steps (ColorBrewer Blues, minus the near-white): one per county, so
+# the county map is a straight ranking -- darker is more.
+RAMP = ['#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b']
 NO_DATA = '#f0f0f0'
 CLASSES = len(RAMP)
+
+# What the county map and table can rank counties by: by_county row key ->
+# the unit its labels say.
+COUNTY_METRICS = {'lbs': 'lbs', 'acres': 'acres treated', 'applications': 'applications'}
+
+
+def county_metric(value):
+    """A `?rank=` value narrowed to a known metric (pounds by default)."""
+    return value if value in COUNTY_METRICS else 'lbs'
+
+
+def rank_counties(by_county, metric='lbs'):
+    """
+    `by_county` rows sorted by `metric`, most to least (name breaks ties),
+    each with a `color` (the map's fill for it) so a table beside the map
+    can carry the swatches. No-data rows sort last.
+    """
+    metric = county_metric(metric)
+    rows = sorted(by_county, key=lambda row: (-(row.get(metric) or 0), row['county_name']))
+    classes = quantile_classes({row['county_id']: (row.get(metric) or 0) for row in rows})
+    return [{**row, 'color': classes.color_for(row.get(metric) or 0)} for row in rows]
 
 
 def _build_county_geometries():
@@ -114,27 +136,31 @@ def quantile_classes(values_by_key, classes=CLASSES):
     return result
 
 
-def county_map(by_county, width=600, height=420, query=''):
+def county_map(by_county, width=600, height=420, query='', metric='lbs'):
     """
-    The county choropleth. Each county links to its page; `query` (a scope
-    query string such as 'year=2020') is carried on those links.
+    The county choropleth, shaded by `metric` (see COUNTY_METRICS) as a
+    ranking: darker is more. Each county links to its page; `query` (a scope
+    query string such as 'year=2020') is carried on those links. The table
+    beside it (rank_counties) is the legend.
     """
     geometries = county_geometries()
     if not geometries:
         return None
+    metric = county_metric(metric)
+    unit = COUNTY_METRICS[metric]
     counties = {region.pk: region for region in Region.objects.filter(pk__in=geometries)}
-    lbs_by_pk = {row['county_id']: (row['lbs'] or 0) for row in by_county}
-    classes = quantile_classes(lbs_by_pk)
+    value_by_pk = {row['county_id']: (row.get(metric) or 0) for row in by_county}
+    classes = quantile_classes(value_by_pk)
 
     lmap = leaflet.LeafletMap(width=width, height=height, padding=10)
     for pk, geojson in geometries.items():
         county = counties[pk]
-        lbs = lbs_by_pk.get(pk)
-        label = f'{county.name}: {int(round(lbs)):,} lbs' if lbs else f'{county.name}: no data'
+        value = value_by_pk.get(pk)
+        label = f'{county.name}: {int(round(value)):,} {unit}' if value else f'{county.name}: no data'
         url = reverse('pesticides:region', kwargs={'sqid': county.sqid, 'slug': county.slug})
         lmap.add(leaflet.Area(
             geometry=GEOSGeometry(geojson, srid=4326),
-            fill_color=classes.color_for(lbs),
+            fill_color=classes.color_for(value),
             fill_opacity=0.75,
             border_color='#555',
             border_width=1,
@@ -142,8 +168,4 @@ def county_map(by_county, width=600, height=420, query=''):
             label_on_hover=True,
             url=f'{url}?{query}' if query else url,
         ))
-    legend = render_to_string('pesticides/includes/county-legend.html', {
-        'legend': classes.legend(),
-        'no_data': NO_DATA,
-    })
-    return mark_safe(lmap.render() + legend)
+    return mark_safe(lmap.render())

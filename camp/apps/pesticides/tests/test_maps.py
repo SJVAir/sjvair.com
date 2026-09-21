@@ -32,13 +32,14 @@ class CountyGeometryTests(TestCase):
 class QuantileClassTests(TestCase):
     def test_skewed_values_use_every_class(self):
         # One county dwarfs the rest; share-of-max would put 7 of 8 in the
-        # lightest bin. Quantiles spread them across all five classes.
+        # lightest bin. Quantiles spread them across every class -- with
+        # eight steps and eight counties, one each.
         values = {1: 1_000_000, 2: 5000, 3: 4000, 4: 3000, 5: 2000, 6: 1000, 7: 500, 8: 100}
         classes = maps.quantile_classes(values)
-        assert len(classes.breaks) == 5
-        assert classes.index_for(1_000_000) == 4
+        assert len(classes.breaks) == maps.CLASSES == 8
+        assert classes.index_for(1_000_000) == 7
         assert classes.index_for(100) == 0
-        assert {classes.index_for(v) for v in values.values()} == {0, 1, 2, 3, 4}
+        assert {classes.index_for(v) for v in values.values()} == set(range(8))
 
     def test_ties_share_a_class(self):
         values = {1: 10, 2: 10, 3: 10, 4: 50, 5: 50, 6: 900}
@@ -112,16 +113,20 @@ class CountyMapTests(TestCase):
         assert 'Fresno County: 150 lbs' in html
         assert 'Kern County: no data' in html
 
-    def test_legend_rendered_from_breaks(self):
+    def test_rank_counties_sorts_by_the_metric_and_carries_the_map_colour(self):
         rows = self.rows + [
-            {'county_id': 9002, 'county_name': 'Kern County', 'county_slug': 'kern', 'lbs': 20.0, 'acres': 2, 'applications': 1},
+            {'county_id': 9002, 'county_name': 'Kern County', 'county_slug': 'kern', 'lbs': 20.0, 'acres': 200, 'applications': 1},
         ]
-        html = maps.county_map(rows)
-        assert 'county-legend' in html
-        assert '20 lbs' in html
-        assert '150 lbs' in html
-        assert 'No data' in html
-        assert html.index('county-legend') > html.index('admin-leaflet-map')
+        by_lbs = maps.rank_counties(rows, 'lbs')
+        assert [r['county_name'] for r in by_lbs] == ['Fresno County', 'Kern County']
+        assert by_lbs[0]['color'] == maps.RAMP[-1] and by_lbs[1]['color'] == maps.RAMP[0]
+        by_acres = maps.rank_counties(rows, 'acres')
+        assert [r['county_name'] for r in by_acres] == ['Kern County', 'Fresno County']
+        # The map shades by the same metric and says so in its labels.
+        html = maps.county_map(by_acres, metric='acres')
+        assert 'Kern County: 200 acres treated' in html
+        assert 'county-legend' not in html
+        assert maps.county_metric('nope') == 'lbs' and maps.county_metric('applications') == 'applications'
 
     def test_labels_are_hover_only(self):
         html = maps.county_map(self.rows)

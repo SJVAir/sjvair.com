@@ -1,11 +1,28 @@
 {% load pesticides_explorer %}
-{# Like the by-year table: numbers on one line, a touch smaller, and the wrapper scrolls before they overflow (all-years pounds run to ten digits). #}
+{% comment %}
+Counties ranked by one metric (`county_rank`: lbs | acres | applications),
+most to least; the other columns' headers link to rank by them instead.
+The swatch is the county's fill on the map beside it, so this table is
+also the map's legend. Rows come from maps.rank_counties.
+Like the by-year table: numbers on one line, a touch smaller, and the
+wrapper scrolls before they overflow (all-years pounds run to ten digits).
+{% endcomment %}
 <div class="table-container">
 <table class="table is-fullwidth is-narrow is-striped by-county-table">
-    <thead><tr><th>County</th>{% if not hide_lbs %}<th class="has-text-right">Lbs</th>{% endif %}<th class="has-text-right">Acres treated</th><th class="has-text-right">Applications</th></tr></thead>
+    <thead><tr>
+        <th>County</th>
+        {% if not hide_lbs %}<th class="has-text-right{% if county_rank == 'lbs' %} is-ranked{% endif %}">{% if county_rank == 'lbs' %}Lbs{% else %}<a href="{% qs_replace rank=None %}" title="Rank by pounds">Lbs</a>{% endif %}</th>{% endif %}
+        <th class="has-text-right{% if county_rank == 'acres' %} is-ranked{% endif %}">{% if county_rank == 'acres' %}Acres treated{% else %}<a href="{% qs_replace rank='acres' %}" title="Rank by acres treated">Acres treated</a>{% endif %}</th>
+        <th class="has-text-right{% if county_rank == 'applications' %} is-ranked{% endif %}">{% if county_rank == 'applications' %}Applications{% else %}<a href="{% qs_replace rank='applications' %}" title="Rank by applications">Applications</a>{% endif %}</th>
+    </tr></thead>
     <tbody>
     {% for row in by_county %}
-        <tr><td><a href="{% url 'pesticides:region' sqid=row.county_sqid slug=row.county_slug %}{{ scope_qs }}">{{ row.county_name|cut:" County" }}</a></td>{% if not hide_lbs %}<td class="has-text-right">{{ row.lbs|lbs }}</td>{% endif %}<td class="has-text-right">{{ row.acres|lbs }}</td><td class="has-text-right">{{ row.applications|lbs }}</td></tr>
+        <tr>
+            <td><span class="county-swatch" style="background-color: {{ row.color }};" aria-hidden="true"></span><a href="{% url 'pesticides:region' sqid=row.county_sqid slug=row.county_slug %}{{ scope_qs }}">{{ row.county_name|cut:" County" }}</a></td>
+            {% if not hide_lbs %}<td class="has-text-right">{{ row.lbs|lbs }}</td>{% endif %}
+            <td class="has-text-right">{{ row.acres|lbs }}</td>
+            <td class="has-text-right">{{ row.applications|lbs }}</td>
+        </tr>
     {% endfor %}
     </tbody>
 </table>

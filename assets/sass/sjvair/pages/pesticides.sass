@@ -159,6 +159,24 @@ body.pesticides
         th, td
             white-space: nowrap
             font-variant-numeric: tabular-nums
+    .by-county-table
+        th.is-ranked
+            color: $text
+        th a
+            color: $text
+            font-weight: 600
+            text-decoration: underline dotted
+            text-underline-offset: 2px
+            &:hover
+                color: $link
+        .county-swatch
+            display: inline-block
+            width: 0.8rem
+            height: 0.8rem
+            margin-right: 0.45rem
+            vertical-align: -1px
+            border: 1px solid rgba($black, 0.2)
+            border-radius: 2px
         tr.is-selected
             background-color: $primary
             color: $white
@@ -442,7 +460,7 @@ body.pesticides
         figcaption
             margin-top: $size-7
 
-    .county-legend, .section-map-legend
+    .section-map-legend
         display: flex
         flex-wrap: wrap
         gap: 0.25rem 1rem
