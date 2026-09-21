@@ -529,7 +529,7 @@ class Home(vanilla.TemplateView):
         county_rank = maps.county_metric(self.request.GET.get('rank'))
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
         by_county = maps.rank_counties(data['by_county'], county_rank, ramp=ramp)
-        county_map = maps.county_map(by_county, query=stats.year_param(year, all_years), metric=county_rank, ramp=ramp) if by_county else None
+        county_map = maps.county_map(by_county, query=stats.scope_param(year, all_years, concern=concern), metric=county_rank, ramp=ramp) if by_county else None
         find_area_places = find_area_place_list()
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
         return super().get_context_data(
@@ -669,19 +669,11 @@ class ExplorerDetailMixin:
     use_field = None          # PesticideUse FK name for this entity
     api_param = None          # v2 API query param name, shown as a hint for developers
     has_notices = True
-    # Set from the request in get_context_data; declared here so get_uses()/
-    # get_rollup() are safe to call from anywhere.
+    # Set from the request in get_context_data; declared here so
+    # get_rollup() is safe to call from anywhere.
     concern = False
     concern_excluded = False
     concern_active = False
-
-    def get_uses(self):
-        uses = PesticideUse.objects.filter(**{self.use_field: self.object})
-        if self.county is not None:
-            uses = uses.filter(county=self.county)
-        if self.concern_active:
-            uses = stats.concern_rows(uses)
-        return uses
 
     def get_rollup(self):
         rows = PesticideUseRollup.objects.filter(**{self.use_field: self.object})
@@ -779,7 +771,6 @@ class ExplorerDetailMixin:
         self.concern = scope_concern(self.request)
         self.concern_excluded = self.concern and not self.concern_applies()
         self.concern_active = self.concern and not self.concern_excluded
-        uses = self.get_uses()
         rows = self.get_rollup()
         notices = self.get_notices()
         scope = stats.scope_param(year, all_years, self.county, self.concern)
@@ -833,7 +824,7 @@ class ExplorerDetailMixin:
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
         context['by_county'] = maps.rank_counties(context['by_county'], county_rank, ramp=ramp)
         context['county_rank'] = county_rank
-        context['county_map'] = maps.county_map(context['by_county'], query=stats.year_param(year, all_years), metric=county_rank, ramp=ramp) if context['by_county'] else None
+        context['county_map'] = maps.county_map(context['by_county'], query=stats.scope_param(year, all_years, concern=self.concern), metric=county_rank, ramp=ramp) if context['by_county'] else None
         return context
 
     def summary_top(self, context):
@@ -1045,7 +1036,10 @@ class MapPage(vanilla.TemplateView):
 
         county_map = None
         if (year or all_years) and not no_matches:
-            county_map = maps.county_map(stats.county_totals(year, all_years), query=stats.year_param(year, all_years))
+            county_map = maps.county_map(
+                stats.county_totals(year, all_years, concern),
+                query=stats.scope_param(year, all_years, concern=concern),
+            )
 
         return super().get_context_data(
             section='map',
@@ -1416,7 +1410,10 @@ class RecordsBrowser(vanilla.ListView):
         totals = self.get_totals()
         county_map = None
         if self.year or self.all_years:
-            county_map = maps.county_map(stats.county_totals(self.year, self.all_years), query=stats.year_param(self.year, self.all_years))
+            county_map = maps.county_map(
+                stats.county_totals(self.year, self.all_years, self.concern),
+                query=stats.scope_param(self.year, self.all_years, concern=self.concern),
+            )
         return super().get_context_data(
             form=self.form,
             totals=totals,

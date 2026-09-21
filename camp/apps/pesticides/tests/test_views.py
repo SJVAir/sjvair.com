@@ -926,6 +926,20 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert response.context['totals']['lbs'] == 170.0
         assert response.context['concern'] is True
 
+    def test_county_choropleth_is_scoped_and_keeps_the_scope_in_its_links(self):
+        fresno = Region.objects.get(pk=9001)
+        county_url = reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'})
+        for url in (reverse('pesticides:home'), reverse('pesticides:map'), reverse('pesticides:records')):
+            html = self.client.get(url, {'concern': '1'}).content.decode()
+            assert 'Fresno County: 170 lbs' in html, url
+            assert f'{county_url}?concern=1' in html, url
+
+    def test_detail_page_county_links_keep_the_scope(self):
+        glyphosate = Chemical.objects.get(name='GLYPHOSATE')
+        fresno = Region.objects.get(pk=9001)
+        html = self.client.get(glyphosate.get_absolute_url(), {'concern': '1'}).content.decode()
+        assert reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'}) + '?concern=1' in html
+
     def test_map_page_passes_the_scope_to_the_grid(self):
         response = self.client.get(reverse('pesticides:map'), {'concern': '1'})
         assert response.context['map_config']['concern'] == '1'

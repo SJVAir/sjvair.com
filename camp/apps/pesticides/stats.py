@@ -479,10 +479,12 @@ def upcoming_count(notices):
 
 
 def upcoming_by_county(notices):
+    # `notices` may already carry a join -- concern_notices() joins the
+    # chemicals M2M -- so count each notice once however many rows it matched.
     rows = (
         _upcoming(notices)
         .values('county__name')
-        .annotate(count=Count('id'))
+        .annotate(count=Count('id', distinct=True))
         .order_by('-count', 'county__name')
     )
     return [{'county_name': row['county__name'], 'count': row['count']} for row in rows]
@@ -529,7 +531,7 @@ def _top_chemicals_of_concern(top_chemicals, uses, year, limit=10, all_years=Fal
     # comes up short (a concern chemical outside the top 50 by pounds).
     rows = [r for r in top_chemicals if r.obj.is_of_concern]
     if len(rows) < limit:
-        concern = uses.filter(chemical__in=Chemical.objects.filter(_of_concern_query()))
+        concern = uses.filter(chemical__in=of_concern_chemicals())
         rows = top_related(concern, year, 'chemical', limit=limit, all_years=all_years)
     return rows[:limit]
 

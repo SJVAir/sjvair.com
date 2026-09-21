@@ -339,6 +339,23 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         assert places.place_context(area, None, all_years=True, concern=True)['totals']['lbs'] == 250.0
         assert places.place_context(area, None, all_years=True)['totals']['lbs'] == 1150.0
 
+    def test_notices_are_counted_once_per_county_under_the_scope(self):
+        # concern_notices() joins the chemicals M2M, so a notice listing two
+        # concern chemicals matches twice -- the county table must still say 1.
+        square = 'SRID=4326;MULTIPOLYGON (((-119.85 36.65, -119.75 36.65, -119.75 36.75, -119.85 36.75, -119.85 36.65)))'
+        city = Region.objects.create(name='Selma', slug='selma', type=Region.Type.CITY, external_id='x-selma')
+        city.boundary = Boundary.objects.create(region=city, version='t', geometry=square)
+        city.save()
+        notice = PesticideNotice.objects.get(pk=2)   # upcoming, Fresno County
+        notice.mtrs_id = 9101
+        notice.save()
+        notice.chemicals.set([1, 2])                 # GLYPHOSATE and CHLORPYRIFOS
+
+        ctx = places.place_context(places.region_area(city), 2023, concern=True)
+        assert ctx['upcoming_by_county'] == [{'county_name': 'Fresno County', 'count': 1}]
+        assert ctx['upcoming_count'] == 1
+        assert [n.pk for n in ctx['upcoming']] == [notice.pk]
+
     def test_region_page_follows_the_scope(self):
         url = reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})
         response = self.client.get(url, {'concern': '1'})
