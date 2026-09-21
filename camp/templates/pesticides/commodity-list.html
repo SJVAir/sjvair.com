@@ -21,7 +21,7 @@
                     <tr>
                         <th>{% sort_link 'name' 'Commodity' %}</th>
                         <th>{% sort_link 'site' 'Site code' %}</th>
-                        {% if not related.chemical %}<th class="has-text-right">{% sort_link 'chemicals' 'Chemicals' %}</th>{% endif %}
+                        {% if not related.chemical %}<th class="has-text-right">{% if concern %}{% sort_link 'chemicals' 'Chemicals of concern' %}{% else %}{% sort_link 'chemicals' 'Chemicals' %}{% endif %}</th>{% endif %}
                         <th class="has-text-right">{% sort_link 'lbs' lbs_label %}</th>
                     </tr>
                 </thead>

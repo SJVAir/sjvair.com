@@ -3,14 +3,20 @@
     <p class="trend-title">{{ title }}</p>
     <svg viewBox="0 0 {{ width }} {{ height }}" role="img"
          aria-label="{{ title }}, {{ first_year }} to {{ last_year }}{% if sentence %}. {{ sentence }}{% endif %}">
+        <line class="trend-baseline" x1="{{ pad }}" y1="{{ baseline }}" x2="{{ width|add:'-6' }}" y2="{{ baseline }}" />
         {% if polyline %}<polyline class="trend-line" points="{{ polyline }}" fill="none" />{% endif %}
         {% for point in points %}
-            <circle class="trend-point{% if point.is_selected %} is-selected{% endif %}"
-                cx="{{ point.x }}" cy="{{ point.y }}" r="{% if point.is_selected %}4{% else %}2.5{% endif %}">
-                <title>{{ point.year }}: {{ point.display }} {{ metric_label }}</title>
-            </circle>
-            {# The first, last and highest values, so the chart reads without a hover. #}
+            {# The first, last and highest values are always written; every point shows its year and value on hover. #}
             {% if point.label %}<text class="trend-value" x="{{ point.label_x }}" y="{{ point.label_y }}" text-anchor="{{ point.anchor }}">{{ point.label }}</text>{% endif %}
+        {% endfor %}
+        {% for point in points %}
+            <g class="trend-node{% if point.is_selected %} is-selected{% endif %}">
+                <circle class="trend-hit" cx="{{ point.x }}" cy="{{ point.y }}" r="9" />
+                <circle class="trend-point" cx="{{ point.x }}" cy="{{ point.y }}" r="{% if point.is_selected %}4{% else %}2.5{% endif %}">
+                    <title>{{ point.year }}: {{ point.display }} {{ metric_label }}</title>
+                </circle>
+                <text class="trend-hover" x="{{ point.x }}" y="{{ point.hover_y }}" text-anchor="{{ point.hover_anchor }}">{{ point.year }} · {{ point.display }}</text>
+            </g>
         {% endfor %}
         <text class="trend-axis" x="4" y="{{ height|add:'-1' }}" text-anchor="start">{{ first_year }}</text>
         {% if first_year != last_year %}<text class="trend-axis" x="{{ width|add:'-4' }}" y="{{ height|add:'-1' }}" text-anchor="end">{{ last_year }}</text>{% endif %}

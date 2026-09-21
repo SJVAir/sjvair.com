@@ -234,6 +234,29 @@ body.pesticides
             vector-effect: non-scaling-stroke
             &.is-selected
                 fill: $link
+        .trend-baseline
+            stroke: $grey-lighter
+            stroke-width: 1
+            vector-effect: non-scaling-stroke
+        // Hover: a wide invisible target around each point, the point swells,
+        // and its year and value appear.
+        .trend-hit
+            fill: transparent
+            pointer-events: all
+        .trend-hover
+            font-size: 9px
+            fill: $text
+            font-weight: 600
+            font-variant-numeric: tabular-nums
+            opacity: 0
+            pointer-events: none
+            transition: opacity 0.1s ease
+        .trend-node:hover
+            .trend-point
+                fill: $link
+                stroke-width: 2.5
+            .trend-hover
+                opacity: 1
         .trend-axis
             font-size: 9px
             fill: $grey

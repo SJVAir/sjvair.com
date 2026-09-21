@@ -21,7 +21,7 @@
                     <tr>
                         <th>{% sort_link 'name' 'Product' %}</th>
                         <th>{% sort_link 'reg' 'Reg. number' %}</th>
-                        <th>Flags</th>
+                        <th>{% if concern %}Chemicals of concern{% else %}Flags{% endif %}</th>
                         {% if not related.chemical %}<th class="has-text-right">{% sort_link 'chemicals' 'Active ingredients' %}</th>{% endif %}
                         <th class="has-text-right">{% sort_link 'lbs' lbs_label %}</th>
                     </tr>
@@ -32,10 +32,18 @@
                         <td><a href="{{ product.get_absolute_url }}{{ scope_qs }}">{{ product.name }}</a></td>
                         <td><a href="{{ product.get_absolute_url }}{{ scope_qs }}">{{ product.reg_number }}</a></td>
                         <td>
+                            {% if concern %}
+                            {# Under the scope the column says why the product is here: its ingredients that are of concern. #}
+                            <div class="tags">
+                                {% for ingredient in product.concern_ingredients|slice:":3" %}<a class="tag is-danger is-light" href="{{ ingredient.chemical.get_absolute_url }}{{ scope_qs }}">{{ ingredient.chemical.display_name }}</a>{% endfor %}
+                                {% if product.concern_ingredients|length > 3 %}<span class="tag is-light">+{{ product.concern_ingredients|length|add:"-3" }}</span>{% endif %}
+                            </div>
+                            {% else %}
                             <div class="tags">
                                 {% if product.fumigant %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" data-tooltip="{{ 'fumigant'|note_summary }}">Fumigant</a>{% endif %}
                                 {% if product.california_restricted %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" data-tooltip="{{ 'restricted_material'|note_summary }}">CA restricted</a>{% endif %}
                             </div>
+                            {% endif %}
                         </td>
                         {% if not related.chemical %}<td class="has-text-right">{{ product.chemical_count }}</td>{% endif %}
                         <td class="has-text-right">{{ product.lbs_applied|lbs }}</td>

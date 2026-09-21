@@ -59,17 +59,21 @@
 
 {% include 'pesticides/includes/section-map.html' %}
 
-<div class="mt-5">{% trend_chart by_year year %}</div>
-
-<section class="month-bars-section mt-6">
-    <h2 class="title is-4">By month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
-    {% if by_month %}
-        {% include 'pesticides/includes/month-bars.html' %}
-        {% if peak_month %}<p class="mt-2">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
-    {% else %}
-        <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
-    {% endif %}
-</section>
+<div class="columns mt-6">
+    <section class="column is-5-desktop trend-section">
+        <h2 class="title is-4">By year</h2>
+        {% trend_chart by_year year %}
+    </section>
+    <section class="column is-7-desktop month-bars-section">
+        <h2 class="title is-4">By month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
+        {% if by_month %}
+            {% include 'pesticides/includes/month-bars.html' %}
+            {% if peak_month %}<p class="mt-2">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
+        {% else %}
+            <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
+        {% endif %}
+    </section>
+</div>
 
 <section class="top-lists mt-6">
     <h2 class="title is-4">What's applied here</h2>

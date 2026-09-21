@@ -20,8 +20,7 @@
                 <thead>
                     <tr>
                         <th>{% sort_link 'name' 'Chemical' %}</th>
-                        <th>Categories</th>
-                        <th>{% sort_link 'iarc' 'IARC' %}</th>
+                        <th>Classifications</th>
                         {% if not related.product %}<th class="has-text-right">{% sort_link 'products' 'Products' %}</th>{% endif %}
                         <th class="has-text-right">{% sort_link 'lbs' lbs_label %}</th>
                     </tr>
@@ -32,13 +31,12 @@
                         <td><a href="{{ chemical.get_absolute_url }}{{ scope_qs }}">{{ chemical.display_name }}</a></td>
                         <td>
                             <div class="tags">
-                                {% include 'pesticides/includes/classification-badges.html' with chemical=chemical hide_iarc=True %}
+                                {% include 'pesticides/includes/classification-badges.html' with chemical=chemical %}
                                 {% for category in chemical.other_categories %}
                                     <a class="tag has-tooltip-multiline has-tooltip-arrow" href="{% url 'pesticides:chemical-list' %}?category={{ category }}" data-tooltip="{{ category|note_summary }}">{{ category|category_label }}</a>
                                 {% endfor %}
                             </div>
                         </td>
-                        <td>{{ chemical.iarc_group|default:'—' }}</td>
                         {% if not related.product %}<td class="has-text-right">{{ chemical.product_count }}</td>{% endif %}
                         <td class="has-text-right">{{ chemical.lbs_applied|lbs }}</td>
                     </tr>

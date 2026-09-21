@@ -16,7 +16,7 @@ register = template.Library()
 def region_url(region):
     if region is None:
         return ''
-    return reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug})
+    return region.get_pesticides_url()
 
 
 @register.simple_tag(takes_context=True)
@@ -204,6 +204,9 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
                 'label_x': x,
                 'label_y': max(round(y - 6, 1), 9),
                 'anchor': 'start' if index == 0 and len(points) > 1 else ('end' if index == len(points) - 1 and len(points) > 1 else 'middle'),
+                # The hover label sits under the point (above it near the baseline), pulled in at the ends.
+                'hover_y': round(y + 14, 1) if y < height - 22 else round(y - 8, 1),
+                'hover_anchor': 'start' if x < width * 0.15 else ('end' if x > width * 0.85 else 'middle'),
             }
             for index, (x, y, point_year, value) in enumerate(points)
         ],
@@ -213,6 +216,8 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
         'metric_label': metric_label,
         'width': width,
         'height': height,
+        'pad': 6,
+        'baseline': height - 6,
         'first_year': points[0][2] if points else None,
         'last_year': points[-1][2] if points else None,
     }
