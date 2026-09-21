@@ -69,12 +69,12 @@
       url: https://calheatscore.calepa.ca.gov/
       description: CalHeatScore is California's heat-risk forecasting tool, developed by the Office of Environmental Health Hazard Assessment at CalEPA with the Department of Insurance and the Department of Public Health. It rates each ZIP code's heat risk for the coming week on a five-step scale, from low to severe, based on forecast temperatures and local health data. SJVAir imports the daily scores for every Valley ZIP code so heat risk can be shown alongside air quality.
 
-- category: Environmental & Health Mapping
+- category: Environmental & Health Data
   icon:
     name: fa-earth-americas
     primary: forestgreen
     secondary: deepskyblue
-  description: Datasets that combine environmental, health, and socioeconomic indicators to identify communities most impacted by pollution and support equity-focused decision making.
+  description: Datasets on where pollution comes from and who bears it&#58; screening indices that combine environmental, health, and socioeconomic indicators to identify the communities most impacted, and the emissions inventory behind them, which records what each permitted facility releases.
   integrations:
     - name: CalEnvironScreen
       logo: img/logo/calenviroscreen-logo.png
@@ -85,6 +85,11 @@
       logo: img/logo/healthy-places-index-logo.png
       url: https://www.healthyplacesindex.org/
       description: The Healthy Places Index (HPI), developed by the Public Health Alliance, maps social and environmental conditions that shape health outcomes across California. By combining indicators such as education, housing, job opportunities, and environmental quality, HPI highlights community factors strongly linked to life expectancy and supports efforts to advance health equity.
+
+    - name: CEIDARS
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/our-work/programs/criteria-and-toxics-emissions-inventory
+      description: The California Emission Inventory Development and Reporting System (CEIDARS) is CARB's inventory of emissions from permitted stationary sources — refineries, power plants, dairies, manufacturers, and thousands of smaller facilities — reported each year by the local air districts. SJVAir imports the facility-level records for the San Joaquin Valley, with each facility's criteria pollutant and toxic emissions by year, so that what is released nearby can be shown alongside what is measured in the air.
 
 - category: Pesticide Data
   icon:
