@@ -35,6 +35,34 @@ AREA_SECTIONS_TTL = 60 * 60 * 24
 SCHOOLS_NEARBY_TTL = 60 * 60 * 24
 SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/'
 
+# -- The district page's schools table --
+
+# Rows past this many are rendered collapsed, with a control to show them.
+SCHOOLS_VISIBLE = 15
+# The table's own filter and sort state, prefixed so it can't collide with
+# the page's own `sort` (the place page has none today; a list page would).
+SCHOOLS_Q_PARAM = 'schools_q'
+SCHOOLS_TYPE_PARAM = 'schools_type'
+SCHOOLS_RUN_BY_PARAM = 'schools_run_by'
+SCHOOLS_SORT_PARAM = 'schools_sort'
+SCHOOLS_SORT_DEFAULT = '-lbs'
+SCHOOLS_SORT_KEYS = ('name', 'type', 'city', 'lbs', 'applications')
+SCHOOLS_TYPE_OPTIONS = (
+    ('', 'All types'),
+    (Location.Type.PUBLIC_SCHOOL, 'Public schools'),
+    (Location.Type.PRIVATE_SCHOOL, 'Private schools'),
+    (Location.Type.CHILD_CARE, 'Child care'),
+)
+
+# The "Who goes to school here" tiles, in the order they're shown: where the
+# percentage lives in the district Region's metadata, and its label.
+DISTRICT_METRICS = (
+    ('demographics', 'hispanic_latino', 'Hispanic/Latino'),
+    ('subgroups', 'english_learners', 'English learners'),
+    ('subgroups', 'socioeconomically_disadvantaged', 'Low-income students'),
+    ('subgroups', 'migrant', 'Migrant students'),
+)
+
 # Prefixed onto the region's own name for the page's <h1>/label. Counties,
 # cities, and places already carry a legible name ("Fresno County",
 # "Selma"); a bare ZIP code doesn't read as a place without it.
@@ -237,23 +265,31 @@ def region_area(region):
 
 def schools_nearby(region, year, all_years=False, concern=False):
     """
-    The schools and child care centers in a school district, each with the
+    The schools and child care centers of a school district, each with the
     pesticide use reported in the 3x3 block of sections around it (see
-    stats.block_totals) -- the "Schools & child care in this district" panel.
+    stats.block_totals) -- the rows behind the district page's schools table.
 
-    Two groups: `run_by`, the public schools this district actually runs (the
-    school's `district_code` is the district's own CDS code, the first 7
-    digits of its `external_id`), and `others` -- charters run elsewhere,
-    county-office schools, private schools, and child care that merely sit
-    inside its boundary. Each is sorted by pounds, heaviest first, then name.
+    Two groups, because the table can be filtered down to the first: `run_by`,
+    the public schools this district actually runs, and `others` -- charters
+    run elsewhere, county-office schools, private schools, and child care that
+    merely sit inside its boundary. A district runs its charters wherever they
+    stand, so `run_by` is every public school whose `district_code` is this
+    district's, not only the ones inside its boundary; `others` is what's left
+    of the locations that resolved to it. Each group is sorted by pounds,
+    heaviest first, then name.
 
-    Each entry is {'location', 'lbs', 'applications', 'section_sqid',
-    'section_mtrs'}. Every location needs its own block lookup, so the whole
-    thing is cached for a day per district and year; it only changes on import.
+    Each entry carries its Location plus what the table prints: the display
+    name and city (CDE writes names properly, the CDSS child care directory
+    shouts them), the administering district, the block totals, and the
+    section it sits in. `show_city` says whether the City column is worth
+    printing at all -- most districts sit in one postal city.
+
+    Every location needs its own block lookup, so the whole thing is cached
+    for a day per district and year; it only changes on import.
     """
     key = ':'.join([
-        # v2: the flat list became two groups; old entries would render empty.
-        'pesticides:schools-nearby:v2',
+        # v3: entries gained their display fields and the run-by district.
+        'pesticides:schools-nearby:v3',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
         stats.CONCERN_PARAM if concern else '',
@@ -265,42 +301,144 @@ def schools_nearby(region, year, all_years=False, concern=False):
         rows = PesticideUseRollup.objects.all()
         if concern:
             rows = stats.concern_rows(rows)
-        groups = {'run_by': [], 'others': []}
+
         # select_related: the table prints each location's city.
-        locations = region.district_locations.select_related('city').order_by('name', 'pk')
-        for location in locations:
-            totals = stats.block_totals(rows, location.point, year, all_years)
-            section = totals['section']
-            entry = {
-                'location': location,
-                'lbs': totals['lbs'],
-                'applications': totals['applications'],
-                'section_sqid': section.sqid if section is not None else None,
-                'section_mtrs': (section.external_id or section.name) if section is not None else None,
-            }
-            groups['run_by' if _run_by(location, district_code) else 'others'].append(entry)
+        run_by = list(Location.objects
+            .filter(type=Location.Type.PUBLIC_SCHOOL,
+                metadata__district_code=district_code)
+            .select_related('city')
+            .order_by('name', 'pk')
+        ) if district_code else []
+        others = list(region.district_locations
+            .exclude(pk__in=[location.pk for location in run_by])
+            .select_related('city')
+            .order_by('name', 'pk')
+        )
+
+        groups = {
+            'run_by': [_school_entry(location, rows, year, all_years, is_run_by=True)
+                for location in run_by],
+            'others': [_school_entry(location, rows, year, all_years, is_run_by=False)
+                for location in others],
+        }
         for entries in groups.values():
-            entries.sort(key=lambda entry: (-entry['lbs'], entry['location'].name))
+            entries.sort(key=lambda entry: (-entry['lbs'], entry['display_name']))
+
+        # The City column only earns its width where the district's sites
+        # actually sit in more than one postal city (56 of 161 do).
+        cities = {entry['display_city'].lower()
+            for entries in groups.values() for entry in entries
+            if entry['display_city']}
+        groups['show_city'] = len(cities) > 1
         return groups
 
     return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
 
 
-def _run_by(location, district_code):
-    """Is this a public school the district itself runs?"""
-    if not district_code or location.type != Location.Type.PUBLIC_SCHOOL:
-        return False
-    return str((location.metadata or {}).get('district_code') or '') == district_code
+def _school_entry(location, rows, year, all_years, is_run_by):
+    totals = stats.block_totals(rows, location.point, year, all_years)
+    section = totals['section']
+    metadata = location.metadata or {}
+    return {
+        'location': location,
+        'display_name': _display_name(location, location.name),
+        'display_city': _display_name(location, location.get_city() or ''),
+        'type': location.type,
+        'type_label': str(location.short_type),
+        'run_by_name': metadata.get('district_name') or '',
+        'is_run_by': is_run_by,
+        'lbs': totals['lbs'],
+        'applications': totals['applications'],
+        'section_sqid': section.sqid if section is not None else None,
+        'section_mtrs': (section.external_id or section.name) if section is not None else None,
+    }
 
 
-# The "Who goes to school here" tiles, in the order they're shown: where the
-# percentage lives in the district Region's metadata, and its label.
-DISTRICT_METRICS = (
-    ('demographics', 'hispanic_latino', 'Hispanic or Latino'),
-    ('subgroups', 'english_learners', 'English learners'),
-    ('subgroups', 'socioeconomically_disadvantaged', 'Socioeconomically disadvantaged'),
-    ('subgroups', 'migrant', 'Migrant'),
-)
+def _display_name(location, text):
+    """
+    A name or city as the table should print it. Only the CDSS child care
+    directory shouts its text -- drive it off the source rather than the
+    text's own case, so a school CDE deliberately wrote in capitals keeps it.
+    """
+    from camp.apps.pesticides.templatetags.pesticides_explorer import title_case_name
+
+    if location.source != 'cdss-ccl':
+        return text
+    return title_case_name(text)
+
+
+def schools_panel(region, groups, params=None):
+    """
+    The one table a district page draws from `schools_nearby`'s groups:
+    filtered (name search, type, run-by-only), sorted, and marked up for the
+    collapse. All of it happens here rather than in the database -- the list
+    is cached whole and a few hundred entries at most.
+
+    `params` is the request's GET. Rows past SCHOOLS_VISIBLE carry
+    `is_collapsed`, so the template can render them all into one <tbody> and
+    let a click reveal the rest without another request.
+    """
+    params = params or {}
+    rows = list(groups['run_by']) + list(groups['others'])
+
+    query = (params.get(SCHOOLS_Q_PARAM) or '').strip()
+    if query:
+        needle = query.lower()
+        rows = [entry for entry in rows if needle in entry['display_name'].lower()]
+
+    type_value = (params.get(SCHOOLS_TYPE_PARAM) or '').strip()
+    if type_value not in Location.Type.values:
+        type_value = ''
+    if type_value:
+        rows = [entry for entry in rows if entry['type'] == type_value]
+
+    run_by_only = (params.get(SCHOOLS_RUN_BY_PARAM) or '') in ('1', 'on', 'true')
+    if run_by_only:
+        rows = [entry for entry in rows if entry['is_run_by']]
+
+    sort = (params.get(SCHOOLS_SORT_PARAM) or '').strip() or SCHOOLS_SORT_DEFAULT
+    if sort.lstrip('-') not in SCHOOLS_SORT_KEYS:
+        sort = SCHOOLS_SORT_DEFAULT
+    rows = _schools_sorted(rows, sort)
+
+    return {
+        'rows': [dict(entry, is_collapsed=index >= SCHOOLS_VISIBLE)
+            for index, entry in enumerate(rows)],
+        'show_city': groups.get('show_city', False),
+        'total': len(groups['run_by']) + len(groups['others']),
+        'run_by_count': len(groups['run_by']),
+        'matched': len(rows),
+        'hidden': max(len(rows) - SCHOOLS_VISIBLE, 0),
+        'sort': sort,
+        'sort_is_default': sort == SCHOOLS_SORT_DEFAULT,
+        'query': query,
+        'type': type_value,
+        'run_by_only': run_by_only,
+        'type_options': [{'value': value, 'label': label, 'selected': value == type_value}
+            for value, label in SCHOOLS_TYPE_OPTIONS],
+        'is_filtered': bool(query or type_value or run_by_only),
+        'district_name': region.short_name,
+    }
+
+
+# How each sortable column reads a row. The name is the tiebreaker for all of
+# them, applied as a first pass -- Python's sort is stable, so the column's
+# own pass keeps it.
+_SCHOOLS_SORT_KEYS = {
+    'name': lambda entry: entry['display_name'].lower(),
+    'type': lambda entry: entry['type_label'].lower(),
+    'city': lambda entry: entry['display_city'].lower(),
+    'lbs': lambda entry: entry['lbs'],
+    'applications': lambda entry: entry['applications'],
+}
+
+
+def _schools_sorted(rows, sort):
+    descending = sort.startswith('-')
+    key = _SCHOOLS_SORT_KEYS[sort.lstrip('-')]
+    rows = sorted(rows, key=_SCHOOLS_SORT_KEYS['name'])
+    rows.sort(key=key, reverse=descending)
+    return rows
 
 
 def district_demographics(region):
@@ -321,12 +459,22 @@ def district_demographics(region):
     if enrollment is None and not metrics:
         return None
 
+    # The academic year the district data was published for.
+    year = region.boundary.version if region.boundary_id else ''
     return {
         'enrollment': enrollment,
         'metrics': metrics,
-        # The academic year the district data was published for.
-        'year': region.boundary.version if region.boundary_id else '',
+        'year': year,
+        'year_label': _academic_year_label(year),
     }
+
+
+def _academic_year_label(year):
+    """'2025-2026' as a source stamp: "CDE, 2025-26" (with an en dash)."""
+    parts = str(year or '').split('-')
+    if len(parts) == 2 and len(parts[1]) == 4:
+        return f'CDE, {parts[0]}\u2013{parts[1][2:]}'
+    return f'CDE, {year}' if year else ''
 
 
 def _place_stats(area, year, all_years, concern=False):
@@ -356,7 +504,11 @@ def _place_stats(area, year, all_years, concern=False):
         peak = max(by_month, key=lambda month: month['lbs'])
         peak_month = calendar.month_name[peak['month']]
 
-    return {
+    # Fetched fifty deep so the chemicals-of-concern board can be filtered out
+    # of the same group-by instead of paying for a second one.
+    top_chemicals = stats.top_related(rows, year, 'chemical', limit=50, all_years=all_years)
+
+    data = {
         'totals': {
             'lbs': summed['lbs'],
             'applications': summed['applications'],
@@ -366,13 +518,21 @@ def _place_stats(area, year, all_years, concern=False):
         },
         'by_month': by_month,
         'peak_month': peak_month,
-        'top_chemicals': stats.top_related(rows, year, 'chemical', limit=10, all_years=all_years),
+        'top_chemicals': top_chemicals[:10],
         'top_commodities': stats.top_related(rows, year, 'commodity', limit=10, all_years=all_years),
         'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10, all_years=all_years),
     }
 
+    # Under the concern scope every board is already of concern, so the
+    # dedicated one would just restate the top chemicals.
+    if not concern:
+        data['top_chemicals_of_concern'] = stats.top_chemicals_of_concern(
+            top_chemicals, rows, year, all_years=all_years,
+        )
+    return data
 
-def place_context(area, year, all_years=False, concern=False):
+
+def place_context(area, year, all_years=False, concern=False, params=None):
     from camp.apps.pesticides.views import section_map_config
 
     def build():
@@ -382,7 +542,7 @@ def place_context(area, year, all_years=False, concern=False):
     # exactly what they were.
     scope_key = (stats.CONCERN_PARAM,) if concern else ()
     if all_years:
-        data = stats.cached(stats.all_years_key('place', area.cache_key(), *scope_key), build)
+        data = stats.cached(stats.all_years_key('place-v2', area.cache_key(), *scope_key), build)
     else:
         data = build()
     totals = data['totals']
@@ -431,6 +591,9 @@ def place_context(area, year, all_years=False, concern=False):
         'upcoming': upcoming,
         'upcoming_count': upcoming_count,
         'records_url': area.records_url(year, all_years, concern),
+        # The chemicals-of-concern card's "Show all" narrows the records
+        # browser the way the card does, whatever the page's own scope is.
+        'concern_records_url': area.records_url(year, all_years, concern=True),
         'notices_url': area.notices_url(concern),
         'map_config': section_map_config(
             year, all_years=all_years, show_locations=is_district, concern=concern, **area.map_kwargs(),
@@ -441,16 +604,7 @@ def place_context(area, year, all_years=False, concern=False):
 
     if is_district:
         groups = schools_nearby(area.region, year, all_years, concern=concern)
-        context['schools_nearby'] = groups
-        context['school_groups'] = [{
-            'title': f'Run by {area.region.short_name}',
-            'rows': groups['run_by'],
-            'empty': 'No schools are run by this district in the data.',
-        }, {
-            'title': 'Other schools and child care in the area',
-            'rows': groups['others'],
-            'empty': 'Nothing else in the area.',
-        }]
+        context['schools'] = schools_panel(area.region, groups, params)
         context['district_demographics'] = district_demographics(area.region)
 
     # A single-county area's per-county breakdown is just that one county

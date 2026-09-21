@@ -77,55 +77,57 @@
 
 <section class="top-lists mt-6">
     <h2 class="title is-4">What's applied here</h2>
-    <div class="columns">
-        <div class="column">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
-        <div class="column">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
-        <div class="column">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
+    {% comment %}
+    Four cards, two by two; products before chemicals. Under the
+    chemicals-of-concern scope every card is already of concern, so the
+    dedicated card drops out, the chemicals card's title says what it now is,
+    and the remaining three lay out 2 + 1 -- the same rules as the landing
+    page's leaderboards.
+    {% endcomment %}
+    <div class="columns is-multiline">
+        <div class="column is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
+        <div class="column is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
+        {% if chemicals_of_concern_card %}
+        <div class="column is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=chemicals_of_concern_card %}</div>
+        {% endif %}
+        <div class="column is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
     </div>
 </section>
 
 {% if is_school_district %}
-{% if district_demographics %}
-<section class="district-demographics mt-6">
-    <h2 class="title is-4">Who goes to school here{% if district_demographics.year %} <small class="has-text-grey is-size-6">{{ district_demographics.year }}</small>{% endif %}</h2>
-    <div class="level stat-row box">
-        {% if district_demographics.enrollment != None %}
-        <div class="level-item has-text-centered">
-            <div><p class="heading">Students enrolled</p><p class="title">{{ district_demographics.enrollment|intcomma }}</p></div>
-        </div>
-        {% endif %}
-        {% for metric in district_demographics.metrics %}
-        <div class="level-item has-text-centered">
-            <div><p class="heading">{{ metric.label }}</p><p class="title">{{ metric.pct }}%</p></div>
-        </div>
-        {% endfor %}
-    </div>
-    <p class="is-size-7 has-text-grey">Enrollment and student groups as the California Department of Education reports them for this district.</p>
-</section>
-{% endif %}
-
 <section class="schools-nearby mt-6">
     {# Most rows are child care, not schools, so the heading says both. #}
     <h2 class="title is-4">Schools &amp; child care in this district</h2>
-    {% if schools_nearby.run_by or schools_nearby.others %}
-    {% for group in school_groups %}
-    <h3 class="title is-5 mt-5">{{ group.title }}</h3>
-    {% if group.rows %}
-        {% include 'pesticides/includes/schools-table.html' with rows=group.rows|slice:":15" %}
-        {% if group.rows|length > 15 %}
-        {# A district can run to a couple of hundred sites; the rest are one click away rather than a page of scrolling. #}
-        <details class="schools-more">
-            <summary>Show all {{ group.rows|length }}</summary>
-            {% include 'pesticides/includes/schools-table.html' with rows=group.rows|slice:"15:" %}
-        </details>
-        {% endif %}
-    {% else %}
-        <p class="has-text-grey">{{ group.empty }}</p>
+
+    {% if district_demographics %}
+    <div class="district-demographics">
+        <h3 class="title is-6 mb-2">Who goes to school here{% if district_demographics.year_label %} <span class="source-stamp">{{ district_demographics.year_label }}</span>{% endif %}</h3>
+        <div class="level stat-row">
+            {% if district_demographics.enrollment != None %}
+            <div class="level-item has-text-centered">
+                <div><p class="heading">Students enrolled</p><p class="title">{{ district_demographics.enrollment|intcomma }}</p></div>
+            </div>
+            {% endif %}
+            {% for metric in district_demographics.metrics %}
+            <div class="level-item has-text-centered">
+                <div><p class="heading">{{ metric.label }}</p><p class="title">{{ metric.pct|floatformat:"-1" }}%</p></div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="is-size-7 has-text-grey">Enrollment and student groups as the <a href="https://www.cde.ca.gov/ds/si/ds/pubschls.asp" target="_blank" rel="noopener">California Department of Education</a> reports them for this district.</p>
+    </div>
     {% endif %}
-    {% endfor %}
-    <p class="is-size-7 has-text-grey">Pounds reported in the square-mile section each site sits in and the eight around it.</p>
+
+    {% if schools.total %}
+    <p class="is-size-7 has-text-grey mt-4">
+        &ldquo;Lbs nearby&rdquo; is the pesticide use reported in the three-mile-square block of
+        sections around each site &mdash; the section it sits in and the eight around it{% if year_label %}, in {{ year_label }}{% endif %}{% if concern %},
+        chemicals of concern only{% endif %}. Rows start with the highest pounds nearby first; click a
+        column heading to sort by something else.
+    </p>
+    {% include 'pesticides/includes/schools-table.html' %}
     {% else %}
-    <p class="has-text-grey">No schools or child care on record here.</p>
+    <p class="has-text-grey">{% if district_demographics %}We don't have school or child care addresses for this district yet.{% else %}No schools or child care on record here.{% endif %}</p>
     {% endif %}
 </section>
 {% endif %}

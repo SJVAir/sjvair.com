@@ -38,23 +38,31 @@ def qs_replace(context, **kwargs):
     return f'?{encoded}' if encoded else request.path
 
 
+# Columns whose natural first click is A-Z rather than largest-first.
+TEXT_SORT_KEYS = ('name', 'city', 'type')
+
+
 @register.simple_tag(takes_context=True)
-def sort_link(context, key, label):
+def sort_link(context, key, label, param='sort'):
     """
     Column header link. Clicking the active column flips direction; clicking
     another column sorts descending for numeric-style keys ('lbs', counts) and
-    ascending for 'name'. Always resets `page`.
+    ascending for text ones. Always resets `page`.
+
+    `param` is the query-string key the sort lives under, and the context key
+    the current sort is read from -- a table with its own sort state on a page
+    that already has one (the district page's schools table) prefixes it.
     """
-    current = context.get('sort') or ''
+    current = context.get(param) or ''
     active = current.lstrip('-') == key
     descending = current.startswith('-')
     if active:
         target = key if descending else f'-{key}'
         icon = 'fa-arrow-down-wide-short' if descending else 'fa-arrow-up-short-wide'
     else:
-        target = 'name' if key == 'name' else f'-{key}'
+        target = key if key in TEXT_SORT_KEYS else f'-{key}'
         icon = 'fa-arrow-up-arrow-down'
-    href = qs_replace(context, sort=target, page=None)
+    href = qs_replace(context, page=None, **{param: target})
     css = 'sort-link is-active' if active else 'sort-link'
     return format_html(
         '<a class="{}" href="{}">{} <span class="icon is-small"><span class="fa-regular {}"></span></span></a>',

@@ -1,42 +1,87 @@
 {% load humanize pesticides_explorer %}
 {% comment %}
-One group of the "Schools & child care in this district" rows. Rendered
-twice per group: the first 15 openly, the rest inside a <details>. `rows` is
-a slice of one group from places.schools_nearby(). CDE writes school names
-properly already, so only the CDSS child care directory (which shouts them)
-is title-cased -- driven off `source`, not the name's case. Every link
-carries the page's scope, so a section page opens on the same year and
-scope as the row.
+The district's schools and child care, as one sortable, filterable table.
+`schools` is places.schools_panel(): every matching row is in the one
+<tbody>, and the rows past the first fifteen carry `is_collapsed` so the
+"Show the other N" control can reveal them in place. The City column is only
+drawn where the district's sites sit in more than one postal city. Every link
+carries the page's scope, so a section page opens on the same year and scope
+as the row.
 {% endcomment %}
+{% with schools_sort=schools.sort %}
+<form method="GET" class="explorer-filters schools-filters" hx-trigger="submit, change delay:250ms">
+    {% include 'pesticides/includes/scope-hidden.html' %}
+    {# Carry the sort through a filter change; the column links set it directly. #}
+    {% if not schools.sort_is_default %}<input type="hidden" name="schools_sort" value="{{ schools.sort }}">{% endif %}
+    <div class="field is-grouped is-grouped-multiline schools-filter-fields">
+        <div class="control has-icons-left">
+            <label class="is-sr-only" for="id_schools_q">Search schools and child care</label>
+            <input id="id_schools_q" class="input is-small" type="search" name="schools_q"
+                value="{{ schools.query }}" placeholder="Search by name"
+                hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
+            <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+        </div>
+        <div class="control">
+            <label class="is-sr-only" for="id_schools_type">Type</label>
+            <div class="select is-small">
+                <select id="id_schools_type" name="schools_type">
+                    {% for option in schools.type_options %}
+                    <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="control">
+            <label class="checkbox is-size-7">
+                <input type="checkbox" name="schools_run_by" value="1"{% if schools.run_by_only %} checked{% endif %}>
+                Run by {{ schools.district_name }} only
+            </label>
+        </div>
+        <div class="control"><noscript><button class="button is-small is-link" type="submit">Apply</button></noscript></div>
+    </div>
+    <p class="is-size-7 has-text-grey schools-count">
+        {{ schools.total|intcomma }} school{{ schools.total|pluralize }} and child care site{{ schools.total|pluralize }}
+        · {{ schools.run_by_count|intcomma }} run by {{ schools.district_name }}{% if schools.is_filtered %}
+        · showing {{ schools.matched|intcomma }}{% endif %}
+    </p>
+</form>
 <div class="table-container">
     <table class="table is-fullwidth is-striped is-hoverable data-table schools-table">
         <thead>
             <tr>
-                <th>School or child care</th>
-                <th>Type</th>
-                <th>City</th>
-                <th class="has-text-right">Lbs within about a mile{% if year_label %} <small class="has-text-grey">{{ year_label }}</small>{% endif %}</th>
-                <th class="has-text-right">Applications</th>
+                <th>{% sort_link 'name' 'School or child care' param='schools_sort' %}</th>
+                <th>{% sort_link 'type' 'Type' param='schools_sort' %}</th>
+                {% if schools.show_city %}<th>{% sort_link 'city' 'City' param='schools_sort' %}</th>{% endif %}
+                <th>Run by</th>
+                <th class="has-text-right">{% sort_link 'lbs' 'Lbs nearby' param='schools_sort' %}</th>
+                <th class="has-text-right">{% sort_link 'applications' 'Applications' param='schools_sort' %}</th>
                 <th>Section</th>
             </tr>
         </thead>
         <tbody>
-            {% for row in rows %}
-            <tr>
-                {% if row.location.source == 'cdss-ccl' %}
-                <td>{{ row.location.name|title_case_name }}</td>
-                <td>{{ row.location.short_type }}</td>
-                <td>{{ row.location.get_city|title_case_name|default:"—" }}</td>
-                {% else %}
-                <td>{{ row.location.name }}</td>
-                <td>{{ row.location.short_type }}</td>
-                <td>{{ row.location.get_city|default:"—" }}</td>
-                {% endif %}
+            {% for row in schools.rows %}
+            <tr{% if row.is_collapsed %} class="is-collapsed"{% endif %}>
+                <td>{{ row.display_name }}</td>
+                <td>{{ row.type_label }}</td>
+                {% if schools.show_city %}<td>{{ row.display_city|default:"—" }}</td>{% endif %}
+                <td>{{ row.run_by_name|default:"—" }}</td>
                 <td class="has-text-right">{{ row.lbs|lbs }}</td>
                 <td class="has-text-right">{{ row.applications|intcomma }}</td>
-                <td>{% if row.section_sqid %}<a href="{% url 'pesticides:section-detail' sqid=row.section_sqid %}{{ scope_qs }}" title="Square-mile section {{ row.section_mtrs }}">Section details</a>{% else %}&mdash;{% endif %}</td>
+                <td>{% if row.section_sqid %}<a href="{% url 'pesticides:section-detail' sqid=row.section_sqid %}{{ scope_qs }}" title="Square-mile section {{ row.section_mtrs }}">{{ row.section_mtrs }}</a>{% else %}&mdash;{% endif %}</td>
             </tr>
+            {% empty %}
+            <tr><td colspan="{% if schools.show_city %}7{% else %}6{% endif %}" class="has-text-centered has-text-grey">
+                No schools match. <a href="{% qs_replace schools_q=None schools_type=None schools_run_by=None %}">Clear the filters</a>
+            </td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+{% if schools.hidden %}
+{# A district can run to a couple of hundred sites; the rest are one click away rather than a page of scrolling. #}
+<button type="button" class="button is-small is-light schools-toggle"
+    data-schools-toggle
+    data-show-label="Show the other {{ schools.hidden|intcomma }}"
+    data-hide-label="Show fewer">Show the other {{ schools.hidden|intcomma }}</button>
+{% endif %}
+{% endwith %}

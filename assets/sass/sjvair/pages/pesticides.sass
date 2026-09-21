@@ -430,6 +430,11 @@ body.pesticides
         @extend .has-text-grey-dark
 
     .stat-row
+        // The strip runs to five or six tiles on a district page; let them
+        // wrap rather than squeezing every label onto two lines.
+        flex-wrap: wrap
+        .level-item
+            min-width: 0
         .heading
             @extend .has-text-grey
             letter-spacing: 0.02em
@@ -438,6 +443,23 @@ body.pesticides
             font-variant-numeric: tabular-nums
         .fraction
             font-variant-numeric: tabular-nums
+        +mobile
+            // Bulma stacks .level-items one per row on mobile, which turns a
+            // six-tile strip into a screenful. Two columns instead.
+            display: grid
+            grid-template-columns: repeat(2, 1fr)
+            gap: 0.75rem 0.5rem
+            .level-item
+                margin-bottom: 0
+
+    // A "where this came from" stamp beside a heading, not a scope year.
+    .source-stamp
+        @extend .has-text-grey
+        font-size: $size-7
+        font-weight: 400
+        text-transform: none
+        letter-spacing: 0.01em
+        white-space: nowrap
 
     .find-area
         // The results list is a sibling of the field, not a child, so the
@@ -606,17 +628,35 @@ body.pesticides
         .range
             font-variant-numeric: tabular-nums
 
-    // "Show all 174" under the first fifteen rows of a district's sites.
-    .schools-more
-        summary
-            cursor: pointer
-            color: $link
-            font-size: $size-7
-            margin-bottom: 0.5rem
-            &:hover
-                text-decoration: underline
-        &[open] summary
-            margin-bottom: 0.75rem
+    // The district page's schools chapter: the demographics strip reads as the
+    // chapter's intro rather than its own boxed panel, the filter bar sits
+    // tight above the table, and everything past the first fifteen rows is
+    // hidden until the toggle reveals it.
+    .district-demographics
+        margin-bottom: 1.25rem
+        .stat-row
+            margin-bottom: 0.25rem
+
+    .schools-filters
+        padding: 0
+        box-shadow: none
+        background: transparent
+        margin-bottom: 0.5rem
+        .schools-filter-fields
+            margin-bottom: 0.25rem
+            .control
+                margin-bottom: 0.5rem
+        .schools-count
+            margin-bottom: 0
+
+    .schools-table
+        tbody tr.is-collapsed
+            display: none
+            &.is-revealed
+                display: table-row
+
+    .schools-toggle
+        margin-top: 0.25rem
 
     .month-bars
         display: flex

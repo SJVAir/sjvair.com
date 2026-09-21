@@ -49,7 +49,26 @@ class AreaTests(RollupTestMixin, TestCase):
         assert ctx['map_config']['year'] == 'all'
         assert ctx['map_config']['year_label'] == '2022\u20132023'
         # Built once and cached; a later import is what clears it.
-        assert cache.get(stats.all_years_key('place', 'region:9001')) is not None
+        assert cache.get(stats.all_years_key('place-v2', 'region:9001')) is not None
+
+    def test_place_page_shows_four_cards(self):
+        fresno = Region.objects.get(pk=9001)
+        url = reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'})
+
+        response = self.client.get(url, {'year': 2023})
+
+        assert response.context['chemicals_card']['title'] == 'Top chemicals'
+        concern_card = response.context['chemicals_of_concern_card']
+        assert concern_card['title'] == 'Top chemicals of concern'
+        # Only the of-concern chemicals, in pounds order; SULFUR is the
+        # heaviest here and isn't one.
+        assert [row.obj.name for row in concern_card['rows']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
+        # "Show all" narrows the records browser the way the card does.
+        assert 'concern=1' in concern_card['show_all_url']
+        assert 'concern=1' not in response.context['chemicals_card']['show_all_url']
+
+        html = response.content.decode()
+        assert html.count('class="card related-card"') == 4
 
     def test_place_context_active_notices(self):
         PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326), mtrs_id=9101)
@@ -309,6 +328,35 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert sorted(row['location'].pk for row in groups['others']) == sorted(
             [self.away.pk, charter.pk, private.pk])
 
+    def test_a_school_run_by_the_district_elsewhere_is_still_run_by_it(self):
+        # A charter this district runs but that stands in another district's
+        # boundary: the FK points elsewhere, the CDS code doesn't.
+        elsewhere = make_district('Fowler Unified', 'fowler-unified', '10621990000000',
+            geometry=None)
+        away_charter = Location.objects.create(
+            type=Location.Type.PUBLIC_SCHOOL, name='Selma Charter Annex',
+            external_id='annex', source='cde-public',
+            metadata={'district_code': '1062117'},
+            point=Point(-121.5, 38.5, srid=4326),
+            school_district=elsewhere,
+        )
+
+        groups = places.schools_nearby(self.district, 2023)
+
+        assert away_charter.pk in [row['location'].pk for row in groups['run_by']]
+        assert away_charter.pk not in [row['location'].pk for row in groups['others']]
+
+    def test_a_school_in_the_boundary_run_by_another_district_is_an_other(self):
+        charter = self.make_location(
+            'County Office Charter', type=Location.Type.PUBLIC_SCHOOL,
+            source='cde-public', metadata={'district_code': '1062166'},
+        )
+
+        groups = places.schools_nearby(self.district, 2023)
+
+        assert charter.pk in [row['location'].pk for row in groups['others']]
+        assert charter.pk not in [row['location'].pk for row in groups['run_by']]
+
     def test_schools_nearby_ranks_by_pounds(self):
         heavier = self.make_location(
             'Selma Elementary', type=Location.Type.PUBLIC_SCHOOL, source='cde-public',
@@ -319,22 +367,29 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert [row['location'].pk for row in groups['run_by']] == [heavier.pk, self.inside.pk]
         assert groups['run_by'][0]['lbs'] == 695.0 and groups['run_by'][0]['applications'] == 6
         assert groups['run_by'][0]['section_mtrs'] == 'MDM-T14S-R20E-01'
-        assert groups['others'] == [{
-            'location': self.away, 'lbs': 0, 'applications': 0,
-            'section_sqid': None, 'section_mtrs': None,
-        }]
+        entry = groups['others'][0]
+        assert entry['location'] == self.away
+        assert (entry['lbs'], entry['applications']) == (0, 0)
+        assert entry['section_sqid'] is None and entry['section_mtrs'] is None
+        assert entry['display_name'] == 'Away Child Care'
+        assert entry['is_run_by'] is False
 
-    def test_page_renders_the_panel(self):
+    def test_page_renders_one_table(self):
         response = self.client.get(self.url)
         assert response.status_code == 200
         html = response.content.decode()
+        chapter = html.split('class="schools-nearby')[1]
+        assert chapter.count('<table') == 1
         assert 'Schools &amp; child care in this district' in html
-        assert 'Run by Selma Unified' in html
-        assert 'Other schools and child care in the area' in html
         assert 'Selma High' in html and 'Away Child Care' in html
         assert 'Public school' in html and 'Child care' in html
         assert reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid}) in html
-        assert [row['lbs'] for row in response.context['schools_nearby']['run_by']] == [695.0]
+        assert [row['lbs'] for row in response.context['schools']['rows']] == [695.0, 0]
+
+    def test_the_section_column_links_by_its_mtrs(self):
+        html = self.client.get(self.url).content.decode()
+        assert '>MDM-T14S-R20E-01</a>' in html
+        assert 'Section details' not in html
 
     def test_panel_titlecases_only_the_child_care_names(self):
         self.inside.name = 'Selma High'
@@ -348,7 +403,6 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert '<td>Away Child Care</td>' in html
         assert 'AWAY CHILD CARE' not in html
         assert '<td>Selma High</td>' in html
-        assert html.count('<td>Selma</td>') == 2
 
     def test_panel_leaves_a_shouted_cde_name_alone(self):
         self.inside.name = 'SELMA HIGH'
@@ -357,42 +411,131 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert '<td>SELMA HIGH</td>' in html
 
+    def test_the_city_column_is_dropped_when_every_site_shares_one(self):
+        # The postal city is shouted in the CDSS directory and title-cased for
+        # display, so the comparison has to be case-insensitive.
+        self.inside.city_name = 'Selma'
+        self.inside.save()
+        self.away.city_name = 'SELMA'
+        self.away.save()
+        cache.clear()
+
+        groups = places.schools_nearby(self.district, 2023)
+        assert groups['show_city'] is False
+
+        html = self.client.get(self.url).content.decode()
+        assert '<td>Selma</td>' not in html
+
+    def test_the_city_column_shows_when_the_sites_are_in_more_than_one(self):
+        self.inside.city_name = 'Selma'
+        self.inside.save()
+        self.away.city_name = 'FOWLER'
+        self.away.save()
+        cache.clear()
+
+        groups = places.schools_nearby(self.district, 2023)
+        assert groups['show_city'] is True
+
+        html = self.client.get(self.url).content.decode()
+        assert '<td>Selma</td>' in html and '<td>Fowler</td>' in html
+
+    def test_public_schools_name_the_district_that_runs_them(self):
+        self.inside.metadata = {'district_code': '1062117', 'district_name': 'Selma Unified'}
+        self.inside.save()
+        cache.clear()
+        html = self.client.get(self.url).content.decode()
+        assert '<td>Selma Unified</td>' in html
+        # Child care has no administering district.
+        assert '<td>&mdash;</td>' in html or '<td>—</td>' in html
+
     def test_panel_section_links_carry_the_scope(self):
         section_url = reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid})
         html = self.client.get(self.url, {'year': '2022', 'concern': '1'}).content.decode()
         assert f'{section_url}?year=2022&amp;concern=1' in html
 
-    def test_panel_caps_each_group_separately(self):
+    def test_rows_past_the_cap_render_collapsed(self):
         for index in range(20):
             self.make_location(f'EXTRA CARE {index:02d}')
-        for index in range(20):
-            self.make_location(
-                f'Extra School {index:02d}', type=Location.Type.PUBLIC_SCHOOL,
-                source='cde-public', metadata={'district_code': '1062117'},
-            )
         cache.clear()
-        html = self.client.get(self.url).content.decode()
-        # 21 run by the district, 21 others: each group caps at 15.
-        assert html.count('Show all 21') == 2
-        assert html.count('schools-table') == 4
+
+        response = self.client.get(self.url)
+        rows = response.context['schools']['rows']
+
+        assert len(rows) == 22
+        assert [row['is_collapsed'] for row in rows[:15]] == [False] * 15
+        assert all(row['is_collapsed'] for row in rows[15:])
+        html = response.content.decode()
+        # Every row is in the one tbody; the rest are a click away.
         assert html.count('Extra Care') == 20
-        assert html.count('Extra School') == 20
-        open_rows = html.split('<details class="schools-more">')
-        assert open_rows[0].count('Extra School') == 14  # plus Selma High makes 15
+        assert html.count('class="is-collapsed"') == 7
+        assert 'Show the other 7' in html
 
-    def test_empty_group_says_so(self):
-        self.inside.delete()
-        cache.clear()
+    def test_no_toggle_when_everything_fits(self):
         html = self.client.get(self.url).content.decode()
-        assert 'No schools are run by this district in the data.' in html
-        assert 'Away Child Care' in html
+        assert 'data-schools-toggle' not in html
 
-    def test_empty_other_group_says_so(self):
-        self.away.delete()
+    def test_sorting_by_name(self):
+        rows = self.client.get(self.url, {'schools_sort': 'name'}).context['schools']['rows']
+        assert [row['display_name'] for row in rows] == ['Away Child Care', 'Selma High']
+
+        rows = self.client.get(self.url, {'schools_sort': '-name'}).context['schools']['rows']
+        assert [row['display_name'] for row in rows] == ['Selma High', 'Away Child Care']
+
+    def test_sorting_by_type(self):
+        rows = self.client.get(self.url, {'schools_sort': 'type'}).context['schools']['rows']
+        assert [row['type_label'] for row in rows] == ['Child care', 'Public school']
+
+    def test_sorting_by_city(self):
+        self.inside.city_name = 'Selma'
+        self.inside.save()
+        self.away.city_name = 'FOWLER'
+        self.away.save()
         cache.clear()
+        rows = self.client.get(self.url, {'schools_sort': 'city'}).context['schools']['rows']
+        assert [row['display_city'] for row in rows] == ['Fowler', 'Selma']
+
+    def test_sorting_by_lbs_and_applications(self):
+        for key, expected in (('lbs', [0, 695.0]), ('-lbs', [695.0, 0])):
+            rows = self.client.get(self.url, {'schools_sort': key}).context['schools']['rows']
+            assert [row['lbs'] for row in rows] == expected
+
+        rows = self.client.get(self.url, {'schools_sort': 'applications'}).context['schools']['rows']
+        assert [row['applications'] for row in rows] == [0, 6]
+
+    def test_an_unknown_sort_falls_back_to_the_default(self):
+        panel = self.client.get(self.url, {'schools_sort': 'lol'}).context['schools']
+        assert panel['sort'] == '-lbs'
+        assert [row['lbs'] for row in panel['rows']] == [695.0, 0]
+
+    def test_the_name_search_filters_the_table(self):
+        panel = self.client.get(self.url, {'schools_q': 'away'}).context['schools']
+        assert [row['display_name'] for row in panel['rows']] == ['Away Child Care']
+        assert panel['total'] == 2 and panel['matched'] == 1
+
+    def test_the_type_filter_narrows_the_table(self):
+        panel = self.client.get(self.url, {'schools_type': 'child_care'}).context['schools']
+        assert [row['display_name'] for row in panel['rows']] == ['Away Child Care']
+
+        # An unknown type is ignored rather than emptying the table.
+        panel = self.client.get(self.url, {'schools_type': 'nope'}).context['schools']
+        assert panel['type'] == '' and panel['matched'] == 2
+
+    def test_the_run_by_filter_keeps_only_the_districts_own_schools(self):
+        panel = self.client.get(self.url, {'schools_run_by': '1'}).context['schools']
+        assert [row['display_name'] for row in panel['rows']] == ['Selma High']
+        assert panel['run_by_only'] is True
+
+    def test_filters_that_match_nothing_say_so(self):
+        response = self.client.get(self.url, {'schools_q': 'zzz'})
+        assert response.context['schools']['rows'] == []
+        html = response.content.decode()
+        assert 'No schools match.' in html
+        assert 'Clear the filters' in html
+
+    def test_the_filter_bar_counts_the_sites(self):
         html = self.client.get(self.url).content.decode()
-        assert 'Nothing else in the area.' in html
-        assert 'Selma High' in html
+        assert '2 schools and child care sites' in html
+        assert '1 run by Selma Unified' in html
 
     def test_page_opens_with_the_school_markers_on(self):
         response = self.client.get(self.url)
@@ -401,12 +544,20 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         assert 'data-show-locations="1"' in html
         assert 'name="locations" checked' in html
 
-    def test_empty_district_says_so(self):
+    def test_a_district_with_demographics_but_no_addresses_says_so(self):
         Location.objects.all().delete()
         cache.clear()
         html = self.client.get(self.url).content.decode()
+        assert "We don't have school or child care addresses for this district yet." in html
+        assert '<table' not in html.split('class="schools-nearby')[1]
+
+    def test_a_district_with_neither_says_so(self):
+        Location.objects.all().delete()
+        self.district.metadata = {}
+        self.district.save()
+        cache.clear()
+        html = self.client.get(self.url).content.decode()
         assert 'No schools or child care on record here.' in html
-        assert 'Run by Selma Unified' not in html
 
     def test_schools_nearby_follows_the_concern_scope(self):
         # Section 9101's concern pounds only (170); the neighbouring
@@ -418,20 +569,56 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         data = places.district_demographics(self.district)
         assert data['enrollment'] == 44091
         assert data['year'] == '2025-2026'
+        assert data['year_label'] == 'CDE, 2025–26'
         assert [(m['label'], m['pct']) for m in data['metrics']] == [
-            ('Hispanic or Latino', 42.4),
+            ('Hispanic/Latino', 42.4),
             ('English learners', 4.3),
-            ('Socioeconomically disadvantaged', 53.9),
-            ('Migrant', 0.1),
+            ('Low-income students', 53.9),
+            ('Migrant students', 0.1),
         ]
 
     def test_demographics_strip_renders(self):
         html = self.client.get(self.url).content.decode()
         assert 'Who goes to school here' in html
-        assert '2025-2026' in html
+        # A source stamp, not the scope year.
+        assert 'CDE, 2025–26' in html
         assert '44,091' in html
-        assert 'Socioeconomically disadvantaged' in html and '53.9%' in html
-        assert 'Migrant' in html and '0.1%' in html
+        assert 'Low-income students' in html and '53.9%' in html
+        assert 'Migrant students' in html and '0.1%' in html
+        assert 'California Department of Education' in html
+        assert 'https://www.cde.ca.gov/ds/si/ds/pubschls.asp' in html
+
+    def test_a_whole_percent_loses_its_trailing_zero(self):
+        self.district.metadata = {
+            'enrollment': {'total': 100},
+            'subgroups': {'migrant': {'pct': 54.0}},
+        }
+        self.district.save()
+        cache.clear()
+        html = self.client.get(self.url).content.decode()
+        assert '54%' in html and '54.0%' not in html
+
+    def test_demographics_strip_without_an_enrollment_total(self):
+        self.district.metadata = {'subgroups': {'migrant': {'pct': 0.1}}}
+        self.district.save()
+        cache.clear()
+
+        data = places.district_demographics(self.district)
+        assert data['enrollment'] is None
+        assert [m['label'] for m in data['metrics']] == ['Migrant students']
+
+        html = self.client.get(self.url).content.decode()
+        assert 'Who goes to school here' in html
+        assert 'Migrant students' in html
+        assert 'Students enrolled' not in html
+
+    def test_demographics_year_is_blank_without_a_boundary(self):
+        district = make_district('No Boundary Unified', 'no-boundary-unified',
+            '10621990000000', geometry=None, enrollment={'total': 10})
+
+        data = places.district_demographics(district)
+
+        assert data['year'] == '' and data['year_label'] == ''
 
     def test_demographics_strip_hides_without_metadata(self):
         self.district.metadata = {}
@@ -500,3 +687,15 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         response = self.client.get(url, {'concern': '1'})
         assert response.context['totals']['lbs'] == 170.0
         assert response.context['concern'] is True
+
+    def test_the_concern_card_drops_out_under_the_scope(self):
+        # Every card is already of concern, so a dedicated one would just
+        # restate the chemicals card -- which says what it now is instead.
+        url = reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})
+
+        response = self.client.get(url, {'concern': '1'})
+
+        assert 'chemicals_of_concern_card' not in response.context
+        assert 'top_chemicals_of_concern' not in response.context
+        assert response.context['chemicals_card']['title'] == 'Top chemicals of concern'
+        assert response.content.decode().count('class="card related-card"') == 3

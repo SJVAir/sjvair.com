@@ -525,7 +525,12 @@ def concern_notices(notices):
     return notices.filter(chemicals__in=of_concern_chemicals()).distinct()
 
 
-def _top_chemicals_of_concern(top_chemicals, uses, year, limit=10, all_years=False):
+def top_chemicals_of_concern(top_chemicals, uses, year, limit=10, all_years=False):
+    """
+    The heaviest chemicals of concern, for the board beside "top chemicals".
+    `top_chemicals` is an already-fetched group-by (the landing and place
+    pages both pull 50), so the common case costs no extra query.
+    """
     # is_of_concern is derived in Python, so filter the already-fetched top-50
     # group-by; fall back to a category/IARC-restricted query if that pass
     # comes up short (a concern chemical outside the top 50 by pounds).
@@ -671,7 +676,7 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
     # Under the concern scope every leaderboard is already of concern, so
     # the dedicated one would just restate the top chemicals.
     if not concern:
-        data['top_chemicals_of_concern'] = _top_chemicals_of_concern(
+        data['top_chemicals_of_concern'] = top_chemicals_of_concern(
             top_chemicals_all, uses, year, all_years=all_years,
         )
     return data

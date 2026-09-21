@@ -57,6 +57,27 @@
     var active = open.classList.toggle('is-active');
     trigger.setAttribute('aria-expanded', active ? 'true' : 'false');
   });
+  // The district page's schools table renders every matching row and hides
+  // the ones past the first fifteen; this reveals them in place. Delegated
+  // from the document so it survives the htmx swaps a filter or sort makes,
+  // and driven off the button's own data attributes so a re-render comes
+  // back collapsed without any state to restore.
+  document.addEventListener('click', function (evt) {
+    var button = evt.target.closest ? evt.target.closest('[data-schools-toggle]') : null;
+    if (!button) return;
+    var section = button.closest('.schools-nearby');
+    var table = section ? section.querySelector('.schools-table') : null;
+    if (!table) return;
+    var expanded = button.getAttribute('aria-expanded') === 'true';
+    table.querySelectorAll('tbody tr.is-collapsed').forEach(function (row) {
+      row.classList.toggle('is-revealed', !expanded);
+    });
+    button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    button.textContent = expanded
+      ? button.getAttribute('data-show-label')
+      : button.getAttribute('data-hide-label');
+  });
+
   document.addEventListener('keydown', function (evt) {
     if (evt.key !== 'Escape') return;
     document.querySelectorAll('.explorer-scope-picker.is-active').forEach(function (picker) {
@@ -85,12 +106,14 @@
 
   // Typing in the filter search box swaps the region out from under the input
   // that has focus, so put the caret back where the user left it.
-  var refocusSearch = false;
+  var refocusId = null;
   var pathBeforeRequest = window.location.pathname;
 
   document.body.addEventListener('htmx:beforeRequest', function (evt) {
     var elt = evt.detail && evt.detail.elt;
-    refocusSearch = !!(elt && elt.id === 'id_q');
+    // Any search box in a filter form, not just the page-level one: the
+    // district page's schools table has its own.
+    refocusId = (elt && elt.tagName === 'INPUT' && elt.type === 'search' && elt.id) ? elt.id : null;
     pathBeforeRequest = window.location.pathname;
   });
 
@@ -99,9 +122,9 @@
     if (window.location.pathname !== pathBeforeRequest) {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }
-    if (!refocusSearch) return;
-    refocusSearch = false;
-    var input = document.getElementById('id_q');
+    if (!refocusId) return;
+    var input = document.getElementById(refocusId);
+    refocusId = null;
     if (!input) return;
     input.focus();
     try {

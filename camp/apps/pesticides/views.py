@@ -1519,15 +1519,27 @@ def _section_card(title, kind, rows, show_all_url):
 
 
 def _place_cards(context):
-    """chemicals_card/products_card/commodities_card for place.html, all
-    pointing "Show all" at the area's records browser -- there's no single
-    entity to filter by, same as a section page's top lists."""
+    """
+    The place page's top lists, all pointing "Show all" at the area's records
+    browser -- there's no single entity to filter by, same as a section
+    page's top lists. The chemicals-of-concern card is only built outside the
+    concern scope; under it every card is already of concern and the
+    chemicals card says so in its title instead.
+    """
     records_url = context['records_url']
-    return {
-        'chemicals_card': _section_card('Top chemicals', 'chemicals', context['top_chemicals'], records_url),
+    of_concern = context.get('top_chemicals_of_concern')
+    cards = {
         'products_card': _section_card('Top products', 'products', context['top_products'], records_url),
+        'chemicals_card': _section_card(
+            'Top chemicals' if of_concern is not None else 'Top chemicals of concern',
+            'chemicals', context['top_chemicals'], records_url),
         'commodities_card': _section_card('Top commodities', 'commodities', context['top_commodities'], records_url),
     }
+    if of_concern is not None:
+        cards['chemicals_of_concern_card'] = _section_card(
+            'Top chemicals of concern', 'chemicals', of_concern,
+            context['concern_records_url'])
+    return cards
 
 
 class SectionDetail(vanilla.DetailView):
@@ -1885,7 +1897,7 @@ class NearMe(vanilla.TemplateView):
         label = (self.request.GET.get('label') or f'{self.lat:.3f}, {self.lng:.3f}')[:120]
         concern = scope_concern(self.request)
         area = places.point_area(self.lat, self.lng, self.radius, label=label)
-        context = places.place_context(area, year, all_years, concern)
+        context = places.place_context(area, year, all_years, concern, params=self.request.GET)
         radius_options = [
             {'miles': miles, 'url': self._radius_url(miles), 'current': miles == self.radius}
             for miles in places.RADIUS_CHOICES
@@ -1932,7 +1944,7 @@ class RegionPage(vanilla.TemplateView):
         year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         concern = scope_concern(self.request)
         area = places.region_area(self.region)
-        context = places.place_context(area, year, all_years, concern)
+        context = places.place_context(area, year, all_years, concern, params=self.request.GET)
         within = places.regions_within(self.region) if self.region.boundary_id else None
         return super().get_context_data(
             section=None,
