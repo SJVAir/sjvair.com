@@ -7,6 +7,8 @@ from django.test import TestCase, RequestFactory, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from resticus import http
+
 from camp.api.v2.monitors.endpoints import MonitorList
 from camp.utils.test import debug, get_response_data
 from camp.utils.views import CachedEndpointMixin
@@ -98,6 +100,46 @@ class CachedEndpointTests(TestCase):
         assert resp4.status_code == 200
         assert resp4['X-Cache-Status'] == 'HIT'
         assert q4 == q2
+
+    def test_failures_are_not_cached(self):
+        # A rejected request used to be cached like any other response, which
+        # pinned the error to that querystring for the whole timeout -- on a
+        # day-long cache, long after the endpoint would have answered.
+        calls = []
+
+        class Base:
+            def get(self, request, *args, **kwargs):
+                calls.append(1)
+                if request.GET.get('bad'):
+                    return http.Http400({'error': 'nope'})
+                return {'ok': True}
+
+        class Endpoint(CachedEndpointMixin, Base):
+            cache_timeout = 600
+
+            def __init__(self, request):
+                self.request = request
+                self.kwargs = {}
+
+            def is_streaming(self):
+                return False
+
+        request = self.factory.get('/x/?bad=1')
+        first = Endpoint(request).get(request)
+        assert first.status_code == 400
+        assert first['X-Cache-Status'] == 'MISS'
+
+        # Same querystring again: recomputed rather than served from cache.
+        second = Endpoint(request).get(request)
+        assert second.status_code == 400
+        assert second['X-Cache-Status'] == 'MISS'
+        assert len(calls) == 2
+
+        # A successful result still caches.
+        ok_request = self.factory.get('/x/')
+        assert Endpoint(ok_request).get(ok_request)['X-Cache-Status'] == 'MISS'
+        assert Endpoint(ok_request).get(ok_request)['X-Cache-Status'] == 'HIT'
+        assert len(calls) == 3
 
     def test_prewarm(self):
         results = CachedEndpointMixin.prewarm_all_registered()

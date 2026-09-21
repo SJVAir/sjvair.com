@@ -87,8 +87,22 @@ class CachedEndpointMixin:
 
         status = 'REFRESH' if warm else 'BYPASS' if clear else 'MISS'
         response = super().get(request, *args, **kwargs)
-        cache.set(cache_key, response, self.cache_timeout)
+        if self.is_cacheable(response):
+            cache.set(cache_key, response, self.cache_timeout)
         return self._finalize_response(response, status)
+
+    def is_cacheable(self, response) -> bool:
+        """
+        Don't cache a failure. An endpoint that rejects a request -- a bad
+        parameter, a bbox it won't serve -- returns a 4xx/5xx response, and
+        caching that pins the error to that querystring for the whole
+        timeout (a day, on some endpoints), so the caller keeps being told no
+        long after the endpoint would answer. A plain dict result is data,
+        not a response, and always caches.
+        """
+        if isinstance(response, (HttpResponse, StreamingHttpResponse)):
+            return response.status_code < 400
+        return True
 
     def get_view_cache_key(self) -> str:
         """
