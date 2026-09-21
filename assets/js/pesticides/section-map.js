@@ -887,7 +887,7 @@
   };
 
   // Keys whose change means the data on the map is different.
-  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county'];
+  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'concern'];
 
   // Take over a freshly rendered container (an htmx swap put a new page in
   // place): move this live map into its slot, read its data attributes, and
@@ -1198,6 +1198,7 @@
       product: this.data.product,
       commodity: this.data.commodity,
       county: this.data.county,
+      concern: this.data.concern,
     };
   };
 

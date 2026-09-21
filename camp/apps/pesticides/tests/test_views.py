@@ -944,3 +944,48 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         response = self.client.get(reverse('pesticides:map'), {'concern': '1'})
         assert response.context['map_config']['concern'] == '1'
         assert self.client.get(reverse('pesticides:map')).context['map_config']['concern'] == ''
+
+    def test_scope_bar_toggle_reflects_and_flips_the_scope(self):
+        url = reverse('pesticides:chemical-list')
+        html = self.client.get(url).content.decode()
+        assert 'explorer-scope-toggle' in html
+        assert 'Chemicals of concern' in html
+        assert 'data-tooltip="Prop 65, CARB toxic air contaminants, IARC 1/2A/2B"' in html
+        assert 'explorer-scope-toggle is-set' not in html
+        assert 'aria-pressed="false"' in html
+        assert 'href="?concern=1"' in html
+
+        html = self.client.get(url, {'concern': '1'}).content.decode()
+        assert 'explorer-scope-toggle is-set' in html
+        assert 'aria-pressed="true"' in html
+        # Turning it off clears the param, keeping the rest of the scope.
+        assert 'href="?"' in html
+        html = self.client.get(url, {'concern': '1', 'county': 'kern'}).content.decode()
+        assert 'href="?county=kern"' in html
+
+    def test_filter_forms_carry_the_scope_as_a_hidden_input(self):
+        html = self.client.get(reverse('pesticides:chemical-list'), {'concern': '1'}).content.decode()
+        assert '<input type="hidden" name="concern" value="1">' in html
+        html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
+        assert 'name="concern"' not in html
+
+    def test_map_template_carries_the_scope_as_a_data_attribute(self):
+        html = self.client.get(reverse('pesticides:map'), {'concern': '1'}).content.decode()
+        assert 'data-concern="1"' in html
+        html = self.client.get(reverse('pesticides:map')).content.decode()
+        assert 'data-concern=""' in html
+
+    def test_landing_hides_the_of_concern_leaderboard_under_the_scope(self):
+        html = self.client.get(reverse('pesticides:home')).content.decode()
+        assert 'Most applied chemicals of concern' in html
+        html = self.client.get(reverse('pesticides:home'), {'concern': '1'}).content.decode()
+        assert 'Most applied chemicals of concern' not in html
+        assert 'Most applied chemicals' in html
+
+    def test_excluded_chemical_page_explains_itself(self):
+        sulfur = Chemical.objects.get(name='SULFUR')
+        note = "so the chemicals-of-concern scope doesn't narrow this page"
+        html = self.client.get(sulfur.get_absolute_url(), {'concern': '1'}).content.decode()
+        assert note in html
+        html = self.client.get(sulfur.get_absolute_url()).content.decode()
+        assert note not in html

@@ -15,6 +15,12 @@
         The applications are real and are counted; no pounds are reported for them, so this entry is left out of chemical rankings and counts.
     </div>
     {% endif %}
+    {% if concern_excluded %}
+    <div class="notification is-light placeholder-note">
+        <strong>This chemical isn't on the Prop 65, CARB toxic air contaminant or IARC lists,</strong>
+        so the chemicals-of-concern scope doesn't narrow this page.
+    </div>
+    {% endif %}
     {{ block.super }}
 {% endblock %}
 {% block badges %}

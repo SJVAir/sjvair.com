@@ -56,11 +56,13 @@
 {% endif %}
 
 
-{# Four boards, two by two; products before chemicals. #}
+{# Four boards, two by two; products before chemicals. Under the
+   chemicals-of-concern scope every board is already of concern, so that
+   board drops out and the remaining three lay out 2 + 1. #}
 <div class="columns leaderboards is-multiline">
     <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied products' rows=top_products kind='products' %}</div>
     <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals' rows=top_chemicals kind='chemicals' %}</div>
-    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals of concern' rows=top_chemicals_of_concern kind='chemicals' %}</div>
+    {% if not concern %}<div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals of concern' rows=top_chemicals_of_concern kind='chemicals' %}</div>{% endif %}
     <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most treated commodities' rows=top_commodities kind='commodities' %}</div>
 </div>
 

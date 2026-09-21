@@ -96,6 +96,9 @@ body.pesticides
         &.is-notices
             --fa-primary-color: #d35400
             --fa-secondary-color: #ffc078
+        &.is-concern
+            --fa-primary-color: #d35400
+            --fa-secondary-color: #ffc078
     // On the blue hero the dark primaries vanish, so inactive tabs use a
     // white primary with the section's accent as the secondary.
     .hook .explorer-nav li:not(.is-active) .explorer-icon
@@ -151,6 +154,14 @@ body.pesticides
     .explorer-icon.is-scope
         --fa-primary-color: #{$link}
         --fa-secondary-color: #{$grey-light}
+    // The chemicals-of-concern toggle sits with the pickers; when it's on it
+    // takes the notices orange, the way the map toolbar's set filters take blue.
+    .explorer-scope-toggle
+        background-color: $white
+        border-color: $grey-lighter
+        &.is-set
+            border-color: #d35400
+            color: #d35400
 
     // The by-year trend: a server-rendered line, no axes, no grid -- the
     // table under it carries the numbers.

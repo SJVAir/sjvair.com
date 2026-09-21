@@ -235,7 +235,7 @@
     if (this.input) this.input.setAttribute('aria-expanded', 'true');
   };
 
-  // The page's year and county, so the suggestions are names with use in
+  // The page's year, county and concern scope, so the suggestions are names with use in
   // the same scope the list shows: the enclosing form's fields when it has
   // them (the lists), else the page's ?year=.
   EntityPicker.prototype.scopeParams = function () {
@@ -255,6 +255,17 @@
     if (year) params += '&year=' + encodeURIComponent(year);
     var county = form && form.elements.county ? form.elements.county.value : '';
     if (county) params += '&county=' + encodeURIComponent(county);
+    // The chemicals-of-concern scope, from the same three places as the year.
+    var concern = form && form.elements.concern ? form.elements.concern.value : '';
+    if (!concern) {
+      var concernMatch = /[?&]concern=([^&]+)/.exec(window.location.search || '');
+      concern = concernMatch ? decodeURIComponent(concernMatch[1]) : '';
+    }
+    if (!concern) {
+      var concernMap = document.querySelector('.section-map[data-concern]');
+      concern = concernMap ? concernMap.dataset.concern : '';
+    }
+    if (concern) params += '&concern=' + encodeURIComponent(concern);
     return params;
   };
 

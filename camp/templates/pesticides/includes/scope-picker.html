@@ -50,4 +50,17 @@ year_options (notices), the county picker where it passes no county_options
         </div>
     </div>
     {% endif %}
+    {% comment %}
+    The chemicals-of-concern scope: one button, on every explorer page, that
+    adds or clears `?concern=1`. It narrows the whole explorer, so it lives in
+    the scope bar with the year and county pickers rather than in a page's
+    filters.
+    {% endcomment %}
+    <a class="button is-small explorer-scope-toggle{% if concern %} is-set{% endif %} has-tooltip-multiline has-tooltip-arrow"
+       href="{% if concern %}{% qs_replace concern=None page=None %}{% else %}{% qs_replace concern=1 page=None %}{% endif %}"
+       aria-pressed="{% if concern %}true{% else %}false{% endif %}"
+       data-tooltip="Prop 65, CARB toxic air contaminants, IARC 1/2A/2B">
+        <span class="icon"><span class="fa-duotone fa-fw fa-triangle-exclamation explorer-icon is-concern" aria-hidden="true"></span></span>
+        <span class="explorer-scope-label">Chemicals of concern</span>
+    </a>
 </div>
