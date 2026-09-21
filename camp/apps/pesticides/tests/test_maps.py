@@ -87,6 +87,11 @@ class CountyMapTests(TestCase):
             {'county_id': 9001, 'county_name': 'Fresno County', 'county_slug': 'fresno', 'lbs': 150.0, 'acres': 15, 'applications': 2},
         ]
 
+    def test_counties_link_to_their_pages(self):
+        html = maps.county_map(self.rows, query='year=2020')
+        fresno = Region.objects.get(pk=9001)
+        assert f'"url": "/tools/pesticides/region/{fresno.sqid}/{fresno.slug}/?year=2020"' in html
+
     def test_renders_all_counties(self):
         html = maps.county_map(self.rows)
         assert 'admin-leaflet-map' in html

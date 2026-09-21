@@ -96,6 +96,14 @@
         });
       },
       onEachFeature: function (feature, featureLayer) {
+        // An area with a url is a link: pointer cursor, click to follow.
+        if (feature.properties.url && featureLayer.on) {
+          featureLayer.on('click', function () { window.location.assign(feature.properties.url); });
+          featureLayer.on('add', function () {
+            var el = featureLayer.getElement && featureLayer.getElement();
+            if (el) el.style.cursor = 'pointer';
+          });
+        }
         if (feature.properties.label) {
           // Non-permanent tooltips anchor at the feature's center on hover
           // (sticky is left off so they don't follow the cursor).

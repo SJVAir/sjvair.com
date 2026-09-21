@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.core.cache import cache
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils.safestring import mark_safe
 
 from camp.apps.regions.models import Region
@@ -113,18 +114,24 @@ def quantile_classes(values_by_key, classes=CLASSES):
     return result
 
 
-def county_map(by_county, width=600, height=420):
+def county_map(by_county, width=600, height=420, query=''):
+    """
+    The county choropleth. Each county links to its page; `query` (a scope
+    query string such as 'year=2020') is carried on those links.
+    """
     geometries = county_geometries()
     if not geometries:
         return None
-    names = dict(Region.objects.filter(pk__in=geometries).values_list('pk', 'name'))
+    counties = {region.pk: region for region in Region.objects.filter(pk__in=geometries)}
     lbs_by_pk = {row['county_id']: (row['lbs'] or 0) for row in by_county}
     classes = quantile_classes(lbs_by_pk)
 
     lmap = leaflet.LeafletMap(width=width, height=height, padding=10)
     for pk, geojson in geometries.items():
+        county = counties[pk]
         lbs = lbs_by_pk.get(pk)
-        label = f'{names[pk]}: {int(round(lbs)):,} lbs' if lbs else f'{names[pk]}: no data'
+        label = f'{county.name}: {int(round(lbs)):,} lbs' if lbs else f'{county.name}: no data'
+        url = reverse('pesticides:region', kwargs={'sqid': county.sqid, 'slug': county.slug})
         lmap.add(leaflet.Area(
             geometry=GEOSGeometry(geojson, srid=4326),
             fill_color=classes.color_for(lbs),
@@ -133,6 +140,7 @@ def county_map(by_county, width=600, height=420):
             border_width=1,
             label=label,
             label_on_hover=True,
+            url=f'{url}?{query}' if query else url,
         ))
     legend = render_to_string('pesticides/includes/county-legend.html', {
         'legend': classes.legend(),

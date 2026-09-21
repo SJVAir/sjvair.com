@@ -491,7 +491,7 @@ class Home(vanilla.TemplateView):
         year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         county = scope_county(self.request)
         data = stats.landing_stats(year, all_years, county)
-        county_map = maps.county_map(data['by_county']) if data['by_county'] else None
+        county_map = maps.county_map(data['by_county'], query=stats.year_param(year, all_years)) if data['by_county'] else None
         find_area_places = find_area_place_list()
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
         return super().get_context_data(
@@ -747,7 +747,7 @@ class ExplorerDetailMixin:
         context['full_map_url'] = reverse('pesticides:map') + f'?{self.use_field}={self.object.sqid}' + (
             f'&{scope}' if scope else ''
         )
-        context['county_map'] = maps.county_map(context['by_county']) if context['by_county'] else None
+        context['county_map'] = maps.county_map(context['by_county'], query=stats.year_param(year, all_years)) if context['by_county'] else None
         return context
 
     def summary_top(self, context):
@@ -940,7 +940,7 @@ class MapPage(vanilla.TemplateView):
 
         county_map = None
         if (year or all_years) and not no_matches:
-            county_map = maps.county_map(stats.county_totals(year, all_years))
+            county_map = maps.county_map(stats.county_totals(year, all_years), query=stats.year_param(year, all_years))
 
         return super().get_context_data(
             section='map',
@@ -1299,7 +1299,7 @@ class RecordsBrowser(vanilla.ListView):
         totals = self.get_totals()
         county_map = None
         if self.year or self.all_years:
-            county_map = maps.county_map(stats.county_totals(self.year, self.all_years))
+            county_map = maps.county_map(stats.county_totals(self.year, self.all_years), query=stats.year_param(self.year, self.all_years))
         return super().get_context_data(
             form=self.form,
             totals=totals,

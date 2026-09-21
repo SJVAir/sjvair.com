@@ -78,12 +78,15 @@ class Area:
     border_width: float = 1
     label: Optional[str] = None
     label_on_hover: bool = False
+    # A click on the area goes here (the script marks it interactive).
+    url: Optional[str] = None
 
     def properties(self) -> dict:
         return {
             'kind': 'area',
             'label': self.label,
             'labelOnHover': self.label_on_hover,
+            'url': self.url,
             'style': {
                 'fillColor': self.fill_color,
                 'fillOpacity': self.fill_opacity,
