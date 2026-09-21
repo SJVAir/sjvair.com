@@ -183,7 +183,7 @@ html.section-map-expanded .explorer-scope-bar {
   top: var(--navbar-height, 3.25rem);
   left: 0;
   right: 0;
-  z-index: 26;
+  z-index: 1010;
   border-bottom: 1px solid #dbdbdb;
 }
 
