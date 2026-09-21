@@ -173,7 +173,17 @@
 }
 
 /* Marker colours live in the script (LOCATION_COLORS, NOTICE_COLOR): notices
-   #d35400, schools #5a6b7b, child care #7b4fb8. */
+   #d35400, schools #5a6b7b, child care #1c9099. Child care is teal rather
+   than purple because purple is the Chemicals section's colour. The legend
+   rows for these are appended by appendMarkerLegend(). */
+
+/* The Options menu's "Show" group label, over the layer checkboxes. */
+.section-map-controls .section-map-group-label {
+  color: #7a7a7a;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+}
 
 /* Expanded: the map takes the viewport below the site navbar (same
    arithmetic as the live map page), panels ride along. */

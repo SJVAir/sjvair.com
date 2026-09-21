@@ -82,16 +82,25 @@
     return base.replace(/\/maps\/[^/]+\/(256\/)?/, '/maps/' + style + '/256/')
       .replace(/\.(png|jpg)\?/, style === 'hybrid' ? '.jpg?' : '.png?');
   }
+  // Orange is the notices colour throughout the explorer (the tab icon, the
+  // chemicals-of-concern toggle, these markers).
   var NOTICE_COLOR = '#d35400';
   // Schools and child care markers (see loadLocations). Schools are slate,
-  // child care purple; both are ringed in white like the notice markers so
-  // they stay legible over a dark section fill.
+  // child care teal; both are ringed in white like the notice markers so
+  // they stay legible over a dark section fill. Teal rather than purple:
+  // purple is the Chemicals section's colour, and a purple dot on a map of
+  // chemical use reads as a chemical, not a day care.
   var LOCATION_COLORS = {
     public_school: '#5a6b7b',
     private_school: '#5a6b7b',
-    child_care: '#7b4fb8',
+    child_care: '#1c9099',
   };
   var LOCATION_FALLBACK_COLOR = '#5a6b7b';
+  // The legend rows for those markers, in the order they're listed.
+  var MARKER_LEGEND = [
+    { color: LOCATION_COLORS.public_school, label: 'School' },
+    { color: LOCATION_COLORS.child_care, label: 'Child care' },
+  ];
   // Markers are points, not a grid: further out than this the viewport holds
   // thousands of them, so the layer stays off and the legend says why.
   var LOCATIONS_MIN_ZOOM = 9;
@@ -2017,8 +2026,28 @@
     return this.level === 'township' && !this.allSectionsActive() ? unit + ' per township' : unit;
   };
 
+  // Marker rows under the shade classes, for whichever marker layers are on.
+  // Dots, not squares: the markers aren't a class of the grid.
+  SectionMap.prototype.appendMarkerLegend = function () {
+    if (!this.legendEl) return;
+    var rows = [];
+    if (this.showLocations) rows = rows.concat(MARKER_LEGEND);
+    if (this.showNotices) rows.push({ color: NOTICE_COLOR, label: 'Notice of intent' });
+    for (var i = 0; i < rows.length; i++) {
+      var li = document.createElement('li');
+      li.className = 'is-marker';
+      li.innerHTML =
+        '<span class="swatch is-dot" style="background-color: ' + rows[i].color + ';"></span>' +
+        '<span class="range">' + escapeHtml(rows[i].label) + '</span>';
+      this.legendEl.appendChild(li);
+    }
+  };
+
   SectionMap.prototype.updateLegend = function () {
-    if (this.legendEl) renderLegend(this.legendEl, this.currentClasses, this.legendUnit());
+    if (this.legendEl) {
+      renderLegend(this.legendEl, this.currentClasses, this.legendUnit());
+      this.appendMarkerLegend();
+    }
     // "All sections" only means something at the township zoom.
     var sectionsToggle = this.controlsEl ? this.controlsEl.querySelector('input[name="sections"]') : null;
     if (sectionsToggle) sectionsToggle.disabled = this.level === 'section';
@@ -2031,10 +2060,17 @@
   // Why the markers aren't there: the toggle is on but the map is zoomed
   // out past where they load.
   SectionMap.prototype.updateLocationsNote = function () {
+    var tooFar = !!(this.showLocations && this.map && this.map.getZoom() < LOCATIONS_MIN_ZOOM);
     var note = this.wrapEl ? this.wrapEl.querySelector('.section-map-locations-note') : null;
-    if (!note) return;
-    var tooFar = this.showLocations && this.map && this.map.getZoom() < LOCATIONS_MIN_ZOOM;
-    note.textContent = tooFar ? LOCATIONS_ZOOM_NOTE : '';
+    if (note) note.textContent = tooFar ? LOCATIONS_ZOOM_NOTE : '';
+    // The legend it lives in collapses, so say it in the live region too --
+    // otherwise turning the layer on at a wide zoom just does nothing
+    // visible. Only ours to clear: a load in progress owns the line.
+    if (tooFar) {
+      this.setStatus(LOCATIONS_ZOOM_NOTE);
+    } else if (this.statusEl && this.statusEl.textContent === LOCATIONS_ZOOM_NOTE) {
+      this.setStatus('');
+    }
   };
 
   SectionMap.prototype.bringHighlightToFront = function () {
@@ -2648,9 +2684,14 @@
   // A school or child care popup in the section popup's idiom: name, grey
   // subline, the block headline, pill actions.
   SectionMap.prototype.locationPopupHtml = function (props, block) {
+    // type · address, city. The district is already a pill action below, so
+    // it doesn't take the sub-line's room -- the street address is what
+    // tells two schools of the same name apart.
+    var where = [props.address, props.city].filter(function (part) { return !!part; }).join(', ');
     var subParts = [];
     if (props.type_label) subParts.push(escapeHtml(props.type_label));
-    if (props.district) subParts.push(escapeHtml(props.district));
+    if (where) subParts.push(escapeHtml(where));
+    if (!subParts.length && props.district) subParts.push(escapeHtml(props.district));
     var sub = subParts.join(' · ');
 
     var headline;

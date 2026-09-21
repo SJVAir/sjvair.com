@@ -5,7 +5,7 @@
 {% block explorer-content %}
 <div class="content">
     <h1 class="title is-4 mb-2">Pesticide use by square mile{% if map_config.year_label %}, {{ map_config.year_label }}{% endif %}</h1>
-    <p class="has-text-grey">Zoomed out, each square is a 6 &times; 6 mile township; zoom in and each square becomes one square-mile MTRS section. Shades are quantile classes over the squares in view; click a section for its top chemicals. Orange dots are SprayDays notices of intent currently scheduled.</p>
+    <p class="has-text-grey">Zoomed out, each square is a 6 &times; 6 mile township; zoom in and each square becomes one square-mile MTRS section. Shades are quantile classes over the squares in view; click a section for its top chemicals. Orange dots are SprayDays notices of intent currently scheduled; turn on &ldquo;Schools &amp; child care&rdquo; in Options and slate dots mark schools, teal dots child care centers, each with the use reported within about a mile of it.</p>
     {% if no_matches %}
     <p class="notification is-warning is-light">No matches for that filter.</p>
     {% endif %}

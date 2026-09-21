@@ -566,6 +566,13 @@ body.pesticides
             height: 1rem
             border: 1px solid rgba($black, 0.25)
             border-radius: 2px
+            // The marker rows: dots, because that's what's on the map.
+            &.is-dot
+                width: 0.7rem
+                height: 0.7rem
+                border-radius: 50%
+                border-color: $white
+                box-shadow: 0 0 0 1px rgba($black, 0.25)
         .range
             font-variant-numeric: tabular-nums
 
