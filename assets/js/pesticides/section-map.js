@@ -473,6 +473,14 @@
     // grey line and never a sliver of the page beneath.
     var nav = document.querySelector('nav.navbar');
     var bottom = nav ? nav.getBoundingClientRect().bottom : 0;
+    // The explorer's scope bar (year and county pickers) stays in view,
+    // pinned under the navbar, so the scope can still be changed; the map
+    // starts under it.
+    var scopeBar = document.querySelector('.explorer-scope-bar');
+    if (scopeBar) {
+      scopeBar.style.top = Math.max(0, bottom) + 'px';
+      bottom = scopeBar.getBoundingClientRect().bottom;
+    }
     this.wrapEl.style.top = Math.max(0, bottom - 1) + 'px';
   };
 
@@ -493,15 +501,19 @@
       this.scrollBeforeExpand = window.scrollY || window.pageYOffset || 0;
       window.scrollTo(0, 0);
     }
+    // The html class first: it pins the scope bar, and fitBelowNavbar
+    // measures the pinned bar to place the map under it.
+    document.documentElement.classList.toggle('section-map-expanded', on);
     if (this.wrapEl) {
       this.wrapEl.classList.toggle('is-expanded', on);
       if (on) {
         this.fitBelowNavbar();
       } else {
         this.wrapEl.style.top = '';
+        var scopeBar = document.querySelector('.explorer-scope-bar');
+        if (scopeBar) scopeBar.style.top = '';
       }
     }
-    document.documentElement.classList.toggle('section-map-expanded', on);
     if (!on && was) {
       window.scrollTo(0, this.scrollBeforeExpand || 0);
     }

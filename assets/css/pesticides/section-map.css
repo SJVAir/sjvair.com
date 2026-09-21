@@ -176,6 +176,17 @@ html.section-map-expanded body {
   overflow: hidden;
 }
 
+/* The scope bar rides along above the expanded map, pinned under the
+   navbar (its top is set by fitBelowNavbar); its dropdowns open over the map. */
+html.section-map-expanded .explorer-scope-bar {
+  position: fixed;
+  top: var(--navbar-height, 3.25rem);
+  left: 0;
+  right: 0;
+  z-index: 26;
+  border-bottom: 1px solid #dbdbdb;
+}
+
 @media (max-width: 768px) {
   .section-map-panel {
     font-size: 0.75rem;
