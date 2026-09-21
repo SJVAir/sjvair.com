@@ -30,7 +30,9 @@ from shapely.geometry.base import BaseGeometry
 
 from camp.utils.maps import to_geos
 
-TILE_URL = 'https://api.maptiler.com/maps/basic-v2/{z}/{x}/{y}.png?key={key}'
+# The same MapTiler raster tiles the realtime map uses ("streets", 256px).
+# The scripts accept a `?tiles=<style>` override for trying other styles.
+TILE_URL = 'https://api.maptiler.com/maps/streets/256/{z}/{x}/{y}.png?key={key}'
 TILE_ATTRIBUTION = (
     '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> '
     '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>'

@@ -78,7 +78,15 @@
       tapHold: false
     });
 
-    L.tileLayer(container.dataset.tiles, {
+    // ?tiles=<style> swaps the MapTiler style while we pick one
+    // (streets, basic-v2, bright-v2, dataviz, dataviz-light, topo-v2, outdoor-v2, toner-v2, hybrid).
+    var tiles = container.dataset.tiles;
+    var tilesMatch = /[?&]tiles=([a-z0-9-]+)/.exec(window.location.search || '');
+    if (tilesMatch) {
+      tiles = tiles.replace(/\/maps\/[^/]+\/(256\/)?/, '/maps/' + tilesMatch[1] + '/256/')
+        .replace(/\.(png|jpg)\?/, tilesMatch[1] === 'hybrid' ? '.jpg?' : '.png?');
+    }
+    L.tileLayer(tiles, {
       attribution: container.dataset.attribution,
       maxZoom: 21
     }).addTo(map);

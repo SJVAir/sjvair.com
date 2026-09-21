@@ -593,6 +593,12 @@
     this.el.addEventListener('blur', this.disableScrollZoom.bind(this), true);
 
     var tileUrl = this.data.tiles;
+    // ?tiles=<style> swaps the MapTiler style while we pick one (see leaflet-maps.js).
+    var tilesMatch = /[?&]tiles=([a-z0-9-]+)/.exec(window.location.search || '');
+    if (tileUrl && tilesMatch) {
+      tileUrl = tileUrl.replace(/\/maps\/[^/]+\/(256\/)?/, '/maps/' + tilesMatch[1] + '/256/')
+        .replace(/\.(png|jpg)\?/, tilesMatch[1] === 'hybrid' ? '.jpg?' : '.png?');
+    }
     if (tileUrl) {
       L.tileLayer(tileUrl, {
         attribution: this.data.attribution || '',
