@@ -2,6 +2,7 @@ CDSCode	County	District	School	Street	City	Zip	State	StatusType	SOCType	EILCode	
 10621170000000	Fresno	Orchard Unified		100 Almond Ave	Selma	93662-1000	CA	Active					N	36.7100	-119.7900	N	1980-07-01	No Data
 10621176059453	Fresno	Orchard Unified	Orchard High	100 Almond Ave	Selma	93662-1000	CA	Active	High Schools (Public)	H	High	9-12	N	36.7100	-119.7900	N	1980-07-01	No Data
 10621176059454	Fresno	Orchard Unified	Almond Elementary	210 Peach St	Selma	93662	CA	Active	Elementary Schools (Public)	E	Elementary	K-6	N	36.7200	-119.8000	N	1975-09-01	
+10621176059462	Fresno	Orchard Unified	Cañada Elementary	30 Cañada Ave	Selma	93662	CA	Active	Elementary Schools (Public)	E	Elementary	K-6	N	36.7300	-119.8100	N	1979-09-01	
 10621176059457	Fresno County	Orchard Unified	Blossom Academy	15 Vine Ln	Fowler	93625	CA	Active	Elementary Schools (Public)	E	Elementary	K-8	P	36.6300	-119.6800	Y	2001-08-15	
 15633216059455	Kern	Sagebrush Union	Sagebrush Elementary	900 Mesa Rd	Bakersfield	93301	CA	Active	Elementary Schools (Public)	E	Elementary	K-6	N	35.4000	-119.0000	N	1968-09-01	
 15633216059456	Kern	Sagebrush Union	Tumbleweed Middle	905 Mesa Rd	Bakersfield	93301	CA	Active	Intermediate/Middle Schools (Public)	M	Middle	7-8	C	35.4500	-119.0500	N	1972-09-01	

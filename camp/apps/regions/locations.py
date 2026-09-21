@@ -8,6 +8,7 @@ county and school district, upserting by (source, external_id), and removing
 the rows that have disappeared from the source.
 """
 
+import codecs
 import csv
 import hashlib
 import io
@@ -33,7 +34,8 @@ SJV_COUNTIES = frozenset([
 ])
 
 # Private schools this small are almost always a family homeschooling under
-# the affidavit, not a school with a campus.
+# the affidavit, not a school with a campus. A blank enrollment doesn't clear
+# the bar either: the spec's filter is enrollment >= 6.
 MIN_PRIVATE_ENROLLMENT = 6
 
 # CDSS facility types that are child care centers. Family child care homes
@@ -44,6 +46,10 @@ FAMILY_CHILD_CARE = 'FAMILY CHILD CARE HOME'
 GEOCODE_CACHE_TTL = 60 * 60 * 24 * 30  # 30 days
 
 XLSX_MAGIC = b'PK\x03\x04'
+
+
+class DownloadError(Exception):
+    """A source file couldn't be fetched."""
 
 
 # -- Geocoding --
@@ -72,10 +78,29 @@ def geocode_cached(address):
 
 # -- Row helpers --
 
-def _rows(file, delimiter=','):
+def _text(file, encoding):
+    """
+    Decode a source file. The CDE directory is latin-1 and the data.ca.gov
+    exports are UTF-8, so each source says which it is; a UTF-8 source that
+    turns out not to be falls back to latin-1 rather than failing the import.
+    """
+    data = file.read()
+
+    if data.startswith(codecs.BOM_UTF8):
+        return data.decode('utf-8-sig')
+
+    if encoding != 'latin-1':
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            pass
+
+    return data.decode('latin-1')
+
+
+def _rows(file, delimiter=',', encoding='utf-8'):
     """Yield dicts keyed by the lowercased header, from a binary file object."""
-    stream = io.TextIOWrapper(file, encoding='latin-1', errors='replace', newline='')
-    reader = csv.reader(stream, delimiter=delimiter)
+    reader = csv.reader(io.StringIO(_text(file, encoding), newline=''), delimiter=delimiter)
 
     header = next(reader, None)
     if header is None:
@@ -113,7 +138,7 @@ def _xlsx_rows(file):
 
 
 def _key(name):
-    return str(name or '').strip().lower().lstrip('﻿ï»¿')
+    return str(name or '').strip().lstrip('﻿').strip().lower()
 
 
 def _get(row, *names, default=''):
@@ -160,7 +185,7 @@ def parse_cde_public(file):
     District rows carry an empty School; schools carry a 14-digit CDS code
     whose first seven digits identify the district.
     """
-    for row in _rows(file, delimiter='\t'):
+    for row in _rows(file, delimiter='\t', encoding='latin-1'):
         name = _get(row, 'school')
         if not name:
             continue  # A district row, not a school.
@@ -205,7 +230,7 @@ def parse_cde_private(file):
     """
     head = file.read(len(XLSX_MAGIC))
     file.seek(0)
-    rows = _xlsx_rows(file) if head == XLSX_MAGIC else _rows(file)
+    rows = _xlsx_rows(file) if head == XLSX_MAGIC else _rows(file, encoding='utf-8')
 
     for row in rows:
         name = _get(row, 'school name', 'schoolname', 'name')
@@ -215,7 +240,7 @@ def parse_cde_private(file):
             continue
 
         enrollment = _int(_get(row, 'total enrollment', 'enrollment', 'total'))
-        if enrollment is not None and enrollment < MIN_PRIVATE_ENROLLMENT:
+        if enrollment is None or enrollment < MIN_PRIVATE_ENROLLMENT:
             continue
 
         address = _get(row, 'street', 'address', 'school street', 'mailing street')
@@ -265,7 +290,7 @@ def parse_cdss_ccl(file):
     CDSS Community Care Licensing facilities. Only licensed child care
     centers are imported; family child care homes are private residences.
     """
-    for row in _rows(file):
+    for row in _rows(file, encoding='utf-8'):
         facility_type = _get(row, 'facility type', 'facilitytype', 'type').upper()
         if FAMILY_CHILD_CARE in facility_type:
             continue
@@ -327,20 +352,30 @@ SOURCES = {
 CKAN_PACKAGE_URL = 'https://data.ca.gov/api/3/action/package_show'
 
 
+def has_download(source):
+    """Can this source fetch its own file, or does it need --path?"""
+    config = SOURCES[source]
+    return bool(config.get('url') or config.get('ckan_dataset'))
+
+
 def _source_url(config):
     if config.get('url'):
         return config['url']
 
     dataset = config.get('ckan_dataset')
     if dataset:
-        response = requests.get(CKAN_PACKAGE_URL, params={'id': dataset}, timeout=60)
-        response.raise_for_status()
-        resources = response.json().get('result', {}).get('resources', [])
+        try:
+            response = requests.get(CKAN_PACKAGE_URL, params={'id': dataset}, timeout=60)
+            response.raise_for_status()
+            resources = response.json().get('result', {}).get('resources', [])
+        except (requests.RequestException, ValueError) as exc:
+            raise DownloadError(f'Could not look up {config["label"]}: {exc}')
+
         for resource in resources:
             if (resource.get('format') or '').upper() == 'CSV' and resource.get('url'):
                 return resource['url']
 
-    raise ValueError('No download URL for this source: pass --path.')
+    raise DownloadError(f'No download URL for {config["label"]}: pass --path.')
 
 
 @contextmanager
@@ -351,10 +386,14 @@ def _open_source(config, path):
         return
 
     with tempfile.TemporaryFile() as handle:
-        response = requests.get(_source_url(config), timeout=300, stream=True)
-        response.raise_for_status()
-        for chunk in response.iter_content(chunk_size=1024 * 64):
-            handle.write(chunk)
+        url = _source_url(config)
+        try:
+            response = requests.get(url, timeout=300, stream=True)
+            response.raise_for_status()
+            for chunk in response.iter_content(chunk_size=1024 * 64):
+                handle.write(chunk)
+        except requests.RequestException as exc:
+            raise DownloadError(f'Could not download {config["label"]}: {exc}')
         handle.seek(0)
         yield handle
 
@@ -381,23 +420,39 @@ def import_source(source, path=None, geocode=True):
         # that every school in the valley closed. Don't remove anything.
         return counts
 
+    existing = {location.external_id: location
+        for location in Location.objects.filter(source=source)}
+
+    # Resolve coordinates first, outside any transaction: geocoding is
+    # network work and must not hold a database transaction open.
     seen = set()
+    resolved = []
+    for row in rows:
+        # Every row in the file is "seen", even one we can't place, so the
+        # removal step below never deletes a school that's still listed.
+        seen.add(row['external_id'])
+
+        point = _point(row.get('lat'), row.get('lng'))
+        if point is None:
+            current = existing.get(row['external_id'])
+            if current is not None:
+                # Already imported: keep the coordinates we have.
+                resolved.append((row, current.point))
+                continue
+            if not geocode or not (row.get('address') or '').strip():
+                counts['skipped'] += 1
+                continue
+            result = geocode_cached(_address_string(row))
+            if result is None:
+                counts['skipped'] += 1
+                continue
+            counts['geocoded'] += 1
+            point = _point(*result)
+
+        resolved.append((row, point))
+
     with transaction.atomic():
-        for row in rows:
-            lat, lng = row.get('lat'), row.get('lng')
-
-            if lat is None or lng is None:
-                if not geocode:
-                    counts['skipped'] += 1
-                    continue
-                result = geocode_cached(_address_string(row))
-                if result is None:
-                    counts['skipped'] += 1
-                    continue
-                lat, lng = result
-                counts['geocoded'] += 1
-
-            point = Point(float(lng), float(lat), srid=4326)
+        for row, point in resolved:
             _, created = Location.objects.update_or_create(
                 source=source,
                 external_id=row['external_id'],
@@ -415,12 +470,16 @@ def import_source(source, path=None, geocode=True):
                 },
             )
 
-            seen.add(row['external_id'])
             counts['imported' if created else 'updated'] += 1
 
-        if seen:
-            stale = Location.objects.filter(source=source).exclude(external_id__in=seen)
-            counts['removed'] = stale.count()
-            stale.delete()
+        stale = Location.objects.filter(source=source).exclude(external_id__in=seen)
+        counts['removed'] = stale.count()
+        stale.delete()
 
     return counts
+
+
+def _point(lat, lng):
+    if lat is None or lng is None:
+        return None
+    return Point(float(lng), float(lat), srid=4326)

@@ -7,9 +7,10 @@ class Command(BaseCommand):
     help = (
         'Import schools and child care facilities into regions.Location.\n'
         'Sources download themselves unless --path is given. The CDE private'
-        ' school affidavit is published under a new URL every year and the'
-        ' CDSS facilities export changes shape, so --path is the normal route'
-        ' for those (CSV; XLSX is read when openpyxl is installed).'
+        ' school affidavit is published under a new URL every year, so it has'
+        ' no download and --path is the only way to import it (CSV; XLSX is'
+        ' read when openpyxl is installed). Under --source all it is skipped'
+        ' with a message when no --path is given.'
     )
 
     def add_arguments(self, parser):
@@ -23,15 +24,24 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         sources = list(locations.SOURCES) if options['source'] == 'all' else [options['source']]
+        path = options['path']
 
-        if options['path'] and len(sources) > 1:
+        if path and len(sources) > 1:
             raise CommandError('--path requires a single --source.')
 
         for source in sources:
-            counts = locations.import_source(
-                source,
-                path=options['path'],
-                geocode=not options['no_geocode'],
-            )
+            if not path and not locations.has_download(source):
+                message = f'{source}: no download available, pass --path to import it.'
+                if len(sources) == 1:
+                    raise CommandError(message)
+                self.stdout.write(message)
+                continue
+
+            try:
+                counts = locations.import_source(source, path=path,
+                    geocode=not options['no_geocode'])
+            except locations.DownloadError as exc:
+                raise CommandError(str(exc))
+
             summary = ', '.join(f'{key}={value}' for key, value in counts.items())
             self.stdout.write(f'{source}: {summary}')

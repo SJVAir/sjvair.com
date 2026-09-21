@@ -1,4 +1,5 @@
 import csv
+import os
 import tempfile
 
 from io import StringIO
@@ -28,17 +29,18 @@ CCL_PATH = str(DATA_DIR / 'ccl-facilities-sample.csv')
 FRESNO_POINT = (36.71, -119.79)
 
 
-def trimmed(path, keep, delimiter=','):
+def trimmed(testcase, path, keep, delimiter=',', encoding='utf-8'):
     """Copy a sample file, keeping only the rows whose first column is in `keep`."""
-    with open(path, encoding='latin-1', newline='') as source:
+    with open(path, encoding=encoding, newline='') as source:
         rows = list(csv.reader(source, delimiter=delimiter))
-    handle = tempfile.NamedTemporaryFile('w', suffix='.txt', encoding='latin-1',
+    handle = tempfile.NamedTemporaryFile('w', suffix='.txt', encoding=encoding,
         newline='', delete=False)
     writer = csv.writer(handle, delimiter=delimiter, lineterminator='\n',
         quoting=csv.QUOTE_NONE if delimiter == '\t' else csv.QUOTE_MINIMAL)
     writer.writerow(rows[0])
     writer.writerows([row for row in rows[1:] if row[0] in keep])
     handle.close()
+    testcase.addCleanup(os.unlink, handle.name)
     return handle.name
 
 
@@ -52,17 +54,25 @@ class PublicSchoolImportTests(TestCase):
     def test_imports_only_active_in_valley_schools(self):
         counts = locations.import_source('cde-public', path=PUBLIC_PATH)
 
-        assert counts['imported'] == 5
+        assert counts['imported'] == 6
         assert counts['updated'] == 0
         assert counts['removed'] == 0
         assert counts['skipped'] == 0
         assert set(Location.objects.values_list('name', flat=True)) == {
             'Orchard High',
             'Almond Elementary',
+            'Cañada Elementary',
             'Blossom Academy',
             'Sagebrush Elementary',
             'Tumbleweed Middle',
         }
+
+    def test_reads_the_latin_1_directory_without_mojibake(self):
+        locations.import_source('cde-public', path=PUBLIC_PATH)
+        school = Location.objects.get(external_id='10621176059462')
+
+        assert school.name == 'Cañada Elementary'
+        assert school.address == '30 Cañada Ave'
 
     def test_all_rows_are_public_schools_from_the_cde_public_source(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
@@ -100,36 +110,37 @@ class PublicSchoolImportTests(TestCase):
         counts = locations.import_source('cde-public', path=PUBLIC_PATH)
 
         assert counts['imported'] == 0
-        assert counts['updated'] == 5
+        assert counts['updated'] == 6
         assert counts['removed'] == 0
-        assert Location.objects.count() == 5
+        assert Location.objects.count() == 6
 
     def test_rows_missing_from_the_source_are_removed(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
-        path = trimmed(PUBLIC_PATH, {'10621176059453', '15633216059455'}, delimiter='\t')
+        path = trimmed(self, PUBLIC_PATH, {'10621176059453', '15633216059455'},
+            delimiter='\t', encoding='latin-1')
 
         counts = locations.import_source('cde-public', path=path)
 
         assert counts['updated'] == 2
-        assert counts['removed'] == 3
+        assert counts['removed'] == 4
         assert set(Location.objects.values_list('external_id', flat=True)) == {
             '10621176059453', '15633216059455',
         }
 
     def test_an_empty_parse_removes_nothing(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
-        path = trimmed(PUBLIC_PATH, set(), delimiter='\t')
+        path = trimmed(self, PUBLIC_PATH, set(), delimiter='\t', encoding='latin-1')
 
         counts = locations.import_source('cde-public', path=path)
 
         assert counts['removed'] == 0
-        assert Location.objects.count() == 5
+        assert Location.objects.count() == 6
 
     def test_locations_from_another_source_are_left_alone(self):
         locations.import_source('cdss-ccl', path=CCL_PATH)
         locations.import_source('cde-public', path=PUBLIC_PATH)
 
-        assert Location.objects.filter(source='cdss-ccl').count() == 3
+        assert Location.objects.filter(source='cdss-ccl').count() == 4
 
 
 class PrivateSchoolImportTests(TestCase):
@@ -149,6 +160,38 @@ class PrivateSchoolImportTests(TestCase):
         assert counts['skipped'] == 0
         assert geocode.call_count == 3
         assert 'Selma' in geocode.call_args_list[0].args[0]
+
+    def test_skips_rows_without_an_enrollment(self):
+        # The spec's filter is enrollment >= 6, and a blank doesn't clear it.
+        with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
+            locations.import_source('cde-private', path=PRIVATE_PATH)
+
+        assert not Location.objects.filter(name='Quiet Hills Academy').exists()
+
+    def test_a_failed_geocode_never_removes_a_row_thats_still_listed(self):
+        partial = trimmed(self, PRIVATE_PATH, {'10621170123456'})
+        with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
+            locations.import_source('cde-private', path=partial)
+        existing = Location.objects.get(external_id='10621170123456')
+
+        def geocode(address):
+            return FRESNO_POINT if 'Willow' in address else None
+
+        with mock.patch.object(locations, 'geocode_cached', side_effect=geocode) as patched:
+            counts = locations.import_source('cde-private', path=PRIVATE_PATH)
+
+        # The row already imported keeps its point, and isn't re-geocoded.
+        assert 'Orange Ave' not in str(patched.call_args_list)
+        assert counts['imported'] == 1
+        assert counts['updated'] == 1
+        assert counts['geocoded'] == 1
+        assert counts['skipped'] == 1
+        assert counts['removed'] == 0
+
+        kept = Location.objects.get(external_id='10621170123456')
+        assert kept.pk == existing.pk
+        assert kept.point == existing.point
+        assert Location.objects.count() == 2
 
     def test_skips_enrollment_under_six(self):
         with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
@@ -205,14 +248,20 @@ class ChildCareImportTests(TestCase):
     def test_imports_licensed_centers_only(self):
         counts = locations.import_source('cdss-ccl', path=CCL_PATH)
 
-        assert counts['imported'] == 3
+        assert counts['imported'] == 4
         assert set(Location.objects.values_list('name', flat=True)) == {
             'Little Sprouts Learning Center',
             'First Steps Infant Center',
+            'Niños Felices Learning Center',
             'Mesa Afterschool Club',
         }
         assert not Location.objects.filter(name='Ramirez Family Child Care').exists()
         assert not Location.objects.filter(name='Closed Kids Center').exists()
+
+    def test_reads_the_utf_8_export_without_mojibake(self):
+        locations.import_source('cdss-ccl', path=CCL_PATH)
+
+        assert Location.objects.get(external_id='100400006').name == 'Niños Felices Learning Center'
 
     def test_stores_capacity_and_type(self):
         locations.import_source('cdss-ccl', path=CCL_PATH)
@@ -265,14 +314,35 @@ class ImportLocationsCommandTests(TestCase):
         stdout = StringIO()
         call_command('import_locations', source='cde-public', path=PUBLIC_PATH, stdout=stdout)
 
-        assert Location.objects.count() == 5
+        assert Location.objects.count() == 6
         output = stdout.getvalue()
         assert 'cde-public' in output
-        assert 'imported=5' in output
+        assert 'imported=6' in output
 
     def test_requires_a_single_source_with_a_path(self):
         with pytest.raises(CommandError):
             call_command('import_locations', source='all', path=PUBLIC_PATH, stdout=StringIO())
+
+    def test_all_skips_the_sources_that_cannot_download(self):
+        stdout = StringIO()
+        counts = {'imported': 0, 'updated': 0, 'removed': 0, 'geocoded': 0, 'skipped': 0}
+
+        with mock.patch.object(locations, 'import_source', return_value=counts) as importer:
+            call_command('import_locations', stdout=stdout)
+
+        imported = [call.args[0] for call in importer.call_args_list]
+        assert imported == ['cde-public', 'cdss-ccl']
+        assert 'cde-private: no download available' in stdout.getvalue()
+
+    def test_a_single_source_without_a_download_is_an_error(self):
+        with pytest.raises(CommandError):
+            call_command('import_locations', source='cde-private', stdout=StringIO())
+
+    def test_a_download_failure_is_a_command_error(self):
+        with mock.patch.object(locations, 'import_source',
+                side_effect=locations.DownloadError('boom')):
+            with pytest.raises(CommandError):
+                call_command('import_locations', source='cde-public', stdout=StringIO())
 
     def test_no_geocode_flag_is_passed_through(self):
         with mock.patch.object(locations, 'geocode_cached') as geocode:
