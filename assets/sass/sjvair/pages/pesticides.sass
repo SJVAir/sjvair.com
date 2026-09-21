@@ -63,7 +63,7 @@ body.pesticides
             // The tabs take the old year pills' look: translucent white for
             // the rest, solid white with the site blue for the active one.
             li.is-active a
-                color: $primary
+                color: $text
                 background-color: $white
                 border-color: $white
             li:not(.is-active) a
@@ -73,6 +73,33 @@ body.pesticides
                 &:hover
                     background-color: rgba($white, 0.24)
                     border-bottom-color: transparent
+
+    // Duotone icon colours for the explorer's sections (same palette on the
+    // landing cards and the tab bar).
+    .explorer-icon
+        --fa-secondary-opacity: 1
+        &.is-map
+            --fa-primary-color: #{$primary}
+            --fa-secondary-color: #9ed0f5
+        &.is-chemicals
+            --fa-primary-color: #7b4fb8
+            --fa-secondary-color: #c9a7ff
+        &.is-products
+            --fa-primary-color: #6b8e23
+            --fa-secondary-color: #b7f542
+        &.is-commodities
+            --fa-primary-color: #2e8b57
+            --fa-secondary-color: #9acd32
+        &.is-records
+            --fa-primary-color: #5a6b7b
+            --fa-secondary-color: #c8d1da
+        &.is-notices
+            --fa-primary-color: #d35400
+            --fa-secondary-color: #ffc078
+    // On the blue hero the dark primaries vanish, so inactive tabs use a
+    // white primary with the section's accent as the secondary.
+    .hook .explorer-nav li:not(.is-active) .explorer-icon
+        --fa-primary-color: rgba(255, 255, 255, 0.92)
 
     .columns > .column
         min-width: 0
