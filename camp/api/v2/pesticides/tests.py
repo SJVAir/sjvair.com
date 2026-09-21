@@ -1058,6 +1058,16 @@ class EntitySearchTests(RollupTestMixin, TestCase):
         by_cdpr = self.results(type='chemical', q='1080')
         assert [r['name'] for r in by_cdpr] == ['Sodium fluoroacetate']
 
+    def test_search_is_scoped_by_year_and_county(self):
+        # Sulfur has use in 2023 in Fresno only (fixture totals); 2022 and Kern don't offer it.
+        names = lambda **p: [r['name'] for r in self.results(type='chemical', q='sulf', **p)]
+        assert names() == ['Sulfur']
+        assert names(year='2023') == ['Sulfur']
+        assert names(year='all') == ['Sulfur']
+        assert names(year='2023', county='fresno') == ['Sulfur']
+        assert names(county='kern') == []
+        assert self.client.get(self.url, {'type': 'chemical', 'q': 'sulf', 'year': 'nope'}).status_code == 400
+
     def test_chemical_search_returns_name_and_chem_code(self):
         results = self.results(type='chemical', q='glyphosate')
         assert [r['name'] for r in results] == ['Glyphosate']

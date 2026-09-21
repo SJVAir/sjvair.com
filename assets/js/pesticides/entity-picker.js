@@ -164,7 +164,8 @@
     var url = this.searchUrl
       + '?type=' + encodeURIComponent(this.kind)
       + '&q=' + encodeURIComponent(query)
-      + '&limit=' + LIMIT;
+      + '&limit=' + LIMIT
+      + this.scopeParams();
 
     fetch(url, abort ? { signal: abort.signal } : undefined)
       .then(function (response) {
@@ -232,6 +233,23 @@
 
     this.resultsEl.hidden = false;
     if (this.input) this.input.setAttribute('aria-expanded', 'true');
+  };
+
+  // The page's year and county, so the suggestions are names with use in
+  // the same scope the list shows: the enclosing form's fields when it has
+  // them (the lists), else the page's ?year=.
+  EntityPicker.prototype.scopeParams = function () {
+    var form = this.el.closest('form');
+    var params = '';
+    var year = form && form.elements.year ? form.elements.year.value : '';
+    if (!year) {
+      var match = /[?&]year=([^&]+)/.exec(window.location.search || '');
+      year = match ? decodeURIComponent(match[1]) : '';
+    }
+    if (year) params += '&year=' + encodeURIComponent(year);
+    var county = form && form.elements.county ? form.elements.county.value : '';
+    if (county) params += '&county=' + encodeURIComponent(county);
+    return params;
   };
 
   EntityPicker.prototype.select = function (result) {

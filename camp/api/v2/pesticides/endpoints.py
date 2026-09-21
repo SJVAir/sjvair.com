@@ -257,9 +257,19 @@ class EntitySearchBase(generics.Endpoint):
         if len(query) < SEARCH_MIN_LENGTH:
             return {'results': []}
 
-        # Only names that actually appear in the use data: suggesting one that
-        # filters every list down to nothing isn't a useful suggestion.
-        used = PesticideUseTotal.objects.filter(**{f'{kind}__isnull': False}).values(kind)
+        # Only names that actually appear in the use data -- in the year and
+        # county the page is showing, when it says (`year=2020`, `year=all`,
+        # `county=fresno`): suggesting one that filters the list down to
+        # nothing isn't a useful suggestion.
+        used = PesticideUseTotal.objects.filter(**{f'{kind}__isnull': False})
+        year = (params.get('year') or '').strip()
+        if year and year != 'all':
+            if not year.isdigit():
+                return http.Http400({'error': 'year must be a year or "all"'})
+            used = used.filter(year=int(year))
+        if params.get('county'):
+            used = used.filter(county__slug=params['county'])
+        used = used.values(kind)
         # Prefix matches first: an autocomplete for "gly" should lead with
         # the glyphosates, not with every glycol that contains the letters.
         starts = Q(name__istartswith=query)
@@ -289,7 +299,8 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
     Autocomplete over the chemicals, products, and commodities that appear in the use data.
 
     `type=chemical|product|commodity` (required), `q` (the search text; fewer
-    than two characters returns no results), and `limit` (default 10, capped
+    than two characters returns no results), `year` (a year or `all`) and
+    `county` (slug) to offer only names with reported use there, and `limit` (default 10, capped
     at 25). Each result carries the entity's `id` (sqid), `name`, and a
     `detail` string -- chem code, registration number, or site code.
     """
