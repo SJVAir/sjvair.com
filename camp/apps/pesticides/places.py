@@ -258,7 +258,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
         if concern:
             rows = stats.concern_rows(rows)
         entries = []
-        for location in region.schools.all().order_by('name', 'pk'):
+        for location in region.district_locations.all().order_by('name', 'pk'):
             totals = stats.block_totals(rows, location.point, year, all_years)
             section = totals['section']
             entries.append({

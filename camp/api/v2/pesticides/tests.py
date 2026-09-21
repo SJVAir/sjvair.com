@@ -1177,11 +1177,11 @@ class LocationEndpointTests(TestCase):
             external_id='1',
             source='cde-public',
             address='1 Main St',
-            city='Fresno',
+            city_name='Fresno',
             point=Point(-119.79, 36.71, srid=4326),
             county=self.county,
-            district=self.district,
-            metadata={'grades': 'K-6'},
+            school_district=self.district,
+            metadata={'grades': 'K-6', 'enrollment': {'total': 430}},
             imported_at=timezone.now(),
         )
         self.daycare = Location.objects.create(
@@ -1189,7 +1189,7 @@ class LocationEndpointTests(TestCase):
             name='Bravo Child Care',
             external_id='2',
             source='cdss-ccl',
-            city='Fresno',
+            city_name='Fresno',
             point=Point(-119.78, 36.72, srid=4326),
             county=self.county,
             metadata={'capacity': 42},
@@ -1229,10 +1229,11 @@ class LocationEndpointTests(TestCase):
             'type_label': 'Public school',
             'address': '1 Main St',
             'city': 'Fresno',
-            'district': 'Fresno Unified',
-            'district_id': self.district.sqid,
-            'district_url': f'/tools/pesticides/region/{self.district.sqid}/{self.district.slug}/',
+            'school_district': 'Fresno Unified',
+            'school_district_id': self.district.sqid,
+            'school_district_url': f'/tools/pesticides/region/{self.district.sqid}/{self.district.slug}/',
             'grade_span': 'K-6',
+            'enrollment': 430,
             'capacity': None,
         }
 
@@ -1242,8 +1243,9 @@ class LocationEndpointTests(TestCase):
         props = features[0]['properties']
         assert props['capacity'] == 42
         assert props['grade_span'] is None
-        assert props['district'] is None
-        assert props['district_id'] is None
+        assert props['school_district'] is None
+        assert props['school_district_id'] is None
+        assert props['enrollment'] is None
         assert props['type_label'] == 'Child care'
 
     def test_private_school_grade_span_from_low_high(self):

@@ -540,22 +540,24 @@ def import_source(source, path=None, geocode=True):
 
     with transaction.atomic():
         for row, point in resolved:
-            _, created = Location.objects.update_or_create(
-                source=source,
-                external_id=row['external_id'],
-                defaults={
-                    'type': config['type'],
-                    'name': row['name'][:200],
-                    'address': (row.get('address') or '')[:200],
-                    'city': (row.get('city') or '')[:100],
-                    'zip': (row.get('zip') or '')[:10],
-                    'point': point,
-                    'county': Location.county_for(point),
-                    'district': Location.district_for(point, cds_code=row.get('cds_code')),
-                    'metadata': row.get('metadata') or {},
-                    'imported_at': timezone.now(),
-                },
-            )
+            location = existing.get(row['external_id'])
+            created = location is None
+            if created:
+                location = Location(source=source, external_id=row['external_id'])
+
+            location.type = config['type']
+            location.name = row['name'][:200]
+            location.address = (row.get('address') or '')[:200]
+            location.city_name = (row.get('city') or '')[:100]
+            location.zip = (row.get('zip') or '')[:10]
+            location.point = point
+            location.metadata = row.get('metadata') or {}
+            location.imported_at = timezone.now()
+            # Always re-resolve rather than leaving it to save(): the
+            # boundaries move between imports even where the location hasn't,
+            # and a public school's CDS code beats the spatial answer.
+            location.resolve_regions(cds_code=row.get('cds_code'))
+            location.save()
 
             counts['imported' if created else 'updated'] += 1
 

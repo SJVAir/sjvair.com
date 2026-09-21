@@ -201,7 +201,7 @@ class Location(TimeStampedModel):
     source = models.CharField(_('Source'), max_length=32)
 
     address = models.CharField(_('Address'), max_length=200, blank=True)
-    city = models.CharField(_('City'), max_length=100, blank=True)
+    city_name = models.CharField(_('City Name'), max_length=100, blank=True)
     zip = models.CharField(_('ZIP Code'), max_length=10, blank=True)
 
     point = models.PointField(_('Location'), srid=4326, geography=False, spatial_index=True)
@@ -211,57 +211,138 @@ class Location(TimeStampedModel):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='+',
+        related_name='county_locations',
         limit_choices_to={'type': Region.Type.COUNTY},
     )
-    district = models.ForeignKey('Region',
+    city = models.ForeignKey('Region',
+        verbose_name=_('City'),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='city_locations',
+        limit_choices_to={'type__in': [Region.Type.CITY, Region.Type.CDP]},
+    )
+    zipcode = models.ForeignKey('Region',
+        verbose_name=_('ZIP Code'),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='zipcode_locations',
+        limit_choices_to={'type': Region.Type.ZIPCODE},
+    )
+    school_district = models.ForeignKey('Region',
         verbose_name=_('School District'),
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='schools',
+        related_name='district_locations',
         limit_choices_to={'type': Region.Type.SCHOOL_DISTRICT},
     )
 
     metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
     imported_at = models.DateTimeField(_('Imported At'), default=timezone.now)
 
+    # The region links resolve_regions() fills in, in the order it fills them.
+    REGION_FIELDS = ('county', 'city', 'zipcode', 'school_district')
+
     class Meta:
         ordering = ['name']
         unique_together = ('source', 'external_id')
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # The point the region links were last resolved against: nothing
+        # yet for a new instance, the loaded point for a row from the DB.
+        self._resolved_point = None
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        """
+        Snapshot the point as it was loaded: a row's region links are in
+        step with its stored point, so save() can tell whether the location
+        actually moved and only then pay for re-resolving them.
+        """
+        instance = super().from_db(db, field_names, values)
+        instance._resolved_point = instance.__dict__.get('point')
+        return instance
+
     def __str__(self):
         return self.name
 
-    def get_pesticides_url(self):
+    def save(self, *args, **kwargs):
         """
-        Locations don't have their own page: the district page is the closest
-        thing, and a location without a district has nowhere to go.
+        Keep the region links in step with the point without doing spatial
+        work on every write: a new row resolves whatever links it wasn't
+        given, and an existing row re-resolves only when its point moved.
         """
-        if self.district_id is None:
-            return ''
-        return self.district.get_pesticides_url()
+        if self._state.adding:
+            unset = [field for field in self.REGION_FIELDS
+                if getattr(self, f'{field}_id') is None]
+            if unset:
+                self.resolve_regions(fields=unset)
+        elif self._point_changed():
+            self.resolve_regions()
 
-    @property
-    def short_type(self):
-        return self.SHORT_TYPES[self.Type(self.type)]
+        super().save(*args, **kwargs)
+        self._resolved_point = self.__dict__.get('point')
 
-    @classmethod
-    def county_for(cls, point) -> Optional['Region']:
-        """The county Region whose boundary contains the point, if any."""
-        return (Region.objects
-            .filter(type=Region.Type.COUNTY, boundary__geometry__contains=point)
-            .first()
-        )
+    def _point_changed(self):
+        current = self.__dict__.get('point')
+        if current is None:
+            # Deferred and never touched: it can't have moved.
+            return False
+        if self._resolved_point is None:
+            return True
+        return current.ewkb != self._resolved_point.ewkb
 
-    @classmethod
-    def district_for(cls, point, cds_code=None) -> Optional['Region']:
+    def resolve_regions(self, cds_code=None, fields=None):
         """
-        The school district for a location. Public schools carry a 14-digit
-        CDS code whose first 7 digits are the district's, which is exact.
-        Everything else falls back to the district containing the point,
-        where elementary and unified districts overlap: prefer a unified
-        district, then the widest grade span.
+        Set the region links from `point` by boundary containment. Returns
+        the instance without saving it; `fields` limits which links are
+        touched, and `cds_code` is a school's 14-digit CDS code, whose first
+        7 digits name its district exactly.
+        """
+        if self.point is None:
+            return self
+
+        fields = fields or self.REGION_FIELDS
+
+        if 'county' in fields:
+            self.county = self._containing(type=Region.Type.COUNTY).first()
+        if 'city' in fields:
+            self.city = self._city_for()
+        if 'zipcode' in fields:
+            self.zipcode = self._containing(type=Region.Type.ZIPCODE).first()
+        if 'school_district' in fields:
+            self.school_district = self._school_district_for(cds_code)
+
+        self._resolved_point = self.point
+        return self
+
+    def _containing(self, **kwargs):
+        """The Regions of some type whose current boundary contains the point."""
+        return Region.objects.filter(boundary__geometry__contains=self.point, **kwargs)
+
+    def _city_for(self) -> Optional['Region']:
+        """
+        The city or CDP containing the point. A CDP is census geography drawn
+        around an unincorporated community and can overlap an incorporated
+        city's edge, so an actual city wins.
+        """
+        candidates = list(self._containing(
+            type__in=[Region.Type.CITY, Region.Type.CDP]))
+        if not candidates:
+            return None
+        cities = [region for region in candidates if region.type == Region.Type.CITY]
+        return (cities or candidates)[0]
+
+    def _school_district_for(self, cds_code=None) -> Optional['Region']:
+        """
+        The school district for this location. Public schools carry a
+        14-digit CDS code whose first 7 digits are the district's, which is
+        exact. Everything else falls back to the district containing the
+        point, where elementary and unified districts overlap: prefer a
+        unified district, then the widest grade span.
         """
         districts = Region.objects.filter(type=Region.Type.SCHOOL_DISTRICT)
 
@@ -270,7 +351,7 @@ class Location(TimeStampedModel):
             if district is not None:
                 return district
 
-        candidates = list(districts.filter(boundary__geometry__contains=point))
+        candidates = list(districts.filter(boundary__geometry__contains=self.point))
         if not candidates:
             return None
         if len(candidates) == 1:
@@ -281,6 +362,32 @@ class Location(TimeStampedModel):
             candidates = unified
 
         return max(candidates, key=lambda district: _grade_span(district.metadata))
+
+    def get_county(self):
+        return self.county.name if self.county_id else None
+
+    def get_city(self):
+        """The city Region's name, else the city the source gave us."""
+        return self.city.name if self.city_id else self.city_name
+
+    def get_zipcode(self):
+        return self.zipcode.name if self.zipcode_id else self.zip
+
+    def get_school_district(self):
+        return self.school_district.name if self.school_district_id else None
+
+    def get_pesticides_url(self):
+        """
+        Locations don't have their own page: the school district's page is
+        the closest thing, and a location without one has nowhere to go.
+        """
+        if self.school_district_id is None:
+            return ''
+        return self.school_district.get_pesticides_url()
+
+    @property
+    def short_type(self):
+        return self.SHORT_TYPES[self.Type(self.type)]
 
 
 # Grade labels as CDE writes them, lowest first. Anything unrecognized

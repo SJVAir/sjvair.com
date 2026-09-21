@@ -86,7 +86,7 @@ class PublicSchoolImportTests(TestCase):
 
         assert school.name == 'Orchard High'
         assert school.address == '100 Almond Ave'
-        assert school.city == 'Selma'
+        assert school.city_name == 'Selma'
         assert school.zip == '93662-1000'
         assert round(school.point.y, 4) == 36.71
         assert round(school.point.x, 4) == -119.79
@@ -94,16 +94,16 @@ class PublicSchoolImportTests(TestCase):
         assert school.metadata['charter'] is False
         assert school.imported_at is not None
 
-    def test_resolves_county_and_district(self):
+    def test_resolves_county_and_school_district(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
 
         school = Location.objects.get(external_id='10621176059453')
         assert school.county == Region.objects.get(pk=9001)
-        assert school.district == self.district
+        assert school.school_district == self.district
 
         kern = Location.objects.get(external_id='15633216059455')
         assert kern.county == Region.objects.get(pk=9002)
-        assert kern.district is None
+        assert kern.school_district is None
 
     def test_rerun_updates_without_duplicating(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
@@ -208,7 +208,7 @@ class PrivateSchoolImportTests(TestCase):
         assert school.metadata['enrollment'] == 148
         assert school.metadata['grade_low'] == 'K'
         assert school.metadata['grade_high'] == '8'
-        assert school.district == self.district
+        assert school.school_district == self.district
         assert school.county == Region.objects.get(pk=9001)
 
     def test_no_geocode_skips_rows_without_coordinates(self):
@@ -272,7 +272,7 @@ class ChildCareImportTests(TestCase):
         assert facility.type == Location.Type.CHILD_CARE
         assert facility.name == 'Little Sprouts Learning Center'
         assert facility.address == '55 Orchard Way'
-        assert facility.city == 'Selma'
+        assert facility.city_name == 'Selma'
         assert facility.zip == '93662'
         assert round(facility.point.y, 4) == 36.715
         assert round(facility.point.x, 4) == -119.795

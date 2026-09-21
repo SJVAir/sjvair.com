@@ -40,6 +40,17 @@ def grade_span(metadata):
     return low or high or None
 
 
+def enrollment(metadata):
+    """
+    Total enrollment, when the source carried one. CDE public schools nest it
+    under `enrollment: {total: ...}`; private schools store a plain number.
+    """
+    value = metadata.get('enrollment')
+    if isinstance(value, dict):
+        value = value.get('total')
+    return value or None
+
+
 class LocationListBase(generics.Endpoint):
     # See the comment on SectionListBase: the get() implementation lives on
     # this un-cached base so CachedEndpointMixin.get() on LocationList below
@@ -64,7 +75,7 @@ class LocationListBase(generics.Endpoint):
 
         locations = (Location.objects
             .filter(type__in=types, point__bboverlaps=Polygon.from_bbox(bbox))
-            .select_related('district')
+            .select_related('city', 'school_district')
             .order_by('name', 'pk')
         )
 
@@ -85,13 +96,15 @@ class LocationListBase(generics.Endpoint):
                 'type': location.type,
                 'type_label': str(location.short_type),
                 'address': location.address,
-                'city': location.city,
-                'district': location.district.name if location.district else None,
-                'district_id': location.district.sqid if location.district else None,
+                'city': location.get_city() or None,
+                'school_district': location.get_school_district(),
+                'school_district_id': (location.school_district.sqid
+                    if location.school_district_id else None),
                 # The district page's real URL, so the popup links straight to
                 # it instead of through the slug redirect.
-                'district_url': location.get_pesticides_url() or None,
+                'school_district_url': location.get_pesticides_url() or None,
                 'grade_span': grade_span(location.metadata or {}),
+                'enrollment': enrollment(location.metadata or {}),
                 'capacity': (location.metadata or {}).get('capacity'),
             },
         } for location in locations]

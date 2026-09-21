@@ -2728,7 +2728,7 @@
     var subParts = [];
     if (props.type_label) subParts.push(escapeHtml(props.type_label));
     if (where) subParts.push(escapeHtml(where));
-    if (!subParts.length && props.district) subParts.push(escapeHtml(props.district));
+    if (!subParts.length && props.school_district) subParts.push(escapeHtml(props.school_district));
     var sub = subParts.join(' · ');
 
     var headline;
@@ -2750,8 +2750,8 @@
       actions += '<a class="section-popup-action" href="' + escapeHtml(this.sectionUrl(section.id)) + '">' +
         '<span class="fa-regular fa-fw fa-circle-info"></span> Section details</a>';
     }
-    if (props.district_url) {
-      actions += '<a class="section-popup-action" href="' + escapeHtml(props.district_url) + '">' +
+    if (props.school_district_url) {
+      actions += '<a class="section-popup-action" href="' + escapeHtml(props.school_district_url) + '">' +
         '<span class="fa-regular fa-fw fa-school"></span> District page</a>';
     }
 

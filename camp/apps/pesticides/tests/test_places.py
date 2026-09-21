@@ -226,7 +226,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
             external_id='inside',
             source='cde',
             point=Point(-119.79, 36.71, srid=4326),
-            district=self.district,
+            school_district=self.district,
         )
         self.away = Location.objects.create(
             type=Location.Type.CHILD_CARE,
@@ -234,7 +234,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
             external_id='away',
             source='cdss',
             point=Point(-121.5, 38.5, srid=4326),
-            district=self.district,
+            school_district=self.district,
         )
         self.url = reverse('pesticides:region', kwargs={'sqid': self.district.sqid, 'slug': 'selma-unified'})
 
@@ -291,7 +291,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
 
     def test_panel_titlecases_names_and_shows_the_city(self):
         self.inside.name = 'SELMA  HIGH'
-        self.inside.city = 'SELMA'
+        self.inside.city_name = 'SELMA'
         self.inside.save()
         cache.clear()
         html = self.client.get(self.url).content.decode()
@@ -312,7 +312,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
                 external_id=f'extra-{index}',
                 source='cdss',
                 point=Point(-121.5, 38.5, srid=4326),
-                district=self.district,
+                school_district=self.district,
             )
         cache.clear()
         html = self.client.get(self.url).content.decode()

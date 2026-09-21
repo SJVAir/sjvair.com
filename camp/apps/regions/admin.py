@@ -206,8 +206,8 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
 
 @admin.register(Location)
 class LocationAdmin(GISModelAdmin):
-    list_display = ('name', 'type', 'city', 'county')
+    list_display = ('name', 'type', 'get_city', 'get_county')
     list_filter = ('type', 'source')
-    list_select_related = ('county', 'district')
-    search_fields = ('name', 'external_id', 'city')
-    raw_id_fields = ('county', 'district')
+    list_select_related = ('county', 'city', 'zipcode', 'school_district')
+    search_fields = ('name', 'external_id', 'city_name')
+    raw_id_fields = ('county', 'city', 'zipcode', 'school_district')

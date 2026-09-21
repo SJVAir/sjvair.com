@@ -23,7 +23,7 @@ scope, so a section page opens on the same year and scope as the row.
             <tr>
                 <td>{{ row.location.name|title_case_name }}</td>
                 <td>{{ row.location.short_type }}</td>
-                <td>{{ row.location.city|title_case_name|default:"—" }}</td>
+                <td>{{ row.location.get_city|title_case_name|default:"—" }}</td>
                 <td class="has-text-right">{{ row.lbs|lbs }}</td>
                 <td class="has-text-right">{{ row.applications|intcomma }}</td>
                 <td>{% if row.section_sqid %}<a href="{% url 'pesticides:section-detail' sqid=row.section_sqid %}{{ scope_qs }}" title="Square-mile section {{ row.section_mtrs }}">Section details</a>{% else %}&mdash;{% endif %}</td>
