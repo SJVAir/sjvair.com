@@ -884,17 +884,21 @@ def page_url_pattern(name):
     return unquote(reverse(name, kwargs={'sqid': '{id}'}))
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False):
     year = year or stats.latest_year()
     return {
         # Upcoming-notice markers start on where notices are the subject of
         # the page, off where the reader came for the use data (records, and
         # the entity pages). Either way the map's own checkbox flips it.
         'show_notices': '1' if show_notices else '0',
+        # School and child care markers: on where the schools are the
+        # subject of the page (a school district), off everywhere else.
+        'show_locations': '1' if show_locations else '0',
         'sections_url': '/api/2.0/pesticides/sections/',
         'counties_url': '/api/2.0/pesticides/counties/',
         'townships_url': '/api/2.0/pesticides/townships/',
         'notices_url': '/api/2.0/pesticides/notices/active/',
+        'locations_url': '/api/2.0/pesticides/locations/',
         'section_url_pattern': '/api/2.0/pesticides/sections/{id}/',
         'section_page_url': page_url_pattern('pesticides:section-detail'),
         # The bare-sqid redirect: it 301s to the slugged detail URL, so the
@@ -902,6 +906,10 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'chemical_page_url': page_url_pattern('pesticides:chemical-redirect'),
         'product_page_url': page_url_pattern('pesticides:product-redirect'),
         'notice_page_url': page_url_pattern('pesticides:notice-detail'),
+        # A school marker knows its district's sqid but not its slug; any
+        # slug 301s to the canonical URL (see RegionPage), so a placeholder
+        # one is enough for the link.
+        'region_page_url': unquote(reverse('pesticides:region', kwargs={'sqid': '{id}', 'slug': 'district'})),
         'tile_url': leaflet.TILE_URL.format(key=settings.MAPTILER_API_KEY, z='{z}', x='{x}', y='{y}'),
         'attribution': leaflet.TILE_ATTRIBUTION,
         # What the grid endpoints are asked for ("all" sums every loaded

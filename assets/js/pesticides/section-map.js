@@ -3,7 +3,8 @@
  *
  * Turns each `.section-map` container into a live Leaflet map: square-mile
  * (MTRS) sections shaded by a metric (pounds or application count), plus
- * SprayDays notice-of-intent markers. Config comes entirely from the
+ * SprayDays notice-of-intent markers and, where the page asks for them,
+ * school and child care markers. Config comes entirely from the
  * container's `data-*` attributes (see `pesticides/includes/section-map.html`
  * and `views.section_map_config`), so this script has no server-rendered
  * state baked in beyond that.
@@ -82,6 +83,24 @@
       .replace(/\.(png|jpg)\?/, style === 'hybrid' ? '.jpg?' : '.png?');
   }
   var NOTICE_COLOR = '#d35400';
+  // Schools and child care markers (see loadLocations). Schools are slate,
+  // child care purple; both are ringed in white like the notice markers so
+  // they stay legible over a dark section fill.
+  var LOCATION_COLORS = {
+    public_school: '#5a6b7b',
+    private_school: '#5a6b7b',
+    child_care: '#7b4fb8',
+  };
+  var LOCATION_FALLBACK_COLOR = '#5a6b7b';
+  // Markers are points, not a grid: further out than this the viewport holds
+  // thousands of them, so the layer stays off and the legend says why.
+  var LOCATIONS_MIN_ZOOM = 9;
+  var LOCATIONS_ZOOM_NOTE = 'Zoom in to see schools and child care.';
+  // "Within about a mile": a school's own square-mile section plus the ring
+  // around it -- the sections whose centre is within 1.5 miles of that
+  // section's centre. Same rule as stats.block_totals on the server.
+  var BLOCK_MILES = 1.5;
+  var BLOCK_METERS = 2414;
   // Below this zoom, sections drawn at township level (the lens, "all
   // sections") are a few pixels each: their hairline strokes would outweigh
   // the fills and grey the map, so they draw fill-only.
@@ -308,6 +327,10 @@
     // overrides it, and the "Show notices" checkbox flips it from there.
     var noticesMatch = /[?&]notices=([01])/.exec(window.location.search || '');
     this.showNotices = noticesMatch ? noticesMatch[1] === '1' : this.data.showNotices !== '0';
+    // School and child care markers work the same way: on by default only
+    // where the schools are the subject of the page (a school district).
+    var locationsMatch = /[?&]locations=([01])/.exec(window.location.search || '');
+    this.showLocations = locationsMatch ? locationsMatch[1] === '1' : this.data.showLocations === '1';
     // "All sections": at the township zoom, draw every section in view
     // instead of the township grid (loaded in blocks, see loadAllSections).
     this.showAllSections = /[?&]sections=1/.test(window.location.search || '');
@@ -316,17 +339,21 @@
     this.gridLayer = null;
     this.countiesLayer = null;
     this.noticesLayer = null;
+    this.locationsLayer = null;
     this.currentClasses = { breaks: [], colors: [], members: [] };
     this.gridAbort = null;
     this.noticesAbort = null;
+    this.locationsAbort = null;
     // What the last successful fetch covers, so a pan inside it doesn't
     // refetch (and so doesn't rebuild a layer under an open popup).
     this.loadedBounds = null;
     this.loadedLevel = null;
     this.loadedNoticeBounds = null;
+    this.loadedLocationBounds = null;
     // Feature ids of the popups that are open, so a rebuild can put them back.
     this.openGridId = null;
     this.openNoticeId = null;
+    this.openLocationId = null;
 
     this.controlsEl = null;
     this.legendEl = null;
@@ -362,6 +389,12 @@
       if (noticesToggle) {
         noticesToggle.checked = this.showNotices;
         noticesToggle.addEventListener('change', this.onNoticesToggle.bind(this));
+      }
+
+      var locationsToggle = this.controlsEl.querySelector('input[name="locations"]');
+      if (locationsToggle) {
+        locationsToggle.checked = this.showLocations;
+        locationsToggle.addEventListener('change', this.onLocationsToggle.bind(this));
       }
 
       // Experiment controls: tile style and colour ramp, applied live and
@@ -437,6 +470,7 @@
         var params = event.detail.parameters;
         if (self.metric !== 'lbs_chemical') params.metric = self.metric;
         if (self.showNotices !== (self.data.showNotices !== '0')) params.notices = self.showNotices ? '1' : '0';
+        if (self.showLocations !== (self.data.showLocations === '1')) params.locations = self.showLocations ? '1' : '0';
         if (self.showAllSections) params.sections = '1';
       });
     }
@@ -624,6 +658,19 @@
     }
   };
 
+  SectionMap.prototype.onLocationsToggle = function (event) {
+    this.showLocations = !!event.target.checked;
+    this.syncViewParams();
+    if (this.showLocations) {
+      this.loadLocations();
+    } else {
+      this.loadedLocationBounds = null;
+      if (this.locationsAbort) this.locationsAbort.abort();
+      this.clearLocations();
+    }
+    this.updateLocationsNote();
+  };
+
   SectionMap.prototype.init = function () {
     // ?tiles=<style> swaps the MapTiler style while we pick one (see
     // leaflet-maps.js); known before the controls bind so the select shows it.
@@ -668,6 +715,11 @@
     var noticesPane = this.map.createPane('pesticide-notices');
     noticesPane.style.zIndex = 450;
 
+    // Schools and child care sit just under the notice markers: a notice is
+    // the time-critical thing on the map, so it wins an overlap.
+    var locationsPane = this.map.createPane('pesticide-locations');
+    locationsPane.style.zIndex = 440;
+
     // The page's own region (a city, ZIP, or place) sits between the
     // county lines and the notices.
     var outlinePane = this.map.createPane('pesticide-outline');
@@ -689,8 +741,10 @@
 
     var debouncedLoad = debounce(this.loadGrid.bind(this), DEBOUNCE_MS);
     var debouncedNotices = debounce(this.loadNotices.bind(this), DEBOUNCE_MS);
+    var debouncedLocations = debounce(this.loadLocations.bind(this), DEBOUNCE_MS);
     this.map.on('moveend zoomend', debouncedLoad);
     this.map.on('moveend zoomend', debouncedNotices);
+    this.map.on('moveend zoomend', debouncedLocations);
     this.map.on('zoomend', this.restyleCounties.bind(this));
     // Section strokes switch on/off across SECTION_LINES_MIN_ZOOM (see lensSectionStyle).
     this.map.on('zoomend', this.restyleSectionLines.bind(this));
@@ -703,6 +757,7 @@
     this.loadOutline();
     this.loadGrid();
     this.loadNotices();
+    this.loadLocations();
   };
 
   // A locate button under the zoom buttons: zooms to the reader's square
@@ -864,6 +919,13 @@
       if (!this.showNotices) this.clearNotices();
     }
 
+    var locationsDefaultChanged = (oldData.showLocations || '') !== (newData.showLocations || '');
+    if (locationsDefaultChanged) {
+      this.showLocations = newData.showLocations === '1';
+      this.loadedLocationBounds = null;
+      if (!this.showLocations) this.clearLocations();
+    }
+
     this.attachControls();
     this.map.invalidateSize();
 
@@ -900,12 +962,18 @@
       this.allSectionsRun = null;
       this.loadGrid();
       this.loadNotices();
+      // The markers themselves don't change with the filters, but the block
+      // totals in their popups do, so the layer is rebuilt either way.
+      this.loadedLocationBounds = null;
+      this.loadLocations();
     } else {
       if (noticesDefaultChanged && this.showNotices) this.loadNotices();
+      if (locationsDefaultChanged && this.showLocations) this.loadLocations();
       // Same data; the legend/level notes are new elements and need filling.
       this.updateLegend();
       this.restyle();
     }
+    this.updateLocationsNote();
   };
 
   SectionMap.prototype.countyStyle = function () {
@@ -1081,6 +1149,12 @@
         url.searchParams.delete('notices');
       } else {
         url.searchParams.set('notices', this.showNotices ? '1' : '0');
+      }
+      var locationsDefault = this.data.showLocations === '1';
+      if (this.showLocations === locationsDefault) {
+        url.searchParams.delete('locations');
+      } else {
+        url.searchParams.set('locations', this.showLocations ? '1' : '0');
       }
       if (this.showAllSections) {
         url.searchParams.set('sections', '1');
@@ -1942,6 +2016,16 @@
     if (this.levelEl) {
       this.levelEl.textContent = this.allSectionsActive() ? LEVEL_TEXT.allSections : (LEVEL_TEXT[this.level] || '');
     }
+    this.updateLocationsNote();
+  };
+
+  // Why the markers aren't there: the toggle is on but the map is zoomed
+  // out past where they load.
+  SectionMap.prototype.updateLocationsNote = function () {
+    var note = this.wrapEl ? this.wrapEl.querySelector('.section-map-locations-note') : null;
+    if (!note) return;
+    var tooFar = this.showLocations && this.map && this.map.getZoom() < LOCATIONS_MIN_ZOOM;
+    note.textContent = tooFar ? LOCATIONS_ZOOM_NOTE : '';
   };
 
   SectionMap.prototype.bringHighlightToFront = function () {
@@ -2356,6 +2440,221 @@
       '<p class="section-popup-label">Products</p>' + products +
       '<p class="section-popup-label mt">Chemicals</p>' + chemicals +
       '<div class="section-popup-actions">' + actions + '</div>' +
+      '</div>'
+    );
+  };
+
+  SectionMap.prototype.loadLocations = function () {
+    if (!this.data.locationsUrl) return;
+    this.updateLocationsNote();
+    if (!this.showLocations) return;
+    // Zoomed out the endpoint's bbox cap would reject the request anyway,
+    // and thousands of dots would say nothing; the legend note explains.
+    if (this.map.getZoom() < LOCATIONS_MIN_ZOOM) {
+      this.loadedLocationBounds = null;
+      this.clearLocations();
+      return;
+    }
+    // Same padded-fetch/skip deal as the grid and the notices.
+    if (this.covers(this.loadedLocationBounds)) return;
+
+    if (this.locationsAbort) this.locationsAbort.abort();
+    var abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    this.locationsAbort = abort;
+
+    var bounds = this.fetchBounds();
+    var url = this.data.locationsUrl + '?' + buildQuery({ bbox: bboxParam(bounds) });
+
+    var self = this;
+    fetch(url, abort ? { signal: abort.signal } : undefined)
+      .then(function (response) {
+        if (!response.ok) throw new Error('bad response');
+        return response.json();
+      })
+      .then(function (geojson) {
+        if (self.locationsAbort !== abort) return; // stale response
+        self.loadedLocationBounds = bounds;
+        self.renderLocations(geojson);
+      })
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') return;
+        if (self.locationsAbort !== abort) return;
+        window.console && console.error && console.error('section-map: failed to load locations', err);
+        self.loadedLocationBounds = null;
+        self.clearLocations();
+      });
+  };
+
+  SectionMap.prototype.clearLocations = function () {
+    if (this.locationsLayer) {
+      this.map.removeLayer(this.locationsLayer);
+      this.locationsLayer = null;
+    }
+  };
+
+  SectionMap.prototype.renderLocations = function (geojson) {
+    var self = this;
+    var reopenId = this.openLocationId;
+    this.clearLocations();
+    var features = ((geojson && geojson.features) || []).filter(function (f) { return f.geometry; });
+    this.locationsLayer = L.geoJSON({ type: 'FeatureCollection', features: features }, {
+      pointToLayer: function (feature, latlng) {
+        return L.circleMarker(latlng, {
+          pane: 'pesticide-locations',
+          radius: 5,
+          fillColor: LOCATION_COLORS[feature.properties.type] || LOCATION_FALLBACK_COLOR,
+          fillOpacity: 0.95,
+          color: '#fff',
+          weight: 1.5,
+        });
+      },
+      onEachFeature: function (feature, layer) {
+        self.trackPopup(layer, feature.properties.id, 'openLocationId');
+        layer.bindPopup(self.locationPopupHtml(feature.properties), self.popupOptions('section-popup-wrap'));
+        // The "within about a mile" figure is a second request, so it only
+        // happens when someone actually opens the popup.
+        layer.on('popupopen', function () {
+          self.loadLocationBlock(layer, feature.properties, layer.getLatLng());
+        });
+      },
+    }).addTo(this.map);
+
+    if (reopenId) {
+      this.locationsLayer.eachLayer(function (layer) {
+        if (layer.feature && layer.feature.properties.id === reopenId) layer.openPopup();
+      });
+    }
+  };
+
+  // Degrees covering `miles` in each direction at this latitude.
+  function milesToDegrees(miles, lat) {
+    return {
+      lat: miles / 69,
+      lng: miles / (69 * Math.max(Math.cos(lat * Math.PI / 180), 0.01)),
+    };
+  }
+
+  // The [west, south, east, north] that is sure to hold the 3x3 block around
+  // `latlng`: the point can sit at the corner of its own section, so the
+  // block reaches a section further out on that side.
+  function blockBbox(latlng) {
+    var pad = milesToDegrees(BLOCK_MILES + 1.1, latlng.lat);
+    return [latlng.lng - pad.lng, latlng.lat - pad.lat, latlng.lng + pad.lng, latlng.lat + pad.lat].join(',');
+  }
+
+  // The centre of a GeoJSON feature's bounding box, from its coordinates --
+  // cheaper than building a Leaflet layer for each one just to measure it.
+  function featureCenter(feature) {
+    var min = [Infinity, Infinity];
+    var max = [-Infinity, -Infinity];
+    (function walk(coords) {
+      if (typeof coords[0] === 'number') {
+        min[0] = Math.min(min[0], coords[0]);
+        min[1] = Math.min(min[1], coords[1]);
+        max[0] = Math.max(max[0], coords[0]);
+        max[1] = Math.max(max[1], coords[1]);
+        return;
+      }
+      for (var i = 0; i < coords.length; i++) walk(coords[i]);
+    })((feature.geometry && feature.geometry.coordinates) || []);
+    if (!isFinite(min[0])) return null;
+    return {
+      latlng: L.latLng((min[1] + max[1]) / 2, (min[0] + max[0]) / 2),
+      bbox: [min[0], min[1], max[0], max[1]],
+    };
+  }
+
+  // Sum the nine sections around `latlng` out of a sections response: the
+  // section the point falls in, plus every section whose centre is within
+  // 1.5 miles of that section's centre (stats.block_sections, client-side).
+  function blockTotals(geojson, latlng) {
+    var features = ((geojson && geojson.features) || []).filter(function (f) { return f.geometry; });
+    var measured = [];
+    var home = null;
+    for (var i = 0; i < features.length; i++) {
+      var center = featureCenter(features[i]);
+      if (!center) continue;
+      var entry = { feature: features[i], center: center };
+      measured.push(entry);
+      var box = center.bbox;
+      var inside = latlng.lng >= box[0] && latlng.lng <= box[2] && latlng.lat >= box[1] && latlng.lat <= box[3];
+      if (inside && (!home || center.latlng.distanceTo(latlng) < home.center.latlng.distanceTo(latlng))) {
+        home = entry;
+      }
+    }
+    if (!home) return { lbs: 0, applications: 0, section: null };
+    var totals = { lbs: 0, applications: 0, section: home.feature.properties };
+    for (var j = 0; j < measured.length; j++) {
+      if (measured[j].center.latlng.distanceTo(home.center.latlng) > BLOCK_METERS) continue;
+      totals.lbs += measured[j].feature.properties.lbs_chemical || 0;
+      totals.applications += measured[j].feature.properties.applications || 0;
+    }
+    return totals;
+  }
+
+  // Fill in a school popup's headline once its block of sections lands.
+  // `block` is undefined while loading and null when the fetch failed.
+  SectionMap.prototype.loadLocationBlock = function (layer, props, latlng) {
+    var self = this;
+    var params = this.commonParams();
+    params.bbox = blockBbox(latlng);
+    var url = this.data.sectionsUrl + '?' + buildQuery(params);
+    var open = function () { return layer.getPopup() && layer.isPopupOpen(); };
+
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) throw new Error('bad response');
+        return response.json();
+      })
+      .then(function (geojson) {
+        if (!open()) return;
+        layer.getPopup().setContent(self.locationPopupHtml(props, blockTotals(geojson, latlng)));
+      })
+      .catch(function (err) {
+        window.console && console.error && console.error('section-map: failed to load a location block', err);
+        if (!open()) return;
+        layer.getPopup().setContent(self.locationPopupHtml(props, null));
+      });
+  };
+
+  // A school or child care popup in the section popup's idiom: name, grey
+  // subline, the block headline, pill actions.
+  SectionMap.prototype.locationPopupHtml = function (props, block) {
+    var subParts = [];
+    if (props.type_label) subParts.push(escapeHtml(props.type_label));
+    if (props.district) subParts.push(escapeHtml(props.district));
+    var sub = subParts.join(' · ');
+
+    var headline;
+    if (block === undefined) {
+      headline = '<p class="section-popup-note">Loading nearby use…</p>';
+    } else if (block === null) {
+      headline = '<p class="section-popup-note">Couldn\'t load nearby use.</p>';
+    } else {
+      var within = ' within about a mile' + this.yearPhrase();
+      var text = this.metric === 'applications'
+        ? '<strong>' + formatNumber(block.applications) + '</strong> application' + (block.applications === 1 ? '' : 's') + within
+        : '<strong>' + formatNumber(block.lbs) + ' lbs</strong> applied' + within;
+      headline = '<p class="section-popup-metric">' + text + '</p>';
+    }
+
+    var actions = '';
+    var section = block && block.section;
+    if (section && section.id) {
+      actions += '<a class="section-popup-action" href="' + escapeHtml(this.sectionUrl(section.id)) + '">' +
+        '<span class="fa-regular fa-fw fa-circle-info"></span> Section details</a>';
+    }
+    if (props.district_id && this.data.regionPageUrl) {
+      actions += '<a class="section-popup-action" href="' + escapeHtml(fillUrl(this.data.regionPageUrl, props.district_id)) + '">' +
+        '<span class="fa-regular fa-fw fa-school"></span> District page</a>';
+    }
+
+    return (
+      '<div class="section-popup location-popup">' +
+      '<h4>' + escapeHtml(props.name || '') + '</h4>' +
+      (sub ? '<p class="section-popup-sub">' + sub + '</p>' : '') +
+      headline +
+      (actions ? '<div class="section-popup-actions">' + actions + '</div>' : '') +
       '</div>'
     );
   };

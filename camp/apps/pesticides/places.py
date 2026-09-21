@@ -32,6 +32,7 @@ WITHIN_KEY = 'pesticides:within'
 WITHIN_TTL = 60 * 60 * 24
 RADIUS_CHOICES = (1, 3, 5)
 AREA_SECTIONS_TTL = 60 * 60 * 24
+SCHOOLS_NEARBY_TTL = 60 * 60 * 24
 SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/'
 
 # Prefixed onto the region's own name for the page's <h1>/label. Counties,
@@ -229,6 +230,45 @@ def region_area(region):
     return Area(label=label, kind='region', region=region, section_pks=section_pks)
 
 
+def schools_nearby(region, year, all_years=False, county=None):
+    """
+    The schools and child care centers in a school district, each with the
+    pesticide use reported in the 3x3 block of sections around it (see
+    stats.block_totals) -- the "Schools in this district" panel. Sorted by
+    pounds, heaviest first, then by name.
+
+    Each entry is {'location', 'lbs', 'applications', 'section_sqid',
+    'section_mtrs'}. Every location needs its own block lookup, so the whole
+    list is cached for a day per district and year; it only changes on import.
+    """
+    key = ':'.join([
+        'pesticides:schools-nearby',
+        str(region.pk),
+        stats.year_param(year, all_years) or 'none',
+        str(county.pk) if county is not None else '',
+    ])
+
+    def build():
+        rows = PesticideUseRollup.objects.all()
+        if county is not None:
+            rows = rows.filter(county=county)
+        entries = []
+        for location in region.schools.all().order_by('name', 'pk'):
+            totals = stats.block_totals(rows, location.point, year, all_years)
+            section = totals['section']
+            entries.append({
+                'location': location,
+                'lbs': totals['lbs'],
+                'applications': totals['applications'],
+                'section_sqid': section.sqid if section is not None else None,
+                'section_mtrs': (section.external_id or section.name) if section is not None else None,
+            })
+        entries.sort(key=lambda entry: (-entry['lbs'], entry['location'].name))
+        return entries
+
+    return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
+
+
 def _place_stats(area, year, all_years):
     """
     The year-binned half of a place page. Across every loaded year a county
@@ -290,6 +330,10 @@ def place_context(area, year, all_years=False):
     )
     upcoming_count = upcoming_qs.count()
 
+    # The district's own schools are the subject of a school-district page,
+    # so its map opens with the markers on and the page lists them.
+    is_district = area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT
+
     context = {
         'area': area,
         **data,
@@ -297,9 +341,13 @@ def place_context(area, year, all_years=False):
         'upcoming_count': upcoming_count,
         'records_url': area.records_url(year, all_years),
         'notices_url': area.notices_url(),
-        'map_config': section_map_config(year, all_years=all_years, **area.map_kwargs()),
+        'map_config': section_map_config(year, all_years=all_years, show_locations=is_district, **area.map_kwargs()),
         'spraydays_url': SPRAYDAYS_URL,
+        'is_school_district': is_district,
     }
+
+    if is_district:
+        context['schools_nearby'] = schools_nearby(area.region, year, all_years)
 
     # A single-county area's per-county breakdown is just that one county
     # (== the total); only surface it when the area spans multiple counties.

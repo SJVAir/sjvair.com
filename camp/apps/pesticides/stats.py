@@ -7,6 +7,8 @@ per-month rollup of PesticideUse rebuilt by camp.apps.pesticides.rollup.
 from datetime import timedelta
 from types import SimpleNamespace
 
+from django.contrib.gis.db.models.functions import Centroid
+from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.db.models import Count, F, Max, Min, Q, Sum
 from django.utils import timezone
@@ -33,6 +35,11 @@ LATEST_YEAR_TTL = 60 * 60
 LANDING_TTL = 60 * 60 * 24
 NOTICE_WINDOW_TTL = 60 * 60
 SJV_COUNTY_COUNT = 8
+# The "within about a mile" block: a section plus the eight around it. MTRS
+# sections are roughly one mile square, so a neighbour's centroid is about a
+# mile away (1.5 miles diagonally) and the next ring out is about two.
+BLOCK_MILES = 1.5
+BLOCK_RADIUS_M = 2414
 TOWNSHIP_FIELDS = ('lbs_chemical', 'lbs_product', 'acres_treated', 'applications')
 _MISSING = object()
 
@@ -228,6 +235,63 @@ def by_section(rows, year, lbs_field='lbs_chemical'):
         {'mtrs_id': r['mtrs'], 'lbs': r['lbs'] or 0, 'acres': r['acres'] or 0, 'applications': r['applications'] or 0}
         for r in rows.filter(year=year, mtrs__isnull=False).values('mtrs').annotate(**_totals(lbs_field)).order_by(F('lbs').desc(nulls_last=True), 'mtrs')
     ]
+
+
+def block_sections(point):
+    """
+    The 3x3 block of square-mile sections around `point`: the MTRS section it
+    sits in, plus the ring of sections around that one. Returns
+    (home section, [section pks]) -- (None, []) when the point isn't inside
+    any surveyed section.
+
+    Neighbours are found by centroid distance rather than by touching the
+    home section's boundary: PLSS sections are surveyed, not gridded, so
+    neighbouring polygons don't always share an edge cleanly, but their
+    centroids are reliably ~1 mile apart and the next ring out is ~2.
+    """
+    # Local import: camp.api.v2.pesticides.sections imports this module.
+    from camp.api.v2.pesticides.sections import radius_bbox
+
+    home = (Region.objects
+        .filter(type=Region.Type.MTRS, boundary__isnull=False, boundary__geometry__contains=point)
+        .select_related('boundary')
+        .first()
+    )
+    if home is None:
+        return None, []
+    centroid = home.boundary.geometry.centroid
+    pks = set(Region.objects
+        .filter(
+            type=Region.Type.MTRS,
+            boundary__isnull=False,
+            # Index-friendly prefilter, same reason as places.point_area().
+            boundary__geometry__bboverlaps=radius_bbox(centroid.y, centroid.x, BLOCK_MILES + 0.1),
+        )
+        .annotate(section_centroid=Centroid('boundary__geometry'))
+        .filter(section_centroid__distance_lte=(centroid, D(m=BLOCK_RADIUS_M)))
+        .values_list('pk', flat=True)
+    )
+    pks.add(home.pk)
+    return home, sorted(pks)
+
+
+def block_totals(rows, point, year, all_years=False):
+    """
+    Pounds and applications reported in the 3x3 block of sections around
+    `point` -- "within about a mile" -- plus the section the point is in.
+    """
+    home, pks = block_sections(point)
+    if not pks:
+        return {'lbs': 0, 'applications': 0, 'section': None}
+    data = in_year(rows.filter(mtrs__in=pks), year, all_years).aggregate(
+        lbs=Sum('lbs_chemical'),
+        applications=Sum('applications'),
+    )
+    return {
+        'lbs': data['lbs'] or 0,
+        'applications': data['applications'] or 0,
+        'section': home,
+    }
 
 
 def by_township(rows, year, all_years=False):

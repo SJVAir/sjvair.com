@@ -794,6 +794,14 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'data-show-notices="1"' in html
         assert 'name="notices" checked' in html
 
+    def test_school_markers_are_off_by_default(self):
+        response = self.client.get(self.url)
+        assert response.context['map_config']['show_locations'] == '0'
+        html = response.content.decode()
+        assert 'data-show-locations="0"' in html
+        assert 'data-locations-url="/api/2.0/pesticides/locations/"' in html
+        assert 'name="locations" checked' not in html
+
     def test_nav_has_map_tab(self):
         html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
         assert reverse('pesticides:map') in html

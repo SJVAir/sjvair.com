@@ -164,6 +164,17 @@
   color: #7a7a7a;
 }
 
+/* Why the school markers aren't showing (set by updateLocationsNote); empty
+   the rest of the time, so it takes no room. */
+.section-map-legend-panel .section-map-locations-note:not(:empty) {
+  display: block;
+  margin-top: 0.35rem;
+  color: #7a7a7a;
+}
+
+/* Marker colours live in the script (LOCATION_COLORS, NOTICE_COLOR): notices
+   #d35400, schools #5a6b7b, child care #7b4fb8. */
+
 /* Expanded: the map takes the viewport below the site navbar (same
    arithmetic as the live map page), panels ride along. */
 .section-map-wrap.is-expanded {

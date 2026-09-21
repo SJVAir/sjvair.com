@@ -4,11 +4,13 @@
        data-counties-url="{{ map_config.counties_url }}"
        data-townships-url="{{ map_config.townships_url }}"
        data-notices-url="{{ map_config.notices_url }}"
+       data-locations-url="{{ map_config.locations_url }}"
        data-section-url-pattern="{{ map_config.section_url_pattern }}"
        data-section-page-url="{{ map_config.section_page_url }}"
        data-chemical-page-url="{{ map_config.chemical_page_url }}"
        data-product-page-url="{{ map_config.product_page_url }}"
        data-notice-page-url="{{ map_config.notice_page_url }}"
+       data-region-page-url="{{ map_config.region_page_url }}"
        data-tiles="{{ map_config.tile_url }}"
        data-attribution="{{ map_config.attribution }}"
        data-year="{{ map_config.year }}"
@@ -23,7 +25,8 @@
        data-zoom="{{ map_config.zoom }}"
        data-radius="{{ map_config.radius }}"
        data-fit="{{ map_config.fit }}"
-       data-show-notices="{{ map_config.show_notices }}"></div>
+       data-show-notices="{{ map_config.show_notices }}"
+       data-show-locations="{{ map_config.show_locations }}"></div>
   {% comment %}
   One toolbar row over the map (top-left, beside the zoom buttons): the page's
   filters when it has them, then Options, then Expand. The legend sits
@@ -48,6 +51,7 @@
               <label><input type="radio" name="metric" value="applications"> Applications</label>
             </div>
             <label class="section-map-notices-toggle"><input type="checkbox" name="notices"{% if map_config.show_notices == '1' %} checked{% endif %}> Show notices</label>
+            <label class="section-map-locations-toggle"><input type="checkbox" name="locations"{% if map_config.show_locations == '1' %} checked{% endif %}> Schools &amp; child care</label>
             <label class="section-map-sections-toggle"><input type="checkbox" name="sections"> All sections</label>
             {# Experiment controls while a basemap and ramp are chosen; the script fills the options and applies them live. #}
             <label class="section-map-select">Tiles <select name="tiles"></select></label>
@@ -75,6 +79,7 @@
     <div class="section-map-panel-body" id="section-map-legend-{{ map_config.year }}">
       <ul class="county-legend section-map-legend"></ul>
       <span class="section-map-level"></span>
+      <span class="section-map-locations-note"></span>
     </div>
   </div>
   <noscript>{% if county_map %}{% include 'pesticides/includes/county-map.html' %}{% endif %}</noscript>
