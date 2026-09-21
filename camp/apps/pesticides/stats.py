@@ -21,9 +21,9 @@ from camp.apps.regions.models import Region
 
 LATEST_YEAR_KEY = 'pesticides:latest-year'
 # Bumped whenever the cached shape changes -- v2 added `county_sqid` to
-# by_county() rows, so a landing-stats entry cached under the old key would
-# be missing it.
-LANDING_KEY = 'pesticides:landing-stats:v2'
+# by_county() rows and v3 added `by_year`, so a landing-stats entry cached
+# under an old key would be missing them.
+LANDING_KEY = 'pesticides:landing-stats:v3'
 NOTICE_WINDOW_KEY = 'pesticides:notice-window'
 YEARS_KEY = 'pesticides:years'
 ALL_YEARS = 'all'
@@ -184,6 +184,74 @@ def by_year(rows, lbs_field='lbs_chemical'):
         .annotate(**_totals(lbs_field))
         .order_by('-year')
     )
+
+
+def trend_deltas(by_year, year, field='lbs'):
+    """
+    How the selected year compares to the year before it and to the first
+    loaded year, as percentages: `{'previous': {'year', 'pct'}, 'first': {...}}`
+    with None where the comparison doesn't exist (no such year) and a None
+    `pct` where it can't be computed (the reference year is zero or missing).
+
+    `by_year` is newest-first, as `by_year()` returns it. `year` of None means
+    All years, where the only useful reference is the first loaded year and
+    the comparison runs from the newest year.
+    """
+    rows = list(by_year)
+    empty = {'previous': None, 'first': None}
+    if not rows:
+        return empty
+
+    if year is None:
+        index = 0
+    else:
+        index = next((i for i, row in enumerate(rows) if row['year'] == year), None)
+        if index is None:
+            return empty
+
+    current = rows[index][field] or 0
+
+    def delta(row):
+        base = row[field] or 0
+        pct = None if not base else (current - base) / base * 100
+        return {'year': row['year'], 'pct': pct}
+
+    # Newest-first, so the previous year is the next row down.
+    previous = rows[index + 1] if (year is not None and index + 1 < len(rows)) else None
+    first = rows[-1] if rows[-1] is not rows[index] else None
+    # Don't say the same year twice when the first loaded year is the previous one.
+    if first is not None and previous is not None and first['year'] == previous['year']:
+        first = None
+    return {
+        'previous': delta(previous) if previous is not None else None,
+        'first': delta(first) if first is not None else None,
+    }
+
+
+def trend_points(by_year, field, width=320, height=90, pad=6):
+    """
+    `(x, y, year, value)` per loaded year, oldest first, for the trend chart's
+    polyline. The y axis runs from zero at the baseline to the largest year at
+    the top, so a flat or all-zero series sits on the baseline rather than
+    dividing by zero. A single year is centred.
+    """
+    rows = sorted(by_year, key=lambda row: row['year'])
+    if not rows:
+        return []
+    values = [row[field] or 0 for row in rows]
+    top = max(values)
+    span = width - (pad * 2)
+    plot = height - (pad * 2)
+    baseline = height - pad
+    points = []
+    for index, (row, value) in enumerate(zip(rows, values)):
+        if len(rows) == 1:
+            x = width / 2
+        else:
+            x = pad + (span * index / (len(rows) - 1))
+        y = baseline - (value / top * plot) if top else baseline
+        points.append((round(x, 1), round(y, 1), row['year'], value))
+    return points
 
 
 def by_county(rows, year, lbs_field='lbs_chemical', all_years=False):
@@ -487,9 +555,14 @@ def _build_landing_stats(year, all_years=False, county=None):
     # year carry the same pounds again.
     uses = PesticideUseTotal.objects.all() if all_years else PesticideUseRollup.objects.all()
     notices = PesticideNotice.objects.all()
+    # Valley-wide by year, for the trend chart: always off the totals table,
+    # whichever year is selected, and off its chemical rows only so the
+    # product and commodity rows don't count the same pounds again.
+    totals = PesticideUseTotal.objects.filter(chemical__isnull=False)
     if county is not None:
         uses = uses.filter(county=county)
         notices = notices.filter(county=county)
+        totals = totals.filter(county=county)
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50, all_years=all_years)
     year_uses = in_year(uses, year, all_years)
     counts = {
@@ -522,6 +595,7 @@ def _build_landing_stats(year, all_years=False, county=None):
         'top_chemicals_of_concern': _top_chemicals_of_concern(top_chemicals_all, uses, year, all_years=all_years),
         'top_commodities': top_related(uses, year, 'commodity', all_years=all_years),
         'by_county': county_totals(year, all_years) if (year or all_years) else [],
+        'by_year': by_year(totals),
     }
 
 

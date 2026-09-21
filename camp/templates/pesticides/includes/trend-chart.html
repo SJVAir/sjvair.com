@@ -1,0 +1,19 @@
+{% load pesticides_explorer %}
+{% if points %}
+<figure class="trend-chart">
+    <figcaption class="trend-title">{{ title }}</figcaption>
+    <svg viewBox="0 0 {{ width }} {{ height }}" role="img"
+         aria-label="{{ title }}, {{ first_year }} to {{ last_year }}{% if sentence %}. {{ sentence }}{% endif %}">
+        {% if polyline %}<polyline class="trend-line" points="{{ polyline }}" fill="none" />{% endif %}
+        {% for point in points %}
+            <circle class="trend-point{% if point.is_selected %} is-selected{% endif %}"
+                cx="{{ point.x }}" cy="{{ point.y }}" r="{% if point.is_selected %}4{% else %}2.5{% endif %}">
+                <title>{{ point.year }}: {{ point.display }} {{ metric_label }}</title>
+            </circle>
+        {% endfor %}
+        <text class="trend-axis" x="4" y="{{ height|add:'-1' }}" text-anchor="start">{{ first_year }}</text>
+        {% if first_year != last_year %}<text class="trend-axis" x="{{ width|add:'-4' }}" y="{{ height|add:'-1' }}" text-anchor="end">{{ last_year }}</text>{% endif %}
+    </svg>
+    {% if sentence %}<figcaption class="trend-delta">{{ sentence }}</figcaption>{% endif %}
+</figure>
+{% endif %}

@@ -457,6 +457,20 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         assert self.client.get('/tools/pesticides/chemicals/nope/x/').status_code == 404
         assert self.client.get('/tools/pesticides/chemicals/nope/').status_code == 404
 
+    def test_trend_chart_above_the_by_year_table(self):
+        html = self.client.get(self.chemical.get_absolute_url()).content.decode()
+        assert 'class="trend-chart"' in html
+        assert 'viewBox="0 0 320 90"' in html
+        # 2023: 180 lbs against 2022's 80. The first loaded year is the
+        # previous one here, so it isn't repeated.
+        assert 'Up 125% since 2022' in html
+        assert html.index('trend-chart') < html.index('by-year-table')
+
+    def test_trend_chart_under_all_years(self):
+        html = self.client.get(self.chemical.get_absolute_url(), {'year': 'all'}).content.decode()
+        assert 'class="trend-chart"' in html
+        assert 'Up 125% since 2022' in html
+
     def test_totals_and_tables(self):
         ctx = self.client.get(self.chemical.get_absolute_url()).context
         assert ctx['totals'] == {'lbs': 180.0, 'applications': 3, 'counties': 2}
@@ -667,6 +681,18 @@ class HomeTests(RollupTestMixin, TestCase):
         assert Chemical.objects.get(pk=3).get_absolute_url() + '?year=all' in html
         # The caveat still names the latest loaded year.
         assert 'the newest full year here is 2023' in html
+
+    def test_trend_chart_on_the_landing_page(self):
+        response = self.client.get(self.url)
+        assert [(r['year'], r['lbs']) for r in response.context['by_year']] == [(2023, 740.0), (2022, 540.0)]
+        html = response.content.decode()
+        assert 'class="trend-chart"' in html
+        assert 'Pounds applied by year' in html
+        assert 'Up 37% since 2022' in html
+
+    def test_trend_chart_follows_the_county_scope(self):
+        response = self.client.get(self.url, {'county': 'kern'})
+        assert [(r['year'], r['lbs']) for r in response.context['by_year']] == [(2023, 70.0), (2022, 60.0)]
 
     def test_leaderboards_link_to_details(self):
         html = self.client.get(self.url).content.decode()

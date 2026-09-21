@@ -177,6 +177,13 @@ class RegionPageTests(RollupTestMixin, TestCase):
         assert 'Fresno County' in html and 'Spraying peaks in August here' in html and 'month-bars' in html
         assert 'only in this page' not in html
 
+    def test_trend_chart(self):
+        response = self.client.get(self.url)
+        assert [(r['year'], r['lbs']) for r in response.context['by_year']] == [(2023, 670.0), (2022, 480.0)]
+        html = response.content.decode()
+        assert 'class="trend-chart"' in html
+        assert 'Up 40% since 2022' in html
+
     def test_slug_redirect_and_404s(self):
         response = self.client.get(reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'wrong'}))
         assert response.status_code == 301 and response['Location'] == self.url

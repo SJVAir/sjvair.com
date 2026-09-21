@@ -274,3 +274,85 @@ class StatsTests(RollupTestMixin, TestCase):
         cache.delete(stats.landing_key(2023))
         tasks.refresh_pesticide_landing_stats.call_local()
         assert cache.get(stats.landing_key(2023)) is not None
+
+
+class TrendTests(TestCase):
+    """`trend_deltas` and `trend_points` are pure: by_year rows in, geometry out."""
+
+    def rows(self, *pairs):
+        return [{'year': year, 'lbs': lbs, 'acres': 0, 'applications': 1} for year, lbs in pairs]
+
+    def test_deltas_up_and_first_year(self):
+        rows = self.rows((2023, 150.0), (2022, 100.0), (2014, 200.0))
+        deltas = stats.trend_deltas(rows, 2023)
+        assert deltas['previous'] == {'year': 2022, 'pct': 50.0}
+        assert deltas['first'] == {'year': 2014, 'pct': -25.0}
+
+    def test_deltas_down(self):
+        rows = self.rows((2023, 88.0), (2022, 100.0), (2014, 128.0))
+        deltas = stats.trend_deltas(rows, 2023)
+        assert deltas['previous']['pct'] == -12.0
+        assert round(deltas['first']['pct'], 2) == -31.25
+
+    def test_deltas_unchanged_is_a_zero_pct_not_a_none(self):
+        rows = self.rows((2023, 100.0), (2022, 100.0), (2014, 100.0))
+        deltas = stats.trend_deltas(rows, 2023)
+        assert deltas['previous'] == {'year': 2022, 'pct': 0.0}
+        assert deltas['first'] == {'year': 2014, 'pct': 0.0}
+
+    def test_deltas_from_a_zero_year_are_undefined(self):
+        rows = self.rows((2023, 100.0), (2022, 0.0), (2014, None))
+        deltas = stats.trend_deltas(rows, 2023)
+        assert deltas['previous'] == {'year': 2022, 'pct': None}
+        assert deltas['first'] == {'year': 2014, 'pct': None}
+
+    def test_deltas_for_an_older_selected_year(self):
+        rows = self.rows((2023, 150.0), (2022, 100.0), (2014, 50.0))
+        deltas = stats.trend_deltas(rows, 2022)
+        assert deltas['previous'] == {'year': 2014, 'pct': 100.0}
+        assert deltas['first'] is None    # 2014 is the previous year; don't say it twice
+
+    def test_deltas_under_all_years_reference_the_first_year_only(self):
+        rows = self.rows((2023, 150.0), (2022, 100.0), (2014, 300.0))
+        deltas = stats.trend_deltas(rows, None)
+        assert deltas['previous'] is None
+        assert deltas['first'] == {'year': 2014, 'pct': -50.0}
+
+    def test_deltas_single_year(self):
+        assert stats.trend_deltas(self.rows((2023, 150.0)), 2023) == {'previous': None, 'first': None}
+
+    def test_deltas_empty(self):
+        assert stats.trend_deltas([], 2023) == {'previous': None, 'first': None}
+
+    def test_deltas_selected_year_missing_from_the_rows(self):
+        assert stats.trend_deltas(self.rows((2023, 1.0), (2022, 1.0)), 1999) == {'previous': None, 'first': None}
+
+    def test_deltas_on_another_field(self):
+        rows = [
+            {'year': 2023, 'lbs': None, 'acres': 0, 'applications': 4},
+            {'year': 2022, 'lbs': None, 'acres': 0, 'applications': 2},
+        ]
+        assert stats.trend_deltas(rows, 2023, field='applications')['previous'] == {'year': 2022, 'pct': 100.0}
+
+    def test_points_run_oldest_to_newest_within_bounds(self):
+        rows = self.rows((2023, 100.0), (2022, 0.0), (2021, 50.0))
+        points = stats.trend_points(rows, 'lbs')
+        assert [p[2] for p in points] == [2021, 2022, 2023]
+        assert [p[0] for p in points] == [6.0, 160.0, 314.0]
+        assert [p[1] for p in points] == [45.0, 84.0, 6.0]
+        assert all(6 <= p[1] <= 84 for p in points)
+
+    def test_points_treat_missing_values_as_zero(self):
+        points = stats.trend_points(self.rows((2023, 10.0), (2022, None)), 'lbs')
+        assert [(p[1], p[3]) for p in points] == [(84.0, 0), (6.0, 10.0)]
+
+    def test_points_all_zero_sit_on_the_baseline(self):
+        points = stats.trend_points(self.rows((2023, 0.0), (2022, 0.0)), 'lbs')
+        assert [p[1] for p in points] == [84.0, 84.0]
+
+    def test_points_single_year_is_centered(self):
+        points = stats.trend_points(self.rows((2023, 10.0)), 'lbs')
+        assert [(p[0], p[1], p[2]) for p in points] == [(160.0, 6.0, 2023)]
+
+    def test_points_empty(self):
+        assert stats.trend_points([], 'lbs') == []

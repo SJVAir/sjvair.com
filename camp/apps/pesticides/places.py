@@ -334,9 +334,18 @@ def place_context(area, year, all_years=False):
     # so its map opens with the markers on and the page lists them.
     is_district = area.kind == 'region' and area.region.type == Region.Type.SCHOOL_DISTRICT
 
+    # The by-year series is the same whatever year is selected, so it's
+    # cached per area rather than per scope -- across every loaded year a
+    # county spans millions of rollup rows.
+    by_year = stats.cached(
+        stats.all_years_key('place-by-year', area.cache_key()),
+        lambda: stats.by_year(area.rollup_rows()),
+    )
+
     context = {
         'area': area,
         **data,
+        'by_year': by_year,
         'upcoming': upcoming,
         'upcoming_count': upcoming_count,
         'records_url': area.records_url(year, all_years),

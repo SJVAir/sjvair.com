@@ -59,6 +59,8 @@
 
 {% include 'pesticides/includes/section-map.html' %}
 
+<div class="mt-5">{% trend_chart by_year year %}</div>
+
 <section class="month-bars-section mt-6">
     <h2 class="title is-4">By month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
     {% if by_month %}

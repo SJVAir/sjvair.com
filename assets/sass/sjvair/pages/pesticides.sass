@@ -152,6 +152,43 @@ body.pesticides
         --fa-primary-color: #{$link}
         --fa-secondary-color: #{$grey-light}
 
+    // The by-year trend: a server-rendered line, no axes, no grid -- the
+    // table under it carries the numbers.
+    .trend-chart
+        margin: 0 0 1rem
+        svg
+            display: block
+            width: 100%
+            height: auto
+            overflow: visible
+        .trend-title
+            font-size: 0.8rem
+            text-transform: uppercase
+            letter-spacing: 0.04em
+            color: $grey
+            margin-bottom: 0.25rem
+        .trend-line
+            stroke: $link
+            stroke-width: 1.5
+            stroke-linejoin: round
+            stroke-linecap: round
+            vector-effect: non-scaling-stroke
+        .trend-point
+            fill: $white
+            stroke: $link
+            stroke-width: 1.25
+            vector-effect: non-scaling-stroke
+            &.is-selected
+                fill: $link
+        .trend-axis
+            font-size: 9px
+            fill: $grey
+        .trend-delta
+            margin-top: 0.35rem
+            font-size: 0.9rem
+            font-variant-numeric: tabular-nums
+            color: $text
+
     .by-year-table, .by-county-table
         // Four numeric columns in a narrow column: keep them on one line and
         // a touch smaller, and let the wrapper scroll before they overflow.
