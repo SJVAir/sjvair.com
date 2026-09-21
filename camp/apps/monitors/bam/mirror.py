@@ -63,7 +63,6 @@ def sync_monitor(data):
         'name': data['name'],
         'position': GEOSGeometry(str(data['position'])) if data.get('position') else None,
         'location': data.get('location') or BAM1022.LOCATION.outside,
-        'county': data.get('county') or '',
         'is_sjvair': data.get('is_sjvair', True),
     }
     monitor, created = BAM1022.objects.update_or_create(id=data['id'], defaults=fields)

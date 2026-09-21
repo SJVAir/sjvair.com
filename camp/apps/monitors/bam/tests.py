@@ -93,6 +93,8 @@ END = START + timedelta(hours=3)
 @override_settings(BAM_MIRROR_ENABLED=True, DOMAIN='https://staging.sjvair.com')
 @patch('camp.apps.monitors.bam.mirror.SJVAirClient', FakeClient)
 class MirrorBamDataTests(TestCase):
+    fixtures = ['regions.yaml']
+
     def test_creates_monitor_with_source_id(self):
         results = mirror_bam_data(START, END)
 

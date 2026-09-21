@@ -10,6 +10,7 @@ from shapely.geometry import Polygon as ShapelyPolygon
 from camp.apps.accounts.models import User
 from camp.apps.ces.models import CES4, CES5
 from camp.apps.monitors.purpleair.models import PurpleAir
+from camp.apps.regions.counties import COUNTY_KEYS, COUNTY_NAMES, county_name
 from camp.apps.regions.models import Region, Boundary
 from camp.apps.regions.panels import MonitorsPanel, TractPanel, panels_for
 from camp.apps.regions.management.commands.import_mtrs import build_mtrs
@@ -412,3 +413,28 @@ class PlaceNameOverrideTests(TestCase):
         from camp.apps.regions.management.commands.import_cities import place_name
         assert place_name('0627000', 'Fresno') == 'Fresno'
         assert place_name(627000, 'Fresno') == 'Fresno'  # numeric GEOIDs are coerced
+
+
+class CountyNameTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def test_point_inside_a_county(self):
+        assert county_name(Point(-119.7871, 36.7378, srid=4326)) == 'Fresno'
+
+    def test_point_outside_the_valley(self):
+        assert county_name(Point(-118.2437, 34.0522, srid=4326)) == ''  # Los Angeles
+        assert county_name(Point(-118.2437, 34.0522, srid=4326), default='n/a') == 'n/a'
+
+    def test_no_point(self):
+        assert county_name(None) == ''
+
+    def test_name_lists(self):
+        assert COUNTY_NAMES == ['Fresno', 'Kern', 'Kings', 'Madera', 'Merced', 'San Joaquin', 'Stanislaus', 'Tulare']
+        assert COUNTY_KEYS['san_joaquin'] == 'San Joaquin'
+
+
+class CountyNameWithoutRegionsTests(TestCase):
+    def test_warns_when_no_county_regions_are_loaded(self):
+        with self.assertLogs('camp.apps.regions.counties', level='WARNING') as logs:
+            assert county_name(Point(-119.7871, 36.7378, srid=4326)) == ''
+        assert 'import_counties' in logs.output[0]

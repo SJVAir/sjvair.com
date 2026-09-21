@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.text import slugify
 
-from camp.apps.regions.managers import SJV_COUNTIES
+from camp.apps.regions.counties import SJV_COUNTIES
 from camp.apps.regions.models import Region
 from camp.utils import geodata
 from camp.utils.gis import to_multipolygon

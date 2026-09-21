@@ -11,7 +11,7 @@ from huey import crontab
 
 from camp.apps.monitors.cimis.api import CIMISAPI
 from camp.apps.monitors.cimis.models import CIMIS
-from camp.utils.counties import County
+from camp.apps.regions.counties import COUNTY_NAMES
 
 
 def parse_hms_coordinate(value):
@@ -41,7 +41,7 @@ def process_cimis_station(station):
         return False
 
     county = station.get('County')
-    if county not in County.names:
+    if county not in COUNTY_NAMES:
         return False
 
     if station.get('IsActive') != 'True':
