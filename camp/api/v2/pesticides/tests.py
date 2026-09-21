@@ -1018,6 +1018,19 @@ class TownshipAndCountyTests(RollupTestMixin, TestCase):
         assert by_id['MDM-T14S-R20E']['lbs_chemical'] == 20.0
         assert self.client.get('/api/2.0/pesticides/townships/', {'bbox': 'nope'}).status_code == 400
 
+    def test_county_filter_narrows_the_geometry(self):
+        # The fixture's two sections sit one in Fresno (9101) and one in Kern (9102).
+        valley = {'bbox': '-121,35,-118,37.5', 'year': 2023}
+        both = self.client.get('/api/2.0/pesticides/sections/', valley).json()
+        assert {f['properties']['mtrs'] for f in both['features']} >= {'MDM-T14S-R20E-01', 'MDM-T30S-R28E-01'}
+        kern = self.client.get('/api/2.0/pesticides/sections/', {**valley, 'county': 'kern'}).json()
+        assert [f['properties']['mtrs'] for f in kern['features']] == ['MDM-T30S-R28E-01']
+        townships = self.client.get('/api/2.0/pesticides/townships/', {**valley, 'county': 'kern'}).json()
+        assert [f['id'] for f in townships['features']] == ['MDM-T30S-R28E']
+        # An unknown county narrows the numbers to nothing but leaves the geometry alone.
+        nowhere = self.client.get('/api/2.0/pesticides/sections/', {**valley, 'county': 'nowhere'}).json()
+        assert len(nowhere['features']) == len(both['features'])
+
     def test_townships_values_only(self):
         full = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023}).json()
         values = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023, 'geometry': '0'}).json()

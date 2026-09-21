@@ -115,6 +115,17 @@ def radius_bbox(lat, lng, miles):
     return Polygon.from_bbox((lng - lng_deg, lat - lat_deg, lng + lng_deg, lat + lat_deg))
 
 
+def county_boundary(slug):
+    """The county's boundary geometry (WGS84) for `slug`, or None when there's no such county or it has no boundary."""
+    county = Region.objects.filter(type=Region.Type.COUNTY, slug=slug, boundary__isnull=False).select_related('boundary').first()
+    if county is None:
+        return None
+    geometry = county.boundary.geometry
+    if geometry.srid and geometry.srid != 4326:
+        geometry = geometry.transform(4326, clone=True)
+    return geometry
+
+
 def county_name_for(section_pks, year):
     """{mtrs_id: county_name} built once from the rollup, not spatially."""
     return {
@@ -138,6 +149,13 @@ class SectionListBase(generics.Endpoint):
     # MRO, regardless of base-class order.
     def get_sections(self, params):
         sections = Region.objects.filter(type=Region.Type.MTRS, boundary__isnull=False).select_related('boundary')
+        # A county filter narrows the geometry as well as the numbers, so the
+        # map shows that county alone. Sections straddling the line stay (a
+        # use record is filed under one county; the shading is that county's).
+        if params.get('county'):
+            boundary = county_boundary(params['county'])
+            if boundary is not None:
+                sections = sections.filter(boundary__geometry__intersects=boundary)
         if params.get('bbox'):
             bbox, error = parse_bbox(params['bbox'])
             if error:
@@ -366,6 +384,11 @@ class TownshipListBase(generics.Endpoint):
         # numbers), so those responses are a few KB instead of a few hundred.
         with_geometry = params.get('geometry') != '0'
 
+        # A county filter narrows the geometry as well as the numbers: keep
+        # the townships whose centre is in the county, plus any with use
+        # filed under it (a border township whose records say this county).
+        boundary = county_boundary(params['county']) if params.get('county') else None
+
         # No cap: there are only a few hundred townships in the valley, so
         # the whole grid is a small response even unfiltered.
         features = []
@@ -373,6 +396,10 @@ class TownshipListBase(generics.Endpoint):
             if bbox and not bbox_overlaps(bbox, geometry['bbox']):
                 continue
             t = totals.get(township, ZERO)
+            if boundary is not None and not t['applications']:
+                west, south, east, north = geometry['bbox']
+                if not boundary.contains(Point((west + east) / 2, (south + north) / 2, srid=4326)):
+                    continue
             features.append({
                 'type': 'Feature',
                 'id': township,

@@ -737,6 +737,7 @@
     this.map.invalidateSize();
 
     var dataChanged = DATA_KEYS.some(function (k) { return (oldData[k] || '') !== (newData[k] || ''); });
+    var countyChanged = (oldData.county || '') !== (newData.county || '');
     var viewChanged = (oldData.center || '') !== (newData.center || '') || (oldData.zoom || '') !== (newData.zoom || '');
     var radiusChanged = (oldData.radius || '') !== (newData.radius || '');
     var outlineChanged = (oldData.outlineUrl || '') !== (newData.outlineUrl || '');
@@ -756,6 +757,7 @@
       this.map.setView(center, parseInt(this.data.zoom, 10) || 8, { animate: !this.reducedMotion });
     }
 
+    if (countyChanged) this.fitCounty();
     if (dataChanged) {
       this.loadedBounds = null;
       this.loadedNoticeBounds = null;
@@ -795,10 +797,29 @@
           interactive: false,
           style: self.countyStyle(),
         }).addTo(self.map);
+        self.fitCounty();
       })
       .catch(function (err) {
         window.console && console.error && console.error('section-map: failed to load counties', err);
       });
+  };
+
+  // With a county filter the map shows that county alone (the grid
+  // endpoints leave the others out), so it also frames it: fit to the
+  // county's outline, or back out to the whole valley when the filter goes.
+  SectionMap.prototype.fitCounty = function () {
+    if (!this.countiesLayer) return;
+    var slug = this.data.county;
+    var target = null;
+    this.countiesLayer.eachLayer(function (layer) {
+      if (layer.feature && layer.feature.properties.slug === slug) target = layer;
+    });
+    if (target) {
+      this.map.fitBounds(target.getBounds(), { padding: [20, 20], animate: !this.reducedMotion });
+    } else if (this.countyFitted) {
+      this.map.fitBounds(this.countiesLayer.getBounds(), { padding: [20, 20], animate: !this.reducedMotion });
+    }
+    this.countyFitted = !!target;
   };
 
   // Draws the region this page is about (from the regions API) and fits the
