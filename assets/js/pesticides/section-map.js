@@ -1847,9 +1847,16 @@
       // Zoomed out, sections are a pixel or two and the canvas leaves a
       // light antialiasing seam between neighbouring fills, which reads as
       // a grid. A hairline stroke in the fill's own colour closes the seams.
-      style.color = fill;
-      style.opacity = fillOpacity;
-      style.weight = 1;
+      // No-data sections draw nothing at all there: their pale wash would
+      // otherwise veil the basemap across every section without use.
+      if (!value) {
+        style.fillOpacity = 0;
+        style.stroke = false;
+      } else {
+        style.color = fill;
+        style.opacity = fillOpacity;
+        style.weight = 1;
+      }
     }
     if (this.isSelected(feature)) Object.assign(style, SELECTED_LINE);
     return style;
