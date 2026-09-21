@@ -1833,14 +1833,24 @@
 
   SectionMap.prototype.lensSectionStyle = function (feature, classes) {
     var value = feature.properties[this.metric];
+    var fill = colorFor(classes, value);
+    var fillOpacity = value ? 0.85 : 0.35;
     var style = {
-      fillColor: colorFor(classes, value),
-      fillOpacity: value ? 0.85 : 0.35,
-      stroke: this.map.getZoom() >= SECTION_LINES_MIN_ZOOM,
+      fillColor: fill,
+      fillOpacity: fillOpacity,
+      stroke: true,
       color: GRID_LINE.color,
       opacity: GRID_LINE.opacity,
       weight: 0.5,
     };
+    if (this.map.getZoom() < SECTION_LINES_MIN_ZOOM) {
+      // Zoomed out, sections are a pixel or two and the canvas leaves a
+      // light antialiasing seam between neighbouring fills, which reads as
+      // a grid. A hairline stroke in the fill's own colour closes the seams.
+      style.color = fill;
+      style.opacity = fillOpacity;
+      style.weight = 1;
+    }
     if (this.isSelected(feature)) Object.assign(style, SELECTED_LINE);
     return style;
   };
