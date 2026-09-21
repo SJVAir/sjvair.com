@@ -14,10 +14,14 @@ from camp.utils.views import CachedEndpointMixin
 
 from .sections import bad_request, parse_bbox
 
-# The map only asks for locations from zoom 9 up, where the viewport is well
-# under a degree. The cap keeps a hand-built request from serializing every
-# school and day care in the state.
-MAX_BBOX_DEGREES = 3.0
+# The map asks for locations from zoom 9 up, and it asks for a bbox padded by
+# half a viewport on each side -- on a wide expanded map at that zoom the
+# padded box runs to several degrees a side, so a tight cap turned the whole
+# layer into a 400. There are only ~1,500 of these rows valley-wide, so the
+# cap is set to comfortably cover the valley plus that padding; it's here to
+# stop a hand-built request from serializing every school and day care in the
+# state, not to ration the map.
+MAX_BBOX_DEGREES = 12.0
 
 
 def grade_span(metadata):

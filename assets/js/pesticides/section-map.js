@@ -104,6 +104,14 @@
   // Markers are points, not a grid: further out than this the viewport holds
   // thousands of them, so the layer stays off and the legend says why.
   var LOCATIONS_MIN_ZOOM = 9;
+  // Mirrors MAX_BBOX_DEGREES on the locations endpoint. The padded fetch is
+  // twice the viewport span (BBOX_PAD on each side), which at the layer's
+  // minimum zoom on a very wide expanded map can run past the cap and come
+  // back a 400 -- so when it would, the fetch goes out unpadded instead. At
+  // zoom 9 the raw viewport is ~0.0027 degrees per pixel, so ~4 degrees on a
+  // 1441px map (~8 padded, inside the cap) and still under the cap unpadded
+  // on any plausible screen.
+  var LOCATIONS_MAX_BBOX_DEGREES = 12;
   var LOCATIONS_ZOOM_NOTE = 'Zoom in to see schools and child care.';
   // "Within about a mile": a school's own square-mile section plus the ring
   // around it -- the sections whose centre is within 1.5 miles of that
@@ -1294,6 +1302,10 @@
     var bounds = this.map.getBounds();
     return unpadded ? bounds : bounds.pad(BBOX_PAD);
   };
+
+  function boundsSpan(bounds) {
+    return Math.max(bounds.getEast() - bounds.getWest(), bounds.getNorth() - bounds.getSouth());
+  }
 
   function bboxParam(bounds) {
     return [
@@ -2504,7 +2516,9 @@
       this.clearLocations();
       return;
     }
-    // Same padded-fetch/skip deal as the grid and the notices.
+    // Same padded-fetch/skip deal as the grid and the notices, except the
+    // padding is dropped rather than asking for a bbox the endpoint refuses
+    // (see LOCATIONS_MAX_BBOX_DEGREES).
     if (this.covers(this.loadedLocationBounds)) return;
 
     if (this.locationsAbort) this.locationsAbort.abort();
@@ -2512,6 +2526,7 @@
     this.locationsAbort = abort;
 
     var bounds = this.fetchBounds();
+    if (boundsSpan(bounds) > LOCATIONS_MAX_BBOX_DEGREES) bounds = this.fetchBounds(true);
     // The county scope goes along: the fetch bbox always overhangs the county
     // line, and a marker outside it would carry a popup figure from a county
     // this page isn't showing.

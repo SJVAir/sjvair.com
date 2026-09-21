@@ -1266,8 +1266,17 @@ class LocationEndpointTests(TestCase):
         assert self.client.get(self.url, {'bbox': '-119.9,36.6'}).status_code == 400
         assert self.client.get(self.url, {'bbox': '-119.7,36.6,-119.9,36.8'}).status_code == 400
 
+    def test_a_valley_sized_bbox_is_allowed(self):
+        # The map pads its fetch by half a viewport on each side, so at the
+        # layer's minimum zoom it asks for several degrees a side.
+        response = self.client.get(self.url, {'bbox': '-123,33,-115,39'})
+        assert response.status_code == 200, response.content
+        assert [f['properties']['name'] for f in response.json()['features']] == [
+            'Alpha Elementary', 'Bravo Child Care', 'Charlie Academy',
+        ]
+
     def test_huge_bbox_is_a_400(self):
-        response = self.client.get(self.url, {'bbox': '-124,32,-114,42'})
+        response = self.client.get(self.url, {'bbox': '-127,30,-114,43'})
         assert response.status_code == 400
         assert response.json()['error'] == 'bbox too large; zoom in'
 
