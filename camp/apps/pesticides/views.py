@@ -627,8 +627,34 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
         if not year and not self.all_years:
             return queryset.annotate(lbs_applied=F('pk') * 0.0, chemical_count=F('pk') * 0)
         return queryset.annotate(
-            lbs_applied=lbs_subquery('commodity', year, county=self.county, all_years=self.all_years, related=self.related_filters(), concern=self.concern),
+            lbs_applied=self.lbs_applied(year),
             chemical_count=self.chemical_count(year),
+        )
+
+    def lbs_applied(self, year):
+        """
+        The pounds column. Normally the per-commodity totals subquery; under
+        the chemicals-of-concern scope that has to read the rollup (a totals
+        row's commodity rows carry no chemical), and the correlated sum then
+        runs once per commodity on the page -- seconds, across all years. So
+        the concern pounds come from one cached group-by instead, inlined as
+        a CASE the way chemical_count() does. An entity filter still goes
+        through the subquery: then the column is the pair's pounds, not the
+        commodity's.
+        """
+        related = self.related_filters()
+        if self.concern and not related:
+            totals = stats.commodity_concern_lbs(year, self.all_years, self.county)
+            if not totals:
+                return Value(None, output_field=FloatField())
+            return Case(
+                *[When(pk=pk, then=Value(lbs)) for pk, lbs in totals.items()],
+                default=Value(None),
+                output_field=FloatField(),
+            )
+        return lbs_subquery(
+            'commodity', year, county=self.county, all_years=self.all_years,
+            related=related, concern=self.concern,
         )
 
     def chemical_count(self, year):

@@ -235,7 +235,7 @@ def region_area(region):
     return Area(label=label, kind='region', region=region, section_pks=section_pks)
 
 
-def schools_nearby(region, year, all_years=False, county=None, concern=False):
+def schools_nearby(region, year, all_years=False, concern=False):
     """
     The schools and child care centers in a school district, each with the
     pesticide use reported in the 3x3 block of sections around it (see
@@ -250,14 +250,11 @@ def schools_nearby(region, year, all_years=False, county=None, concern=False):
         'pesticides:schools-nearby',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
-        str(county.pk) if county is not None else '',
         stats.CONCERN_PARAM if concern else '',
     ])
 
     def build():
         rows = PesticideUseRollup.objects.all()
-        if county is not None:
-            rows = rows.filter(county=county)
         if concern:
             rows = stats.concern_rows(rows)
         entries = []

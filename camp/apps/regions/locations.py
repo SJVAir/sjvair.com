@@ -51,6 +51,11 @@ CHILD_CARE_TYPES = (
 CHILD_CARE_PROGRAM = 'CHILD CARE'
 
 GEOCODE_CACHE_TTL = 60 * 60 * 24 * 30  # 30 days
+# An address the geocoder couldn't place is cached too, so a re-import doesn't
+# pay for the same failed lookup again -- but for a day rather than a month,
+# since the miss may be the geocoder's rather than the address's.
+GEOCODE_MISS_TTL = 60 * 60 * 24
+GEOCODE_MISS = 'miss'
 
 XLSX_MAGIC = b'PK\x03\x04'
 
@@ -65,7 +70,10 @@ class DownloadError(Exception):
 # -- Geocoding --
 
 def geocode_cached(address):
-    """A single-line address → (lat, lng) or None, cached for 30 days."""
+    """
+    A single-line address → (lat, lng) or None, cached for 30 days. A failed
+    lookup is cached as well, for a day (see GEOCODE_MISS_TTL).
+    """
     cleaned = clean_address(address)
     if not cleaned:
         return None
@@ -74,11 +82,14 @@ def geocode_cached(address):
     key = f'regions:geocode:{digest}'
 
     cached = cache.get(key)
+    if cached == GEOCODE_MISS:
+        return None
     if cached is not None:
         return tuple(cached)
 
     point = resolve(cleaned)
     if point is None:
+        cache.set(key, GEOCODE_MISS, GEOCODE_MISS_TTL)
         return None
 
     result = (point.y, point.x)

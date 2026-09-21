@@ -228,7 +228,7 @@ def trend_deltas(by_year, year, field='lbs'):
 
     # Newest-first, so the previous year is the next row down.
     previous = rows[index + 1] if (year is not None and index + 1 < len(rows)) else None
-    first = rows[-1] if rows[-1] is not rows[index] else None
+    first = rows[-1] if index != len(rows) - 1 else None
     # Don't say the same year twice when the first loaded year is the previous one.
     if first is not None and previous is not None and first['year'] == previous['year']:
         first = None
@@ -577,6 +577,33 @@ def commodity_chemical_counts(county=None, concern=False):
             rows.values('commodity')
             .annotate(n=Count('chemical', distinct=True))
             .values_list('commodity', 'n')
+        ),
+    )
+
+
+def commodity_concern_lbs(year=None, all_years=False, county=None):
+    """
+    {commodity_id: pounds of chemicals of concern applied to it} in `year`
+    (or across every loaded year) and `county`, when given. One group-by over
+    the rollup, cached the way commodity_chemical_counts is: the per-commodity
+    correlated subquery the list would otherwise run sums the concern rows for
+    every commodity on the page, which takes seconds across all years.
+    """
+    rows = concern_rows(PesticideUseRollup.objects.filter(commodity__isnull=False))
+    if county is not None:
+        rows = rows.filter(county=county)
+    parts = [
+        'commodity-concern-lbs',
+        ALL_YEARS if all_years else year,
+        county.pk if county is not None else '',
+    ]
+    return cached(
+        all_years_key(*parts),
+        lambda: dict(
+            in_year(rows, year, all_years)
+            .values('commodity')
+            .annotate(lbs=Sum('lbs_chemical'))
+            .values_list('commodity', 'lbs')
         ),
     )
 

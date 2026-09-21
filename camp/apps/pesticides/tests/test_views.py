@@ -854,6 +854,11 @@ class AboutTests(RollupTestMixin, TestCase):
         assert 'id="pur"' not in html
 
 
+# The commodity list's query count under `?year=all&concern=1`; it must not
+# grow with the number of commodities on the page (see the test below).
+CONCERN_COMMODITY_QUERIES = 9
+
+
 class ConcernScopeTests(RollupTestMixin, TestCase):
     """
     `?concern=1` as an explorer-wide scope. GLYPHOSATE and CHLORPYRIFOS are
@@ -989,3 +994,22 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert note in html
         html = self.client.get(sulfur.get_absolute_url()).content.decode()
         assert note not in html
+
+    def test_commodity_list_all_years_concern_pounds_come_from_one_group_by(self):
+        # The pounds column under `?year=all&concern=1` used to be a
+        # correlated sum over the rollup, run once per commodity on the page;
+        # it now comes from one cached group-by (stats.commodity_concern_lbs),
+        # so the page's query count doesn't grow with the number of rows.
+        url = reverse('pesticides:commodity-list')
+        response = self.client.get(url, {'year': 'all', 'concern': '1'})
+        assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
+            ('ALMOND', 230.0), ('COTTON', 100.0), ('GRAPE', 50.0),
+        ]
+        cache.clear()
+        with self.assertNumQueries(CONCERN_COMMODITY_QUERIES):
+            self.client.get(url, {'year': 'all', 'concern': '1'})
+        for index in range(4, 9):
+            Commodity.objects.create(site_code=f'800{index}', name=f'CROP {index}')
+        cache.clear()
+        with self.assertNumQueries(CONCERN_COMMODITY_QUERIES):
+            self.client.get(url, {'year': 'all', 'concern': '1'})

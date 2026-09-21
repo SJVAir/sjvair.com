@@ -64,6 +64,13 @@ class LocationListBase(generics.Endpoint):
             .order_by('name', 'pk')
         )
 
+        # The explorer's county scope. A bbox always overhangs the county
+        # line, so without this a scoped map draws markers whose "within
+        # about a mile" figure is from a county the page isn't showing.
+        county = (params.get('county') or '').strip()
+        if county:
+            locations = locations.filter(county__slug=county)
+
         features = [{
             'type': 'Feature',
             'id': location.sqid,
@@ -92,5 +99,6 @@ class LocationList(CachedEndpointMixin, LocationListBase):
     `bbox=west,south,east,north` is required and may span at most 3 degrees
     on a side. `type` is a comma-separated list of
     `public_school`, `private_school`, `child_care` (default: all three).
+    `county` (a county slug) keeps only the locations in that county.
     """
     cache_timeout = 60 * 60 * 24

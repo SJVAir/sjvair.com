@@ -2476,7 +2476,13 @@
     this.locationsAbort = abort;
 
     var bounds = this.fetchBounds();
-    var url = this.data.locationsUrl + '?' + buildQuery({ bbox: bboxParam(bounds) });
+    // The county scope goes along: the fetch bbox always overhangs the county
+    // line, and a marker outside it would carry a popup figure from a county
+    // this page isn't showing.
+    var url = this.data.locationsUrl + '?' + buildQuery({
+      bbox: bboxParam(bounds),
+      county: this.data.county,
+    });
 
     var self = this;
     fetch(url, abort ? { signal: abort.signal } : undefined)
@@ -2611,9 +2617,17 @@
   SectionMap.prototype.loadLocationBlock = function (layer, props, latlng) {
     var self = this;
     var params = this.commonParams();
+    // The filter set this figure belongs to. An htmx swap can hand the live
+    // map a new scope (year, county, entity) while the fetch is in flight,
+    // and the popup may be reopened under it; a response from the old filter
+    // set is then stale and gets dropped rather than filling in numbers for
+    // a scope that's no longer on screen.
+    var scope = buildQuery(params);
     params.bbox = blockBbox(latlng);
     var url = this.data.sectionsUrl + '?' + buildQuery(params);
-    var open = function () { return layer.getPopup() && layer.isPopupOpen(); };
+    var open = function () {
+      return layer.getPopup() && layer.isPopupOpen() && buildQuery(self.commonParams()) === scope;
+    };
 
     fetch(url)
       .then(function (response) {

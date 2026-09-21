@@ -1271,6 +1271,21 @@ class LocationEndpointTests(TestCase):
         assert response.status_code == 400
         assert response.json()['error'] == 'bbox too large; zoom in'
 
+    def test_county_filter_keeps_only_that_county(self):
+        # The explorer's county scope: the bbox overhangs the county line, so
+        # without this the map draws markers from the next county over.
+        bbox = '-120.0,35.0,-119.0,37.0'
+        assert [f['properties']['name'] for f in self.features(bbox=bbox)] == [
+            'Alpha Elementary', 'Bravo Child Care', 'Charlie Academy',
+        ]
+        assert [f['properties']['name'] for f in self.features(bbox=bbox, county='kern')] == ['Charlie Academy']
+        assert [f['properties']['name'] for f in self.features(bbox=bbox, county='fresno')] == [
+            'Alpha Elementary', 'Bravo Child Care',
+        ]
+
+    def test_unknown_county_returns_nothing(self):
+        assert self.features(bbox='-120.0,35.0,-119.0,37.0', county='nope') == []
+
     def test_cached(self):
         assert len(self.features(bbox='-119.9,36.6,-119.7,36.8')) == 2
         Location.objects.all().delete()
@@ -1321,3 +1336,14 @@ class ConcernScopeEndpointTests(RollupTestMixin, TestCase):
         assert results(type='chemical', q='glyphosate', concern='1') == ['Glyphosate']
         assert results(type='product', q='sulfur', concern='1') == []
         assert results(type='product', q='roundup', concern='1') == ['ROUNDUP PRO']
+
+    def test_entity_search_narrows_commodities(self):
+        # In 2022 GRAPE carries sulfur only, so it isn't offered under the
+        # scope; in 2023 glyphosate was applied to it, so it is.
+        url = reverse('api:v2:pesticides:entity-search')
+        results = lambda **p: [r['name'] for r in self.client.get(url, p).json()['results']]
+        assert results(type='commodity', q='grape', year='2022') == ['Grape']
+        assert results(type='commodity', q='grape', year='2022', concern='1') == []
+        assert results(type='commodity', q='grape', year='2023', concern='1') == ['Grape']
+        assert results(type='commodity', q='almond', concern='1') == ['Almond']
+        assert results(type='commodity', q='grape', concern='1', county='kern') == []
