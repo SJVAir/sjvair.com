@@ -117,3 +117,27 @@ class EntityPageLinksTests(RollupTestMixin, TestCase):
         html = response.content.decode()
         assert reverse('pesticides:records') + f'?chemical={chem.sqid}' in html
         assert reverse('pesticides:notice-list') + f'?chemical={chem.sqid}' in html
+
+
+class NoticeConcernScopeTests(TestCase):
+    """`?concern=1` keeps only notices listing a chemical of concern."""
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('pesticides:notice-list')
+
+    def test_notices_without_a_concern_chemical_drop_out(self):
+        sulfur = Chemical.objects.get(name='SULFUR')
+        notice = PesticideNotice.objects.get(pk=2)
+        notice.chemicals.set([sulfur])
+        response = self.client.get(self.url, {'concern': '1'})
+        assert [n.pk for n in response.context['object_list']] == [3]
+        assert response.context['concern'] is True
+        assert [n.pk for n in self.client.get(self.url).context['object_list']] == [2, 3]
+
+    def test_a_notice_is_listed_once_even_with_several_concern_chemicals(self):
+        # Notice 3 carries both GLYPHOSATE and CHLORPYRIFOS.
+        response = self.client.get(self.url, {'concern': '1'})
+        assert [n.pk for n in response.context['object_list']] == [2, 3]

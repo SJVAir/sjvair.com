@@ -103,13 +103,18 @@ class Area:
             return {'region': self.region.sqid}
         return {'lat': self.point.y, 'lng': self.point.x, 'radius': self.radius}
 
-    def records_url(self, year, all_years=False):
+    def records_url(self, year, all_years=False, concern=False):
         params = self._area_params()
         params['year'] = stats.ALL_YEARS if all_years else year
+        if concern:
+            params[stats.CONCERN_PARAM] = 1
         return reverse('pesticides:records') + '?' + urlencode(params)
 
-    def notices_url(self):
-        return reverse('pesticides:notice-list') + '?' + urlencode(self._area_params())
+    def notices_url(self, concern=False):
+        params = self._area_params()
+        if concern:
+            params[stats.CONCERN_PARAM] = 1
+        return reverse('pesticides:notice-list') + '?' + urlencode(params)
 
     def map_kwargs(self):
         if self.kind == 'point':
@@ -230,7 +235,7 @@ def region_area(region):
     return Area(label=label, kind='region', region=region, section_pks=section_pks)
 
 
-def schools_nearby(region, year, all_years=False, county=None):
+def schools_nearby(region, year, all_years=False, county=None, concern=False):
     """
     The schools and child care centers in a school district, each with the
     pesticide use reported in the 3x3 block of sections around it (see
@@ -246,12 +251,15 @@ def schools_nearby(region, year, all_years=False, county=None):
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
         str(county.pk) if county is not None else '',
+        stats.CONCERN_PARAM if concern else '',
     ])
 
     def build():
         rows = PesticideUseRollup.objects.all()
         if county is not None:
             rows = rows.filter(county=county)
+        if concern:
+            rows = stats.concern_rows(rows)
         entries = []
         for location in region.schools.all().order_by('name', 'pk'):
             totals = stats.block_totals(rows, location.point, year, all_years)
@@ -269,7 +277,7 @@ def schools_nearby(region, year, all_years=False, county=None):
     return stats.cached(key, build, ttl=SCHOOLS_NEARBY_TTL)
 
 
-def _place_stats(area, year, all_years):
+def _place_stats(area, year, all_years, concern=False):
     """
     The year-binned half of a place page. Across every loaded year a county
     spans millions of rollup rows, so the whole block is cached per area --
@@ -278,11 +286,15 @@ def _place_stats(area, year, all_years):
     chemical counts and the month bars have to read the rollup either way.
     """
     rows = area.rollup_rows()
+    if concern:
+        rows = stats.concern_rows(rows)
     scoped = stats.in_year(rows, year, all_years)
     # Only across every year: a single year's rollup rows are cheap, and a
     # totals row exists only where a chemical was identified, so switching
     # sources would quietly drop unattributed applications from the count.
     total_rows = area.total_rows() if all_years else None
+    if total_rows is not None and concern:
+        total_rows = stats.concern_rows(total_rows)
     totals_source = rows if total_rows is None else total_rows
     summed = stats.year_totals(totals_source, year, all_years=all_years)
 
@@ -308,19 +320,24 @@ def _place_stats(area, year, all_years):
     }
 
 
-def place_context(area, year, all_years=False):
+def place_context(area, year, all_years=False, concern=False):
     from camp.apps.pesticides.views import section_map_config
 
     def build():
-        return _place_stats(area, year, all_years)
+        return _place_stats(area, year, all_years, concern)
 
+    # The concern scope gets its own cache entries; without it the keys stay
+    # exactly what they were.
+    scope_key = (stats.CONCERN_PARAM,) if concern else ()
     if all_years:
-        data = stats.cached(stats.all_years_key('place', area.cache_key()), build)
+        data = stats.cached(stats.all_years_key('place', area.cache_key(), *scope_key), build)
     else:
         data = build()
     totals = data['totals']
 
     notices = area.notices()
+    if concern:
+        notices = stats.concern_notices(notices)
     upcoming_qs = stats._upcoming(notices)
     upcoming = list(
         upcoming_qs
@@ -338,8 +355,8 @@ def place_context(area, year, all_years=False):
     # cached per area rather than per scope -- across every loaded year a
     # county spans millions of rollup rows.
     by_year = stats.cached(
-        stats.all_years_key('place-by-year', area.cache_key()),
-        lambda: stats.by_year(area.rollup_rows()),
+        stats.all_years_key('place-by-year', area.cache_key(), *scope_key),
+        lambda: stats.by_year(stats.concern_rows(area.rollup_rows()) if concern else area.rollup_rows()),
     )
 
     context = {
@@ -348,15 +365,17 @@ def place_context(area, year, all_years=False):
         'by_year': by_year,
         'upcoming': upcoming,
         'upcoming_count': upcoming_count,
-        'records_url': area.records_url(year, all_years),
-        'notices_url': area.notices_url(),
-        'map_config': section_map_config(year, all_years=all_years, show_locations=is_district, **area.map_kwargs()),
+        'records_url': area.records_url(year, all_years, concern),
+        'notices_url': area.notices_url(concern),
+        'map_config': section_map_config(
+            year, all_years=all_years, show_locations=is_district, concern=concern, **area.map_kwargs(),
+        ),
         'spraydays_url': SPRAYDAYS_URL,
         'is_school_district': is_district,
     }
 
     if is_district:
-        context['schools_nearby'] = schools_nearby(area.region, year, all_years)
+        context['schools_nearby'] = schools_nearby(area.region, year, all_years, concern=concern)
 
     # A single-county area's per-county breakdown is just that one county
     # (== the total); only surface it when the area spans multiple counties.

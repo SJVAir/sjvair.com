@@ -181,3 +181,24 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'start': '2022-03-01', 'end': '2022-09-30'})
         assert response.context['year'] == 2023
         assert self.pks(response) == []
+
+
+class RecordsConcernScopeTests(RollupTestMixin, TestCase):
+    """`?concern=1` narrows the records browser to concern-chemical rows."""
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('pesticides:records')
+
+    def test_rows_and_totals_narrow(self):
+        response = self.client.get(self.url, {'concern': '1'})
+        assert [u.pk for u in response.context['object_list']] == [5, 4, 3, 2, 1]
+        assert response.context['totals'] == {'applications': 5, 'lbs': 240.0, 'acres': 24.0}
+        assert response.context['concern'] is True
+        assert response.context['map_config']['concern'] == '1'
+
+    def test_totals_cache_key_is_separate_from_the_unscoped_one(self):
+        assert self.client.get(self.url).context['totals']['lbs'] == 740.0
+        assert self.client.get(self.url, {'concern': '1'}).context['totals']['lbs'] == 240.0

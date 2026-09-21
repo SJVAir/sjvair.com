@@ -302,7 +302,45 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert 'No schools on record in this district.' in html
 
+    def test_schools_nearby_follows_the_concern_scope(self):
+        rows = places.schools_nearby(self.district, 2023, concern=True)
+        # Section 9101's concern pounds only (170); the neighbouring
+        # section's rollup row carries no chemical at all.
+        assert [r['lbs'] for r in rows] == [170.0, 0]
+        assert [r['lbs'] for r in places.schools_nearby(self.district, 2023)] == [695.0, 0]
+
     def test_other_place_pages_have_no_panel(self):
         html = self.client.get(reverse('pesticides:region', kwargs={'sqid': Region.objects.get(pk=9001).sqid, 'slug': 'fresno'})).content.decode()
         assert 'Schools in this district' not in html
         assert 'data-show-locations="0"' in html
+
+
+class PlaceConcernScopeTests(RollupTestMixin, TestCase):
+    """Place pages follow the chemicals-of-concern scope like everything else."""
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        self.fresno = Region.objects.get(pk=9001)
+
+    def test_place_context_totals_narrow(self):
+        area = places.region_area(self.fresno)
+        ctx = places.place_context(area, 2023, concern=True)
+        assert ctx['totals']['lbs'] == 170.0
+        assert ctx['totals']['chemicals'] == 2
+        assert [r.obj.name for r in ctx['top_chemicals']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
+        assert [(r['year'], r['lbs']) for r in ctx['by_year']] == [(2023, 170.0), (2022, 80.0)]
+        assert ctx['map_config']['concern'] == '1'
+        assert 'concern=1' in ctx['records_url']
+
+    def test_place_context_all_years_caches_separately(self):
+        area = places.region_area(self.fresno)
+        assert places.place_context(area, None, all_years=True, concern=True)['totals']['lbs'] == 250.0
+        assert places.place_context(area, None, all_years=True)['totals']['lbs'] == 1150.0
+
+    def test_region_page_follows_the_scope(self):
+        url = reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})
+        response = self.client.get(url, {'concern': '1'})
+        assert response.context['totals']['lbs'] == 170.0
+        assert response.context['concern'] is True

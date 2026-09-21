@@ -356,3 +356,58 @@ class TrendTests(TestCase):
 
     def test_points_empty(self):
         assert stats.trend_points([], 'lbs') == []
+
+
+class ConcernScopeTests(RollupTestMixin, TestCase):
+    """
+    The "chemicals of concern" scope. In the fixture GLYPHOSATE (IARC 2A,
+    Prop 65 carcinogen) and CHLORPYRIFOS (CARB TAC) are of concern; SULFUR
+    is not, and it carries most of the pounds.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_scope_param_carries_concern(self):
+        assert stats.scope_param(2023, concern=True) == 'concern=1'
+        assert stats.scope_query(2023, concern=True) == '?concern=1'
+        assert stats.scope_param(2022, False, 'kern', concern=True) == 'year=2022&county=kern&concern=1'
+        assert stats.scope_param(2023) == ''
+
+    def test_of_concern_chemicals(self):
+        assert sorted(c.name for c in stats.of_concern_chemicals()) == ['CHLORPYRIFOS', 'GLYPHOSATE']
+
+    def test_concern_rows_drop_the_rest(self):
+        rows = stats.concern_rows(PesticideUseRollup.objects.all())
+        assert stats.year_totals(rows, 2023) == {'lbs': 240.0, 'applications': 5, 'counties': 2}
+        assert stats.year_totals(rows, None, all_years=True)['lbs'] == 380.0
+
+    def test_landing_stats_narrow_to_chemicals_of_concern(self):
+        data = stats.landing_stats(2023, concern=True)
+        assert data['total_lbs'] == 240.0
+        assert data['applications'] == 5
+        assert data['chemical_count'] == 2
+        assert data['product_count'] == 2
+        assert [r.obj.name for r in data['top_chemicals']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
+        assert [(r['county_name'], r['lbs']) for r in data['by_county']] == [
+            ('Fresno County', 170.0), ('Kern County', 70.0),
+        ]
+        assert [(r['year'], r['lbs']) for r in data['by_year']] == [(2023, 240.0), (2022, 140.0)]
+        # Redundant under the toggle: everything listed is already of concern.
+        assert 'top_chemicals_of_concern' not in data
+
+    def test_landing_stats_cache_key_is_separate(self):
+        stats.landing_stats(2023, concern=True)
+        assert cache.get(stats.landing_key(2023, concern=True)) is not None
+        assert cache.get(stats.landing_key(2023)) is None
+        assert stats.landing_stats(2023)['total_lbs'] == 740.0
+
+    def test_county_totals_narrow(self):
+        assert [(r['county_name'], r['lbs']) for r in stats.county_totals(2023, concern=True)] == [
+            ('Fresno County', 170.0), ('Kern County', 70.0),
+        ]
+        assert [(r['county_name'], r['lbs']) for r in stats.county_totals(2023)] == [
+            ('Fresno County', 670.0), ('Kern County', 70.0),
+        ]

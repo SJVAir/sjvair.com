@@ -35,6 +35,8 @@ LATEST_YEAR_TTL = 60 * 60
 LANDING_TTL = 60 * 60 * 24
 NOTICE_WINDOW_TTL = 60 * 60
 SJV_COUNTY_COUNT = 8
+# The explorer's third scope control, beside year and county.
+CONCERN_PARAM = 'concern'
 # The "within about a mile" block: a section plus the eight around it. MTRS
 # sections are roughly one mile square, so a neighbour's centroid is about a
 # mile away (1.5 miles diagonally) and the next ring out is about two.
@@ -123,11 +125,12 @@ def year_param(year, all_years=False):
     return year_query(year, all_years).lstrip('?')
 
 
-def scope_param(year, all_years=False, county=None):
+def scope_param(year, all_years=False, county=None, concern=False):
     """
-    The explorer's scope as query parameters: a non-default year and/or a
-    county ('year=2020&county=kern'), '' when both are the defaults. `county`
-    is a Region or a slug.
+    The explorer's scope as query parameters: a non-default year, a county,
+    and/or the chemicals-of-concern toggle
+    ('year=2020&county=kern&concern=1'), '' when they're all the defaults.
+    `county` is a Region or a slug.
     """
     parts = []
     year_part = year_param(year, all_years)
@@ -136,13 +139,20 @@ def scope_param(year, all_years=False, county=None):
     slug = getattr(county, 'slug', county)
     if slug:
         parts.append(f'county={slug}')
+    if concern:
+        parts.append(f'{CONCERN_PARAM}=1')
     return '&'.join(parts)
 
 
-def scope_query(year, all_years=False, county=None):
+def scope_query(year, all_years=False, county=None, concern=False):
     """`scope_param()` with a leading '?', for appending to a bare path ('' when nothing is pinned)."""
-    param = scope_param(year, all_years, county)
+    param = scope_param(year, all_years, county, concern)
     return f'?{param}' if param else ''
+
+
+def is_concern(value):
+    """True for the explorer's `?concern=1` scope flag; anything else is off."""
+    return str(value or '').strip() == '1'
 
 
 def all_years_key(*parts):
@@ -498,6 +508,21 @@ def _of_concern_query():
     )
 
 
+def of_concern_chemicals():
+    """The chemicals the explorer's "chemicals of concern" scope keeps (see `_of_concern_query`)."""
+    return Chemical.objects.filter(_of_concern_query())
+
+
+def concern_rows(rows):
+    """`rows` (rollup or totals rows) restricted to the chemicals of concern."""
+    return rows.filter(chemical__in=of_concern_chemicals())
+
+
+def concern_notices(notices):
+    """`notices` restricted to those listing at least one chemical of concern."""
+    return notices.filter(chemicals__in=of_concern_chemicals()).distinct()
+
+
 def _top_chemicals_of_concern(top_chemicals, uses, year, limit=10, all_years=False):
     # is_of_concern is derived in Python, so filter the already-fetched top-50
     # group-by; fall back to a category/IARC-restricted query if that pass
@@ -509,7 +534,7 @@ def _top_chemicals_of_concern(top_chemicals, uses, year, limit=10, all_years=Fal
     return rows[:limit]
 
 
-def county_totals(year=None, all_years=False):
+def county_totals(year=None, all_years=False, concern=False):
     """
     Valley-wide pounds by county. Read from PesticideUseTotal (one row per
     year/county/entity) rather than the ~800k rollup rows a single year spans,
@@ -518,13 +543,18 @@ def county_totals(year=None, all_years=False):
     reads every year at once.
     """
     rows = PesticideUseTotal.objects.filter(chemical__isnull=False)
+    if concern:
+        rows = concern_rows(rows)
+    parts = ['county-totals', ALL_YEARS if all_years else year]
+    if concern:
+        parts.append(CONCERN_PARAM)
     return cached(
-        all_years_key('county-totals', ALL_YEARS if all_years else year),
+        all_years_key(*parts),
         lambda: by_county(rows, year, all_years=all_years),
     )
 
 
-def commodity_chemical_counts(county=None):
+def commodity_chemical_counts(county=None, concern=False):
     """
     {commodity_id: distinct chemicals applied to it, across every loaded
     year}. One group-by over the rollup, cached -- the per-commodity
@@ -534,8 +564,13 @@ def commodity_chemical_counts(county=None):
     rows = real_chemicals(PesticideUseRollup.objects.filter(commodity__isnull=False, chemical__isnull=False))
     if county is not None:
         rows = rows.filter(county=county)
+    if concern:
+        rows = concern_rows(rows)
+    parts = ['commodity-chemicals', county.pk if county is not None else ALL_YEARS]
+    if concern:
+        parts.append(CONCERN_PARAM)
     return cached(
-        all_years_key('commodity-chemicals', county.pk if county is not None else ALL_YEARS),
+        all_years_key(*parts),
         lambda: dict(
             rows.values('commodity')
             .annotate(n=Count('chemical', distinct=True))
@@ -544,16 +579,20 @@ def commodity_chemical_counts(county=None):
     )
 
 
-def landing_key(year):
-    return f'{LANDING_KEY}:{year}'
+def landing_key(year, concern=False):
+    key = f'{LANDING_KEY}:{year}'
+    return f'{key}:{CONCERN_PARAM}' if concern else key
 
 
-def _build_landing_stats(year, all_years=False, county=None):
+def _build_landing_stats(year, all_years=False, county=None, concern=False):
     # All years reads PesticideUseTotal instead of the rollup: the same
     # numbers out of ~200k rows rather than ~8M. Pounds and applications come
     # off the chemical rows only, since the product and commodity rows of a
-    # year carry the same pounds again.
-    uses = PesticideUseTotal.objects.all() if all_years else PesticideUseRollup.objects.all()
+    # year carry the same pounds again. The concern scope can't use it: a
+    # totals row names one entity, so its product and commodity rows carry no
+    # chemical to filter on, and it has to read the rollup either way.
+    from_totals = all_years and not concern
+    uses = PesticideUseTotal.objects.all() if from_totals else PesticideUseRollup.objects.all()
     notices = PesticideNotice.objects.all()
     # Valley-wide by year, for the trend chart: always off the totals table,
     # whichever year is selected, and off its chemical rows only so the
@@ -563,6 +602,10 @@ def _build_landing_stats(year, all_years=False, county=None):
         uses = uses.filter(county=county)
         notices = notices.filter(county=county)
         totals = totals.filter(county=county)
+    if concern:
+        uses = concern_rows(uses)
+        notices = concern_notices(notices)
+        totals = concern_rows(totals)
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50, all_years=all_years)
     year_uses = in_year(uses, year, all_years)
     counts = {
@@ -571,12 +614,12 @@ def _build_landing_stats(year, all_years=False, county=None):
         'commodities': Count('commodity', distinct=True),
     }
     sums = {'lbs': Sum('lbs_chemical'), 'applications': Sum('applications')}
-    if all_years:
+    if from_totals:
         year_totals_ = year_uses.aggregate(**counts)
         year_totals_ |= year_uses.filter(chemical__isnull=False).aggregate(**sums)
     else:
         year_totals_ = year_uses.aggregate(**sums, **counts)
-    return {
+    data = {
         'year': None if all_years else year,
         'all_years': all_years,
         'year_label': year_label(year, all_years),
@@ -592,29 +635,36 @@ def _build_landing_stats(year, all_years=False, county=None):
         'active_notices': upcoming_count(notices),
         'top_products': top_related(uses, year, 'product', lbs_field='lbs_product', all_years=all_years),
         'top_chemicals': top_chemicals_all[:10],
-        'top_chemicals_of_concern': _top_chemicals_of_concern(top_chemicals_all, uses, year, all_years=all_years),
         'top_commodities': top_related(uses, year, 'commodity', all_years=all_years),
-        'by_county': county_totals(year, all_years) if (year or all_years) else [],
+        'by_county': county_totals(year, all_years, concern) if (year or all_years) else [],
         'by_year': by_year(totals),
     }
+    # Under the concern scope every leaderboard is already of concern, so
+    # the dedicated one would just restate the top chemicals.
+    if not concern:
+        data['top_chemicals_of_concern'] = _top_chemicals_of_concern(
+            top_chemicals_all, uses, year, all_years=all_years,
+        )
+    return data
 
 
-def landing_stats(year=None, all_years=False, county=None):
+def landing_stats(year=None, all_years=False, county=None, concern=False):
     """
     Landing-page numbers for `year` (default: latest) or every loaded year,
-    cached per key; scoped to `county` (a Region) when the explorer is.
+    cached per key; scoped to `county` (a Region) and to the chemicals of
+    concern when the explorer is.
     """
     if all_years:
-        key = landing_key(ALL_YEARS)
+        key = landing_key(ALL_YEARS, concern)
     else:
         if year is None:
             year = latest_year()
-        key = landing_key(year)
+        key = landing_key(year, concern)
     if county is not None:
         key = f'{key}:{county.slug}'
     data = cache.get(key)
     if data is None:
-        data = _build_landing_stats(year, all_years, county)
+        data = _build_landing_stats(year, all_years, county, concern)
         cache.set(key, data, LANDING_TTL)
     return data
 

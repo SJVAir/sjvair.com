@@ -1275,3 +1275,49 @@ class LocationEndpointTests(TestCase):
         assert len(self.features(bbox='-119.9,36.6,-119.7,36.8')) == 2
         Location.objects.all().delete()
         assert len(self.features(bbox='-119.9,36.6,-119.7,36.8')) == 2
+
+
+# ---------------------------------------------------------------------------
+# Chemicals-of-concern scope (`?concern=1`)
+# ---------------------------------------------------------------------------
+
+class ConcernScopeEndpointTests(RollupTestMixin, TestCase):
+    """
+    GLYPHOSATE (IARC 2A / Prop 65) and CHLORPYRIFOS (CARB TAC) are of
+    concern in the fixture; SULFUR is not and carries most of the pounds.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_sections_narrow_to_concern_chemicals(self):
+        params = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023}
+        assert self.client.get('/api/2.0/pesticides/sections/', params).json()['features'][0]['properties']['lbs_chemical'] == 670.0
+        scoped = self.client.get('/api/2.0/pesticides/sections/', {**params, 'concern': '1'}).json()
+        assert scoped['features'][0]['properties']['lbs_chemical'] == 170.0
+        assert scoped['features'][0]['properties']['applications'] == 3
+
+    def test_townships_narrow_to_concern_chemicals(self):
+        response = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023, 'concern': '1'})
+        features = {f['properties']['id']: f['properties'] for f in response.json()['features']}
+        assert features['MDM-T14S-R20E']['lbs_chemical'] == 170.0
+        assert features['MDM-T30S-R28E']['lbs_chemical'] == 70.0
+
+    def test_section_detail_narrows_to_concern_chemicals(self):
+        section = Region.objects.get(pk=9101)
+        url = f'/api/2.0/pesticides/sections/{section.sqid}/'
+        data = self.client.get(url, {'year': 2023, 'concern': '1'}).json()
+        assert [r.get('lbs_chemical') for r in data['years'] if r['year'] == 2023] == [170.0]
+        assert [c['name'] for c in data['top_chemicals']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
+
+    def test_entity_search_narrows_chemicals_and_products(self):
+        url = reverse('api:v2:pesticides:entity-search')
+        results = lambda **p: [r['name'] for r in self.client.get(url, p).json()['results']]
+        assert results(type='chemical', q='sulf') == ['Sulfur']
+        assert results(type='chemical', q='sulf', concern='1') == []
+        assert results(type='chemical', q='glyphosate', concern='1') == ['Glyphosate']
+        assert results(type='product', q='sulfur', concern='1') == []
+        assert results(type='product', q='roundup', concern='1') == ['ROUNDUP PRO']

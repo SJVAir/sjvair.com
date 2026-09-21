@@ -852,3 +852,81 @@ class AboutTests(RollupTestMixin, TestCase):
         html = self.client.get(reverse('pesticides:home')).content.decode()
         assert reverse('pesticides:about') + '#pur' in html
         assert 'id="pur"' not in html
+
+
+class ConcernScopeTests(RollupTestMixin, TestCase):
+    """
+    `?concern=1` as an explorer-wide scope. GLYPHOSATE and CHLORPYRIFOS are
+    of concern in the fixture; SULFUR (and SULFUR DUST, its only product)
+    are not, and they carry most of the pounds.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_chemical_list_narrows_and_counts_concern_pounds(self):
+        response = self.client.get(reverse('pesticides:chemical-list'), {'concern': '1'})
+        assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
+            ('GLYPHOSATE', 180.0), ('CHLORPYRIFOS', 60.0),
+        ]
+        assert response.context['concern'] is True
+        assert response.context['scope_qs'] == '?concern=1'
+        assert 'of concern' in response.context['summary_sentence']
+
+    def test_product_list_keeps_products_with_a_concern_chemical(self):
+        response = self.client.get(reverse('pesticides:product-list'), {'concern': '1'})
+        assert [(p.name, p.lbs_applied) for p in response.context['object_list']] == [
+            ('LORSBAN 4E', 135.0), ('ROUNDUP PRO', 450.0),
+        ]
+
+    def test_commodity_list_counts_concern_pounds_only(self):
+        response = self.client.get(reverse('pesticides:commodity-list'), {'concern': '1'})
+        assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
+            ('ALMOND', 150.0), ('GRAPE', 50.0), ('COTTON', 40.0),
+        ]
+
+    def test_landing_page_totals_narrow(self):
+        response = self.client.get(reverse('pesticides:home'), {'concern': '1'})
+        assert response.context['total_lbs'] == 240.0
+        assert response.context['concern'] is True
+        assert [r.obj.name for r in response.context['top_chemicals']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
+        assert 'top_chemicals_of_concern' not in response.context
+
+    def test_commodity_page_counts_concern_pounds_only(self):
+        grape = Commodity.objects.get(name='GRAPE')
+        response = self.client.get(grape.get_absolute_url(), {'concern': '1'})
+        assert response.context['totals']['lbs'] == 50.0
+        assert [r.obj.name for r in response.context['related_a']['rows']] == ['GLYPHOSATE']
+        assert response.context['concern_excluded'] is False
+
+    def test_product_page_without_a_concern_chemical_reports_nothing(self):
+        dust = Product.objects.get(name='SULFUR DUST')
+        response = self.client.get(dust.get_absolute_url(), {'concern': '1'})
+        assert response.context['totals']['lbs'] == 0
+
+    def test_chemical_page_not_of_concern_says_so_and_stays_unscoped(self):
+        sulfur = Chemical.objects.get(name='SULFUR')
+        response = self.client.get(sulfur.get_absolute_url(), {'concern': '1'})
+        assert response.context['concern_excluded'] is True
+        assert response.context['totals']['lbs'] == 500.0
+
+    def test_chemical_page_of_concern_is_not_excluded(self):
+        glyphosate = Chemical.objects.get(name='GLYPHOSATE')
+        response = self.client.get(glyphosate.get_absolute_url(), {'concern': '1'})
+        assert response.context['concern_excluded'] is False
+        assert response.context['totals']['lbs'] == 180.0
+
+    def test_section_page_totals_narrow(self):
+        section = Region.objects.get(pk=9101)
+        url = reverse('pesticides:section-detail', kwargs={'sqid': section.sqid})
+        assert self.client.get(url).context['totals']['lbs'] == 670.0
+        response = self.client.get(url, {'concern': '1'})
+        assert response.context['totals']['lbs'] == 170.0
+        assert response.context['concern'] is True
+
+    def test_map_page_passes_the_scope_to_the_grid(self):
+        response = self.client.get(reverse('pesticides:map'), {'concern': '1'})
+        assert response.context['map_config']['concern'] == '1'
+        assert self.client.get(reverse('pesticides:map')).context['map_config']['concern'] == ''

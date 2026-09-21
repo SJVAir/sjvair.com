@@ -50,7 +50,7 @@ def bad_request(message):
 
 
 def apply_filters(rows, params):
-    """Entity/county/month filters shared by both endpoints. Returns (rows, error)."""
+    """Entity/county/month/concern filters shared by both endpoints. Returns (rows, error)."""
     if params.get('month'):
         try:
             month = int(params['month'])
@@ -78,6 +78,8 @@ def apply_filters(rows, params):
         value = params.get(param)
         if value:
             rows = rows.filter(**{lookup: value})
+    if stats.is_concern(params.get(stats.CONCERN_PARAM)):
+        rows = stats.concern_rows(rows)
     return rows, None
 
 
@@ -236,7 +238,8 @@ class SectionList(CachedEndpointMixin, SectionListBase):
 
     Give either `bbox=west,south,east,north` or `lat`, `lng`, `radius` (miles: 1, 3, or 5).
     Filters: `year` (default latest), `month`, `chemical` (chem code), `product`
-    (prodno), `commodity` (site code), `county` (slug).
+    (prodno), `commodity` (site code), `county` (slug), and `concern=1` to
+    count only the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B).
     """
     cache_timeout = 60 * 60
 
@@ -251,6 +254,8 @@ class SectionDetailBase(generics.Endpoint):
         )
         year, all_years = parse_year(request.GET)
         rows = PesticideUseRollup.objects.filter(mtrs=section)
+        if stats.is_concern(request.GET.get(stats.CONCERN_PARAM)):
+            rows = stats.concern_rows(rows)
         years = list(rows.values('year').annotate(**TOTALS).order_by('-year'))
         months = stats.by_month(rows, year, all_years=all_years) if (year or all_years) else []
         county = rows.values_list('county__name', flat=True).order_by('county__name').first()
@@ -279,7 +284,7 @@ class SectionDetailBase(generics.Endpoint):
 
 
 class SectionDetail(CachedEndpointMixin, SectionDetailBase):
-    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest)."""
+    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `concern=1` counts only the chemicals of concern."""
     cache_timeout = 60 * 60
 
 
@@ -435,7 +440,8 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     `geometry=0` returns the features with `null` geometry (values only) for
     a client that already holds the outlines.
     Filters: `year` (default latest), `month`, `chemical` (chem code),
-    `product` (prodno), `commodity` (site code), `county` (slug).
+    `product` (prodno), `commodity` (site code), `county` (slug), and
+    `concern=1` to count only the chemicals of concern.
     """
     cache_timeout = 60 * 60
 

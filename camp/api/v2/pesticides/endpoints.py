@@ -5,7 +5,10 @@ from django.shortcuts import get_object_or_404
 
 from resticus import generics, http
 
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseTotal, Product
+from camp.apps.pesticides import stats
+from camp.apps.pesticides.models import (
+    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseTotal, Product, ProductChemical,
+)
 from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
 
@@ -280,6 +283,16 @@ class EntitySearchBase(generics.Endpoint):
             .annotate(prefix=Case(When(starts, then=0), default=1))
             .order_by('prefix', '-rank', 'name', 'pk'))
 
+        # The explorer's chemicals-of-concern scope: only concern chemicals,
+        # and only the products that carry one as an active ingredient.
+        if stats.is_concern(params.get(stats.CONCERN_PARAM)):
+            if kind == 'chemical':
+                queryset = queryset.filter(pk__in=stats.of_concern_chemicals())
+            elif kind == 'product':
+                queryset = queryset.filter(pk__in=ProductChemical.objects
+                    .filter(chemical__in=stats.of_concern_chemicals())
+                    .values('product'))
+
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
         # Chemicals show their preferred name; the CDPR name rides along as
         # the detail when it differs, so a reader who typed "1080" sees why
@@ -300,8 +313,9 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
 
     `type=chemical|product|commodity` (required), `q` (the search text; fewer
     than two characters returns no results), `year` (a year or `all`) and
-    `county` (slug) to offer only names with reported use there, and `limit` (default 10, capped
-    at 25). Each result carries the entity's `id` (sqid), `name`, and a
+    `county` (slug) to offer only names with reported use there, `concern=1`
+    to offer only chemicals of concern (and the products carrying one), and
+    `limit` (default 10, capped at 25). Each result carries the entity's `id` (sqid), `name`, and a
     `detail` string -- chem code, registration number, or site code.
     """
     cache_timeout = 60 * 5
