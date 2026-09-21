@@ -852,6 +852,11 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'year_label': stats.year_label(year, all_years),
         'center': center or SJV_CENTER,
         'zoom': zoom or SJV_ZOOM,
+        # With nothing else framing the map (a place's radius or outline, a
+        # highlighted section, an explicit centre), it opens fitted to the
+        # county outlines once they load, so the whole valley is in view at
+        # any aspect ratio; the fixed centre/zoom only covers the wait.
+        'fit': '' if any((center, zoom, radius, highlight, outline_url)) else 'valley',
         'radius': radius or '',
         'chemical': str(chemical.chem_code) if chemical else '',
         'product': str(product.prodno) if product else '',

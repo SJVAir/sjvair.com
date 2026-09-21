@@ -367,6 +367,20 @@
     if (!toolbar || toolbar.getAttribute('data-bound')) return;
     toolbar.setAttribute('data-bound', '1');
     var dropdowns = toolbar.querySelectorAll('.dropdown');
+    var self = this;
+
+    // The filter form only knows its own fields; the map's view settings
+    // (metric, notices, all sections) ride along so the URL it lands on
+    // still says how the map is being viewed.
+    var form = toolbar.querySelector('.section-map-toolbar-filters');
+    if (form) {
+      form.addEventListener('htmx:configRequest', function (event) {
+        var params = event.detail.parameters;
+        if (self.metric !== 'lbs_chemical') params.metric = self.metric;
+        if (self.showNotices !== (self.data.showNotices !== '0')) params.notices = self.showNotices ? '1' : '0';
+        if (self.showAllSections) params.sections = '1';
+      });
+    }
 
     var closeAll = function (except) {
       for (var i = 0; i < dropdowns.length; i++) {
@@ -799,6 +813,12 @@
     if (dataChanged) {
       this.loadedBounds = null;
       this.loadedNoticeBounds = null;
+      // The cached lens/all-sections tiles were fetched under the old
+      // filters; a fresh cache means in-flight fetches land in the old one
+      // (fetchLensSections writes to the cache it started with) and any
+      // all-sections run in progress stops scheduling work.
+      this.lensCache = {};
+      this.allSectionsRun = null;
       this.loadGrid();
       this.loadNotices();
     } else {
@@ -854,8 +874,13 @@
     });
     if (target) {
       this.map.fitBounds(target.getBounds(), { padding: [20, 20], animate: !this.reducedMotion });
-    } else if (this.countyFitted) {
-      this.map.fitBounds(this.countiesLayer.getBounds(), { padding: [20, 20], animate: !this.reducedMotion });
+    } else if (this.countyFitted || (this.data.fit === 'valley' && !this.valleyFitted)) {
+      // Back out to the valley after a county filter, or frame it on first
+      // load when nothing else (a place, a section) frames the map. The
+      // first-load fit snaps rather than animating out from the placeholder view.
+      var animate = !!this.valleyFitted && !this.reducedMotion;
+      this.map.fitBounds(this.countiesLayer.getBounds(), { padding: [20, 20], animate: animate });
+      this.valleyFitted = true;
     }
     this.countyFitted = !!target;
   };
@@ -1374,6 +1399,10 @@
     var params = this.commonParams();
     params.bbox = bboxParam(union);
     var query = buildQuery(params);
+    // Results go into the cache that was current when the fetch started:
+    // if the filters change meanwhile, adopt() swaps in a fresh cache and
+    // this one is simply dropped.
+    var cache = this.lensCache;
     fetch(this.data.sectionsUrl + (query ? '?' + query : ''))
       .then(function (response) { return response.ok ? response.json() : null; })
       .then(function (body) {
@@ -1385,7 +1414,7 @@
           var townshipId = mtrs.slice(0, mtrs.lastIndexOf('-'));
           if (byTownship[townshipId]) byTownship[townshipId].push(section);
         });
-        ids.forEach(function (townshipId) { self.lensCache[townshipId] = byTownship[townshipId]; });
+        ids.forEach(function (townshipId) { cache[townshipId] = byTownship[townshipId]; });
       })
       .catch(function () {})
       .then(function () { if (done) done(); });
