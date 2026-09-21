@@ -42,6 +42,12 @@ if COMMIT_HASH is None:
 # Empty means all registered types are exposed.
 MONITOR_ENABLED_TYPES = ['purpleair', 'airgradient', 'bam1022', 'aqview', 'airnow', 'vozbox', 'aqlite']
 
+# The counties SJVAir covers, by short name. County geometry comes from the
+# county Region rows (`import_counties`); this list says which of those
+# counties are "ours" for monitor county assignment, ingestion filters
+# (AQview, CIMIS), and report columns.
+SJVAIR_COUNTIES = ['Fresno', 'Kern', 'Kings', 'Madera', 'Merced', 'San Joaquin', 'Stanislaus', 'Tulare']
+
 # Staging / local dev only: mirror BAM 1022 entries from production
 # (https://www.sjvair.com) via an hourly task and the `mirror_bam_entries`
 # command. Never enable in production.
