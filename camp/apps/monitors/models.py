@@ -29,8 +29,8 @@ from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.monitors.managers import MonitorManager
 from camp.apps.qaqc.models import HealthCheck
+from camp.apps.regions.counties import county_name
 from camp.utils import classproperty
-from camp.utils.counties import County
 from camp.utils.datetime import make_aware
 from camp.utils.fields import MACAddressField
 
@@ -104,7 +104,6 @@ class LatestEntry(models.Model):
 
 
 class Monitor(models.Model):
-    COUNTIES = Choices(*County.names)
     LOCATION = Choices('inside', 'outside')
 
     CALIBRATE = False # Legacy
@@ -160,7 +159,7 @@ class Monitor(models.Model):
 
     # Where is this sensor setup?
     position = models.PointField(null=True, db_index=True)
-    county = models.CharField(max_length=20, blank=True, choices=COUNTIES)
+    county = models.CharField(max_length=20, blank=True)
     location = models.CharField(max_length=10, choices=LOCATION)
 
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
@@ -593,13 +592,14 @@ class Monitor(models.Model):
         return HealthCheck.objects.evaluate(monitor=self, hour=hour)
 
     def save(self, *args, **kwargs):
-        # County.lookup() does an in-process GEOS point-in-polygon check (no
-        # DB query) - cheap once, but save() runs on every process_data call
-        # for every monitor, continuously, so recomputing unconditionally
-        # adds up to a lot of native GEOS allocation over a day. Only do it
-        # when there's not already an answer, or position actually moved.
-        if self.position and (not self.county or self.tracker.has_changed('position')):
-            self.county = County.lookup(self.position)
+        # The county comes from the county Region containing the position.
+        # save() runs on every process_data call for every monitor, so only
+        # pay for the query when there's no answer yet or the position moved.
+        # A county given on creation (imports carry it from their source) is
+        # trusted as-is.
+        moved = not self._state.adding and self.tracker.has_changed('position')
+        if self.position and (not self.county or moved):
+            self.county = county_name(self.position)
         super().save(*args, **kwargs)
 
     # Legacy

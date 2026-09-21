@@ -255,7 +255,7 @@ class CreateEntryUpsertTests(TestCase):
 
 
 class MonitorSaveCountyLookupTests(TestCase):
-    fixtures = ['purple-air.yaml']
+    fixtures = ['purple-air.yaml', 'regions.yaml']
 
     def get_purpleair(self):
         return PurpleAir.objects.get(sensor_id=8892)
@@ -265,7 +265,7 @@ class MonitorSaveCountyLookupTests(TestCase):
         monitor.county = ''
         monitor.position = Point(-119.7871, 36.7378)  # Fresno, CA
 
-        with patch('camp.apps.monitors.models.County.lookup', return_value='Fresno') as lookup:
+        with patch('camp.apps.monitors.models.county_name', return_value='Fresno') as lookup:
             monitor.save()
 
         lookup.assert_called_once()
@@ -278,7 +278,7 @@ class MonitorSaveCountyLookupTests(TestCase):
         monitor.save()
 
         monitor = self.get_purpleair()
-        with patch('camp.apps.monitors.models.County.lookup') as lookup:
+        with patch('camp.apps.monitors.models.county_name') as lookup:
             monitor.name = 'Renamed'
             monitor.save()
 
@@ -291,7 +291,7 @@ class MonitorSaveCountyLookupTests(TestCase):
         monitor.save()
 
         monitor = self.get_purpleair()
-        with patch('camp.apps.monitors.models.County.lookup', return_value='Kern') as lookup:
+        with patch('camp.apps.monitors.models.county_name', return_value='Kern') as lookup:
             monitor.position = Point(-118.7273, 35.3733)  # Kern, CA
             monitor.save()
 

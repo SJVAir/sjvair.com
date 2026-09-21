@@ -20,7 +20,7 @@ from camp.apps.regions.models import Boundary, Region
 from camp.apps.reports.base import BaseReport, register
 from camp.apps.reports.scope import MonitorScope
 from camp.utils import leaflet
-from camp.utils.counties import County
+from camp.apps.regions.counties import COUNTY_KEYS, COUNTY_NAMES
 from camp.utils.gis import fill_holes
 
 
@@ -80,7 +80,7 @@ from camp.apps.reports.scope import enabled_only  # noqa: E402 -- re-exported fo
 
 def county_column(county):
     """Bucket a monitor's county field into a table column."""
-    return county if county in County.names else OUTSIDE_SJV
+    return county if county in COUNTY_NAMES else OUTSIDE_SJV
 
 
 def type_label(cls):
@@ -121,7 +121,7 @@ class NetworkOverview(BaseReport):
         return self.scoped(enabled_only(Monitor.objects.all()))
 
     def get_rows(self):
-        columns = [*County.names, OUTSIDE_SJV]
+        columns = [*COUNTY_NAMES, OUTSIDE_SJV]
         counts = {}
         for cls in Monitor.get_enabled_subclasses():
             queryset = self.scoped(cls.objects.all())
@@ -154,7 +154,7 @@ class NetworkOverview(BaseReport):
     def get_context_data(self, **kwargs):
         return {
             **super().get_context_data(**kwargs),
-            'counties': County.names,
+            'counties': COUNTY_NAMES,
             'include_hidden': self.include_hidden,
             'sjvair_only': self.sjvair_only,
             'tiles': self.get_tiles(),
@@ -255,7 +255,7 @@ class Coverage(MonitorScopeMixin, BaseReport):
         return model._base_manager.filter(boundary__version=version)
 
     def county_boundaries_by_name(self):
-        """County name (as in County.names) -> current boundary geometry, from the county Regions."""
+        """County name (as in COUNTY_NAMES) -> current boundary geometry, from the county Regions."""
         return {
             region.name.removesuffix(' County'): region.boundary.geometry
             for region in Region.objects.counties().select_related('boundary')
@@ -286,7 +286,7 @@ class Coverage(MonitorScopeMixin, BaseReport):
 
         rows = []
         county_boundaries = self.county_boundaries_by_name()
-        for county in County.names:
+        for county in COUNTY_NAMES:
             counts = monitor_counts.get(county, {'monitors': 0, 'dac_monitors': 0})
             stats = {'population': 0, 'dac_tracts': 0, 'dac_population': 0, 'dac_population_covered': 0}
             if tracts is not None and county in county_boundaries:
@@ -306,7 +306,7 @@ class Coverage(MonitorScopeMixin, BaseReport):
 
         outside = [
             item for county, item in monitor_counts.items()
-            if county not in County.names
+            if county not in COUNTY_NAMES
         ]
         rows.append(self.build_row(
             OUTSIDE_SJV,
@@ -420,7 +420,7 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
     @property
     def county(self):
         county = self.request.GET.get('county', '')
-        return county if county in County.names else ''
+        return county if county in COUNTY_NAMES else ''
 
     @property
     def place_type(self):
@@ -621,7 +621,7 @@ class CoverageCommunity(MonitorScopeMixin, BaseReport):
             **self.scope_context(),
             'uncovered': self.uncovered,
             'county': self.county,
-            'counties': County.names,
+            'counties': COUNTY_NAMES,
             'place_type': self.place_type,
             'min_population': self.min_population,
             'sort': self.sort,
@@ -641,7 +641,7 @@ class SubscriptionCountyStats(BaseReport):
     def get_rows(self):
         monitor_lookup = {}
         subscription_lookup = {}
-        for key, county in County.keys.items():
+        for key, county in COUNTY_KEYS.items():
             monitor_lookup[f'{key}_total_monitors'] = Count('pk', filter=Q(county=county))
             monitor_lookup[f'{key}_subscription_monitors'] = Count('pk',
                 filter=Q(county=county, subscriptions__isnull=False), distinct=True)
@@ -655,7 +655,7 @@ class SubscriptionCountyStats(BaseReport):
             'total_monitors': monitor_stats[f'{key}_total_monitors'],
             'subscription_monitors': monitor_stats[f'{key}_subscription_monitors'],
             'total_subscriptions': subscription_stats[f'{key}_total_subscriptions'],
-        } for key, county in County.keys.items()]
+        } for key, county in COUNTY_KEYS.items()]
 
 
 @register
@@ -668,7 +668,7 @@ class FleetHealth(BaseReport):
     @property
     def county(self):
         county = self.request.GET.get('county', '')
-        return county if county in County.names else ''
+        return county if county in COUNTY_NAMES else ''
 
     @property
     def sjvair_only(self):
@@ -723,7 +723,7 @@ class FleetHealth(BaseReport):
     def get_context_data(self, **kwargs):
         return {
             **super().get_context_data(**kwargs),
-            'counties': County.names,
+            'counties': COUNTY_NAMES,
             'county': self.county,
             'sjvair_only': self.sjvair_only,
             'grades': self.get_grades(),
@@ -749,7 +749,7 @@ class DegradedMonitors(BaseReport):
     @property
     def county(self):
         county = self.request.GET.get('county', '')
-        return county if county in County.names else ''
+        return county if county in COUNTY_NAMES else ''
 
     @property
     def monitor_type(self):
@@ -855,7 +855,7 @@ class DegradedMonitors(BaseReport):
     def get_context_data(self, **kwargs):
         context = {
             **super().get_context_data(**kwargs),
-            'counties': County.names,
+            'counties': COUNTY_NAMES,
             'county': self.county,
             'monitor_type': self.monitor_type,
             'types': [(cls.monitor_type, type_label(cls)) for cls in monitor_types()],

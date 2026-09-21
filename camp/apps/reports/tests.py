@@ -64,6 +64,8 @@ class ReportIndexTests(StaffClientMixin, TestCase):
 
 
 class SubscriptionCountyStatsTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml']
+
     def setUp(self):
         super().setUp()
         self.fresno = PurpleAir.objects.create(name='Fresno PA', sensor_id=1, position=Point(-119.75, 36.75), location='outside')
@@ -99,6 +101,8 @@ def touch(monitor, timestamp):
 
 
 class NetworkOverviewTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml']
+
     def setUp(self):
         super().setUp()
         now = timezone.now()
@@ -186,6 +190,8 @@ def give_health(monitor, score, flatline_a=None, flatline_b=None):
 
 
 class FleetHealthTests(StaffClientMixin, TestCase):
+    fixtures = ['regions.yaml']
+
     def setUp(self):
         super().setUp()
         now = timezone.now()

@@ -143,6 +143,8 @@ class ParseHmsCoordinateTests(TestCase):
 
 
 class ProcessCimisStationTests(TestCase):
+    fixtures = ['regions.yaml']
+
     def make_station(self, **overrides):
         station = {
             'StationNbr': '2',
