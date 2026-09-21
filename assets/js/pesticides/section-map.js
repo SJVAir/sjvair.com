@@ -82,6 +82,10 @@
       .replace(/\.(png|jpg)\?/, style === 'hybrid' ? '.jpg?' : '.png?');
   }
   var NOTICE_COLOR = '#d35400';
+  // Below this zoom, sections drawn at township level (the lens, "all
+  // sections") are a few pixels each: their hairline strokes would outweigh
+  // the fills and grey the map, so they draw fill-only.
+  var SECTION_LINES_MIN_ZOOM = 10;
   var SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/';
 
   var METRIC_UNITS = {
@@ -704,6 +708,8 @@
     this.map.on('moveend zoomend', debouncedLoad);
     this.map.on('moveend zoomend', debouncedNotices);
     this.map.on('zoomend', this.restyleCounties.bind(this));
+    // Section strokes switch on/off across SECTION_LINES_MIN_ZOOM (see lensSectionStyle).
+    this.map.on('zoomend', this.restyleSectionLines.bind(this));
     this.bindZoomButtons();
 
     this.addLocateControl();
@@ -1775,6 +1781,19 @@
 
   // Recomputes the classes over everything in the layer and reshades it;
   // also what a metric change calls.
+  SectionMap.prototype.restyleSectionLines = function () {
+    var lines = this.map.getZoom() >= SECTION_LINES_MIN_ZOOM;
+    if (lines === this.sectionLinesShown) return;
+    this.sectionLinesShown = lines;
+    var self = this;
+    if (this.allSectionsLayer) {
+      this.allSectionsLayer.eachLayer(function (layer) {
+        layer.setStyle(self.lensSectionStyle(layer.feature, self.currentClasses));
+      });
+    }
+    if (this.lensLayer) this.clearLens();
+  };
+
   SectionMap.prototype.restyleAllSections = function () {
     if (!this.allSectionsLayer) return;
     var self = this;
@@ -1817,7 +1836,7 @@
     var style = {
       fillColor: colorFor(classes, value),
       fillOpacity: value ? 0.85 : 0.35,
-      stroke: true,
+      stroke: this.map.getZoom() >= SECTION_LINES_MIN_ZOOM,
       color: GRID_LINE.color,
       opacity: GRID_LINE.opacity,
       weight: 0.5,
