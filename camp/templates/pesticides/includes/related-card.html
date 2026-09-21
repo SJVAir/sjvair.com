@@ -3,7 +3,7 @@
     <header class="card-header"><p class="card-header-title">{{ card.title }}</p></header>
     <div class="card-content">
         {% if card.rows %}
-        <table class="table is-fullwidth is-narrow">
+        <table class="table is-fullwidth is-narrow is-striped">
             <thead><tr>
                 <th>Name</th>
                 {% if card.show_pct %}<th class="has-text-right">% active</th>{% endif %}

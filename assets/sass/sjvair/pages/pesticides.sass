@@ -558,7 +558,10 @@ body.pesticides
             vertical-align: middle
 
     .leaderboard-list
-        margin: 0
+        // Pulled out half an em each side so the zebra stripes run past the
+        // text the way a striped table's cells do, with the text itself
+        // staying where it was.
+        margin: 0 -0.5em
         padding-left: 0
         list-style: none
         counter-reset: rank
@@ -566,8 +569,12 @@ body.pesticides
             display: flex
             align-items: baseline
             gap: 0.6rem
-            padding: 0.4em 0
+            padding: 0.4em 0.5em
             border-bottom: 1px solid $grey-lightest
+            // The same stripe Bulma's `is-striped` tables use, so the landing
+            // boards match the cards on the place pages.
+            &:nth-child(even)
+                background-color: $white-bis
             // Flex items lose their list marker, so number them with a counter.
             &::before
                 counter-increment: rank
