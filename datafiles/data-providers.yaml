@@ -50,3 +50,8 @@
       logo: img/logo/oehha.png
       url: https://oehha.ca.gov/
       classes: is-3-mobile is-2-tablet is-2-desktop
+
+    - name: California Department of Pesticide Regulation
+      logo: img/logo/cdpr.png
+      url: https://www.cdpr.ca.gov/
+      classes: is-3-mobile is-2-tablet is-2-desktop

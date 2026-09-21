@@ -54,6 +54,43 @@
       url: https://cimis.water.ca.gov/
       description: The California Irrigation Management Information System (CIMIS) is a network of automated weather stations operated by the California Department of Water Resources (DWR). Originally built to support agricultural irrigation scheduling, CIMIS stations also report hourly weather data — temperature, humidity, wind speed and direction, solar radiation, and precipitation — which SJVAir uses to add local weather context alongside air quality measurements across the San Joaquin Valley.
 
+- category: Pesticide Data
+  icon:
+    name: fa-spray-can
+    primary: darkolivegreen
+    secondary: yellowgreen
+  description: The state records behind the <a href="/tools/pesticides/">Pesticide Data Explorer</a>&#58; every reported agricultural pesticide application in the San Joaquin Valley, the notices growers file before restricted applications, and the official lists that flag which chemicals are of concern to health. Schools and child care centers shown alongside this data come from the California Department of Education and the Department of Social Services, published through the state's open data portal.
+  integrations:
+    - name: Pesticide Use Reporting
+      logo: img/logo/cdpr.png
+      url: https://www.cdpr.ca.gov/docs/pur/purmain.htm
+      description: California's Pesticide Use Reporting (PUR) program, run by the Department of Pesticide Regulation (DPR), has required growers to report every agricultural pesticide application since 1990, down to the product, the amount, the crop, and the square-mile section it was applied to. DPR releases each year's records one to two years after the fact. SJVAir imports the full record for the eight Valley counties and summarizes it by chemical, product, commodity, county, and section.
+
+    - name: SprayDays California
+      logo: img/logo/spraydays-logo.svg
+      url: https://spraydays.cdpr.ca.gov/
+      description: SprayDays is DPR's statewide notification system for restricted-material pesticide applications. Growers file a notice of intent before applying, and SprayDays publishes the planned applications by location up to four days ahead. SJVAir shows the active notices on its pesticide maps and links to SprayDays for sign-up; it does not send notifications of its own.
+
+    - name: CompTox Chemicals Dashboard
+      logo: img/logo/epa-vertical.svg
+      url: https://comptox.epa.gov/dashboard/
+      description: The U.S. Environmental Protection Agency's CompTox Chemicals Dashboard is a reference database covering more than a million chemicals, with identifiers, structures, and links to hazard data. SJVAir uses it to match the chemical names in DPR's records to standard identifiers and CAS numbers, so that a chemical can be looked up consistently across the health lists below.
+
+    - name: Proposition 65
+      logo: img/logo/oehha.png
+      url: https://oehha.ca.gov/proposition-65/proposition-65-list
+      description: California's Proposition 65 list, maintained by the Office of Environmental Health Hazard Assessment (OEHHA), names the chemicals the state has determined can cause cancer, birth defects, or other reproductive harm. SJVAir marks a chemical as a Prop 65 listing when it appears on the list, and includes those listings in its "chemicals of concern" view.
+
+    - name: Toxic Air Contaminants
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/resources/documents/carb-identified-toxic-air-contaminants
+      description: The California Air Resources Board (CARB) identifies toxic air contaminants (TACs) — airborne substances that may cause serious illness or death — and, with OEHHA, publishes health reference values for them. SJVAir flags pesticide chemicals on CARB's TAC list, since these are the ones whose drift into the air is a recognized concern.
+
+    - name: IARC Monographs
+      logo: img/logo/iarc.svg
+      url: https://monographs.iarc.who.int/
+      description: The International Agency for Research on Cancer (IARC), part of the World Health Organization, reviews the evidence on whether agents cause cancer in humans and classifies them into groups, from Group 1 (carcinogenic) through Group 2A and 2B (probably and possibly carcinogenic) to Group 3 (not classifiable). SJVAir shows a chemical's IARC group where one has been assigned and treats Groups 1, 2A, and 2B as chemicals of concern.
+
 - category: Environmental & Health Mapping
   icon:
     name: fa-earth-americas
