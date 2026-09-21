@@ -56,9 +56,19 @@ API_DOCS_URL = '/api/2.0/docs/#tag/pesticides'
 CLIENT_DOCS_URL = 'https://sjvair.github.io/sjvair-python/client/resources/pesticides.html'
 
 
-def lbs_subquery(field, year, lbs_field='lbs_chemical', county=None, all_years=False):
-    """Sum of pounds in `year` (or every loaded year) and `county`, when given, for the outer row, via `PesticideUseTotal.<field>`."""
-    rows = PesticideUseTotal.objects.filter(**{field: OuterRef('pk')})
+def lbs_subquery(field, year, lbs_field='lbs_chemical', county=None, all_years=False, related=None):
+    """
+    Sum of pounds in `year` (or every loaded year) and `county`, when given,
+    for the outer row, via `PesticideUseTotal.<field>`. With `related`
+    ({'chemical': <Chemical>, ...}, a list's active entity filters) the sum
+    is the pair's pounds from the rollup instead: a commodity list filtered
+    to one chemical shows that chemical's pounds on each commodity, not the
+    commodity's total.
+    """
+    if related:
+        rows = PesticideUseRollup.objects.filter(**{field: OuterRef('pk')}, **related)
+    else:
+        rows = PesticideUseTotal.objects.filter(**{field: OuterRef('pk')})
     if not all_years:
         rows = rows.filter(year=year)
     if county is not None:
@@ -262,6 +272,10 @@ class ExplorerListMixin:
     def annotate_queryset(self, queryset, year):
         return queryset
 
+    def related_filters(self):
+        """The list's resolved entity filters, as rollup lookups."""
+        return {param: obj for param, obj in self.related.items() if obj is not MISSING}
+
     def get_sort(self):
         param = self.request.GET.get('sort') or ''
         key = param.lstrip('-')
@@ -361,7 +375,7 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
         )
         if year or self.all_years:
             queryset = queryset.annotate(
-                lbs_applied=lbs_subquery('chemical', year, county=self.county, all_years=self.all_years)
+                lbs_applied=lbs_subquery('chemical', year, county=self.county, all_years=self.all_years, related=self.related_filters())
             )
         else:
             queryset = queryset.annotate(lbs_applied=F('chem_code') * 0.0)
@@ -504,7 +518,7 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
         )
         if year or self.all_years:
             queryset = queryset.annotate(
-                lbs_applied=lbs_subquery('product', year, lbs_field='lbs_product', county=self.county, all_years=self.all_years)
+                lbs_applied=lbs_subquery('product', year, lbs_field='lbs_product', county=self.county, all_years=self.all_years, related=self.related_filters())
             )
         else:
             queryset = queryset.annotate(lbs_applied=F('prodno') * 0.0)
@@ -540,7 +554,7 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
         if not year and not self.all_years:
             return queryset.annotate(lbs_applied=F('pk') * 0.0, chemical_count=F('pk') * 0)
         return queryset.annotate(
-            lbs_applied=lbs_subquery('commodity', year, county=self.county, all_years=self.all_years),
+            lbs_applied=lbs_subquery('commodity', year, county=self.county, all_years=self.all_years, related=self.related_filters()),
             chemical_count=self.chemical_count(year),
         )
 

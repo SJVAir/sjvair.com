@@ -59,8 +59,13 @@ def sort_link(context, key, label):
 
 @register.filter
 def lbs(value):
+    """Whole pounds with commas; below ten pounds keep a decimal, below one keep two ("0.19"), so a bait's few ounces don't read as nothing."""
     if value is None:
         return '—'
+    if value and abs(value) < 1:
+        return f'{value:.2f}'
+    if value and abs(value) < 10:
+        return f'{value:.1f}'
     return intcomma(int(round(value)))
 
 

@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.db.models import Sum
 from django.test import TestCase
 from django.urls import reverse
 from django.utils.html import escape
@@ -162,6 +163,19 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'product': product.sqid})
         assert self.names(response) == ['CHLORPYRIFOS']
         assert response.context['related']['product'] == product
+
+    def test_related_filter_shows_the_pairs_pounds(self):
+        # Filtered to a product, the pounds column is that product's share
+        # of the chemical's pounds, not the chemical's total.
+        product = Product.objects.get(pk=2)
+        # Some chlorpyrifos applied through another product, so the pair and the total differ.
+        PesticideUseRollup.objects.create(year=2023, month=1, county_id=9001, chemical_id=2, product_id=1, lbs_chemical=25, applications=1)
+        response = self.client.get(self.url, {'product': product.sqid})
+        chemical = response.context['object_list'][0]
+        pair = PesticideUseRollup.objects.filter(year=2023, chemical=chemical, product=product).aggregate(Sum('lbs_chemical'))
+        total = PesticideUseRollup.objects.filter(year=2023, chemical=chemical).aggregate(Sum('lbs_chemical'))
+        assert chemical.lbs_applied == pair['lbs_chemical__sum'] == 60.0
+        assert total['lbs_chemical__sum'] == 85.0
 
     def test_related_filter_by_commodity(self):
         commodity = Commodity.objects.get(pk=1)
