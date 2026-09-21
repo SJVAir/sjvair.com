@@ -38,6 +38,8 @@
     purd: ['#f1eef6', '#d7b5d8', '#df65b0', '#dd1c77', '#980043'],
     bupu: ['#edf8fb', '#b3cde3', '#8c96c6', '#8856a7', '#810f7c'],
     ylorbr: ['#ffffd4', '#fed98e', '#fe9929', '#d95f0e', '#993404'],
+    putrid: ['#eef2b8', '#cfd96e', '#a3b53c', '#72871f', '#3f4f12'],
+    bile: ['#f5f2a4', '#d9d95a', '#a9b62e', '#6b7615', '#3a400c'],
   };
   var rampMatch = /[?&]ramp=([a-z]+)/.exec(window.location.search || '');
   var RAMP = RAMPS[rampMatch && rampMatch[1]] || RAMPS.blues;

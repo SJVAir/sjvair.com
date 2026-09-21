@@ -36,6 +36,10 @@ RAMPS = {
     'ylorbr': ['#fff7bc', '#fee391', '#fec44f', '#fe9929', '#ec7014', '#cc4c02', '#993404', '#662506'],
     'greens': ['#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#006d2c', '#00441b'],
     'viridis': ['#fde725', '#b5de2b', '#6ece58', '#35b779', '#1f9e89', '#26828e', '#31688e', '#3e4989'],
+    # Sickly greens: pale bile through olive to a murky bottle green.
+    'putrid': ['#f4f6c6', '#e4ea9b', '#cfd96e', '#b3c24a', '#93a52f', '#72871f', '#546816', '#3a4a12'],
+    # ...and a yellower, more acid take on the same.
+    'bile': ['#f7f5b6', '#e6e57a', '#cbd249', '#a9b62e', '#88951d', '#6b7615', '#4f5810', '#353b0b'],
 }
 RAMP = RAMPS['blues']
 NO_DATA = '#f0f0f0'
