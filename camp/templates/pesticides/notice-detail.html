@@ -34,7 +34,7 @@
                 </tr>
                 <tr><th>Treated</th><td>{% if object.treated_amount %}{{ object.treated_amount|floatformat:'-1'|intcomma }} {{ object.treated_units|lower }}{% else %}—{% endif %}</td></tr>
                 <tr><th>Method</th><td>{{ object.application_method|default:'—' }}</td></tr>
-                <tr><th>County</th><td>{% if object.county %}<a href="{% region_url object.county %}">{{ object.county.name }}</a>{% else %}—{% endif %}</td></tr>
+                <tr><th>County</th><td>{% if object.county %}<a href="{% region_url object.county %}">{{ object.county.short_name }}</a>{% else %}—{% endif %}</td></tr>
                 <tr>
                     <th>Section</th>
                     <td>{% if object.mtrs %}<a href="{% url 'pesticides:section-detail' sqid=object.mtrs.sqid %}">{{ object.mtrs.external_id }}</a>{% else %}—{% endif %}</td>

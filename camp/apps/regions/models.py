@@ -56,6 +56,13 @@ class Region(TimeStampedModel):
 
     objects = RegionManager()
 
+    @property
+    def short_name(self):
+        """The name without a trailing " County": for tables and pickers that already say "county"."""
+        if self.type == self.Type.COUNTY and self.name.endswith(' County'):
+            return self.name[:-len(' County')]
+        return self.name
+
     class Meta:
         indexes = [
             models.Index(fields=['type']),

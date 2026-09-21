@@ -1,7 +1,7 @@
 {% load pesticides_explorer %}
 {% if upcoming_by_county %}
 <div class="tags mb-3">
-    {% for row in upcoming_by_county %}<span class="tag is-medium">{{ row.county_name }} <strong class="ml-1">{{ row.count }}</strong></span>{% endfor %}
+    {% for row in upcoming_by_county %}<span class="tag is-medium">{{ row.county_name|cut:" County" }} <strong class="ml-1">{{ row.count }}</strong></span>{% endfor %}
 </div>
 {% endif %}
 <table class="table is-fullwidth is-narrow is-striped">
@@ -10,7 +10,7 @@
     {% for notice in upcoming %}
         <tr>
             <td>{{ notice.scheduled_application|date:'M j, Y' }}</td>
-            <td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.name }}</a>{% else %}—{% endif %}</td>
+            <td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.short_name }}</a>{% else %}—{% endif %}</td>
             <td>{{ notice.application_method|default:'—' }}</td>
             <td class="has-text-right">{% if notice.treated_amount %}{{ notice.treated_amount|floatformat:1 }} {{ notice.treated_units|lower }}{% else %}—{% endif %}</td>
             <td>

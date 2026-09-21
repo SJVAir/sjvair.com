@@ -18,7 +18,7 @@
             <tr>
                 <td><a href="{% url 'pesticides:notice-detail' sqid=notice.sqid %}">{{ notice.scheduled_application|date:'M j, Y g:i A' }}</a></td>
                 {% if not compact %}
-                <td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.name }}</a>{% else %}—{% endif %}</td>
+                <td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.short_name }}</a>{% else %}—{% endif %}</td>
                 <td>
                     {% if notice.mtrs %}
                         <a href="{% url 'pesticides:section-detail' sqid=notice.mtrs.sqid %}">{{ notice.mtrs.external_id }}</a>

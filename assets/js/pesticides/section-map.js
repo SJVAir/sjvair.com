@@ -94,6 +94,11 @@
     return miles * 1609.34;
   }
 
+  // "Fresno County" -> "Fresno", where the label already says county.
+  function shortCounty(name) {
+    return /\sCounty$/.test(name) ? name.slice(0, -' County'.length) : name;
+  }
+
   function escapeHtml(value) {
     var div = document.createElement('div');
     div.textContent = value == null ? '' : String(value);
@@ -1985,7 +1990,7 @@
   // township popup is unreachable there (the sections cover it),
   // so its "zoom in" action rides along on the section popup instead.
   SectionMap.prototype.sectionPopupHtml = function (props, detailHtml, center) {
-    var sub = 'Square-mile section' + (props.county ? ' · ' + escapeHtml(props.county) : '');
+    var sub = 'Square-mile section' + (props.county ? ' · ' + escapeHtml(shortCounty(props.county)) : '');
     var url = this.sectionUrl(props.id);
     var links = url
       ? '<a class="section-popup-action" href="' + escapeHtml(url) + '"><span class="fa-regular fa-fw fa-circle-info"></span> Section details</a>'
@@ -2192,7 +2197,7 @@
       popupTable([
         popupRow('Scheduled', escapeHtml(formatDateTime(props.scheduled_application))),
         popupRow('May begin through', escapeHtml(formatDate(props.scheduled_end))),
-        popupRow('County', escapeHtml(props.county || '')),
+        popupRow('County', escapeHtml(shortCounty(props.county || ''))),
         popupRow('Section', section),
         popupRow('Method', escapeHtml(props.application_method || '')),
         popupRow('Treated', props.treated_amount

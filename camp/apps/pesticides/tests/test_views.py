@@ -90,13 +90,21 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert 'aria-current="page">2023</a>' in html
         html = self.client.get(self.url, {'year': 'all', 'county': 'kern'}).content.decode()
         assert '<span class="explorer-scope-label">All years</span>' in html
-        assert '<span class="explorer-scope-label">Kern County</span>' in html
-        assert 'aria-current="page">Kern County</a>' in html
+        assert '<span class="explorer-scope-label">Kern</span>' in html
+        assert 'aria-current="page">Kern</a>' in html
         # Switching one keeps the other; the filter form carries both as hidden inputs.
         assert 'href="?year=2022&amp;county=kern"' in html
         assert 'href="?year=all&amp;county=fresno"' in html
         assert '<input type="hidden" name="year" value="all">' in html
         assert '<input type="hidden" name="county" value="kern">' in html
+
+    def test_short_county_names_where_the_label_already_says_county(self):
+        kern = Region.objects.get(slug='kern')
+        assert kern.short_name == 'Kern' and kern.name == 'Kern County'
+        html = self.client.get(reverse('pesticides:records'), {'county': 'kern'}).content.decode()
+        # Table cells and the picker drop "County"; the summary sentence keeps it.
+        assert '>Kern</a>' in html
+        assert 'Kern County' in html.split('summary-sentence')[1][:200]
 
     def test_county_scope_is_left_off_pages_narrower_than_a_county(self):
         region = Region.objects.get(pk=9001)
@@ -723,7 +731,7 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'Glyphosate <button type="button" class="delete is-small entity-picker-clear"' in html
         assert '<input type="hidden" name="year" value="2022">' in html
         assert '<input type="hidden" name="county" value="fresno">' in html
-        assert 'Fresno County</span>' in html
+        assert 'Fresno</span>' in html
 
     def test_renders_with_defaults(self):
         response = self.client.get(self.url)

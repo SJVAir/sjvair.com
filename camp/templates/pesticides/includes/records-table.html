@@ -18,7 +18,7 @@
             {% for use in object_list %}
             <tr>
                 <td>{{ use.application_date|date:'M j, Y'|default:'—' }}</td>
-                <td>{% if use.county %}<a href="{% region_url use.county %}">{{ use.county.name }}</a>{% else %}—{% endif %}</td>
+                <td>{% if use.county %}<a href="{% region_url use.county %}">{{ use.county.short_name }}</a>{% else %}—{% endif %}</td>
                 <td>
                     {% if use.mtrs %}
                         <a href="{% url 'pesticides:section-detail' sqid=use.mtrs.sqid %}">{{ use.mtrs.external_id }}</a>
