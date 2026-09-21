@@ -1231,6 +1231,7 @@ class LocationEndpointTests(TestCase):
             'city': 'Fresno',
             'district': 'Fresno Unified',
             'district_id': self.district.sqid,
+            'district_url': f'/tools/pesticides/region/{self.district.sqid}/{self.district.slug}/',
             'grade_span': 'K-6',
             'capacity': None,
         }

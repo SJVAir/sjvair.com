@@ -84,7 +84,7 @@ class LocationTests(TestCase):
         assert Location(type=Location.Type.PRIVATE_SCHOOL).short_type == 'Private school'
         assert Location(type=Location.Type.CHILD_CARE).short_type == 'Child care'
 
-    def test_get_absolute_url_is_the_districts_page(self):
+    def test_get_pesticides_url_is_the_districts_page(self):
         district = make_district('Selma Unified', 'selma-unified', '10621170000000')
         location = Location.objects.create(
             type=Location.Type.PUBLIC_SCHOOL,
@@ -94,10 +94,10 @@ class LocationTests(TestCase):
             point=self.inside,
             district=district,
         )
-        assert location.get_absolute_url() == reverse('pesticides:region',
+        assert location.get_pesticides_url() == reverse('pesticides:region',
             kwargs={'sqid': district.sqid, 'slug': district.slug})
 
-    def test_get_absolute_url_is_empty_without_a_district(self):
+    def test_get_pesticides_url_is_empty_without_a_district(self):
         location = Location.objects.create(
             type=Location.Type.CHILD_CARE,
             name='Little Sprouts',
@@ -105,4 +105,4 @@ class LocationTests(TestCase):
             source='cdss-ccl',
             point=self.inside,
         )
-        assert location.get_absolute_url() == ''
+        assert location.get_pesticides_url() == ''

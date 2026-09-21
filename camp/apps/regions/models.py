@@ -75,6 +75,10 @@ class Region(TimeStampedModel):
     def __str__(self):
         return f'{self.name} ({self.get_type_display()})'
 
+    def get_pesticides_url(self):
+        """This region's page in the pesticides explorer (the app that owns the URL keeps the name)."""
+        return reverse('pesticides:region', kwargs={'sqid': self.sqid, 'slug': self.slug})
+
     @property
     def monitors(self):
         """
@@ -229,17 +233,14 @@ class Location(TimeStampedModel):
     def __str__(self):
         return self.name
 
-    def get_absolute_url(self):
+    def get_pesticides_url(self):
         """
         Locations don't have their own page: the district page is the closest
         thing, and a location without a district has nowhere to go.
         """
         if self.district_id is None:
             return ''
-        return reverse('pesticides:region', kwargs={
-            'sqid': self.district.sqid,
-            'slug': self.district.slug,
-        })
+        return self.district.get_pesticides_url()
 
     @property
     def short_type(self):

@@ -2742,8 +2742,8 @@
       actions += '<a class="section-popup-action" href="' + escapeHtml(this.sectionUrl(section.id)) + '">' +
         '<span class="fa-regular fa-fw fa-circle-info"></span> Section details</a>';
     }
-    if (props.district_id && this.data.regionPageUrl) {
-      actions += '<a class="section-popup-action" href="' + escapeHtml(fillUrl(this.data.regionPageUrl, props.district_id)) + '">' +
+    if (props.district_url) {
+      actions += '<a class="section-popup-action" href="' + escapeHtml(props.district_url) + '">' +
         '<span class="fa-regular fa-fw fa-school"></span> District page</a>';
     }
 

@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon
 from django.core.cache import cache
-from django.urls import reverse
 from django.utils.safestring import mark_safe
 
 from camp.apps.regions.models import Region
@@ -177,7 +176,7 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
         county = counties[pk]
         value = value_by_pk.get(pk)
         label = f'{county.name}: {int(round(value)):,} {unit}' if value else f'{county.name}: no data'
-        url = reverse('pesticides:region', kwargs={'sqid': county.sqid, 'slug': county.slug})
+        url = county.get_pesticides_url()
         lmap.add(leaflet.Area(
             geometry=GEOSGeometry(geojson, srid=4326),
             fill_color=classes.color_for(value),

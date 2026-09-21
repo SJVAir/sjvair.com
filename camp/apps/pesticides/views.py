@@ -11,7 +11,7 @@ from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, F, FloatField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models import Case, Count, F, FloatField, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce, Lower, TruncMonth
 from django.http import Http404
 from django.shortcuts import redirect
@@ -413,7 +413,7 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
     search_examples = ('glyphosate', 'sulfur', 'chlorpyrifos', 'paraquat', 'malathion', 'copper', 'mineral oil', 'kaolin')
     template_name = 'pesticides/chemical-list.html'
     section = 'chemicals'
-    sort_fields = {'name': 'sort_name', 'lbs': 'lbs_applied', 'products': 'product_count', 'iarc': 'iarc_group'}
+    sort_fields = {'name': 'sort_name', 'lbs': 'lbs_applied', 'products': 'product_count'}
     default_sort = '-lbs'
     related_models = {'product': Product, 'commodity': Commodity}
     rollup_field = 'chemical'
@@ -583,6 +583,18 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
     default_sort = 'name'
     related_models = {'chemical': Chemical, 'commodity': Commodity}
     rollup_field = 'product'
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.concern:
+            # The table shows which of each product's ingredients are of
+            # concern (in place of the flags), so fetch them with the page.
+            queryset = queryset.prefetch_related(Prefetch(
+                'product_chemicals',
+                queryset=ProductChemical.objects.filter(chemical__in=stats.of_concern_chemicals()).select_related('chemical').order_by('-pct_active'),
+                to_attr='concern_ingredients',
+            ))
+        return queryset
 
     def apply_filters(self, queryset, data):
         if self.concern:
@@ -1020,7 +1032,6 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # A school marker knows its district's sqid but not its slug; any
         # slug 301s to the canonical URL (see RegionPage), so a placeholder
         # one is enough for the link.
-        'region_page_url': unquote(reverse('pesticides:region', kwargs={'sqid': '{id}', 'slug': 'district'})),
         'tile_url': leaflet.TILE_URL.format(key=settings.MAPTILER_API_KEY, z='{z}', x='{x}', y='{y}'),
         'attribution': leaflet.TILE_ATTRIBUTION,
         # What the grid endpoints are asked for ("all" sums every loaded
@@ -1911,7 +1922,7 @@ class RegionPage(vanilla.TemplateView):
         if region is None or not region.boundary_id:
             raise Http404
         if region.slug != kwargs['slug']:
-            canonical = reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': region.slug})
+            canonical = region.get_pesticides_url()
             query = request.GET.urlencode()
             return redirect(f'{canonical}?{query}' if query else canonical, permanent=True)
         self.region = region

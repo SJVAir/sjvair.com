@@ -191,7 +191,7 @@ def regions_within(region):
     for other in rows.order_by('name'):
         entry = {
             'name': other.name,
-            'url': reverse('pesticides:region', kwargs={'sqid': other.sqid, 'slug': other.slug}),
+            'url': other.get_pesticides_url(),
         }
         if other.type == Region.Type.COUNTY:
             groups['counties'].append(entry)

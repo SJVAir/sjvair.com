@@ -88,6 +88,9 @@ class LocationListBase(generics.Endpoint):
                 'city': location.city,
                 'district': location.district.name if location.district else None,
                 'district_id': location.district.sqid if location.district else None,
+                # The district page's real URL, so the popup links straight to
+                # it instead of through the slug redirect.
+                'district_url': location.get_pesticides_url() or None,
                 'grade_span': grade_span(location.metadata or {}),
                 'capacity': (location.metadata or {}).get('capacity'),
             },
