@@ -171,7 +171,9 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
     metric_label = 'applications' if hide_lbs else 'pounds'
     width, height = 320, 90
     points = stats.trend_points(by_year, field, width=width, height=height)
-    selected = year if year is not None else (points[-1][2] if points else None)
+    # Under All years no single point is the one being looked at, so nothing
+    # is emphasised.
+    selected = year
     deltas = stats.trend_deltas(by_year, year, field=field)
     previous = _delta_phrase(deltas['previous'], lead=True)
     first = _delta_phrase(deltas['first'], lead=previous is None)
@@ -179,19 +181,35 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
     if phrases:
         sentence = ' · '.join(phrases)
     else:
-        sentence = 'Only one year loaded' if len(points) == 1 else ''
+        sentence = 'Only one year of data.' if len(points) == 1 else ''
+    # Three values are written on the chart -- the first year, the last, and
+    # the highest -- so the shape carries numbers without a hover.
+    labelled = set()
+    if points:
+        values = [point[3] for point in points]
+        peak = values.index(max(values))
+        labelled = {0, len(points) - 1}
+        # ...unless the peak sits near an end, where its label would run into
+        # that end's.
+        if width * 0.22 <= points[peak][0] <= width * 0.78:
+            labelled.add(peak)
     return {
         'points': [
             {
                 'x': x, 'y': y, 'year': point_year, 'value': value,
                 'display': intcomma(value) if hide_lbs else lbs(value),
                 'is_selected': point_year == selected,
+                'label': (intcomma(value) if hide_lbs else lbs(value)) if index in labelled else '',
+                # Keep the end labels inside the box, and off the point.
+                'label_x': x,
+                'label_y': max(round(y - 6, 1), 9),
+                'anchor': 'start' if index == 0 and len(points) > 1 else ('end' if index == len(points) - 1 and len(points) > 1 else 'middle'),
             }
-            for x, y, point_year, value in points
+            for index, (x, y, point_year, value) in enumerate(points)
         ],
         'polyline': ' '.join(f'{x},{y}' for x, y, _, _ in points),
         'sentence': sentence,
-        'title': title or ('Applications by year' if hide_lbs else 'Pounds applied by year'),
+        'title': title or ('Applications by year' if hide_lbs else 'Lbs applied by year'),
         'metric_label': metric_label,
         'width': width,
         'height': height,

@@ -58,6 +58,15 @@ class TrendChartTests(SimpleTestCase):
     def test_delta_sentence_under_all_years_is_the_first_year_only(self):
         data = trend_chart(self.rows((2023, 150.0), (2022, 100.0), (2014, 300.0)), None)
         assert data['sentence'] == 'Down 50% since 2014'
+        # No year is being looked at, so no point is emphasised.
+        assert not any(point['is_selected'] for point in data['points'])
+
+    def test_first_last_and_highest_values_are_written_on_the_chart(self):
+        data = trend_chart(self.rows((2023, 88.0), (2022, 300.0), (2021, 50.0), (2014, 128.0)), 2023)
+        assert [(p['year'], p['label']) for p in data['points']] == [
+            (2014, '128'), (2021, ''), (2022, '300'), (2023, '88'),
+        ]
+        assert [p['anchor'] for p in data['points']] == ['start', 'middle', 'middle', 'end']
 
     def test_delta_sentence_skips_an_undefined_delta(self):
         data = trend_chart(self.rows((2023, 150.0), (2022, 0.0), (2014, 100.0)), 2023)
@@ -65,14 +74,14 @@ class TrendChartTests(SimpleTestCase):
 
     def test_single_year(self):
         data = trend_chart(self.rows((2023, 150.0)), 2023)
-        assert data['sentence'] == 'Only one year loaded'
+        assert data['sentence'] == 'Only one year of data.'
 
     def test_no_years(self):
         assert trend_chart([], None)['points'] == []
 
     def test_geometry_and_title(self):
         data = trend_chart(self.rows((2023, 100.0), (2022, 50.0)), 2023)
-        assert data['title'] == 'Pounds applied by year'
+        assert data['title'] == 'Lbs applied by year'
         assert data['polyline'] == '6.0,45.0 314.0,6.0'
         assert [p['year'] for p in data['points']] == [2022, 2023]
         assert [p['is_selected'] for p in data['points']] == [False, True]
@@ -95,8 +104,9 @@ class TrendChartTests(SimpleTestCase):
         assert '<svg' in html and 'viewBox="0 0 320 90"' in html
         assert '<polyline' in html and '<circle' in html
         assert 'Down 12% since 2022 · down 31% since 2014' in html
-        # Year labels at both ends.
+        # Year labels at both ends, and the values on the points.
         assert '>2014<' in html and '>2023<' in html
+        assert 'trend-value' in html and '>128<' in html and '>88<' in html
 
     def test_renders_nothing_without_years(self):
         assert render_to_string('pesticides/includes/trend-chart.html', trend_chart([], None)).strip() == ''

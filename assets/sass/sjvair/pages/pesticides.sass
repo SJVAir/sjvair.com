@@ -207,6 +207,9 @@ body.pesticides
     // table under it carries the numbers.
     .trend-chart
         margin: 0 0 1rem
+        // Full width it's a huge box around a hairline; this is as wide as
+        // the line is worth reading, left-aligned in whatever column it's in.
+        max-width: 32rem
         svg
             display: block
             width: 100%
@@ -234,6 +237,10 @@ body.pesticides
         .trend-axis
             font-size: 9px
             fill: $grey
+        .trend-value
+            font-size: 9px
+            fill: $grey-dark
+            font-variant-numeric: tabular-nums
         .trend-delta
             margin-top: 0.35rem
             font-size: 0.9rem

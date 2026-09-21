@@ -9,6 +9,8 @@
                 cx="{{ point.x }}" cy="{{ point.y }}" r="{% if point.is_selected %}4{% else %}2.5{% endif %}">
                 <title>{{ point.year }}: {{ point.display }} {{ metric_label }}</title>
             </circle>
+            {# The first, last and highest values, so the chart reads without a hover. #}
+            {% if point.label %}<text class="trend-value" x="{{ point.label_x }}" y="{{ point.label_y }}" text-anchor="{{ point.anchor }}">{{ point.label }}</text>{% endif %}
         {% endfor %}
         <text class="trend-axis" x="4" y="{{ height|add:'-1' }}" text-anchor="start">{{ first_year }}</text>
         {% if first_year != last_year %}<text class="trend-axis" x="{{ width|add:'-4' }}" y="{{ height|add:'-1' }}" text-anchor="end">{{ last_year }}</text>{% endif %}

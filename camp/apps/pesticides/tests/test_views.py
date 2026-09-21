@@ -687,7 +687,7 @@ class HomeTests(RollupTestMixin, TestCase):
         assert [(r['year'], r['lbs']) for r in response.context['by_year']] == [(2023, 740.0), (2022, 540.0)]
         html = response.content.decode()
         assert 'class="trend-chart"' in html
-        assert 'Pounds applied by year' in html
+        assert 'Lbs applied by year' in html
         assert 'Up 37% since 2022' in html
 
     def test_trend_chart_follows_the_county_scope(self):
