@@ -60,3 +60,20 @@ class RegionSummarySerializer(serializers.Serializer):
         'p75',
         'station_count',
     ]
+
+
+class BulkRegionSummaryGroupSerializer(serializers.Serializer):
+    """A region (id/name/slug/type, as in RegionSerializer but without the
+    boundary geometry, which would otherwise be repeated on every page the
+    region spans) with a nested `summaries` list - the summary rows for that
+    region within the requested page. Mirrors BulkMonitorSummaryGroupSerializer's
+    monitor/summaries relationship."""
+    fields = (
+        ('id', lambda r: r.sqid),
+        'name',
+        'slug',
+        'type',
+    )
+    include = [
+        ('summaries', lambda region: RegionSummarySerializer(region.summary_rows).serialize()),
+    ]

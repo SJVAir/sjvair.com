@@ -17,9 +17,14 @@ from camp.apps.regions.models import Region
 from camp.apps.summaries.models import BaseSummary, MonitorSummary, RegionSummary
 from camp.utils.datetime import make_aware
 
-from .filters import BulkMonitorSummaryFilter
-from .forms import BulkMonitorSummaryForm
-from .serializers import BulkMonitorSummaryGroupSerializer, MonitorSummarySerializer, RegionSummarySerializer
+from .filters import BulkMonitorSummaryFilter, BulkRegionSummaryFilter
+from .forms import BulkMonitorSummaryForm, BulkRegionSummaryForm
+from .serializers import (
+    BulkMonitorSummaryGroupSerializer,
+    BulkRegionSummaryGroupSerializer,
+    MonitorSummarySerializer,
+    RegionSummarySerializer,
+)
 
 
 VALID_RESOLUTIONS = {c.value for c in BaseSummary.Resolution}
@@ -224,3 +229,62 @@ class RegionSummaryList(SummaryMixin, generics.ListEndpoint):
             raise Http404('Region not found')
         # super() → SummaryMixin.get_queryset() → ListEndpoint → RegionSummary.objects.all()
         return super().get_queryset().filter(region=region)
+
+
+class BulkRegionSummaryList(SummaryMixin, generics.ListEndpoint):
+    """Summary statistics for one or more regions matching an inclusive `start`/`end`
+    date range. Each result is a region (same shape as RegionList) with its matching
+    rows nested under `summaries` (without the region's `boundary` - fetch that from
+    the regions list, it would otherwise repeat on every page a region spans). `start`,
+    `end`, and at least one `region` are required, and every `region` id must exist;
+    invalid/missing parameters return a 400 with form errors.
+
+    Pagination is by summary row, not by region, same cross-page merge contract
+    as BulkMonitorSummaryList: if the last region `id` on a page matches the first
+    region `id` on the next page, concatenate their `summaries` arrays.
+    """
+
+    model = RegionSummary
+    serializer_class = BulkRegionSummaryGroupSerializer
+    form_class = BulkRegionSummaryForm
+    filter_class = BulkRegionSummaryFilter
+
+    @cached_property
+    def form(self):
+        return self.get_form(self.request.GET, resolution=self.resolution)
+
+    def get(self, request, *args, **kwargs):
+        if not self.form.is_valid():
+            return Http400({'errors': self.form.errors.get_json_data()})
+        return super().get(request, *args, **kwargs)
+
+    def get_date_filter(self):
+        tz = settings.DEFAULT_TIMEZONE
+        start = make_aware(datetime.combine(self.form.cleaned_data['start'], datetime.min.time()), tz)
+        end = make_aware(datetime.combine(self.form.cleaned_data['end_exclusive'], datetime.min.time()), tz)
+        return {'timestamp__gte': start, 'timestamp__lt': end}
+
+    def get_queryset(self):
+        # Order by region_id, not `region`: the latter resolves to Region.Meta.ordering,
+        # which isn't stable enough to paginate on (same reasoning as the monitor bulk).
+        return (super()
+            .get_queryset()
+            .filter(region__in=self.form.cleaned_data['region'])
+            .order_by('region_id', 'timestamp')
+        )
+
+    def serialize(self, source, fields=None, include=None, exclude=None, fixup=None):
+        grouped = {}
+        for row in source:
+            grouped.setdefault(row.region_id, []).append(row)
+
+        regions_by_id = Region.objects.in_bulk(list(grouped))
+        regions = []
+        for region_id, rows in grouped.items():
+            region = regions_by_id.get(region_id)
+            if region is None:
+                continue
+            region.summary_rows = rows
+            regions.append(region)
+
+        return super().serialize(regions, fields, include, exclude, fixup)

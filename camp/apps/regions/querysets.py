@@ -1,6 +1,8 @@
 from django.contrib.gis.db import models
-from django.contrib.gis.db.models import Count, Func, F, OuterRef, Subquery, Union
+from django.contrib.gis.db.models import Count, FloatField, Func, F, OuterRef, Subquery, Union
+from django.contrib.gis.db.models.functions import Intersection
 from django.contrib.gis.geos import GEOSGeometry
+from django.db.models.functions import NullIf
 
 import geopandas as gpd
 from shapely.wkt import loads as load_wkt
@@ -48,6 +50,36 @@ class RegionQuerySet(models.QuerySet):
         Filters regions that intersect the given geometry.
         """
         return self.filter(boundary__geometry__intersects=geometry)
+
+    def contained_within(self, geometry: GEOSGeometry, min_fraction: float = 0.99):
+        """
+        Filters regions that are (essentially) entirely inside the given
+        geometry: at least `min_fraction` of the region's own area must fall
+        within it. Regions that only touch its border, or that genuinely
+        straddle it (e.g. a congressional district spanning two counties),
+        are excluded - "within this area" callers want regions inside it,
+        not merely overlapping it.
+
+        This is deliberately not a strict ST_Within. Tract/ZIP boundaries
+        come from different sources than county boundaries and disagree by
+        hairline slivers, so a tract that is unambiguously in Fresno County
+        can still poke a few metres into Madera; strict containment drops
+        ~15% of Fresno's tracts and a third of its ZIPs on real data. Those
+        excursions are all well under 0.1% of area, while the smallest
+        genuine straddle is several percent, so 99% separates the two.
+        """
+        overlap = Func(
+            Intersection('boundary__geometry', geometry),
+            function='ST_Area', output_field=FloatField(),
+        )
+        area = Func('boundary__geometry', function='ST_Area', output_field=FloatField())
+        return (self
+            # ST_Intersects first so the spatial index prunes candidates
+            # before the (expensive) intersection area is computed.
+            .filter(boundary__geometry__intersects=geometry)
+            .annotate(overlap_fraction=overlap / NullIf(area, 0.0))
+            .filter(overlap_fraction__gte=min_fraction)
+        )
 
     def combined_geometry(self) -> GEOSGeometry:
         """
