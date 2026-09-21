@@ -32,8 +32,15 @@
   var ALL_SECTIONS_CONCURRENCY = 4;
   // ...and how often the growing layer is redrawn while they land.
   var ALL_SECTIONS_REDRAW_MS = 600;
-  // The same eight-step Blues ramp as the county map (camp.apps.pesticides.maps.RAMP).
-  var RAMP = ['#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b'];
+  // Candidate ramps, selectable with ?ramp=<name> while we pick one.
+  var RAMPS = {
+    blues: ['#deebf7', '#9ecae1', '#6baed6', '#3182bd', '#08519c'],
+    purd: ['#f1eef6', '#d7b5d8', '#df65b0', '#dd1c77', '#980043'],
+    bupu: ['#edf8fb', '#b3cde3', '#8c96c6', '#8856a7', '#810f7c'],
+    ylorbr: ['#ffffd4', '#fed98e', '#fe9929', '#d95f0e', '#993404'],
+  };
+  var rampMatch = /[?&]ramp=([a-z]+)/.exec(window.location.search || '');
+  var RAMP = RAMPS[rampMatch && rampMatch[1]] || RAMPS.blues;
   var NO_DATA_COLOR = '#f0f0f0';
   var NUM_CLASSES = RAMP.length;
   var NOTICE_COLOR = '#d35400';
