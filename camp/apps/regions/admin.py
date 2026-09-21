@@ -211,3 +211,11 @@ class LocationAdmin(GISModelAdmin):
     list_select_related = ('county', 'city', 'zipcode', 'school_district')
     search_fields = ('name', 'external_id', 'city_name')
     raw_id_fields = ('county', 'city', 'zipcode', 'school_district')
+
+    @admin.display(description='City', ordering='city__name')
+    def get_city(self, instance):
+        return instance.get_city()
+
+    @admin.display(description='County', ordering='county__name')
+    def get_county(self, instance):
+        return instance.get_county()

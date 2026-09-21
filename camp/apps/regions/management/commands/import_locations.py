@@ -6,13 +6,10 @@ from camp.apps.regions import locations
 class Command(BaseCommand):
     help = (
         'Import schools and child care facilities into regions.Location.\n'
-        'The CDE files (public directory, private school affidavit) cannot be'
-        ' fetched server-side -- cde.ca.gov answers with a bot-protection page'
-        ' -- so download them in a browser from https://www.cde.ca.gov/ds/si/ds/pubschls.asp'
-        ' and https://www.cde.ca.gov/ds/si/ps/ and pass them with --path'
-        ' (CSV/tab-delimited; XLSX is read when openpyxl is installed).'
-        ' Under --source all, the sources that need --path are skipped with a'
-        ' message.'
+        'Every source downloads its own file from data.ca.gov; --path reads a'
+        ' local copy instead. Public schools link to their school district,'
+        ' so run import_school_districts (or import_schools, which does both)'
+        ' before --source cde-public.'
     )
 
     def add_arguments(self, parser):
@@ -55,5 +52,12 @@ class Command(BaseCommand):
                     f'{source}: no rows parsed from {where}; nothing changed.'))
                 continue
 
-            summary = ', '.join(f'{key}={value}' for key, value in counts.items())
+            mismatched = counts.get('district_mismatch') or 0
+            summary = ', '.join(f'{key}={value}' for key, value in counts.items()
+                if key != 'district_mismatch')
             self.stdout.write(f'{source}: {summary}')
+            if mismatched:
+                # How often the district the point falls in isn't the one the
+                # file names for the address. A handful is normal; a jump
+                # means the boundaries and the directory are out of step.
+                self.stdout.write(f'{source}: district mismatch: {mismatched}')

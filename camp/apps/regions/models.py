@@ -276,10 +276,13 @@ class Location(TimeStampedModel):
         given, and an existing row re-resolves only when its point moved.
         """
         if self._state.adding:
-            unset = [field for field in self.REGION_FIELDS
-                if getattr(self, f'{field}_id') is None]
-            if unset:
-                self.resolve_regions(fields=unset)
+            # An importer that resolved the links itself has already paid
+            # for the spatial queries; don't run them a second time.
+            if self._resolved_point is None:
+                unset = [field for field in self.REGION_FIELDS
+                    if getattr(self, f'{field}_id') is None]
+                if unset:
+                    self.resolve_regions(fields=unset)
         elif self._point_changed():
             self.resolve_regions()
 

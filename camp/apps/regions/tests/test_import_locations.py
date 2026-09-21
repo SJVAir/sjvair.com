@@ -20,8 +20,8 @@ from camp.apps.regions.tests.test_locations import make_district
 
 
 DATA_DIR = Path(__file__).parent / 'data'
-PUBLIC_PATH = str(DATA_DIR / 'pubschls-sample.txt')
-PRIVATE_PATH = str(DATA_DIR / 'private-schools-sample.csv')
+PUBLIC_PATH = str(DATA_DIR / 'cde-public-sample.csv')
+PRIVATE_PATH = str(DATA_DIR / 'cde-private-sample.csv')
 CCL_PATH = str(DATA_DIR / 'ccl-facilities-sample.csv')
 
 # Inside the fixture's Fresno County square (-120.5 36.0 → -119.0 37.0),
@@ -29,16 +29,16 @@ CCL_PATH = str(DATA_DIR / 'ccl-facilities-sample.csv')
 FRESNO_POINT = (36.71, -119.79)
 
 
-def trimmed(testcase, path, keep, delimiter=',', encoding='utf-8'):
-    """Copy a sample file, keeping only the rows whose first column is in `keep`."""
-    with open(path, encoding=encoding, newline='') as source:
-        rows = list(csv.reader(source, delimiter=delimiter))
-    handle = tempfile.NamedTemporaryFile('w', suffix='.txt', encoding=encoding,
+def trimmed(testcase, path, column, keep):
+    """Copy a sample file, keeping only the rows whose `column` is in `keep`."""
+    with open(path, encoding='utf-8-sig', newline='') as source:
+        rows = list(csv.reader(source))
+    index = rows[0].index(column)
+    handle = tempfile.NamedTemporaryFile('w', suffix='.csv', encoding='utf-8-sig',
         newline='', delete=False)
-    writer = csv.writer(handle, delimiter=delimiter, lineterminator='\n',
-        quoting=csv.QUOTE_NONE if delimiter == '\t' else csv.QUOTE_MINIMAL)
+    writer = csv.writer(handle, lineterminator='\n')
     writer.writerow(rows[0])
-    writer.writerows([row for row in rows[1:] if row[0] in keep])
+    writer.writerows([row for row in rows[1:] if row[index] in keep])
     handle.close()
     testcase.addCleanup(os.unlink, handle.name)
     return handle.name
@@ -49,25 +49,36 @@ class PublicSchoolImportTests(TestCase):
 
     def setUp(self):
         cache.clear()
+        # The district whose boundary covers the sample's Selma points, and
+        # the one the file names for Almond Elementary's address -- which
+        # has no boundary here, so only the file can link a school to it.
         self.district = make_district('Orchard Unified', 'orchard-unified', '10621170000000')
+        self.almond = make_district('Almond Elementary', 'almond-elementary',
+            '10621250000000', geometry=None)
 
-    def test_imports_only_active_in_valley_schools(self):
+    def test_imports_only_active_in_valley_schools_with_a_campus(self):
         counts = locations.import_source('cde-public', path=PUBLIC_PATH)
 
-        assert counts['imported'] == 6
+        assert counts['imported'] == 5
         assert counts['updated'] == 0
         assert counts['removed'] == 0
         assert counts['skipped'] == 0
         assert set(Location.objects.values_list('name', flat=True)) == {
             'Orchard High',
-            'Almond Elementary',
             'Cañada Elementary',
+            'Almond Elementary',
             'Blossom Academy',
-            'Sagebrush Elementary',
             'Tumbleweed Middle',
         }
 
-    def test_reads_the_latin_1_directory_without_mojibake(self):
+    def test_drops_closed_virtual_and_out_of_valley_schools(self):
+        locations.import_source('cde-public', path=PUBLIC_PATH)
+
+        assert not Location.objects.filter(name='Shuttered Elementary').exists()
+        assert not Location.objects.filter(name='Orchard Online Academy').exists()
+        assert not Location.objects.filter(name='Bayside High').exists()
+
+    def test_reads_the_utf_8_export_without_mojibake(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
         school = Location.objects.get(external_id='10621176059462')
 
@@ -90,9 +101,50 @@ class PublicSchoolImportTests(TestCase):
         assert school.zip == '93662-1000'
         assert round(school.point.y, 4) == 36.71
         assert round(school.point.x, 4) == -119.79
-        assert school.metadata['grades'] == '9-12'
-        assert school.metadata['charter'] is False
         assert school.imported_at is not None
+
+    def test_stores_the_metadata_the_spec_asks_for(self):
+        locations.import_source('cde-public', path=PUBLIC_PATH)
+        metadata = Location.objects.get(external_id='10621176059453').metadata
+
+        assert metadata['cds_code'] == '10621176059453'
+        assert metadata['district_code'] == '1062117'
+        assert metadata['district_name'] == 'Orchard Unified'
+        assert metadata['geographic']['county'] == {'code': '10', 'name': 'Fresno'}
+        assert metadata['geographic']['unified'] == {
+            'code': '1062117', 'name': 'Orchard Unified'}
+        assert metadata['geographic']['elementary'] == {'code': None, 'name': None}
+        assert metadata['school_type'] == 'High'
+        assert metadata['school_level'] == 'High'
+        assert metadata['grade_low'] == '9'
+        assert metadata['grade_high'] == '12'
+        assert metadata['charter'] is False
+        assert metadata['charter_number'] is None
+        assert metadata['virtual'] == 'N'
+        assert metadata['title_i'] == 'Y'
+        assert metadata['assistance_status'] == 'No Status'
+        assert metadata['locale'] == '41 - Rural, Fringe'
+        assert metadata['website'] == 'http://www.orchardhigh.example'
+        assert metadata['open_date'] == '2006-08-28'
+        assert metadata['enrollment']['total'] == 1200
+        assert metadata['enrollment']['by_grade']['12'] == 300
+        assert metadata['enrollment']['by_grade']['tk'] is None
+        assert metadata['demographics']['hispanic_latino'] == {'count': 840, 'pct': 70.0}
+        assert metadata['subgroups']['english_learners'] == {'count': 300, 'pct': 25.0}
+        assert metadata['subgroups']['free_reduced_meals']['pct'] == 85.0
+        assert metadata['staff'] == {'total': 84, 'teacher': 60, 'admin': 5,
+            'pupil_services': 7, 'other': 12}
+
+    def test_a_charter_records_the_district_that_runs_it(self):
+        locations.import_source('cde-public', path=PUBLIC_PATH)
+        charter = Location.objects.get(external_id='10101080109991')
+
+        assert charter.metadata['charter'] is True
+        assert charter.metadata['charter_number'] == '0746'
+        assert charter.metadata['charter_funding'] == 'Directly funded'
+        assert charter.metadata['district_name'] == 'Fresno County Office of Education'
+        # Run by the county office, but it stands in Orchard Unified.
+        assert charter.school_district == self.district
 
     def test_resolves_county_and_school_district(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
@@ -105,42 +157,67 @@ class PublicSchoolImportTests(TestCase):
         assert kern.county == Region.objects.get(pk=9002)
         assert kern.school_district is None
 
+    def test_the_files_district_wins_over_the_spatial_one(self):
+        # Almond Elementary's point is inside Orchard Unified's boundary,
+        # but the file puts its address in the Almond Elementary district.
+        counts = locations.import_source('cde-public', path=PUBLIC_PATH)
+
+        assert counts['district_mismatch'] == 1
+        assert Location.objects.get(
+            external_id='10621256059470').school_district == self.almond
+
+    def test_a_district_the_file_names_but_we_dont_have_leaves_the_spatial_answer(self):
+        self.almond.delete()
+
+        counts = locations.import_source('cde-public', path=PUBLIC_PATH)
+
+        assert counts['district_mismatch'] == 0
+        assert Location.objects.get(
+            external_id='10621256059470').school_district == self.district
+
     def test_rerun_updates_without_duplicating(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
         counts = locations.import_source('cde-public', path=PUBLIC_PATH)
 
         assert counts['imported'] == 0
-        assert counts['updated'] == 6
+        assert counts['updated'] == 5
         assert counts['removed'] == 0
-        assert Location.objects.count() == 6
+        assert Location.objects.count() == 5
 
     def test_rows_missing_from_the_source_are_removed(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
-        path = trimmed(self, PUBLIC_PATH, {'10621176059453', '15633216059455'},
-            delimiter='\t', encoding='latin-1')
+        path = trimmed(self, PUBLIC_PATH, 'CDS Code',
+            {'10621176059453', '15633216059455'})
 
         counts = locations.import_source('cde-public', path=path)
 
         assert counts['updated'] == 2
-        assert counts['removed'] == 4
+        assert counts['removed'] == 3
         assert set(Location.objects.values_list('external_id', flat=True)) == {
             '10621176059453', '15633216059455',
         }
 
     def test_an_empty_parse_removes_nothing(self):
         locations.import_source('cde-public', path=PUBLIC_PATH)
-        path = trimmed(self, PUBLIC_PATH, set(), delimiter='\t', encoding='latin-1')
+        path = trimmed(self, PUBLIC_PATH, 'CDS Code', set())
 
         counts = locations.import_source('cde-public', path=path)
 
         assert counts['removed'] == 0
-        assert Location.objects.count() == 6
+        assert Location.objects.count() == 5
 
     def test_locations_from_another_source_are_left_alone(self):
         locations.import_source('cdss-ccl', path=CCL_PATH)
         locations.import_source('cde-public', path=PUBLIC_PATH)
 
         assert Location.objects.filter(source='cdss-ccl').count() == 4
+
+    def test_does_not_geocode_rows_that_carry_coordinates(self):
+        with mock.patch.object(locations, 'geocode_cached') as geocode:
+            counts = locations.import_source('cde-public', path=PUBLIC_PATH)
+
+        assert geocode.call_count == 0
+        assert counts['geocoded'] == 0
 
 
 class PrivateSchoolImportTests(TestCase):
@@ -149,93 +226,116 @@ class PrivateSchoolImportTests(TestCase):
     def setUp(self):
         cache.clear()
         self.district = make_district('Orchard Unified', 'orchard-unified', '10621170000000')
-        self.point = Point(FRESNO_POINT[1], FRESNO_POINT[0], srid=4326)
 
-    def test_geocodes_the_rows_without_coordinates(self):
-        with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT) as geocode:
+    def test_imports_the_schools_in_the_valley_with_six_or_more_students(self):
+        with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
             counts = locations.import_source('cde-private', path=PRIVATE_PATH)
 
         assert counts['imported'] == 3
-        assert counts['geocoded'] == 3
         assert counts['skipped'] == 0
-        assert geocode.call_count == 3
-        assert 'Selma' in geocode.call_args_list[0].args[0]
+        assert not Location.objects.filter(name='Tiny Scholars Home School').exists()
 
-    def test_skips_rows_without_an_enrollment(self):
-        # The spec's filter is enrollment >= 6, and a blank doesn't clear it.
-        with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
-            locations.import_source('cde-private', path=PRIVATE_PATH)
+    def test_a_matched_row_uses_the_files_web_mercator_coordinates(self):
+        with mock.patch.object(locations, 'geocode_cached') as geocode:
+            counts = locations.import_source('cde-private', path=PRIVATE_PATH,
+                geocode=False)
+        school = Location.objects.get(external_id='10621170123456')
 
-        assert not Location.objects.filter(name='Quiet Hills Academy').exists()
+        # The file's X/Y is EPSG:3857; the stored point is WGS 84.
+        assert school.point.srid == 4326
+        assert round(school.point.y, 4) == 36.71
+        assert round(school.point.x, 4) == -119.79
+        assert geocode.call_count == 0
+        assert counts['geocoded'] == 0
+
+    def test_a_row_the_geocoder_didnt_match_is_geocoded_from_match_addr(self):
+        with mock.patch.object(locations, 'geocode_cached',
+                return_value=FRESNO_POINT) as geocode:
+            counts = locations.import_source('cde-private', path=PRIVATE_PATH)
+
+        assert counts['geocoded'] == 1
+        assert geocode.call_count == 1
+        assert geocode.call_args.args[0] == 'Highway 99, Selma, California, 93662'
+        school = Location.objects.get(external_id='10621170123472')
+        assert round(school.point.y, 4) == 36.71
+
+    def test_no_geocode_skips_the_rows_it_cannot_place(self):
+        with mock.patch.object(locations, 'geocode_cached') as geocode:
+            counts = locations.import_source('cde-private', path=PRIVATE_PATH,
+                geocode=False)
+
+        assert geocode.call_count == 0
+        assert counts['imported'] == 2
+        assert counts['skipped'] == 1
 
     def test_a_failed_geocode_never_removes_a_row_thats_still_listed(self):
-        partial = trimmed(self, PRIVATE_PATH, {'10621170123456'})
         with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
-            locations.import_source('cde-private', path=partial)
-        existing = Location.objects.get(external_id='10621170123456')
+            locations.import_source('cde-private', path=PRIVATE_PATH)
+        existing = Location.objects.get(external_id='10621170123472')
 
-        def geocode(address):
-            return FRESNO_POINT if 'Willow' in address else None
-
-        with mock.patch.object(locations, 'geocode_cached', side_effect=geocode) as patched:
+        with mock.patch.object(locations, 'geocode_cached', return_value=None) as geocode:
             counts = locations.import_source('cde-private', path=PRIVATE_PATH)
 
         # The row already imported keeps its point, and isn't re-geocoded.
-        assert 'Orange Ave' not in str(patched.call_args_list)
-        assert counts['imported'] == 1
-        assert counts['updated'] == 1
-        assert counts['geocoded'] == 1
-        assert counts['skipped'] == 1
+        assert geocode.call_count == 0
         assert counts['removed'] == 0
-
-        kept = Location.objects.get(external_id='10621170123456')
+        assert counts['updated'] == 3
+        kept = Location.objects.get(external_id='10621170123472')
         assert kept.pk == existing.pk
         assert kept.point == existing.point
-        assert Location.objects.count() == 2
 
-    def test_skips_enrollment_under_six(self):
-        with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
-            locations.import_source('cde-private', path=PRIVATE_PATH)
-
-        assert not Location.objects.filter(name='Tiny Scholars Home School').exists()
-
-    def test_stores_enrollment_and_grades(self):
+    def test_stores_the_metadata_the_spec_asks_for(self):
         with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
             locations.import_source('cde-private', path=PRIVATE_PATH)
 
         school = Location.objects.get(external_id='10621170123456')
         assert school.type == Location.Type.PRIVATE_SCHOOL
-        assert school.metadata['enrollment'] == 148
-        assert school.metadata['grade_low'] == 'K'
-        assert school.metadata['grade_high'] == '8'
-        assert school.school_district == self.district
-        assert school.county == Region.objects.get(pk=9001)
+        assert school.name == 'Willow Grove Christian School'
+        assert school.address == '12 Willow Way'
+        assert school.city_name == 'Selma'
+        assert school.zip == '93662'
+        assert school.metadata == {
+            'cds_code': '10621170123456',
+            'district_name': 'Orchard Unified',
+            'classification': 'Nondenominational',
+            'school_type': 'Coeducational',
+            'accommodations': 'Day Only',
+            'grade_low': 'K',
+            'grade_high': '8',
+            'enrollment': {
+                'total': 148,
+                'by_grade': {
+                    'kg': 18, '1': 17, '2': 16, '3': 18, '4': 19, '5': 15,
+                    '6': 16, '7': 14, '8': 15, '9': None, '10': None,
+                    '11': None, '12': None,
+                },
+            },
+            'staff': {
+                'full_time_teachers': 9,
+                'part_time_teachers': 3,
+                'administrators': 2,
+                'other': 4,
+            },
+            'tax_exempt': True,
+        }
 
-    def test_no_geocode_skips_rows_without_coordinates(self):
-        with mock.patch.object(locations, 'geocode_cached') as geocode:
-            counts = locations.import_source('cde-private', path=PRIVATE_PATH, geocode=False)
-
-        assert geocode.call_count == 0
-        assert counts['imported'] == 0
-        assert counts['geocoded'] == 0
-        assert counts['skipped'] == 3
-        assert Location.objects.count() == 0
-
-    def test_a_failed_geocode_is_skipped(self):
-        with mock.patch.object(locations, 'geocode_cached', return_value=None):
+    def test_resolves_county_and_school_district_spatially(self):
+        with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
             counts = locations.import_source('cde-private', path=PRIVATE_PATH)
 
-        assert counts['imported'] == 0
-        assert counts['skipped'] == 3
+        school = Location.objects.get(external_id='10621170123456')
+        assert school.county == Region.objects.get(pk=9001)
+        assert school.school_district == self.district
+        # No CDS cross-check for private schools: nothing to compare against.
+        assert counts['district_mismatch'] == 0
 
-    def test_nothing_is_removed_when_every_row_is_skipped(self):
+    def test_rerun_updates_without_duplicating(self):
         with mock.patch.object(locations, 'geocode_cached', return_value=FRESNO_POINT):
             locations.import_source('cde-private', path=PRIVATE_PATH)
-
-        with mock.patch.object(locations, 'geocode_cached', return_value=None):
             counts = locations.import_source('cde-private', path=PRIVATE_PATH)
 
-        assert counts['removed'] == 0
+        assert counts['imported'] == 0
+        assert counts['updated'] == 3
         assert Location.objects.count() == 3
 
 
@@ -324,8 +424,9 @@ class DownloadGuardTests(TestCase):
         'page_url': 'https://example.com/downloads',
     }
 
-    def response(self, body, content_type='text/html; charset=utf-8'):
+    def response(self, body, content_type='text/html; charset=utf-8', status_code=200):
         response = mock.Mock()
+        response.status_code = status_code
         response.headers = {'Content-Type': content_type}
         response.raise_for_status.return_value = None
         response.iter_content.return_value = iter([body])
@@ -357,6 +458,41 @@ class DownloadGuardTests(TestCase):
         response = self.response(b'CDSCode\tSchool\n1\tOrchard High\n', content_type='text/plain')
 
         assert self.read(self.config, response) == b'CDSCode\tSchool\n1\tOrchard High\n'
+
+    def test_an_empty_download_is_a_failed_download(self):
+        response = self.response(b'', content_type='text/csv')
+
+        with pytest.raises(locations.DownloadError) as excinfo:
+            self.read(self.config, response)
+
+        assert 'empty file' in str(excinfo.value)
+
+    def test_an_export_still_being_generated_is_waited_out(self):
+        pending = self.response(b'', content_type='application/json', status_code=202)
+        ready = self.response(b'CDS Code,School Name\n1,Orchard High\n',
+            content_type='text/csv')
+
+        with mock.patch.object(locations, 'time') as clock:
+            with mock.patch.object(locations.requests, 'get',
+                    side_effect=[pending, ready]) as get:
+                with locations._open_source(self.config, None) as handle:
+                    body = handle.read()
+
+        assert get.call_count == 2
+        assert clock.sleep.call_count == 1
+        assert body == b'CDS Code,School Name\n1,Orchard High\n'
+
+    def test_an_export_that_never_finishes_is_a_failed_download(self):
+        pending = [self.response(b'', status_code=202)
+            for _ in range(locations.DOWNLOAD_ATTEMPTS)]
+
+        with mock.patch.object(locations, 'time'):
+            with mock.patch.object(locations.requests, 'get', side_effect=pending):
+                with pytest.raises(locations.DownloadError) as excinfo:
+                    with locations._open_source(self.config, None) as handle:
+                        handle.read()
+
+        assert 'still being generated' in str(excinfo.value)
 
     def test_a_ckan_lookup_that_returns_a_web_page_is_a_failed_download(self):
         response = mock.Mock()
@@ -418,43 +554,49 @@ class ImportLocationsCommandTests(TestCase):
         stdout = StringIO()
         call_command('import_locations', source='cde-public', path=PUBLIC_PATH, stdout=stdout)
 
-        assert Location.objects.count() == 6
+        assert Location.objects.count() == 5
         output = stdout.getvalue()
         assert 'cde-public' in output
-        assert 'imported=6' in output
+        assert 'imported=5' in output
 
     def test_requires_a_single_source_with_a_path(self):
         with pytest.raises(CommandError):
             call_command('import_locations', source='all', path=PUBLIC_PATH, stdout=StringIO())
 
-    def test_all_skips_the_sources_that_cannot_download(self):
+    def test_all_imports_every_source(self):
         stdout = StringIO()
-        counts = {'imported': 0, 'updated': 0, 'removed': 0, 'geocoded': 0, 'skipped': 0}
+        counts = {'imported': 1, 'updated': 0, 'removed': 0, 'geocoded': 0,
+            'skipped': 0, 'district_mismatch': 0}
 
         with mock.patch.object(locations, 'import_source', return_value=counts) as importer:
             call_command('import_locations', stdout=stdout)
 
-        imported = [call.args[0] for call in importer.call_args_list]
-        assert imported == ['cdss-ccl']
-        output = stdout.getvalue()
-        assert 'cde-public: no download available' in output
-        assert 'cde-private: no download available' in output
-        assert 'https://www.cde.ca.gov/ds/si/ds/pubschls.asp' in output
+        assert [call.args[0] for call in importer.call_args_list] == [
+            'cde-public', 'cde-private', 'cdss-ccl']
 
-    def test_a_single_source_without_a_download_is_an_error(self):
-        with pytest.raises(CommandError):
-            call_command('import_locations', source='cde-private', stdout=StringIO())
+    def test_reports_the_district_mismatch_tally(self):
+        stdout = StringIO()
+        make_district('Orchard Unified', 'orchard-unified', '10621170000000')
+        make_district('Almond Elementary', 'almond-elementary', '10621250000000',
+            geometry=None)
+
+        call_command('import_locations', source='cde-public', path=PUBLIC_PATH,
+            stdout=stdout)
+
+        output = stdout.getvalue()
+        assert 'district mismatch: 1' in output
+        # The tally is its own line, not part of the counts summary.
+        assert 'district_mismatch' not in output
 
     def test_a_download_failure_is_a_command_error(self):
-        with mock.patch.object(locations, 'has_download', return_value=True):
-            with mock.patch.object(locations, 'import_source',
-                    side_effect=locations.DownloadError('boom')):
-                with pytest.raises(CommandError):
-                    call_command('import_locations', source='cde-public', stdout=StringIO())
+        with mock.patch.object(locations, 'import_source',
+                side_effect=locations.DownloadError('boom')):
+            with pytest.raises(CommandError):
+                call_command('import_locations', source='cde-public', stdout=StringIO())
 
     def test_a_file_that_parses_to_nothing_warns(self):
         stdout = StringIO()
-        path = trimmed(self, PUBLIC_PATH, set(), delimiter='\t', encoding='latin-1')
+        path = trimmed(self, PUBLIC_PATH, 'CDS Code', set())
 
         call_command('import_locations', source='cde-public', path=path, stdout=stdout)
 
@@ -469,4 +611,38 @@ class ImportLocationsCommandTests(TestCase):
                 no_geocode=True, stdout=StringIO())
 
         assert geocode.call_count == 0
-        assert Location.objects.count() == 0
+        # Only the row the file couldn't place needed geocoding.
+        assert Location.objects.count() == 2
+
+
+class ImportSchoolsCommandTests(TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def test_imports_the_districts_before_the_schools(self):
+        calls = []
+
+        def record(name, *args, **kwargs):
+            calls.append((name, kwargs.get('source')))
+
+        with mock.patch('camp.apps.regions.management.commands.import_schools.call_command',
+                side_effect=record):
+            call_command('import_schools', stdout=StringIO())
+
+        assert calls == [
+            ('import_school_districts', None),
+            ('import_locations', 'cde-public'),
+        ]
+
+    def test_passes_the_path_and_geocode_options_through(self):
+        recorded = {}
+
+        def record(name, *args, **kwargs):
+            recorded[name] = kwargs
+
+        with mock.patch('camp.apps.regions.management.commands.import_schools.call_command',
+                side_effect=record):
+            call_command('import_schools', path=PUBLIC_PATH, no_geocode=True,
+                stdout=StringIO())
+
+        assert recorded['import_locations']['path'] == PUBLIC_PATH
+        assert recorded['import_locations']['no_geocode'] is True

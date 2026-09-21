@@ -13,8 +13,10 @@ import csv
 import hashlib
 import io
 import tempfile
+import time
 
 from contextlib import contextmanager
+from datetime import datetime
 
 import requests
 
@@ -23,7 +25,7 @@ from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
-from camp.apps.regions.models import Location
+from camp.apps.regions.models import Location, Region
 from camp.utils.geocode import clean_address, resolve
 
 
@@ -57,10 +59,84 @@ GEOCODE_CACHE_TTL = 60 * 60 * 24 * 30  # 30 days
 GEOCODE_MISS_TTL = 60 * 60 * 24
 GEOCODE_MISS = 'miss'
 
-XLSX_MAGIC = b'PK\x03\x04'
+# CDE's Virtual codes for a school that exists only online: 'V' (exclusively
+# virtual, a facility used by staff) and 'F' (exclusively virtual, no
+# facility). Neither has a campus children stand on.
+EXCLUSIVELY_VIRTUAL = ('V', 'F')
+
+# School Level values that belong to the elementary district, for a school
+# that isn't inside a unified district.
+ELEMENTARY_LEVELS = ('elementary', 'middle')
+
+PUBLIC_GRADE_COLUMNS = (
+    ('tk', 'grade tk'),
+    ('kg', 'grade kg'),
+    *((str(grade), f'grade {grade}') for grade in range(1, 13)),
+)
+
+PRIVATE_GRADE_COLUMNS = (
+    ('kg', 'user_enrollk'),
+    *((str(grade), f'user_enroll{grade}') for grade in range(1, 13)),
+)
+
+# metadata key -> the public file's column, whose percentage lives in the
+# same column name with ' (%)' appended.
+PUBLIC_DEMOGRAPHICS = (
+    ('african_american', 'african american'),
+    ('american_indian', 'american indian'),
+    ('asian', 'asian'),
+    ('filipino', 'filipino'),
+    ('hispanic_latino', 'hispanic'),
+    ('pacific_islander', 'pacific islander'),
+    ('white', 'white'),
+    ('multiracial', 'two or more races'),
+    ('not_reported', 'not reported'),
+)
+
+PUBLIC_SUBGROUPS = (
+    ('english_learners', 'english learner'),
+    ('foster_youth', 'foster'),
+    ('homeless', 'homeless'),
+    ('migrant', 'migrant'),
+    ('socioeconomically_disadvantaged', 'socioeconomically disadvantaged'),
+    ('students_with_disabilities', 'students with disabilities'),
+    ('free_reduced_meals', 'free/reduced meal eligible'),
+)
+
+GRADE_WORDS = {
+    'pre-kindergarten': 'PK',
+    'prekindergarten': 'PK',
+    'pk': 'PK',
+    'transitional kindergarten': 'TK',
+    'tk': 'TK',
+    'kindergarten': 'K',
+    'kg': 'K',
+    'first grade': '1',
+    'second grade': '2',
+    'third grade': '3',
+    'fourth grade': '4',
+    'fifth grade': '5',
+    'sixth grade': '6',
+    'seventh grade': '7',
+    'eighth grade': '8',
+    'ninth grade': '9',
+    'tenth grade': '10',
+    'eleventh grade': '11',
+    'twelfth grade': '12',
+    'adult': 'AD',
+}
 
 # A source that answers a download with a web page is a bot wall, not data.
 HTML_PREFIXES = (b'<html', b'<!doctype')
+
+# data.ca.gov's CDE datasets are ArcGIS Hub exports, generated on demand: a
+# request that arrives while one is being rebuilt is answered 202 with a
+# short "still processing" body rather than the file. That isn't an error
+# and isn't HTML either, so without this it reads as a successful import of
+# zero schools. Wait it out instead.
+DOWNLOAD_PENDING_STATUSES = (202,)
+DOWNLOAD_ATTEMPTS = 5
+DOWNLOAD_RETRY_WAIT = 10  # seconds, doubling per attempt
 
 
 class DownloadError(Exception):
@@ -101,9 +177,10 @@ def geocode_cached(address):
 
 def _text(file, encoding):
     """
-    Decode a source file. The CDE directory is latin-1 and the data.ca.gov
-    exports are UTF-8, so each source says which it is; a UTF-8 source that
-    turns out not to be falls back to latin-1 rather than failing the import.
+    Decode a source file. The data.ca.gov exports are UTF-8, most of them
+    with a BOM, but each source says which encoding it expects and a source
+    that turns out not to be UTF-8 falls back to latin-1 rather than
+    failing the import.
     """
     data = file.read()
 
@@ -134,30 +211,6 @@ def _rows(file, delimiter=',', encoding='utf-8'):
         yield dict(zip(keys, [cell.strip() for cell in row]))
 
 
-def _xlsx_rows(file):
-    """Yield dicts keyed by the lowercased header, from an XLSX file object."""
-    try:
-        from openpyxl import load_workbook
-    except ImportError:
-        raise RuntimeError(
-            'Reading XLSX requires openpyxl. Export the file to CSV and pass'
-            ' it with --path instead.'
-        )
-
-    workbook = load_workbook(file, read_only=True, data_only=True)
-    rows = workbook[workbook.sheetnames[0]].iter_rows(values_only=True)
-
-    keys = None
-    for row in rows:
-        values = ['' if value is None else str(value).strip() for value in row]
-        if not any(values):
-            continue
-        if keys is None:
-            keys = [_key(value) for value in values]
-            continue
-        yield dict(zip(keys, values))
-
-
 def _key(name):
     return str(name or '').strip().lstrip('﻿').strip().lower()
 
@@ -184,6 +237,58 @@ def _int(value):
         return None
 
 
+def _clean(value):
+    """A stripped source string, or None when the cell is blank."""
+    text = str(value or '').strip()
+    return text or None
+
+
+def _yes_no(value):
+    """'Yes'/'No' as a bool; None for anything else, blanks included."""
+    text = str(value or '').strip().lower()
+    if text in ('yes', 'y', 'true'):
+        return True
+    if text in ('no', 'n', 'false'):
+        return False
+    return None
+
+
+def _date(value):
+    """The CDE files' 'M/D/YYYY 12:00:00 AM' as an ISO date string."""
+    text = str(value or '').strip().split(' ')[0]
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, '%m/%d/%Y').date().isoformat()
+    except ValueError:
+        return text
+
+
+def _grade(value):
+    """
+    One grade, in a spelling that reads the same whichever file it came
+    from: the public directory's zero-padded codes ('09', 'KG') and the
+    private affidavit's words ('Ninth Grade', 'Kindergarten') both become
+    '9' and 'K'. Anything unrecognized is kept as it was written.
+    """
+    text = str(value or '').strip()
+    if not text:
+        return None
+    word = GRADE_WORDS.get(text.lower())
+    if word:
+        return word
+    if text.isdigit():
+        return str(int(text))
+    return text.upper()
+
+
+def _count_and_pct(row, column):
+    return {
+        'count': _int(_get(row, column)),
+        'pct': _float(_get(row, f'{column} (%)')),
+    }
+
+
 def _in_the_valley(county):
     name = str(county or '').strip().lower()
     if name.endswith(' county'):
@@ -192,6 +297,13 @@ def _in_the_valley(county):
 
 
 def _address_string(row):
+    """
+    The single line to geocode a row by: the address the source gave us,
+    unless the source already worked out a better one (`geocode_address`).
+    """
+    if row.get('geocode_address'):
+        return row['geocode_address']
+
     parts = [row.get('address') or '', row.get('city') or '']
     zipcode = (row.get('zip') or '').strip()
     parts.append(f'CA {zipcode}'.strip())
@@ -202,27 +314,40 @@ def _address_string(row):
 
 def parse_cde_public(file):
     """
-    CDE public schools and districts directory (tab-delimited, latin-1).
-    District rows carry an empty School; schools carry a 14-digit CDS code
-    whose first seven digits identify the district.
+    CDE public schools, the point file published on data.ca.gov as
+    `california-public-schools-2025-26` (UTF-8 with a BOM, one row per
+    school, with Latitude/Longitude).
+
+    The two vocabularies the filters lean on, as the 2025-26 file spells
+    them:
+
+    * `Status`: 'Active' (9,944 rows) or 'Closed' (2). Only Active is kept.
+    * `Virtual`: 'N' not virtual (8,566), 'C' primarily virtual but with
+      classroom instruction (1,157), 'V' exclusively virtual, facility used
+      (168), 'F' exclusively virtual, no facility (55). N and C have a
+      campus children stand on, so they stay; V and F are dropped. CDE also
+      documents 'P' (primarily classroom, some virtual), which doesn't
+      appear in this year's file -- it's kept if it turns up.
+
+    Names arrive properly cased and are stored as they come.
     """
-    for row in _rows(file, delimiter='\t', encoding='latin-1'):
-        name = _get(row, 'school')
+    for row in _rows(file, encoding='utf-8'):
+        name = _get(row, 'school name')
         if not name:
-            continue  # A district row, not a school.
-        if _get(row, 'statustype').lower() != 'active':
             continue
-        if _get(row, 'virtual').upper() == 'F':
-            continue  # Exclusively virtual: no campus to stand next to.
-        if _get(row, 'eilcode').upper() == 'A':
-            continue  # Adult education.
-        if not _in_the_valley(_get(row, 'county')):
+        if _get(row, 'status').lower() != 'active':
+            continue
+        if _get(row, 'virtual').upper() in EXCLUSIVELY_VIRTUAL:
+            continue
+        if not _in_the_valley(_get(row, 'county name')):
             continue
 
-        cds_code = _get(row, 'cdscode')
+        cds_code = _get(row, 'cds code')
         yield {
             'external_id': cds_code,
-            'cds_code': cds_code,
+            # The district whose boundary the school stands in, which is not
+            # always the district that runs it (see _geographic_district).
+            'district_cds': _geographic_district(row),
             'name': name,
             'address': _get(row, 'street'),
             'city': _get(row, 'city'),
@@ -230,80 +355,152 @@ def parse_cde_public(file):
             'lat': _float(_get(row, 'latitude')),
             'lng': _float(_get(row, 'longitude')),
             'metadata': {
-                'county': _get(row, 'county'),
-                'district': _get(row, 'district'),
-                'grades': _get(row, 'gsoffered'),
-                'soc_type': _get(row, 'soctype'),
-                'eil_code': _get(row, 'eilcode'),
-                'eil_name': _get(row, 'eilname'),
+                'cds_code': cds_code,
+                'district_code': _clean(_get(row, 'district code')),
+                'district_name': _clean(_get(row, 'district name')),
+                'geographic': {
+                    'county': _geographic(row, 'county'),
+                    'elementary': _geographic(row, 'elementary district'),
+                    'high': _geographic(row, 'high district'),
+                    'unified': _geographic(row, 'unified district'),
+                },
+                'school_type': _clean(_get(row, 'school type')),
+                'school_level': _clean(_get(row, 'school level')),
+                'grade_low': _grade(_get(row, 'grade low')),
+                'grade_high': _grade(_get(row, 'grade high')),
                 'charter': _get(row, 'charter').upper() == 'Y',
-                'virtual': _get(row, 'virtual'),
-                'status': _get(row, 'statustype'),
+                'charter_number': _clean(_get(row, 'charter num')),
+                'charter_funding': _clean(_get(row, 'charter funding type')),
+                'virtual': _clean(_get(row, 'virtual')),
+                'magnet': _clean(_get(row, 'magnet')),
+                'title_i': _clean(_get(row, 'title i')),
+                'dass': _clean(_get(row, 'dass')),
+                'assistance_status': _clean(_get(row, 'assistance status essa')),
+                'locale': _clean(_get(row, 'locale')),
+                'website': _clean(_get(row, 'school website')),
+                'open_date': _date(_get(row, 'open date')),
+                'enrollment': {
+                    'total': _int(_get(row, 'enroll total')),
+                    'by_grade': {key: _int(_get(row, column))
+                        for key, column in PUBLIC_GRADE_COLUMNS},
+                },
+                'demographics': {key: _count_and_pct(row, column)
+                    for key, column in PUBLIC_DEMOGRAPHICS},
+                'subgroups': {key: _count_and_pct(row, column)
+                    for key, column in PUBLIC_SUBGROUPS},
+                'staff': {
+                    'total': _int(_get(row, 'staff total')),
+                    'teacher': _int(_get(row, 'staff teacher')),
+                    'admin': _int(_get(row, 'staff admin')),
+                    'pupil_services': _int(_get(row, 'staff pupil services')),
+                    'other': _int(_get(row, 'staff other')),
+                },
             },
         }
+
+
+def _geographic(row, kind):
+    return {
+        'code': _clean(_get(row, f'geographic {kind} code')),
+        'name': _clean(_get(row, f'geographic {kind} name')),
+    }
+
+
+def _geographic_district(row):
+    """
+    The 7-digit CDS code of the district whose boundary the school stands
+    in. A unified district covers every grade, so it wins outright; where
+    there is none the file names an elementary and a high district for the
+    same address, and the school belongs to whichever teaches its grades.
+    """
+    unified = _get(row, 'geographic unified district code')
+    if unified:
+        return unified
+
+    elementary = _get(row, 'geographic elementary district code')
+    high = _get(row, 'geographic high district code')
+    if not (elementary and high):
+        return elementary or high or None
+
+    level = _get(row, 'school level').lower()
+    if level in ELEMENTARY_LEVELS:
+        return elementary
+    return high
 
 
 def parse_cde_private(file):
     """
-    CDE private school affidavit, school level. The columns are renamed most
-    years, so everything is read by header name with the known aliases, and
-    the file carries no coordinates: these rows are geocoded.
-    """
-    head = file.read(len(XLSX_MAGIC))
-    file.seek(0)
-    rows = _xlsx_rows(file) if head == XLSX_MAGIC else _rows(file, encoding='utf-8')
+    CDE private school affidavit, the point file published on data.ca.gov
+    as `california-private-schools-2024-25`. The affidavit's own columns are
+    prefixed `USER_`; `X`/`Y`, `Status`, `Score` and `Match_addr` are the
+    result of CDE geocoding the address.
 
-    for row in rows:
-        name = _get(row, 'school name', 'schoolname', 'name')
+    `Status` is the Esri geocoder's: 'M' matched (2,818 rows), 'T' tied --
+    several candidates scored the same (15), 'U' unmatched (3). Only an M
+    row's X/Y is the school; the rest carry a fallback point (a street or a
+    city centroid), so they are geocoded here instead, from `Match_addr`
+    where there is one.
+    """
+    for row in _rows(file, encoding='utf-8'):
+        name = _get(row, 'user_name')
         if not name:
             continue
-        if not _in_the_valley(_get(row, 'county', 'county name')):
+        if not _in_the_valley(_get(row, 'user_county')):
             continue
 
-        enrollment = _int(_get(row, 'total enrollment', 'enrollment', 'total'))
+        enrollment = _int(_get(row, 'user_totalenroll'))
         if enrollment is None or enrollment < MIN_PRIVATE_ENROLLMENT:
             continue
 
-        address = _get(row, 'street', 'address', 'school street', 'mailing street')
-        external_id = _get(row, 'cds code', 'cdscode', 'school code', 'schoolcode',
-            'affidavit id', 'affidavitid')
-        if not external_id:
-            # Some years ship without any stable id. Name + address is the
-            # best identity available, and it's stable across re-runs.
-            external_id = hashlib.sha1(
-                f'{name}|{address}'.lower().encode('utf-8', 'replace')
-            ).hexdigest()
+        # X/Y are Web Mercator, and only a matched row's is the school.
+        matched = _get(row, 'status').upper().startswith('M')
+        lat, lng = _webmercator(row) if matched else (None, None)
 
-        grade_low, grade_high = _grade_span(row)
+        cds_code = _get(row, 'user_cds')
         yield {
-            'external_id': external_id,
-            'cds_code': None,
+            'external_id': cds_code,
+            'district_cds': None,
             'name': name,
-            'address': address,
-            'city': _get(row, 'city', 'school city'),
-            'zip': _get(row, 'zip', 'zip code', 'school zip'),
-            'lat': _float(_get(row, 'latitude')),
-            'lng': _float(_get(row, 'longitude')),
+            'address': _get(row, 'user_street'),
+            'city': _get(row, 'user_city'),
+            'zip': _get(row, 'user_zip'),
+            'lat': lat,
+            'lng': lng,
+            # What to geocode when there's nothing to place it by: the
+            # address the geocoder itself settled on, where it got that far.
+            'geocode_address': _get(row, 'match_addr') if not matched else None,
             'metadata': {
-                'county': _get(row, 'county', 'county name'),
-                'enrollment': enrollment,
-                'grade_low': grade_low,
-                'grade_high': grade_high,
+                'cds_code': cds_code,
+                'district_name': _clean(_get(row, 'user_district')),
+                'classification': _clean(_get(row, 'user_classification')),
+                'school_type': _clean(_get(row, 'user_type')),
+                'accommodations': _clean(_get(row, 'user_accommodations')),
+                'grade_low': _grade(_get(row, 'user_lowgrade')),
+                'grade_high': _grade(_get(row, 'user_highgrade')),
+                'enrollment': {
+                    'total': enrollment,
+                    'by_grade': {key: _int(_get(row, column))
+                        for key, column in PRIVATE_GRADE_COLUMNS},
+                },
+                'staff': {
+                    'full_time_teachers': _int(_get(row, 'user_fulltimeteach')),
+                    'part_time_teachers': _int(_get(row, 'user_parttimeteach')),
+                    'administrators': _int(_get(row, 'user_administrators')),
+                    'other': _int(_get(row, 'user_otherstaff')),
+                },
+                'tax_exempt': _yes_no(_get(row, 'user_taxexempt')),
             },
         }
 
 
-def _grade_span(row):
-    low = _get(row, 'low grade', 'lowgrade', 'grade low')
-    high = _get(row, 'high grade', 'highgrade', 'grade high')
-    if low or high:
-        return low, high
-
-    grades = _get(row, 'grades', 'grade span', 'gsoffered')
-    if '-' in grades:
-        low, _, high = grades.partition('-')
-        return low.strip(), high.strip()
-    return grades.strip(), grades.strip()
+def _webmercator(row):
+    """(lat, lng) from the file's EPSG:3857 X/Y, or (None, None)."""
+    x, y = _float(_get(row, 'x')), _float(_get(row, 'y'))
+    if x is None or y is None:
+        return None, None
+    point = Point(x, y, srid=3857)
+    point.transform(4326)
+    return point.y, point.x
 
 
 def parse_cdss_ccl(file):
@@ -345,7 +542,6 @@ def parse_cdss_ccl(file):
         if site is None:
             site = sites[key] = {
                 'external_id': facility_number,
-                'cds_code': None,
                 'name': name,
                 'address': address,
                 'city': _get(row, 'res_city', 'facility city', 'city'),
@@ -384,21 +580,22 @@ def parse_cdss_ccl(file):
 
 SOURCES = {
     'cde-public': {
-        'label': 'CDE public schools and districts directory',
+        'label': 'CDE public schools (2025-26)',
         'type': Location.Type.PUBLIC_SCHOOL,
-        # cde.ca.gov answers server-side downloads with a JS bot wall (the
-        # same one that blocks the OEHHA Prop 65 list), so --path only.
+        # cde.ca.gov itself answers server-side downloads with a JS bot wall
+        # (the same one that blocks the OEHHA Prop 65 list). CDE publishes
+        # the same schools as a point file on data.ca.gov, which doesn't.
         'url': None,
-        'page_url': 'https://www.cde.ca.gov/ds/si/ds/pubschls.asp',
+        'ckan_dataset': 'california-public-schools-2025-26',
+        'page_url': 'https://data.ca.gov/dataset/california-public-schools-2025-26',
         'parse': parse_cde_public,
     },
     'cde-private': {
-        'label': 'CDE private school affidavit (school level)',
+        'label': 'CDE private schools (2024-25)',
         'type': Location.Type.PRIVATE_SCHOOL,
-        # The affidavit file is published under a new per-year URL every
-        # year, so --path is the route for it too.
         'url': None,
-        'page_url': 'https://www.cde.ca.gov/ds/si/ps/',
+        'ckan_dataset': 'california-private-schools-2024-25',
+        'page_url': 'https://data.ca.gov/dataset/california-private-schools-2024-25',
         'parse': parse_cde_private,
     },
     'cdss-ccl': {
@@ -472,8 +669,7 @@ def _open_source(config, path):
     with tempfile.TemporaryFile() as handle:
         url = _source_url(config)
         try:
-            response = requests.get(url, timeout=300, stream=True)
-            response.raise_for_status()
+            response = _fetch(config, url)
             content_type = (response.headers.get('Content-Type') or '').lower()
             for index, chunk in enumerate(response.iter_content(chunk_size=1024 * 64)):
                 if index == 0:
@@ -481,8 +677,29 @@ def _open_source(config, path):
                 handle.write(chunk)
         except requests.RequestException as exc:
             raise DownloadError(f'Could not download {config["label"]}: {exc}')
+        if not handle.tell():
+            raise DownloadError(
+                f'{config["label"]} downloaded as an empty file ({url}).')
         handle.seek(0)
         yield handle
+
+
+def _fetch(config, url):
+    """GET the file, waiting out an export the source is still building."""
+    wait = DOWNLOAD_RETRY_WAIT
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        response = requests.get(url, timeout=300, stream=True)
+        response.raise_for_status()
+        if response.status_code not in DOWNLOAD_PENDING_STATUSES:
+            return response
+        response.close()
+        if attempt < DOWNLOAD_ATTEMPTS:
+            time.sleep(wait)
+            wait *= 2
+
+    raise DownloadError(
+        f'{config["label"]} is still being generated by the source after'
+        f' {DOWNLOAD_ATTEMPTS} attempts ({url}); try again in a few minutes.')
 
 
 # -- Import --
@@ -497,7 +714,8 @@ def import_source(source, path=None, geocode=True):
     except KeyError:
         raise ValueError(f'Unknown location source: {source}')
 
-    counts = {'imported': 0, 'updated': 0, 'removed': 0, 'geocoded': 0, 'skipped': 0}
+    counts = {'imported': 0, 'updated': 0, 'removed': 0, 'geocoded': 0,
+        'skipped': 0, 'district_mismatch': 0}
 
     with _open_source(config, path) as handle:
         rows = [row for row in config['parse'](handle) if row.get('external_id')]
@@ -554,9 +772,10 @@ def import_source(source, path=None, geocode=True):
             location.metadata = row.get('metadata') or {}
             location.imported_at = timezone.now()
             # Always re-resolve rather than leaving it to save(): the
-            # boundaries move between imports even where the location hasn't,
-            # and a public school's CDS code beats the spatial answer.
-            location.resolve_regions(cds_code=row.get('cds_code'))
+            # boundaries move between imports even where the location hasn't.
+            location.resolve_regions()
+            if _prefer_the_files_district(location, row.get('district_cds')):
+                counts['district_mismatch'] += 1
             location.save()
 
             counts['imported' if created else 'updated'] += 1
@@ -566,6 +785,33 @@ def import_source(source, path=None, geocode=True):
         stale.delete()
 
     return counts
+
+
+def _prefer_the_files_district(location, district_cds):
+    """
+    Cross-check the district resolved from the point against the one the
+    source says the address sits in, and prefer the source's when they
+    differ: elementary and high district boundaries overlap, and the CDS
+    code is CDE's own answer for the address. Returns True when the link
+    changed, so the caller can tally how often the two disagree.
+    """
+    if not district_cds:
+        return False
+
+    prefix = str(district_cds)[:7]
+    current = location.school_district
+    if current is not None and current.external_id[:7] == prefix:
+        return False
+
+    district = Region.objects.filter(
+        type=Region.Type.SCHOOL_DISTRICT,
+        external_id__startswith=prefix,
+    ).first()
+    if district is None or district == current:
+        return False
+
+    location.school_district = district
+    return True
 
 
 def _point(lat, lng):
