@@ -93,9 +93,18 @@ def count_subquery(model, field, count_field):
     )
 
 
-def related_pks(field, obj, target):
-    """PKs of `target` (a PesticideUseRollup FK name) that share a rollup row with obj."""
-    return PesticideUseRollup.objects.filter(**{field: obj}).values(target)
+def related_pks(field, obj, target, year=None, county=None, all_years=False):
+    """
+    PKs of `target` (a PesticideUseRollup FK name) that share a rollup row
+    with obj, in `year` (or any loaded year) and `county` when given, so a
+    list filtered to an entity is scoped the way its pounds column is.
+    """
+    rows = PesticideUseRollup.objects.filter(**{field: obj})
+    if year and not all_years:
+        rows = rows.filter(year=year)
+    if county is not None:
+        rows = rows.filter(county=county)
+    return rows.values(target)
 
 
 def resolve_related(get, models):
@@ -264,7 +273,8 @@ class ExplorerListMixin:
         return queryset
 
     def filter_related(self, queryset, param, obj):
-        raise NotImplementedError
+        """Rows sharing a use record with `obj` in the list's year and county (see related_pks)."""
+        return queryset.filter(pk__in=related_pks(param, obj, self.rollup_field, self.year, self.county, self.all_years))
 
     def apply_filters(self, queryset, data):
         return queryset
@@ -363,11 +373,6 @@ class ChemicalList(ExplorerListMixin, vanilla.ListView):
     default_sort = '-lbs'
     related_models = {'product': Product, 'commodity': Commodity}
     rollup_field = 'chemical'
-
-    def filter_related(self, queryset, param, obj):
-        if param == 'product':
-            return queryset.filter(product_chemicals__product=obj)
-        return queryset.filter(pk__in=related_pks('commodity', obj, 'chemical'))
 
     def apply_filters(self, queryset, data):
         if data.get('category'):
@@ -514,11 +519,6 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
     related_models = {'chemical': Chemical, 'commodity': Commodity}
     rollup_field = 'product'
 
-    def filter_related(self, queryset, param, obj):
-        if param == 'chemical':
-            return queryset.filter(product_chemicals__chemical=obj)
-        return queryset.filter(pk__in=related_pks('commodity', obj, 'product'))
-
     def apply_filters(self, queryset, data):
         for name in ('fumigant', 'california_restricted'):
             value = self.form.bool_value(name)
@@ -560,9 +560,6 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
     sort_fields = {'name': 'name', 'lbs': 'lbs_applied', 'chemicals': 'chemical_count', 'site': 'site_code'}
     default_sort = '-lbs'
     related_models = {'chemical': Chemical, 'product': Product}
-
-    def filter_related(self, queryset, param, obj):
-        return queryset.filter(pk__in=related_pks(param, obj, 'commodity'))
 
     def annotate_queryset(self, queryset, year):
         if not year and not self.all_years:

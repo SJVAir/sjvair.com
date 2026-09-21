@@ -164,6 +164,15 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert self.names(response) == ['CHLORPYRIFOS']
         assert response.context['related']['product'] == product
 
+    def test_related_filter_is_scoped_to_the_year(self):
+        # Sulfur shared records with LORSBAN only in 2022: the 2023 list under
+        # that product filter leaves sulfur out rather than showing a dash.
+        PesticideUseRollup.objects.create(year=2022, month=1, county_id=9001, chemical_id=3, product_id=2, lbs_chemical=5, applications=1)
+        product = Product.objects.get(pk=2)
+        assert self.names(self.client.get(self.url, {'product': product.sqid, 'year': '2023'})) == ['CHLORPYRIFOS']
+        assert set(self.names(self.client.get(self.url, {'product': product.sqid, 'year': '2022'}))) == {'CHLORPYRIFOS', 'SULFUR'}
+        assert set(self.names(self.client.get(self.url, {'product': product.sqid, 'year': 'all'}))) == {'CHLORPYRIFOS', 'SULFUR'}
+
     def test_related_filter_relabels_the_columns(self):
         product = Product.objects.get(pk=2)
         html = self.client.get(self.url, {'product': product.sqid}).content.decode()
