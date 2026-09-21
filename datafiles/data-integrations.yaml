@@ -74,7 +74,7 @@
     name: fa-earth-americas
     primary: forestgreen
     secondary: deepskyblue
-  description: Datasets on where pollution comes from and who bears it&#58; screening indices that combine environmental, health, and socioeconomic indicators to identify the communities most impacted, and the emissions inventory behind them, which records what each permitted facility releases.
+  description: 'Datasets on where pollution comes from and who bears it: screening indices that combine environmental, health, and socioeconomic indicators to identify the communities most impacted, and the emissions inventory behind them, which records what each permitted facility releases.'
   integrations:
     - name: CalEnvironScreen
       logo: img/logo/calenviroscreen-logo.png
