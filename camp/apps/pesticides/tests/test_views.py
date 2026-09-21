@@ -383,6 +383,16 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         url = reverse('pesticides:chemical-detail', kwargs={'sqid': self.chemical.sqid, 'slug': 'whatever'})
         assert self.client.get(url).status_code == 200
 
+    def test_detail_page_has_the_section_map_filtered_to_the_chemical(self):
+        html = self.client.get(self.chemical.get_absolute_url() + '?year=2022').content.decode()
+        assert f'data-chemical="{self.chemical.chem_code}"' in html
+        assert 'data-year="2022"' in html
+        assert 'data-show-notices="0"' in html
+        assert f'/tools/pesticides/map/?chemical={self.chemical.sqid}&amp;year=2022' in html
+        # The latest year needs no param.
+        latest = self.client.get(self.chemical.get_absolute_url()).content.decode()
+        assert f'/tools/pesticides/map/?chemical={self.chemical.sqid}"' in latest
+
     def test_preferred_name_heads_the_page(self):
         Chemical.objects.filter(pk=1).update(preferred_name='Glyphosate')
         html = self.client.get(self.chemical.get_absolute_url()).content.decode()

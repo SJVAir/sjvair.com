@@ -26,9 +26,10 @@
         <div class="columns">
             <div class="column is-5-desktop is-4-widescreen">{% include 'pesticides/includes/by-year-table.html' %}</div>
             <div class="column is-7-desktop is-8-widescreen">
+                {% include 'pesticides/includes/section-map.html' %}
+                <p class="is-size-7 mt-2"><a href="{{ full_map_url }}">Open in the full map</a></p>
                 {% if by_county %}
-                    {% include 'pesticides/includes/county-map.html' %}
-                    {% include 'pesticides/includes/by-county-table.html' %}
+                    <div class="mt-4">{% include 'pesticides/includes/by-county-table.html' %}</div>
                 {% endif %}
             </div>
         </div>

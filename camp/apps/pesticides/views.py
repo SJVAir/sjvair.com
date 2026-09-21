@@ -707,6 +707,14 @@ class ExplorerDetailMixin:
             **kwargs,
         )
         context['summary_sentence'] = self.get_summary_sentence(totals, context['year_label'], self.summary_top(context))
+        # The section map, filtered to this entity, shows where it's applied;
+        # the county choropleth stays as the map's noscript fallback.
+        context['map_config'] = section_map_config(
+            year, all_years=all_years, show_notices=False, **{self.use_field: self.object},
+        )
+        context['full_map_url'] = reverse('pesticides:map') + f'?{self.use_field}={self.object.sqid}' + (
+            f'&{year_param}' if year_param else ''
+        )
         context['county_map'] = maps.county_map(context['by_county']) if context['by_county'] else None
         return context
 
