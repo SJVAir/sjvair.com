@@ -25,7 +25,16 @@ class TitleCaseNameTests(SimpleTestCase):
         assert title_case_name("CHILDREN'S CENTER #2") == "Children's Center #2"
 
     def test_runs_of_spaces_collapse(self):
-        assert title_case_name('ABC  PRESCHOOL   CENTER') == 'Abc Preschool Center'
+        assert title_case_name('KIDS  PRESCHOOL   CENTER') == 'Kids Preschool Center'
+
+    def test_initialisms_and_numerals_stay_upper(self):
+        assert title_case_name('FUSD-STOREY') == 'FUSD-Storey'
+        assert title_case_name('FRESNO EOC FRANKLIN HEAD START') == 'Fresno EOC Franklin Head Start'
+        assert title_case_name("CAMPUS CHILDREN'S CENTER - SITE III") == "Campus Children's Center - Site III"
+        assert title_case_name('ABC LEARNING PRESCHOOL & CHILDCARE INC') == 'ABC Learning Preschool & Childcare INC'
+
+    def test_a_trailing_article_moves_to_the_front(self):
+        assert title_case_name('LEARNING EXPERIENCE THE') == 'The Learning Experience'
 
     def test_mixed_case_names_are_left_alone(self):
         assert title_case_name('McKinley Elementary') == 'McKinley Elementary'

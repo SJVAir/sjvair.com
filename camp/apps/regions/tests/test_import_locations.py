@@ -276,11 +276,22 @@ class ChildCareImportTests(TestCase):
         assert facility.zip == '93662'
         assert round(facility.point.y, 4) == 36.715
         assert round(facility.point.x, 4) == -119.795
-        assert facility.metadata['capacity'] == 84
+        assert facility.metadata['capacity'] == 104  # the day care center plus the infant center licensed at the same address
         assert facility.metadata['facility_type'] == 'DAY CARE CENTER'
         assert facility.metadata['status'] == '3'
         assert facility.metadata['client_served'] == '950'
         assert facility.county == Region.objects.get(pk=9001)
+
+    def test_a_site_licensed_as_several_facilities_is_one_row(self):
+        # Little Sprouts is a day care center and an infant center at one
+        # address, under two facility numbers.
+        locations.import_source('cdss-ccl', path=CCL_PATH)
+        site = Location.objects.get(name='Little Sprouts Learning Center')
+        assert site.external_id == '100400001'
+        assert site.metadata['facility_type'] == 'DAY CARE CENTER'
+        assert site.metadata['facility_types'] == ['DAY CARE CENTER', 'INFANT CENTER']
+        assert site.metadata['facility_numbers'] == ['100400001', '100400009']
+        assert site.metadata['capacity'] == 84 + 20
 
     def test_keeps_every_child_care_center_kind(self):
         locations.import_source('cdss-ccl', path=CCL_PATH)

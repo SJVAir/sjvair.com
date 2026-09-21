@@ -314,6 +314,12 @@ def parse_cdss_ccl(file):
     PROGRAM_TYPE and FAC_TYPE_DESC. STATUS is a numeric code on the licensed
     layer, so it's recorded rather than filtered on.
     """
+    # One site is often licensed as two or three facilities -- a day care
+    # center, an infant center and a school-age center at the same name and
+    # address, each with its own facility number. Readers see one place, so
+    # those merge into one row keyed by the lowest facility number, carrying
+    # every number and type and the summed capacity.
+    sites = {}
     for row in _rows(file, encoding='utf-8'):
         program = _get(row, 'program_type', 'program').upper()
         if program and program != CHILD_CARE_PROGRAM:
@@ -330,23 +336,48 @@ def parse_cdss_ccl(file):
         if not name:
             continue
 
-        yield {
-            'external_id': _get(row, 'fac_nbr', 'facility number', 'facilitynumber', 'facility id'),
-            'cds_code': None,
-            'name': name,
-            'address': _get(row, 'res_street_addr', 'facility address', 'address'),
-            'city': _get(row, 'res_city', 'facility city', 'city'),
-            'zip': _get(row, 'res_zip_code', 'facility zip', 'zip'),
-            'lat': _float(_get(row, 'fac_latitude', 'latitude', 'facility latitude', 'y')),
-            'lng': _float(_get(row, 'fac_longitude', 'longitude', 'facility longitude', 'x')),
-            'metadata': {
-                'county': _get(row, 'county', 'county name'),
-                'facility_type': facility_type,
-                'capacity': _int(_get(row, 'capacity', 'facility capacity')),
-                'status': _get(row, 'status', 'facility status'),
-                'client_served': _get(row, 'client_served'),
-            },
-        }
+        facility_number = _get(row, 'fac_nbr', 'facility number', 'facilitynumber', 'facility id')
+        address = _get(row, 'res_street_addr', 'facility address', 'address')
+        zip_code = _get(row, 'res_zip_code', 'facility zip', 'zip')
+        capacity = _int(_get(row, 'capacity', 'facility capacity'))
+        key = (name.upper(), address.upper(), zip_code)
+        site = sites.get(key)
+        if site is None:
+            site = sites[key] = {
+                'external_id': facility_number,
+                'cds_code': None,
+                'name': name,
+                'address': address,
+                'city': _get(row, 'res_city', 'facility city', 'city'),
+                'zip': zip_code,
+                'lat': _float(_get(row, 'fac_latitude', 'latitude', 'facility latitude', 'y')),
+                'lng': _float(_get(row, 'fac_longitude', 'longitude', 'facility longitude', 'x')),
+                'metadata': {
+                    'county': _get(row, 'county', 'county name'),
+                    'facility_type': facility_type,
+                    'facility_types': [],
+                    'facility_numbers': [],
+                    'capacity': 0,
+                    'status': _get(row, 'status', 'facility status'),
+                    'client_served': _get(row, 'client_served'),
+                },
+            }
+        meta = site['metadata']
+        meta['facility_types'].append(facility_type)
+        meta['facility_numbers'].append(facility_number)
+        meta['capacity'] += capacity or 0
+        # The lowest facility number keys the merged row, so it is stable
+        # across imports; the day care center is the site's primary type.
+        if facility_number < site['external_id']:
+            site['external_id'] = facility_number
+        if facility_type.startswith('DAY CARE CENTER'):
+            meta['facility_type'] = facility_type
+    for site in sites.values():
+        site['metadata']['facility_types'].sort()
+        site['metadata']['facility_numbers'].sort()
+        if not site['metadata']['capacity']:
+            site['metadata']['capacity'] = None
+        yield site
 
 
 # -- Sources --

@@ -2699,10 +2699,18 @@
   // The CDE and CDSS directories shout their names ("SELMA HIGH"). Same rule
   // as the title_case_name template filter: only touch a name that is
   // entirely upper case, so a deliberately-cased one (McKinley) is left be.
+  // Mirrors the title_case_name template filter: initialisms and roman
+  // numerals stay upper, a trailing "THE" goes back to the front.
+  var NAME_ACRONYMS = {USD: 1, EOC: 1, YMCA: 1, YWCA: 1, CDC: 1, CDCC: 1, CCC: 1, LLC: 1, INC: 1, KCAO: 1, CSU: 1, CSUF: 1, UC: 1, UCSF: 1, SJV: 1, CA: 1, PS: 1, HS: 1, JHS: 1, MS: 1, ES: 1, MLK: 1, JFK: 1, ABC: 1, HSA: 1, ROP: 1, STEM: 1, STEAM: 1, TK: 1};
   function titleCaseName(name) {
     var text = (name || '').replace(/\s+/g, ' ').trim();
     if (!text || text !== text.toUpperCase()) return text;
+    var parts = text.split(' ');
+    if (parts.length > 1 && /^(THE|A|AN)$/.test(parts[parts.length - 1])) parts.unshift(parts.pop());
+    text = parts.join(' ');
     return text.replace(/[A-Za-z\u00C0-\u024F]+(?:'[A-Za-z\u00C0-\u024F]+)*/g, function (word) {
+      var upper = word.toUpperCase();
+      if (NAME_ACRONYMS[upper] || /^(?:[A-Z]{1,5}USD|[IVX]{2,4})$/.test(upper)) return upper;
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     });
   }
