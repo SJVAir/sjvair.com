@@ -12,6 +12,7 @@
        data-tiles="{{ map_config.tile_url }}"
        data-attribution="{{ map_config.attribution }}"
        data-year="{{ map_config.year }}"
+       data-year-label="{{ map_config.year_label }}"
        data-chemical="{{ map_config.chemical }}"
        data-product="{{ map_config.product }}"
        data-commodity="{{ map_config.commodity }}"
@@ -69,7 +70,6 @@
     <div class="section-map-panel-body" id="section-map-legend-{{ map_config.year }}">
       <ul class="county-legend section-map-legend"></ul>
       <span class="section-map-level"></span>
-      {% if map_config.note %}<p class="section-map-note">{{ map_config.note }}</p>{% endif %}
     </div>
   </div>
   <noscript>{% if county_map %}{% include 'pesticides/includes/county-map.html' %}{% endif %}</noscript>

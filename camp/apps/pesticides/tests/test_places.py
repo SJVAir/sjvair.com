@@ -45,8 +45,8 @@ class AreaTests(RollupTestMixin, TestCase):
         }
         assert ctx['by_month'][7]['lbs'] == 900.0
         assert 'year=all' in ctx['records_url']
-        assert ctx['map_config']['year'] == 2023
-        assert ctx['map_config']['note']
+        assert ctx['map_config']['year'] == 'all'
+        assert ctx['map_config']['year_label'] == '2022\u20132023'
         # Built once and cached; a later import is what clears it.
         assert cache.get(stats.all_years_key('place', 'region:9001')) is not None
 

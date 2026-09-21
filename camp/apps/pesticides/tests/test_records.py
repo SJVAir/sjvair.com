@@ -41,12 +41,10 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
         assert self.pks(response) == [6, 5, 4, 3, 2, 1, 9, 8, 7]
         assert response.context['totals'] == {'applications': 9, 'lbs': 1280.0, 'acres': 128.0}
         assert '2022\u20132023' in response.context['summary_sentence']
-        # The map can only show one year, and says so under its legend.
-        assert response.context['map_config']['year'] == 2023
-        assert response.context['map_config']['note'] == (
-            "The map shows 2023; year-by-year sections aren't summed across years."
-        )
-        assert 'section-map-note' in response.content.decode()
+        # The map sums every loaded year too, and its popups say so.
+        assert response.context['map_config']['year'] == 'all'
+        assert response.context['map_config']['year_label'] == '2022\u20132023'
+        assert 'data-year="all"' in response.content.decode()
 
     def test_an_explicit_start_date_still_wins_over_all_years(self):
         response = self.client.get(self.url, {'year': 'all', 'start': '2022-03-01', 'end': '2022-09-30'})

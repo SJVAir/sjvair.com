@@ -82,7 +82,13 @@ def apply_filters(rows, params):
 
 
 def parse_year(params):
-    return stats.resolve_year(params.get('year'))
+    """`(year, all_years)`: a concrete year, or every loaded year for `year=all`."""
+    return stats.resolve_year_param(params.get('year'))
+
+
+def year_value(year, all_years):
+    """The `year` a response echoes back: the year, or "all"."""
+    return stats.ALL_YEARS if all_years else year
 
 
 def parse_bbox(value):
@@ -126,13 +132,13 @@ def county_boundary(slug):
     return geometry
 
 
-def county_name_for(section_pks, year):
+def county_name_for(section_pks, year, all_years=False):
     """{mtrs_id: county_name} built once from the rollup, not spatially."""
+    rows = PesticideUseRollup.objects.filter(mtrs__in=section_pks)
     return {
         row['mtrs']: row['county__name']
         for row in (
-            PesticideUseRollup.objects
-            .filter(mtrs__in=section_pks, year=year)
+            stats.in_year(rows, year, all_years)
             .values('mtrs', 'county__name')
             .order_by('mtrs', 'county__name')
             .distinct()
@@ -193,14 +199,14 @@ class SectionListBase(generics.Endpoint):
         if len(section_pks) > MAX_SECTIONS:
             too_large = 'bbox too large; zoom in' if params.get('bbox') else 'radius too large'
             return bad_request(too_large)
-        year = parse_year(params)
+        year, all_years = parse_year(params)
 
-        rows = PesticideUseRollup.objects.filter(year=year, mtrs__in=section_pks)
+        rows = stats.in_year(PesticideUseRollup.objects.filter(mtrs__in=section_pks), year, all_years)
         rows, error = apply_filters(rows, params)
         if error:
             return bad_request(error)
         totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**TOTALS)}
-        counties = county_name_for(section_pks, year)
+        counties = county_name_for(section_pks, year, all_years)
 
         section_qs = Region.objects.filter(pk__in=section_pks).select_related('boundary').order_by('external_id')
         features = []
@@ -221,7 +227,7 @@ class SectionListBase(generics.Endpoint):
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'type': 'FeatureCollection', 'year': year, 'features': features}
+        return {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
 
 
 class SectionList(CachedEndpointMixin, SectionListBase):
@@ -243,21 +249,23 @@ class SectionDetailBase(generics.Endpoint):
         section = get_object_or_404(
             Region.objects.filter(type=Region.Type.MTRS).select_related('boundary'), sqid=section_id,
         )
-        year = parse_year(request.GET)
+        year, all_years = parse_year(request.GET)
         rows = PesticideUseRollup.objects.filter(mtrs=section)
         years = list(rows.values('year').annotate(**TOTALS).order_by('-year'))
-        months = stats.by_month(rows, year) if year else []
+        months = stats.by_month(rows, year, all_years=all_years) if (year or all_years) else []
         county = rows.values_list('county__name', flat=True).order_by('county__name').first()
 
         def top(field, lbs_field='lbs_chemical', limit=5):
-            related = stats.top_related(rows, year, field, lbs_field=lbs_field, limit=limit) if year else []
+            if not (year or all_years):
+                return []
+            related = stats.top_related(rows, year, field, lbs_field=lbs_field, limit=limit, all_years=all_years)
             return [{'id': r.obj.sqid, 'name': r.obj.name, 'display_name': r.obj.display_name, 'lbs': r.lbs} for r in related]
 
         return {
             'id': section.sqid,
             'mtrs': section.external_id,
             'county': county,
-            'year': year,
+            'year': year_value(year, all_years),
             'geometry': json.loads(section.boundary.geometry.geojson) if section.boundary else None,
             'years': years,
             'months': [
@@ -371,13 +379,13 @@ class TownshipListBase(generics.Endpoint):
             bbox, error = parse_bbox(params['bbox'])
             if error:
                 return bad_request(error)
-        year = parse_year(params)
+        year, all_years = parse_year(params)
 
-        rows = PesticideUseRollup.objects.filter(year=year)
+        rows = stats.in_year(PesticideUseRollup.objects.all(), year, all_years)
         rows, error = apply_filters(rows, params)
         if error:
             return bad_request(error)
-        totals = stats.by_township(rows, year)
+        totals = stats.by_township(rows, year, all_years)
 
         # The map keeps township outlines from its first load and asks for
         # `geometry=0` after that (a year or filter change only moves the
@@ -415,7 +423,7 @@ class TownshipListBase(generics.Endpoint):
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'type': 'FeatureCollection', 'year': year, 'features': features}
+        return {'type': 'FeatureCollection', 'year': year_value(year, all_years), 'features': features}
 
 
 class TownshipList(CachedEndpointMixin, TownshipListBase):

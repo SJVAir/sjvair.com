@@ -866,6 +866,15 @@ class SectionEndpointTests(TestCase):
         response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8'})
         assert response.json()['year'] == 2023
 
+    def test_all_years_sums_every_loaded_year(self):
+        # Section 9101 has 670 lbs / 4 applications in 2023 and 480 / 2 in 2022.
+        response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 'all'})
+        data = response.json()
+        assert data['year'] == 'all'
+        props = next(f['properties'] for f in data['features'] if f['properties']['mtrs'] == 'MDM-T14S-R20E-01')
+        assert (props['lbs_chemical'], props['applications']) == (1150.0, 6)
+        assert props['county'] == 'Fresno County'
+
     def test_cached(self):
         self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023})
         PesticideUseRollup.objects.all().delete()
@@ -1009,6 +1018,13 @@ class TownshipAndCountyTests(RollupTestMixin, TestCase):
         assert features['MDM-T14S-R20E']['sections'] == 1
         # Section 9102 (township MDM-T30S-R28E): uses 3, 5.
         assert features['MDM-T30S-R28E']['lbs_chemical'] == 70.0
+
+    def test_townships_all_years(self):
+        response = self.client.get('/api/2.0/pesticides/townships/', {'year': 'all'})
+        assert response.json()['year'] == 'all'
+        features = {f['properties']['id']: f['properties'] for f in response.json()['features']}
+        assert features['MDM-T14S-R20E']['lbs_chemical'] == 1150.0
+        assert features['MDM-T14S-R20E']['applications'] == 6
 
     def test_townships_bbox_and_filters(self):
         kern_only = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023, 'bbox': '-119.1,35.3,-119.0,35.4'}).json()

@@ -1823,11 +1823,18 @@
     }
   };
 
+  // "in 2023", or "across 2014–2023" when the map sums every year.
+  SectionMap.prototype.yearPhrase = function () {
+    var label = this.data.yearLabel || this.data.year;
+    if (!label) return '';
+    return (this.data.year === 'all' ? ' across ' : ' in ') + escapeHtml(label);
+  };
+
   // The headline figure of a grid popup: "5,966 lbs applied in 2023" or
   // "312 applications in 2023", following the metric toggle.
   SectionMap.prototype.metricLine = function (props) {
     var value = formatNumber(props[this.metric] || 0);
-    var year = this.data.year ? ' in ' + escapeHtml(this.data.year) : '';
+    var year = this.yearPhrase();
     var text = this.metric === 'applications'
       ? '<strong>' + value + '</strong> application' + (props.applications === 1 ? '' : 's') + year
       : '<strong>' + value + ' lbs</strong> applied' + year;
@@ -1986,7 +1993,7 @@
       .then(function (detail) {
         if (!layer.getPopup() || !layer.isPopupOpen()) return; // popup was closed before this resolved
         var chemicals = (detail && detail.top_chemicals) || [];
-        var detailHtml = '<p class="section-popup-note">No use reported this year.</p>';
+        var detailHtml = '<p class="section-popup-note">No use reported' + (self.data.year === 'all' ? ' in any year.' : ' this year.') + '</p>';
         if (chemicals.length) {
           detailHtml = '<ul class="section-popup-chems">' + chemicals.slice(0, 3).map(function (c) {
             return '<li>' +

@@ -826,12 +826,6 @@ def page_url_pattern(name):
     return unquote(reverse(name, kwargs={'sqid': '{id}'}))
 
 
-# The section/township aggregates behind the map are per-year, so a map is
-# always one concrete year. Said out loud under the legend when the rest of
-# the page is showing every year.
-ALL_YEARS_MAP_NOTE = "The map shows {year}; year-by-year sections aren't summed across years."
-
-
 def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True):
     year = year or stats.latest_year()
     return {
@@ -839,7 +833,6 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # the page, off where the reader came for the use data (records, and
         # the entity pages). Either way the map's own checkbox flips it.
         'show_notices': '1' if show_notices else '0',
-        'note': ALL_YEARS_MAP_NOTE.format(year=year) if all_years and year else '',
         'sections_url': '/api/2.0/pesticides/sections/',
         'counties_url': '/api/2.0/pesticides/counties/',
         'townships_url': '/api/2.0/pesticides/townships/',
@@ -853,7 +846,10 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'notice_page_url': page_url_pattern('pesticides:notice-detail'),
         'tile_url': leaflet.TILE_URL.format(key=settings.MAPTILER_API_KEY, z='{z}', x='{x}', y='{y}'),
         'attribution': leaflet.TILE_ATTRIBUTION,
-        'year': year or '',
+        # What the grid endpoints are asked for ("all" sums every loaded
+        # year) and how the popups say it ("in 2023" / "across 2014–2023").
+        'year': stats.ALL_YEARS if all_years else (year or ''),
+        'year_label': stats.year_label(year, all_years),
         'center': center or SJV_CENTER,
         'zoom': zoom or SJV_ZOOM,
         'radius': radius or '',

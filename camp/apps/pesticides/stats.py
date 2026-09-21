@@ -208,7 +208,7 @@ def by_section(rows, year, lbs_field='lbs_chemical'):
     ]
 
 
-def by_township(rows, year):
+def by_township(rows, year, all_years=False):
     """
     {township: {'lbs_chemical', 'lbs_product', 'acres_treated', 'applications'}}.
 
@@ -217,12 +217,12 @@ def by_township(rows, year):
     number of townships on screen. Both pound columns are summed because the
     map lets the viewer switch metrics without refetching.
     """
-    if year is None:
+    if year is None and not all_years:
         return {}
     index = township_index()
     totals = {}
     section_rows = (
-        rows.filter(year=year, mtrs__isnull=False)
+        in_year(rows, year, all_years).filter(mtrs__isnull=False)
         .values('mtrs')
         .annotate(
             lbs_chemical=Sum('lbs_chemical'),

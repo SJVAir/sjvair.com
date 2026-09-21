@@ -150,11 +150,6 @@
   color: #7a7a7a;
 }
 
-.section-map-legend-panel .section-map-note {
-  margin: 0.25rem 0 0;
-  color: #7a7a7a;
-}
-
 /* Expanded: the map takes the viewport below the site navbar (same
    arithmetic as the live map page), panels ride along. */
 .section-map-wrap.is-expanded {
