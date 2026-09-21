@@ -7,7 +7,7 @@ from django.utils.safestring import mark_safe
 
 from camp.apps.entries import models as entry_models
 from camp.apps.entries.levels import _blend_hex
-from camp.apps.regions.models import Region, Boundary
+from camp.apps.regions.models import Region, Boundary, Location
 from camp.utils import leaflet
 from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
 
@@ -202,3 +202,12 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
             import traceback
             traceback.print_exc()
     get_monitor_map.short_description = 'Monitors'
+
+
+@admin.register(Location)
+class LocationAdmin(GISModelAdmin):
+    list_display = ('name', 'type', 'city', 'county')
+    list_filter = ('type', 'source')
+    list_select_related = ('county', 'district')
+    search_fields = ('name', 'external_id', 'city')
+    raw_id_fields = ('county', 'district')

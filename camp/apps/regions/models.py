@@ -1,6 +1,8 @@
 from typing import Literal, Optional
 
 from django.contrib.gis.db import models
+from django.urls import reverse
+from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
@@ -168,3 +170,132 @@ class Boundary(TimeStampedModel):
                 Boundary.objects.filter(pk=self.pk).values('geometry')[:1]
             ),
         )
+
+
+class Location(TimeStampedModel):
+    """
+    A point of interest near which pesticide use matters: schools and child
+    care facilities. Points rather than boundaries, so not a Region.
+    """
+
+    class Type(models.TextChoices):
+        PUBLIC_SCHOOL = 'public_school', _('Public School')
+        PRIVATE_SCHOOL = 'private_school', _('Private School')
+        CHILD_CARE = 'child_care', _('Child Care')
+
+    SHORT_TYPES = {
+        Type.PUBLIC_SCHOOL: _('Public school'),
+        Type.PRIVATE_SCHOOL: _('Private school'),
+        Type.CHILD_CARE: _('Child care'),
+    }
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('regions.Location'))
+
+    type = models.CharField(_('Type'), max_length=32, choices=Type.choices, db_index=True)
+    name = models.CharField(_('Name'), max_length=200)
+    external_id = models.CharField(_('External ID'), max_length=64)
+    source = models.CharField(_('Source'), max_length=32)
+
+    address = models.CharField(_('Address'), max_length=200, blank=True)
+    city = models.CharField(_('City'), max_length=100, blank=True)
+    zip = models.CharField(_('ZIP Code'), max_length=10, blank=True)
+
+    point = models.PointField(_('Location'), srid=4326, geography=False, spatial_index=True)
+
+    county = models.ForeignKey('Region',
+        verbose_name=_('County'),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        limit_choices_to={'type': Region.Type.COUNTY},
+    )
+    district = models.ForeignKey('Region',
+        verbose_name=_('School District'),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='schools',
+        limit_choices_to={'type': Region.Type.SCHOOL_DISTRICT},
+    )
+
+    metadata = models.JSONField(blank=True, default=dict, encoder=JSONEncoder)
+    imported_at = models.DateTimeField(_('Imported At'), default=timezone.now)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ('source', 'external_id')
+
+    def __str__(self):
+        return self.name
+
+    def get_absolute_url(self):
+        """
+        Locations don't have their own page: the district page is the closest
+        thing, and a location without a district has nowhere to go.
+        """
+        if self.district_id is None:
+            return ''
+        return reverse('pesticides:region', kwargs={
+            'sqid': self.district.sqid,
+            'slug': self.district.slug,
+        })
+
+    @property
+    def short_type(self):
+        return self.SHORT_TYPES[self.Type(self.type)]
+
+    @classmethod
+    def county_for(cls, point) -> Optional['Region']:
+        """The county Region whose boundary contains the point, if any."""
+        return (Region.objects
+            .filter(type=Region.Type.COUNTY, boundary__geometry__contains=point)
+            .first()
+        )
+
+    @classmethod
+    def district_for(cls, point, cds_code=None) -> Optional['Region']:
+        """
+        The school district for a location. Public schools carry a 14-digit
+        CDS code whose first 7 digits are the district's, which is exact.
+        Everything else falls back to the district containing the point,
+        where elementary and unified districts overlap: prefer a unified
+        district, then the widest grade span.
+        """
+        districts = Region.objects.filter(type=Region.Type.SCHOOL_DISTRICT)
+
+        if cds_code:
+            district = districts.filter(external_id__startswith=str(cds_code)[:7]).first()
+            if district is not None:
+                return district
+
+        candidates = list(districts.filter(boundary__geometry__contains=point))
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+
+        unified = [d for d in candidates if 'unified' in d.name.lower()]
+        if unified:
+            candidates = unified
+
+        return max(candidates, key=lambda district: _grade_span(district.metadata))
+
+
+# Grade labels as CDE writes them, lowest first. Anything unrecognized
+# sorts as if it were missing.
+GRADE_ORDER = ['P', 'PK', 'TK', 'K'] + [str(grade) for grade in range(1, 15)]
+
+
+def _grade_value(grade, default):
+    try:
+        return GRADE_ORDER.index(str(grade).strip().upper())
+    except (ValueError, AttributeError):
+        return default
+
+
+def _grade_span(metadata):
+    """How many grades a district's span covers, for breaking overlap ties."""
+    low = _grade_value((metadata or {}).get('grade_low'), 0)
+    high = _grade_value((metadata or {}).get('grade_high'), 0)
+    return max(high - low, 0)
