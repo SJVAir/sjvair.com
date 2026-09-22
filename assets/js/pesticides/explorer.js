@@ -38,8 +38,8 @@
     if (window.PesticidesSectionMap) window.PesticidesSectionMap.init(root);
     if (window.PesticidesFindArea) window.PesticidesFindArea.init(root);
     if (window.PesticidesEntityPicker) window.PesticidesEntityPicker.init(root);
-    // The static county choropleths on detail pages (admin/leaflet-maps.js).
-    if (window.SJVAirLeafletMaps) window.SJVAirLeafletMaps.init();
+    // The static county choropleths on detail pages (admin/map-figure.js).
+    if (window.SJVAirMapFigures) window.SJVAirMapFigures.init(root);
   });
 
   // The scope bar's dropdowns (year, county): a click on a trigger opens its

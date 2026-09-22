@@ -561,7 +561,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
 
     def test_county_map_rendered(self):
         html = self.client.get(self.chemical.get_absolute_url()).content.decode()
-        assert 'admin-leaflet-map' in html
+        assert 'class="map-figure"' in html
         assert 'Fresno County: 150 lbs' in html
 
     def test_no_map_without_uses(self):
@@ -790,23 +790,23 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'data-product-page-url="/tools/pesticides/products/{id}/"' in html
         assert 'data-notice-page-url="/tools/pesticides/notices/{id}/"' in html
         assert 'section-map.js' in html
-        assert '<noscript>' in html and 'admin-leaflet-map' in html   # static fallback
+        assert '<noscript>' in html and 'class="map-figure"' in html   # static fallback
 
     @override_settings(MAPTILER_API_KEY='test-key')
     def test_map_reads_its_key_and_style_from_the_container(self):
         # The MapTiler SDK map takes the API key and a style id straight off
-        # the container; the Leaflet map's raster template went with it.
+        # the container; there's no raster tile template.
         response = self.client.get(self.url)
         cfg = response.context['map_config']
         assert cfg['maptiler_key'] == 'test-key'
         assert cfg['style'] == 'dataviz'
-        # The SDK style carries its own attribution; the Leaflet-era
-        # template and attribution text went with the raster map.
+        # The SDK style carries its own attribution; there's no template
+        # or attribution text to pass.
         assert 'tile_url' not in cfg
         assert 'attribution' not in cfg
         html = response.content.decode()
-        # The section map's own container (the noscript county choropleth is
-        # Leaflet's and keeps its raster template).
+        # The section map's own container (the noscript county choropleth
+        # has the same attributes, so it's picked out by class).
         start = html.index('class="section-map"')
         container = html[start:html.index('>', start)]
         assert 'data-maptiler-key="test-key"' in container
@@ -815,15 +815,17 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'data-gl=' not in container
         assert 'data-attribution=' not in container
 
-    def test_page_loads_the_sdk_and_keeps_leaflet_for_the_choropleth(self):
+    def test_page_loads_the_sdk_and_no_leaflet(self):
         html = self.client.get(self.url).content.decode()
         assert 'maptiler-sdk/maptiler-sdk.js' in html
         assert 'maptiler-sdk/maptiler-sdk.css' in html
         assert html.count('js/pesticides/section-map') == 1   # one map module, no spike beside it
-        # The static county choropleth (includes/county-map.html) still draws
-        # with Leaflet, so its script and styles stay.
-        assert 'js/admin/leaflet/leaflet.js' in html
-        assert 'js/admin/leaflet-maps.js' in html
+        # The static county choropleth (includes/county-map.html) draws on
+        # the SDK too, through the map figure module, loaded after the SDK.
+        assert 'js/admin/map-figure.js' in html
+        assert 'js/admin/map-figure.css' in html
+        assert html.index('maptiler-sdk/maptiler-sdk.js') < html.index('js/admin/map-figure.js')
+        assert 'leaflet' not in html.lower()
 
     def test_entity_filters_resolve_to_api_identifiers(self):
         chem = Chemical.objects.get(pk=1)

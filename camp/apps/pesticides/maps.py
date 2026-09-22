@@ -1,5 +1,5 @@
 """
-County choropleth for the pesticides explorer, built on camp.utils.leaflet.
+County choropleth for the pesticides explorer, built on camp.utils.mapfigure.
 
 County boundaries are simplified and cached because the raw multipolygons
 run to thousands of points each; simplified, all eight fit in ~33 KB.
@@ -20,7 +20,7 @@ from django.core.cache import cache
 from django.utils.safestring import mark_safe
 
 from camp.apps.regions.models import Region
-from camp.utils import leaflet
+from camp.utils import mapfigure
 
 COUNTY_GEOJSON_KEY = 'pesticides:county-geometries'
 COUNTY_GEOJSON_TTL = 60 * 60 * 24
@@ -171,13 +171,13 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
     value_by_pk = {row['county_id']: (row.get(metric) or 0) for row in by_county}
     classes = quantile_classes(value_by_pk, ramp=ramp)
 
-    lmap = leaflet.LeafletMap(width=width, height=height, padding=10)
+    figure = mapfigure.MapFigure(width=width, height=height, padding=10)
     for pk, geojson in geometries.items():
         county = counties[pk]
         value = value_by_pk.get(pk)
         label = f'{county.name}: {int(round(value)):,} {unit}' if value else f'{county.name}: no data'
         url = county.get_pesticides_url()
-        lmap.add(leaflet.Area(
+        figure.add(mapfigure.Area(
             geometry=GEOSGeometry(geojson, srid=4326),
             fill_color=classes.color_for(value),
             fill_opacity=0.75,
@@ -187,4 +187,4 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
             label_on_hover=True,
             url=f'{url}?{query}' if query else url,
         ))
-    return mark_safe(lmap.render())
+    return mark_safe(figure.render())

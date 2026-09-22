@@ -22,9 +22,9 @@
   logo: img/logo/tech/openstreetmap.svg
   url: https://www.openstreetmap.org/
 
-- name: Leaflet
-  logo: img/logo/tech/leaflet.svg
-  url: https://leafletjs.com/
+- name: MapTiler SDK
+  logo: img/logo/tech/maptiler.svg
+  url: https://docs.maptiler.com/sdk-js/
 
 - name: PostgreSQL
   logo: img/logo/tech/postgresql.svg

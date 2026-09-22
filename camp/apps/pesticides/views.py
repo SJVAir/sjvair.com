@@ -31,6 +31,7 @@ from camp.apps.pesticides.models import (
     Product, ProductChemical,
 )
 from camp.apps.regions.models import Region
+from camp.utils import mapfigure
 
 # Sentinel for "sqid didn't resolve to an object" in ExplorerListMixin.related.
 # Not Http404 -- that's an exception class, not a value, and using it as a
@@ -1006,9 +1007,9 @@ def page_url_pattern(name):
     return unquote(reverse(name, kwargs={'sqid': '{id}'}))
 
 
-# MapTiler's neutral grey "dataviz" vector style, the SDK counterpart of the
-# raster template in camp.utils.leaflet: a quiet ground for the choropleth.
-MAP_STYLE = 'dataviz'
+# MapTiler's neutral grey "dataviz" vector style, as on the map figures
+# (camp.utils.mapfigure): a quiet ground for the choropleth.
+MAP_STYLE = mapfigure.MAP_STYLE
 
 
 def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False):

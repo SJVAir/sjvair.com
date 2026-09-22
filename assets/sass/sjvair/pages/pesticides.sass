@@ -112,8 +112,8 @@ body.pesticides
     .breadcrumbs
         background-color: $grey-lightest
         padding: 0.75rem 0px
-        // Above the map below it: Leaflet's panes and controls run to
-        // z-index 1000 and would otherwise sit over the open pickers.
+        // Above the map below it: the section map's panels and popups run
+        // to z-index 1001 and would otherwise sit over the open pickers.
         position: relative
         z-index: 1010
     .explorer-scope
@@ -589,7 +589,7 @@ body.pesticides
                 font-variant-numeric: tabular-nums
 
     .county-map
-        .admin-leaflet-map
+        .map-figure
             width: 100% !important
             border-color: $grey-lighter
         figcaption

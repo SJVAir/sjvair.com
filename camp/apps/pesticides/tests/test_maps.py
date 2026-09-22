@@ -95,7 +95,7 @@ class CountyMapTests(TestCase):
 
     def test_renders_all_counties(self):
         html = maps.county_map(self.rows)
-        assert 'admin-leaflet-map' in html
+        assert 'class="map-figure"' in html
         assert 'Fresno County' in html
         assert 'Kern County' in html      # drawn even with no rows
 
