@@ -106,6 +106,15 @@ so feature-state keys on our ids.
 | `radius` | `radius-fill`, `radius-line` | the locate radius circle (built client-side as a polygon) | |
 | `notices` | `notices-circle` | `data-notices-url` | circle layer, notice colour, white ring |
 | `locations` | `locations-circle` | `data-locations-url` (bbox cap and unpadded fallback, inventory §8) | colour by `type` |
+| `locate` | `locate-circle` | the geolocated point | the locate dot, on top of the markers (inventory §3.1) |
+
+The true z-order is the inventory's §3.1 (radius sits with the grid at the
+bottom; counties above the grid); this table lists sources, not paint order.
+The navigation control is added by the module (`new
+maptilersdk.NavigationControl({ showCompass: false })`, top-left) before the
+Locate and Reset controls so they stack under it; the SDK's own
+`navigationControl` option is off because it adds the control after the
+first render, which would put ours above it.
 
 Line seams and the zoom-dependent grid lines (`SECTION_LINES_MIN_ZOOM`,
 inventory §3) become `line-width`/`line-opacity` expressions on zoom
