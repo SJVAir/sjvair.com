@@ -800,7 +800,10 @@ class MapPageTests(RollupTestMixin, TestCase):
         cfg = response.context['map_config']
         assert cfg['maptiler_key'] == 'test-key'
         assert cfg['style'] == 'dataviz'
+        # The SDK style carries its own attribution; the Leaflet-era
+        # template and attribution text went with the raster map.
         assert 'tile_url' not in cfg
+        assert 'attribution' not in cfg
         html = response.content.decode()
         # The section map's own container (the noscript county choropleth is
         # Leaflet's and keeps its raster template).
@@ -810,6 +813,7 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'data-style="dataviz"' in container
         assert 'data-tiles=' not in container
         assert 'data-gl=' not in container
+        assert 'data-attribution=' not in container
 
     def test_page_loads_the_sdk_and_keeps_leaflet_for_the_choropleth(self):
         html = self.client.get(self.url).content.decode()

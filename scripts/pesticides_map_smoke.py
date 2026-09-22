@@ -4,9 +4,11 @@ Headless smoke test for the Pesticides Explorer's section map.
 Loads explorer pages in headless Chrome, waits for the map to come up, runs
 a set of checks against the live map (layers, controls, the grid and its
 legend, the notice and school markers and their popups, the lens and its
-popups, "all sections", an htmx year change that must keep the same map
-instance, expand/collapse) and reports a table per page. Exits 1 on any failed check, a console error, or a map that never
-loads. Dev-only; nothing here runs in CI.
+popups, "all sections", a popup panned clear of the legend, an htmx year
+change that must keep the same map instance and start one grid request,
+expand/collapse, the phone layout) and reports a table per page. Exits 1 on
+any failed check, a console error, or a map that never loads. Dev-only;
+nothing here runs in CI.
 
 Setup (Chrome must be installed: `google-chrome-stable` on the PATH):
 
@@ -18,7 +20,9 @@ Usage:
         /tools/pesticides/map/ /tools/pesticides/region/hez8v/fresno/ \\
         "/tools/pesticides/region/hez8v/fresno/?sections=1"
 
-    --screenshots   a directory to save a screenshot per page into
+    --screenshots   a directory to save a screenshot per page into (a desktop
+                    one at the end of the desktop checks, and a `-phone` one
+                    from the phone layout check)
     --year YEAR     the year the scope bar is switched to (default 2022)
 
 Every check on a page runs even after one fails, except that a map which
@@ -27,7 +31,8 @@ state (the township grid for the township popup, `?sections=1` for "all
 sections", a lens for the lens popup, active notices or schools in view for
 their popups) report themselves skipped on pages without it. The markers checks
 leave the toggles as they found them. The lens check moves the map to zoom 9 (township level), so
-the checks after it start there.
+the checks after it start there. The phone layout check reloads the page in a
+phone-sized window and leaves it there, so it runs last.
 
 Each page gets a fresh browser: the explorer's static files aren't
 cache-busted, so a reused profile could serve a stale script.
@@ -36,6 +41,7 @@ Later tasks extend this with more checks: add a `check_*` function that takes
 the `Page` and returns a (passed, detail) tuple, and list it in CHECKS.
 """
 import argparse
+import os
 import re
 import sys
 import time
@@ -49,6 +55,8 @@ from selenium.webdriver.common.keys import Keys
 
 MAP_TIMEOUT = 40
 SWAP_TIMEOUT = 20
+# The window the phone layout check reloads the page in.
+PHONE_SIZE = (390, 844)
 GRID_TIMEOUT = 30
 ALL_SECTIONS_TIMEOUT = 120
 # The lens must be up this long after the hover (a 50 ms rest plus one
@@ -80,11 +88,12 @@ return !inst.map.isMoving();
 """ % JS_INSTANCE
 
 # Among `features` (an expression on `inst`), the one with data nearest the
-# map's centre (farthest, with `farthest`) whose bounds centre lands on bare
-# canvas (not under the toolbar or a panel) and actually on the feature (an
+# map's centre (farthest, with `farthest`; nearest the canvas point `ref_expr`
+# returns, as [x, y], when given) whose bounds centre lands on bare canvas
+# (not under the toolbar or a panel) and actually on the feature (an
 # irregular edge township's bounds centre can fall outside it), as an
 # offset from the container's centre for a pointer action.
-def js_pick(features_expr, farthest=False):
+def js_pick(features_expr, farthest=False, ref_expr=None):
     return """
 function bboxOf(f) {
   if (f.bbox) return f.bbox;
@@ -98,8 +107,10 @@ function bboxOf(f) {
 var canvas = inst.map.getCanvas();
 var rect = canvas.getBoundingClientRect();
 var fills = ['grid-fill', 'lens-fill', 'all-sections-fill'].filter(function (l) { return inst.map.getLayer(l); });
-// A marker over the cell would take the click.
-var markers = ['notices-circle', 'locations-circle'].filter(function (l) { return inst.map.getLayer(l); });
+// A marker (or its wider hit disc) over the cell would take the click.
+var markers = ['notices-circle', 'notices-hit', 'locations-circle', 'locations-hit'].filter(function (l) { return inst.map.getLayer(l); });
+// Distances are measured from `ref` (the container's centre unless given).
+var ref = (function () { %s })() || [rect.width / 2, rect.height / 2];
 var best = null;
 (%s).forEach(function (f) {
   if (!(f.properties.value > 0) || !f.geometry) return;
@@ -109,11 +120,11 @@ var best = null;
   if (document.elementFromPoint(rect.left + p.x, rect.top + p.y) !== canvas) return;
   if (!inst.map.queryRenderedFeatures(p, { layers: fills }).some(function (r) { return r.id === f.properties.id; })) return;
   if (inst.map.queryRenderedFeatures(p, { layers: markers }).length) return;
-  var d = Math.hypot(p.x - rect.width / 2, p.y - rect.height / 2);
+  var d = Math.hypot(p.x - ref[0], p.y - ref[1]);
   if (!best || (%s)) best = { id: f.properties.id, dx: p.x - rect.width / 2, dy: p.y - rect.height / 2, d: d };
 });
 return best;
-""" % (features_expr, 'd > best.d' if farthest else 'd < best.d')
+""" % (ref_expr or 'return null;', features_expr, 'd > best.d' if farthest else 'd < best.d')
 
 # Among the `source`'s point features, the one nearest the map's centre
 # that is rendered on `layer` at a spot on bare canvas, as an offset from
@@ -158,17 +169,27 @@ def browser():
 class Page:
     """One loaded page: the driver plus helpers the checks share."""
 
-    def __init__(self, driver, url):
+    def __init__(self, driver, url, screenshots=None, name=None):
         self.driver = driver
         self.url = url
         parsed = urlparse(url)
         self.origin = '%s://%s' % (parsed.scheme, parsed.netloc)
+        self.screenshots = screenshots
+        self.name = name
         self.timings = {}
         self.errors = []
+        self.prepare()
+
+    def prepare(self):
+        """After a load: the Performance API buffer and the dev-only chrome."""
         # The checks count requests through the Performance API; the
         # default buffer (250 entries) fills with basemap tiles and glyphs
         # within seconds, after which new entries are dropped.
         self.js('performance.setResourceTimingBufferSize(20000)')
+        # The Django Debug Toolbar (dev only) opens over a phone-sized
+        # window; it isn't the page under test. Hidden, not removed: its own
+        # script expects the element.
+        self.js("var djdt = document.getElementById('djDebug'); if (djdt) djdt.style.display = 'none';")
 
     def js(self, script, *args):
         return self.driver.execute_script(script, *args)
@@ -194,6 +215,22 @@ class Page:
     def wait_idle(self, timeout=20):
         """Wait for the map to finish rendering (sources loaded, no pending tiles)."""
         return self.wait_for('var inst = (function () { %s })(); return !!(inst && inst.map && inst.map.loaded() && !inst.map.isMoving());' % JS_INSTANCE, timeout)
+
+    def wait_still(self, quiet=0.7, timeout=10):
+        """Wait until the camera has been still for `quiet` seconds (a pan
+        can follow another after a beat)."""
+        deadline = time.time() + timeout
+        still_since = None
+        while time.time() < deadline:
+            moving = self.instance_js('return inst.map.isMoving()')
+            if moving:
+                still_since = None
+            elif still_since is None:
+                still_since = time.time()
+            elif time.time() - still_since >= quiet:
+                return True
+            time.sleep(0.1)
+        return False
 
     def wait_grid(self, level=None, timeout=GRID_TIMEOUT):
         """Wait for the grid (at `level`, if given) to be on the map; seconds taken."""
@@ -268,10 +305,29 @@ class Page:
     def sections_requests(self):
         return [r for r in self.grid_requests() if r[0] == 'sections']
 
-    def pick(self, features_expr, farthest=False):
+    def pick(self, features_expr, farthest=False, ref_expr=None):
         """A clickable feature with data (see js_pick), or None."""
         self.scroll_to_map()
-        return self.instance_js(js_pick(features_expr, farthest))
+        return self.instance_js(js_pick(features_expr, farthest, ref_expr))
+
+    def rects(self):
+        """The container, toolbar, legend panel and popup rects (viewport
+        pixels; a missing element is None)."""
+        return self.js("""
+            var r = function (sel) { var el = document.querySelector(sel); if (!el || el.hidden) return null;
+                var b = el.getBoundingClientRect(); return b.width && b.height ? { left: b.left, top: b.top, right: b.right, bottom: b.bottom } : null; };
+            return { map: r('.section-map'), toolbar: r('.section-map-toolbar'), legend: r('.section-map-legend-panel'),
+                     popup: r('.maplibregl-popup.section-popup-wrap') };
+        """)
+
+    def screenshot(self, suffix=''):
+        """Save a screenshot as <name><suffix>.png into the screenshots
+        directory, when one was given."""
+        if not self.screenshots:
+            return
+        os.makedirs(self.screenshots, exist_ok=True)
+        self.scroll_to_map()
+        self.driver.save_screenshot(os.path.join(self.screenshots, self.name + suffix + '.png'))
 
     def pick_point(self, source, layer):
         """A clickable marker (see js_pick_point), or None."""
@@ -363,29 +419,42 @@ def check_map_loaded(page):
 
 def check_layers(page):
     """Every layer is in the style, under the basemap's labels, in the
-    expected paint order (grid under the county lines, county lines under
-    the page outline); the county outlines have data; the outline/radius
+    expected paint order: the fills (grid, sections, the page outline's
+    wash) under the basemap's water and roads, then the lines (grid under
+    the county lines, county lines under the page outline) and markers
+    under the labels; the county outlines have data; the outline/radius
     layers carry data when the page asks for them."""
     result = page.instance_js("""
         var map = inst.map;
-        var layers = map.getStyle().layers.map(function (l) { return l.id; });
+        var all = map.getStyle().layers;
+        var layers = all.map(function (l) { return l.id; });
         var firstSymbol = -1;
-        map.getStyle().layers.some(function (l, i) { if (l.type === 'symbol') { firstSymbol = i; return true; } });
-        var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line', 'all-sections-fill', 'all-sections-line',
-                    'lens-fill', 'lens-line', 'lens-outline',
-                    'selected-line', 'highlight-line', 'counties-line', 'outline-fill', 'outline-line',
-                    'locations-circle', 'notices-circle', 'locate-circle'];
+        all.some(function (l, i) { if (l.type === 'symbol') { firstSymbol = i; return true; } });
+        var roads = all.filter(function (l) { return l.type === 'line' && (l['source-layer'] === 'road' || l['source-layer'] === 'transportation'); }).map(function (l) { return layers.indexOf(l.id); });
+        var water = all.filter(function (l) { return l.type === 'fill' && l['source-layer'] === 'water'; }).map(function (l) { return layers.indexOf(l.id); });
+        var fills = ['radius-fill', 'grid-fill', 'all-sections-fill', 'lens-fill', 'outline-fill'];
+        var lines = ['radius-line', 'grid-line', 'all-sections-line', 'lens-line', 'lens-outline',
+                     'selected-line', 'highlight-line', 'counties-line', 'outline-line',
+                     'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'locate-circle'];
+        var mine = fills.concat(lines);
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
         var aboveLabels = mine.filter(function (id) { return firstSymbol !== -1 && layers.indexOf(id) > firstSymbol; });
-        var order = mine.filter(function (id) { return layers.indexOf(id) !== -1; }).map(function (id) { return layers.indexOf(id); });
-        var inOrder = order.every(function (i, n) { return n === 0 || i > order[n - 1]; });
+        var ordered = function (ids) {
+            var order = ids.filter(function (id) { return layers.indexOf(id) !== -1; }).map(function (id) { return layers.indexOf(id); });
+            return order.every(function (i, n) { return n === 0 || i > order[n - 1]; });
+        };
+        var gridFill = layers.indexOf('grid-fill'), gridLine = layers.indexOf('grid-line');
+        var underRoads = roads.length ? roads.some(function (i) { return i > gridFill && i < gridLine; }) : null;
+        var underWater = water.length ? water.some(function (i) { return i > gridFill && i < gridLine; }) : null;
         var counts = {};
         ['counties', 'outline', 'radius'].forEach(function (id) {
             var d = inst.sourceData[id];
             counts[id] = d ? (d.features ? d.features.length : (d.geometry ? 1 : 0)) : 0;
         });
-        return { missing: missing, aboveLabels: aboveLabels, inOrder: inOrder, counts: counts,
-                 wantsOutline: !!inst.data.outlineUrl, wantsRadius: !!inst.data.radius };
+        return { missing: missing, aboveLabels: aboveLabels, fillsInOrder: ordered(fills), linesInOrder: ordered(lines),
+                 fillsUnderLines: Math.max.apply(null, fills.map(function (id) { return layers.indexOf(id); })) < Math.min.apply(null, lines.map(function (id) { return layers.indexOf(id); })),
+                 underRoads: underRoads, underWater: underWater, roads: roads.length, water: water.length,
+                 counts: counts, wantsOutline: !!inst.data.outlineUrl, wantsRadius: !!inst.data.radius };
     """)
     if result is None:
         return False, 'no instance'
@@ -394,8 +463,14 @@ def check_layers(page):
         problems.append('missing layers %s' % result['missing'])
     if result['aboveLabels']:
         problems.append('layers above labels %s' % result['aboveLabels'])
-    if not result['inOrder']:
+    if not (result['fillsInOrder'] and result['linesInOrder'] and result['fillsUnderLines']):
         problems.append('layers out of paint order')
+    if result['underRoads'] is False:
+        problems.append('no road layer between grid-fill and grid-line')
+    if result['underWater'] is False:
+        problems.append('no water layer between grid-fill and grid-line')
+    if result['underRoads'] is None and result['underWater'] is None:
+        problems.append('the style has no road or water layers to sit under')
     if not result['counts']['counties']:
         problems.append('counties source empty')
     if result['wantsOutline'] and not result['counts']['outline']:
@@ -403,6 +478,7 @@ def check_layers(page):
     if result['wantsRadius'] and not result['counts']['radius']:
         problems.append('radius source empty')
     detail = 'counties=%(counties)s outline=%(outline)s radius=%(radius)s' % result['counts']
+    detail += '; fills under %d road and %d water layers' % (result['roads'], result['water'])
     return (not problems), (detail if not problems else '; '.join(problems))
 
 
@@ -1152,44 +1228,134 @@ def check_selection_survives_metric(page):
     return (not problems), ('selection %s kept, legend in %s' % (before, result['unit'].split(' ', 1)[-1]) if not problems else '; '.join(problems))
 
 
+def check_popup_clear(page):
+    """A section popup opened beside the legend panel (where its box would
+    lie over the panel) is panned clear: after the map settles the popup
+    sits inside the map, under the toolbar band, and off the legend."""
+    ok, _ = page.wait_grid('section', 10)
+    if not ok:
+        return False, 'not at the section grid'
+    rects = page.rects()
+    if not rects['legend']:
+        return None, 'no legend panel (skipped)'
+    # The cell with data nearest the legend's top-right corner, a little
+    # inside the canvas from it, so the popup (centred on the cell) would
+    # overlap the panel.
+    target = page.pick('inst.sourceData.grid.features', ref_expr="""
+        var lr = document.querySelector('.section-map-legend-panel').getBoundingClientRect();
+        return [lr.right - rect.left + 40, lr.top - rect.top + 40];
+    """)
+    if not target:
+        return False, 'no section with data on bare canvas near the legend'
+    centre_before = page.instance_js('return inst.map.getCenter().toArray()')
+    page.click_map(target['dx'], target['dy'], settle=0.3, instant=True)
+    filled = page.wait_for("""
+        var el = document.querySelector(arguments[0]);
+        return !!el && el.innerText.indexOf('Loading') === -1;
+    """, 15, POPUP)
+    page.wait_still()
+    rects = page.rects()
+    problems = []
+    if not filled or not rects['popup']:
+        problems.append('popup never opened/filled for %s' % target['id'])
+        return False, '; '.join(problems)
+    popup, box, legend, toolbar = rects['popup'], rects['map'], rects['legend'], rects['toolbar']
+    band = toolbar['bottom'] if toolbar else box['top'] + 56
+    overlap = lambda a, b: a['left'] < b['right'] and a['right'] > b['left'] and a['top'] < b['bottom'] and a['bottom'] > b['top']
+    if popup['left'] < box['left'] or popup['right'] > box['right'] or popup['top'] < box['top'] or popup['bottom'] > box['bottom']:
+        problems.append('popup runs off the map: %s vs %s' % (popup, box))
+    if popup['top'] < band:
+        problems.append('popup under the toolbar band (top %.0f < %.0f)' % (popup['top'], band))
+    if overlap(popup, legend):
+        problems.append('popup over the legend panel: %s vs %s' % (popup, legend))
+    centre_after = page.instance_js('return inst.map.getCenter().toArray()')
+    moved = centre_after != centre_before
+    detail = 'section %s beside the legend: popup %s (%s)' % (
+        target['id'], 'clear', 'map panned' if moved else 'no pan needed')
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+# Wraps fetch so the grid endpoints' responses land `delay` ms late (a slow
+# server), logging every request to the grid and marker endpoints, aborted
+# ones included; the Performance API wouldn't show those.
+JS_SLOW_FETCH = """
+if (window.__realFetch) return;
+window.__realFetch = window.fetch;
+window.__fetchLog = [];
+var delay = %d;
+window.fetch = function (url, opts) {
+  var name = String(url);
+  var kind = /\\/pesticides\\/sections\\/\\?/.test(name) ? 'sections' : /\\/pesticides\\/townships\\/\\?/.test(name) ? 'townships'
+    : /\\/pesticides\\/notices\\/active\\//.test(name) ? 'notices' : /\\/pesticides\\/locations\\//.test(name) ? 'locations' : null;
+  var p = window.__realFetch(url, opts);
+  if (!kind) return p;
+  window.__fetchLog.push(kind);
+  if (kind === 'sections' || kind === 'townships') {
+    return p.then(function (r) { return new Promise(function (resolve) { setTimeout(function () { resolve(r); }, delay); }); });
+  }
+  return p;
+};
+"""
+JS_RESTORE_FETCH = "if (window.__realFetch) { window.fetch = window.__realFetch; window.__realFetch = null; }"
+
+
 def check_year_swap(page, year):
     """Changing the year in the scope bar swaps the page over htmx; the map
     instance must survive it (adopted in place), the container carry the
-    new year, and no new MapTiler session start."""
+    new year, and no new MapTiler session start. With the grid response
+    held back past the loaders' debounce (the swap's resize fires a moveend
+    even at an unchanged size), the swap starts one grid request, not two,
+    and one per marker layer that's on."""
     link = page.js("""
         var links = document.querySelectorAll('.explorer-scope-picker[data-scope="year"] a[href*="year=%s"]');
         return links.length ? links[0].getAttribute('href') : null;
     """ % year)
     if not link:
-        return True, 'no year picker on this page (skipped)'
+        return None, 'no year picker on this page (skipped)'
     before = page.instance_js('return inst.el.id')
     page.js("window.__smokeInstance = (function () { %s })();" % JS_INSTANCE)
     sessions_before = set(page.maptiler_sessions())
-    page.js('document.querySelector(\'.explorer-scope-picker[data-scope="year"] a[href*="year=%s"]\').click()' % year)
-    swapped = page.wait_for("""
-        var inst = (function () { %s })();
-        return !!(inst && inst.data.year === '%s' && document.body.contains(inst.el));
-    """ % (JS_INSTANCE, year), SWAP_TIMEOUT)
-    if not swapped:
-        return False, 'container never carried year=%s after the swap' % year
-    same = page.js('var inst = (function () { %s })(); return inst === window.__smokeInstance;' % JS_INSTANCE)
-    if not same:
-        return False, 'a new map instance was created on the swap'
-    canvases = page.js("return document.querySelectorAll('canvas.maplibregl-canvas').length")
-    if canvases != 1:
-        return False, '%d map canvases after the swap' % canvases
-    page.wait_idle()
-    ok, _ = page.wait_grid()
-    if not ok:
-        return False, 'grid did not reload after the swap'
+    page.js(JS_SLOW_FETCH % 700)
+    try:
+        page.js('document.querySelector(\'.explorer-scope-picker[data-scope="year"] a[href*="year=%s"]\').click()' % year)
+        swapped = page.wait_for("""
+            var inst = (function () { %s })();
+            return !!(inst && inst.data.year === '%s' && document.body.contains(inst.el));
+        """ % (JS_INSTANCE, year), SWAP_TIMEOUT)
+        if not swapped:
+            return False, 'container never carried year=%s after the swap' % year
+        same = page.js('var inst = (function () { %s })(); return inst === window.__smokeInstance;' % JS_INSTANCE)
+        if not same:
+            return False, 'a new map instance was created on the swap'
+        canvases = page.js("return document.querySelectorAll('canvas.maplibregl-canvas').length")
+        if canvases != 1:
+            return False, '%d map canvases after the swap' % canvases
+        page.wait_idle()
+        ok, _ = page.wait_grid()
+        if not ok:
+            return False, 'grid did not reload after the swap'
+        # Past the debounce and the held-back response, so a duplicate would
+        # have been started by now.
+        time.sleep(1.5)
+        log = page.js('return window.__fetchLog')
+    finally:
+        page.js(JS_RESTORE_FETCH)
+    counts = {kind: log.count(kind) for kind in ('sections', 'townships', 'notices', 'locations')}
+    problems = []
+    if counts['sections'] + counts['townships'] != 1:
+        problems.append('%d grid request(s) on the swap: %s' % (counts['sections'] + counts['townships'], log))
+    if counts['notices'] > 1 or counts['locations'] > 1:
+        problems.append('marker requests on the swap: %s' % log)
     sessions_after = set(page.maptiler_sessions())
     new_sessions = sessions_after - sessions_before
     if sessions_before and new_sessions:
-        return False, 'new MapTiler session after the swap: %s' % sorted(new_sessions)
+        problems.append('new MapTiler session after the swap: %s' % sorted(new_sessions))
     if year not in page.driver.current_url:
-        return False, 'URL did not change: %s' % page.driver.current_url
+        problems.append('URL did not change: %s' % page.driver.current_url)
     after = page.instance_js('return inst.el.id')
-    return True, 'same instance (container %s -> %s), %d session(s)' % (before, after, len(sessions_after))
+    detail = 'same instance (container %s -> %s), %d session(s); requests %s with the grid response held 700 ms' % (
+        before, after, len(sessions_after), log)
+    return (not problems), (detail if not problems else '; '.join(problems))
 
 
 def check_expand(page):
@@ -1232,8 +1398,99 @@ def check_expand(page):
     return (not problems), ('%s -> %s -> %s px' % (width_before, width_after, width_back) if not problems else '; '.join(problems))
 
 
+def check_phone_layout(page):
+    """Reloaded in a phone-sized window (no stored panel state): the legend
+    panel starts folded, the filter buttons are icon-only, the attribution
+    is folded to its button, the status pill is centred, and a cell's popup
+    has a touch-sized close button and fits the phone's map (inside it,
+    under the toolbar band, off the folded legend). Saves the `-phone`
+    screenshot. Leaves the page in the phone window."""
+    page.console_errors()   # the log so far, before the reload
+    page.driver.set_window_size(*PHONE_SIZE)
+    page.js('try { localStorage.clear(); } catch (err) {}')
+    page.driver.get(page.url)
+    page.prepare()
+    if not page.wait_for_map():
+        return False, 'map never loaded in the phone window'
+    ok, _ = page.wait_grid()
+    if not ok:
+        return False, 'grid never loaded in the phone window'
+    # The markers too, so the cell picked below is judged against them.
+    if page.instance_js('return inst.showNotices && !!inst.data.noticesUrl'):
+        page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedNoticeBounds);' % JS_INSTANCE, 20)
+    page.wait_idle()
+    time.sleep(0.5)
+    result = page.js("""
+        var wrap = document.querySelector('.section-map-wrap');
+        var legend = wrap.querySelector('.section-map-legend-panel');
+        var labels = Array.from(wrap.querySelectorAll('.section-map-toolbar-filters .section-map-toolbar-label'));
+        var attrib = wrap.querySelector('.maplibregl-ctrl-attrib');
+        var status = wrap.querySelector('.section-map-status');
+        var mapRect = wrap.querySelector('.section-map').getBoundingClientRect();
+        status.textContent = 'probe';
+        var sr = status.getBoundingClientRect();
+        status.textContent = '';
+        return {
+            width: window.innerWidth,
+            collapsed: legend.classList.contains('is-collapsed') && legend.querySelector('.section-map-panel-toggle').getAttribute('aria-expanded') === 'false',
+            filters: labels.length,
+            iconOnly: labels.every(function (el) { return getComputedStyle(el).display === 'none'; }),
+            compact: !!attrib && attrib.classList.contains('maplibregl-compact'),
+            folded: !!attrib && !attrib.classList.contains('maplibregl-compact-show'),
+            statusCentred: Math.abs((sr.left + sr.right) / 2 - (mapRect.left + mapRect.right) / 2) < 2,
+            toggleHeight: legend.querySelector('.section-map-panel-toggle').getBoundingClientRect().height,
+        };
+    """)
+    problems = []
+    if result['width'] > 768:
+        problems.append('window is %dpx wide' % result['width'])
+    if not result['collapsed']:
+        problems.append('legend panel not folded by default')
+    if result['filters'] and not result['iconOnly']:
+        problems.append('filter buttons still show their labels')
+    if not result['compact'] or not result['folded']:
+        problems.append('attribution compact=%s folded=%s' % (result['compact'], result['folded']))
+    if not result['statusCentred']:
+        problems.append('status pill not centred')
+    if result['toggleHeight'] < 36:
+        problems.append('legend toggle %.0fpx tall' % result['toggleHeight'])
+    # A popup's close button is a touch target.
+    target = page.pick('inst.sourceData.grid.features')
+    close = None
+    clear = 'no cell to click'
+    if target:
+        page.click_map(target['dx'], target['dy'], settle=0.3, instant=True)
+        close = page.js("var b = document.querySelector('.maplibregl-popup-close-button'); return b ? b.getBoundingClientRect().width * b.getBoundingClientRect().height : null;")
+        if close is None or close < 32 * 32 - 1:
+            problems.append('popup close button %s px^2' % close)
+        # And, once the map settles, the popup fits the phone's map: inside
+        # it, under the toolbar band, off the (folded) legend.
+        page.wait_for("var el = document.querySelector(arguments[0]); return !!el && el.innerText.indexOf('Loading') === -1;", 15, POPUP)
+        page.wait_still()
+        rects = page.rects()
+        popup, box, legend, toolbar = rects['popup'], rects['map'], rects['legend'], rects['toolbar']
+        if not popup:
+            problems.append('popup gone')
+        else:
+            band = toolbar['bottom'] if toolbar else box['top'] + 56
+            if popup['left'] < box['left'] or popup['right'] > box['right'] or popup['top'] < box['top'] or popup['bottom'] > box['bottom']:
+                problems.append('popup runs off the map: %s vs %s' % (popup, box))
+            if popup['top'] < band:
+                problems.append('popup under the toolbar band (top %.0f < %.0f)' % (popup['top'], band))
+            if legend and popup['left'] < legend['right'] and popup['right'] > legend['left'] and popup['top'] < legend['bottom'] and popup['bottom'] > legend['top']:
+                problems.append('popup over the legend panel: %s vs %s' % (popup, legend))
+            clear = 'popup %.0fpx wide, clear' % (popup['right'] - popup['left'])
+    page.screenshot('-phone')
+    detail = '%dpx: legend folded, %d filter label(s) hidden, attribution folded, status centred, close button %s px^2, %s' % (
+        result['width'], result['filters'], 'n/a' if close is None else '%.0f' % close, clear)
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
 def check_console(page):
-    errors = page.console_errors()
+    """Console errors over the whole run (the phone layout check's reload
+    included)."""
+    page.console_errors()
+    errors = page.errors
     return (not errors), ('clean' if not errors else '\n      '.join(errors))
 
 
@@ -1253,8 +1510,10 @@ CHECKS = [
     ('township popup', check_township_popup),
     ('section popup', check_section_popup),
     ('selection', check_selection_survives_metric),
+    ('popup clear', check_popup_clear),
     ('year swap', check_year_swap),
     ('expand', check_expand),
+    ('phone layout', check_phone_layout),
     ('console', check_console),
 ]
 
@@ -1266,13 +1525,17 @@ def run_page(base, path, year, screenshots):
     rows = []
     try:
         driver.get(url)
-        page = Page(driver, url)
+        name = path.strip('/').replace('/', '_').replace('?', '_').replace('=', '-') or 'landing'
+        page = Page(driver, url, screenshots, name)
         page.timings['page_get_s'] = round(time.time() - started, 2)
         failed = False
         for name, check in CHECKS:
             if failed and name != 'console':
                 rows.append((name, None, 'skipped'))
                 continue
+            # The desktop screenshot, before the page is reloaded phone-sized.
+            if check is check_phone_layout:
+                page.screenshot()
             try:
                 if check is check_year_swap:
                     passed, detail = check(page, year)
@@ -1283,12 +1546,6 @@ def run_page(base, path, year, screenshots):
             rows.append((name, passed, detail))
             if not passed and name == 'map loaded':
                 failed = True
-        if screenshots:
-            import os
-            os.makedirs(screenshots, exist_ok=True)
-            name = path.strip('/').replace('/', '_').replace('?', '_').replace('=', '-') or 'landing'
-            page.scroll_to_map()
-            driver.save_screenshot(os.path.join(screenshots, name + '.png'))
         return url, rows, page.timings
     finally:
         driver.quit()

@@ -80,12 +80,19 @@
 
   // Fetch a bbox padded by half a viewport on each side, then skip the next
   // fetch while the viewport is still inside what we already have, so a pan
-  // (or a popup opening near the edge) doesn't rebuild the grid under an
-  // open popup.
+  // doesn't rebuild the grid under an open popup.
   var BBOX_PAD = 0.5;
 
-  // Wide enough for the top-chemicals table.
-  var POPUP_MAX_WIDTH = '320px';
+  // A popup is panned clear of the chrome floating over the map (see
+  // panPopupIntoView): the band the toolbar row takes across the top
+  // (10px in, 33px buttons, and a little under them), and the margin kept
+  // from the other edges and the legend panel.
+  var POPUP_CLEAR_TOP = 56;
+  var POPUP_CLEAR_EDGE = 10;
+
+  // Wide enough for the top-chemicals table (narrower on a map that can't
+  // hold it, see popupMaxWidth).
+  var POPUP_MAX_WIDTH = 320;
 
   var LEVEL_TEXT = {
     section: 'Each square is one square-mile section.',
@@ -95,8 +102,9 @@
 
   // The base grid: present, but barely, so the fills read as a surface.
   var GRID_LINE = { color: '#1f2d3d', opacity: 0.18 };
-  // The section whose popup is open keeps a modest outline until it closes.
-  var SELECTED_LINE = { color: '#1f2d3d', opacity: 0.9, width: 1.5 };
+  // The section whose popup is open keeps an outline until it closes: the
+  // link blue, so it reads apart from the dark hover stroke.
+  var SELECTED_LINE = { color: '#3273dc', opacity: 1, width: 2 };
   // The page's own section (a section page), in the notices orange.
   var HIGHLIGHT_LINE = { color: '#d35400', opacity: 1, width: 3 };
   // Fill opacities [with data, without]: the grid, and sections drawn at
@@ -212,8 +220,11 @@
   }
 
   function formatNumber(value) {
+    var number = Number(value || 0);
+    // A trace amount rounds to "0", which reads as none; say "<1" instead.
+    if (number > 0 && number < 0.5) return '<1';
     try {
-      return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+      return number.toLocaleString(undefined, { maximumFractionDigits: 0 });
     } catch (err) {
       return String(value);
     }
@@ -374,6 +385,9 @@
   // The popup offset clears the dot so its tip doesn't sit on the marker.
   var NOTICE_MARKER = { radius: 8, opacity: 0.9, stroke: 1.5 };
   var LOCATION_MARKER = { radius: 5, opacity: 0.95, stroke: 1.5 };
+  // An invisible disc under each marker, wide enough for a finger, that
+  // takes the marker's hover and click (see addBaseLayers, bindMarkerEvents).
+  var MARKER_HIT_RADIUS = 12;
   // Markers are points, not a grid: further out than this the viewport holds
   // thousands of them, so the layer stays off and the legend says why.
   var LOCATIONS_MIN_ZOOM = 9;
@@ -394,6 +408,15 @@
   var SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/';
 
   var EMPTY = { type: 'FeatureCollection', features: [] };
+
+  var PHONE_QUERY = '(max-width: 768px)';
+  function isPhone() {
+    try {
+      return !!window.matchMedia && window.matchMedia(PHONE_QUERY).matches;
+    } catch (err) {
+      return false;
+    }
+  }
 
   function prefersReducedMotion() {
     try {
@@ -732,6 +755,13 @@
     this.loadedLevel = null;
     this.loadedNoticeBounds = null;
     this.loadedLocationBounds = null;
+    // What each family's request in flight covers (the grid's level and
+    // bounds; bounds for the markers), so a second call while it's in the
+    // air (the moveend a resize fires, see adopt) doesn't start the same
+    // request over. Cleared when the request lands, whichever way.
+    this.gridRequest = null;
+    this.noticesRequest = null;
+    this.locationsRequest = null;
     this.lensCache = {};
     this.pendingLocate = null;
     // The grid on the map: its features (classed in place), by id, and the
@@ -807,7 +837,7 @@
     this.legendPanelEl = wrap.querySelector('.section-map-legend-panel');
     this.legendEl = wrap.querySelector('.section-map-legend');
     this.levelEl = wrap.querySelector('.section-map-level');
-    this.statusEl = this.controlsEl ? this.controlsEl.querySelector('.section-map-status') : null;
+    this.statusEl = wrap.querySelector('.section-map-status');
 
     if (this.toolbarEl) this.toolbarEl.hidden = false;
     if (this.legendPanelEl) this.legendPanelEl.hidden = false;
@@ -929,6 +959,8 @@
           dropdown.classList.toggle('is-active', open);
           trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
           if (open) {
+            // The menu drops over the map; a popup under it is let go of.
+            if (self.popup) self.popup.remove();
             var focusable = dropdown.querySelector('input[type="search"], select');
             if (focusable) focusable.focus();
           }
@@ -957,11 +989,13 @@
   // can be absent or throw, and the panels must work regardless.
   var PANEL_STORAGE_PREFIX = 'pesticides:section-map:panel:';
 
+  // The stored fold (true = collapsed), or null where nothing is stored.
   function readPanelState(name) {
     try {
-      return window.localStorage.getItem(PANEL_STORAGE_PREFIX + name) === 'collapsed';
+      var stored = window.localStorage.getItem(PANEL_STORAGE_PREFIX + name);
+      return stored === null ? null : stored === 'collapsed';
     } catch (err) {
-      return false;
+      return null;
     }
   }
 
@@ -976,7 +1010,10 @@
   SectionMap.prototype.bindPanelToggles = function (wrap) {
     var panels = wrap.querySelectorAll('.section-map-panel[data-panel]');
     for (var i = 0; i < panels.length; i++) {
-      this.setPanelCollapsed(panels[i], readPanelState(panels[i].getAttribute('data-panel')));
+      // Until the reader has folded a panel themselves, it starts open on
+      // a desktop and folded on a phone, where it would cover the map.
+      var stored = readPanelState(panels[i].getAttribute('data-panel'));
+      this.setPanelCollapsed(panels[i], stored === null ? isPhone() : stored);
       var toggle = panels[i].querySelector('.section-map-panel-toggle');
       if (!toggle || toggle.getAttribute('data-bound')) continue;
       toggle.setAttribute('data-bound', '1');
@@ -1147,7 +1184,10 @@
       pitchWithRotate: false,
       dragRotate: false,
       touchPitch: false,
-      attributionControl: { compact: true },
+      // The attribution folds to an (i) button only on a narrow map; the
+      // MapTiler logo, where the key calls for one, joins it bottom-right.
+      attributionControl: { compact: 'auto' },
+      logoPosition: 'bottom-right',
     });
     this.map.touchZoomRotate.disableRotation();
     this.map.keyboard.disableRotation();
@@ -1176,7 +1216,10 @@
     // time included. Until then setSourceData just keeps the data, and the
     // camera takes fits and moves straight away, so nothing below waits.
     this.map.on('style.load', this.onStyleLoad.bind(this));
-    this.map.once('load', function () { self.loaded = true; });
+    this.map.once('load', function () {
+      self.loaded = true;
+      self.collapseAttribution();
+    });
 
     // Zoom buttons first, then ours under them. The SDK adds its own
     // navigation control after the first render, which would have put it
@@ -1200,6 +1243,11 @@
     // Section strokes switch on/off across SECTION_LINES_MIN_ZOOM.
     this.map.on('zoomend', this.restyleSectionLines.bind(this));
 
+    // A page framed by a fit that follows the counties (the valley, or a
+    // county filter) would otherwise load its grid at the placeholder view
+    // and again where the fit lands: the loaders wait for the fit instead
+    // (see settleFit).
+    this.pendingFit = !!this.data.countiesUrl && (this.data.fit === 'valley' || !!this.data.county);
     this.loadCounties();
     this.loadOutline();
     this.loadGrid();
@@ -1211,16 +1259,43 @@
     this.addBaseLayers();
   };
 
-  // -- sources and layers --
-  // Every data layer goes in below the basemap's first symbol layer, so the
-  // place labels read over the choropleth. Serialises the style, so
-  // addBaseLayers asks once and passes the answer to each ensureLayer.
-  SectionMap.prototype.beforeLabels = function () {
-    var layers = (this.map.getStyle() || {}).layers || [];
-    for (var i = 0; i < layers.length; i++) {
-      if (layers[i].type === 'symbol') return layers[i].id;
+  // The SDK's attribution goes compact on a narrow map (an (i) button that
+  // opens the text) but starts expanded until the first move; on a phone
+  // it starts folded instead, out of the legend's way.
+  SectionMap.prototype.collapseAttribution = function () {
+    if (!this.map) return;
+    var attrib = this.el.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact');
+    if (attrib && attrib.classList.contains('maplibregl-compact-show')) {
+      // As the SDK's own toggle folds it.
+      attrib.classList.remove('maplibregl-compact-show');
+      attrib.setAttribute('open', '');
     }
-    return undefined;
+  };
+
+  // -- sources and layers --
+  // Where our layers go in the basemap. The fills go under its water and
+  // roads (before the first water fill or waterway line and the first road
+  // line, whichever comes lower in the style), so lakes, rivers and roads
+  // read over the choropleth; the lines and markers go under the first
+  // symbol layer, so only the labels are over them. A style without water
+  // or roads at all falls back to the labels. Serialises the style, so
+  // addBaseLayers asks once and passes the answers to each ensureLayer.
+  SectionMap.prototype.layerAnchors = function () {
+    var layers = (this.map.getStyle() || {}).layers || [];
+    var labels, fills;
+    for (var i = 0; i < layers.length; i++) {
+      var layer = layers[i];
+      var sourceLayer = layer['source-layer'];
+      if (!fills && ((layer.type === 'fill' && sourceLayer === 'water') ||
+          (layer.type === 'line' && (sourceLayer === 'waterway' || sourceLayer === 'road' || sourceLayer === 'transportation')))) {
+        fills = layer.id;
+      }
+      if (layer.type === 'symbol') {
+        labels = layer.id;
+        break;
+      }
+    }
+    return { fills: fills || labels, lines: labels };
   };
 
   // GeoJSON sources are keyed on our own feature ids (`promoteId`), so
@@ -1230,7 +1305,7 @@
     this.map.addSource(id, { type: 'geojson', data: this.sourceData[id] || EMPTY, promoteId: 'id' });
   };
 
-  // `before` is the label layer id from beforeLabels(), asked for once by
+  // `before` is an anchor layer id from layerAnchors(), asked for once by
   // the caller and passed to every layer it adds.
   SectionMap.prototype.ensureLayer = function (spec, before) {
     if (this.map.getLayer(spec.id)) return;
@@ -1247,16 +1322,20 @@
     if (source) source.setData(data);
   };
 
-  // Our sources and their layers, bottom to top: the radius circle, the
-  // grid, the sections drawn over it at the township zoom ("all sections",
-  // then the lens and the hovered township's outline over it), the
-  // selected and highlighted sections' outlines, the county lines, the
-  // page's own outline, the school and child care markers, the notice
-  // markers, and last the reader's located position
+  // Our sources and their layers, bottom to top: the fills (the radius
+  // circle, the grid, the sections drawn over it at the township zoom --
+  // "all sections", then the lens -- and the page's own outline's wash)
+  // go under the basemap's water and roads; over those, under its labels,
+  // the lines (the grids' strokes, the hovered township's outline over the
+  // lens, the selected and highlighted sections' outlines, the county
+  // lines, the page's own outline), the school and child care markers, the
+  // notice markers, and last the reader's located position
   // (`locate`/`locate-circle`), which stays on top of every marker.
   // Idempotent, so it can run on every style load.
   SectionMap.prototype.addBaseLayers = function () {
-    var before = this.beforeLabels();
+    var anchors = this.layerAnchors();
+    var before = anchors.lines;
+    var beforeFills = anchors.fills;
     this.ensureSource('radius');
     this.ensureSource('grid');
     this.ensureSource('all-sections');
@@ -1273,7 +1352,7 @@
     this.ensureLayer({
       id: 'radius-fill', type: 'fill', source: 'radius',
       paint: { 'fill-color': RADIUS_COLOR, 'fill-opacity': 0.2 },
-    }, before);
+    }, beforeFills);
     this.ensureLayer({
       id: 'radius-line', type: 'line', source: 'radius',
       paint: { 'line-color': RADIUS_COLOR, 'line-width': 3 },
@@ -1284,7 +1363,7 @@
     this.ensureLayer({
       id: 'grid-fill', type: 'fill', source: 'grid',
       paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': GRID_FILL_OPACITY },
-    }, before);
+    }, beforeFills);
     this.ensureLayer({
       id: 'grid-line', type: 'line', source: 'grid',
       paint: {
@@ -1296,17 +1375,18 @@
     // Every section in view at the township zoom ("all sections"), and the
     // lens (the hovered township's neighbourhood, see showLens): the same
     // paint, see sectionsFillPaint/sectionsLinePaint.
-    this.ensureLayer({ id: 'all-sections-fill', type: 'fill', source: 'all-sections', paint: sectionsFillPaint() }, before);
+    this.ensureLayer({ id: 'all-sections-fill', type: 'fill', source: 'all-sections', paint: sectionsFillPaint() }, beforeFills);
     this.ensureLayer({ id: 'all-sections-line', type: 'line', source: 'all-sections', paint: sectionsLinePaint() }, before);
-    this.ensureLayer({ id: 'lens-fill', type: 'fill', source: 'lens', paint: sectionsFillPaint() }, before);
+    this.ensureLayer({ id: 'lens-fill', type: 'fill', source: 'lens', paint: sectionsFillPaint() }, beforeFills);
     this.ensureLayer({ id: 'lens-line', type: 'line', source: 'lens', paint: sectionsLinePaint() }, before);
     // The hovered township's own outline, over the lens sections (which
     // would otherwise paint over its hover border), in the township hover
-    // stroke (see drawLensOutline).
+    // stroke of a township with data, the only kind that gets one (see
+    // drawLensOutline).
     this.ensureLayer({
       id: 'lens-outline', type: 'line', source: 'lens-outline',
       layout: { 'line-join': 'round' },
-      paint: { 'line-color': GRID_HOVER_COLOR, 'line-opacity': 1, 'line-width': 2.5 },
+      paint: { 'line-color': '#222', 'line-opacity': 1, 'line-width': 2.5 },
     }, before);
     // The section whose popup is open, and the page's own section.
     this.ensureLayer({
@@ -1328,7 +1408,7 @@
     this.ensureLayer({
       id: 'outline-fill', type: 'fill', source: 'outline',
       paint: { 'fill-color': OUTLINE_COLOR, 'fill-opacity': 0.08 },
-    }, before);
+    }, beforeFills);
     this.ensureLayer({
       id: 'outline-line', type: 'line', source: 'outline',
       layout: { 'line-join': 'round' },
@@ -1338,7 +1418,14 @@
     // them the notices of intent. Both sit over the grid and outlines and
     // under the reader's located position. The locations layer hides
     // itself below the zoom the markers load at (see loadLocations, which
-    // clears the source there too).
+    // clears the source there too). Under each marker layer is its hit
+    // disc: invisible, wide enough for a finger, taking the same hover and
+    // click as the marker (see bindMarkerEvents).
+    this.ensureLayer({
+      id: 'locations-hit', type: 'circle', source: 'locations',
+      minzoom: LOCATIONS_MIN_ZOOM,
+      paint: { 'circle-radius': MARKER_HIT_RADIUS, 'circle-opacity': 0, 'circle-stroke-width': 0 },
+    }, before);
     this.ensureLayer({
       id: 'locations-circle', type: 'circle', source: 'locations',
       minzoom: LOCATIONS_MIN_ZOOM,
@@ -1353,6 +1440,10 @@
         'circle-stroke-color': '#fff',
         'circle-stroke-width': LOCATION_MARKER.stroke,
       },
+    }, before);
+    this.ensureLayer({
+      id: 'notices-hit', type: 'circle', source: 'notices',
+      paint: { 'circle-radius': MARKER_HIT_RADIUS, 'circle-opacity': 0, 'circle-stroke-width': 0 },
     }, before);
     this.ensureLayer({
       id: 'notices-circle', type: 'circle', source: 'notices',
@@ -1431,6 +1522,7 @@
   };
 
   SectionMap.prototype.showLocation = function (latlng) {
+    if (!this.map) return;
     if (this.locateEl) this.locateEl.classList.remove('is-locating');
     this.setStatus('');
     this.setSourceData('locate', {
@@ -1528,6 +1620,11 @@
     if (dataChanged) {
       this.loadedBounds = null;
       this.loadedNoticeBounds = null;
+      // A request in flight was for the old filters: it no longer covers
+      // anything (the loaders below abort it).
+      this.gridRequest = null;
+      this.noticesRequest = null;
+      this.locationsRequest = null;
       // The cached lens/all-sections tiles were fetched under the old
       // filters; a fresh cache means in-flight fetches land in the old one
       // (fetchLensSections writes to the cache it started with) and any
@@ -1596,7 +1693,21 @@
       .catch(function (err) {
         if (isAbort(err) || self.countiesAbort !== abort) return;
         logError('failed to load counties', err);
+        // No fit is coming; the grid loads where the map is.
+        self.settleFit();
       });
+  };
+
+  // The fit the loaders were waiting for has been made (or isn't coming):
+  // they run now, once, for where it lands. An animated fit is still
+  // moving here, so they defer to its moveend (see loadGrid); a snap has
+  // already fired its moveend, whose debounced loads find these in flight.
+  SectionMap.prototype.settleFit = function () {
+    if (!this.pendingFit) return;
+    this.pendingFit = false;
+    this.loadGrid();
+    this.loadNotices();
+    this.loadLocations();
   };
 
   // With a county filter the map shows that county alone (the grid
@@ -1618,6 +1729,7 @@
       this.valleyFitted = true;
     }
     this.countyFitted = !!target;
+    this.settleFit();
   };
 
   // Draws the region this page is about (from the regions API) and fits the
@@ -1818,7 +1930,7 @@
   // Picks the grid for the current zoom: sections up close, townships
   // further out. Either way exactly one grid is in the `grid` source.
   SectionMap.prototype.loadGrid = function () {
-    if (!this.map) return;
+    if (!this.map || this.pendingFit) return;
     // Mid-animation the viewport is nowhere yet: the moveend that ends the
     // animation loads the grid for where it lands. (A resize also fires
     // moveend, and its debounced load can fall inside a fit's animation.)
@@ -1839,6 +1951,9 @@
       if (level === 'township' && this.showAllSections) this.loadAllSections();
       return;
     }
+    // The same grid is already on its way (a resize fires moveend even at
+    // an unchanged size, so the debounced load follows the immediate one).
+    if (this.gridRequest && this.gridRequest.level === level && this.covers(this.gridRequest.bounds)) return;
     if (level === 'section') {
       this.loadSections();
     } else {
@@ -1867,6 +1982,7 @@
     if (!this.data.sectionsUrl) return;
     var abort = this.startRequest('grid');
     var bounds = this.fetchBounds(unpadded);
+    var request = this.gridRequest = { level: 'section', bounds: bounds };
     var params = this.commonParams();
     params.bbox = bboxParam(bounds);
     this.setStatus('Loading sections…');
@@ -1874,6 +1990,7 @@
     var self = this;
     fetchJson(this.data.sectionsUrl, params, abort)
       .then(function (geojson) {
+        if (self.gridRequest === request) self.gridRequest = null;
         if (self.gridAbort !== abort) return; // stale response
         self.setStatus('');
         self.loadedBounds = bounds;
@@ -1881,6 +1998,7 @@
         self.renderGrid(geojson, 'section');
       })
       .catch(function (err) {
+        if (self.gridRequest === request) self.gridRequest = null;
         if (isAbort(err) || self.gridAbort !== abort) return;
         if (err.status === 400) {
           // The endpoint caps how many sections it will return, and the padded
@@ -1911,6 +2029,7 @@
     if (!this.data.townshipsUrl) return;
     var abort = this.startRequest('grid');
     var bounds = this.fetchBounds();
+    var request = this.gridRequest = { level: 'township', bounds: bounds };
     var params = this.commonParams();
     params.bbox = bboxParam(bounds);
     // Outlines don't change between years or filters, so after the first
@@ -1924,6 +2043,7 @@
     var self = this;
     fetchJson(this.data.townshipsUrl, params, abort)
       .then(function (geojson) {
+        if (self.gridRequest === request) self.gridRequest = null;
         if (self.gridAbort !== abort) return; // stale response
         if (valuesOnly && !self.attachTownshipGeometry(geojson)) {
           // Something in view isn't in the outline cache: fetch it fully.
@@ -1939,6 +2059,7 @@
         if (self.showAllSections) self.loadAllSections();
       })
       .catch(function (err) {
+        if (self.gridRequest === request) self.gridRequest = null;
         if (isAbort(err) || self.gridAbort !== abort) return;
         logError('failed to load townships', err);
         self.clearGrid();
@@ -2118,26 +2239,39 @@
   // Bound once, before the grid's listeners (see init): a click on a marker
   // is the marker's, not the cell under it. Notices sit over locations, so
   // a notice takes a click where the two overlap.
+  // Each marker layer and its hit disc (see addBaseLayers) share one set of
+  // handlers; the disc is bound after the marker, so a pointer sliding off
+  // the dot into the disc is re-hovered in the same event.
   SectionMap.prototype.bindMarkerEvents = function () {
     var self = this;
     var map = this.map;
-    map.on('mousemove', 'notices-circle', function (event) { self.setHover('notices', event.features[0].id); });
-    map.on('mouseleave', 'notices-circle', function () { self.clearHover('notices'); });
-    map.on('mousemove', 'locations-circle', function (event) { self.setHover('locations', event.features[0].id); });
-    map.on('mouseleave', 'locations-circle', function () { self.clearHover('locations'); });
-    map.on('click', 'notices-circle', function (event) {
+    var onNoticeMove = function (event) { self.setHover('notices', event.features[0].id); };
+    var onNoticeLeave = function () { self.clearHover('notices'); };
+    var onNoticeClick = function (event) {
       if (event.originalEvent.sectionMapTaken) return;
       var feature = self.noticeById[event.features[0].id];
       if (!feature) return;
       event.originalEvent.sectionMapTaken = true;
       self.openNoticePopup(feature);
-    });
-    map.on('click', 'locations-circle', function (event) {
+    };
+    var onLocationMove = function (event) { self.setHover('locations', event.features[0].id); };
+    var onLocationLeave = function () { self.clearHover('locations'); };
+    var onLocationClick = function (event) {
       if (event.originalEvent.sectionMapTaken) return;
       var feature = self.locationById[event.features[0].id];
       if (!feature) return;
       event.originalEvent.sectionMapTaken = true;
       self.openLocationPopup(feature);
+    };
+    ['notices-circle', 'notices-hit'].forEach(function (layer) {
+      map.on('mousemove', layer, onNoticeMove);
+      map.on('mouseleave', layer, onNoticeLeave);
+      map.on('click', layer, onNoticeClick);
+    });
+    ['locations-circle', 'locations-hit'].forEach(function (layer) {
+      map.on('mousemove', layer, onLocationMove);
+      map.on('mouseleave', layer, onLocationLeave);
+      map.on('click', layer, onLocationClick);
     });
   };
 
@@ -2263,12 +2397,13 @@
     if (this.popup) {
       // Moving the one popup rather than replacing it keeps a section's
       // popup from blinking when its grid is rebuilt under it.
-      this.popup.setOffset(offset || 0).setLngLat(lngLat).setHTML(html);
+      this.popup.setOffset(offset || 0).setMaxWidth(this.popupMaxWidth()).setLngLat(lngLat).setHTML(html);
+      this.panPopupIntoView();
       return this.popup;
     }
     var popup = new maptilersdk.Popup({
       className: 'section-popup-wrap',
-      maxWidth: POPUP_MAX_WIDTH,
+      maxWidth: this.popupMaxWidth(),
       closeButton: true,
       closeOnClick: false,
       focusAfterOpen: false,
@@ -2291,7 +2426,86 @@
     });
     this.popup = popup;
     this.bindPopupButtons(popup.getElement());
+    this.panPopupIntoView();
     return popup;
+  };
+
+  // The popup's width: its own, or what the map can hold with the edge
+  // margin on both sides (a phone). The SDK anchors a popup to whichever
+  // side of its point has room, so one wider than that room has no stable
+  // side: the nudge panPopupIntoView gives it can flip the anchor and put
+  // it off the other edge. Inside the room, a nudge is at most the margin
+  // and never crosses the band where the SDK centres it.
+  SectionMap.prototype.popupMaxWidth = function () {
+    var room = this.el.clientWidth - 2 * POPUP_CLEAR_EDGE;
+    return Math.min(POPUP_MAX_WIDTH, room > 0 ? room : POPUP_MAX_WIDTH) + 'px';
+  };
+
+  // Pans the map, by as little as it takes, so the open popup is clear of
+  // the map's edges, the toolbar band across the top, and the legend
+  // panel. The SDK's popup flips its anchor to stay inside the map, but
+  // can't see the chrome floating over it; this can. Also run when a
+  // popup grows (its detail landing), since that can push it under them.
+  // The popup can also grow a beat after it opens (the icon font swaps its
+  // glyphs in and the pills wrap), so one more look follows the first:
+  // once the pan has landed or, without one, on the next tick.
+  SectionMap.prototype.panPopupIntoView = function (again) {
+    if (!this.map || !this.popup) return;
+    var self = this;
+    var popup = this.popup;
+    var recheck = function () {
+      // A tick later, so the font's own DOM work has gone first.
+      setTimeout(function () { if (self.popup === popup) self.panPopupIntoView(true); }, 0);
+    };
+    var el = this.popup.getElement();
+    if (!el) return;
+    var rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    var box = this.el.getBoundingClientRect();
+    var inner = {
+      left: box.left + POPUP_CLEAR_EDGE,
+      top: box.top + POPUP_CLEAR_TOP,
+      right: box.right - POPUP_CLEAR_EDGE,
+      bottom: box.bottom - POPUP_CLEAR_EDGE,
+    };
+    // panBy moves the view, so the content goes the other way: a positive
+    // dx takes the popup left, a positive dy takes it up. A popup bigger
+    // than the room keeps its top-left edge in view.
+    var dx = 0;
+    var dy = 0;
+    if (rect.right > inner.right) dx = rect.right - inner.right;
+    if (rect.left - dx < inner.left) dx = rect.left - inner.left;
+    if (rect.bottom > inner.bottom) dy = rect.bottom - inner.bottom;
+    if (rect.top - dy < inner.top) dy = rect.top - inner.top;
+    // The legend: over it (up) or past it (right), whichever is the
+    // shorter move that keeps the popup in the room.
+    var legend = this.legendPanelEl && !this.legendPanelEl.hidden ? this.legendPanelEl.getBoundingClientRect() : null;
+    if (legend && legend.width && legend.height) {
+      var gap = POPUP_CLEAR_EDGE;
+      var moved = { left: rect.left - dx, right: rect.right - dx, top: rect.top - dy, bottom: rect.bottom - dy };
+      var overlaps = moved.left < legend.right + gap && moved.right > legend.left - gap &&
+        moved.top < legend.bottom + gap && moved.bottom > legend.top - gap;
+      if (overlaps) {
+        var up = moved.bottom - (legend.top - gap);
+        var right = moved.left - (legend.right + gap);
+        var upFits = moved.top - up >= inner.top;
+        var rightFits = moved.right - right <= inner.right;
+        if (upFits && (!rightFits || up <= -right)) {
+          dy += up;
+        } else if (rightFits) {
+          dx += right;
+        } else {
+          dy += up;
+        }
+      }
+    }
+    if (!dx && !dy) {
+      if (!again) recheck();
+      return;
+    }
+    // Before the pan: a snap (reduced motion) fires moveend inside panBy.
+    if (!again) this.map.once('moveend', recheck);
+    this.map.panBy([dx, dy], { animate: !this.reducedMotion });
   };
 
   // Takes the popup down on the map's own account (a rebuilt layer, a
@@ -2480,6 +2694,7 @@
           }).join('') + '</ul>';
         }
         self.popup.setHTML(self.sectionPopupHtml(props, detailHtml, latlng));
+        self.panPopupIntoView();
       })
       .catch(function (err) {
         logError('failed to load section detail', err);
@@ -2684,8 +2899,10 @@
     }
     this.allSectionsFeatures = this.allSectionsFeatures.concat(fresh);
     for (var i = 0; i < fresh.length; i++) this.allSectionsById[fresh[i].properties.id] = fresh[i];
-    // First sections in: classes over them so they don't draw unshaded.
-    if (!this.currentClassesAreSections) {
+    // First sections in: classes over them so they don't draw unshaded
+    // (a first block with no data at all gives no classes; the next one
+    // with data classes again rather than waiting on the reshade).
+    if (!this.currentClassesAreSections || !this.currentClasses.breaks.length) {
       this.currentClasses = quantileClasses(this.allSectionsFeatures.map(function (f) { return f.properties[self.metric]; }));
       this.currentClassesAreSections = true;
       this.updateLegend();
@@ -2735,12 +2952,14 @@
     }
   };
 
-  // `keepFlag` leaves the toggle on (a zoom to section level, where the
-  // mode is moot) rather than turning it off.
-  SectionMap.prototype.clearAllSections = function (keepFlag) {
+  // The mode switched off (the toggle unchecked): the drawn sections go
+  // (see resetAllSections) and the township grid gets its shades back. A
+  // zoom to the section level leaves the toggle on; renderGrid resets the
+  // layer there.
+  SectionMap.prototype.clearAllSections = function () {
     this.allSectionsRun = null;
     this.cancelAllSectionsDraw();
-    if (!keepFlag) this.showAllSections = false;
+    this.showAllSections = false;
     if (this.allSectionsAdded) {
       // The mode is going, so a popup on one of its sections goes with it
       // (nothing is about to reopen it); the selection outlives the layer.
@@ -2898,14 +3117,15 @@
 
   // The hovered township's own outline, on its own layer above the lens
   // sections (which would otherwise paint over the township's border), in
-  // the township hover stroke: dark when the township has data, lighter
-  // when it hasn't, matching the hover rule elsewhere.
+  // the township hover stroke -- and only for a township with data, as the
+  // Leaflet map drew it: a township without draws nothing to outline.
   SectionMap.prototype.drawLensOutline = function (show) {
-    var data = show && this.lensHost ? this.lensHost : EMPTY;
+    var host = show ? this.lensHost : null;
+    var data = host && host.properties.value > 0 ? host : EMPTY;
     // Every clearLens and every redraw passes through here: the source is
     // only re-sent when it changes. The host feature is the same object
-    // across a restyle, so its `value` (which the stroke colour reads) is
-    // compared too: a metric change can turn data into no data.
+    // across a restyle, so its `value` is compared too: a metric change
+    // can turn data into no data, and the outline with it.
     var value = data === EMPTY ? null : data.properties.value;
     if (this.sourceData['lens-outline'] === data && this.lensOutlineValue === value) return;
     this.lensOutlineValue = value;
@@ -3020,7 +3240,7 @@
 
   // -- notices of intent --
   SectionMap.prototype.loadNotices = function () {
-    if (!this.map || !this.data.noticesUrl) return;
+    if (!this.map || !this.data.noticesUrl || this.pendingFit) return;
     if (!this.showNotices) return;
     // Mid-animation the viewport is nowhere yet; the moveend that ends the
     // animation loads the markers for where it lands (as loadGrid).
@@ -3028,9 +3248,12 @@
     // Same padded-fetch/skip deal as the grid: don't rebuild the markers (and
     // drop an open popup) for a pan we already have data for.
     if (this.covers(this.loadedNoticeBounds)) return;
+    // ...or one already on its way (see loadGrid).
+    if (this.noticesRequest && this.covers(this.noticesRequest.bounds)) return;
 
     var abort = this.startRequest('notices');
     var bounds = this.fetchBounds();
+    var request = this.noticesRequest = { bounds: bounds };
     var params = {
       bbox: bboxParam(bounds),
       chemical: this.data.chemical,
@@ -3041,6 +3264,7 @@
     var self = this;
     fetchJson(this.data.noticesUrl, params, abort)
       .then(function (geojson) {
+        if (self.noticesRequest === request) self.noticesRequest = null;
         if (self.noticesAbort !== abort) return; // stale response
         // The toggle (or a page swap) can turn the markers off while the
         // request is in the air; AbortController isn't everywhere, and an
@@ -3050,6 +3274,7 @@
         self.renderNotices(geojson);
       })
       .catch(function (err) {
+        if (self.noticesRequest === request) self.noticesRequest = null;
         if (isAbort(err) || self.noticesAbort !== abort) return;
         // Zoomed way out the bbox can cover more notices than the endpoint
         // will return (it 400s past its cap); drop the markers and move on.
@@ -3144,7 +3369,7 @@
 
   // -- schools and child care --
   SectionMap.prototype.loadLocations = function () {
-    if (!this.map || !this.data.locationsUrl) return;
+    if (!this.map || !this.data.locationsUrl || this.pendingFit) return;
     if (this.map.isMoving()) return;
     this.updateLocationsNote();
     if (!this.showLocations) return;
@@ -3159,10 +3384,12 @@
     // padding is dropped rather than asking for a bbox the endpoint refuses
     // (see LOCATIONS_MAX_BBOX_DEGREES).
     if (this.covers(this.loadedLocationBounds)) return;
+    if (this.locationsRequest && this.covers(this.locationsRequest.bounds)) return;
 
     var abort = this.startRequest('locations');
     var bounds = this.fetchBounds();
     if (boundsSpan(bounds) > LOCATIONS_MAX_BBOX_DEGREES) bounds = this.fetchBounds(true);
+    var request = this.locationsRequest = { bounds: bounds };
     // The county scope goes along: the fetch bbox always overhangs the county
     // line, and a marker outside it would carry a popup figure from a county
     // this page isn't showing.
@@ -3174,12 +3401,14 @@
     var self = this;
     fetchJson(this.data.locationsUrl, params, abort)
       .then(function (geojson) {
+        if (self.locationsRequest === request) self.locationsRequest = null;
         if (self.locationsAbort !== abort) return; // stale response
         if (!self.showLocations) return;  // turned off while in flight
         self.loadedLocationBounds = bounds;
         self.renderLocations(geojson);
       })
       .catch(function (err) {
+        if (self.locationsRequest === request) self.locationsRequest = null;
         if (isAbort(err) || self.locationsAbort !== abort) return;
         logError('failed to load locations', err);
         self.loadedLocationBounds = null;
@@ -3252,6 +3481,7 @@
       .then(function (geojson) {
         if (!open()) return;
         self.popup.setHTML(self.locationPopupHtml(props, blockTotals(geojson, lngLat)));
+        self.panPopupIntoView();
       })
       .catch(function (err) {
         logError('failed to load a location block', err);

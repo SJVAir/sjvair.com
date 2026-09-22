@@ -31,7 +31,6 @@ from camp.apps.pesticides.models import (
     Product, ProductChemical,
 )
 from camp.apps.regions.models import Region
-from camp.utils import leaflet
 
 # Sentinel for "sqid didn't resolve to an object" in ExplorerListMixin.related.
 # Not Http404 -- that's an exception class, not a value, and using it as a
@@ -1034,7 +1033,6 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'chemical_page_url': page_url_pattern('pesticides:chemical-redirect'),
         'product_page_url': page_url_pattern('pesticides:product-redirect'),
         'notice_page_url': page_url_pattern('pesticides:notice-detail'),
-        'attribution': leaflet.TILE_ATTRIBUTION,
         # The MapTiler SDK map (section-map.js) takes the key and a style id
         # straight off the container.
         'maptiler_key': settings.MAPTILER_API_KEY,
