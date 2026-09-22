@@ -1,5 +1,8 @@
 import csv
 import io
+import re
+
+from urllib.parse import parse_qs
 
 from django.core.cache import cache
 from django.db import connection
@@ -7,7 +10,7 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from camp.apps.emissions import cepam
+from camp.apps.emissions import cepam, stats, views
 from camp.apps.emissions.models import CountyInventory, EmissionsRecord, Facility
 from camp.apps.regions.models import Region
 
@@ -157,13 +160,6 @@ class AboutTests(ViewTestCase):
         assert 'Eastern Kern' in content
         assert 'id="carb-estimates"' in content
         assert 'id="minor-sources"' in content
-
-
-import re
-
-from urllib.parse import parse_qs
-
-from camp.apps.emissions import stats, views
 
 
 class MapTests(ViewTestCase):

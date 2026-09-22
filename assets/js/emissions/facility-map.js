@@ -267,7 +267,13 @@
 
   FacilityMap.prototype.facilityUrl = function (id) {
     var url = (this.data.facilityUrl || '').replace('{id}', encodeURIComponent(id));
-    return url + (this.data.query ? '?' + this.data.query : '');
+    var query = this.data.query || '';
+    if (this.data.mode === 'compact') {
+      var params = new URLSearchParams(query);
+      params.delete('minor');
+      query = params.toString();
+    }
+    return url + (query ? '?' + query : '');
   };
 
   FacilityMap.prototype.openPopup = function (feature, lngLat) {

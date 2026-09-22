@@ -36,7 +36,8 @@ class FacilityList(generics.ListEndpoint):
         results = []
         for facility in queryset:
             data = self.serializer_class(facility).serialize()
-            data['emissions'] = EmissionsSerializer(facility.emissions.all()[0]).serialize()
+            records = facility.emissions.all()
+            data['emissions'] = EmissionsSerializer(records[0]).serialize() if records else None
             results.append(data)
         return results
 

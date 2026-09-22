@@ -176,5 +176,16 @@ class FacilityDetailStatsTests(StatsTestCase):
 
     def test_large_changes(self):
         # nox 3 -> 6 is +100%; pm 0.8 -> 1.0 (+25%) and pm10 0.5 -> 0.6 (+20%) are under the 50% threshold.
-        changes = stats.large_changes(self.plant)
+        changes = stats.large_changes(self.plant, 2024)
         assert [(c['pollutant'].key, c['year'], c['previous_year'], round(c['pct'])) for c in changes] == [('nox', 2024, 2023, 100)]
+
+    def test_large_changes_ignores_a_base_under_min_base(self):
+        EmissionsRecord.objects.filter(facility=self.plant, year=2023).update(sox=0.05)
+        EmissionsRecord.objects.filter(facility=self.plant, year=2024).update(sox=1.0)
+        changes = stats.large_changes(self.plant, 2024)
+        assert 'sox' not in [c['pollutant'].key for c in changes]
+
+    def test_large_changes_only_covers_the_shown_year(self):
+        # The nox 3 -> 6 (+100%) change is between 2023 and 2024; asking about
+        # 2023 (no 2022 record to compare against) must not surface it.
+        assert stats.large_changes(self.plant, 2023) == []

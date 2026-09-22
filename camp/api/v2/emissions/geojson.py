@@ -59,8 +59,8 @@ class FacilityGeoJSON(CachedEndpointMixin, FacilityGeoJSONBase):
 class DistrictListBase(generics.Endpoint):
     def get(self, request):
         districts = (
-            Region.objects.filter(type=Region.Type.AIR_DISTRICT, district_facilities__isnull=False)
-            .distinct().select_related('boundary').order_by('name')
+            Region.objects.filter(type=Region.Type.AIR_DISTRICT, pk__in=Facility.objects.values('air_district_id'))
+            .select_related('boundary').order_by('name')
         )
         features = []
         for district in districts:

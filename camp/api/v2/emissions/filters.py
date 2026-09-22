@@ -18,7 +18,7 @@ class FacilityFilter(FilterSet):
     def __init__(self, data=None, *args, **kwargs):
         if data is not None:
             data = data.copy()
-            if 'year' not in data:
+            if not data.get('year'):
                 data['year'] = EmissionsRecord.objects.aggregate(Max('year'))['year__max']
         return super().__init__(data=data, *args, **kwargs)
 

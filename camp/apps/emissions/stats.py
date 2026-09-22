@@ -371,24 +371,24 @@ def facility_toxics(facility, year):
     return rows
 
 
-def large_changes(facility):
-    """Consecutive-year criteria changes larger than LARGE_CHANGE, oldest first."""
-    history = list(facility.emissions.order_by('year'))
+def large_changes(facility, year, *, min_base=0.1):
+    """Criteria changes into `year` (from `year` - 1) larger than LARGE_CHANGE, ignoring a base below min_base."""
+    after = facility.emissions.filter(year=year).first()
+    before = facility.emissions.filter(year=year - 1).first()
+    if after is None or before is None:
+        return []
     changes = []
-    for before, after in zip(history, history[1:]):
-        if after.year != before.year + 1:
+    for pollutant in CRITERIA:
+        old = _float(getattr(before, pollutant.key))
+        new = _float(getattr(after, pollutant.key))
+        if not old or new is None or old < min_base:
             continue
-        for pollutant in CRITERIA:
-            old = _float(getattr(before, pollutant.key))
-            new = _float(getattr(after, pollutant.key))
-            if not old or new is None:
-                continue
-            pct = (new - old) / old
-            if abs(pct) > LARGE_CHANGE:
-                changes.append({
-                    'pollutant': pollutant,
-                    'year': after.year,
-                    'previous_year': before.year,
-                    'pct': pct * 100,
-                })
+        pct = (new - old) / old
+        if abs(pct) > LARGE_CHANGE:
+            changes.append({
+                'pollutant': pollutant,
+                'year': after.year,
+                'previous_year': before.year,
+                'pct': pct * 100,
+            })
     return changes

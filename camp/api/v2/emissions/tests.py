@@ -1,8 +1,10 @@
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import MultiPolygon, Point, Polygon
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
 from camp.apps.emissions.models import EmissionsRecord, Facility
+from camp.apps.regions.models import Boundary, Region
 
 
 class FacilityListTests(TestCase):
@@ -45,6 +47,26 @@ class FacilityListTests(TestCase):
         Facility.objects.filter(name='TEST PLANT').update(point=None)
         assert 'TEST PLANT' not in self.names()
 
+    def test_blank_year_defaults_to_the_latest_year(self):
+        response = self.client.get(reverse('api:v2:emissions:list'), {'year': ''})
+        data = response.json()['data']
+        assert {row['name'] for row in data} == {'TEST PLANT', 'TEST GAS STATION', 'TEST CEMENT'}
+        assert {row['emissions']['year'] for row in data} == {2024}
+
+    def test_facility_without_a_record_in_the_requested_year_is_excluded(self):
+        # TEST CEMENT has no 2023 record.
+        assert 'TEST CEMENT' not in self.names(year=2023)
+
+    def test_blank_year_does_not_500_when_a_pointed_facility_has_no_records_at_all(self):
+        sju = Facility.objects.get(name='TEST PLANT').air_district
+        Facility.objects.create(
+            county_code=10, air_district=sju, facid=99, name='TEST NO RECORDS',
+            point=Point(-119.787, 36.737), county_id=3,
+        )
+        response = self.client.get(reverse('api:v2:emissions:list'), {'year': ''})
+        assert response.status_code == 200
+        assert 'TEST NO RECORDS' not in [row['name'] for row in response.json()['data']]
+
 
 class YearListTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
@@ -72,12 +94,6 @@ class FacilityDetailTests(TestCase):
     def test_unknown_sqid_is_404(self):
         response = self.client.get(reverse('api:v2:emissions:detail', kwargs={'facility_id': 'doesnotexist'}))
         assert response.status_code == 404
-
-
-from django.contrib.gis.geos import MultiPolygon, Polygon
-from django.core.cache import cache
-
-from camp.apps.regions.models import Boundary, Region
 
 
 class FacilityGeoJSONTests(TestCase):

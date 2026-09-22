@@ -176,7 +176,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             ranks=stats.facility_ranks(facility, shown_year),
             trend=stats.by_year(scope, facility=facility),
             toxics_rows=stats.facility_toxics(facility, shown_year),
-            changes=stats.large_changes(facility),
+            changes=stats.large_changes(facility, shown_year),
             criteria=CRITERIA,
             # The facility's own map always includes it: the page scope can
             # exclude it (a minor source with `minor` off, no record in the

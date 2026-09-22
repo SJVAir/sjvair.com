@@ -217,6 +217,9 @@ class EmissionsRecord(TimeStampedModel):
 
     class Meta:
         unique_together = [('facility', 'year')]
+        indexes = [
+            models.Index(fields=['year', 'facility']),
+        ]
 
     def __str__(self):
         return f'{self.facility.name} ({self.year})'
