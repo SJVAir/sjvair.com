@@ -354,6 +354,11 @@
   var COUNTY_DASH = [2.5, 2];
   // The page's own region (a city, ZIP, or place), in the notices orange.
   var OUTLINE_COLOR = '#d35400';
+  // A wider pale line under each orange outline: two-tone, so the edge holds
+  // its own over a dark class and a pale one alike.
+  var CASING_COLOR = '#fff';
+  var CASING_OPACITY = 0.9;
+  var CASING_WIDTH = 3;
   // The locate radius circle, in Leaflet's default path style.
   var RADIUS_COLOR = '#3388ff';
   // How many vertices approximate the radius circle.
@@ -408,6 +413,31 @@
   var SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/';
 
   var EMPTY = { type: 'FeatureCollection', features: [] };
+
+  // The page's own region reads badly as a thin line over a dense grid, so
+  // everything outside it is washed out: a polygon covering the world with
+  // the region punched out of it. White, because the basemap under it is
+  // light and the classes outside should read as "not this page".
+  var OUTLINE_MASK_COLOR = '#fff';
+  var OUTLINE_MASK_OPACITY = 0.55;
+  var WORLD_RING = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+
+  // Each part's outer ring becomes a hole. A region's own holes are left
+  // covered: they aren't part of it, so they should dim with everything else.
+  function maskFeature(geometry) {
+    var rings = [];
+    if (geometry && geometry.type === 'Polygon') {
+      rings = [geometry.coordinates[0]];
+    } else if (geometry && geometry.type === 'MultiPolygon') {
+      rings = geometry.coordinates.map(function (part) { return part[0]; });
+    }
+    if (!rings.length) return EMPTY;
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Polygon', coordinates: [WORLD_RING].concat(rings) },
+    };
+  }
 
   var PHONE_QUERY = '(max-width: 768px)';
   function isPhone() {
@@ -1320,6 +1350,7 @@
     this.ensureSource('highlight');
     this.ensureSource('counties');
     this.ensureSource('outline');
+    this.ensureSource('outline-mask');
     this.ensureSource('locations');
     this.ensureSource('notices');
     this.ensureSource('locate');
@@ -1363,11 +1394,22 @@
       layout: { 'line-join': 'round' },
       paint: { 'line-color': '#222', 'line-opacity': 1, 'line-width': 2.5 },
     });
+    // Everything outside the page's own region, washed out (see maskFeature).
+    // Over the grid and the lens, under every outline and marker.
+    this.ensureLayer({
+      id: 'outline-mask', type: 'fill', source: 'outline-mask',
+      paint: { 'fill-color': OUTLINE_MASK_COLOR, 'fill-opacity': OUTLINE_MASK_OPACITY },
+    });
     // The section whose popup is open, and the page's own section.
     this.ensureLayer({
       id: 'selected-line', type: 'line', source: 'selected',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': SELECTED_LINE.color, 'line-opacity': SELECTED_LINE.opacity, 'line-width': SELECTED_LINE.width },
+    });
+    this.ensureLayer({
+      id: 'highlight-casing', type: 'line', source: 'highlight',
+      layout: { 'line-join': 'round' },
+      paint: { 'line-color': CASING_COLOR, 'line-opacity': CASING_OPACITY, 'line-width': HIGHLIGHT_LINE.width + CASING_WIDTH },
     });
     this.ensureLayer({
       id: 'highlight-line', type: 'line', source: 'highlight',
@@ -1383,6 +1425,11 @@
     this.ensureLayer({
       id: 'outline-fill', type: 'fill', source: 'outline',
       paint: { 'fill-color': OUTLINE_COLOR, 'fill-opacity': 0.08 },
+    });
+    this.ensureLayer({
+      id: 'outline-casing', type: 'line', source: 'outline',
+      layout: { 'line-join': 'round' },
+      paint: { 'line-color': CASING_COLOR, 'line-opacity': CASING_OPACITY, 'line-width': 2.5 + CASING_WIDTH },
     });
     this.ensureLayer({
       id: 'outline-line', type: 'line', source: 'outline',
@@ -1721,6 +1768,7 @@
         if (!geometry) return;
         var feature = { type: 'Feature', properties: { id: 'outline' }, geometry: geometry };
         self.setSourceData('outline', feature);
+        self.setSourceData('outline-mask', maskFeature(geometry));
         self.map.fitBounds(geometryBounds(feature), { padding: 24, animate: !self.reducedMotion });
       })
       .catch(function (err) {
@@ -1731,6 +1779,7 @@
 
   SectionMap.prototype.clearOutline = function () {
     this.setSourceData('outline', EMPTY);
+    this.setSourceData('outline-mask', EMPTY);
   };
 
   // Dashed once the section grid is on, so the two don't compete.

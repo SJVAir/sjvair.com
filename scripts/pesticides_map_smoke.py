@@ -429,8 +429,9 @@ def check_layers(page):
         var layers = all.map(function (l) { return l.id; });
         var mineSet = {};
         var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line',
-                    'all-sections-fill', 'all-sections-line', 'lens-fill', 'lens-line', 'lens-outline',
-                    'selected-line', 'highlight-line', 'counties-line', 'outline-fill', 'outline-line',
+                    'all-sections-fill', 'all-sections-line', 'lens-fill', 'lens-line', 'lens-outline', 'outline-mask',
+                    'selected-line', 'highlight-casing', 'highlight-line', 'counties-line',
+                    'outline-fill', 'outline-casing', 'outline-line',
                     'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
         mine.forEach(function (id) { mineSet[id] = true; });
