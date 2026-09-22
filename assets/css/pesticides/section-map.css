@@ -492,3 +492,44 @@ html.section-map-expanded .explorer-scope-bar {
     display: none;
   }
 }
+
+/* --- The MapTiler SDK map (section-map-gl.js) ---
+   Scoped to wraps the GL script has claimed (`.is-gl`), so the Leaflet map
+   keeps its own rules while the two live side by side. */
+
+/* The SDK's controls are 33px squares in a grouped bar; the locate and reset
+   buttons follow that, one bar each under the zoom buttons. */
+.section-map-wrap.is-gl .section-map-locate a,
+.section-map-wrap.is-gl .section-map-reset a {
+  width: 33px;
+  height: 33px;
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.section-map-wrap.is-gl .section-map-locate a:hover,
+.section-map-wrap.is-gl .section-map-reset a:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* The SDK's control column is narrower than Leaflet's; the toolbar row
+   starts just right of it. */
+.section-map-wrap.is-gl .section-map-toolbar {
+  left: 3.25rem;
+}
+
+/* Without WebGL the container holds a note instead of a map. */
+.section-map.is-unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #f5f5f5;
+  color: #7a7a7a;
+  text-align: center;
+}
+
+.section-map.is-unavailable .section-map-note {
+  margin: 0;
+  max-width: 28rem;
+}

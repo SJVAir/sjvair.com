@@ -1,6 +1,6 @@
 from django.core.cache import cache
 from django.db.models import Sum
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils.html import escape
 
@@ -791,6 +791,20 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'data-notice-page-url="/tools/pesticides/notices/{id}/"' in html
         assert 'section-map.js' in html
         assert '<noscript>' in html and 'admin-leaflet-map' in html   # static fallback
+
+    @override_settings(MAPTILER_API_KEY='test-key')
+    def test_gl_map_reads_its_key_and_style_from_the_container(self):
+        # The MapTiler SDK map takes the API key and a style id straight off
+        # the container; the Leaflet map keeps its raster template until the
+        # flip, so both attributes render side by side for now.
+        response = self.client.get(self.url)
+        cfg = response.context['map_config']
+        assert cfg['maptiler_key'] == 'test-key'
+        assert cfg['style'] == 'dataviz'
+        html = response.content.decode()
+        assert 'data-maptiler-key="test-key"' in html
+        assert 'data-style="dataviz"' in html
+        assert 'data-tiles="https://api.maptiler.com/maps/dataviz/256/{z}/{x}/{y}.png?key=test-key"' in html
 
     def test_entity_filters_resolve_to_api_identifiers(self):
         chem = Chemical.objects.get(pk=1)
