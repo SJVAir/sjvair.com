@@ -20,9 +20,9 @@ Usage:
                     it lives beside the Leaflet one)
     --screenshots   a directory to save a screenshot per page into
     --year YEAR     the year the scope bar is switched to (default 2022)
-    --keep          keep going through the remaining checks on a page after
-                    one fails (default: every check runs regardless; this is
-                    the default and the flag is accepted for symmetry)
+
+Every check on a page runs even after one fails, except that a map which
+never loads skips the checks that need it.
 
 Each page gets a fresh browser: the explorer's static files aren't
 cache-busted, so a reused profile could serve a stale script.
@@ -52,10 +52,9 @@ return list && list.length ? list[0] : null;
 """
 
 JS_MAP_LOADED = """
-%s
 var inst = (function () { %s })();
 return !!(inst && inst.map && inst.loaded && inst.map.loaded());
-""" % ('', JS_INSTANCE)
+""" % JS_INSTANCE
 
 
 def browser():
@@ -196,23 +195,30 @@ def check_layers(page):
 
 
 def check_controls(page):
-    """Zoom, locate and reset controls, the toolbar and legend panel are shown."""
+    """Zoom, locate and reset controls (stacked in that order), the toolbar
+    and legend panel are shown. The SDK can add its buttons a beat after the
+    map reports loaded, so they are waited for rather than queried once."""
+    if not page.wait_for("return !!document.querySelector('.maplibregl-ctrl-zoom-in')", 10):
+        return False, 'zoom buttons never appeared'
     result = page.js("""
         var wrap = document.querySelector('.section-map-wrap');
         var q = function (sel) { return !!document.querySelector(sel); };
+        var top = function (sel) { var el = document.querySelector(sel); return el ? el.getBoundingClientRect().top : NaN; };
         var locate = document.querySelector('.section-map-locate a');
         var reset = document.querySelector('.section-map-reset a');
         return {
             zoom: q('.maplibregl-ctrl-zoom-in') && q('.maplibregl-ctrl-zoom-out'),
+            'no compass': !q('.maplibregl-ctrl-compass'),
             locate: !!locate && locate.getAttribute('aria-label') === 'Zoom to my location',
             reset: !!reset && reset.getAttribute('aria-label') === 'Zoom out to the whole map',
+            'zoom above locate above reset': top('.maplibregl-ctrl-zoom-in') < top('.section-map-locate') && top('.section-map-locate') < top('.section-map-reset'),
             toolbar: !!wrap && !wrap.querySelector('.section-map-toolbar').hidden,
             legend: !!wrap && !wrap.querySelector('.section-map-legend-panel').hidden,
             expand: !!wrap && !!wrap.querySelector('.section-map-expand[data-bound]'),
         };
     """)
     missing = [key for key, ok in result.items() if not ok]
-    return (not missing), ('all present' if not missing else 'missing: %s' % ', '.join(missing))
+    return (not missing), ('all present, in order' if not missing else 'missing: %s' % ', '.join(missing))
 
 
 def check_fit(page):
@@ -277,8 +283,10 @@ def check_expand(page):
     collapse puts everything back."""
     page.scroll_to_map()
     width_before = page.instance_js('return inst.map.getCanvas().clientWidth')
+    canvas_width_is = 'var inst = (function () { %s })(); return !!inst && inst.map.getCanvas().clientWidth === arguments[0];' % JS_INSTANCE
+    canvas_width_not = 'var inst = (function () { %s })(); return !!inst && inst.map.getCanvas().clientWidth !== arguments[0];' % JS_INSTANCE
     page.js("document.querySelector('.section-map-expand').click()")
-    time.sleep(0.8)
+    page.wait_for(canvas_width_not, 10, width_before)
     expanded = page.js("""
         return {
             html: document.documentElement.classList.contains('section-map-expanded'),
@@ -296,7 +304,7 @@ def check_expand(page):
     if not (width_after and width_before and width_after > width_before):
         problems.append('canvas did not widen (%s -> %s)' % (width_before, width_after))
     page.js("document.querySelector('.section-map-expand').click()")
-    time.sleep(0.8)
+    page.wait_for(canvas_width_is, 10, width_before)
     collapsed = page.js("""
         return !document.documentElement.classList.contains('section-map-expanded')
             && !document.querySelector('.section-map-wrap').classList.contains('is-expanded')
@@ -370,7 +378,6 @@ def main(argv=None):
     parser.add_argument('--gl', action='store_true', help='append gl=1 (the MapTiler SDK map)')
     parser.add_argument('--year', default='2022', help='year to switch the scope bar to')
     parser.add_argument('--screenshots', help='directory for a screenshot per page')
-    parser.add_argument('--keep', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     any_failed = False

@@ -103,14 +103,19 @@
   }
 
   // The SDK draws on WebGL; without it there's no map to make, and the page
-  // says so in the container instead (see showUnavailable).
+  // says so in the container instead (see showUnavailable). Checked once:
+  // the probe makes a throwaway GL context, and init() runs on every swap.
+  var webglSupport = null;
   function webglAvailable() {
-    try {
-      var canvas = document.createElement('canvas');
-      return !!(window.WebGLRenderingContext && (canvas.getContext('webgl2') || canvas.getContext('webgl')));
-    } catch (err) {
-      return false;
+    if (webglSupport === null) {
+      try {
+        var canvas = document.createElement('canvas');
+        webglSupport = !!(window.WebGLRenderingContext && (canvas.getContext('webgl2') || canvas.getContext('webgl')));
+      } catch (err) {
+        webglSupport = false;
+      }
     }
+    return webglSupport;
   }
 
   function showUnavailable(el) {
@@ -300,9 +305,14 @@
     this.counties = null;
     this.countyBounds = {};
     this.valleyBounds = null;
+    // One controller per request family (see startRequest), and the
+    // families seen, so destroy() can cut every one of them short.
     this.gridAbort = null;
     this.noticesAbort = null;
     this.locationsAbort = null;
+    this.countiesAbort = null;
+    this.outlineAbort = null;
+    this.requestNames = [];
     // What the last successful fetch covers, so a pan inside it doesn't
     // refetch (and so doesn't rebuild a layer under an open popup).
     this.loadedBounds = null;
@@ -411,14 +421,24 @@
 
   // The filter toolbar's dropdowns: a click on a trigger opens its menu
   // (and focuses the picker's search box), a click anywhere else or Escape
-  // closes them. Bound once per toolbar element; a swapped-in toolbar is
-  // a new element and gets bound again.
+  // closes them. The triggers are bound once per toolbar element (a
+  // swapped-in toolbar is a new element and gets bound again); the
+  // document-level closers are bound once per map and act on whichever
+  // toolbar is current, so swaps don't pile up listeners.
   SectionMap.prototype.bindToolbar = function (wrap) {
+    var self = this;
+    if (!this.toolbarClickHandler) {
+      this.toolbarClickHandler = function () { self.closeToolbarDropdowns(null); };
+      this.toolbarKeyHandler = function (event) {
+        if (event.key === 'Escape') self.closeToolbarDropdowns(null);
+      };
+      document.addEventListener('click', this.toolbarClickHandler);
+      document.addEventListener('keydown', this.toolbarKeyHandler);
+    }
     var toolbar = wrap.querySelector('.section-map-toolbar');
     if (!toolbar || toolbar.getAttribute('data-bound')) return;
     toolbar.setAttribute('data-bound', '1');
     var dropdowns = toolbar.querySelectorAll('.dropdown');
-    var self = this;
 
     // The filter form only knows its own fields; the map's view settings
     // (metric, notices, all sections) ride along so the URL it lands on
@@ -434,15 +454,6 @@
       });
     }
 
-    var closeAll = function (except) {
-      for (var i = 0; i < dropdowns.length; i++) {
-        if (dropdowns[i] === except) continue;
-        dropdowns[i].classList.remove('is-active');
-        var trigger = dropdowns[i].querySelector('.dropdown-trigger .button');
-        if (trigger) trigger.setAttribute('aria-expanded', 'false');
-      }
-    };
-
     for (var i = 0; i < dropdowns.length; i++) {
       (function (dropdown) {
         var trigger = dropdown.querySelector('.dropdown-trigger .button');
@@ -450,7 +461,7 @@
         trigger.addEventListener('click', function (event) {
           event.stopPropagation();
           var open = !dropdown.classList.contains('is-active');
-          closeAll(dropdown);
+          self.closeToolbarDropdowns(dropdown);
           dropdown.classList.toggle('is-active', open);
           trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
           if (open) {
@@ -463,11 +474,18 @@
         if (menu) menu.addEventListener('click', function (event) { event.stopPropagation(); });
       })(dropdowns[i]);
     }
+  };
 
-    document.addEventListener('click', function () { closeAll(null); });
-    document.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') closeAll(null);
-    });
+  // Closes the current toolbar's dropdowns, all but `except`.
+  SectionMap.prototype.closeToolbarDropdowns = function (except) {
+    if (!this.toolbarEl) return;
+    var dropdowns = this.toolbarEl.querySelectorAll('.dropdown');
+    for (var i = 0; i < dropdowns.length; i++) {
+      if (dropdowns[i] === except) continue;
+      dropdowns[i].classList.remove('is-active');
+      var trigger = dropdowns[i].querySelector('.dropdown-trigger .button');
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    }
   };
 
   // The options and legend panels fold to their header. The fold is a
@@ -649,9 +667,9 @@
       style: styleFor(this.tileStyle),
       center: lngLatOf(center),
       zoom: zoom,
-      // The SDK's zoom buttons stand in for Leaflet's, in the same corner;
-      // its other default furniture is either ours (locate) or unwanted.
-      navigationControl: 'top-left',
+      // The zoom buttons are added below, ahead of our own controls; the
+      // SDK's other default furniture is either ours (locate) or unwanted.
+      navigationControl: false,
       geolocateControl: false,
       terrainControl: false,
       // Wheel-zoom is off by default so the map doesn't hijack page scrolling
@@ -682,6 +700,12 @@
     this.map.on('style.load', this.onStyleLoad.bind(this));
     this.map.once('load', function () { self.loaded = true; });
 
+    // Zoom buttons first, then ours under them. The SDK adds its own
+    // navigation control after the first render, which would have put it
+    // below controls added here; adding it ourselves keeps the Leaflet
+    // order, and leaves out the compass, which has nothing to do on a map
+    // that can't rotate.
+    this.map.addControl(new maptilersdk.NavigationControl({ showCompass: false }), 'top-left');
     this.addLocateControl();
     this.addResetControl();
 
@@ -711,7 +735,8 @@
 
   // -- sources and layers --
   // Every data layer goes in below the basemap's first symbol layer, so the
-  // place labels read over the choropleth.
+  // place labels read over the choropleth. Serialises the style, so
+  // addBaseLayers asks once and passes the answer to each ensureLayer.
   SectionMap.prototype.beforeLabels = function () {
     var layers = (this.map.getStyle() || {}).layers || [];
     for (var i = 0; i < layers.length; i++) {
@@ -727,14 +752,18 @@
     this.map.addSource(id, { type: 'geojson', data: this.sourceData[id] || EMPTY, promoteId: 'id' });
   };
 
+  // `before` is the label layer id from beforeLabels(), asked for once by
+  // the caller and passed to every layer it adds.
   SectionMap.prototype.ensureLayer = function (spec, before) {
     if (this.map.getLayer(spec.id)) return;
-    this.map.addLayer(spec, before || this.beforeLabels());
+    this.map.addLayer(spec, before);
   };
 
   // Sets a source's data, remembering it for the next style load; before
-  // the style is up the data just waits there for ensureSource.
+  // the style is up the data just waits there for ensureSource. Nothing
+  // to keep once the map is gone (a late response after destroy()).
   SectionMap.prototype.setSourceData = function (id, data) {
+    if (!this.map) return;
     this.sourceData[id] = data;
     var source = this.map.getSource(id);
     if (source) source.setData(data);
@@ -742,9 +771,11 @@
 
   // Our sources and their layers, bottom to top: the radius circle, [the
   // grid and the lens go here], the county lines, the page's own outline,
-  // [locations and notices go here], the reader's located position.
-  // Idempotent, so it can run on every style load.
+  // [locations and notices go here, under the located position], and last
+  // the reader's located position (`locate`/`locate-circle`), which stays
+  // on top of every marker. Idempotent, so it can run on every style load.
   SectionMap.prototype.addBaseLayers = function () {
+    var before = this.beforeLabels();
     this.ensureSource('radius');
     this.ensureSource('counties');
     this.ensureSource('outline');
@@ -753,26 +784,26 @@
     this.ensureLayer({
       id: 'radius-fill', type: 'fill', source: 'radius',
       paint: { 'fill-color': RADIUS_COLOR, 'fill-opacity': 0.2 },
-    });
+    }, before);
     this.ensureLayer({
       id: 'radius-line', type: 'line', source: 'radius',
       paint: { 'line-color': RADIUS_COLOR, 'line-width': 3 },
-    });
+    }, before);
     this.ensureLayer({
       id: 'counties-line', type: 'line', source: 'counties',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': COUNTY_COLOR, 'line-width': 1.5, 'line-opacity': 0.8 },
-    });
+    }, before);
     // The region this page is about, shaded faintly and outlined.
     this.ensureLayer({
       id: 'outline-fill', type: 'fill', source: 'outline',
       paint: { 'fill-color': OUTLINE_COLOR, 'fill-opacity': 0.08 },
-    });
+    }, before);
     this.ensureLayer({
       id: 'outline-line', type: 'line', source: 'outline',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': OUTLINE_COLOR, 'line-width': 2.5, 'line-opacity': 0.9 },
-    });
+    }, before);
     this.ensureLayer({
       id: 'locate-circle', type: 'circle', source: 'locate',
       paint: {
@@ -781,7 +812,7 @@
         'circle-stroke-color': '#fff',
         'circle-stroke-width': 2,
       },
-    });
+    }, before);
     this.restyleCounties();
   };
 
@@ -952,10 +983,15 @@
     this.updateLocationsNote();
   };
 
-  // Releases the map (its WebGL context with it) once its page is gone.
+  // Releases the map (its WebGL context with it) once its page is gone:
+  // requests in flight are cut short so nothing lands on a map that isn't
+  // there, and the document-level listeners go with it.
   SectionMap.prototype.destroy = function () {
+    this.abortRequests();
     if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
     if (this.escapeHandler) document.removeEventListener('keydown', this.escapeHandler);
+    if (this.toolbarClickHandler) document.removeEventListener('click', this.toolbarClickHandler);
+    if (this.toolbarKeyHandler) document.removeEventListener('keydown', this.toolbarKeyHandler);
     this.map.remove();
     this.map = null;
   };
@@ -965,8 +1001,10 @@
   SectionMap.prototype.loadCounties = function () {
     if (!this.data.countiesUrl) return;
     var self = this;
-    fetchJson(this.data.countiesUrl)
+    var abort = this.startRequest('counties');
+    fetchJson(this.data.countiesUrl, null, abort)
       .then(function (geojson) {
+        if (self.countiesAbort !== abort) return;
         self.counties = geojson;
         self.countyBounds = {};
         self.valleyBounds = null;
@@ -981,6 +1019,7 @@
         self.fitCounty();
       })
       .catch(function (err) {
+        if (isAbort(err) || self.countiesAbort !== abort) return;
         logError('failed to load counties', err);
       });
   };
@@ -989,7 +1028,7 @@
   // endpoints leave the others out), so it also frames it: fit to the
   // county's outline, or back out to the whole valley when the filter goes.
   SectionMap.prototype.fitCounty = function () {
-    if (!this.counties) return;
+    if (!this.map || !this.counties) return;
     var target = this.countyBounds[this.data.county] || null;
     if (target) {
       this.map.fitBounds(target, { padding: 20, animate: !this.reducedMotion });
@@ -1011,8 +1050,10 @@
   SectionMap.prototype.loadOutline = function () {
     if (!this.data.outlineUrl) return;
     var self = this;
-    fetchJson(this.data.outlineUrl)
+    var abort = this.startRequest('outline');
+    fetchJson(this.data.outlineUrl, null, abort)
       .then(function (payload) {
+        if (self.outlineAbort !== abort) return;
         var region = payload && payload.data;
         var geometry = region && region.boundary && region.boundary.geometry;
         if (!geometry) return;
@@ -1021,6 +1062,7 @@
         self.map.fitBounds(geometryBounds(feature), { padding: 24, animate: !self.reducedMotion });
       })
       .catch(function (err) {
+        if (isAbort(err) || self.outlineAbort !== abort) return;
         logError('failed to load the region outline', err);
       });
   };
@@ -1160,9 +1202,18 @@
   SectionMap.prototype.startRequest = function (name) {
     var key = name + 'Abort';
     if (this[key]) this[key].abort();
+    if (this.requestNames.indexOf(name) === -1) this.requestNames.push(name);
     var abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     this[key] = abort;
     return abort;
+  };
+
+  // Cuts short every request in flight, whatever family it belongs to.
+  SectionMap.prototype.abortRequests = function () {
+    for (var i = 0; i < this.requestNames.length; i++) {
+      var abort = this[this.requestNames[i] + 'Abort'];
+      if (abort) abort.abort();
+    }
   };
 
   // The zoom at which this viewport can show sections: SECTION_ZOOM, or
