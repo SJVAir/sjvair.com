@@ -86,7 +86,7 @@ class MonitorAdmin(LeafletMapMixin, gisadmin.GISModelAdmin):
     list_filter = ['is_sjvair', 'is_hidden', 'device', MonitorIsActiveFilter, 'groups', 'location', 'county']
 
     autocomplete_fields = ['host']
-    readonly_fields = ['get_monitor_id', 'get_map']
+    readonly_fields = ['get_monitor_id', 'county', 'get_map']
     fieldsets = [
         (None, {'fields': ['get_monitor_id', 'name', 'is_hidden', 'is_sjvair']}),
         ('Location Data', {'fields': ['host', 'county', 'location', 'get_map']}),

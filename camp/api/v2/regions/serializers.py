@@ -8,6 +8,7 @@ class BoundarySerializer(serializers.Serializer):
         ('id', lambda b: b.sqid),
         'version',
         ('geometry', lambda b: json.loads(b.geometry.geojson)),
+        ('bbox', lambda b: list(b.geometry.extent)),
     )
 
 

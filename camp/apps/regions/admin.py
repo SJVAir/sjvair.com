@@ -8,8 +8,12 @@ from django.utils.safestring import mark_safe
 from camp.apps.entries import models as entry_models
 from camp.apps.entries.levels import _blend_hex
 from camp.apps.regions.models import Region, Boundary, Location
+from camp.apps.regions.panels import panels_for
 from camp.utils import leaflet
 from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
+
+# Marker outline for SJVAir-owned monitors on the region map.
+SJVAIR_BORDER = '#0a84ff'
 
 
 class CountyFilter(admin.SimpleListFilter):
@@ -42,6 +46,8 @@ class BoundaryInline(LeafletMapMixin, admin.TabularInline):
     model = Boundary
     readonly_fields = ['get_map', 'get_info']
     extra = 0
+    classes = ['collapse']
+    verbose_name_plural = 'Boundaries'
     show_change_link = True
 
     def get_fields(self, request, obj=None):
@@ -78,7 +84,14 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
     inlines = [BoundaryInline]
     list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
     list_filter = ['type', CountyFilter, 'boundary__version']
-    fields = ['name', 'slug', 'external_id', 'type', 'boundary', 'get_metadata', 'get_overview_map', 'get_monitor_map']
+    # The monitor map is rendered by the change form itself (beside the tiles);
+    # see admin/regions/region/change_form.html.
+    fieldsets = [
+        ('Region', {
+            'classes': ['collapse'],
+            'fields': ['name', 'slug', 'external_id', 'type', 'boundary', 'get_metadata', 'get_overview_map'],
+        }),
+    ]
     search_fields = ['name', 'external_id']
 
     def get_queryset(self, *args, **kwargs):
@@ -88,6 +101,36 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
             .with_monitor_count()
         )
         return queryset
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        # Type-specific detail panels (camp.apps.regions.panels) render below
+        # the fields; see admin/regions/region/change_form.html.
+        region = self.get_object(request, object_id)
+        panels = panels_for(region, request) if region is not None else []
+        controls, seen = [], set()
+        for panel in panels:
+            for label, kind, links in panel.controls():
+                if label not in seen:
+                    seen.add(label)
+                    controls.append((label, kind, links))
+        extra_context = {
+            **(extra_context or {}),
+            'panels': panels,
+            'tiles': [tile for panel in panels for tile in panel.tiles()],
+            'controls': controls,
+            'monitor_map': self.get_monitor_map(region) if region is not None else '',
+            'county_name': self.county_name(region) if region is not None else '',
+        }
+        return super().change_view(request, object_id, form_url, extra_context)
+
+    @staticmethod
+    def county_name(region):
+        """The SJV county this region sits in (by centroid), '' for a county or an outsider."""
+        if region.type == Region.Type.COUNTY or not region.boundary_id:
+            return ''
+        return (Region.objects.counties()
+            .filter(boundary__geometry__contains=region.boundary.geometry.centroid)
+            .values_list('name', flat=True).first() or '')
 
     def monitor_count(self, instance):
         return instance.monitor_count
@@ -154,8 +197,8 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
 
         try:
             width, height = {
-                'landscape': (600, 450),
-                'portrait': (450, 600),
+                'landscape': (640, 440),
+                'portrait': (440, 520),
             }[instance.boundary.orientation]
 
             lmap = leaflet.LeafletMap(width=width, height=height)
@@ -183,21 +226,23 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                     monitor.latest_entry.level.value
                 ) if monitor.is_active else 'darkgray'
 
-                border_color = _blend_hex(fill_color, '#000000', .2) if monitor.is_active else 'dimgray'
+                if monitor.is_sjvair:
+                    border_color = SJVAIR_BORDER
+                elif monitor.is_active:
+                    border_color = _blend_hex(fill_color, '#000000', .2)
+                else:
+                    border_color = 'dimgray'
 
                 lmap.add(leaflet.Marker(
                     geometry=monitor.position,
                     size=14 if monitor.is_active else 10,
                     fill_color=fill_color,
                     border_color=border_color,
-                    shape='triangle' if monitor.is_regulatory else 'circle' if monitor.is_sjvair else 'square',
-                    border_width=1,
+                    shape='triangle' if monitor.is_regulatory else 'circle',
+                    border_width=2 if monitor.is_sjvair else 1,
                 ))
 
-            return mark_safe(f'''
-                <div>{len(monitor_list)} Monitors ({active} Active, {len(monitor_list) - active} Inactive)</div>
-                {lmap.render()}
-            ''')
+            return mark_safe(lmap.render())
         except Exception:
             import traceback
             traceback.print_exc()

@@ -29,8 +29,8 @@ from camp.apps.entries import stages
 from camp.apps.entries.fields import EntryTypeField
 from camp.apps.monitors.managers import MonitorManager
 from camp.apps.qaqc.models import HealthCheck
+from camp.apps.regions.counties import county_name
 from camp.utils import classproperty
-from camp.utils.counties import County
 from camp.utils.datetime import make_aware
 from camp.utils.fields import MACAddressField
 
@@ -104,7 +104,6 @@ class LatestEntry(models.Model):
 
 
 class Monitor(models.Model):
-    COUNTIES = Choices(*County.names)
     LOCATION = Choices('inside', 'outside')
 
     CALIBRATE = False # Legacy
@@ -160,7 +159,7 @@ class Monitor(models.Model):
 
     # Where is this sensor setup?
     position = models.PointField(null=True, db_index=True)
-    county = models.CharField(max_length=20, blank=True, choices=COUNTIES)
+    county = models.CharField(max_length=20, blank=True)
     location = models.CharField(max_length=10, choices=LOCATION)
 
     notes = models.TextField(blank=True, help_text="Notes for internal use.")
@@ -549,17 +548,35 @@ class Monitor(models.Model):
         return data
 
     @classmethod
-    def health_check_queryset_filter(cls):
-        """Returns kwargs to filter health-check-eligible monitors of this type."""
+    def type_queryset_filter(cls):
+        """Returns kwargs to select monitors of this type from a base Monitor queryset."""
         return {f'{cls.monitor_type}__isnull': False}
 
-    def supports_health_checks(self):
-        """Returns True if this monitor instance supports health checks."""
+    @classmethod
+    def health_check_queryset_filter(cls):
+        """
+        Returns kwargs to filter health-check-eligible monitors of this type.
+        Subclasses narrow this further (AirGradient requires the dual-channel
+        device); use type_queryset_filter() when you just want the type.
+        """
+        return cls.type_queryset_filter()
+
+    @classmethod
+    def health_checks_enabled(cls):
+        """
+        Returns True if this monitor type can run dual-channel health checks,
+        i.e. it reports PM2.5 from two matched sensors. Types whose two PM2.5
+        sensors are not a matched pair (VOZbox) override this to opt out.
+        """
         from camp.apps.entries.models import PM25
-        config = type(self).ENTRY_CONFIG.get(PM25)
+        config = cls.ENTRY_CONFIG.get(PM25)
         if not config:
             return False
         return len(config.get('sensors', [])) >= 2
+
+    def supports_health_checks(self):
+        """Returns True if this monitor instance supports health checks."""
+        return type(self).health_checks_enabled()
 
 
     def run_health_check(self, hour):
@@ -575,13 +592,12 @@ class Monitor(models.Model):
         return HealthCheck.objects.evaluate(monitor=self, hour=hour)
 
     def save(self, *args, **kwargs):
-        # County.lookup() does an in-process GEOS point-in-polygon check (no
-        # DB query) - cheap once, but save() runs on every process_data call
-        # for every monitor, continuously, so recomputing unconditionally
-        # adds up to a lot of native GEOS allocation over a day. Only do it
-        # when there's not already an answer, or position actually moved.
-        if self.position and (not self.county or self.tracker.has_changed('position')):
-            self.county = County.lookup(self.position)
+        # The county is derived from the position and nothing else writes
+        # it: it is looked up whenever a monitor is created or its position
+        # changes. save() runs on every process_data call for every monitor,
+        # so an unchanged position costs no query.
+        if self._state.adding or self.tracker.has_changed('position'):
+            self.county = county_name(self.position)
         super().save(*args, **kwargs)
 
     # Legacy

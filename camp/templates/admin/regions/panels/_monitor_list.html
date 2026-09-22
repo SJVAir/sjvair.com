@@ -1,0 +1,20 @@
+{% load humanize %}
+{% if rows %}
+{% if rows|length > 10 %}<details class="region-panel-details"><summary>Show all {{ rows|length|intcomma }} monitors</summary>{% endif %}
+<table class="wide">
+    <thead><tr><th>Monitor</th><th>Type</th><th>Status</th><th>Last seen</th><th>Host</th><th>SJVAir</th></tr></thead>
+    <tbody>
+        {% for row in rows %}
+        <tr>
+            <th>{% if row.admin_url %}<a href="{{ row.admin_url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</th>
+            <td>{{ row.type }}</td>
+            <td>{{ row.status }}</td>
+            <td>{% if row.last_seen %}{{ row.last_seen|date:"Y-m-d H:i" }}{% else %}&mdash;{% endif %}</td>
+            <td>{{ row.host }}</td>
+            <td>{% if row.is_sjvair %}yes{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if rows|length > 10 %}</details>{% endif %}
+{% endif %}

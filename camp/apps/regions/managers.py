@@ -7,20 +7,9 @@ from django.db.models import F, Func, Value
 from django.db.models.expressions import ExpressionWrapper
 from django.db.models.fields import FloatField
 
+from camp.apps.regions.counties import SJV_COUNTIES
 from camp.apps.regions.querysets import RegionQuerySet
 from camp.utils.gis import to_multipolygon
-
-
-SJV_COUNTIES = {
-    'Fresno County',
-    'Kern County',
-    'Kings County',
-    'Madera County',
-    'Merced County',
-    'San Joaquin County',
-    'Stanislaus County',
-    'Tulare County',
-}
 
 
 class RegionManager(models.Manager.from_queryset(RegionQuerySet)):

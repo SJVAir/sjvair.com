@@ -1,0 +1,40 @@
+{% load humanize %}
+<div class="panel-stats">
+<table>
+    <caption>Communities</caption>
+    <tr><th>With a monitor</th><td>{{ tiles.covered|intcomma }}</td></tr>
+    <tr><th>Without a monitor</th><td>{{ tiles.uncovered|intcomma }}</td></tr>
+    <tr><th>Population without a monitor</th><td>{{ tiles.uncovered_population|intcomma }}{% if tiles.uncovered_pct is not None %} ({{ tiles.uncovered_pct }}%){% endif %}</td></tr>
+</table>
+{% include "admin/regions/panels/_monitor_counts.html" %}
+<table>
+    <caption>Monitors by type</caption>
+    <thead><tr><th>Type</th><th class="num">Total</th><th class="num">Active</th></tr></thead>
+    <tbody>
+        {% for row in type_rows %}
+        <tr><th>{% if row.changelist_url %}<a href="{{ row.changelist_url }}">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}</th>
+            <td class="num">{{ row.total|intcomma }}</td><td class="num">{{ row.active|intcomma }}</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% if communities|length > 15 %}<details class="region-panel-details" open><summary>{{ communities|length|intcomma }} cities and census-designated places</summary>{% endif %}
+<table class="wide">
+    {% if communities|length <= 15 %}<caption>{{ communities|length }} cities and census-designated places</caption>{% endif %}
+    <thead><tr><th>Place</th><th>Type</th><th class="num">Population</th><th class="num">Monitors</th><th class="num">Per 10k</th><th class="num">Nearest monitor</th></tr></thead>
+    <tbody>
+        {% for row in communities %}
+        <tr>
+            <th><a href="{{ row.detail_url }}">{{ row.name }}</a></th>
+            <td>{{ row.type }}</td>
+            <td class="num">{{ row.population|intcomma }}</td>
+            <td class="num">{{ row.monitors|intcomma }}</td>
+            <td class="num">{{ row.per_10k|default_if_none:"—" }}</td>
+            <td class="num">{% if row.nearest_km is not None %}{{ row.nearest_km }} km{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">No city or CDP regions in this county. Run the regions imports first.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if communities|length > 15 %}</details>{% endif %}

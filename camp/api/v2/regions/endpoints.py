@@ -25,10 +25,44 @@ class RegionList(RegionMixin, generics.ListEndpoint):
     filter_class = RegionFilter
     paginate = False
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        within_ids = [value for value in self.request.GET.getlist('within') if value.strip()]
+        if within_ids:
+            geometry = Region.objects.filter(sqid__in=within_ids).combined_geometry()
+            if geometry is None or geometry.empty:
+                # `within` was asked for but nothing resolved (unknown ids, or
+                # parents with no boundary): nothing can be inside it. Falling
+                # back to the unnarrowed list here would silently hand back
+                # every region in the database.
+                return qs.none()
+            qs = qs.contained_within(geometry)
+        return qs
+
 
 class RegionDetail(RegionMixin, generics.DetailEndpoint):
     lookup_field = 'sqid'
     lookup_url_kwarg = 'region_id'
+
+
+class RegionMetaEndpoint(generics.Endpoint):
+    """Metadata describing all region types supported by the API."""
+
+    def get_types(self):
+        payload = {}
+        for region_type, label in Region.Type.choices:
+            category = Region.TYPE_CATEGORIES[region_type]
+            payload[region_type] = {
+                'type': region_type,
+                'label': label,
+                'category': category.value,
+            }
+        return payload
+
+    def get(self, request, *args, **kwargs):
+        return {'data': {
+            'types': self.get_types(),
+        }}
 
 
 class PlaceSearch(generics.Endpoint):

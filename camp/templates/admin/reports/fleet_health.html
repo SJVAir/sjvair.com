@@ -1,0 +1,55 @@
+{% extends 'admin/reports/base.html' %}
+{% load humanize %}
+
+{% block filters %}
+<label>County
+    <select name="county" onchange="this.form.submit()">
+        <option value="">All counties</option>
+        {% for name in counties %}<option value="{{ name }}" {% if name == county %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+</label>
+<input type="hidden" name="sjvair_only" value="0">
+<label><input type="checkbox" name="sjvair_only" value="1" {% if sjvair_only %}checked{% endif %} onchange="this.form.submit()"> SJVAir monitors only</label>
+{% endblock %}
+
+{% block report %}
+<div class="module">
+    <table>
+        <caption>Last report, by type</caption>
+        <thead>
+            <tr>
+                <th>Type</th><th>Active (&lt;1h)</th><th>Silent 1–24h</th><th>Silent 1–7d</th>
+                <th>Silent &gt;7d</th><th>Never reported</th><th>Hidden</th><th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <th>{{ row.type }}</th>
+                <td>{{ row.active|intcomma }}</td><td>{{ row.silent_1d|intcomma }}</td><td>{{ row.silent_7d|intcomma }}</td>
+                <td>{{ row.silent_long|intcomma }}</td><td>{{ row.never|intcomma }}</td><td>{{ row.hidden|intcomma }}</td>
+                <td><strong>{{ row.total|intcomma }}</strong></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>Current health grade (dual-channel monitors)</caption>
+        <thead><tr><th>Type</th><th>A</th><th>B</th><th>C</th><th>F</th><th>No check</th></tr></thead>
+        <tbody>
+            {% for row in grades %}
+            <tr>
+                <th>{{ row.type }}</th>
+                <td>{{ row.A|intcomma }}</td><td>{{ row.B|intcomma }}</td><td>{{ row.C|intcomma }}</td>
+                <td>{{ row.F|intcomma }}</td><td>{{ row.none|intcomma }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6">No health-check-eligible monitors.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

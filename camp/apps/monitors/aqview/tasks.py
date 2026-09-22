@@ -8,7 +8,7 @@ from huey import crontab
 
 from camp.apps.monitors.models import Entry
 from camp.apps.monitors.aqview.models import AQview
-from camp.utils.counties import County
+from camp.apps.regions.counties import COUNTY_NAMES
 
 
 AQVIEW_URL = "https://gis.carb.arb.ca.gov/hosting/rest/services/Hosted/AQview_revised_PROD_view/FeatureServer/0"
@@ -19,7 +19,7 @@ def import_aqview_data():
     records = esri2gpd.get(AQVIEW_URL, where=' and '.join([
         "externalmonitorid in ('BAM 1022', 'BAM 1020')",
         "countyname in ({})".format(
-            ', '.join([f"'{c}'" for c in County.names])
+            ', '.join([f"'{c}'" for c in COUNTY_NAMES])
         ),
     ])).to_dict('records')
 
@@ -29,7 +29,7 @@ def import_aqview_data():
 
 @db_task(priority=50)
 def process_aqview_data(payload):
-    if payload['countyname'] not in County.names:
+    if payload['countyname'] not in COUNTY_NAMES:
         return False
 
     # Get or create the monitor
@@ -39,7 +39,6 @@ def process_aqview_data(payload):
         monitor = AQview.objects.create(
             name=payload['sitename'],
             position=Point(payload['geometry'].x, payload['geometry'].y, srid=4326),
-            county=payload['countyname'],
             location=AQview.LOCATION.outside,
             device=payload.get('externalmonitorid'),
             data_provider=payload.get('dataprovidername', ''),

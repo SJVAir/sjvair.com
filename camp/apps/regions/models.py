@@ -46,6 +46,43 @@ class Region(TimeStampedModel):
         # Catch-all for user-defined regions
         CUSTOM = 'custom', _('Custom Region')
 
+    class Category(models.TextChoices):
+        ADMINISTRATIVE = 'administrative', _('Administrative / Political')
+        CENSUS = 'census', _('Census-Based Geography')
+        DISTRICT = 'district', _('Governmental District')
+        ENVIRONMENTAL = 'environmental', _('Environmental / Land Context')
+        SYNTHETIC = 'synthetic', _('Synthetic Community Area')
+        AGRICULTURAL = 'agricultural', _('Agricultural Survey Geography')
+        CUSTOM = 'custom', _('Custom')
+
+    # Maps each Type to the Category it belongs to, mirroring the
+    # groupings above. Kept as an explicit mapping (rather than deriving
+    # it from Type ordering) so the API's category field doesn't silently
+    # shift if Type choices are reordered.
+    TYPE_CATEGORIES = {
+        Type.COUNTY: Category.ADMINISTRATIVE,
+        Type.CITY: Category.ADMINISTRATIVE,
+        Type.ZIPCODE: Category.ADMINISTRATIVE,
+
+        Type.TRACT: Category.CENSUS,
+        Type.CDP: Category.CENSUS,
+
+        Type.CONGRESSIONAL_DISTRICT: Category.DISTRICT,
+        Type.STATE_ASSEMBLY: Category.DISTRICT,
+        Type.STATE_SENATE: Category.DISTRICT,
+        Type.SCHOOL_DISTRICT: Category.DISTRICT,
+
+        Type.URBAN_AREA: Category.ENVIRONMENTAL,
+        Type.LAND_USE: Category.ENVIRONMENTAL,
+        Type.PROTECTED: Category.ENVIRONMENTAL,
+
+        Type.PLACE: Category.SYNTHETIC,
+
+        Type.MTRS: Category.AGRICULTURAL,
+
+        Type.CUSTOM: Category.CUSTOM,
+    }
+
     sqid = SqidsField(alphabet=shuffle_alphabet('regions.Region'))
 
     name = models.CharField(max_length=128)

@@ -1,0 +1,75 @@
+{% extends 'admin/reports/base.html' %}
+{% load humanize %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <style>
+        .report-sort a { color: inherit; text-decoration: none; }
+        .report-sort a:hover { text-decoration: underline; }
+        .report-sort.is-active a::after { content: " \25B2"; font-size: 0.7em; }
+        .report-sort.is-active.is-desc a::after { content: " \25BC"; }
+    </style>
+{% endblock %}
+
+{% block filters %}
+<label>County
+    <select name="county" onchange="this.form.submit()">
+        <option value="">All counties</option>
+        {% for name in counties %}<option value="{{ name }}" {% if name == county %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+</label>
+<label>Type
+    <select name="place_type" onchange="this.form.submit()">
+        <option value="">Cities and CDPs</option>
+        <option value="city" {% if place_type == 'city' %}selected{% endif %}>Cities</option>
+        <option value="cdp" {% if place_type == 'cdp' %}selected{% endif %}>CDPs</option>
+    </select>
+</label>
+<label>Min. population <input type="number" name="min_population" value="{{ min_population|default:'' }}" min="0" step="500" style="width: 7em;"></label>
+<label><input type="checkbox" name="uncovered" value="1" {% if uncovered %}checked{% endif %} onchange="this.form.submit()"> Only places with no monitor</label>
+<label><input type="checkbox" name="sjvair_only" value="1" {% if sjvair_only %}checked{% endif %} onchange="this.form.submit()"> SJVAir monitors only</label>
+<label><input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %} onchange="this.form.submit()"> Include hidden monitors</label>
+<label><input type="checkbox" name="include_inactive" value="1" {% if include_inactive %}checked{% endif %} onchange="this.form.submit()"> Include inactive monitors</label>
+<input type="hidden" name="sort" value="{{ sort }}">
+<input type="hidden" name="dir" value="{{ direction }}">
+<button type="submit">Apply</button>
+{% endblock %}
+
+{% block report %}
+<div class="module">
+    <table>
+        <caption>Communities</caption>
+        <tr><th>With a monitor</th><td>{{ tiles.covered|intcomma }}</td></tr>
+        <tr><th>Without a monitor</th><td>{{ tiles.uncovered|intcomma }}</td></tr>
+        <tr><th>Population without a monitor</th><td>{{ tiles.uncovered_population|intcomma }}{% if tiles.uncovered_pct is not None %} ({{ tiles.uncovered_pct }}%){% endif %}</td></tr>
+    </table>
+</div>
+
+<div class="module">
+    <table>
+        <caption>{{ rows|length }} cities and census-designated places</caption>
+        <thead>
+            <tr>
+                {% for column in columns %}
+                <th class="report-sort{% if column.active %} is-active{% if column.direction == 'desc' %} is-desc{% endif %}{% endif %}"><a href="{{ column.url }}">{{ column.label }}</a></th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <th><a href="{{ row.detail_url }}">{{ row.name }}</a></th>
+                <td>{{ row.type }}</td>
+                <td>{{ row.county }}</td>
+                <td>{{ row.population|intcomma }}</td>
+                <td>{{ row.monitors|intcomma }}</td>
+                <td>{{ row.per_10k|default_if_none:"—" }}</td>
+                <td>{% if row.nearest_km is not None %}{{ row.nearest_km }} km{% else %}—{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7">No matching cities or census-designated places. If the table is empty with no filters, run the regions imports first.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

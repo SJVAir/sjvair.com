@@ -95,7 +95,7 @@ class MonitorQuerySet(InheritanceQuerySet):
         if len(enabled_subclasses) < len(self.model.get_subclasses()):
             lookup = Q()
             for subclass in enabled_subclasses:
-                lookup |= Q(**subclass.health_check_queryset_filter())
+                lookup |= Q(**subclass.type_queryset_filter())
             queryset = queryset.filter(lookup) if enabled_subclasses else queryset.none()
 
         return queryset
@@ -108,17 +108,15 @@ class MonitorQuerySet(InheritanceQuerySet):
         queryset = self.none()
 
         if self.model._meta.model_name == 'monitor':
-            from camp.apps.entries.models import PM25
             lookup = Q()
             for subclass in self.model.get_subclasses():
-                config = subclass.ENTRY_CONFIG.get(PM25, {})
-                if len(config.get('sensors', [])) >= 2:
+                if subclass.health_checks_enabled():
                     lookup |= Q(**subclass.health_check_queryset_filter())
 
             if lookup:
                 queryset = self.filter(lookup)
 
-        elif self.model.supports_health_checks():
+        elif self.model.health_checks_enabled():
             queryset = self.all()
 
         if hour:
@@ -153,6 +151,32 @@ class MonitorQuerySet(InheritanceQuerySet):
         from django.contrib.gis.geos import Polygon
         bbox = Polygon.from_bbox((west, south, east, north))
         return self.filter(position__within=bbox)
+
+    def scope_to(self, region_ids=None, bbox=None):
+        """
+        Scope to monitors covered by any of the `region_ids` (sqids) and/or
+        within `bbox` (west, south, east, north). Raises Http404 for an
+        unknown region id. Shared by the map-style endpoints (at/, bulk
+        summaries) that accept `?region=` and `?bbox=`.
+        """
+        from django.http import Http404
+        from camp.apps.regions.models import Region
+
+        queryset = self.filter(position__isnull=False)
+
+        if region_ids:
+            regions = []
+            for region_id in region_ids:
+                try:
+                    regions.append(Region.objects.get(sqid=region_id))
+                except Region.DoesNotExist:
+                    raise Http404(f'"{region_id}" is not a valid region id')
+            queryset = queryset.in_regions(regions)
+
+        if bbox:
+            queryset = queryset.in_bbox(*bbox)
+
+        return queryset
 
     def with_grade(self):
         from django.db.models import CharField
