@@ -18,7 +18,7 @@ def stream_to_disk(url: str, dest: Path, verify: bool = True) -> Path:
     retries = requests.adapters.Retry(
         total=3,
         backoff_factor=1,
-        status_forcelist=[500, 502, 503, 504, 429, 404, 400, 202],
+        status_forcelist=[500, 502, 503, 504, 429, 400, 202],
         allowed_methods={"GET"},  # set, uppercased per urllib3
         raise_on_status=False,
     )
