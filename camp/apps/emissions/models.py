@@ -222,6 +222,8 @@ class CountyInventory(models.Model):
     year is an inventory; other years are CARB's back-casts and projections.
     """
 
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.CountyInventory'))
+
     class SourceType(models.TextChoices):
         STATIONARY = 'stationary', _('Stationary')
         AREAWIDE = 'areawide', _('Areawide')
