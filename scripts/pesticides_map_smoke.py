@@ -3,10 +3,10 @@ Headless smoke test for the Pesticides Explorer's section map.
 
 Loads explorer pages in headless Chrome, waits for the map to come up, runs
 a set of checks against the live map (layers, controls, the grid and its
-legend, popups, "all sections", an htmx year change that must keep the same
-map instance, expand/collapse) and reports a table per page. Exits 1 on any
-failed check, a console error, or a map that never loads. Dev-only; nothing
-here runs in CI.
+legend, the lens and its popups, "all sections", an htmx year change that
+must keep the same map instance, expand/collapse) and reports a table per
+page. Exits 1 on any failed check, a console error, or a map that never
+loads. Dev-only; nothing here runs in CI.
 
 Setup (Chrome must be installed: `google-chrome-stable` on the PATH):
 
@@ -26,7 +26,9 @@ Usage:
 Every check on a page runs even after one fails, except that a map which
 never loads skips the checks that need it. Checks that need a particular
 state (the township grid for the township popup, `?sections=1` for "all
-sections") report themselves skipped on pages without it.
+sections", a lens for the lens popup) report themselves skipped on pages
+without it. The lens check moves the map to zoom 9 (township level), so
+the checks after it start there.
 
 Each page gets a fresh browser: the explorer's static files aren't
 cache-busted, so a reused profile could serve a stale script.
@@ -38,16 +40,21 @@ import argparse
 import re
 import sys
 import time
+from urllib.parse import urlparse
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 
 MAP_TIMEOUT = 40
 SWAP_TIMEOUT = 20
 GRID_TIMEOUT = 30
 ALL_SECTIONS_TIMEOUT = 120
+# The lens must be up this long after the hover (a 50 ms rest plus one
+# sections request).
+LENS_TIMEOUT = 1.5
 
 # The map instance, whichever module owns it: the SDK module while it lives
 # beside the Leaflet one, the renamed module after the flip.
@@ -75,9 +82,12 @@ return !inst.map.isMoving();
 """ % JS_INSTANCE
 
 # Among `features` (an expression on `inst`), the one with data nearest the
-# map's centre whose centre lands on bare canvas (not under the toolbar or
-# a panel), as an offset from the container's centre for a pointer action.
-JS_PICK = """
+# map's centre (farthest, with `farthest`) whose bounds centre lands on bare
+# canvas (not under the toolbar or a panel) and actually on the feature (an
+# irregular edge township's bounds centre can fall outside it), as an
+# offset from the container's centre for a pointer action.
+def js_pick(features_expr, farthest=False):
+    return """
 function bboxOf(f) {
   if (f.bbox) return f.bbox;
   var b = [Infinity, Infinity, -Infinity, -Infinity];
@@ -89,6 +99,7 @@ function bboxOf(f) {
 }
 var canvas = inst.map.getCanvas();
 var rect = canvas.getBoundingClientRect();
+var fills = ['grid-fill', 'lens-fill', 'all-sections-fill'].filter(function (l) { return inst.map.getLayer(l); });
 var best = null;
 (%s).forEach(function (f) {
   if (!(f.properties.value > 0) || !f.geometry) return;
@@ -96,11 +107,12 @@ var best = null;
   var p = inst.map.project([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]);
   if (p.x < 0 || p.y < 0 || p.x > rect.width || p.y > rect.height) return;
   if (document.elementFromPoint(rect.left + p.x, rect.top + p.y) !== canvas) return;
+  if (!inst.map.queryRenderedFeatures(p, { layers: fills }).some(function (r) { return r.id === f.properties.id; })) return;
   var d = Math.hypot(p.x - rect.width / 2, p.y - rect.height / 2);
-  if (!best || d < best.d) best = { id: f.properties.id, dx: p.x - rect.width / 2, dy: p.y - rect.height / 2 };
+  if (!best || (%s)) best = { id: f.properties.id, dx: p.x - rect.width / 2, dy: p.y - rect.height / 2, d: d };
 });
 return best;
-"""
+""" % (features_expr, 'd > best.d' if farthest else 'd < best.d')
 
 POPUP = '.maplibregl-popup.section-popup-wrap .section-popup'
 LEGEND_ROWS = ".section-map-legend li:not(.is-marker)"
@@ -124,6 +136,8 @@ class Page:
     def __init__(self, driver, url):
         self.driver = driver
         self.url = url
+        parsed = urlparse(url)
+        self.origin = '%s://%s' % (parsed.scheme, parsed.netloc)
         self.timings = {}
         self.errors = []
 
@@ -167,6 +181,11 @@ class Page:
             message = entry['message']
             if any(word in message for word in noise):
                 continue
+            # A third-party script or font that didn't load (offline, a
+            # blocked CDN) isn't the map's doing; a resource on the page's
+            # own origin failing is. The message starts with the URL.
+            if 'Failed to load resource' in message and not message.startswith(self.origin + '/'):
+                continue
             entries.append(message[:300])
         self.errors.extend(entries)
         return entries
@@ -180,21 +199,65 @@ class Page:
         time.sleep(0.3)
         return el
 
-    # Pointer actions relative to the map container's centre.
-    def hover_map(self, dx=0, dy=0, settle=1.5):
+    # Pointer actions relative to the map container's centre. The pointer
+    # move is animated by default (a sweep across the map, as a reader's);
+    # `instant` lands it in one step, so a timing starts at the arrival.
+    def hover_map(self, dx=0, dy=0, settle=1.5, instant=False):
         el = self.scroll_to_map()
-        ActionChains(self.driver).move_to_element_with_offset(el, dx, dy).perform()
+        ActionChains(self.driver, duration=0 if instant else 250).move_to_element_with_offset(el, dx, dy).perform()
         time.sleep(settle)
 
-    def click_map(self, dx=0, dy=0, settle=1.5):
+    def click_map(self, dx=0, dy=0, settle=1.5, instant=False):
         el = self.scroll_to_map()
-        ActionChains(self.driver).move_to_element_with_offset(el, dx, dy).click().perform()
+        ActionChains(self.driver, duration=0 if instant else 250).move_to_element_with_offset(el, dx, dy).click().perform()
         time.sleep(settle)
 
-    def pick(self, features_expr):
-        """A clickable feature with data (see JS_PICK), or None."""
+    def press_escape(self):
+        """Escape, sent to the map canvas (focused, as after a click on it)."""
+        self.driver.find_element(By.CSS_SELECTOR, '.section-map canvas.maplibregl-canvas').send_keys(Keys.ESCAPE)
+
+    def wait_lens(self, township_id=None, timeout=LENS_TIMEOUT):
+        """Wait for the lens (around `township_id`, if given) to be drawn;
+        seconds taken."""
+        started = time.time()
+        ok = self.wait_for("""
+            var inst = (function () { %s })();
+            if (!inst || !inst.lensFeatures.length) return false;
+            return !arguments[0] || inst.lensId === arguments[0];
+        """ % JS_INSTANCE, timeout, township_id)
+        return ok, round(time.time() - started, 2)
+
+    def wait_prefetch(self, township_id, timeout=10):
+        """Wait for the ring around `township_id` (the 5x5 block) to be cached
+        and no prefetch to be in flight."""
+        return self.wait_for("""
+            var inst = (function () { %s })();
+            if (!inst || inst.prefetching) return false;
+            return !inst.uncached(inst.neighborhoodOf(arguments[0], 2.5).map(function (h) { return h.properties.id; })).length;
+        """ % JS_INSTANCE, timeout, township_id)
+
+    def sections_requests(self):
+        return [r for r in self.grid_requests() if r[0] == 'sections']
+
+    def pick(self, features_expr, farthest=False):
+        """A clickable feature with data (see js_pick), or None."""
         self.scroll_to_map()
-        return self.instance_js(JS_PICK % features_expr)
+        return self.instance_js(js_pick(features_expr, farthest))
+
+    def hover_stamped(self, dx, dy):
+        """An instant pointer move, with the moment the map saw it stamped
+        in the page (`window.__hoverAt`, Date.now) so a draw that records
+        its own time can be measured against it."""
+        el = self.scroll_to_map()
+        self.js('window.__hoverAt = null')
+        # A capture listener on the canvas container runs before the SDK's
+        # own handlers, so the stamp precedes a draw made in the same event.
+        self.instance_js("inst.map.getCanvasContainer().addEventListener('mousemove', function () { window.__hoverAt = Date.now(); }, { once: true, capture: true });")
+        ActionChains(self.driver, duration=0).move_to_element_with_offset(el, dx, dy).perform()
+
+    def lens_latency_ms(self):
+        """Milliseconds from the stamped hover to the lens draw, or None."""
+        return self.instance_js('return window.__hoverAt && inst.lensDrawnAt >= window.__hoverAt ? inst.lensDrawnAt - window.__hoverAt : null')
 
     def set_control(self, selector, value):
         """Set an Options control (a select or a radio) and fire its change."""
@@ -252,6 +315,7 @@ def check_layers(page):
         var firstSymbol = -1;
         map.getStyle().layers.some(function (l, i) { if (l.type === 'symbol') { firstSymbol = i; return true; } });
         var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line', 'all-sections-fill', 'all-sections-line',
+                    'lens-fill', 'lens-line', 'lens-outline',
                     'selected-line', 'highlight-line', 'counties-line', 'outline-fill', 'outline-line', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
         var aboveLabels = mine.filter(function (id) { return firstSymbol !== -1 && layers.indexOf(id) > firstSymbol; });
@@ -408,6 +472,169 @@ def check_legend_options(page):
     return (not problems), ('bins=4 -> %d rows; %s -> %s' % (rows, swatch_before, swatch_after) if not problems else '; '.join(problems))
 
 
+def check_lens(page):
+    """At the township zoom (the map is moved to zoom 9), hovering a
+    township brings up the lens within LENS_TIMEOUT: its neighbourhood's
+    sections in the `lens` source, classed, the hovered township's outline
+    in the `lens-outline` source, the hosts' fills stepped aside. Once the
+    ring beyond it is prefetched, moving one township over draws from the
+    cache: at most one new sections request (the next ring). Under "all
+    sections" the lens stays off."""
+    if page.instance_js('return inst.showAllSections'):
+        if page.instance_js('return inst.level') != 'township':
+            return None, 'section level (skipped)'
+        target = page.pick('inst.sourceData.grid.features')
+        if not target:
+            return False, 'no township with data on bare canvas to hover'
+        page.hover_map(target['dx'], target['dy'], settle=0.6, instant=True)
+        state = page.instance_js("return { lensId: inst.lensId, features: inst.lensFeatures.length, source: (inst.sourceData.lens || {features: []}).features.length };")
+        if state['lensId'] or state['features'] or state['source']:
+            return False, 'lens drawn under all sections: %s' % state
+        return True, 'inactive under all sections (township %s hovered)' % target['id']
+
+    page.instance_js("inst.map.jumpTo({ center: inst.map.getCenter(), zoom: 9 });")
+    ok, _ = page.wait_grid('township')
+    if not ok:
+        return False, 'township grid never loaded at zoom 9'
+    target = page.pick('inst.sourceData.grid.features')
+    if not target:
+        return False, 'no township with data on bare canvas to hover'
+    problems = []
+    requests_before = len(page.sections_requests())
+    # The draw is timed from the hover the map saw (the poll below only
+    # sees 0.2 s steps).
+    page.hover_stamped(target['dx'], target['dy'])
+    drawn, secs = page.wait_lens(target['id'])
+    if not drawn:
+        state = page.instance_js("""
+            return { hovered: !!window.__hoverAt, lensId: inst.lensId, hosts: inst.lensHosts ? inst.lensHosts.length : null,
+                     uncached: inst.lensHosts ? inst.uncached(inst.lensHosts.map(function (h) { return h.properties.id; })).length : null,
+                     features: inst.lensFeatures.length, fetchPending: !!inst.lensFetchTimer };
+        """)
+        return False, 'lens not drawn within %ss of hovering %s: %s, requests since %s' % (
+            LENS_TIMEOUT, target['id'], state, page.sections_requests()[requests_before:])
+    page.timings['lens_ms'] = page.lens_latency_ms()
+    result = page.instance_js("""
+        var hosts = inst.lensHosts || [];
+        var outline = inst.sourceData['lens-outline'];
+        return {
+            hosts: hosts.length,
+            features: inst.lensFeatures.length,
+            unclassed: inst.lensFeatures.filter(function (f) { return f.properties.fill === undefined; }).length,
+            classes: inst.lensClasses.members.filter(function (m) { return m.length; }).length,
+            outline: outline && outline.properties ? outline.properties.id : null,
+            hostsDimmed: hosts.filter(function (h) { return inst.map.getFeatureState({ source: 'grid', id: h.properties.id }).lensHost === true; }).length,
+            rendered: inst.map.queryRenderedFeatures({ layers: ['lens-fill'] }).length,
+        };
+    """)
+    if result['hosts'] < 4:
+        problems.append('only %d hosts in the neighbourhood' % result['hosts'])
+    if result['unclassed']:
+        problems.append('%d lens sections unclassed' % result['unclassed'])
+    if result['outline'] != target['id']:
+        problems.append('lens outline holds %s, hovered %s' % (result['outline'], target['id']))
+    if result['hostsDimmed'] != result['hosts']:
+        problems.append('%d of %d hosts dimmed' % (result['hostsDimmed'], result['hosts']))
+    if not page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['lens-fill'] }).length > 0;" % JS_INSTANCE, 5):
+        problems.append('no lens features rendered')
+    first_requests = page.sections_requests()[requests_before:]
+    # The ring prefetch (5x5 minus the 3x3) lands in idle time; wait for it,
+    # then the neighbour's own 3x3 is entirely cached.
+    if not page.wait_prefetch(target['id']):
+        problems.append('ring prefetch never completed')
+    neighbour = page.pick("inst.neighborhoodOf(%s).filter(function (f) { return f.properties.id !== %s; })" % (repr(target['id']), repr(target['id'])))
+    if not neighbour:
+        problems.append('no neighbouring township with data on bare canvas')
+        return False, '; '.join(problems)
+    requests_before = len(page.sections_requests())
+    page.hover_stamped(neighbour['dx'], neighbour['dy'])
+    moved, _ = page.wait_lens(neighbour['id'])
+    if not moved:
+        problems.append('lens did not move to neighbour %s within %ss' % (neighbour['id'], LENS_TIMEOUT))
+    page.timings['lens_move_ms'] = page.lens_latency_ms()
+    # The prefetch around the new centre may add one request (its ring).
+    time.sleep(0.7)
+    page.wait_prefetch(neighbour['id'])
+    new_requests = page.sections_requests()[requests_before:]
+    if len(new_requests) > 1:
+        problems.append('%d sections requests to move one township over' % len(new_requests))
+    detail = 'township %s: %d hosts, %d sections (%d classes) drawn %sms after the hover (request %s); -> %s drawn after %sms with %d new request(s)' % (
+        target['id'], result['hosts'], result['features'], result['classes'], page.timings['lens_ms'],
+        ' '.join('%dms' % ms for _, ms, _ in first_requests) or 'cached',
+        neighbour['id'], page.timings['lens_move_ms'], len(new_requests))
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_lens_popup(page):
+    """Clicking a lens section opens the section popup (with the "Zoom in"
+    button, since the township popup is unreachable under the lens),
+    selects and outlines it, and pins the lens: the pointer moving to
+    another township leaves the lens and its popup in place. Escape closes
+    the popup, which releases the lens: the next township hovered gets its
+    own."""
+    if not page.instance_js('return inst.lensFeatures.length'):
+        return None, 'no lens up (skipped)'
+    lens_id = page.instance_js('return inst.lensId')
+    # A section of the lens's own township: the pointer arriving on a
+    # neighbour's section would recentre the lens there first (by design).
+    target = page.pick("inst.lensFeatures.filter(function (f) { var m = f.properties.mtrs || ''; return m.slice(0, m.lastIndexOf('-')) === inst.lensId; })")
+    if not target:
+        return False, 'no section of township %s with data on bare canvas to click' % lens_id
+    page.click_map(target['dx'], target['dy'], settle=0.3, instant=True)
+    filled = page.wait_for("""
+        var el = document.querySelector(arguments[0]);
+        return !!el && el.innerText.indexOf('Loading') === -1 && !!el.querySelector('.section-popup-chems li, .section-popup-note');
+    """, 15, POPUP)
+    problems = []
+    if not filled:
+        problems.append('popup never filled in')
+    result = page.instance_js("""
+        var el = document.querySelector(arguments[0]);
+        return {
+            text: el ? el.innerText : '',
+            zoomIn: !!(el && el.querySelector('.section-map-zoom[data-id]')),
+            openLensId: inst.openLensId, popupKey: inst.popupKey, selected: inst.selectedSectionId,
+            outline: inst.sourceData.selected && inst.sourceData.selected.properties ? inst.sourceData.selected.properties.id : null,
+            lensId: inst.lensId,
+        };
+    """, POPUP)
+    if 'Square-mile section' not in result['text']:
+        problems.append('popup text %r' % result['text'][:120])
+    if not result['zoomIn']:
+        problems.append('no "Zoom in" button on the lens section popup')
+    if result['openLensId'] != target['id'] or result['popupKey'] != 'openLensId':
+        problems.append('popup not tracked as the lens popup: %s' % {k: result[k] for k in ('openLensId', 'popupKey')})
+    if result['selected'] != target['id'] or result['outline'] != target['id']:
+        problems.append('selection state %s for %s' % ({k: result[k] for k in ('selected', 'outline')}, target['id']))
+    if result['lensId'] != lens_id:
+        problems.append('lens moved from %s to %s on the click' % (lens_id, result['lensId']))
+    # Away to the township with data farthest from the centre (the lens's
+    # own township excluded) that lands on bare canvas.
+    far = page.pick("inst.gridFeatures.filter(function (f) { return f.properties.id !== inst.lensId; })", farthest=True)
+    if not far:
+        problems.append('no other township on bare canvas to move to')
+        return False, '; '.join(problems)
+    page.hover_map(far['dx'], far['dy'], settle=0.5, instant=True)
+    pinned = page.instance_js("return { lensId: inst.lensId, features: inst.lensFeatures.length, popup: !!inst.popup && !!document.querySelector(arguments[0]) };", POPUP)
+    if pinned['lensId'] != lens_id or not pinned['features'] or not pinned['popup']:
+        problems.append('lens not pinned while its popup is open: %s' % pinned)
+    page.press_escape()
+    released = page.wait_for("""
+        var inst = (function () { %s })();
+        return !!inst && !inst.popup && !inst.openLensId && !inst.selectedSectionId && !document.querySelector(arguments[0]);
+    """ % JS_INSTANCE, 3, POPUP)
+    if not released:
+        problems.append('Escape did not close the popup and release the lens: %s' % page.instance_js("return { popup: !!inst.popup, openLensId: inst.openLensId, selected: inst.selectedSectionId };"))
+    # The lens follows the pointer again: a nudge over the far township
+    # draws its lens (it may be uncached: a rest and a request).
+    page.hover_stamped(far['dx'] + 2, far['dy'] + 2)
+    moved, _ = page.wait_lens(far['id'])
+    if not moved:
+        problems.append('lens did not move to %s after the release (lensId %s)' % (far['id'], page.instance_js('return inst.lensId')))
+    detail = 'section %s: popup pinned lens %s; Escape released it; -> %s drawn after %sms' % (target['id'], lens_id, far['id'], page.lens_latency_ms())
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
 def check_all_sections(page):
     """On a `?sections=1` page at the township zoom, every visible township's
     sections are drawn (well over a thousand at a county zoom), the township
@@ -523,7 +750,13 @@ def check_township_popup(page):
     target = page.pick('inst.sourceData.grid.features')
     if not target:
         return False, 'no township with data on bare canvas to click'
-    page.click_map(target['dx'], target['dy'], settle=1.0)
+    # The township popup is reachable where the lens hasn't drawn (its
+    # sections take the click otherwise): with the cache emptied an
+    # uncached township waits out the 50 ms rest and a request, and an
+    # instant move-and-click lands before either (a sweep in would let the
+    # rest elapse over the township on the way).
+    page.instance_js("inst.lensCache = {}; inst.clearLens();")
+    page.click_map(target['dx'], target['dy'], settle=1.0, instant=True)
     text = page.popup_text() or ''
     problems = []
     if page.instance_js('return inst.openGridId') != target['id']:
@@ -714,6 +947,8 @@ CHECKS = [
     ('fit', check_fit),
     ('grid', check_grid),
     ('legend options', check_legend_options),
+    ('lens', check_lens),
+    ('lens popup', check_lens_popup),
     ('all sections', check_all_sections),
     ('style swap', check_style_swap),
     ('township popup', check_township_popup),
@@ -775,7 +1010,8 @@ def main(argv=None):
     for path in args.paths:
         url, rows, timings = run_page(args.base, path, args.gl, args.year, args.screenshots)
         print('\n%s' % url)
-        print('  ' + ', '.join('%s %ss' % (key[:-2].replace('_', ' '), value) for key, value in timings.items()))
+        # Keys end in their unit: `_s` or `_ms`.
+        print('  ' + ', '.join('%s %s%s' % (key.rsplit('_', 1)[0].replace('_', ' '), value, key.rsplit('_', 1)[1]) for key, value in timings.items()))
         for name, passed, detail in rows:
             status = 'PASS' if passed else ('SKIP' if passed is None else 'FAIL')
             print('  %-4s %-16s %s' % (status, name, detail))
