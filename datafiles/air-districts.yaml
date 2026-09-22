@@ -1,0 +1,181 @@
+# California air districts, keyed by CARB district code (Air_District_Code in
+# CARB's "California Air District Boundaries" layer). Display name, phone and
+# links from CARB's district directory, https://ww2.arb.ca.gov/california-air-districts
+# (captured 2026-09-22). Read by `import_air_districts`, which copies each entry
+# into the district Region's name and metadata.
+
+AMA:
+  name: "Amador County APCD"
+  carb_url: "https://ww2.arb.ca.gov/amador-county-air-pollution-control-district-0"
+  complaints_url: "https://www.amadorgov.org/services/amador-air-district/how-to-file-a-complaint"
+  phone: "(209) 257-0112"
+AV:
+  name: "Antelope Valley AQMD"
+  carb_url: "https://ww2.arb.ca.gov/antelope-valley-air-quality-management-district"
+  complaints_url: "https://avaqmd.ca.gov/public-complaints"
+  phone: "(661) 723-8070"
+BA:
+  name: "Bay Area AQMD"
+  carb_url: "https://ww2.arb.ca.gov/bay-area-air-quality-management-district"
+  complaints_url: "https://www.baaqmd.gov/online-services/air-pollution-complaints"
+  phone: "(415) 749-5000"
+BUT:
+  name: "Butte County AQMD"
+  carb_url: "https://ww2.arb.ca.gov/butte-county-air-quality-managament-district"
+  complaints_url: "https://bcaqmd.org/complaints/#:~:text=The%20following%20options%20are%20available,to%20the%20on%2Dduty%20inspector."
+  phone: "(530) 332-9400"
+CAL:
+  name: "Calaveras County APCD"
+  carb_url: "https://ww2.arb.ca.gov/calaveras-county-air-pollution-control-district"
+  complaints_url: ""
+  phone: "(209) 754-6399"
+COL:
+  name: "Colusa County APCD"
+  carb_url: "https://ww2.arb.ca.gov/colusa-county-air-pollution-control-district"
+  complaints_url: "https://www.countyofcolusa.org/461/Air-Pollution-Control-District"
+  phone: "(530) 458-0590"
+ED:
+  name: "El Dorado County AQMD"
+  carb_url: "https://ww2.arb.ca.gov/el-dorado-county-air-quality-management-district"
+  complaints_url: "https://www.edcgov.us/Government/AirQualityManagement/pages/complaint.aspx"
+  phone: "(530) 621-7501"
+FR:
+  name: "Feather River AQMD"
+  carb_url: "https://ww2.arb.ca.gov/feather-river-air-quality-management-district"
+  complaints_url: "https://www.fraqmd.org/air-pollution-complaints"
+  phone: "(530) 634-7659"
+GBU:
+  name: "Great Basin Unified APCD"
+  carb_url: "https://ww2.arb.ca.gov/great-basin-unified-air-pollution-control-district"
+  complaints_url: "https://gbuapcd.org/PermittingAndRules/Complaints/"
+  phone: "(760) 872-8211"
+GLE:
+  name: "Glenn County APCD"
+  carb_url: "https://ww2.arb.ca.gov/glenn-county-air-pollution-control-district"
+  complaints_url: "https://www.countyofglenn.net/dept/agriculture/air-pollution-control-district/rules-and-regulations/district-regulations-forms"
+  phone: "(530) 934-6500"
+IMP:
+  name: "Imperial County APCD"
+  carb_url: "https://ww2.arb.ca.gov/imperial-county-air-pollution-control-district"
+  complaints_url: "https://apcd.imperialcounty.org/compliance/#aircomplaint"
+  phone: "(442) 265-1800"
+KER:
+  name: "Eastern Kern APCD"
+  carb_url: "https://ww2.arb.ca.gov/eastern-kern-air-pollution-control-district"
+  complaints_url: "http://www.kernair.org/Main_Pages/Subpages/Info_Sub/Contact_Info.html"
+  phone: "(661) 862-5250"
+LAK:
+  name: "Lake County AQMD"
+  carb_url: "https://ww2.arb.ca.gov/lake-county-air-quality-managament-district"
+  complaints_url: "https://www.lcaqmd.net/"
+  phone: "(707) 263-7000"
+LAS:
+  name: "Lassen County APCD"
+  carb_url: "https://ww2.arb.ca.gov/lassen-county-air-pollution-control-district"
+  complaints_url: "http://www.lassenair.org/contact-us.html"
+  phone: "(530) 252-4247"
+MBU:
+  name: "Monterey Bay Air Resources District"
+  carb_url: "https://ww2.arb.ca.gov/monterey-bay-air-resources-district"
+  complaints_url: "https://www.mbard.org/submit-a-complaint"
+  phone: "(831) 647-9411"
+MEN:
+  name: "Mendocino County AQMD"
+  carb_url: "https://ww2.arb.ca.gov/mendocino-county-air-quality-managment-district"
+  complaints_url: "http://www.co.mendocino.ca.us/aqmd/complaint.html"
+  phone: "(707) 463-4354"
+MOD:
+  name: "Modoc County APCD"
+  carb_url: "https://ww2.arb.ca.gov/modoc-county-air-pollution-control-district"
+  complaints_url: "https://www.co.modoc.ca.us/departments/agricultural/air_pollution_control_2.php"
+  phone: "(530) 233-6401"
+MOJ:
+  name: "Mojave Desert AQMD"
+  carb_url: "https://ww2.arb.ca.gov/mojave-desert-air-quality-managment-district"
+  complaints_url: "https://www.mdaqmd.ca.gov/permitting/complaints"
+  phone: "(760) 245-1661"
+MPA:
+  name: "Mariposa County APCD"
+  carb_url: "https://ww2.arb.ca.gov/mariposa-county-air-pollution-control-district"
+  complaints_url: "http://www.mariposacounty.org/433/Air-Pollution-Control-District"
+  phone: "(209) 966-2220"
+NCU:
+  name: "North Coast Unified AQMD"
+  carb_url: "https://ww2.arb.ca.gov/north-coast-unified-air-quality-managment-district"
+  complaints_url: "https://ncuaqmd.org/index.php?page=complaints"
+  phone: "(707) 443-3093"
+NS:
+  name: "Northern Sonoma County APCD"
+  carb_url: "https://ww2.arb.ca.gov/northern-sonoma-county-air-pollution-control-district"
+  complaints_url: "https://nosocoair.org/contact-us"
+  phone: "(707) 433-5911"
+NSI:
+  name: "Northern Sierra AQMD"
+  carb_url: "https://ww2.arb.ca.gov/northern-sierra-air-quality-management-district"
+  complaints_url: "https://myairdistrict.com/index.php/contact-us/"
+  phone: "(530) 274-9360"
+PLA:
+  name: "Placer County APCD"
+  carb_url: "https://ww2.arb.ca.gov/placer-county-air-pollution-control-district"
+  complaints_url: "https://www.placerair.org/1692/Complaints"
+  phone: "(530) 745-2330"
+SAC:
+  name: "Sacramento Metro AQMD"
+  carb_url: "https://ww2.arb.ca.gov/sacramento-metro-air-quality-managment-district"
+  complaints_url: "https://www.airquality.org/Residents/Complaints#:~:text=The%20Sac%20Metro%20Air%20District,or%20800%2D880%2D9025."
+  phone: "(279) 207-1122"
+SB:
+  name: "Santa Barbara County APCD"
+  carb_url: "https://ww2.arb.ca.gov/santa-barbara-county-air-pollution-control-district"
+  complaints_url: "https://www.ourair.org/complaints/"
+  phone: "(805) 979-8050"
+SC:
+  name: "South Coast AQMD"
+  carb_url: "https://ww2.arb.ca.gov/south-coast-air-quality-management-district"
+  complaints_url: "https://www.aqmd.gov/home/air-quality/complaints"
+  phone: "(909) 396-2000"
+SD:
+  name: "San Diego County APCD"
+  carb_url: "https://ww2.arb.ca.gov/san-diego-county-air-pollution-control-district"
+  complaints_url: "https://www.sdapcd.org/content/sdc/apcd/en/compliance-programs/air_quality_complaints.html"
+  phone: "(858) 586-2600"
+SHA:
+  name: "Shasta County AQMD"
+  carb_url: "https://ww2.arb.ca.gov/shasta-county-air-quality-management-district"
+  complaints_url: "https://www.co.shasta.ca.us/index/drm/air-quality"
+  phone: "(530) 225-5674"
+SIS:
+  name: "Siskiyou County APCD"
+  carb_url: "https://ww2.arb.ca.gov/siskiyou-county-air-pollution-control-distict"
+  complaints_url: "https://www.co.siskiyou.ca.us/airpollution"
+  phone: "(530) 841-4025"
+SJU:
+  name: "San Joaquin Valley APCD"
+  carb_url: "https://ww2.arb.ca.gov/san-joaquin-valley-air-pollution-control-district"
+  complaints_url: "https://ww2.valleyair.org/file-a-complaint"
+  phone: "(559) 230-6000"
+SLO:
+  name: "San Luis Obispo County APCD"
+  carb_url: "https://ww2.arb.ca.gov/san-luis-obispo-county-air-pollution-control-district"
+  complaints_url: "https://www.slocleanair.org/community/complaints.php"
+  phone: "(805) 781-5912"
+TEH:
+  name: "Tehama County APCD"
+  carb_url: "https://ww2.arb.ca.gov/tehama-county-air-pollution-control-district"
+  complaints_url: "https://www.tehcoapcd.net/complaints/"
+  phone: "(530) 527-3717"
+TUO:
+  name: "Tuolumne County APCD"
+  carb_url: "https://ww2.arb.ca.gov/tuolumne-county-air-pollution-control-district"
+  complaints_url: "https://tuolumnecountyca.viewpointcloud.com/categories/1081/record-types/6428"
+  phone: "(209) 533-5693"
+VEN:
+  name: "Ventura County APCD"
+  carb_url: "https://ww2.arb.ca.gov/ventura-county-air-pollution-control-district"
+  complaints_url: "http://www.vcapcd.org/air_quality_complaints.htm"
+  phone: "(805) 303-4005"
+YS:
+  name: "Yolo-Solano AQMD"
+  carb_url: "https://ww2.arb.ca.gov/yolo-solano-air-quality-management-distrcit"
+  complaints_url: "https://www.ysaqmd.org/rules-compliance/make-a-complaint/"
+  phone: "(530) 757-3650"
