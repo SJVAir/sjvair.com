@@ -161,7 +161,9 @@
       select: {show: false},
       cursor: {x: false, y: false, drag: {x: false, y: false}, points: {show: false}},
       scales: {
-        x: {time: false, distr: 2},
+        // Ordinal, padded half a slot each side so the first and last bars
+        // sit inside the plot instead of centred on its edges.
+        x: {time: false, distr: 2, range: function (u, min, max) { return [min - 0.5, max + 0.5]; }},
         y: {range: function (u, min, max) { return [0, (max || 1) * 1.08]; }},
       },
       axes: [
@@ -201,6 +203,9 @@
           var top = u.valToPos(y[hovered], 'y', true);
           var bottom = u.valToPos(0, 'y', true);
           ctx.save();
+          ctx.beginPath();
+          ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height);
+          ctx.clip();
           ctx.fillStyle = colors.color;
           ctx.fillRect(left, top, width, Math.max(bottom - top, 2 * devicePixelRatio));
           ctx.restore();
