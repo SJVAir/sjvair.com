@@ -386,3 +386,10 @@ Deploy steps (for the PR description): `migrate`; `import_air_districts` (before
   `Region`s exist, that zone is exactly Kern County ∩ the SJU district, so it can be
   recomputed from official boundaries (a new `Boundary` version). The Tulare valley and
   Sequoia zones are forecast areas inside SJU, not district lines, and still need the SVG.
+- **CARB California Dairy & Livestock Database (CADD)** — its own spec and plan after
+  this project (Derek, 2026-09-22). v2.0.0 (Oct 2025) is a directly downloadable XLSX:
+  2,115 dairies (1,558 in the eight counties) with coordinates, herd size by class per
+  year 2012–2023, and anaerobic digesters (164 of 174 statewide are in the SJV). No
+  emissions; CEIDARS covers only 13 SJV livestock facilities, so CADD fills the gap
+  rather than cross-referencing it. Show reported facts (location, herd, digesters,
+  trend), not modeled emissions, in its first version.
