@@ -41,6 +41,33 @@ class FacilityTests(TestCase):
         facility.refresh_from_db()
         assert facility.point != point
 
+    def test_geocode_falls_back_to_maptiler(self):
+        facility = Facility.objects.get(pk=2)
+        point = Point(-119.0, 35.4, srid=4326)
+        with patch('camp.utils.geocode.census', return_value=None):
+            with patch('camp.utils.geocode.maptiler', return_value=point):
+                assert facility.geocode() is True
+        assert facility.point == point
+
+    def test_geocode_no_results(self):
+        facility = Facility.objects.create(
+            county_code=99, air_district_id=9001, facid=999, name='NO POINT',
+        )
+        with patch('camp.utils.geocode.census', return_value=None):
+            with patch('camp.utils.geocode.maptiler', return_value=None):
+                assert facility.geocode() is False
+        assert facility.point is None
+
+    def test_geocode_does_not_save(self):
+        facility = Facility.objects.create(
+            county_code=99, air_district_id=9001, facid=998, name='NO POINT 2',
+        )
+        point = Point(-119.0, 35.4, srid=4326)
+        with patch('camp.utils.geocode.census', return_value=point):
+            facility.geocode()
+        facility.refresh_from_db()
+        assert facility.point is None
+
 
 class EmissionsRecordTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
