@@ -24,7 +24,14 @@
 /* Labels: the SDK's popup, styled as the tooltip it replaces (a small bold
    white box with a tip), and never in the way of the cursor, so a hover
    label doesn't take the hover that opened it. */
-.map-figure-label {
+.map-figure-label,
+/* The SDK sets `pointer-events: auto` on a popup's content, which beats the
+   `none` inherited from the popup itself. A label that takes the pointer
+   makes the map think the cursor left the county underneath it: the label
+   closes, the cursor is over the county again, the label reopens, and it
+   flickers for as long as the cursor rests there. */
+.map-figure-label .maplibregl-popup-content,
+.map-figure-label .maplibregl-popup-tip {
   pointer-events: none;
 }
 

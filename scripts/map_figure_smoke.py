@@ -398,6 +398,46 @@ def check_hover_outline(page):
     return True, '%s outlined on hover, released on leave' % area['label']
 
 
+def check_label_is_inert(page):
+    """Moving the cursor onto the hover label must not disturb it. If the
+    label takes pointer events, the map sees the cursor leave the county,
+    closes the label, which puts the cursor back over the county, which
+    reopens it -- a flicker loop for as long as the cursor rests there."""
+    if not page.has_container():
+        return None, 'no live figure on this page'
+    area = page.pick_area()
+    if not area:
+        return False, 'no county found on bare canvas'
+    page.hover_map(area['dx'], area['dy'])
+    spot = page.instance_js("""
+        var label = document.querySelector('.map-figure-label');
+        if (!label) return null;
+        var l = label.getBoundingClientRect();
+        var m = inst.map.getContainer().getBoundingClientRect();
+        if (!l.width || !l.height) return null;
+        return {
+            dx: Math.round(l.left + l.width / 2 - (m.left + m.width / 2)),
+            dy: Math.round(l.top + l.height / 2 - (m.top + m.height / 2)),
+        };
+    """)
+    if not spot:
+        return False, 'no hover label to move onto'
+    page.hover_map(spot['dx'], spot['dy'])
+    samples = []
+    for _ in range(6):
+        samples.append(page.instance_js("""
+            return { open: !!document.querySelector('.map-figure-label'), id: String(inst.areaHoverId) };
+        """))
+        time.sleep(0.2)
+    closed = [n for n, s in enumerate(samples) if not s['open']]
+    ids = sorted(set(s['id'] for s in samples))
+    if closed:
+        return False, 'label closed under the cursor on %d of %d samples' % (len(closed), len(samples))
+    if len(ids) > 1:
+        return False, 'hover id churned between %s' % ids
+    return True, 'label stayed open under the cursor, hover held on %s' % ids[0]
+
+
 def check_label(page):
     """The county's hover label opens while the cursor is over it, and
     closes when it leaves."""
@@ -600,6 +640,7 @@ CHECKS = [
     ('paint', check_paint),
     ('cursor', check_cursor),
     ('hover outline', check_hover_outline),
+    ('label inert', check_label_is_inert),
     ('label', check_label),
     ('htmx round trip', check_htmx_round_trip),
     ('hidden container', check_hidden_container),
