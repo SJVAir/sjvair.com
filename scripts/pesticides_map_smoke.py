@@ -418,7 +418,7 @@ def check_map_loaded(page):
 
 
 def check_layers(page):
-    """Every layer is in the style, under the basemap's labels, in the
+    """Every layer is in the style, above every basemap layer, in the
     expected paint order (each layer's fill under its own stroke, the grid
     under the sections drawn over it, those under the outlines, and the
     markers last); the county outlines have data; the outline/radius
@@ -427,14 +427,19 @@ def check_layers(page):
         var map = inst.map;
         var all = map.getStyle().layers;
         var layers = all.map(function (l) { return l.id; });
-        var firstSymbol = -1;
-        all.some(function (l, i) { if (l.type === 'symbol') { firstSymbol = i; return true; } });
+        var mineSet = {};
         var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line',
                     'all-sections-fill', 'all-sections-line', 'lens-fill', 'lens-line', 'lens-outline',
                     'selected-line', 'highlight-line', 'counties-line', 'outline-fill', 'outline-line',
                     'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
-        var aboveLabels = mine.filter(function (id) { return firstSymbol !== -1 && layers.indexOf(id) > firstSymbol; });
+        mine.forEach(function (id) { mineSet[id] = true; });
+        var lastBase = -1;
+        layers.forEach(function (id, i) { if (!mineSet[id]) lastBase = i; });
+        var underBasemap = mine.filter(function (id) {
+            var i = layers.indexOf(id);
+            return i !== -1 && i < lastBase;
+        });
         var ordered = function (ids) {
             var order = ids.filter(function (id) { return layers.indexOf(id) !== -1; }).map(function (id) { return layers.indexOf(id); });
             return order.every(function (i, n) { return n === 0 || i > order[n - 1]; });
@@ -444,15 +449,15 @@ def check_layers(page):
             var d = inst.sourceData[id];
             counts[id] = d ? (d.features ? d.features.length : (d.geometry ? 1 : 0)) : 0;
         });
-        return { missing: missing, aboveLabels: aboveLabels, inOrder: ordered(mine), counts: counts, wantsOutline: !!inst.data.outlineUrl, wantsRadius: !!inst.data.radius };
+        return { missing: missing, underBasemap: underBasemap, inOrder: ordered(mine), counts: counts, wantsOutline: !!inst.data.outlineUrl, wantsRadius: !!inst.data.radius };
     """)
     if result is None:
         return False, 'no instance'
     problems = []
     if result['missing']:
         problems.append('missing layers %s' % result['missing'])
-    if result['aboveLabels']:
-        problems.append('layers above labels %s' % result['aboveLabels'])
+    if result['underBasemap']:
+        problems.append('layers under the basemap %s' % result['underBasemap'])
     if not result['inOrder']:
         problems.append('layers out of paint order')
     if not result['counts']['counties']:

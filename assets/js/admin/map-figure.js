@@ -213,17 +213,6 @@
     return bounds ? [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2] : null;
   }
 
-  // Where our layers go in the basemap: under its first symbol layer, so
-  // its labels stay readable over the areas while its roads and water sit
-  // beneath them.
-  function beforeLabels(map) {
-    var layers = (map.getStyle() || {}).layers || [];
-    for (var i = 0; i < layers.length; i++) {
-      if (layers[i].type === 'symbol') return layers[i].id;
-    }
-    return undefined;
-  }
-
   // A paint value read off the feature's properties.
   function styled(key) {
     return ['get', key];
@@ -320,10 +309,11 @@
     this.bindAreaEvents();
   }
 
-  // Idempotent, so it can run on every style load.
+  // Added on top of the whole basemap, labels included: these figures exist
+  // to show their own geometry, and a place name over a shaded area
+  // competes with it. Idempotent, so it can run on every style load.
   MapFigure.prototype.addLayers = function () {
     var map = this.map;
-    var before = beforeLabels(map);
     if (!map.getSource('areas')) {
       map.addSource('areas', { type: 'geojson', data: this.areas, promoteId: 'id' });
     }
@@ -336,7 +326,7 @@
           'fill-color': styled('fillColor'),
           'fill-opacity': styled('fillOpacity'),
         },
-      }, before);
+      });
     }
     if (!map.getLayer('areas-line')) {
       map.addLayer({
@@ -348,7 +338,7 @@
           'line-color': styled('color'),
           'line-width': styled('weight'),
         },
-      }, before);
+      });
     }
     // Permanent area labels, once (markers carry their own).
     if (!this.areaLabelsAdded) {
