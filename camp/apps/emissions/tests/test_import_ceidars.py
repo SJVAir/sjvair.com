@@ -167,6 +167,10 @@ class ImportCeidarsTests(TestCase):
         with pytest.raises(CommandError, match='nowhere'):
             self.run_import(county='nowhere')
 
+    def test_sets_sector_from_sic(self):
+        self.run_import(county='fresno')
+        assert Facility.objects.get(county_code=10, facid=1).sector == Facility.Sector.POWER_PLANTS
+
 
 class NormalizeCityTests(TestCase):
     def lookup(self, *names):

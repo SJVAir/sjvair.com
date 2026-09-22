@@ -46,6 +46,34 @@ class FacilityManager(models.Manager):
 class Facility(TimeStampedModel):
     """A permitted stationary source in CARB's CEIDARS facility inventory."""
 
+    # Plain-language industry groups over SIC codes; the SIC -> sector map is
+    # camp/apps/emissions/sectors.py. Adding one: a choice here, its codes
+    # there (migration is choices-only), then `assign_sectors`.
+    class Sector(models.TextChoices):
+        DAIRIES_LIVESTOCK = 'dairies-livestock', _('Dairies & livestock')
+        FARMS = 'farms', _('Farms & orchards')
+        CROP_PROCESSING = 'crop-processing', _('Crop processing & cotton gins')
+        OIL_GAS = 'oil-gas', _('Oil & gas production')
+        MINING = 'mining', _('Mining & quarries')
+        GLASS = 'glass', _('Glass manufacturing')
+        CEMENT_MINERALS = 'cement-minerals', _('Cement, concrete & minerals')
+        REFINING_FUELS = 'refining-fuels', _('Refineries, fuel terminals & pipelines')
+        WINERIES_BEVERAGES = 'wineries-beverages', _('Wineries & beverages')
+        FOOD_PROCESSING = 'food-processing', _('Food processing')
+        CHEMICALS = 'chemicals', _('Chemicals & fertilizers')
+        POWER_PLANTS = 'power-plants', _('Power plants')
+        WASTE_WATER = 'waste-water', _('Waste, water & recycling')
+        TELECOM = 'telecom', _('Telecommunications')
+        TRANSPORTATION = 'transportation', _('Transportation & warehousing')
+        GAS_STATIONS = 'gas-stations', _('Gas stations')
+        AUTO_REPAIR = 'auto-repair', _('Auto body & repair')
+        DRY_CLEANERS = 'dry-cleaners', _('Dry cleaners')
+        MANUFACTURING = 'manufacturing', _('Other manufacturing')
+        HOSPITALS_SCHOOLS = 'hospitals-schools', _('Hospitals & schools')
+        GOVERNMENT_MILITARY = 'government-military', _('Government & military')
+        COMMERCIAL = 'commercial', _('Commercial & services')
+        OTHER = 'other', _('Other')
+
     objects = FacilityManager()
     sqid = SqidsField(alphabet=shuffle_alphabet('emissions.Facility'))
 
@@ -70,6 +98,7 @@ class Facility(TimeStampedModel):
     metadata_year = models.IntegerField(_('Metadata year'), null=True, blank=True)
     name = models.CharField(_('Name'), max_length=60)
     sic_code = models.IntegerField(_('SIC code'), null=True, blank=True)
+    sector = models.CharField(_('Sector'), max_length=32, choices=Sector.choices, default=Sector.OTHER, db_index=True)
 
     # Raw address fields from CEIDARS -- preserved as-is for reference.
     # City names in particular are noisy (typos, non-city strings, county

@@ -90,16 +90,16 @@ class EmissionsRecordInline(admin.TabularInline):
 
 @admin.register(Facility)
 class FacilityAdmin(LeafletMapMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
-    list_display = ['name', 'get_county', 'air_district', 'get_city', 'get_zipcode', 'sic_code', 'is_minor_source', 'has_point', 'latest_year']
-    list_filter = [CountyFilter, 'air_district', EmissionsYearFilter, SourceTypeFilter]
+    list_display = ['name', 'get_county', 'air_district', 'get_city', 'get_zipcode', 'sic_code', 'sector', 'is_minor_source', 'has_point', 'latest_year']
+    list_filter = [CountyFilter, 'air_district', 'sector', EmissionsYearFilter, SourceTypeFilter]
     search_fields = ['name', 'address__street', 'address__city']
-    readonly_fields = ['sqid', 'county_code', 'air_district', 'facid', 'name', 'sic_code', 'metadata_year', 'address', 'point', 'get_county_display', 'get_city_display', 'get_zipcode_display']
+    readonly_fields = ['sqid', 'county_code', 'air_district', 'facid', 'name', 'sic_code', 'sector', 'metadata_year', 'address', 'point', 'get_county_display', 'get_city_display', 'get_zipcode_display']
     inlines = [EmissionsRecordInline]
     actions = ['regeocode_selected']
 
     fieldsets = [
         (None, {
-            'fields': ['sqid', ('county_code', 'air_district', 'facid'), 'name', 'sic_code', 'metadata_year'],
+            'fields': ['sqid', ('county_code', 'air_district', 'facid'), 'name', ('sic_code', 'sector'), 'metadata_year'],
         }),
         ('Location', {
             'fields': ['address', 'point'],

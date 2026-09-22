@@ -26,6 +26,8 @@ class FacilitySerializer(serializers.Serializer):
         ('zipcode_id', lambda f: f.zipcode.sqid if f.zipcode_id else None),
         ('zipcode', lambda f: f.get_zipcode()),
         'sic_code',
+        'sector',
+        ('sector_label', lambda f: f.get_sector_display()),
         'is_minor_source',
         'point',
     )

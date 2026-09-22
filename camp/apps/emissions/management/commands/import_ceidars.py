@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from camp.apps.emissions import carb, ceidars
 from camp.apps.emissions.models import EmissionsRecord, Facility
+from camp.apps.emissions.sectors import sector_for_sic
 from camp.apps.regions.models import Region
 from camp.utils import geocode
 
@@ -131,6 +132,7 @@ class Command(BaseCommand):
                         'name': row.get('FNAME', '').strip(),
                         'address': address,
                         'sic_code': sic_code,
+                        'sector': sector_for_sic(sic_code),
                         'metadata_year': year,
                         'county': county,
                         'zipcode': zipcode_region,
@@ -155,6 +157,7 @@ class Command(BaseCommand):
                         facility.name = row.get('FNAME', '').strip()
                         facility.address = address
                         facility.sic_code = sic_code
+                        facility.sector = sector_for_sic(sic_code)
                         facility.metadata_year = year
                         facility.county = county
                         facility.zipcode = zipcode_region
