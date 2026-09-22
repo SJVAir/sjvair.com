@@ -8,7 +8,7 @@ from camp.apps.regions.models import Region
 from camp.utils import leaflet
 from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
 
-from .models import EmissionsRecord, Facility
+from .models import CountyInventory, EmissionsRecord, Facility
 
 
 class CountyFilter(base_admin.SimpleListFilter):
@@ -183,3 +183,10 @@ class FacilityAdmin(LeafletMapMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
             else:
                 failed += 1
         self.message_user(request, f'Geocoded {success} facilities. {failed} failures.')
+
+
+@admin.register(CountyInventory)
+class CountyInventoryAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
+    list_display = ['eic', 'county', 'year', 'source_type', 'summary_name', 'source_name', 'nox', 'pm10']
+    list_filter = ['year', 'source_type', 'county']
+    search_fields = ['eic', 'summary_name', 'source_name', 'material_name']
