@@ -159,6 +159,8 @@ class AboutTests(ViewTestCase):
         assert 'id="minor-sources"' in content
 
 
+import re
+
 from urllib.parse import parse_qs
 
 from camp.apps.emissions import stats, views
@@ -193,3 +195,21 @@ class MapTests(ViewTestCase):
 
     def test_map_tab(self):
         assert reverse('emissions:map') in self.get('home').content.decode()
+
+    def map_query(self, content):
+        match = re.search(r'data-query="([^"]*)"', content)
+        assert match, 'no data-query attribute found'
+        return match.group(1)
+
+    def test_facility_page_map_always_includes_a_minor_source(self):
+        # The page scope defaults to major sources only; the gas station is a
+        # minor source, so its own map must force minor=1 or it can't show up.
+        gas_station = Facility.objects.get(name='TEST GAS STATION')
+        content = self.client.get(gas_station.get_absolute_url()).content.decode()
+        assert 'minor=1' in self.map_query(content)
+
+    def test_facility_page_map_ignores_a_different_county_scope(self):
+        # TEST CEMENT is in Kern; viewing it with ?county=fresno must not
+        # carry that county into its own map query, or the facility drops out.
+        content = self.client.get(self.cement.get_absolute_url(), {'county': 'fresno'}).content.decode()
+        assert 'county=' not in self.map_query(content)

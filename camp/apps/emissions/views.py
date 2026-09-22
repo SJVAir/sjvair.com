@@ -178,7 +178,13 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             toxics_rows=stats.facility_toxics(facility, shown_year),
             changes=stats.large_changes(facility),
             criteria=CRITERIA,
-            map_config=facility_map_config(scope, mode='compact', highlight=facility),
+            # The facility's own map always includes it: the page scope can
+            # exclude it (a minor source with `minor` off, no record in the
+            # scope year, or a different `county`), but its map shouldn't.
+            map_config=facility_map_config(
+                scope, mode='compact', highlight=facility,
+                params=scope.params(year=shown_year, minor='1', county=None),
+            ),
             **kwargs,
         )
 
@@ -223,9 +229,9 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
 MAP_STYLE = 'dataviz'
 
 
-def facility_map_config(scope, *, mode='full', highlight=None, sector=None):
+def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None):
     """The data-* attributes of a `.facility-map` container (see assets/js/emissions/facility-map.js)."""
-    params = scope.params()
+    params = dict(params) if params is not None else scope.params()
     if sector:
         params['sector'] = sector
     point = highlight.point if highlight is not None else None
