@@ -127,6 +127,7 @@ INSTALLED_APPS = [
     'camp.apps.ces',
     'camp.apps.calheatscore',
     'camp.apps.ceidars',
+    'camp.apps.emissions',
     'camp.apps.monitors',
     'camp.apps.pesticides',
     'camp.apps.monitors.airgradient',

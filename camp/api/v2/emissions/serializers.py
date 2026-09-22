@@ -3,7 +3,7 @@ from resticus import serializers
 
 class EmissionsSerializer(serializers.Serializer):
     fields = (
-        'year', 'tog', 'rog', 'co', 'nox', 'sox', 'pm25', 'pm10',
+        'year', 'tog', 'rog', 'co', 'nox', 'sox', 'pm', 'pm10',
         'total_score', 'hra', 'chindex', 'ahindex',
         'acetaldehyde', 'benzene', 'butadiene', 'carbon_tetrachloride',
         'chromium_hexavalent', 'dichlorobenzene', 'formaldehyde',
@@ -15,6 +15,8 @@ class FacilitySerializer(serializers.Serializer):
     fields = (
         ('id', lambda f: f.sqid),
         'facid',
+        ('air_district_id', lambda f: f.air_district.sqid),
+        ('air_district', lambda f: f.air_district.name),
         'name',
         ('address', lambda f: f.address.get('street')),
         ('county_id', lambda f: f.county.sqid if f.county_id else None),

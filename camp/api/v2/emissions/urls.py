@@ -2,7 +2,7 @@ from django.urls import path
 
 from . import endpoints
 
-app_name = 'ceidars'
+app_name = 'emissions'
 
 urlpatterns = [
     path('', endpoints.FacilityList.as_view(), name='list'),

@@ -1,11 +1,11 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Avg, Count, F, Q, Sum
 
-from camp.apps.ceidars.models import EmissionsRecord, Facility
-from camp.apps.ceidars.management.commands.import_ceidars import COUNTY_CODES
+from camp.apps.emissions import carb
+from camp.apps.emissions.models import EmissionsRecord, Facility
 
 
-CRITERIA_FIELDS = ['tog', 'rog', 'co', 'nox', 'sox', 'pm25', 'pm10']
+CRITERIA_FIELDS = ['tog', 'rog', 'co', 'nox', 'sox', 'pm', 'pm10']
 
 TOXIC_FIELDS = [
     'acetaldehyde', 'benzene', 'butadiene', 'carbon_tetrachloride',
@@ -13,15 +13,13 @@ TOXIC_FIELDS = [
     'methylene_chloride', 'naphthalene', 'perchloroethylene',
 ]
 
-COUNTY_NAMES = {v: k for k, v in COUNTY_CODES.items()}  # name → code
-
 
 class Command(BaseCommand):
     help = 'Print a summary table of CEIDARS emissions data.'
 
     def add_arguments(self, parser):
         parser.add_argument('--year', type=int)
-        parser.add_argument('--county', type=int, help='County code (e.g. 10 for Fresno)')
+        parser.add_argument('--county', help='County slug (e.g. fresno)')
         parser.add_argument('--toxics', action='store_true', help='Include named toxic air contaminants')
 
     def handle(self, *args, **options):
@@ -29,8 +27,12 @@ class Command(BaseCommand):
         county = options['county']
         show_toxics = options['toxics']
 
-        if county and county not in COUNTY_CODES:
-            raise CommandError(f'Unknown county code: {county}. Valid codes: {list(COUNTY_CODES)}')
+        names = carb.county_names()
+        if county:
+            try:
+                county = carb.carb_counties(county)[0][0]
+            except carb.CountyConfigError as exc:
+                raise CommandError(str(exc))
 
         # Base queryset
         qs = EmissionsRecord.objects.select_related('facility')
@@ -76,7 +78,7 @@ class Command(BaseCommand):
                 label = str(row['year'])
             else:
                 code = row['facility__county_code']
-                label = f'{COUNTY_CODES.get(code, "?")} ({code})'
+                label = f'{names.get(code, "?")} ({code})'
 
             geocoded_pct = (row['geocoded_count'] / row['facility_count'] * 100) if row['facility_count'] else 0
             data.append({
@@ -96,16 +98,16 @@ class Command(BaseCommand):
             vals = [r[f] for r in data if r[f] is not None]
             totals[f] = sum(vals) if vals else None
 
-        self._print_table(data, totals, display_fields, label_field, year, county)
+        self._print_table(data, totals, display_fields, label_field, year, county, names)
 
-    def _print_table(self, data, totals, fields, label_field, year, county):
+    def _print_table(self, data, totals, fields, label_field, year, county, names):
         # Header
         if year and county:
-            self.stdout.write(f'\n{COUNTY_CODES[county]} — {year}\n')
+            self.stdout.write(f'\n{names[county]} — {year}\n')
         elif year:
             self.stdout.write(f'\nAll counties — {year}\n')
         elif county:
-            self.stdout.write(f'\n{COUNTY_CODES[county]} — all years\n')
+            self.stdout.write(f'\n{names[county]} — all years\n')
         else:
             self.stdout.write('\nAll counties — all years\n')
 

@@ -2,14 +2,14 @@ from django.db.models import Prefetch
 from resticus import generics
 from resticus.views import Endpoint
 
-from camp.apps.ceidars.models import EmissionsRecord, Facility
+from camp.apps.emissions.models import EmissionsRecord, Facility
 
 from .filters import FacilityFilter
 from .serializers import EmissionsSerializer, FacilitySerializer
 
 
 class YearList(Endpoint):
-    """List all years for which CEIDARS emissions data is available."""
+    """List all years for which facility emissions data is available."""
 
     def get(self, request):
         years = (
@@ -22,7 +22,7 @@ class YearList(Endpoint):
 
 
 class FacilityList(generics.ListEndpoint):
-    """List CEIDARS permitted facilities with their most recent annual emissions data."""
+    """List permitted facilities with their most recent annual emissions data."""
 
     model = Facility
     serializer_class = FacilitySerializer
@@ -42,7 +42,7 @@ class FacilityList(generics.ListEndpoint):
 
 
 class FacilityDetail(generics.DetailEndpoint):
-    """Retrieve a single CEIDARS facility with its full emissions history."""
+    """Retrieve a single facility with its full emissions history."""
 
     model = Facility
     serializer_class = FacilitySerializer

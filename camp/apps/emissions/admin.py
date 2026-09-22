@@ -66,7 +66,7 @@ class EmissionsRecordInline(admin.TabularInline):
 
     ALL_FIELDS = [
         'year',
-        'tog', 'rog', 'co', 'nox', 'sox', 'pm25', 'pm10',
+        'tog', 'rog', 'co', 'nox', 'sox', 'pm', 'pm10',
         'total_score', 'hra', 'chindex', 'ahindex',
         'acetaldehyde', 'benzene', 'butadiene', 'carbon_tetrachloride',
         'chromium_hexavalent', 'dichlorobenzene', 'formaldehyde',
@@ -90,16 +90,16 @@ class EmissionsRecordInline(admin.TabularInline):
 
 @admin.register(Facility)
 class FacilityAdmin(LeafletMapMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
-    list_display = ['name', 'get_county', 'get_city', 'get_zipcode', 'sic_code', 'is_minor_source', 'has_point', 'latest_year']
-    list_filter = [CountyFilter, EmissionsYearFilter, SourceTypeFilter]
+    list_display = ['name', 'get_county', 'air_district', 'get_city', 'get_zipcode', 'sic_code', 'is_minor_source', 'has_point', 'latest_year']
+    list_filter = [CountyFilter, 'air_district', EmissionsYearFilter, SourceTypeFilter]
     search_fields = ['name', 'address__street', 'address__city']
-    readonly_fields = ['sqid', 'county_code', 'facid', 'name', 'sic_code', 'metadata_year', 'address', 'point', 'get_county_display', 'get_city_display', 'get_zipcode_display']
+    readonly_fields = ['sqid', 'county_code', 'air_district', 'facid', 'name', 'sic_code', 'metadata_year', 'address', 'point', 'get_county_display', 'get_city_display', 'get_zipcode_display']
     inlines = [EmissionsRecordInline]
     actions = ['regeocode_selected']
 
     fieldsets = [
         (None, {
-            'fields': ['sqid', ('county_code', 'facid'), 'name', 'sic_code', 'metadata_year'],
+            'fields': ['sqid', ('county_code', 'air_district', 'facid'), 'name', 'sic_code', 'metadata_year'],
         }),
         ('Location', {
             'fields': ['address', 'point'],
