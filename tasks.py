@@ -79,7 +79,24 @@ def vendor(ctx):
     import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
     import_node_module(ctx, 'htmx.org/dist', 'htmx')
     import_node_module(ctx, 'uplot/dist', 'uplot')
-    import_node_module(ctx, '@maptiler/sdk/dist', 'maptiler-sdk')
+
+
+@task
+def bundle(ctx):
+    """
+    Bundle the browser packages that don't ship a script-tag build. The
+    MapTiler SDK's dist is an ES module with bare imports (maplibre-gl and
+    friends), so esbuild rolls it and its dependencies into one IIFE that
+    exposes `window.maptilersdk`, the same global as MapTiler's CDN build.
+    """
+    mkdir(path('dist/maptiler-sdk'))
+    ctx.run(
+        'npx esbuild node_modules/@maptiler/sdk/dist/maptiler-sdk.mjs'
+        ' --bundle --format=iife --global-name=maptilersdk --minify'
+        ' --log-level=warning'
+        f' --outfile={path("dist/maptiler-sdk/maptiler-sdk.js")}'
+    )
+    ctx.run(f'cp {path("node_modules/@maptiler/sdk/dist/maptiler-sdk.css")} {path("dist/maptiler-sdk/maptiler-sdk.css")}')
 
 
 @task()
@@ -90,6 +107,7 @@ def build(ctx, mode='production'):
 
     import_monitor_map(ctx, mode)
     vendor(ctx)
+    bundle(ctx)
     styles(ctx)
     collectstatic(ctx)
     optimize_images(ctx)

@@ -14,5 +14,8 @@
         "htmx.org": "^2.0.4",
         "uplot": "^1.6.32"
     },
-    "packageManager": "yarn@1.22.22"
+    "packageManager": "yarn@1.22.22",
+    "devDependencies": {
+        "esbuild": "^0.28.2"
+    }
 }

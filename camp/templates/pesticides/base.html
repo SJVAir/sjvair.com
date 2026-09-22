@@ -19,8 +19,8 @@
 <script src="{% static 'js/pesticides/section-map.js' %}"></script>
 {% if request.GET.gl %}
 {# SPIKE: the MapTiler SDK map, from MapTiler's CDN while it's being evaluated. #}
-<link rel="stylesheet" href="https://cdn.maptiler.com/maptiler-sdk-js/v4.1.0/maptiler-sdk.css">
-<script src="https://cdn.maptiler.com/maptiler-sdk-js/v4.1.0/maptiler-sdk.umd.min.js"></script>
+<link rel="stylesheet" href="{% static 'maptiler-sdk/maptiler-sdk.css' %}">
+<script src="{% static 'maptiler-sdk/maptiler-sdk.js' %}"></script>
 <script src="{% static 'js/pesticides/section-map-gl.js' %}"></script>
 {% endif %}
 <script src="{% static 'js/pesticides/find-area.js' %}"></script>
