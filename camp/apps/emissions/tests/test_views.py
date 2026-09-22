@@ -157,3 +157,39 @@ class AboutTests(ViewTestCase):
         assert 'Eastern Kern' in content
         assert 'id="carb-estimates"' in content
         assert 'id="minor-sources"' in content
+
+
+from urllib.parse import parse_qs
+
+from camp.apps.emissions import stats, views
+
+
+class MapTests(ViewTestCase):
+    def test_map_page(self):
+        content = self.get('map', params={'toxics': 1, 'sector': 'glass'}).content.decode()
+        assert 'class="facility-map"' in content
+        assert 'data-mode="full"' in content
+        assert '/api/2.0/emissions/facilities/geojson/' in content
+        assert 'value="glass" selected' in content
+
+    def test_map_config(self):
+        scope = stats.resolve_scope({'county': 'fresno', 'toxics': '1'})
+        config = views.facility_map_config(scope, sector='glass')
+        assert parse_qs(config['query']) == {'county': ['fresno'], 'toxics': ['1'], 'sector': ['glass']}
+        assert config['unit'] == 'lbs'
+        assert config['facility_url'].endswith('/facilities/{id}/')
+        assert config['highlight'] == '' and config['center'] == ''
+
+    def test_facility_page_has_a_compact_highlighted_map(self):
+        content = self.client.get(self.plant.get_absolute_url()).content.decode()
+        assert 'data-mode="compact"' in content
+        assert f'data-highlight="{self.plant.sqid}"' in content
+        assert 'data-center="36.737,-119.787"' in content
+
+    def test_sector_page_map_is_filtered_to_the_sector(self):
+        content = self.get('sector-detail', 'glass').content.decode()
+        assert 'data-mode="compact"' in content
+        assert 'sector=glass' in content
+
+    def test_map_tab(self):
+        assert reverse('emissions:map') in self.get('home').content.decode()

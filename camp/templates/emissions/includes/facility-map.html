@@ -1,0 +1,30 @@
+<div class="facility-map-wrap{% if map_config.mode == 'compact' %} is-compact{% endif %}">
+    <div class="facility-map"
+         data-mode="{{ map_config.mode }}"
+         data-geojson-url="{{ map_config.geojson_url }}"
+         data-districts-url="{{ map_config.districts_url }}"
+         data-counties-url="{{ map_config.counties_url }}"
+         data-query="{{ map_config.query }}"
+         data-facility-url="{{ map_config.facility_url }}"
+         data-maptiler-key="{{ map_config.maptiler_key }}"
+         data-style="{{ map_config.style }}"
+         data-highlight="{{ map_config.highlight }}"
+         data-center="{{ map_config.center }}"
+         data-zoom="{{ map_config.zoom }}"
+         data-label="{{ map_config.label }}"
+         data-unit="{{ map_config.unit }}"></div>
+    {% if map_config.mode == 'full' %}
+    {# Shown by the script once the map is up; the sector filter narrows the map without a page swap. #}
+    <form class="facility-map-toolbar" hidden>
+        <div class="select is-small">
+            <select name="sector" aria-label="Sector">
+                <option value="">All sectors</option>
+                {% for value, label in sector_options %}<option value="{{ value }}"{% if map_config.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <button type="button" class="button is-small" data-map-locate title="Show my location" aria-label="Show my location"><span class="fa-regular fa-location-crosshairs" aria-hidden="true"></span></button>
+        <button type="button" class="button is-small" data-map-expand title="Expand the map" aria-label="Expand the map" aria-pressed="false"><span class="fa-regular fa-expand" aria-hidden="true"></span></button>
+    </form>
+    {% endif %}
+    <div class="facility-map-legend" hidden></div>
+</div>

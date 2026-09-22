@@ -5,12 +5,17 @@
 {# The explorer chrome (scope bar, tabs, tables, charts) is styled under body.pesticides; emissions-only styles are under body.emissions. #}
 {% block body-class %}pesticides emissions{% endblock %}
 
-{% block extra-head %}{% endblock %}
+{% block extra-head %}
+<link rel="stylesheet" href="{% static 'maptiler-sdk/maptiler-sdk.css' %}">
+<link rel="stylesheet" href="{% static 'css/emissions/facility-map.css' %}">
+{% endblock %}
 
 {% block javascripts %}
 <script src="{% static 'htmx/htmx.min.js' %}"></script>
 <script src="{% static 'uplot/uPlot.iife.min.js' %}"></script>
 <script src="{% static 'js/pesticides/charts.js' %}"></script>
+<script src="{% static 'maptiler-sdk/maptiler-sdk.js' %}"></script>
+<script src="{% static 'js/emissions/facility-map.js' %}"></script>
 <script src="{% static 'js/pesticides/explorer.js' %}"></script>
 {% endblock %}
 
@@ -31,7 +36,9 @@
         </div>
         <div class="tabs is-boxed explorer-nav">
             <ul id="explorer-tabs">
-                {% block explorer-tabs-start %}{% endblock %}
+                {% block explorer-tabs-start %}
+                <li class="{% if section == 'map' %}is-active{% endif %}"><a href="{% url 'emissions:map' %}{{ scope_qs }}" title="Map"><span class="icon is-small"><span class="fa-duotone fa-fw fa-map explorer-icon is-map" aria-hidden="true"></span></span><span class="tab-label">Map</span></a></li>
+                {% endblock %}
                 <li class="{% if section == 'facilities' %}is-active{% endif %}"><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}" title="Facilities"><span class="icon is-small"><span class="fa-duotone fa-fw fa-industry explorer-icon" aria-hidden="true"></span></span><span class="tab-label">Facilities</span></a></li>
                 <li class="{% if section == 'sectors' %}is-active{% endif %}"><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}" title="Sectors"><span class="icon is-small"><span class="fa-duotone fa-fw fa-layer-group explorer-icon" aria-hidden="true"></span></span><span class="tab-label">Sectors</span></a></li>
                 <li class="{% if section == 'about' %}is-active{% endif %}"><a href="{% url 'emissions:about' %}" title="About the data"><span class="icon is-small"><span class="fa-duotone fa-fw fa-circle-info explorer-icon" aria-hidden="true"></span></span><span class="tab-label">About</span></a></li>

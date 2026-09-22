@@ -1,0 +1,28 @@
+/* Facility map (assets/js/emissions/facility-map.js). */
+.facility-map-wrap { position: relative; margin-bottom: 1rem; }
+.facility-map { height: 70vh; min-height: 420px; border-radius: 6px; overflow: hidden; }
+.facility-map-wrap.is-compact .facility-map { height: 320px; min-height: 0; }
+.facility-map.is-unavailable { display: flex; align-items: center; justify-content: center; background: #f5f5f5; }
+.facility-map-wrap.is-expanded { position: fixed; inset: 0; z-index: 40; margin: 0; background: #fff; }
+.facility-map-wrap.is-expanded .facility-map { height: 100%; border-radius: 0; }
+html.facility-map-expanded { overflow: hidden; }
+.facility-map-toolbar { position: absolute; top: 10px; left: 50px; z-index: 2; display: flex; gap: 0.4rem; }
+.facility-map-legend {
+  position: absolute; bottom: 30px; left: 10px; z-index: 2; max-width: 260px;
+  padding: 0.5rem 0.75rem; border-radius: 4px; font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.92); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.facility-map-legend .legend-title { font-weight: 600; margin-bottom: 0.25rem; }
+.legend-sizes { display: flex; align-items: flex-end; gap: 0.5rem; }
+.legend-size { display: inline-flex; flex-direction: column; align-items: center; }
+.legend-size circle { fill: none; stroke: #3182bd; stroke-width: 1.25; }
+.legend-bins { display: flex; flex-direction: column; margin-top: 0.25rem; }
+.legend-swatch { display: inline-block; width: 0.7rem; height: 0.7rem; margin-right: 0.3rem; border-radius: 50%; vertical-align: middle; }
+.legend-ring { display: inline-block; width: 0.6rem; height: 0.6rem; margin-right: 0.3rem; border: 1.25px solid #8a94a3; border-radius: 50%; vertical-align: middle; }
+.legend-empty { margin-top: 0.25rem; }
+.facility-popup p { margin: 0 0 0.2rem; }
+.facility-popup-name { font-weight: 600; }
+@media (max-width: 768px) {
+  .facility-map { height: 60vh; }
+  .facility-map-legend { max-width: 180px; }
+}

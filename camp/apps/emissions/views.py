@@ -1,8 +1,12 @@
 import csv
 
+from urllib.parse import urlencode
+
+from django.conf import settings
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
+from django.urls import reverse
 
 import vanilla
 
@@ -174,6 +178,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             toxics_rows=stats.facility_toxics(facility, shown_year),
             changes=stats.large_changes(facility),
             criteria=CRITERIA,
+            map_config=facility_map_config(scope, mode='compact', highlight=facility),
             **kwargs,
         )
 
@@ -210,5 +215,49 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             counties=stats.county_breakdown(scope, sector=self.sector),
             rows=stats.with_ranks(table[:SECTOR_PAGE_ROWS], stats.ranks(scope)),
             facility_count=table.count(),
+            map_config=facility_map_config(scope, mode='compact', sector=self.sector),
+            **kwargs,
+        )
+
+
+MAP_STYLE = 'dataviz'
+
+
+def facility_map_config(scope, *, mode='full', highlight=None, sector=None):
+    """The data-* attributes of a `.facility-map` container (see assets/js/emissions/facility-map.js)."""
+    params = scope.params()
+    if sector:
+        params['sector'] = sector
+    point = highlight.point if highlight is not None else None
+    return {
+        'mode': mode,
+        'geojson_url': reverse('api:v2:emissions:geojson'),
+        'districts_url': reverse('api:v2:emissions:districts'),
+        # The covered counties' outlines; the pesticides endpoint serves them for every explorer.
+        'counties_url': reverse('api:v2:pesticides:county-list'),
+        'query': urlencode(params),
+        # The bare-sqid route redirects to the slugged page, so the JS needs no slug.
+        'facility_url': reverse('emissions:facility-redirect', args=['__id__']).replace('__id__', '{id}'),
+        'maptiler_key': settings.MAPTILER_API_KEY,
+        'style': MAP_STYLE,
+        'highlight': highlight.sqid if highlight is not None else '',
+        'center': f'{point.y},{point.x}' if point is not None else '',
+        'zoom': 11 if point is not None else '',
+        'label': scope.pollutant.label,
+        'unit': scope.pollutant.unit,
+        'sector': sector or '',
+    }
+
+
+class MapPage(ScopeMixin, vanilla.TemplateView):
+    template_name = 'emissions/map.html'
+    section = 'map'
+
+    def get_context_data(self, **kwargs):
+        sector = self.request.GET.get('sector')
+        sector = sector if sector in Facility.Sector.values else None
+        return super().get_context_data(
+            map_config=facility_map_config(self.get_scope(), sector=sector),
+            sector_options=Facility.Sector.choices,
             **kwargs,
         )

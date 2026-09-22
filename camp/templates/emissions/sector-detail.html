@@ -38,6 +38,7 @@
     </div>
 </div>
 
+{% include 'emissions/includes/facility-map.html' %}
 <h3 class="title is-4">Facilities</h3>
 {% include 'emissions/includes/facility-table.html' with sortable=False %}
 {% if facility_count > rows|length %}

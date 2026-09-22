@@ -22,6 +22,7 @@
         {% if district.metadata.complaints_url %} · <a href="{{ district.metadata.complaints_url }}">Report an air pollution problem</a>{% endif %}
     </p>
 </div>
+{% include 'emissions/includes/facility-map.html' %}
 
 {% if shown_year != year %}
 <div class="notification is-light">This facility has no emissions reported for {{ year }}; showing {{ shown_year }}.</div>
