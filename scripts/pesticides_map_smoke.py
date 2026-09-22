@@ -419,10 +419,9 @@ def check_map_loaded(page):
 
 def check_layers(page):
     """Every layer is in the style, under the basemap's labels, in the
-    expected paint order: the fills (grid, sections, the page outline's
-    wash) under the basemap's water and roads, then the lines (grid under
-    the county lines, county lines under the page outline) and markers
-    under the labels; the county outlines have data; the outline/radius
+    expected paint order (each layer's fill under its own stroke, the grid
+    under the sections drawn over it, those under the outlines, and the
+    markers last); the county outlines have data; the outline/radius
     layers carry data when the page asks for them."""
     result = page.instance_js("""
         var map = inst.map;
@@ -430,31 +429,22 @@ def check_layers(page):
         var layers = all.map(function (l) { return l.id; });
         var firstSymbol = -1;
         all.some(function (l, i) { if (l.type === 'symbol') { firstSymbol = i; return true; } });
-        var roads = all.filter(function (l) { return l.type === 'line' && (l['source-layer'] === 'road' || l['source-layer'] === 'transportation'); }).map(function (l) { return layers.indexOf(l.id); });
-        var water = all.filter(function (l) { return l.type === 'fill' && l['source-layer'] === 'water'; }).map(function (l) { return layers.indexOf(l.id); });
-        var fills = ['radius-fill', 'grid-fill', 'all-sections-fill', 'lens-fill', 'outline-fill'];
-        var lines = ['radius-line', 'grid-line', 'all-sections-line', 'lens-line', 'lens-outline',
-                     'selected-line', 'highlight-line', 'counties-line', 'outline-line',
-                     'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'locate-circle'];
-        var mine = fills.concat(lines);
+        var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line',
+                    'all-sections-fill', 'all-sections-line', 'lens-fill', 'lens-line', 'lens-outline',
+                    'selected-line', 'highlight-line', 'counties-line', 'outline-fill', 'outline-line',
+                    'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
         var aboveLabels = mine.filter(function (id) { return firstSymbol !== -1 && layers.indexOf(id) > firstSymbol; });
         var ordered = function (ids) {
             var order = ids.filter(function (id) { return layers.indexOf(id) !== -1; }).map(function (id) { return layers.indexOf(id); });
             return order.every(function (i, n) { return n === 0 || i > order[n - 1]; });
         };
-        var gridFill = layers.indexOf('grid-fill'), gridLine = layers.indexOf('grid-line');
-        var underRoads = roads.length ? roads.some(function (i) { return i > gridFill && i < gridLine; }) : null;
-        var underWater = water.length ? water.some(function (i) { return i > gridFill && i < gridLine; }) : null;
         var counts = {};
         ['counties', 'outline', 'radius'].forEach(function (id) {
             var d = inst.sourceData[id];
             counts[id] = d ? (d.features ? d.features.length : (d.geometry ? 1 : 0)) : 0;
         });
-        return { missing: missing, aboveLabels: aboveLabels, fillsInOrder: ordered(fills), linesInOrder: ordered(lines),
-                 fillsUnderLines: Math.max.apply(null, fills.map(function (id) { return layers.indexOf(id); })) < Math.min.apply(null, lines.map(function (id) { return layers.indexOf(id); })),
-                 underRoads: underRoads, underWater: underWater, roads: roads.length, water: water.length,
-                 counts: counts, wantsOutline: !!inst.data.outlineUrl, wantsRadius: !!inst.data.radius };
+        return { missing: missing, aboveLabels: aboveLabels, inOrder: ordered(mine), counts: counts, wantsOutline: !!inst.data.outlineUrl, wantsRadius: !!inst.data.radius };
     """)
     if result is None:
         return False, 'no instance'
@@ -463,14 +453,8 @@ def check_layers(page):
         problems.append('missing layers %s' % result['missing'])
     if result['aboveLabels']:
         problems.append('layers above labels %s' % result['aboveLabels'])
-    if not (result['fillsInOrder'] and result['linesInOrder'] and result['fillsUnderLines']):
+    if not result['inOrder']:
         problems.append('layers out of paint order')
-    if result['underRoads'] is False:
-        problems.append('no road layer between grid-fill and grid-line')
-    if result['underWater'] is False:
-        problems.append('no water layer between grid-fill and grid-line')
-    if result['underRoads'] is None and result['underWater'] is None:
-        problems.append('the style has no road or water layers to sit under')
     if not result['counts']['counties']:
         problems.append('counties source empty')
     if result['wantsOutline'] and not result['counts']['outline']:
@@ -478,7 +462,6 @@ def check_layers(page):
     if result['wantsRadius'] and not result['counts']['radius']:
         problems.append('radius source empty')
     detail = 'counties=%(counties)s outline=%(outline)s radius=%(radius)s' % result['counts']
-    detail += '; fills under %d road and %d water layers' % (result['roads'], result['water'])
     return (not problems), (detail if not problems else '; '.join(problems))
 
 

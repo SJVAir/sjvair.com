@@ -1273,29 +1273,17 @@
   };
 
   // -- sources and layers --
-  // Where our layers go in the basemap. The fills go under its water and
-  // roads (before the first water fill or waterway line and the first road
-  // line, whichever comes lower in the style), so lakes, rivers and roads
-  // read over the choropleth; the lines and markers go under the first
-  // symbol layer, so only the labels are over them. A style without water
-  // or roads at all falls back to the labels. Serialises the style, so
-  // addBaseLayers asks once and passes the answers to each ensureLayer.
-  SectionMap.prototype.layerAnchors = function () {
+  // Where our layers go in the basemap: under its first symbol layer, so
+  // its labels stay readable over the choropleth while its roads and water
+  // sit beneath it -- the reader is here for the data, and a road drawn
+  // over a dark class competes with it. Serialises the style, so
+  // addBaseLayers asks once and passes the answer to each ensureLayer.
+  SectionMap.prototype.beforeLabels = function () {
     var layers = (this.map.getStyle() || {}).layers || [];
-    var labels, fills;
     for (var i = 0; i < layers.length; i++) {
-      var layer = layers[i];
-      var sourceLayer = layer['source-layer'];
-      if (!fills && ((layer.type === 'fill' && sourceLayer === 'water') ||
-          (layer.type === 'line' && (sourceLayer === 'waterway' || sourceLayer === 'road' || sourceLayer === 'transportation')))) {
-        fills = layer.id;
-      }
-      if (layer.type === 'symbol') {
-        labels = layer.id;
-        break;
-      }
+      if (layers[i].type === 'symbol') return layers[i].id;
     }
-    return { fills: fills || labels, lines: labels };
+    return undefined;
   };
 
   // GeoJSON sources are keyed on our own feature ids (`promoteId`), so
@@ -1305,7 +1293,7 @@
     this.map.addSource(id, { type: 'geojson', data: this.sourceData[id] || EMPTY, promoteId: 'id' });
   };
 
-  // `before` is an anchor layer id from layerAnchors(), asked for once by
+  // `before` is the anchor layer id from beforeLabels(), asked for once by
   // the caller and passed to every layer it adds.
   SectionMap.prototype.ensureLayer = function (spec, before) {
     if (this.map.getLayer(spec.id)) return;
@@ -1322,20 +1310,18 @@
     if (source) source.setData(data);
   };
 
-  // Our sources and their layers, bottom to top: the fills (the radius
-  // circle, the grid, the sections drawn over it at the township zoom --
-  // "all sections", then the lens -- and the page's own outline's wash)
-  // go under the basemap's water and roads; over those, under its labels,
-  // the lines (the grids' strokes, the hovered township's outline over the
-  // lens, the selected and highlighted sections' outlines, the county
-  // lines, the page's own outline), the school and child care markers, the
-  // notice markers, and last the reader's located position
-  // (`locate`/`locate-circle`), which stays on top of every marker.
+  // Our sources and their layers, bottom to top, all under the basemap's
+  // labels: the fills (the radius circle, the grid, the sections drawn
+  // over it at the township zoom -- "all sections", then the lens -- and
+  // the page's own outline's wash), then the lines (the grids' strokes,
+  // the hovered township's outline over the lens, the selected and
+  // highlighted sections' outlines, the county lines, the page's own
+  // outline), the school and child care markers, the notice markers, and
+  // last the reader's located position (`locate`/`locate-circle`), which
+  // stays on top of every marker.
   // Idempotent, so it can run on every style load.
   SectionMap.prototype.addBaseLayers = function () {
-    var anchors = this.layerAnchors();
-    var before = anchors.lines;
-    var beforeFills = anchors.fills;
+    var before = this.beforeLabels();
     this.ensureSource('radius');
     this.ensureSource('grid');
     this.ensureSource('all-sections');
@@ -1352,7 +1338,7 @@
     this.ensureLayer({
       id: 'radius-fill', type: 'fill', source: 'radius',
       paint: { 'fill-color': RADIUS_COLOR, 'fill-opacity': 0.2 },
-    }, beforeFills);
+    }, before);
     this.ensureLayer({
       id: 'radius-line', type: 'line', source: 'radius',
       paint: { 'line-color': RADIUS_COLOR, 'line-width': 3 },
@@ -1363,7 +1349,7 @@
     this.ensureLayer({
       id: 'grid-fill', type: 'fill', source: 'grid',
       paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': GRID_FILL_OPACITY },
-    }, beforeFills);
+    }, before);
     this.ensureLayer({
       id: 'grid-line', type: 'line', source: 'grid',
       paint: {
@@ -1375,9 +1361,9 @@
     // Every section in view at the township zoom ("all sections"), and the
     // lens (the hovered township's neighbourhood, see showLens): the same
     // paint, see sectionsFillPaint/sectionsLinePaint.
-    this.ensureLayer({ id: 'all-sections-fill', type: 'fill', source: 'all-sections', paint: sectionsFillPaint() }, beforeFills);
+    this.ensureLayer({ id: 'all-sections-fill', type: 'fill', source: 'all-sections', paint: sectionsFillPaint() }, before);
     this.ensureLayer({ id: 'all-sections-line', type: 'line', source: 'all-sections', paint: sectionsLinePaint() }, before);
-    this.ensureLayer({ id: 'lens-fill', type: 'fill', source: 'lens', paint: sectionsFillPaint() }, beforeFills);
+    this.ensureLayer({ id: 'lens-fill', type: 'fill', source: 'lens', paint: sectionsFillPaint() }, before);
     this.ensureLayer({ id: 'lens-line', type: 'line', source: 'lens', paint: sectionsLinePaint() }, before);
     // The hovered township's own outline, over the lens sections (which
     // would otherwise paint over its hover border), in the township hover
@@ -1408,7 +1394,7 @@
     this.ensureLayer({
       id: 'outline-fill', type: 'fill', source: 'outline',
       paint: { 'fill-color': OUTLINE_COLOR, 'fill-opacity': 0.08 },
-    }, beforeFills);
+    }, before);
     this.ensureLayer({
       id: 'outline-line', type: 'line', source: 'outline',
       layout: { 'line-join': 'round' },
