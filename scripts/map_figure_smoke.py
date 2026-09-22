@@ -370,6 +370,34 @@ def check_cursor(page):
     return cursor == 'pointer', '%s -> cursor %r' % (area['label'], cursor)
 
 
+def check_hover_outline(page):
+    """The county under the cursor takes the hover outline, and gives it up
+    when the cursor leaves. Read off the feature state the paint expression
+    keys on, so it proves the mechanism and not just a repaint."""
+    if not page.has_container():
+        return None, 'no live figure on this page'
+    area = page.pick_area()
+    if not area:
+        return False, 'no county found on bare canvas'
+    page.hover_map(area['dx'], area['dy'])
+    on = page.instance_js("""
+        var id = inst.areaHoverId;
+        if (id == null) return null;
+        var state = inst.map.getFeatureState({ source: 'areas', id: id });
+        return { id: String(id), hover: state && state.hover === true };
+    """)
+    # Offsets are measured from the element's centre, so the corner is the
+    # way off every county without leaving the map.
+    size = page.scroll_to_map().size
+    page.hover_map(-(size['width'] // 2) + 4, -(size['height'] // 2) + 4)
+    off = page.instance_js('return inst.areaHoverId')
+    if not on or not on['hover']:
+        return False, '%s did not take the outline (state %r)' % (area['label'], on)
+    if off is not None:
+        return False, 'outline stayed on %r after the cursor left' % off
+    return True, '%s outlined on hover, released on leave' % area['label']
+
+
 def check_label(page):
     """The county's hover label opens while the cursor is over it, and
     closes when it leaves."""
@@ -571,6 +599,7 @@ CHECKS = [
     ('counties', check_counties),
     ('paint', check_paint),
     ('cursor', check_cursor),
+    ('hover outline', check_hover_outline),
     ('label', check_label),
     ('htmx round trip', check_htmx_round_trip),
     ('hidden container', check_hidden_container),

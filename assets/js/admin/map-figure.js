@@ -213,9 +213,19 @@
     return bounds ? [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2] : null;
   }
 
+  // The outline an interactive area takes while the cursor is over it.
+  // Same dark stroke the explorer's section map uses for a hovered cell.
+  var HOVER_COLOR = '#222';
+  var HOVER_WIDTH = 2;
+
   // A paint value read off the feature's properties.
   function styled(key) {
     return ['get', key];
+  }
+
+  // `on` while the cursor is over the feature, `off` otherwise.
+  function hovered(on, off) {
+    return ['case', ['boolean', ['feature-state', 'hover'], false], on, off];
   }
 
   // A label: the SDK's popup, closed only by us, never taking focus (a
@@ -239,6 +249,7 @@
     this.labels = [];
     this.hoverLabel = null;
     this.hoverId = null;
+    this.areaHoverId = null;
 
     var dataNode = document.getElementById(el.dataset.geojson);
     var geojson = dataNode ? JSON.parse(dataNode.textContent) : EMPTY;
@@ -335,8 +346,8 @@
         source: 'areas',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': styled('color'),
-          'line-width': styled('weight'),
+          'line-color': hovered(HOVER_COLOR, styled('color')),
+          'line-width': hovered(HOVER_WIDTH, styled('weight')),
         },
       });
     }
@@ -382,6 +393,9 @@
       if (!feature) return;
       var props = feature.properties;
       map.getCanvas().style.cursor = props.url ? 'pointer' : '';
+      // Only an area that answers the cursor takes the outline: a backdrop
+      // drawn purely for context shouldn't look clickable.
+      self.setAreaHover(props.url || (props.labelOnHover === true && props.label) ? feature.id : null);
       if (props.labelOnHover === true && props.label) {
         self.showHover(props.id, props.label, self.anchors[props.id], 0);
       } else {
@@ -390,12 +404,26 @@
     });
     map.on('mouseleave', 'areas-fill', function () {
       map.getCanvas().style.cursor = '';
+      self.setAreaHover(null);
       self.hideHover();
     });
     map.on('click', 'areas-fill', function (event) {
       var feature = event.features && event.features[0];
       if (feature && feature.properties.url) window.location.assign(feature.properties.url);
     });
+  };
+
+  // The hovered area's outline, as feature state so the paint expression
+  // does the work and no layer is restyled.
+  MapFigure.prototype.setAreaHover = function (featureId) {
+    if (this.areaHoverId === featureId) return;
+    if (this.areaHoverId != null && this.map.getSource('areas')) {
+      this.map.setFeatureState({ source: 'areas', id: this.areaHoverId }, { hover: false });
+    }
+    this.areaHoverId = featureId;
+    if (featureId != null) {
+      this.map.setFeatureState({ source: 'areas', id: featureId }, { hover: true });
+    }
   };
 
   MapFigure.prototype.showHover = function (id, text, lngLat, offset) {
