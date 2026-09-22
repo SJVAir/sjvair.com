@@ -2793,7 +2793,7 @@
     }
     for (var i = 0; i < containers.length; i++) {
       var el = containers[i];
-      if (el.dataset.rendered) continue;
+      if (el.dataset.rendered || el.dataset.gl) continue;
       try {
         if (liveMap && !document.body.contains(liveMap.el)) {
           liveMap.adopt(el);

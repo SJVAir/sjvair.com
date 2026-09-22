@@ -79,6 +79,7 @@ def vendor(ctx):
     import_node_module(ctx, '@sjvair/web-widget/dist', 'widget')
     import_node_module(ctx, 'htmx.org/dist', 'htmx')
     import_node_module(ctx, 'uplot/dist', 'uplot')
+    import_node_module(ctx, '@maptiler/sdk/dist', 'maptiler-sdk')
 
 
 @task()

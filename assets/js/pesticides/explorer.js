@@ -35,6 +35,7 @@
     var root = evt.detail && evt.detail.elt;
     if (!root) return;
     if (window.PesticidesCharts) window.PesticidesCharts.init(root);
+    if (window.PesticidesSectionMapGL) window.PesticidesSectionMapGL.init(root);
     if (window.PesticidesSectionMap) window.PesticidesSectionMap.init(root);
     if (window.PesticidesFindArea) window.PesticidesFindArea.init(root);
     if (window.PesticidesEntityPicker) window.PesticidesEntityPicker.init(root);

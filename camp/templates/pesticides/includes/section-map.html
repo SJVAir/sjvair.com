@@ -26,7 +26,8 @@
        data-radius="{{ map_config.radius }}"
        data-fit="{{ map_config.fit }}"
        data-show-notices="{{ map_config.show_notices }}"
-       data-show-locations="{{ map_config.show_locations }}"></div>
+       data-show-locations="{{ map_config.show_locations }}"
+       data-gl="{{ request.GET.gl|default:'' }}"></div>
   {% comment %}
   One toolbar row over the map (top-left, beside the zoom buttons): the page's
   filters when it has them, then Options, then Expand. The legend sits
