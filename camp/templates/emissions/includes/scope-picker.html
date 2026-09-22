@@ -1,0 +1,77 @@
+{% load pesticides_explorer %}
+{% comment %}
+The explorer scope: year, county and pollutant dropdowns, then two toggles
+(toxic air contaminants; include minor sources). Each option is a link that
+keeps the rest of the query string minus the page number. Hidden on pages
+the scope doesn't apply to (hide_scope).
+{% endcomment %}
+{% if not hide_scope %}
+<div class="explorer-scope-pickers">
+    {% if year_options|length > 1 %}
+    <div class="dropdown is-right explorer-scope-picker" data-scope="year">
+        <div class="dropdown-trigger">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-label="Year: {{ year }}">
+                <span class="icon"><span class="fa-duotone fa-fw fa-calendar explorer-icon is-scope" aria-hidden="true"></span></span>
+                <span class="explorer-scope-label">{{ year }}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu">
+            <div class="dropdown-content explorer-scope-years">
+                {% for option in year_options reversed %}
+                <a class="dropdown-item{% if option == year %} is-active{% endif %}" href="{% qs_replace year=option page=None %}"{% if option == year %} aria-current="page"{% endif %}>{{ option }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% if county_options %}
+    <div class="dropdown is-right explorer-scope-picker" data-scope="county">
+        <div class="dropdown-trigger">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-label="County: {% if county %}{{ county.name }}{% else %}all counties{% endif %}">
+                <span class="icon"><span class="fa-duotone fa-fw fa-map explorer-icon is-scope" aria-hidden="true"></span></span>
+                <span class="explorer-scope-label">{% if county %}{{ county.name|cut:" County" }}{% else %}All counties{% endif %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu">
+            <div class="dropdown-content">
+                <a class="dropdown-item{% if not county %} is-active{% endif %}" href="{% qs_replace county=None page=None %}">All counties</a>
+                <hr class="dropdown-divider">
+                {% for slug, name in county_options %}
+                <a class="dropdown-item{% if county and county.slug == slug %} is-active{% endif %}" href="{% qs_replace county=slug page=None %}">{{ name|cut:" County" }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <div class="dropdown is-right explorer-scope-picker" data-scope="pollutant">
+        <div class="dropdown-trigger">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-label="Pollutant: {{ pollutant.name }}">
+                <span class="icon"><span class="fa-duotone fa-fw fa-smoke explorer-icon is-scope" aria-hidden="true"></span></span>
+                <span class="explorer-scope-label">{{ pollutant.label }}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu">
+            <div class="dropdown-content">
+                {% for option in pollutant_options %}
+                <a class="dropdown-item{% if option.key == pollutant.key %} is-active{% endif %}" href="{% qs_replace pollutant=option.key page=None %}">{{ option.label }}{% if option.label != option.name %} <span class="has-text-grey">{{ option.name }}</span>{% endif %}</a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <a class="button is-small explorer-scope-toggle{% if toxics %} is-set{% endif %}" role="button"
+       href="{% if toxics %}{% qs_replace toxics=None pollutant=None page=None %}{% else %}{% qs_replace toxics=1 pollutant=None page=None %}{% endif %}"
+       aria-pressed="{% if toxics %}true{% else %}false{% endif %}">
+        <span class="icon">{% if toxics %}<span class="fa-regular fa-check" aria-hidden="true"></span>{% else %}<span class="fa-duotone fa-fw fa-skull-crossbones explorer-icon" aria-hidden="true"></span>{% endif %}</span>
+        <span class="explorer-scope-label">Toxic air contaminants</span>
+    </a>
+    <a class="button is-small explorer-scope-toggle{% if minor %} is-set{% endif %}" role="button"
+       href="{% if minor %}{% qs_replace minor=None page=None %}{% else %}{% qs_replace minor=1 page=None %}{% endif %}"
+       aria-pressed="{% if minor %}true{% else %}false{% endif %}">
+        <span class="icon">{% if minor %}<span class="fa-regular fa-check" aria-hidden="true"></span>{% else %}<span class="fa-duotone fa-fw fa-gas-pump explorer-icon" aria-hidden="true"></span>{% endif %}</span>
+        <span class="explorer-scope-label">Include minor sources</span>
+    </a>
+</div>
+{% endif %}

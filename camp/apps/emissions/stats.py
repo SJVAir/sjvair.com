@@ -331,7 +331,11 @@ def facility_ranks(facility, year):
     result = []
     for pollutant in CRITERIA:
         value = _float(getattr(record, pollutant.key))
-        row = {'pollutant': pollutant, 'value': value}
+        row = {
+            'pollutant': pollutant, 'value': value,
+            'county_rank': None, 'county_count': None,
+            'sector_rank': None, 'sector_count': None, 'county_share': None,
+        }
         if value:
             county_values = [float(r[pollutant.key]) for r in county_rows if r[pollutant.key]]
             sector_values = [float(r[pollutant.key]) for r in sector_rows if r[pollutant.key]]

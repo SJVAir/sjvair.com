@@ -1,0 +1,39 @@
+{% extends 'emissions/base.html' %}
+
+{% block title %}About the data | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">About</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="content">
+<h2 id="coverage">What this covers</h2>
+<p>The Facility Emissions Explorer shows air pollution reported by <strong>permitted stationary sources</strong> in the San Joaquin Valley's eight counties: power plants, glass and cement plants, oil fields, food processors, dairies with permits, landfills, hospitals, gas stations and thousands more. The data is the California Air Resources Board's facility inventory (CEIDARS), which the air districts report to CARB every year.</p>
+<p>It does <strong>not</strong> cover cars and trucks, farm equipment, trains, most farming and dust, consumer products, wildfires, or facilities too small to need a permit. Those are most of the valley's air pollution; see <a href="#carb-estimates">CARB's estimates of all sources</a>.</p>
+
+<h2 id="districts">Two air districts</h2>
+<p>Seven of the eight counties are entirely within the San Joaquin Valley Air Pollution Control District. Kern County is split: its desert and mountain east is the Eastern Kern Air Pollution Control District, which regulates Kern's largest cement plants, US Borax at Boron and Edwards Air Force Base. Each facility's page names the district that regulates it and how to report a problem to them.</p>
+
+<h2 id="carb-estimates">CARB's estimates of all sources</h2>
+<p>For context, pages compare permitted facilities with CARB's estimate of all emissions in a county: stationary, areawide (farming, dust, consumer products, residential wood burning), mobile (vehicles and equipment) and natural sources. Those estimates come from CARB's CEPAM model, whose most recent inventory uses <strong>2017 as its base year</strong>; every other year is CARB's projection from it, not a new inventory. CARB publishes them in tons per day, which the explorer converts to tons per year.</p>
+
+<h2 id="units">Pollutants and units</h2>
+<ul>
+    <li><strong>NOx</strong> (nitrogen oxides) and <strong>ROG</strong> (reactive organic gases) form ozone and fine particles.</li>
+    <li><strong>Total PM</strong> is all particulate matter. CARB's facility inventory doesn't report PM2.5 by facility, so the explorer shows Total PM and PM10 instead.</li>
+    <li><strong>SOx</strong> (sulfur oxides), <strong>CO</strong> (carbon monoxide) and <strong>TOG</strong> (total organic gases) round out the criteria pollutants.</li>
+    <li>Criteria pollutants are in <strong>tons per year</strong>. The ten <strong>toxic air contaminants</strong> (benzene, formaldehyde, hexavalent chromium and others) are in <strong>pounds per year</strong>, because the amounts are small.</li>
+</ul>
+
+<h2 id="minor-sources">Minor sources</h2>
+<p>Gas stations, dry cleaners, auto body shops and small print shops are permitted, but CARB leaves them out of its facility totals by default and counts them in its county-wide estimates instead. The explorer does the same; turn on <em>Include minor sources</em> to add them.</p>
+
+<h2 id="years">Years and changes</h2>
+<p>The explorer covers 2010 onward. The number of facilities grows over those years partly because reporting coverage grew. A large change from one year to the next can reflect a new way of estimating a facility's emissions, not only a real change in what it emitted; facility pages point these out.</p>
+
+<h2 id="sources">Sources</h2>
+<ul>
+    <li><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">CARB facility emissions inventory (CEIDARS)</a></li>
+    <li><a href="https://ww2.arb.ca.gov/applications/cepam2019v1-04-standard-emission-tool">CARB CEPAM 2019 emission projections</a></li>
+    <li><a href="https://ww2.arb.ca.gov/california-air-districts">CARB air district directory</a> and <a href="https://gis.data.ca.gov/datasets/CaliforniaARB::california-air-district-boundaries/about">district boundaries</a></li>
+</ul>
+</div>
+{% endblock %}

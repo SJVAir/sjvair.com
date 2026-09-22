@@ -1,0 +1,76 @@
+{% extends 'emissions/base.html' %}
+{% load emissions_explorer pesticides_explorer %}
+
+{% block title %}{{ facility.name|title }} | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}
+<li><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">Facilities</a></li>
+<li class="is-active"><a aria-current="page">{{ facility.name }}</a></li>
+{% endblock %}
+
+{% block explorer-content %}
+<div class="content">
+    <h2 class="title is-3">{{ facility.name }}</h2>
+    <p>{{ facility.address.street|title }}, {% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %} · {{ facility.county.name }}</p>
+    <p>
+        <a href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a>
+        {% if facility.sic_code %}{% sic_title facility.sic_code as sic_label %} · SIC {{ facility.sic_code }}{% if sic_label %}: {{ sic_label }}{% endif %}{% endif %}
+        {% if facility.is_minor_source %} · <a href="{% url 'emissions:about' %}#minor-sources">Minor source</a>{% endif %}
+    </p>
+    <p>
+        Regulated by {% if district.metadata.carb_url %}<a href="{{ district.metadata.carb_url }}">{{ district.name }}</a>{% else %}{{ district.name }}{% endif %}
+        {% if district.metadata.phone %} · {{ district.metadata.phone }}{% endif %}
+        {% if district.metadata.complaints_url %} · <a href="{{ district.metadata.complaints_url }}">Report an air pollution problem</a>{% endif %}
+    </p>
+</div>
+
+{% if shown_year != year %}
+<div class="notification is-light">This facility has no emissions reported for {{ year }}; showing {{ shown_year }}.</div>
+{% endif %}
+
+<h3 class="title is-4">Emissions in {{ shown_year }}</h3>
+<div class="table-container">
+<table class="table is-fullwidth is-narrow">
+    <thead><tr><th>Pollutant</th><th class="has-text-right">Tons/yr</th><th>Rank in {{ facility.county.name|cut:" County" }} County</th><th>Rank in sector</th><th>Share of the county's facility total</th></tr></thead>
+    <tbody>
+        {% for row in ranks %}
+        <tr>
+            <td><a href="{% qs_replace pollutant=row.pollutant.key toxics=None %}">{{ row.pollutant.label }}</a>{% if row.pollutant.label != row.pollutant.name %} <span class="has-text-grey is-size-7">{{ row.pollutant.name }}</span>{% endif %}</td>
+            <td class="has-text-right">{{ row.value|amount:row.pollutant }}</td>
+            <td>{% if row.county_rank %}#{{ row.county_rank }} of {{ row.county_count }}{% else %}—{% endif %}</td>
+            <td>{% if row.sector_rank %}#{{ row.sector_rank }} of {{ row.sector_count }}{% else %}—{% endif %}</td>
+            <td>{{ row.county_share|percent }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% if not pollutant.toxic %}{% emissions_trend_chart trend pollutant shown_year %}{% endif %}
+
+{% if changes %}
+<div class="notification is-warning is-light">
+    <p>Large year-to-year changes can reflect changes in how emissions are estimated, not only real changes in what the facility emitted:</p>
+    <ul>{% for change in changes %}<li>{{ change.pollutant.label }}: {{ change.pct|signed_pct }} from {{ change.previous_year }} to {{ change.year }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% if toxics_rows %}
+<h3 class="title is-4">Toxic air contaminants in {{ shown_year }}</h3>
+<div class="table-container">
+<table class="table is-fullwidth is-narrow">
+    <thead><tr><th>Contaminant</th><th class="has-text-right">Lbs/yr</th><th class="has-text-right">Year before</th></tr></thead>
+    <tbody>
+        {% for row in toxics_rows %}
+        <tr>
+            <td>{{ row.pollutant.name }}</td>
+            <td class="has-text-right">{{ row.value|floatformat:"-2" }}</td>
+            <td class="has-text-right">{% if row.previous is not None %}{{ row.previous|floatformat:"-2" }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+
+<p class="is-size-7 has-text-grey">Source: California Air Resources Board facility emissions inventory (CEIDARS). <a href="{% url 'emissions:about' %}">About this data</a>.</p>
+{% endblock %}

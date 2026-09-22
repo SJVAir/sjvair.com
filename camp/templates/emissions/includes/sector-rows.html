@@ -1,0 +1,19 @@
+{% load emissions_explorer %}
+<div class="table-container">
+<table class="table is-fullwidth is-narrow sector-table">
+    <thead>
+        <tr><th>Sector</th><th class="has-text-right">Facilities</th><th class="has-text-right">{{ pollutant.label }} ({{ pollutant.unit }}/yr)</th><th>Share</th>{% if show_trend %}<th>Trend</th>{% endif %}</tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+        <tr>
+            <td><a href="{% url 'emissions:sector-detail' row.sector %}{{ scope_qs }}">{{ row.label }}</a>{% if show_description %}<br><span class="is-size-7 has-text-grey">{% sector_description row.sector %}</span>{% endif %}</td>
+            <td class="has-text-right">{{ row.facilities }}</td>
+            <td class="has-text-right">{{ row.value|amount:pollutant }}</td>
+            <td><div class="share-bar" title="{{ row.share|percent }}"><span style="width: {{ row.share|width_pct }}"></span></div>{{ row.share|percent }}</td>
+            {% if show_trend %}<td>{% sparkline row.trend %}</td>{% endif %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>

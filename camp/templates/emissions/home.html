@@ -1,0 +1,44 @@
+{% extends 'emissions/base.html' %}
+{% load emissions_explorer %}
+
+{% block explorer-lede %}
+<p class="is-size-5">Air pollution reported by permitted facilities, from power plants and glass factories to dairies and gas stations, in the California Air Resources Board's facility inventory.</p>
+{% endblock %}
+
+{% block breadcrumbs %}<span></span>{% endblock %}
+
+{% block explorer-content %}
+<div class="columns is-multiline has-text-centered">
+    <div class="column"><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities }}</p></div>
+    <div class="column"><p class="heading">{{ pollutant.name }}</p><p class="title">{{ total|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div>
+    {% if top_sectors %}
+    <div class="column"><p class="heading">Largest sector</p><p class="title is-4"><a href="{% url 'emissions:sector-detail' top_sectors.0.sector %}{{ scope_qs }}">{{ top_sectors.0.label }}</a></p></div>
+    {% endif %}
+</div>
+
+{% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
+
+<h2 class="title is-4">Top 10 facilities</h2>
+{% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=False %}
+<p class="mb-5"><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">All facilities →</a></p>
+
+<div class="columns">
+    <div class="column">
+        <h2 class="title is-4">Top sectors</h2>
+        {% include 'emissions/includes/sector-rows.html' with rows=top_sectors %}
+        <p><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}">All sectors →</a></p>
+    </div>
+    <div class="column">
+        {% emissions_trend_chart by_year pollutant year %}
+    </div>
+</div>
+
+<form method="get" action="{% url 'emissions:facility-list' %}" class="mt-5">
+    {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <label class="label" for="facility-search">Find a facility</label>
+    <div class="field has-addons">
+        <div class="control is-expanded"><input class="input" type="search" id="facility-search" name="q" placeholder="Facility name"></div>
+        <div class="control"><button class="button is-primary" type="submit">Search</button></div>
+    </div>
+</form>
+{% endblock %}

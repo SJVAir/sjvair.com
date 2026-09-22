@@ -1,0 +1,67 @@
+{% extends 'page.html' %}
+{% load static %}
+
+{% block title %}Facility Emissions | {{ block.super }}{% endblock %}
+{# The explorer chrome (scope bar, tabs, tables, charts) is styled under body.pesticides; emissions-only styles are under body.emissions. #}
+{% block body-class %}pesticides emissions{% endblock %}
+
+{% block extra-head %}{% endblock %}
+
+{% block javascripts %}
+<script src="{% static 'htmx/htmx.min.js' %}"></script>
+<script src="{% static 'uplot/uPlot.iife.min.js' %}"></script>
+<script src="{% static 'js/pesticides/charts.js' %}"></script>
+<script src="{% static 'js/pesticides/explorer.js' %}"></script>
+{% endblock %}
+
+{% block main %}
+<div id="explorer"
+    hx-boost="true"
+    hx-target="#explorer-body"
+    hx-select="#explorer-body"
+    hx-select-oob="#explorer-tabs"
+    hx-swap="outerHTML"
+    hx-push-url="true"
+    hx-indicator="body">
+<section class="section is-small hook" id="explorer-hero">
+    <div class="container">
+        <div class="content">
+            <h1 class="is-size-2 mb-1"><a href="{% url 'emissions:home' %}">Facility Emissions Explorer</a></h1>
+            {% block explorer-lede %}{% endblock %}
+        </div>
+        <div class="tabs is-boxed explorer-nav">
+            <ul id="explorer-tabs">
+                {% block explorer-tabs-start %}{% endblock %}
+                <li class="{% if section == 'facilities' %}is-active{% endif %}"><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}" title="Facilities"><span class="icon is-small"><span class="fa-duotone fa-fw fa-industry explorer-icon" aria-hidden="true"></span></span><span class="tab-label">Facilities</span></a></li>
+                <li class="{% if section == 'sectors' %}is-active{% endif %}"><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}" title="Sectors"><span class="icon is-small"><span class="fa-duotone fa-fw fa-layer-group explorer-icon" aria-hidden="true"></span></span><span class="tab-label">Sectors</span></a></li>
+                <li class="{% if section == 'about' %}is-active{% endif %}"><a href="{% url 'emissions:about' %}" title="About the data"><span class="icon is-small"><span class="fa-duotone fa-fw fa-circle-info explorer-icon" aria-hidden="true"></span></span><span class="tab-label">About</span></a></li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<div id="explorer-body">
+<section class="breadcrumbs explorer-scope-bar">
+    <div class="container">
+        <div class="explorer-scope">
+            {% block breadcrumbs %}
+            <nav class="breadcrumb" aria-label="breadcrumbs">
+                <ul>
+                    <li><a href="{% url 'emissions:home' %}{{ scope_qs }}">Emissions</a></li>
+                    {% block breadcrumb-list %}{% endblock %}
+                </ul>
+            </nav>
+            {% endblock %}
+            {% include 'emissions/includes/scope-picker.html' %}
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        {% block explorer-content %}{% endblock %}
+    </div>
+</section>
+</div>
+</div>
+{% endblock %}

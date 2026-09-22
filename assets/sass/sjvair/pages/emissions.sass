@@ -1,0 +1,49 @@
+// Emissions explorer additions; the shared explorer chrome is in pesticides.sass (body.pesticides).
+body.emissions
+  .emissions-context-bar
+    display: flex
+    height: 1.25rem
+    border-radius: 4px
+    overflow: hidden
+    margin: 0.75rem 0 0.5rem
+  .segment, .swatch
+    &.is-stationary
+      background: #08519c
+    &.is-areawide
+      background: #6baed6
+    &.is-mobile
+      background: #9ecae1
+    &.is-natural
+      background: #deebf7
+  .segment
+    height: 100%
+  .emissions-legend
+    display: flex
+    flex-wrap: wrap
+    gap: 0.25rem 1rem
+    font-size: 0.875rem
+  .swatch
+    display: inline-block
+    width: 0.75rem
+    height: 0.75rem
+    margin-right: 0.3rem
+    border-radius: 2px
+    vertical-align: middle
+  .share-bar
+    background: #deebf7
+    height: 0.5rem
+    width: 6rem
+    border-radius: 2px
+    display: inline-block
+    margin-right: 0.5rem
+    vertical-align: middle
+    span
+      display: block
+      height: 100%
+      background: #3182bd
+  .sparkline polyline
+    fill: none
+    stroke: #3182bd
+    stroke-width: 1.5
+  .facility-table tr.is-minor td
+    color: #6b7280
