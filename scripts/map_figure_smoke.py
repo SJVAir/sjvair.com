@@ -5,14 +5,19 @@ Loads explorer pages in headless Chrome and checks the county choropleth
 that `camp.utils.mapfigure.MapFigure` renders into a `.map-figure`
 container: that it becomes a live map, that all eight counties are drawn
 and hit-testable, that a linked county shows a pointer cursor and a hover
-label and follows its url on click, and that an htmx navigation away and
-back leaves exactly one live map (no leaked WebGL contexts). Exits 1 on any
-failed check or console error. Dev-only; nothing here runs in CI.
+label and follows its url on click, that a figure starting inside a
+`display: none` subtree builds when it is revealed, and that an htmx
+navigation away and back leaves exactly one live map (no leaked WebGL
+contexts). Exits 1 on any failed check or console error; same-origin
+console warnings are reported but don't fail the run. Dev-only; nothing
+here runs in CI.
 
 The admin's figures use the same container, payload and script, so what
 holds here holds for them; the admin side is covered by Python tests
 (camp/utils/tests/test_admin_maps.py), which need a login this script has
-no credentials for.
+no credentials for. The hidden-container check stands in for the one admin
+shape that isn't otherwise exercised: the Region admin's collapsed
+BoundaryInline fieldsets.
 
 Setup (Chrome must be installed: `google-chrome-stable` on the PATH):
 
@@ -132,6 +137,7 @@ class Page:
         self.name = name
         self.timings = {}
         self.errors = []
+        self.warnings = []
         self.prepare()
 
     def prepare(self):
@@ -164,22 +170,25 @@ class Page:
         return ok
 
     def drain_console(self):
-        """New console errors. Third-party scripts on the page (the
-        translate widget) are not the map's doing; anything served from
-        this origin is."""
+        """New console entries, split into errors (SEVERE) and warnings
+        (WARNING). Third-party scripts on the page (the translate widget)
+        are not the map's doing; anything served from this origin is. Only
+        errors fail the run, but the warnings are kept so the console check
+        can name them instead of passing over them in silence."""
         noise = ('favicon', 'DevTools')
-        errors = []
+        errors, warnings = [], []
         for entry in self.driver.get_log('browser'):
             message = entry['message']
             if any(word in message for word in noise):
                 continue
-            if entry['level'] != 'SEVERE':
+            if entry['level'] not in ('SEVERE', 'WARNING'):
                 continue
             # The message starts with the URL that logged it.
             if message.startswith('http') and not message.startswith(self.origin + '/'):
                 continue
-            errors.append(message[:300])
+            (errors if entry['level'] == 'SEVERE' else warnings).append(message[:300])
         self.errors.extend(errors)
+        self.warnings.extend(warnings)
         return errors
 
     def container(self):
@@ -261,7 +270,7 @@ class Page:
                 if (p.x < 0 || p.y < 0 || p.x > rect.width || p.y > rect.height) return;
                 var d = ctx.getImageData(Math.round((rect.left + p.x) * scale),
                                          Math.round((rect.top + p.y) * scale), 1, 1).data;
-                out.push({ color: [d[0], d[1], d[2]], fillColor: (feature.properties.style || {}).fillColor });
+                out.push({ color: [d[0], d[1], d[2]], fillColor: feature.properties.fillColor });
               });
               done(out);
             };
@@ -322,16 +331,16 @@ def check_counties(page):
 
 
 def check_paint(page):
-    """The fill layer paints from the feature's nested `style` object, so
-    every county keeps its own choropleth shade. Checked against the drawn
-    pixels, not just the expression: were the nested `get` not to resolve,
-    every county would fall back to the same default fill."""
+    """The fill layer paints from the feature's own `fillColor`, so every
+    county keeps its own choropleth shade. Checked against the drawn
+    pixels, not just the expression: were the `get` not to resolve, every
+    county would fall back to the same default fill."""
     if not page.has_container():
         return None, 'no live figure on this page'
     fill = page.instance_js("return JSON.stringify(inst.map.getPaintProperty('areas-fill', 'fill-color'))")
     shades = page.instance_js("""
         var seen = {};
-        inst.areas.features.forEach(function (f) { seen[(f.properties.style || {}).fillColor] = 1; });
+        inst.areas.features.forEach(function (f) { seen[f.properties.fillColor] = 1; });
         return Object.keys(seen).length;
     """)
     drawn = page.sample_areas()
@@ -339,7 +348,7 @@ def check_paint(page):
     # The extremes of the ramp, as drawn: light and dark must be far apart.
     lums = [luminance(c['color']) for c in drawn]
     spread = max(lums) - min(lums) if lums else 0
-    ok = (fill == '["get","fillColor",["get","style"]]' and shades > 1
+    ok = (fill == '["get","fillColor"]' and shades > 1
           and distinct >= shades - 1 and spread > 40)
     return ok, 'fill-color %s, %s shades in the payload, %s drawn, light-to-dark spread %s' % (
         fill, shades, distinct, round(spread))
@@ -427,6 +436,104 @@ def check_htmx_round_trip(page):
         counts['maps'], counts['canvases'])
 
 
+# A copy of the page's figure, container and payload alike, dropped into a
+# `display: none` wrapper at the end of the document: the shape the Region
+# admin renders its boundary figures in, inside a collapsed fieldset.
+JS_ADD_HIDDEN = """
+var source = [].filter.call(document.querySelectorAll('.map-figure'),
+                            function (e) { return !e.closest('noscript'); })[0];
+if (!source) return false;
+var data = document.getElementById(source.dataset.geojson);
+if (!data) return false;
+var payload = document.createElement('script');
+payload.type = 'application/json';
+payload.id = 'smoke-hidden-geojson';
+payload.textContent = data.textContent;
+var el = document.createElement('div');
+el.id = 'smoke-hidden-map';
+el.className = 'map-figure';
+el.style.width = '400px';
+el.style.height = '300px';
+el.dataset.geojson = 'smoke-hidden-geojson';
+el.dataset.style = source.dataset.style || 'dataviz';
+el.dataset.maptilerKey = source.dataset.maptilerKey || '';
+el.dataset.padding = source.dataset.padding || '20';
+el.dataset.zoom = source.dataset.zoom || '14';
+var wrap = document.createElement('div');
+wrap.id = 'smoke-hidden-wrap';
+wrap.style.display = 'none';
+wrap.appendChild(payload);
+wrap.appendChild(el);
+document.body.appendChild(wrap);
+window.SJVAirMapFigures.init(document);
+return true;
+"""
+
+# The figure built for that container, once there is one.
+JS_HIDDEN_INSTANCE = """
+return (window.SJVAirMapFigures.instances() || []).filter(function (f) {
+  return f.el && f.el.id === 'smoke-hidden-map';
+})[0] || null;
+"""
+
+JS_HIDDEN_DRAWN = """
+var inst = (function () { %s })();
+if (!inst || !inst.map || !inst.map.loaded() || !inst.map.getLayer('areas-fill')) return 0;
+return inst.map.queryRenderedFeatures({ layers: ['areas-fill'] }).length;
+""" % JS_HIDDEN_INSTANCE
+
+
+def check_hidden_container(page):
+    """A figure inside a `display: none` subtree waits, then builds when it
+    is revealed. This is the Region admin's shape -- its BoundaryInline is a
+    collapsed fieldset, so those containers start hidden and only come into
+    view when someone expands the section -- and the admin needs a login
+    this script has no credentials for, so it is reproduced here on a public
+    page: a copy of this page's container and payload in a hidden wrapper,
+    handed to the module, then revealed."""
+    if not page.has_container():
+        return None, 'no live figure to copy on this page'
+    before = page.js(JS_COUNTS)
+    if not page.js(JS_ADD_HIDDEN):
+        return False, 'could not copy the page figure into a hidden wrapper'
+    try:
+        # IntersectionObserver delivers asynchronously, so give it a beat
+        # before concluding nothing was built.
+        time.sleep(1.5)
+        hidden = page.js(JS_COUNTS)
+        if hidden['maps'] != before['maps'] or hidden['pending'] != before['pending'] + 1:
+            return False, 'while hidden: %s (want %s maps, %s pending)' % (
+                hidden, before['maps'], before['pending'] + 1)
+
+        page.js("""
+            var wrap = document.getElementById('smoke-hidden-wrap');
+            wrap.style.display = '';
+            document.getElementById('smoke-hidden-map').scrollIntoView({ block: 'center' });
+        """)
+        drawn = 0
+        deadline = time.time() + MAP_TIMEOUT
+        while time.time() < deadline:
+            drawn = page.js(JS_HIDDEN_DRAWN)
+            if drawn:
+                break
+            time.sleep(0.2)
+        if not drawn:
+            return False, 'revealed but nothing drawn after %ss' % MAP_TIMEOUT
+        shown = page.js(JS_COUNTS)
+        ok = shown['maps'] == before['maps'] + 1 and shown['pending'] == before['pending']
+        return ok, 'hidden: %s maps; revealed: %s maps, %s areas drawn' % (
+            hidden['maps'], shown['maps'], drawn)
+    finally:
+        # The page's own checks count maps and canvases, so the copy goes
+        # away again: detached, it is the module's sweep that releases it.
+        page.js("""
+            var wrap = document.getElementById('smoke-hidden-wrap');
+            if (wrap) wrap.remove();
+            window.SJVAirMapFigures.init(document);
+        """)
+        time.sleep(0.5)
+
+
 def check_link(page):
     """A click on a county follows its url. Navigates away, so it runs last."""
     if not page.has_container():
@@ -443,9 +550,20 @@ def check_link(page):
 
 
 def check_console(page):
-    """Console errors over the whole run."""
+    """Same-origin console output over the whole run. Errors fail the
+    check; warnings only get reported, so a new one is visible here rather
+    than silently tolerated."""
     page.drain_console()
-    return (not page.errors), ('clean' if not page.errors else '\n      '.join(page.errors))
+    detail = []
+    if page.errors:
+        detail.append('%s error(s):' % len(page.errors))
+        detail.extend(page.errors)
+    if page.warnings:
+        detail.append('%s warning(s) (not failing):' % len(page.warnings))
+        detail.extend(page.warnings)
+    if not detail:
+        detail = ['no errors, no warnings']
+    return (not page.errors), '\n      '.join(detail)
 
 
 CHECKS = [
@@ -455,6 +573,7 @@ CHECKS = [
     ('cursor', check_cursor),
     ('label', check_label),
     ('htmx round trip', check_htmx_round_trip),
+    ('hidden container', check_hidden_container),
     ('link', check_link),
     ('console', check_console),
 ]

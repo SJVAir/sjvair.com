@@ -8,16 +8,21 @@
  * The container carries:
  *   data-geojson       id of a <script type="application/json"> holding a
  *                      FeatureCollection; each feature's `properties` has
- *                      `kind` ('marker' | 'area'), a `style` object
- *                      ({fillColor, fillOpacity, color, weight}), for
- *                      markers `shape` and `size`, for areas optionally a
- *                      `url` to follow on click, and optionally a `label`
- *                      shown permanently, or only on hover when
- *                      `labelOnHover` is true.
+ *                      `kind` ('marker' | 'area'), the style as four flat
+ *                      keys (`fillColor`, `fillOpacity`, `color`,
+ *                      `weight`), for markers `shape` and `size`, for
+ *                      areas optionally a `url` to follow on click, and
+ *                      optionally a `label` shown permanently, or only on
+ *                      hover when `labelOnHover` is true.
  *   data-style         MapTiler style id (see TILE_STYLE_PATHS)
  *   data-maptiler-key  the MapTiler API key
  *   data-padding       pixels of padding when fitting bounds
  *   data-zoom          zoom level to use when the bounds are a single point
+ *
+ * The style keys are flat rather than nested because MapLibre re-serialises
+ * a nested property value to a JSON string on its way through
+ * queryRenderedFeatures, which both breaks the paint expressions reading it
+ * and hands every hover handler a string where an object was put in.
  *
  * A map is built only once its container is scrolled into view, and is
  * released again once the container has left the document (htmx swaps on
@@ -75,7 +80,6 @@
   // Leaflet's divIcon).
   function markerElement(props) {
     var size = parseInt(props.size, 10) || 14;
-    var style = props.style || {};
     var draw = SHAPES[props.shape] || SHAPES.circle;
     var el = document.createElement('div');
     el.className = 'map-figure-marker';
@@ -84,10 +88,10 @@
     el.innerHTML =
       '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" ' +
       'viewBox="0 0 ' + size + ' ' + size + '" ' +
-      'fill="' + attr(style.fillColor || 'dodgerblue') + '" ' +
-      'fill-opacity="' + attr(style.fillOpacity == null ? 1 : style.fillOpacity) + '" ' +
-      'stroke="' + attr(style.color || 'white') + '" ' +
-      'stroke-width="' + attr(style.weight == null ? 1.5 : style.weight) + '" ' +
+      'fill="' + attr(props.fillColor || 'dodgerblue') + '" ' +
+      'fill-opacity="' + attr(props.fillOpacity == null ? 1 : props.fillOpacity) + '" ' +
+      'stroke="' + attr(props.color || 'white') + '" ' +
+      'stroke-width="' + attr(props.weight == null ? 1.5 : props.weight) + '" ' +
       'stroke-linejoin="round">' + draw(size) + '</svg>';
     // Hover labels need pointer events; every other marker stays inert, so
     // it neither shows a cursor nor takes a click from the area under it.
@@ -220,9 +224,9 @@
     return undefined;
   }
 
-  // A paint value read from the feature's nested `style` object.
+  // A paint value read off the feature's properties.
   function styled(key) {
-    return ['get', key, ['get', 'style']];
+    return ['get', key];
   }
 
   // A label: the SDK's popup, closed only by us, never taking focus (a
@@ -261,7 +265,10 @@
       var feature = geojson.features[i];
       feature.properties = feature.properties || {};
       feature.properties.id = i;
-      this.anchors[i] = labelAnchor(feature);
+      // Only a labelled feature needs an anchor, and finding one costs a
+      // centroid per ring -- the report maps carry a thousand unlabelled
+      // tracts.
+      this.anchors[i] = feature.properties.label ? labelAnchor(feature) : null;
       if (feature.geometry && feature.geometry.type === 'Point') points.push(feature);
       else areas.push(feature);
     }
@@ -425,9 +432,16 @@
     }
   };
 
-  // Releases the map (its WebGL context with it) once its container is gone.
+  // Releases the map (its WebGL context with it) once its container is
+  // gone. The labels go first: a Popup is appended to the map's container,
+  // not to the canvas Map.remove() takes with it, so a permanent label
+  // would outlive a destroy whose container is still in the document.
   MapFigure.prototype.destroy = function () {
     this.hideHover();
+    this.labels.forEach(function (label) { label.remove(); });
+    this.labels = [];
+    this.markers.forEach(function (marker) { marker.remove(); });
+    this.markers = [];
     this.map.remove();
     this.map = null;
   };

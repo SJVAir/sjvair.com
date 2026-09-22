@@ -58,12 +58,10 @@ class Marker:
             'size': self.size,
             'label': self.label,
             'labelOnHover': self.label_on_hover,
-            'style': {
-                'fillColor': self.fill_color,
-                'fillOpacity': self.fill_opacity,
-                'color': self.border_color,
-                'weight': self.border_width,
-            },
+            'fillColor': self.fill_color,
+            'fillOpacity': self.fill_opacity,
+            'color': self.border_color,
+            'weight': self.border_width,
         }
 
 
@@ -86,12 +84,10 @@ class Area:
             'label': self.label,
             'labelOnHover': self.label_on_hover,
             'url': self.url,
-            'style': {
-                'fillColor': self.fill_color,
-                'fillOpacity': self.fill_opacity,
-                'color': self.border_color,
-                'weight': self.border_width,
-            },
+            'fillColor': self.fill_color,
+            'fillOpacity': self.fill_opacity,
+            'color': self.border_color,
+            'weight': self.border_width,
         }
 
 

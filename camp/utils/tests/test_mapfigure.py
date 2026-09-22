@@ -24,7 +24,7 @@ class GeoJSONTests(TestCase):
         assert feature['properties']['kind'] == 'marker'
         assert feature['properties']['shape'] == 'star'
         assert feature['properties']['size'] == 20
-        assert feature['properties']['style']['fillColor'] == 'dodgerblue'
+        assert feature['properties']['fillColor'] == 'dodgerblue'
 
     def test_area_becomes_polygon_feature_with_style(self):
         figure = mapfigure.MapFigure()
@@ -39,12 +39,14 @@ class GeoJSONTests(TestCase):
         feature = figure.to_geojson()['features'][0]
         assert feature['geometry']['type'] == 'Polygon'
         assert feature['properties']['kind'] == 'area'
-        assert feature['properties']['style'] == {
-            'fillColor': 'white',
-            'fillOpacity': 0.5,
-            'color': 'dimgrey',
-            'weight': 2,
-        }
+        # The style keys sit at the top level of `properties`: MapLibre
+        # re-serialises a nested object to a JSON string on its way through
+        # queryRenderedFeatures, which the paint expressions can't read.
+        assert feature['properties']['fillColor'] == 'white'
+        assert feature['properties']['fillOpacity'] == 0.5
+        assert feature['properties']['color'] == 'dimgrey'
+        assert feature['properties']['weight'] == 2
+        assert 'style' not in feature['properties']
 
     def test_labels_are_permanent_by_default_and_hover_on_request(self):
         figure = mapfigure.MapFigure()

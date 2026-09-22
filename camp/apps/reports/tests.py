@@ -432,6 +432,7 @@ class CoverageTests(StaffClientMixin, TestCase):
         assert content.count('"kind": "area"') == 2 + 8  # two fixture tracts plus county outlines
         assert content.count('"kind": "marker"') == 2
         assert '"fillColor": "#c0392b"' in content  # the DAC tract
+        assert '"style": {' not in content  # the style keys are flat
 
     def test_county_without_region_row_has_no_population(self):
         Region.objects.counties().filter(name='Fresno County').delete()
