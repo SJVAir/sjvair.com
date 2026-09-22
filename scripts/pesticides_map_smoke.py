@@ -2,10 +2,11 @@
 Headless smoke test for the Pesticides Explorer's section map.
 
 Loads explorer pages in headless Chrome, waits for the map to come up, runs
-a set of checks against the live map (layers, controls, an htmx year change
-that must keep the same map instance, expand/collapse) and reports a table
-per page. Exits 1 on any failed check, a console error, or a map that never
-loads. Dev-only; nothing here runs in CI.
+a set of checks against the live map (layers, controls, the grid and its
+legend, popups, "all sections", an htmx year change that must keep the same
+map instance, expand/collapse) and reports a table per page. Exits 1 on any
+failed check, a console error, or a map that never loads. Dev-only; nothing
+here runs in CI.
 
 Setup (Chrome must be installed: `google-chrome-stable` on the PATH):
 
@@ -14,7 +15,8 @@ Setup (Chrome must be installed: `google-chrome-stable` on the PATH):
 Usage:
 
     .venv/bin/python scripts/pesticides_map_smoke.py --base http://localhost:8002 --gl \\
-        /tools/pesticides/ /tools/pesticides/region/hez8v/fresno/
+        /tools/pesticides/map/ /tools/pesticides/region/hez8v/fresno/ \\
+        "/tools/pesticides/region/hez8v/fresno/?sections=1"
 
     --gl            append `gl=1` to each page URL (the MapTiler SDK map, while
                     it lives beside the Leaflet one)
@@ -22,7 +24,9 @@ Usage:
     --year YEAR     the year the scope bar is switched to (default 2022)
 
 Every check on a page runs even after one fails, except that a map which
-never loads skips the checks that need it.
+never loads skips the checks that need it. Checks that need a particular
+state (the township grid for the township popup, `?sections=1` for "all
+sections") report themselves skipped on pages without it.
 
 Each page gets a fresh browser: the explorer's static files aren't
 cache-busted, so a reused profile could serve a stale script.
@@ -31,6 +35,7 @@ Later tasks extend this with more checks: add a `check_*` function that takes
 the `Page` and returns a (passed, detail) tuple, and list it in CHECKS.
 """
 import argparse
+import re
 import sys
 import time
 
@@ -41,6 +46,8 @@ from selenium.webdriver.common.by import By
 
 MAP_TIMEOUT = 40
 SWAP_TIMEOUT = 20
+GRID_TIMEOUT = 30
+ALL_SECTIONS_TIMEOUT = 120
 
 # The map instance, whichever module owns it: the SDK module while it lives
 # beside the Leaflet one, the renamed module after the flip.
@@ -55,6 +62,48 @@ JS_MAP_LOADED = """
 var inst = (function () { %s })();
 return !!(inst && inst.map && inst.loaded && inst.map.loaded());
 """ % JS_INSTANCE
+
+# The grid for the current view is on the map (at `arguments[0]`'s level
+# when given), no grid load is in flight (the status line is clear), and
+# the camera has settled.
+JS_GRID_LOADED = """
+var inst = (function () { %s })();
+if (!inst || !inst.loadedLevel || !inst.sourceData.grid || !inst.sourceData.grid.features.length) return false;
+if (arguments[0] && inst.loadedLevel !== arguments[0]) return false;
+if (/^Loading (grid|sections)…$/.test(document.querySelector('.section-map-status').textContent)) return false;
+return !inst.map.isMoving();
+""" % JS_INSTANCE
+
+# Among `features` (an expression on `inst`), the one with data nearest the
+# map's centre whose centre lands on bare canvas (not under the toolbar or
+# a panel), as an offset from the container's centre for a pointer action.
+JS_PICK = """
+function bboxOf(f) {
+  if (f.bbox) return f.bbox;
+  var b = [Infinity, Infinity, -Infinity, -Infinity];
+  (function walk(c) {
+    if (typeof c[0] === 'number') { b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]); b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]); }
+    else c.forEach(walk);
+  })(f.geometry.coordinates);
+  return b;
+}
+var canvas = inst.map.getCanvas();
+var rect = canvas.getBoundingClientRect();
+var best = null;
+(%s).forEach(function (f) {
+  if (!(f.properties.value > 0) || !f.geometry) return;
+  var b = bboxOf(f);
+  var p = inst.map.project([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]);
+  if (p.x < 0 || p.y < 0 || p.x > rect.width || p.y > rect.height) return;
+  if (document.elementFromPoint(rect.left + p.x, rect.top + p.y) !== canvas) return;
+  var d = Math.hypot(p.x - rect.width / 2, p.y - rect.height / 2);
+  if (!best || d < best.d) best = { id: f.properties.id, dx: p.x - rect.width / 2, dy: p.y - rect.height / 2 };
+});
+return best;
+"""
+
+POPUP = '.maplibregl-popup.section-popup-wrap .section-popup'
+LEGEND_ROWS = ".section-map-legend li:not(.is-marker)"
 
 
 def browser():
@@ -81,9 +130,9 @@ class Page:
     def js(self, script, *args):
         return self.driver.execute_script(script, *args)
 
-    def instance_js(self, expr):
+    def instance_js(self, expr, *args):
         """Evaluate `expr` with `inst` bound to the live map instance."""
-        return self.js('var inst = (function () { %s })(); if (!inst) return null; %s' % (JS_INSTANCE, expr))
+        return self.js('var inst = (function () { %s })(); if (!inst) return null; %s' % (JS_INSTANCE, expr), *args)
 
     def wait_for(self, script, timeout, *args):
         deadline = time.time() + timeout
@@ -102,6 +151,12 @@ class Page:
     def wait_idle(self, timeout=20):
         """Wait for the map to finish rendering (sources loaded, no pending tiles)."""
         return self.wait_for('var inst = (function () { %s })(); return !!(inst && inst.map && inst.map.loaded() && !inst.map.isMoving());' % JS_INSTANCE, timeout)
+
+    def wait_grid(self, level=None, timeout=GRID_TIMEOUT):
+        """Wait for the grid (at `level`, if given) to be on the map; seconds taken."""
+        started = time.time()
+        ok = self.wait_for(JS_GRID_LOADED, timeout, level)
+        return ok, round(time.time() - started, 2)
 
     def console_errors(self):
         noise = ('favicon', 'DevTools')
@@ -125,8 +180,7 @@ class Page:
         time.sleep(0.3)
         return el
 
-    # Pointer hooks for the checks that later tasks add (lens on hover,
-    # popups on click), relative to the map container's centre.
+    # Pointer actions relative to the map container's centre.
     def hover_map(self, dx=0, dy=0, settle=1.5):
         el = self.scroll_to_map()
         ActionChains(self.driver).move_to_element_with_offset(el, dx, dy).perform()
@@ -136,6 +190,36 @@ class Page:
         el = self.scroll_to_map()
         ActionChains(self.driver).move_to_element_with_offset(el, dx, dy).click().perform()
         time.sleep(settle)
+
+    def pick(self, features_expr):
+        """A clickable feature with data (see JS_PICK), or None."""
+        self.scroll_to_map()
+        return self.instance_js(JS_PICK % features_expr)
+
+    def set_control(self, selector, value):
+        """Set an Options control (a select or a radio) and fire its change."""
+        self.js("""
+            var el = document.querySelector(arguments[0]);
+            if (el.type === 'radio' || el.type === 'checkbox') { el.checked = arguments[1]; } else { el.value = arguments[1]; }
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+        """, selector, value)
+        time.sleep(0.6)
+
+    def popup_text(self):
+        return self.js("var el = document.querySelector(arguments[0]); return el ? el.innerText : null;", POPUP)
+
+    def legend_rows(self):
+        return self.js("return document.querySelectorAll(arguments[0]).length", LEGEND_ROWS)
+
+    def grid_requests(self):
+        """The grid endpoints' requests so far (Performance API): kind, duration
+        in ms, and when the response landed in seconds after navigation; a
+        values-only township refetch (geometry=0) is marked."""
+        return self.js("""
+            return performance.getEntriesByType('resource')
+                .filter(function (r) { return /\\/pesticides\\/(sections|townships)\\/\\?/.test(r.name); })
+                .map(function (r) { return [(r.name.indexOf('townships') !== -1 ? 'townships' : 'sections') + (r.name.indexOf('geometry=0') !== -1 ? '(values)' : ''), Math.round(r.duration), Math.round(r.responseEnd) / 1000]; });
+        """)
 
     def maptiler_sessions(self):
         return self.js("""
@@ -158,23 +242,27 @@ def check_map_loaded(page):
 
 
 def check_layers(page):
-    """The shell's layers are in the style, under the basemap's labels, and
-    the county outlines have data; the outline/radius layers carry data when
-    the page asks for them."""
+    """Every layer is in the style, under the basemap's labels, in the
+    expected paint order (grid under the county lines, county lines under
+    the page outline); the county outlines have data; the outline/radius
+    layers carry data when the page asks for them."""
     result = page.instance_js("""
         var map = inst.map;
         var layers = map.getStyle().layers.map(function (l) { return l.id; });
         var firstSymbol = -1;
         map.getStyle().layers.some(function (l, i) { if (l.type === 'symbol') { firstSymbol = i; return true; } });
-        var mine = ['radius-fill', 'radius-line', 'counties-line', 'outline-fill', 'outline-line', 'locate-circle'];
+        var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line', 'all-sections-fill', 'all-sections-line',
+                    'selected-line', 'highlight-line', 'counties-line', 'outline-fill', 'outline-line', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
         var aboveLabels = mine.filter(function (id) { return firstSymbol !== -1 && layers.indexOf(id) > firstSymbol; });
+        var order = mine.filter(function (id) { return layers.indexOf(id) !== -1; }).map(function (id) { return layers.indexOf(id); });
+        var inOrder = order.every(function (i, n) { return n === 0 || i > order[n - 1]; });
         var counts = {};
         ['counties', 'outline', 'radius'].forEach(function (id) {
             var d = inst.sourceData[id];
             counts[id] = d ? (d.features ? d.features.length : (d.geometry ? 1 : 0)) : 0;
         });
-        return { missing: missing, aboveLabels: aboveLabels, counts: counts,
+        return { missing: missing, aboveLabels: aboveLabels, inOrder: inOrder, counts: counts,
                  wantsOutline: !!inst.data.outlineUrl, wantsRadius: !!inst.data.radius };
     """)
     if result is None:
@@ -184,6 +272,8 @@ def check_layers(page):
         problems.append('missing layers %s' % result['missing'])
     if result['aboveLabels']:
         problems.append('layers above labels %s' % result['aboveLabels'])
+    if not result['inOrder']:
+        problems.append('layers out of paint order')
     if not result['counts']['counties']:
         problems.append('counties source empty')
     if result['wantsOutline'] and not result['counts']['outline']:
@@ -241,6 +331,297 @@ def check_fit(page):
     return True, 'zoom %.2f, county=%s valley=%s' % (result['zoom'], result['countyFitted'], result['valleyFitted'])
 
 
+def check_grid(page):
+    """The grid for the view is on the map at the level the zoom calls for,
+    every feature classed (fill/opacity written), the legend showing one
+    row per non-empty class plus "No data", the level note set, and the
+    page's own section (data-highlight) outlined when there is one."""
+    ok, secs = page.wait_grid()
+    if not ok:
+        return False, 'grid never loaded'
+    requests = page.grid_requests()
+    # When the first grid response landed, from navigation.
+    page.timings['grid_at_s'] = requests[0][2] if requests else secs
+    result = page.instance_js("""
+        var features = inst.sourceData.grid.features;
+        return {
+            level: inst.level, expected: inst.atSectionZoom() ? 'section' : 'township', zoom: inst.map.getZoom(),
+            count: features.length,
+            unclassed: features.filter(function (f) { return f.properties.fill === undefined || f.properties.opacity === undefined; }).length,
+            classes: inst.currentClasses.members.filter(function (m) { return m.length; }).length,
+            rows: document.querySelectorAll(arguments[0]).length,
+            levelText: document.querySelector('.section-map-level').textContent,
+            status: document.querySelector('.section-map-status').textContent,
+            highlight: inst.data.highlight || '',
+            highlighted: inst.sourceData.highlight && inst.sourceData.highlight.properties ? inst.sourceData.highlight.properties.id : '',
+        };
+    """, LEGEND_ROWS)
+    problems = []
+    if result['level'] != result['expected']:
+        problems.append('level %s at zoom %.2f (expected %s)' % (result['level'], result['zoom'], result['expected']))
+    if result['unclassed']:
+        problems.append('%d features unclassed' % result['unclassed'])
+    if result['rows'] != result['classes'] + 1:
+        problems.append('%d legend rows for %d classes' % (result['rows'], result['classes']))
+    if not result['levelText']:
+        problems.append('no level note')
+    # "All sections" reports its block progress on the same line; that isn't a grid load.
+    if result['status'] and not re.match(r'^Loading sections… \d+ of \d+$', result['status']):
+        problems.append('status left at %r' % result['status'])
+    if result['level'] == 'section' and result['highlight'] and result['highlighted'] != result['highlight']:
+        problems.append('highlight %s not outlined' % result['highlight'])
+    detail = '%s %d features, %d classes, %d rows; requests %s' % (
+        result['level'], result['count'], result['classes'], result['rows'],
+        ' '.join('%s=%dms' % (kind, ms) for kind, ms, _ in requests) or 'none')
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_legend_options(page):
+    """The bins and ramp selects reclass the grid live: bins=4 gives four
+    classes (plus "No data"), the ramp changes the swatch colours, both
+    land in the URL and leave it when set back to the defaults."""
+    problems = []
+    swatch_before = page.js("return document.querySelector('.section-map-legend .swatch').style.backgroundColor")
+    page.set_control('select[name="bins"]', '4')
+    rows = page.legend_rows()
+    classes = page.instance_js("return inst.currentClasses.members.filter(function (m) { return m.length; }).length")
+    if classes > 4 or rows != classes + 1:
+        problems.append('bins=4 gave %d classes, %d rows' % (classes, rows))
+    page.set_control('select[name="ramp"]', 'purd')
+    swatch_after = page.js("return document.querySelector('.section-map-legend .swatch').style.backgroundColor")
+    if swatch_after == swatch_before:
+        problems.append('ramp change left the swatches at %s' % swatch_before)
+    fill_matches = page.instance_js("""
+        var f = inst.sourceData.grid.features.filter(function (f) { return f.properties.value > 0; })[0];
+        return !!f && inst.currentClasses.colors.indexOf(f.properties.fill) !== -1;
+    """)
+    if not fill_matches:
+        problems.append('a feature fill is not one of the new class colours')
+    url = page.driver.current_url
+    if 'bins=4' not in url or 'ramp=purd' not in url:
+        problems.append('URL missing bins/ramp: %s' % url)
+    page.set_control('select[name="bins"]', '6')
+    page.set_control('select[name="ramp"]', 'blues')
+    url = page.driver.current_url
+    if 'bins=' in url or 'ramp=' in url:
+        problems.append('URL kept bins/ramp after reset: %s' % url)
+    return (not problems), ('bins=4 -> %d rows; %s -> %s' % (rows, swatch_before, swatch_after) if not problems else '; '.join(problems))
+
+
+def check_all_sections(page):
+    """On a `?sections=1` page at the township zoom, every visible township's
+    sections are drawn (well over a thousand at a county zoom), the township
+    fills step aside, the legend takes the all-sections note, a ramp change
+    reshades the drawn sections, and switching the mode off puts the
+    township grid back and drops `sections` from the URL."""
+    if not page.instance_js('return inst.showAllSections'):
+        return None, 'not a ?sections=1 page (skipped)'
+    if page.instance_js("return inst.level") != 'township':
+        return None, 'section level (skipped)'
+    done = page.wait_for("""
+        var inst = (function () { %s })();
+        if (!inst) return false;
+        var run = inst.allSectionsRun;
+        return !!(run && run.done === run.total && inst.allSectionsFeatures.length && document.querySelector('.section-map-status').textContent === '');
+    """ % JS_INSTANCE, ALL_SECTIONS_TIMEOUT)
+    if not done:
+        return False, 'blocks never finished loading'
+    # When the last block landed, from navigation.
+    secs = max(landed for kind, _, landed in page.grid_requests() if kind == 'sections')
+    page.timings['all_sections_at_s'] = secs
+    result = page.instance_js("""
+        return {
+            blocks: inst.allSectionsRun.total,
+            features: inst.allSectionsFeatures.length,
+            unclassed: inst.allSectionsFeatures.filter(function (f) { return f.properties.fill === undefined; }).length,
+            gridFill: inst.map.getPaintProperty('grid-fill', 'fill-opacity'),
+            rendered: inst.map.queryRenderedFeatures({layers: ['all-sections-fill']}).length,
+            levelText: document.querySelector('.section-map-level').textContent,
+            rows: document.querySelectorAll(arguments[0]).length,
+            classes: inst.currentClasses.members.filter(function (m) { return m.length; }).length,
+        };
+    """, LEGEND_ROWS)
+    problems = []
+    if result['features'] <= 1000:
+        problems.append('only %d sections drawn' % result['features'])
+    if result['unclassed']:
+        problems.append('%d sections unclassed' % result['unclassed'])
+    if result['gridFill'] != 0:
+        problems.append('township fill not hidden (%s)' % result['gridFill'])
+    if not result['rendered']:
+        problems.append('no all-sections features rendered')
+    if 'across every township' not in result['levelText']:
+        problems.append('level note %r' % result['levelText'])
+    if result['rows'] != result['classes'] + 1:
+        problems.append('%d legend rows for %d classes' % (result['rows'], result['classes']))
+    # A reshade (ramp change) reaches the drawn sections through the source
+    # diff, which the SDK's worker applies and re-tiles; wait for it.
+    page.set_control('select[name="ramp"]', 'purd')
+    started = time.time()
+    js_reshaded = """
+        var rendered = inst.map.queryRenderedFeatures({layers: ['all-sections-fill']}).filter(function (f) { return f.properties.value > 0; });
+        if (!rendered.length) return 'nothing rendered';
+        var bad = rendered.filter(function (f) { var own = inst.allSectionsById[f.properties.id]; return !own || own.properties.fill !== f.properties.fill; });
+        return bad.length ? bad.length + ' of ' + rendered.length + ' rendered fills stale' : 'ok';
+    """
+    deadline = time.time() + 15
+    reshaded = page.instance_js(js_reshaded)
+    while reshaded != 'ok' and time.time() < deadline:
+        time.sleep(0.25)
+        reshaded = page.instance_js(js_reshaded)
+    reshade_s = round(time.time() - started, 2)
+    if reshaded != 'ok':
+        problems.append('ramp change: %s after %ss' % (reshaded, reshade_s))
+    page.set_control('select[name="ramp"]', 'blues')
+    # Off again: the township grid returns and the URL forgets the mode.
+    page.set_control('input[name="sections"]', False)
+    after = page.instance_js("""
+        return { features: inst.allSectionsFeatures.length, gridFill: JSON.stringify(inst.map.getPaintProperty('grid-fill', 'fill-opacity')),
+                 levelText: document.querySelector('.section-map-level').textContent, url: location.search };
+    """)
+    if after['features'] or after['gridFill'] == '0' or 'sections=' in after['url'] or 'across every township' in after['levelText']:
+        problems.append('mode did not switch off cleanly: %s' % after)
+    detail = '%d blocks, %d sections (%d rendered) in %ss; reshade visible after %ss' % (result['blocks'], result['features'], result['rendered'], secs, reshade_s)
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_style_swap(page):
+    """The tiles select rebuilds the style; the grid and its data come back
+    on the new style with the same paint."""
+    before = page.instance_js("return inst.sourceData.grid.features.length")
+    page.set_control('select[name="tiles"]', 'toner-v2')
+    back = page.wait_for("""
+        var inst = (function () { %s })();
+        return !!(inst && inst.map.isStyleLoaded() && inst.map.getLayer('grid-fill') && inst.map.getLayer('counties-line')
+                  && inst.map.querySourceFeatures('grid').length);
+    """ % JS_INSTANCE, 20)
+    if not back:
+        return False, 'grid layers/data did not return after the style swap'
+    result = page.instance_js("""
+        return { style: inst.map.getStyle().name, url: location.search,
+                 fill: JSON.stringify(inst.map.getPaintProperty('grid-fill', 'fill-opacity')),
+                 features: inst.sourceData.grid.features.length };
+    """)
+    problems = []
+    if 'tiles=toner-v2' not in result['url']:
+        problems.append('URL missing tiles: %s' % result['url'])
+    if result['features'] != before:
+        problems.append('grid data changed across the swap (%s -> %s)' % (before, result['features']))
+    page.set_control('select[name="tiles"]', page.instance_js('return inst.defaultTileStyle'))
+    page.wait_for("var inst = (function () { %s })(); return !!(inst && inst.map.isStyleLoaded() && inst.map.getLayer('grid-fill'));" % JS_INSTANCE, 20)
+    if 'tiles=' in page.driver.current_url:
+        problems.append('URL kept tiles after reset')
+    return (not problems), ('style %s, %d features kept' % (result['style'], result['features']) if not problems else '; '.join(problems))
+
+
+def check_township_popup(page):
+    """At the township zoom a click opens the township popup (name, section
+    count, the metric headline that follows the metric toggle); its "Zoom in
+    to sections" button reaches the section grid at the clicked spot."""
+    if page.instance_js("return inst.level") != 'township':
+        return None, 'section level (skipped)'
+    target = page.pick('inst.sourceData.grid.features')
+    if not target:
+        return False, 'no township with data on bare canvas to click'
+    page.click_map(target['dx'], target['dy'], settle=1.0)
+    text = page.popup_text() or ''
+    problems = []
+    if page.instance_js('return inst.openGridId') != target['id']:
+        problems.append('openGridId is %s, clicked %s' % (page.instance_js('return inst.openGridId'), target['id']))
+    if 'Township' not in text or 'lbs' not in text or 'Zoom in to sections' not in text:
+        problems.append('popup text %r' % text[:120])
+    page.set_control('input[name="metric"][value="applications"]', True)
+    text_after = page.popup_text() or ''
+    if 'application' not in text_after:
+        problems.append('popup headline did not follow the metric: %r' % text_after[:120])
+    page.set_control('input[name="metric"][value="lbs_chemical"]', True)
+    started = time.time()
+    page.js("document.querySelector('%s .section-map-zoom').click()" % POPUP)
+    ok, secs = page.wait_grid('section', 40)
+    if not ok:
+        problems.append('section grid did not load after Zoom in')
+    else:
+        page.timings['zoom_in_s'] = round(time.time() - started, 2)
+    if page.js("return !!document.querySelector(arguments[0])", POPUP):
+        problems.append('township popup still open after Zoom in')
+    zoom = page.instance_js('return [inst.map.getZoom(), inst.sectionZoom(), inst.sourceData.grid.features.length]')
+    if zoom and zoom[0] < zoom[1]:
+        problems.append('zoom %.2f is below sectionZoom %s' % (zoom[0], zoom[1]))
+    detail = 'township %s; Zoom in -> %d sections at zoom %.2f in %ss' % (target['id'], zoom[2], zoom[0], page.timings.get('zoom_in_s', '?'))
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_section_popup(page):
+    """At the section zoom a click opens the section popup, selects the
+    section (outline source), and fills in the top chemicals with links."""
+    ok, _ = page.wait_grid('section', 10)
+    if not ok:
+        return False, 'not at the section grid'
+    target = page.pick('inst.sourceData.grid.features')
+    if not target:
+        return False, 'no section with data on bare canvas to click'
+    page.click_map(target['dx'], target['dy'], settle=0.5)
+    filled = page.wait_for("""
+        var el = document.querySelector(arguments[0]);
+        return !!el && el.innerText.indexOf('Loading') === -1 && !!el.querySelector('.section-popup-chems li, .section-popup-note');
+    """, 15, POPUP)
+    problems = []
+    if not filled:
+        problems.append('popup never filled in')
+    result = page.instance_js("""
+        var el = document.querySelector(arguments[0]);
+        var chems = el ? Array.from(el.querySelectorAll('.section-popup-chems li')) : [];
+        return {
+            text: el ? el.innerText : '',
+            selected: inst.selectedSectionId, openGridId: inst.openGridId,
+            outline: inst.sourceData.selected && inst.sourceData.selected.properties ? inst.sourceData.selected.properties.id : null,
+            chems: chems.length,
+            linked: chems.filter(function (li) { return li.querySelector('a[href*="/chemicals/"]'); }).length,
+            concern: chems.filter(function (li) { return li.querySelector('.is-of-concern'); }).length,
+            details: !!(el && el.querySelector('.section-popup-action[href*="/sections/"]')),
+        };
+    """, POPUP)
+    if 'Square-mile section' not in result['text']:
+        problems.append('popup text %r' % result['text'][:120])
+    if result['selected'] != target['id'] or result['outline'] != target['id'] or result['openGridId'] != target['id']:
+        problems.append('selection state %s for %s' % ({k: result[k] for k in ('selected', 'outline', 'openGridId')}, target['id']))
+    if not result['chems']:
+        problems.append('no top chemicals listed')
+    elif result['linked'] != result['chems']:
+        problems.append('%d of %d chemicals linked' % (result['linked'], result['chems']))
+    if not result['details']:
+        problems.append('no "Section details" link')
+    detail = 'section %s: %d chemicals (%d of concern), selected + outlined' % (target['id'], result['chems'], result['concern'])
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_selection_survives_metric(page):
+    """With a section popup open, a metric change reclasses the grid but
+    keeps the popup, the selection and its outline; `?metric=` follows."""
+    before = page.instance_js("return inst.selectedSectionId")
+    if not before:
+        return False, 'no section selected'
+    page.set_control('input[name="metric"][value="applications"]', True)
+    result = page.instance_js("""
+        return { selected: inst.selectedSectionId, popup: !!inst.popup && !!document.querySelector(arguments[0]),
+                 outline: inst.sourceData.selected && inst.sourceData.selected.properties ? inst.sourceData.selected.properties.id : null,
+                 unit: document.querySelector('.section-map-legend .range').textContent, url: location.search };
+    """, POPUP)
+    problems = []
+    if result['selected'] != before or result['outline'] != before:
+        problems.append('selection lost: %s' % result)
+    if not result['popup']:
+        problems.append('popup closed')
+    if 'applications' not in result['unit']:
+        problems.append('legend unit %r' % result['unit'])
+    if 'metric=applications' not in result['url']:
+        problems.append('URL missing metric: %s' % result['url'])
+    page.set_control('input[name="metric"][value="lbs_chemical"]', True)
+    if 'metric=' in page.driver.current_url:
+        problems.append('URL kept metric after reset')
+    return (not problems), ('selection %s kept, legend in %s' % (before, result['unit'].split(' ', 1)[-1]) if not problems else '; '.join(problems))
+
+
 def check_year_swap(page, year):
     """Changing the year in the scope bar swaps the page over htmx; the map
     instance must survive it (adopted in place), the container carry the
@@ -268,6 +649,9 @@ def check_year_swap(page, year):
     if canvases != 1:
         return False, '%d map canvases after the swap' % canvases
     page.wait_idle()
+    ok, _ = page.wait_grid()
+    if not ok:
+        return False, 'grid did not reload after the swap'
     sessions_after = set(page.maptiler_sessions())
     new_sessions = sessions_after - sessions_before
     if sessions_before and new_sessions:
@@ -328,6 +712,13 @@ CHECKS = [
     ('layers', check_layers),
     ('controls', check_controls),
     ('fit', check_fit),
+    ('grid', check_grid),
+    ('legend options', check_legend_options),
+    ('all sections', check_all_sections),
+    ('style swap', check_style_swap),
+    ('township popup', check_township_popup),
+    ('section popup', check_section_popup),
+    ('selection', check_selection_survives_metric),
     ('year swap', check_year_swap),
     ('expand', check_expand),
     ('console', check_console),
@@ -363,7 +754,7 @@ def run_page(base, path, gl, year, screenshots):
         if screenshots:
             import os
             os.makedirs(screenshots, exist_ok=True)
-            name = path.strip('/').replace('/', '_').replace('?', '_') or 'landing'
+            name = path.strip('/').replace('/', '_').replace('?', '_').replace('=', '-') or 'landing'
             page.scroll_to_map()
             driver.save_screenshot(os.path.join(screenshots, name + '.png'))
         return url, rows, page.timings
@@ -373,7 +764,7 @@ def run_page(base, path, gl, year, screenshots):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('paths', nargs='+', help='page paths under --base, e.g. /tools/pesticides/')
+    parser.add_argument('paths', nargs='+', help='page paths under --base, e.g. /tools/pesticides/map/')
     parser.add_argument('--base', default='http://localhost:8002')
     parser.add_argument('--gl', action='store_true', help='append gl=1 (the MapTiler SDK map)')
     parser.add_argument('--year', default='2022', help='year to switch the scope bar to')
@@ -384,10 +775,10 @@ def main(argv=None):
     for path in args.paths:
         url, rows, timings = run_page(args.base, path, args.gl, args.year, args.screenshots)
         print('\n%s' % url)
-        print('  page get %ss, map loaded %ss' % (timings.get('page_get_s'), timings.get('map_loaded_s')))
+        print('  ' + ', '.join('%s %ss' % (key[:-2].replace('_', ' '), value) for key, value in timings.items()))
         for name, passed, detail in rows:
             status = 'PASS' if passed else ('SKIP' if passed is None else 'FAIL')
-            print('  %-4s %-12s %s' % (status, name, detail))
+            print('  %-4s %-16s %s' % (status, name, detail))
             if passed is False:
                 any_failed = True
     print()

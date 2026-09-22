@@ -57,3 +57,15 @@ class SectionDetailTests(RollupTestMixin, TestCase):
     def test_404_for_non_section(self):
         county = Region.objects.get(pk=9001)
         assert self.client.get(reverse('pesticides:section-detail', kwargs={'sqid': county.sqid})).status_code == 404
+
+    def test_api_detail_flags_top_chemicals_of_concern(self):
+        # The map's section popup marks chemicals of concern with a dot, so
+        # the detail endpoint it reads has to say which of the top chemicals
+        # those are (Prop 65, TAC, or an IARC group of concern).
+        url = reverse('api:v2:pesticides:section-detail', kwargs={'section_id': self.section.sqid})
+        data = self.client.get(url, {'year': 2023}).json()
+        assert {c['name']: c['is_of_concern'] for c in data['top_chemicals']} == {
+            'SULFUR': False,
+            'GLYPHOSATE': True,
+            'CHLORPYRIFOS': True,
+        }

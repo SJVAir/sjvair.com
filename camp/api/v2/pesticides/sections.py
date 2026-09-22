@@ -264,7 +264,14 @@ class SectionDetailBase(generics.Endpoint):
             if not (year or all_years):
                 return []
             related = stats.top_related(rows, year, field, lbs_field=lbs_field, limit=limit, all_years=all_years)
-            return [{'id': r.obj.sqid, 'name': r.obj.name, 'display_name': r.obj.display_name, 'lbs': r.lbs} for r in related]
+            entries = []
+            for r in related:
+                entry = {'id': r.obj.sqid, 'name': r.obj.name, 'display_name': r.obj.display_name, 'lbs': r.lbs}
+                # The map's section popup marks the chemicals of concern.
+                if field == 'chemical':
+                    entry['is_of_concern'] = r.obj.is_of_concern
+                entries.append(entry)
+            return entries
 
         return {
             'id': section.sqid,

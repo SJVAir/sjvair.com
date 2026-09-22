@@ -116,7 +116,7 @@ class LocationList(CachedEndpointMixin, LocationListBase):
     """
     Schools and licensed child care centers as GeoJSON points.
 
-    `bbox=west,south,east,north` is required and may span at most 3 degrees
+    `bbox=west,south,east,north` is required and may span at most 12 degrees
     on a side. `type` is a comma-separated list of
     `public_school`, `private_school`, `child_care` (default: all three).
     `county` (a county slug) keeps only the locations in that county.
