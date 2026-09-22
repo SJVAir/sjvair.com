@@ -18,10 +18,10 @@
 
   if (typeof window.htmx === 'undefined') return;
 
-  // Leaflet mutates the DOM it is given, so a cached history snapshot would
-  // restore dead map markup that our init() would then skip (data-rendered is
-  // in the snapshot too). Setting the cache size to 0 makes back/forward
-  // refetch from the server instead.
+  // The map scripts mutate the DOM they are given, so a cached history
+  // snapshot would restore dead map markup that our init() would then skip
+  // (data-rendered is in the snapshot too). Setting the cache size to 0 makes
+  // back/forward refetch from the server instead.
   window.htmx.config.historyCacheSize = 0;
   window.htmx.config.scrollBehavior = 'instant';
   // Boosted swaps scroll the target into view by default. A filter, sort, or
@@ -35,7 +35,6 @@
     var root = evt.detail && evt.detail.elt;
     if (!root) return;
     if (window.PesticidesCharts) window.PesticidesCharts.init(root);
-    if (window.PesticidesSectionMapGL) window.PesticidesSectionMapGL.init(root);
     if (window.PesticidesSectionMap) window.PesticidesSectionMap.init(root);
     if (window.PesticidesFindArea) window.PesticidesFindArea.init(root);
     if (window.PesticidesEntityPicker) window.PesticidesEntityPicker.init(root);

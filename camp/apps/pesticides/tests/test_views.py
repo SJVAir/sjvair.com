@@ -793,18 +793,33 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert '<noscript>' in html and 'admin-leaflet-map' in html   # static fallback
 
     @override_settings(MAPTILER_API_KEY='test-key')
-    def test_gl_map_reads_its_key_and_style_from_the_container(self):
+    def test_map_reads_its_key_and_style_from_the_container(self):
         # The MapTiler SDK map takes the API key and a style id straight off
-        # the container; the Leaflet map keeps its raster template until the
-        # flip, so both attributes render side by side for now.
+        # the container; the Leaflet map's raster template went with it.
         response = self.client.get(self.url)
         cfg = response.context['map_config']
         assert cfg['maptiler_key'] == 'test-key'
         assert cfg['style'] == 'dataviz'
+        assert 'tile_url' not in cfg
         html = response.content.decode()
-        assert 'data-maptiler-key="test-key"' in html
-        assert 'data-style="dataviz"' in html
-        assert 'data-tiles="https://api.maptiler.com/maps/dataviz/256/{z}/{x}/{y}.png?key=test-key"' in html
+        # The section map's own container (the noscript county choropleth is
+        # Leaflet's and keeps its raster template).
+        start = html.index('class="section-map"')
+        container = html[start:html.index('>', start)]
+        assert 'data-maptiler-key="test-key"' in container
+        assert 'data-style="dataviz"' in container
+        assert 'data-tiles=' not in container
+        assert 'data-gl=' not in container
+
+    def test_page_loads_the_sdk_and_keeps_leaflet_for_the_choropleth(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'maptiler-sdk/maptiler-sdk.js' in html
+        assert 'maptiler-sdk/maptiler-sdk.css' in html
+        assert html.count('js/pesticides/section-map') == 1   # one map module, no spike beside it
+        # The static county choropleth (includes/county-map.html) still draws
+        # with Leaflet, so its script and styles stay.
+        assert 'js/admin/leaflet/leaflet.js' in html
+        assert 'js/admin/leaflet-maps.js' in html
 
     def test_entity_filters_resolve_to_api_identifiers(self):
         chem = Chemical.objects.get(pk=1)

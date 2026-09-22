@@ -10,7 +10,6 @@
        data-chemical-page-url="{{ map_config.chemical_page_url }}"
        data-product-page-url="{{ map_config.product_page_url }}"
        data-notice-page-url="{{ map_config.notice_page_url }}"
-       data-tiles="{{ map_config.tile_url }}"
        data-attribution="{{ map_config.attribution }}"
        data-maptiler-key="{{ map_config.maptiler_key }}"
        data-style="{{ map_config.style }}"
@@ -28,8 +27,7 @@
        data-radius="{{ map_config.radius }}"
        data-fit="{{ map_config.fit }}"
        data-show-notices="{{ map_config.show_notices }}"
-       data-show-locations="{{ map_config.show_locations }}"
-       data-gl="{{ request.GET.gl|default:'' }}"></div>
+       data-show-locations="{{ map_config.show_locations }}"></div>
   {% comment %}
   One toolbar row over the map (top-left, beside the zoom buttons): the page's
   filters when it has them, then Options, then Expand. The legend sits

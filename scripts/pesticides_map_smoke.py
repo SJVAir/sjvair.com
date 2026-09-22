@@ -14,20 +14,18 @@ Setup (Chrome must be installed: `google-chrome-stable` on the PATH):
 
 Usage:
 
-    .venv/bin/python scripts/pesticides_map_smoke.py --base http://localhost:8002 --gl \\
+    .venv/bin/python scripts/pesticides_map_smoke.py --base http://localhost:8002 \\
         /tools/pesticides/map/ /tools/pesticides/region/hez8v/fresno/ \\
         "/tools/pesticides/region/hez8v/fresno/?sections=1"
 
-    --gl            append `gl=1` to each page URL (the MapTiler SDK map, while
-                    it lives beside the Leaflet one)
     --screenshots   a directory to save a screenshot per page into
     --year YEAR     the year the scope bar is switched to (default 2022)
 
 Every check on a page runs even after one fails, except that a map which
 never loads skips the checks that need it. Checks that need a particular
 state (the township grid for the township popup, `?sections=1` for "all
-sections", a lens for the lens popup, active notices in view for the notice
-popup) report themselves skipped on pages without it. The markers checks
+sections", a lens for the lens popup, active notices or schools in view for
+their popups) report themselves skipped on pages without it. The markers checks
 leave the toggles as they found them. The lens check moves the map to zoom 9 (township level), so
 the checks after it start there.
 
@@ -57,10 +55,9 @@ ALL_SECTIONS_TIMEOUT = 120
 # sections request).
 LENS_TIMEOUT = 1.5
 
-# The map instance, whichever module owns it: the SDK module while it lives
-# beside the Leaflet one, the renamed module after the flip.
+# The map instance (the module keeps one live map per page).
 JS_INSTANCE = """
-var mod = window.PesticidesSectionMapGL || window.PesticidesSectionMap;
+var mod = window.PesticidesSectionMap;
 if (!mod || typeof mod.instances !== 'function') return null;
 var list = mod.instances();
 return list && list.length ? list[0] : null;
@@ -628,7 +625,9 @@ def check_locations(page):
     LOCATIONS_MIN_ZOOM the layer stays empty and the legend note and the
     status line say why. The Options toggle clears the markers and the
     legend rows and writes `?locations=` against the page default; back on
-    reloads them. Ends with the toggle as it found it."""
+    reloads them. Ends with the toggle as it found it. Skips itself (after
+    the load and toggle steps) where the layer's zoom has no school in
+    view to click."""
     state = page.instance_js("return { on: inst.showLocations, dflt: inst.data.showLocations === '1', url: !!inst.data.locationsUrl, zoom: inst.map.getZoom() };")
     if not state['url']:
         return None, 'no locations endpoint (skipped)'
@@ -645,6 +644,7 @@ def check_locations(page):
     too_far = state['zoom'] < 9
     count = 0
     popup_detail = ''
+    skipped = None
     if too_far:
         note = page.js("return { note: document.querySelector('.section-map-locations-note').textContent, status: document.querySelector('.section-map-status').textContent };")
         if note['note'] != LOCATIONS_ZOOM_NOTE or note['status'] != LOCATIONS_ZOOM_NOTE:
@@ -660,7 +660,7 @@ def check_locations(page):
         if page.js("return document.querySelector('.section-map-locations-note').textContent"):
             problems.append('zoom note shown at zoom %.2f' % state['zoom'])
         if not count:
-            problems.append('no locations in view at zoom %.2f' % state['zoom'])
+            skipped = 'no locations in view at zoom %.2f' % state['zoom']
         else:
             rendered = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['locations-circle'] }).length > 0;" % JS_INSTANCE, 10)
             if not rendered:
@@ -719,8 +719,11 @@ def check_locations(page):
     if not state['on']:
         page.set_control('input[name="locations"]', False)
     requests = page.marker_requests('locations') - requests_before
-    detail = '%d locations (%d request(s)); %s; toggle off/on, URL and legend followed' % (count, requests, popup_detail)
-    return (not problems), (detail if not problems else '; '.join(problems))
+    if problems:
+        return False, '; '.join(problems)
+    if skipped:
+        return None, '%s (%d request(s)); toggle off/on, URL and legend followed; no popup to check (skipped)' % (skipped, requests)
+    return True, '%d locations (%d request(s)); %s; toggle off/on, URL and legend followed' % (count, requests, popup_detail)
 
 
 def check_lens(page):
@@ -849,7 +852,20 @@ def check_lens_popup(page):
     lens_id = page.instance_js('return inst.lensId')
     # A section of the lens's own township: the pointer arriving on a
     # neighbour's section would recentre the lens there first (by design).
-    target = page.pick("inst.lensFeatures.filter(function (f) { var m = f.properties.mtrs || ''; return m.slice(0, m.lastIndexOf('-')) === inst.lensId; })")
+    own_section = "inst.lensFeatures.filter(function (f) { var m = f.properties.mtrs || ''; return m.slice(0, m.lastIndexOf('-')) === inst.lensId; })"
+    target = page.pick(own_section)
+    if not target:
+        # The lens check leaves the lens on the farthest township it could
+        # reach, at the viewport's edge, where its sections with data may all
+        # sit under a panel, a marker or past the edge; bring the lens to a
+        # township with data near the centre and try there.
+        near = page.pick("inst.gridFeatures.filter(function (f) { return f.properties.id !== inst.lensId; })")
+        if near:
+            page.hover_map(near['dx'], near['dy'], settle=0.3, instant=True)
+            if page.wait_lens(near['id'], timeout=10)[0]:
+                page.wait_prefetch(near['id'])
+                lens_id = near['id']
+                target = page.pick(own_section)
     if not target:
         return False, 'no section of township %s with data on bare canvas to click' % lens_id
     page.click_map(target['dx'], target['dy'], settle=0.3, instant=True)
@@ -1243,10 +1259,8 @@ CHECKS = [
 ]
 
 
-def run_page(base, path, gl, year, screenshots):
+def run_page(base, path, year, screenshots):
     url = base.rstrip('/') + path
-    if gl:
-        url += ('&' if '?' in url else '?') + 'gl=1'
     driver = browser()
     started = time.time()
     rows = []
@@ -1284,14 +1298,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('paths', nargs='+', help='page paths under --base, e.g. /tools/pesticides/map/')
     parser.add_argument('--base', default='http://localhost:8002')
-    parser.add_argument('--gl', action='store_true', help='append gl=1 (the MapTiler SDK map)')
     parser.add_argument('--year', default='2022', help='year to switch the scope bar to')
     parser.add_argument('--screenshots', help='directory for a screenshot per page')
     args = parser.parse_args(argv)
 
     any_failed = False
     for path in args.paths:
-        url, rows, timings = run_page(args.base, path, args.gl, args.year, args.screenshots)
+        url, rows, timings = run_page(args.base, path, args.year, args.screenshots)
         print('\n%s' % url)
         # Keys end in their unit: `_s` or `_ms`.
         print('  ' + ', '.join('%s %s%s' % (key.rsplit('_', 1)[0].replace('_', ' '), value, key.rsplit('_', 1)[1]) for key, value in timings.items()))

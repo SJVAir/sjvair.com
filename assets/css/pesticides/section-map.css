@@ -11,11 +11,11 @@
 }
 
 /* Controls (top-right) and legend (bottom-left) float over the map, in the
-   same idiom as Leaflet's own controls, so they come along when the map is
+   same idiom as the SDK's own controls, so they come along when the map is
    expanded to the viewport. */
 .section-map-panel {
   position: absolute;
-  z-index: 1000; /* level with Leaflet controls, above popups' pane order */
+  z-index: 1000; /* above the map's canvas, controls and popups */
   max-width: calc(100% - 1.5rem);
   padding: 0;
   background: rgba(255, 255, 255, 0.92);
@@ -234,14 +234,40 @@ html.section-map-expanded .explorer-scope-bar {
   }
 }
 
-.leaflet-popup .section-popup h4,
-.leaflet-popup .notice-popup h4 {
+/* Popups: the SDK's popup box restyled to the one the section and notice
+   popups were laid out for (padding, radius, shadow, type size). */
+.section-map-wrap .maplibregl-popup-content {
+  padding: 13px 24px 13px 20px;
+  border-radius: 12px;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.4);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #363636;
+}
+
+.section-map-wrap .maplibregl-popup-close-button {
+  top: 2px;
+  right: 4px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 1.15rem;
+  line-height: 1.4;
+  color: #7a7a7a;
+}
+
+.section-map-wrap .maplibregl-popup-close-button:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #363636;
+}
+
+.section-popup h4,
+.notice-popup h4 {
   margin: 0 0 .25rem;
 }
 
 /* Grid popups (section and township): a title, a grey subline, the headline
    figure, then the top-chemicals list with the amounts right-aligned. */
-.leaflet-popup .section-popup h4 {
+.section-popup h4 {
   margin-bottom: 0;
   font-size: 1rem;
   font-weight: 600;
@@ -357,11 +383,6 @@ html.section-map-expanded .explorer-scope-bar {
   padding-left: 1.1rem;
 }
 
-/* Notice markers are clickable; the pane's paths get the pointer. */
-.leaflet-pesticide-notices-pane path {
-  cursor: pointer;
-}
-
 .section-popup .is-of-concern::before,
 .notice-popup .is-of-concern::before {
   content: '\25CF';
@@ -369,14 +390,23 @@ html.section-map-expanded .explorer-scope-bar {
   margin-right: 0.25rem;
 }
 
-
-/* Locate button under the zoom buttons, in Leaflet's bar style. */
+/* Locate and reset buttons under the zoom buttons: the SDK's controls are
+   33px squares in a grouped bar, and these follow that, one bar each. */
 .section-map-locate a,
 .section-map-reset a {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 33px;
+  height: 33px;
+  font-size: 0.95rem;
   color: #363636;
+  text-decoration: none;
+}
+
+.section-map-locate a:hover,
+.section-map-reset a:hover {
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .section-map-locate.is-locating a {
@@ -400,7 +430,7 @@ html.section-map-expanded .explorer-scope-bar {
 .section-map-toolbar {
   position: absolute;
   top: 0.75rem;
-  left: 3.6rem;
+  left: 3.25rem;
   right: 0.75rem;
   z-index: 1000;
   display: flex;
@@ -493,31 +523,6 @@ html.section-map-expanded .explorer-scope-bar {
   }
 }
 
-/* --- The MapTiler SDK map (section-map-gl.js) ---
-   Scoped to wraps the GL script has claimed (`.is-gl`), so the Leaflet map
-   keeps its own rules while the two live side by side. */
-
-/* The SDK's controls are 33px squares in a grouped bar; the locate and reset
-   buttons follow that, one bar each under the zoom buttons. */
-.section-map-wrap.is-gl .section-map-locate a,
-.section-map-wrap.is-gl .section-map-reset a {
-  width: 33px;
-  height: 33px;
-  font-size: 0.95rem;
-  text-decoration: none;
-}
-
-.section-map-wrap.is-gl .section-map-locate a:hover,
-.section-map-wrap.is-gl .section-map-reset a:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-/* The SDK's control column is narrower than Leaflet's; the toolbar row
-   starts just right of it. */
-.section-map-wrap.is-gl .section-map-toolbar {
-  left: 3.25rem;
-}
-
 /* Without WebGL the container holds a note instead of a map. */
 .section-map.is-unavailable {
   display: flex;
@@ -532,43 +537,4 @@ html.section-map-expanded .explorer-scope-bar {
 .section-map.is-unavailable .section-map-note {
   margin: 0;
   max-width: 28rem;
-}
-
-/* Popups: the SDK's popup box restyled to the Leaflet one the section and
-   notice popups were laid out for (padding, radius, shadow, type size), so
-   the `.section-popup` rules above read the same on both maps. */
-.section-map-wrap.is-gl .maplibregl-popup-content {
-  padding: 13px 24px 13px 20px;
-  border-radius: 12px;
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.4);
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: #363636;
-}
-
-.section-map-wrap.is-gl .maplibregl-popup-close-button {
-  top: 2px;
-  right: 4px;
-  padding: 0 6px;
-  border-radius: 4px;
-  font-size: 1.15rem;
-  line-height: 1.4;
-  color: #7a7a7a;
-}
-
-.section-map-wrap.is-gl .maplibregl-popup-close-button:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #363636;
-}
-
-.section-map-wrap.is-gl .section-popup h4,
-.section-map-wrap.is-gl .notice-popup h4 {
-  margin: 0 0 .25rem;
-}
-
-.section-map-wrap.is-gl .section-popup h4 {
-  margin-bottom: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
 }

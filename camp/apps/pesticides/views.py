@@ -1034,14 +1034,9 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'chemical_page_url': page_url_pattern('pesticides:chemical-redirect'),
         'product_page_url': page_url_pattern('pesticides:product-redirect'),
         'notice_page_url': page_url_pattern('pesticides:notice-detail'),
-        # A school marker knows its district's sqid but not its slug; any
-        # slug 301s to the canonical URL (see RegionPage), so a placeholder
-        # one is enough for the link.
-        'tile_url': leaflet.TILE_URL.format(key=settings.MAPTILER_API_KEY, z='{z}', x='{x}', y='{y}'),
         'attribution': leaflet.TILE_ATTRIBUTION,
-        # The MapTiler SDK map (section-map-gl.js) takes the key and a style
-        # id directly; the raster template above serves the Leaflet map until
-        # the explorer is flipped over.
+        # The MapTiler SDK map (section-map.js) takes the key and a style id
+        # straight off the container.
         'maptiler_key': settings.MAPTILER_API_KEY,
         'style': MAP_STYLE,
         # What the grid endpoints are asked for ("all" sums every loaded
