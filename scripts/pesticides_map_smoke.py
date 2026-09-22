@@ -3,9 +3,9 @@ Headless smoke test for the Pesticides Explorer's section map.
 
 Loads explorer pages in headless Chrome, waits for the map to come up, runs
 a set of checks against the live map (layers, controls, the grid and its
-legend, the lens and its popups, "all sections", an htmx year change that
-must keep the same map instance, expand/collapse) and reports a table per
-page. Exits 1 on any failed check, a console error, or a map that never
+legend, the notice and school markers and their popups, the lens and its
+popups, "all sections", an htmx year change that must keep the same map
+instance, expand/collapse) and reports a table per page. Exits 1 on any failed check, a console error, or a map that never
 loads. Dev-only; nothing here runs in CI.
 
 Setup (Chrome must be installed: `google-chrome-stable` on the PATH):
@@ -26,8 +26,9 @@ Usage:
 Every check on a page runs even after one fails, except that a map which
 never loads skips the checks that need it. Checks that need a particular
 state (the township grid for the township popup, `?sections=1` for "all
-sections", a lens for the lens popup) report themselves skipped on pages
-without it. The lens check moves the map to zoom 9 (township level), so
+sections", a lens for the lens popup, active notices in view for the notice
+popup) report themselves skipped on pages without it. The markers checks
+leave the toggles as they found them. The lens check moves the map to zoom 9 (township level), so
 the checks after it start there.
 
 Each page gets a fresh browser: the explorer's static files aren't
@@ -100,6 +101,8 @@ function bboxOf(f) {
 var canvas = inst.map.getCanvas();
 var rect = canvas.getBoundingClientRect();
 var fills = ['grid-fill', 'lens-fill', 'all-sections-fill'].filter(function (l) { return inst.map.getLayer(l); });
+// A marker over the cell would take the click.
+var markers = ['notices-circle', 'locations-circle'].filter(function (l) { return inst.map.getLayer(l); });
 var best = null;
 (%s).forEach(function (f) {
   if (!(f.properties.value > 0) || !f.geometry) return;
@@ -108,13 +111,38 @@ var best = null;
   if (p.x < 0 || p.y < 0 || p.x > rect.width || p.y > rect.height) return;
   if (document.elementFromPoint(rect.left + p.x, rect.top + p.y) !== canvas) return;
   if (!inst.map.queryRenderedFeatures(p, { layers: fills }).some(function (r) { return r.id === f.properties.id; })) return;
+  if (inst.map.queryRenderedFeatures(p, { layers: markers }).length) return;
   var d = Math.hypot(p.x - rect.width / 2, p.y - rect.height / 2);
   if (!best || (%s)) best = { id: f.properties.id, dx: p.x - rect.width / 2, dy: p.y - rect.height / 2, d: d };
 });
 return best;
 """ % (features_expr, 'd > best.d' if farthest else 'd < best.d')
 
+# Among the `source`'s point features, the one nearest the map's centre
+# that is rendered on `layer` at a spot on bare canvas, as an offset from
+# the container's centre.
+def js_pick_point(source, layer):
+    return """
+var canvas = inst.map.getCanvas();
+var rect = canvas.getBoundingClientRect();
+var best = null;
+((inst.sourceData[%r] || {}).features || []).forEach(function (f) {
+  if (!f.geometry) return;
+  var p = inst.map.project(f.geometry.coordinates);
+  if (p.x < 0 || p.y < 0 || p.x > rect.width || p.y > rect.height) return;
+  if (document.elementFromPoint(rect.left + p.x, rect.top + p.y) !== canvas) return;
+  // The topmost marker at the spot is the one a click reaches.
+  var under = inst.map.queryRenderedFeatures(p, { layers: [%r] });
+  if (!under.length || under[0].id !== f.properties.id) return;
+  var d = Math.hypot(p.x - rect.width / 2, p.y - rect.height / 2);
+  if (!best || d < best.d) best = { id: f.properties.id, dx: p.x - rect.width / 2, dy: p.y - rect.height / 2, d: d };
+});
+return best;
+""" % (source, layer)
+
+
 POPUP = '.maplibregl-popup.section-popup-wrap .section-popup'
+LOCATIONS_ZOOM_NOTE = 'Zoom in to see schools and child care.'
 LEGEND_ROWS = ".section-map-legend li:not(.is-marker)"
 
 
@@ -140,6 +168,10 @@ class Page:
         self.origin = '%s://%s' % (parsed.scheme, parsed.netloc)
         self.timings = {}
         self.errors = []
+        # The checks count requests through the Performance API; the
+        # default buffer (250 entries) fills with basemap tiles and glyphs
+        # within seconds, after which new entries are dropped.
+        self.js('performance.setResourceTimingBufferSize(20000)')
 
     def js(self, script, *args):
         return self.driver.execute_script(script, *args)
@@ -244,6 +276,23 @@ class Page:
         self.scroll_to_map()
         return self.instance_js(js_pick(features_expr, farthest))
 
+    def pick_point(self, source, layer):
+        """A clickable marker (see js_pick_point), or None."""
+        self.scroll_to_map()
+        return self.instance_js(js_pick_point(source, layer))
+
+    def marker_legend(self):
+        """The legend's marker rows' labels, in order."""
+        return self.js("return Array.from(document.querySelectorAll('.section-map-legend li.is-marker .range')).map(function (el) { return el.textContent; })")
+
+    def marker_requests(self, kind):
+        """How many requests the notices or locations endpoint has had."""
+        pattern = {'notices': r'/pesticides/notices/active/', 'locations': r'/pesticides/locations/'}[kind]
+        return self.js("var needle = arguments[0]; return performance.getEntriesByType('resource').filter(function (r) { return r.name.indexOf(needle) !== -1; }).length", pattern)
+
+    def source_count(self, source):
+        return self.instance_js("var d = inst.sourceData[arguments[0]]; return d && d.features ? d.features.length : 0;", source)
+
     def hover_stamped(self, dx, dy):
         """An instant pointer move, with the moment the map saw it stamped
         in the page (`window.__hoverAt`, Date.now) so a draw that records
@@ -327,7 +376,8 @@ def check_layers(page):
         map.getStyle().layers.some(function (l, i) { if (l.type === 'symbol') { firstSymbol = i; return true; } });
         var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line', 'all-sections-fill', 'all-sections-line',
                     'lens-fill', 'lens-line', 'lens-outline',
-                    'selected-line', 'highlight-line', 'counties-line', 'outline-fill', 'outline-line', 'locate-circle'];
+                    'selected-line', 'highlight-line', 'counties-line', 'outline-fill', 'outline-line',
+                    'locations-circle', 'notices-circle', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
         var aboveLabels = mine.filter(function (id) { return firstSymbol !== -1 && layers.indexOf(id) > firstSymbol; });
         var order = mine.filter(function (id) { return layers.indexOf(id) !== -1; }).map(function (id) { return layers.indexOf(id); });
@@ -481,6 +531,196 @@ def check_legend_options(page):
     if 'bins=' in url or 'ramp=' in url:
         problems.append('URL kept bins/ramp after reset: %s' % url)
     return (not problems), ('bins=4 -> %d rows; %s -> %s' % (rows, swatch_before, swatch_after) if not problems else '; '.join(problems))
+
+
+def url_param(page, name):
+    """The value of `?name=` in the current URL, or None."""
+    match = re.search(r'[?&]%s=([^&]*)' % name, page.driver.current_url)
+    return match.group(1) if match else None
+
+
+def check_notices(page):
+    """The notice markers: on (the page default or `?notices=`) they load
+    from the notices endpoint into the `notices` source and render, the
+    legend lists them, and a click opens the notice popup (the section
+    popup idiom: the subline, the products and chemicals lists, the
+    SprayDays pill). The Options toggle clears the markers and the legend
+    row and writes `?notices=` against the page default; back on reloads
+    them. Ends with the toggle as it found it."""
+    state = page.instance_js("return { on: inst.showNotices, dflt: inst.data.showNotices !== '0', url: !!inst.data.noticesUrl };")
+    if not state['url']:
+        return None, 'no notices endpoint (skipped)'
+    problems = []
+    requests_before = page.marker_requests('notices')
+    if not state['on']:
+        page.set_control('input[name="notices"]', True)
+    loaded = page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedNoticeBounds);' % JS_INSTANCE, 20)
+    if not loaded:
+        return False, 'notices never loaded (%d request(s))' % page.marker_requests('notices')
+    count = page.source_count('notices')
+    in_view = page.instance_js("""
+        var b = inst.map.getBounds();
+        return inst.sourceData.notices.features.filter(function (f) { return b.contains(f.geometry.coordinates); }).length;
+    """)
+    rows = page.marker_legend()
+    if 'Notice of intent' not in rows:
+        problems.append('legend rows %s lack the notices row' % rows)
+    if not state['dflt'] and url_param(page, 'notices') != '1':
+        problems.append('URL lacks notices=1 with the layer on against the default: %s' % page.driver.current_url)
+    popup_detail = 'no active notices in view'
+    if in_view:
+        rendered = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['notices-circle'] }).length > 0;" % JS_INSTANCE, 10)
+        if not rendered:
+            problems.append('%d notices in view, none rendered' % in_view)
+        target = page.pick_point('notices', 'notices-circle')
+        if not target:
+            problems.append('no notice on bare canvas to click')
+        else:
+            page.click_map(target['dx'], target['dy'], settle=0.8, instant=True)
+            result = page.instance_js("""
+                var el = document.querySelector(arguments[0]);
+                return { text: el ? el.innerText : '', notice: !!(el && el.classList.contains('notice-popup')),
+                         key: inst.popupKey, id: inst.openNoticeId,
+                         spraydays: !!(el && el.querySelector('a[href^="https://spraydays.cdpr.ca.gov/"][target="_blank"]')),
+                         full: !!(el && el.querySelector('.section-popup-action[href*="/notices/"]')),
+                         lists: el ? el.querySelectorAll('.section-popup-chems, .section-popup-note').length : 0 };
+            """, POPUP)
+            if not result['notice'] or 'Notice of intent' not in result['text'] or 'Active' not in result['text']:
+                problems.append('notice popup text %r' % result['text'][:120])
+            if result['key'] != 'openNoticeId' or result['id'] != target['id']:
+                problems.append('popup state %s/%s for notice %s' % (result['key'], result['id'], target['id']))
+            if not result['spraydays'] or not result['full']:
+                problems.append('popup pills: spraydays=%s full=%s' % (result['spraydays'], result['full']))
+            if result['lists'] < 2:
+                problems.append('popup lists products and chemicals: %d block(s)' % result['lists'])
+            popup_detail = 'popup for notice %s (%s)' % (target['id'], result['text'].split('\n')[0][:40])
+    # Off: markers, legend row and popup go; the URL says so against the default.
+    page.set_control('input[name="notices"]', False)
+    after = page.instance_js("return { count: (inst.sourceData.notices || {features: []}).features.length, popup: !!inst.popup && inst.popupKey === 'openNoticeId', bounds: inst.loadedNoticeBounds };")
+    if after['count'] or after['bounds'] or after['popup']:
+        problems.append('toggle off left %d markers, bounds %s, popup %s' % (after['count'], after['bounds'] is not None, after['popup']))
+    if 'Notice of intent' in page.marker_legend():
+        problems.append('legend kept the notices row after toggle off')
+    expected_off = '0' if state['dflt'] else None
+    if url_param(page, 'notices') != expected_off:
+        problems.append('URL after toggle off: %s (wanted notices=%s)' % (page.driver.current_url, expected_off))
+    # On again reloads them.
+    page.set_control('input[name="notices"]', True)
+    reloaded = page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedNoticeBounds);' % JS_INSTANCE, 20)
+    if not reloaded or (in_view and not page.source_count('notices')):
+        problems.append('toggle on again: loaded=%s, %d markers (had %d)' % (reloaded, page.source_count('notices'), count))
+    expected_on = None if state['dflt'] else '1'
+    if url_param(page, 'notices') != expected_on:
+        problems.append('URL after toggle on: %s (wanted notices=%s)' % (page.driver.current_url, expected_on))
+    if not state['on']:
+        page.set_control('input[name="notices"]', False)
+    requests = page.marker_requests('notices') - requests_before
+    detail = '%d notices fetched, %d in view (%d request(s)); %s; toggle off/on cleared and reloaded, URL and legend followed' % (count, in_view, requests, popup_detail)
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_locations(page):
+    """The school and child care markers: on (the page default or
+    `?locations=`) and at the layer's zoom they load into the `locations`
+    source and render, the legend lists both kinds, and a click opens the
+    location popup, which fills in the block figure ("within about a
+    mile") and carries the "District page" pill. Zoomed out past
+    LOCATIONS_MIN_ZOOM the layer stays empty and the legend note and the
+    status line say why. The Options toggle clears the markers and the
+    legend rows and writes `?locations=` against the page default; back on
+    reloads them. Ends with the toggle as it found it."""
+    state = page.instance_js("return { on: inst.showLocations, dflt: inst.data.showLocations === '1', url: !!inst.data.locationsUrl, zoom: inst.map.getZoom() };")
+    if not state['url']:
+        return None, 'no locations endpoint (skipped)'
+    problems = []
+    requests_before = page.marker_requests('locations')
+    if not state['on']:
+        page.set_control('input[name="locations"]', True)
+    time.sleep(0.5)
+    rows = page.marker_legend()
+    if 'School' not in rows or 'Child care' not in rows:
+        problems.append('legend rows %s lack the school/child care rows' % rows)
+    if not state['dflt'] and url_param(page, 'locations') != '1':
+        problems.append('URL lacks locations=1 with the layer on against the default: %s' % page.driver.current_url)
+    too_far = state['zoom'] < 9
+    count = 0
+    popup_detail = ''
+    if too_far:
+        note = page.js("return { note: document.querySelector('.section-map-locations-note').textContent, status: document.querySelector('.section-map-status').textContent };")
+        if note['note'] != LOCATIONS_ZOOM_NOTE or note['status'] != LOCATIONS_ZOOM_NOTE:
+            problems.append('zoom %.2f: note %r, status %r' % (state['zoom'], note['note'], note['status']))
+        if page.marker_requests('locations') != requests_before or page.source_count('locations'):
+            problems.append('zoom %.2f: the layer loaded anyway' % state['zoom'])
+        popup_detail = 'zoom %.2f is under 9: note shown, nothing fetched' % state['zoom']
+    else:
+        loaded = page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedLocationBounds);' % JS_INSTANCE, 20)
+        if not loaded:
+            return False, 'locations never loaded (%d request(s))' % page.marker_requests('locations')
+        count = page.source_count('locations')
+        if page.js("return document.querySelector('.section-map-locations-note').textContent"):
+            problems.append('zoom note shown at zoom %.2f' % state['zoom'])
+        if not count:
+            problems.append('no locations in view at zoom %.2f' % state['zoom'])
+        else:
+            rendered = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['locations-circle'] }).length > 0;" % JS_INSTANCE, 10)
+            if not rendered:
+                problems.append('%d locations in the source, none rendered' % count)
+            target = page.pick_point('locations', 'locations-circle')
+            if not target:
+                problems.append('no location on bare canvas to click')
+            else:
+                page.click_map(target['dx'], target['dy'], settle=0.3, instant=True)
+                opened = page.instance_js("var el = document.querySelector(arguments[0]); return { text: el ? el.innerText : '', key: inst.popupKey, id: inst.openLocationId };", POPUP)
+                if opened['key'] != 'openLocationId' or opened['id'] != target['id']:
+                    problems.append('popup state %s/%s for location %s' % (opened['key'], opened['id'], target['id']))
+                if 'Loading nearby use' not in opened['text'] and 'within about a mile' not in opened['text']:
+                    problems.append('location popup opened with %r' % opened['text'][:120])
+                filled = page.wait_for("var el = document.querySelector(arguments[0]); return !!el && el.innerText.indexOf('Loading nearby use') === -1;", 15, POPUP)
+                result = page.instance_js("""
+                    var el = document.querySelector(arguments[0]);
+                    var pills = el ? Array.from(el.querySelectorAll('.section-popup-action')).map(function (a) { return a.textContent.trim(); }) : [];
+                    return { text: el ? el.innerText : '', location: !!(el && el.classList.contains('location-popup')), pills: pills,
+                             district: !!(el && el.querySelector('.section-popup-action[href*="/region/"]')) };
+                """, POPUP)
+                if not filled or 'within about a mile' not in result['text']:
+                    problems.append('block figure never filled in: %r' % result['text'][:120])
+                if not result['location']:
+                    problems.append('popup is not a location popup')
+                if not result['district'] or 'District page' not in result['pills']:
+                    problems.append('no "District page" pill: %s' % result['pills'])
+                popup_detail = 'popup for %s: %s; pills %s' % (target['id'], result['text'].split('\n')[0][:40], result['pills'])
+    # Off: markers, legend rows, note and popup go; the URL says so.
+    page.set_control('input[name="locations"]', False)
+    after = page.instance_js("""
+        return { count: (inst.sourceData.locations || {features: []}).features.length, popup: !!inst.popup && inst.popupKey === 'openLocationId',
+                 bounds: inst.loadedLocationBounds, note: document.querySelector('.section-map-locations-note').textContent,
+                 status: document.querySelector('.section-map-status').textContent };
+    """)
+    if after['count'] or after['bounds'] or after['popup'] or after['note'] or after['status'] == LOCATIONS_ZOOM_NOTE:
+        problems.append('toggle off left %s' % after)
+    rows = page.marker_legend()
+    if 'School' in rows or 'Child care' in rows:
+        problems.append('legend kept the location rows after toggle off: %s' % rows)
+    expected_off = '0' if state['dflt'] else None
+    if url_param(page, 'locations') != expected_off:
+        problems.append('URL after toggle off: %s (wanted locations=%s)' % (page.driver.current_url, expected_off))
+    # On again reloads them (or shows the note again).
+    page.set_control('input[name="locations"]', True)
+    if too_far:
+        if page.js("return document.querySelector('.section-map-locations-note').textContent") != LOCATIONS_ZOOM_NOTE:
+            problems.append('toggle on again: note missing')
+    else:
+        reloaded = page.wait_for('var inst = (function () { %s })(); return !!(inst && inst.loadedLocationBounds);' % JS_INSTANCE, 20)
+        if not reloaded or (count and not page.source_count('locations')):
+            problems.append('toggle on again: loaded=%s, %d markers (had %d)' % (reloaded, page.source_count('locations'), count))
+    expected_on = None if state['dflt'] else '1'
+    if url_param(page, 'locations') != expected_on:
+        problems.append('URL after toggle on: %s (wanted locations=%s)' % (page.driver.current_url, expected_on))
+    if not state['on']:
+        page.set_control('input[name="locations"]', False)
+    requests = page.marker_requests('locations') - requests_before
+    detail = '%d locations (%d request(s)); %s; toggle off/on, URL and legend followed' % (count, requests, popup_detail)
+    return (not problems), (detail if not problems else '; '.join(problems))
 
 
 def check_lens(page):
@@ -988,6 +1228,8 @@ CHECKS = [
     ('fit', check_fit),
     ('grid', check_grid),
     ('legend options', check_legend_options),
+    ('notices', check_notices),
+    ('locations', check_locations),
     ('lens', check_lens),
     ('lens popup', check_lens_popup),
     ('all sections', check_all_sections),
