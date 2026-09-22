@@ -22,9 +22,9 @@
   logo: img/logo/tech/openstreetmap.svg
   url: https://www.openstreetmap.org/
 
-- name: MapTiler SDK
-  logo: img/logo/tech/maptiler.svg
-  url: https://docs.maptiler.com/sdk-js/
+- name: MapLibre GL JS
+  logo: img/logo/tech/maplibre.svg
+  url: https://maplibre.org/
 
 - name: PostgreSQL
   logo: img/logo/tech/postgresql.svg
