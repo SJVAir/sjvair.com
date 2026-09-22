@@ -252,7 +252,18 @@ class Page:
         self.js('window.__hoverAt = null')
         # A capture listener on the canvas container runs before the SDK's
         # own handlers, so the stamp precedes a draw made in the same event.
-        self.instance_js("inst.map.getCanvasContainer().addEventListener('mousemove', function () { window.__hoverAt = Date.now(); }, { once: true, capture: true });")
+        # One listener at a time: a previous one that never fired (a move
+        # that landed where the pointer already was) is removed first.
+        self.instance_js("""
+            var container = inst.map.getCanvasContainer();
+            if (window.__hoverListener) container.removeEventListener('mousemove', window.__hoverListener, true);
+            window.__hoverListener = function () {
+                window.__hoverAt = Date.now();
+                container.removeEventListener('mousemove', window.__hoverListener, true);
+                window.__hoverListener = null;
+            };
+            container.addEventListener('mousemove', window.__hoverListener, true);
+        """)
         ActionChains(self.driver, duration=0).move_to_element_with_offset(el, dx, dy).perform()
 
     def lens_latency_ms(self):
@@ -558,10 +569,31 @@ def check_lens(page):
     new_requests = page.sections_requests()[requests_before:]
     if len(new_requests) > 1:
         problems.append('%d sections requests to move one township over' % len(new_requests))
-    detail = 'township %s: %d hosts, %d sections (%d classes) drawn %sms after the hover (request %s); -> %s drawn after %sms with %d new request(s)' % (
+    # From a lens section straight onto a township beyond the prefetched
+    # 5x5 (uncached) in one move, then resting there: the lens must follow
+    # and stay (the lens section's mouseleave, which runs after the grid
+    # handler recentres, must not clear the new lens).
+    on_section = page.instance_js('return inst.hoverIds.lens != null')
+    outside = page.pick("""(function () {
+        var ring = {};
+        inst.neighborhoodOf(inst.lensId, 2.5).forEach(function (h) { ring[h.properties.id] = true; });
+        return inst.gridFeatures.filter(function (f) { return !ring[f.properties.id] && !inst.lensCache[f.properties.id]; });
+    })()""", farthest=True)
+    if not outside:
+        problems.append('no uncached township outside the 5x5 on bare canvas')
+    else:
+        page.hover_stamped(outside['dx'], outside['dy'])
+        followed, _ = page.wait_lens(outside['id'])
+        time.sleep(0.5)
+        rested = page.instance_js('return { lensId: inst.lensId, features: inst.lensFeatures.length }')
+        if not followed or rested['lensId'] != outside['id'] or not rested['features']:
+            problems.append('lens did not survive a move from a %s to %s outside the block: followed=%s, after 0.5 s %s' % (
+                'lens section' if on_section else 'township gap', outside['id'], followed, rested))
+    detail = 'township %s: %d hosts, %d sections (%d classes) drawn %sms after the hover (request %s); -> %s drawn after %sms with %d new request(s); -> %s outside the block from a %s, kept' % (
         target['id'], result['hosts'], result['features'], result['classes'], page.timings['lens_ms'],
         ' '.join('%dms' % ms for _, ms, _ in first_requests) or 'cached',
-        neighbour['id'], page.timings['lens_move_ms'], len(new_requests))
+        neighbour['id'], page.timings['lens_move_ms'], len(new_requests),
+        outside['id'] if outside else '?', 'lens section' if on_section else 'township gap')
     return (not problems), (detail if not problems else '; '.join(problems))
 
 
@@ -627,10 +659,19 @@ def check_lens_popup(page):
         problems.append('Escape did not close the popup and release the lens: %s' % page.instance_js("return { popup: !!inst.popup, openLensId: inst.openLensId, selected: inst.selectedSectionId };"))
     # The lens follows the pointer again: a nudge over the far township
     # draws its lens (it may be uncached: a rest and a request).
+    requests_before = len(page.sections_requests())
     page.hover_stamped(far['dx'] + 2, far['dy'] + 2)
-    moved, _ = page.wait_lens(far['id'])
+    # What's under test here is the release, so a slow sections request
+    # (the dev server has taken over a second at times) is allowed and the
+    # latency is reported; the first hover in check_lens keeps the bound.
+    moved, _ = page.wait_lens(far['id'], timeout=6)
     if not moved:
-        problems.append('lens did not move to %s after the release (lensId %s)' % (far['id'], page.instance_js('return inst.lensId')))
+        state = page.instance_js("""
+            return { lensId: inst.lensId, features: inst.lensFeatures.length, hosts: inst.lensHosts ? inst.lensHosts.length : null,
+                     uncached: inst.lensHosts ? inst.uncached(inst.lensHosts.map(function (h) { return h.properties.id; })).length : null,
+                     fetchPending: !!inst.lensFetchTimer, prefetching: inst.prefetching };
+        """)
+        problems.append('lens did not move to %s after the release: %s, requests since %s' % (far['id'], state, page.sections_requests()[requests_before:]))
     detail = 'section %s: popup pinned lens %s; Escape released it; -> %s drawn after %sms' % (target['id'], lens_id, far['id'], page.lens_latency_ms())
     return (not problems), (detail if not problems else '; '.join(problems))
 
