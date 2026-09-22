@@ -296,6 +296,10 @@ def iter_from_ckan(
     )
 
 
+def cache_key(url: str) -> str:
+    return hashlib.sha256(url.encode()).hexdigest()[:16]
+
+
 def iter_from_url(
     url: str,
     verify: bool = True,
@@ -305,13 +309,17 @@ def iter_from_url(
     limit_to_region: bool = False,
     threshold: float = 0.5,
     region_geometry=None,
+    cache: bool = True,
 ) -> gpd.GeoDataFrame:
     """
-        Get a GDF from a URL.
+    Get a GDF from a URL.
+
+    Downloads are cached on disk by URL. Pass ``cache=False`` for sources
+    that are revised under the same URL (e.g. NOAA HMS daily files), so
+    every call fetches the current version.
     """
-    url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
-    cache_path = GEODATA_CACHE_DIR / f'{url_hash}.zip'
-    if not cache_path.exists():
+    cache_path = GEODATA_CACHE_DIR / f'{cache_key(url)}.zip'
+    if not cache or not cache_path.exists():
         print('\nDownloading dataset:')
         print(f'-> {url}')
         print(f'-> {cache_path}')
