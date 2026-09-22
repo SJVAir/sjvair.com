@@ -2462,9 +2462,16 @@
     var rect = el.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     var box = this.el.getBoundingClientRect();
+    // The toolbar band is measured rather than assumed: on a phone the
+    // filter buttons wrap to a second row.
+    var toolbarBottom = box.top + POPUP_CLEAR_TOP;
+    if (this.toolbarEl && !this.toolbarEl.hidden) {
+      var toolbarRect = this.toolbarEl.getBoundingClientRect();
+      if (toolbarRect.height) toolbarBottom = Math.max(toolbarBottom, toolbarRect.bottom + POPUP_CLEAR_EDGE);
+    }
     var inner = {
       left: box.left + POPUP_CLEAR_EDGE,
-      top: box.top + POPUP_CLEAR_TOP,
+      top: toolbarBottom,
       right: box.right - POPUP_CLEAR_EDGE,
       bottom: box.bottom - POPUP_CLEAR_EDGE,
     };
