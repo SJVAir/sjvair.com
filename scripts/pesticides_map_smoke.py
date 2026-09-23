@@ -1506,6 +1506,148 @@ def check_phone_layout(page):
     return (not problems), (detail if not problems else '; '.join(problems))
 
 
+def chrome_prefix(page):
+    """The chrome class prefix in use on this page: `map-` on this branch's
+    shared core, `section-map-` on the pesticides-only reference (before the
+    map-core rename). Lets a check run unchanged against either."""
+    if not hasattr(page, '_chrome_prefix'):
+        page._chrome_prefix = 'map-' if page.js("return !!document.querySelector('.map-wrap');") else 'section-map-'
+    return page._chrome_prefix
+
+
+def check_fold_persistence(page):
+    """Folding the legend panel collapses it, and a reload remembers the
+    fold through localStorage (`pesticides:section-map:panel:legend`), so a
+    reader's folded legend stays folded. Restores the panel to how it found
+    it, so later checks aren't affected."""
+    p = chrome_prefix(page)
+    toggle = '.%slegend-panel .%spanel-toggle' % (p, p)
+    expanded_before = page.js("var t = document.querySelector('%s'); return !!t && t.getAttribute('aria-expanded') === 'true';" % toggle)
+    if expanded_before:
+        page.js("document.querySelector('%s').click();" % toggle)
+        time.sleep(0.3)
+    key = page.js("return localStorage.getItem('pesticides:section-map:panel:legend');")
+    page.driver.get(page.url)
+    page.prepare()
+    problems = []
+    if not page.wait_for_map():
+        problems.append('map never reloaded')
+    collapsed = page.js("""
+        var p = document.querySelector('.%slegend-panel');
+        return !!p && p.classList.contains('is-collapsed')
+            && p.querySelector('.%spanel-toggle').getAttribute('aria-expanded') === 'false';
+    """ % (p, p))
+    if key != 'collapsed':
+        problems.append("localStorage key was %r, not 'collapsed'" % key)
+    if not collapsed:
+        problems.append('legend panel not still collapsed after the reload')
+    # Restore the fold state the check found, for later checks.
+    if expanded_before:
+        page.js("document.querySelector('%s').click();" % toggle)
+        time.sleep(0.3)
+    detail = "key=%r, collapsed after reload=%s" % (key, collapsed)
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_expand_across_swap(page, year):
+    """Expand, then a swap that adopts (a year change in the scope bar): the
+    wrap is still `is-expanded` and `html.<prefix>expanded` is set across
+    the adopt. Escape then un-expands it."""
+    p = chrome_prefix(page)
+    link = page.js("""
+        var links = document.querySelectorAll('.explorer-scope-picker[data-scope="year"] a[href*="year=%s"]');
+        return links.length ? links[0].getAttribute('href') : null;
+    """ % year)
+    if not link:
+        return None, 'no year picker on this page (skipped)'
+    state_js = """
+        return {html: document.documentElement.classList.contains('%sexpanded'),
+                wrap: !!document.querySelector('.%swrap') && document.querySelector('.%swrap').classList.contains('is-expanded')};
+    """ % (p, p, p)
+    page.js("document.querySelector('.%sexpand').click();" % p)
+    page.wait_for("return document.documentElement.classList.contains('%sexpanded');" % p, 10)
+    before = page.js(state_js)
+    page.js('document.querySelector(\'.explorer-scope-picker[data-scope="year"] a[href*="year=%s"]\').click();' % year)
+    swapped = page.wait_for("""
+        var inst = (function () { %s })();
+        return !!(inst && inst.data.year === '%s' && document.body.contains(inst.el));
+    """ % (JS_INSTANCE, year), SWAP_TIMEOUT)
+    problems = []
+    if not swapped:
+        problems.append('container never carried year=%s after the swap' % year)
+    after = page.js(state_js)
+    if not (before['html'] and before['wrap']):
+        problems.append('expand did not apply before the swap: %s' % before)
+    if not (after['html'] and after['wrap']):
+        problems.append('expanded state lost across the adopt: %s' % after)
+    page.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
+    page.wait_for("return !document.documentElement.classList.contains('%sexpanded');" % p, 10)
+    unexpanded = page.js("""
+        return !document.documentElement.classList.contains('%sexpanded')
+            && !!document.querySelector('.%swrap') && !document.querySelector('.%swrap').classList.contains('is-expanded');
+    """ % (p, p, p))
+    if not unexpanded:
+        problems.append('Escape did not un-expand after the adopt')
+    detail = 'expanded before=%s, after swap=%s, after Escape unexpanded=%s' % (before, after, unexpanded)
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_swap_away(page):
+    """An htmx navigation from the map page to a page with no map (the
+    Chemicals list, via a boosted tab click) releases the shell: no live
+    instances, and `<html>` carries no `<prefix>expanded` class. Expanded
+    first, the stronger version of the check."""
+    p = chrome_prefix(page)
+    has_tab = page.js('return !!document.querySelector(\'#explorer-tabs a[title="Chemicals"]\');')
+    if not has_tab:
+        return None, 'no Chemicals tab on this page (skipped)'
+    page.js("document.querySelector('.%sexpand').click();" % p)
+    page.wait_for("return document.documentElement.classList.contains('%sexpanded');" % p, 10)
+    page.js('document.querySelector(\'#explorer-tabs a[title="Chemicals"]\').click();')
+    swapped = page.wait_for("return location.pathname.indexOf('/chemicals/') !== -1;", SWAP_TIMEOUT)
+    problems = []
+    if not swapped:
+        problems.append('never navigated to the chemicals list')
+    time.sleep(0.5)  # let the registry's htmx:load handler finish releasing the shell
+    state = page.js("""
+        var mod = window.PesticidesSectionMap;
+        return {
+            instances: (mod && typeof mod.instances === 'function') ? mod.instances().length : null,
+            htmlExpanded: document.documentElement.classList.contains('%sexpanded'),
+        };
+    """ % p)
+    if state['instances'] != 0:
+        problems.append('%s live instance(s) after the swap-away' % state['instances'])
+    if state['htmlExpanded']:
+        problems.append('html still carries %sexpanded after the swap-away' % p)
+    detail = 'instances=%s, html expanded=%s' % (state['instances'], state['htmlExpanded'])
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_back_button(page):
+    """`history.back()` after the swap-away check restores exactly one live
+    map instance, loaded. Skipped when there's no prior swap-away
+    navigation to reverse (the Chemicals tab wasn't on this page)."""
+    original_path = urlparse(page.url).path
+    if page.js('return location.pathname;') == original_path:
+        return None, 'no prior swap-away to reverse (skipped)'
+    page.js('window.history.back();')
+    back = page.wait_for("return location.pathname === arguments[0];", SWAP_TIMEOUT, original_path)
+    problems = []
+    if not back:
+        problems.append('back button did not return to %s' % original_path)
+    if not page.wait_for_map():
+        problems.append('map never reloaded after the back button')
+    count = page.js("var mod = window.PesticidesSectionMap; return mod ? mod.instances().length : null;")
+    if count != 1:
+        problems.append('%s live instance(s) after the back button' % count)
+    loaded = page.instance_js('return inst.loaded;')
+    if not loaded:
+        problems.append('instance not loaded after the back button')
+    detail = 'path=%s, instances=%s, loaded=%s' % (original_path, count, loaded)
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
 def check_console(page):
     """Console errors over the whole run (the phone layout check's reload
     included)."""
@@ -1534,6 +1676,10 @@ CHECKS = [
     ('popup clear', check_popup_clear),
     ('year swap', check_year_swap),
     ('expand', check_expand),
+    ('fold persistence', check_fold_persistence),
+    ('expand across swap', check_expand_across_swap),
+    ('swap away', check_swap_away),
+    ('back button', check_back_button),
     ('phone layout', check_phone_layout),
     ('console', check_console),
 ]
@@ -1558,7 +1704,7 @@ def run_page(base, path, year, screenshots):
             if check is check_phone_layout:
                 page.screenshot()
             try:
-                if check is check_year_swap:
+                if check in (check_year_swap, check_expand_across_swap):
                     passed, detail = check(page, year)
                 else:
                     passed, detail = check(page)
