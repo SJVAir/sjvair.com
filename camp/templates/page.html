@@ -32,6 +32,10 @@
                             <span class="icon"><span class="fa-regular fa-fw fa-spray-can-sparkles"></span></span>
                             <span>Pesticides Explorer</span>
                         </a>
+                        <a class="navbar-item" href="{% url 'emissions:home' %}">
+                            <span class="icon"><span class="fa-regular fa-fw fa-industry"></span></span>
+                            <span>Facility Emissions Explorer</span>
+                        </a>
                     </div>
                 </div>
                 <div class="navbar-item has-dropdown is-hoverable">
@@ -209,6 +213,12 @@
                             <span class="fa-regular fa-fw fa-spray-can-sparkles"></span>
                         </span>
                         <a href="{% url 'pesticides:home' %}">Pesticides Explorer</a>
+                    </li>
+                    <li>
+                        <span class="fa-li">
+                            <span class="fa-regular fa-fw fa-industry"></span>
+                        </span>
+                        <a href="{% url 'emissions:home' %}">Facility Emissions Explorer</a>
                     </li>
                 </ul>
             </div>
