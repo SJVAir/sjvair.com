@@ -356,7 +356,7 @@ class CountyListBase(generics.Endpoint):
     # this un-cached base so CachedEndpointMixin.get() on CountyList below is
     # the one actually dispatched to.
     def get(self, request):
-        # Already simplified and cached by maps.county_geometries(); one
+        # Already cached by maps.county_geometries(); one
         # in_bulk() for the names, which aren't part of the geometry cache.
         geometries = maps.county_geometries()
         regions = Region.objects.in_bulk(list(geometries))
@@ -376,8 +376,11 @@ class CountyListBase(generics.Endpoint):
 
 
 class CountyList(CachedEndpointMixin, CountyListBase):
-    """The eight San Joaquin Valley county outlines as GeoJSON, simplified for display. No parameters."""
+    """The eight San Joaquin Valley county outlines as GeoJSON. No parameters."""
     cache_timeout = 60 * 60 * 24
+    # The outlines are full precision as of v2; a cached v1 response is the
+    # simplified set, whose shared borders doubled up when drawn.
+    cache_key_version = 2
 
 
 class TownshipListBase(generics.Endpoint):

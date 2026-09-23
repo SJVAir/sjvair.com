@@ -22,9 +22,15 @@ from django.utils.safestring import mark_safe
 from camp.apps.regions.models import Region
 from camp.utils import mapfigure
 
-COUNTY_GEOJSON_KEY = 'pesticides:county-geometries'
+COUNTY_GEOJSON_KEY = 'pesticides:county-geometries:v2'
 COUNTY_GEOJSON_TTL = 60 * 60 * 24
-SIMPLIFY_TOLERANCE = 0.005
+# The county outlines are served at full precision to the interactive map:
+# a shared border belongs to both counties, and simplifying each polygon on
+# its own keeps different vertices in each, so the two copies of that border
+# drift apart -- two lines where there is one. The small choropleth figure
+# draws the whole valley a few hundred pixels wide, where this tolerance is
+# about a pixel, so it takes the simplified set and stays light.
+FIGURE_SIMPLIFY_TOLERANCE = 0.005
 # Eight steps (ColorBrewer, minus the near-white): one per county, so the
 # county map is a straight ranking -- darker is more. Blues is the ramp;
 # the others are candidates, selectable with ?ramp=<name> while we pick.
@@ -71,25 +77,32 @@ def rank_counties(by_county, metric='lbs', ramp=None):
     return [{**row, 'color': classes.color_for(row.get(metric) or 0)} for row in rows]
 
 
-def _build_county_geometries():
+def _build_county_geometries(tolerance=None):
     data = {}
     regions = Region.objects.filter(type=Region.Type.COUNTY, boundary__isnull=False).select_related('boundary')
     for region in regions:
         geometry = region.boundary.geometry
         if geometry.srid and geometry.srid != 4326:
             geometry = geometry.transform(4326, clone=True)
-        simplified = geometry.simplify(SIMPLIFY_TOLERANCE, preserve_topology=True)
-        if simplified.geom_type != 'MultiPolygon':
-            simplified = MultiPolygon(simplified)
-        data[region.pk] = simplified.geojson
+        if tolerance:
+            geometry = geometry.simplify(tolerance, preserve_topology=True)
+        if geometry.geom_type != 'MultiPolygon':
+            geometry = MultiPolygon(geometry)
+        data[region.pk] = geometry.geojson
     return data
 
 
-def county_geometries():
-    data = cache.get(COUNTY_GEOJSON_KEY)
+def county_geometries(tolerance=None):
+    """
+    `{region pk: GeoJSON string}` for the eight counties, cached for a day.
+    Full precision by default; pass a tolerance for a lighter set (see
+    FIGURE_SIMPLIFY_TOLERANCE), which is cached separately.
+    """
+    key = COUNTY_GEOJSON_KEY if not tolerance else f'{COUNTY_GEOJSON_KEY}:{tolerance}'
+    data = cache.get(key)
     if data is None:
-        data = _build_county_geometries()
-        cache.set(COUNTY_GEOJSON_KEY, data, COUNTY_GEOJSON_TTL)
+        data = _build_county_geometries(tolerance)
+        cache.set(key, data, COUNTY_GEOJSON_TTL)
     return data
 
 
@@ -162,7 +175,7 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
     It leaves out `county=` -- the link is what picks the county. The table
     beside it (rank_counties) is the legend.
     """
-    geometries = county_geometries()
+    geometries = county_geometries(FIGURE_SIMPLIFY_TOLERANCE)
     if not geometries:
         return None
     metric = county_metric(metric)

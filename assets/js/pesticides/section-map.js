@@ -349,9 +349,6 @@
   }
 
   var COUNTY_COLOR = '#1f2d3d';
-  // Dashed county lines once the section grid is on (see restyleCounties);
-  // dash lengths are in line widths, so this is Leaflet's "4 3" at 1.5px.
-  var COUNTY_DASH = [2.5, 2];
   // The page's own region (a city, ZIP, or place), in the notices orange.
   var OUTLINE_COLOR = '#d35400';
   // A wider pale line under each orange outline: two-tone, so the edge holds
@@ -1270,7 +1267,6 @@
     this.map.on('moveend', debouncedLoad);
     this.map.on('moveend', debouncedNotices);
     this.map.on('moveend', debouncedLocations);
-    this.map.on('zoomend', this.restyleCounties.bind(this));
     // Section strokes switch on/off across SECTION_LINES_MIN_ZOOM.
     this.map.on('zoomend', this.restyleSectionLines.bind(this));
 
@@ -1487,7 +1483,6 @@
         'circle-stroke-width': 2,
       },
     });
-    this.restyleCounties();
     this.applyGridPaint();
     // Feature state (hover, the lens hosts) didn't survive a style swap:
     // forget the hovers (the next pointer move sets them again) and put
@@ -1786,12 +1781,6 @@
     this.setSourceData('outline', EMPTY);
     this.setSourceData('outline-mask', EMPTY);
     this.outlineBounds = null;
-  };
-
-  // Dashed once the section grid is on, so the two don't compete.
-  SectionMap.prototype.restyleCounties = function () {
-    if (!this.map.getLayer('counties-line')) return;
-    this.map.setPaintProperty('counties-line', 'line-dasharray', this.atSectionZoom() ? COUNTY_DASH : null);
   };
 
   SectionMap.prototype.enableScrollZoom = function () {
