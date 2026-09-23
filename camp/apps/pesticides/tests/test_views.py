@@ -825,6 +825,8 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'js/admin/map-figure.js' in html
         assert 'js/admin/map-figure.css' in html
         assert html.index('maptiler-sdk/maptiler-sdk.js') < html.index('js/admin/map-figure.js')
+        assert html.index('js/maps/registry.js') < html.index('js/admin/map-figure.js')
+        assert html.count('js/maps/core.js') == 1
         assert 'leaflet' not in html.lower()
 
     def test_entity_filters_resolve_to_api_identifiers(self):
