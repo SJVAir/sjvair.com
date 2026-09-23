@@ -4,10 +4,10 @@
  *
  * Turns each `.facility-map` container into a map of permitted facilities:
  * one circle per facility, its area scaled by the selected pollutant (square
- * root, so the largest emitter doesn't bury the rest) and its colour by
- * quantile class; facilities that reported none are small hollow grey rings.
- * County and air district outlines sit underneath, and everything sits below
- * the basemap's labels. Config comes entirely from the container's data-*
+ * root, so the largest emitter doesn't bury the rest) and its colour by a
+ * fixed log-scale class; facilities that reported none are small hollow grey
+ * rings. County and air district outlines sit under the circles, and all of
+ * it draws over the whole basemap, labels included. Config comes entirely from the container's data-*
  * attributes (emissions/includes/facility-map.html, views.facility_map_config).
  *
  * Modes: `full` (the map page: sector filter, locate, expand, legend) and
@@ -23,8 +23,13 @@
 (function () {
   'use strict';
 
-  // ColorBrewer Blues, 6 classes: the pesticides map's default ramp.
-  var RAMP = ['#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#3182bd', '#08519c'];
+  // ColorBrewer Blues, one colour per class below (the pesticides map's
+  // default ramp, without its palest step, which vanishes on the basemap).
+  var RAMP = ['#c6dbef', '#9ecae1', '#6baed6', '#3182bd', '#08519c'];
+  // Fixed classes on a log scale, per display unit: stable across pollutants,
+  // counties and years, and readable ("1-10 tons"). Quantiles bunched at the
+  // bottom, since most facilities emit very little. Toxics are shown in lbs.
+  var CLASS_BREAKS = { tons: [0.1, 1, 10, 100], lbs: [1, 10, 100, 1000] };
   var EMPTY_COLOR = '#8a94a3';
   var HIGHLIGHT_COLOR = '#d35400';
   var COUNTY_COLOR = '#1f2d3d';
@@ -91,26 +96,21 @@
     return value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
   }
 
-  // Upper bounds of the quantile classes over the positive values (at most RAMP.length - 1).
-  function quantileBreaks(values) {
-    var sorted = values.filter(function (v) { return v > 0; }).sort(function (a, b) { return a - b; });
-    var breaks = [];
-    for (var i = 1; i < RAMP.length && sorted.length; i++) {
-      var value = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * i / RAMP.length))];
-      if (!breaks.length || value > breaks[breaks.length - 1]) breaks.push(value);
-    }
-    return breaks;
+  function breaksFor(unit) {
+    return CLASS_BREAKS[unit] || CLASS_BREAKS.tons;
   }
 
-  // However many classes there are, spread them across the whole ramp.
-  function classColor(index, breaks) {
-    return RAMP[breaks.length ? Math.round(index * (RAMP.length - 1) / breaks.length) : RAMP.length - 1];
-  }
-
-  function colorFor(value, breaks) {
+  function classIndex(value, breaks) {
     var index = 0;
-    while (index < breaks.length && value > breaks[index]) index++;
-    return classColor(index, breaks);
+    while (index < breaks.length && value >= breaks[index]) index++;
+    return index;
+  }
+
+  // "under 0.1", "0.1–1", ..., "100 and up"
+  function classLabel(index, breaks) {
+    if (index === 0) return 'under ' + amount(breaks[0]);
+    if (index === breaks.length) return amount(breaks[index - 1]) + ' and up';
+    return amount(breaks[index - 1]) + '–' + amount(breaks[index]);
   }
 
   function radiusFor(value, max) {
@@ -118,17 +118,17 @@
   }
 
   // Precompute each circle so the layer's paint is plain `get`s.
-  function prepare(collection) {
+  function prepare(collection, unit) {
     var features = collection.features || [];
     var values = features.map(function (f) { return f.properties.value; });
     var positive = values.filter(function (v) { return v > 0; });
     var max = positive.length ? Math.max.apply(null, positive) : 0;
-    var breaks = quantileBreaks(values);
+    var breaks = breaksFor(unit);
     features.forEach(function (feature) {
       var p = feature.properties;
       var reported = p.value > 0 && max > 0;
       p._radius = reported ? radiusFor(p.value, max) : MIN_RADIUS;
-      p._color = reported ? colorFor(p.value, breaks) : EMPTY_COLOR;
+      p._color = reported ? RAMP[classIndex(p.value, breaks)] : EMPTY_COLOR;
       p._empty = reported ? 0 : 1;
       p._sort = reported ? p.value : 0;
     });
@@ -279,18 +279,11 @@
     });
   };
 
-  // The first symbol layer: our layers go under the basemap's labels.
-  FacilityMap.prototype.labelLayer = function () {
-    var layers = this.map.getStyle().layers || [];
-    for (var i = 0; i < layers.length; i++) {
-      if (layers[i].type === 'symbol') return layers[i].id;
-    }
-    return undefined;
-  };
-
   FacilityMap.prototype.addLayers = function () {
     var self = this;
-    var before = this.labelLayer();
+    // On top of the whole basemap, labels included, as on the pesticides map:
+    // the map exists to show the facilities, and a place name over a circle
+    // competes with it.
     this.map.addSource('counties', { type: 'geojson', data: this.data.countiesUrl || EMPTY_COLLECTION });
     this.map.addSource('districts', { type: 'geojson', data: this.data.districtsUrl || EMPTY_COLLECTION });
     this.map.addSource('facilities', { type: 'geojson', data: EMPTY_COLLECTION });
@@ -298,17 +291,17 @@
     this.map.addLayer({
       id: 'counties', type: 'line', source: 'counties',
       paint: { 'line-color': COUNTY_COLOR, 'line-width': 1, 'line-opacity': 0.5 },
-    }, before);
+    });
     this.map.addLayer({
       id: 'districts', type: 'line', source: 'districts',
       paint: { 'line-color': DISTRICT_COLOR, 'line-width': 2, 'line-dasharray': [3, 2] },
-    }, before);
+    });
     this.map.addLayer({
       id: 'facilities', type: 'circle', source: 'facilities',
       // Larger values draw on top.
       layout: { 'circle-sort-key': ['get', '_sort'] },
       paint: { 'circle-radius': ['get', '_radius'], 'circle-color': ['get', '_color'] },
-    }, before);
+    });
     this.map.addLayer({
       id: 'locate', type: 'circle', source: 'locate',
       paint: { 'circle-radius': 7, 'circle-color': LOCATE_COLOR, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 },
@@ -361,7 +354,7 @@
   };
 
   FacilityMap.prototype.show = function (collection) {
-    var prepared = prepare(collection);
+    var prepared = prepare(collection, this.data.unit);
     this.legendData = prepared;
     this.map.getSource('facilities').setData(prepared.collection);
     this.applyHighlight();
@@ -426,11 +419,9 @@
         '<circle cx="' + (MAX_RADIUS + 1) + '" cy="' + (r + 1) + '" r="' + r + '"/></svg>' + amount(value) + '</span>';
     }).join('');
     var bins = '';
-    for (var i = 0; i <= breaks.length; i++) {
-      var low = i ? breaks[i - 1] : 0;
-      var high = i < breaks.length ? breaks[i] : max;
-      bins += '<span class="legend-bin"><span class="legend-swatch" style="background:' + classColor(i, breaks) + '"></span>' +
-        amount(low) + '–' + amount(high) + '</span>';
+    for (var i = breaks.length; i >= 0; i--) {
+      bins += '<span class="legend-bin"><span class="legend-swatch" style="background:' + RAMP[i] + '"></span>' +
+        classLabel(i, breaks) + '</span>';
     }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
       '<div class="legend-sizes">' + sizes + '</div>' +
