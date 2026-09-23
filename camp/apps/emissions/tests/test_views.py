@@ -165,14 +165,30 @@ class AboutTests(ViewTestCase):
 class MapTests(ViewTestCase):
     def test_map_page(self):
         content = self.get('map', params={'toxics': 1, 'sector': 'glass'}).content.decode()
-        assert 'class="facility-map"' in content
+        assert 'class="facility-map map-canvas"' in content
         assert 'data-mode="full"' in content
         assert '/api/2.0/emissions/facilities/geojson/' in content
         assert 'class="dropdown-item is-active" data-sector="glass"' in content
-        assert '<span class="section-map-toolbar-label">Glass manufacturing</span>' in content
-        # The pesticides map's chrome: expand button and legend card.
-        assert 'section-map-expand' in content
-        assert 'section-map-legend-panel' in content
+        assert '<span class="map-toolbar-label">Glass manufacturing</span>' in content
+        # The core's chrome: the sector filter, expand button and legend card.
+        assert 'class="map-toolbar-filters"' in content
+        assert 'class="button map-expand"' in content
+        assert 'map-legend-panel' in content
+        assert 'class="facility-map-legend"' in content
+
+    def test_compact_maps_have_no_sector_filter(self):
+        content = self.get('sector-detail', 'glass').content.decode()
+        assert 'map-wrap is-compact' in content
+        assert 'map-toolbar-filters' not in content
+        assert 'class="button map-expand"' in content
+
+    def test_map_config_carries_the_include(self):
+        config = views.facility_map_config(stats.resolve_scope({}), mode='compact')
+        assert config['map']['compact'] is True
+        assert config['map']['toolbar_template'] is None
+        assert config['map']['data']['bounds'] == config['bounds']
+        assert config['map']['data']['geojson-url'] == config['geojson_url']
+        assert 'sector' not in config['map']['data']
 
     def test_map_config(self):
         scope = stats.resolve_scope({'county': 'fresno', 'toxics': '1'})

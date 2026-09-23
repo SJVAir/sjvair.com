@@ -1,67 +1,7 @@
 {% comment %}
-The facility map, in the pesticides section map's chrome (its stylesheet and
-section-map-* classes): zoom, locate and home stacked top-left; a toolbar row
-beside them with the sector filter (full map only) and Expand at the end; the
-legend as a foldable card bottom-left; a status pill bottom-centre. All of it
-sits inside the wrapper so it comes along when the map is expanded.
+The facility map (assets/js/emissions/facility-map.js) in the shared map chrome
+(maps/includes/map.html): zoom, locate and home top-left; the sector filter on
+the full map only; Expand; the legend card the script fills. Its config is
+map_config.map, from views.facility_map_config.
 {% endcomment %}
-<div class="section-map-wrap facility-map-wrap{% if map_config.mode == 'compact' %} is-compact{% endif %}">
-    <div class="facility-map"
-         data-mode="{{ map_config.mode }}"
-         data-geojson-url="{{ map_config.geojson_url }}"
-         data-districts-url="{{ map_config.districts_url }}"
-         data-counties-url="{{ map_config.counties_url }}"
-         data-query="{{ map_config.query }}"
-         data-facility-url="{{ map_config.facility_url }}"
-         data-maptiler-key="{{ map_config.maptiler_key }}"
-         data-style="{{ map_config.style }}"
-         data-highlight="{{ map_config.highlight }}"
-         data-center="{{ map_config.center }}"
-         data-zoom="{{ map_config.zoom }}"
-         data-bounds="{{ map_config.bounds }}"
-         data-label="{{ map_config.label }}"
-         data-unit="{{ map_config.unit }}"></div>
-    <div class="section-map-toolbar facility-map-toolbar" hidden>
-        {% if map_config.mode == 'full' %}
-        {# The sector filter narrows the map without a page swap (the script handles the choice). #}
-        <div class="section-map-toolbar-filters" role="group" aria-label="Map filters">
-            <div class="dropdown section-map-toolbar-dropdown facility-map-sector{% if map_config.sector %} is-set{% endif %}">
-                <div class="dropdown-trigger">
-                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
-                        <span class="icon"><span class="fa-duotone fa-fw fa-layer-group explorer-icon" aria-hidden="true"></span></span>
-                        <span class="section-map-toolbar-label">{{ map_config.sector_label|default:"All sectors" }}</span>
-                        <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
-                    </button>
-                </div>
-                <div class="dropdown-menu" role="menu">
-                    <div class="dropdown-content">
-                        <a href="#" class="dropdown-item{% if not map_config.sector %} is-active{% endif %}" data-sector="">All sectors</a>
-                        <hr class="dropdown-divider">
-                        {% for value, label in sector_options %}
-                        <a href="#" class="dropdown-item{% if map_config.sector == value %} is-active{% endif %}" data-sector="{{ value }}">{{ label }}</a>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-        <div class="section-map-toolbar-end">
-            {# Icon only; both icons are rendered and CSS shows the one for the current state. #}
-            <button type="button" class="button section-map-expand" aria-pressed="false" aria-label="Expand the map" title="Expand the map">
-                <span class="icon section-map-expand-icon is-expand"><span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span></span>
-                <span class="icon section-map-expand-icon is-compress"><span class="fa-regular fa-fw fa-compress" aria-hidden="true"></span></span>
-            </button>
-        </div>
-    </div>
-    <span class="section-map-status" aria-live="polite"></span>
-    <div class="section-map-panel section-map-legend-panel facility-map-legend-panel" data-panel="legend" hidden>
-        <div class="section-map-panel-head">
-            <button type="button" class="section-map-panel-toggle" aria-expanded="true">
-                <span class="fa-duotone fa-fw fa-circle-info section-map-panel-icon is-legend" aria-hidden="true"></span>
-                <span class="section-map-panel-title">Legend</span>
-                <span class="fa-regular fa-fw fa-chevron-up section-map-panel-chevron" aria-hidden="true"></span>
-            </button>
-        </div>
-        <div class="section-map-panel-body facility-map-legend"></div>
-    </div>
-</div>
+{% include 'maps/includes/map.html' with map=map_config.map %}

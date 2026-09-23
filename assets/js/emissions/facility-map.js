@@ -1,27 +1,24 @@
 /*
- * Facility map for the Facility Emissions Explorer, on the MapTiler SDK
- * (MapLibre GL).
+ * Facility map for the Facility Emissions Explorer, a module on the map core
+ * (assets/js/maps/), registered as 'facility'.
  *
- * Turns each `.facility-map` container into a map of permitted facilities:
- * one circle per facility, its area scaled by the selected pollutant (square
- * root, so the largest emitter doesn't bury the rest) and its colour by a
- * fixed log-scale class; facilities that reported none are small hollow grey
- * rings. County and air district outlines sit under the circles, and all of
- * it draws over the whole basemap, labels included. Config comes entirely from the container's data-*
- * attributes (emissions/includes/facility-map.html, views.facility_map_config).
+ * One circle per permitted facility: its area scaled by the selected
+ * pollutant (square root, so the largest emitter doesn't bury the rest) and
+ * its colour by a fixed log-scale class; facilities that reported none are
+ * small hollow grey rings. County and air district outlines sit under the
+ * circles, and all of it draws over the whole basemap, labels included.
+ * Config comes from the container's data-* attributes
+ * (views.facility_map_config); the chrome is the core's.
  *
- * Modes: `full` (the map page: sector filter, locate, expand, legend) and
- * `compact` (facility and sector pages: no toolbar; a facility page's own
- * facility is highlighted and the rest faded).
- *
- * htmx: explorer.js calls EmissionsFacilityMap.init(root) after every swap. A
- * swap that brings a new container adopts the live map in place instead of
- * building another, so a page load uses one MapTiler session.
- *
- * Plain ES2017, no framework; one global, window.EmissionsFacilityMap.
+ * Modes: `full` (the map page, with the sector filter) and `compact`
+ * (facility and sector pages; a facility page's own facility is highlighted
+ * and the rest faded).
  */
 (function () {
   'use strict';
+
+  var M = window.SJVAirMaps;
+  if (!M || !M.register) return;
 
   // ColorBrewer Blues, one colour per class below (the pesticides map's
   // default ramp, without its palest step, which vanishes on the basemap).
@@ -36,56 +33,9 @@
   var DISTRICT_COLOR = '#6a3d9a';
   var MIN_RADIUS = 3;
   var MAX_RADIUS = 26;
-  var STYLE_PATHS = { dataviz: ['DATAVIZ'], 'dataviz-light': ['DATAVIZ', 'LIGHT'], streets: ['STREETS'] };
-  var EMPTY_COLLECTION = { type: 'FeatureCollection', features: [] };
 
-  var liveMap = null;
-  var webglSupport = null;
-
-  function webglAvailable() {
-    if (webglSupport === null) {
-      try {
-        var canvas = document.createElement('canvas');
-        webglSupport = !!(window.WebGLRenderingContext && (canvas.getContext('webgl2') || canvas.getContext('webgl')));
-      } catch (err) {
-        webglSupport = false;
-      }
-    }
-    return webglSupport;
-  }
-
-  function logError(message, err) {
-    if (window.console && console.error) console.error('facility-map: ' + message, err);
-  }
-
-  function styleFor(id) {
-    var path = STYLE_PATHS[id];
-    var style = path ? maptilersdk.MapStyle : null;
-    for (var i = 0; style && i < path.length; i++) style = style[path[i]];
-    return style || id;
-  }
-
-  // "36.75,-119.80" -> [lng, lat]; null when blank or malformed.
-  function parseCenter(value) {
-    if (!value || !String(value).trim()) return null;
-    var parts = String(value).split(',').map(Number);
-    if (parts.length !== 2 || !isFinite(parts[0]) || !isFinite(parts[1])) return null;
-    return [parts[1], parts[0]];
-  }
-
-  // "west,south,east,north" -> [[west, south], [east, north]]; null when blank or malformed.
-  function parseBounds(value) {
-    if (!value || !String(value).trim()) return null;
-    var parts = String(value).split(',').map(Number);
-    if (parts.length !== 4 || !parts.every(isFinite)) return null;
-    return [[parts[0], parts[1]], [parts[2], parts[3]]];
-  }
-
-  function escapeHtml(text) {
-    return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+  var escapeHtml = M.escapeHtml;
+  var logError = M.logger('facility-map');
 
   // The same rules as the `amount` template filter.
   function amount(value) {
@@ -120,8 +70,7 @@
   // Precompute each circle so the layer's paint is plain `get`s.
   function prepare(collection, unit) {
     var features = collection.features || [];
-    var values = features.map(function (f) { return f.properties.value; });
-    var positive = values.filter(function (v) { return v > 0; });
+    var positive = features.map(function (f) { return f.properties.value; }).filter(function (v) { return v > 0; });
     var max = positive.length ? Math.max.apply(null, positive) : 0;
     var breaks = breaksFor(unit);
     features.forEach(function (feature) {
@@ -135,186 +84,53 @@
     return { collection: collection, breaks: breaks, max: max };
   }
 
-  var LOCATE_COLOR = '#3388ff';
-  var LOCATE_ZOOM = 12;
-  var PHONE_QUERY = '(max-width: 768px)';
-  // The legend's fold, per viewer, in localStorage (wrapped: storage can be
-  // absent or throw, and the card must work regardless).
-  var PANEL_STORAGE_PREFIX = 'emissions:facility-map:panel:';
-
-  function isPhone() {
-    try {
-      return !!window.matchMedia && window.matchMedia(PHONE_QUERY).matches;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  function prefersReducedMotion() {
-    try {
-      return !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  function readPanelState(name) {
-    try {
-      var stored = window.localStorage.getItem(PANEL_STORAGE_PREFIX + name);
-      return stored === null ? null : stored === 'collapsed';
-    } catch (err) {
-      return null;
-    }
-  }
-
-  function writePanelState(name, collapsed) {
-    try {
-      window.localStorage.setItem(PANEL_STORAGE_PREFIX + name, collapsed ? 'collapsed' : 'open');
-    } catch (err) {
-      // The fold just won't be remembered.
-    }
-  }
-
-  function setPanelCollapsed(panel, collapsed) {
-    panel.classList.toggle('is-collapsed', collapsed);
-    var toggle = panel.querySelector('.section-map-panel-toggle');
-    if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-  }
-
-  // Locate and home as SDK controls, one bar each under the zoom buttons,
-  // with the pesticides map's markup and classes (section-map-locate,
-  // section-map-reset) so they look the same.
-  function BarControl(className, label, icon, onClick) {
-    this.className = className;
-    this.label = label;
-    this.icon = icon;
-    this.onClick = onClick;
-  }
-
-  BarControl.prototype.onAdd = function () {
+  function FacilityMap(shell) {
     var self = this;
-    var container = document.createElement('div');
-    container.className = 'maplibregl-ctrl maplibregl-ctrl-group ' + this.className;
-    var link = document.createElement('a');
-    link.href = '#';
-    link.setAttribute('role', 'button');
-    link.setAttribute('title', this.label);
-    link.setAttribute('aria-label', this.label);
-    link.innerHTML = '<span class="' + this.icon + '" aria-hidden="true"></span>';
-    link.addEventListener('click', function (event) {
-      event.preventDefault();
-      // A click on a control isn't a click on the map (that turns wheel-zoom on).
-      event.stopPropagation();
-      self.onClick();
-    });
-    container.appendChild(link);
-    this.container = container;
-    return container;
-  };
-
-  BarControl.prototype.onRemove = function () {
-    if (this.container && this.container.parentNode) this.container.parentNode.removeChild(this.container);
-    this.container = null;
-  };
-
-  function FacilityMap(el) {
-    this.el = el;
-    this.data = el.dataset;
-    this.wrap = el.closest('.facility-map-wrap');
+    this.shell = shell;
+    this.el = shell.el;
+    // The container's live dataset (an adopt rewrites this same element's).
+    this.data = shell.data;
+    this.map = shell.map;
     this.popup = null;
-    this.request = 0;
     this.fitted = false;
     this.legendData = null;
-    this.expanded = false;
-    this.init();
-  }
-
-  FacilityMap.prototype.init = function () {
-    var self = this;
-    maptilersdk.config.apiKey = this.data.maptilerKey || '';
-    var center = parseCenter(this.data.center);
-    // Without a page-given centre (a facility page), open on the covered
-    // counties, never on the facilities: one bad geocode would drag it anywhere.
-    var bounds = center ? null : parseBounds(this.data.bounds);
-    this.map = new maptilersdk.Map({
-      container: this.el,
-      style: styleFor(this.data.style || 'dataviz'),
-      center: center || [-119.80, 36.75],
-      zoom: parseFloat(this.data.zoom) || 7,
-      bounds: bounds || undefined,
-      fitBoundsOptions: { padding: 20 },
-      navigationControl: false,
-      geolocateControl: false,
-      terrainControl: false,
-      // Off until the map is clicked, so it doesn't hijack page scrolling.
-      scrollZoom: false,
-      pitchWithRotate: false,
-      dragRotate: false,
-      touchPitch: false,
-      attributionControl: { compact: 'auto' },
-      logoPosition: 'bottom-right',
-    });
-    this.map.touchZoomRotate.disableRotation();
-    this.map.keyboard.disableRotation();
-    // Zoom, then locate, then home, stacked top-left as on the pesticides map.
-    this.map.addControl(new maptilersdk.NavigationControl({ showCompass: false }), 'top-left');
-    if (navigator.geolocation) {
-      this.locateControl = new BarControl('section-map-locate', 'Zoom to my location', 'fa-regular fa-location-crosshairs', function () {
-        self.locate();
-      });
-      this.map.addControl(this.locateControl, 'top-left');
-    }
-    this.map.addControl(new BarControl('section-map-reset', 'Zoom out to the whole map', 'fa-regular fa-house', function () {
-      self.resetView();
-    }), 'top-left');
-    this.el.addEventListener('click', function () { self.map.scrollZoom.enable(); });
-    this.el.addEventListener('mouseleave', function () { self.map.scrollZoom.disable(); });
+    // Layer-bound listeners wait for their layer, so they're bound once here
+    // rather than on every style load.
+    this.map.on('click', 'facilities', function (evt) { self.openPopup(evt.features[0], evt.lngLat); });
+    this.map.on('mouseenter', 'facilities', function () { self.map.getCanvas().style.cursor = 'pointer'; });
+    this.map.on('mouseleave', 'facilities', function () { self.map.getCanvas().style.cursor = ''; });
     // For debugging from the console: document.querySelector('.facility-map').facilityMap
     this.el.facilityMap = this;
-    this.bindDocument();
-    this.bindChrome();
-    this.map.on('load', function () {
-      self.addLayers();
-      self.load();
-    });
-  };
+  }
 
+  // On top of the whole basemap, labels included, as on the pesticides map:
+  // the map exists to show the facilities, and a place name over a circle
+  // competes with it. The outlines load straight from their URLs.
   FacilityMap.prototype.addLayers = function () {
-    var self = this;
-    // On top of the whole basemap, labels included, as on the pesticides map:
-    // the map exists to show the facilities, and a place name over a circle
-    // competes with it.
-    this.map.addSource('counties', { type: 'geojson', data: this.data.countiesUrl || EMPTY_COLLECTION });
-    this.map.addSource('districts', { type: 'geojson', data: this.data.districtsUrl || EMPTY_COLLECTION });
-    this.map.addSource('facilities', { type: 'geojson', data: EMPTY_COLLECTION });
-    this.map.addSource('locate', { type: 'geojson', data: EMPTY_COLLECTION });
-    this.map.addLayer({
+    this.shell.ensureSource('counties', { data: this.data.countiesUrl || M.EMPTY });
+    this.shell.ensureSource('districts', { data: this.data.districtsUrl || M.EMPTY });
+    this.shell.ensureSource('facilities');
+    this.shell.ensureLayer({
       id: 'counties', type: 'line', source: 'counties',
       paint: { 'line-color': COUNTY_COLOR, 'line-width': 1, 'line-opacity': 0.5 },
     });
-    this.map.addLayer({
+    this.shell.ensureLayer({
       id: 'districts', type: 'line', source: 'districts',
       paint: { 'line-color': DISTRICT_COLOR, 'line-width': 2, 'line-dasharray': [3, 2] },
     });
-    this.map.addLayer({
+    this.shell.ensureLayer({
       id: 'facilities', type: 'circle', source: 'facilities',
       // Larger values draw on top.
       layout: { 'circle-sort-key': ['get', '_sort'] },
       paint: { 'circle-radius': ['get', '_radius'], 'circle-color': ['get', '_color'] },
     });
-    this.map.addLayer({
-      id: 'locate', type: 'circle', source: 'locate',
-      paint: { 'circle-radius': 7, 'circle-color': LOCATE_COLOR, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 },
-    });
     this.applyHighlight();
-    this.map.on('click', 'facilities', function (evt) { self.openPopup(evt.features[0], evt.lngLat); });
-    this.map.on('mouseenter', 'facilities', function () { self.map.getCanvas().style.cursor = 'pointer'; });
-    this.map.on('mouseleave', 'facilities', function () { self.map.getCanvas().style.cursor = ''; });
   };
 
   // Hollow rings for "none reported"; with a highlighted facility (a facility
   // page), it gets an orange ring and everything else fades.
   FacilityMap.prototype.applyHighlight = function () {
+    if (!this.map || !this.map.getLayer('facilities')) return;
     var id = this.data.highlight || '';
     var isHighlight = ['==', ['get', 'id'], id];
     var isEmpty = ['==', ['get', '_empty'], 1];
@@ -333,22 +149,22 @@
 
   FacilityMap.prototype.load = function () {
     var self = this;
-    var ticket = ++this.request;
+    var ticket = this.shell.ticket();
     this.el.dataset.loaded = '';
-    this.setStatus('Loading facilities…');
+    this.shell.setStatus('Loading facilities…');
     fetch(this.url(), { credentials: 'same-origin' })
       .then(function (response) {
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return response.json();
       })
       .then(function (collection) {
-        // A newer request (a sector change, a swap) has superseded this one.
-        if (ticket !== self.request) return;
+        // A newer request (a sector change, a swap) or a destroy superseded this one.
+        if (!self.shell.isCurrent(ticket)) return;
         self.show(collection);
       })
       .catch(function (err) {
-        if (ticket !== self.request) return;
-        self.setStatus('Couldn\'t load the facilities');
+        if (!self.shell.isCurrent(ticket)) return;
+        self.shell.setStatus('Couldn\'t load the facilities');
         logError('failed to load facilities', err);
       });
   };
@@ -356,10 +172,10 @@
   FacilityMap.prototype.show = function (collection) {
     var prepared = prepare(collection, this.data.unit);
     this.legendData = prepared;
-    this.map.getSource('facilities').setData(prepared.collection);
+    this.shell.setSourceData('facilities', prepared.collection);
     this.applyHighlight();
-    this.updateLegend();
-    this.setStatus('');
+    this.shell.updateLegend();
+    this.shell.setStatus('');
     if (!this.fitted) {
       this.fit(prepared.collection);
       this.fitted = true;
@@ -370,7 +186,7 @@
   // Frame the facilities, unless the page framed the map itself (a facility
   // page's centre, or the covered counties' bounds).
   FacilityMap.prototype.fit = function (collection) {
-    if (parseCenter(this.data.center) || parseBounds(this.data.bounds)) return;
+    if (M.parseCenter(this.data.center) || M.parseBounds(this.data.bounds)) return;
     var features = collection.features || [];
     if (!features.length) return;
     var bounds = new maptilersdk.LngLatBounds();
@@ -390,6 +206,7 @@
   };
 
   FacilityMap.prototype.openPopup = function (feature, lngLat) {
+    var self = this;
     var p = feature.properties;
     var value = p._empty ? 'none reported' : amount(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
     var html = '<div class="facility-popup">' +
@@ -398,14 +215,17 @@
       '<p>' + escapeHtml(this.data.label) + ': <strong>' + value + '</strong>' + (p.rank ? ' · #' + p.rank : '') + '</p>' +
       '</div>';
     if (this.popup) this.popup.remove();
-    this.popup = new maptilersdk.Popup({ maxWidth: '280px' }).setLngLat(lngLat).setHTML(html).addTo(this.map);
+    this.popup = new maptilersdk.Popup({ maxWidth: this.shell.popupMaxWidth() }).setLngLat(lngLat).setHTML(html).addTo(this.map);
+    // Clear of the toolbar and legend card, as on the pesticides map.
+    this.shell.panPopupIntoView(this.popup);
+    this.popup.on('close', function () { self.popup = null; });
   };
 
-  FacilityMap.prototype.updateLegend = function () {
-    var legend = this.wrap && this.wrap.querySelector('.facility-map-legend');
-    var panel = this.wrap && this.wrap.querySelector('.facility-map-legend-panel');
+  // The legend card stays hidden until there's something to put in it.
+  FacilityMap.prototype.legend = function (body) {
+    var legend = body.querySelector('.facility-map-legend');
     if (!legend || !this.legendData) return;
-    if (panel) panel.hidden = false;
+    if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
     var max = this.legendData.max;
     var breaks = this.legendData.breaks;
     var label = escapeHtml(this.data.label) + ' (' + escapeHtml(this.data.unit) + '/yr)';
@@ -429,89 +249,24 @@
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>';
   };
 
-  FacilityMap.prototype.setStatus = function (message) {
-    var status = this.wrap && this.wrap.querySelector('.section-map-status');
-    if (status) status.textContent = message || '';
-  };
-
-  // Listeners on the document, bound once per map: a click elsewhere closes
-  // the toolbar's dropdowns; Escape closes them, then leaves expanded mode.
-  FacilityMap.prototype.bindDocument = function () {
+  // The sector filter's items (the core runs the dropdown itself). The
+  // legend card is hidden until the first data lands (see legend).
+  FacilityMap.prototype.onChrome = function (wrap) {
     var self = this;
-    this.documentClick = function () { self.closeDropdowns(null); };
-    this.documentKey = function (event) {
-      if (event.key !== 'Escape') return;
-      self.closeDropdowns(null);
-      if (self.expanded) self.setExpanded(false);
-    };
-    this.windowResize = function () {
-      if (self.expanded) self.fitBelowNavbar();
-    };
-    document.addEventListener('click', this.documentClick);
-    document.addEventListener('keydown', this.documentKey);
-    window.addEventListener('resize', this.windowResize);
-  };
-
-  // The toolbar (sector filter, expand) and the legend card, bound once per
-  // element: a swap brings new ones, which get bound again.
-  FacilityMap.prototype.bindChrome = function () {
-    var self = this;
-    if (!this.wrap) return;
-    var toolbar = this.wrap.querySelector('.facility-map-toolbar');
-    if (toolbar && !toolbar.dataset.bound) {
-      toolbar.dataset.bound = '1';
-      toolbar.hidden = false;
-      var dropdowns = toolbar.querySelectorAll('.dropdown');
-      Array.prototype.forEach.call(dropdowns, function (dropdown) {
-        var trigger = dropdown.querySelector('.dropdown-trigger .button');
-        if (!trigger) return;
-        trigger.addEventListener('click', function (event) {
-          event.stopPropagation();
-          var open = !dropdown.classList.contains('is-active');
-          self.closeDropdowns(dropdown);
-          dropdown.classList.toggle('is-active', open);
-          trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-          if (open && self.popup) self.popup.remove();
-        });
-        var menu = dropdown.querySelector('.dropdown-menu');
-        if (menu) menu.addEventListener('click', function (event) { event.stopPropagation(); });
+    if (this.shell.legendPanelEl && !this.legendData) this.shell.legendPanelEl.hidden = true;
+    Array.prototype.forEach.call(wrap.querySelectorAll('[data-sector]'), function (item) {
+      if (item.getAttribute('data-bound')) return;
+      item.setAttribute('data-bound', '1');
+      item.addEventListener('click', function (event) {
+        event.preventDefault();
+        M.chrome.closeDropdowns(self.shell, null);
+        self.setSector(item.getAttribute('data-sector'), item.textContent.trim());
       });
-      Array.prototype.forEach.call(toolbar.querySelectorAll('[data-sector]'), function (item) {
-        item.addEventListener('click', function (event) {
-          event.preventDefault();
-          self.closeDropdowns(null);
-          self.setSector(item.getAttribute('data-sector'), item.textContent.trim());
-        });
-      });
-      var expand = toolbar.querySelector('.section-map-expand');
-      if (expand) expand.addEventListener('click', function () { self.setExpanded(!self.expanded); });
-    }
-    var panel = this.wrap.querySelector('.facility-map-legend-panel');
-    if (panel && !panel.dataset.bound) {
-      panel.dataset.bound = '1';
-      // Until the reader folds it, the legend starts open on a desktop and
-      // folded on a phone, where it would cover the map.
-      var stored = readPanelState('legend');
-      setPanelCollapsed(panel, stored === null ? isPhone() : stored);
-      var toggle = panel.querySelector('.section-map-panel-toggle');
-      if (toggle) {
-        toggle.addEventListener('click', function () {
-          var collapsed = !panel.classList.contains('is-collapsed');
-          setPanelCollapsed(panel, collapsed);
-          writePanelState('legend', collapsed);
-        });
-      }
-    }
-  };
-
-  FacilityMap.prototype.closeDropdowns = function (except) {
-    if (!this.wrap) return;
-    Array.prototype.forEach.call(this.wrap.querySelectorAll('.facility-map-toolbar .dropdown'), function (dropdown) {
-      if (dropdown === except) return;
-      dropdown.classList.remove('is-active');
-      var trigger = dropdown.querySelector('.dropdown-trigger .button');
-      if (trigger) trigger.setAttribute('aria-expanded', 'false');
     });
+  };
+
+  FacilityMap.prototype.onDropdownOpen = function () {
+    if (this.popup) this.popup.remove();
   };
 
   // The sector filter narrows the map without a page swap; the address bar
@@ -529,10 +284,10 @@
     this.data.query = params.toString();
     var search = page.toString();
     window.history.replaceState(window.history.state, '', window.location.pathname + (search ? '?' + search : ''));
-    var dropdown = this.wrap && this.wrap.querySelector('.facility-map-sector');
+    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-sector');
     if (dropdown) {
       dropdown.classList.toggle('is-set', !!sector);
-      var text = dropdown.querySelector('.section-map-toolbar-label');
+      var text = dropdown.querySelector('.map-toolbar-label');
       if (text) text.textContent = label || 'All sectors';
       Array.prototype.forEach.call(dropdown.querySelectorAll('[data-sector]'), function (item) {
         item.classList.toggle('is-active', item.getAttribute('data-sector') === (sector || ''));
@@ -541,169 +296,37 @@
     this.load();
   };
 
-  // Home goes back to what the page is about: its facility on a facility
-  // page, otherwise the covered counties.
-  FacilityMap.prototype.resetView = function () {
-    var center = parseCenter(this.data.center);
-    var bounds = parseBounds(this.data.bounds);
-    if (center) {
-      this.map.easeTo({ center: center, zoom: parseFloat(this.data.zoom) || 11, animate: !prefersReducedMotion() });
-    } else if (bounds) {
-      this.map.fitBounds(bounds, { padding: 20, animate: !prefersReducedMotion() });
-    }
-  };
-
-  FacilityMap.prototype.locate = function () {
-    var self = this;
-    var control = this.locateControl && this.locateControl.container;
-    if (control) control.classList.add('is-locating');
-    this.setStatus('Finding your location…');
-    navigator.geolocation.getCurrentPosition(function (position) {
-      if (control) control.classList.remove('is-locating');
-      self.setStatus('');
-      var here = [position.coords.longitude, position.coords.latitude];
-      var source = self.map.getSource('locate');
-      if (source) source.setData({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: here } });
-      self.map.easeTo({ center: here, zoom: LOCATE_ZOOM, animate: !prefersReducedMotion() });
-    }, function () {
-      if (control) control.classList.remove('is-locating');
-      self.setStatus('Couldn\'t get your location');
-    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
-  };
-
-  // Expanded, the map fills the viewport under the site navbar, with the
-  // explorer's scope bar pinned above it (the pesticides map's expanded
-  // mode and CSS). Escape or the button brings the page back.
-  FacilityMap.prototype.setExpanded = function (on) {
-    var was = this.expanded;
-    this.expanded = on;
-    if (on && !was) {
-      this.scrollBeforeExpand = window.scrollY || window.pageYOffset || 0;
-      window.scrollTo(0, 0);
-    }
-    document.documentElement.classList.toggle('section-map-expanded', on);
-    if (this.wrap) {
-      this.wrap.classList.toggle('is-expanded', on);
-      if (on) {
-        this.fitBelowNavbar();
-      } else {
-        this.wrap.style.top = '';
-        var scopeBar = document.querySelector('.explorer-scope-bar');
-        if (scopeBar) scopeBar.style.top = '';
-      }
-      var button = this.wrap.querySelector('.section-map-expand');
-      if (button) {
-        button.setAttribute('aria-pressed', on ? 'true' : 'false');
-        button.setAttribute('title', on ? 'Back to the page' : 'Expand the map');
-        button.setAttribute('aria-label', on ? 'Back to the page' : 'Expand the map');
-      }
-    }
-    if (!on && was) window.scrollTo(0, this.scrollBeforeExpand || 0);
-    this.map.resize();
-  };
-
-  // The expanded map starts where the navbar (and the pinned scope bar) end.
-  FacilityMap.prototype.fitBelowNavbar = function () {
-    if (!this.wrap) return;
-    var nav = document.querySelector('nav.navbar');
-    var bottom = nav ? nav.getBoundingClientRect().bottom : 0;
-    var scopeBar = document.querySelector('.explorer-scope-bar');
-    if (scopeBar) {
-      scopeBar.style.top = Math.max(0, bottom) + 'px';
-      bottom = scopeBar.getBoundingClientRect().bottom;
-    }
-    this.wrap.style.top = Math.max(0, bottom - 1) + 'px';
-  };
-
-  // A boosted swap brought a new container: put the live map's element in
-  // its place, take its config, and reload the facilities.
-  FacilityMap.prototype.adopt = function (el) {
-    if (this.expanded) this.setExpanded(false);
-    el.parentNode.replaceChild(this.el, el);
-    var keys = Object.keys(el.dataset);
-    for (var i = 0; i < keys.length; i++) this.el.dataset[keys[i]] = el.dataset[keys[i]];
-    this.el.dataset.rendered = '1';
-    this.data = this.el.dataset;
-    this.wrap = this.el.closest('.facility-map-wrap');
-    if (this.popup) {
-      this.popup.remove();
-      this.popup = null;
-    }
-    this.bindChrome();
-    this.setStatus('');
-    var located = this.map.getSource('locate');
-    if (located) located.setData(EMPTY_COLLECTION);
+  // A swap brought a new page: drop what belonged to the old one (its
+  // popup, the located dot), frame the new page, and reload.
+  FacilityMap.prototype.onAdopt = function () {
+    if (this.popup) this.popup.remove();
+    // The new page's legend card waits for its own data, as on a first build.
+    this.legendData = null;
+    if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
+    this.shell.setSourceData('locate', M.EMPTY);
+    this.shell.setStatus('');
     this.fitted = false;
-    this.map.resize();
-    var center = parseCenter(this.data.center);
-    var bounds = parseBounds(this.data.bounds);
-    if (center) this.map.jumpTo({ center: center, zoom: parseFloat(this.data.zoom) || this.map.getZoom() });
-    else if (bounds) this.map.fitBounds(bounds, { padding: 20, duration: 0 });
-    if (this.map.getSource('facilities')) this.load();
+    this.shell.frame();
+    this.applyHighlight();
+    this.load();
   };
 
   FacilityMap.prototype.destroy = function () {
-    if (this.expanded) this.setExpanded(false);
-    document.documentElement.classList.remove('section-map-expanded');
-    document.removeEventListener('click', this.documentClick);
-    document.removeEventListener('keydown', this.documentKey);
-    window.removeEventListener('resize', this.windowResize);
-    // A fetch still in flight must not draw on the removed map.
-    this.request++;
     if (this.popup) this.popup.remove();
-    this.map.remove();
+    this.map = null;
   };
 
-  function containersUnder(root) {
-    var found = [];
-    if (root.matches && root.matches('.facility-map')) found.push(root);
-    var nested = root.querySelectorAll ? root.querySelectorAll('.facility-map') : [];
-    for (var i = 0; i < nested.length; i++) found.push(nested[i]);
-    return found;
-  }
-
-  // Idempotent: initialised containers carry data-rendered, so this is safe
-  // to call on page load and after every htmx swap.
-  function init(root) {
-    if (typeof maptilersdk === 'undefined') return;
-    var containers = containersUnder(root || document);
-    // A swap to a page without a map releases the live one. Judged against
-    // the whole document: htmx fires htmx:load per swapped element, and the
-    // one for an out-of-band fragment must not take the map away.
-    if (liveMap && !document.body.contains(liveMap.el) && !containersUnder(document).length) {
-      liveMap.destroy();
-      liveMap = null;
-    }
-    for (var i = 0; i < containers.length; i++) {
-      var el = containers[i];
-      if (el.dataset.rendered) continue;
-      try {
-        if (!webglAvailable()) {
-          el.dataset.rendered = '1';
-          el.classList.add('is-unavailable');
-          el.innerHTML = '<p class="section-map-note">This map needs WebGL, which this browser has turned off or doesn\'t support.</p>';
-          continue;
-        }
-        if (liveMap && !document.body.contains(liveMap.el)) {
-          liveMap.adopt(el);
-          continue;
-        }
-        el.dataset.rendered = '1';
-        liveMap = new FacilityMap(el);
-      } catch (err) {
-        logError('failed to initialize', err);
-      }
-    }
-  }
+  M.register('facility', {
+    selector: '.facility-map',
+    lifecycle: 'adopt',
+    features: { controls: ['zoom', 'locate', 'home'], toolbar: true, legend: true, status: true, expand: true },
+    // The key readers' folded legends were saved under before the core.
+    panelStoragePrefix: 'emissions:facility-map:panel:',
+    create: function (shell) { return new FacilityMap(shell); },
+  });
 
   window.EmissionsFacilityMap = {
-    init: init,
-    instances: function () { return liveMap ? [liveMap] : []; },
+    init: M.init,
+    instances: function () { return M.instances('facility'); },
   };
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () { init(document); });
-  } else {
-    init(document);
-  }
 })();

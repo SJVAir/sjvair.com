@@ -29,6 +29,8 @@ def browser():
     opts.add_argument('--headless=new')
     opts.add_argument('--window-size=1400,1000')
     # Software WebGL: the SDK map needs a GL context and headless has no GPU.
+    opts.add_argument('--use-gl=angle')
+    opts.add_argument('--use-angle=swiftshader')
     opts.add_argument('--enable-unsafe-swiftshader')
     opts.add_argument('--ignore-gpu-blocklist')
     opts.add_argument('--disable-application-cache')
@@ -97,12 +99,12 @@ def main():
         driver.get(args.base + '/tools/emissions/map/')
         wait_loaded(driver)
         controls = driver.execute_script(
-            "return ['.section-map-locate', '.section-map-reset', '.section-map-expand', '.section-map-legend-panel']"
+            "return ['.map-locate', '.map-reset', '.map-expand', '.map-legend-panel']"
             ".map(function (s) { return !!document.querySelector(s); });"
         )
         check(results, 'locate, home, expand and legend present', all(controls), str(controls))
-        driver.find_element(By.CSS_SELECTOR, '.section-map-expand').click()
-        expanded = driver.execute_script("return document.documentElement.classList.contains('section-map-expanded');")
+        driver.find_element(By.CSS_SELECTOR, '.map-expand').click()
+        expanded = driver.execute_script("return document.documentElement.classList.contains('map-expanded');")
         check(results, 'expand fills the viewport', expanded)
 
         errors = console_errors(driver)

@@ -7,8 +7,7 @@
 
 {% block extra-head %}
 <link rel="stylesheet" href="{% static 'maptiler-sdk/maptiler-sdk.css' %}">
-{# The map chrome (toolbar, panels, controls, expanded mode) is the pesticides section map's. #}
-<link rel="stylesheet" href="{% static 'css/pesticides/section-map.css' %}">
+<link rel="stylesheet" href="{% static 'css/maps/map.css' %}">
 <link rel="stylesheet" href="{% static 'css/emissions/facility-map.css' %}">
 {% endblock %}
 
@@ -17,6 +16,7 @@
 <script src="{% static 'uplot/uPlot.iife.min.js' %}"></script>
 <script src="{% static 'js/pesticides/charts.js' %}"></script>
 <script src="{% static 'maptiler-sdk/maptiler-sdk.js' %}"></script>
+{% include 'maps/includes/scripts.html' %}
 <script src="{% static 'js/emissions/facility-map.js' %}"></script>
 <script src="{% static 'js/pesticides/explorer.js' %}"></script>
 {% endblock %}

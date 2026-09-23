@@ -1,0 +1,21 @@
+{# The sector filter narrows the map without a page swap (facility-map.js handles the choice). #}
+<div class="map-toolbar-filters" role="group" aria-label="Map filters">
+    <div class="dropdown map-toolbar-dropdown facility-map-sector{% if map_config.sector %} is-set{% endif %}">
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                <span class="icon"><span class="fa-duotone fa-fw fa-layer-group explorer-icon" aria-hidden="true"></span></span>
+                <span class="map-toolbar-label">{{ map_config.sector_label|default:"All sectors" }}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu">
+            <div class="dropdown-content">
+                <a href="#" class="dropdown-item{% if not map_config.sector %} is-active{% endif %}" data-sector="">All sectors</a>
+                <hr class="dropdown-divider">
+                {% for value, label in sector_options %}
+                <a href="#" class="dropdown-item{% if map_config.sector == value %} is-active{% endif %}" data-sector="{{ value }}">{{ label }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
