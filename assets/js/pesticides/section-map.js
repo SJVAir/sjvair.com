@@ -471,7 +471,7 @@
 
   function showUnavailable(el) {
     el.classList.add('is-unavailable');
-    el.innerHTML = '<p class="section-map-note">This map needs WebGL, which this browser has turned off or doesn\'t support.</p>';
+    el.innerHTML = '<p class="map-note">This map needs WebGL, which this browser has turned off or doesn\'t support.</p>';
   }
 
   function milesToMeters(miles) {
@@ -858,14 +858,14 @@
   // The controls, legend, and level note live beside the map container, so
   // they are re-found (and re-wired) whenever the container gets a new home.
   SectionMap.prototype.attachControls = function () {
-    var wrap = this.el.closest('.section-map-wrap') || this.el.parentNode;
+    var wrap = this.el.closest('.map-wrap') || this.el.parentNode;
     this.wrapEl = wrap;
-    this.toolbarEl = wrap.querySelector('.section-map-toolbar');
+    this.toolbarEl = wrap.querySelector('.map-toolbar');
     this.controlsEl = wrap.querySelector('.section-map-controls');
-    this.legendPanelEl = wrap.querySelector('.section-map-legend-panel');
+    this.legendPanelEl = wrap.querySelector('.map-legend-panel');
     this.legendEl = wrap.querySelector('.section-map-legend');
     this.levelEl = wrap.querySelector('.section-map-level');
-    this.statusEl = wrap.querySelector('.section-map-status');
+    this.statusEl = wrap.querySelector('.map-status');
 
     if (this.toolbarEl) this.toolbarEl.hidden = false;
     if (this.legendPanelEl) this.legendPanelEl.hidden = false;
@@ -931,7 +931,7 @@
         sectionsToggle.addEventListener('change', this.onSectionsToggle.bind(this));
       }
     }
-    var expand = wrap.querySelector('.section-map-expand');
+    var expand = wrap.querySelector('.map-expand');
     if (expand && !expand.getAttribute('data-bound')) {
       expand.setAttribute('data-bound', '1');
       expand.addEventListener('click', this.toggleExpanded.bind(this));
@@ -957,7 +957,7 @@
       document.addEventListener('click', this.toolbarClickHandler);
       document.addEventListener('keydown', this.toolbarKeyHandler);
     }
-    var toolbar = wrap.querySelector('.section-map-toolbar');
+    var toolbar = wrap.querySelector('.map-toolbar');
     if (!toolbar || toolbar.getAttribute('data-bound')) return;
     toolbar.setAttribute('data-bound', '1');
     var dropdowns = toolbar.querySelectorAll('.dropdown');
@@ -965,7 +965,7 @@
     // The filter form only knows its own fields; the map's view settings
     // (metric, notices, all sections) ride along so the URL it lands on
     // still says how the map is being viewed.
-    var form = toolbar.querySelector('.section-map-toolbar-filters');
+    var form = toolbar.querySelector('.map-toolbar-filters');
     if (form) {
       form.addEventListener('htmx:configRequest', function (event) {
         var params = event.detail.parameters;
@@ -1036,13 +1036,13 @@
   }
 
   SectionMap.prototype.bindPanelToggles = function (wrap) {
-    var panels = wrap.querySelectorAll('.section-map-panel[data-panel]');
+    var panels = wrap.querySelectorAll('.map-panel[data-panel]');
     for (var i = 0; i < panels.length; i++) {
       // Until the reader has folded a panel themselves, it starts open on
       // a desktop and folded on a phone, where it would cover the map.
       var stored = readPanelState(panels[i].getAttribute('data-panel'));
       this.setPanelCollapsed(panels[i], stored === null ? isPhone() : stored);
-      var toggle = panels[i].querySelector('.section-map-panel-toggle');
+      var toggle = panels[i].querySelector('.map-panel-toggle');
       if (!toggle || toggle.getAttribute('data-bound')) continue;
       toggle.setAttribute('data-bound', '1');
       toggle.addEventListener('click', this.onPanelToggle.bind(this, panels[i]));
@@ -1057,7 +1057,7 @@
 
   SectionMap.prototype.setPanelCollapsed = function (panel, collapsed) {
     panel.classList.toggle('is-collapsed', collapsed);
-    var toggle = panel.querySelector('.section-map-panel-toggle');
+    var toggle = panel.querySelector('.map-panel-toggle');
     if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   };
 
@@ -1102,7 +1102,7 @@
     }
     // The html class first: it pins the scope bar, and fitBelowNavbar
     // measures the pinned bar to place the map under it.
-    document.documentElement.classList.toggle('section-map-expanded', on);
+    document.documentElement.classList.toggle('map-expanded', on);
     if (this.wrapEl) {
       this.wrapEl.classList.toggle('is-expanded', on);
       if (on) {
@@ -1123,7 +1123,7 @@
     }
     window.removeEventListener('resize', this.resizeHandler);
     if (on) window.addEventListener('resize', this.resizeHandler);
-    var button = this.wrapEl ? this.wrapEl.querySelector('.section-map-expand') : null;
+    var button = this.wrapEl ? this.wrapEl.querySelector('.map-expand') : null;
     if (button) {
       button.setAttribute('aria-pressed', on ? 'true' : 'false');
       button.setAttribute('title', on ? 'Back to the page' : 'Expand the map');
@@ -1497,7 +1497,7 @@
   SectionMap.prototype.addLocateControl = function () {
     if (!navigator.geolocation) return;
     var self = this;
-    this.locateControl = new BarControl('section-map-locate', 'Zoom to my location', 'fa-regular fa-location-crosshairs', function () {
+    this.locateControl = new BarControl('map-locate', 'Zoom to my location', 'fa-regular fa-location-crosshairs', function () {
       self.locate();
     });
     this.map.addControl(this.locateControl, 'top-left');
@@ -1508,7 +1508,7 @@
   // framing (the whole valley, or the filtered county).
   SectionMap.prototype.addResetControl = function () {
     var self = this;
-    this.resetControl = new BarControl('section-map-reset', 'Zoom out to the whole map', 'fa-regular fa-house', function () {
+    this.resetControl = new BarControl('map-reset', 'Zoom out to the whole map', 'fa-regular fa-house', function () {
       self.resetView();
     });
     this.map.addControl(this.resetControl, 'top-left');

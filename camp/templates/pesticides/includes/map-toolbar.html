@@ -6,16 +6,16 @@ each showing its current selection. The pickers inside submit the form
 explorer's scope (the scope bar), not a toolbar filter. Lives inside the map wrapper so it comes along in expanded mode.
 Context: related (dict of resolved entities), year, all_years, latest_year, county.
 {% endcomment %}
-<form method="GET" class="section-map-toolbar-filters" hx-trigger="submit, change delay:250ms" aria-label="Map filters">
+<form method="GET" class="map-toolbar-filters" hx-trigger="submit, change delay:250ms" aria-label="Map filters">
     {% include 'pesticides/includes/scope-hidden.html' %}
     <div class="field is-grouped is-grouped-multiline">
         {% for kind, label, icon, icon_class in toolbar_kinds %}
         <div class="control">
-            <div class="dropdown section-map-toolbar-dropdown{% if kind == 'chemical' and related.chemical or kind == 'product' and related.product or kind == 'commodity' and related.commodity %} is-set{% endif %}">
+            <div class="dropdown map-toolbar-dropdown{% if kind == 'chemical' and related.chemical or kind == 'product' and related.product or kind == 'commodity' and related.commodity %} is-set{% endif %}">
                 <div class="dropdown-trigger">
                     <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
                         <span class="icon"><span class="fa-duotone fa-fw {{ icon }} explorer-icon {{ icon_class }}" aria-hidden="true"></span></span>
-                        <span class="section-map-toolbar-label">
+                        <span class="map-toolbar-label">
                             {% if kind == 'product' and related.product %}{{ related.product.display_name }}
                             {% elif kind == 'chemical' and related.chemical %}{{ related.chemical.display_name }}
                             {% elif kind == 'commodity' and related.commodity %}{{ related.commodity.display_name }}

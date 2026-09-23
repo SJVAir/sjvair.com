@@ -763,7 +763,7 @@ class MapPageTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert html.index('data-kind="product"') < html.index('data-kind="chemical"') < html.index('data-kind="commodity"')
         # The county is the explorer's scope, picked in the scope bar, not a toolbar filter.
-        assert 'name="county"' not in html.split('class="section-map-toolbar-filters"')[1].split('</form>')[0]
+        assert 'name="county"' not in html.split('class="map-toolbar-filters"')[1].split('</form>')[0]
         chemical = Chemical.objects.get(pk=1)
         html = self.client.get(self.url, {'chemical': chemical.sqid, 'county': 'fresno', 'year': '2022'}).content.decode()
         assert 'Glyphosate <button type="button" class="delete is-small entity-picker-clear"' in html
@@ -783,7 +783,7 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert cfg['townships_url'] == '/api/2.0/pesticides/townships/'
         assert cfg['notices_url'] == '/api/2.0/pesticides/notices/active/'
         html = response.content.decode()
-        assert 'class="section-map"' in html and 'data-year="2023"' in html
+        assert 'class="section-map map-canvas"' in html and 'data-year="2023"' in html
         assert 'data-counties-url="/api/2.0/pesticides/counties/"' in html
         assert 'data-townships-url="/api/2.0/pesticides/townships/"' in html
         # Popup links are built client-side from these URL patterns.
@@ -807,7 +807,7 @@ class MapPageTests(RollupTestMixin, TestCase):
         html = response.content.decode()
         # The section map's own container (the noscript county choropleth
         # has the same attributes, so it's picked out by class).
-        start = html.index('class="section-map"')
+        start = html.index('class="section-map map-canvas"')
         container = html[start:html.index('>', start)]
         assert 'data-maptiler-key="test-key"' in container
         assert 'data-style="dataviz"' in container
@@ -817,6 +817,8 @@ class MapPageTests(RollupTestMixin, TestCase):
 
     def test_page_loads_the_sdk_and_no_leaflet(self):
         html = self.client.get(self.url).content.decode()
+        # The shared map chrome's stylesheet, before the section map's own.
+        assert html.index('css/maps/map.css') < html.index('css/pesticides/section-map.css')
         assert 'maptiler-sdk/maptiler-sdk.js' in html
         assert 'maptiler-sdk/maptiler-sdk.css' in html
         assert html.count('js/pesticides/section-map') == 1   # one map module, no spike beside it

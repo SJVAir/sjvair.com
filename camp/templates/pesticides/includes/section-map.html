@@ -1,5 +1,5 @@
-<div class="section-map-wrap">
-  <div class="section-map" id="section-map-{{ map_config.year }}"
+<div class="map-wrap">
+  <div class="section-map map-canvas" id="section-map-{{ map_config.year }}"
        data-sections-url="{{ map_config.sections_url }}"
        data-counties-url="{{ map_config.counties_url }}"
        data-townships-url="{{ map_config.townships_url }}"
@@ -33,14 +33,14 @@
   bottom-left. Everything is inside the wrapper so it comes along when the
   map is expanded.
   {% endcomment %}
-  <div class="section-map-toolbar" hidden>
+  <div class="map-toolbar" hidden>
     {% if map_toolbar %}{% include 'pesticides/includes/map-toolbar.html' %}{% endif %}
-    <div class="section-map-toolbar-end">
-      <div class="dropdown is-right section-map-toolbar-dropdown section-map-options">
+    <div class="map-toolbar-end">
+      <div class="dropdown is-right map-toolbar-dropdown map-options">
         <div class="dropdown-trigger">
           <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
-            <span class="icon"><span class="fa-duotone fa-fw fa-gear section-map-panel-icon is-options" aria-hidden="true"></span></span>
-            <span class="section-map-toolbar-label">Options</span>
+            <span class="icon"><span class="fa-duotone fa-fw fa-gear map-panel-icon is-options" aria-hidden="true"></span></span>
+            <span class="map-toolbar-label">Options</span>
             <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
           </button>
         </div>
@@ -63,23 +63,23 @@
         </div>
       </div>
       {# Icon only; both icons are rendered and CSS shows the one for the current state (the icon font swaps spans for SVGs, so classes can't be toggled). #}
-      <button type="button" class="button section-map-expand" aria-pressed="false" aria-label="Expand the map" title="Expand the map">
-        <span class="icon section-map-expand-icon is-expand"><span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span></span>
-        <span class="icon section-map-expand-icon is-compress"><span class="fa-regular fa-fw fa-compress" aria-hidden="true"></span></span>
+      <button type="button" class="button map-expand" aria-pressed="false" aria-label="Expand the map" title="Expand the map">
+        <span class="icon map-expand-icon is-expand"><span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span></span>
+        <span class="icon map-expand-icon is-compress"><span class="fa-regular fa-fw fa-compress" aria-hidden="true"></span></span>
       </button>
     </div>
   </div>
   {# What the map is doing (a load in progress, a locate), as a pill at the bottom centre; hidden while empty. #}
-  <span class="section-map-status" aria-live="polite"></span>
-  <div class="section-map-panel section-map-legend-panel" data-panel="legend" hidden>
-    <div class="section-map-panel-head">
-      <button type="button" class="section-map-panel-toggle" aria-expanded="true" aria-controls="section-map-legend-{{ map_config.year }}">
-        <span class="fa-duotone fa-fw fa-circle-info section-map-panel-icon is-legend" aria-hidden="true"></span>
-        <span class="section-map-panel-title">Legend</span>
-        <span class="fa-regular fa-fw fa-chevron-up section-map-panel-chevron" aria-hidden="true"></span>
+  <span class="map-status" aria-live="polite"></span>
+  <div class="map-panel map-legend-panel" data-panel="legend" hidden>
+    <div class="map-panel-head">
+      <button type="button" class="map-panel-toggle" aria-expanded="true" aria-controls="section-map-legend-{{ map_config.year }}">
+        <span class="fa-duotone fa-fw fa-circle-info map-panel-icon is-legend" aria-hidden="true"></span>
+        <span class="map-panel-title">Legend</span>
+        <span class="fa-regular fa-fw fa-chevron-up map-panel-chevron" aria-hidden="true"></span>
       </button>
     </div>
-    <div class="section-map-panel-body" id="section-map-legend-{{ map_config.year }}">
+    <div class="map-panel-body" id="section-map-legend-{{ map_config.year }}">
       <ul class="county-legend section-map-legend"></ul>
       <span class="section-map-level"></span>
       <span class="section-map-locations-note"></span>

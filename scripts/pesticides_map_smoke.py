@@ -83,7 +83,7 @@ JS_GRID_LOADED = """
 var inst = (function () { %s })();
 if (!inst || !inst.loadedLevel || !inst.sourceData.grid || !inst.sourceData.grid.features.length) return false;
 if (arguments[0] && inst.loadedLevel !== arguments[0]) return false;
-if (/^Loading (grid|sections)…$/.test(document.querySelector('.section-map-status').textContent)) return false;
+if (/^Loading (grid|sections)…$/.test(document.querySelector('.map-status').textContent)) return false;
 return !inst.map.isMoving();
 """ % JS_INSTANCE
 
@@ -316,7 +316,7 @@ class Page:
         return self.js("""
             var r = function (sel) { var el = document.querySelector(sel); if (!el || el.hidden) return null;
                 var b = el.getBoundingClientRect(); return b.width && b.height ? { left: b.left, top: b.top, right: b.right, bottom: b.bottom } : null; };
-            return { map: r('.section-map'), toolbar: r('.section-map-toolbar'), legend: r('.section-map-legend-panel'),
+            return { map: r('.section-map'), toolbar: r('.map-toolbar'), legend: r('.map-legend-panel'),
                      popup: r('.maplibregl-popup.section-popup-wrap') };
         """)
 
@@ -478,20 +478,20 @@ def check_controls(page):
     if not page.wait_for("return !!document.querySelector('.maplibregl-ctrl-zoom-in')", 10):
         return False, 'zoom buttons never appeared'
     result = page.js("""
-        var wrap = document.querySelector('.section-map-wrap');
+        var wrap = document.querySelector('.map-wrap');
         var q = function (sel) { return !!document.querySelector(sel); };
         var top = function (sel) { var el = document.querySelector(sel); return el ? el.getBoundingClientRect().top : NaN; };
-        var locate = document.querySelector('.section-map-locate a');
-        var reset = document.querySelector('.section-map-reset a');
+        var locate = document.querySelector('.map-locate a');
+        var reset = document.querySelector('.map-reset a');
         return {
             zoom: q('.maplibregl-ctrl-zoom-in') && q('.maplibregl-ctrl-zoom-out'),
             'no compass': !q('.maplibregl-ctrl-compass'),
             locate: !!locate && locate.getAttribute('aria-label') === 'Zoom to my location',
             reset: !!reset && reset.getAttribute('aria-label') === 'Zoom out to the whole map',
-            'zoom above locate above reset': top('.maplibregl-ctrl-zoom-in') < top('.section-map-locate') && top('.section-map-locate') < top('.section-map-reset'),
-            toolbar: !!wrap && !wrap.querySelector('.section-map-toolbar').hidden,
-            legend: !!wrap && !wrap.querySelector('.section-map-legend-panel').hidden,
-            expand: !!wrap && !!wrap.querySelector('.section-map-expand[data-bound]'),
+            'zoom above locate above reset': top('.maplibregl-ctrl-zoom-in') < top('.map-locate') && top('.map-locate') < top('.map-reset'),
+            toolbar: !!wrap && !wrap.querySelector('.map-toolbar').hidden,
+            legend: !!wrap && !wrap.querySelector('.map-legend-panel').hidden,
+            expand: !!wrap && !!wrap.querySelector('.map-expand[data-bound]'),
         };
     """)
     missing = [key for key, ok in result.items() if not ok]
@@ -530,7 +530,7 @@ def check_home(page):
     """)
     if before is None:
         return None, 'no region outline on this page'
-    page.driver.find_element(By.CSS_SELECTOR, '.section-map-reset').click()
+    page.driver.find_element(By.CSS_SELECTOR, '.map-reset').click()
     time.sleep(2.5)
     after = page.instance_js("""
         var b = inst.map.getBounds();
@@ -569,7 +569,7 @@ def check_grid(page):
             classes: inst.currentClasses.members.filter(function (m) { return m.length; }).length,
             rows: document.querySelectorAll(arguments[0]).length,
             levelText: document.querySelector('.section-map-level').textContent,
-            status: document.querySelector('.section-map-status').textContent,
+            status: document.querySelector('.map-status').textContent,
             highlight: inst.data.highlight || '',
             highlighted: inst.sourceData.highlight && inst.sourceData.highlight.properties ? inst.sourceData.highlight.properties.id : '',
         };
@@ -742,7 +742,7 @@ def check_locations(page):
     popup_detail = ''
     skipped = None
     if too_far:
-        note = page.js("return { note: document.querySelector('.section-map-locations-note').textContent, status: document.querySelector('.section-map-status').textContent };")
+        note = page.js("return { note: document.querySelector('.section-map-locations-note').textContent, status: document.querySelector('.map-status').textContent };")
         if note['note'] != LOCATIONS_ZOOM_NOTE or note['status'] != LOCATIONS_ZOOM_NOTE:
             problems.append('zoom %.2f: note %r, status %r' % (state['zoom'], note['note'], note['status']))
         if page.marker_requests('locations') != requests_before or page.source_count('locations'):
@@ -790,7 +790,7 @@ def check_locations(page):
     after = page.instance_js("""
         return { count: (inst.sourceData.locations || {features: []}).features.length, popup: !!inst.popup && inst.popupKey === 'openLocationId',
                  bounds: inst.loadedLocationBounds, note: document.querySelector('.section-map-locations-note').textContent,
-                 status: document.querySelector('.section-map-status').textContent };
+                 status: document.querySelector('.map-status').textContent };
     """)
     if after['count'] or after['bounds'] or after['popup'] or after['note'] or after['status'] == LOCATIONS_ZOOM_NOTE:
         problems.append('toggle off left %s' % after)
@@ -1042,7 +1042,7 @@ def check_all_sections(page):
         var inst = (function () { %s })();
         if (!inst) return false;
         var run = inst.allSectionsRun;
-        return !!(run && run.done === run.total && inst.allSectionsFeatures.length && document.querySelector('.section-map-status').textContent === '');
+        return !!(run && run.done === run.total && inst.allSectionsFeatures.length && document.querySelector('.map-status').textContent === '');
     """ % JS_INSTANCE, ALL_SECTIONS_TIMEOUT)
     if not done:
         return False, 'blocks never finished loading'
@@ -1262,7 +1262,7 @@ def check_popup_clear(page):
     # inside the canvas from it, so the popup (centred on the cell) would
     # overlap the panel.
     target = page.pick('inst.sourceData.grid.features', ref_expr="""
-        var lr = document.querySelector('.section-map-legend-panel').getBoundingClientRect();
+        var lr = document.querySelector('.map-legend-panel').getBoundingClientRect();
         return [lr.right - rect.left + 40, lr.top - rect.top + 40];
     """)
     if not target:
@@ -1385,14 +1385,14 @@ def check_expand(page):
     width_before = page.instance_js('return inst.map.getCanvas().clientWidth')
     canvas_width_is = 'var inst = (function () { %s })(); return !!inst && inst.map.getCanvas().clientWidth === arguments[0];' % JS_INSTANCE
     canvas_width_not = 'var inst = (function () { %s })(); return !!inst && inst.map.getCanvas().clientWidth !== arguments[0];' % JS_INSTANCE
-    page.js("document.querySelector('.section-map-expand').click()")
+    page.js("document.querySelector('.map-expand').click()")
     page.wait_for(canvas_width_not, 10, width_before)
     expanded = page.js("""
         return {
-            html: document.documentElement.classList.contains('section-map-expanded'),
-            wrap: document.querySelector('.section-map-wrap').classList.contains('is-expanded'),
-            pressed: document.querySelector('.section-map-expand').getAttribute('aria-pressed') === 'true',
-            label: document.querySelector('.section-map-expand').getAttribute('aria-label'),
+            html: document.documentElement.classList.contains('map-expanded'),
+            wrap: document.querySelector('.map-wrap').classList.contains('is-expanded'),
+            pressed: document.querySelector('.map-expand').getAttribute('aria-pressed') === 'true',
+            label: document.querySelector('.map-expand').getAttribute('aria-label'),
         };
     """)
     width_after = page.instance_js('return inst.map.getCanvas().clientWidth')
@@ -1403,12 +1403,12 @@ def check_expand(page):
         problems.append('button label %r' % expanded['label'])
     if not (width_after and width_before and width_after > width_before):
         problems.append('canvas did not widen (%s -> %s)' % (width_before, width_after))
-    page.js("document.querySelector('.section-map-expand').click()")
+    page.js("document.querySelector('.map-expand').click()")
     page.wait_for(canvas_width_is, 10, width_before)
     collapsed = page.js("""
-        return !document.documentElement.classList.contains('section-map-expanded')
-            && !document.querySelector('.section-map-wrap').classList.contains('is-expanded')
-            && document.querySelector('.section-map-expand').getAttribute('aria-pressed') === 'false';
+        return !document.documentElement.classList.contains('map-expanded')
+            && !document.querySelector('.map-wrap').classList.contains('is-expanded')
+            && document.querySelector('.map-expand').getAttribute('aria-pressed') === 'false';
     """)
     width_back = page.instance_js('return inst.map.getCanvas().clientWidth')
     if not collapsed:
@@ -1441,24 +1441,24 @@ def check_phone_layout(page):
     page.wait_idle()
     time.sleep(0.5)
     result = page.js("""
-        var wrap = document.querySelector('.section-map-wrap');
-        var legend = wrap.querySelector('.section-map-legend-panel');
-        var labels = Array.from(wrap.querySelectorAll('.section-map-toolbar-filters .section-map-toolbar-label'));
+        var wrap = document.querySelector('.map-wrap');
+        var legend = wrap.querySelector('.map-legend-panel');
+        var labels = Array.from(wrap.querySelectorAll('.map-toolbar-filters .map-toolbar-label'));
         var attrib = wrap.querySelector('.maplibregl-ctrl-attrib');
-        var status = wrap.querySelector('.section-map-status');
+        var status = wrap.querySelector('.map-status');
         var mapRect = wrap.querySelector('.section-map').getBoundingClientRect();
         status.textContent = 'probe';
         var sr = status.getBoundingClientRect();
         status.textContent = '';
         return {
             width: window.innerWidth,
-            collapsed: legend.classList.contains('is-collapsed') && legend.querySelector('.section-map-panel-toggle').getAttribute('aria-expanded') === 'false',
+            collapsed: legend.classList.contains('is-collapsed') && legend.querySelector('.map-panel-toggle').getAttribute('aria-expanded') === 'false',
             filters: labels.length,
             iconOnly: labels.every(function (el) { return getComputedStyle(el).display === 'none'; }),
             compact: !!attrib && attrib.classList.contains('maplibregl-compact'),
             folded: !!attrib && !attrib.classList.contains('maplibregl-compact-show'),
             statusCentred: Math.abs((sr.left + sr.right) / 2 - (mapRect.left + mapRect.right) / 2) < 2,
-            toggleHeight: legend.querySelector('.section-map-panel-toggle').getBoundingClientRect().height,
+            toggleHeight: legend.querySelector('.map-panel-toggle').getBoundingClientRect().height,
         };
     """)
     problems = []
