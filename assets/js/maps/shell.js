@@ -7,7 +7,7 @@
  *
  *   load()                      fetch and draw its data (right after create)
  *   addLayers()                 sources and layers, after every style load
- *   onChrome(wrap)               bind its own toolbar/Options controls
+ *   onChrome(wrap)              bind its own toolbar/Options controls
  *   onDropdownOpen()            a toolbar dropdown opened (close a popup)
  *   onAdopt(changedKeys, old)   an htmx swap handed it a new container
  *   onLocate(lngLat)            the reader's position, once located
@@ -155,7 +155,9 @@
   };
 
   // A number for a fetch about to start; isCurrent(ticket) says whether it's
-  // still the newest one (and the map is still here) when it lands.
+  // still the newest one (and the map is still here) when it lands. One
+  // family per shell: a new ticket supersedes every earlier one, whatever
+  // fetch it came from.
   Shell.prototype.ticket = function () {
     this.tickets += 1;
     return this.tickets;
@@ -287,7 +289,6 @@
   // fetch still in flight is let go of (its ticket is no longer current).
   Shell.prototype.destroy = function () {
     if (this.expanded) M.chrome.setExpanded(this, false);
-    document.documentElement.classList.remove('map-expanded');
     M.chrome.unbindDocument(this);
     this.tickets += 1;
     if (this.module.destroy) this.module.destroy();

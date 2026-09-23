@@ -1267,6 +1267,7 @@
   };
 
   SectionMap.prototype.clearOutline = function () {
+    if (this.outlineAbort) this.outlineAbort.abort();
     this.setSourceData('outline', EMPTY);
     this.setSourceData('outline-mask', EMPTY);
     this.outlineBounds = null;

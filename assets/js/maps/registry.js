@@ -158,7 +158,16 @@
 
   function init(root) {
     if (typeof maptilersdk === 'undefined') return;
-    Object.keys(specs).forEach(function (name) { initName(name, root || document); });
+    // One module's throw (a figure's destroy during sweep, say) must not
+    // stop the others' init, and must not escape into the htmx:load
+    // handler that called us -- it would skip whatever runs after us there.
+    Object.keys(specs).forEach(function (name) {
+      try {
+        initName(name, root || document);
+      } catch (err) {
+        log('failed to init ' + name, err);
+      }
+    });
   }
 
   function register(name, spec) {
