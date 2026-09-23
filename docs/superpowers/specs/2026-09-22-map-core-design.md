@@ -58,10 +58,9 @@ Loaded in this order by `camp/templates/maps/includes/scripts.html` (and by
 | `shell.js` | `Shell(el, name, spec)`: builds the SDK map from the container's `data-*` (key, style, center, zoom, bounds). It attaches the features the spec asks for, turns wheel-zoom on with a click and off when the pointer leaves, and folds the attribution on phones. It runs the module's hooks, and supplies `shell.ticket()` for stale-fetch guards and `shell.setStatus(text)`. Home framing: the module's `home()` if it has one, else the page center/zoom, else `data-bounds`. |
 | `registry.js` | `SJVAirMaps.register(name, spec)` and `SJVAirMaps.init(root)`. It finds containers by `spec.selector` and runs one of two lifecycles: `'adopt'` (one live map per page, adopted in place across htmx swaps, released when no container is left) or `'figure'` (many per page, built lazily when scrolled into view, swept when their container leaves the document, never adopted). It also handles the WebGL fallback, idempotent init (`data-rendered`), and guarding against a second copy of the script after an htmx history restore (the map figure's existing guard). |
 
-`SJVAirMaps.layers.countyOutlines(shell, url, options)` (in `shell.js`) draws the
-covered counties' outlines, with opt-in `hover` (dark outline under the cursor) and
-`frame` (fit to the counties once loaded, with `settle` so loaders can wait for the fit).
-It's the one data layer both explorer maps share.
+`SJVAirMaps.counties.bounds(geojson)` returns `{bySlug, all}` for the covered counties' outlines
+(the one piece of county handling both explorer maps share). Each map keeps its own county layer
+paint and framing: pesticides' framing (per-county fit, valley fit, settleFit) is its own logic.
 
 ### The module interface
 
@@ -91,8 +90,12 @@ SJVAirMaps.register('facility', {
 });
 ```
 
-Every hook is optional. The shell calls `addLayers` after each style load, `load` after
-the first `addLayers`, and `legend` whenever the module calls `shell.updateLegend()`.
+Every hook is optional. The shell calls `load` right after `create` (data set through
+`shell.setSourceData` waits for the style), `addLayers` after every style load, `onChrome(wrap)`
+at build and after every adopt (bind the module's own toolbar/Options controls), `onDropdownOpen()`
+when a toolbar dropdown opens, `onAdopt(changedKeys, oldData)` after an adopt, and `legend(bodyEl)`
+whenever the module calls `shell.updateLegend()`. A spec may also give `mapOptions(el)` (extra SDK
+options, e.g. a figure's own view) and `panelStoragePrefix` (the localStorage prefix for panel folds).
 
 ### What each map keeps
 
@@ -131,7 +134,9 @@ the first `addLayers`, and `legend` whenever the module calls `shell.updateLegen
     filters, if named), then an Options dropdown wrapping `map.options_template` (if
     named), then the Expand button;
   - the status pill;
-  - when `map.features.legend` is on, the Legend card, with an empty body.
+  - when `map.features.legend` is on, the Legend card, with `map.legend_template` (if
+    named) rendered inside its body.
+  - The container also gets the class `map-canvas`, which the shared CSS sizes.
 - **`camp/templates/maps/includes/scripts.html`**: the five core scripts in order.
 - **Pesticides:**
   - `includes/section-map.html` becomes a thin wrapper around the include.
