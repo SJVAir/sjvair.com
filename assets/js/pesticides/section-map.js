@@ -13,10 +13,25 @@
  * A port of the Leaflet map it replaced; the behaviour it is held to is the
  * parity checklist, docs/superpowers/specs/2026-09-21-section-map-inventory.md.
  *
- * Plain ES2017, no framework/bundler, single global side effect: none (IIFE).
+ * Plain ES2017, no framework/bundler; a module on the map core (assets/js/maps/), registered as 'section'.
  */
 (function () {
   'use strict';
+
+  var M = window.SJVAirMaps;
+  if (!M || !M.register) return;
+
+  // The core's helpers (assets/js/maps/core.js), under the names this file
+  // has always used.
+  var TILE_STYLES = M.TILE_STYLES;
+  var styleFor = M.styleFor;
+  var escapeHtml = M.escapeHtml;
+  var EMPTY = M.EMPTY;
+  var logError = M.logger('section-map');
+  var debounce = M.debounce;
+  var extendBounds = M.extendBounds;
+  var geometryBounds = M.geometryBounds;
+  var unionBounds = M.unionBounds;
 
   // At this zoom and closer the map draws square-mile (MTRS) sections; further
   // out it draws the 6x6 mile township grid instead, so there's always a grid.
@@ -82,17 +97,6 @@
   // fetch while the viewport is still inside what we already have, so a pan
   // doesn't rebuild the grid under an open popup.
   var BBOX_PAD = 0.5;
-
-  // A popup is panned clear of the chrome floating over the map (see
-  // panPopupIntoView): the band the toolbar row takes across the top
-  // (10px in, 33px buttons, and a little under them), and the margin kept
-  // from the other edges and the legend panel.
-  var POPUP_CLEAR_TOP = 56;
-  var POPUP_CLEAR_EDGE = 10;
-
-  // Wide enough for the top-chemicals table (narrower on a map that can't
-  // hold it, see popupMaxWidth).
-  var POPUP_MAX_WIDTH = 320;
 
   var LEVEL_TEXT = {
     section: 'Each square is one square-mile section.',
@@ -198,12 +202,6 @@
   // "Fresno County" -> "Fresno", where the label already says county.
   function shortCounty(name) {
     return /\sCounty$/.test(name) ? name.slice(0, -' County'.length) : name;
-  }
-
-  function escapeHtml(value) {
-    var div = document.createElement('div');
-    div.textContent = value == null ? '' : String(value);
-    return div.innerHTML;
   }
 
   // Page URLs come from the container as patterns with `{id}` in them (see
@@ -325,29 +323,6 @@
     };
   }
 
-  // The basemap styles the experiment control offers (?tiles=<id>), each
-  // mapped to its entry in the SDK's style catalogue (a path under
-  // maptilersdk.MapStyle). An id the table doesn't know is handed to the SDK
-  // as is, which reads it as a MapTiler style id.
-  var TILE_STYLES = ['streets', 'basic-v2', 'bright-v2', 'dataviz', 'dataviz-light', 'topo-v2', 'outdoor-v2', 'toner-v2', 'hybrid'];
-  var TILE_STYLE_PATHS = {
-    streets: ['STREETS'],
-    'basic-v2': ['BASIC'],
-    'bright-v2': ['BRIGHT'],
-    dataviz: ['DATAVIZ'],
-    'dataviz-light': ['DATAVIZ', 'LIGHT'],
-    'topo-v2': ['TOPO'],
-    'outdoor-v2': ['OUTDOOR'],
-    'toner-v2': ['TONER'],
-    hybrid: ['HYBRID'],
-  };
-  function styleFor(id) {
-    var path = TILE_STYLE_PATHS[id];
-    var style = path ? maptilersdk.MapStyle : null;
-    for (var i = 0; style && i < path.length; i++) style = style[path[i]];
-    return style || id;
-  }
-
   var COUNTY_COLOR = '#1f2d3d';
   // The page's own region (a city, ZIP, or place), in the notices orange.
   var OUTLINE_COLOR = '#d35400';
@@ -360,8 +335,6 @@
   var RADIUS_COLOR = '#3388ff';
   // How many vertices approximate the radius circle.
   var RADIUS_CIRCLE_POINTS = 64;
-  // The reader's own position after a locate: a small blue dot ringed white.
-  var LOCATE_COLOR = '#3273dc';
 
   // -- markers --
   // Orange is the notices colour throughout the explorer (the tab icon, the
@@ -388,7 +361,7 @@
   var NOTICE_MARKER = { radius: 8, opacity: 0.9, stroke: 1.5 };
   var LOCATION_MARKER = { radius: 5, opacity: 0.95, stroke: 1.5 };
   // An invisible disc under each marker, wide enough for a finger, that
-  // takes the marker's hover and click (see addBaseLayers, bindMarkerEvents).
+  // takes the marker's hover and click (see addLayers, bindMarkerEvents).
   var MARKER_HIT_RADIUS = 12;
   // Markers are points, not a grid: further out than this the viewport holds
   // thousands of them, so the layer stays off and the legend says why.
@@ -408,8 +381,6 @@
   var BLOCK_MILES = 1.5;
   var BLOCK_METERS = 2414;
   var SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/';
-
-  var EMPTY = { type: 'FeatureCollection', features: [] };
 
   // The page's own region reads badly as a thin line over a dense grid, so
   // everything outside it is washed out: a polygon covering the world with
@@ -434,44 +405,6 @@
       properties: {},
       geometry: { type: 'Polygon', coordinates: [WORLD_RING].concat(rings) },
     };
-  }
-
-  var PHONE_QUERY = '(max-width: 768px)';
-  function isPhone() {
-    try {
-      return !!window.matchMedia && window.matchMedia(PHONE_QUERY).matches;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  function prefersReducedMotion() {
-    try {
-      return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  // The SDK draws on WebGL; without it there's no map to make, and the page
-  // says so in the container instead (see showUnavailable). Checked once:
-  // the probe makes a throwaway GL context, and init() runs on every swap.
-  var webglSupport = null;
-  function webglAvailable() {
-    if (webglSupport === null) {
-      try {
-        var canvas = document.createElement('canvas');
-        webglSupport = !!(window.WebGLRenderingContext && (canvas.getContext('webgl2') || canvas.getContext('webgl')));
-      } catch (err) {
-        webglSupport = false;
-      }
-    }
-    return webglSupport;
-  }
-
-  function showUnavailable(el) {
-    el.classList.add('is-unavailable');
-    el.innerHTML = '<p class="section-map-note">This map needs WebGL, which this browser has turned off or doesn\'t support.</p>';
   }
 
   function milesToMeters(miles) {
@@ -510,66 +443,12 @@
     return !!err && err.name === 'AbortError';
   }
 
-  function logError(message, err) {
-    if (window.console && console.error) console.error('section-map: ' + message, err);
-  }
-
-  function debounce(fn, wait) {
-    var timer = null;
-    return function () {
-      var args = arguments;
-      var ctx = this;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(function () {
-        timer = null;
-        fn.apply(ctx, args);
-      }, wait);
-    };
-  }
-
   // -- geometry --
   // Data attributes and the Leaflet-era helpers speak "lat,lng"; the SDK
   // speaks [lng, lat]. Bounds are [[west, south], [east, north]].
 
   function lngLatOf(latlng) {
     return [latlng[1], latlng[0]];
-  }
-
-  function extendBounds(bounds, coordinates) {
-    if (typeof coordinates[0] === 'number') {
-      if (coordinates[0] < bounds[0][0]) bounds[0][0] = coordinates[0];
-      if (coordinates[0] > bounds[1][0]) bounds[1][0] = coordinates[0];
-      if (coordinates[1] < bounds[0][1]) bounds[0][1] = coordinates[1];
-      if (coordinates[1] > bounds[1][1]) bounds[1][1] = coordinates[1];
-      return;
-    }
-    for (var i = 0; i < coordinates.length; i++) extendBounds(bounds, coordinates[i]);
-  }
-
-  // The bounding box of a GeoJSON geometry, feature, or feature collection;
-  // null for nothing (an empty collection, a null geometry).
-  function geometryBounds(geojson) {
-    if (!geojson) return null;
-    var bounds = [[Infinity, Infinity], [-Infinity, -Infinity]];
-    var items = geojson.type === 'FeatureCollection' ? geojson.features : [geojson];
-    for (var i = 0; i < items.length; i++) {
-      var geometry = items[i].type === 'Feature' ? items[i].geometry : items[i];
-      if (!geometry) continue;
-      var parts = geometry.type === 'GeometryCollection' ? geometry.geometries : [geometry];
-      for (var j = 0; j < parts.length; j++) {
-        if (parts[j] && parts[j].coordinates) extendBounds(bounds, parts[j].coordinates);
-      }
-    }
-    return bounds[0][0] === Infinity ? null : bounds;
-  }
-
-  function unionBounds(a, b) {
-    if (!a) return b;
-    if (!b) return a;
-    return [
-      [Math.min(a[0][0], b[0][0]), Math.min(a[0][1], b[0][1])],
-      [Math.max(a[1][0], b[1][0]), Math.max(a[1][1], b[1][1])],
-    ];
   }
 
   // Bounds are [[west, south], [east, north]], which the SDK takes as is.
@@ -702,48 +581,19 @@
     };
   }
 
-  // -- controls --
-  // Locate and Reset as SDK controls: one bar each, stacked under the zoom
-  // buttons, in the SDK's control idiom with the Leaflet markup inside
-  // (an anchor acting as a button, an icon, a title and label).
-  function BarControl(className, label, icon, onClick) {
-    this.className = className;
-    this.label = label;
-    this.icon = icon;
-    this.onClick = onClick;
-  }
-
-  BarControl.prototype.onAdd = function () {
-    var self = this;
-    var container = document.createElement('div');
-    container.className = 'maplibregl-ctrl maplibregl-ctrl-group ' + this.className;
-    var link = document.createElement('a');
-    link.href = '#';
-    link.setAttribute('role', 'button');
-    link.setAttribute('title', this.label);
-    link.setAttribute('aria-label', this.label);
-    link.innerHTML = '<span class="' + this.icon + '" aria-hidden="true"></span>';
-    link.addEventListener('click', function (event) {
-      event.preventDefault();
-      // A click on the control isn't a click on the map (it would switch
-      // wheel-zoom on, see enableScrollZoom).
-      event.stopPropagation();
-      self.onClick();
-    });
-    container.appendChild(link);
-    this.container = container;
-    return container;
-  };
-
-  BarControl.prototype.onRemove = function () {
-    if (this.container && this.container.parentNode) this.container.parentNode.removeChild(this.container);
-    this.container = null;
-  };
-
-  function SectionMap(el) {
-    this.el = el;
-    this.data = el.dataset;
-    this.reducedMotion = prefersReducedMotion();
+  function SectionMap(shell) {
+    this.shell = shell;
+    this.el = shell.el;
+    // The container's live dataset: an adopt moves this same element into
+    // the new page and rewrites its attributes, so this stays current.
+    this.data = shell.data;
+    this.map = shell.map;
+    // The shell's, so a style swap's re-add (ensureSource) and the smoke
+    // script both see what this map set.
+    this.sourceData = shell.sourceData;
+    this.reducedMotion = shell.reducedMotion;
+    this.defaultTileStyle = this.data.style || 'dataviz';
+    this.tileStyle = shell.tileStyle;
     // ?metric=applications and ?notices=1|0 preselect a view, so a link can
     // share it; the toggles write them back (see syncViewParams).
     var metricMatch = /[?&]metric=(lbs_chemical|applications)/.exec(window.location.search || '');
@@ -762,9 +612,6 @@
     this.showAllSections = /[?&]sections=1/.test(window.location.search || '');
     // Only one grid is ever on the map at a time; `level` says which one.
     this.level = 'section';
-    // The GeoJSON behind each of our sources, kept here so a style swap
-    // (which empties the style of our layers) can put it all back.
-    this.sourceData = {};
     this.counties = null;
     this.countyBounds = {};
     this.valleyBounds = null;
@@ -785,7 +632,7 @@
     this.loadedLocationBounds = null;
     // What each family's request in flight covers (the grid's level and
     // bounds; bounds for the markers), so a second call while it's in the
-    // air (the moveend a resize fires, see adopt) doesn't start the same
+    // air (the moveend a resize fires, see onAdopt) doesn't start the same
     // request over. Cleared when the request lands, whichever way.
     this.gridRequest = null;
     this.noticesRequest = null;
@@ -850,123 +697,37 @@
     this.controlsEl = null;
     this.legendEl = null;
     this.levelEl = null;
-    this.statusEl = null;
 
-    this.init();
+    // For debugging from the console: document.querySelector('.section-map').sectionMap
+    this.el.sectionMap = this;
   }
 
-  // The controls, legend, and level note live beside the map container, so
-  // they are re-found (and re-wired) whenever the container gets a new home.
-  SectionMap.prototype.attachControls = function () {
-    var wrap = this.el.closest('.section-map-wrap') || this.el.parentNode;
-    this.wrapEl = wrap;
-    this.toolbarEl = wrap.querySelector('.section-map-toolbar');
+  // The chrome is the shell's (assets/js/maps/chrome.js); these keep the
+  // names the drawing code and the smoke script use.
+  Object.defineProperties(SectionMap.prototype, {
+    loaded: { get: function () { return this.shell.loaded; } },
+    wrapEl: { get: function () { return this.shell.wrap; } },
+    toolbarEl: { get: function () { return this.shell.toolbarEl; } },
+    legendPanelEl: { get: function () { return this.shell.legendPanelEl; } },
+    statusEl: { get: function () { return this.shell.statusEl; } },
+  });
+
+  // The module's own controls, in the chrome the shell has just bound: the
+  // Options menu (metric, layer toggles, experiment selects), the legend
+  // body's elements, and the filter form's view params. Runs at build and
+  // after every adopt (the swap brings new elements).
+  SectionMap.prototype.onChrome = function (wrap) {
+    var self = this;
     this.controlsEl = wrap.querySelector('.section-map-controls');
-    this.legendPanelEl = wrap.querySelector('.section-map-legend-panel');
     this.legendEl = wrap.querySelector('.section-map-legend');
     this.levelEl = wrap.querySelector('.section-map-level');
-    this.statusEl = wrap.querySelector('.section-map-status');
-
-    if (this.toolbarEl) this.toolbarEl.hidden = false;
-    if (this.legendPanelEl) this.legendPanelEl.hidden = false;
-
-    if (this.controlsEl) {
-      var radios = this.controlsEl.querySelectorAll('input[name="metric"]');
-      for (var i = 0; i < radios.length; i++) {
-        radios[i].checked = radios[i].value === this.metric;
-        radios[i].addEventListener('change', this.onMetricChange.bind(this));
-      }
-
-      var noticesToggle = this.controlsEl.querySelector('input[name="notices"]');
-      if (noticesToggle) {
-        noticesToggle.checked = this.showNotices;
-        noticesToggle.addEventListener('change', this.onNoticesToggle.bind(this));
-      }
-
-      var locationsToggle = this.controlsEl.querySelector('input[name="locations"]');
-      if (locationsToggle) {
-        locationsToggle.checked = this.showLocations;
-        locationsToggle.addEventListener('change', this.onLocationsToggle.bind(this));
-      }
-
-      // Experiment controls: basemap style and colour ramp, applied live and
-      // written to the URL (?tiles=, ?ramp=) so a combination can be linked.
-      var tilesSelect = this.controlsEl.querySelector('select[name="tiles"]');
-      if (tilesSelect) {
-        TILE_STYLES.forEach(function (style) {
-          var option = document.createElement('option');
-          option.value = style;
-          option.textContent = style;
-          tilesSelect.appendChild(option);
-        });
-        tilesSelect.value = this.tileStyle;
-        tilesSelect.addEventListener('change', this.onTilesChange.bind(this));
-      }
-      var rampSelect = this.controlsEl.querySelector('select[name="ramp"]');
-      if (rampSelect) {
-        Object.keys(RAMPS).forEach(function (name) {
-          var option = document.createElement('option');
-          option.value = name;
-          option.textContent = name;
-          rampSelect.appendChild(option);
-        });
-        rampSelect.value = rampMatch && RAMPS[rampMatch[1]] ? rampMatch[1] : 'blues';
-        rampSelect.addEventListener('change', this.onRampChange.bind(this));
-      }
-      var binsSelect = this.controlsEl.querySelector('select[name="bins"]');
-      if (binsSelect) {
-        BIN_OPTIONS.forEach(function (pair) {
-          var option = document.createElement('option');
-          option.value = pair[0];
-          option.textContent = pair[1] + ' (' + pair[0] + ')';
-          binsSelect.appendChild(option);
-        });
-        binsSelect.value = NUM_CLASSES;
-        binsSelect.addEventListener('change', this.onBinsChange.bind(this));
-      }
-
-      var sectionsToggle = this.controlsEl.querySelector('input[name="sections"]');
-      if (sectionsToggle) {
-        sectionsToggle.checked = this.showAllSections;
-        sectionsToggle.addEventListener('change', this.onSectionsToggle.bind(this));
-      }
-    }
-    var expand = wrap.querySelector('.section-map-expand');
-    if (expand && !expand.getAttribute('data-bound')) {
-      expand.setAttribute('data-bound', '1');
-      expand.addEventListener('click', this.toggleExpanded.bind(this));
-    }
-    this.bindPanelToggles(wrap);
-    this.bindToolbar(wrap);
-    this.setExpanded(!!this.expanded);
-  };
-
-  // The filter toolbar's dropdowns: a click on a trigger opens its menu
-  // (and focuses the picker's search box), a click anywhere else or Escape
-  // closes them. The triggers are bound once per toolbar element (a
-  // swapped-in toolbar is a new element and gets bound again); the
-  // document-level closers are bound once per map and act on whichever
-  // toolbar is current, so swaps don't pile up listeners.
-  SectionMap.prototype.bindToolbar = function (wrap) {
-    var self = this;
-    if (!this.toolbarClickHandler) {
-      this.toolbarClickHandler = function () { self.closeToolbarDropdowns(null); };
-      this.toolbarKeyHandler = function (event) {
-        if (event.key === 'Escape') self.closeToolbarDropdowns(null);
-      };
-      document.addEventListener('click', this.toolbarClickHandler);
-      document.addEventListener('keydown', this.toolbarKeyHandler);
-    }
-    var toolbar = wrap.querySelector('.section-map-toolbar');
-    if (!toolbar || toolbar.getAttribute('data-bound')) return;
-    toolbar.setAttribute('data-bound', '1');
-    var dropdowns = toolbar.querySelectorAll('.dropdown');
 
     // The filter form only knows its own fields; the map's view settings
     // (metric, notices, all sections) ride along so the URL it lands on
     // still says how the map is being viewed.
-    var form = toolbar.querySelector('.section-map-toolbar-filters');
-    if (form) {
+    var form = wrap.querySelector('.map-toolbar-filters');
+    if (form && !form.getAttribute('data-view-bound')) {
+      form.setAttribute('data-view-bound', '1');
       form.addEventListener('htmx:configRequest', function (event) {
         var params = event.detail.parameters;
         if (self.metric !== 'lbs_chemical') params.metric = self.metric;
@@ -976,170 +737,63 @@
       });
     }
 
-    for (var i = 0; i < dropdowns.length; i++) {
-      (function (dropdown) {
-        var trigger = dropdown.querySelector('.dropdown-trigger .button');
-        if (!trigger) return;
-        trigger.addEventListener('click', function (event) {
-          event.stopPropagation();
-          var open = !dropdown.classList.contains('is-active');
-          self.closeToolbarDropdowns(dropdown);
-          dropdown.classList.toggle('is-active', open);
-          trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-          if (open) {
-            // The menu drops over the map; a popup under it is let go of.
-            if (self.popup) self.popup.remove();
-            var focusable = dropdown.querySelector('input[type="search"], select');
-            if (focusable) focusable.focus();
-          }
+    if (this.controlsEl) {
+      var controls = this.controlsEl;
+      Array.prototype.forEach.call(controls.querySelectorAll('input[name="metric"]'), function (radio) {
+        radio.addEventListener('change', self.onMetricChange.bind(self));
+      });
+      var bindChange = function (selector, handler) {
+        var input = controls.querySelector(selector);
+        if (input) input.addEventListener('change', handler.bind(self));
+        return input;
+      };
+      bindChange('input[name="notices"]', this.onNoticesToggle);
+      bindChange('input[name="locations"]', this.onLocationsToggle);
+      bindChange('input[name="sections"]', this.onSectionsToggle);
+      // Experiment controls: basemap style, colour ramp and bins, applied
+      // live and written to the URL (?tiles=, ?ramp=, ?bins=).
+      var fill = function (select, pairs) {
+        pairs.forEach(function (pair) {
+          var option = document.createElement('option');
+          option.value = pair[0];
+          option.textContent = pair[1];
+          select.appendChild(option);
         });
-        // Clicks inside the menu (typing, picking) shouldn't close it.
-        var menu = dropdown.querySelector('.dropdown-menu');
-        if (menu) menu.addEventListener('click', function (event) { event.stopPropagation(); });
-      })(dropdowns[i]);
-    }
-  };
-
-  // Closes the current toolbar's dropdowns, all but `except`.
-  SectionMap.prototype.closeToolbarDropdowns = function (except) {
-    if (!this.toolbarEl) return;
-    var dropdowns = this.toolbarEl.querySelectorAll('.dropdown');
-    for (var i = 0; i < dropdowns.length; i++) {
-      if (dropdowns[i] === except) continue;
-      dropdowns[i].classList.remove('is-active');
-      var trigger = dropdowns[i].querySelector('.dropdown-trigger .button');
-      if (trigger) trigger.setAttribute('aria-expanded', 'false');
-    }
-  };
-
-  // The options and legend panels fold to their header. The fold is a
-  // per-viewer convenience kept in localStorage, so it's wrapped: storage
-  // can be absent or throw, and the panels must work regardless.
-  var PANEL_STORAGE_PREFIX = 'pesticides:section-map:panel:';
-
-  // The stored fold (true = collapsed), or null where nothing is stored.
-  function readPanelState(name) {
-    try {
-      var stored = window.localStorage.getItem(PANEL_STORAGE_PREFIX + name);
-      return stored === null ? null : stored === 'collapsed';
-    } catch (err) {
-      return null;
-    }
-  }
-
-  function writePanelState(name, collapsed) {
-    try {
-      window.localStorage.setItem(PANEL_STORAGE_PREFIX + name, collapsed ? 'collapsed' : 'open');
-    } catch (err) {
-      // Nothing to do: the fold just won't be remembered.
-    }
-  }
-
-  SectionMap.prototype.bindPanelToggles = function (wrap) {
-    var panels = wrap.querySelectorAll('.section-map-panel[data-panel]');
-    for (var i = 0; i < panels.length; i++) {
-      // Until the reader has folded a panel themselves, it starts open on
-      // a desktop and folded on a phone, where it would cover the map.
-      var stored = readPanelState(panels[i].getAttribute('data-panel'));
-      this.setPanelCollapsed(panels[i], stored === null ? isPhone() : stored);
-      var toggle = panels[i].querySelector('.section-map-panel-toggle');
-      if (!toggle || toggle.getAttribute('data-bound')) continue;
-      toggle.setAttribute('data-bound', '1');
-      toggle.addEventListener('click', this.onPanelToggle.bind(this, panels[i]));
-    }
-  };
-
-  SectionMap.prototype.onPanelToggle = function (panel) {
-    var collapsed = !panel.classList.contains('is-collapsed');
-    this.setPanelCollapsed(panel, collapsed);
-    writePanelState(panel.getAttribute('data-panel'), collapsed);
-  };
-
-  SectionMap.prototype.setPanelCollapsed = function (panel, collapsed) {
-    panel.classList.toggle('is-collapsed', collapsed);
-    var toggle = panel.querySelector('.section-map-panel-toggle');
-    if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-  };
-
-  // The expanded map starts exactly where the navbar ends, measured rather
-  // than assumed: the navbar's height varies by a pixel with its contents,
-  // and a guess a pixel short shows the hero through the gap.
-  SectionMap.prototype.fitBelowNavbar = function () {
-    if (!this.wrapEl) return;
-    // The wrap carries a 1px border in the navbar's colour and starts 1px
-    // above the navbar's measured bottom, so the two borders coincide:
-    // whatever fraction of a pixel the navbar ends on, the reader sees one
-    // grey line and never a sliver of the page beneath.
-    var nav = document.querySelector('nav.navbar');
-    var bottom = nav ? nav.getBoundingClientRect().bottom : 0;
-    // The explorer's scope bar (year and county pickers) stays in view,
-    // pinned under the navbar, so the scope can still be changed; the map
-    // starts under it.
-    var scopeBar = document.querySelector('.explorer-scope-bar');
-    if (scopeBar) {
-      scopeBar.style.top = Math.max(0, bottom) + 'px';
-      bottom = scopeBar.getBoundingClientRect().bottom;
-    }
-    this.wrapEl.style.top = Math.max(0, bottom - 1) + 'px';
-  };
-
-  // Expanded, the map fills the viewport under the site navbar; the panels
-  // over it are what keep it usable there. Escape brings the page back.
-  SectionMap.prototype.toggleExpanded = function () {
-    this.setExpanded(!this.expanded);
-  };
-
-  SectionMap.prototype.setExpanded = function (on) {
-    var self = this;
-    var was = !!this.expanded;
-    this.expanded = on;
-    // The site navbar isn't fixed, so the expanded map sits below it only
-    // while the page is scrolled to the top: go there on the way in, and
-    // come back to where the reader was on the way out.
-    if (on && !was) {
-      this.scrollBeforeExpand = window.scrollY || window.pageYOffset || 0;
-      window.scrollTo(0, 0);
-    }
-    // The html class first: it pins the scope bar, and fitBelowNavbar
-    // measures the pinned bar to place the map under it.
-    document.documentElement.classList.toggle('section-map-expanded', on);
-    if (this.wrapEl) {
-      this.wrapEl.classList.toggle('is-expanded', on);
-      if (on) {
-        this.fitBelowNavbar();
-      } else {
-        this.wrapEl.style.top = '';
-        var scopeBar = document.querySelector('.explorer-scope-bar');
-        if (scopeBar) scopeBar.style.top = '';
-      }
-    }
-    if (!on && was) {
-      window.scrollTo(0, this.scrollBeforeExpand || 0);
-    }
-    if (!this.resizeHandler) {
-      this.resizeHandler = function () {
-        if (self.expanded) self.fitBelowNavbar();
       };
+      var tiles = bindChange('select[name="tiles"]', this.onTilesChange);
+      if (tiles) fill(tiles, TILE_STYLES.map(function (style) { return [style, style]; }));
+      var ramp = bindChange('select[name="ramp"]', this.onRampChange);
+      if (ramp) fill(ramp, Object.keys(RAMPS).map(function (name) { return [name, name]; }));
+      var bins = bindChange('select[name="bins"]', this.onBinsChange);
+      if (bins) fill(bins, BIN_OPTIONS.map(function (pair) { return [pair[0], pair[1] + ' (' + pair[0] + ')']; }));
     }
-    window.removeEventListener('resize', this.resizeHandler);
-    if (on) window.addEventListener('resize', this.resizeHandler);
-    var button = this.wrapEl ? this.wrapEl.querySelector('.section-map-expand') : null;
-    if (button) {
-      button.setAttribute('aria-pressed', on ? 'true' : 'false');
-      button.setAttribute('title', on ? 'Back to the page' : 'Expand the map');
-      button.setAttribute('aria-label', on ? 'Back to the page' : 'Expand the map');
-    }
-    if (!this.escapeHandler) {
-      this.escapeHandler = function (event) {
-        if (event.key === 'Escape' && self.expanded) self.setExpanded(false);
-      };
-    }
-    document.removeEventListener('keydown', this.escapeHandler);
-    if (on) document.addEventListener('keydown', this.escapeHandler);
-    // The container changed size. The SDK watches it, but resizing here,
-    // once the new layout has applied, means the moveend that follows
-    // measures the new size and fills in the wider grid straight away.
-    setTimeout(function () { if (self.map) self.map.resize(); }, 0);
+    this.syncControls();
+  };
+
+  // Puts the Options controls in line with this map's view: after a bind,
+  // and after an adopt that changed a default (see onAdopt).
+  SectionMap.prototype.syncControls = function () {
+    if (!this.controlsEl) return;
+    var controls = this.controlsEl;
+    var metric = this.metric;
+    Array.prototype.forEach.call(controls.querySelectorAll('input[name="metric"]'), function (radio) {
+      radio.checked = radio.value === metric;
+    });
+    var set = function (selector, prop, value) {
+      var input = controls.querySelector(selector);
+      if (input) input[prop] = value;
+    };
+    set('input[name="notices"]', 'checked', this.showNotices);
+    set('input[name="locations"]', 'checked', this.showLocations);
+    set('input[name="sections"]', 'checked', this.showAllSections);
+    set('select[name="tiles"]', 'value', this.tileStyle);
+    set('select[name="ramp"]', 'value', this.rampName);
+    set('select[name="bins"]', 'value', String(this.bins));
+  };
+
+  // A toolbar dropdown opened over the map: let go of the popup under it.
+  SectionMap.prototype.onDropdownOpen = function () {
+    if (this.popup) this.popup.remove();
   };
 
   SectionMap.prototype.onSectionsToggle = function (event) {
@@ -1181,51 +835,11 @@
     this.updateLegend();
   };
 
-  SectionMap.prototype.init = function () {
+  // Fetch and draw: the shell has built the map, its controls and chrome.
+  SectionMap.prototype.load = function () {
     var self = this;
-    // ?tiles=<style> swaps the basemap style while we pick one; known before
-    // the controls bind so the select shows it.
-    var tilesMatch = /[?&]tiles=([a-z0-9-]+)/.exec(window.location.search || '');
-    this.defaultTileStyle = this.data.style || 'dataviz';
-    this.tileStyle = tilesMatch ? tilesMatch[1] : this.defaultTileStyle;
-    this.attachControls();
-
     var center = this.parseCenter(this.data.center) || [36.75, -119.80];
-    var zoom = parseInt(this.data.zoom, 10) || 8;
 
-    maptilersdk.config.apiKey = this.data.maptilerKey || '';
-    this.map = new maptilersdk.Map({
-      container: this.el,
-      style: styleFor(this.tileStyle),
-      center: lngLatOf(center),
-      zoom: zoom,
-      // The zoom buttons are added below, ahead of our own controls; the
-      // SDK's other default furniture is either ours (locate) or unwanted.
-      navigationControl: false,
-      geolocateControl: false,
-      terrainControl: false,
-      // Wheel-zoom is off by default so the map doesn't hijack page scrolling
-      // on long pages; enabled only while the map has focus/is being
-      // interacted with directly (see enableScrollZoom).
-      scrollZoom: false,
-      // Flat and north-up, like the Leaflet map: no pitch, no rotation.
-      pitchWithRotate: false,
-      dragRotate: false,
-      touchPitch: false,
-      // The attribution folds to an (i) button only on a narrow map; the
-      // MapTiler logo, where the key calls for one, joins it bottom-right.
-      attributionControl: { compact: 'auto' },
-      logoPosition: 'bottom-right',
-    });
-    this.map.touchZoomRotate.disableRotation();
-    this.map.keyboard.disableRotation();
-    // For debugging from the console: document.querySelector('.section-map').sectionMap
-    this.el.sectionMap = this;
-
-    this.el.addEventListener('click', this.enableScrollZoom.bind(this));
-    this.el.addEventListener('focus', this.enableScrollZoom.bind(this), true);
-    this.el.addEventListener('mouseleave', this.disableScrollZoom.bind(this));
-    this.el.addEventListener('blur', this.disableScrollZoom.bind(this), true);
     // Escape closes the open popup, as Leaflet's did (closeOnEscapeKey);
     // the SDK's popup only closes from its button. Removing it is the
     // reader letting go (see the popup's close handler in openPopup).
@@ -1237,26 +851,6 @@
     // the click as taken before the grid's sees it.
     this.bindMarkerEvents();
     this.bindGridEvents();
-
-    // Our sources and layers are part of the style, so a style swap (the
-    // tiles select) starts from a style without them; they're put back from
-    // the data kept on this instance whenever a style has loaded, the first
-    // time included. Until then setSourceData just keeps the data, and the
-    // camera takes fits and moves straight away, so nothing below waits.
-    this.map.on('style.load', this.onStyleLoad.bind(this));
-    this.map.once('load', function () {
-      self.loaded = true;
-      self.collapseAttribution();
-    });
-
-    // Zoom buttons first, then ours under them. The SDK adds its own
-    // navigation control after the first render, which would have put it
-    // below controls added here; adding it ourselves keeps the Leaflet
-    // order, and leaves out the compass, which has nothing to do on a map
-    // that can't rotate.
-    this.map.addControl(new maptilersdk.NavigationControl({ showCompass: false }), 'top-left');
-    this.addLocateControl();
-    this.addResetControl();
 
     this.drawRadius(center);
 
@@ -1282,50 +876,22 @@
     this.loadLocations();
   };
 
-  SectionMap.prototype.onStyleLoad = function () {
-    this.addBaseLayers();
-  };
-
-  // The SDK's attribution goes compact on a narrow map (an (i) button that
-  // opens the text) but starts expanded until the first move; on a phone
-  // it starts folded instead, out of the legend's way.
-  SectionMap.prototype.collapseAttribution = function () {
-    if (!this.map) return;
-    var attrib = this.el.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact');
-    if (attrib && attrib.classList.contains('maplibregl-compact-show')) {
-      // As the SDK's own toggle folds it.
-      attrib.classList.remove('maplibregl-compact-show');
-      attrib.setAttribute('open', '');
-    }
-  };
-
   // -- sources and layers --
 
   // GeoJSON sources are keyed on our own feature ids (`promoteId`), so
   // feature state (hover, selection) can address them by id.
-  SectionMap.prototype.ensureSource = function (id) {
-    if (this.map.getSource(id)) return;
-    this.map.addSource(id, { type: 'geojson', data: this.sourceData[id] || EMPTY, promoteId: 'id' });
-  };
+  SectionMap.prototype.ensureSource = function (id) { this.shell.ensureSource(id); };
 
   // Added on top of the whole basemap, labels included: the reader is here
   // for the data, and a place name or a road drawn over a shaded section
   // competes with it. The basemap still shows through everywhere the data
   // doesn't cover.
-  SectionMap.prototype.ensureLayer = function (spec) {
-    if (this.map.getLayer(spec.id)) return;
-    this.map.addLayer(spec);
-  };
+  SectionMap.prototype.ensureLayer = function (spec) { this.shell.ensureLayer(spec); };
 
   // Sets a source's data, remembering it for the next style load; before
   // the style is up the data just waits there for ensureSource. Nothing
   // to keep once the map is gone (a late response after destroy()).
-  SectionMap.prototype.setSourceData = function (id, data) {
-    if (!this.map) return;
-    this.sourceData[id] = data;
-    var source = this.map.getSource(id);
-    if (source) source.setData(data);
-  };
+  SectionMap.prototype.setSourceData = function (id, data) { this.shell.setSourceData(id, data); };
 
   // Our sources and their layers, bottom to top, all under the basemap's
   // labels: the fills (the radius circle, the grid, the sections drawn
@@ -1333,11 +899,11 @@
   // the page's own outline's wash), then the lines (the grids' strokes,
   // the hovered township's outline over the lens, the selected and
   // highlighted sections' outlines, the county lines, the page's own
-  // outline), the school and child care markers, the notice markers, and
-  // last the reader's located position (`locate`/`locate-circle`), which
-  // stays on top of every marker.
+  // outline), the school and child care markers, the notice markers; the
+  // shell adds the reader's located position (`locate`/`locate-circle`)
+  // after these, so it stays on top of every marker.
   // Idempotent, so it can run on every style load.
-  SectionMap.prototype.addBaseLayers = function () {
+  SectionMap.prototype.addLayers = function () {
     this.ensureSource('radius');
     this.ensureSource('grid');
     this.ensureSource('all-sections');
@@ -1350,7 +916,6 @@
     this.ensureSource('outline-mask');
     this.ensureSource('locations');
     this.ensureSource('notices');
-    this.ensureSource('locate');
 
     this.ensureLayer({
       id: 'radius-fill', type: 'fill', source: 'radius',
@@ -1474,15 +1039,6 @@
         'circle-stroke-width': NOTICE_MARKER.stroke,
       },
     });
-    this.ensureLayer({
-      id: 'locate-circle', type: 'circle', source: 'locate',
-      paint: {
-        'circle-radius': 6,
-        'circle-color': LOCATE_COLOR,
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 2,
-      },
-    });
     this.applyGridPaint();
     // Feature state (hover, the lens hosts) didn't survive a style swap:
     // forget the hovers (the next pointer move sets them again) and put
@@ -1492,69 +1048,21 @@
     if (this.lensHosts) this.setHostFills(false);
   };
 
-  // A locate button under the zoom buttons: zooms to the reader's square
-  // mile and selects it (popup and outline), with a dot at their position.
-  SectionMap.prototype.addLocateControl = function () {
-    if (!navigator.geolocation) return;
-    var self = this;
-    this.locateControl = new BarControl('section-map-locate', 'Zoom to my location', 'fa-regular fa-location-crosshairs', function () {
-      self.locate();
-    });
-    this.map.addControl(this.locateControl, 'top-left');
-    this.locateEl = this.locateControl.container;
-  };
-
-  // A reset button under the locate button: back out to the map's home
-  // framing (the whole valley, or the filtered county).
-  SectionMap.prototype.addResetControl = function () {
-    var self = this;
-    this.resetControl = new BarControl('section-map-reset', 'Zoom out to the whole map', 'fa-regular fa-house', function () {
-      self.resetView();
-    });
-    this.map.addControl(this.resetControl, 'top-left');
-  };
-
-  SectionMap.prototype.resetView = function () {
-    // Home goes back to what the page is about: its own region when it has
-    // one (the counties around it are context, not the subject), then its
-    // county, then the whole valley.
+  // Home goes back to what the page is about: its own region when it has
+  // one (the counties around it are context, not the subject), then its
+  // county, then the whole valley; before the counties load, the shell's
+  // fallback (the page's centre and zoom).
+  SectionMap.prototype.home = function () {
     var bounds = this.outlineBounds || this.countyBounds[this.data.county] || this.valleyBounds;
-    if (bounds) {
-      this.map.fitBounds(bounds, { padding: this.outlineBounds ? 24 : 20, animate: !this.reducedMotion });
-    } else {
-      this.map.easeTo({
-        center: lngLatOf(this.parseCenter(this.data.center) || [36.75, -119.80]),
-        zoom: parseInt(this.data.zoom, 10) || 8,
-        animate: !this.reducedMotion,
-      });
-    }
+    return bounds ? { bounds: bounds, padding: this.outlineBounds ? 24 : 20 } : null;
   };
 
-  SectionMap.prototype.locate = function () {
-    var self = this;
-    if (this.locateEl) this.locateEl.classList.add('is-locating');
-    this.setStatus('Finding your location…');
-    navigator.geolocation.getCurrentPosition(function (position) {
-      self.showLocation([position.coords.latitude, position.coords.longitude]);
-    }, function () {
-      if (self.locateEl) self.locateEl.classList.remove('is-locating');
-      self.setStatus('Couldn\'t get your location');
-    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
-  };
-
-  SectionMap.prototype.showLocation = function (latlng) {
-    if (!this.map) return;
-    if (this.locateEl) this.locateEl.classList.remove('is-locating');
-    this.setStatus('');
-    this.setSourceData('locate', {
-      type: 'Feature',
-      properties: { id: 'me' },
-      geometry: { type: 'Point', coordinates: lngLatOf(latlng) },
-    });
-    // Selecting the section has to wait for the section grid to be on the
-    // map at this spot; the grid's render calls resolvePendingLocate when it is.
-    this.pendingLocate = latlng;
-    this.map.easeTo({ center: lngLatOf(latlng), zoom: this.sectionZoom(), animate: !this.reducedMotion });
+  // The shell has found the reader and dropped the dot; zoom to their
+  // square mile and select it once the section grid is on the map there
+  // (the grid's render calls resolvePendingLocate).
+  SectionMap.prototype.onLocate = function (lngLat) {
+    this.pendingLocate = [lngLat[1], lngLat[0]];
+    this.map.easeTo({ center: lngLat, zoom: this.sectionZoom(), animate: !this.reducedMotion });
     this.resolvePendingLocate();
   };
 
@@ -1572,31 +1080,18 @@
   // Keys whose change means the data on the map is different.
   var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'concern'];
 
-  // Take over a freshly rendered container (an htmx swap put a new page in
-  // place): move this live map into its slot, read its data attributes, and
-  // refetch only what changed. Keeping the map instance avoids the flash of
-  // tearing the map down and reloading its basemap on every filter change.
-  SectionMap.prototype.adopt = function (newEl) {
-    var oldData = {};
-    var key;
-    for (key in this.el.dataset) oldData[key] = this.el.dataset[key];
-    var newData = {};
-    for (key in newEl.dataset) newData[key] = newEl.dataset[key];
-
-    newEl.parentNode.replaceChild(this.el, newEl);
-    for (key in oldData) {
-      if (!(key in newData) && key !== 'rendered') delete this.el.dataset[key];
-    }
-    for (key in newData) this.el.dataset[key] = newData[key];
-    this.el.dataset.rendered = '1';
-    this.el.id = newEl.id;
+  // An htmx swap handed this map a new container (the shell has moved the
+  // map into it, taken its data attributes and bound its chrome): follow
+  // the page's defaults and refetch only what changed.
+  SectionMap.prototype.onAdopt = function (changed) {
+    var has = function (key) { return changed.indexOf(key) !== -1; };
 
     // A swap to a different page brings its own notices default with it;
     // adopt it so the checkbox and the layer agree with the page the reader
     // is now on. An unchanged attribute leaves their own toggle alone.
-    var noticesDefaultChanged = (oldData.showNotices || '') !== (newData.showNotices || '');
+    var noticesDefaultChanged = has('showNotices');
     if (noticesDefaultChanged) {
-      this.showNotices = newData.showNotices !== '0';
+      this.showNotices = this.data.showNotices !== '0';
       this.loadedNoticeBounds = null;
       if (!this.showNotices) {
         // A request already in flight would otherwise land after the swap
@@ -1606,9 +1101,9 @@
       }
     }
 
-    var locationsDefaultChanged = (oldData.showLocations || '') !== (newData.showLocations || '');
+    var locationsDefaultChanged = has('showLocations');
     if (locationsDefaultChanged) {
-      this.showLocations = newData.showLocations === '1';
+      this.showLocations = this.data.showLocations === '1';
       this.loadedLocationBounds = null;
       if (!this.showLocations) {
         if (this.locationsAbort) this.locationsAbort.abort();
@@ -1616,14 +1111,13 @@
       }
     }
 
-    this.attachControls();
-    this.map.resize();
+    this.syncControls();
 
-    var dataChanged = DATA_KEYS.some(function (k) { return (oldData[k] || '') !== (newData[k] || ''); });
-    var countyChanged = (oldData.county || '') !== (newData.county || '');
-    var viewChanged = (oldData.center || '') !== (newData.center || '') || (oldData.zoom || '') !== (newData.zoom || '');
-    var radiusChanged = (oldData.radius || '') !== (newData.radius || '');
-    var outlineChanged = (oldData.outlineUrl || '') !== (newData.outlineUrl || '');
+    var dataChanged = DATA_KEYS.some(has);
+    var countyChanged = has('county');
+    var viewChanged = has('center') || has('zoom');
+    var radiusChanged = has('radius');
+    var outlineChanged = has('outlineUrl');
 
     if (outlineChanged) {
       this.clearOutline();
@@ -1668,9 +1162,8 @@
     this.updateLocationsNote();
   };
 
-  // Releases the map (its WebGL context with it) once its page is gone:
-  // requests in flight are cut short so nothing lands on a map that isn't
-  // there, and the document-level listeners go with it.
+  // Lets go of everything once its page is gone: requests in flight are cut
+  // short so nothing lands on a map that isn't there.
   SectionMap.prototype.destroy = function () {
     this.abortRequests();
     this.allSectionsRun = null;
@@ -1681,11 +1174,7 @@
     this.gridById = {};
     this.noticeById = {};
     this.locationById = {};
-    if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
-    if (this.escapeHandler) document.removeEventListener('keydown', this.escapeHandler);
-    if (this.toolbarClickHandler) document.removeEventListener('click', this.toolbarClickHandler);
-    if (this.toolbarKeyHandler) document.removeEventListener('keydown', this.toolbarKeyHandler);
-    this.map.remove();
+    // The shell removes the map (and its WebGL context) after this.
     this.map = null;
   };
 
@@ -1742,7 +1231,7 @@
     } else if (this.data.fit === 'valley' && this.valleyBounds && (this.countyFitted || !this.valleyFitted)) {
       // Back out to the valley after a county filter, or frame it on first
       // load -- only on pages framed on the valley. A place or section page
-      // frames itself (adopt() sets its view), and clearing the county
+      // frames itself (onAdopt() sets its view), and clearing the county
       // there must not zoom back out over it. The first-load fit snaps
       // rather than animating out from the placeholder view.
       var animate = !!this.valleyFitted && !this.reducedMotion;
@@ -1778,17 +1267,10 @@
   };
 
   SectionMap.prototype.clearOutline = function () {
+    if (this.outlineAbort) this.outlineAbort.abort();
     this.setSourceData('outline', EMPTY);
     this.setSourceData('outline-mask', EMPTY);
     this.outlineBounds = null;
-  };
-
-  SectionMap.prototype.enableScrollZoom = function () {
-    this.map.scrollZoom.enable();
-  };
-
-  SectionMap.prototype.disableScrollZoom = function () {
-    this.map.scrollZoom.disable();
   };
 
   SectionMap.prototype.parseCenter = function (value) {
@@ -1801,9 +1283,7 @@
     return [lat, lng];
   };
 
-  SectionMap.prototype.setStatus = function (message) {
-    if (this.statusEl) this.statusEl.textContent = message || '';
-  };
+  SectionMap.prototype.setStatus = function (message) { this.shell.setStatus(message); };
 
   SectionMap.prototype.onMetricChange = function (event) {
     this.metric = event.target.value;
@@ -2258,7 +1738,7 @@
   // Bound once, before the grid's listeners (see init): a click on a marker
   // is the marker's, not the cell under it. Notices sit over locations, so
   // a notice takes a click where the two overlap.
-  // Each marker layer and its hit disc (see addBaseLayers) share one set of
+  // Each marker layer and its hit disc (see addLayers) share one set of
   // handlers; the disc is bound after the marker, so a pointer sliding off
   // the dot into the disc is re-hovered in the same event.
   SectionMap.prototype.bindMarkerEvents = function () {
@@ -2377,7 +1857,7 @@
 
   // Hover is a feature state, one cell per source (the township under the
   // pointer and the lens section over it are hovered together); the line
-  // paint reads it (see addBaseLayers). The cursor is a pointer over any
+  // paint reads it (see addLayers). The cursor is a pointer over any
   // hovered cell.
   SectionMap.prototype.setHover = function (source, id) {
     if (this.hoverIds[source] === id) return;
@@ -2455,10 +1935,7 @@
   // side: the nudge panPopupIntoView gives it can flip the anchor and put
   // it off the other edge. Inside the room, a nudge is at most the margin
   // and never crosses the band where the SDK centres it.
-  SectionMap.prototype.popupMaxWidth = function () {
-    var room = this.el.clientWidth - 2 * POPUP_CLEAR_EDGE;
-    return Math.min(POPUP_MAX_WIDTH, room > 0 ? room : POPUP_MAX_WIDTH) + 'px';
-  };
+  SectionMap.prototype.popupMaxWidth = function () { return this.shell.popupMaxWidth(); };
 
   // Pans the map, by as little as it takes, so the open popup is clear of
   // the map's edges, the toolbar band across the top, and the legend
@@ -2468,71 +1945,7 @@
   // The popup can also grow a beat after it opens (the icon font swaps its
   // glyphs in and the pills wrap), so one more look follows the first:
   // once the pan has landed or, without one, on the next tick.
-  SectionMap.prototype.panPopupIntoView = function (again) {
-    if (!this.map || !this.popup) return;
-    var self = this;
-    var popup = this.popup;
-    var recheck = function () {
-      // A tick later, so the font's own DOM work has gone first.
-      setTimeout(function () { if (self.popup === popup) self.panPopupIntoView(true); }, 0);
-    };
-    var el = this.popup.getElement();
-    if (!el) return;
-    var rect = el.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    var box = this.el.getBoundingClientRect();
-    // The toolbar band is measured rather than assumed: on a phone the
-    // filter buttons wrap to a second row.
-    var toolbarBottom = box.top + POPUP_CLEAR_TOP;
-    if (this.toolbarEl && !this.toolbarEl.hidden) {
-      var toolbarRect = this.toolbarEl.getBoundingClientRect();
-      if (toolbarRect.height) toolbarBottom = Math.max(toolbarBottom, toolbarRect.bottom + POPUP_CLEAR_EDGE);
-    }
-    var inner = {
-      left: box.left + POPUP_CLEAR_EDGE,
-      top: toolbarBottom,
-      right: box.right - POPUP_CLEAR_EDGE,
-      bottom: box.bottom - POPUP_CLEAR_EDGE,
-    };
-    // panBy moves the view, so the content goes the other way: a positive
-    // dx takes the popup left, a positive dy takes it up. A popup bigger
-    // than the room keeps its top-left edge in view.
-    var dx = 0;
-    var dy = 0;
-    if (rect.right > inner.right) dx = rect.right - inner.right;
-    if (rect.left - dx < inner.left) dx = rect.left - inner.left;
-    if (rect.bottom > inner.bottom) dy = rect.bottom - inner.bottom;
-    if (rect.top - dy < inner.top) dy = rect.top - inner.top;
-    // The legend: over it (up) or past it (right), whichever is the
-    // shorter move that keeps the popup in the room.
-    var legend = this.legendPanelEl && !this.legendPanelEl.hidden ? this.legendPanelEl.getBoundingClientRect() : null;
-    if (legend && legend.width && legend.height) {
-      var gap = POPUP_CLEAR_EDGE;
-      var moved = { left: rect.left - dx, right: rect.right - dx, top: rect.top - dy, bottom: rect.bottom - dy };
-      var overlaps = moved.left < legend.right + gap && moved.right > legend.left - gap &&
-        moved.top < legend.bottom + gap && moved.bottom > legend.top - gap;
-      if (overlaps) {
-        var up = moved.bottom - (legend.top - gap);
-        var right = moved.left - (legend.right + gap);
-        var upFits = moved.top - up >= inner.top;
-        var rightFits = moved.right - right <= inner.right;
-        if (upFits && (!rightFits || up <= -right)) {
-          dy += up;
-        } else if (rightFits) {
-          dx += right;
-        } else {
-          dy += up;
-        }
-      }
-    }
-    if (!dx && !dy) {
-      if (!again) recheck();
-      return;
-    }
-    // Before the pan: a snap (reduced motion) fires moveend inside panBy.
-    if (!again) this.map.once('moveend', recheck);
-    this.map.panBy([dx, dy], { animate: !this.reducedMotion });
-  };
+  SectionMap.prototype.panPopupIntoView = function (again) { this.shell.panPopupIntoView(this.popup, again); };
 
   // Takes the popup down on the map's own account (a rebuilt layer, a
   // zoom), which is not the reader letting go: the selected section stays
@@ -2863,7 +2276,7 @@
   // one of them draws from cache. `done` runs after filing (also on
   // failure, so a draw can still proceed with whatever is cached). Not
   // abortable: a superseded fetch's result is either still-good cache, or
-  // lands in a cache adopt() has already replaced (see below).
+  // lands in a cache onAdopt() has already replaced (see below).
   SectionMap.prototype.fetchLensSections = function (hosts, done) {
     var ids = hosts.map(function (host) { return host.properties.id; });
     var union = null;
@@ -2871,7 +2284,7 @@
     var params = this.commonParams();
     params.bbox = bboxParam(union);
     // Results go into the cache that was current when the fetch started:
-    // if the filters change meanwhile, adopt() swaps in a fresh cache and
+    // if the filters change meanwhile, onAdopt() swaps in a fresh cache and
     // this one is simply dropped.
     var cache = this.lensCache;
     fetchJson(this.data.sectionsUrl, params)
@@ -3582,69 +2995,18 @@
     }
   };
 
-  // Collect the `.section-map` containers at or under `root`. `root` may be a
-  // document or an element (htmx hands us the element it just swapped in, and
-  // that element can itself be a container).
-  function containersUnder(root) {
-    var found = [];
-    if (root.matches && root.matches('.section-map')) found.push(root);
-    var nested = root.querySelectorAll ? root.querySelectorAll('.section-map') : [];
-    for (var i = 0; i < nested.length; i++) found.push(nested[i]);
-    return found;
-  }
+  M.register('section', {
+    selector: '.section-map',
+    lifecycle: 'adopt',
+    features: { controls: ['zoom', 'locate', 'home'], toolbar: true, legend: true, status: true, expand: true },
+    // The key readers' folded legends were saved under before the core.
+    panelStoragePrefix: 'pesticides:section-map:panel:',
+    create: function (shell) { return new SectionMap(shell); },
+  });
 
-  // Idempotent: containers already initialised carry `data-rendered`, so this
-  // is safe to call repeatedly (page load plus every htmx swap).
-  // The one live map on the page, so a swap can hand its container over
-  // rather than building a second map.
-  var liveMap = null;
-
-  function init(root) {
-    if (typeof maptilersdk === 'undefined') return;
-    var containers = containersUnder(root || document);
-    // A swap to a page without a map drops the live one: undo the page-level
-    // expanded state (html class, pinned scope bar), since no map remains to
-    // do it, and release the map. Judged against the whole document, not
-    // `root`: a swap fires htmx:load per swapped element, and the one for an
-    // out-of-band fragment must not take the map from the page that has it.
-    if (liveMap && !document.body.contains(liveMap.el) && !containersUnder(document).length) {
-      if (liveMap.expanded) liveMap.setExpanded(false);
-      liveMap.destroy();
-      liveMap = null;
-    }
-    for (var i = 0; i < containers.length; i++) {
-      var el = containers[i];
-      if (el.dataset.rendered) continue;
-      try {
-        if (!webglAvailable()) {
-          el.dataset.rendered = '1';
-          showUnavailable(el);
-          continue;
-        }
-        if (liveMap && !document.body.contains(liveMap.el)) {
-          liveMap.adopt(el);
-          continue;
-        }
-        el.dataset.rendered = '1';
-        liveMap = new SectionMap(el);
-      } catch (err) {
-        logError('failed to initialize', err);
-      }
-    }
-  }
-
+  // The smoke script and the console still reach the map here.
   window.PesticidesSectionMap = {
-    init: init,
-    instances: function () { return liveMap ? [liveMap] : []; },
+    init: M.init,
+    instances: function () { return M.instances('section'); },
   };
-
-  function initDocument() {
-    init(document);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initDocument);
-  } else {
-    initDocument();
-  }
 })();

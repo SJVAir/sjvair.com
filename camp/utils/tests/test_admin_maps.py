@@ -32,6 +32,9 @@ class AdminMapTestMixin:
         assert 'js/admin/map-figure.js' in content
         assert 'js/admin/map-figure.css' in content
         assert content.index('maptiler-sdk/maptiler-sdk.js') < content.index('js/admin/map-figure.js')
+        # The map core (window.SJVAirMaps) loads between the SDK and the figure module.
+        assert content.index('maptiler-sdk/maptiler-sdk.js') < content.index('js/maps/core.js')
+        assert content.index('js/maps/registry.js') < content.index('js/admin/map-figure.js')
         assert 'leaflet' not in content.lower()
         assert not static_render.called
         return content

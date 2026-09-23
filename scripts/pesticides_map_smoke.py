@@ -83,7 +83,7 @@ JS_GRID_LOADED = """
 var inst = (function () { %s })();
 if (!inst || !inst.loadedLevel || !inst.sourceData.grid || !inst.sourceData.grid.features.length) return false;
 if (arguments[0] && inst.loadedLevel !== arguments[0]) return false;
-if (/^Loading (grid|sections)…$/.test(document.querySelector('.section-map-status').textContent)) return false;
+if (/^Loading (grid|sections)…$/.test(document.querySelector('.map-status').textContent)) return false;
 return !inst.map.isMoving();
 """ % JS_INSTANCE
 
@@ -316,7 +316,7 @@ class Page:
         return self.js("""
             var r = function (sel) { var el = document.querySelector(sel); if (!el || el.hidden) return null;
                 var b = el.getBoundingClientRect(); return b.width && b.height ? { left: b.left, top: b.top, right: b.right, bottom: b.bottom } : null; };
-            return { map: r('.section-map'), toolbar: r('.section-map-toolbar'), legend: r('.section-map-legend-panel'),
+            return { map: r('.section-map'), toolbar: r('.map-toolbar'), legend: r('.map-legend-panel'),
                      popup: r('.maplibregl-popup.section-popup-wrap') };
         """)
 
@@ -478,20 +478,20 @@ def check_controls(page):
     if not page.wait_for("return !!document.querySelector('.maplibregl-ctrl-zoom-in')", 10):
         return False, 'zoom buttons never appeared'
     result = page.js("""
-        var wrap = document.querySelector('.section-map-wrap');
+        var wrap = document.querySelector('.map-wrap');
         var q = function (sel) { return !!document.querySelector(sel); };
         var top = function (sel) { var el = document.querySelector(sel); return el ? el.getBoundingClientRect().top : NaN; };
-        var locate = document.querySelector('.section-map-locate a');
-        var reset = document.querySelector('.section-map-reset a');
+        var locate = document.querySelector('.map-locate a');
+        var reset = document.querySelector('.map-reset a');
         return {
             zoom: q('.maplibregl-ctrl-zoom-in') && q('.maplibregl-ctrl-zoom-out'),
             'no compass': !q('.maplibregl-ctrl-compass'),
             locate: !!locate && locate.getAttribute('aria-label') === 'Zoom to my location',
             reset: !!reset && reset.getAttribute('aria-label') === 'Zoom out to the whole map',
-            'zoom above locate above reset': top('.maplibregl-ctrl-zoom-in') < top('.section-map-locate') && top('.section-map-locate') < top('.section-map-reset'),
-            toolbar: !!wrap && !wrap.querySelector('.section-map-toolbar').hidden,
-            legend: !!wrap && !wrap.querySelector('.section-map-legend-panel').hidden,
-            expand: !!wrap && !!wrap.querySelector('.section-map-expand[data-bound]'),
+            'zoom above locate above reset': top('.maplibregl-ctrl-zoom-in') < top('.map-locate') && top('.map-locate') < top('.map-reset'),
+            toolbar: !!wrap && !wrap.querySelector('.map-toolbar').hidden,
+            legend: !!wrap && !wrap.querySelector('.map-legend-panel').hidden,
+            expand: !!wrap && !!wrap.querySelector('.map-expand[data-bound]'),
         };
     """)
     missing = [key for key, ok in result.items() if not ok]
@@ -530,7 +530,7 @@ def check_home(page):
     """)
     if before is None:
         return None, 'no region outline on this page'
-    page.driver.find_element(By.CSS_SELECTOR, '.section-map-reset').click()
+    page.driver.find_element(By.CSS_SELECTOR, '.map-reset').click()
     time.sleep(2.5)
     after = page.instance_js("""
         var b = inst.map.getBounds();
@@ -569,7 +569,7 @@ def check_grid(page):
             classes: inst.currentClasses.members.filter(function (m) { return m.length; }).length,
             rows: document.querySelectorAll(arguments[0]).length,
             levelText: document.querySelector('.section-map-level').textContent,
-            status: document.querySelector('.section-map-status').textContent,
+            status: document.querySelector('.map-status').textContent,
             highlight: inst.data.highlight || '',
             highlighted: inst.sourceData.highlight && inst.sourceData.highlight.properties ? inst.sourceData.highlight.properties.id : '',
         };
@@ -742,7 +742,7 @@ def check_locations(page):
     popup_detail = ''
     skipped = None
     if too_far:
-        note = page.js("return { note: document.querySelector('.section-map-locations-note').textContent, status: document.querySelector('.section-map-status').textContent };")
+        note = page.js("return { note: document.querySelector('.section-map-locations-note').textContent, status: document.querySelector('.map-status').textContent };")
         if note['note'] != LOCATIONS_ZOOM_NOTE or note['status'] != LOCATIONS_ZOOM_NOTE:
             problems.append('zoom %.2f: note %r, status %r' % (state['zoom'], note['note'], note['status']))
         if page.marker_requests('locations') != requests_before or page.source_count('locations'):
@@ -790,7 +790,7 @@ def check_locations(page):
     after = page.instance_js("""
         return { count: (inst.sourceData.locations || {features: []}).features.length, popup: !!inst.popup && inst.popupKey === 'openLocationId',
                  bounds: inst.loadedLocationBounds, note: document.querySelector('.section-map-locations-note').textContent,
-                 status: document.querySelector('.section-map-status').textContent };
+                 status: document.querySelector('.map-status').textContent };
     """)
     if after['count'] or after['bounds'] or after['popup'] or after['note'] or after['status'] == LOCATIONS_ZOOM_NOTE:
         problems.append('toggle off left %s' % after)
@@ -1042,7 +1042,7 @@ def check_all_sections(page):
         var inst = (function () { %s })();
         if (!inst) return false;
         var run = inst.allSectionsRun;
-        return !!(run && run.done === run.total && inst.allSectionsFeatures.length && document.querySelector('.section-map-status').textContent === '');
+        return !!(run && run.done === run.total && inst.allSectionsFeatures.length && document.querySelector('.map-status').textContent === '');
     """ % JS_INSTANCE, ALL_SECTIONS_TIMEOUT)
     if not done:
         return False, 'blocks never finished loading'
@@ -1262,7 +1262,7 @@ def check_popup_clear(page):
     # inside the canvas from it, so the popup (centred on the cell) would
     # overlap the panel.
     target = page.pick('inst.sourceData.grid.features', ref_expr="""
-        var lr = document.querySelector('.section-map-legend-panel').getBoundingClientRect();
+        var lr = document.querySelector('.map-legend-panel').getBoundingClientRect();
         return [lr.right - rect.left + 40, lr.top - rect.top + 40];
     """)
     if not target:
@@ -1385,14 +1385,14 @@ def check_expand(page):
     width_before = page.instance_js('return inst.map.getCanvas().clientWidth')
     canvas_width_is = 'var inst = (function () { %s })(); return !!inst && inst.map.getCanvas().clientWidth === arguments[0];' % JS_INSTANCE
     canvas_width_not = 'var inst = (function () { %s })(); return !!inst && inst.map.getCanvas().clientWidth !== arguments[0];' % JS_INSTANCE
-    page.js("document.querySelector('.section-map-expand').click()")
+    page.js("document.querySelector('.map-expand').click()")
     page.wait_for(canvas_width_not, 10, width_before)
     expanded = page.js("""
         return {
-            html: document.documentElement.classList.contains('section-map-expanded'),
-            wrap: document.querySelector('.section-map-wrap').classList.contains('is-expanded'),
-            pressed: document.querySelector('.section-map-expand').getAttribute('aria-pressed') === 'true',
-            label: document.querySelector('.section-map-expand').getAttribute('aria-label'),
+            html: document.documentElement.classList.contains('map-expanded'),
+            wrap: document.querySelector('.map-wrap').classList.contains('is-expanded'),
+            pressed: document.querySelector('.map-expand').getAttribute('aria-pressed') === 'true',
+            label: document.querySelector('.map-expand').getAttribute('aria-label'),
         };
     """)
     width_after = page.instance_js('return inst.map.getCanvas().clientWidth')
@@ -1403,12 +1403,12 @@ def check_expand(page):
         problems.append('button label %r' % expanded['label'])
     if not (width_after and width_before and width_after > width_before):
         problems.append('canvas did not widen (%s -> %s)' % (width_before, width_after))
-    page.js("document.querySelector('.section-map-expand').click()")
+    page.js("document.querySelector('.map-expand').click()")
     page.wait_for(canvas_width_is, 10, width_before)
     collapsed = page.js("""
-        return !document.documentElement.classList.contains('section-map-expanded')
-            && !document.querySelector('.section-map-wrap').classList.contains('is-expanded')
-            && document.querySelector('.section-map-expand').getAttribute('aria-pressed') === 'false';
+        return !document.documentElement.classList.contains('map-expanded')
+            && !document.querySelector('.map-wrap').classList.contains('is-expanded')
+            && document.querySelector('.map-expand').getAttribute('aria-pressed') === 'false';
     """)
     width_back = page.instance_js('return inst.map.getCanvas().clientWidth')
     if not collapsed:
@@ -1441,24 +1441,24 @@ def check_phone_layout(page):
     page.wait_idle()
     time.sleep(0.5)
     result = page.js("""
-        var wrap = document.querySelector('.section-map-wrap');
-        var legend = wrap.querySelector('.section-map-legend-panel');
-        var labels = Array.from(wrap.querySelectorAll('.section-map-toolbar-filters .section-map-toolbar-label'));
+        var wrap = document.querySelector('.map-wrap');
+        var legend = wrap.querySelector('.map-legend-panel');
+        var labels = Array.from(wrap.querySelectorAll('.map-toolbar-filters .map-toolbar-label'));
         var attrib = wrap.querySelector('.maplibregl-ctrl-attrib');
-        var status = wrap.querySelector('.section-map-status');
+        var status = wrap.querySelector('.map-status');
         var mapRect = wrap.querySelector('.section-map').getBoundingClientRect();
         status.textContent = 'probe';
         var sr = status.getBoundingClientRect();
         status.textContent = '';
         return {
             width: window.innerWidth,
-            collapsed: legend.classList.contains('is-collapsed') && legend.querySelector('.section-map-panel-toggle').getAttribute('aria-expanded') === 'false',
+            collapsed: legend.classList.contains('is-collapsed') && legend.querySelector('.map-panel-toggle').getAttribute('aria-expanded') === 'false',
             filters: labels.length,
             iconOnly: labels.every(function (el) { return getComputedStyle(el).display === 'none'; }),
             compact: !!attrib && attrib.classList.contains('maplibregl-compact'),
             folded: !!attrib && !attrib.classList.contains('maplibregl-compact-show'),
             statusCentred: Math.abs((sr.left + sr.right) / 2 - (mapRect.left + mapRect.right) / 2) < 2,
-            toggleHeight: legend.querySelector('.section-map-panel-toggle').getBoundingClientRect().height,
+            toggleHeight: legend.querySelector('.map-panel-toggle').getBoundingClientRect().height,
         };
     """)
     problems = []
@@ -1506,6 +1506,148 @@ def check_phone_layout(page):
     return (not problems), (detail if not problems else '; '.join(problems))
 
 
+def chrome_prefix(page):
+    """The chrome class prefix in use on this page: `map-` on this branch's
+    shared core, `section-map-` on the pesticides-only reference (before the
+    map-core rename). Lets a check run unchanged against either."""
+    if not hasattr(page, '_chrome_prefix'):
+        page._chrome_prefix = 'map-' if page.js("return !!document.querySelector('.map-wrap');") else 'section-map-'
+    return page._chrome_prefix
+
+
+def check_fold_persistence(page):
+    """Folding the legend panel collapses it, and a reload remembers the
+    fold through localStorage (`pesticides:section-map:panel:legend`), so a
+    reader's folded legend stays folded. Restores the panel to how it found
+    it, so later checks aren't affected."""
+    p = chrome_prefix(page)
+    toggle = '.%slegend-panel .%spanel-toggle' % (p, p)
+    expanded_before = page.js("var t = document.querySelector('%s'); return !!t && t.getAttribute('aria-expanded') === 'true';" % toggle)
+    if expanded_before:
+        page.js("document.querySelector('%s').click();" % toggle)
+        time.sleep(0.3)
+    key = page.js("return localStorage.getItem('pesticides:section-map:panel:legend');")
+    page.driver.get(page.url)
+    page.prepare()
+    problems = []
+    if not page.wait_for_map():
+        problems.append('map never reloaded')
+    collapsed = page.js("""
+        var p = document.querySelector('.%slegend-panel');
+        return !!p && p.classList.contains('is-collapsed')
+            && p.querySelector('.%spanel-toggle').getAttribute('aria-expanded') === 'false';
+    """ % (p, p))
+    if key != 'collapsed':
+        problems.append("localStorage key was %r, not 'collapsed'" % key)
+    if not collapsed:
+        problems.append('legend panel not still collapsed after the reload')
+    # Restore the fold state the check found, for later checks.
+    if expanded_before:
+        page.js("document.querySelector('%s').click();" % toggle)
+        time.sleep(0.3)
+    detail = "key=%r, collapsed after reload=%s" % (key, collapsed)
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_expand_across_swap(page, year):
+    """Expand, then a swap that adopts (a year change in the scope bar): the
+    wrap is still `is-expanded` and `html.<prefix>expanded` is set across
+    the adopt. Escape then un-expands it."""
+    p = chrome_prefix(page)
+    link = page.js("""
+        var links = document.querySelectorAll('.explorer-scope-picker[data-scope="year"] a[href*="year=%s"]');
+        return links.length ? links[0].getAttribute('href') : null;
+    """ % year)
+    if not link:
+        return None, 'no year picker on this page (skipped)'
+    state_js = """
+        return {html: document.documentElement.classList.contains('%sexpanded'),
+                wrap: !!document.querySelector('.%swrap') && document.querySelector('.%swrap').classList.contains('is-expanded')};
+    """ % (p, p, p)
+    page.js("document.querySelector('.%sexpand').click();" % p)
+    page.wait_for("return document.documentElement.classList.contains('%sexpanded');" % p, 10)
+    before = page.js(state_js)
+    page.js('document.querySelector(\'.explorer-scope-picker[data-scope="year"] a[href*="year=%s"]\').click();' % year)
+    swapped = page.wait_for("""
+        var inst = (function () { %s })();
+        return !!(inst && inst.data.year === '%s' && document.body.contains(inst.el));
+    """ % (JS_INSTANCE, year), SWAP_TIMEOUT)
+    problems = []
+    if not swapped:
+        problems.append('container never carried year=%s after the swap' % year)
+    after = page.js(state_js)
+    if not (before['html'] and before['wrap']):
+        problems.append('expand did not apply before the swap: %s' % before)
+    if not (after['html'] and after['wrap']):
+        problems.append('expanded state lost across the adopt: %s' % after)
+    page.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
+    page.wait_for("return !document.documentElement.classList.contains('%sexpanded');" % p, 10)
+    unexpanded = page.js("""
+        return !document.documentElement.classList.contains('%sexpanded')
+            && !!document.querySelector('.%swrap') && !document.querySelector('.%swrap').classList.contains('is-expanded');
+    """ % (p, p, p))
+    if not unexpanded:
+        problems.append('Escape did not un-expand after the adopt')
+    detail = 'expanded before=%s, after swap=%s, after Escape unexpanded=%s' % (before, after, unexpanded)
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_swap_away(page):
+    """An htmx navigation from the map page to a page with no map (the
+    Chemicals list, via a boosted tab click) releases the shell: no live
+    instances, and `<html>` carries no `<prefix>expanded` class. Expanded
+    first, the stronger version of the check."""
+    p = chrome_prefix(page)
+    has_tab = page.js('return !!document.querySelector(\'#explorer-tabs a[title="Chemicals"]\');')
+    if not has_tab:
+        return None, 'no Chemicals tab on this page (skipped)'
+    page.js("document.querySelector('.%sexpand').click();" % p)
+    page.wait_for("return document.documentElement.classList.contains('%sexpanded');" % p, 10)
+    page.js('document.querySelector(\'#explorer-tabs a[title="Chemicals"]\').click();')
+    swapped = page.wait_for("return location.pathname.indexOf('/chemicals/') !== -1;", SWAP_TIMEOUT)
+    problems = []
+    if not swapped:
+        problems.append('never navigated to the chemicals list')
+    time.sleep(0.5)  # let the registry's htmx:load handler finish releasing the shell
+    state = page.js("""
+        var mod = window.PesticidesSectionMap;
+        return {
+            instances: (mod && typeof mod.instances === 'function') ? mod.instances().length : null,
+            htmlExpanded: document.documentElement.classList.contains('%sexpanded'),
+        };
+    """ % p)
+    if state['instances'] != 0:
+        problems.append('%s live instance(s) after the swap-away' % state['instances'])
+    if state['htmlExpanded']:
+        problems.append('html still carries %sexpanded after the swap-away' % p)
+    detail = 'instances=%s, html expanded=%s' % (state['instances'], state['htmlExpanded'])
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
+def check_back_button(page):
+    """`history.back()` after the swap-away check restores exactly one live
+    map instance, loaded. Skipped when there's no prior swap-away
+    navigation to reverse (the Chemicals tab wasn't on this page)."""
+    original_path = urlparse(page.url).path
+    if page.js('return location.pathname;') == original_path:
+        return None, 'no prior swap-away to reverse (skipped)'
+    page.js('window.history.back();')
+    back = page.wait_for("return location.pathname === arguments[0];", SWAP_TIMEOUT, original_path)
+    problems = []
+    if not back:
+        problems.append('back button did not return to %s' % original_path)
+    if not page.wait_for_map():
+        problems.append('map never reloaded after the back button')
+    count = page.js("var mod = window.PesticidesSectionMap; return mod ? mod.instances().length : null;")
+    if count != 1:
+        problems.append('%s live instance(s) after the back button' % count)
+    loaded = page.instance_js('return inst.loaded;')
+    if not loaded:
+        problems.append('instance not loaded after the back button')
+    detail = 'path=%s, instances=%s, loaded=%s' % (original_path, count, loaded)
+    return (not problems), (detail if not problems else '; '.join(problems))
+
+
 def check_console(page):
     """Console errors over the whole run (the phone layout check's reload
     included)."""
@@ -1534,6 +1676,10 @@ CHECKS = [
     ('popup clear', check_popup_clear),
     ('year swap', check_year_swap),
     ('expand', check_expand),
+    ('fold persistence', check_fold_persistence),
+    ('expand across swap', check_expand_across_swap),
+    ('swap away', check_swap_away),
+    ('back button', check_back_button),
     ('phone layout', check_phone_layout),
     ('console', check_console),
 ]
@@ -1558,7 +1704,7 @@ def run_page(base, path, year, screenshots):
             if check is check_phone_layout:
                 page.screenshot()
             try:
-                if check is check_year_swap:
+                if check in (check_year_swap, check_expand_across_swap):
                     passed, detail = check(page, year)
                 else:
                     passed, detail = check(page)

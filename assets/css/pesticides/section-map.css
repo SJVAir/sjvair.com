@@ -1,105 +1,7 @@
-.section-map-wrap {
-  position: relative;
-}
-
-.section-map {
-  width: 100%;
-  height: 70vh;
-  min-height: 480px;
-  border: 1px solid #dbdbdb;
-  border-radius: 4px;
-}
-
-/* Controls (top-right) and legend (bottom-left) float over the map, in the
-   same idiom as the SDK's own controls, so they come along when the map is
-   expanded to the viewport. */
-.section-map-panel {
-  position: absolute;
-  z-index: 1000; /* above the map's canvas, controls and popups */
-  max-width: calc(100% - 1.5rem);
-  padding: 0;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  font-size: 0.8rem;
-  line-height: 1.3;
-}
-
-/* Each panel is a card: a header (icon, title, chevron at the right end)
-   with a bottom rule, over a body that can be folded away; the fold is
-   remembered per viewer in localStorage. */
-.section-map-panel-head {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.section-map-panel.is-collapsed .section-map-panel-head {
-  border-bottom: 0;
-}
-
-.section-map-panel-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  width: 100%;
-  min-width: 9rem;
-  min-height: 2.25rem;
-  padding: 0.45rem 0.65rem;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-weight: 600;
-  color: #363636;
-  text-align: left;
-  cursor: pointer;
-}
-
-.section-map-panel-toggle:hover {
-  color: #3273dc;
-}
-
-/* Duotone header icons, coloured as in the map toolbar mockup. */
-.section-map-panel-icon {
-  --fa-secondary-opacity: 1;
-}
-
-.section-map-panel-icon.is-options {
-  --fa-primary-color: darkgray;
-  --fa-secondary-color: dimgray;
-}
-
-.section-map-panel-icon.is-legend {
-  --fa-primary-color: slategray;
-  --fa-secondary-color: lightgray;
-}
-
-.section-map-panel-title {
-  flex: 1 1 auto;
-}
-
-.section-map-panel-chevron {
-  margin-left: auto;
-  color: #7a7a7a;
-  transition: transform 0.15s ease;
-}
-
-.section-map-panel.is-collapsed .section-map-panel-chevron {
-  transform: rotate(180deg);
-}
-
-.section-map-panel-body {
-  padding: 0.5rem 0.65rem 0.6rem;
-}
-
-.section-map-panel.is-collapsed .section-map-panel-body {
-  display: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .section-map-panel-chevron {
-    transition: none;
-  }
-}
+/* The pesticides section map's own styles (assets/js/pesticides/section-map.js):
+   the Options menu's controls, the legend body, and the popups. Its chrome
+   (the canvas box, toolbar, panels, controls, status pill, expanded mode) is
+   the shared map chrome, css/maps/map.css. */
 
 /* The Options menu's body (inside its toolbar dropdown). */
 .section-map-controls {
@@ -139,50 +41,14 @@
   background: #fff;
 }
 
-/* What the map is doing right now (a load in progress, a locate), as a
-   small pill at the bottom centre, over the attribution strip; it takes no
-   room while empty. */
-.section-map-wrap .section-map-status {
-  position: absolute;
-  left: 50%;
-  bottom: 2.75rem;
-  z-index: 1000;
-  transform: translateX(-50%);
-  max-width: calc(100% - 1.5rem);
-  padding: 0.25rem 0.7rem;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 999px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  font-size: 0.8rem;
-  line-height: 1.3;
-  color: #4a4a4a;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
-
-.section-map-wrap .section-map-status:empty {
-  display: none;
-}
-
-/* The legend, bottom-left, in line with the SDK's control column (10px in)
-   and with the attribution pill at the bottom. */
-.section-map-legend-panel {
-  left: 10px;
-  bottom: 10px;
-  max-width: 17rem;
-}
-
-.section-map-wrap .section-map-legend-panel .section-map-legend {
+.map-wrap .map-legend-panel .section-map-legend {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
   margin: 0;
 }
 
-.section-map-legend-panel .section-map-level {
+.map-legend-panel .section-map-level {
   display: block;
   margin-top: 0.35rem;
   color: #7a7a7a;
@@ -190,7 +56,7 @@
 
 /* Why the school markers aren't showing (set by updateLocationsNote); empty
    the rest of the time, so it takes no room. */
-.section-map-legend-panel .section-map-locations-note:not(:empty) {
+.map-legend-panel .section-map-locations-note:not(:empty) {
   display: block;
   margin-top: 0.35rem;
   color: #7a7a7a;
@@ -207,102 +73,6 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 0.7rem;
-}
-
-/* Expanded: the map takes the viewport below the site navbar (same
-   arithmetic as the live map page), panels ride along. */
-.section-map-wrap.is-expanded {
-  position: fixed;
-  top: calc(var(--navbar-height, 3.25rem) - 1px); /* refined to the navbar's measured edge by the script */
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 25;
-  background: #fff;
-  /* Same line as the navbar's bottom border; the two overlap (see fitBelowNavbar). */
-  border-top: 1px solid #dbdbdb;
-}
-
-.section-map-wrap.is-expanded .section-map {
-  height: 100%;
-  min-height: 0;
-  border: 0;
-  border-radius: 0;
-}
-
-html.section-map-expanded,
-html.section-map-expanded body {
-  overflow: hidden;
-}
-
-/* The scope bar rides along above the expanded map, pinned under the
-   navbar (its top is set by fitBelowNavbar); its dropdowns open over the map. */
-html.section-map-expanded .explorer-scope-bar {
-  position: fixed;
-  top: var(--navbar-height, 3.25rem);
-  left: 0;
-  right: 0;
-  z-index: 1010;
-  border-bottom: 1px solid #dbdbdb;
-}
-
-@media (max-width: 768px) {
-  .section-map-panel {
-    font-size: 0.75rem;
-  }
-  .section-map-legend-panel {
-    max-width: calc(100% - 20px);
-  }
-  .section-map-panel-toggle {
-    padding: 0.35rem 0.5rem;
-  }
-  .section-map-panel-body {
-    padding: 0.4rem 0.5rem 0.5rem;
-  }
-  .section-popup .section-popup-action {
-    padding: 0.4rem 0.7rem;
-  }
-}
-
-/* The SDK's own furniture (controls, popups) sets in the page's type. */
-.section-map-wrap .maplibregl-map {
-  font-family: inherit;
-}
-
-/* Popups: the SDK's popup box restyled to the one the section and notice
-   popups were laid out for (padding, radius, shadow, type size). A popup
-   sits over the toolbar and legend panels (z 1000); the script also pans
-   the map so one opened under them comes clear (see panPopupIntoView). */
-.section-map-wrap .maplibregl-popup {
-  z-index: 1001;
-}
-
-.section-map-wrap .maplibregl-popup-content {
-  padding: 13px 24px 13px 20px;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.08);
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: #363636;
-}
-
-/* A 2rem square: a touch target, not a glyph. */
-.section-map-wrap .maplibregl-popup-close-button {
-  top: 2px;
-  right: 2px;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  border-radius: 4px;
-  font-size: 1.15rem;
-  line-height: 2rem;
-  text-align: center;
-  color: #7a7a7a;
-}
-
-.section-map-wrap .maplibregl-popup-close-button:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #363636;
 }
 
 .section-popup h4,
@@ -435,159 +205,13 @@ html.section-map-expanded .explorer-scope-bar {
   margin-right: 0.25rem;
 }
 
-/* The SDK's control bars (zoom, locate, reset) in the panels' skin. */
-.section-map-wrap .maplibregl-ctrl-group {
-  border-radius: 4px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-
-/* Locate and reset buttons under the zoom buttons: the SDK's controls are
-   33px squares in a grouped bar, and these follow that, one bar each. */
-.section-map-locate a,
-.section-map-reset a {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 33px;
-  height: 33px;
-  font-size: 0.95rem;
-  color: #363636;
-  text-decoration: none;
-}
-
-.section-map-locate a:hover,
-.section-map-reset a:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.section-map-locate.is-locating a {
-  color: #3273dc;
-  animation: section-map-locating 1s ease-in-out infinite;
-}
-
-@keyframes section-map-locating {
-  50% { opacity: 0.35; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .section-map-locate.is-locating a {
-    animation: none;
-  }
-}
-
-/* The toolbar row over the map: top-left, clear of the zoom and locate
-   buttons; filters (when the page has them) at the start, Options and
-   Expand at the end, all button-styled dropdowns in the map toolbar idiom. */
-.section-map-toolbar {
-  position: absolute;
-  top: 10px;
-  left: 53px; /* the SDK's control column (10px in, 33px wide) plus a 10px gap */
-  right: 10px;
-  z-index: 1000;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.5rem;
-  pointer-events: none; /* the gaps between buttons let the map through */
-}
-
-.section-map-toolbar .section-map-toolbar-filters,
-.section-map-toolbar .section-map-toolbar-end {
-  pointer-events: none;
-}
-
-.section-map-toolbar .section-map-toolbar-end {
-  display: flex;
-  gap: 0.5rem;
-  margin-left: auto;
-}
-
-.section-map-toolbar .control,
-.section-map-toolbar .section-map-toolbar-end > * {
-  pointer-events: auto;
-}
-
-.section-map-toolbar .button {
-  height: 33px; /* the SDK's control buttons */
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  border-color: rgba(0, 0, 0, 0.12);
-  font-size: 0.85rem;
-  max-width: 16rem;
-}
-
-.section-map-toolbar .button .section-map-toolbar-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.section-map-toolbar .section-map-toolbar-dropdown.is-set .button {
-  border-color: #3273dc;
-  color: #3273dc;
-}
-
-.section-map-toolbar .dropdown-menu {
-  min-width: 18rem;
-}
-
-.section-map-toolbar .dropdown-content {
-  padding: 0.75rem;
-}
-
-.section-map-toolbar .section-map-options .dropdown-menu {
-  min-width: 12rem;
-}
-
-/* Expand is icon-only; the icon follows the wrapper's expanded state. */
-.section-map-toolbar .section-map-expand {
-  padding-left: 0.6rem;
-  padding-right: 0.6rem;
-}
-
-.section-map-toolbar .section-map-expand .icon {
-  margin: 0;
-}
-
-.section-map-toolbar .section-map-expand .is-compress,
-.section-map-wrap.is-expanded .section-map-expand .is-expand {
-  display: none;
-}
-
-.section-map-wrap.is-expanded .section-map-expand .is-compress {
-  display: inline-flex;
-}
-
-.section-map-toolbar .dropdown-content .field:last-child {
-  margin-bottom: 0;
-}
-
 /* The picker's results list drops below its input inside the menu. */
-.section-map-toolbar .entity-picker {
+.map-toolbar .entity-picker {
   position: relative;
 }
 
 @media (max-width: 768px) {
-  .section-map-toolbar .button .section-map-toolbar-label {
-    max-width: 7rem;
+  .section-popup .section-popup-action {
+    padding: 0.4rem 0.7rem;
   }
-  .section-map-toolbar .section-map-toolbar-filters .section-map-toolbar-label,
-  .section-map-toolbar .section-map-options .section-map-toolbar-label {
-    display: none;
-  }
-}
-
-/* Without WebGL the container holds a note instead of a map. */
-.section-map.is-unavailable {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: #f5f5f5;
-  color: #7a7a7a;
-  text-align: center;
-}
-
-.section-map.is-unavailable .section-map-note {
-  margin: 0;
-  max-width: 28rem;
 }
