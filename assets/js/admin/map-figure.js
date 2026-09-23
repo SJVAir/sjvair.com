@@ -1,9 +1,11 @@
 /*
- * Turns every `.map-figure` container rendered by
- * camp.utils.mapfigure.MapFigure into a non-interactive map figure on the
- * MapTiler SDK (MapLibre GL): a basemap, the payload's areas and markers,
- * fitted once and left alone. Feature clicks (a linked area) and hover
- * labels still work; nothing pans, zooms or rotates.
+ * Map figures on the map core (assets/js/maps/): every `.map-figure`
+ * container rendered by camp.utils.mapfigure.MapFigure becomes a
+ * non-interactive map -- a basemap, the payload's areas and markers, fitted
+ * once and left alone. Feature clicks (a linked area) and hover labels still
+ * work; nothing pans, zooms or rotates. The core builds each figure once it's
+ * scrolled into view and releases it once its container has left the
+ * document (the 'figure' lifecycle).
  *
  * The container carries:
  *   data-geojson       id of a <script type="application/json"> holding a
@@ -14,7 +16,7 @@
  *                      areas optionally a `url` to follow on click, and
  *                      optionally a `label` shown permanently, or only on
  *                      hover when `labelOnHover` is true.
- *   data-style         MapTiler style id (see TILE_STYLE_PATHS)
+ *   data-style         MapTiler style id (the core's TILE_STYLE_PATHS)
  *   data-maptiler-key  the MapTiler API key
  *   data-padding       pixels of padding when fitting bounds
  *   data-zoom          zoom level to use when the bounds are a single point
@@ -24,29 +26,14 @@
  * queryRenderedFeatures, which both breaks the paint expressions reading it
  * and hands every hover handler a string where an object was put in.
  *
- * A map is built only once its container is scrolled into view, and is
- * released again once the container has left the document (htmx swaps on
- * the pesticides explorer), so a page with several figures below the fold
- * is cheap and repeated navigation can't pile up WebGL contexts.
- *
- * Plain ES2017, no framework/bundler; exposes `window.SJVAirMapFigures`.
+ * Plain ES2017; keeps `window.SJVAirMapFigures` for the smoke script and the
+ * console.
  */
 (function () {
   'use strict';
 
-  // An htmx history restore (back to a page whose snapshot wasn't cached)
-  // replaces the whole body, which re-runs this tag. A second copy of the
-  // module would own `window.SJVAirMapFigures` while the first still held
-  // the live maps, leaving neither able to sweep the other's: the one
-  // already loaded takes the restored containers instead.
-  if (window.SJVAirMapFigures) {
-    window.SJVAirMapFigures.init(document);
-    return;
-  }
-
-  var EMPTY = { type: 'FeatureCollection', features: [] };
-  // How far below the fold a figure is built ahead of being scrolled to.
-  var BUILD_AHEAD = '200px';
+  var M = window.SJVAirMaps;
+  if (!M || !M.register) return;
 
   var SHAPES = {
     circle: function (s) {
@@ -75,9 +62,8 @@
     return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // The marker's element: the shape as an inline SVG, filled and stroked
-  // from the feature's style, handed to the SDK's Marker (the analogue of
-  // Leaflet's divIcon).
+  // The marker's element: the shape as an inline SVG, filled and stroked from
+  // the feature's style, handed to the SDK's Marker.
   function markerElement(props) {
     var size = parseInt(props.size, 10) || 14;
     var draw = SHAPES[props.shape] || SHAPES.circle;
@@ -99,85 +85,8 @@
     return el;
   }
 
-  // The basemap styles the `?tiles=<id>` experiment switch offers, each
-  // mapped to its entry in the SDK's style catalogue (a path under
-  // maptilersdk.MapStyle), as on the explorer's section map. An id the
-  // table doesn't know is handed to the SDK as is, which reads it as a
-  // MapTiler style id.
-  var TILE_STYLE_PATHS = {
-    streets: ['STREETS'],
-    'basic-v2': ['BASIC'],
-    'bright-v2': ['BRIGHT'],
-    dataviz: ['DATAVIZ'],
-    'dataviz-light': ['DATAVIZ', 'LIGHT'],
-    'topo-v2': ['TOPO'],
-    'outdoor-v2': ['OUTDOOR'],
-    'toner-v2': ['TONER'],
-    hybrid: ['HYBRID'],
-  };
-  function styleFor(id) {
-    var path = TILE_STYLE_PATHS[id];
-    var style = path ? maptilersdk.MapStyle : null;
-    for (var i = 0; style && i < path.length; i++) style = style[path[i]];
-    return style || id;
-  }
-
-  // The SDK draws on WebGL; without it there's no map to make, and the
-  // container says so instead (see showUnavailable). Checked once: the
-  // probe makes a throwaway GL context, and init() runs on every swap.
-  var webglSupport = null;
-  function webglAvailable() {
-    if (webglSupport === null) {
-      try {
-        var canvas = document.createElement('canvas');
-        webglSupport = !!(window.WebGLRenderingContext && (canvas.getContext('webgl2') || canvas.getContext('webgl')));
-      } catch (err) {
-        webglSupport = false;
-      }
-    }
-    return webglSupport;
-  }
-
-  function showUnavailable(el) {
-    el.classList.add('is-unavailable');
-    el.innerHTML = '<p class="map-figure-note">This map needs WebGL, which this browser has turned off or doesn\'t support.</p>';
-  }
-
-  function logError(message, err) {
-    if (window.console && console.error) console.error('map-figure: ' + message, err);
-  }
-
-  // Bounds are [[west, south], [east, north]], which the SDK takes as is.
-  function extendBounds(bounds, coordinates) {
-    if (typeof coordinates[0] === 'number') {
-      if (coordinates[0] < bounds[0][0]) bounds[0][0] = coordinates[0];
-      if (coordinates[0] > bounds[1][0]) bounds[1][0] = coordinates[0];
-      if (coordinates[1] < bounds[0][1]) bounds[0][1] = coordinates[1];
-      if (coordinates[1] > bounds[1][1]) bounds[1][1] = coordinates[1];
-      return;
-    }
-    for (var i = 0; i < coordinates.length; i++) extendBounds(bounds, coordinates[i]);
-  }
-
-  // The bounding box of a GeoJSON geometry, feature, or feature collection;
-  // null for nothing (an empty collection, a null geometry).
-  function geometryBounds(geojson) {
-    if (!geojson) return null;
-    var bounds = [[Infinity, Infinity], [-Infinity, -Infinity]];
-    var items = geojson.type === 'FeatureCollection' ? geojson.features : [geojson];
-    for (var i = 0; i < items.length; i++) {
-      var geometry = items[i].type === 'Feature' ? items[i].geometry : items[i];
-      if (!geometry) continue;
-      var parts = geometry.type === 'GeometryCollection' ? geometry.geometries : [geometry];
-      for (var j = 0; j < parts.length; j++) {
-        if (parts[j] && parts[j].coordinates) extendBounds(bounds, parts[j].coordinates);
-      }
-    }
-    return bounds[0][0] === Infinity ? null : bounds;
-  }
-
-  // A ring's planar centroid (shoelace), with its signed area, so the
-  // largest ring of a multipolygon can be picked.
+  // A ring's planar centroid (shoelace), with its signed area, so the largest
+  // ring of a multipolygon can be picked.
   function ringCentroid(ring) {
     var area = 0, cx = 0, cy = 0;
     for (var i = 0, n = ring.length; i < n; i++) {
@@ -191,9 +100,8 @@
     return { point: [cx / (3 * area), cy / (3 * area)], area: Math.abs(area) };
   }
 
-  // Where a feature's label sits: a point's own position; a polygon's
-  // centroid (of its largest outer ring), where Leaflet's tooltip opened;
-  // anything else, the middle of its bounds.
+  // Where a feature's label sits: a point's own position; a polygon's centroid
+  // (of its largest outer ring); anything else, the middle of its bounds.
   function labelAnchor(feature) {
     var geometry = feature.geometry;
     if (!geometry) return null;
@@ -209,21 +117,18 @@
       if (c && (!best || c.area > best.area)) best = c;
     }
     if (best) return best.point;
-    var bounds = geometryBounds(geometry);
+    var bounds = M.geometryBounds(geometry);
     return bounds ? [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2] : null;
   }
 
   // The outline an interactive area takes while the cursor is over it.
-  // Same dark stroke the explorer's section map uses for a hovered cell.
   var HOVER_COLOR = '#222';
   var HOVER_WIDTH = 2;
 
-  // A paint value read off the feature's properties.
   function styled(key) {
     return ['get', key];
   }
 
-  // `on` while the cursor is over the feature, `off` otherwise.
   function hovered(on, off) {
     return ['case', ['boolean', ['feature-state', 'hover'], false], on, off];
   }
@@ -243,127 +148,104 @@
     }).setLngLat(lngLat).setText(text);
   }
 
-  function MapFigure(el) {
-    this.el = el;
+  // The payload, parsed once per container (mapOptions and create both read it).
+  function payload(el) {
+    if (!el.figurePayload) {
+      var node = document.getElementById(el.dataset.geojson);
+      el.figurePayload = node ? JSON.parse(node.textContent) : M.EMPTY;
+    }
+    return el.figurePayload;
+  }
+
+  // The view, set once with no motion: the fitted bounds with the padding,
+  // or, for a single point, that point at data-zoom.
+  function figureView(el) {
+    var bounds = M.geometryBounds(payload(el));
+    var padding = parseInt(el.dataset.padding || '20', 10);
+    var zoom = parseInt(el.dataset.zoom || '14', 10);
+    if (bounds && bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]) {
+      return { center: bounds[0], zoom: zoom };
+    }
+    if (bounds) return { bounds: bounds, fitBoundsOptions: { padding: padding } };
+    return {};
+  }
+
+  function Figure(shell) {
+    var self = this;
+    this.shell = shell;
+    this.el = shell.el;
+    this.map = shell.map;
     this.markers = [];
     this.labels = [];
     this.hoverLabel = null;
     this.hoverId = null;
     this.areaHoverId = null;
-
-    var dataNode = document.getElementById(el.dataset.geojson);
-    var geojson = dataNode ? JSON.parse(dataNode.textContent) : EMPTY;
-    var padding = parseInt(el.dataset.padding || '20', 10);
-    var zoom = parseInt(el.dataset.zoom || '14', 10);
+    // For debugging from the console: document.querySelector('.map-figure').mapFigure
+    this.el.mapFigure = this;
 
     // Points become markers; everything else goes into one GeoJSON source
     // drawn by a fill and a line layer, painted per feature from its style.
-    // Features get ids (`promoteId`) so a hovered area can be told apart.
-    var points = [], areas = [];
+    var geojson = payload(this.el);
+    var points = [];
+    var areas = [];
     this.anchors = {};
     for (var i = 0; i < geojson.features.length; i++) {
       var feature = geojson.features[i];
       feature.properties = feature.properties || {};
       feature.properties.id = i;
       // Only a labelled feature needs an anchor, and finding one costs a
-      // centroid per ring -- the report maps carry a thousand unlabelled
-      // tracts.
+      // centroid per ring -- the report maps carry a thousand unlabelled tracts.
       this.anchors[i] = feature.properties.label ? labelAnchor(feature) : null;
       if (feature.geometry && feature.geometry.type === 'Point') points.push(feature);
       else areas.push(feature);
     }
-    this.areas = { type: 'FeatureCollection', features: areas };
-
-    var tilesMatch = /[?&]tiles=([a-z0-9-]+)/.exec(window.location.search || '');
-    var tileStyle = tilesMatch ? tilesMatch[1] : (el.dataset.style || 'dataviz');
-
-    // The view is set here, once, with no motion: the fitted bounds with
-    // the padding, or, for a single point, that point at `data-zoom`.
-    var bounds = geometryBounds(geojson);
-    var view = {};
-    if (bounds && bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]) {
-      view = { center: bounds[0], zoom: zoom };
-    } else if (bounds) {
-      view = { bounds: bounds, fitBoundsOptions: { padding: padding } };
-    }
-
-    maptilersdk.config.apiKey = el.dataset.maptilerKey || '';
-    this.map = new maptilersdk.Map(Object.assign({
-      container: el,
-      style: styleFor(tileStyle),
-      // A figure, not a map to move: every handler off and no furniture
-      // but the attribution (and the MapTiler logo where the key calls for
-      // one). The canvas still takes clicks and hovers for the features.
-      dragPan: false,
-      scrollZoom: false,
-      doubleClickZoom: false,
-      boxZoom: false,
-      keyboard: false,
-      touchZoomRotate: false,
-      dragRotate: false,
-      pitchWithRotate: false,
-      touchPitch: false,
-      navigationControl: false,
-      geolocateControl: false,
-      terrainControl: false,
-      attributionControl: { compact: 'auto' },
-      logoPosition: 'bottom-right',
-    }, view));
-    // For debugging from the console: document.querySelector('.map-figure').mapFigure
-    el.mapFigure = this;
-
-    // Our source and layers are part of the style, so they're (re)added
-    // whenever a style has loaded, the first time included.
-    this.map.on('style.load', this.addLayers.bind(this));
-    this.map.once('load', this.collapseAttribution.bind(this));
+    shell.sourceData.areas = { type: 'FeatureCollection', features: areas };
+    // Kept as a direct alias (same object as shell.sourceData.areas) for the
+    // smoke script and the console, which read a figure's drawn areas here.
+    this.areas = shell.sourceData.areas;
     this.addMarkers(points);
     this.bindAreaEvents();
+    this.map.once('load', function () { self.loaded = true; });
   }
 
-  // Added on top of the whole basemap, labels included: these figures exist
-  // to show their own geometry, and a place name over a shaded area
-  // competes with it. Idempotent, so it can run on every style load.
-  MapFigure.prototype.addLayers = function () {
-    var map = this.map;
-    if (!map.getSource('areas')) {
-      map.addSource('areas', { type: 'geojson', data: this.areas, promoteId: 'id' });
-    }
-    if (!map.getLayer('areas-fill')) {
-      map.addLayer({
-        id: 'areas-fill',
-        type: 'fill',
-        source: 'areas',
-        paint: {
-          'fill-color': styled('fillColor'),
-          'fill-opacity': styled('fillOpacity'),
-        },
-      });
-    }
-    if (!map.getLayer('areas-line')) {
-      map.addLayer({
-        id: 'areas-line',
-        type: 'line',
-        source: 'areas',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': hovered(HOVER_COLOR, styled('color')),
-          'line-width': hovered(HOVER_WIDTH, styled('weight')),
-        },
-      });
-    }
+  // Added on top of the whole basemap, labels included: these figures exist to
+  // show their own geometry. Idempotent, so it can run on every style load.
+  Figure.prototype.addLayers = function () {
+    var shell = this.shell;
+    shell.ensureSource('areas');
+    shell.ensureLayer({
+      id: 'areas-fill',
+      type: 'fill',
+      source: 'areas',
+      paint: {
+        'fill-color': styled('fillColor'),
+        'fill-opacity': styled('fillOpacity'),
+      },
+    });
+    shell.ensureLayer({
+      id: 'areas-line',
+      type: 'line',
+      source: 'areas',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': hovered(HOVER_COLOR, styled('color')),
+        'line-width': hovered(HOVER_WIDTH, styled('weight')),
+      },
+    });
     // Permanent area labels, once (markers carry their own).
     if (!this.areaLabelsAdded) {
       this.areaLabelsAdded = true;
-      for (var i = 0; i < this.areas.features.length; i++) {
-        var props = this.areas.features[i].properties;
+      var features = shell.sourceData.areas.features;
+      for (var i = 0; i < features.length; i++) {
+        var props = features[i].properties;
         if (props.label && props.labelOnHover !== true && this.anchors[props.id]) {
-          this.labels.push(makeLabel(props.label, this.anchors[props.id], 0).addTo(map));
+          this.labels.push(makeLabel(props.label, this.anchors[props.id], 0).addTo(this.map));
         }
       }
     }
   };
 
-  MapFigure.prototype.addMarkers = function (points) {
+  Figure.prototype.addMarkers = function (points) {
     var self = this;
     points.forEach(function (feature) {
       var props = feature.properties;
@@ -382,12 +264,11 @@
     });
   };
 
-  MapFigure.prototype.bindAreaEvents = function () {
+  Figure.prototype.bindAreaEvents = function () {
     var self = this;
     var map = this.map;
-    // An area with a url is a link: pointer cursor, click to follow. One
-    // with a hover label shows it at the area's anchor while the cursor is
-    // over it (not following the cursor, as Leaflet's non-sticky tooltip).
+    // An area with a url is a link: pointer cursor, click to follow. One with a
+    // hover label shows it at the area's anchor while the cursor is over it.
     map.on('mousemove', 'areas-fill', function (event) {
       var feature = event.features && event.features[0];
       if (!feature) return;
@@ -413,9 +294,9 @@
     });
   };
 
-  // The hovered area's outline, as feature state so the paint expression
-  // does the work and no layer is restyled.
-  MapFigure.prototype.setAreaHover = function (featureId) {
+  // The hovered area's outline, as feature state, so the paint expression does
+  // the work and no layer is restyled.
+  Figure.prototype.setAreaHover = function (featureId) {
     if (this.areaHoverId === featureId) return;
     if (this.areaHoverId != null && this.map.getSource('areas')) {
       this.map.setFeatureState({ source: 'areas', id: this.areaHoverId }, { hover: false });
@@ -426,149 +307,43 @@
     }
   };
 
-  MapFigure.prototype.showHover = function (id, text, lngLat, offset) {
+  Figure.prototype.showHover = function (id, text, lngLat, offset) {
     if (this.hoverId === id || !lngLat) return;
     this.hideHover();
     this.hoverId = id;
     this.hoverLabel = makeLabel(text, lngLat, offset).addTo(this.map);
   };
 
-  MapFigure.prototype.hideHover = function () {
+  Figure.prototype.hideHover = function () {
     if (this.hoverLabel) this.hoverLabel.remove();
     this.hoverLabel = null;
     this.hoverId = null;
   };
 
-  // The SDK opens the compact attribution on load; fold it, as its own
-  // toggle does, so the figure starts with just the (i).
-  MapFigure.prototype.collapseAttribution = function () {
-    if (!this.map) return;
-    var attrib = this.el.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact');
-    if (attrib && attrib.classList.contains('maplibregl-compact-show')) {
-      attrib.classList.remove('maplibregl-compact-show');
-      attrib.setAttribute('open', '');
-    }
-  };
-
-  // Releases the map (its WebGL context with it) once its container is
-  // gone. The labels go first: a Popup is appended to the map's container,
-  // not to the canvas Map.remove() takes with it, so a permanent label
-  // would outlive a destroy whose container is still in the document.
-  MapFigure.prototype.destroy = function () {
+  // The labels go first: a Popup is appended to the map's container, not to
+  // the canvas Map.remove() takes with it, so a permanent label would outlive
+  // a destroy whose container is still in the document.
+  Figure.prototype.destroy = function () {
     this.hideHover();
     this.labels.forEach(function (label) { label.remove(); });
     this.labels = [];
     this.markers.forEach(function (marker) { marker.remove(); });
     this.markers = [];
-    this.map.remove();
     this.map = null;
   };
 
-  // -- lifecycle --
+  M.register('figure', {
+    selector: '.map-figure',
+    lifecycle: 'figure',
+    features: { interactive: false },
+    mapOptions: figureView,
+    create: function (shell) { return new Figure(shell); },
+  });
 
-  var figures = [];   // built
-  var pending = [];   // waiting to be scrolled into view
-  var observer = null;
-
-  function containersUnder(root) {
-    var found = [];
-    if (root.matches && root.matches('.map-figure')) found.push(root);
-    var nested = root.querySelectorAll ? root.querySelectorAll('.map-figure') : [];
-    for (var i = 0; i < nested.length; i++) found.push(nested[i]);
-    return found;
-  }
-
-  function build(el) {
-    try {
-      figures.push(new MapFigure(el));
-    } catch (err) {
-      logError('failed to initialize', err);
-    }
-  }
-
-  function unschedule(el) {
-    var at = pending.indexOf(el);
-    if (at !== -1) pending.splice(at, 1);
-    if (observer) observer.unobserve(el);
-  }
-
-  // Builds the map once the container comes into view (a little before,
-  // BUILD_AHEAD), so the figures below the fold on an admin page cost
-  // nothing until they're scrolled to. Without IntersectionObserver every
-  // figure is built at once.
-  function schedule(el) {
-    if (!('IntersectionObserver' in window)) {
-      build(el);
-      return;
-    }
-    if (!observer) {
-      observer = new IntersectionObserver(function (entries) {
-        for (var i = 0; i < entries.length; i++) {
-          if (!entries[i].isIntersecting) continue;
-          var target = entries[i].target;
-          unschedule(target);
-          build(target);
-        }
-      }, { rootMargin: BUILD_AHEAD });
-    }
-    pending.push(el);
-    observer.observe(el);
-  }
-
-  // Maps whose container has left the document (an htmx swap took the page
-  // they were on) are released, and containers still waiting for their
-  // turn are forgotten. Judged against the whole document, not `root`: a
-  // swap fires htmx:load per swapped element, out-of-band fragments too.
-  function sweep() {
-    var live = [];
-    for (var i = 0; i < figures.length; i++) {
-      if (document.body.contains(figures[i].el)) live.push(figures[i]);
-      else figures[i].destroy();
-    }
-    figures = live;
-    for (var j = pending.length - 1; j >= 0; j--) {
-      if (!document.body.contains(pending[j])) unschedule(pending[j]);
-    }
-  }
-
-  // Idempotent: containers already claimed carry `data-rendered`, so this
-  // can run on every htmx:load over the swapped content.
-  function init(root) {
-    if (typeof maptilersdk === 'undefined') return;
-    sweep();
-    var containers = containersUnder(root || document);
-    for (var i = 0; i < containers.length; i++) {
-      var el = containers[i];
-      // An htmx history restore re-parses the page with scripting off,
-      // which turns the markup inside <noscript> -- the section map's
-      // static fallback, the same choropleth -- into real elements. They
-      // are display:none and are not ours to draw.
-      if (el.closest && el.closest('noscript')) continue;
-      if (el.dataset.rendered) continue;
-      el.dataset.rendered = '1';
-      if (!webglAvailable()) {
-        showUnavailable(el);
-        continue;
-      }
-      schedule(el);
-    }
-  }
-
-  // Exposed so content swapped in later (htmx on the pesticides explorer)
-  // can render the maps it brought with it.
+  // The smoke script and the console still reach the figures here.
   window.SJVAirMapFigures = {
-    init: init,
-    instances: function () { return figures.slice(); },
-    pending: function () { return pending.slice(); },
+    init: M.init,
+    instances: function () { return M.instances('figure'); },
+    pending: function () { return M.pending('figure'); },
   };
-
-  function initDocument() {
-    init(document);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initDocument);
-  } else {
-    initDocument();
-  }
 })();

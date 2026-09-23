@@ -300,6 +300,7 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
         assert 'class="map-figure"' in content
         assert 'maptiler-sdk/maptiler-sdk.js' in content
         assert 'js/admin/map-figure.js' in content
+        assert content.index('js/maps/registry.js') < content.index('js/admin/map-figure.js')
         assert 'leaflet' not in content.lower()
         assert content.count('"kind": "marker"') == 5
         assert content.count('"kind": "area"') == 8  # county outlines

@@ -1,0 +1,392 @@
+/* Map chrome shared by every interactive map on the core (assets/js/maps/):
+   the canvas box, the toolbar row, foldable panels, the zoom/locate/home
+   control bars, the status pill, popups, and expanded mode. What a map draws
+   is styled in its own stylesheet. */
+
+.map-wrap {
+  position: relative;
+}
+
+.map-canvas {
+  width: 100%;
+  height: 70vh;
+  min-height: 480px;
+  border: 1px solid #dbdbdb;
+  border-radius: 4px;
+}
+
+.map-wrap.is-compact .map-canvas {
+  height: 360px;
+  min-height: 0;
+}
+
+/* Panels (the legend card) float over the map in the SDK controls' idiom,
+   so they come along when the map is expanded to the viewport. */
+.map-panel {
+  position: absolute;
+  z-index: 1000; /* above the map's canvas, controls and popups */
+  max-width: calc(100% - 1.5rem);
+  padding: 0;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+/* Each panel is a card: a header (icon, title, chevron at the right end)
+   with a bottom rule, over a body that can be folded away; the fold is
+   remembered per viewer in localStorage. */
+.map-panel-head {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.map-panel.is-collapsed .map-panel-head {
+  border-bottom: 0;
+}
+
+.map-panel-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-width: 9rem;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: #363636;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-panel-toggle:hover {
+  color: #3273dc;
+}
+
+/* Duotone header icons, coloured as in the map toolbar mockup. */
+.map-panel-icon {
+  --fa-secondary-opacity: 1;
+}
+
+.map-panel-icon.is-options {
+  --fa-primary-color: darkgray;
+  --fa-secondary-color: dimgray;
+}
+
+.map-panel-icon.is-legend {
+  --fa-primary-color: slategray;
+  --fa-secondary-color: lightgray;
+}
+
+.map-panel-title {
+  flex: 1 1 auto;
+}
+
+.map-panel-chevron {
+  margin-left: auto;
+  color: #7a7a7a;
+  transition: transform 0.15s ease;
+}
+
+.map-panel.is-collapsed .map-panel-chevron {
+  transform: rotate(180deg);
+}
+
+.map-panel-body {
+  padding: 0.5rem 0.65rem 0.6rem;
+}
+
+.map-panel.is-collapsed .map-panel-body {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-panel-chevron {
+    transition: none;
+  }
+}
+
+/* What the map is doing right now (a load in progress, a locate), as a
+   small pill at the bottom centre, over the attribution strip; it takes no
+   room while empty. */
+.map-wrap .map-status {
+  position: absolute;
+  left: 50%;
+  bottom: 2.75rem;
+  z-index: 1000;
+  transform: translateX(-50%);
+  max-width: calc(100% - 1.5rem);
+  padding: 0.25rem 0.7rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: #4a4a4a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.map-wrap .map-status:empty {
+  display: none;
+}
+
+/* The legend, bottom-left, in line with the SDK's control column (10px in)
+   and with the attribution pill at the bottom. */
+.map-legend-panel {
+  left: 10px;
+  bottom: 10px;
+  max-width: 17rem;
+}
+
+/* Expanded: the map takes the viewport below the site navbar; panels ride
+   along. The script refines `top` to the navbar's measured edge. */
+.map-wrap.is-expanded {
+  position: fixed;
+  top: calc(var(--navbar-height, 3.25rem) - 1px);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 25;
+  background: #fff;
+  /* Same line as the navbar's bottom border; the two overlap (see fitBelowNavbar). */
+  border-top: 1px solid #dbdbdb;
+}
+
+.map-wrap.is-expanded .map-canvas {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+html.map-expanded,
+html.map-expanded body {
+  overflow: hidden;
+}
+
+/* The explorer's scope bar rides along above the expanded map, pinned under
+   the navbar (its top is set by fitBelowNavbar); its dropdowns open over the map. */
+html.map-expanded .explorer-scope-bar {
+  position: fixed;
+  top: var(--navbar-height, 3.25rem);
+  left: 0;
+  right: 0;
+  z-index: 1010;
+  border-bottom: 1px solid #dbdbdb;
+}
+
+@media (max-width: 768px) {
+  .map-panel {
+    font-size: 0.75rem;
+  }
+  .map-legend-panel {
+    max-width: calc(100% - 20px);
+  }
+  .map-panel-toggle {
+    padding: 0.35rem 0.5rem;
+  }
+  .map-panel-body {
+    padding: 0.4rem 0.5rem 0.5rem;
+  }
+}
+
+/* The SDK's own furniture (controls, popups) sets in the page's type. */
+.map-wrap .maplibregl-map {
+  font-family: inherit;
+}
+
+/* Popups: the SDK's popup box restyled (padding, radius, shadow, type size).
+   A popup sits over the toolbar and panels (z 1000); the script also pans
+   the map so one opened under them comes clear (see panPopupIntoView). */
+.map-wrap .maplibregl-popup {
+  z-index: 1001;
+}
+
+.map-wrap .maplibregl-popup-content {
+  padding: 13px 24px 13px 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #363636;
+}
+
+/* A 2rem square: a touch target, not a glyph. */
+.map-wrap .maplibregl-popup-close-button {
+  top: 2px;
+  right: 2px;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 1.15rem;
+  line-height: 2rem;
+  text-align: center;
+  color: #7a7a7a;
+}
+
+.map-wrap .maplibregl-popup-close-button:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #363636;
+}
+
+/* The SDK's control bars (zoom, locate, home) in the panels' skin. */
+.map-wrap .maplibregl-ctrl-group {
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Locate and home under the zoom buttons: the SDK's controls are 33px
+   squares in a grouped bar, and these follow that, one bar each. */
+.map-locate a,
+.map-reset a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 33px;
+  height: 33px;
+  font-size: 0.95rem;
+  color: #363636;
+  text-decoration: none;
+}
+
+.map-locate a:hover,
+.map-reset a:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.map-locate.is-locating a {
+  color: #3273dc;
+  animation: map-locating 1s ease-in-out infinite;
+}
+
+@keyframes map-locating {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-locate.is-locating a {
+    animation: none;
+  }
+}
+
+/* The toolbar row over the map: top-left, clear of the zoom/locate/home
+   column; the map's filters at the start, Options and Expand at the end,
+   all button-styled dropdowns. */
+.map-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 53px; /* the SDK's control column (10px in, 33px wide) plus a 10px gap */
+  right: 10px;
+  z-index: 1000;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  pointer-events: none; /* the gaps between buttons let the map through */
+}
+
+.map-toolbar .map-toolbar-filters,
+.map-toolbar .map-toolbar-end {
+  pointer-events: none;
+}
+
+.map-toolbar .map-toolbar-end {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.map-toolbar .control,
+.map-toolbar .map-toolbar-end > *,
+.map-toolbar .map-toolbar-filters > * {
+  pointer-events: auto;
+}
+
+.map-toolbar .button {
+  height: 33px; /* the SDK's control buttons */
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  border-color: rgba(0, 0, 0, 0.12);
+  font-size: 0.85rem;
+  max-width: 16rem;
+}
+
+.map-toolbar .button .map-toolbar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-toolbar .map-toolbar-dropdown.is-set .button {
+  border-color: #3273dc;
+  color: #3273dc;
+}
+
+.map-toolbar .dropdown-menu {
+  min-width: 18rem;
+}
+
+.map-toolbar .dropdown-content {
+  padding: 0.75rem;
+}
+
+.map-toolbar .map-options .dropdown-menu {
+  min-width: 12rem;
+}
+
+/* Expand is icon-only; the icon follows the wrapper's expanded state. */
+.map-toolbar .map-expand {
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+.map-toolbar .map-expand .icon {
+  margin: 0;
+}
+
+.map-toolbar .map-expand .is-compress,
+.map-wrap.is-expanded .map-expand .is-expand {
+  display: none;
+}
+
+.map-wrap.is-expanded .map-expand .is-compress {
+  display: inline-flex;
+}
+
+.map-toolbar .dropdown-content .field:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .map-toolbar .button .map-toolbar-label {
+    max-width: 7rem;
+  }
+  .map-toolbar .map-toolbar-filters .map-toolbar-label,
+  .map-toolbar .map-options .map-toolbar-label {
+    display: none;
+  }
+}
+
+/* Without WebGL the container holds a note instead of a map. */
+.map-canvas.is-unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #f5f5f5;
+  color: #7a7a7a;
+  text-align: center;
+}
+
+.map-canvas.is-unavailable .map-note {
+  margin: 0;
+  max-width: 28rem;
+}

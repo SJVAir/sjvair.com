@@ -33,6 +33,7 @@
 {% block extrahead %}
     {{ block.super }}
     <script src="{% static 'maptiler-sdk/maptiler-sdk.js' %}"></script>
+    {% include 'maps/includes/scripts.html' %}
     <script src="{% static 'js/admin/map-figure.js' %}"></script>
 {% endblock %}
 

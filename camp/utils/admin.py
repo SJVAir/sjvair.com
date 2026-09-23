@@ -22,6 +22,11 @@ class MapFigureMixin:
         },
         js=[
             'maptiler-sdk/maptiler-sdk.js',
+            'js/maps/core.js',
+            'js/maps/controls.js',
+            'js/maps/chrome.js',
+            'js/maps/shell.js',
+            'js/maps/registry.js',
             'js/admin/map-figure.js',
         ],
     )

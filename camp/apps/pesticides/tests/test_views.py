@@ -4,6 +4,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils.html import escape
 
+from camp.apps.pesticides import views
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideUseRollup, PesticideUseTotal, Product, ProductChemical,
 )
@@ -763,7 +764,7 @@ class MapPageTests(RollupTestMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         assert html.index('data-kind="product"') < html.index('data-kind="chemical"') < html.index('data-kind="commodity"')
         # The county is the explorer's scope, picked in the scope bar, not a toolbar filter.
-        assert 'name="county"' not in html.split('class="section-map-toolbar-filters"')[1].split('</form>')[0]
+        assert 'name="county"' not in html.split('class="map-toolbar-filters"')[1].split('</form>')[0]
         chemical = Chemical.objects.get(pk=1)
         html = self.client.get(self.url, {'chemical': chemical.sqid, 'county': 'fresno', 'year': '2022'}).content.decode()
         assert 'Glyphosate <button type="button" class="delete is-small entity-picker-clear"' in html
@@ -783,14 +784,42 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert cfg['townships_url'] == '/api/2.0/pesticides/townships/'
         assert cfg['notices_url'] == '/api/2.0/pesticides/notices/active/'
         html = response.content.decode()
-        assert 'class="section-map"' in html and 'data-year="2023"' in html
+        assert 'class="section-map map-canvas"' in html and 'data-year="2023"' in html
         assert 'data-counties-url="/api/2.0/pesticides/counties/"' in html
         assert 'data-townships-url="/api/2.0/pesticides/townships/"' in html
         # Popup links are built client-side from these URL patterns.
         assert 'data-product-page-url="/tools/pesticides/products/{id}/"' in html
         assert 'data-notice-page-url="/tools/pesticides/notices/{id}/"' in html
-        assert 'section-map.js' in html
+        assert html.index('js/maps/registry.js') < html.index('js/pesticides/section-map.js')
         assert '<noscript>' in html and 'class="map-figure"' in html   # static fallback
+
+    def test_section_map_renders_through_the_shared_include(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'class="map-wrap"' in html
+        assert 'class="section-map map-canvas" id="section-map-2023"' in html
+        # The page's filters, then Options (the metric and layer toggles), then Expand.
+        assert html.index('class="map-toolbar-filters"') < html.index('map-options') < html.index('class="button map-expand"')
+        assert 'name="metric"' in html and 'class="section-map-controls"' in html
+        # The legend body's hooks for the script, and the toggle pointing at it.
+        assert 'aria-controls="section-map-2023-legend"' in html and 'id="section-map-2023-legend"' in html
+        assert 'class="county-legend section-map-legend"' in html
+        # The map frames itself on the counties: no shared bounds.
+        assert 'data-bounds=""' in html
+
+    def test_only_the_map_page_has_the_filter_toolbar(self):
+        config = views.section_map_config(2023)
+        assert config['map']['toolbar_template'] is None
+        assert config['map']['options_template'] == 'pesticides/includes/map-options.html'
+        assert config['map']['features'] == {'toolbar': True, 'expand': True, 'legend': True}
+        assert views.section_map_config(2023, toolbar=True)['map']['toolbar_template'] == 'pesticides/includes/map-toolbar.html'
+
+    def test_every_flat_key_is_a_data_attribute(self):
+        config = views.section_map_config(2023, chemical=None, show_locations=True)
+        data = config['map']['data']
+        for key, value in config.items():
+            if key == 'map':
+                continue
+            assert data[key.replace('_', '-')] == ('' if value is None else str(value))
 
     @override_settings(MAPTILER_API_KEY='test-key')
     def test_map_reads_its_key_and_style_from_the_container(self):
@@ -807,7 +836,7 @@ class MapPageTests(RollupTestMixin, TestCase):
         html = response.content.decode()
         # The section map's own container (the noscript county choropleth
         # has the same attributes, so it's picked out by class).
-        start = html.index('class="section-map"')
+        start = html.index('class="section-map map-canvas"')
         container = html[start:html.index('>', start)]
         assert 'data-maptiler-key="test-key"' in container
         assert 'data-style="dataviz"' in container
@@ -817,6 +846,8 @@ class MapPageTests(RollupTestMixin, TestCase):
 
     def test_page_loads_the_sdk_and_no_leaflet(self):
         html = self.client.get(self.url).content.decode()
+        # The shared map chrome's stylesheet, before the section map's own.
+        assert html.index('css/maps/map.css') < html.index('css/pesticides/section-map.css')
         assert 'maptiler-sdk/maptiler-sdk.js' in html
         assert 'maptiler-sdk/maptiler-sdk.css' in html
         assert html.count('js/pesticides/section-map') == 1   # one map module, no spike beside it
@@ -825,6 +856,8 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'js/admin/map-figure.js' in html
         assert 'js/admin/map-figure.css' in html
         assert html.index('maptiler-sdk/maptiler-sdk.js') < html.index('js/admin/map-figure.js')
+        assert html.index('js/maps/registry.js') < html.index('js/admin/map-figure.js')
+        assert html.count('js/maps/core.js') == 1
         assert 'leaflet' not in html.lower()
 
     def test_entity_filters_resolve_to_api_identifiers(self):
