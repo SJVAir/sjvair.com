@@ -68,6 +68,14 @@
     return [parts[1], parts[0]];
   }
 
+  // "west,south,east,north" -> [[west, south], [east, north]]; null when blank or malformed.
+  function parseBounds(value) {
+    if (!value || !String(value).trim()) return null;
+    var parts = String(value).split(',').map(Number);
+    if (parts.length !== 4 || !parts.every(isFinite)) return null;
+    return [[parts[0], parts[1]], [parts[2], parts[3]]];
+  }
+
   function escapeHtml(text) {
     return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -141,11 +149,17 @@
   FacilityMap.prototype.init = function () {
     var self = this;
     maptilersdk.config.apiKey = this.data.maptilerKey || '';
+    var center = parseCenter(this.data.center);
+    // Without a page-given centre (a facility page), open on the covered
+    // counties, never on the facilities: one bad geocode would drag it anywhere.
+    var bounds = center ? null : parseBounds(this.data.bounds);
     this.map = new maptilersdk.Map({
       container: this.el,
       style: styleFor(this.data.style || 'dataviz'),
-      center: parseCenter(this.data.center) || [-119.80, 36.75],
+      center: center || [-119.80, 36.75],
       zoom: parseFloat(this.data.zoom) || 7,
+      bounds: bounds || undefined,
+      fitBoundsOptions: { padding: 20 },
       navigationControl: false,
       geolocateControl: false,
       terrainControl: false,
@@ -255,9 +269,10 @@
     this.el.dataset.loaded = '1';
   };
 
-  // Frame the facilities, unless the page framed the map itself (a facility page's centre).
+  // Frame the facilities, unless the page framed the map itself (a facility
+  // page's centre, or the covered counties' bounds).
   FacilityMap.prototype.fit = function (collection) {
-    if (parseCenter(this.data.center)) return;
+    if (parseCenter(this.data.center) || parseBounds(this.data.bounds)) return;
     var features = collection.features || [];
     if (!features.length) return;
     var bounds = new maptilersdk.LngLatBounds();
@@ -383,7 +398,9 @@
     this.fitted = false;
     this.map.resize();
     var center = parseCenter(this.data.center);
+    var bounds = parseBounds(this.data.bounds);
     if (center) this.map.jumpTo({ center: center, zoom: parseFloat(this.data.zoom) || this.map.getZoom() });
+    else if (bounds) this.map.fitBounds(bounds, { padding: 20, duration: 0 });
     if (this.map.getSource('facilities')) this.load();
   };
 

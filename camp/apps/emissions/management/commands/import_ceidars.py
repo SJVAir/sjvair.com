@@ -4,7 +4,7 @@ import requests
 
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import carb, ceidars
+from camp.apps.emissions import carb, ceidars, locations
 from camp.apps.emissions.models import EmissionsRecord, Facility
 from camp.apps.emissions.sectors import sector_for_sic
 from camp.apps.regions.models import Region
@@ -89,20 +89,28 @@ class Command(BaseCommand):
             for _, row in merged.iterrows():
                 key = (row['DIS'], int(row['FACID']))
                 if key not in existing_keys or regeocode:
-                    geocode_index.append((key, {
+                    address = {
                         'street': row.get('FSTREET', '').strip(),
                         'city': row.get('FCITY', '').strip(),
                         'state': 'CA',
                         'zipcode': row.get('FZIP', '').strip(),
-                    }))
+                    }
+                    # Portable equipment and oil-field names aren't places;
+                    # a geocoder would put them anywhere.
+                    if locations.is_geocodable(address):
+                        geocode_index.append((key, address))
 
-            # Batch geocode upfront via Census, falling back to MapTiler for failures.
+            # Batch geocode upfront via Census, falling back to MapTiler for
+            # failures. A point outside the facility's county is a bad match
+            # and is dropped.
             positions = {}
             if geocode_index:
                 self.status(f'{label}: geocoding {len(geocode_index)} facilities...')
+                area = locations.county_area(county)
                 addr_to_key = {id(addr): key for key, addr in geocode_index}
                 for addr, point in geocode.resolve_batch([addr for _, addr in geocode_index]):
-                    positions[addr_to_key[id(addr)]] = point
+                    if locations.plausible(point, area):
+                        positions[addr_to_key[id(addr)]] = point
 
             total_rows = len(merged)
             seen_keys = set()

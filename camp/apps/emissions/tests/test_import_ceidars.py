@@ -167,6 +167,27 @@ class ImportCeidarsTests(TestCase):
         with pytest.raises(CommandError, match='nowhere'):
             self.run_import(county='nowhere')
 
+    def test_point_outside_the_county_is_dropped(self):
+        slovakia = Point(19.174, 48.741, srid=4326)
+        self.run_import(county='fresno', geocode=lambda addresses, **kw: [(a, slovakia) for a in addresses])
+        assert Facility.objects.get(county_code=10, facid=1).point is None
+
+    def test_various_locations_are_not_geocoded(self):
+        placeholder = ('123 MAIN ST,FRESNO', 'VARIOUS LOCATIONS,VARIOUS LOCATIONS')
+        criteria = {10: FRESNO_CRITERIA.replace(*placeholder)}
+        toxics = {10: FRESNO_TOXICS.replace(*placeholder)}
+        geocoded = []
+
+        def geocode(addresses, **kw):
+            geocoded.extend(addresses)
+            return [(a, POINT) for a in addresses]
+
+        self.run_import(county='fresno', criteria=criteria, toxics=toxics, geocode=geocode)
+        assert geocoded == []
+        facility = Facility.objects.get(county_code=10, facid=1)
+        assert facility.point is None
+        assert facility.emissions.count() == 1
+
     def test_sets_sector_from_sic(self):
         self.run_import(county='fresno')
         assert Facility.objects.get(county_code=10, facid=1).sector == Facility.Sector.POWER_PLANTS

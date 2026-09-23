@@ -3,6 +3,8 @@ import csv
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.contrib.gis.db.models import Extent
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
@@ -229,6 +231,18 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
 MAP_STYLE = 'dataviz'
 
 
+def covered_bounds():
+    """
+    'west,south,east,north' around the covered counties, which the map opens
+    on. Framing the map on its facilities instead lets one badly geocoded
+    point pull the view across the world.
+    """
+    def compute():
+        extent = Region.objects.counties().aggregate(extent=Extent('boundary__geometry'))['extent']
+        return ','.join(f'{value:.4f}' for value in extent) if extent else ''
+    return cache.get_or_set(f'emissions:v{stats.CACHE_VERSION}:bounds', compute, stats.CACHE_TIMEOUT)
+
+
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None):
     """The data-* attributes of a `.facility-map` container (see assets/js/emissions/facility-map.js)."""
     params = dict(params) if params is not None else scope.params()
@@ -249,6 +263,7 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'highlight': highlight.sqid if highlight is not None else '',
         'center': f'{point.y},{point.x}' if point is not None else '',
         'zoom': 11 if point is not None else '',
+        'bounds': covered_bounds(),
         'label': scope.pollutant.label,
         'unit': scope.pollutant.unit,
         'sector': sector or '',

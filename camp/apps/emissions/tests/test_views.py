@@ -178,6 +178,13 @@ class MapTests(ViewTestCase):
         assert config['facility_url'].endswith('/facilities/{id}/')
         assert config['highlight'] == '' and config['center'] == ''
 
+    def test_map_opens_on_the_covered_counties(self):
+        config = views.facility_map_config(stats.resolve_scope({}))
+        west, south, east, north = (float(value) for value in config['bounds'].split(','))
+        assert west < -119.787 < east
+        assert south < 36.737 < north
+        assert 'data-bounds="' + config['bounds'] + '"' in self.get('map').content.decode()
+
     def test_facility_page_has_a_compact_highlighted_map(self):
         content = self.client.get(self.plant.get_absolute_url()).content.decode()
         assert 'data-mode="compact"' in content
