@@ -31,6 +31,7 @@ from camp.apps.pesticides.models import (
     Product, ProductChemical,
 )
 from camp.apps.regions.models import Region
+from camp.utils import mapconfig
 from camp.utils import mapfigure
 
 # Sentinel for "sqid didn't resolve to an object" in ExplorerListMixin.related.
@@ -1012,9 +1013,9 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False):
     year = year or stats.latest_year()
-    return {
+    config = {
         # Upcoming-notice markers start on where notices are the subject of
         # the page, off where the reader came for the use data (records, and
         # the entity pages). Either way the map's own checkbox flips it.
@@ -1061,6 +1062,20 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # A regions-API URL whose boundary the map draws and fits to (place pages).
         'outline_url': outline_url or '',
     }
+    config['map'] = mapconfig.map_config(
+        'section-map',
+        container_id=f'section-map-{config["year"]}',
+        # Every key above is a data attribute on the container, as it was
+        # before the shared include. No shared bounds: the map frames itself
+        # on the county outlines (see `fit`).
+        data={**{key.replace('_', '-'): value for key, value in config.items()}, 'bounds': ''},
+        features={'toolbar': True, 'expand': True, 'legend': True},
+        # The filter pickers only on the map page; Options and Expand everywhere.
+        toolbar_template='pesticides/includes/map-toolbar.html' if toolbar else None,
+        options_template='pesticides/includes/map-options.html',
+        legend_template='pesticides/includes/map-legend.html',
+    )
+    return config
 
 
 class MapPage(vanilla.TemplateView):
@@ -1090,6 +1105,7 @@ class MapPage(vanilla.TemplateView):
             county=county.slug if county else None,
             all_years=all_years,
             concern=concern,
+            toolbar=True,
         )
 
         filters = []

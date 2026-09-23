@@ -4,6 +4,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils.html import escape
 
+from camp.apps.pesticides import views
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideUseRollup, PesticideUseTotal, Product, ProductChemical,
 )
@@ -789,8 +790,36 @@ class MapPageTests(RollupTestMixin, TestCase):
         # Popup links are built client-side from these URL patterns.
         assert 'data-product-page-url="/tools/pesticides/products/{id}/"' in html
         assert 'data-notice-page-url="/tools/pesticides/notices/{id}/"' in html
-        assert 'section-map.js' in html
+        assert html.index('js/maps/registry.js') < html.index('js/pesticides/section-map.js')
         assert '<noscript>' in html and 'class="map-figure"' in html   # static fallback
+
+    def test_section_map_renders_through_the_shared_include(self):
+        html = self.client.get(self.url).content.decode()
+        assert 'class="map-wrap"' in html
+        assert 'class="section-map map-canvas" id="section-map-2023"' in html
+        # The page's filters, then Options (the metric and layer toggles), then Expand.
+        assert html.index('class="map-toolbar-filters"') < html.index('map-options') < html.index('class="button map-expand"')
+        assert 'name="metric"' in html and 'class="section-map-controls"' in html
+        # The legend body's hooks for the script, and the toggle pointing at it.
+        assert 'aria-controls="section-map-2023-legend"' in html and 'id="section-map-2023-legend"' in html
+        assert 'class="county-legend section-map-legend"' in html
+        # The map frames itself on the counties: no shared bounds.
+        assert 'data-bounds=""' in html
+
+    def test_only_the_map_page_has_the_filter_toolbar(self):
+        config = views.section_map_config(2023)
+        assert config['map']['toolbar_template'] is None
+        assert config['map']['options_template'] == 'pesticides/includes/map-options.html'
+        assert config['map']['features'] == {'toolbar': True, 'expand': True, 'legend': True}
+        assert views.section_map_config(2023, toolbar=True)['map']['toolbar_template'] == 'pesticides/includes/map-toolbar.html'
+
+    def test_every_flat_key_is_a_data_attribute(self):
+        config = views.section_map_config(2023, chemical=None, show_locations=True)
+        data = config['map']['data']
+        for key, value in config.items():
+            if key == 'map':
+                continue
+            assert data[key.replace('_', '-')] == ('' if value is None else str(value))
 
     @override_settings(MAPTILER_API_KEY='test-key')
     def test_map_reads_its_key_and_style_from_the_container(self):

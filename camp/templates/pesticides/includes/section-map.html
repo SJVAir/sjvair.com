@@ -1,89 +1,9 @@
-<div class="map-wrap">
-  <div class="section-map map-canvas" id="section-map-{{ map_config.year }}"
-       data-sections-url="{{ map_config.sections_url }}"
-       data-counties-url="{{ map_config.counties_url }}"
-       data-townships-url="{{ map_config.townships_url }}"
-       data-notices-url="{{ map_config.notices_url }}"
-       data-locations-url="{{ map_config.locations_url }}"
-       data-section-url-pattern="{{ map_config.section_url_pattern }}"
-       data-section-page-url="{{ map_config.section_page_url }}"
-       data-chemical-page-url="{{ map_config.chemical_page_url }}"
-       data-product-page-url="{{ map_config.product_page_url }}"
-       data-notice-page-url="{{ map_config.notice_page_url }}"
-       data-maptiler-key="{{ map_config.maptiler_key }}"
-       data-style="{{ map_config.style }}"
-       data-year="{{ map_config.year }}"
-       data-year-label="{{ map_config.year_label }}"
-       data-chemical="{{ map_config.chemical }}"
-       data-product="{{ map_config.product }}"
-       data-commodity="{{ map_config.commodity }}"
-       data-county="{{ map_config.county }}"
-       data-concern="{{ map_config.concern }}"
-       data-highlight="{{ map_config.highlight }}"
-       data-outline-url="{{ map_config.outline_url }}"
-       data-center="{{ map_config.center }}"
-       data-zoom="{{ map_config.zoom }}"
-       data-radius="{{ map_config.radius }}"
-       data-fit="{{ map_config.fit }}"
-       data-show-notices="{{ map_config.show_notices }}"
-       data-show-locations="{{ map_config.show_locations }}"></div>
-  {% comment %}
-  One toolbar row over the map (top-left, beside the zoom buttons): the page's
-  filters when it has them, then Options, then Expand. The legend sits
-  bottom-left. Everything is inside the wrapper so it comes along when the
-  map is expanded.
-  {% endcomment %}
-  <div class="map-toolbar" hidden>
-    {% if map_toolbar %}{% include 'pesticides/includes/map-toolbar.html' %}{% endif %}
-    <div class="map-toolbar-end">
-      <div class="dropdown is-right map-toolbar-dropdown map-options">
-        <div class="dropdown-trigger">
-          <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
-            <span class="icon"><span class="fa-duotone fa-fw fa-gear map-panel-icon is-options" aria-hidden="true"></span></span>
-            <span class="map-toolbar-label">Options</span>
-            <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
-          </button>
-        </div>
-        <div class="dropdown-menu" role="menu">
-          <div class="dropdown-content section-map-controls">
-            <span class="section-map-group-label">Shade by</span>
-            <div class="section-map-metric" role="group" aria-label="Shade by">
-              <label><input type="radio" name="metric" value="lbs_chemical" checked> Pounds</label>
-              <label><input type="radio" name="metric" value="applications"> Applications</label>
-            </div>
-            <span class="section-map-group-label">Show</span>
-            <label class="section-map-notices-toggle"><input type="checkbox" name="notices"{% if map_config.show_notices == '1' %} checked{% endif %}> Notices of intent</label>
-            <label class="section-map-locations-toggle"><input type="checkbox" name="locations"{% if map_config.show_locations == '1' %} checked{% endif %}> Schools &amp; child care</label>
-            <label class="section-map-sections-toggle"><input type="checkbox" name="sections"> All sections</label>
-            {# Experiment controls while a basemap and ramp are chosen; the script fills the options and applies them live. #}
-            <label class="section-map-select">Tiles <select name="tiles"></select></label>
-            <label class="section-map-select">Ramp <select name="ramp"></select></label>
-            <label class="section-map-select">Bins <select name="bins"></select></label>
-          </div>
-        </div>
-      </div>
-      {# Icon only; both icons are rendered and CSS shows the one for the current state (the icon font swaps spans for SVGs, so classes can't be toggled). #}
-      <button type="button" class="button map-expand" aria-pressed="false" aria-label="Expand the map" title="Expand the map">
-        <span class="icon map-expand-icon is-expand"><span class="fa-regular fa-fw fa-expand" aria-hidden="true"></span></span>
-        <span class="icon map-expand-icon is-compress"><span class="fa-regular fa-fw fa-compress" aria-hidden="true"></span></span>
-      </button>
-    </div>
-  </div>
-  {# What the map is doing (a load in progress, a locate), as a pill at the bottom centre; hidden while empty. #}
-  <span class="map-status" aria-live="polite"></span>
-  <div class="map-panel map-legend-panel" data-panel="legend" hidden>
-    <div class="map-panel-head">
-      <button type="button" class="map-panel-toggle" aria-expanded="true" aria-controls="section-map-legend-{{ map_config.year }}">
-        <span class="fa-duotone fa-fw fa-circle-info map-panel-icon is-legend" aria-hidden="true"></span>
-        <span class="map-panel-title">Legend</span>
-        <span class="fa-regular fa-fw fa-chevron-up map-panel-chevron" aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="map-panel-body" id="section-map-legend-{{ map_config.year }}">
-      <ul class="county-legend section-map-legend"></ul>
-      <span class="section-map-level"></span>
-      <span class="section-map-locations-note"></span>
-    </div>
-  </div>
-  <noscript>{% if county_map %}{% include 'pesticides/includes/county-map.html' %}{% endif %}</noscript>
-</div>
+{% comment %}
+The pesticides section map (assets/js/pesticides/section-map.js) in the shared
+map chrome (maps/includes/map.html). Its config is map_config.map, from
+views.section_map_config: the filter pickers on the map page only, Options
+(map-options.html) and Expand everywhere, and the legend body (map-legend.html)
+the script fills.
+{% endcomment %}
+{% include 'maps/includes/map.html' with map=map_config.map %}
+<noscript>{% if county_map %}{% include 'pesticides/includes/county-map.html' %}{% endif %}</noscript>
