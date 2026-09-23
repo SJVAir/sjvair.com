@@ -518,6 +518,37 @@ def check_fit(page):
     return True, 'zoom %.2f, county=%s valley=%s' % (result['zoom'], result['countyFitted'], result['valleyFitted'])
 
 
+def check_home(page):
+    """Home returns to what the page is about: its own region when it has an
+    outline, otherwise its county or the valley. Zoom away first, so a pass
+    means the button moved the map rather than that it never left."""
+    before = page.instance_js("""
+        if (!inst.outlineBounds) return null;
+        inst.map.jumpTo({ center: [-121.5, 38.5], zoom: 6 });
+        return { west: inst.outlineBounds[0][0], south: inst.outlineBounds[0][1],
+                 east: inst.outlineBounds[1][0], north: inst.outlineBounds[1][1] };
+    """)
+    if before is None:
+        return None, 'no region outline on this page'
+    page.driver.find_element(By.CSS_SELECTOR, '.section-map-reset').click()
+    time.sleep(2.5)
+    after = page.instance_js("""
+        var b = inst.map.getBounds();
+        return { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth(),
+                 zoom: inst.map.getZoom() };
+    """)
+    # the view must contain the region and not be the whole valley
+    holds = (after['west'] <= before['west'] + 0.01 and after['east'] >= before['east'] - 0.01
+             and after['south'] <= before['south'] + 0.01 and after['north'] >= before['north'] - 0.01)
+    span = after['east'] - after['west']
+    region_span = before['east'] - before['west']
+    if not holds:
+        return False, 'home left the region out of view (zoom %.2f)' % after['zoom']
+    if span > region_span * 4:
+        return False, 'home zoomed out well past the region (%.2f deg vs the region %.2f)' % (span, region_span)
+    return True, 'home framed the region again at zoom %.2f' % after['zoom']
+
+
 def check_grid(page):
     """The grid for the view is on the map at the level the zoom calls for,
     every feature classed (fill/opacity written), the legend showing one
@@ -1488,6 +1519,7 @@ CHECKS = [
     ('layers', check_layers),
     ('controls', check_controls),
     ('fit', check_fit),
+    ('home', check_home),
     ('grid', check_grid),
     ('legend options', check_legend_options),
     ('notices', check_notices),

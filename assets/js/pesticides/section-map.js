@@ -771,6 +771,7 @@
     this.counties = null;
     this.countyBounds = {};
     this.valleyBounds = null;
+    this.outlineBounds = null;
     // One controller per request family (see startRequest), and the
     // families seen, so destroy() can cut every one of them short.
     this.gridAbort = null;
@@ -1519,9 +1520,12 @@
   };
 
   SectionMap.prototype.resetView = function () {
-    var bounds = this.countyBounds[this.data.county] || this.valleyBounds;
+    // Home goes back to what the page is about: its own region when it has
+    // one (the counties around it are context, not the subject), then its
+    // county, then the whole valley.
+    var bounds = this.outlineBounds || this.countyBounds[this.data.county] || this.valleyBounds;
     if (bounds) {
-      this.map.fitBounds(bounds, { padding: 20, animate: !this.reducedMotion });
+      this.map.fitBounds(bounds, { padding: this.outlineBounds ? 24 : 20, animate: !this.reducedMotion });
     } else {
       this.map.easeTo({
         center: lngLatOf(this.parseCenter(this.data.center) || [36.75, -119.80]),
@@ -1769,7 +1773,8 @@
         var feature = { type: 'Feature', properties: { id: 'outline' }, geometry: geometry };
         self.setSourceData('outline', feature);
         self.setSourceData('outline-mask', maskFeature(geometry));
-        self.map.fitBounds(geometryBounds(feature), { padding: 24, animate: !self.reducedMotion });
+        self.outlineBounds = geometryBounds(feature);
+        self.map.fitBounds(self.outlineBounds, { padding: 24, animate: !self.reducedMotion });
       })
       .catch(function (err) {
         if (isAbort(err) || self.outlineAbort !== abort) return;
@@ -1780,6 +1785,7 @@
   SectionMap.prototype.clearOutline = function () {
     this.setSourceData('outline', EMPTY);
     this.setSourceData('outline-mask', EMPTY);
+    this.outlineBounds = null;
   };
 
   // Dashed once the section grid is on, so the two don't compete.
