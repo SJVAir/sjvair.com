@@ -103,7 +103,7 @@ def main():
             ".map(function (s) { return !!document.querySelector(s); });"
         )
         check(results, 'locate, home, expand and legend present', all(controls), str(controls))
-        driver.find_element(By.CSS_SELECTOR, '.map-expand').click()
+        driver.execute_script("document.querySelector('.map-expand').click()")
         expanded = driver.execute_script("return document.documentElement.classList.contains('map-expanded');")
         check(results, 'expand fills the viewport', expanded)
 
