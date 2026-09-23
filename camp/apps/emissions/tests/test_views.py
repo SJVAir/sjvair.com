@@ -168,7 +168,11 @@ class MapTests(ViewTestCase):
         assert 'class="facility-map"' in content
         assert 'data-mode="full"' in content
         assert '/api/2.0/emissions/facilities/geojson/' in content
-        assert 'value="glass" selected' in content
+        assert 'class="dropdown-item is-active" data-sector="glass"' in content
+        assert '<span class="section-map-toolbar-label">Glass manufacturing</span>' in content
+        # The pesticides map's chrome: expand button and legend card.
+        assert 'section-map-expand' in content
+        assert 'section-map-legend-panel' in content
 
     def test_map_config(self):
         scope = stats.resolve_scope({'county': 'fresno', 'toxics': '1'})

@@ -20,7 +20,6 @@ import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select
 
 MAP_TIMEOUT = 40
 
@@ -75,8 +74,8 @@ def main():
         check(results, 'map page draws features', feature_count(driver) > 0, f'{feature_count(driver)} features')
         instance = driver.execute_script('return window.EmissionsFacilityMap.instances()[0].map._mapId || 1;')
 
-        select = Select(driver.find_element(By.CSS_SELECTOR, '.facility-map-toolbar select[name=sector]'))
-        select.select_by_value('glass')
+        driver.find_element(By.CSS_SELECTOR, '.facility-map-sector .dropdown-trigger .button').click()
+        driver.find_element(By.CSS_SELECTOR, '.facility-map-sector [data-sector="glass"]').click()
         time.sleep(0.5)
         check(results, 'sector filter redraws', wait_loaded(driver) and 'sector=glass' in driver.current_url, driver.current_url)
 
@@ -94,6 +93,17 @@ def main():
 
         driver.get(args.base + '/tools/emissions/sectors/power-plants/')
         check(results, 'sector page compact map loads', wait_loaded(driver))
+
+        driver.get(args.base + '/tools/emissions/map/')
+        wait_loaded(driver)
+        controls = driver.execute_script(
+            "return ['.section-map-locate', '.section-map-reset', '.section-map-expand', '.section-map-legend-panel']"
+            ".map(function (s) { return !!document.querySelector(s); });"
+        )
+        check(results, 'locate, home, expand and legend present', all(controls), str(controls))
+        driver.find_element(By.CSS_SELECTOR, '.section-map-expand').click()
+        expanded = driver.execute_script("return document.documentElement.classList.contains('section-map-expanded');")
+        check(results, 'expand fills the viewport', expanded)
 
         errors = console_errors(driver)
         check(results, 'no console errors', not errors, '; '.join(errors)[:300])

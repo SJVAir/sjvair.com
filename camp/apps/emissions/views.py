@@ -267,6 +267,7 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'label': scope.pollutant.label,
         'unit': scope.pollutant.unit,
         'sector': sector or '',
+        'sector_label': Facility.Sector(sector).label if sector else '',
     }
 
 
