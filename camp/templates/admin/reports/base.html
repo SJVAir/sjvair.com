@@ -3,11 +3,11 @@
 
 {% block extrastyle %}
     {{ block.super }}
-    <link rel="stylesheet" href="{% static 'js/admin/leaflet/leaflet.css' %}">
-    <link rel="stylesheet" href="{% static 'js/admin/leaflet-maps.css' %}">
+    <link rel="stylesheet" href="{% static 'maptiler-sdk/maptiler-sdk.css' %}">
+    <link rel="stylesheet" href="{% static 'js/admin/map-figure.css' %}">
     <style>
         .report-map { margin: 0 0 20px; }
-        .report-map .admin-leaflet-map { max-width: 100%; }
+        .report-map .map-figure { max-width: 100%; }
         .report-legend { list-style: none; padding: 0; margin: 8px 0 0; }
         .report-legend li { display: inline-block; margin-right: 16px; }
         .report-legend .swatch {
@@ -32,8 +32,8 @@
 
 {% block extrahead %}
     {{ block.super }}
-    <script src="{% static 'js/admin/leaflet/leaflet.js' %}"></script>
-    <script src="{% static 'js/admin/leaflet-maps.js' %}"></script>
+    <script src="{% static 'maptiler-sdk/maptiler-sdk.js' %}"></script>
+    <script src="{% static 'js/admin/map-figure.js' %}"></script>
 {% endblock %}
 
 {% block breadcrumbs %}

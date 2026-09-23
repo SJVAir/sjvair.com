@@ -3,32 +3,32 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 
 
-class LeafletMapMixin:
+class MapFigureMixin:
     """
-    Loads Leaflet and the admin map initializer for admins (and inlines)
-    that render maps via ``camp.utils.leaflet.LeafletMap``.
+    Loads the MapTiler SDK and the map figure initializer for admins (and
+    inlines) that render maps via ``camp.utils.mapfigure.MapFigure``.
 
     Implemented as a ``media`` property rather than an inner ``Media``
     class so it still applies when the admin defines its own ``Media``
     (which would otherwise shadow the mixin's). Must precede the
     ModelAdmin / InlineModelAdmin base in the class's bases.
     """
-    leaflet_media = forms.Media(
+    map_figure_media = forms.Media(
         css={
             'all': [
-                'js/admin/leaflet/leaflet.css',
-                'js/admin/leaflet-maps.css',
+                'maptiler-sdk/maptiler-sdk.css',
+                'js/admin/map-figure.css',
             ],
         },
         js=[
-            'js/admin/leaflet/leaflet.js',
-            'js/admin/leaflet-maps.js',
+            'maptiler-sdk/maptiler-sdk.js',
+            'js/admin/map-figure.js',
         ],
     )
 
     @property
     def media(self):
-        return super().media + self.leaflet_media
+        return super().media + self.map_figure_media
 
 
 class ReadOnlyAdminMixin:

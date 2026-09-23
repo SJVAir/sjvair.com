@@ -418,7 +418,7 @@ def check_map_loaded(page):
 
 
 def check_layers(page):
-    """Every layer is in the style, under the basemap's labels, in the
+    """Every layer is in the style, above every basemap layer, in the
     expected paint order (each layer's fill under its own stroke, the grid
     under the sections drawn over it, those under the outlines, and the
     markers last); the county outlines have data; the outline/radius
@@ -427,14 +427,20 @@ def check_layers(page):
         var map = inst.map;
         var all = map.getStyle().layers;
         var layers = all.map(function (l) { return l.id; });
-        var firstSymbol = -1;
-        all.some(function (l, i) { if (l.type === 'symbol') { firstSymbol = i; return true; } });
+        var mineSet = {};
         var mine = ['radius-fill', 'radius-line', 'grid-fill', 'grid-line',
-                    'all-sections-fill', 'all-sections-line', 'lens-fill', 'lens-line', 'lens-outline',
-                    'selected-line', 'highlight-line', 'counties-line', 'outline-fill', 'outline-line',
+                    'all-sections-fill', 'all-sections-line', 'lens-fill', 'lens-line', 'lens-outline', 'outline-mask',
+                    'selected-line', 'highlight-casing', 'highlight-line', 'counties-line',
+                    'outline-fill', 'outline-casing', 'outline-line',
                     'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
-        var aboveLabels = mine.filter(function (id) { return firstSymbol !== -1 && layers.indexOf(id) > firstSymbol; });
+        mine.forEach(function (id) { mineSet[id] = true; });
+        var lastBase = -1;
+        layers.forEach(function (id, i) { if (!mineSet[id]) lastBase = i; });
+        var underBasemap = mine.filter(function (id) {
+            var i = layers.indexOf(id);
+            return i !== -1 && i < lastBase;
+        });
         var ordered = function (ids) {
             var order = ids.filter(function (id) { return layers.indexOf(id) !== -1; }).map(function (id) { return layers.indexOf(id); });
             return order.every(function (i, n) { return n === 0 || i > order[n - 1]; });
@@ -444,15 +450,15 @@ def check_layers(page):
             var d = inst.sourceData[id];
             counts[id] = d ? (d.features ? d.features.length : (d.geometry ? 1 : 0)) : 0;
         });
-        return { missing: missing, aboveLabels: aboveLabels, inOrder: ordered(mine), counts: counts, wantsOutline: !!inst.data.outlineUrl, wantsRadius: !!inst.data.radius };
+        return { missing: missing, underBasemap: underBasemap, inOrder: ordered(mine), counts: counts, wantsOutline: !!inst.data.outlineUrl, wantsRadius: !!inst.data.radius };
     """)
     if result is None:
         return False, 'no instance'
     problems = []
     if result['missing']:
         problems.append('missing layers %s' % result['missing'])
-    if result['aboveLabels']:
-        problems.append('layers above labels %s' % result['aboveLabels'])
+    if result['underBasemap']:
+        problems.append('layers under the basemap %s' % result['underBasemap'])
     if not result['inOrder']:
         problems.append('layers out of paint order')
     if not result['counts']['counties']:
@@ -510,6 +516,37 @@ def check_fit(page):
     if result['fit'] == 'valley' and not result['valleyFitted']:
         return False, 'valley page did not fit the counties'
     return True, 'zoom %.2f, county=%s valley=%s' % (result['zoom'], result['countyFitted'], result['valleyFitted'])
+
+
+def check_home(page):
+    """Home returns to what the page is about: its own region when it has an
+    outline, otherwise its county or the valley. Zoom away first, so a pass
+    means the button moved the map rather than that it never left."""
+    before = page.instance_js("""
+        if (!inst.outlineBounds) return null;
+        inst.map.jumpTo({ center: [-121.5, 38.5], zoom: 6 });
+        return { west: inst.outlineBounds[0][0], south: inst.outlineBounds[0][1],
+                 east: inst.outlineBounds[1][0], north: inst.outlineBounds[1][1] };
+    """)
+    if before is None:
+        return None, 'no region outline on this page'
+    page.driver.find_element(By.CSS_SELECTOR, '.section-map-reset').click()
+    time.sleep(2.5)
+    after = page.instance_js("""
+        var b = inst.map.getBounds();
+        return { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth(),
+                 zoom: inst.map.getZoom() };
+    """)
+    # the view must contain the region and not be the whole valley
+    holds = (after['west'] <= before['west'] + 0.01 and after['east'] >= before['east'] - 0.01
+             and after['south'] <= before['south'] + 0.01 and after['north'] >= before['north'] - 0.01)
+    span = after['east'] - after['west']
+    region_span = before['east'] - before['west']
+    if not holds:
+        return False, 'home left the region out of view (zoom %.2f)' % after['zoom']
+    if span > region_span * 4:
+        return False, 'home zoomed out well past the region (%.2f deg vs the region %.2f)' % (span, region_span)
+    return True, 'home framed the region again at zoom %.2f' % after['zoom']
 
 
 def check_grid(page):
@@ -1482,6 +1519,7 @@ CHECKS = [
     ('layers', check_layers),
     ('controls', check_controls),
     ('fit', check_fit),
+    ('home', check_home),
     ('grid', check_grid),
     ('legend options', check_legend_options),
     ('notices', check_notices),

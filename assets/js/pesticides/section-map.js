@@ -349,11 +349,13 @@
   }
 
   var COUNTY_COLOR = '#1f2d3d';
-  // Dashed county lines once the section grid is on (see restyleCounties);
-  // dash lengths are in line widths, so this is Leaflet's "4 3" at 1.5px.
-  var COUNTY_DASH = [2.5, 2];
   // The page's own region (a city, ZIP, or place), in the notices orange.
   var OUTLINE_COLOR = '#d35400';
+  // A wider pale line under each orange outline: two-tone, so the edge holds
+  // its own over a dark class and a pale one alike.
+  var CASING_COLOR = '#fff';
+  var CASING_OPACITY = 0.9;
+  var CASING_WIDTH = 3;
   // The locate radius circle, in Leaflet's default path style.
   var RADIUS_COLOR = '#3388ff';
   // How many vertices approximate the radius circle.
@@ -408,6 +410,31 @@
   var SPRAYDAYS_URL = 'https://spraydays.cdpr.ca.gov/';
 
   var EMPTY = { type: 'FeatureCollection', features: [] };
+
+  // The page's own region reads badly as a thin line over a dense grid, so
+  // everything outside it is washed out: a polygon covering the world with
+  // the region punched out of it. White, because the basemap under it is
+  // light and the classes outside should read as "not this page".
+  var OUTLINE_MASK_COLOR = '#fff';
+  var OUTLINE_MASK_OPACITY = 0.55;
+  var WORLD_RING = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+
+  // Each part's outer ring becomes a hole. A region's own holes are left
+  // covered: they aren't part of it, so they should dim with everything else.
+  function maskFeature(geometry) {
+    var rings = [];
+    if (geometry && geometry.type === 'Polygon') {
+      rings = [geometry.coordinates[0]];
+    } else if (geometry && geometry.type === 'MultiPolygon') {
+      rings = geometry.coordinates.map(function (part) { return part[0]; });
+    }
+    if (!rings.length) return EMPTY;
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Polygon', coordinates: [WORLD_RING].concat(rings) },
+    };
+  }
 
   var PHONE_QUERY = '(max-width: 768px)';
   function isPhone() {
@@ -741,6 +768,7 @@
     this.counties = null;
     this.countyBounds = {};
     this.valleyBounds = null;
+    this.outlineBounds = null;
     // One controller per request family (see startRequest), and the
     // families seen, so destroy() can cut every one of them short.
     this.gridAbort = null;
@@ -1239,7 +1267,6 @@
     this.map.on('moveend', debouncedLoad);
     this.map.on('moveend', debouncedNotices);
     this.map.on('moveend', debouncedLocations);
-    this.map.on('zoomend', this.restyleCounties.bind(this));
     // Section strokes switch on/off across SECTION_LINES_MIN_ZOOM.
     this.map.on('zoomend', this.restyleSectionLines.bind(this));
 
@@ -1273,18 +1300,6 @@
   };
 
   // -- sources and layers --
-  // Where our layers go in the basemap: under its first symbol layer, so
-  // its labels stay readable over the choropleth while its roads and water
-  // sit beneath it -- the reader is here for the data, and a road drawn
-  // over a dark class competes with it. Serialises the style, so
-  // addBaseLayers asks once and passes the answer to each ensureLayer.
-  SectionMap.prototype.beforeLabels = function () {
-    var layers = (this.map.getStyle() || {}).layers || [];
-    for (var i = 0; i < layers.length; i++) {
-      if (layers[i].type === 'symbol') return layers[i].id;
-    }
-    return undefined;
-  };
 
   // GeoJSON sources are keyed on our own feature ids (`promoteId`), so
   // feature state (hover, selection) can address them by id.
@@ -1293,11 +1308,13 @@
     this.map.addSource(id, { type: 'geojson', data: this.sourceData[id] || EMPTY, promoteId: 'id' });
   };
 
-  // `before` is the anchor layer id from beforeLabels(), asked for once by
-  // the caller and passed to every layer it adds.
-  SectionMap.prototype.ensureLayer = function (spec, before) {
+  // Added on top of the whole basemap, labels included: the reader is here
+  // for the data, and a place name or a road drawn over a shaded section
+  // competes with it. The basemap still shows through everywhere the data
+  // doesn't cover.
+  SectionMap.prototype.ensureLayer = function (spec) {
     if (this.map.getLayer(spec.id)) return;
-    this.map.addLayer(spec, before);
+    this.map.addLayer(spec);
   };
 
   // Sets a source's data, remembering it for the next style load; before
@@ -1321,7 +1338,6 @@
   // stays on top of every marker.
   // Idempotent, so it can run on every style load.
   SectionMap.prototype.addBaseLayers = function () {
-    var before = this.beforeLabels();
     this.ensureSource('radius');
     this.ensureSource('grid');
     this.ensureSource('all-sections');
@@ -1331,6 +1347,7 @@
     this.ensureSource('highlight');
     this.ensureSource('counties');
     this.ensureSource('outline');
+    this.ensureSource('outline-mask');
     this.ensureSource('locations');
     this.ensureSource('notices');
     this.ensureSource('locate');
@@ -1338,18 +1355,18 @@
     this.ensureLayer({
       id: 'radius-fill', type: 'fill', source: 'radius',
       paint: { 'fill-color': RADIUS_COLOR, 'fill-opacity': 0.2 },
-    }, before);
+    });
     this.ensureLayer({
       id: 'radius-line', type: 'line', source: 'radius',
       paint: { 'line-color': RADIUS_COLOR, 'line-width': 3 },
-    }, before);
+    });
     // The grid: the fills carry the data, over a faint base grid that
     // darkens on hover. Its opacity and widths follow the level and step
     // aside under "all sections" (see applyGridPaint).
     this.ensureLayer({
       id: 'grid-fill', type: 'fill', source: 'grid',
       paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': GRID_FILL_OPACITY },
-    }, before);
+    });
     this.ensureLayer({
       id: 'grid-line', type: 'line', source: 'grid',
       paint: {
@@ -1357,14 +1374,14 @@
         'line-opacity': hoverCase(1, GRID_LINE.opacity),
         'line-width': hoverCase(2, 0.5),
       },
-    }, before);
+    });
     // Every section in view at the township zoom ("all sections"), and the
     // lens (the hovered township's neighbourhood, see showLens): the same
     // paint, see sectionsFillPaint/sectionsLinePaint.
-    this.ensureLayer({ id: 'all-sections-fill', type: 'fill', source: 'all-sections', paint: sectionsFillPaint() }, before);
-    this.ensureLayer({ id: 'all-sections-line', type: 'line', source: 'all-sections', paint: sectionsLinePaint() }, before);
-    this.ensureLayer({ id: 'lens-fill', type: 'fill', source: 'lens', paint: sectionsFillPaint() }, before);
-    this.ensureLayer({ id: 'lens-line', type: 'line', source: 'lens', paint: sectionsLinePaint() }, before);
+    this.ensureLayer({ id: 'all-sections-fill', type: 'fill', source: 'all-sections', paint: sectionsFillPaint() });
+    this.ensureLayer({ id: 'all-sections-line', type: 'line', source: 'all-sections', paint: sectionsLinePaint() });
+    this.ensureLayer({ id: 'lens-fill', type: 'fill', source: 'lens', paint: sectionsFillPaint() });
+    this.ensureLayer({ id: 'lens-line', type: 'line', source: 'lens', paint: sectionsLinePaint() });
     // The hovered township's own outline, over the lens sections (which
     // would otherwise paint over its hover border), in the township hover
     // stroke of a township with data, the only kind that gets one (see
@@ -1373,33 +1390,49 @@
       id: 'lens-outline', type: 'line', source: 'lens-outline',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': '#222', 'line-opacity': 1, 'line-width': 2.5 },
-    }, before);
+    });
+    // Everything outside the page's own region, washed out (see maskFeature).
+    // Over the grid and the lens, under every outline and marker.
+    this.ensureLayer({
+      id: 'outline-mask', type: 'fill', source: 'outline-mask',
+      paint: { 'fill-color': OUTLINE_MASK_COLOR, 'fill-opacity': OUTLINE_MASK_OPACITY },
+    });
     // The section whose popup is open, and the page's own section.
     this.ensureLayer({
       id: 'selected-line', type: 'line', source: 'selected',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': SELECTED_LINE.color, 'line-opacity': SELECTED_LINE.opacity, 'line-width': SELECTED_LINE.width },
-    }, before);
+    });
+    this.ensureLayer({
+      id: 'highlight-casing', type: 'line', source: 'highlight',
+      layout: { 'line-join': 'round' },
+      paint: { 'line-color': CASING_COLOR, 'line-opacity': CASING_OPACITY, 'line-width': HIGHLIGHT_LINE.width + CASING_WIDTH },
+    });
     this.ensureLayer({
       id: 'highlight-line', type: 'line', source: 'highlight',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': HIGHLIGHT_LINE.color, 'line-opacity': HIGHLIGHT_LINE.opacity, 'line-width': HIGHLIGHT_LINE.width },
-    }, before);
+    });
     this.ensureLayer({
       id: 'counties-line', type: 'line', source: 'counties',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': COUNTY_COLOR, 'line-width': 1.5, 'line-opacity': 0.8 },
-    }, before);
+    });
     // The region this page is about, shaded faintly and outlined.
     this.ensureLayer({
       id: 'outline-fill', type: 'fill', source: 'outline',
       paint: { 'fill-color': OUTLINE_COLOR, 'fill-opacity': 0.08 },
-    }, before);
+    });
+    this.ensureLayer({
+      id: 'outline-casing', type: 'line', source: 'outline',
+      layout: { 'line-join': 'round' },
+      paint: { 'line-color': CASING_COLOR, 'line-opacity': CASING_OPACITY, 'line-width': 2.5 + CASING_WIDTH },
+    });
     this.ensureLayer({
       id: 'outline-line', type: 'line', source: 'outline',
       layout: { 'line-join': 'round' },
       paint: { 'line-color': OUTLINE_COLOR, 'line-width': 2.5, 'line-opacity': 0.9 },
-    }, before);
+    });
     // The markers: schools and child care (coloured by type), and over
     // them the notices of intent. Both sit over the grid and outlines and
     // under the reader's located position. The locations layer hides
@@ -1411,7 +1444,7 @@
       id: 'locations-hit', type: 'circle', source: 'locations',
       minzoom: LOCATIONS_MIN_ZOOM,
       paint: { 'circle-radius': MARKER_HIT_RADIUS, 'circle-opacity': 0, 'circle-stroke-width': 0 },
-    }, before);
+    });
     this.ensureLayer({
       id: 'locations-circle', type: 'circle', source: 'locations',
       minzoom: LOCATIONS_MIN_ZOOM,
@@ -1426,11 +1459,11 @@
         'circle-stroke-color': '#fff',
         'circle-stroke-width': LOCATION_MARKER.stroke,
       },
-    }, before);
+    });
     this.ensureLayer({
       id: 'notices-hit', type: 'circle', source: 'notices',
       paint: { 'circle-radius': MARKER_HIT_RADIUS, 'circle-opacity': 0, 'circle-stroke-width': 0 },
-    }, before);
+    });
     this.ensureLayer({
       id: 'notices-circle', type: 'circle', source: 'notices',
       paint: {
@@ -1440,7 +1473,7 @@
         'circle-stroke-color': '#fff',
         'circle-stroke-width': NOTICE_MARKER.stroke,
       },
-    }, before);
+    });
     this.ensureLayer({
       id: 'locate-circle', type: 'circle', source: 'locate',
       paint: {
@@ -1449,8 +1482,7 @@
         'circle-stroke-color': '#fff',
         'circle-stroke-width': 2,
       },
-    }, before);
-    this.restyleCounties();
+    });
     this.applyGridPaint();
     // Feature state (hover, the lens hosts) didn't survive a style swap:
     // forget the hovers (the next pointer move sets them again) and put
@@ -1483,9 +1515,12 @@
   };
 
   SectionMap.prototype.resetView = function () {
-    var bounds = this.countyBounds[this.data.county] || this.valleyBounds;
+    // Home goes back to what the page is about: its own region when it has
+    // one (the counties around it are context, not the subject), then its
+    // county, then the whole valley.
+    var bounds = this.outlineBounds || this.countyBounds[this.data.county] || this.valleyBounds;
     if (bounds) {
-      this.map.fitBounds(bounds, { padding: 20, animate: !this.reducedMotion });
+      this.map.fitBounds(bounds, { padding: this.outlineBounds ? 24 : 20, animate: !this.reducedMotion });
     } else {
       this.map.easeTo({
         center: lngLatOf(this.parseCenter(this.data.center) || [36.75, -119.80]),
@@ -1732,7 +1767,9 @@
         if (!geometry) return;
         var feature = { type: 'Feature', properties: { id: 'outline' }, geometry: geometry };
         self.setSourceData('outline', feature);
-        self.map.fitBounds(geometryBounds(feature), { padding: 24, animate: !self.reducedMotion });
+        self.setSourceData('outline-mask', maskFeature(geometry));
+        self.outlineBounds = geometryBounds(feature);
+        self.map.fitBounds(self.outlineBounds, { padding: 24, animate: !self.reducedMotion });
       })
       .catch(function (err) {
         if (isAbort(err) || self.outlineAbort !== abort) return;
@@ -1742,12 +1779,8 @@
 
   SectionMap.prototype.clearOutline = function () {
     this.setSourceData('outline', EMPTY);
-  };
-
-  // Dashed once the section grid is on, so the two don't compete.
-  SectionMap.prototype.restyleCounties = function () {
-    if (!this.map.getLayer('counties-line')) return;
-    this.map.setPaintProperty('counties-line', 'line-dasharray', this.atSectionZoom() ? COUNTY_DASH : null);
+    this.setSourceData('outline-mask', EMPTY);
+    this.outlineBounds = null;
   };
 
   SectionMap.prototype.enableScrollZoom = function () {

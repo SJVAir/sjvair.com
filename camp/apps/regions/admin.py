@@ -9,8 +9,8 @@ from camp.apps.entries import models as entry_models
 from camp.apps.entries.levels import _blend_hex
 from camp.apps.regions.models import Region, Boundary, Location
 from camp.apps.regions.panels import panels_for
-from camp.utils import leaflet
-from camp.utils.admin import LeafletMapMixin, ReadOnlyAdminMixin
+from camp.utils import mapfigure
+from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
 # Marker outline for SJVAir-owned monitors on the region map.
 SJVAIR_BORDER = '#0a84ff'
@@ -42,7 +42,7 @@ class CountyFilter(admin.SimpleListFilter):
         return queryset.filter(boundary__geometry__intersects=county.boundary.geometry)
 
 
-class BoundaryInline(LeafletMapMixin, admin.TabularInline):
+class BoundaryInline(MapFigureMixin, admin.TabularInline):
     model = Boundary
     readonly_fields = ['get_map', 'get_info']
     extra = 0
@@ -70,17 +70,17 @@ class BoundaryInline(LeafletMapMixin, admin.TabularInline):
             'portrait': (400, 600),
         }[instance.orientation]
 
-        lmap = leaflet.LeafletMap(width=width, height=height)
-        lmap.add(leaflet.Area(
+        figure = mapfigure.MapFigure(width=width, height=height)
+        figure.add(mapfigure.Area(
             geometry=instance.geometry,
             fill_color='dodgerblue',
             border_color='royalblue',
         ))
-        return lmap.render()
+        return figure.render()
     get_map.short_description = 'Map'
 
 @admin.register(Region)
-class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
+class RegionAdmin(MapFigureMixin, ReadOnlyAdminMixin, GISModelAdmin):
     inlines = [BoundaryInline]
     list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
     list_filter = ['type', CountyFilter, 'boundary__version']
@@ -168,24 +168,24 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                 'portrait': (300, 400),
             }[county.orientation]
 
-            lmap = leaflet.LeafletMap(width=width, height=height)
+            figure = mapfigure.MapFigure(width=width, height=height)
 
             if county.region_id != instance.pk:
-                lmap.add(leaflet.Area(
+                figure.add(mapfigure.Area(
                     geometry=county.geometry,
                     fill_color='white',
                     border_color='dimgrey',
                     fill_opacity=.5,
                 ))
 
-            lmap.add(leaflet.Area(
+            figure.add(mapfigure.Area(
                 geometry=instance.boundary.geometry,
                 fill_color='dodgerblue',
                 border_width=0,
                 fill_opacity=1,
             ))
 
-            return lmap.render()
+            return figure.render()
         except Exception:
             import traceback
             traceback.print_exc()
@@ -201,8 +201,8 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                 'portrait': (440, 520),
             }[instance.boundary.orientation]
 
-            lmap = leaflet.LeafletMap(width=width, height=height)
-            lmap.add(leaflet.Area(
+            figure = mapfigure.MapFigure(width=width, height=height)
+            figure.add(mapfigure.Area(
                 geometry=instance.boundary.geometry,
                 fill_color='dodgerblue',
                 border_color='royalblue',
@@ -233,7 +233,7 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                 else:
                     border_color = 'dimgray'
 
-                lmap.add(leaflet.Marker(
+                figure.add(mapfigure.Marker(
                     geometry=monitor.position,
                     size=14 if monitor.is_active else 10,
                     fill_color=fill_color,
@@ -242,7 +242,7 @@ class RegionAdmin(LeafletMapMixin, ReadOnlyAdminMixin, GISModelAdmin):
                     border_width=2 if monitor.is_sjvair else 1,
                 ))
 
-            return mark_safe(lmap.render())
+            return mark_safe(figure.render())
         except Exception:
             import traceback
             traceback.print_exc()

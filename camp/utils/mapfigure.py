@@ -1,19 +1,19 @@
 """
-Browser-rendered (Leaflet) maps for the Django admin.
+Browser-rendered map figures for the Django admin and the pesticides explorer.
 
 The static map generator in ``camp.utils.maps`` downloads basemap tiles
 server-side on every request, which is slow enough to time out admin
 pages. This module produces the same kind of map as a lightweight HTML
-container plus a GeoJSON payload; ``assets/js/admin/leaflet-maps.js``
-turns each container into a non-interactive Leaflet map in the browser,
-where the tiles load lazily and in parallel.
+container plus a GeoJSON payload; ``assets/js/admin/map-figure.js`` turns
+each container into a non-interactive map on the MapTiler SDK in the
+browser, where the basemap loads lazily and in parallel.
 
 Usage::
 
-    lmap = LeafletMap(width=600, height=400)
-    lmap.add(Area(geometry=boundary.geometry, fill_color='dodgerblue'))
-    lmap.add(Marker(geometry=monitor.position, shape='star'))
-    html = lmap.render()  # SafeString for a readonly admin field
+    figure = MapFigure(width=600, height=400)
+    figure.add(Area(geometry=boundary.geometry, fill_color='dodgerblue'))
+    figure.add(Marker(geometry=monitor.position, shape='star'))
+    html = figure.render()  # SafeString for a readonly admin field
 """
 
 import json
@@ -30,14 +30,10 @@ from shapely.geometry.base import BaseGeometry
 
 from camp.utils.maps import to_geos
 
-# MapTiler's neutral grey "dataviz" raster (256px): a quiet ground for the
+# MapTiler's neutral grey "dataviz" vector style: a quiet ground for the
 # choropleths, whose light classes vanish into the greener street styles.
-# The scripts accept a `?tiles=<style>` override for trying other styles.
-TILE_URL = 'https://api.maptiler.com/maps/dataviz/256/{z}/{x}/{y}.png?key={key}'
-TILE_ATTRIBUTION = (
-    '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> '
-    '<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>'
-)
+# The script accepts a `?tiles=<style>` override for trying other styles.
+MAP_STYLE = 'dataviz'
 
 Geometry = Union[GEOSGeometry, BaseGeometry]
 
@@ -62,12 +58,10 @@ class Marker:
             'size': self.size,
             'label': self.label,
             'labelOnHover': self.label_on_hover,
-            'style': {
-                'fillColor': self.fill_color,
-                'fillOpacity': self.fill_opacity,
-                'color': self.border_color,
-                'weight': self.border_width,
-            },
+            'fillColor': self.fill_color,
+            'fillOpacity': self.fill_opacity,
+            'color': self.border_color,
+            'weight': self.border_width,
         }
 
 
@@ -90,17 +84,15 @@ class Area:
             'label': self.label,
             'labelOnHover': self.label_on_hover,
             'url': self.url,
-            'style': {
-                'fillColor': self.fill_color,
-                'fillOpacity': self.fill_opacity,
-                'color': self.border_color,
-                'weight': self.border_width,
-            },
+            'fillColor': self.fill_color,
+            'fillOpacity': self.fill_opacity,
+            'color': self.border_color,
+            'weight': self.border_width,
         }
 
 
-class LeafletMap:
-    template_name = 'admin/_includes/leaflet_map.html'
+class MapFigure:
+    template_name = 'admin/_includes/map_figure.html'
 
     def __init__(self, width: int = 600, height: int = 400, padding: int = 20, zoom: int = 14):
         """
@@ -116,7 +108,7 @@ class LeafletMap:
         self.zoom = zoom
         self.elements: list[Union[Marker, Area]] = []
 
-    def add(self, *elements: Union[Marker, Area]) -> 'LeafletMap':
+    def add(self, *elements: Union[Marker, Area]) -> 'MapFigure':
         self.elements.extend(elements)
         return self
 
@@ -138,12 +130,12 @@ class LeafletMap:
             raise ValueError('Cannot render a map with no elements.')
 
         return render_to_string(self.template_name, {
-            'map_id': f'leaflet-map-{uuid4().hex}',
+            'map_id': f'map-figure-{uuid4().hex}',
             'width': self.width,
             'height': self.height,
             'padding': self.padding,
             'zoom': self.zoom,
-            'tile_url': TILE_URL.format(key=settings.MAPTILER_API_KEY, z='{z}', x='{x}', y='{y}'),
-            'attribution': TILE_ATTRIBUTION,
+            'style': MAP_STYLE,
+            'maptiler_key': settings.MAPTILER_API_KEY,
             'geojson': self.to_geojson(),
         })

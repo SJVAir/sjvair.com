@@ -297,8 +297,10 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
     def test_map_marks_each_degraded_monitor(self):
         response = self.client.get(reverse('reports:degraded-monitors'))
         content = response.content.decode()
-        assert 'class="admin-leaflet-map"' in content
-        assert 'js/admin/leaflet-maps.js' in content
+        assert 'class="map-figure"' in content
+        assert 'maptiler-sdk/maptiler-sdk.js' in content
+        assert 'js/admin/map-figure.js' in content
+        assert 'leaflet' not in content.lower()
         assert content.count('"kind": "marker"') == 5
         assert content.count('"kind": "area"') == 8  # county outlines
         rows = {r['name']: r for r in response.context['rows']}
@@ -328,7 +330,7 @@ class DegradedMonitorsTests(StaffClientMixin, TestCase):
     def test_no_map_when_nothing_is_degraded(self):
         response = self.client.get(reverse('reports:degraded-monitors'), {'type': 'aqlite'})
         assert response.context['map'] is None
-        assert 'class="admin-leaflet-map"' not in response.content.decode()
+        assert 'class="map-figure"' not in response.content.decode()
 
     def test_sjvair_only_by_default(self):
         partner = PurpleAir.objects.create(name='Partner', sensor_id=10, position=Point(-119.75, 36.75), location='outside')
@@ -426,10 +428,11 @@ class CoverageTests(StaffClientMixin, TestCase):
     def test_map_shades_tracts_and_marks_monitors(self):
         response = self.client.get(reverse('reports:coverage'))
         content = response.content.decode()
-        assert 'class="admin-leaflet-map"' in content
+        assert 'class="map-figure"' in content
         assert content.count('"kind": "area"') == 2 + 8  # two fixture tracts plus county outlines
         assert content.count('"kind": "marker"') == 2
         assert '"fillColor": "#c0392b"' in content  # the DAC tract
+        assert '"style": {' not in content  # the style keys are flat
 
     def test_county_without_region_row_has_no_population(self):
         Region.objects.counties().filter(name='Fresno County').delete()

@@ -19,7 +19,7 @@ from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.reports.base import BaseReport, register
 from camp.apps.reports.scope import MonitorScope
-from camp.utils import leaflet
+from camp.utils import mapfigure
 from camp.apps.regions.counties import COUNTY_KEYS, COUNTY_NAMES
 from camp.utils.gis import fill_holes
 
@@ -60,7 +60,7 @@ def map_bounds(boundaries):
 def county_outlines(boundaries):
     """Unfilled county outlines to draw under map markers."""
     return [
-        leaflet.Area(
+        mapfigure.Area(
             geometry=geometry.simplify(0.002, preserve_topology=True),
             fill_opacity=0,
             border_color='#2c3e50',
@@ -362,14 +362,14 @@ class Coverage(MonitorScopeMixin, BaseReport):
 
     def get_map(self):
         """Valley-wide map: DAC tracts shaded, other tracts light, monitors as dots."""
-        lmap = leaflet.LeafletMap(width=800, height=800, padding=10)
+        figure = mapfigure.MapFigure(width=800, height=800, padding=10)
         boundaries = county_boundaries()
         bounds = map_bounds(boundaries)
-        lmap.add(*county_outlines(boundaries))
+        figure.add(*county_outlines(boundaries))
         tracts = self.tracts()
         if tracts is not None:
             for dac, geometry in tracts.values_list('dac_sb535', 'boundary__geometry').iterator(chunk_size=500):
-                lmap.add(leaflet.Area(
+                figure.add(mapfigure.Area(
                     geometry=geometry.simplify(self.MAP_TRACT_TOLERANCE, preserve_topology=True),
                     fill_color='#c0392b' if dac else '#bdc3c7',
                     fill_opacity=0.35 if dac else 0.15,
@@ -377,8 +377,8 @@ class Coverage(MonitorScopeMixin, BaseReport):
                     border_width=0.5,
                 ))
         for position in self.monitors().filter(position__within=bounds).values_list('position', flat=True):
-            lmap.add(leaflet.Marker(geometry=position, size=7, fill_color='#1f4e79', border_width=1))
-        return lmap.render()
+            figure.add(mapfigure.Marker(geometry=position, size=7, fill_color='#1f4e79', border_width=1))
+        return figure.render()
 
     def get_context_data(self, **kwargs):
         model, version = self.ces()
@@ -838,16 +838,16 @@ class DegradedMonitors(BaseReport):
     MAP_LEGEND = [('Silent / never reported', '#7f8c8d'), ('Grade F', '#c0392b'), ('Grade C', '#e67e22'), ('Flatline', '#8e44ad')]
 
     def get_map(self, rows):
-        lmap = leaflet.LeafletMap(width=800, height=800, padding=10)
+        figure = mapfigure.MapFigure(width=800, height=800, padding=10)
         boundaries = county_boundaries(self.county)
         bounds = map_bounds(boundaries)
         for row in rows:
             if row['position'] and bounds.contains(row['position']):
-                lmap.add(leaflet.Marker(geometry=row['position'], size=9, fill_color=row['map_color']))
-        if not lmap.elements:
+                figure.add(mapfigure.Marker(geometry=row['position'], size=9, fill_color=row['map_color']))
+        if not figure.elements:
             return None
-        lmap.add(*county_outlines(boundaries))
-        return lmap.render()
+        figure.add(*county_outlines(boundaries))
+        return figure.render()
 
     def admin_url(self, cls, monitor):
         return admin_change_url(cls, monitor)

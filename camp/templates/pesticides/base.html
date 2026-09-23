@@ -5,21 +5,19 @@
 {% block body-class %}pesticides{% endblock %}
 
 {% block extra-head %}
-{# Leaflet draws only the static county choropleths (includes/county-map.html); #}
-{# the interactive section map is on the MapTiler SDK. #}
-<link rel="stylesheet" href="{% static 'js/admin/leaflet/leaflet.css' %}">
-<link rel="stylesheet" href="{% static 'js/admin/leaflet-maps.css' %}">
+{# The MapTiler SDK draws both the interactive section map and the static #}
+{# county choropleths (includes/county-map.html, via admin/map-figure.js). #}
 <link rel="stylesheet" href="{% static 'maptiler-sdk/maptiler-sdk.css' %}">
+<link rel="stylesheet" href="{% static 'js/admin/map-figure.css' %}">
 <link rel="stylesheet" href="{% static 'css/pesticides/section-map.css' %}">
 {% endblock %}
 
 {% block javascripts %}
-<script src="{% static 'js/admin/leaflet/leaflet.js' %}"></script>
-<script src="{% static 'js/admin/leaflet-maps.js' %}"></script>
 <script src="{% static 'htmx/htmx.min.js' %}"></script>
 <script src="{% static 'uplot/uPlot.iife.min.js' %}"></script>
 <script src="{% static 'js/pesticides/charts.js' %}"></script>
 <script src="{% static 'maptiler-sdk/maptiler-sdk.js' %}"></script>
+<script src="{% static 'js/admin/map-figure.js' %}"></script>
 <script src="{% static 'js/pesticides/section-map.js' %}"></script>
 <script src="{% static 'js/pesticides/find-area.js' %}"></script>
 <script src="{% static 'js/pesticides/entity-picker.js' %}"></script>
