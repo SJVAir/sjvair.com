@@ -42,6 +42,60 @@ class PlausibleTests(TestCase):
         assert locations.plausible(SLOVAKIA, None)
 
 
+class HighwayAddressTests(TestCase):
+    def test_highways_and_routes(self):
+        assert locations.is_highway_address({'street': '47050 GENERALS HIGHWAY'})
+        assert locations.is_highway_address({'street': '1674 HIGHWAY 99'})
+        assert locations.is_highway_address({'street': '29235 HWY 33'})
+        assert locations.is_highway_address({'street': '80233 STATE ROUTE 166'})
+
+    def test_ordinary_streets(self):
+        assert not locations.is_highway_address({'street': '123 MAIN ST'})
+        assert not locations.is_highway_address({'street': '11901 ROAD 122'})
+        assert not locations.is_highway_address({'street': '4445 AVENUE 352'})
+        assert not locations.is_highway_address({})
+
+
+class ChoosePointTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    STREET = {'street': '123 MAIN ST', 'city': 'FRESNO'}
+    HIGHWAY = {'street': '1674 HIGHWAY 99', 'city': 'FRESNO'}
+    CENSUS = Point(-119.787, 36.737, srid=4326)
+    CARB = Point(-119.79, 36.74, srid=4326)
+    CURRENT = Point(-119.8, 36.75, srid=4326)
+
+    def setUp(self):
+        self.area = locations.county_area(Region.objects.get(type=Region.Type.COUNTY, slug='fresno'))
+
+    def choose(self, address, census, carb, current):
+        return locations.choose_point(address, census=census, carb=carb, current=current, area=self.area)
+
+    def test_census_street_match_first(self):
+        assert self.choose(self.STREET, self.CENSUS, self.CARB, self.CURRENT) is self.CENSUS
+
+    def test_carb_over_a_highway_census_match(self):
+        assert self.choose(self.HIGHWAY, self.CENSUS, self.CARB, self.CURRENT) is self.CARB
+        # ...but a highway match still beats nothing better.
+        assert self.choose(self.HIGHWAY, self.CENSUS, None, None) is self.CENSUS
+
+    def test_carb_over_the_current_point(self):
+        assert self.choose(self.STREET, None, self.CARB, self.CURRENT) is self.CARB
+
+    def test_current_point_last(self):
+        assert self.choose(self.STREET, None, None, self.CURRENT) is self.CURRENT
+
+    def test_implausible_points_are_skipped(self):
+        assert self.choose(self.STREET, SLOVAKIA, SLOVAKIA, self.CURRENT) is self.CURRENT
+        assert self.choose(self.STREET, None, None, SLOVAKIA) is None
+
+    def test_non_address_ignores_census_and_current(self):
+        # A "various locations" facility has no site to geocode: only CARB's point counts.
+        various = {'street': 'VARIOUS LOCATIONS', 'city': ''}
+        assert self.choose(various, self.CENSUS, None, self.CURRENT) is None
+        assert self.choose(various, self.CENSUS, self.CARB, self.CURRENT) is self.CARB
+
+
 class CleanFacilityPointsTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
 
