@@ -69,12 +69,12 @@
       url: https://calheatscore.calepa.ca.gov/
       description: CalHeatScore is California's heat-risk forecasting tool, developed by the Office of Environmental Health Hazard Assessment at CalEPA with the Department of Insurance and the Department of Public Health. It rates each ZIP code's heat risk for the coming week on a five-step scale, from low to severe, based on forecast temperatures and local health data. SJVAir imports the daily scores for every Valley ZIP code so heat risk can be shown alongside air quality.
 
-- category: Environmental & Health Data
+- category: Environmental & Health Mapping
   icon:
     name: fa-earth-americas
     primary: forestgreen
     secondary: deepskyblue
-  description: Screening indices that combine environmental, health, and socioeconomic indicators to identify the communities most burdened by pollution, and the conditions that shape their health.
+  description: Datasets that combine environmental, health, and socioeconomic indicators to identify communities most impacted by pollution and support equity-focused decision making.
   integrations:
     - name: CalEnvironScreen
       logo: img/logo/calenviroscreen-logo.png
