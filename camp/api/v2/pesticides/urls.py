@@ -5,7 +5,6 @@ from . import endpoints, locations, sections
 app_name = 'pesticides'
 
 urlpatterns = [
-    path('counties/', sections.CountyList.as_view(), name='county-list'),
     path('townships/', sections.TownshipList.as_view(), name='township-list'),
     path('locations/', locations.LocationList.as_view(), name='location-list'),
     path('sections/', sections.SectionList.as_view(), name='section-list'),
