@@ -56,3 +56,20 @@ def fill_holes(geometry: GEOSGeometry) -> GEOSMultiPolygon:
 def has_holes(geometry: GEOSGeometry) -> bool:
     polygons = [geometry] if geometry.geom_type == 'Polygon' else list(geometry)
     return any(polygon.num_interior_rings for polygon in polygons)
+
+
+def _round(value, precision):
+    if isinstance(value, (int, float)):
+        return round(value, precision)
+    return [_round(item, precision) for item in value]
+
+
+def round_coords(geometry, precision=5):
+    """
+    Round a GeoJSON geometry dict's coordinates in place (and return it).
+    Five places is about a meter: plenty for a map outline, and it keeps
+    payloads a fraction of full precision.
+    """
+    if geometry and geometry.get('coordinates') is not None:
+        geometry['coordinates'] = _round(geometry['coordinates'], precision)
+    return geometry

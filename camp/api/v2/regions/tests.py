@@ -4,13 +4,14 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
-from camp.api.v2.regions.endpoints import RegionDetail, RegionList, RegionMetaEndpoint
+from camp.api.v2.regions.endpoints import RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
 from camp.apps.regions.models import Boundary, Region
 from camp.utils.test import get_response_data
 
 region_list = RegionList.as_view()
 region_detail = RegionDetail.as_view()
 region_meta = RegionMetaEndpoint.as_view()
+region_geojson = RegionGeoJSON.as_view()
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -280,6 +281,58 @@ class TestPlaceLookup(TestCase):
         boundary = response.json()['data']['boundary']
         assert boundary is not None
         assert boundary['geometry']['type'] == 'MultiPolygon'
+
+
+class RegionGeoJSONTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:regions:region-geojson')
+
+    def get(self, params):
+        response = region_geojson(RequestFactory().get(self.url, params))
+        return response, get_response_data(response)
+
+    def test_route_is_not_read_as_a_region_id(self):
+        assert self.url == '/api/2.0/regions/geojson/'
+
+    def test_counties_as_a_feature_collection(self):
+        response, data = self.get({'type': 'county'})
+        assert response.status_code == 200
+        assert data['type'] == 'FeatureCollection'
+        counties = Region.objects.filter(type=Region.Type.COUNTY).exclude(boundary=None)
+        assert len(data['features']) == counties.count() > 0
+        feature = data['features'][0]
+        assert feature['type'] == 'Feature'
+        assert feature['id'] == feature['properties']['id']
+        assert set(feature['properties']) == {'id', 'name', 'slug', 'type'}
+        assert feature['properties']['type'] == 'county'
+        assert feature['geometry']['type'] == 'MultiPolygon'
+        names = [f['properties']['name'] for f in data['features']]
+        assert names == sorted(names)
+
+    def test_coordinates_are_rounded(self):
+        _, data = self.get({'type': 'county'})
+        ring = data['features'][0]['geometry']['coordinates'][0][0]
+        assert all(round(value, 5) == value for point in ring for value in point)
+
+    def test_filters_are_the_region_lists(self):
+        _, data = self.get({'type': 'county', 'slug': 'fresno'})
+        assert [f['properties']['slug'] for f in data['features']] == ['fresno']
+
+    def test_regions_without_a_boundary_are_left_out(self):
+        Region.objects.create(name='Boundless County', slug='boundless', type=Region.Type.COUNTY)
+        _, data = self.get({'type': 'county'})
+        assert 'boundless' not in [f['properties']['slug'] for f in data['features']]
+
+    def test_type_is_required(self):
+        # Unfiltered, this would be every region in the database: thousands
+        # of square-mile sections among them.
+        response, data = self.get({})
+        assert response.status_code == 400
+        assert 'type' in str(data)
 
 
 class RegionWithinFilterTests(TestCase):

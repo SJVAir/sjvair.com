@@ -22,6 +22,7 @@ from django.db.models import Count
 from django.db.models.functions import Length, Substr
 
 from camp.apps.regions.models import Region
+from camp.utils.gis import round_coords
 
 
 class SimplifyPreserveTopology(GeoFunc):
@@ -42,23 +43,6 @@ COORD_PRECISION = 5
 SIMPLIFY_TOLERANCE = 0.0001
 # 'MDM-T14S-R20E-01' -> 'MDM-T14S-R20E': the trailing '-NN' section number.
 SECTION_SUFFIX_LENGTH = 3
-
-
-def _round(value, precision):
-    if isinstance(value, (int, float)):
-        return round(value, precision)
-    return [_round(item, precision) for item in value]
-
-
-def round_coords(geometry, precision=COORD_PRECISION):
-    """
-    Round a GeoJSON geometry dict's coordinates in place (and return it).
-    Lives here rather than in the API module because both the section and
-    township payloads use it and this module has no API-layer imports.
-    """
-    if geometry and geometry.get('coordinates') is not None:
-        geometry['coordinates'] = _round(geometry['coordinates'], precision)
-    return geometry
 
 
 def township_of(mtrs_name):

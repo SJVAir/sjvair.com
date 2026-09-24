@@ -1,8 +1,13 @@
-from django import forms
+import json
 
-from resticus import generics
+from django import forms
+from django.contrib.gis.geos import MultiPolygon
+
+from resticus import generics, http
 
 from camp.apps.regions.models import Region
+from camp.utils.gis import EPSG_LATLON, round_coords
+from camp.utils.views import CachedEndpointMixin
 
 from .filters import RegionFilter
 from .serializers import RegionSerializer
@@ -38,6 +43,47 @@ class RegionList(RegionMixin, generics.ListEndpoint):
                 return qs.none()
             qs = qs.contained_within(geometry)
         return qs
+
+
+class RegionGeoJSONBase(RegionList):
+    """
+    The region list's filters, answered as a GeoJSON FeatureCollection for a
+    map to draw: one MultiPolygon feature per region with a boundary, keyed
+    and propertied {id, name, slug, type}, coordinates rounded to ~1 m.
+
+    The get() lives on this un-cached base so CachedEndpointMixin.get() on
+    RegionGeoJSON is the one dispatched to.
+    """
+
+    def get(self, request, *args, **kwargs):
+        # Unfiltered this is every region in the database -- thousands of
+        # square-mile sections among them -- so a type is required.
+        if not request.GET.get('type', '').strip():
+            return http.Http400({'error': 'The type parameter is required.'})
+        regions = self.filter_queryset(self.get_queryset()).exclude(boundary=None).order_by('name')
+        return {'type': 'FeatureCollection', 'features': [self.feature(region) for region in regions]}
+
+    @staticmethod
+    def feature(region):
+        properties = {'id': region.sqid, 'name': region.name, 'slug': region.slug, 'type': region.type}
+        geometry = region.boundary.geometry
+        if geometry.srid and geometry.srid != EPSG_LATLON:
+            geometry = geometry.transform(EPSG_LATLON, clone=True)
+        if geometry.geom_type == 'Polygon':
+            geometry = MultiPolygon(geometry)
+        return {
+            'type': 'Feature',
+            'id': region.sqid,
+            'geometry': round_coords(json.loads(geometry.geojson)),
+            'properties': properties,
+        }
+
+
+class RegionGeoJSON(CachedEndpointMixin, RegionGeoJSONBase):
+    """Regions as GeoJSON for a map: ?type= (required), plus ?slug=, ?name=, ?within=."""
+    # Boundaries change only when an import runs; ?_cc=1 clears one early.
+    cache_timeout = 60 * 60 * 24
+    cache_key_version = 1
 
 
 class RegionDetail(RegionMixin, generics.DetailEndpoint):

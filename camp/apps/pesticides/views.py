@@ -1024,7 +1024,8 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # subject of the page (a school district), off everywhere else.
         'show_locations': '1' if show_locations else '0',
         'sections_url': '/api/2.0/pesticides/sections/',
-        'counties_url': '/api/2.0/pesticides/counties/',
+        # The covered counties' outlines, from the regions API.
+        'counties_url': f"{reverse('api:v2:regions:region-geojson')}?type=county",
         'townships_url': '/api/2.0/pesticides/townships/',
         'notices_url': '/api/2.0/pesticides/notices/active/',
         'locations_url': '/api/2.0/pesticides/locations/',

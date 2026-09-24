@@ -237,8 +237,8 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'mode': mode,
         'geojson_url': reverse('api:v2:emissions:geojson'),
         'districts_url': reverse('api:v2:emissions:districts'),
-        # The covered counties' outlines; the pesticides endpoint serves them for every explorer.
-        'counties_url': reverse('api:v2:pesticides:county-list'),
+        # The covered counties' outlines, from the regions API.
+        'counties_url': f"{reverse('api:v2:regions:region-geojson')}?type=county",
         'query': urlencode(params),
         # The bare-sqid route redirects to the slugged page, so the JS needs no slug.
         'facility_url': reverse('emissions:facility-redirect', args=['__id__']).replace('__id__', '{id}'),

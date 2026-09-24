@@ -780,12 +780,12 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert cfg['year'] == 2023
         assert cfg['center'] == '36.75,-119.80' and cfg['zoom'] == 8
         assert cfg['sections_url'] == '/api/2.0/pesticides/sections/'
-        assert cfg['counties_url'] == '/api/2.0/pesticides/counties/'
+        assert cfg['counties_url'] == '/api/2.0/regions/geojson/?type=county'
         assert cfg['townships_url'] == '/api/2.0/pesticides/townships/'
         assert cfg['notices_url'] == '/api/2.0/pesticides/notices/active/'
         html = response.content.decode()
         assert 'class="section-map map-canvas"' in html and 'data-year="2023"' in html
-        assert 'data-counties-url="/api/2.0/pesticides/counties/"' in html
+        assert 'data-counties-url="/api/2.0/regions/geojson/?type=county"' in html
         assert 'data-townships-url="/api/2.0/pesticides/townships/"' in html
         # Popup links are built client-side from these URL patterns.
         assert 'data-product-page-url="/tools/pesticides/products/{id}/"' in html
