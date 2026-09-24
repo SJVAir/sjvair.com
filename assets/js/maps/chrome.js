@@ -47,6 +47,14 @@
     if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   }
 
+  // The panels the chrome renders; a shell with none of them has no panel
+  // to fold, and must not touch another map's.
+  var PANEL_FEATURES = ['legend'];
+
+  function hasPanels(features) {
+    return PANEL_FEATURES.some(function (feature) { return features[feature]; });
+  }
+
   function bindPanels(shell) {
     var panels = shell.wrap.querySelectorAll('.map-panel[data-panel]');
     Array.prototype.forEach.call(panels, function (panel) {
@@ -189,19 +197,27 @@
 
   // (Re)finds the chrome around the container and binds what's new.
   function attach(shell) {
+    // The chrome is the container's own .map-wrap (maps/includes/map.html).
+    // A map rendered without that wrapper -- a figure, which asks for no
+    // chrome -- falls back to its parent, which rests on nothing nesting a
+    // map inside another map's wrapper: were one ever nested there, every
+    // feature below is off for it, so it still finds nothing of the outer
+    // map's to take over.
     var wrap = shell.el.closest('.map-wrap') || shell.el.parentNode;
+    // Which of these is on comes from the container's data-features when the
+    // server rendered the chrome, else from the module's spec (shell.js).
     var features = shell.features;
     shell.wrap = wrap;
     shell.toolbarEl = features.toolbar ? wrap.querySelector('.map-toolbar') : null;
     shell.legendPanelEl = features.legend ? wrap.querySelector('.map-legend-panel') : null;
     shell.legendBodyEl = shell.legendPanelEl ? shell.legendPanelEl.querySelector('.map-panel-body') : null;
-    shell.statusEl = wrap.querySelector('.map-status');
+    shell.statusEl = features.status ? wrap.querySelector('.map-status') : null;
     if (shell.toolbarEl) {
       shell.toolbarEl.hidden = false;
       bindToolbar(shell);
     }
     if (shell.legendPanelEl) shell.legendPanelEl.hidden = false;
-    bindPanels(shell);
+    if (hasPanels(features)) bindPanels(shell);
     var expand = wrap.querySelector('.map-expand');
     if (features.expand && expand && !expand.getAttribute('data-bound')) {
       expand.setAttribute('data-bound', '1');

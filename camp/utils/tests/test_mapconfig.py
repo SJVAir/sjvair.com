@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.core.management import call_command
 from django.template.loader import render_to_string
 from django.test import TestCase, override_settings
 
@@ -25,9 +26,19 @@ class CoveredBoundsTests(TestCase):
 
 
 class NoCountiesTests(TestCase):
-    def test_empty_without_counties(self):
+    def setUp(self):
         cache.clear()
+
+    def test_empty_without_counties(self):
         assert mapconfig.covered_bounds() == ''
+
+    def test_empty_is_not_cached(self):
+        # An environment that renders a map before the counties are imported
+        # would otherwise serve empty bounds for a day after they land.
+        assert mapconfig.covered_bounds() == ''
+        assert cache.get(mapconfig.BOUNDS_CACHE_KEY) is None
+        call_command('loaddata', 'regions.yaml', verbosity=0)
+        assert mapconfig.covered_bounds() != ''
 
 
 @override_settings(MAPTILER_API_KEY='test-key')
@@ -45,6 +56,22 @@ class MapConfigTests(TestCase):
         assert config['data']['style'] == 'dataviz'
         assert config['data']['bounds'] == mapconfig.covered_bounds()
         assert config['features'] == {'toolbar': True}
+        assert config['data']['features'] == 'toolbar'
+
+    def test_features_name_the_rendered_chrome(self):
+        # What the include renders, for the script to read off the container
+        # instead of trusting the map module's own spec.
+        config = mapconfig.map_config('m', data={'bounds': ''}, features={
+            'toolbar': True, 'legend': True, 'status': True, 'expand': True,
+        })
+        assert config['data']['features'] == 'expand legend status toolbar'
+
+    def test_features_leave_out_what_is_off(self):
+        config = mapconfig.map_config('m', data={'bounds': ''}, features={
+            'toolbar': True, 'legend': False, 'expand': None,
+        })
+        assert config['data']['features'] == 'toolbar'
+        assert mapconfig.map_config('m', data={'bounds': ''}, features={})['data']['features'] == ''
 
     def test_caller_overrides_win(self):
         config = mapconfig.map_config('m', data={'style': 'streets', 'bounds': ''}, features={})
@@ -81,10 +108,17 @@ class IncludeTests(TestCase):
         assert 'map-toolbar' not in html
         assert 'map-legend-panel' not in html
         assert 'map-expand' not in html
+        assert 'class="map-status"' not in html
+        assert 'data-features=""' in html
+
+    def test_status_pill_is_a_feature(self):
+        html = self.render(features={'status': True})
         assert 'class="map-status"' in html
+        assert 'data-features="status"' in html
 
     def test_toolbar_expand_and_legend(self):
         html = self.render(features={'toolbar': True, 'expand': True, 'legend': True})
+        assert 'data-features="expand legend toolbar"' in html
         assert 'class="map-toolbar"' in html
         assert 'map-expand' in html
         assert 'map-legend-panel' in html

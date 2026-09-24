@@ -20,10 +20,17 @@ BOUNDS_CACHE_TIMEOUT = 60 * 60 * 24
 
 def covered_bounds():
     """'west,south,east,north' around the covered counties; '' when none are loaded."""
-    def compute():
-        extent = Region.objects.counties().aggregate(extent=Extent('boundary__geometry'))['extent']
-        return ','.join(f'{value:.4f}' for value in extent) if extent else ''
-    return cache.get_or_set(BOUNDS_CACHE_KEY, compute, BOUNDS_CACHE_TIMEOUT)
+    bounds = cache.get(BOUNDS_CACHE_KEY)
+    if bounds is not None:
+        return bounds
+    extent = Region.objects.counties().aggregate(extent=Extent('boundary__geometry'))['extent']
+    bounds = ','.join(f'{value:.4f}' for value in extent) if extent else ''
+    # An environment that renders a map before `import_counties` has run has
+    # no extent yet; caching that would serve empty bounds for a day after
+    # the counties land.
+    if bounds:
+        cache.set(BOUNDS_CACHE_KEY, bounds, BOUNDS_CACHE_TIMEOUT)
+    return bounds
 
 
 def map_config(container_class, *, data, features, toolbar_template=None, options_template=None,
@@ -37,6 +44,11 @@ def map_config(container_class, *, data, features, toolbar_template=None, option
     shared = {
         'maptiler-key': settings.MAPTILER_API_KEY,
         'style': MAP_STYLE,
+        # What the chrome below actually renders, for the script to read off
+        # the container: the rendered chrome wins over the map module's own
+        # spec (assets/js/maps/shell.js), so the two can't drift into a
+        # toolbar that's rendered but never unhidden.
+        'features': ' '.join(sorted(name for name, on in features.items() if on)),
     }
     # Only looked up when the caller doesn't frame the map itself.
     if 'bounds' not in data:

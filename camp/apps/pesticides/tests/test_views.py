@@ -805,12 +805,16 @@ class MapPageTests(RollupTestMixin, TestCase):
         assert 'class="county-legend section-map-legend"' in html
         # The map frames itself on the counties: no shared bounds.
         assert 'data-bounds=""' in html
+        # The chrome the page rendered, for the script (which trusts this
+        # over the map module's spec).
+        assert 'data-features="expand legend status toolbar"' in html
+        assert 'class="map-status"' in html
 
     def test_only_the_map_page_has_the_filter_toolbar(self):
         config = views.section_map_config(2023)
         assert config['map']['toolbar_template'] is None
         assert config['map']['options_template'] == 'pesticides/includes/map-options.html'
-        assert config['map']['features'] == {'toolbar': True, 'expand': True, 'legend': True}
+        assert config['map']['features'] == {'toolbar': True, 'expand': True, 'legend': True, 'status': True}
         assert views.section_map_config(2023, toolbar=True)['map']['toolbar_template'] == 'pesticides/includes/map-toolbar.html'
 
     def test_every_flat_key_is_a_data_attribute(self):

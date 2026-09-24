@@ -1069,7 +1069,7 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # before the shared include. No shared bounds: the map frames itself
         # on the county outlines (see `fit`).
         data={**{key.replace('_', '-'): value for key, value in config.items()}, 'bounds': ''},
-        features={'toolbar': True, 'expand': True, 'legend': True},
+        features={'toolbar': True, 'expand': True, 'legend': True, 'status': True},
         # The filter pickers only on the map page; Options and Expand everywhere.
         toolbar_template='pesticides/includes/map-toolbar.html' if toolbar else None,
         options_template='pesticides/includes/map-options.html',

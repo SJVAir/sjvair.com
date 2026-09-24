@@ -66,6 +66,10 @@
       shell.destroy();
       live[name] = shell = null;
     }
+    // Whether the one live map has a container: one per page is the 'adopt'
+    // contract. A live map still in the document already has one, so another
+    // container found in this pass is a second one for the same module.
+    var placed = !!(shell && document.body.contains(shell.el));
     containersUnder(root, spec.selector).forEach(function (el) {
       if (el.dataset.rendered) return;
       if (!M.webglAvailable()) {
@@ -73,16 +77,42 @@
         M.showUnavailable(el);
         return;
       }
+      // A second container for the same module: claim it, but don't build a
+      // second map -- that would overwrite live[name] and leave the map just
+      // placed running with nobody left to destroy it.
+      if (placed) {
+        el.dataset.rendered = '1';
+        log('skipped a second container for ' + name);
+        return;
+      }
       if (shell && !document.body.contains(shell.el)) {
         try {
           shell.adopt(el);
+          placed = true;
+          return;
         } catch (err) {
-          log('failed to adopt ' + name, err);
+          // The container is still unclaimed, so leaving it there would mean
+          // retrying the same failing adopt on every htmx:load for the life
+          // of the page. Let the half-adopted map go and build a fresh one
+          // here instead, so the page still gets a map.
+          log('failed to adopt ' + name + ', rebuilding', err);
+          // adopt() moves the live container into the new one's slot before
+          // anything else it does; put this container back if it got that far.
+          if (!document.body.contains(el) && shell.el.parentNode) {
+            shell.el.parentNode.replaceChild(el, shell.el);
+          }
+          try {
+            shell.destroy();
+          } catch (destroyErr) {
+            log('failed to destroy ' + name, destroyErr);
+          }
+          if (live[name] === shell) live[name] = null;
+          shell = null;
         }
-        return;
       }
       el.dataset.rendered = '1';
       shell = live[name] = build(name, el);
+      placed = true;
     });
   }
 

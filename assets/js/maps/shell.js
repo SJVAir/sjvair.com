@@ -38,12 +38,34 @@
     touchPitch: false,
   };
 
+  // Which chrome this map has. The server renders the chrome
+  // (camp/utils/mapconfig.py, templates/maps/includes/map.html) and says so
+  // in data-features, so when the container carries it that set wins for the
+  // chrome booleans -- otherwise a spec that says `toolbar: false` would
+  // leave a rendered toolbar hidden forever, since attach() is the only thing
+  // that unhides it. A map the server doesn't render the chrome for (a
+  // figure) has no data-features, and falls back to its spec. `controls` and
+  // `interactive` always come from the spec: they're the module's business,
+  // not the page's.
+  var CHROME_FEATURES = ['toolbar', 'legend', 'status', 'expand'];
+
+  function featuresFor(el, spec) {
+    var features = Object.assign({}, spec.features || {});
+    var declared = el.dataset.features;
+    if (declared == null) return features;
+    var rendered = declared.split(/\s+/);
+    CHROME_FEATURES.forEach(function (feature) {
+      features[feature] = rendered.indexOf(feature) !== -1;
+    });
+    return features;
+  }
+
   function Shell(el, name, spec) {
     var self = this;
     this.el = el;
     this.name = name;
     this.spec = spec;
-    this.features = spec.features || {};
+    this.features = featuresFor(el, spec);
     this.data = el.dataset;
     // The GeoJSON behind each source, kept so a style swap (which empties the
     // style of our layers) can put it all back.
@@ -100,7 +122,9 @@
     }
 
     M.addControls(this, this.features.controls);
-    M.chrome.bindDocument(this);
+    // The document-level closers are only for chrome that opens something:
+    // a map with neither a toolbar nor Expand has nothing for them to close.
+    if (this.features.toolbar || this.features.expand) M.chrome.bindDocument(this);
     M.chrome.attach(this);
 
     this.module = (spec.create && spec.create(this)) || {};
@@ -274,6 +298,9 @@
       return k !== 'rendered' && (oldData[k] || '') !== (newData[k] || '');
     });
 
+    // The new page rendered its own chrome, so re-read what it has.
+    this.features = featuresFor(this.el, this.spec);
+    if (this.features.toolbar || this.features.expand) M.chrome.bindDocument(this);
     M.chrome.attach(this);
     if (this.module.onChrome) this.module.onChrome(this.wrap);
     this.map.resize();
