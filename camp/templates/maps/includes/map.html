@@ -3,7 +3,9 @@ One interactive map and its chrome (assets/js/maps/*): the container, whose
 data-* attributes carry the map's config, then the toolbar row (the map's own
 filters, an Options dropdown, Expand), the status pill, and the Legend card.
 Everything sits inside the wrapper so it comes along in expanded mode. The
-script unhides what it binds. Context: `map`, a camp.utils.mapconfig.map_config().
+script unhides what it binds, reading which chrome is here from the container's
+data-features (what's rendered wins over the map module's own spec).
+Context: `map`, a camp.utils.mapconfig.map_config().
 {% endcomment %}
 <div class="map-wrap{% if map.compact %} is-compact{% endif %}">
     <div class="{{ map.container_class }} map-canvas"{% if map.container_id %} id="{{ map.container_id }}"{% endif %}{% for key, value in map.data.items %} data-{{ key }}="{{ value }}"{% endfor %}></div>
@@ -35,8 +37,10 @@ script unhides what it binds. Context: `map`, a camp.utils.mapconfig.map_config(
         </div>
     </div>
     {% endif %}
+    {% if map.features.status %}
     {# What the map is doing (a load, a locate), as a pill at the bottom centre; hidden while empty. #}
     <span class="map-status" aria-live="polite"></span>
+    {% endif %}
     {% if map.features.legend %}
     <div class="map-panel map-legend-panel" data-panel="legend" hidden>
         <div class="map-panel-head">
