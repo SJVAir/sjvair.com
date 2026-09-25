@@ -215,11 +215,13 @@ def apply(sheets, version=VERSION):
 
         digesters = []
         for row in sheets[DIGESTERS]:
-            dairy_id, operational = ids.get(_int(row['CADDID'])), _int(row['OperationalYear'])
-            if dairy_id is None or operational is None:
+            dairy_id = ids.get(_int(row['CADDID']))
+            if dairy_id is None:
                 continue
+            # A handful of CADD's AgSTAR rows carry no operational year; keep
+            # the digester with a blank one rather than dropping it.
             digesters.append(Digester(
-                dairy_id=dairy_id, operational_year=operational,
+                dairy_id=dairy_id, operational_year=_int(row['OperationalYear']),
                 shutdown_year=_int(row['ShutdownYear']), source=_text(row['DataSource']),
             ))
         Digester.objects.bulk_create(digesters)

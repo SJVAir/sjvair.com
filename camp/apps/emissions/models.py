@@ -363,8 +363,13 @@ class DairyHerd(models.Model):
 
 class DigesterQuerySet(models.QuerySet):
     def operating_in(self, year):
-        """Operating in `year`: started by then, and not shut down by then."""
-        return self.filter(operational_year__lte=year).filter(Q(shutdown_year__isnull=True) | Q(shutdown_year__gt=year))
+        """
+        Operating in `year`: started by then, or its start year is unknown,
+        and not shut down by then.
+        """
+        return self.filter(
+            Q(operational_year__isnull=True) | Q(operational_year__lte=year)
+        ).filter(Q(shutdown_year__isnull=True) | Q(shutdown_year__gt=year))
 
 
 class Digester(models.Model):
@@ -372,7 +377,8 @@ class Digester(models.Model):
 
     sqid = SqidsField(alphabet=shuffle_alphabet('emissions.Digester'))
     dairy = models.ForeignKey(Dairy, verbose_name=_('Dairy'), on_delete=models.CASCADE, related_name='digesters')
-    operational_year = models.IntegerField(_('Operational year'))
+    # Blank for a handful of CADD's AgSTAR rows that carry no start year.
+    operational_year = models.IntegerField(_('Operational year'), null=True, blank=True)
     shutdown_year = models.IntegerField(_('Shutdown year'), null=True, blank=True)
     # DDRDP, AgSTAR or LCFS.
     source = models.CharField(_('Data source'), max_length=16, blank=True)
@@ -383,4 +389,5 @@ class Digester(models.Model):
         return f'{self.dairy.name} digester ({self.operational_year})'
 
     def operating_in(self, year):
-        return self.operational_year <= year and (self.shutdown_year is None or self.shutdown_year > year)
+        return (self.operational_year is None or self.operational_year <= year) \
+            and (self.shutdown_year is None or self.shutdown_year > year)

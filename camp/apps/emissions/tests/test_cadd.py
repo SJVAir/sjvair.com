@@ -110,6 +110,14 @@ class ImportCADDTests(TestCase):
         assert Digester.objects.operating_in(2022).count() == 1
         assert Digester.objects.get(operational_year=2019).operating_in(2022) is False
 
+    def test_digester_with_unknown_operational_year_is_kept(self):
+        # CADD carries a handful of AgSTAR rows with no recorded start year.
+        self.run_import([facility(1)], [herd(1, 2023)], [[1, 'NaN', 'NaN', 'AgSTAR']])
+        digester = Digester.objects.get()
+        assert digester.operational_year is None
+        assert digester.operating_in(2023) is True
+        assert Digester.objects.operating_in(2023).count() == 1
+
     def test_unknown_counties_and_missing_coordinates_are_reported(self):
         # A covered county with no Region loaded, and a blank county name.
         Region.objects.filter(type=Region.Type.COUNTY, slug='madera').update(name='Madera (retired)')
