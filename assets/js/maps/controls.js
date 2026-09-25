@@ -29,7 +29,9 @@
     link.innerHTML = '<span class="' + this.icon + '" aria-hidden="true"></span>';
     link.addEventListener('click', function (event) {
       event.preventDefault();
-      // A click on a control isn't a click on the map (which turns wheel-zoom on).
+      // Keep this off the document, where the chrome's closers listen:
+      // zooming or locating while the Options menu is open shouldn't count
+      // as a click outside it.
       event.stopPropagation();
       self.onClick();
     });

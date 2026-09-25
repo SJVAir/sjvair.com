@@ -80,6 +80,11 @@ module must not). A live map whose page no longer has a container is
   `animate: !reducedMotion` (inventory §10).
 - Scroll-wheel zoom: disabled until the map is clicked or focused, enabled
   then, disabled on mouseleave/blur, via `map.scrollZoom.enable()/disable()`.
+  *(Amended 2026-09-24: click-to-arm is gone. The wheel arms while the cursor
+  is deliberately over the whole `.map-wrap` -- chrome included, so reaching
+  for Options or the Legend no longer disarms it -- and stays off when a page
+  scroll merely slides the map under a still cursor. See the "wheel zoom"
+  block in `assets/js/maps/shell.js`.)*
 - Expand mode, scope-bar pinning, `fitBelowNavbar`: unchanged DOM/CSS logic,
   plus `map.resize()` after each size change (the SDK observes the container
   with ResizeObserver, but resize is called explicitly after toggles so the

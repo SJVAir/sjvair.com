@@ -498,6 +498,76 @@ def check_controls(page):
     return (not missing), ('all present, in order' if not missing else 'missing: %s' % ', '.join(missing))
 
 
+def check_wheel_zoom(page):
+    """The wheel zooms only when the cursor was deliberately moved onto the
+    map. Four states, in order: cold (never hovered); a page scroll that
+    slides the map under a still cursor (must NOT arm it -- that would trap
+    the scroll); a real cursor move over the canvas (arms it); a move onto
+    the toolbar, which is chrome outside the canvas but inside .map-wrap
+    (must stay armed -- reaching for Options used to disarm it)."""
+    armed = "return !!(document.querySelector('.section-map').sjvairMap || {}).map.scrollZoom.isEnabled()"
+
+    # Where the cursor actually is, in viewport coordinates: ActionChains
+    # offsets are measured from an element's centre, so they can't be read
+    # off the request. The page reports the real position instead.
+    page.js("""
+        window.__cursor = null;
+        document.addEventListener('mousemove', function (e) {
+            window.__cursor = {x: e.clientX, y: e.clientY};
+        }, true);
+    """)
+
+    # Cold: park the cursor on the page heading, well above the map.
+    page.js("window.scrollTo(0, 0)")
+    time.sleep(0.4)
+    heading = page.driver.find_element(By.CSS_SELECTOR, 'h1')
+    ActionChains(page.driver, duration=250).move_to_element(heading).perform()
+    time.sleep(0.4)
+    cursor = page.js("return window.__cursor")
+    if not cursor:
+        return False, 'the cursor never reported a position'
+    states = {'cold': page.js(armed)}
+
+    # Now scroll the map up to that stationary cursor. The browser sends
+    # mouseenter and no mousemove, so nothing should arm.
+    page.js("""
+        var el = arguments[0], y = arguments[1];
+        window.scrollTo(0, window.scrollY + el.getBoundingClientRect().top - y + 40);
+    """, page.container(), cursor['y'])
+    time.sleep(0.6)
+    under = page.js("""
+        var el = document.elementFromPoint(arguments[0], arguments[1]);
+        return !!el && !!el.closest('.map-wrap');
+    """, cursor['x'], cursor['y'])
+    moved = page.js("return window.__cursor") != cursor
+    if not under:
+        return False, 'the map never reached the cursor (nothing to test)'
+    if moved:
+        return False, 'the cursor moved during the scroll (nothing to test)'
+    states['after a scroll under a still cursor'] = page.js(armed)
+
+    # A deliberate move onto the canvas.
+    page.hover_map(0, 0, settle=0.5)
+    states['after a real move onto the map'] = page.js(armed)
+
+    # ...and on to the toolbar, still inside .map-wrap.
+    toolbar = page.driver.find_element(By.CSS_SELECTOR, '.map-wrap .map-toolbar')
+    ActionChains(page.driver, duration=250).move_to_element(toolbar).perform()
+    time.sleep(0.4)
+    states['on the toolbar'] = page.js(armed)
+
+    want = {
+        'cold': False,
+        'after a scroll under a still cursor': False,
+        'after a real move onto the map': True,
+        'on the toolbar': True,
+    }
+    wrong = ['%s: %r (wanted %r)' % (k, states[k], want[k]) for k in want if states[k] is not want[k]]
+    if wrong:
+        return False, '; '.join(wrong)
+    return True, 'armed only by a deliberate move; survives the toolbar'
+
+
 def check_fit(page):
     """A county page frames its county; a valley page frames the counties;
     an outline page sits inside its outline's bounds; nothing is left at the
@@ -1378,6 +1448,30 @@ def check_year_swap(page, year):
     return (not problems), (detail if not problems else '; '.join(problems))
 
 
+def check_wheel_zoom_across_swap(page):
+    """An htmx swap leaves the live map in a new page's wrapper, so the wheel
+    region has to move with it (Shell.adopt -> bindWheelZoom). Runs after the
+    year swap: the region must be the wrapper now in the document, and a move
+    onto the map must still arm the wheel."""
+    state = page.js("""
+        var shell = document.querySelector('.section-map').sjvairMap;
+        return {
+            bound: !!shell.wheelRegion,
+            'is the live wrapper': shell.wheelRegion === shell.el.closest('.map-wrap'),
+            'in the document': !!shell.wheelRegion && document.body.contains(shell.wheelRegion),
+        };
+    """)
+    stale = [key for key, ok in state.items() if not ok]
+    if stale:
+        return False, 'after the swap: %s' % ', '.join(stale)
+    page.js("window.scrollTo(0, 0)")
+    time.sleep(0.3)
+    page.hover_map(0, 0, settle=0.5)
+    if not page.js("return document.querySelector('.section-map').sjvairMap.map.scrollZoom.isEnabled()"):
+        return False, 'the wheel no longer arms on the swapped-in wrapper'
+    return True, 'region followed the swap and still arms'
+
+
 def check_expand(page):
     """Expand fills the viewport (html class, wrapper class, a wider canvas);
     collapse puts everything back."""
@@ -1660,6 +1754,7 @@ CHECKS = [
     ('map loaded', check_map_loaded),
     ('layers', check_layers),
     ('controls', check_controls),
+    ('wheel zoom', check_wheel_zoom),
     ('fit', check_fit),
     ('home', check_home),
     ('grid', check_grid),
@@ -1675,6 +1770,7 @@ CHECKS = [
     ('selection', check_selection_survives_metric),
     ('popup clear', check_popup_clear),
     ('year swap', check_year_swap),
+    ('wheel zoom across swap', check_wheel_zoom_across_swap),
     ('expand', check_expand),
     ('fold persistence', check_fold_persistence),
     ('expand across swap', check_expand_across_swap),

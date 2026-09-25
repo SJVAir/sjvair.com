@@ -88,8 +88,8 @@
       navigationControl: false,
       geolocateControl: false,
       terrainControl: false,
-      // Wheel-zoom is off until the map is clicked or focused, so it doesn't
-      // hijack page scrolling.
+      // Wheel-zoom is off until the cursor is deliberately moved onto the
+      // map (bindWheelZoom), so it doesn't hijack page scrolling.
       scrollZoom: false,
       // Flat and north-up: no pitch, no rotation.
       pitchWithRotate: false,
@@ -113,12 +113,6 @@
     if (this.features.interactive !== false) {
       this.map.touchZoomRotate.disableRotation();
       this.map.keyboard.disableRotation();
-      var enable = function () { if (self.map) self.map.scrollZoom.enable(); };
-      var disable = function () { if (self.map) self.map.scrollZoom.disable(); };
-      el.addEventListener('click', enable);
-      el.addEventListener('focus', enable, true);
-      el.addEventListener('mouseleave', disable);
-      el.addEventListener('blur', disable, true);
     }
 
     M.addControls(this, this.features.controls);
@@ -126,6 +120,8 @@
     // a map with neither a toolbar nor Expand has nothing for them to close.
     if (this.features.toolbar || this.features.expand) M.chrome.bindDocument(this);
     M.chrome.attach(this);
+    // After attach(): the region it arms over is shell.wrap.
+    this.bindWheelZoom();
 
     this.module = (spec.create && spec.create(this)) || {};
     if (this.module.onChrome) this.module.onChrome(this.wrap);
@@ -139,6 +135,129 @@
     });
     if (this.module.load) this.module.load();
   }
+
+  // -- wheel zoom --
+  //
+  // The wheel zooms while the cursor is deliberately over the map, and the
+  // page scrolls otherwise. The region is the whole .map-wrap, not just the
+  // canvas, so reaching for the toolbar, Options or the Legend doesn't
+  // disarm it -- that was the old click-to-arm rule's worst habit.
+  //
+  // "Deliberately" is the point: a page scroll can slide the map under a
+  // still cursor, and grabbing the wheel then would trap the scroll. The two
+  // are told apart by where the pointer was: a scroll moves the map to the
+  // cursor without changing clientX/clientY (only the page coordinates
+  // move), so an entry at the same viewport position the pointer already
+  // held is the map arriving, not the reader crossing into it. Tracking the
+  // pointer on the document, rather than reading the scroll gesture, keeps
+  // this independent of event order -- the scroll-induced mouseenter is
+  // dispatched *before* the scroll event that caused it.
+  //
+  //   entering somewhere the pointer wasn't  -> deliberate, arm
+  //   entering where the pointer already was -> the map came to them, wait
+  //   any mousemove inside the region        -> deliberate, arm
+  //
+  // On top of that the wheel stays disarmed for as long as a scroll gesture
+  // is running, whatever the hover says, so a jittery hand mid-scroll can't
+  // grab it.
+
+  // How long after the last scroll event a page-scroll gesture is still
+  // considered in flight. Covers a jittery hand mid-scroll: small cursor
+  // movement over the map during a scroll must not arm the wheel.
+  var SCROLL_SETTLE_MS = 200;
+
+  Shell.prototype.bindWheelZoom = function () {
+    if (this.features.interactive === false) return;
+    var region = this.wrap || this.el;
+    if (this.wheelRegion === region) return;
+    this.unbindWheelZoom();
+
+    var self = this;
+    this.wheelRegion = region;
+    this.wheelHover = false;  // the cursor was deliberately moved in here
+    this.wheelFocus = false;  // something in here has keyboard focus
+    this.wheelAt = null;      // where the pointer last was, anywhere on the page
+    this.wheelScrolling = 0;  // timer id while a page scroll is in flight
+    this.wheelArmed = false;  // what the handler was last set to (map option: off)
+    this.wheelHandlers = {
+      mouseenter: function (event) {
+        // Somewhere the pointer wasn't: they crossed into the map. The same
+        // spot it already held: the map scrolled to them, so wait for a move.
+        var at = event.clientX + ',' + event.clientY;
+        self.wheelHover = self.wheelAt !== null && self.wheelAt !== at;
+        self.syncWheelZoom();
+      },
+      mousemove: function () {
+        self.wheelHover = true;
+        self.syncWheelZoom();
+      },
+      mouseleave: function () {
+        self.wheelHover = false;
+        self.syncWheelZoom();
+      },
+      focusin: function () { self.wheelFocus = true; self.syncWheelZoom(); },
+      focusout: function () { self.wheelFocus = false; self.syncWheelZoom(); },
+    };
+    Object.keys(this.wheelHandlers).forEach(function (type) {
+      region.addEventListener(type, self.wheelHandlers[type]);
+    });
+
+    // Where the pointer is, tracked page-wide: mouseenter needs the position
+    // it held *before* the entry, which a listener on the region can't see.
+    // Capture and passive: this only ever reads.
+    this.wheelPointerHandler = function (event) {
+      self.wheelAt = event.clientX + ',' + event.clientY;
+    };
+    document.addEventListener('mousemove', this.wheelPointerHandler, { capture: true, passive: true });
+
+    this.wheelScrollHandler = function () {
+      if (self.wheelScrolling) clearTimeout(self.wheelScrolling);
+      self.wheelScrolling = setTimeout(function () {
+        self.wheelScrolling = 0;
+        self.syncWheelZoom();
+      }, SCROLL_SETTLE_MS);
+      self.syncWheelZoom();
+    };
+    // Capture: a scroll doesn't bubble, and this must see the page's as well
+    // as any scrolling ancestor's.
+    document.addEventListener('scroll', this.wheelScrollHandler, true);
+  };
+
+  Shell.prototype.unbindWheelZoom = function () {
+    var self = this;
+    if (this.wheelRegion && this.wheelHandlers) {
+      Object.keys(this.wheelHandlers).forEach(function (type) {
+        self.wheelRegion.removeEventListener(type, self.wheelHandlers[type]);
+      });
+    }
+    if (this.wheelScrollHandler) document.removeEventListener('scroll', this.wheelScrollHandler, true);
+    if (this.wheelPointerHandler) document.removeEventListener('mousemove', this.wheelPointerHandler, { capture: true });
+    if (this.wheelScrolling) clearTimeout(this.wheelScrolling);
+    this.wheelRegion = null;
+    this.wheelHandlers = null;
+    this.wheelScrollHandler = null;
+    this.wheelPointerHandler = null;
+    this.wheelScrolling = 0;
+    this.wheelHover = false;
+    this.wheelFocus = false;
+    this.wheelAt = null;
+    this.setWheelZoom(false);
+  };
+
+  // Armed while the map has the cursor or the keyboard, and no page-scroll
+  // gesture is in flight.
+  Shell.prototype.syncWheelZoom = function () {
+    this.setWheelZoom((this.wheelHover || this.wheelFocus) && !this.wheelScrolling);
+  };
+
+  // syncWheelZoom runs on every mousemove over the map, so this only reaches
+  // the handler when the answer actually changed.
+  Shell.prototype.setWheelZoom = function (on) {
+    if (!this.map || this.wheelArmed === on) return;
+    this.wheelArmed = on;
+    if (on) this.map.scrollZoom.enable();
+    else this.map.scrollZoom.disable();
+  };
 
   Shell.prototype.onStyleLoad = function () {
     if (this.module.addLayers) this.module.addLayers();
@@ -302,6 +421,8 @@
     this.features = featuresFor(this.el, this.spec);
     if (this.features.toolbar || this.features.expand) M.chrome.bindDocument(this);
     M.chrome.attach(this);
+    // The wrapper is the new page's, so the wheel region moves with it.
+    this.bindWheelZoom();
     if (this.module.onChrome) this.module.onChrome(this.wrap);
     this.map.resize();
     if (this.module.onAdopt) {
@@ -317,6 +438,7 @@
   Shell.prototype.destroy = function () {
     if (this.expanded) M.chrome.setExpanded(this, false);
     M.chrome.unbindDocument(this);
+    this.unbindWheelZoom();
     this.tickets += 1;
     if (this.module.destroy) this.module.destroy();
     this.map.remove();
