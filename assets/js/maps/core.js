@@ -225,6 +225,26 @@
     },
   };
 
+  // `path` (a URL or path) with its query rewritten by write(URLSearchParams),
+  // as a same-origin path; null for another origin, or with `samePage` for
+  // another page than this one. A map writes its state (view, measure, ...)
+  // onto links rendered before the reader changed it.
+  function rewriteQuery(path, write, samePage) {
+    var url = new URL(path, window.location.href);
+    if (url.origin !== window.location.origin) return null;
+    if (samePage && url.pathname !== window.location.pathname) return null;
+    write(url.searchParams);
+    var search = url.searchParams.toString();
+    return url.pathname + (search ? '?' + search : '') + url.hash;
+  }
+
+  // The address bar's query rewritten by write(URLSearchParams), in place
+  // (replaceState): a map's view follows it, so it can be shared.
+  function syncUrl(write) {
+    var path = rewriteQuery(window.location.pathname + window.location.search, write);
+    window.history.replaceState(window.history.state, '', path);
+  }
+
   window.SJVAirMaps = {
     TILE_STYLES: Object.keys(TILE_STYLE_PATHS),
     EMPTY: EMPTY,
@@ -246,5 +266,7 @@
     getJson: getJson,
     format: format,
     classes: classes,
+    rewriteQuery: rewriteQuery,
+    syncUrl: syncUrl,
   };
 })();
