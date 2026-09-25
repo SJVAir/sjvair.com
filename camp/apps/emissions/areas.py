@@ -156,7 +156,11 @@ class RegionArea:
         return Q(facility__point__intersects=region.boundary.geometry)
 
     def dairy_q(self):
-        """The same area as a Q on DairyHerd: counties by the dairy's county, other types by its point."""
+        """
+        The same area as a Q on DairyHerd: counties by the dairy's county, ZIP
+        areas and tracts by its point, CITY and PLACE by its point OR its
+        mailing city (Dairy.city), and every other type by point alone.
+        """
         from camp.apps.emissions import dairies  # dairies imports this module
 
         region = self.region
@@ -165,7 +169,10 @@ class RegionArea:
         if region.type in LEVELS:
             ids = [dairy for dairy, pk in dairies.region_index(region.type).items() if pk == region.pk]
             return Q(dairy_id__in=ids)
-        return Q(dairy__point__intersects=region.boundary.geometry)
+        point_q = Q(dairy__point__intersects=region.boundary.geometry)
+        if region.type in (Region.Type.CITY, Region.Type.PLACE):
+            return Q(dairy__city__iexact=region.name) | point_q
+        return point_q
 
     @property
     def sq_miles(self):

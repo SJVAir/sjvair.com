@@ -7,6 +7,7 @@ one transaction. A layout this module doesn't know (a CADD version that
 renamed or dropped a column) fails in read(), before anything is written.
 CARB changes the file's URL with each version.
 """
+import string
 import zipfile
 from collections import Counter
 from dataclasses import dataclass, field
@@ -51,7 +52,7 @@ HERD_COLUMNS = {
     'YoungCalves': 'young_calves',
     'BeefCattle': 'beef_cattle',
 }
-DAIRY_FIELDS = ('place_id', 'name', 'address', 'point', 'county', 'water_board', 'cadd_version', 'modified')
+DAIRY_FIELDS = ('place_id', 'name', 'address', 'city', 'point', 'county', 'water_board', 'cadd_version', 'modified')
 
 
 class CADDFormatError(ValueError):
@@ -136,7 +137,24 @@ class Report:
         return lines
 
 
-def _dairy_values(row, county, version, report):
+def _city_lookup():
+    """{lowercased CITY/PLACE Region name: canonical name}, built once per import."""
+    regions = Region.objects.filter(type__in=(Region.Type.CITY, Region.Type.PLACE))
+    return {region.name.lower(): region.name for region in regions}
+
+
+def _normalize_city(raw, lookup):
+    """CADD's raw city, matched case-insensitively against a CITY/PLACE Region's name, else title-cased. Blank stays blank."""
+    city = _text(raw)
+    if not city:
+        return ''
+    match = lookup.get(city.lower())
+    if match:
+        return match
+    return string.capwords(city.lower())
+
+
+def _dairy_values(row, county, version, report, city_lookup):
     lat, lng = row['Latitude'], row['Longitude']
     if _blank(lat) or _blank(lng):
         report.missing_coordinates += 1
@@ -144,7 +162,9 @@ def _dairy_values(row, county, version, report):
     return {
         'place_id': _int(row['PlaceID']),
         'name': _text(row['FacilityName'])[:128],
+        # CADD's raw city stays untouched here; Dairy.city carries the normalized version.
         'address': {'street': _text(row['StreetAddress']), 'city': _text(row['City']), 'zipcode': _text(row['ZipCode'])},
+        'city': _normalize_city(row['City'], city_lookup),
         'point': Point(float(lng), float(lat), srid=4326),
         'county': county,
         'water_board': _text(row['RegionalWaterBoard']),
@@ -161,6 +181,7 @@ def apply(sheets, version=VERSION):
     report = Report()
     covered = {name.lower() for name in settings.SJVAIR_COUNTIES}
     regions = {region.name.removesuffix(' County').lower(): region for region in Region.objects.counties()}
+    city_lookup = _city_lookup()
     rows_by_id = {}
     for row in sheets[FACILITIES]:
         name = _text(row['County'])
@@ -171,7 +192,7 @@ def apply(sheets, version=VERSION):
         if region is None:
             report.unknown_counties[name or '(blank)'] += 1
             continue
-        values = _dairy_values(row, region, version, report)
+        values = _dairy_values(row, region, version, report, city_lookup)
         if values is not None:
             rows_by_id[_int(row['CADDID'])] = values
 

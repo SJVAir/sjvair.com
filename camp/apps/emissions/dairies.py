@@ -22,7 +22,6 @@ import time
 
 from django.core.cache import cache
 from django.db.models import Count, Exists, F, OuterRef, Subquery, Sum
-from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Lower
 
 from camp.apps.emissions import areas, cepam, stats
@@ -162,7 +161,7 @@ def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT):
     sort = sort if sort in TABLE_SORTS else DEFAULT_SORT
     expression = {
         'name': Lower('dairy__name'),
-        'city': Lower(KeyTextTransform('city', 'dairy__address')),
+        'city': Lower('dairy__city'),
         'county': F('dairy__county__name'),
         'animal_units': F('animal_units'),
     }[sort.lstrip('-')]

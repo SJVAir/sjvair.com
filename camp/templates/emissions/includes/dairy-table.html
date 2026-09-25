@@ -22,7 +22,7 @@ units, digester.
         {% with dairy=herd.dairy %}
         <tr>
             <td>{% if zoom %}<a href="#dairy-map" class="dairy-zoom" data-dairy="{{ dairy.sqid }}" data-lng="{{ dairy.point.x|stringformat:'.5f' }}" data-lat="{{ dairy.point.y|stringformat:'.5f' }}">{{ dairy.name }}</a>{% else %}{{ dairy.name }}{% endif %}</td>
-            <td>{{ dairy.address.city }}</td>
+            <td>{{ dairy.city }}</td>
             {% if not compact %}<td><a href="{{ dairy.county.get_emissions_url }}{{ region_qs }}">{{ dairy.county.name|cut:" County" }}</a></td>{% endif %}
             <td class="has-text-right">{{ herd.animal_units|whole }}</td>
             {% if not compact %}<td class="has-text-right">{{ herd.milk_cows|whole }}</td><td class="has-text-right">{{ herd.other_cattle|whole }}</td>{% endif %}

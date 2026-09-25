@@ -16,12 +16,12 @@ ALSO_NEAR_PLANT = (-119.78, 36.74)
 IN_KERN = (-119.02, 35.37)
 
 
-def make_dairy(cadd_id, name, lnglat, county, herds=None, digesters=()):
+def make_dairy(cadd_id, name, lnglat, county, herds=None, digesters=(), city='Riverdale'):
     """A dairy with herds {year: {field: count}} (animal units computed) and digesters [(operational, shutdown)]."""
     dairy = Dairy.objects.create(
         cadd_id=cadd_id, place_id=cadd_id, name=name,
-        address={'street': f'{cadd_id} Dairy Rd', 'city': 'Riverdale', 'zipcode': '93656'},
-        point=Point(*lnglat, srid=4326), county=county, water_board='5F', cadd_version='2.0.0',
+        address={'street': f'{cadd_id} Dairy Rd', 'city': city.upper(), 'zipcode': '93656'},
+        city=city, point=Point(*lnglat, srid=4326), county=county, water_board='5F', cadd_version='2.0.0',
     )
     for year, counts in (herds or {}).items():
         DairyHerd.objects.create(
@@ -131,6 +131,13 @@ class TableTests(DairyTestCase):
         assert self.names(sort='-county') == ['SMALL DAIRY', 'BIG DAIRY']
         assert self.names(sort='bogus') == ['BIG DAIRY', 'SMALL DAIRY']
 
+    def test_city_sort_orders_by_the_normalized_city(self):
+        # BIG and CLOSED default to Riverdale; give SMALL an earlier city name
+        # so the normalized Dairy.city (not the raw address) drives the sort.
+        Dairy.objects.filter(pk=self.small.pk).update(city='Bakersfield')
+        assert self.names(sort='city') == ['SMALL DAIRY', 'BIG DAIRY']
+        assert self.names(sort='-city') == ['BIG DAIRY', 'SMALL DAIRY']
+
     def test_search_and_digester_columns(self):
         assert self.names(q='small') == ['SMALL DAIRY']
         rows = {herd.dairy.name: herd for herd in dairies.table(2023)}
@@ -154,6 +161,31 @@ class AreaTests(DairyTestCase):
         city = make(Region.Type.CITY, 'Somewhere', AROUND_PLANT)
         assert self.names(area=areas.RegionArea(city)) == ['BIG DAIRY']
         assert self.names(area=areas.RadiusArea(36.737, -119.787, 1)) == ['BIG DAIRY']
+
+    # No dairy's point falls inside this boundary; a match here only comes
+    # from Dairy.city.
+    FAR_AWAY = 'MULTIPOLYGON(((-121.0 34.0, -120.9 34.0, -120.9 34.1, -121.0 34.1, -121.0 34.0)))'
+
+    def test_city_region_matches_by_mailing_city_even_outside_the_boundary(self):
+        city = make(Region.Type.CITY, 'Bakersfield', self.FAR_AWAY)
+        Dairy.objects.filter(pk=self.small.pk).update(city='Bakersfield')
+        assert self.names(area=areas.RegionArea(city)) == ['SMALL DAIRY']
+
+    def test_place_region_matches_by_mailing_city_too(self):
+        place = make(Region.Type.PLACE, 'Riverdale', self.FAR_AWAY)
+        # BIG and SMALL both default to 'Riverdale'.
+        assert self.names(area=areas.RegionArea(place)) == ['BIG DAIRY', 'SMALL DAIRY']
+
+    def test_a_dairy_with_neither_the_city_nor_the_point_does_not_match(self):
+        city = make(Region.Type.CITY, 'Hanford', self.FAR_AWAY)
+        assert self.names(area=areas.RegionArea(city)) == []
+
+    def test_zip_region_stays_point_only_even_when_the_name_matches(self):
+        Region.objects.filter(type=Region.Type.ZIPCODE).delete()
+        # BIG and SMALL's city is 'Riverdale' (make_dairy's default), but
+        # neither point falls in this boundary; a ZIP never matches by name.
+        zipcode = make(Region.Type.ZIPCODE, 'Riverdale', self.FAR_AWAY)
+        assert self.names(area=areas.RegionArea(zipcode)) == []
 
     def test_dairy_areas(self):
         Region.objects.filter(type__in=[Region.Type.ZIPCODE, Region.Type.CITY]).delete()

@@ -19,8 +19,8 @@ from camp.apps.regions.models import Region
 SHEETS = ('Facility General Information', 'Facility Herd Size ', 'Anaerobic Digesters')
 
 
-def facility(cadd_id, county='Fresno', lat=36.7, lng=-119.8):
-    return [cadd_id, 200000 + cadd_id, f'Dairy {cadd_id}', lat, lng, f'{cadd_id} Dairy Rd', 'Riverdale', county, 93656, '5F']
+def facility(cadd_id, county='Fresno', lat=36.7, lng=-119.8, city='Riverdale'):
+    return [cadd_id, 200000 + cadd_id, f'Dairy {cadd_id}', lat, lng, f'{cadd_id} Dairy Rd', city, county, 93656, '5F']
 
 
 def herd(cadd_id, year, milk=100, dry=20, old_heifers=10, young_heifers=10, old_calves=5, young_calves=5, beef=0, ref=1):
@@ -76,6 +76,24 @@ class ImportCADDTests(TestCase):
         # Dairy 3 is in Riverside: its herd isn't kept either.
         assert DairyHerd.objects.count() == 1
         assert 'Outside the covered counties: 1.' in output
+
+    def test_city_is_normalized_against_city_and_place_regions(self):
+        Region.objects.create(name='Hanford', slug='hanford', type=Region.Type.CITY, external_id='hanford')
+        Region.objects.create(name='McFarland', slug='mcfarland', type=Region.Type.PLACE, external_id='mcfarland')
+        self.run_import([
+            facility(1, city='HANFORD'),
+            facility(2, city='MCFARLAND'),
+            facility(3, city='SOME PLACE'),
+            facility(4, city=''),
+        ])
+        by_id = {dairy.cadd_id: dairy for dairy in Dairy.objects.all()}
+        # Matched a Region's name (case-insensitively): use its canonical name.
+        assert by_id[1].city == 'Hanford' and by_id[1].address['city'] == 'HANFORD'
+        assert by_id[2].city == 'McFarland' and by_id[2].address['city'] == 'MCFARLAND'
+        # No matching Region: a sensible title case.
+        assert by_id[3].city == 'Some Place' and by_id[3].address['city'] == 'SOME PLACE'
+        # Blank stays blank.
+        assert by_id[4].city == '' and by_id[4].address['city'] == ''
 
     def test_blank_and_nan_counts_are_unknown(self):
         self.run_import([facility(1)], [herd(1, 2023, dry=None, beef=None), herd(1, 2022, milk='NaN')])

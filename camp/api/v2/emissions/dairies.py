@@ -115,10 +115,13 @@ class DairyDetail(generics.Endpoint):
         if error:
             return http.Http400({'error': error})
         herd = dairy.herds.filter(year=year).first() if year is not None else None
+        # dairy.address is CADD's raw address; show the normalized city here,
+        # without touching the stored value.
+        address = dict(dairy.address, city=dairy.city) if dairy.city else dairy.address
         return {
             'id': dairy.sqid,
             'name': dairy.name,
-            'address': dairy.address,
+            'address': address,
             'county': dairy.county.name,
             'year': year,
             'herd': None if herd is None else {
