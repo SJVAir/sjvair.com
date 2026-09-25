@@ -1,5 +1,27 @@
 // Emissions explorer additions; the shared explorer chrome is in pesticides.sass (body.pesticides).
 body.emissions
+  // Duotone colours for the emissions explorer's own icons (the tabs and the
+  // map toolbar), alongside the shared palette in pesticides.sass.
+  .explorer-icon
+    &.is-facilities
+      --fa-primary-color: #d35400
+      --fa-secondary-color: #ffc078
+    &.is-areas
+      --fa-primary-color: #{$primary}
+      --fa-secondary-color: #9ed0f5
+    &.is-sectors
+      --fa-primary-color: #7b4fb8
+      --fa-secondary-color: #c9a7ff
+    &.is-level
+      --fa-primary-color: #2e8b57
+      --fa-secondary-color: #9acd32
+    &.is-measure
+      --fa-primary-color: #5a6b7b
+      --fa-secondary-color: #c8d1da
+  // On the selected (blue) half of the Facilities | Areas switch, go white.
+  .facility-map-view .button.is-link .explorer-icon
+    --fa-primary-color: #fff
+    --fa-secondary-color: rgba(255, 255, 255, 0.6)
   .emissions-context-bar
     display: flex
     height: 1.25rem

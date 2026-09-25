@@ -6,8 +6,8 @@ only) and, in Areas, the level and measure.
 <div class="map-toolbar-filters" role="group" aria-label="Map filters">
     {% if map_config.areas %}
     <div class="buttons has-addons facility-map-view" role="group" aria-label="Show">
-        <button type="button" class="button{% if map_config.view != 'areas' %} is-selected is-link{% endif %}" data-view="facilities" aria-pressed="{% if map_config.view != 'areas' %}true{% else %}false{% endif %}" aria-label="Facilities" title="Facilities"><span class="icon"><span class="fa-regular fa-industry-windows" aria-hidden="true"></span></span><span class="map-toolbar-label">Facilities</span></button>
-        <button type="button" class="button{% if map_config.view == 'areas' %} is-selected is-link{% endif %}" data-view="areas" aria-pressed="{% if map_config.view == 'areas' %}true{% else %}false{% endif %}" aria-label="Areas" title="Areas"><span class="icon"><span class="fa-regular fa-draw-polygon" aria-hidden="true"></span></span><span class="map-toolbar-label">Areas</span></button>
+        <button type="button" class="button{% if map_config.view != 'areas' %} is-selected is-link{% endif %}" data-view="facilities" aria-pressed="{% if map_config.view != 'areas' %}true{% else %}false{% endif %}" aria-label="Facilities" title="Facilities"><span class="icon"><span class="fa-duotone fa-fw fa-industry-windows explorer-icon is-facilities" aria-hidden="true"></span></span><span class="map-toolbar-label">Facilities</span></button>
+        <button type="button" class="button{% if map_config.view == 'areas' %} is-selected is-link{% endif %}" data-view="areas" aria-pressed="{% if map_config.view == 'areas' %}true{% else %}false{% endif %}" aria-label="Areas" title="Areas"><span class="icon"><span class="fa-duotone fa-fw fa-draw-polygon explorer-icon is-areas" aria-hidden="true"></span></span><span class="map-toolbar-label">Areas</span></button>
     </div>
     {% endif %}
     {% if map_config.mode == 'full' %}
@@ -15,7 +15,7 @@ only) and, in Areas, the level and measure.
     <div class="dropdown map-toolbar-dropdown facility-map-sector{% if map_config.sector %} is-set{% endif %}">
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
-                <span class="icon"><span class="fa-duotone fa-fw fa-layer-group explorer-icon" aria-hidden="true"></span></span>
+                <span class="icon"><span class="fa-duotone fa-fw fa-layer-group explorer-icon is-sectors" aria-hidden="true"></span></span>
                 <span class="map-toolbar-label">{{ map_config.sector_label|default:"All sectors" }}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
             </button>
@@ -35,6 +35,7 @@ only) and, in Areas, the level and measure.
     <div class="dropdown map-toolbar-dropdown facility-map-level" data-areas-only{% if map_config.view != 'areas' %} hidden{% endif %}>
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                <span class="icon"><span class="fa-duotone fa-fw fa-border-all explorer-icon is-level" aria-hidden="true"></span></span>
                 <span class="map-toolbar-label">{% for value, label in map_config.level_options %}{% if value == map_config.level %}{{ label }}{% endif %}{% endfor %}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
             </button>
@@ -46,6 +47,7 @@ only) and, in Areas, the level and measure.
     <div class="dropdown map-toolbar-dropdown facility-map-measure" data-areas-only{% if map_config.view != 'areas' %} hidden{% endif %}>
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                <span class="icon"><span class="fa-duotone fa-fw fa-ruler-combined explorer-icon is-measure" aria-hidden="true"></span></span>
                 <span class="map-toolbar-label">{% for value, label in map_config.measure_options %}{% if value == map_config.measure %}{{ label }}{% endif %}{% endfor %}</span>
                 <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
             </button>
