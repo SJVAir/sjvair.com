@@ -44,5 +44,6 @@
         {% emissions_trend_chart by_year pollutant year %}
     </div>
 </div>
+{% if dairy_block %}{% include 'emissions/includes/dairy-block.html' %}{% endif %}
 {% if privacy_note %}<p class="is-size-7 has-text-grey">This page's location is only in its address; we don't store it.</p>{% endif %}
 {% endblock %}

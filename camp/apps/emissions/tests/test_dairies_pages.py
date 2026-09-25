@@ -180,3 +180,60 @@ class DairyTabContentTests(DairyPageTestCase):
     def test_tab(self):
         content = self.client.get(reverse('emissions:facility-list')).content.decode()
         assert f'href="{self.url}' in content and 'fa-cow' in content
+
+
+class DairyBlockTests(DairyPageTestCase):
+    def region_page(self, region, params=None):
+        response = self.client.get(region.get_emissions_url(), params or {})
+        assert response.status_code == 200, response.status_code
+        return response.content.decode()
+
+    def test_county_page(self):
+        content = self.region_page(self.fresno, {'year': '2023'})
+        block = content[content.index('id="dairies"'):]
+        assert '1 dairy · 2,120 animal units · 1,100 milk cows · 1 with digesters' in block
+        assert 'BIG DAIRY' in block and 'SMALL DAIRY' not in block and 'CLOSED DAIRY' not in block
+        assert f'href="{self.url}?year=2023&amp;county=fresno">All dairies here →</a>' in block
+
+    def test_county_dairy_emissions(self):
+        dairy_inventory(self.fresno, rog=2.0)
+        content = self.region_page(self.fresno, {'year': '2023', 'pollutant': 'rog'})
+        assert 'Dairy cattle, CARB estimate: <strong>730 tons/yr ROG</strong>' in content
+        assert f'href="{self.url}?year=2023&amp;county=fresno&amp;pollutant=rog"' in content
+        # NOx (the default): CARB reports none for dairy cattle.
+        content = self.region_page(self.fresno, {'year': '2023'})
+        assert '<p class="dairy-county-line is-greyed">No NOx data for dairies.</p>' in content
+        assert 'CARB estimate' not in content
+
+    def test_a_year_outside_cadd_greys_the_block(self):
+        content = self.region_page(self.fresno)  # 2024, the explorer's latest year
+        assert 'class="dairy-block mt-5 is-greyed"' in content
+        assert "No dairy data for 2024. CARB's dairy database covers 2022–2023." in content
+        assert '<a href="?year=2023">See 2023 →</a>' in content
+        assert '1 dairy ·' not in content and 'All dairies here' not in content
+
+    def test_other_region_pages_have_no_county_figure(self):
+        dairy_inventory(self.fresno, rog=2.0)
+        city = make(Region.Type.CITY, 'Somewhere', AROUND_PLANT)
+        content = self.region_page(city, {'year': '2023', 'pollutant': 'rog'})
+        assert '1 dairy · 2,120 animal units' in content
+        assert 'CARB estimate' not in content and 'data for dairies' not in content
+        assert f'href="{self.url}?year=2023&amp;region={city.sqid}&amp;pollutant=rog"' in content
+
+    def test_an_area_without_dairies(self):
+        place = make(Region.Type.PLACE, 'Faraway', 'MULTIPOLYGON(((-118.2 35.0, -118.1 35.0, -118.1 35.1, -118.2 35.1, -118.2 35.0)))')
+        content = self.region_page(place, {'year': '2023'})
+        assert "No dairies in CARB's dairy database here." in content
+        assert 'All dairies here' not in content
+
+    def test_near_me(self):
+        params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Home', 'year': '2023'}
+        content = self.client.get(reverse('emissions:near-me'), params).content.decode()
+        assert '1 dairy · 2,120 animal units' in content
+        assert f'href="{self.url}?year=2023&amp;lat=36.7370&amp;lng=-119.7870&amp;radius=1&amp;label=near+Home"' in content
+        assert 'CARB estimate' not in content
+
+    def test_no_block_before_an_import(self):
+        DairyHerd.objects.all().delete()
+        dairies.clear_caches()
+        assert 'id="dairies"' not in self.region_page(self.fresno, {'year': '2023'})

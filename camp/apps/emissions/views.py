@@ -13,7 +13,7 @@ from django.urls import reverse
 
 import vanilla
 
-from camp.apps.emissions import areas, stats
+from camp.apps.emissions import areas, dairies, stats
 from camp.apps.emissions.models import Facility
 from camp.apps.emissions.pollutants import CRITERIA, TOXICS
 from camp.apps.regions.models import Region
@@ -400,6 +400,40 @@ def area_links(regions):
     } for region in regions]
 
 
+def dairy_block(scope, area, link_params, *, county=None):
+    """
+    The Dairies block on a region or near-me page, or None before CARB's dairy
+    database is imported. Outside CADD's years it only says so (the template
+    greys it). `county` (county pages) adds CARB's county dairy-cattle
+    emissions in the scope pollutant; other areas have no county figure.
+    """
+    known = dairies.years()
+    if not known:
+        return None
+    block = {
+        'first_year': known[0],
+        'last_year': known[-1],
+        'in_range': scope.year in known,
+        'is_county': county is not None,
+    }
+    if not block['in_range']:
+        return block
+    reported = scope.pollutant.key in dairies.POLLUTANT_KEYS
+    # The Dairies tab's link: the year always, the area, and the pollutant
+    # only when dairies report it (else the tab falls back to ROG quietly).
+    params = {'year': scope.year, **link_params}
+    if reported:
+        params['pollutant'] = scope.pollutant.key
+    block.update(
+        summary=dairies.summary(scope.year, area=area),
+        top=list(dairies.table(scope.year, area=area)[:dairies.TOP_ROWS]),
+        list_url=f"{reverse('emissions:dairy-list')}?{urlencode(params)}",
+        county_pollutant=reported,
+        county_tons=dairies.county_emissions(scope.year, scope.pollutant).get(county.pk) if county is not None and reported else None,
+    )
+    return block
+
+
 class AreaPage(ScopeMixin, vanilla.TemplateView):
     """What a region page and near-me share: one area's facilities, totals, map, sectors and trend."""
     template_name = 'emissions/area.html'
@@ -423,6 +457,14 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
     def get_map_config(self, scope):
         raise NotImplementedError
 
+    def dairy_link_params(self):
+        """The Dairies tab's filter for this area, as query parameters."""
+        raise NotImplementedError
+
+    def dairy_county(self):
+        """The county whose CARB dairy emissions the page shows (county pages only)."""
+        raise NotImplementedError
+
     def get_context_data(self, **kwargs):
         base = self.get_scope()
         area = self.get_area()
@@ -444,6 +486,7 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             top_sectors=stats.sector_breakdown(scope),
             by_year=stats.by_year(scope),
             map_config=self.get_map_config(base),
+            dairy_block=dairy_block(base, area, self.dairy_link_params(), county=self.dairy_county()),
             # The page is the area: no county picker, and the scope links
             # leave the county out.
             county_options=[],
@@ -495,6 +538,14 @@ class RegionPage(AreaPage):
             areas_view=map_view(self.request.GET, level) if level else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
         )
+
+    def dairy_link_params(self):
+        if self.region.type == Region.Type.COUNTY:
+            return {'county': self.region.slug}
+        return {'region': self.region.sqid}
+
+    def dairy_county(self):
+        return self.region if self.region.type == Region.Type.COUNTY else None
 
     def get_context_data(self, **kwargs):
         region = self.region
@@ -584,6 +635,16 @@ class NearMe(AreaPage):
         params = self.request.GET.copy()
         params['radius'] = miles
         return f'{self.request.path}?{params.urlencode()}'
+
+    def dairy_link_params(self):
+        params = {'lat': f'{self.near.lat:.4f}', 'lng': f'{self.near.lng:.4f}', 'radius': self.near.radius}
+        label = (self.request.GET.get('label') or '')[:MAX_LABEL]
+        if label:
+            params['label'] = label
+        return params
+
+    def dairy_county(self):
+        return None
 
     def get_context_data(self, **kwargs):
         label = radius_label(self.request.GET, self.near.lat, self.near.lng)
