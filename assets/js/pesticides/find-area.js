@@ -90,6 +90,11 @@
     this.key = el.dataset.maptilerKey || '';
     this.nearUrl = el.dataset.nearUrl || '';
     this.year = el.dataset.year || '';
+    // The full explorer scope (year, pollutant, everything but county), as a
+    // query string with its own leading "?". Set by pages that have one --
+    // the pesticides explorer doesn't, so this stays '' there and every
+    // link below falls back to the year-only behaviour it always had.
+    this.query = el.dataset.query || '';
 
     this.input = el.querySelector('#find-area-query');
     this.locateButton = el.querySelector('#find-area-locate');
@@ -350,7 +355,9 @@
   FindArea.prototype.selectPlace = function (place) {
     if (!place || !place.url) return;
     var url = place.url;
-    if (this.year) {
+    if (this.query) {
+      url += this.query;
+    } else if (this.year) {
       url += '?year=' + encodeURIComponent(this.year);
     }
     this.hideResults();
@@ -377,7 +384,10 @@
     }
     var url = this.nearUrl + '?lat=' + lat.toFixed(4) + '&lng=' + lng.toFixed(4)
       + '&radius=1&label=' + encodeURIComponent(label);
-    if (this.year) {
+    if (this.query) {
+      // this.query already starts with '?'; join it as further params.
+      url += '&' + this.query.slice(1);
+    } else if (this.year) {
       url += '&year=' + encodeURIComponent(this.year);
     }
     window.location.assign(url);

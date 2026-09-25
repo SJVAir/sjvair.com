@@ -1,4 +1,4 @@
-<section class="box find-area" id="find" data-maptiler-key="{{ maptiler_key }}" data-near-url="{% url 'emissions:near-me' %}" data-year="{{ year }}">
+<section class="box find-area" id="find" data-maptiler-key="{{ maptiler_key }}" data-near-url="{% url 'emissions:near-me' %}" data-year="{{ year }}" data-query="{{ region_qs|default:find_area_qs }}">
     <h2 class="title is-5">Find your area</h2>
     <div class="field has-addons">
         <div class="control is-expanded has-icons-left">
