@@ -88,12 +88,12 @@ class ImportCADDTests(TestCase):
         ])
         by_id = {dairy.cadd_id: dairy for dairy in Dairy.objects.all()}
         # Matched a Region's name (case-insensitively): use its canonical name.
-        assert by_id[1].city == 'Hanford' and by_id[1].address['city'] == 'HANFORD'
-        assert by_id[2].city == 'McFarland' and by_id[2].address['city'] == 'MCFARLAND'
+        assert by_id[1].address['city'] == 'Hanford'
+        assert by_id[2].address['city'] == 'McFarland'
         # No matching Region: a sensible title case.
-        assert by_id[3].city == 'Some Place' and by_id[3].address['city'] == 'SOME PLACE'
+        assert by_id[3].address['city'] == 'Some Place'
         # Blank stays blank.
-        assert by_id[4].city == '' and by_id[4].address['city'] == ''
+        assert by_id[4].address['city'] == ''
 
     def test_city_lookup_prefers_city_over_place_on_a_name_collision(self):
         # The PLACE is created first (lower pk) so a naive row-order lookup
@@ -101,7 +101,20 @@ class ImportCADDTests(TestCase):
         Region.objects.create(name='SELMA', slug='selma-place', type=Region.Type.PLACE, external_id='selma-place')
         Region.objects.create(name='Selma', slug='selma-city', type=Region.Type.CITY, external_id='selma-city')
         self.run_import([facility(1, city='selma')])
-        assert Dairy.objects.get(cadd_id=1).city == 'Selma'
+        assert Dairy.objects.get(cadd_id=1).address['city'] == 'Selma'
+
+    def test_city_fixes_applied_before_the_region_match(self):
+        Region.objects.create(name='Visalia', slug='visalia', type=Region.Type.CITY, external_id='visalia')
+        self.run_import([
+            facility(1, city='VISLIA'),
+            facility(2, city='vislia'),
+            facility(3, city='Kern County'),
+        ])
+        by_id = {dairy.cadd_id: dairy for dairy in Dairy.objects.all()}
+        assert by_id[1].address['city'] == 'Visalia'
+        assert by_id[2].address['city'] == 'Visalia'
+        # A non-city value: fixed to blank, which stays blank.
+        assert by_id[3].address['city'] == ''
 
     def test_blank_and_nan_counts_are_unknown(self):
         self.run_import([facility(1)], [herd(1, 2023, dry=None, beef=None), herd(1, 2022, milk='NaN')])

@@ -190,7 +190,7 @@ class DairyList(ScopeMixin, vanilla.TemplateView):
         for herd in dairies.table(scope.year, county=scope.county, **table_filters(self.request.GET)):
             dairy = herd.dairy
             writer.writerow(
-                [dairy.cadd_id, dairy.name, dairy.sqid, dairy.address.get('street', ''), dairy.city,
+                [dairy.cadd_id, dairy.name, dairy.sqid, dairy.address.get('street', ''), dairy.address.get('city', ''),
                  dairy.address.get('zipcode', ''), dairy.county.name, herd.year, round(herd.animal_units, 1)]
                 + ['' if getattr(herd, field) is None else getattr(herd, field) for field in HERD_FIELDS]
                 + [herd.milk_cows_ref_code, herd.non_milking_ref_code,

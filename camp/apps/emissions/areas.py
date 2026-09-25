@@ -159,7 +159,7 @@ class RegionArea:
         """
         The same area as a Q on DairyHerd: counties by the dairy's county, ZIP
         areas and tracts by its point, CITY and PLACE by its point OR its
-        mailing city (Dairy.city), and every other type by point alone.
+        mailing city (Dairy.address['city']), and every other type by point alone.
         """
         from camp.apps.emissions import dairies  # dairies imports this module
 
@@ -171,7 +171,7 @@ class RegionArea:
             return Q(dairy_id__in=ids)
         point_q = Q(dairy__point__intersects=region.boundary.geometry)
         if region.type in (Region.Type.CITY, Region.Type.PLACE):
-            return Q(dairy__city__iexact=region.name) | point_q
+            return Q(dairy__address__city__iexact=region.name) | point_q
         return point_q
 
     @property

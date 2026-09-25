@@ -52,7 +52,14 @@ HERD_COLUMNS = {
     'YoungCalves': 'young_calves',
     'BeefCattle': 'beef_cattle',
 }
-DAIRY_FIELDS = ('place_id', 'name', 'address', 'city', 'point', 'county', 'water_board', 'cadd_version', 'modified')
+DAIRY_FIELDS = ('place_id', 'name', 'address', 'point', 'county', 'water_board', 'cadd_version', 'modified')
+
+# Known misspellings and non-city values in CADD's City column.
+CITY_FIXES = {
+    'VISLIA': 'Visalia',
+    'BURREL': 'Burrell',
+    'KERN COUNTY': '',
+}
 
 
 class CADDFormatError(ValueError):
@@ -152,8 +159,18 @@ def _city_lookup():
 
 
 def _normalize_city(raw, lookup):
-    """CADD's raw city, matched case-insensitively against a CITY/PLACE Region's name, else title-cased. Blank stays blank."""
+    """
+    CADD's raw city: CITY_FIXES applied to the trimmed, upper-cased value first
+    (misspellings and non-city values like 'KERN COUNTY'), then matched
+    case-insensitively against a CITY/PLACE Region's name, else title-cased.
+    Blank (before or after CITY_FIXES) stays blank.
+    """
     city = _text(raw)
+    if not city:
+        return ''
+    fixed = CITY_FIXES.get(city.upper())
+    if fixed is not None:
+        city = fixed
     if not city:
         return ''
     match = lookup.get(city.lower())
@@ -170,9 +187,12 @@ def _dairy_values(row, county, version, report, city_lookup):
     return {
         'place_id': _int(row['PlaceID']),
         'name': _text(row['FacilityName'])[:128],
-        # CADD's raw city stays untouched here; Dairy.city carries the normalized version.
-        'address': {'street': _text(row['StreetAddress']), 'city': _text(row['City']), 'zipcode': _text(row['ZipCode'])},
-        'city': _normalize_city(row['City'], city_lookup),
+        # address['city'] is the normalized value; the raw CADD value isn't kept.
+        'address': {
+            'street': _text(row['StreetAddress']),
+            'city': _normalize_city(row['City'], city_lookup),
+            'zipcode': _text(row['ZipCode']),
+        },
         'point': Point(float(lng), float(lat), srid=4326),
         'county': county,
         'water_board': _text(row['RegionalWaterBoard']),

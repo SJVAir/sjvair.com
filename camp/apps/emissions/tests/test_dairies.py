@@ -16,12 +16,19 @@ ALSO_NEAR_PLANT = (-119.78, 36.74)
 IN_KERN = (-119.02, 35.37)
 
 
+def set_city(dairy, city):
+    """Update a dairy's normalized mailing city in address['city'] and save it."""
+    dairy.address = dict(dairy.address, city=city)
+    dairy.save(update_fields=['address'])
+    return dairy
+
+
 def make_dairy(cadd_id, name, lnglat, county, herds=None, digesters=(), city='Riverdale'):
     """A dairy with herds {year: {field: count}} (animal units computed) and digesters [(operational, shutdown)]."""
     dairy = Dairy.objects.create(
         cadd_id=cadd_id, place_id=cadd_id, name=name,
-        address={'street': f'{cadd_id} Dairy Rd', 'city': city.upper(), 'zipcode': '93656'},
-        city=city, point=Point(*lnglat, srid=4326), county=county, water_board='5F', cadd_version='2.0.0',
+        address={'street': f'{cadd_id} Dairy Rd', 'city': city, 'zipcode': '93656'},
+        point=Point(*lnglat, srid=4326), county=county, water_board='5F', cadd_version='2.0.0',
     )
     for year, counts in (herds or {}).items():
         DairyHerd.objects.create(
@@ -133,8 +140,8 @@ class TableTests(DairyTestCase):
 
     def test_city_sort_orders_by_the_normalized_city(self):
         # BIG and CLOSED default to Riverdale; give SMALL an earlier city name
-        # so the normalized Dairy.city (not the raw address) drives the sort.
-        Dairy.objects.filter(pk=self.small.pk).update(city='Bakersfield')
+        # so the normalized address['city'] drives the sort.
+        set_city(self.small, 'Bakersfield')
         assert self.names(sort='city') == ['SMALL DAIRY', 'BIG DAIRY']
         assert self.names(sort='-city') == ['BIG DAIRY', 'SMALL DAIRY']
 
@@ -163,12 +170,12 @@ class AreaTests(DairyTestCase):
         assert self.names(area=areas.RadiusArea(36.737, -119.787, 1)) == ['BIG DAIRY']
 
     # No dairy's point falls inside this boundary; a match here only comes
-    # from Dairy.city.
+    # from address['city'].
     FAR_AWAY = 'MULTIPOLYGON(((-121.0 34.0, -120.9 34.0, -120.9 34.1, -121.0 34.1, -121.0 34.0)))'
 
     def test_city_region_matches_by_mailing_city_even_outside_the_boundary(self):
         city = make(Region.Type.CITY, 'Bakersfield', self.FAR_AWAY)
-        Dairy.objects.filter(pk=self.small.pk).update(city='Bakersfield')
+        set_city(self.small, 'Bakersfield')
         assert self.names(area=areas.RegionArea(city)) == ['SMALL DAIRY']
 
     def test_place_region_matches_by_mailing_city_too(self):
@@ -197,7 +204,7 @@ class AreaTests(DairyTestCase):
         # SMALL's point is nowhere near this boundary; only its mailing city matches.
         city = make(Region.Type.CITY, 'Bakersfield', self.FAR_AWAY)
         place = make(Region.Type.PLACE, 'Riverdale', self.FAR_AWAY)
-        Dairy.objects.filter(pk=self.small.pk).update(city='Bakersfield')
+        set_city(self.small, 'Bakersfield')
         small = Dairy.objects.get(pk=self.small.pk)
         assert city in dairies.dairy_areas(small)
         # BIG's mailing city is 'Riverdale' too, so the PLACE match applies to it as well.

@@ -22,6 +22,7 @@ import time
 
 from django.core.cache import cache
 from django.db.models import Count, Exists, F, OuterRef, Q, Subquery, Sum
+from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Lower
 
 from camp.apps.emissions import areas, cepam, stats
@@ -181,7 +182,7 @@ def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT):
     sort = sort if sort in TABLE_SORTS else DEFAULT_SORT
     expression = {
         'name': Lower('dairy__name'),
-        'city': Lower('dairy__city'),
+        'city': Lower(KeyTextTransform('city', 'dairy__address')),
         'county': F('dairy__county__name'),
         'animal_units': F('animal_units'),
     }[sort.lstrip('-')]
@@ -256,13 +257,14 @@ def county_values(year, pollutant):
 def dairy_areas(dairy):
     """
     The region pages a dairy counts in: its county, the CITY/PLACE regions its
-    point falls in or whose name matches its mailing city (Dairy.city) --
+    point falls in or whose name matches its mailing city (address['city']) --
     the same rule as RegionArea.dairy_q() -- its ZIP area and 2020 tract.
     """
     pks = [dairy.county_id]
+    city = dairy.address.get('city', '')
     city_place = Region.objects.filter(
         Q(type__in=(Region.Type.CITY, Region.Type.PLACE)),
-        Q(boundary__geometry__intersects=dairy.point) | (Q(name__iexact=dairy.city) if dairy.city else Q(pk__in=())),
+        Q(boundary__geometry__intersects=dairy.point) | (Q(name__iexact=city) if city else Q(pk__in=())),
     ).order_by('type', 'pk').values_list('pk', flat=True)
     pks.extend(city_place)
     for level in (Region.Type.ZIPCODE, Region.Type.TRACT):
