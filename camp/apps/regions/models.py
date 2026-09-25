@@ -31,6 +31,7 @@ class Region(TimeStampedModel):
         STATE_ASSEMBLY = 'state_assembly', _('State Assembly District')
         STATE_SENATE = 'state_senate', _('State Senate District')
         SCHOOL_DISTRICT = 'school_district', _('School District')
+        AIR_DISTRICT = 'air_district', _('Air District')
 
         # Environmental / land context
         URBAN_AREA = 'urban_area', _('Urban Area')
@@ -71,6 +72,7 @@ class Region(TimeStampedModel):
         Type.STATE_ASSEMBLY: Category.DISTRICT,
         Type.STATE_SENATE: Category.DISTRICT,
         Type.SCHOOL_DISTRICT: Category.DISTRICT,
+        Type.AIR_DISTRICT: Category.DISTRICT,
 
         Type.URBAN_AREA: Category.ENVIRONMENTAL,
         Type.LAND_USE: Category.ENVIRONMENTAL,
