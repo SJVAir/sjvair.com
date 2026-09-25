@@ -6,8 +6,9 @@ by year and lists its anaerobic digesters; CARB's county inventory (CEPAM)
 estimates each county's dairy-cattle emissions. Both are shown as CARB gives
 them: nothing here estimates one dairy's emissions.
 
-A dairy counts in a year when CADD has a herd row for it that year with any
-cattle counted (animal units > 0). An all-zero row is a dairy that had
+A dairy counts in a year when CADD has a herd row for it that year with at
+least one head of cattle counted (mature dairy cows + other cattle > 0), and
+its EPA size class (models.size_class) is from that year's counts. An all-zero row is a dairy that had
 closed or not yet opened: about a quarter of the Valley's rows in 2023, and
 every one of them "not labeled as a dairy".
 
@@ -26,11 +27,14 @@ from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Lower
 
 from camp.apps.emissions import areas, cepam, stats
-from camp.apps.emissions.models import CountyInventory, Dairy, DairyHerd, Digester
+from camp.apps.emissions.models import (
+    LARGE_MATURE_COWS, LARGE_OTHER_CATTLE, MEDIUM_MATURE_COWS, MEDIUM_OTHER_CATTLE,
+    CountyInventory, Dairy, DairyHerd, Digester, SizeClass,
+)
 from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.regions.models import Region
 
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 GENERATION_KEY = 'emissions:dairies:generation'
 
 # CARB's county inventory rows for dairy cattle waste. Silage has its own EIC
@@ -53,14 +57,34 @@ HERD_CLASSES = (
     ('young_calves', 'Calves (younger)'),
     ('beef_cattle', 'Beef cattle'),
 )
-TABLE_SORTS = ('name', '-name', 'city', '-city', 'county', '-county', 'animal_units', '-animal_units')
-DEFAULT_SORT = '-animal_units'
+TABLE_SORTS = ('name', '-name', 'city', '-city', 'county', '-county', 'mature_cows', '-mature_cows')
+DEFAULT_SORT = '-mature_cows'
 TOP_ROWS = 10
 # The Dairies tab map's views and its Counties measures.
 VIEWS = ('dairies', 'counties')
 DEFAULT_VIEW = 'dairies'
-MEASURES = ('emissions', 'emissions_per_sq_mi', 'animal_units', 'animal_units_per_sq_mi')
+MEASURES = ('emissions', 'emissions_per_sq_mi', 'mature_cows', 'mature_cows_per_sq_mi')
 DEFAULT_MEASURE = 'emissions'
+# A counted herd: at least one head of cattle.
+COUNTED = Q(mature_cows__gt=0) | Q(other_cattle__gt=0)
+# The EPA size classes with their thresholds, largest first (the maps' legends
+# and the about page).
+SIZE_THRESHOLDS = {
+    SizeClass.LARGE: f'{LARGE_MATURE_COWS:,} or more mature dairy cows, or {LARGE_OTHER_CATTLE:,} or more other cattle',
+    SizeClass.MEDIUM: (
+        f'{MEDIUM_MATURE_COWS:,}–{LARGE_MATURE_COWS - 1:,} mature dairy cows, '
+        f'or {MEDIUM_OTHER_CATTLE:,}–{LARGE_OTHER_CATTLE - 1:,} other cattle'
+    ),
+    SizeClass.SMALL: f'Fewer than {MEDIUM_MATURE_COWS:,} mature dairy cows and {MEDIUM_OTHER_CATTLE:,} other cattle',
+}
+
+
+def size_classes():
+    """[{key, label, threshold}] for each EPA size class, largest first."""
+    return [
+        {'key': size.value, 'label': str(size.label), 'threshold': SIZE_THRESHOLDS[size]}
+        for size in (SizeClass.LARGE, SizeClass.MEDIUM, SizeClass.SMALL)
+    ]
 
 
 def generation():
@@ -91,7 +115,7 @@ def _where(county, area):
 def years():
     """The years CADD has a counted herd for, ascending."""
     def compute():
-        return sorted(DairyHerd.objects.filter(animal_units__gt=0).values_list('year', flat=True).distinct())
+        return sorted(DairyHerd.objects.filter(COUNTED).values_list('year', flat=True).distinct())
     return cache.get_or_set(key('years'), compute, stats.CACHE_TIMEOUT)
 
 
@@ -113,7 +137,7 @@ def coverage_span():
 def coverage_counts():
     """(dairies counted before COVERAGE_CHANGE_YEAR, dairies counted from it on), for the about page."""
     def compute():
-        counted = DairyHerd.objects.filter(animal_units__gt=0)
+        counted = DairyHerd.objects.filter(COUNTED)
         before = counted.filter(year__lt=COVERAGE_CHANGE_YEAR).values('dairy_id').distinct().count()
         after = counted.filter(year__gte=COVERAGE_CHANGE_YEAR).values('dairy_id').distinct().count()
         return before, after
@@ -139,7 +163,7 @@ def herds(year, *, county=None, area=None):
     """The year's counted herds, narrowed to a county and an area (areas.RegionArea / RadiusArea)."""
     if year is None:
         return DairyHerd.objects.none()
-    queryset = DairyHerd.objects.filter(year=year, animal_units__gt=0)
+    queryset = DairyHerd.objects.filter(COUNTED, year=year)
     if county is not None:
         queryset = queryset.filter(dairy__county=county)
     if area is not None:
@@ -153,14 +177,17 @@ def _operating(year):
 
 
 def summary(year, *, county=None, area=None):
-    """The year's counted dairies, their animal units and milk cows, and how many ran a digester."""
+    """The year's counted dairies, their mature dairy cows, how many are Large CAFOs, and how many ran a digester."""
     def compute():
         queryset = herds(year, county=county, area=area)
-        row = queryset.aggregate(dairies=Count('pk'), animal_units=Sum('animal_units'), milk_cows=Sum('milk_cows'))
+        row = queryset.aggregate(
+            dairies=Count('pk'), mature_cows=Sum('mature_cows'),
+            large=Count('pk', filter=Q(size_class=SizeClass.LARGE)),
+        )
         return {
             'dairies': row['dairies'],
-            'animal_units': row['animal_units'] or 0,
-            'milk_cows': row['milk_cows'] or 0,
+            'mature_cows': row['mature_cows'] or 0,
+            'large': row['large'],
             'digesters': queryset.filter(Exists(_operating(year))).count() if year is not None else 0,
         }
     return cache.get_or_set(key('summary', year, _where(county, area)), compute, stats.CACHE_TIMEOUT)
@@ -184,30 +211,30 @@ def table(year, *, county=None, area=None, q=None, sort=DEFAULT_SORT):
         'name': Lower('dairy__name'),
         'city': Lower(KeyTextTransform('city', 'dairy__address')),
         'county': F('dairy__county__name'),
-        'animal_units': F('animal_units'),
+        'mature_cows': F('mature_cows'),
     }[sort.lstrip('-')]
     ordered = expression.desc() if sort.startswith('-') else expression.asc()
     return queryset.order_by(ordered, Lower('dairy__name'))
 
 
 def trend(*, county=None, area=None):
-    """Counted dairies, animal units and milk cows for every CADD year."""
+    """Counted dairies, mature dairy cows and other cattle for every CADD year."""
     def compute():
-        queryset = DairyHerd.objects.filter(animal_units__gt=0)
+        queryset = DairyHerd.objects.filter(COUNTED)
         if county is not None:
             queryset = queryset.filter(dairy__county=county)
         if area is not None:
             queryset = queryset.filter(area.dairy_q())
         rows = (
             queryset.values('year')
-            .annotate(dairies=Count('pk'), animal_units=Sum('animal_units'), milk_cows=Sum('milk_cows'))
+            .annotate(dairies=Count('pk'), mature_cows=Sum('mature_cows'), other_cattle=Sum('other_cattle'))
             .order_by('year')
         )
         return [{
             'year': row['year'],
             'dairies': row['dairies'],
-            'animal_units': row['animal_units'] or 0,
-            'milk_cows': row['milk_cows'] or 0,
+            'mature_cows': row['mature_cows'] or 0,
+            'other_cattle': row['other_cattle'] or 0,
         } for row in rows]
     return cache.get_or_set(key('trend', _where(county, area)), compute, stats.CACHE_TIMEOUT)
 
@@ -229,26 +256,26 @@ def county_emissions(year, pollutant):
 
 
 def county_values(year, pollutant):
-    """Per covered county: CARB's dairy emissions (tons/yr, per sq mi) and CADD's animal units (total, per sq mi)."""
+    """Per covered county: CARB's dairy emissions (tons/yr, per sq mi) and CADD's mature dairy cows (total, per sq mi)."""
     def compute():
         miles = areas.region_sq_miles(Region.Type.COUNTY)
         emissions = county_emissions(year, pollutant)
-        units = dict(
-            herds(year).values('dairy__county').annotate(total=Sum('animal_units'))
+        cows = dict(
+            herds(year).values('dairy__county').annotate(total=Sum('mature_cows'))
             .values_list('dairy__county', 'total')
         )
         rows = []
         for county in Region.objects.counties().order_by('name'):
             tons = emissions.get(county.pk)
-            herd = units.get(county.pk) or 0
+            herd = cows.get(county.pk) or 0
             rows.append({
                 'id': county.sqid,
                 'slug': county.slug,
                 'name': county.name,
                 'emissions': tons,
                 'emissions_per_sq_mi': areas._per(tons, miles.get(county.pk)),
-                'animal_units': herd,
-                'animal_units_per_sq_mi': areas._per(herd, miles.get(county.pk)),
+                'mature_cows': herd,
+                'mature_cows_per_sq_mi': areas._per(herd, miles.get(county.pk)),
             })
         return rows
     return cache.get_or_set(key('county-values', year, pollutant.key), compute, stats.CACHE_TIMEOUT)

@@ -189,14 +189,19 @@ class DairyEndpointTests(TestCase):
         response = self.get('dairy-geojson')
         assert response.status_code == 200
         body = response.json()
-        assert body['properties'] == {'year': 2023}
+        assert body['properties'] == {'year': 2023, 'size_classes': dairies.size_classes()}
+        assert [size['key'] for size in body['properties']['size_classes']] == ['large', 'medium', 'small']
         features = body['features']
         assert [f['properties']['name'] for f in features] == ['BIG DAIRY', 'SMALL DAIRY']
         big = features[0]
         assert big['id'] == self.big.sqid
         assert big['geometry'] == {'type': 'Point', 'coordinates': [-119.785, 36.735]}
-        assert big['properties'] == {'id': self.big.sqid, 'name': 'BIG DAIRY', 'animal_units': 2120, 'digester': True, 'county': 'fresno'}
-        assert features[1]['properties']['digester'] is False
+        assert big['properties'] == {
+            'id': self.big.sqid, 'name': 'BIG DAIRY', 'mature_cows': 1300, 'other_cattle': 300,
+            'size_class': 'large', 'digester': True, 'county': 'fresno',
+        }
+        small = features[1]['properties']
+        assert (small['size_class'], small['mature_cows'], small['other_cattle'], small['digester']) == ('small', 100, 50, False)
 
     def test_geojson_leaves_out_empty_herds(self):
         names = [f['properties']['name'] for f in self.get('dairy-geojson', {'year': 2023}).json()['features']]
@@ -218,16 +223,16 @@ class DairyEndpointTests(TestCase):
 
     def test_counties(self):
         dairy_inventory(self.fresno, rog=2.0)
-        response = self.get('dairy-counties', {'year': 2023, 'pollutant': 'rog', 'measure': 'animal_units'})
+        response = self.get('dairy-counties', {'year': 2023, 'pollutant': 'rog', 'measure': 'mature_cows'})
         assert response.status_code == 200
         body = response.json()
-        assert (body['pollutant'], body['label'], body['unit'], body['measure']) == ('rog', 'ROG', 'tons', 'animal_units')
+        assert (body['pollutant'], body['label'], body['unit'], body['measure']) == ('rog', 'ROG', 'tons', 'mature_cows')
         assert body['source'] == 'CARB county inventory, dairy cattle waste; silage not included'
         assert len(body['counties']) == 8
         fresno = next(row for row in body['counties'] if row['slug'] == 'fresno')
-        assert set(fresno) == {'id', 'slug', 'name', 'emissions', 'emissions_per_sq_mi', 'animal_units', 'animal_units_per_sq_mi', 'value'}
+        assert set(fresno) == {'id', 'slug', 'name', 'emissions', 'emissions_per_sq_mi', 'mature_cows', 'mature_cows_per_sq_mi', 'value'}
         assert fresno['emissions'] == pytest.approx(730)
-        assert fresno['value'] == fresno['animal_units'] == pytest.approx(2120)
+        assert fresno['value'] == fresno['mature_cows'] == 1300
         assert self.get('dairy-counties')['X-Cache-Status'] == 'MISS'
         assert self.get('dairy-counties').json()['pollutant'] == 'rog'
 
@@ -243,7 +248,9 @@ class DairyEndpointTests(TestCase):
         body = response.json()
         assert (body['id'], body['name'], body['county'], body['year']) == (self.big.sqid, 'BIG DAIRY', 'Fresno County', 2023)
         assert body['address'] == {'street': '1 Dairy Rd', 'city': 'Riverdale', 'zipcode': '93656'}
-        assert body['herd']['animal_units'] == pytest.approx(2120)
+        herd = body['herd']
+        assert (herd['mature_cows'], herd['other_cattle'], herd['size_class'], herd['size_label']) == (1300, 300, 'large', 'Large')
+        assert set(herd) == {'mature_cows', 'other_cattle', 'size_class', 'size_label', 'classes'}
         classes = {row['key']: row for row in body['herd']['classes']}
         assert classes['milk_cows'] == {'key': 'milk_cows', 'label': 'Milk cows', 'count': 1100, 'estimated': True}
         assert classes['dry_cows']['estimated'] is False

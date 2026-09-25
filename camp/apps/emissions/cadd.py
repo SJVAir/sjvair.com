@@ -20,7 +20,7 @@ from django.contrib.gis.geos import Point
 from django.db import transaction
 from django.utils import timezone
 
-from camp.apps.emissions.models import Dairy, DairyHerd, Digester, animal_units
+from camp.apps.emissions.models import Dairy, DairyHerd, Digester, herd_totals
 from camp.apps.regions.models import Region
 
 VERSION = '2.0.0'
@@ -253,11 +253,10 @@ def apply(sheets, version=VERSION):
             counts = {name: _int(row[column]) for column, name in HERD_COLUMNS.items()}
             # One row per dairy and year; a repeated row replaces the earlier one.
             herds[(dairy_id, year)] = DairyHerd(
-                dairy_id=dairy_id, year=year, **counts,
+                dairy_id=dairy_id, year=year, **counts, **herd_totals(counts),
                 milk_cows_ref_code=_text(row['MilkCowsHerdSizeRefCode']),
                 non_milking_ref_code=_text(row['NonMilkingCattleHerdSizeRefCode']),
                 labeled_as_dairy=_int(row['LabeledAsDairy']) == 1,
-                animal_units=animal_units(counts),
             )
         DairyHerd.objects.bulk_create(herds.values(), batch_size=2000)
         report.herds = len(herds)

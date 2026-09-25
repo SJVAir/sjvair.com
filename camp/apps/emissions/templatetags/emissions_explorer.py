@@ -104,7 +104,7 @@ def lookup(mapping, key):
 
 @register.filter
 def whole(value):
-    """A head count or animal-unit total, rounded, with commas: '2,310'; '—' for none (a blank CADD count)."""
+    """A head count, rounded, with commas: '2,310'; '—' for none (a blank CADD count)."""
     if value is None or value == '':
         return '—'
     return f'{round(float(value)):,}'
@@ -113,7 +113,7 @@ def whole(value):
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
 def dairy_trend_chart(points, year=None):
     """
-    CADD's animal units (solid) and milk cows (dashed) by year, marked where
+    CADD's mature dairy cows (solid) and other cattle (dashed) by year, marked where
     CADD's coverage grew. The same markup as the emissions trend;
     js/pesticides/charts.js draws the second series and the marker.
     """
@@ -126,16 +126,16 @@ def dairy_trend_chart(points, year=None):
         'chart_id': f'chart-{uuid.uuid4().hex[:8]}',
         'chart': {
             'type': 'line',
-            'unit': 'animal units',
+            'unit': 'head',
             'x': years,
-            'y': [round(row['animal_units']) for row in rows],
-            'y2': [row['milk_cows'] for row in rows],
-            'labels': ['animal units', 'milk cows'],
+            'y': [row['mature_cows'] for row in rows],
+            'y2': [row['other_cattle'] for row in rows],
+            'labels': ['mature dairy cows', 'other cattle'],
             'marker': marker,
             'selected': year if year in years else None,
         },
         'has_data': bool(rows),
-        'title': 'Animal units (solid) and milk cows (dashed) by year',
+        'title': 'Mature dairy cows (solid) and other cattle (dashed) by year',
         'sentence': '',
         'first_year': years[0] if years else None,
         'last_year': years[-1] if years else None,

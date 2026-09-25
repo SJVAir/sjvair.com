@@ -19,7 +19,7 @@ years, with a link that changes only the year.
     {% endif %}
     {% with summary=dairy_block.summary %}
     {% if summary.dairies %}
-    <p class="dairy-summary">{{ summary.dairies|intcomma }} dair{{ summary.dairies|pluralize:"y,ies" }} · {{ summary.animal_units|whole }} animal units · {{ summary.milk_cows|whole }} milk cows · {{ summary.digesters|intcomma }} with digesters</p>
+    <p class="dairy-summary">{{ summary.dairies|intcomma }} dair{{ summary.dairies|pluralize:"y,ies" }} · {{ summary.mature_cows|whole }} mature dairy cows · {{ summary.large|intcomma }} Large CAFO{{ summary.large|pluralize }} · {{ summary.digesters|intcomma }} with digesters</p>
     {% include 'emissions/includes/dairy-table.html' with rows=dairy_block.top compact=True sortable=False zoom=False %}
     <p><a href="{{ dairy_block.list_url }}">All dairies here →</a></p>
     {% else %}

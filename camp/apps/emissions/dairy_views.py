@@ -29,8 +29,8 @@ VIEW_OPTIONS = (('dairies', 'Dairies'), ('counties', 'Counties'))
 MEASURE_OPTIONS = (
     ('emissions', 'Dairy emissions'),
     ('emissions_per_sq_mi', 'Dairy emissions per sq mi'),
-    ('animal_units', 'Herd size'),
-    ('animal_units_per_sq_mi', 'Herd size per sq mi'),
+    ('mature_cows', 'Mature dairy cows'),
+    ('mature_cows_per_sq_mi', 'Mature dairy cows per sq mi'),
 )
 
 
@@ -183,16 +183,18 @@ class DairyList(ScopeMixin, vanilla.TemplateView):
         response['Content-Disposition'] = f'attachment; filename="dairies-{scope.year}.csv"'
         writer = csv.writer(response)
         writer.writerow(
-            ['cadd_id', 'dairy', 'id', 'street', 'city', 'zipcode', 'county', 'year', 'animal_units']
+            ['cadd_id', 'dairy', 'id', 'street', 'city', 'zipcode', 'county', 'year']
             + list(HERD_FIELDS)
+            + ['mature_cows', 'other_cattle', 'size_class']
             + ['milk_cows_ref_code', 'non_milking_ref_code', 'digester_operating', 'digester_since']
         )
         for herd in dairies.table(scope.year, county=scope.county, **table_filters(self.request.GET)):
             dairy = herd.dairy
             writer.writerow(
                 [dairy.cadd_id, dairy.name, dairy.sqid, dairy.address.get('street', ''), dairy.address.get('city', ''),
-                 dairy.address.get('zipcode', ''), dairy.county.name, herd.year, round(herd.animal_units, 1)]
+                 dairy.address.get('zipcode', ''), dairy.county.name, herd.year]
                 + ['' if getattr(herd, field) is None else getattr(herd, field) for field in HERD_FIELDS]
+                + [herd.mature_cows, herd.other_cattle, herd.size_class]
                 + [herd.milk_cows_ref_code, herd.non_milking_ref_code,
                    'yes' if herd.digester else 'no', herd.digester_since or '']
             )

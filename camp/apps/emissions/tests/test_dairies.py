@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from camp.apps.emissions import areas, cepam, dairies
-from camp.apps.emissions.models import CountyInventory, Dairy, DairyHerd, Digester, animal_units
+from camp.apps.emissions.models import CountyInventory, Dairy, DairyHerd, Digester, SizeClass, herd_totals
 from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
 from camp.apps.regions.models import Region
@@ -24,7 +24,7 @@ def set_city(dairy, city):
 
 
 def make_dairy(cadd_id, name, lnglat, county, herds=None, digesters=(), city='Riverdale'):
-    """A dairy with herds {year: {field: count}} (animal units computed) and digesters [(operational, shutdown)]."""
+    """A dairy with herds {year: {field: count}} (totals and size class computed) and digesters [(operational, shutdown)]."""
     dairy = Dairy.objects.create(
         cadd_id=cadd_id, place_id=cadd_id, name=name,
         address={'street': f'{cadd_id} Dairy Rd', 'city': city, 'zipcode': '93656'},
@@ -33,7 +33,7 @@ def make_dairy(cadd_id, name, lnglat, county, herds=None, digesters=(), city='Ri
     for year, counts in (herds or {}).items():
         DairyHerd.objects.create(
             dairy=dairy, year=year, milk_cows_ref_code='1', non_milking_ref_code='1',
-            labeled_as_dairy=True, animal_units=animal_units(counts), **counts,
+            labeled_as_dairy=True, **counts, **herd_totals(counts),
         )
     for operational, shutdown in digesters:
         Digester.objects.create(dairy=dairy, operational_year=operational, shutdown_year=shutdown, source='DDRDP')
@@ -43,9 +43,9 @@ def make_dairy(cadd_id, name, lnglat, county, herds=None, digesters=(), city='Ri
 def make_dairies():
     """
     BIG DAIRY by TEST PLANT in Fresno: 2022 and 2023, a digester since 2019;
-    2023 is (1,100 + 200) x 1.4 + 300 = 2,120 animal units.
-    SMALL DAIRY in Kern: 2023 only, 100 x 1.4 + 50 = 190 animal units, a
-    digester that ran 2015-2021 (shut down in 2021).
+    2023 is 1,100 + 200 = 1,300 mature dairy cows and 300 other cattle, Large.
+    SMALL DAIRY in Kern: 2023 only, 100 mature dairy cows and 50 other
+    cattle, Small; a digester that ran 2015-2021 (shut down in 2021).
     CLOSED DAIRY by TEST PLANT: only empty herds.
     """
     fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
@@ -99,11 +99,10 @@ class YearAndSummaryTests(DairyTestCase):
 
     def test_summary(self):
         summary = dairies.summary(2023)
-        assert summary['dairies'] == 2 and summary['milk_cows'] == 1200 and summary['digesters'] == 1
-        assert summary['animal_units'] == pytest.approx(2310)
+        assert summary == {'dairies': 2, 'mature_cows': 1400, 'large': 1, 'digesters': 1}
         kern = dairies.summary(2023, county=self.kern)
-        assert (kern['dairies'], kern['digesters']) == (1, 0)
-        assert dairies.summary(2021) == {'dairies': 0, 'animal_units': 0, 'milk_cows': 0, 'digesters': 0}
+        assert (kern['dairies'], kern['large'], kern['digesters']) == (1, 0, 0)
+        assert dairies.summary(2021) == {'dairies': 0, 'mature_cows': 0, 'large': 0, 'digesters': 0}
         assert dairies.summary(None)['dairies'] == 0
 
     def test_digester_operating_in_a_year(self):
@@ -115,24 +114,40 @@ class YearAndSummaryTests(DairyTestCase):
     def test_other_cattle_leave_out_blank_counts(self):
         herd = DairyHerd.objects.get(dairy=self.small, year=2023)
         assert herd.beef_cattle is None and herd.other_cattle == 50
+        assert herd.size_class == SizeClass.SMALL
+
+    def test_a_herd_of_other_cattle_only_counts(self):
+        # A heifer ranch: no mature dairy cows, but cattle, so it counts.
+        make_dairy(4, 'HEIFER RANCH', IN_KERN, self.kern, herds={2023: {'milk_cows': 0, 'old_heifers': 400}})
+        assert 'HEIFER RANCH' in self.names()
+        summary = dairies.summary(2023)
+        assert (summary['dairies'], summary['mature_cows'], summary['large']) == (3, 1400, 1)
 
     def test_trend(self):
         rows = dairies.trend()
-        assert [(row['year'], row['dairies'], row['milk_cows']) for row in rows] == [(2022, 1, 1000), (2023, 2, 1200)]
-        assert rows[1]['animal_units'] == pytest.approx(2310)
+        assert rows == [
+            {'year': 2022, 'dairies': 1, 'mature_cows': 1200, 'other_cattle': 0},
+            {'year': 2023, 'dairies': 2, 'mature_cows': 1400, 'other_cattle': 350},
+        ]
+
+    def test_size_classes_for_the_legends(self):
+        sizes = dairies.size_classes()
+        assert [(size['key'], size['label']) for size in sizes] == [('large', 'Large'), ('medium', 'Medium'), ('small', 'Small')]
+        assert sizes[0]['threshold'] == '700 or more mature dairy cows, or 1,000 or more other cattle'
+        assert sizes[1]['threshold'] == '200–699 mature dairy cows, or 300–999 other cattle'
 
     def test_a_reimport_clears_the_cache(self):
-        assert dairies.summary(2023)['milk_cows'] == 1200
-        DairyHerd.objects.filter(dairy=self.small, year=2023).update(milk_cows=900)
-        assert dairies.summary(2023)['milk_cows'] == 1200
+        assert dairies.summary(2023)['mature_cows'] == 1400
+        DairyHerd.objects.filter(dairy=self.small, year=2023).update(mature_cows=900)
+        assert dairies.summary(2023)['mature_cows'] == 1400
         dairies.clear_caches()
-        assert dairies.summary(2023)['milk_cows'] == 2000
+        assert dairies.summary(2023)['mature_cows'] == 2200
 
 
 class TableTests(DairyTestCase):
     def test_sorts(self):
         assert self.names() == ['BIG DAIRY', 'SMALL DAIRY']
-        assert self.names(sort='animal_units') == ['SMALL DAIRY', 'BIG DAIRY']
+        assert self.names(sort='mature_cows') == ['SMALL DAIRY', 'BIG DAIRY']
         assert self.names(sort='-name') == ['SMALL DAIRY', 'BIG DAIRY']
         assert self.names(sort='county') == ['BIG DAIRY', 'SMALL DAIRY']
         assert self.names(sort='-county') == ['SMALL DAIRY', 'BIG DAIRY']
@@ -227,10 +242,10 @@ class CountyEmissionsTests(DairyTestCase):
         assert fresno['id'] == self.fresno.sqid and fresno['name'] == 'Fresno County'
         assert fresno['emissions'] == pytest.approx(730)
         assert fresno['emissions_per_sq_mi'] == pytest.approx(730 / miles)
-        assert fresno['animal_units'] == pytest.approx(2120)
-        assert fresno['animal_units_per_sq_mi'] == pytest.approx(2120 / miles)
+        assert fresno['mature_cows'] == 1300
+        assert fresno['mature_cows_per_sq_mi'] == pytest.approx(1300 / miles)
         assert rows['kern']['emissions'] is None and rows['kern']['emissions_per_sq_mi'] is None
-        assert rows['madera']['animal_units'] == 0
+        assert rows['madera']['mature_cows'] == 0
 
 
 class ResolveScopeTests(DairyTestCase):

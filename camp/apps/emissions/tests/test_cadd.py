@@ -12,7 +12,7 @@ from django.core.management.base import CommandError
 from django.test import TestCase
 
 from camp.apps.emissions import cadd, dairies
-from camp.apps.emissions.models import Dairy, DairyHerd, Digester, animal_units
+from camp.apps.emissions.models import Dairy, DairyHerd, Digester, SizeClass, herd_totals, size_class
 from camp.apps.regions.models import Region
 
 # The sheet names as CARB spells them: the herd sheet's ends in a space.
@@ -120,12 +120,27 @@ class ImportCADDTests(TestCase):
         self.run_import([facility(1)], [herd(1, 2023, dry=None, beef=None), herd(1, 2022, milk='NaN')])
         row = DairyHerd.objects.get(year=2023)
         assert row.dry_cows is None and row.beef_cattle is None
-        # 100 milk cows x 1.4, plus 10 + 10 + 5 + 5 other cattle x 1.0.
-        assert row.animal_units == pytest.approx(170)
-        assert row.other_cattle == 30
+        # 100 milk cows (no dry cows known); 10 + 10 + 5 + 5 other cattle (no beef known).
+        assert (row.mature_cows, row.other_cattle, row.size_class) == (100, 30, SizeClass.SMALL)
         assert row.milk_cows_ref_code == '1' and row.labeled_as_dairy is True
-        assert DairyHerd.objects.get(year=2022).milk_cows is None
-        assert animal_units({'milk_cows': 10, 'dry_cows': None, 'beef_cattle': 3}) == pytest.approx(17)
+        earlier = DairyHerd.objects.get(year=2022)
+        assert earlier.milk_cows is None and (earlier.mature_cows, earlier.other_cattle) == (20, 30)
+        assert herd_totals({'milk_cows': 10, 'dry_cows': None, 'beef_cattle': 3}) == {
+            'mature_cows': 10, 'other_cattle': 3, 'size_class': SizeClass.SMALL,
+        }
+
+    def test_size_class_computed_at_import(self):
+        self.run_import([facility(1), facility(2), facility(3)], [
+            herd(1, 2023, milk=650, dry=50),
+            herd(2, 2023, milk=0, dry=0, old_heifers=0, young_heifers=0, old_calves=0, young_calves=0, beef=1200),
+            herd(3, 2023, milk=0, dry=0, old_heifers=0, young_heifers=0, old_calves=0, young_calves=0),
+        ])
+        rows = {row.dairy.cadd_id: row for row in DairyHerd.objects.select_related('dairy')}
+        assert (rows[1].mature_cows, rows[1].size_class) == (700, SizeClass.LARGE)
+        # A beef-only site: no mature dairy cows, classed by its other cattle.
+        assert (rows[2].mature_cows, rows[2].other_cattle, rows[2].size_class) == (0, 1200, SizeClass.LARGE)
+        # No cattle at all: no class.
+        assert (rows[3].mature_cows, rows[3].other_cattle, rows[3].size_class) == (0, 0, '')
 
     def test_rerun_replaces_herds_and_keeps_ids(self):
         digesters = [[1, 2018, 'NaN', 'DDRDP']]
@@ -187,3 +202,42 @@ class ImportCADDTests(TestCase):
             call_command('import_cadd', '--url', stdout=io.StringIO())
         assert get.call_args[0][0] == cadd.URL
         assert Dairy.objects.count() == 1
+
+
+class SizeClassTests(TestCase):
+    """EPA's dairy thresholds (40 CFR 122.23(b)(4),(6)): the larger of the two counts' classes wins."""
+
+    def test_mature_dairy_cow_boundaries(self):
+        assert size_class(1, 0) == SizeClass.SMALL
+        assert size_class(199, 0) == SizeClass.SMALL
+        assert size_class(200, 0) == SizeClass.MEDIUM
+        assert size_class(699, 0) == SizeClass.MEDIUM
+        assert size_class(700, 0) == SizeClass.LARGE
+
+    def test_other_cattle_boundaries(self):
+        assert size_class(0, 299) == SizeClass.SMALL
+        assert size_class(0, 300) == SizeClass.MEDIUM
+        assert size_class(0, 999) == SizeClass.MEDIUM
+        assert size_class(0, 1000) == SizeClass.LARGE
+
+    def test_the_larger_class_wins(self):
+        assert size_class(100, 1000) == SizeClass.LARGE
+        assert size_class(700, 10) == SizeClass.LARGE
+        assert size_class(199, 300) == SizeClass.MEDIUM
+        assert size_class(250, 50) == SizeClass.MEDIUM
+        # Both just under Medium: still Small, however many head in all.
+        assert size_class(199, 299) == SizeClass.SMALL
+
+    def test_no_cattle_has_no_class(self):
+        assert size_class(0, 0) == ''
+
+    def test_a_beef_only_site(self):
+        totals = herd_totals({'milk_cows': 0, 'dry_cows': None, 'beef_cattle': 450})
+        assert totals == {'mature_cows': 0, 'other_cattle': 450, 'size_class': SizeClass.MEDIUM}
+
+    def test_dry_cows_are_mature_and_blank_counts_are_left_out(self):
+        totals = herd_totals({
+            'milk_cows': 600, 'dry_cows': 100, 'old_heifers': 200, 'young_heifers': None,
+            'old_calves': 50, 'young_calves': 25, 'beef_cattle': None,
+        })
+        assert totals == {'mature_cows': 700, 'other_cattle': 275, 'size_class': SizeClass.LARGE}

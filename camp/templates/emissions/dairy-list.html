@@ -11,13 +11,13 @@
 {% else %}
 <div class="columns is-multiline has-text-centered">
     <div class="column"><p class="heading">Dairies in {{ year }}</p><p class="title">{{ summary.dairies|intcomma }}</p></div>
-    <div class="column"><p class="heading">Animal units (EPA)</p><p class="title">{{ summary.animal_units|whole }}</p></div>
-    <div class="column"><p class="heading">Milk cows</p><p class="title">{{ summary.milk_cows|whole }}</p></div>
+    <div class="column"><p class="heading">Mature dairy cows</p><p class="title">{{ summary.mature_cows|whole }}</p></div>
+    <div class="column"><p class="heading">Large CAFOs</p><p class="title">{{ summary.large|intcomma }}</p></div>
     <div class="column"><p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p></div>
 </div>
 
 {% include 'maps/includes/map.html' with map=map_config.map %}
-<p class="is-size-7 mt-2">Each circle is a dairy in CARB's dairy database (CADD), sized and coloured by its herd in EPA animal units; a green ring marks a dairy that ran an anaerobic digester in {{ year }}. Counties shades each county by CARB's estimate of its dairy cattle emissions, or by its herd. <a href="{% url 'emissions:about' %}#dairies">About the dairy data</a>.</p>
+<p class="is-size-7 mt-2">Each circle is a dairy in CARB's dairy database (CADD), sized by its mature dairy cows (other cattle where it has none) and coloured by its EPA size class; a green ring marks a dairy that ran an anaerobic digester in {{ year }}. Counties shades each county by CARB's estimate of its dairy cattle emissions, or by its herd. <a href="{% url 'emissions:about' %}#dairies">About the dairy data</a>.</p>
 {% if coverage_note %}<p class="is-size-7 has-text-grey dairy-coverage-note">CADD tracked fewer dairies before {{ coverage_year }}, so totals for {{ year }} aren't a like-for-like comparison with later years.</p>{% endif %}
 <noscript><p>The map needs JavaScript; the table below lists the same dairies.</p></noscript>
 

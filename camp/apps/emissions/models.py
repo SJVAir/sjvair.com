@@ -273,20 +273,49 @@ class CountyInventory(models.Model):
 # (2a-2f, 3a-3g) marks one of CARB's estimates or gap fills.
 REPORTED_REF_CODE = '1'
 
-# EPA animal units (40 CFR 122, Appendix B): each mature dairy cow, milking or
-# dry, counts 1.4; every other head of cattle 1.0.
-MATURE_DAIRY_FACTOR = 1.4
-OTHER_CATTLE_FACTOR = 1.0
 MATURE_DAIRY_FIELDS = ('milk_cows', 'dry_cows')
 OTHER_CATTLE_FIELDS = ('old_heifers', 'young_heifers', 'old_calves', 'young_calves', 'beef_cattle')
 HERD_FIELDS = MATURE_DAIRY_FIELDS + OTHER_CATTLE_FIELDS
 
+# EPA's CAFO size thresholds for dairy cattle, in head (40 CFR 122.23(b)(4),(6)):
+# a Large CAFO has 700 or more mature dairy cows (milking or dry) or 1,000 or
+# more other cattle (heifers, calves, beef); a Medium one 200-699 mature dairy
+# cows or 300-999 other cattle. The larger class wins.
+LARGE_MATURE_COWS = 700
+LARGE_OTHER_CATTLE = 1000
+MEDIUM_MATURE_COWS = 200
+MEDIUM_OTHER_CATTLE = 300
 
-def animal_units(counts):
-    """EPA animal units from {herd field: count}; a blank (None) count is unknown and left out."""
+
+class SizeClass(models.TextChoices):
+    """A dairy's EPA size class in one year (40 CFR 122.23(b)(4),(6))."""
+    LARGE = 'large', _('Large')
+    MEDIUM = 'medium', _('Medium')
+    SMALL = 'small', _('Small')
+
+
+def size_class(mature_cows, other_cattle):
+    """
+    The EPA size class of a herd of `mature_cows` and `other_cattle`, the
+    larger of the two counts' classes; '' for a herd with no cattle.
+    """
+    if mature_cows >= LARGE_MATURE_COWS or other_cattle >= LARGE_OTHER_CATTLE:
+        return SizeClass.LARGE
+    if mature_cows >= MEDIUM_MATURE_COWS or other_cattle >= MEDIUM_OTHER_CATTLE:
+        return SizeClass.MEDIUM
+    if mature_cows + other_cattle > 0:
+        return SizeClass.SMALL
+    return ''
+
+
+def herd_totals(counts):
+    """
+    {mature_cows, other_cattle, size_class} from {herd field: count}; a blank
+    (None) count is unknown and left out of the sums.
+    """
     mature = sum(counts.get(field) or 0 for field in MATURE_DAIRY_FIELDS)
     other = sum(counts.get(field) or 0 for field in OTHER_CATTLE_FIELDS)
-    return mature * MATURE_DAIRY_FACTOR + other * OTHER_CATTLE_FACTOR
+    return {'mature_cows': mature, 'other_cattle': other, 'size_class': size_class(mature, other)}
 
 
 class Dairy(TimeStampedModel):
@@ -339,8 +368,11 @@ class DairyHerd(models.Model):
     milk_cows_ref_code = models.CharField(_('Milk cows reference code'), max_length=8, blank=True)
     non_milking_ref_code = models.CharField(_('Non-milking cattle reference code'), max_length=8, blank=True)
     labeled_as_dairy = models.BooleanField(_('Labeled as dairy'), default=False)
-    # Computed at import from the counts that aren't blank (animal_units()).
-    animal_units = models.FloatField(_('Animal units (EPA)'), default=0)
+    # Computed at import from the counts that aren't blank (herd_totals()).
+    mature_cows = models.PositiveIntegerField(_('Mature dairy cows'), default=0)
+    other_cattle = models.PositiveIntegerField(_('Other cattle'), default=0)
+    # Blank for a herd with no cattle counted.
+    size_class = models.CharField(_('EPA size class'), max_length=8, choices=SizeClass.choices, blank=True)
 
     class Meta:
         unique_together = [('dairy', 'year')]
@@ -350,12 +382,6 @@ class DairyHerd(models.Model):
 
     def __str__(self):
         return f'{self.dairy.name} ({self.year})'
-
-    @property
-    def other_cattle(self):
-        """Every head but the milk cows, over the counts that aren't blank; None when all are."""
-        counts = [getattr(self, field) for field in HERD_FIELDS[1:] if getattr(self, field) is not None]
-        return sum(counts) if counts else None
 
     def estimated(self, field):
         """Whether CARB estimated this class's count rather than it being reported."""

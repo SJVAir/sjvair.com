@@ -124,6 +124,7 @@ class About(ScopeMixin, vanilla.TemplateView):
             dairy_span=dairies.coverage_span(),
             dairies_before=dairies_before,
             dairies_after=dairies_after,
+            dairy_size_classes=dairies.size_classes(),
             **kwargs,
         )
 

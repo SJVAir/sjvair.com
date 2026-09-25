@@ -54,22 +54,29 @@ class DairyGeoJSONBase(generics.Endpoint):
                 'properties': {
                     'id': dairy.sqid,
                     'name': dairy.name,
-                    'animal_units': round(herd.animal_units),
+                    'mature_cows': herd.mature_cows,
+                    'other_cattle': herd.other_cattle,
+                    'size_class': herd.size_class,
                     'digester': bool(herd.digester),
                     'county': dairy.county.slug,
                 },
             })
-        return {'type': 'FeatureCollection', 'properties': {'year': year}, 'features': features}
+        return {
+            'type': 'FeatureCollection',
+            'properties': {'year': year, 'size_classes': dairies.size_classes()},
+            'features': features,
+        }
 
 
 class DairyGeoJSON(DairyCachedEndpointMixin, DairyGeoJSONBase):
     """
-    The year's dairies (CADD, a counted herd) as GeoJSON points: animal units
-    (EPA), whether a digester ran that year, and the county slug. ?year=
-    defaults to CADD's latest.
+    The year's dairies (CADD, a counted herd) as GeoJSON points: mature dairy
+    cows, other cattle and the EPA size class, whether a digester ran that
+    year, and the county slug; the collection's properties carry the size
+    classes' labels and thresholds for a legend. ?year= defaults to CADD's latest.
     """
     cache_timeout = 60 * 60 * 24
-    cache_key_version = 1
+    cache_key_version = 2
 
 
 class DairyCountiesBase(generics.Endpoint):
@@ -97,11 +104,11 @@ class DairyCountiesBase(generics.Endpoint):
 class DairyCounties(DairyCachedEndpointMixin, DairyCountiesBase):
     """
     Per covered county: CARB's dairy cattle emissions (CEPAM, tons/yr, and per
-    square mile) and CADD's animal units (total and per square mile), plus
+    square mile) and CADD's mature dairy cows (total and per square mile), plus
     `value` for ?measure=. ?year= (CADD's), ?pollutant= (rog, pm, pm10, tog).
     """
     cache_timeout = 60 * 60 * 24
-    cache_key_version = 1
+    cache_key_version = 2
 
 
 class DairyDetail(generics.Endpoint):
@@ -122,7 +129,10 @@ class DairyDetail(generics.Endpoint):
             'county': dairy.county.name,
             'year': year,
             'herd': None if herd is None else {
-                'animal_units': herd.animal_units,
+                'mature_cows': herd.mature_cows,
+                'other_cattle': herd.other_cattle,
+                'size_class': herd.size_class,
+                'size_label': herd.get_size_class_display(),
                 'classes': [{
                     'key': field,
                     'label': label,
