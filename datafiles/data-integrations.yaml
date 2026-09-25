@@ -143,7 +143,7 @@
     - name: California Dairy & Livestock Database
       logo: img/logo/carb-vertical.png
       url: https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd
-      description: CARB's California Dairy & Livestock Database (CADD) locates the state's dairies and counts each one's herd by year, with the anaerobic digesters that capture manure methane. Coverage of the Valley's dairies grew in 2019. SJVAir shows every Valley dairy CADD tracks on the explorer's Dairies tab, beside CARB's county estimates of dairy cattle emissions.
+      description: CARB's California Dairy & Livestock Database (CADD) locates the state's dairies and counts each one's herd by year, with the anaerobic digesters that capture manure methane. Coverage of the Valley's dairies grew in 2019. SJVAir shows the Valley's dairies, year by year, on the explorer's Dairies tab, beside CARB's county estimates of dairy cattle emissions.
 
     - name: CARB Pollution Mapping Tool
       logo: img/logo/carb-vertical.png
