@@ -173,9 +173,13 @@
     this.shapes = null;
     this.countyBreaks = [];
     this.countyAnchors = {};
-    this.countyHoverId = null;
-    this.countyHoverLabelId = null;
-    this.countyHoverLabel = null;
+    // The hovered county's outline (feature-state, shared with the fill's
+    // click) and a label at its anchor with its name and the measure on
+    // display (M.hover.controller, shared with the facility map's areas).
+    this.countyHover = M.hover.controller(this.map, 'counties', {
+      label: function (feature) { return feature.properties.name + ' · ' + self.measureText(feature.properties); },
+      anchor: function (feature) { return self.countyAnchors[feature.id]; },
+    });
     this.readState();
     this.map.on('click', 'dairies', function (evt) {
       var feature = evt.features[0];
@@ -382,28 +386,16 @@
     }
   };
 
-  // The hovered county: its outline (feature-state, shared with the fill's
-  // click) and a label at its anchor with its name and the measure on
-  // display. Steady while the cursor stays over the same county -- only a
-  // change of county (or of measure/view) rebuilds the label.
+  // The hovered county: steady while the cursor stays over the same county --
+  // only a change of county (or of measure/view) rebuilds the label.
   DairyMap.prototype.onCountyHover = function (evt) {
     var feature = evt.features && evt.features[0];
     if (!feature) return;
-    var id = feature.id;
-    this.countyHoverId = M.hover.setState(this.map, 'counties', this.countyHoverId, id);
-    if (this.countyHoverLabelId === id) return;
-    this.countyHoverLabelId = id;
-    var anchor = this.countyAnchors[id] || evt.lngLat;
-    var text = feature.properties.name + ' · ' + this.measureText(feature.properties);
-    if (this.countyHoverLabel) this.countyHoverLabel.remove();
-    this.countyHoverLabel = M.hover.label(text, anchor, 0).addTo(this.map);
+    this.countyHover.set(feature, evt.lngLat);
   };
 
   DairyMap.prototype.clearCountyHover = function () {
-    this.countyHoverId = M.hover.setState(this.map, 'counties', this.countyHoverId, null);
-    this.countyHoverLabelId = null;
-    if (this.countyHoverLabel) this.countyHoverLabel.remove();
-    this.countyHoverLabel = null;
+    this.countyHover.clear();
   };
 
   DairyMap.prototype.countyBounds = function () {

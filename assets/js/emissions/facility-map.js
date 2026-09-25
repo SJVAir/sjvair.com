@@ -52,6 +52,8 @@
   var HIGHLIGHT_COLOR = '#d35400';
   var COUNTY_COLOR = '#1f2d3d';
   var DISTRICT_COLOR = '#6a3d9a';
+  var AREA_LINE_COLOR = '#4a5568';
+  var AREA_LINE_WIDTH = 0.5;
   var MIN_RADIUS = 3;
   var MAX_RADIUS = 26;
   // Region and near-me pages with dairies: every point one size, coloured by class.
@@ -145,6 +147,11 @@
     // The page's outline (region JSON) has its own counter too.
     this.outlineRequest = 0;
     this.outlineBounds = null;
+    // Areas view: the hovered area's outline (feature-state, shared with the
+    // fill's click and the scope outline's own line width). Highlight only --
+    // the click popup already carries the values (M.hover.controller, shared
+    // with the dairy map's counties).
+    this.areaHover = M.hover.controller(this.map, 'areas');
     // Dairies (region and near-me pages): their data and request counters.
     this.dairyData = null;
     this.dairyRequest = 0;
@@ -154,6 +161,8 @@
     // rather than on every style load.
     this.map.on('click', 'facilities', function (evt) { self.openPopup(evt.features[0], evt.lngLat); });
     this.map.on('click', 'areas-fill', function (evt) { self.openAreaPopup(evt.features[0], evt.lngLat); });
+    this.map.on('mousemove', 'areas-fill', function (evt) { self.areaHover.set(evt.features[0], evt.lngLat); });
+    this.map.on('mouseleave', 'areas-fill', function () { self.areaHover.clear(); });
     // Facilities draw above dairies: a click on both is the facility's.
     this.map.on('click', 'dairies', function (evt) {
       if (self.map.queryRenderedFeatures(evt.point, { layers: ['facilities'] }).length) return;
@@ -208,7 +217,16 @@
     });
     this.shell.ensureLayer({
       id: 'areas-line', type: 'line', source: 'areas',
-      paint: { 'line-color': '#4a5568', 'line-width': 0.5, 'line-opacity': 0.5 },
+      // The hovered area's outline: dark and thicker, the same as the dairy
+      // map's counties (M.hover). max() so hovering never draws thinner than
+      // the area's own normal outline (X4's deferred minor). The page's own
+      // outline (region-page highlight, county scope) is on separate layers
+      // and sources, so it's unaffected either way.
+      paint: {
+        'line-color': M.hover.paint(M.hover.COLOR, AREA_LINE_COLOR),
+        'line-width': M.hover.paint(Math.max(M.hover.WIDTH, AREA_LINE_WIDTH), AREA_LINE_WIDTH),
+        'line-opacity': 0.5,
+      },
     });
     this.shell.ensureLayer({
       id: 'counties', type: 'line', source: 'counties',
@@ -664,6 +682,7 @@
   FacilityMap.prototype.setView = function (view) {
     if (!this.areasEnabled) return;
     this.view = view === 'areas' ? 'areas' : 'facilities';
+    this.areaHover.clear();
     this.applyView();
     this.syncUrl();
     if (this.view === 'areas' && (!this.areaData || this.areaData.level !== this.level)) {
@@ -681,6 +700,7 @@
 
   FacilityMap.prototype.setLevel = function (level, label) {
     this.level = level;
+    this.areaHover.clear();
     this.markDropdown('.facility-map-level', '[data-level]', level, label);
     this.syncUrl();
     this.loadAreas();
@@ -688,6 +708,7 @@
 
   FacilityMap.prototype.setMeasure = function (measure, label) {
     this.measure = measure;
+    this.areaHover.clear();
     this.markDropdown('.facility-map-measure', '[data-measure]', measure, label);
     this.syncUrl();
     this.showAreas();
@@ -710,6 +731,7 @@
     var params = new URLSearchParams(this.data.query || '');
     if (sector) params.set('sector', sector); else params.delete('sector');
     this.data.query = params.toString();
+    this.areaHover.clear();
     this.syncUrl();
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-sector');
     if (dropdown) {
@@ -747,6 +769,9 @@
     this.dairyRequest++;
     this.dairyPopupRequest++;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
+    // Before the areas source is replaced: a stale hover feature-state on
+    // the new page's data would otherwise point at the wrong feature.
+    this.areaHover.clear();
     this.shell.setSourceData('locate', M.EMPTY);
     this.shell.setSourceData('areas', M.EMPTY);
     this.shell.setSourceData('dairies', M.EMPTY);
@@ -761,6 +786,7 @@
 
   FacilityMap.prototype.destroy = function () {
     this.shell.closePopup();
+    this.areaHover.clear();
     document.body.removeEventListener('htmx:configRequest', this.onConfigRequest);
     this.map = null;
   };

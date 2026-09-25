@@ -177,6 +177,19 @@ for (var y = 60; y < r.height - 30; y += 5) for (var x = 20; x < r.width - 20; x
 return null;
 """
 
+# A canvas pixel over a shaded area (X5), clear of the chrome: [x, y] from
+# the canvas centre, or null.
+AREA_PIXEL = """
+var m = window.EmissionsFacilityMap.instances()[0], map = m.map, c = map.getCanvas(), r = c.getBoundingClientRect();
+for (var y = 60; y < r.height - 30; y += 5) for (var x = 20; x < r.width - 20; x += 5) {
+  var f = map.queryRenderedFeatures([x, y], {layers: ['areas-fill']});
+  if (!f.length || f[0].properties._empty !== 0) continue;
+  if (document.elementFromPoint(r.left + x, r.top + y) !== c) continue;
+  return [x - r.width / 2, y - r.height / 2];
+}
+return null;
+"""
+
 
 def map_dairy_count(driver):
     return driver.execute_script(
@@ -246,6 +259,31 @@ def main():
         check(results, 'areas view shades ZIP areas', shaded > 0, f'{shaded} shaded')
         check(results, 'areas view hides the facilities', driver.execute_script(
             "var m = window.EmissionsFacilityMap.instances()[0]; return m.map.getLayoutProperty('facilities', 'visibility') === 'none';"))
+
+        # Hovering an area (a real mouse move, not a synthetic event) sets its
+        # hover feature-state, and it clears once the cursor leaves the map (X5).
+        driver.execute_script("document.querySelector('.facility-map canvas').scrollIntoView({block: 'center'});")
+        time.sleep(0.3)
+        area_hit = driver.execute_script(AREA_PIXEL)
+        if area_hit:
+            canvas = driver.find_element(By.CSS_SELECTOR, '.facility-map canvas')
+            ActionChains(driver).move_to_element_with_offset(canvas, int(area_hit[0]), int(area_hit[1])).perform()
+            time.sleep(0.5)
+        hovered = driver.execute_script(
+            "var m = window.EmissionsFacilityMap.instances()[0];"
+            "return m.map.querySourceFeatures('areas').some(function (f) {"
+            "  return !!m.map.getFeatureState({source: 'areas', id: f.id}).hover;"
+            "});")
+        check(results, 'hovering an area sets hover feature state', bool(area_hit) and hovered)
+        ActionChains(driver).move_to_element(driver.find_element(By.CSS_SELECTOR, '.navbar-brand')).perform()
+        time.sleep(0.5)
+        cleared = driver.execute_script(
+            "var m = window.EmissionsFacilityMap.instances()[0];"
+            "return m.map.querySourceFeatures('areas').every(function (f) {"
+            "  return !m.map.getFeatureState({source: 'areas', id: f.id}).hover;"
+            "});")
+        check(results, 'moving off the map clears the area hover state', cleared)
+
         check(results, 'view is in the URL', 'view=areas' in driver.current_url, driver.current_url)
         check(results, 'default level and measure stay out of the URL',
               'level=' not in driver.current_url and 'measure=' not in driver.current_url, driver.current_url)
