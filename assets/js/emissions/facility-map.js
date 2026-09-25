@@ -334,7 +334,11 @@
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
       };
       set(this.map, 'facilities', !areas);
-      set(this.map, 'dairies', !areas);
+      // Dairies have no comparison of their own: while Compare is on they'd
+      // just sit on the map in their own EPA-size colours, which read like
+      // stray classes on the change ramp (a medium dairy's amber is close
+      // enough to the +25-50% red to pass for one at a glance).
+      set(this.map, 'dairies', !areas && !this.compare);
       set(this.map, 'areas-fill', areas);
       set(this.map, 'areas-line', areas);
     }
@@ -672,13 +676,14 @@
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
     var max = this.legendData.max;
     if (this.legendData.compare) {
-      // Circles still size by this year's value (still a useful scale), so
-      // the size key stays; the colour classes swap to the change ramp.
-      // Dairies (a separate, uncompared layer) drop out of the legend here
-      // rather than sharing space with a ramp they have no part in.
+      // With dairies on the page every circle is the fixed POINT_RADIUS
+      // (applyView hides the dairies layer itself while Compare is on, so
+      // there's nothing left to explain a size key for either) -- otherwise
+      // circles still size by this year's value, a useful scale on its own,
+      // so the key stays; the colour classes swap to the change ramp either way.
       var changeTitle = escapeHtml(this.data.label) + ', change ' + escapeHtml(String(this.legendData.compare)) +
         ' to ' + escapeHtml(this.data.year || '');
-      var changeSizes = max ? '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
+      var changeSizes = (max && !this.withDairies) ? '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
         var r = radiusFor(value, max);
         return '<span class="legend-size"><svg width="' + (2 * MAX_RADIUS + 2) + '" height="' + (2 * r + 2) + '">' +
           '<circle cx="' + (MAX_RADIUS + 1) + '" cy="' + (r + 1) + '" r="' + r + '"/></svg>' + roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
@@ -848,11 +853,18 @@
       });
     }
     this.syncUrl();
-    // Both views shade by the change now (the dropdown lives in the Areas
-    // toolbar, but the Facilities circles compare too, so the reader doesn't
-    // lose the comparison switching back to look at individual facilities).
-    this.loadAreas();
+    this.applyView();
+    // Facilities always shade by the change when it's on; areas only need
+    // the refetch while that view is up (same pattern as setSector) --
+    // otherwise leave a stale areaData behind for setView('areas') to
+    // reuse and refetch itself.
     this.loadFacilities();
+    if (this.view === 'areas') {
+      this.loadAreas();
+    } else {
+      this.areaData = null;
+      this.areaRequest++;
+    }
   };
 
   FacilityMap.prototype.markDropdown = function (selector, itemSelector, value, label) {

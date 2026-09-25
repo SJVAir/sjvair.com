@@ -526,6 +526,36 @@ def main():
         popup = driver.execute_script("var p = document.querySelector('.maplibregl-popup .dairy-popup'); return p ? p.textContent : '';")
         check(results, 'a dairy on the county map opens its popup', bool(hit) and 'Mature dairy cows' in popup, popup[:80])
         driver.execute_script("var p = document.querySelector('.maplibregl-popup-close-button'); if (p) p.click();")
+
+        # X7 follow-up review (I1): with dairies on the page, every point is
+        # one fixed size, so Compare's size key is meaningless and the
+        # dairies (their own EPA-size colours) read like stray change
+        # classes. Compare must hide the dairies layer and drop the size key;
+        # turning it off again must restore both.
+        driver.execute_script("document.querySelector('.facility-map-compare .dropdown-trigger .button').click()")
+        time.sleep(0.3)
+        driver.execute_script("document.querySelector('.facility-map-compare [data-compare]:not([data-compare=\"\"])').click()")
+        time.sleep(1)
+        compare_state = driver.execute_script(
+            "var m = window.EmissionsFacilityMap.instances()[0];"
+            "return {vis: m.map.getLayoutProperty('dairies', 'visibility'),"
+            " rendered: m.map.queryRenderedFeatures({layers: ['dairies']}).length,"
+            " legend: document.querySelector('.facility-map-legend').innerHTML};")
+        check(results, 'Compare on a page with dairies hides them and drops the size key',
+              compare_state['vis'] == 'none' and compare_state['rendered'] == 0
+              and 'legend-sizes' not in compare_state['legend'] and 'Dairies' not in compare_state['legend'],
+              str({k: v for k, v in compare_state.items() if k != 'legend'}))
+        driver.execute_script("document.querySelector('.facility-map-compare .dropdown-trigger .button').click()")
+        time.sleep(0.3)
+        driver.execute_script("document.querySelector('.facility-map-compare [data-compare=\"\"]').click()")
+        time.sleep(1)
+        restored = driver.execute_script(
+            "var m = window.EmissionsFacilityMap.instances()[0];"
+            "return {vis: m.map.getLayoutProperty('dairies', 'visibility'),"
+            " rendered: m.map.queryRenderedFeatures({layers: ['dairies']}).length};")
+        check(results, 'turning Compare back off restores the dairy points',
+              restored['vis'] == 'visible' and restored['rendered'] > 0, str(restored))
+
         driver.find_element(By.CSS_SELECTOR, '.explorer-scope-picker[data-scope=year] .button').click()
         driver.find_element(By.XPATH, "//div[@data-scope='year']//a[contains(@class, 'dropdown-item') and normalize-space()='2024']").click()
         time.sleep(1.5)

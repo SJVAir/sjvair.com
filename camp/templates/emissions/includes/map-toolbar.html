@@ -73,7 +73,7 @@ only) and, in Areas, the level and measure.
         <div class="dropdown-menu" role="menu"><div class="dropdown-content">
             <a href="#" class="dropdown-item{% if not map_config.compare %} is-active{% endif %}" data-compare="">Don't compare</a>
             <hr class="dropdown-divider">
-            {% for option in map_config.compare_options %}<a href="#" class="dropdown-item{% if map_config.compare == option|stringformat:"s" %} is-active{% endif %}" data-compare="{{ option }}">vs {{ option }}</a>{% endfor %}
+            {% for option in map_config.compare_options %}<a href="#" class="dropdown-item{% if option == map_config.compare %} is-active{% endif %}" data-compare="{{ option }}">vs {{ option }}</a>{% endfor %}
         </div></div>
     </div>
     {% endif %}
