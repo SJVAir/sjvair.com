@@ -20,6 +20,10 @@
             </li>
             {% endfor %}
         </ol>
+        {# The rows' numbers are the scope year; the sparklines span every #}
+        {# loaded year, which nothing else on the card would say. #}
+        {% series_label as spark_label %}
+        {% if spark_label %}<p class="leaderboard-note">{{ spark_label }}</p>{% endif %}
         {% else %}
         <p class="has-text-grey">No use data loaded.</p>
         {% endif %}

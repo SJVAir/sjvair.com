@@ -1,5 +1,5 @@
 from django.template.loader import render_to_string
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from camp.apps.pesticides.templatetags.pesticides_explorer import (
     lbs, month_chart, month_heatmap, sparkline, title_case_name, trend_chart,
@@ -307,3 +307,45 @@ class TrendChartComparisonTests(SimpleTestCase):
             compare_label='Average valley county'))
         assert 'Average valley county' in html
         assert 'chart-key is-line' in html
+
+
+class SparklineLabelTests(TestCase):
+    """
+    A row's number is the scope year while its sparkline spans every loaded
+    year. The line says which, so the two aren't read as the same period.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_the_label_names_the_range(self):
+        from camp.apps.pesticides import rollup
+        from camp.apps.pesticides.templatetags.pesticides_explorer import series_label
+        rollup.rebuild_all()
+        assert series_label() == 'Lbs per year, 2022\u20132023'
+
+    def test_the_sparkline_itself_stays_out_of_the_database(self):
+        # A pure formatting filter: the board says what the lines cover.
+        with self.assertNumQueries(0):
+            assert 'polyline' in sparkline([1, 2, 3])
+
+    def test_a_single_loaded_year_reads_as_one_year(self):
+        from camp.apps.pesticides import rollup
+        from camp.apps.pesticides.models import PesticideUseRollup
+        rollup.rebuild_all()
+        PesticideUseRollup.objects.filter(year=2022).delete()
+        from django.core.cache import cache
+        cache.clear()
+        from camp.apps.pesticides.templatetags.pesticides_explorer import series_label
+        assert series_label() == 'Lbs per year, 2023'
+
+    def test_no_years_loaded_means_no_label(self):
+        from camp.apps.pesticides.models import PesticideUseRollup
+        PesticideUseRollup.objects.all().delete()
+        from django.core.cache import cache
+        cache.clear()
+        from camp.apps.pesticides.templatetags.pesticides_explorer import series_label
+        assert series_label() == ''
