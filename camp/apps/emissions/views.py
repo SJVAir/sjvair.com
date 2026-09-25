@@ -1,8 +1,10 @@
 import csv
+import math
 
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
@@ -10,7 +12,7 @@ from django.urls import reverse
 
 import vanilla
 
-from camp.apps.emissions import stats
+from camp.apps.emissions import areas, stats
 from camp.apps.emissions.models import Facility
 from camp.apps.emissions.pollutants import CRITERIA, TOXICS
 from camp.apps.regions.models import Region
@@ -78,6 +80,10 @@ class Home(ScopeMixin, vanilla.TemplateView):
             top_rows=stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope)),
             top_sectors=stats.sector_breakdown(scope)[:6],
             by_year=stats.by_year(scope),
+            find_area_places=find_area_places(),
+            find_area_counties=[p for p in find_area_places() if p['type'] == Region.Type.COUNTY],
+            focus_find=self.request.GET.get('find') == '1',
+            maptiler_key=settings.MAPTILER_API_KEY,
             **kwargs,
         )
 
@@ -227,7 +233,20 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
         )
 
 
-def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None):
+def map_view(get, default_level=areas.DEFAULT_LEVEL):
+    """The map's view, level and measure from a request's GET, validated; defaults when unknown."""
+    view = get.get('view')
+    level = get.get('level')
+    measure = get.get('measure')
+    return {
+        'view': view if view in ('facilities', 'areas') else 'facilities',
+        'level': level if level in areas.LEVELS else default_level,
+        'measure': measure if measure in areas.MEASURES else areas.DEFAULT_MEASURE,
+    }
+
+
+def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
+                        outline_url='', center='', zoom='', radius=''):
     """The data-* attributes of a `.facility-map` container (see assets/js/emissions/facility-map.js)."""
     params = dict(params) if params is not None else scope.params()
     if sector:
@@ -245,9 +264,20 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'maptiler_key': settings.MAPTILER_API_KEY,
         'style': mapconfig.MAP_STYLE,
         'highlight': highlight.sqid if highlight is not None else '',
-        'center': f'{point.y},{point.x}' if point is not None else '',
-        'zoom': 11 if point is not None else '',
+        'center': center or (f'{point.y},{point.x}' if point is not None else ''),
+        'zoom': zoom or (11 if point is not None else ''),
         'bounds': mapconfig.covered_bounds(),
+        # The region or circle the page is about (region pages, near-me).
+        'outline_url': outline_url,
+        'radius': radius,
+        # The Areas view (the map page, region pages): off where it's None.
+        'areas': '1' if areas_view else '',
+        'areas_url': reverse('api:v2:emissions:areas') if areas_view else '',
+        'shapes_url': reverse('api:v2:regions:region-geojson') if areas_view else '',
+        'region_url': reverse('emissions:region-redirect', args=['__id__']).replace('__id__', '{id}') if areas_view else '',
+        'view': areas_view['view'] if areas_view else 'facilities',
+        'level': areas_view['level'] if areas_view else '',
+        'measure': areas_view['measure'] if areas_view else '',
         'label': scope.pollutant.label,
         'unit': scope.pollutant.unit,
         'sector': sector or '',
@@ -275,7 +305,219 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
         sector = self.request.GET.get('sector')
         sector = sector if sector in Facility.Sector.values else None
         return super().get_context_data(
-            map_config=facility_map_config(self.get_scope(), sector=sector),
+            map_config=facility_map_config(self.get_scope(), sector=sector, areas_view=map_view(self.request.GET)),
             sector_options=Facility.Sector.choices,
+            **kwargs,
+        )
+
+
+AREA_PAGE_TYPES = (
+    Region.Type.COUNTY, Region.Type.CITY, Region.Type.ZIPCODE, Region.Type.PLACE,
+    Region.Type.SCHOOL_DISTRICT, Region.Type.TRACT,
+)
+# The search box lists every page type but tracts: a tract's name is its GEOID.
+FIND_AREA_TYPE_LABELS = {
+    Region.Type.COUNTY: 'County',
+    Region.Type.CITY: 'City',
+    Region.Type.ZIPCODE: 'ZIP',
+    Region.Type.PLACE: 'Place',
+    Region.Type.SCHOOL_DISTRICT: 'School district',
+}
+FIND_AREA_PLACES_KEY = f'emissions:v{stats.CACHE_VERSION}:find-area-places'
+RADIUS_CHOICES = (1, 3, 5)
+RADIUS_ZOOMS = {1: 13, 3: 12, 5: 11}
+MAX_LABEL = 120
+
+
+def find_area_places():
+    """Every region page but tracts, as {name, type, type_label, short_name, url}, for the search box."""
+    def compute():
+        regions = (
+            Region.objects.filter(type__in=FIND_AREA_TYPE_LABELS, boundary__isnull=False)
+            .order_by('name').values_list('sqid', 'slug', 'name', 'type')
+        )
+        places = [{
+            'name': name,
+            'type': region_type,
+            'type_label': FIND_AREA_TYPE_LABELS[region_type],
+            'short_name': name[:-len(' County')] if name.endswith(' County') else name,
+            'url': reverse('emissions:region', kwargs={'sqid': sqid, 'slug': slug}),
+        } for sqid, slug, name, region_type in regions]
+        # Synthetic places share their names with the cities they were built
+        # from; "Selma · City" beside "Selma · Place" only confuses.
+        cities = {place['name'] for place in places if place['type'] == Region.Type.CITY}
+        return [p for p in places if not (p['type'] == Region.Type.PLACE and p['name'] in cities)]
+    return cache.get_or_set(FIND_AREA_PLACES_KEY, compute, stats.CACHE_TIMEOUT)
+
+
+def region_title(region):
+    if region.type == Region.Type.TRACT:
+        return (region.metadata or {}).get('namelsad') or f'Census tract {region.name}'
+    return region.name
+
+
+class AreaPage(ScopeMixin, vanilla.TemplateView):
+    """What a region page and near-me share: one area's facilities, totals, map, sectors and trend."""
+    template_name = 'emissions/area.html'
+
+    def get_area(self):
+        raise NotImplementedError
+
+    def get_county(self):
+        """The county the page's share is of."""
+        raise NotImplementedError
+
+    def get_map_config(self, scope):
+        raise NotImplementedError
+
+    def get_context_data(self, **kwargs):
+        base = self.get_scope()
+        area = self.get_area()
+        scope = stats.Scope(year=base.year, county=None, pollutant=base.pollutant, minor=base.minor, area=area)
+        field = scope.pollutant.key
+        totals = stats.totals(scope)
+        total = totals[field] or 0
+        county = self.get_county()
+        county_scope = stats.Scope(year=base.year, county=county, pollutant=base.pollutant, minor=base.minor)
+        county_total = stats.totals(county_scope)[field] if county else None
+        return super().get_context_data(
+            area=area,
+            county_region=county,
+            totals=totals,
+            total=total,
+            per_sq_mi=total / area.sq_miles if area.sq_miles else None,
+            county_share=total / county_total if county_total else None,
+            top_rows=stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope)),
+            top_sectors=stats.sector_breakdown(scope),
+            by_year=stats.by_year(scope),
+            map_config=self.get_map_config(base),
+            # The page is the area: no county picker, and the scope links
+            # leave the county out.
+            county_options=[],
+            scope_qs=base.query(county=None),
+            scope_params=base.params(county=None),
+            **kwargs,
+        )
+
+
+class RegionRedirect(vanilla.View):
+    """`region/<sqid>/` -> the slugged URL, keeping the query string (the map's popups link here)."""
+
+    def get(self, request, sqid):
+        region = Region.objects.filter(sqid=sqid, type__in=AREA_PAGE_TYPES).first()
+        if region is None:
+            raise Http404('No such region.')
+        query = request.GET.urlencode()
+        return redirect(region.get_emissions_url() + (f'?{query}' if query else ''), permanent=True)
+
+
+class RegionPage(AreaPage):
+    def get(self, request, sqid, slug):
+        self.region = (
+            Region.objects.filter(sqid=sqid, type__in=AREA_PAGE_TYPES, boundary__isnull=False)
+            .current_vintage().select_related('boundary').first()
+        )
+        if self.region is None:
+            raise Http404('No such region.')
+        if slug != self.region.slug:
+            query = request.GET.urlencode()
+            return redirect(self.region.get_emissions_url() + (f'?{query}' if query else ''), permanent=True)
+        return super().get(request, sqid=sqid, slug=slug)
+
+    def get_area(self):
+        return areas.RegionArea(self.region)
+
+    def get_county(self):
+        if self.region.type == Region.Type.COUNTY:
+            return self.region
+        return Region.objects.get_county_region(self.region)
+
+    def get_map_config(self, scope):
+        level = areas.NEXT_LEVEL.get(self.region.type)
+        return facility_map_config(
+            scope, mode='compact', params=scope.params(county=None),
+            areas_view=map_view(self.request.GET, level) if level else None,
+            outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
+        )
+
+    def get_context_data(self, **kwargs):
+        region = self.region
+        return super().get_context_data(
+            title=region_title(region),
+            kind=region.get_type_display(),
+            population=(region.metadata or {}).get('population'),
+            context_bar=stats.county_context(stats.Scope(
+                year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant,
+                minor=self.get_scope().minor,
+            )) if region.type == Region.Type.COUNTY else None,
+            **kwargs,
+        )
+
+
+class NearMe(AreaPage):
+    """
+    The area page for a point and a 1, 3 or 5 mile radius, from the address
+    bar (?lat=&lng=&radius=&label=); never stored. Anything invalid, or a
+    point outside the covered counties, bounces to the home page's find form.
+    """
+
+    def get(self, request, *args, **kwargs):
+        try:
+            lat = float(request.GET['lat'])
+            lng = float(request.GET['lng'])
+            radius = int(request.GET.get('radius', 1))
+        except (KeyError, TypeError, ValueError):
+            return self.bounce()
+        if not (math.isfinite(lat) and math.isfinite(lng) and -90 <= lat <= 90 and -180 <= lng <= 180):
+            return self.bounce()
+        if radius not in RADIUS_CHOICES:
+            return self.bounce()
+        self.near = areas.RadiusArea(round(lat, 4), round(lng, 4), radius)
+        self.county = Region.objects.counties().filter(boundary__geometry__intersects=self.near.point).first()
+        if self.county is None:
+            return self.bounce()
+        # Cut an over-long label in the query itself, so the links built from
+        # it (the scope picker, the radius buttons) don't carry it either.
+        label = request.GET.get('label') or ''
+        if len(label) > MAX_LABEL:
+            params = request.GET.copy()
+            params['label'] = label[:MAX_LABEL]
+            request.GET = params
+        return super().get(request, *args, **kwargs)
+
+    def bounce(self):
+        return redirect(reverse('emissions:home') + '?find=1')
+
+    def get_area(self):
+        return self.near
+
+    def get_county(self):
+        return self.county
+
+    def get_map_config(self, scope):
+        return facility_map_config(
+            scope, mode='compact', params=scope.params(county=None),
+            areas_view=map_view(self.request.GET, Region.Type.TRACT),
+            center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
+            radius=self.near.radius,
+        )
+
+    def radius_url(self, miles):
+        params = self.request.GET.copy()
+        params['radius'] = miles
+        return f'{self.request.path}?{params.urlencode()}'
+
+    def get_context_data(self, **kwargs):
+        label = (self.request.GET.get('label') or f'{self.near.lat:.3f}, {self.near.lng:.3f}')[:MAX_LABEL]
+        return super().get_context_data(
+            title=f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {label}',
+            kind='Near me',
+            population=None,
+            context_bar=None,
+            radius_options=[
+                {'miles': miles, 'url': self.radius_url(miles), 'current': miles == self.near.radius}
+                for miles in RADIUS_CHOICES
+            ],
+            privacy_note=True,
             **kwargs,
         )
