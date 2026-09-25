@@ -196,3 +196,38 @@ The main facility map (`/tools/emissions/map/`) is unchanged.
 
 Per-dairy emission estimates; Carbon Mapper plumes; dairy detail pages; dairies
 on the main facility map or in the Areas choropleth; ammonia (not in CEPAM).
+
+## Amendment (2026-09-25): EPA size classes replace animal units
+
+EPA's 2003 CAFO rule stopped defining CAFOs by animal units; the thresholds are
+now head counts by animal type (40 CFR 122.23(b)(4) and (6)). The "animal
+units (EPA)" measure above is retired everywhere and replaced with:
+
+- **Mature dairy cows** = milk cows + dry cows (the count EPA's dairy
+  thresholds use). **Other cattle** = old and young heifers, old and young
+  calves, and beef cattle.
+- **EPA size class** per dairy per year, from both counts (the larger class
+  wins):
+  - **Large**: 700 or more mature dairy cows, or 1,000 or more other cattle
+  - **Medium**: 200–699 mature dairy cows, or 300–999 other cattle
+  - **Small**: anything less (with at least one animal)
+- A dairy counts in a year when it has at least one head of cattle (was:
+  animal units above 0).
+- **Dairies tab map**: circles sized by mature dairy cows (other cattle for a
+  site with no mature dairy cows), coloured by size class (three amber shades:
+  Small light, Medium mid, Large dark). Legend: the size key plus the three
+  classes with their thresholds, citing 40 CFR 122.23.
+- **Region and near-me maps**: dairy points same size, coloured by size class.
+  The combined legend's dairy ramp becomes the three classes.
+- **Counties view**: the "Herd size" measure is mature dairy cows (total and per
+  square mile).
+- **Headline numbers**: dairies, mature dairy cows, Large CAFOs, dairies with an
+  operating digester.
+- **Table**: Dairy, City, County, Mature dairy cows, Other cattle, EPA size,
+  Digester; sortable by name, city, county, mature dairy cows (default,
+  descending). CSV carries every herd class, mature dairy cows, other cattle and
+  the size class.
+- **Region-page Dairies block**: "N dairies · N mature dairy cows · N Large
+  CAFOs · N with digesters"; the top 10 is by mature dairy cows.
+- **About page**: the EPA size classes with the thresholds and a link to 40 CFR
+  122.23, in place of the animal-unit formula. No animal units anywhere.
