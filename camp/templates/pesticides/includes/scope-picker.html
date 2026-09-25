@@ -9,7 +9,7 @@ year_options (notices), the county picker where it passes no county_options
 passes scope_concern false (the About page). With none of the three, the row
 itself is left out rather than rendering an empty flex box.
 {% endcomment %}
-{% if year_options|length > 1 or county_options or scope_concern %}
+{% if year_options|length > 1 or compare_options or county_options or scope_concern %}
 <div class="explorer-scope-pickers">
     {% if year_options|length > 1 %}
     <div class="dropdown is-right explorer-scope-picker" data-scope="year">
@@ -22,11 +22,41 @@ itself is left out rather than rendering an empty flex box.
         </div>
         <div class="dropdown-menu" role="menu">
             <div class="dropdown-content">
-                <a class="dropdown-item{% if all_years %} is-active{% endif %}" href="{% qs_replace year='all' page=None %}"{% if all_years %} aria-current="page"{% endif %}>All years</a>
+                {# A range has no second term, so All years clears the comparison. #}
+                <a class="dropdown-item{% if all_years %} is-active{% endif %}" href="{% qs_replace year='all' compare=None page=None %}"{% if all_years %} aria-current="page"{% endif %}>All years</a>
                 <hr class="dropdown-divider">
                 <div class="explorer-scope-years">
                     {% for option in year_options reversed %}
                     <a class="dropdown-item{% if option == year and not all_years %} is-active{% endif %}" href="{% qs_replace year=option page=None %}"{% if option == year and not all_years %} aria-current="page"{% endif %}>{{ option }}</a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% comment %}
+    The year to compare against. Only where there is another loaded year to
+    pick, and never under All years -- a range has no second term, which is
+    why compare_options is empty there. Changing it re-renders the page (the
+    maps, the movers card), so it belongs with the other scope links rather
+    than in the map's live Options menu.
+    {% endcomment %}
+    {% if compare_options %}
+    <div class="dropdown is-right explorer-scope-picker" data-scope="compare">
+        <div class="dropdown-trigger">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-label="Compare with: {% if compare %}{{ compare }}{% else %}off{% endif %}">
+                <span class="icon"><span class="fa-duotone fa-fw fa-left-right explorer-icon is-scope" aria-hidden="true"></span></span>
+                <span class="explorer-scope-label">{% if compare %}vs {{ compare }}{% else %}Compare{% endif %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu">
+            <div class="dropdown-content">
+                <a class="dropdown-item{% if not compare %} is-active{% endif %}" href="{% qs_replace compare=None page=None %}"{% if not compare %} aria-current="page"{% endif %}>Don't compare</a>
+                <hr class="dropdown-divider">
+                <div class="explorer-scope-years">
+                    {% for option in compare_options reversed %}
+                    <a class="dropdown-item{% if option == compare %} is-active{% endif %}" href="{% qs_replace compare=option page=None %}"{% if option == compare %} aria-current="page"{% endif %}>vs {{ option }}</a>
                     {% endfor %}
                 </div>
             </div>

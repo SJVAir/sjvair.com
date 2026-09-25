@@ -104,19 +104,11 @@
   font-size: 1.05rem;
 }
 
-/* The change beside a popup's two years, and the year pair under it. */
+/* How the figure moved, beside the scope year's total in a popup. */
 .section-popup .section-popup-change {
   color: #4a4a4a;
 }
 
-.section-popup .section-popup-compare {
-  margin: -0.35rem 0 0.5rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: #7a7a7a;
-}
 
 /* Names the compared pair once, above the change legend's rows. */
 .map-wrap .map-legend-panel .section-map-legend .legend-caption {

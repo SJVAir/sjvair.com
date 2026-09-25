@@ -90,6 +90,22 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert '2022 to 2023' in html
         assert 'Rose most' in html and 'Fell most' in html
 
+    def test_compare_picker_offers_every_other_loaded_year(self):
+        html = self.client.get(self.url, {'year': '2023'}).content.decode()
+        assert 'data-scope="compare"' in html
+        assert 'compare=2022' in html
+        # Never itself: comparing a year to itself is not a mode.
+        assert 'compare=2023' not in html
+
+    def test_compare_picker_is_absent_under_all_years(self):
+        html = self.client.get(self.url, {'year': 'all'}).content.decode()
+        assert 'data-scope="compare"' not in html
+
+    def test_all_years_link_clears_the_comparison(self):
+        html = self.client.get(self.url, {'year': '2023', 'compare': '2022'}).content.decode()
+        # The two are mutually exclusive, so the link mustn't carry compare on.
+        assert 'href="?year=all"' in html
+
     def test_compare_rides_in_the_scope(self):
         response = self.client.get(self.url, {'year': '2023', 'compare': '2022'})
         assert response.context['compare'] == 2022

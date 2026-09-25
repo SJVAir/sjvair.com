@@ -201,9 +201,15 @@ carrying direction, which is why all three ramps are colourblind-safe.
 - Popups show both years and the delta -- "2,400 -> 5,100 lbs (+2,700)" --
   which is why the payload carries both values rather than a precomputed
   difference.
-- Options gains a "Compare with" year select, mirroring the scope parameter.
-  Choosing a year sets `?compare=`; choosing the blank option clears it.
-  It is disabled, with a note, while the scope is All years.
+- The compare year is picked in the scope bar beside year and county, not in
+  the map's Options. *(Amended during implementation: Options holds live
+  map-only toggles that never reload the page, while changing the compared
+  year re-renders the county figure and the movers card too. A control there
+  would have had to navigate like a scope link anyway, and the scope bar is
+  already on the map page, so a second copy would only be a place for the
+  two to disagree.)* The picker is absent under All years rather than
+  disabled, since `compare_options` is empty there, and the All years link
+  clears `?compare=`.
 - The lens and all-sections modes use the same classing, so a diff is visible
   at every level the map already draws.
 

@@ -568,6 +568,71 @@ def check_wheel_zoom(page):
     return True, 'armed only by a deliberate move; survives the toolbar'
 
 
+def check_compare_mode(page):
+    """
+    The change view, on a page loaded with ?compare=. The grid classifies on
+    the diverging ramp, the legend names the pair once and signs its ranges,
+    and a feature with no rows in either year stays distinct from one whose
+    total didn't move. Skipped on a page without a compare year.
+    """
+    state = page.instance_js("""
+        if (!inst.compare) return {skipped: true};
+        var classes = inst.currentClasses;
+        var features = inst.gridFeatures || [];
+        var rows = [].slice.call(document.querySelectorAll('.section-map-legend li'))
+            .map(function (li) { return li.textContent.trim(); });
+        var noData = 0, noChange = 0, changed = 0;
+        features.forEach(function (f) {
+            var value = inst.valueFor(f.properties);
+            if (value === null) noData++;
+            else if (!value) noChange++;
+            else changed++;
+        });
+        return {
+            skipped: false,
+            compare: inst.compare,
+            diverging: !!classes.diverging,
+            classCount: classes.colors.length,
+            perSide: classes.bounds ? classes.bounds.length : 0,
+            withPrev: features.filter(function (f) { return 'lbs_chemical_prev' in f.properties; }).length,
+            features: features.length,
+            caption: rows.length ? rows[0] : '',
+            hasNoChangeRow: rows.indexOf('No change') !== -1,
+            hasNoDataRow: rows.indexOf('No data') !== -1,
+            signed: rows.filter(function (r) { return /^[+−]/.test(r); }).length,
+            counts: {noData: noData, noChange: noChange, changed: changed},
+            noDataFill: inst.valueFor({}) === null,
+        };
+    """)
+    if state is None:
+        return False, 'no map instance'
+    if state['skipped']:
+        return True, 'not a ?compare= page (skipped)'
+
+    problems = []
+    if not state['diverging']:
+        problems.append('the grid did not classify as a change')
+    if state['withPrev'] != state['features']:
+        problems.append('%d of %d features carried the compared year'
+            % (state['withPrev'], state['features']))
+    # perSide classes each way, plus the neutral centre.
+    if state['classCount'] != state['perSide'] * 2 + 1:
+        problems.append('%d classes for %d a side' % (state['classCount'], state['perSide']))
+    if not state['caption'].startswith('Change, '):
+        problems.append('legend caption was %r' % state['caption'])
+    if not state['hasNoChangeRow'] or not state['hasNoDataRow']:
+        problems.append('legend is missing the no-change or no-data row')
+    if not state['signed']:
+        problems.append('no signed ranges in the legend')
+    if not state['counts']['changed']:
+        problems.append('nothing was classified as changed')
+    if problems:
+        return False, '; '.join(problems)
+    return True, 'diverging over %d features (%d changed, %d unchanged, %d no data), %s' % (
+        state['features'], state['counts']['changed'], state['counts']['noChange'],
+        state['counts']['noData'], state['caption'])
+
+
 def check_fit(page):
     """A county page frames its county; a valley page frames the counties;
     an outline page sits inside its outline's bounds; nothing is left at the
@@ -649,8 +714,10 @@ def check_grid(page):
         problems.append('level %s at zoom %.2f (expected %s)' % (result['level'], result['zoom'], result['expected']))
     if result['unclassed']:
         problems.append('%d features unclassed' % result['unclassed'])
-    if result['rows'] != result['classes'] + 1:
-        problems.append('%d legend rows for %d classes' % (result['rows'], result['classes']))
+    extras = legend_extras(page)
+    if result['rows'] != result['classes'] + extras:
+        problems.append('%d legend rows for %d classes (expected %d)'
+            % (result['rows'], result['classes'], result['classes'] + extras))
     if not result['levelText']:
         problems.append('no level note')
     # "All sections" reports its block progress on the same line; that isn't a grid load.
@@ -664,6 +731,14 @@ def check_grid(page):
     return (not problems), (detail if not problems else '; '.join(problems))
 
 
+def legend_extras(page):
+    """
+    Legend rows that aren't a class: always "No data", plus the caption and
+    the always-rendered "No change" row when the map is showing a change.
+    """
+    return page.instance_js("return inst.compare ? 3 : 1") or 1
+
+
 def check_legend_options(page):
     """The bins and ramp selects reclass the grid live: bins=4 gives four
     classes (plus "No data"), the ramp changes the swatch colours, both
@@ -673,9 +748,13 @@ def check_legend_options(page):
     page.set_control('select[name="bins"]', '4')
     rows = page.legend_rows()
     classes = page.instance_js("return inst.currentClasses.members.filter(function (m) { return m.length; }).length")
-    if classes > 4 or rows != classes + 1:
-        problems.append('bins=4 gave %d classes, %d rows' % (classes, rows))
-    page.set_control('select[name="ramp"]', 'purd')
+    extras = legend_extras(page)
+    # Four classes a side while comparing, so the ceiling doubles.
+    ceiling = 8 if page.instance_js("return !!inst.compare") else 4
+    if classes > ceiling or rows != classes + extras:
+        problems.append('bins=4 gave %d classes, %d rows (expected %d)' % (classes, rows, classes + extras))
+    # The ramp select offers whichever table applies to the current view.
+    page.set_control('select[name="ramp"]', 'brbg' if page.instance_js("return !!inst.compare") else 'purd')
     swatch_after = page.js("return document.querySelector('.section-map-legend .swatch').style.backgroundColor")
     if swatch_after == swatch_before:
         problems.append('ramp change left the swatches at %s' % swatch_before)
@@ -686,10 +765,11 @@ def check_legend_options(page):
     if not fill_matches:
         problems.append('a feature fill is not one of the new class colours')
     url = page.driver.current_url
-    if 'bins=4' not in url or 'ramp=purd' not in url:
+    wanted_ramp = 'ramp=brbg' if page.instance_js("return !!inst.compare") else 'ramp=purd'
+    if 'bins=4' not in url or wanted_ramp not in url:
         problems.append('URL missing bins/ramp: %s' % url)
     page.set_control('select[name="bins"]', '6')
-    page.set_control('select[name="ramp"]', 'blues')
+    page.set_control('select[name="ramp"]', 'rdbu' if page.instance_js("return !!inst.compare") else 'blues')
     url = page.driver.current_url
     if 'bins=' in url or 'ramp=' in url:
         problems.append('URL kept bins/ramp after reset: %s' % url)
@@ -1142,11 +1222,13 @@ def check_all_sections(page):
         problems.append('no all-sections features rendered')
     if 'across every township' not in result['levelText']:
         problems.append('level note %r' % result['levelText'])
-    if result['rows'] != result['classes'] + 1:
-        problems.append('%d legend rows for %d classes' % (result['rows'], result['classes']))
+    extras = legend_extras(page)
+    if result['rows'] != result['classes'] + extras:
+        problems.append('%d legend rows for %d classes (expected %d)'
+            % (result['rows'], result['classes'], result['classes'] + extras))
     # A reshade (ramp change) reaches the drawn sections through the source
     # diff, which the SDK's worker applies and re-tiles; wait for it.
-    page.set_control('select[name="ramp"]', 'purd')
+    page.set_control('select[name="ramp"]', 'brbg' if page.instance_js("return !!inst.compare") else 'purd')
     started = time.time()
     js_reshaded = """
         var rendered = inst.map.queryRenderedFeatures({layers: ['all-sections-fill']}).filter(function (f) { return f.properties.value > 0; });
@@ -1755,6 +1837,7 @@ CHECKS = [
     ('layers', check_layers),
     ('controls', check_controls),
     ('wheel zoom', check_wheel_zoom),
+    ('compare mode', check_compare_mode),
     ('fit', check_fit),
     ('home', check_home),
     ('grid', check_grid),

@@ -830,7 +830,8 @@
     this.allSectionsFeatures = [];
     this.allSectionsById = {};
     // The ramp and bins as loaded, so the URL keeps them (see syncViewParams).
-    this.rampName = rampMatch && RAMPS[rampMatch[1]] ? rampMatch[1] : 'blues';
+    this.rampName = rampMatch && (RAMPS[rampMatch[1]] || DIVERGING_RAMPS[rampMatch[1]])
+      ? rampMatch[1] : this.defaultRampName();
     this.bins = NUM_CLASSES;
 
     this.controlsEl = null;
@@ -902,7 +903,10 @@
       var tiles = bindChange('select[name="tiles"]', this.onTilesChange);
       if (tiles) fill(tiles, TILE_STYLES.map(function (style) { return [style, style]; }));
       var ramp = bindChange('select[name="ramp"]', this.onRampChange);
-      if (ramp) fill(ramp, Object.keys(RAMPS).map(function (name) { return [name, name]; }));
+      // Diverging names while comparing: a sequential ramp can't grade
+      // signed data, and vice versa.
+      var rampNames = Object.keys(this.compare ? DIVERGING_RAMPS : RAMPS);
+      if (ramp) fill(ramp, rampNames.map(function (name) { return [name, name]; }));
       var bins = bindChange('select[name="bins"]', this.onBinsChange);
       if (bins) fill(bins, BIN_OPTIONS.map(function (pair) { return [pair[0], pair[1] + ' (' + pair[0] + ')']; }));
     }
@@ -1439,10 +1443,23 @@
     this.syncViewParams();
   };
 
+  // Which ramp this view draws with when `?ramp=` says nothing. The change
+  // view and the ordinary one have different defaults, so the URL sync has
+  // to ask rather than assume 'blues'.
+  SectionMap.prototype.defaultRampName = function () {
+    return this.compare ? 'rdbu' : 'blues';
+  };
+
   SectionMap.prototype.onRampChange = function (event) {
     var name = event.target.value;
-    if (!RAMPS[name]) return;
-    RAMP = RAMPS[name];
+    var table = this.compare ? DIVERGING_RAMPS : RAMPS;
+    if (!table[name]) return;
+    if (this.compare) {
+      DIVERGING_RAMP = DIVERGING_RAMPS[name];
+      DIVERGING_CENTER = (DIVERGING_RAMP.length - 1) / 2;
+    } else {
+      RAMP = RAMPS[name];
+    }
     this.rampName = name;
     // The lens goes (restyle would otherwise redraw it first); the next
     // hover draws it with the new ramp.
@@ -1494,7 +1511,7 @@
       } else {
         url.searchParams.delete('tiles');
       }
-      if (this.rampName && this.rampName !== 'blues') {
+      if (this.rampName && this.rampName !== this.defaultRampName()) {
         url.searchParams.set('ramp', this.rampName);
       } else if (this.rampName) {
         url.searchParams.delete('ramp');
@@ -2172,12 +2189,13 @@
     return '<p class="section-popup-metric">' + text + '</p>';
   };
 
-  // While comparing: both years and the change between them, in order --
-  // "200 → 670 lbs (+470) · 2022 to 2023". Both numbers are shown because
-  // the change alone hides whether it is a big shift or a rounding error on
-  // a large total.
+  // While comparing: the scope year's figure and how it moved, in words --
+  // "670 lbs in 2023, up 470 from 2022". One line, so the popup is no taller
+  // than it is on a single-year map, and the direction reads without having
+  // to decode a sign.
   SectionMap.prototype.changeLine = function (props) {
-    var unit = this.metric === 'applications' ? '' : ' lbs';
+    var applications = this.metric === 'applications';
+    var unit = applications ? ' application' : ' lbs';
     var previous = Number(props[this.metric + '_prev']) || 0;
     var current = Number(props[this.metric]) || 0;
     if (!previous && !current) {
@@ -2185,12 +2203,15 @@
         escapeHtml(this.compare) + ' or ' + escapeHtml(this.data.year) + '.</p>';
     }
     var delta = current - previous;
+    var headline = formatNumber(current) + unit + (applications && current === 1 ? '' : applications ? 's' : '');
+    // No "from <year>": the legend caption names the pair, and a second
+    // rendered line makes the popup too tall to pan clear of the panels.
+    var movement = !delta ? 'unchanged' : (delta > 0 ? 'up ' : 'down ') + formatNumber(Math.abs(delta));
     return (
       '<p class="section-popup-metric">' +
-        '<strong>' + formatNumber(previous) + ' → ' + formatNumber(current) + unit + '</strong> ' +
-        '<span class="section-popup-change">(' + signed(delta) + ')</span>' +
-      '</p>' +
-      '<p class="section-popup-compare">' + escapeHtml(this.compare) + ' to ' + escapeHtml(this.data.year) + '</p>'
+        '<strong>' + headline + '</strong> in ' + escapeHtml(this.data.year) +
+        ', <span class="section-popup-change">' + movement + '</span>' +
+      '</p>'
     );
   };
 
@@ -3148,10 +3169,12 @@
         var applications = this.metric === 'applications';
         var previous = applications ? block.applications_prev : block.lbs_prev;
         var current = applications ? block.applications : block.lbs;
-        text = '<strong>' + formatNumber(previous) + ' → ' + formatNumber(current) +
-          (applications ? '' : ' lbs') + '</strong> <span class="section-popup-change">(' +
-          signed(current - previous) + ')</span> within about a mile, ' +
-          escapeHtml(this.compare) + ' to ' + escapeHtml(this.data.year);
+        var moved = current - previous;
+        text = '<strong>' + formatNumber(current) + (applications ? ' application' + (current === 1 ? '' : 's') : ' lbs') +
+          '</strong> within about a mile in ' + escapeHtml(this.data.year) +
+          ', <span class="section-popup-change">' + (!moved ? 'unchanged from ' + escapeHtml(this.compare)
+            : (moved > 0 ? 'up ' : 'down ') + formatNumber(Math.abs(moved)) + ' from ' + escapeHtml(this.compare)) +
+          '</span>';
       } else {
         text = this.metric === 'applications'
           ? '<strong>' + formatNumber(block.applications) + '</strong> application' + (block.applications === 1 ? '' : 's') + within
