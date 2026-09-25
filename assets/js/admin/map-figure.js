@@ -85,67 +85,30 @@
     return el;
   }
 
-  // A ring's planar centroid (shoelace), with its signed area, so the largest
-  // ring of a multipolygon can be picked.
-  function ringCentroid(ring) {
-    var area = 0, cx = 0, cy = 0;
-    for (var i = 0, n = ring.length; i < n; i++) {
-      var p = ring[i], q = ring[(i + 1) % n];
-      var cross = p[0] * q[1] - q[0] * p[1];
-      area += cross;
-      cx += (p[0] + q[0]) * cross;
-      cy += (p[1] + q[1]) * cross;
-    }
-    if (!area) return null;
-    return { point: [cx / (3 * area), cy / (3 * area)], area: Math.abs(area) };
-  }
-
-  // Where a feature's label sits: a point's own position; a polygon's centroid
-  // (of its largest outer ring); anything else, the middle of its bounds.
+  // Where a feature's label sits: a point's own position; a polygon's
+  // centroid (of its largest outer ring); anything else, the middle of its
+  // bounds. The core's geometryCentroid does the work (shared with the
+  // dairy map's county hover labels).
   function labelAnchor(feature) {
-    var geometry = feature.geometry;
-    if (!geometry) return null;
-    if (geometry.type === 'Point') return geometry.coordinates;
-    var rings = [];
-    if (geometry.type === 'Polygon') rings = [geometry.coordinates[0]];
-    if (geometry.type === 'MultiPolygon') {
-      for (var i = 0; i < geometry.coordinates.length; i++) rings.push(geometry.coordinates[i][0]);
-    }
-    var best = null;
-    for (var j = 0; j < rings.length; j++) {
-      var c = ringCentroid(rings[j]);
-      if (c && (!best || c.area > best.area)) best = c;
-    }
-    if (best) return best.point;
-    var bounds = M.geometryBounds(geometry);
-    return bounds ? [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2] : null;
+    return feature.geometry ? M.geometryCentroid(feature.geometry) : null;
   }
-
-  // The outline an interactive area takes while the cursor is over it.
-  var HOVER_COLOR = '#222';
-  var HOVER_WIDTH = 2;
 
   function styled(key) {
     return ['get', key];
   }
 
+  // The outline an interactive area takes while the cursor is over it, and
+  // its label -- both on the map core's shared hover helpers (SJVAirMaps.hover),
+  // so this figure and the dairy map's counties don't each carry their own copy.
   function hovered(on, off) {
-    return ['case', ['boolean', ['feature-state', 'hover'], false], on, off];
+    return M.hover.paint(on, off);
   }
 
-  // A label: the SDK's popup, closed only by us, never taking focus (a
-  // permanent label opening on page load must not scroll the page to it).
+  // 'map-figure-label' is kept as an extra class (the shared look lives on
+  // 'map-hover-label' in assets/css/maps/map.css) so this figure's own CSS
+  // hooks and the smoke script's selectors keep working unchanged.
   function makeLabel(text, lngLat, offset) {
-    return new maptilersdk.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      closeOnMove: false,
-      focusAfterOpen: false,
-      anchor: 'bottom',
-      offset: offset,
-      maxWidth: 'none',
-      className: 'map-figure-label',
-    }).setLngLat(lngLat).setText(text);
+    return M.hover.label(text, lngLat, offset, 'map-figure-label');
   }
 
   // The payload, parsed once per container (mapOptions and create both read it).
@@ -228,8 +191,8 @@
       source: 'areas',
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'line-color': hovered(HOVER_COLOR, styled('color')),
-        'line-width': hovered(HOVER_WIDTH, styled('weight')),
+        'line-color': hovered(M.hover.COLOR, styled('color')),
+        'line-width': hovered(M.hover.WIDTH, styled('weight')),
       },
     });
     // Permanent area labels, once (markers carry their own).
@@ -297,14 +260,7 @@
   // The hovered area's outline, as feature state, so the paint expression does
   // the work and no layer is restyled.
   Figure.prototype.setAreaHover = function (featureId) {
-    if (this.areaHoverId === featureId) return;
-    if (this.areaHoverId != null && this.map.getSource('areas')) {
-      this.map.setFeatureState({ source: 'areas', id: this.areaHoverId }, { hover: false });
-    }
-    this.areaHoverId = featureId;
-    if (featureId != null) {
-      this.map.setFeatureState({ source: 'areas', id: featureId }, { hover: true });
-    }
+    this.areaHoverId = M.hover.setState(this.map, 'areas', this.areaHoverId, featureId);
   };
 
   Figure.prototype.showHover = function (id, text, lngLat, offset) {

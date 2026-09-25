@@ -172,12 +172,18 @@
     this.counties = null;
     this.shapes = null;
     this.countyBreaks = [];
+    this.countyAnchors = {};
+    this.countyHoverId = null;
+    this.countyHoverLabelId = null;
+    this.countyHoverLabel = null;
     this.readState();
     this.map.on('click', 'dairies', function (evt) {
       var feature = evt.features[0];
       self.openPopup(feature.properties.id, feature.geometry.coordinates.slice());
     });
     this.map.on('click', 'counties-fill', function (evt) { self.openCountyPopup(evt.features[0], evt.lngLat); });
+    this.map.on('mousemove', 'counties-fill', function (evt) { self.onCountyHover(evt); });
+    this.map.on('mouseleave', 'counties-fill', function () { self.clearCountyHover(); });
     ['dairies', 'counties-fill'].forEach(function (layer) {
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
@@ -221,7 +227,7 @@
     });
     this.shell.ensureLayer({
       id: 'counties-line', type: 'line', source: 'counties',
-      paint: { 'line-color': COUNTY_COLOR, 'line-width': 1, 'line-opacity': 0.6 },
+      paint: { 'line-color': M.hover.paint(M.hover.COLOR, COUNTY_COLOR), 'line-width': this.countyLineWidth(), 'line-opacity': 0.6 },
     });
     this.shell.ensureLayer({
       id: 'dairies', type: 'circle', source: 'dairies',
@@ -259,12 +265,20 @@
     });
   };
 
+  // The scope's county's outline drawn heavier, hover still layered on top
+  // (M.hover.paint reads the same feature-state the fill and click share).
+  DairyMap.prototype.countyLineWidth = function () {
+    var county = this.data.county || '';
+    var normal = county ? ['case', ['==', ['get', 'slug'], county], 3, 1] : 1;
+    return M.hover.paint(M.hover.WIDTH, normal);
+  };
+
   // The scope's county: only its dairies, and its outline drawn heavier.
   DairyMap.prototype.applyCounty = function () {
     if (!this.map || !this.map.getLayer('dairies')) return;
     var county = this.data.county || '';
     this.map.setFilter('dairies', county ? ['==', ['get', 'county'], county] : null);
-    this.map.setPaintProperty('counties-line', 'line-width', county ? ['case', ['==', ['get', 'slug'], county], 3, 1] : 1);
+    this.map.setPaintProperty('counties-line', 'line-width', this.countyLineWidth());
   };
 
   DairyMap.prototype.load = function () {
@@ -279,6 +293,7 @@
         if (!self.shell.isCurrent(ticket)) return;
         self.shapes = results[1];
         self.counties = results[2];
+        self.buildCountyAnchors();
         self.showDairies(results[0]);
         self.showCounties();
         self.frame();
@@ -334,6 +349,61 @@
     this.countyBreaks = breaks;
     this.shell.setSourceData('counties', { type: 'FeatureCollection', features: features });
     this.shell.updateLegend();
+  };
+
+  // Each county's own point (a centroid, from its shape), once per load: a
+  // hover label sits there, steady, rather than chasing the cursor.
+  DairyMap.prototype.buildCountyAnchors = function () {
+    var anchors = {};
+    (this.shapes.features || []).forEach(function (feature) {
+      anchors[feature.id] = M.geometryCentroid(feature.geometry);
+    });
+    this.countyAnchors = anchors;
+  };
+
+  // The measure's value for one county's row, formatted exactly as the
+  // legend and popup write it; 'no data' for a county with none.
+  DairyMap.prototype.measureText = function (row) {
+    var value = row ? row[this.measure] : null;
+    if (value === null || value === undefined) return 'no data';
+    var unit = this.data.unit;
+    var label = this.data.label;
+    switch (this.measure) {
+      case 'emissions':
+        return quantity(value) + ' ' + unit + '/yr ' + label;
+      case 'emissions_per_sq_mi':
+        return quantity(value) + ' ' + unit + '/yr ' + label + ' per sq mi';
+      case 'mature_cows':
+        return whole(value) + ' mature dairy cows';
+      case 'mature_cows_per_sq_mi':
+        return quantity(value) + ' mature dairy cows per sq mi';
+      default:
+        return 'no data';
+    }
+  };
+
+  // The hovered county: its outline (feature-state, shared with the fill's
+  // click) and a label at its anchor with its name and the measure on
+  // display. Steady while the cursor stays over the same county -- only a
+  // change of county (or of measure/view) rebuilds the label.
+  DairyMap.prototype.onCountyHover = function (evt) {
+    var feature = evt.features && evt.features[0];
+    if (!feature) return;
+    var id = feature.id;
+    this.countyHoverId = M.hover.setState(this.map, 'counties', this.countyHoverId, id);
+    if (this.countyHoverLabelId === id) return;
+    this.countyHoverLabelId = id;
+    var anchor = this.countyAnchors[id] || evt.lngLat;
+    var text = feature.properties.name + ' · ' + this.measureText(feature.properties);
+    if (this.countyHoverLabel) this.countyHoverLabel.remove();
+    this.countyHoverLabel = M.hover.label(text, anchor, 0).addTo(this.map);
+  };
+
+  DairyMap.prototype.clearCountyHover = function () {
+    this.countyHoverId = M.hover.setState(this.map, 'counties', this.countyHoverId, null);
+    this.countyHoverLabelId = null;
+    if (this.countyHoverLabel) this.countyHoverLabel.remove();
+    this.countyHoverLabel = null;
   };
 
   DairyMap.prototype.countyBounds = function () {
@@ -470,6 +540,7 @@
   DairyMap.prototype.setView = function (view) {
     this.view = view === 'counties' ? 'counties' : 'dairies';
     this.shell.closePopup();
+    this.clearCountyHover();
     this.applyView();
     this.syncUrl();
     this.shell.updateLegend();
@@ -477,6 +548,7 @@
 
   DairyMap.prototype.setMeasure = function (measure, label) {
     this.measure = measure;
+    this.clearCountyHover();
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-measure');
     if (dropdown) {
       var text = dropdown.querySelector('.map-toolbar-label');
@@ -496,6 +568,7 @@
     var reloads = ['geojsonUrl', 'countiesUrl', 'county', 'year', 'label', 'unit'];
     var reload = changed.some(function (key) { return reloads.indexOf(key) !== -1; });
     this.readState();
+    this.clearCountyHover();
     this.applyView();
     if (!reload) {
       if (changed.indexOf('measure') !== -1) this.showCounties();
@@ -518,6 +591,7 @@
 
   DairyMap.prototype.destroy = function () {
     this.shell.closePopup();
+    this.clearCountyHover();
     document.body.removeEventListener('htmx:configRequest', this.onConfigRequest);
     document.body.removeEventListener('click', this.onZoomClick);
     this.map = null;

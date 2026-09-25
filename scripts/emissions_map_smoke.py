@@ -164,6 +164,20 @@ return null;
 """
 
 
+# A canvas pixel over a shaded county (one with a value, not the empty grey),
+# clear of the chrome: [x, y] from the canvas centre, or null.
+COUNTY_PIXEL = """
+var m = window.EmissionsDairyMap.instances()[0], map = m.map, c = map.getCanvas(), r = c.getBoundingClientRect();
+for (var y = 60; y < r.height - 30; y += 5) for (var x = 20; x < r.width - 20; x += 5) {
+  var f = map.queryRenderedFeatures([x, y], {layers: ['counties-fill']});
+  if (!f.length || f[0].properties._empty !== 0) continue;
+  if (document.elementFromPoint(r.left + x, r.top + y) !== c) continue;
+  return [x - r.width / 2, y - r.height / 2];
+}
+return null;
+"""
+
+
 def map_dairy_count(driver):
     return driver.execute_script(
         "var m = window.EmissionsFacilityMap.instances()[0];"
@@ -342,6 +356,28 @@ def main():
         driver.execute_script("document.querySelector('.dairy-map-view [data-view=counties]').click()")
         shaded = settled_count(driver, shaded_counties)
         check(results, 'counties view shades counties', shaded > 0 and 'view=counties' in driver.current_url, f'{shaded} shaded')
+
+        # Hovering a county (a real mouse move, not a synthetic event) shows a
+        # label with its name and the measure on display, and it disappears
+        # once the cursor leaves the map. Scrolled into view first: an
+        # offset move scrolls its target into view itself, which would shift
+        # the canvas out from under a pixel picked beforehand.
+        driver.execute_script("document.querySelector('.dairy-map canvas').scrollIntoView({block: 'center'});")
+        time.sleep(0.3)
+        county_hit = driver.execute_script(COUNTY_PIXEL)
+        if county_hit:
+            canvas = driver.find_element(By.CSS_SELECTOR, '.dairy-map canvas')
+            ActionChains(driver).move_to_element_with_offset(canvas, int(county_hit[0]), int(county_hit[1])).perform()
+            time.sleep(0.5)
+        label_text = driver.execute_script(
+            "var l = document.querySelector('.map-hover-label .maplibregl-popup-content'); return l ? l.textContent : '';")
+        check(results, 'hovering a county shows its name and value',
+              bool(county_hit) and 'County' in label_text and 'tons/yr' in label_text, label_text)
+        ActionChains(driver).move_to_element(driver.find_element(By.CSS_SELECTOR, '.navbar-brand')).perform()
+        time.sleep(0.5)
+        gone = driver.execute_script("return document.querySelectorAll('.map-hover-label').length === 0")
+        check(results, 'moving off the map clears the county hover label', gone)
+
         driver.execute_script("document.querySelector('.dairy-map-measure [data-measure=mature_cows]').click()")
         time.sleep(0.5)
         legend = driver.execute_script("return document.querySelector('.dairy-map-legend .legend-title').textContent;")

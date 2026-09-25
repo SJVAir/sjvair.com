@@ -236,6 +236,89 @@
     },
   };
 
+  // A ring's planar centroid (shoelace), with its signed area, so the largest
+  // ring of a multipolygon can be picked.
+  function ringCentroid(ring) {
+    var area = 0, cx = 0, cy = 0;
+    for (var i = 0, n = ring.length; i < n; i++) {
+      var p = ring[i], q = ring[(i + 1) % n];
+      var cross = p[0] * q[1] - q[0] * p[1];
+      area += cross;
+      cx += (p[0] + q[0]) * cross;
+      cy += (p[1] + q[1]) * cross;
+    }
+    if (!area) return null;
+    return { point: [cx / (3 * area), cy / (3 * area)], area: Math.abs(area) };
+  }
+
+  // A geometry's own point: a Point's coordinates; a (Multi)Polygon's
+  // centroid (of its largest outer ring, by planar area); anything else (or
+  // a degenerate ring), the middle of its bounds. Used to place a permanent
+  // or hover label steadily, independent of the cursor.
+  function geometryCentroid(geometry) {
+    if (!geometry) return null;
+    if (geometry.type === 'Point') return geometry.coordinates;
+    var rings = [];
+    if (geometry.type === 'Polygon') rings = [geometry.coordinates[0]];
+    if (geometry.type === 'MultiPolygon') {
+      for (var i = 0; i < geometry.coordinates.length; i++) rings.push(geometry.coordinates[i][0]);
+    }
+    var best = null;
+    for (var j = 0; j < rings.length; j++) {
+      var c = ringCentroid(rings[j]);
+      if (c && (!best || c.area > best.area)) best = c;
+    }
+    if (best) return best.point;
+    var bounds = geometryBounds(geometry);
+    return bounds ? [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2] : null;
+  }
+
+  // Hovering an interactive area: the outline it takes while the cursor is
+  // over it (via feature-state), and the label that follows. Shared by every
+  // map that highlights a feature under the cursor (map-figure.js, the
+  // dairy map's counties), so the paint expression, the popup and the
+  // feature-state toggle are written once.
+  var HOVER_COLOR = '#222';
+  var HOVER_WIDTH = 2;
+
+  // A paint expression: `on` while the feature-state `hover` is true, else `off`.
+  function hoverPaint(on, off) {
+    return ['case', ['boolean', ['feature-state', 'hover'], false], on, off];
+  }
+
+  // A label: the SDK's popup, closed only by us, never taking focus (a
+  // permanent label opening on page load must not scroll the page to it).
+  // `extraClass` adds to the shared `map-hover-label` look (its CSS is in
+  // assets/css/maps/map.css) when a caller needs its own hook, e.g. for a
+  // smoke script's selector.
+  function hoverLabel(text, lngLat, offset, extraClass) {
+    return new maptilersdk.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      closeOnMove: false,
+      focusAfterOpen: false,
+      anchor: 'bottom',
+      offset: offset,
+      maxWidth: 'none',
+      className: extraClass ? 'map-hover-label ' + extraClass : 'map-hover-label',
+    }).setLngLat(lngLat).setText(text);
+  }
+
+  // Toggles a source's hover feature-state from `previousId` to `id` (either
+  // may be null/undefined for none), and returns `id` -- the caller keeps
+  // that as its own "currently hovered" field. A no-op source (already
+  // removed by a style swap) is skipped rather than throwing.
+  function setHoverState(map, source, previousId, id) {
+    if (previousId === id) return previousId;
+    if (previousId != null && map.getSource(source)) {
+      map.setFeatureState({ source: source, id: previousId }, { hover: false });
+    }
+    if (id != null) {
+      map.setFeatureState({ source: source, id: id }, { hover: true });
+    }
+    return id;
+  }
+
   // `path` (a URL or path) with its query rewritten by write(URLSearchParams),
   // as a same-origin path; null for another origin, or with `samePage` for
   // another page than this one. A map writes its state (view, measure, ...)
@@ -267,6 +350,7 @@
     parseBounds: parseBounds,
     extendBounds: extendBounds,
     geometryBounds: geometryBounds,
+    geometryCentroid: geometryCentroid,
     unionBounds: unionBounds,
     escapeHtml: escapeHtml,
     isPhone: isPhone,
@@ -279,5 +363,12 @@
     classes: classes,
     rewriteQuery: rewriteQuery,
     syncUrl: syncUrl,
+    hover: {
+      COLOR: HOVER_COLOR,
+      WIDTH: HOVER_WIDTH,
+      paint: hoverPaint,
+      label: hoverLabel,
+      setState: setHoverState,
+    },
   };
 })();
