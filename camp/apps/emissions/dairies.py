@@ -135,13 +135,18 @@ def coverage_span():
 
 
 def coverage_counts():
-    """(dairies counted before COVERAGE_CHANGE_YEAR, dairies counted from it on), for the about page."""
+    """(dairies counted in the year before COVERAGE_CHANGE_YEAR, dairies counted in COVERAGE_CHANGE_YEAR itself), for the about page."""
     def compute():
         counted = DairyHerd.objects.filter(COUNTED)
-        before = counted.filter(year__lt=COVERAGE_CHANGE_YEAR).values('dairy_id').distinct().count()
-        after = counted.filter(year__gte=COVERAGE_CHANGE_YEAR).values('dairy_id').distinct().count()
+        before = counted.filter(year=COVERAGE_CHANGE_YEAR - 1).values('dairy_id').distinct().count()
+        after = counted.filter(year=COVERAGE_CHANGE_YEAR).values('dairy_id').distinct().count()
         return before, after
     return cache.get_or_set(key('coverage-counts'), compute, stats.CACHE_TIMEOUT)
+
+
+def dairy_count():
+    """The number of Valley dairies CADD locates (every imported Dairy row), for the about page."""
+    return cache.get_or_set(key('dairy-count'), Dairy.objects.count, stats.CACHE_TIMEOUT)
 
 
 def region_index(level):
@@ -292,8 +297,11 @@ def dairy_areas(dairy):
     city_place = Region.objects.filter(
         Q(type__in=(Region.Type.CITY, Region.Type.PLACE)),
         Q(boundary__geometry__intersects=dairy.point) | (Q(name__iexact=city) if city else Q(pk__in=())),
-    ).order_by('type', 'pk').values_list('pk', flat=True)
-    pks.extend(city_place)
+    ).order_by('type', 'pk')
+    # A synthetic PLACE shares its name with the CITY it was built from;
+    # listing both only shows "Bakersfield, Bakersfield" (views.find_area_places drops it the same way).
+    cities = {region.name for region in city_place if region.type == Region.Type.CITY}
+    pks.extend(region.pk for region in city_place if not (region.type == Region.Type.PLACE and region.name in cities))
     for level in (Region.Type.ZIPCODE, Region.Type.TRACT):
         pk = region_index(level).get(dairy.pk)
         if pk:

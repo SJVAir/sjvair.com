@@ -225,6 +225,15 @@ class AreaTests(DairyTestCase):
         # BIG's mailing city is 'Riverdale' too, so the PLACE match applies to it as well.
         assert place in dairies.dairy_areas(self.big)
 
+    def test_dairy_areas_drops_a_place_named_like_a_city(self):
+        # A synthetic PLACE built from the same town as a CITY only
+        # duplicates it in the popup; the PLACE is dropped, the CITY kept.
+        city = make(Region.Type.CITY, 'Bakersfield', AROUND_PLANT)
+        place = make(Region.Type.PLACE, 'Bakersfield', AROUND_PLANT)
+        result = dairies.dairy_areas(self.big)
+        assert city in result and place not in result
+        assert [r.name for r in result].count('Bakersfield') == 1
+
 
 class CountyEmissionsTests(DairyTestCase):
     def test_dairy_cattle_only(self):
