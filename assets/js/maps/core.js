@@ -319,6 +319,52 @@
     return id;
   }
 
+  // A hover controller for one interactive layer: `set(feature, lngLat)` on
+  // mousemove, `clear()` on mouseleave (and whenever the caller is about to
+  // replace the source's data, or tears the map down). Tracks the
+  // feature-state toggle itself; with `options.label(feature)` it also shows
+  // a steady text label at the feature's own point (`options.anchor`, or
+  // `lngLat` when that's absent) and only rebuilds it when the hovered
+  // feature id changes -- the dairy map's counties and the facility map's
+  // areas both highlight a feature this way.
+  function createHoverController(map, source, options) {
+    options = options || {};
+    var hoverId = null;
+    var labelId = null;
+    var label = null;
+
+    function clearLabel() {
+      labelId = null;
+      if (label) {
+        label.remove();
+        label = null;
+      }
+    }
+
+    function set(feature, lngLat) {
+      if (!feature) return;
+      var id = feature.id;
+      hoverId = setHoverState(map, source, hoverId, id);
+      if (!options.label || labelId === id) return;
+      labelId = id;
+      if (label) {
+        label.remove();
+        label = null;
+      }
+      var text = options.label(feature);
+      if (!text) return;
+      var anchor = (options.anchor && options.anchor(feature)) || lngLat;
+      label = hoverLabel(text, anchor, options.offset || 0, options.labelClass).addTo(map);
+    }
+
+    function clear() {
+      hoverId = setHoverState(map, source, hoverId, null);
+      clearLabel();
+    }
+
+    return { set: set, clear: clear };
+  }
+
   // `path` (a URL or path) with its query rewritten by write(URLSearchParams),
   // as a same-origin path; null for another origin, or with `samePage` for
   // another page than this one. A map writes its state (view, measure, ...)
@@ -369,6 +415,7 @@
       paint: hoverPaint,
       label: hoverLabel,
       setState: setHoverState,
+      controller: createHoverController,
     },
   };
 })();
