@@ -76,3 +76,18 @@ body.emissions
   // A phone number never breaks across lines.
   .facility-regulator a[href^="tel:"]
     white-space: nowrap
+  // Home: "Find your area" and "Find a facility" side by side, the same height.
+  .find-row
+    .box
+      height: 100%
+    // Styled like the county links in "Find your area" beside it.
+    .find-facility-browse
+      margin-top: 0.75rem
+      font-size: $size-7
+      a
+        font-weight: 600
+      .find-area-sep
+        color: $grey-light
+        margin: 0 0.15rem
+      > span:first-child
+        margin-right: 0.25rem

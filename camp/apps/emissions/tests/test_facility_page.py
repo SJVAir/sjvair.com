@@ -40,3 +40,18 @@ class FacilityHeaderTests(TestCase):
         content = self.detail('TEST CEMENT')
         assert 'href="tel:6618625250"' in content
         assert 'Report an air pollution problem' not in content
+
+
+class HomeSearchTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def test_find_a_facility_sits_beside_find_your_area(self):
+        cache.clear()
+        from django.urls import reverse
+
+        content = self.client.get(reverse('emissions:home'), {'minor': '1'}).content.decode()
+        row = content[content.index('class="columns find-row"'):]
+        assert row.index('id="find"') < row.index('class="box find-facility"') < row.index('Top 10 facilities')
+        # The search keeps the scope, and there's only one facility search on the page.
+        assert '<input type="hidden" name="minor" value="1">' in row[:row.index('Top 10 facilities')]
+        assert content.count('id="facility-search"') == 1

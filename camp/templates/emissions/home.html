@@ -16,7 +16,10 @@
     {% endif %}
 </div>
 
-{% include 'emissions/includes/find-area.html' %}
+<div class="columns find-row">
+    <div class="column is-half">{% include 'emissions/includes/find-area.html' %}</div>
+    <div class="column is-half">{% include 'emissions/includes/find-facility.html' %}</div>
+</div>
 
 {% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
 
@@ -35,12 +38,4 @@
     </div>
 </div>
 
-<form method="get" action="{% url 'emissions:facility-list' %}" class="mt-5">
-    {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
-    <label class="label" for="facility-search">Find a facility</label>
-    <div class="field has-addons">
-        <div class="control is-expanded"><input class="input" type="search" id="facility-search" name="q" placeholder="Facility name"></div>
-        <div class="control"><button class="button is-primary" type="submit">Search</button></div>
-    </div>
-</form>
 {% endblock %}
