@@ -532,7 +532,7 @@ def _place_stats(area, year, all_years, concern=False):
     return data
 
 
-def place_context(area, year, all_years=False, concern=False, params=None):
+def place_context(area, year, all_years=False, concern=False, params=None, compare=None):
     from camp.apps.pesticides.views import section_map_config
 
     def build():
@@ -596,7 +596,8 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         'concern_records_url': area.records_url(year, all_years, concern=True),
         'notices_url': area.notices_url(concern),
         'map_config': section_map_config(
-            year, all_years=all_years, show_locations=is_district, concern=concern, **area.map_kwargs(),
+            year, all_years=all_years, show_locations=is_district, concern=concern,
+            compare=compare, **area.map_kwargs(),
         ),
         'spraydays_url': SPRAYDAYS_URL,
         'is_school_district': is_district,

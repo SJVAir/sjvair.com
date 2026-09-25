@@ -1209,3 +1209,53 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         cache.clear()
         with self.assertNumQueries(CONCERN_COMMODITY_QUERIES):
             self.client.get(url, {'year': 'all', 'concern': '1'})
+
+
+class CompareReachesEveryMapTests(RollupTestMixin, TestCase):
+    """
+    Every page that draws the section map has to pass the compared year down
+    to it, or the scope bar offers a comparison the map quietly ignores.
+    One call site (places.place_context) was missed exactly that way, so this
+    walks all of them rather than trusting a grep.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def map_pages(self):
+        fresno = Region.objects.get(pk=9001)
+        section = Region.objects.get(pk=9101)
+        chemical = Chemical.objects.get(pk=1)
+        return {
+            'map': reverse('pesticides:map'),
+            'records': reverse('pesticides:records'),
+            'place': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            'section': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
+            'chemical': chemical.get_absolute_url(),
+            'near': reverse('pesticides:near-me'),
+        }
+
+    def test_every_map_page_carries_the_compared_year(self):
+        missing = []
+        for name, url in self.map_pages().items():
+            params = {'year': '2023', 'compare': '2022'}
+            if name == 'near':
+                params.update({'lat': '36.71', 'lng': '-119.79', 'radius': '1'})
+            html = self.client.get(url, params).content.decode()
+            if 'section-map' not in html:
+                continue
+            if 'data-compare="2022"' not in html:
+                missing.append(name)
+        assert not missing, 'pages that dropped the compared year: %s' % ', '.join(missing)
+
+    def test_no_compare_leaves_the_attribute_empty(self):
+        for name, url in self.map_pages().items():
+            params = {'year': '2023'}
+            if name == 'near':
+                params.update({'lat': '36.71', 'lng': '-119.79', 'radius': '1'})
+            html = self.client.get(url, params).content.decode()
+            if 'section-map' not in html:
+                continue
+            assert 'data-compare=""' in html, name

@@ -545,6 +545,23 @@ body.pesticides
             .tag
                 margin-bottom: 0
 
+    // Two numbers a row, so they get their own columns: run inline they
+    // don't line up and can't be read down the column, which is the point
+    // of a ranking. Tabular figures keep the digits in step.
+    .movers-table
+        .movers-change,
+        .movers-pct
+            white-space: nowrap
+            font-variant-numeric: tabular-nums
+        .movers-pct
+            width: 1%
+            color: $grey
+        thead th
+            font-size: 0.7rem
+            text-transform: uppercase
+            letter-spacing: 0.03em
+            color: $grey
+
     .leaderboard-list
         // Pulled out half an em each side so the zebra stripes run past the
         // text the way a striped table's cells do, with the text itself

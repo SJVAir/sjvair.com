@@ -111,7 +111,16 @@ def movers_context(rows, year, all_years, compare, field, lbs_field='lbs_chemica
     movers = stats.top_movers(rows, year_from, year, field, lbs_field)
     if not movers['rising'] and not movers['falling']:
         return None
-    return {**movers, 'year_from': year_from, 'year_to': year}
+    return {
+        **movers,
+        'year_from': year_from,
+        'year_to': year,
+        # Paired for the template, which renders the two sides identically.
+        'groups': [
+            {'label': 'Rose most', 'rows': movers['rising'], 'empty': 'Nothing rose.'},
+            {'label': 'Fell most', 'rows': movers['falling'], 'empty': 'Nothing fell.'},
+        ],
+    }
 
 
 # Public pages link developers to the documentation, never to raw endpoints.
@@ -1983,7 +1992,8 @@ class NearMe(vanilla.TemplateView):
         label = (self.request.GET.get('label') or f'{self.lat:.3f}, {self.lng:.3f}')[:120]
         concern = scope_concern(self.request)
         area = places.point_area(self.lat, self.lng, self.radius, label=label)
-        context = places.place_context(area, year, all_years, concern, params=self.request.GET)
+        context = places.place_context(area, year, all_years, concern, params=self.request.GET,
+            compare=scope_compare(self.request, year, all_years))
         radius_options = [
             {'miles': miles, 'url': self._radius_url(miles), 'current': miles == self.radius}
             for miles in places.RADIUS_CHOICES
@@ -2031,7 +2041,8 @@ class RegionPage(vanilla.TemplateView):
         year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         concern = scope_concern(self.request)
         area = places.region_area(self.region)
-        context = places.place_context(area, year, all_years, concern, params=self.request.GET)
+        context = places.place_context(area, year, all_years, concern, params=self.request.GET,
+            compare=scope_compare(self.request, year, all_years))
         within = places.regions_within(self.region) if self.region.boundary_id else None
         # Not part of place_context: that block is cached per area and year,
         # and the compared year is the reader's choice.
