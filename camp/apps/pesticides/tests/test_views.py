@@ -68,12 +68,6 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert movers['year_to'] == 2023
         assert movers['rising'] or movers['falling']
 
-    def test_movers_follows_an_explicit_compare_year(self):
-        response = self.client.get(reverse('pesticides:home'), {'year': '2022', 'compare': '2023'})
-        movers = response.context['movers']
-        assert movers['year_from'] == 2023
-        assert movers['year_to'] == 2022
-
     def test_movers_is_absent_without_a_comparable_year(self):
         # 2022 is the earliest loaded year, so there is nothing before it.
         response = self.client.get(reverse('pesticides:home'), {'year': '2022'})
@@ -89,45 +83,6 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert 'Biggest movers' in html
         assert '2022 to 2023' in html
         assert 'Rose most' in html and 'Fell most' in html
-
-    def test_compare_picker_offers_every_other_loaded_year(self):
-        html = self.client.get(self.url, {'year': '2023'}).content.decode()
-        assert 'data-scope="compare"' in html
-        assert 'compare=2022' in html
-        # Never itself: comparing a year to itself is not a mode.
-        assert 'compare=2023' not in html
-
-    def test_compare_picker_is_absent_under_all_years(self):
-        html = self.client.get(self.url, {'year': 'all'}).content.decode()
-        assert 'data-scope="compare"' not in html
-
-    def test_all_years_link_clears_the_comparison(self):
-        html = self.client.get(self.url, {'year': '2023', 'compare': '2022'}).content.decode()
-        # The two are mutually exclusive, so the link mustn't carry compare on.
-        assert 'href="?year=all"' in html
-
-    def test_compare_rides_in_the_scope(self):
-        response = self.client.get(self.url, {'year': '2023', 'compare': '2022'})
-        assert response.context['compare'] == 2022
-        assert response.context['compare_label'] == '2022 to 2023'
-        assert response.context['compare_options'] == [2022]
-        assert response.context['scope_qs'] == '?compare=2022'
-
-    def test_compare_is_dropped_when_it_cannot_apply(self):
-        # All years has no second term, and a year with no rollup is not a
-        # comparison. Both leave the scope untouched.
-        for params in ({'year': 'all', 'compare': '2022'}, {'year': '2023', 'compare': '1999'}):
-            response = self.client.get(self.url, params)
-            assert response.context['compare'] is None
-            assert response.context['compare_label'] == ''
-            assert 'compare=' not in response.context['scope_qs']
-
-    def test_compare_pins_links_to_both_years(self):
-        response = self.client.get(self.url, {'year': '2022', 'compare': '2023'})
-        assert response.context['scope_qs'] == '?year=2022&compare=2023'
-        html = response.content.decode()
-        # Autoescaped in the markup, as any multi-parameter scope is.
-        assert Chemical.objects.get(pk=1).get_absolute_url() + '?year=2022&amp;compare=2023' in html
 
     def test_all_years_sums_every_loaded_year(self):
         response = self.client.get(self.url, {'year': 'all'})
@@ -1211,12 +1166,11 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
             self.client.get(url, {'year': 'all', 'concern': '1'})
 
 
-class CompareReachesEveryMapTests(RollupTestMixin, TestCase):
+class CompareIsAMapControlTests(RollupTestMixin, TestCase):
     """
-    Every page that draws the section map has to pass the compared year down
-    to it, or the scope bar offers a comparison the map quietly ignores.
-    One call site (places.place_context) was missed exactly that way, so this
-    walks all of them rather than trusting a grep.
+    Comparing two years is a control on the main map and nowhere else. It
+    isn't part of the explorer scope, so no other page offers it and no
+    page's links carry it; the map reads `?compare=` off the URL itself.
     """
 
     fixtures = ['pesticides-explorer']
@@ -1224,7 +1178,7 @@ class CompareReachesEveryMapTests(RollupTestMixin, TestCase):
     def setUp(self):
         cache.clear()
 
-    def map_pages(self):
+    def pages(self):
         fresno = Region.objects.get(pk=9001)
         section = Region.objects.get(pk=9101)
         chemical = Chemical.objects.get(pk=1)
@@ -1234,28 +1188,31 @@ class CompareReachesEveryMapTests(RollupTestMixin, TestCase):
             'place': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
             'section': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
             'chemical': chemical.get_absolute_url(),
-            'near': reverse('pesticides:near-me'),
+            'chemical-list': reverse('pesticides:chemical-list'),
+            'notices': reverse('pesticides:notice-list'),
+            'home': reverse('pesticides:home'),
+            'about': reverse('pesticides:about'),
         }
 
-    def test_every_map_page_carries_the_compared_year(self):
-        missing = []
-        for name, url in self.map_pages().items():
-            params = {'year': '2023', 'compare': '2022'}
-            if name == 'near':
-                params.update({'lat': '36.71', 'lng': '-119.79', 'radius': '1'})
-            html = self.client.get(url, params).content.decode()
-            if 'section-map' not in html:
-                continue
-            if 'data-compare="2022"' not in html:
-                missing.append(name)
-        assert not missing, 'pages that dropped the compared year: %s' % ', '.join(missing)
+    def test_only_the_main_map_offers_the_control(self):
+        offered = set()
+        for name, url in self.pages().items():
+            html = self.client.get(url, {'year': '2023'}).content.decode()
+            if 'select name="compare"' in html or "select name='compare'" in html:
+                offered.add(name)
+        assert offered == {'map'}, 'compare control on: %s' % ', '.join(sorted(offered)) or 'nothing'
 
-    def test_no_compare_leaves_the_attribute_empty(self):
-        for name, url in self.map_pages().items():
-            params = {'year': '2023'}
-            if name == 'near':
-                params.update({'lat': '36.71', 'lng': '-119.79', 'radius': '1'})
-            html = self.client.get(url, params).content.decode()
-            if 'section-map' not in html:
-                continue
-            assert 'data-compare=""' in html, name
+    def test_the_map_is_told_which_years_it_can_compare(self):
+        html = self.client.get(reverse('pesticides:map'), {'year': '2023'}).content.decode()
+        assert 'data-compare-years="2022"' in html
+
+    def test_no_page_puts_the_comparison_in_its_scope_links(self):
+        # It is a map view param like metric and bins, so it stays out of
+        # scope_qs and off every link the page renders.
+        for name, url in self.pages().items():
+            response = self.client.get(url, {'year': '2022', 'compare': '2023'})
+            assert 'compare=' not in response.context['scope_qs'], name
+
+    def test_the_scope_bar_has_no_compare_picker(self):
+        html = self.client.get(reverse('pesticides:home'), {'year': '2023'}).content.decode()
+        assert 'data-scope="compare"' not in html

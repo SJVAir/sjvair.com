@@ -45,11 +45,10 @@ def county_options():
 
 
 def year_context(year, all_years=False, county=None, county_scope=True, concern=False,
-        concern_scope=True, compare=None):
+        concern_scope=True):
     """
     Context every explorer page needs for the scope controls (year, county,
-    the year being compared against, and the chemicals-of-concern toggle) and
-    the scope-pinned links.
+    and the chemicals-of-concern toggle) and the scope-pinned links.
     `county_scope=False` hides the county picker on pages that are already
     narrower than a county (a place, a section); the county still rides
     along in their links. `concern_scope=False` hides the chemicals-of-concern
@@ -68,13 +67,7 @@ def year_context(year, all_years=False, county=None, county_scope=True, concern=
         'county_options': county_options() if county_scope else [],
         'concern': concern,
         'scope_concern': concern_scope,
-        'compare': compare,
-        # "2022 to 2023" -- every surface names the pair in order, so a
-        # signed change is never shown bare. Empty when nothing is compared.
-        'compare_label': f'{compare} to {year}' if compare else '',
-        # The years offered as a comparison: every loaded year but this one.
-        'compare_options': [y for y in stats.available_years() if y != year] if year else [],
-        'scope_qs': stats.scope_query(year, all_years, county, concern, compare),
+        'scope_qs': stats.scope_query(year, all_years, county, concern),
     }
 
 
@@ -88,24 +81,21 @@ def scope_concern(request):
     return stats.is_concern(request.GET.get(stats.CONCERN_PARAM))
 
 
-def scope_compare(request, year, all_years=False):
-    """The year the explorer is comparing against (`?compare=<year>`), or None."""
-    return stats.resolve_compare_param(request.GET.get('compare'), year, all_years)
 
-
-def movers_context(rows, year, all_years, compare, field, lbs_field='lbs_chemical'):
+def movers_context(rows, year, all_years, field, lbs_field='lbs_chemical'):
     """
     The "biggest movers" card's context, or None when there is nothing to
     compare against and the card should be left off the page.
 
-    Unlike the maps, movers always compares -- a card with no comparison
-    would say nothing -- so an absent `?compare=` falls back to the loaded
-    year before this one. The maps stay on their single-year view instead,
-    because a map that silently defaulted to a change would be misread.
+    Always the loaded year before the scope year. Picking the pair is a map
+    control (assets/js/pesticides/section-map.js), not an explorer-wide
+    scope, so this card has no year of its own to be told -- which keeps it
+    a fixed "what changed since last year" rather than a second thing to
+    configure.
     """
     if all_years or not year:
         return None
-    year_from = compare or stats.previous_year(year)
+    year_from = stats.previous_year(year)
     if not year_from:
         return None
     movers = stats.top_movers(rows, year_from, year, field, lbs_field)
@@ -316,7 +306,6 @@ class ExplorerListMixin:
         self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
         self.county = scope_county(request)
         self.concern = scope_concern(request)
-        self.compare = scope_compare(request, self.year, self.all_years)
         self.form = self.form_class(request.GET)
         self.form.is_valid()
         self.related = self.get_related_objects()
@@ -443,7 +432,7 @@ class ExplorerListMixin:
             search_example='' if query or not self.search_examples else random.choice(self.search_examples),
             sort=self.sort,
             result_count=count,
-            **year_context(self.year, self.all_years, self.county, concern=self.concern, compare=self.compare),
+            **year_context(self.year, self.all_years, self.county, concern=self.concern),
             summary_sentence=self.get_summary_sentence(count),
             related={k: v for k, v in self.related.items() if v is not MISSING},
             lbs_label=self.lbs_label(),
@@ -575,18 +564,15 @@ class Home(vanilla.TemplateView):
         concern = scope_concern(self.request)
         data = stats.landing_stats(year, all_years, county, concern)
         county_rank = maps.county_metric(self.request.GET.get('rank'))
-        compare = scope_compare(self.request, year, all_years)
         movers_rows = PesticideUseRollup.objects.all()
         if county is not None:
             movers_rows = movers_rows.filter(county=county)
         if concern:
             movers_rows = stats.concern_rows(movers_rows)
-        movers = movers_context(movers_rows, year, all_years, compare, 'chemical')
-        ramp_name = self.request.GET.get('ramp')
-        ramp = maps.diverging_ramp_for(ramp_name) if compare else maps.ramp_for(ramp_name)
-        compare_by_county = stats.county_totals(compare, concern=concern) if compare else None
-        by_county = maps.rank_counties(data['by_county'], county_rank, ramp=ramp, compare_by_county=compare_by_county)
-        county_map = maps.county_map(by_county, query=stats.scope_param(year, all_years, concern=concern, compare=compare), metric=county_rank, ramp=ramp, compare_by_county=compare_by_county) if by_county else None
+        movers = movers_context(movers_rows, year, all_years, 'chemical')
+        ramp = maps.ramp_for(self.request.GET.get('ramp'))
+        by_county = maps.rank_counties(data['by_county'], county_rank, ramp=ramp)
+        county_map = maps.county_map(by_county, query=stats.scope_param(year, all_years, concern=concern), metric=county_rank, ramp=ramp) if by_county else None
         find_area_places = find_area_place_list()
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
         return super().get_context_data(
@@ -602,7 +588,7 @@ class Home(vanilla.TemplateView):
             maptiler_key=settings.MAPTILER_API_KEY,
             focus_find=self.request.GET.get('find') == '1',
             movers=movers,
-            **{**data, 'by_county': by_county, **year_context(year, all_years, county, concern=concern, compare=compare)},
+            **{**data, 'by_county': by_county, **year_context(year, all_years, county, concern=concern)},
             county_rank=county_rank,
             **kwargs,
         )
@@ -881,7 +867,7 @@ class ExplorerDetailMixin:
         context = super().get_context_data(
             section=self.section,
             years=stats.years_loaded(),
-            **year_context(year, all_years, self.county, concern=self.concern, compare=scope_compare(self.request, year, all_years)),
+            **year_context(year, all_years, self.county, concern=self.concern),
             county_total=stats.SJV_COUNTY_COUNT,
             concern_excluded=self.concern_excluded,
             totals=totals,
@@ -913,28 +899,22 @@ class ExplorerDetailMixin:
         context['summary_sentence'] = self.get_summary_sentence(totals, context['year_label'], self.summary_top(context))
         # The section map, filtered to this entity, shows where it's applied;
         # the county choropleth stays as the map's noscript fallback.
-        compare = scope_compare(self.request, year, all_years)
         context['map_config'] = section_map_config(
             year, all_years=all_years, show_notices=False,
             county=self.county.slug if self.county is not None else None,
             concern=self.concern_active,
-            compare=compare,
             **{self.use_field: self.object},
         )
         context['full_map_url'] = reverse('pesticides:map') + f'?{self.use_field}={self.object.sqid}' + (
             f'&{scope}' if scope else ''
         )
         county_rank = maps.county_metric(self.request.GET.get('rank'))
-        ramp_name = self.request.GET.get('ramp')
-        ramp = maps.diverging_ramp_for(ramp_name) if compare else maps.ramp_for(ramp_name)
-        # This entity's own rows for the compared year, so the change is the
-        # chemical's (or product's, or commodity's) and not the valley's.
-        compare_by_county = stats.by_county(rows, compare, self.lbs_field) if compare else None
+        ramp = maps.ramp_for(self.request.GET.get('ramp'))
         # The axis flips on an entity page: which counties moved for this one.
-        context['movers'] = movers_context(rows, year, all_years, compare, 'county', self.lbs_field)
-        context['by_county'] = maps.rank_counties(context['by_county'], county_rank, ramp=ramp, compare_by_county=compare_by_county)
+        context['movers'] = movers_context(rows, year, all_years, 'county', self.lbs_field)
+        context['by_county'] = maps.rank_counties(context['by_county'], county_rank, ramp=ramp)
         context['county_rank'] = county_rank
-        context['county_map'] = maps.county_map(context['by_county'], query=stats.scope_param(year, all_years, concern=self.concern, compare=compare), metric=county_rank, ramp=ramp, compare_by_county=compare_by_county) if context['by_county'] else None
+        context['county_map'] = maps.county_map(context['by_county'], query=stats.scope_param(year, all_years, concern=self.concern), metric=county_rank, ramp=ramp) if context['by_county'] else None
         return context
 
     def summary_top(self, context):
@@ -1075,7 +1055,7 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False):
     year = year or stats.latest_year()
     config = {
         # Upcoming-notice markers start on where notices are the subject of
@@ -1120,9 +1100,12 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # The chemicals-of-concern scope, passed straight through to the grid
         # endpoints as `concern=1`.
         'concern': '1' if concern else '',
-        # The year being compared against. Empty is the ordinary single-year
-        # view; set, the grid shades the change between the two.
-        'compare': str(compare) if compare else '',
+        # The loaded years the Options menu can offer as a comparison, on the
+        # main map only -- `toolbar` is what that page passes. The compared
+        # year itself is a map view param like metric and bins:
+        # section-map.js reads `?compare=` off the URL and writes it back, so
+        # no page has to resolve it and it stays out of the explorer's scope.
+        'compare_years': ','.join(str(y) for y in stats.available_years() if y != year) if toolbar else '',
         'highlight': highlight or '',
         # A regions-API URL whose boundary the map draws and fits to (place pages).
         'outline_url': outline_url or '',
@@ -1170,7 +1153,6 @@ class MapPage(vanilla.TemplateView):
             county=county.slug if county else None,
             all_years=all_years,
             concern=concern,
-            compare=scope_compare(request, year, all_years),
             toolbar=True,
         )
 
@@ -1188,11 +1170,9 @@ class MapPage(vanilla.TemplateView):
 
         county_map = None
         if (year or all_years) and not no_matches:
-            compare = scope_compare(self.request, year, all_years)
             county_map = maps.county_map(
                 stats.county_totals(year, all_years, concern),
-                query=stats.scope_param(year, all_years, concern=concern, compare=compare),
-                compare_by_county=stats.county_totals(compare, concern=concern) if compare else None,
+                query=stats.scope_param(year, all_years, concern=concern),
             )
 
         return super().get_context_data(
@@ -1208,7 +1188,7 @@ class MapPage(vanilla.TemplateView):
             ],
             no_matches=no_matches,
             county_map=county_map,
-            **year_context(year, all_years, county, concern=concern, compare=scope_compare(self.request, year, all_years)),
+            **year_context(year, all_years, county, concern=concern),
             **kwargs,
         )
 
@@ -1302,7 +1282,6 @@ class RecordsBrowser(vanilla.ListView):
 
     def dispatch(self, request, *args, **kwargs):
         self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
-        self.compare = scope_compare(request, self.year, self.all_years)
         self.form = RecordsFilterForm(self._build_form_data(request.GET))
         self.form.is_valid()
         # The scope (the year picker) is the authority; the dates refine
@@ -1559,7 +1538,6 @@ class RecordsBrowser(vanilla.ListView):
             all_years=self.all_years,
             show_notices=False,
             concern=self.concern,
-            compare=self.compare,
         )
 
     def get_context_data(self, **kwargs):
@@ -1568,8 +1546,7 @@ class RecordsBrowser(vanilla.ListView):
         if self.year or self.all_years:
             county_map = maps.county_map(
                 stats.county_totals(self.year, self.all_years, self.concern),
-                query=stats.scope_param(self.year, self.all_years, concern=self.concern, compare=self.compare),
-                compare_by_county=stats.county_totals(self.compare, concern=self.concern) if self.compare else None,
+                query=stats.scope_param(self.year, self.all_years, concern=self.concern),
             )
         return super().get_context_data(
             form=self.form,
@@ -1585,7 +1562,7 @@ class RecordsBrowser(vanilla.ListView):
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
             section='records',
-            **year_context(self.year, self.all_years, self.county, concern=self.concern, compare=self.compare),
+            **year_context(self.year, self.all_years, self.county, concern=self.concern),
             **kwargs,
         )
 
@@ -1699,15 +1676,13 @@ class SectionDetail(vanilla.DetailView):
             center, zoom = centroid(section), 13
         map_config = section_map_config(
             year, center=center, zoom=zoom, highlight=section.sqid, all_years=all_years, concern=concern,
-            compare=scope_compare(self.request, year, all_years),
         )
 
         return super().get_context_data(
             section='sections',
             county_name=county_name,
             years=stats.years_loaded(),
-            **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern,
-                compare=scope_compare(self.request, year, all_years)),
+            **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern),
             totals=totals,
             chemical_count=chemical_count,
             by_year=stats.by_year(rows),
@@ -1753,7 +1728,6 @@ class NoticeList(vanilla.ListView):
         self.point, self.radius = resolve_point_and_radius(self.form.cleaned_data)
         self.mode = 'past' if self.form.cleaned_data.get('past') else 'active'
         self.year, self.all_years = stats.resolve_year_param(request.GET.get('year'))
-        self.compare = scope_compare(request, self.year, self.all_years)
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
@@ -1858,7 +1832,7 @@ class NoticeList(vanilla.ListView):
         # scheduled, not reported by year), but the nav links still carry it,
         # so take the scope context and drop year_options -- that's what
         # keeps the year picker from rendering here. The county picker stays.
-        year_ctx = year_context(self.year, self.all_years, self.county, concern=self.concern, compare=self.compare)
+        year_ctx = year_context(self.year, self.all_years, self.county, concern=self.concern)
         year_ctx.pop('year_options', None)
         return super().get_context_data(
             form=self.form,
@@ -1925,8 +1899,7 @@ class NoticeDetail(vanilla.DetailView):
         # would be breadcrumbs only, with the toggle appearing and
         # disappearing between the list and a notice on it.
         year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
-        scope = year_context(year, all_years, scope_county(self.request), concern=scope_concern(self.request),
-            compare=scope_compare(self.request, year, all_years))
+        scope = year_context(year, all_years, scope_county(self.request), concern=scope_concern(self.request))
         scope.pop('year_options', None)
 
         return super().get_context_data(
@@ -1992,8 +1965,7 @@ class NearMe(vanilla.TemplateView):
         label = (self.request.GET.get('label') or f'{self.lat:.3f}, {self.lng:.3f}')[:120]
         concern = scope_concern(self.request)
         area = places.point_area(self.lat, self.lng, self.radius, label=label)
-        context = places.place_context(area, year, all_years, concern, params=self.request.GET,
-            compare=scope_compare(self.request, year, all_years))
+        context = places.place_context(area, year, all_years, concern, params=self.request.GET)
         radius_options = [
             {'miles': miles, 'url': self._radius_url(miles), 'current': miles == self.radius}
             for miles in places.RADIUS_CHOICES
@@ -2003,8 +1975,7 @@ class NearMe(vanilla.TemplateView):
             years=stats.years_loaded(),
             **context,
             **_place_cards(context),
-            **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern,
-                compare=scope_compare(self.request, year, all_years)),
+            **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern),
             privacy_note=True,
             radius_options=radius_options,
             api_docs_url=API_DOCS_URL,
@@ -2041,8 +2012,7 @@ class RegionPage(vanilla.TemplateView):
         year, all_years = stats.resolve_year_param(self.request.GET.get('year'))
         concern = scope_concern(self.request)
         area = places.region_area(self.region)
-        context = places.place_context(area, year, all_years, concern, params=self.request.GET,
-            compare=scope_compare(self.request, year, all_years))
+        context = places.place_context(area, year, all_years, concern, params=self.request.GET)
         within = places.regions_within(self.region) if self.region.boundary_id else None
         # Not part of place_context: that block is cached per area and year,
         # and the compared year is the reader's choice.
@@ -2053,12 +2023,10 @@ class RegionPage(vanilla.TemplateView):
             section=None,
             years=stats.years_loaded(),
             within=within,
-            movers=movers_context(movers_rows, year, all_years,
-                scope_compare(self.request, year, all_years), 'chemical'),
+            movers=movers_context(movers_rows, year, all_years, 'chemical'),
             **context,
             **_place_cards(context),
-            **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern,
-                compare=scope_compare(self.request, year, all_years)),
+            **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern),
             privacy_note=False,
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,

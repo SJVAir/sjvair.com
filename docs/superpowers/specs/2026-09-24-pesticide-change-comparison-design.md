@@ -27,6 +27,37 @@ concern, and on the map the entity filters) continues to apply. That is the
 point of the feature: the valuable query is "how did chlorpyrifos change
 between 2018 and 2023 in Kern", not just total volume.
 
+## 0. Amended 2026-09-24: comparison is a map control
+
+Derek, after using it: *"lets just simplify all of it -- a map control, only
+on the main map and nowhere else."*
+
+The comparison is no longer part of the explorer scope. `?compare=` is a map
+view parameter like `?metric=`, `?ramp=` and `?bins=`: `section-map.js` reads
+it off the URL, offers it in the Options menu of the main map alone
+(`/tools/pesticides/map/`), and writes it back. No view resolves it, no
+page's links carry it, and the scope bar has no picker for it.
+
+What that drops from the sections below: §2 entirely (the scope parameter,
+`scope_compare`, `compare_label`), §6 (the county figure never compares, so
+the Python diverging classifier went with it -- `sample_ramp` stayed, since
+it fixed a real bug in `quantile_classes`), and the compare year from §7's
+movers, which now always compares against the previous loaded year and has
+no control of its own.
+
+What stayed: §3's classification method, ported to JS only; §4's map
+behaviour; §5's API, which the map still calls with `?compare=`; and §7's
+`top_movers`, as a fixed "what changed since last year" card.
+
+The reasoning for the change: year, county and concern are filters -- they
+narrow what every page counts, and they genuinely change all of them.
+Comparison is a view mode, and it only ever had anything to say on four of
+the eleven page types the scope bar appears on. A row of filters that
+promises explorer-wide reach shouldn't hold a control that does nothing on
+most of them.
+
+The sections below are kept as the record of the design as first built.
+
 ## 2. `compare` is a scope parameter
 
 Movers appears on pages with no interactive map, so the compared year cannot

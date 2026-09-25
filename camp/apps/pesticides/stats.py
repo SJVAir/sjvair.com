@@ -114,8 +114,8 @@ def previous_year(year):
 
 def resolve_compare_param(requested, year, all_years=False):
     """
-    The year the explorer is comparing against for a raw `?compare=` value,
-    or None when there is nothing to compare: a year with no rollup, the
+    The year a map is comparing against for a raw `?compare=` value, or None
+    when there is nothing to compare: a year with no rollup, the
     scope year itself, or any value at all while the scope is All years -- a
     range has no second term.
 
@@ -161,12 +161,12 @@ def year_param(year, all_years=False):
     return year_query(year, all_years).lstrip('?')
 
 
-def scope_param(year, all_years=False, county=None, concern=False, compare=None):
+def scope_param(year, all_years=False, county=None, concern=False):
     """
     The explorer's scope as query parameters: a non-default year, a county,
-    a year to compare against, and/or the chemicals-of-concern toggle
-    ('year=2020&county=kern&compare=2019&concern=1'), '' when they're all the
-    defaults. `county` is a Region or a slug.
+    and/or the chemicals-of-concern toggle
+    ('year=2020&county=kern&concern=1'), '' when they're all the defaults.
+    `county` is a Region or a slug.
     """
     parts = []
     year_part = year_param(year, all_years)
@@ -175,16 +175,14 @@ def scope_param(year, all_years=False, county=None, concern=False, compare=None)
     slug = getattr(county, 'slug', county)
     if slug:
         parts.append(f'county={slug}')
-    if compare:
-        parts.append(f'compare={compare}')
     if concern:
         parts.append(f'{CONCERN_PARAM}=1')
     return '&'.join(parts)
 
 
-def scope_query(year, all_years=False, county=None, concern=False, compare=None):
+def scope_query(year, all_years=False, county=None, concern=False):
     """`scope_param()` with a leading '?', for appending to a bare path ('' when nothing is pinned)."""
-    param = scope_param(year, all_years, county, concern, compare)
+    param = scope_param(year, all_years, county, concern)
     return f'?{param}' if param else ''
 
 

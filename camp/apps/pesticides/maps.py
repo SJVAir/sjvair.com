@@ -11,15 +11,6 @@ counties so the whole ramp is always used; the legend shows the real pound
 range each shade covers so close-but-different shades are not misread. The
 ramp is single-hue, sequential, and luminance-monotonic (colorblind and
 grayscale safe); no-data counties are drawn grey and kept out of the classes.
-
-Comparing two years shades the change instead, which needs a diverging ramp
-(diverging_classes): the magnitudes are quantiled and mirrored around zero so
-equal changes up and down get equal saturation. Those ramps can't be
-luminance-monotonic -- both ends are dark and the middle is light -- so hue
-alone carries the direction, and a greyscale print loses the sign. There are
-three states rather than two: a county with no rows in either year is grey as
-before, while one whose total didn't move is a real "no change" and takes the
-ramp's neutral centre.
 """
 import math
 from dataclasses import dataclass, field
@@ -64,46 +55,12 @@ def ramp_for(name):
     """A candidate ramp by `?ramp=` name, or the default."""
     return RAMPS.get(name or '', RAMP)
 
-# Diverging ramps for the year-over-year change maps, stored already reversed
-# so index 0 is the largest decrease and index -1 the largest increase.
-# Unlike the sequential ramps these cannot be luminance-monotonic -- both ends
-# are dark and the middle is light -- so hue alone carries the direction. All
-# three are colorblind-safe, but a greyscale print loses the sign.
-DIVERGING_RAMPS = {
-    'rdbu': ['#2166ac', '#67a9cf', '#d1e5f0', '#f7f7f7', '#fddbc7', '#ef8a62', '#b2182b'],
-    'puor': ['#542788', '#998ec3', '#d8daeb', '#f7f7f7', '#fee0b6', '#f1a340', '#b35806'],
-    'brbg': ['#01665e', '#5ab4ac', '#c7eae5', '#f5f5f5', '#f6e8c3', '#d8b365', '#8c510a'],
-}
-DIVERGING_RAMP = DIVERGING_RAMPS['rdbu']
-# The middle stop of a diverging ramp: the "no change" class.
-DIVERGING_CENTER = len(DIVERGING_RAMP) // 2
-
-
-def diverging_ramp_for(name):
-    """
-    A diverging ramp by `?ramp=` name, or the default. A sequential name never
-    resolves here, so a change map can't be drawn with a one-sided ramp.
-    """
-    return DIVERGING_RAMPS.get(name or '', DIVERGING_RAMP)
-
-
-def as_diverging(ramp):
-    """
-    The ramp to shade signed data with: the one given if it is diverging,
-    else the default. The caller resolves `?ramp=` before it gets here, so
-    this is the backstop against a sequential ramp reaching a change map and
-    grading a decrease and an increase with the same hue.
-    """
-    return ramp if ramp in DIVERGING_RAMPS.values() else DIVERGING_RAMP
-
-
 def sample_ramp(ramp, count):
     """
     `count` colors spread across `ramp`, interpolating between its stops --
     the same algorithm as sampleRamp() in section-map.js. Selecting the
-    nearest stop instead silently repeats colors once `count` passes the
-    number of stops, which the diverging ramps (seven stops, eight classes)
-    would hit.
+    nearest stop instead (what this replaced) silently repeats colors once
+    `count` passes the number of stops, so two classes would share a fill.
     """
     if count <= 1:
         return [ramp[-1]]
@@ -130,53 +87,16 @@ def county_metric(value):
     return value if value in COUNTY_METRICS else 'lbs'
 
 
-def change_label(name, delta, unit):
-    """
-    A county's label on a change map. The sign is always shown, so a reader
-    never has to infer the direction from the colour alone; the heading over
-    the map names which pair of years it is.
-    """
-    if delta is None:
-        return f'{name}: no data'
-    if not delta:
-        return f'{name}: no change'
-    return f'{name}: {int(round(delta)):+,} {unit}'
-
-
-def county_deltas(by_county, compare_by_county, metric):
-    """
-    {county_id: delta} for the change in `metric` between the two sets of
-    rows, over the union of the counties either mentions. The delta is the
-    scope year minus the compared one, and is None only where neither year
-    has the county at all -- no data, as opposed to a total that didn't move.
-    """
-    current = {row['county_id']: (row.get(metric) or 0) for row in by_county}
-    previous = {row['county_id']: (row.get(metric) or 0) for row in compare_by_county}
-    return {pk: current.get(pk, 0) - previous.get(pk, 0) for pk in {*current, *previous}}
-
-
-def rank_counties(by_county, metric='lbs', ramp=None, compare_by_county=None):
+def rank_counties(by_county, metric='lbs', ramp=None):
     """
     `by_county` rows sorted by `metric`, most to least (name breaks ties),
     each with a `color` (the map's fill for it) so a table beside the map
     can carry the swatches. No-data rows sort last.
-
-    With `compare_by_county`, the colour grades the change between the two
-    years instead of the ranking, and each row carries its `change`. The
-    sort is unchanged -- the table still reads as a ranking by the metric.
     """
     metric = county_metric(metric)
     rows = sorted(by_county, key=lambda row: (-(row.get(metric) or 0), row['county_name']))
-    if compare_by_county is None:
-        classes = quantile_classes({row['county_id']: (row.get(metric) or 0) for row in rows}, ramp=ramp)
-        return [{**row, 'color': classes.color_for(row.get(metric) or 0)} for row in rows]
-
-    deltas = county_deltas(rows, compare_by_county, metric)
-    classes = diverging_classes(deltas, ramp=as_diverging(ramp))
-    return [
-        {**row, 'change': deltas.get(row['county_id']), 'color': classes.color_for(deltas.get(row['county_id']))}
-        for row in rows
-    ]
+    classes = quantile_classes({row['county_id']: (row.get(metric) or 0) for row in rows}, ramp=ramp)
+    return [{**row, 'color': classes.color_for(row.get(metric) or 0)} for row in rows]
 
 
 def _build_county_geometries(tolerance=None):
@@ -266,95 +186,13 @@ def quantile_classes(values_by_key, classes=CLASSES, ramp=None):
     return result
 
 
-@dataclass
-class DivergingClasses(QuantileClasses):
-    """
-    Change classified around zero. Three states, not two -- a delta of None
-    (no rows in either year) is no data, while 0.0 is a real "no change" and
-    takes the ramp's neutral centre.
-
-    Classification runs on the magnitude and then takes the sign, rather than
-    scanning the mirrored `breaks` the way QuantileClasses does. Negating an
-    upper bound turns it into a lower one, so a mirrored scan drops every
-    decrease smaller than the first bound into the neutral class -- the
-    smallest decrease on the map would read as no change at all. `breaks` is
-    still the mirrored list, for the legend.
-    """
-    bounds: list = field(default_factory=list)   # positive magnitude upper bounds
-    neutral: str = NO_DATA
-
-    @property
-    def neutral_index(self):
-        return len(self.bounds)
-
-    def index_for(self, value):
-        if not value or not self.bounds:
-            return self.neutral_index
-        for i, upper in enumerate(self.bounds):
-            if abs(value) <= upper:
-                break
-        else:
-            i = len(self.bounds) - 1
-        return self.neutral_index - 1 - i if value < 0 else self.neutral_index + 1 + i
-
-    def color_for(self, value):
-        if value is None:
-            return NO_DATA
-        if not self.colors:
-            return self.neutral
-        return self.colors[self.index_for(value)]
-
-
-def diverging_classes(deltas_by_key, classes=CLASSES, ramp=None):
-    """
-    Build DivergingClasses from a {key: delta} mapping, where a delta of None
-    means neither year had rows. The magnitudes are quantiled and mirrored
-    around zero, so equal changes up and down get equal saturation and one
-    outlier can't flatten the map -- the same "quantile, not equal steps"
-    reasoning as quantile_classes, applied to both signs.
-    """
-    ramp = ramp or DIVERGING_RAMP
-    neutral = ramp[DIVERGING_CENTER]
-    magnitudes = sorted({abs(v) for v in deltas_by_key.values() if v})
-    if not magnitudes:
-        return DivergingClasses(neutral=neutral)
-
-    per_side = max(1, min(classes // 2, len(magnitudes)))
-    bounds = []
-    for i in range(1, per_side + 1):
-        position = math.ceil(i * len(magnitudes) / per_side) - 1
-        bounds.append(magnitudes[position])
-
-    breaks = [-bound for bound in reversed(bounds)] + [0.0] + bounds
-    # Both halves include the centre stop, then drop it, so the two sides
-    # mirror each other and the neutral class keeps the ramp's middle.
-    decreasing = sample_ramp(ramp[:DIVERGING_CENTER + 1], per_side + 1)[:-1]
-    increasing = sample_ramp(ramp[DIVERGING_CENTER:], per_side + 1)[1:]
-    colors = decreasing + [neutral] + increasing
-
-    result = DivergingClasses(breaks=breaks, colors=colors, bounds=bounds,
-        members=[[] for _ in breaks], neutral=neutral)
-    for value in deltas_by_key.values():
-        if value is not None:
-            result.members[result.index_for(value)].append(value)
-    for members in result.members:
-        members.sort()
-    return result
-
-
-def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=None,
-        compare_by_county=None):
+def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=None):
     """
     The county choropleth, shaded by `metric` (see COUNTY_METRICS) as a
     ranking: darker is more. Each county links to its page; `query` (a scope
     query string such as 'year=2020&concern=1') is carried on those links.
     It leaves out `county=` -- the link is what picks the county. The table
     beside it (rank_counties) is the legend.
-
-    With `compare_by_county` (the same rows for the year being compared
-    against) it shades the change between the two instead, on a diverging
-    ramp. A county missing from both years is still grey; one whose total
-    didn't move takes the neutral centre, and its label says so.
     """
     geometries = county_geometries(FIGURE_SIMPLIFY_TOLERANCE)
     if not geometries:
@@ -363,19 +201,13 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
     unit = COUNTY_METRICS[metric]
     counties = {region.pk: region for region in Region.objects.filter(pk__in=geometries)}
     value_by_pk = {row['county_id']: (row.get(metric) or 0) for row in by_county}
-    comparing = compare_by_county is not None
-    if comparing:
-        value_by_pk = county_deltas(by_county, compare_by_county, metric)
-        classes = diverging_classes(value_by_pk, ramp=as_diverging(ramp))
-    else:
-        classes = quantile_classes(value_by_pk, ramp=ramp)
+    classes = quantile_classes(value_by_pk, ramp=ramp)
 
     figure = mapfigure.MapFigure(width=width, height=height, padding=10)
     for pk, geojson in geometries.items():
         county = counties[pk]
         value = value_by_pk.get(pk)
-        label = change_label(county.name, value, unit) if comparing else (
-            f'{county.name}: {int(round(value)):,} {unit}' if value else f'{county.name}: no data')
+        label = f'{county.name}: {int(round(value)):,} {unit}' if value else f'{county.name}: no data'
         url = county.get_pesticides_url()
         figure.add(mapfigure.Area(
             geometry=GEOSGeometry(geojson, srid=4326),
