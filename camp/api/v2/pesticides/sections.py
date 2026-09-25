@@ -88,6 +88,39 @@ def parse_year(params):
     return stats.resolve_year_param(params.get('year'))
 
 
+def parse_compare(params, year, all_years):
+    """
+    `(compare, error)` for `?compare=`: the year to return alongside the scope
+    year, or None when there is nothing to compare against. A value that names
+    no loaded year is an error rather than a silent single-year response --
+    the map would otherwise draw a sequential view while its legend said
+    "change". The scope year itself, and any value under `year=all`, are
+    simply no comparison.
+    """
+    requested = params.get('compare')
+    if not requested:
+        return None, None
+    compare = stats.resolve_compare_param(requested, year, all_years)
+    if compare is None:
+        if all_years or str(requested).strip() == str(year):
+            return None, None
+        return None, 'compare must be a loaded year'
+    return compare, None
+
+
+def totals_properties(totals, previous=None):
+    """
+    The four per-feature totals, plus the compared year's under a `_prev`
+    suffix when there is one. Both years travel rather than a delta: the
+    popup shows both numbers anyway, so sending them costs four floats and
+    buys metric switching with no refetch.
+    """
+    properties = {key: (totals[key] or 0) for key in TOTALS}
+    if previous is not None:
+        properties.update({f'{key}_prev': (previous[key] or 0) for key in TOTALS})
+    return properties
+
+
 def year_value(year, all_years):
     """The `year` a response echoes back: the year, or "all"."""
     return stats.ALL_YEARS if all_years else year
@@ -203,11 +236,22 @@ class SectionListBase(generics.Endpoint):
             return bad_request(too_large)
         year, all_years = parse_year(params)
 
-        rows = stats.in_year(PesticideUseRollup.objects.filter(mtrs__in=section_pks), year, all_years)
+        compare, error = parse_compare(params, year, all_years)
+        if error:
+            return bad_request(error)
+
+        in_bbox = PesticideUseRollup.objects.filter(mtrs__in=section_pks)
+        rows = stats.in_year(in_bbox, year, all_years)
         rows, error = apply_filters(rows, params)
         if error:
             return bad_request(error)
         totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**TOTALS)}
+        previous = {}
+        if compare:
+            # The same filters over the compared year, so the change is the
+            # one the reader's filters describe and not the section's total.
+            compare_rows, _ = apply_filters(stats.in_year(in_bbox, compare), params)
+            previous = {r['mtrs']: r for r in compare_rows.values('mtrs').annotate(**TOTALS)}
         counties = county_name_for(section_pks, year, all_years)
 
         section_qs = Region.objects.filter(pk__in=section_pks).select_related('boundary').order_by('external_id')
@@ -222,10 +266,7 @@ class SectionListBase(generics.Endpoint):
                     'id': section.sqid,
                     'mtrs': section.external_id,
                     'county': counties.get(section.pk),
-                    'lbs_chemical': t['lbs_chemical'] or 0,
-                    'lbs_product': t['lbs_product'] or 0,
-                    'acres_treated': t['acres_treated'] or 0,
-                    'applications': t['applications'] or 0,
+                    **totals_properties(t, previous.get(section.pk, ZERO) if compare else None),
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
@@ -396,11 +437,20 @@ class TownshipListBase(generics.Endpoint):
                 return bad_request(error)
         year, all_years = parse_year(params)
 
+        compare, error = parse_compare(params, year, all_years)
+        if error:
+            return bad_request(error)
+
         rows = stats.in_year(PesticideUseRollup.objects.all(), year, all_years)
         rows, error = apply_filters(rows, params)
         if error:
             return bad_request(error)
         totals = stats.by_township(rows, year, all_years)
+        previous = {}
+        if compare:
+            compare_rows, _ = apply_filters(
+                stats.in_year(PesticideUseRollup.objects.all(), compare), params)
+            previous = stats.by_township(compare_rows, compare)
 
         # The map keeps township outlines from its first load and asks for
         # `geometry=0` after that (a year or filter change only moves the
@@ -431,10 +481,7 @@ class TownshipListBase(generics.Endpoint):
                     'id': township,
                     'name': township,
                     'sections': geometry['sections'],
-                    'lbs_chemical': t['lbs_chemical'] or 0,
-                    'lbs_product': t['lbs_product'] or 0,
-                    'acres_treated': t['acres_treated'] or 0,
-                    'applications': t['applications'] or 0,
+                    **totals_properties(t, previous.get(township, ZERO) if compare else None),
                 },
             })
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.

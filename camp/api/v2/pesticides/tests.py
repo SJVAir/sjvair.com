@@ -783,6 +783,67 @@ class SectionEndpointTests(TestCase):
         assert feature['properties']['lbs_chemical'] == 670.0
         assert feature['properties']['applications'] == 4
 
+    def test_compare_returns_both_years(self):
+        params = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023, 'compare': 2022}
+        props = self.client.get(self.url, params).json()['features'][0]['properties']
+        # 2023 in section 9101: 670 lbs over 4 applications.
+        assert props['lbs_chemical'] == 670.0
+        assert props['applications'] == 4
+        # ...and the compared year rides alongside, not a precomputed delta,
+        # so the map can switch metric without refetching.
+        assert props['lbs_chemical_prev'] == 480.0
+        assert props['applications_prev'] == 2
+
+    def test_compare_is_absent_without_the_parameter(self):
+        params = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023}
+        props = self.client.get(self.url, params).json()['features'][0]['properties']
+        assert not any(key.endswith('_prev') for key in props)
+
+    def test_compare_applies_the_same_filters_to_both_years(self):
+        params = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023, 'compare': 2022, 'chemical': 1855}
+        props = self.client.get(self.url, params).json()['features'][0]['properties']
+        assert props['lbs_chemical'] == 150.0
+        assert props['lbs_chemical_prev'] == 80.0
+
+    def test_compare_zeroes_a_year_with_no_rows(self):
+        # Chemical 253 has 2023 rows here but none in 2022, so the compared
+        # year is a real zero rather than the feature dropping out.
+        params = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023, 'compare': 2022, 'chemical': 253}
+        props = self.client.get(self.url, params).json()['features'][0]['properties']
+        assert props['lbs_chemical'] == 20.0
+        assert props['lbs_chemical_prev'] == 0
+
+    def test_townships_compare_returns_both_years(self):
+        url = reverse('api:v2:pesticides:township-list')
+        data = self.client.get(url, {'year': 2023, 'compare': 2022}).json()
+        used = [f for f in data['features'] if f['properties']['lbs_chemical']]
+        assert used
+        for feature in used:
+            assert 'lbs_chemical_prev' in feature['properties']
+        # Without it, the payload keeps its old shape.
+        plain = self.client.get(url, {'year': 2023}).json()
+        assert not any(k.endswith('_prev') for k in plain['features'][0]['properties'])
+
+    def test_townships_compare_rejects_an_unloaded_year(self):
+        url = reverse('api:v2:pesticides:township-list')
+        assert self.client.get(url, {'year': 2023, 'compare': 1999}).status_code == 400
+
+    def test_compare_rejects_an_unloaded_year(self):
+        params = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023, 'compare': 1999}
+        response = self.client.get(self.url, params)
+        assert response.status_code == 400
+        assert 'compare' in response.json()['error']
+
+    def test_compare_equal_to_the_scope_year_is_no_comparison(self):
+        params = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023, 'compare': 2023}
+        props = self.client.get(self.url, params).json()['features'][0]['properties']
+        assert not any(key.endswith('_prev') for key in props)
+
+    def test_compare_is_ignored_for_all_years(self):
+        params = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 'all', 'compare': 2022}
+        props = self.client.get(self.url, params).json()['features'][0]['properties']
+        assert not any(key.endswith('_prev') for key in props)
+
     def test_bbox_includes_empty_sections_with_zeros(self):
         response = self.client.get(self.url, {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2022, 'chemical': 253})
         feature = response.json()['features'][0]
