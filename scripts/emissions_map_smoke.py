@@ -14,7 +14,9 @@ parameters). Then the Dairies tab: its two views (dairies drawn, counties
 shaded), a measure change redrawing the legend, a sort (a boosted swap)
 keeping Counties and its measure, a table row's name zooming to its dairy
 with its popup, a county narrowing the dairies, and the NOx / 2024 fallback
-notes. Fails on any console error. Dev-only;
+notes. Last, a county page in 2023 maps its dairies beside the facilities
+(points drawn, both ramps in the legend, a dairy's popup), and a boosted
+year change to 2024 drops them and their ramp. Fails on any console error. Dev-only;
 nothing here runs in CI. Needs local data (import_air_districts,
 import_ceidars, import_cepam, import_cadd, and the regions with their
 boundaries).
@@ -147,6 +149,26 @@ for (var y = 60; y < r.height - 30; y += 5) for (var x = 20; x < r.width - 20; x
 }
 return null;
 """
+
+# A canvas pixel over a dairy but not a facility, clear of the chrome: [x, y]
+# from the canvas centre, or null.
+DAIRY_ALONE = """
+var m = window.EmissionsFacilityMap.instances()[0], map = m.map, c = map.getCanvas(), r = c.getBoundingClientRect();
+for (var y = 60; y < r.height - 30; y += 4) for (var x = 20; x < r.width - 20; x += 4) {
+  if (!map.queryRenderedFeatures([x, y], {layers: ['dairies']}).length) continue;
+  if (map.queryRenderedFeatures([x, y], {layers: ['facilities']}).length) continue;
+  if (document.elementFromPoint(r.left + x, r.top + y) !== c) continue;
+  return [x - r.width / 2, y - r.height / 2];
+}
+return null;
+"""
+
+
+def map_dairy_count(driver):
+    return driver.execute_script(
+        "var m = window.EmissionsFacilityMap.instances()[0];"
+        "return m ? m.map.querySourceFeatures('dairies').length : 0;"
+    )
 
 
 def console_errors(driver):
@@ -355,6 +377,34 @@ def main():
             "return Array.prototype.map.call(document.querySelectorAll('.dairy-note'), function (n) { return n.textContent; });")
         check(results, 'NOx and 2024 fall back to ROG and 2023, with notes',
               len(notes) == 2 and 'showing ROG' in ' '.join(notes), str(notes))
+
+        driver.get(args.base + '/tools/emissions/')
+        county = driver.find_element(By.CSS_SELECTOR, '.find-area-counties a').get_attribute('href').split('?')[0]
+        driver.get(county + '?year=2023')
+        wait_loaded(driver)
+        drawn = settled_count(driver, map_dairy_count)
+        check(results, 'a county page maps its dairies (2023)', drawn > 0, f'{drawn} dairies')
+        legend = driver.execute_script("return document.querySelector('.facility-map-legend').textContent;")
+        check(results, 'its legend has both ramps',
+              'Facilities (tons/yr)' in legend and 'Dairies (animal units)' in legend, legend[:120])
+        time.sleep(0.5)
+        hit = driver.execute_script(DAIRY_ALONE)
+        if hit:
+            canvas = driver.find_element(By.CSS_SELECTOR, '.facility-map canvas')
+            ActionChains(driver).move_to_element_with_offset(canvas, int(hit[0]), int(hit[1])).click().perform()
+            time.sleep(1.5)
+        popup = driver.execute_script("var p = document.querySelector('.maplibregl-popup .dairy-popup'); return p ? p.textContent : '';")
+        check(results, 'a dairy on the county map opens its popup', bool(hit) and 'Animal units' in popup, popup[:80])
+        driver.execute_script("var p = document.querySelector('.maplibregl-popup-close-button'); if (p) p.click();")
+        driver.find_element(By.CSS_SELECTOR, '.explorer-scope-picker[data-scope=year] .button').click()
+        driver.find_element(By.XPATH, "//div[@data-scope='year']//a[contains(@class, 'dropdown-item') and normalize-space()='2024']").click()
+        time.sleep(1.5)
+        wait_loaded(driver)
+        gone = driver.execute_script(
+            "var list = window.EmissionsFacilityMap.instances(), m = list[0];"
+            "return list.length === 1 && m.map.querySourceFeatures('dairies').length === 0"
+            " && document.querySelector('.facility-map-legend').textContent.indexOf('Dairies') === -1;")
+        check(results, 'a year outside CADD (boosted swap) drops the dairies and their ramp', gone)
 
         errors = console_errors(driver)
         check(results, 'no console errors', not errors, '; '.join(errors)[:300])

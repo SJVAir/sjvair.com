@@ -16,6 +16,10 @@
  * County and air district outlines sit under the data, and everything draws
  * over the whole basemap, labels included. On a region or near-me page the
  * page's own area is outlined and everything outside it washed out.
+ * In a year CARB's dairy database covers, those pages' Facilities view also
+ * shows the dairies: every point one size, facilities on the blue ramp above
+ * dairies on the amber one (SJVAirMaps.dairies, from dairy-map.js), with a
+ * ramp for each in the legend.
  * Config comes from the container's data-* attributes
  * (views.facility_map_config); the chrome is the core's.
  *
@@ -50,6 +54,8 @@
   var DISTRICT_COLOR = '#6a3d9a';
   var MIN_RADIUS = 3;
   var MAX_RADIUS = 26;
+  // Region and near-me pages with dairies: every point one size, coloured by class.
+  var POINT_RADIUS = 6;
   var WORLD_RING = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
   var CIRCLE_POINTS = 64;
   var METERS_PER_MILE = 1609.344;
@@ -75,8 +81,19 @@
     return MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * Math.sqrt(value / max);
   }
 
-  // Precompute each circle so the layer's paint is plain `get`s.
-  function prepare(collection, unit) {
+  // A legend's classes on the blue ramp, largest first.
+  function facilityBins(breaks, swatchClass) {
+    var bins = '';
+    for (var i = breaks.length; i >= 0; i--) {
+      bins += '<span class="legend-bin"><span class="legend-swatch' + (swatchClass ? ' ' + swatchClass : '') +
+        '" style="background:' + RAMP[i] + '"></span>' + classLabel(i, breaks) + '</span>';
+    }
+    return '<div class="legend-bins">' + bins + '</div>';
+  }
+
+  // Precompute each circle so the layer's paint is plain `get`s. With a
+  // `pointRadius` (a map with dairies), every circle is that size.
+  function prepare(collection, unit, pointRadius) {
     var features = collection.features || [];
     var positive = features.map(function (f) { return f.properties.value; }).filter(function (v) { return v > 0; });
     var max = positive.length ? Math.max.apply(null, positive) : 0;
@@ -84,7 +101,7 @@
     features.forEach(function (feature) {
       var p = feature.properties;
       var reported = p.value > 0 && max > 0;
-      p._radius = reported ? radiusFor(p.value, max) : MIN_RADIUS;
+      p._radius = pointRadius || (reported ? radiusFor(p.value, max) : MIN_RADIUS);
       p._color = reported ? RAMP[classIndex(p.value, breaks)] : EMPTY_COLOR;
       p._empty = reported ? 0 : 1;
       p._sort = reported ? p.value : 0;
@@ -134,12 +151,21 @@
     // The page's outline (region JSON) has its own counter too.
     this.outlineRequest = 0;
     this.outlineBounds = null;
+    // Dairies (region and near-me pages): their data and request counters.
+    this.dairyData = null;
+    this.dairyRequest = 0;
+    this.dairyPopupRequest = 0;
     this.readViewState();
     // Layer-bound listeners wait for their layer, so they're bound once here
     // rather than on every style load.
     this.map.on('click', 'facilities', function (evt) { self.openPopup(evt.features[0], evt.lngLat); });
     this.map.on('click', 'areas-fill', function (evt) { self.openAreaPopup(evt.features[0], evt.lngLat); });
-    ['facilities', 'areas-fill'].forEach(function (layer) {
+    // Facilities draw above dairies: a click on both is the facility's.
+    this.map.on('click', 'dairies', function (evt) {
+      if (self.map.queryRenderedFeatures(evt.point, { layers: ['facilities'] }).length) return;
+      self.openDairyPopup(evt.features[0], evt.lngLat);
+    });
+    ['facilities', 'areas-fill', 'dairies'].forEach(function (layer) {
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
@@ -168,10 +194,11 @@
     this.defaultLevel = this.data.defaultLevel || 'zipcode';
     this.level = this.data.level || this.defaultLevel;
     this.measure = this.data.measure || 'density';
+    this.withDairies = !!this.data.dairiesUrl && !!M.dairies;
   };
 
   // Bottom to top: the shaded areas, the county and district lines, the
-  // facilities, the wash outside the page's area, its outline. On
+  // dairies, the facilities, the wash outside the page's area, its outline. On
   // top of the whole basemap, labels included: the data is what the map is for.
   FacilityMap.prototype.addLayers = function () {
     this.shell.ensureSource('areas');
@@ -180,6 +207,7 @@
     this.shell.ensureSource('counties', { data: this.data.countiesUrl || M.EMPTY });
     this.shell.ensureSource('districts', { data: this.data.districtsUrl || M.EMPTY });
     this.shell.ensureSource('facilities');
+    this.shell.ensureSource('dairies');
     this.shell.ensureLayer({
       id: 'areas-fill', type: 'fill', source: 'areas',
       paint: { 'fill-color': ['get', '_color'], 'fill-opacity': ['case', ['==', ['get', '_empty'], 1], 0, 0.72] },
@@ -195,6 +223,16 @@
     this.shell.ensureLayer({
       id: 'districts', type: 'line', source: 'districts',
       paint: { 'line-color': DISTRICT_COLOR, 'line-width': 2, 'line-dasharray': [3, 2] },
+    });
+    this.shell.ensureLayer({
+      id: 'dairies', type: 'circle', source: 'dairies',
+      paint: {
+        'circle-radius': POINT_RADIUS,
+        'circle-color': ['get', '_color'],
+        'circle-opacity': 0.9,
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 0.75,
+      },
     });
     this.shell.ensureLayer({
       id: 'facilities', type: 'circle', source: 'facilities',
@@ -239,6 +277,7 @@
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
       };
       set(this.map, 'facilities', !areas);
+      set(this.map, 'dairies', !areas);
       set(this.map, 'areas-fill', areas);
       set(this.map, 'areas-line', areas);
     }
@@ -262,6 +301,7 @@
   // the areas load when they're the view.
   FacilityMap.prototype.load = function () {
     this.loadFacilities();
+    this.loadDairies();
     if (this.view === 'areas') this.loadAreas();
     this.loadOutline();
   };
@@ -285,7 +325,7 @@
   };
 
   FacilityMap.prototype.show = function (collection) {
-    var prepared = prepare(collection, this.data.unit);
+    var prepared = prepare(collection, this.data.unit, this.withDairies ? POINT_RADIUS : 0);
     this.legendData = prepared;
     this.shell.setSourceData('facilities', prepared.collection);
     this.applyHighlight();
@@ -296,6 +336,56 @@
       this.fitted = true;
     }
     this.el.dataset.loaded = '1';
+  };
+
+  // The page's dairies for its year, amber by animal-unit class; none (and
+  // no dairy ramp) when the page has no dairies URL.
+  FacilityMap.prototype.loadDairies = function () {
+    var self = this;
+    var request = ++this.dairyRequest;
+    if (!this.withDairies) {
+      this.dairyData = null;
+      this.shell.setSourceData('dairies', M.EMPTY);
+      return;
+    }
+    getJson(this.data.dairiesUrl)
+      .then(function (collection) {
+        if (request !== self.dairyRequest || !self.map) return;
+        (collection.features || []).forEach(function (feature) {
+          feature.properties._color = M.dairies.colorFor(feature.properties.animal_units);
+        });
+        self.dairyData = collection;
+        self.shell.setSourceData('dairies', collection);
+        self.shell.updateLegend();
+      })
+      .catch(function (err) {
+        if (request !== self.dairyRequest || !self.map) return;
+        logError('failed to load the dairies', err);
+      });
+  };
+
+  // Fetched on click, as on the Dairies tab (SJVAirMaps.dairies draws it).
+  FacilityMap.prototype.openDairyPopup = function (feature, lngLat) {
+    var self = this;
+    var request = ++this.dairyPopupRequest;
+    var url = (this.data.dairyPopupUrl || '').replace('{id}', encodeURIComponent(feature.properties.id));
+    var popup = this.shell.placePopup(M.dairies.LOADING, lngLat);
+    // The popup's region links carry the scope, not the map's own filters.
+    var query = new URLSearchParams(this.data.query || '');
+    query.delete('sector');
+    query.delete('minor');
+    var qs = query.toString() ? '?' + query.toString() : '';
+    getJson(url)
+      .then(function (data) {
+        if (request !== self.dairyPopupRequest || self.shell.popup !== popup) return;
+        popup.setHTML(M.dairies.popupHtml(data, qs));
+        self.shell.panPopupIntoView(popup);
+      })
+      .catch(function (err) {
+        if (request !== self.dairyPopupRequest || self.shell.popup !== popup) return;
+        popup.setHTML(M.dairies.FAILED);
+        logError('failed to load a dairy', err);
+      });
   };
 
   FacilityMap.prototype.areasUrl = function () {
@@ -486,6 +576,10 @@
     }
     if (!this.legendData) return;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
+    if (this.withDairies) {
+      legend.innerHTML = this.combinedLegend();
+      return;
+    }
     var max = this.legendData.max;
     var breaks = this.legendData.breaks;
     var label = escapeHtml(this.data.label) + ' (' + escapeHtml(this.data.unit) + '/yr)';
@@ -498,15 +592,22 @@
       return '<span class="legend-size"><svg width="' + (2 * MAX_RADIUS + 2) + '" height="' + (2 * r + 2) + '">' +
         '<circle cx="' + (MAX_RADIUS + 1) + '" cy="' + (r + 1) + '" r="' + r + '"/></svg>' + roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
     }).join('');
-    var bins = '';
-    for (var i = breaks.length; i >= 0; i--) {
-      bins += '<span class="legend-bin"><span class="legend-swatch" style="background:' + RAMP[i] + '"></span>' +
-        classLabel(i, breaks) + '</span>';
-    }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
       '<div class="legend-sizes">' + sizes + '</div>' +
-      '<div class="legend-bins">' + bins + '</div>' +
+      facilityBins(breaks) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>';
+  };
+
+  // With dairies: two small ramps, the facilities' (blue, by tons) and the
+  // dairies' (amber, by animal units), and no size key (every point is one size).
+  FacilityMap.prototype.combinedLegend = function () {
+    var html = '<div class="legend-ramp"><p class="legend-title">Facilities (' + escapeHtml(this.data.unit) + '/yr)</p>' +
+      facilityBins(this.legendData.breaks) +
+      '<p class="legend-empty"><span class="legend-ring"></span>None reported</p></div>';
+    if (this.dairyData) {
+      html += '<div class="legend-ramp"><p class="legend-title">Dairies (animal units)</p>' + M.dairies.rampBins() + '</div>';
+    }
+    return html;
   };
 
   FacilityMap.prototype.areaLegend = function (legend) {
@@ -515,14 +616,9 @@
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
     var breaks = data.breaks;
     var title = escapeHtml(this.data.label) + ' (' + escapeHtml(data.values.unit) + '/yr' + (AREA_SUFFIX[this.measure] || '') + ')';
-    var bins = '';
-    for (var i = breaks.length; i >= 0; i--) {
-      bins += '<span class="legend-bin"><span class="legend-swatch is-area" style="background:' + RAMP[i] + '"></span>' +
-        classLabel(i, breaks) + '</span>';
-    }
     var missing = Number(data.values.facilities_without_point) || 0;
     legend.innerHTML = '<p class="legend-title">' + title + '</p>' +
-      '<div class="legend-bins">' + bins + '</div>' +
+      facilityBins(breaks, 'is-area') +
       '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>No facilities' +
       (this.measure === 'per_resident' ? ' or no population' : '') + '</p>' +
       (missing ? '<p class="legend-note">' + missing.toLocaleString('en-US') + ' facilit' + (missing === 1 ? 'y has' : 'ies have') +
@@ -648,12 +744,16 @@
     // The new page's legend card waits for its own data, as on a first build.
     this.legendData = null;
     this.areaData = null;
-    // An old page's areas or outline still in flight must not land here.
+    this.dairyData = null;
+    // An old page's areas, dairies or outline still in flight must not land here.
     this.areaRequest++;
     this.outlineRequest++;
+    this.dairyRequest++;
+    this.dairyPopupRequest++;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
     this.shell.setSourceData('locate', M.EMPTY);
     this.shell.setSourceData('areas', M.EMPTY);
+    this.shell.setSourceData('dairies', M.EMPTY);
     this.shell.setStatus('');
     this.readViewState();
     this.applyView();

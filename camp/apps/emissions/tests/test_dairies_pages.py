@@ -7,8 +7,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from camp.apps.emissions import dairies, dairy_views
-from camp.apps.emissions.models import DairyHerd
+from camp.apps.emissions.models import DairyHerd, Facility
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
+from camp.apps.emissions.tests.test_areas_pages import map_data
 from camp.apps.emissions.tests.test_dairies import dairy_inventory, make_dairies
 from camp.apps.regions.models import Region
 
@@ -237,3 +238,23 @@ class DairyBlockTests(DairyPageTestCase):
         DairyHerd.objects.all().delete()
         dairies.clear_caches()
         assert 'id="dairies"' not in self.region_page(self.fresno, {'year': '2023'})
+
+
+class CombinedMapTests(DairyPageTestCase):
+    def test_region_and_near_me_maps_show_the_dairies(self):
+        content = self.client.get(self.fresno.get_emissions_url(), {'year': '2023'}).content.decode()
+        assert map_data(content, 'dairies-url') == '/api/2.0/emissions/dairies/geojson/?year=2023'
+        assert map_data(content, 'dairy-popup-url') == '/api/2.0/emissions/dairies/{id}/?year=2023'
+        near = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'year': '2023'}).content.decode()
+        assert map_data(near, 'dairies-url') == '/api/2.0/emissions/dairies/geojson/?year=2023'
+
+    def test_no_dairies_on_the_map_outside_cadds_years(self):
+        content = self.client.get(self.fresno.get_emissions_url()).content.decode()  # 2024
+        assert map_data(content, 'dairies-url') == ''
+        assert map_data(content, 'dairy-popup-url') == ''
+
+    def test_the_other_maps_have_no_dairies(self):
+        plant = Facility.objects.get(name='TEST PLANT')
+        for url in (reverse('emissions:map'), plant.get_absolute_url(), reverse('emissions:sector-detail', args=['glass'])):
+            content = self.client.get(url, {'year': '2023'}).content.decode()
+            assert map_data(content, 'dairies-url') == '', url
