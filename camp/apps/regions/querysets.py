@@ -18,7 +18,8 @@ TRACT_VINTAGE = '2020'
 
 class RegionQuerySet(models.QuerySet):
     def current_vintage(self):
-        """Leave out retired census tracts (see TRACT_VINTAGE); other types pass through."""
+        """Leave out retired census tracts (see TRACT_VINTAGE); other types pass through.
+        Tracts with no boundary at all are left out too."""
         from camp.apps.regions.models import Region
 
         return self.exclude(Q(type=Region.Type.TRACT) & ~Q(boundary__version=TRACT_VINTAGE))

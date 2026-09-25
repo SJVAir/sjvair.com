@@ -364,6 +364,25 @@ class RegionGeoJSONTests(TestCase):
         assert [f['properties']['slug'] for f in data['features']] == ['fresno']
         assert data['features'][0]['geometry']['type'] == 'MultiPolygon'
 
+    def test_simplified_overlapping_shapes_fall_back_per_shape(self):
+        # An invalid coverage (two tracts overlapping instead of sharing an
+        # edge) must not blow up the whole request -- shapely.coverage_simplify
+        # silently mangles topology on this input rather than raising, so the
+        # coverage validity has to be checked before deciding which path to take.
+        overlap_a = 'MULTIPOLYGON(((-120.2 36.8, -120.0 36.8, -120.0 37.0, -120.2 37.0, -120.2 36.8)))'
+        overlap_b = 'MULTIPOLYGON(((-120.1 36.8, -119.9 36.8, -119.9 37.0, -120.1 37.0, -120.1 36.8)))'
+        make_tract('Overlap A', overlap_a)
+        make_tract('Overlap B', overlap_b)
+        response, data = self.get({'type': 'tract', 'simplify': '1'})
+        assert response.status_code == 200
+        assert len(data['features']) == 2
+
+    def test_simplify_bypasses_the_response_cache(self):
+        response, _ = self.get({'type': 'county', 'simplify': '1'})
+        assert response['X-Cache-Status'] == 'MISS'
+        response, _ = self.get({'type': 'county', 'simplify': '1'})
+        assert response['X-Cache-Status'] != 'HIT'
+
 
 class RegionWithinFilterTests(TestCase):
     def setUp(self):
