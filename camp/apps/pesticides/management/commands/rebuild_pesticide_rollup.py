@@ -13,7 +13,7 @@ class Command(BaseCommand):
         group.add_argument('--year', type=int)
         group.add_argument('--all', action='store_true')
         parser.add_argument('--totals-only', action='store_true',
-            help='Rebuild only the per-county entity totals from the existing rollup.')
+            help='Rebuild only the totals derived from the existing rollup: the per-county entity totals and the per-section totals.')
 
     def handle(self, *args, **options):
         totals_only = options['totals_only']
