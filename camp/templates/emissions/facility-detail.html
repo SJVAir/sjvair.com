@@ -8,24 +8,48 @@
 {% endblock %}
 
 {% block explorer-content %}
-<div class="content">
-    <h2 class="title is-3">{{ facility.name }}</h2>
-    <p>{{ facility.address.street|title }}, {% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}{% if facility.address.zipcode %} {{ facility.address.zipcode }}{% endif %} · {{ facility.county.name }}</p>
-    {% if area_links %}
-    {# From the facility's location on the map, which can differ from its reported address (the state's data, shown as given). #}
-    <p class="facility-areas is-size-7">Counted in: {% for link in area_links %}<a href="{{ link.url }}{{ scope_qs }}">{{ link.label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}
-        <span class="has-text-grey">(by its location on the map)</span></p>
+<div class="content detail-header">
+    <h1 class="mb-1">{{ facility.name }}</h1>
+    {% if facility.sic_code %}{% sic_title facility.sic_code as sic_label %}
+    <p class="identifiers has-text-grey">SIC {{ facility.sic_code }}{% if sic_label %} · {{ sic_label }}{% endif %}</p>
     {% endif %}
-    <p>
-        <a href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a>
-        {% if facility.sic_code %}{% sic_title facility.sic_code as sic_label %} · SIC {{ facility.sic_code }}{% if sic_label %}: {{ sic_label }}{% endif %}{% endif %}
-        {% if facility.is_minor_source %} · <a href="{% url 'emissions:about' %}#minor-sources">Minor source</a>{% endif %}
-    </p>
-    <p>
-        Regulated by {% if district.metadata.carb_url %}<a href="{{ district.metadata.carb_url }}">{{ district.name }}</a>{% else %}{{ district.name }}{% endif %}
-        {% if district.metadata.phone %} · {{ district.metadata.phone }}{% endif %}
-        {% if district.metadata.complaints_url %} · <a href="{{ district.metadata.complaints_url }}">Report an air pollution problem</a>{% endif %}
-    </p>
+    <div class="tags are-medium">
+        <a class="tag is-link is-light" href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a>
+        {% if facility.is_minor_source %}<a class="tag" href="{% url 'emissions:about' %}#minor-sources">Minor source</a>{% endif %}
+    </div>
+</div>
+
+<div class="columns facility-cards">
+    <div class="column">
+        <div class="card">
+            <header class="card-header"><p class="card-header-title">Where</p></header>
+            <div class="card-content">
+                <p class="mb-0">{{ facility.address.street|title }}</p>
+                <p>{% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}{% if facility.address.zipcode %} {{ facility.address.zipcode }}{% endif %} · {{ facility.county.name }}</p>
+                {% if area_links %}
+                <p class="heading mt-4 mb-1">Counted in
+                    {# From the facility's location on the map, which can differ from its reported address (the state's data, shown as given). #}
+                    <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-arrow" data-tooltip="Where this facility's point on the map falls. It can differ from the address the state has on file, which is shown above as reported."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span>
+                </p>
+                <p class="facility-areas">{% for link in area_links %}<a href="{{ link.url }}{{ scope_qs }}">{{ link.label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="column">
+        <div class="card">
+            <header class="card-header"><p class="card-header-title">Regulated by</p></header>
+            <div class="card-content">
+                <p class="mb-1">{% if district.metadata.carb_url %}<a href="{{ district.metadata.carb_url }}">{{ district.name }}</a>{% else %}{{ district.name }}{% endif %}</p>
+                {% if district.metadata.phone %}{% with phone=district.metadata.phone %}
+                <p><a href="tel:{{ phone|cut:'('|cut:')'|cut:' '|cut:'-' }}"><span class="icon"><span class="fa-regular fa-phone" aria-hidden="true"></span></span>{{ phone }}</a></p>
+                {% endwith %}{% endif %}
+                {% if district.metadata.complaints_url %}
+                <a class="button is-link is-light" href="{{ district.metadata.complaints_url }}"><span class="icon"><span class="fa-regular fa-bullhorn" aria-hidden="true"></span></span><span>Report an air pollution problem</span></a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 </div>
 {% include 'emissions/includes/facility-map.html' %}
 

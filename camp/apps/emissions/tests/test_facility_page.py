@@ -1,0 +1,37 @@
+import re
+
+from django.core.cache import cache
+from django.test import TestCase
+
+from camp.apps.emissions.models import Facility
+
+
+class FacilityHeaderTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+
+    def detail(self, name):
+        return self.client.get(Facility.objects.get(name=name).get_absolute_url()).content.decode()
+
+    def test_identity_where_and_regulator(self):
+        content = self.detail('TEST PLANT')
+        # Sector as a tag linking to its page; SIC on the grey identifiers line.
+        assert re.search(r'<a class="tag[^"]*" href="/tools/emissions/sectors/glass/', content)
+        assert 'class="identifiers has-text-grey"' in content and 'SIC 3221' in content
+        # The address as reported, and the regulator's card.
+        assert '123 Main St' in content and 'Fresno 93728' in content
+        assert 'Regulated by' in content and 'San Joaquin Valley APCD' in content
+        # The district's phone is tappable, and the complaint form is the page's one button.
+        assert 'href="tel:5592306000"' in content
+        assert re.search(r'<a class="button[^"]*" href="https://ww2.valleyair.org/file-a-complaint"', content)
+
+    def test_minor_source_tag(self):
+        content = self.detail('TEST GAS STATION')
+        assert re.search(r'<a class="tag[^"]*" href="/tools/emissions/about/#minor-sources"', content)
+
+    def test_no_complaint_form_keeps_the_phone(self):
+        content = self.detail('TEST CEMENT')
+        assert 'href="tel:6618625250"' in content
+        assert 'Report an air pollution problem' not in content
