@@ -536,6 +536,55 @@ class PesticideUseRollup(models.Model):
         return f'{self.year}-{self.month:02d} / {self.mtrs_id or "no section"}'
 
 
+class PesticideSectionTotal(models.Model):
+    """
+    Per-year totals for one MTRS section -- what the map's section grid and
+    its "all sections" blocks shade. Rebuilt from PesticideUseRollup by
+    camp.apps.pesticides.rollup. Never exposed by id, so no sqid.
+
+    The same idea as PesticideUseTotal, keyed by section instead of county
+    and entity. A block of the valley-wide map summed ~57,000 rollup rows to
+    reach ~840 section totals, twice over when comparing two years; reading
+    them back costs an index scan of as many rows as there are sections.
+
+    Only the unfiltered map reads this. Narrowing to a chemical, product or
+    commodity still sums the rollup, which is the only place those
+    dimensions survive.
+    """
+    year = models.IntegerField(_('Year'))
+    mtrs = models.ForeignKey(
+        'regions.Region',
+        on_delete=models.CASCADE,
+        related_name='pesticide_section_totals',
+        verbose_name=_('Section'),
+        limit_choices_to={'type': Region.Type.MTRS},
+    )
+    lbs_chemical = models.FloatField(_('Pounds of Chemical'), default=0)
+    lbs_product = models.FloatField(_('Pounds of Product'), default=0)
+    acres_treated = models.FloatField(_('Acres Treated'), default=0)
+    applications = models.IntegerField(_('Applications'), default=0)
+
+    class Meta:
+        verbose_name = _('Pesticide Section Total')
+        verbose_name_plural = _('Pesticide Section Totals')
+        constraints = [
+            models.UniqueConstraint(fields=['year', 'mtrs'], name='pesticides_section_total_key'),
+        ]
+        indexes = [
+            # The map asks for a bbox's sections in one or two years at once,
+            # so the year leads and the totals ride along: an index-only scan
+            # rather than a heap fetch per section.
+            models.Index(
+                fields=['year', 'mtrs'],
+                include=['lbs_chemical', 'lbs_product', 'acres_treated', 'applications'],
+                name='pesticides_section_total_cov',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.year} / {self.mtrs_id}'
+
+
 class PesticideUseTotal(models.Model):
     """
     Per-year, per-county totals for one chemical, product, or commodity --
