@@ -2,7 +2,7 @@
 Area resolution and place-page context for the near-me and region pages.
 
 An `Area` is either a point + radius (near-me) or a `Region` (county, city,
-ZIP, or synthetic place). Both boil down to the same three things every
+urban area, CDP, school district or ZIP). Both boil down to the same three things every
 place page needs: a set of MTRS section pks to scope the section map and
 "sections used" stat, a rollup-row filter for the year-binned stats, and a
 `PesticideNotice` filter for "what's scheduled nearby". County regions filter
@@ -27,9 +27,10 @@ from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup, Pes
 from camp.apps.regions.models import Location, Region
 
 PLACE_REGION_TYPES = (
-    Region.Type.COUNTY, Region.Type.CITY, Region.Type.ZIPCODE, Region.Type.PLACE, Region.Type.SCHOOL_DISTRICT,
+    Region.Type.COUNTY, *Region.COMMUNITY_TYPES, Region.Type.ZIPCODE, Region.Type.SCHOOL_DISTRICT,
 )
-WITHIN_KEY = 'pesticides:within'
+# v2: the 'places' group became 'communities', each entry labelled.
+WITHIN_KEY = 'pesticides:within:v2'
 WITHIN_TTL = 60 * 60 * 24
 RADIUS_CHOICES = (1, 3, 5)
 AREA_SECTIONS_TTL = 60 * 60 * 24
@@ -202,14 +203,15 @@ def point_area(lat, lng, radius, label=''):
 
 def regions_within(region):
     """
-    Quick-navigation lists for a place page: the counties, cities and places,
-    school districts, and ZIP codes related to `region`. For a county that is
+    Quick-navigation lists for a place page: the counties, communities, school
+    districts, and ZIP codes related to `region`. For a county that is
     everything whose boundary centroid falls inside it; for any other region
     it is everything whose boundary overlaps it (sharing only an edge doesn't
-    count), plus the county or counties it lies in. The region itself and
-    its same-name twin (a city and its synthetic place) are left out. Each
-    entry is {'name', 'url'}; cities and places are merged by name. Cached a
-    day per region.
+    count), plus the county or counties it lies in. The region itself is left
+    out. Communities are the cities, urban areas and CDPs, each listed as-is
+    with its `type_label` (a town can be both a city and an urban area). Each
+    entry is {'name', 'url'} (communities add 'type_label'). Cached a day per
+    region.
     """
     from django.contrib.gis.db.models.functions import Centroid
 
@@ -218,7 +220,7 @@ def regions_within(region):
     if data is not None:
         return data
     geometry = region.boundary.geometry
-    kinds = (Region.Type.CITY, Region.Type.PLACE, Region.Type.SCHOOL_DISTRICT, Region.Type.ZIPCODE)
+    kinds = (*Region.COMMUNITY_TYPES, Region.Type.SCHOOL_DISTRICT, Region.Type.ZIPCODE)
     if region.type == Region.Type.COUNTY:
         rows = (
             Region.objects.filter(type__in=kinds, boundary__isnull=False)
@@ -231,10 +233,10 @@ def regions_within(region):
             .filter(boundary__geometry__intersects=geometry)
             .exclude(boundary__geometry__touches=geometry)
             .exclude(pk=region.pk)
-            .exclude(type__in=(Region.Type.CITY, Region.Type.PLACE), name=region.name)
         )
-    groups = {'counties': [], 'places': {}, 'school_districts': [], 'zipcodes': []}
-    for other in rows.order_by('name'):
+    groups = {'counties': [], 'communities': [], 'school_districts': [], 'zipcodes': []}
+    community_order = {region_type: index for index, region_type in enumerate(Region.COMMUNITY_TYPES)}
+    for other in sorted(rows, key=lambda other: (other.name, community_order.get(other.type, 0))):
         entry = {
             'name': other.name,
             'url': other.get_pesticides_url(),
@@ -245,16 +247,9 @@ def regions_within(region):
             groups['school_districts'].append(entry)
         elif other.type == Region.Type.ZIPCODE:
             groups['zipcodes'].append(entry)
-        elif other.type == Region.Type.CITY or other.name not in groups['places']:
-            # A city wins over the synthetic place of the same name.
-            groups['places'][other.name] = entry
-    data = {
-        'counties': groups['counties'],
-        'places': [groups['places'][name] for name in sorted(groups['places'])],
-        'school_districts': groups['school_districts'],
-        'zipcodes': groups['zipcodes'],
-        'any': bool(groups['counties'] or groups['places'] or groups['school_districts'] or groups['zipcodes']),
-    }
+        else:
+            groups['communities'].append({**entry, 'type_label': other.type_label})
+    data = {**groups, 'any': any(groups.values())}
     cache.set(key, data, WITHIN_TTL)
     return data
 

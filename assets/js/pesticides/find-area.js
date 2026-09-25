@@ -3,7 +3,8 @@
  *
  * One search box over two sources:
  *
- *   1. Our own place pages (counties, cities, ZIPs, places). The whole list
+ *   1. Our own place pages (counties, cities, urban areas, communities,
+ *      school districts, ZIPs). The whole list
  *      is embedded in the page as JSON and matched here in the browser, so
  *      it answers on every keystroke with no network at all.
  *   2. Addresses, via MapTiler geocoding (debounced, aborted, >= 3 chars).
