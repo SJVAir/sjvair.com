@@ -12,7 +12,9 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from django.core.cache import cache
-from django.db.models import Count, F, Sum
+from django.db.models import Case, Count, F, IntegerField, Q, Sum, Value, When
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Coalesce, Lower
 
 from camp.apps.emissions import cepam
 from camp.apps.emissions.models import MINOR_SOURCE_SIC_CODES, CountyInventory, EmissionsRecord, Facility
@@ -25,8 +27,11 @@ CACHE_TIMEOUT = 60 * 60 * 24
 # A year-over-year change larger than this gets the "may reflect estimation
 # methods" note on a facility page.
 LARGE_CHANGE = 0.5
-SORTS = ('-value', 'value', 'name', '-name', 'county', '-county')
+SORTS = ('-value', 'value', 'rank', '-rank', 'name', '-name', 'city', '-city', 'county', '-county')
 SORT_FIELDS = {'name': 'facility__name', 'county': 'facility__county__name'}
+# The sectors table's sorts: the sector's name, its facility count, and its
+# total (the share column sorts the same way as the total).
+SECTOR_SORTS = ('-value', 'value', 'share', '-share', 'name', '-name', 'facilities', '-facilities')
 
 
 def _float(value):
@@ -168,7 +173,11 @@ def with_ranks(rows, rank_map):
     return [(rank_map.get(record.facility_id), record) for record in rows]
 
 
-def facility_table(scope, *, sector=None, district=None, city=None, q=None, sort='-value'):
+def facility_table(scope, *, sector=None, area=None, q=None, sort='-value'):
+    """
+    The scope's facility records, `value` annotated. `area` (an areas.RegionArea)
+    narrows the list without touching the scope, so ranks stay scope-wide.
+    """
     field = scope.pollutant.key
     queryset = (
         records(scope)
@@ -177,20 +186,37 @@ def facility_table(scope, *, sector=None, district=None, city=None, q=None, sort
     )
     if sector:
         queryset = queryset.filter(facility__sector=sector)
-    if district:
-        queryset = queryset.filter(facility__air_district__external_id=district)
-    if city:
-        queryset = queryset.filter(facility__city__slug=city)
+    if area:
+        queryset = queryset.filter(area.q())
     if q:
         queryset = queryset.filter(facility__name__icontains=q)
     sort = sort if sort in SORTS else '-value'
     key = sort.lstrip('-')
     descending = sort.startswith('-')
     if key == 'value':
-        order = F(field).desc(nulls_last=True) if descending else F(field).asc(nulls_last=True)
+        order = [F(field).desc(nulls_last=True) if descending else F(field).asc(nulls_last=True)]
+    elif key == 'rank':
+        # Rank follows the value, #1 the largest; facilities that reported none
+        # have no rank and stay at the bottom either way.
+        unranked = Case(When(Q(**{f'{field}__gt': 0}), then=Value(0)), default=Value(1), output_field=IntegerField())
+        order = [unranked.asc(), F(field).asc() if descending else F(field).desc()]
+    elif key == 'city':
+        # The city the table shows: the matched city, else the address as given.
+        # Unmatched address cities are often not cities at all ("2 MI N/O
+        # LINDSAY"), so they come after the matched ones either way.
+        unmatched = Case(When(facility__city__isnull=True, then=Value(1)), default=Value(0), output_field=IntegerField())
+        city = Lower(Coalesce('facility__city__name', KeyTextTransform('city', 'facility__address')))
+        order = [unmatched.asc(), city.desc() if descending else city.asc()]
     else:
-        order = F(SORT_FIELDS[key]).desc() if descending else F(SORT_FIELDS[key]).asc()
-    return queryset.order_by(order, 'facility__name')
+        order = [F(SORT_FIELDS[key]).desc() if descending else F(SORT_FIELDS[key]).asc()]
+    return queryset.order_by(*order, 'facility__name')
+
+
+def sort_sectors(rows, sort):
+    """sector_breakdown() rows in a SECTOR_SORTS order."""
+    sort = sort if sort in SECTOR_SORTS else '-value'
+    key = {'share': 'value', 'name': 'label'}.get(sort.lstrip('-'), sort.lstrip('-'))
+    return sorted(rows, key=lambda row: (row[key], row['label']), reverse=sort.startswith('-'))
 
 
 def sector_breakdown(scope):

@@ -5,5 +5,5 @@
 
 {% block explorer-content %}
 <p class="mb-4">Facilities grouped by industry, from their Standard Industrial Classification (SIC) codes. {{ pollutant.name }}, {{ year }}.</p>
-{% include 'emissions/includes/sector-rows.html' with show_trend=True show_description=True %}
+{% include 'emissions/includes/sector-rows.html' with show_trend=True show_description=True sortable=True %}
 {% endblock %}

@@ -48,6 +48,8 @@ class ScopeMixin:
             'minor': scope.minor,
             'scope_qs': scope.query(),
             'scope_params': scope.params(),
+            # For links to region pages: the page is the area, so no ?county=.
+            'region_qs': scope.query(county=None),
             'section': self.section,
             'hide_scope': self.hide_scope,
         }
@@ -59,13 +61,23 @@ def list_filters(get):
     """The facility table's own filters (beyond the scope), validated."""
     sector = get.get('sector')
     sort = get.get('sort')
+    region = get_filter_region(get.get('region'))
     return {
         'sector': sector if sector in Facility.Sector.values else None,
-        'district': get.get('district') or None,
-        'city': get.get('city') or None,
+        'area': areas.RegionArea(region) if region else None,
         'q': (get.get('q') or '').strip() or None,
         'sort': sort if sort in stats.SORTS else '-value',
     }
+
+
+def get_filter_region(sqid):
+    """The ?region= of the facility list, or None for a missing or unsearchable one."""
+    if not sqid:
+        return None
+    return (
+        Region.objects.filter(sqid=sqid, type__in=areas.FILTER_REGION_TYPES, boundary__isnull=False)
+        .select_related('boundary').first()
+    )
 
 
 class Home(ScopeMixin, vanilla.TemplateView):
@@ -116,11 +128,8 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
             is_paginated=page.has_other_pages(),
             sort=filters['sort'],
             filters=filters,
+            region=filters['area'].region if filters['area'] else None,
             sector_options=Facility.Sector.choices,
-            district_options=(
-                Region.objects.filter(type=Region.Type.AIR_DISTRICT, district_facilities__isnull=False)
-                .distinct().order_by('name')
-            ),
             **kwargs,
         )
 
@@ -207,8 +216,10 @@ class SectorList(ScopeMixin, vanilla.TemplateView):
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         trends = stats.sector_trends(scope)
+        sort = self.request.GET.get('sort')
+        sort = sort if sort in stats.SECTOR_SORTS else '-value'
         rows = [dict(row, trend=trends.get(row['sector'], [])) for row in stats.sector_breakdown(scope)]
-        return super().get_context_data(rows=rows, **kwargs)
+        return super().get_context_data(rows=stats.sort_sectors(rows, sort), sort=sort, **kwargs)
 
 
 class SectorDetail(ScopeMixin, vanilla.TemplateView):

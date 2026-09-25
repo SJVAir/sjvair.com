@@ -3,9 +3,9 @@
 <table class="table is-fullwidth is-hoverable is-narrow facility-table">
     <thead>
         <tr>
-            <th class="has-text-right">Rank</th>
+            <th class="has-text-right">{% if sortable %}{% sort_link 'rank' 'Rank' %}{% else %}Rank{% endif %}</th>
             <th>{% if sortable %}{% sort_link 'name' 'Facility' %}{% else %}Facility{% endif %}</th>
-            <th>City</th>
+            <th>{% if sortable %}{% sort_link 'city' 'City' %}{% else %}City{% endif %}</th>
             <th>{% if sortable %}{% sort_link 'county' 'County' %}{% else %}County{% endif %}</th>
             <th>Sector</th>
             {% with heading=pollutant.label|add:" ("|add:pollutant.unit|add:"/yr)" %}
@@ -19,8 +19,8 @@
         <tr{% if facility.is_minor_source %} class="is-minor"{% endif %}>
             <td class="has-text-right">{{ rank|intcomma|default:"—" }}</td>
             <td><a href="{{ facility.get_absolute_url }}{{ scope_qs }}">{{ facility.name }}</a></td>
-            <td>{% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}</td>
-            <td>{{ facility.county.name|cut:" County" }}</td>
+            <td>{% if facility.city %}<a href="{{ facility.city.get_emissions_url }}{{ region_qs }}">{{ facility.city.name }}</a>{% else %}{{ facility.address.city|title }}{% endif %}</td>
+            <td>{% if facility.county %}<a href="{{ facility.county.get_emissions_url }}{{ region_qs }}">{{ facility.county.name|cut:" County" }}</a>{% endif %}</td>
             <td><a href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a></td>
             <td class="has-text-right">{{ record.value|amount:pollutant }}</td>
         </tr>

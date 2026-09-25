@@ -94,8 +94,6 @@ class TotalsAndRanksTests(StatsTestCase):
         assert [r.facility.name for r in stats.facility_table(scope(), sort='name')] == ['TEST CEMENT', 'TEST PLANT']
         assert [r.facility.name for r in stats.facility_table(scope(), q='plant')] == ['TEST PLANT']
         assert [r.facility.name for r in stats.facility_table(scope(), sector='cement-minerals')] == ['TEST CEMENT']
-        assert [r.facility.name for r in stats.facility_table(scope(), district='KER')] == ['TEST CEMENT']
-        assert [r.facility.name for r in stats.facility_table(scope(), city='fresno')] == ['TEST PLANT']
 
     def test_with_ranks(self):
         s = scope()

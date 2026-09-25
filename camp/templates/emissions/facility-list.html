@@ -5,21 +5,26 @@
 {% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Facilities</a></li>{% endblock %}
 
 {% block explorer-content %}
-<form method="get" class="columns is-multiline is-variable is-2 mb-3">
+<form method="get" class="columns is-multiline is-variable is-2 mb-3 facility-filters">
     {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
     <input type="hidden" name="sort" value="{{ sort }}">
-    <div class="column is-4"><input class="input" type="search" id="facility-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Facility name"></div>
-    <div class="column is-3"><div class="select is-fullwidth"><select name="sector" aria-label="Sector">
-        <option value="">All sectors</option>
-        {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-    </select></div></div>
-    {% if district_options|length > 1 %}
-    <div class="column is-3"><div class="select is-fullwidth"><select name="district" aria-label="Air district">
-        <option value="">All air districts</option>
-        {% for district in district_options %}<option value="{{ district.external_id }}"{% if filters.district == district.external_id %} selected{% endif %}>{{ district.name }}</option>{% endfor %}
-    </select></div></div>
-    {% endif %}
-    <div class="column is-2"><button class="button is-fullwidth" type="submit">Filter</button></div>
+    <div class="column is-4"><div class="field">
+        <label class="label" for="facility-q">Facility</label>
+        <div class="control"><input class="input" type="search" id="facility-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Facility name"></div>
+    </div></div>
+    <div class="column is-3"><div class="field">
+        <label class="label" for="facility-sector">Sector</label>
+        <div class="control"><div class="select is-fullwidth"><select id="facility-sector" name="sector">
+            <option value="">All sectors</option>
+            {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+    </div></div>
+    {# Cities, places and ZIP codes; a facility counts in the one its map point falls in, as on the region pages. #}
+    <div class="column is-3">{% url 'api:v2:emissions:places' as places_url %}{% include 'pesticides/includes/entity-picker.html' with kind='region' label='City, place or ZIP' selected=region search_url=places_url autosubmit=1 %}</div>
+    <div class="column is-2"><div class="field">
+        <label class="label is-invisible" aria-hidden="true">Filter</label>
+        <div class="control"><button class="button is-fullwidth" type="submit">Filter</button></div>
+    </div></div>
 </form>
 
 {% include 'emissions/includes/facility-table.html' with sortable=True %}

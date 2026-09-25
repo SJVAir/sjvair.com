@@ -119,6 +119,15 @@ def area_values(scope, level, sector=None):
     return cache.get_or_set(scope.key('areas', level, sector or ''), compute, stats.CACHE_TIMEOUT)
 
 
+# What the facility list's region filter searches: cities and places (the
+# urban areas and census places, merged) and ZIP codes.
+FILTER_REGION_TYPES = {
+    Region.Type.CITY: 'City',
+    Region.Type.PLACE: 'Place',
+    Region.Type.ZIPCODE: 'ZIP',
+}
+
+
 @dataclass(frozen=True)
 class RegionArea:
     """A Scope narrowed to one region (a region page)."""

@@ -1,8 +1,10 @@
-{% load humanize emissions_explorer %}
+{% load humanize emissions_explorer pesticides_explorer %}
 <div class="table-container">
 <table class="table is-fullwidth is-narrow sector-table">
     <thead>
-        <tr><th>Sector</th><th class="has-text-right">Facilities</th><th class="has-text-right">{{ pollutant.label }} ({{ pollutant.unit }}/yr)</th><th>Share</th>{% if show_trend %}<th>Trend</th>{% endif %}</tr>
+        {% with heading=pollutant.label|add:" ("|add:pollutant.unit|add:"/yr)" %}
+        <tr>{% if sortable %}<th>{% sort_link 'name' 'Sector' %}</th><th class="has-text-right">{% sort_link 'facilities' 'Facilities' %}</th><th class="has-text-right">{% sort_link 'value' heading %}</th><th>{% sort_link 'share' 'Share' %}</th>{% else %}<th>Sector</th><th class="has-text-right">Facilities</th><th class="has-text-right">{{ heading }}</th><th>Share</th>{% endif %}{% if show_trend %}<th>Trend</th>{% endif %}</tr>
+        {% endwith %}
     </thead>
     <tbody>
         {% for row in rows %}

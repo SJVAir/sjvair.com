@@ -58,7 +58,7 @@ class FacilityListTests(ViewTestCase):
         assert 'TEST PLANT' in self.get('facility-list', params={'q': 'plant'}).content.decode()
         assert 'TEST CEMENT' not in self.get('facility-list', params={'q': 'plant'}).content.decode()
         assert 'TEST PLANT' not in self.get('facility-list', params={'sector': 'cement-minerals'}).content.decode()
-        self.get('facility-list', params={'sort': 'name', 'district': 'KER', 'city': 'fresno', 'page': 99})
+        self.get('facility-list', params={'sort': 'name', 'region': 'nosuchregion', 'page': 99})
 
     def test_minor_sources_only_when_asked(self):
         assert 'TEST GAS STATION' not in self.get('facility-list').content.decode()

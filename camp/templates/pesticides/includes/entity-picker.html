@@ -13,12 +13,16 @@ and needs no new param scheme.
 `autosubmit` says whether choosing or clearing a result submits the enclosing
 form: on for the lists, whose form is boosted by htmx and swaps in place; off
 for the records form, which submits on Apply only.
+
+`search_url` points the picker at another search endpoint with the same
+response shape (the emissions facility list's region filter), and `selected`
+may be anything with a `sqid` and a `display_name` or `name`.
 {% endcomment %}
-<div class="field entity-picker" data-kind="{{ kind }}" data-search-url="{% url 'api:v2:pesticides:entity-search' %}" data-autosubmit="{% if autosubmit %}1{% else %}0{% endif %}">
+<div class="field entity-picker" data-kind="{{ kind }}" data-search-url="{% if search_url %}{{ search_url }}{% else %}{% url 'api:v2:pesticides:entity-search' %}{% endif %}" data-autosubmit="{% if autosubmit %}1{% else %}0{% endif %}">
     <label class="label" for="picker-{{ kind }}">{{ label }}</label>
     <input type="hidden" name="{{ kind }}" value="{{ selected.sqid|default:'' }}">
     {% if selected %}
-    <div class="control"><span class="tag is-info is-light is-medium">{{ selected.display_name }} <button type="button" class="delete is-small entity-picker-clear" aria-label="Clear"></button></span></div>
+    <div class="control"><span class="tag is-info is-light is-medium">{% firstof selected.display_name selected.name %} <button type="button" class="delete is-small entity-picker-clear" aria-label="Clear"></button></span></div>
     {% else %}
     <div class="control has-icons-left">
         <input class="input" type="search" id="picker-{{ kind }}" placeholder="Type to search…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="picker-{{ kind }}-results">
