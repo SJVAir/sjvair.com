@@ -26,7 +26,7 @@
 
 {% include 'emissions/includes/facility-map.html' %}
 
-{% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
+{% if context_bar %}<div class="mt-5">{% include 'emissions/includes/context-bar.html' %}</div>{% endif %}
 
 <h2 class="title is-4 mt-5">Top facilities</h2>
 {% if top_rows %}
