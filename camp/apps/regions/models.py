@@ -85,6 +85,16 @@ class Region(TimeStampedModel):
         Type.CUSTOM: Category.CUSTOM,
     }
 
+    # The community layers, each shown as-is (never merged), with the short
+    # label the explorers give them: a CDP reads as a "Community". Plain
+    # strings, not lazy ones: they end up in cached, JSON-embedded lists.
+    COMMUNITY_LABELS = {
+        Type.CITY: 'City',
+        Type.URBAN_AREA: 'Urban area',
+        Type.CDP: 'Community',
+    }
+    COMMUNITY_TYPES = tuple(COMMUNITY_LABELS)
+
     sqid = SqidsField(alphabet=shuffle_alphabet('regions.Region'))
 
     name = models.CharField(max_length=128)
@@ -103,6 +113,11 @@ class Region(TimeStampedModel):
         if self.type == self.Type.COUNTY and self.name.endswith(' County'):
             return self.name[:-len(' County')]
         return self.name
+
+    @property
+    def type_label(self):
+        """The type as the explorers show it: a community layer's short label, else the type's own."""
+        return self.COMMUNITY_LABELS.get(self.type) or self.get_type_display()
 
     class Meta:
         indexes = [
