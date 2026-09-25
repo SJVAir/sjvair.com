@@ -234,6 +234,13 @@ class Product(TimeStampedModel):
     reg_number = models.CharField(_('Registration Number'), max_length=64, unique=True)
     name = models.CharField(_('Name'), max_length=256)
     fumigant = models.BooleanField(_('Fumigant'), default=False)
+    # No PUR source: restricted materials are 3 CCR 6400, a regulation, and
+    # nothing in the lookup tables (product, chemical, formula, qualify)
+    # carries the status. import_pur used to look for a RESTRICTED.txt that
+    # CDPR doesn't publish and silently found nothing. Kept for an importer
+    # that reads CDPR's published list, the way import_prop65 does; until
+    # then it is False for every product and nothing should read it as
+    # meaning "not restricted".
     california_restricted = models.BooleanField(_('California Restricted'), default=False)
     chemicals = models.ManyToManyField(
         'pesticides.Chemical',
