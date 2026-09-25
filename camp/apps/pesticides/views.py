@@ -545,9 +545,12 @@ class Home(vanilla.TemplateView):
         concern = scope_concern(self.request)
         data = stats.landing_stats(year, all_years, county, concern)
         county_rank = maps.county_metric(self.request.GET.get('rank'))
-        ramp = maps.ramp_for(self.request.GET.get('ramp'))
-        by_county = maps.rank_counties(data['by_county'], county_rank, ramp=ramp)
-        county_map = maps.county_map(by_county, query=stats.scope_param(year, all_years, concern=concern), metric=county_rank, ramp=ramp) if by_county else None
+        compare = scope_compare(self.request, year, all_years)
+        ramp_name = self.request.GET.get('ramp')
+        ramp = maps.diverging_ramp_for(ramp_name) if compare else maps.ramp_for(ramp_name)
+        compare_by_county = stats.county_totals(compare, concern=concern) if compare else None
+        by_county = maps.rank_counties(data['by_county'], county_rank, ramp=ramp, compare_by_county=compare_by_county)
+        county_map = maps.county_map(by_county, query=stats.scope_param(year, all_years, concern=concern, compare=compare), metric=county_rank, ramp=ramp, compare_by_county=compare_by_county) if by_county else None
         find_area_places = find_area_place_list()
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
         return super().get_context_data(
@@ -883,10 +886,15 @@ class ExplorerDetailMixin:
             f'&{scope}' if scope else ''
         )
         county_rank = maps.county_metric(self.request.GET.get('rank'))
-        ramp = maps.ramp_for(self.request.GET.get('ramp'))
-        context['by_county'] = maps.rank_counties(context['by_county'], county_rank, ramp=ramp)
+        compare = scope_compare(self.request, year, all_years)
+        ramp_name = self.request.GET.get('ramp')
+        ramp = maps.diverging_ramp_for(ramp_name) if compare else maps.ramp_for(ramp_name)
+        # This entity's own rows for the compared year, so the change is the
+        # chemical's (or product's, or commodity's) and not the valley's.
+        compare_by_county = stats.by_county(rows, compare, self.lbs_field) if compare else None
+        context['by_county'] = maps.rank_counties(context['by_county'], county_rank, ramp=ramp, compare_by_county=compare_by_county)
         context['county_rank'] = county_rank
-        context['county_map'] = maps.county_map(context['by_county'], query=stats.scope_param(year, all_years, concern=self.concern), metric=county_rank, ramp=ramp) if context['by_county'] else None
+        context['county_map'] = maps.county_map(context['by_county'], query=stats.scope_param(year, all_years, concern=self.concern, compare=compare), metric=county_rank, ramp=ramp, compare_by_county=compare_by_county) if context['by_county'] else None
         return context
 
     def summary_top(self, context):
@@ -1136,9 +1144,11 @@ class MapPage(vanilla.TemplateView):
 
         county_map = None
         if (year or all_years) and not no_matches:
+            compare = scope_compare(self.request, year, all_years)
             county_map = maps.county_map(
                 stats.county_totals(year, all_years, concern),
-                query=stats.scope_param(year, all_years, concern=concern),
+                query=stats.scope_param(year, all_years, concern=concern, compare=compare),
+                compare_by_county=stats.county_totals(compare, concern=concern) if compare else None,
             )
 
         return super().get_context_data(
@@ -1513,7 +1523,8 @@ class RecordsBrowser(vanilla.ListView):
         if self.year or self.all_years:
             county_map = maps.county_map(
                 stats.county_totals(self.year, self.all_years, self.concern),
-                query=stats.scope_param(self.year, self.all_years, concern=self.concern),
+                query=stats.scope_param(self.year, self.all_years, concern=self.concern, compare=self.compare),
+                compare_by_county=stats.county_totals(self.compare, concern=self.concern) if self.compare else None,
             )
         return super().get_context_data(
             form=self.form,

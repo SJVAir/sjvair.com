@@ -87,6 +87,16 @@ def diverging_ramp_for(name):
     return DIVERGING_RAMPS.get(name or '', DIVERGING_RAMP)
 
 
+def as_diverging(ramp):
+    """
+    The ramp to shade signed data with: the one given if it is diverging,
+    else the default. The caller resolves `?ramp=` before it gets here, so
+    this is the backstop against a sequential ramp reaching a change map and
+    grading a decrease and an increase with the same hue.
+    """
+    return ramp if ramp in DIVERGING_RAMPS.values() else DIVERGING_RAMP
+
+
 def sample_ramp(ramp, count):
     """
     `count` colors spread across `ramp`, interpolating between its stops --
@@ -120,16 +130,53 @@ def county_metric(value):
     return value if value in COUNTY_METRICS else 'lbs'
 
 
-def rank_counties(by_county, metric='lbs', ramp=None):
+def change_label(name, delta, unit):
+    """
+    A county's label on a change map. The sign is always shown, so a reader
+    never has to infer the direction from the colour alone; the heading over
+    the map names which pair of years it is.
+    """
+    if delta is None:
+        return f'{name}: no data'
+    if not delta:
+        return f'{name}: no change'
+    return f'{name}: {int(round(delta)):+,} {unit}'
+
+
+def county_deltas(by_county, compare_by_county, metric):
+    """
+    {county_id: delta} for the change in `metric` between the two sets of
+    rows, over the union of the counties either mentions. The delta is the
+    scope year minus the compared one, and is None only where neither year
+    has the county at all -- no data, as opposed to a total that didn't move.
+    """
+    current = {row['county_id']: (row.get(metric) or 0) for row in by_county}
+    previous = {row['county_id']: (row.get(metric) or 0) for row in compare_by_county}
+    return {pk: current.get(pk, 0) - previous.get(pk, 0) for pk in {*current, *previous}}
+
+
+def rank_counties(by_county, metric='lbs', ramp=None, compare_by_county=None):
     """
     `by_county` rows sorted by `metric`, most to least (name breaks ties),
     each with a `color` (the map's fill for it) so a table beside the map
     can carry the swatches. No-data rows sort last.
+
+    With `compare_by_county`, the colour grades the change between the two
+    years instead of the ranking, and each row carries its `change`. The
+    sort is unchanged -- the table still reads as a ranking by the metric.
     """
     metric = county_metric(metric)
     rows = sorted(by_county, key=lambda row: (-(row.get(metric) or 0), row['county_name']))
-    classes = quantile_classes({row['county_id']: (row.get(metric) or 0) for row in rows}, ramp=ramp)
-    return [{**row, 'color': classes.color_for(row.get(metric) or 0)} for row in rows]
+    if compare_by_county is None:
+        classes = quantile_classes({row['county_id']: (row.get(metric) or 0) for row in rows}, ramp=ramp)
+        return [{**row, 'color': classes.color_for(row.get(metric) or 0)} for row in rows]
+
+    deltas = county_deltas(rows, compare_by_county, metric)
+    classes = diverging_classes(deltas, ramp=as_diverging(ramp))
+    return [
+        {**row, 'change': deltas.get(row['county_id']), 'color': classes.color_for(deltas.get(row['county_id']))}
+        for row in rows
+    ]
 
 
 def _build_county_geometries(tolerance=None):
@@ -222,18 +269,38 @@ def quantile_classes(values_by_key, classes=CLASSES, ramp=None):
 @dataclass
 class DivergingClasses(QuantileClasses):
     """
-    Change classified around zero: `breaks` ascend from the most negative
-    class through the neutral one to the most positive, so the inherited
-    `index_for` scan still works. Three states, not two -- a delta of None
+    Change classified around zero. Three states, not two -- a delta of None
     (no rows in either year) is no data, while 0.0 is a real "no change" and
     takes the ramp's neutral centre.
+
+    Classification runs on the magnitude and then takes the sign, rather than
+    scanning the mirrored `breaks` the way QuantileClasses does. Negating an
+    upper bound turns it into a lower one, so a mirrored scan drops every
+    decrease smaller than the first bound into the neutral class -- the
+    smallest decrease on the map would read as no change at all. `breaks` is
+    still the mirrored list, for the legend.
     """
+    bounds: list = field(default_factory=list)   # positive magnitude upper bounds
     neutral: str = NO_DATA
+
+    @property
+    def neutral_index(self):
+        return len(self.bounds)
+
+    def index_for(self, value):
+        if not value or not self.bounds:
+            return self.neutral_index
+        for i, upper in enumerate(self.bounds):
+            if abs(value) <= upper:
+                break
+        else:
+            i = len(self.bounds) - 1
+        return self.neutral_index - 1 - i if value < 0 else self.neutral_index + 1 + i
 
     def color_for(self, value):
         if value is None:
             return NO_DATA
-        if not self.breaks:
+        if not self.colors:
             return self.neutral
         return self.colors[self.index_for(value)]
 
@@ -265,7 +332,7 @@ def diverging_classes(deltas_by_key, classes=CLASSES, ramp=None):
     increasing = sample_ramp(ramp[DIVERGING_CENTER:], per_side + 1)[1:]
     colors = decreasing + [neutral] + increasing
 
-    result = DivergingClasses(breaks=breaks, colors=colors,
+    result = DivergingClasses(breaks=breaks, colors=colors, bounds=bounds,
         members=[[] for _ in breaks], neutral=neutral)
     for value in deltas_by_key.values():
         if value is not None:
@@ -275,13 +342,19 @@ def diverging_classes(deltas_by_key, classes=CLASSES, ramp=None):
     return result
 
 
-def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=None):
+def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=None,
+        compare_by_county=None):
     """
     The county choropleth, shaded by `metric` (see COUNTY_METRICS) as a
     ranking: darker is more. Each county links to its page; `query` (a scope
     query string such as 'year=2020&concern=1') is carried on those links.
     It leaves out `county=` -- the link is what picks the county. The table
     beside it (rank_counties) is the legend.
+
+    With `compare_by_county` (the same rows for the year being compared
+    against) it shades the change between the two instead, on a diverging
+    ramp. A county missing from both years is still grey; one whose total
+    didn't move takes the neutral centre, and its label says so.
     """
     geometries = county_geometries(FIGURE_SIMPLIFY_TOLERANCE)
     if not geometries:
@@ -290,13 +363,19 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
     unit = COUNTY_METRICS[metric]
     counties = {region.pk: region for region in Region.objects.filter(pk__in=geometries)}
     value_by_pk = {row['county_id']: (row.get(metric) or 0) for row in by_county}
-    classes = quantile_classes(value_by_pk, ramp=ramp)
+    comparing = compare_by_county is not None
+    if comparing:
+        value_by_pk = county_deltas(by_county, compare_by_county, metric)
+        classes = diverging_classes(value_by_pk, ramp=as_diverging(ramp))
+    else:
+        classes = quantile_classes(value_by_pk, ramp=ramp)
 
     figure = mapfigure.MapFigure(width=width, height=height, padding=10)
     for pk, geojson in geometries.items():
         county = counties[pk]
         value = value_by_pk.get(pk)
-        label = f'{county.name}: {int(round(value)):,} {unit}' if value else f'{county.name}: no data'
+        label = change_label(county.name, value, unit) if comparing else (
+            f'{county.name}: {int(round(value)):,} {unit}' if value else f'{county.name}: no data')
         url = county.get_pesticides_url()
         figure.add(mapfigure.Area(
             geometry=GEOSGeometry(geojson, srid=4326),

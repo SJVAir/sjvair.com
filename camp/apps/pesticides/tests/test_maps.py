@@ -136,6 +136,26 @@ class DivergingClassTests(TestCase):
         classes = maps.diverging_classes(values)
         assert len(set(classes.colors)) == len(classes.colors)
 
+    def test_the_smallest_change_is_not_read_as_no_change(self):
+        # More distinct magnitudes than classes, so the quantile bounds skip
+        # the smallest one. Mirroring the break values drops everything below
+        # the first bound into the neutral class, which would paint the
+        # smallest decrease on the map as "no change".
+        deltas = {i: float(-i * 1000) for i in range(1, 12)}
+        classes = maps.diverging_classes(deltas)
+        neutral = maps.DIVERGING_RAMP[maps.DIVERGING_CENTER]
+        for key, delta in deltas.items():
+            assert classes.color_for(delta) != neutral, f'{delta} was graded as no change'
+        # ...and the smallest decrease is still the palest of them.
+        assert classes.index_for(-1000.0) == classes.neutral_index - 1
+        assert classes.index_for(-11000.0) == 0
+
+    def test_every_class_is_reachable_from_both_sides(self):
+        deltas = {i: float(i - 6) * 1000 for i in range(1, 12) if i != 6}
+        classes = maps.diverging_classes(deltas)
+        used = {classes.index_for(d) for d in deltas.values()}
+        assert used == set(range(len(classes.colors))) - {classes.neutral_index}
+
     def test_degenerate_inputs(self):
         assert maps.diverging_classes({}).breaks == []
         assert maps.diverging_classes({}).color_for(None) == maps.NO_DATA
@@ -192,6 +212,53 @@ class CountyMapTests(TestCase):
     def test_none_without_geometries(self):
         Region.objects.filter(type='county').update(boundary=None)
         assert maps.county_map(self.rows) is None
+
+    def test_compare_shades_the_change_with_a_diverging_ramp(self):
+        previous = [{**self.rows[0], 'lbs': 50.0}]
+        html = maps.county_map(self.rows, compare_by_county=previous)
+        # Fresno rose 150 - 50; the increase takes the ramp's far end.
+        assert maps.DIVERGING_RAMP[-1] in html
+        # ...and none of the sequential ramp is used for a change map.
+        assert maps.RAMP[-1] not in html
+
+    def test_compare_distinguishes_no_change_from_no_data(self):
+        previous = [{**self.rows[0]}]      # identical totals: no change
+        html = maps.county_map(self.rows, compare_by_county=previous)
+        neutral = maps.DIVERGING_RAMP[maps.DIVERGING_CENTER]
+        assert neutral in html             # Fresno didn't move
+        assert maps.NO_DATA in html        # Kern has no rows in either year
+
+    def test_compare_labels_name_the_change(self):
+        previous = [{**self.rows[0], 'lbs': 50.0}]
+        html = maps.county_map(self.rows, compare_by_county=previous)
+        assert 'Fresno County: +100 lbs' in html
+        assert 'Kern County: no data' in html
+
+    def test_compare_labels_a_decrease_with_its_sign(self):
+        previous = [{**self.rows[0], 'lbs': 400.0}]
+        html = maps.county_map(self.rows, compare_by_county=previous)
+        assert 'Fresno County: -250 lbs' in html
+
+    def test_compare_counts_a_county_new_in_the_scope_year(self):
+        # No rows in the compared year is a rise from nothing, not no data.
+        html = maps.county_map(self.rows, compare_by_county=[])
+        assert maps.NO_DATA not in html.split('Kern County')[0].split('Fresno County')[-1]
+        assert 'Fresno County: +150 lbs' in html
+
+    def test_without_compare_the_figure_stays_sequential(self):
+        # Each render mints its own payload id, so compare what it shades
+        # with rather than the bytes.
+        html = maps.county_map(self.rows, compare_by_county=None)
+        assert maps.RAMP[-1] in html
+        assert not any(color in html for color in maps.DIVERGING_RAMP)
+        assert 'Fresno County: 150 lbs' in html
+
+    def test_rank_counties_carries_the_diverging_colour(self):
+        previous = [{**self.rows[0], 'lbs': 50.0}]
+        ranked = maps.rank_counties(self.rows, compare_by_county=previous)
+        fresno = next(row for row in ranked if row['county_id'] == 9001)
+        assert fresno['change'] == 100.0
+        assert fresno['color'] == maps.DIVERGING_RAMP[-1]
 
     def test_labels_include_pounds(self):
         html = maps.county_map(self.rows)
