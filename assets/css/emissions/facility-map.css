@@ -147,11 +147,16 @@
 .facility-map-legend .legend-size circle.is-dairy {
   stroke: #d95f0e;
 }
+/* The digester badge (dairy-map.js's 'dairies-digester' layer): a small
+   solid dot with its own white halo, matching the legend swatch to what's
+   actually drawn on the map now that it's not a stroke on the dairy's own
+   circle. */
 .facility-map-legend .legend-ring.is-digester {
-  width: 0.75rem;
-  height: 0.75rem;
-  background: #fec44f;
-  border: 2.5px solid #2e7d32;
+  width: 0.65rem;
+  height: 0.65rem;
+  background: #1b5e20;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px #1b5e20;
 }
 .facility-map-legend .legend-ramp + .legend-ramp {
   margin-top: 0.6rem;
