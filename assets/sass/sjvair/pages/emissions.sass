@@ -25,6 +25,15 @@ body.emissions
     &.is-measure
       --fa-primary-color: #5a6b7b
       --fa-secondary-color: #c8d1da
+    // The About tab's circle-info: a slate circle with a white "i" on the
+    // white active tab (without its own colours both layers were one colour).
+    &.is-about
+      --fa-primary-color: #{$white}
+      --fa-secondary-color: #5a6b7b
+  // On the dark hero (inactive tab) it inverts: a white circle, a slate "i".
+  .hook .explorer-nav li:not(.is-active) .explorer-icon.is-about
+    --fa-primary-color: #5a6b7b
+    --fa-secondary-color: rgba(255, 255, 255, 0.92)
     &.is-dairies
       --fa-primary-color: #b45309
       --fa-secondary-color: #fcd34d
