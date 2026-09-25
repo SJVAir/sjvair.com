@@ -17,7 +17,7 @@
 </div>
 
 {% include 'maps/includes/map.html' with map=map_config.map %}
-<p class="is-size-7 mt-2">Each circle is a dairy in CARB's dairy database (CADD), sized by its mature dairy cows (other cattle where it has none) and coloured by its EPA size class; a green dot marks a dairy that ran an anaerobic digester in {{ year }}. Counties shades each county by CARB's estimate of its dairy cattle emissions, or by its herd. <a href="{% url 'emissions:about' %}#dairies">About the dairy data</a>.</p>
+<p class="is-size-7 mt-2">Each circle is a dairy in CARB's dairy database (CADD), sized by its mature dairy cows (other cattle where it has none) and coloured by its EPA size class; the Digester filter shows the dairies that ran an anaerobic digester in {{ year }}. Counties shades each county by CARB's estimate of its dairy cattle emissions, or by its herd. <a href="{% url 'emissions:about' %}#dairies">About the dairy data</a>.</p>
 {% if coverage_note %}<p class="is-size-7 has-text-grey dairy-coverage-note">CADD tracked fewer dairies before {{ coverage_year }}, so totals for {{ year }} aren't a like-for-like comparison with later years.</p>{% endif %}
 <noscript><p>The map needs JavaScript; the table below lists the same dairies.</p></noscript>
 

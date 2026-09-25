@@ -8,7 +8,7 @@
  *             counted herd that year: area by its mature dairy cows (other
  *             cattle for a site with none; square root, on a fixed scale so
  *             years and counties compare), amber by its EPA size class
- *             (40 CFR 122.23); a small green badge dot when a digester ran.
+ *             (40 CFR 122.23). Digesters are found with the Digester filter.
  *   Counties  the covered counties shaded by a measure: CARB's county dairy
  *             cattle emissions (tons/yr) or its mature dairy cows, each also
  *             per square mile.
@@ -49,13 +49,6 @@
   }
   var EMPTY_COLOR = '#8a94a3';
   var COUNTY_COLOR = '#1f2d3d';
-  // A digester's badge: a small solid dot with its own white halo, drawn on
-  // a separate layer on top of every dairy circle -- a coloured ring on the
-  // circle's own stroke (the previous approach) was too easy to lose against
-  // a similarly-coloured basemap or a same-size neighbour's fill.
-  var DIGESTER_COLOR = '#1b5e20';
-  var DIGESTER_BADGE_RADIUS = 5;
-  var DIGESTER_BADGE_OFFSET = [8, -8];
   var MIN_RADIUS = 3;
   var MAX_RADIUS = 22;
   // Circle areas are scaled to this many head, the same in every year and
@@ -302,20 +295,6 @@
         'circle-opacity': 0.85,
       }, hoverStroke('#ffffff', 0.75)),
     });
-    // The digester badge: its own layer, drawn after (so it's always on top
-    // of every dairy circle), filtered to digester dairies and further
-    // narrowed by applyFilters() alongside the main layer.
-    this.shell.ensureLayer({
-      id: 'dairies-digester', type: 'circle', source: 'dairies',
-      filter: ['==', ['get', 'digester'], true],
-      paint: {
-        'circle-radius': DIGESTER_BADGE_RADIUS,
-        'circle-color': DIGESTER_COLOR,
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 1.5,
-        'circle-translate': DIGESTER_BADGE_OFFSET,
-      },
-    });
     this.applyView();
     this.applyFilters();
   };
@@ -329,7 +308,6 @@
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
       };
       set(this.map, 'dairies', !counties);
-      set(this.map, 'dairies-digester', !counties);
       set(this.map, 'counties-fill', counties);
     }
     Array.prototype.forEach.call(this.shell.controls('[data-view]'), function (button) {
@@ -371,17 +349,10 @@
   };
 
   // The scope's county, the size and digester filters: only the matching
-  // dairies, and the scoped county's outline drawn heavier. The digester
-  // badge layer gets the same filter, further narrowed to digester dairies,
-  // so a filtered-out dairy's badge disappears with it.
+  // dairies, and the scoped county's outline drawn heavier.
   DairyMap.prototype.applyFilters = function () {
     if (!this.map || !this.map.getLayer('dairies')) return;
-    var filter = this.dairyFilter();
-    this.map.setFilter('dairies', filter);
-    if (this.map.getLayer('dairies-digester')) {
-      var digesterFilter = ['==', ['get', 'digester'], true];
-      this.map.setFilter('dairies-digester', filter ? ['all', digesterFilter, filter] : digesterFilter);
-    }
+    this.map.setFilter('dairies', this.dairyFilter());
     this.map.setPaintProperty('counties-line', 'line-width', this.countyLineWidth());
   };
 
@@ -588,8 +559,7 @@
     return '<p class="legend-title">Mature dairy cows</p>' +
       '<div class="legend-sizes">' + sizes + '</div>' +
       '<p class="legend-note">Other cattle for a site with no mature dairy cows</p>' +
-      '<p class="legend-title">EPA size class (40 CFR 122.23)</p>' + sizeBins(sizeClasses, false, this.sizes) +
-      '<p class="legend-empty"><span class="legend-ring is-digester"></span>Digester operating in ' + escapeHtml(this.data.year) + '</p>';
+      '<p class="legend-title">EPA size class (40 CFR 122.23)</p>' + sizeBins(sizeClasses, false, this.sizes);
   };
 
   DairyMap.prototype.countyLegend = function () {
