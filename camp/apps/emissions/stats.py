@@ -57,6 +57,8 @@ class Scope:
     county: Optional[Region]
     pollutant: Pollutant
     minor: bool = False
+    # A region or radius the scope is narrowed to (areas.RegionArea / areas.RadiusArea).
+    area: Optional[object] = None
 
     @property
     def toxics(self):
@@ -66,7 +68,8 @@ class Scope:
         parts = [
             f'emissions:v{CACHE_VERSION}', name, self.year,
             self.county.pk if self.county else 'all',
-            self.pollutant.key, int(self.minor), *extra,
+            self.pollutant.key, int(self.minor),
+            self.area.key if self.area is not None else 'anywhere', *extra,
         ]
         return ':'.join(str(part) for part in parts)
 
@@ -116,6 +119,8 @@ def records(scope, *, all_years=False):
         queryset = queryset.filter(year=scope.year)
     if scope.county is not None:
         queryset = queryset.filter(facility__county=scope.county)
+    if scope.area is not None:
+        queryset = queryset.filter(scope.area.q())
     if not scope.minor:
         queryset = queryset.exclude(facility__sic_code__in=MINOR_SOURCE_SIC_CODES)
     return queryset
