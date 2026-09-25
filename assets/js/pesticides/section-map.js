@@ -732,17 +732,12 @@
     // share it; the toggles write them back (see syncViewParams).
     var metricMatch = /[?&]metric=(lbs_chemical|applications)/.exec(window.location.search || '');
     this.metric = metricMatch ? metricMatch[1] : 'lbs_chemical';
-    // The year being compared against: a map view param like metric and
-    // bins, read off the URL and written back, so it's shareable and no page
-    // has to resolve it. Set, the grid shades the change between the two
-    // years; it stays orthogonal to the metric, since change-in-pounds and
-    // change-in-applications are both meaningful. Only a year the container
-    // offers counts, so a stale link can't leave the map claiming a
-    // comparison it has no data for.
-    this.compareYears = (this.data.compareYears || '').split(',').filter(Boolean);
-    var compareMatch = /[?&]compare=(\d{4})/.exec(window.location.search || '');
-    this.compare = compareMatch && this.compareYears.indexOf(compareMatch[1]) !== -1
-      ? compareMatch[1] : '';
+    // The year being compared against, resolved by the main map's view and
+    // handed over on the container (it isn't explorer scope, so no other
+    // page sets it). Set, the grid shades the change between the two years;
+    // it stays orthogonal to the metric, since change-in-pounds and
+    // change-in-applications are both meaningful.
+    this.compare = this.data.compare || '';
     // Notice markers are on by default only where notices are the subject of
     // the page; `data-show-notices` says which this is, a ?notices= param
     // overrides it, and the "Show notices" checkbox flips it from there.
@@ -921,18 +916,7 @@
       this.fillRampOptions();
       var bins = bindChange('select[name="bins"]', this.onBinsChange);
       if (bins) fill(bins, BIN_OPTIONS.map(function (pair) { return [pair[0], pair[1] + ' (' + pair[0] + ')']; }));
-      // The comparison: off, or one of the other loaded years. Only here, on
-      // the map's own Options -- it changes how the map draws, not what the
-      // rest of the explorer is scoped to.
-      this.compareSelect = bindChange('select[name="compare"]', this.onCompareChange);
-      this.fillCompareOptions = function () {
-        if (!self.compareSelect) return;
-        self.compareSelect.innerHTML = '';
-        fill(self.compareSelect, [['', 'No comparison']].concat(
-          self.compareYears.slice().reverse().map(function (year) { return [year, year]; })));
-        self.compareSelect.value = self.compare;
-      };
-      this.fillCompareOptions();
+
     }
     this.syncControls();
   };
@@ -956,7 +940,6 @@
     set('select[name="tiles"]', 'value', this.tileStyle);
     set('select[name="ramp"]', 'value', this.rampName);
     set('select[name="bins"]', 'value', String(this.bins));
-    set('select[name="compare"]', 'value', this.compare);
   };
 
   // A toolbar dropdown opened over the map: let go of the popup under it.
@@ -1246,9 +1229,7 @@
   };
 
   // Keys whose change means the data on the map is different.
-  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'concern'];
-  // Not a DATA_KEY: a change here doesn't by itself mean the grid needs
-  // refetching, it only re-offers the comparison options (see onAdopt).
+  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'concern', 'compare'];
 
   // An htmx swap handed this map a new container (the shell has moved the
   // map into it, taken its data attributes and bound its chrome): follow
@@ -1281,20 +1262,13 @@
       }
     }
 
-    // A year change brings a new set of years to compare against (the
-    // scope year is never one of them). If the reader had picked the year
-    // they've just switched *to*, the comparison is no longer a comparison,
-    // so it's dropped rather than left pointing at itself.
-    if (has('compareYears')) {
-      this.compareYears = (this.data.compareYears || '').split(',').filter(Boolean);
-      if (this.compare && this.compareYears.indexOf(this.compare) === -1) {
-        this.compare = '';
-        this.rampName = this.defaultRampName();
-        this.lensCache = {};
-        this.syncViewParams();
-      }
+    // The view re-resolves the comparison on every swap (a year change can
+    // invalidate it), so take whatever the new container says. The ramp
+    // table follows it: a sequential ramp can't grade signed data.
+    if (has('compare')) {
+      this.compare = this.data.compare || '';
+      this.rampName = this.defaultRampName();
       if (this.fillRampOptions) this.fillRampOptions();
-      if (this.compareSelect) this.fillCompareOptions();
     }
 
     this.syncControls();
@@ -1511,32 +1485,6 @@
     this.syncViewParams();
   };
 
-  // Turning the comparison on or off changes what the grid endpoints
-  // return, so the data is refetched rather than restyled. The lens cache
-  // and the cached township values hold one year's numbers, so they go too.
-  SectionMap.prototype.onCompareChange = function (event) {
-    var value = event.target.value;
-    this.compare = this.compareYears.indexOf(value) !== -1 ? value : '';
-    this.rampName = this.defaultRampName();
-    if (this.fillRampOptions) this.fillRampOptions();
-    // Same invalidation an adopt does for a filter change: the grid the map
-    // holds is the other view's numbers, and loadGrid() would otherwise see
-    // the viewport already covered and not refetch. The lens and
-    // all-sections caches hold the old numbers too.
-    this.loadedBounds = null;
-    this.loadedLevel = null;
-    this.gridRequest = null;
-    this.lensCache = {};
-    this.allSectionsRun = null;
-    this.clearLens();
-    this.closePopup();
-    this.syncViewParams();
-    this.loadGrid();
-    // The markers don't move, but their popups quote the block totals.
-    this.loadedLocationBounds = null;
-    if (this.showLocations) this.loadLocations();
-  };
-
   SectionMap.prototype.onBinsChange = function (event) {
     NUM_CLASSES = +event.target.value;
     this.bins = NUM_CLASSES;
@@ -1573,11 +1521,6 @@
         url.searchParams.set('sections', '1');
       } else {
         url.searchParams.delete('sections');
-      }
-      if (this.compare) {
-        url.searchParams.set('compare', this.compare);
-      } else {
-        url.searchParams.delete('compare');
       }
       // The experiment controls (basemap style, ramp) while a look is chosen.
       if (this.tileStyle && this.tileStyle !== this.defaultTileStyle) {

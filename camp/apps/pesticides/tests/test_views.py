@@ -1198,13 +1198,31 @@ class CompareIsAMapControlTests(RollupTestMixin, TestCase):
         offered = set()
         for name, url in self.pages().items():
             html = self.client.get(url, {'year': '2023'}).content.decode()
-            if 'select name="compare"' in html or "select name='compare'" in html:
+            if 'Compare with:' in html:
                 offered.add(name)
-        assert offered == {'map'}, 'compare control on: %s' % ', '.join(sorted(offered)) or 'nothing'
+        assert offered == {'map'}, 'compare control on: %s' % (', '.join(sorted(offered)) or 'nothing')
 
-    def test_the_map_is_told_which_years_it_can_compare(self):
+    def test_the_toolbar_offers_every_other_loaded_year(self):
         html = self.client.get(reverse('pesticides:map'), {'year': '2023'}).content.decode()
-        assert 'data-compare-years="2022"' in html
+        assert 'compare=2022' in html
+        # Never itself: comparing a year to itself is not a comparison.
+        assert 'compare=2023' not in html
+
+    def test_the_map_is_told_the_compared_year(self):
+        html = self.client.get(reverse('pesticides:map'), {'year': '2023', 'compare': '2022'}).content.decode()
+        assert 'data-compare="2022"' in html
+        plain = self.client.get(reverse('pesticides:map'), {'year': '2023'}).content.decode()
+        assert 'data-compare=""' in plain
+
+    def test_an_unloaded_compared_year_is_ignored(self):
+        html = self.client.get(reverse('pesticides:map'), {'year': '2023', 'compare': '1999'}).content.decode()
+        assert 'data-compare=""' in html
+
+    def test_a_filter_change_keeps_the_comparison(self):
+        # The filter pickers submit the toolbar form with GET, which would
+        # drop the comparison without the hidden input beside them.
+        html = self.client.get(reverse('pesticides:map'), {'year': '2023', 'compare': '2022'}).content.decode()
+        assert '<input type="hidden" name="compare" value="2022">' in html
 
     def test_no_page_puts_the_comparison_in_its_scope_links(self):
         # It is a map view param like metric and bins, so it stays out of

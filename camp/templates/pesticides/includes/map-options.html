@@ -8,13 +8,6 @@
     <label class="section-map-notices-toggle"><input type="checkbox" name="notices"{% if map_config.show_notices == '1' %} checked{% endif %}> Notices of intent</label>
     <label class="section-map-locations-toggle"><input type="checkbox" name="locations"{% if map_config.show_locations == '1' %} checked{% endif %}> Schools &amp; child care</label>
     <label class="section-map-sections-toggle"><input type="checkbox" name="sections"> All sections</label>
-    {% if map_config.compare_years %}
-    {# Shade the change between two years instead of one year's total. Only
-       the main map offers it (section_map_config fills compare_years for
-       that page alone); the script reads the years off the container. #}
-    <span class="section-map-group-label">Compare</span>
-    <label class="section-map-select">With <select name="compare"></select></label>
-    {% endif %}
     {# Experiment controls while a basemap and ramp are chosen; the script fills the options and applies them live. #}
     <label class="section-map-select">Tiles <select name="tiles"></select></label>
     <label class="section-map-select">Ramp <select name="ramp"></select></label>

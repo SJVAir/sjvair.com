@@ -1055,7 +1055,7 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None):
     year = year or stats.latest_year()
     config = {
         # Upcoming-notice markers start on where notices are the subject of
@@ -1100,12 +1100,10 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # The chemicals-of-concern scope, passed straight through to the grid
         # endpoints as `concern=1`.
         'concern': '1' if concern else '',
-        # The loaded years the Options menu can offer as a comparison, on the
-        # main map only -- `toolbar` is what that page passes. The compared
-        # year itself is a map view param like metric and bins:
-        # section-map.js reads `?compare=` off the URL and writes it back, so
-        # no page has to resolve it and it stays out of the explorer's scope.
-        'compare_years': ','.join(str(y) for y in stats.available_years() if y != year) if toolbar else '',
+        # The year the map shades the change against. A control on the main
+        # map's toolbar, not explorer scope: it stays out of scope_param, so
+        # no other page offers it or carries it in a link.
+        'compare': str(compare) if compare else '',
         'highlight': highlight or '',
         # A regions-API URL whose boundary the map draws and fits to (place pages).
         'outline_url': outline_url or '',
@@ -1145,6 +1143,7 @@ class MapPage(vanilla.TemplateView):
         county = scope_county(request)
         concern = scope_concern(request)
 
+        compare = stats.resolve_compare_param(request.GET.get('compare'), year, all_years)
         map_config = section_map_config(
             year,
             chemical=resolved.get('chemical'),
@@ -1153,6 +1152,7 @@ class MapPage(vanilla.TemplateView):
             county=county.slug if county else None,
             all_years=all_years,
             concern=concern,
+            compare=compare,
             toolbar=True,
         )
 
@@ -1188,6 +1188,9 @@ class MapPage(vanilla.TemplateView):
             ],
             no_matches=no_matches,
             county_map=county_map,
+            compare=compare,
+            # Every other loaded year, newest first, for the toolbar's picker.
+            compare_options=[y for y in reversed(stats.available_years()) if y != year] if year else [],
             **year_context(year, all_years, county, concern=concern),
             **kwargs,
         )

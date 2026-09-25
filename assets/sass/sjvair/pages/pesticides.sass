@@ -142,17 +142,20 @@ body.pesticides
                 white-space: nowrap
         .dropdown-menu
             min-width: 11rem
+    // The chosen option, in both pickers that use these menus.
+    .explorer-scope-picker, .map-toolbar-dropdown
         .dropdown-item.is-active
             background-color: $link
             color: $white
-        // The years as a compact grid, so the whole span is in view at once.
-        .explorer-scope-years
-            display: grid
-            grid-template-columns: repeat(2, 1fr)
-            .dropdown-item
-                text-align: center
-                padding-left: 0.5rem
-                padding-right: 0.5rem
+    // The years as a compact grid, so the whole span is in view at once --
+    // the scope bar's year picker and the map toolbar's Compare picker both.
+    .explorer-scope-years
+        display: grid
+        grid-template-columns: repeat(2, 1fr)
+        .dropdown-item
+            text-align: center
+            padding-left: 0.5rem
+            padding-right: 0.5rem
     .explorer-icon.is-scope
         --fa-primary-color: #{$link}
         --fa-secondary-color: #{$grey-light}

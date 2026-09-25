@@ -1,10 +1,12 @@
+{% load pesticides_explorer %}
 {% comment %}
 Filter toolbar over the map (top-left, beside the zoom buttons), in the
 style of the map toolbar mockup: one button-styled dropdown per filter,
 each showing its current selection. The pickers inside submit the form
 (an htmx swap) when a name is chosen or cleared. The county is part of the
 explorer's scope (the scope bar), not a toolbar filter. Lives inside the map wrapper so it comes along in expanded mode.
-Context: related (dict of resolved entities), year, all_years, latest_year, county.
+Context: related (dict of resolved entities), year, all_years, latest_year,
+county, compare, compare_options.
 {% endcomment %}
 <form method="GET" class="map-toolbar-filters" hx-trigger="submit, change delay:250ms" aria-label="Map filters">
     {% include 'pesticides/includes/scope-hidden.html' %}
@@ -34,5 +36,38 @@ Context: related (dict of resolved entities), year, all_years, latest_year, coun
             </div>
         </div>
         {% endfor %}
+        {% if compare_options %}
+        {% comment %}
+        The comparison, last in the row: unlike the filters beside it, it
+        doesn't narrow what the map draws, it changes what the shading means.
+        Links rather than form inputs, so it reads like the scope bar's year
+        picker; they carry the filters the form holds, and the hidden input
+        below keeps the comparison when a filter changes instead.
+        {% endcomment %}
+        <div class="control">
+            <div class="dropdown map-toolbar-dropdown{% if compare %} is-set{% endif %}">
+                <div class="dropdown-trigger">
+                    <button type="button" class="button" aria-haspopup="true" aria-expanded="false"
+                            aria-label="Compare with: {% if compare %}{{ compare }}{% else %}off{% endif %}">
+                        <span class="icon"><span class="fa-duotone fa-fw fa-left-right explorer-icon is-scope" aria-hidden="true"></span></span>
+                        <span class="map-toolbar-label">{% if compare %}vs {{ compare }}{% else %}Compare{% endif %}</span>
+                        <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+                    </button>
+                </div>
+                <div class="dropdown-menu" role="menu">
+                    <div class="dropdown-content">
+                        <a class="dropdown-item{% if not compare %} is-active{% endif %}" href="{% qs_replace compare=None page=None %}"{% if not compare %} aria-current="page"{% endif %}>Don't compare</a>
+                        <hr class="dropdown-divider">
+                        <div class="explorer-scope-years">
+                            {% for option in compare_options %}
+                            <a class="dropdown-item{% if option == compare %} is-active{% endif %}" href="{% qs_replace compare=option page=None %}"{% if option == compare %} aria-current="page"{% endif %}>vs {{ option }}</a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
+    {% if compare %}<input type="hidden" name="compare" value="{{ compare }}">{% endif %}
 </form>
