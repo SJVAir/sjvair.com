@@ -114,13 +114,6 @@ def movers_context(rows, year, all_years, field, lbs_field='lbs_chemical'):
 
 
 # Public pages link developers to the documentation, never to raw endpoints.
-# How many rows a top-N card shows before it offers "Show all".
-RELATED_LIMIT = 10
-# ...and on a product page, where the card opposite is a one- or two-row
-# ingredient list rather than another top ten.
-PRODUCT_COMMODITY_LIMIT = 5
-
-
 API_DOCS_URL = '/api/2.0/docs/#tag/pesticides'
 CLIENT_DOCS_URL = 'https://sjvair.github.io/sjvair-python/client/resources/pesticides.html'
 
@@ -821,14 +814,14 @@ class ExplorerDetailMixin:
             scope = f'{scope}:{stats.CONCERN_PARAM}'
         return stats.cached(stats.all_years_key('detail', self.use_field, self.object.pk, scope, name), build)
 
-    def top_related(self, field, lbs_field=None, limit=RELATED_LIMIT):
+    def top_related(self, field, lbs_field=None, limit=stats.RELATED_LIMIT):
         lbs_field = lbs_field or self.lbs_field
         return self.cached_stat(f'top:{field}:{lbs_field}:{limit}', lambda: stats.top_related(
             self.get_rollup(), self.year, field, lbs_field, limit, all_years=self.all_years,
         ))
 
     def related_card(self, title, kind, rows, list_url_name, param, show_pct=False, show_lbs=True,
-            complete=None, compact=False, limit=RELATED_LIMIT):
+            complete=None, compact=False, limit=stats.RELATED_LIMIT):
         """
         show_pct: rows carry pct_active (only product<->chemical relations do).
         show_lbs: rows carry pounds (a product's ingredient list does not).
@@ -1026,13 +1019,10 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
             SimpleNamespace(obj=c, lbs=None, pct_active=pct.get(c.pk))
             for c in sorted(ingredients, key=lambda c: -(pct.get(c.pk) or 0))
         ]
-        # Five, not ten: this card sits beside the ingredient list, which is
-        # one or two rows for four products in five, and "Show all" carries
-        # the rest.
-        commodities = self.top_related('commodity', limit=PRODUCT_COMMODITY_LIMIT)
+        commodities = self.top_related('commodity')
         return (
             self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product', show_pct=True, show_lbs=False, complete=True, compact=True),
-            self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'product', limit=PRODUCT_COMMODITY_LIMIT),
+            self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'product'),
         )
 
 
@@ -1605,7 +1595,7 @@ class RecordsBrowser(vanilla.ListView):
         )
 
 
-def _section_card(title, kind, rows, show_all_url, limit=RELATED_LIMIT):
+def _section_card(title, kind, rows, show_all_url, limit=stats.RELATED_LIMIT):
     """
     related-card.html dict for a section page's top lists. Unlike
     ExplorerDetailMixin.related_card (which links "Show all" to the
@@ -1698,9 +1688,9 @@ class SectionDetail(vanilla.DetailView):
             peak = max(by_month, key=lambda month: month['lbs'])
             peak_month = calendar.month_name[peak['month']]
 
-        top_chemicals = stats.top_related(rows, year, 'chemical', limit=10, all_years=all_years)
-        top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10, all_years=all_years)
-        top_commodities = stats.top_related(rows, year, 'commodity', limit=10, all_years=all_years)
+        top_chemicals = stats.top_related(rows, year, 'chemical', limit=stats.RELATED_LIMIT, all_years=all_years)
+        top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=stats.RELATED_LIMIT, all_years=all_years)
+        top_commodities = stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years)
 
         notices = PesticideNotice.objects.filter(mtrs=section)
         upcoming = stats.upcoming_notices(notices)

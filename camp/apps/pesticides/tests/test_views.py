@@ -1331,25 +1331,36 @@ class ShowAllTests(RollupTestMixin, TestCase):
 
     def test_a_full_list_still_offers_it(self):
         card = views.ExplorerDetailMixin.related_card(
-            _StubDetail(), 'Applied to', 'commodities', list(range(views.RELATED_LIMIT)),
+            _StubDetail(), 'Applied to', 'commodities', list(range(stats.RELATED_LIMIT)),
             'pesticides:commodity-list', 'chemical')
         assert card['complete'] is False
         short = views.ExplorerDetailMixin.related_card(
-            _StubDetail(), 'Applied to', 'commodities', list(range(views.RELATED_LIMIT - 1)),
+            _StubDetail(), 'Applied to', 'commodities', list(range(stats.RELATED_LIMIT - 1)),
             'pesticides:commodity-list', 'chemical')
         assert short['complete'] is True
 
     def test_a_section_card_infers_it_too(self):
         assert views._section_card('Top products', 'products', [1, 2], '/x/')['complete'] is True
         assert views._section_card(
-            'Top products', 'products', list(range(views.RELATED_LIMIT)), '/x/')['complete'] is False
+            'Top products', 'products', list(range(stats.RELATED_LIMIT)), '/x/')['complete'] is False
 
-    def test_a_product_lists_five_commodities_not_ten(self):
-        product = Product.objects.first()
-        ctx = self.client.get(product.get_absolute_url(), {'year': 'all'}).context
-        applied_to = ctx['related_b']
-        assert applied_to['title'] == 'Applied to'
-        assert len(applied_to['rows']) <= views.PRODUCT_COMMODITY_LIMIT
+    def test_every_related_card_stops_at_the_cap(self):
+        fresno = Region.objects.get(pk=9001)
+        section = Region.objects.get(pk=9101)
+        pages = [
+            Chemical.objects.get(pk=1).get_absolute_url(),
+            Product.objects.first().get_absolute_url(),
+            Commodity.objects.first().get_absolute_url(),
+            reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
+        ]
+        for url in pages:
+            ctx = self.client.get(url, {'year': 'all'}).context
+            for key in ('related_a', 'related_b', 'products_card', 'chemicals_card',
+                    'commodities_card', 'chemicals_of_concern_card'):
+                card = ctx.get(key)
+                if card:
+                    assert len(card['rows']) <= stats.RELATED_LIMIT, f'{url} {key}'
 
 
 class _StubDetail:

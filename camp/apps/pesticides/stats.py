@@ -30,6 +30,10 @@ ALL_YEARS = 'all'
 # Below this many pounds in the compared year, a percent change says more
 # about the baseline than the movement, so top_movers() leaves it off.
 MOVERS_PCT_MIN_LBS = 100
+# How many rows a related card (includes/related-card.html) shows before it
+# offers "Show all" -- on the entity, place and section pages alike. Not the
+# landing page's leaderboards, which are that page's main content.
+RELATED_LIMIT = 5
 # Aggregates that read more than one year of rollup rows for a whole county or
 # the whole valley. They only change on import, so an hour is plenty.
 ALL_YEARS_KEY = 'pesticides:all-years'
@@ -679,6 +683,8 @@ def concern_notices(notices):
 
 
 def top_chemicals_of_concern(top_chemicals, uses, year, limit=10, all_years=False):
+    # The default is the landing leaderboards'; a place page passes
+    # RELATED_LIMIT, since there it's a related card like the ones beside it.
     """
     The heaviest chemicals of concern, for the board beside "top chemicals".
     `top_chemicals` is an already-fetched group-by (the landing and place

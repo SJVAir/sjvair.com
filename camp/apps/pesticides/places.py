@@ -544,16 +544,16 @@ def _place_stats(area, year, all_years, concern=False):
         },
         'by_month': by_month,
         'peak_month': peak_month,
-        'top_chemicals': top_chemicals[:10],
-        'top_commodities': stats.top_related(rows, year, 'commodity', limit=10, all_years=all_years),
-        'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10, all_years=all_years),
+        'top_chemicals': top_chemicals[:stats.RELATED_LIMIT],
+        'top_commodities': stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years),
+        'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=stats.RELATED_LIMIT, all_years=all_years),
     }
 
     # Under the concern scope every board is already of concern, so the
     # dedicated one would just restate the top chemicals.
     if not concern:
         data['top_chemicals_of_concern'] = stats.top_chemicals_of_concern(
-            top_chemicals, rows, year, all_years=all_years,
+            top_chemicals, rows, year, limit=stats.RELATED_LIMIT, all_years=all_years,
         )
     return data
 
