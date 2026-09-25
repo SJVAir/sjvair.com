@@ -73,6 +73,15 @@ class RegionPageTests(TestCase):
         content = self.get(self.fresno, {'view': 'bogus', 'level': 'mtrs', 'measure': 'x'})
         assert (map_data(content, 'view'), map_data(content, 'level'), map_data(content, 'measure')) == ('facilities', 'zipcode', 'density')
 
+    def test_the_map_knows_the_page_default_level(self):
+        # The map leaves the default level out of the URLs it writes, so it
+        # needs the page's default even when the URL chose another level.
+        content = self.get(self.fresno, {'view': 'areas', 'level': 'tract'})
+        assert (map_data(content, 'level'), map_data(content, 'default-level')) == ('tract', 'zipcode')
+        city = Region.objects.get(type=Region.Type.CITY, slug='fresno')
+        content = self.get(city, {'level': 'county'})
+        assert (map_data(content, 'level'), map_data(content, 'default-level')) == ('county', 'tract')
+
 
     def test_county_page_context_bar_names_its_own_county(self):
         CountyInventory.objects.create(county=self.fresno, year=2024, inventory=cepam.INVENTORY,
@@ -108,6 +117,7 @@ class NearMeTests(TestCase):
         assert 'Within 1 mile of Fresno' in content and 'TEST PLANT' in content
         assert map_data(content, 'radius') == '1'
         assert map_data(content, 'center') == '36.7370,-119.7870'
+        assert map_data(content, 'default-level') == 'tract'
 
     def test_bad_input_bounces_to_the_find_form(self):
         home = reverse('emissions:home') + '?find=1'

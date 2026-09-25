@@ -238,7 +238,11 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
 
 
 def map_view(get, default_level=areas.DEFAULT_LEVEL):
-    """The map's view, level and measure from a request's GET, validated; defaults when unknown."""
+    """
+    The map's view, level and measure from a request's GET, validated; defaults
+    when unknown. Also the page's default level: the map leaves defaults out of
+    the URLs it writes, so it needs to know it.
+    """
     view = get.get('view')
     level = get.get('level')
     measure = get.get('measure')
@@ -246,6 +250,7 @@ def map_view(get, default_level=areas.DEFAULT_LEVEL):
         'view': view if view in ('facilities', 'areas') else 'facilities',
         'level': level if level in areas.LEVELS else default_level,
         'measure': measure if measure in areas.MEASURES else areas.DEFAULT_MEASURE,
+        'default_level': default_level,
     }
 
 
@@ -282,6 +287,7 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'view': areas_view['view'] if areas_view else 'facilities',
         'level': areas_view['level'] if areas_view else '',
         'measure': areas_view['measure'] if areas_view else '',
+        'default_level': areas_view['default_level'] if areas_view else '',
         'label': scope.pollutant.label,
         'unit': scope.pollutant.unit,
         'sector': sector or '',

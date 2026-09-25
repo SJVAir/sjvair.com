@@ -57,13 +57,20 @@
   var escapeHtml = M.escapeHtml;
   var logError = M.logger('facility-map');
 
-  // The same rules as the `amount` template filter.
-  function amount(value) {
+  // A data value (a facility's or an area's), by the same rules as the
+  // `quantity` template filter: always one decimal, thousands separators,
+  // '<0.1' for a nonzero value under 0.05, '—' for none.
+  function quantity(value) {
     if (value === null || value === undefined) return '—';
-    var size = Math.abs(value);
-    if (size && size < 0.01) return '<0.01';
-    var digits = size && size < 1 ? 2 : (size && size < 10 ? 1 : 0);
-    return value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    if (value && Math.abs(value) < 0.05) return '<0.1';
+    return value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
+  // A legend's round number (a class boundary, a size in the circle key):
+  // no forced decimals, so 0.01 reads '0.01', 10 reads '10', 1456 '1,456'.
+  function roundLabel(value) {
+    if (value && Math.abs(value) < 0.01) return '<0.01';
+    return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
   }
 
   function breaksFor(unit) {
@@ -83,9 +90,9 @@
 
   // "under 0.1", "0.1–1", ..., "100 and up"
   function classLabel(index, breaks) {
-    if (index === 0) return 'under ' + amount(breaks[0]);
-    if (index === breaks.length) return amount(breaks[index - 1]) + ' and up';
-    return amount(breaks[index - 1]) + '–' + amount(breaks[index]);
+    if (index === 0) return 'under ' + roundLabel(breaks[0]);
+    if (index === breaks.length) return roundLabel(breaks[index - 1]) + ' and up';
+    return roundLabel(breaks[index - 1]) + '–' + roundLabel(breaks[index]);
   }
 
   function radiusFor(value, max) {
@@ -156,6 +163,8 @@
     this.shapes = {};
     this.areaData = null;
     this.areaRequest = 0;
+    // The page's outline (region JSON) has its own counter too.
+    this.outlineRequest = 0;
     this.outlineBounds = null;
     this.readViewState();
     // Layer-bound listeners wait for their layer, so they're bound once here
@@ -167,18 +176,20 @@
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
     // The scope bar's links (year, pollutant, toggles) were rendered before
-    // the reader switched view or sector here; carry the map's state along on
-    // the boosted request so the next page opens the same way.
+    // the reader switched view, level, measure or sector here, and carry the
+    // page's original values. Rewrite the boosted request's URL (htmx reads
+    // detail.path back after this event) so the next page opens the way the
+    // map is now; defaults are left out.
     this.onConfigRequest = function (event) {
-      var elt = event.detail && event.detail.elt;
-      if (!elt || !elt.closest || !elt.closest('.explorer-scope')) return;
-      var params = event.detail.parameters;
-      var sector = new URLSearchParams(self.data.query || '').get('sector');
-      if (sector) params.sector = sector;
-      if (self.view !== 'areas') return;
-      params.view = 'areas';
-      params.level = self.level;
-      params.measure = self.measure;
+      var detail = event.detail;
+      var elt = detail && detail.elt;
+      if (!elt || !elt.closest || !elt.closest('.explorer-scope') || typeof detail.path !== 'string') return;
+      if (!self.areasEnabled && self.data.mode !== 'full') return;
+      var url = new URL(detail.path, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      self.writeState(url.searchParams);
+      var search = url.searchParams.toString();
+      detail.path = url.pathname + (search ? '?' + search : '') + url.hash;
     };
     document.body.addEventListener('htmx:configRequest', this.onConfigRequest);
     // For debugging from the console: document.querySelector('.facility-map').facilityMap
@@ -188,12 +199,14 @@
   FacilityMap.prototype.readViewState = function () {
     this.areasEnabled = this.data.areas === '1';
     this.view = this.areasEnabled && this.data.view === 'areas' ? 'areas' : 'facilities';
-    this.level = this.data.level || 'zipcode';
+    // The page's default level (the server's), left out of the URLs we write.
+    this.defaultLevel = this.data.defaultLevel || 'zipcode';
+    this.level = this.data.level || this.defaultLevel;
     this.measure = this.data.measure || 'density';
   };
 
-  // Bottom to top: the shaded areas, the wash outside the page's area, the
-  // county and district lines, the facilities, the page's area outline. On
+  // Bottom to top: the shaded areas, the county and district lines, the
+  // facilities, the wash outside the page's area, its outline. On
   // top of the whole basemap, labels included: the data is what the map is for.
   FacilityMap.prototype.addLayers = function () {
     this.shell.ensureSource('areas');
@@ -211,10 +224,6 @@
       paint: { 'line-color': '#4a5568', 'line-width': 0.5, 'line-opacity': 0.5 },
     });
     this.shell.ensureLayer({
-      id: 'outline-mask', type: 'fill', source: 'outline-mask',
-      paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 },
-    });
-    this.shell.ensureLayer({
       id: 'counties', type: 'line', source: 'counties',
       paint: { 'line-color': COUNTY_COLOR, 'line-width': 1, 'line-opacity': 0.5 },
     });
@@ -227,6 +236,10 @@
       // Larger values draw on top.
       layout: { 'circle-sort-key': ['get', '_sort'] },
       paint: { 'circle-radius': ['get', '_radius'], 'circle-color': ['get', '_color'] },
+    });
+    this.shell.ensureLayer({
+      id: 'outline-mask', type: 'fill', source: 'outline-mask',
+      paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 },
     });
     this.shell.ensureLayer({
       id: 'outline-line', type: 'line', source: 'outline',
@@ -299,7 +312,7 @@
     var self = this;
     var ticket = this.shell.ticket();
     this.el.dataset.loaded = '';
-    this.shell.setStatus('Loading facilities…');
+    if (this.view === 'facilities') this.shell.setStatus('Loading facilities…');
     getJson(this.url())
       .then(function (collection) {
         // A newer request (a sector change, a swap) or a destroy superseded this one.
@@ -308,7 +321,7 @@
       })
       .catch(function (err) {
         if (!self.shell.isCurrent(ticket)) return;
-        self.shell.setStatus('Couldn\'t load the facilities');
+        if (self.view === 'facilities') self.shell.setStatus('Couldn\'t load the facilities');
         logError('failed to load facilities', err);
       });
   };
@@ -356,7 +369,7 @@
       })
       .catch(function (err) {
         if (request !== self.areaRequest || !self.map) return;
-        self.shell.setStatus('Couldn\'t load the areas');
+        if (self.view === 'areas') self.shell.setStatus('Couldn\'t load the areas');
         logError('failed to load areas', err);
       });
   };
@@ -391,7 +404,7 @@
     data.breaks = breaks;
     this.shell.setSourceData('areas', { type: 'FeatureCollection', features: features });
     this.shell.updateLegend();
-    this.shell.setStatus('');
+    if (this.view === 'areas') this.shell.setStatus('');
     this.el.dataset.areasLoaded = '1';
   };
 
@@ -399,6 +412,7 @@
   // (near-me), outlined, with everything outside washed out, and framed.
   FacilityMap.prototype.loadOutline = function () {
     var self = this;
+    var request = ++this.outlineRequest;
     var center = M.parseCenter(this.data.center);
     var radius = parseFloat(this.data.radius);
     if (center && radius > 0) {
@@ -411,10 +425,14 @@
     }
     getJson(this.data.outlineUrl)
       .then(function (json) {
+        if (request !== self.outlineRequest || !self.map) return;
         var boundary = json && json.data && json.data.boundary;
-        if (self.map) self.showOutline(boundary ? boundary.geometry : null);
+        self.showOutline(boundary ? boundary.geometry : null);
       })
-      .catch(function (err) { logError('failed to load the outline', err); });
+      .catch(function (err) {
+        if (request !== self.outlineRequest || !self.map) return;
+        logError('failed to load the outline', err);
+      });
   };
 
   FacilityMap.prototype.showOutline = function (geometry) {
@@ -469,7 +487,7 @@
 
   FacilityMap.prototype.openPopup = function (feature, lngLat) {
     var p = feature.properties;
-    var value = p._empty ? 'none reported' : amount(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
+    var value = p._empty ? 'none reported' : quantity(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
     this.placePopup('<div class="facility-popup">' +
       '<p class="facility-popup-name"><a href="' + escapeHtml(this.facilityUrl(p.id)) + '">' + escapeHtml(p.name) + '</a></p>' +
       '<p>' + escapeHtml(p.sector) + '</p>' +
@@ -480,6 +498,7 @@
   FacilityMap.prototype.openAreaPopup = function (feature, lngLat) {
     var self = this;
     var p = feature.properties;
+    var count = Number(p.facilities) || 0;
     var unit = escapeHtml(this.data.unit);
     var name = (LEVEL_NAMES[this.level] || '') + p.name;
     var query = new URLSearchParams(this.data.query || '');
@@ -487,13 +506,13 @@
     var regionUrl = (this.data.regionUrl || '').replace('{id}', encodeURIComponent(p.id));
     var qs = query.toString();
     var line = function (label, value, suffix) {
-      return '<p>' + label + ': <strong>' + (value === null || value === undefined ? '—' : amount(value) + ' ' + unit + '/yr' + suffix) + '</strong></p>';
+      return '<p>' + label + ': <strong>' + (value === null || value === undefined ? '—' : quantity(value) + ' ' + unit + '/yr' + suffix) + '</strong></p>';
     };
     var html = '<div class="facility-popup area-popup">' +
       '<p class="facility-popup-name">' + (regionUrl ? '<a href="' + escapeHtml(regionUrl + (qs ? '?' + qs : '')) + '">' + escapeHtml(name) + '</a>' : escapeHtml(name)) + '</p>' +
-      '<p>' + p.facilities + ' facilit' + (p.facilities === 1 ? 'y' : 'ies') + ' · ' + escapeHtml(this.data.label) + '</p>' +
+      '<p>' + count.toLocaleString('en-US') + ' facilit' + (count === 1 ? 'y' : 'ies') + ' · ' + escapeHtml(this.data.label) + '</p>' +
       line('Total', p.total, '') + line('Per square mile', p.per_sq_mi, '') + line('Per 1,000 residents', p.per_1k_residents, '') +
-      (p.facilities ? '<p><button type="button" class="button is-small is-link is-light" data-show-facilities>Show facilities</button></p>' : '') +
+      (count ? '<p><button type="button" class="button is-small is-link is-light" data-show-facilities>Show facilities</button></p>' : '') +
       '</div>';
     var popup = this.placePopup(html, lngLat);
     var button = popup.getElement().querySelector('[data-show-facilities]');
@@ -529,7 +548,7 @@
     var sizes = [max, max / 10, max / 100].map(function (value) {
       var r = radiusFor(value, max);
       return '<span class="legend-size"><svg width="' + (2 * MAX_RADIUS + 2) + '" height="' + (2 * r + 2) + '">' +
-        '<circle cx="' + (MAX_RADIUS + 1) + '" cy="' + (r + 1) + '" r="' + r + '"/></svg>' + amount(value) + '</span>';
+        '<circle cx="' + (MAX_RADIUS + 1) + '" cy="' + (r + 1) + '" r="' + r + '"/></svg>' + roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
     }).join('');
     var bins = '';
     for (var i = breaks.length; i >= 0; i--) {
@@ -553,12 +572,12 @@
       bins += '<span class="legend-bin"><span class="legend-swatch is-area" style="background:' + RAMP[i] + '"></span>' +
         classLabel(i, breaks) + '</span>';
     }
-    var missing = data.values.facilities_without_point;
+    var missing = Number(data.values.facilities_without_point) || 0;
     legend.innerHTML = '<p class="legend-title">' + title + '</p>' +
       '<div class="legend-bins">' + bins + '</div>' +
       '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>No facilities' +
       (this.measure === 'per_resident' ? ' or no population' : '') + '</p>' +
-      (missing ? '<p class="legend-note">' + missing + ' facilit' + (missing === 1 ? 'y has' : 'ies have') +
+      (missing ? '<p class="legend-note">' + missing.toLocaleString('en-US') + ' facilit' + (missing === 1 ? 'y has' : 'ies have') +
         ' no location and ' + (missing === 1 ? 'isn\'t' : 'aren\'t') + ' counted here.</p>' : '');
   };
 
@@ -589,19 +608,28 @@
     if (this.popup) this.popup.remove();
   };
 
+  // Sets the map's state on `params` (a URLSearchParams), defaults left out:
+  // view `facilities`, the page's default level, measure `density`, and no
+  // sector. The sector is only the map's to write on the full map, where the
+  // reader picks it (a sector page's own sector is the page, not a filter).
+  FacilityMap.prototype.writeState = function (params) {
+    if (this.areasEnabled) {
+      var areas = this.view === 'areas';
+      if (areas) params.set('view', 'areas'); else params.delete('view');
+      if (areas && this.level !== this.defaultLevel) params.set('level', this.level); else params.delete('level');
+      if (areas && this.measure !== 'density') params.set('measure', this.measure); else params.delete('measure');
+    }
+    if (this.data.mode === 'full') {
+      var sector = new URLSearchParams(this.data.query || '').get('sector');
+      if (sector) params.set('sector', sector); else params.delete('sector');
+    }
+  };
+
   // The address bar follows the view, level and measure (and the sector) so
-  // a view can be shared; defaults are left out.
+  // a view can be shared.
   FacilityMap.prototype.syncUrl = function () {
     var page = new URLSearchParams(window.location.search);
-    if (this.view === 'areas') {
-      page.set('view', 'areas');
-      page.set('level', this.level);
-      page.set('measure', this.measure);
-    } else {
-      page.delete('view');
-      page.delete('level');
-      page.delete('measure');
-    }
+    this.writeState(page);
     var search = page.toString();
     window.history.replaceState(window.history.state, '', window.location.pathname + (search ? '?' + search : ''));
   };
@@ -613,8 +641,14 @@
     this.syncUrl();
     if (this.view === 'areas' && (!this.areaData || this.areaData.level !== this.level)) {
       this.loadAreas();
+      return;
+    }
+    this.shell.updateLegend();
+    // The status pill speaks for the view on screen.
+    if (this.view === 'facilities') {
+      this.shell.setStatus(this.el.dataset.loaded === '1' ? '' : 'Loading facilities…');
     } else {
-      this.shell.updateLegend();
+      this.shell.setStatus('');
     }
   };
 
@@ -647,17 +681,9 @@
   // bar follows so the view can be shared.
   FacilityMap.prototype.setSector = function (sector, label) {
     var params = new URLSearchParams(this.data.query || '');
-    var page = new URLSearchParams(window.location.search);
-    if (sector) {
-      params.set('sector', sector);
-      page.set('sector', sector);
-    } else {
-      params.delete('sector');
-      page.delete('sector');
-    }
+    if (sector) params.set('sector', sector); else params.delete('sector');
     this.data.query = params.toString();
-    var search = page.toString();
-    window.history.replaceState(window.history.state, '', window.location.pathname + (search ? '?' + search : ''));
+    this.syncUrl();
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-sector');
     if (dropdown) {
       dropdown.classList.toggle('is-set', !!sector);
@@ -679,6 +705,9 @@
     // The new page's legend card waits for its own data, as on a first build.
     this.legendData = null;
     this.areaData = null;
+    // An old page's areas or outline still in flight must not land here.
+    this.areaRequest++;
+    this.outlineRequest++;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
     this.shell.setSourceData('locate', M.EMPTY);
     this.shell.setSourceData('areas', M.EMPTY);

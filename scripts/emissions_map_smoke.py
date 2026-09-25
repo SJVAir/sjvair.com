@@ -8,7 +8,9 @@ follows a boosted tab link and back to check the live map is adopted rather
 than rebuilt, then runs the Areas view (ZIP areas shaded, facilities hidden,
 the view in the URL, tracts, a measure change, back to facilities), a county
 page (outlined, and a boosted year change keeping one map still in Areas) and
-a near-me page (its circle), and fails on any console error. Dev-only;
+a near-me page (its circle), and checks the scope bar's boosted swaps carry
+the map's current state (back to Facilities, a cleared sector, no repeated
+parameters), and fails on any console error. Dev-only;
 nothing here runs in CI. Needs local data (import_air_districts,
 import_ceidars, import_cepam, and the regions with their boundaries).
 
@@ -20,9 +22,11 @@ Usage:
 import argparse
 import sys
 import time
+from urllib.parse import parse_qs, urlparse
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 
 MAP_TIMEOUT = 40
@@ -87,6 +91,36 @@ def settled_count(driver, count, timeout=5):
     return count(driver)
 
 
+def pick_year(driver, nth):
+    """Picks the nth year in the scope bar (a boosted swap) and waits for the redraw."""
+    driver.find_element(By.CSS_SELECTOR, '.explorer-scope-picker[data-scope=year] .button').click()
+    driver.find_element(By.CSS_SELECTOR, f'.explorer-scope-picker[data-scope=year] .dropdown-item:nth-child({nth})').click()
+    time.sleep(1)
+    wait_loaded(driver)
+
+
+def query(driver):
+    return parse_qs(urlparse(driver.current_url).query)
+
+
+def no_repeats(driver):
+    return all(len(values) == 1 for values in query(driver).values())
+
+
+# A canvas pixel over a facility circle that the wash outside the page's area
+# also covers, clear of the chrome: [x, y] from the canvas centre, or null.
+CIRCLE_UNDER_WASH = """
+var m = window.EmissionsFacilityMap.instances()[0], map = m.map, c = map.getCanvas(), r = c.getBoundingClientRect();
+for (var y = 60; y < r.height - 30; y += 5) for (var x = 20; x < r.width - 20; x += 5) {
+  if (!map.queryRenderedFeatures([x, y], {layers: ['facilities']}).length) continue;
+  if (!map.queryRenderedFeatures([x, y], {layers: ['outline-mask']}).length) continue;
+  if (document.elementFromPoint(r.left + x, r.top + y) !== c) continue;
+  return [x - r.width / 2, y - r.height / 2];
+}
+return null;
+"""
+
+
 def console_errors(driver):
     return [entry['message'] for entry in driver.get_log('browser') if entry['level'] == 'SEVERE']
 
@@ -106,7 +140,8 @@ def main():
     try:
         driver.get(args.base + '/tools/emissions/map/')
         check(results, 'map page loads facilities', wait_loaded(driver))
-        check(results, 'map page draws features', feature_count(driver) > 0, f'{feature_count(driver)} features')
+        drawn = settled_count(driver, feature_count)
+        check(results, 'map page draws features', drawn > 0, f'{drawn} features')
         instance = driver.execute_script('return window.EmissionsFacilityMap.instances()[0].map._mapId || 1;')
 
         driver.find_element(By.CSS_SELECTOR, '.facility-map-sector .dropdown-trigger .button').click()
@@ -148,6 +183,8 @@ def main():
         check(results, 'areas view hides the facilities', driver.execute_script(
             "var m = window.EmissionsFacilityMap.instances()[0]; return m.map.getLayoutProperty('facilities', 'visibility') === 'none';"))
         check(results, 'view is in the URL', 'view=areas' in driver.current_url, driver.current_url)
+        check(results, 'default level and measure stay out of the URL',
+              'level=' not in driver.current_url and 'measure=' not in driver.current_url, driver.current_url)
         driver.execute_script("document.querySelector('.facility-map-level [data-level=tract]').click()")
         shaded = settled_count(driver, area_count) if wait_areas(driver) else 0
         check(results, 'level switches to tracts', shaded > 0 and 'level=tract' in driver.current_url, f'{shaded} shaded')
@@ -158,12 +195,43 @@ def main():
         driver.execute_script("document.querySelector('.facility-map-view [data-view=facilities]').click()")
         check(results, 'back to facilities', settled_count(driver, feature_count) > 0 and 'view=' not in driver.current_url)
 
+        # Opened in Areas, so the scope bar's links carry view=areas.
+        driver.get(args.base + '/tools/emissions/map/?view=areas')
+        wait_loaded(driver)
+        wait_areas(driver)
+        driver.execute_script("document.querySelector('.facility-map-view [data-view=facilities]').click()")
+        pick_year(driver, 2)
+        stays = driver.execute_script("return window.EmissionsFacilityMap.instances()[0].view === 'facilities';")
+        check(results, 'Areas, back to Facilities, a year change: stays in Facilities',
+              stays and 'view=' not in driver.current_url, driver.current_url)
+
+        # Opened on glass, so the scope bar's links carry sector=glass.
+        driver.get(args.base + '/tools/emissions/map/?sector=glass')
+        wait_loaded(driver)
+        driver.execute_script("document.querySelector('.facility-map-sector [data-sector=\"\"]').click()")
+        wait_loaded(driver)
+        pick_year(driver, 3)
+        unfiltered = driver.execute_script(
+            "return new URLSearchParams(window.EmissionsFacilityMap.instances()[0].data.query).get('sector') === null;")
+        check(results, 'glass, then All sectors, a year change: no sector',
+              unfiltered and 'sector=' not in driver.current_url, driver.current_url)
+
         driver.get(args.base + '/tools/emissions/')
         link = driver.find_element(By.CSS_SELECTOR, '.find-area-counties a').get_attribute('href')
         driver.get(link)
         outlined = wait_loaded(driver) and driver.execute_script(
             "var m = window.EmissionsFacilityMap.instances()[0]; return !!m.outlineBounds;")
         check(results, 'county page loads, outlined', outlined, link)
+        settled_count(driver, feature_count)
+        time.sleep(0.5)
+        hit = driver.execute_script(CIRCLE_UNDER_WASH)
+        if hit:
+            canvas = driver.find_element(By.CSS_SELECTOR, '.facility-map canvas')
+            ActionChains(driver).move_to_element_with_offset(canvas, int(hit[0]), int(hit[1])).click().perform()
+            time.sleep(0.8)
+        opened = driver.execute_script("return !!document.querySelector('.maplibregl-popup .facility-popup-name a');")
+        check(results, 'a facility under the wash still opens its popup', bool(hit) and opened, str(hit))
+        driver.execute_script("var p = document.querySelector('.maplibregl-popup-close-button'); if (p) p.click();")
         driver.execute_script("document.querySelector('.facility-map-view [data-view=areas]').click()")
         wait_areas(driver)
         driver.find_element(By.CSS_SELECTOR, '.explorer-scope-picker[data-scope=year] .button').click()
@@ -172,6 +240,10 @@ def main():
         kept = wait_areas(driver) and driver.execute_script(
             "var list = window.EmissionsFacilityMap.instances(); return list.length === 1 && list[0].view === 'areas';")
         check(results, 'a year change (boosted swap) keeps one map, still in Areas', kept and 'view=areas' in driver.current_url, driver.current_url)
+        pick_year(driver, 3)
+        wait_areas(driver)
+        check(results, 'two year changes in Areas repeat no parameter',
+              no_repeats(driver) and query(driver).get('view') == ['areas'], driver.current_url)
 
         driver.get(args.base + '/tools/emissions/near/?lat=36.7378&lng=-119.7871&radius=3')
         near = wait_loaded(driver) and driver.execute_script(
