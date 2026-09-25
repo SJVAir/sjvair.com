@@ -369,13 +369,28 @@ class RegionGeoJSONTests(TestCase):
         # edge) must not blow up the whole request -- shapely.coverage_simplify
         # silently mangles topology on this input rather than raising, so the
         # coverage validity has to be checked before deciding which path to take.
+        # A third, unrelated pair (left/right, sharing a clean edge elsewhere)
+        # is included too: on real data, only a couple of shapes out of
+        # hundreds are ever actually invalid, so the two overlapping tracts
+        # must be simplified on their own while everyone else -- here, the
+        # clean pair -- still goes through coverage_simplify together and
+        # keeps an identical shared border.
         overlap_a = 'MULTIPOLYGON(((-120.2 36.8, -120.0 36.8, -120.0 37.0, -120.2 37.0, -120.2 36.8)))'
         overlap_b = 'MULTIPOLYGON(((-120.1 36.8, -119.9 36.8, -119.9 37.0, -120.1 37.0, -120.1 36.8)))'
+        left = 'MULTIPOLYGON(((-120.2 38.8, -120.1 38.8, ' + ', '.join(
+            f'-120.1 {38.8 + i * 0.0001:.4f}' for i in range(1, 2000)) + ', -120.1 39.0, -120.2 39.0, -120.2 38.8)))'
+        right = 'MULTIPOLYGON(((-120.1 38.8, -120.0 38.8, -120.0 39.0, -120.1 39.0, ' + ', '.join(
+            f'-120.1 {39.0 - i * 0.0001:.4f}' for i in range(1, 2000)) + ', -120.1 38.8)))'
         make_tract('Overlap A', overlap_a)
         make_tract('Overlap B', overlap_b)
+        make_tract('Left', left)
+        make_tract('Right', right)
         response, data = self.get({'type': 'tract', 'simplify': '1'})
         assert response.status_code == 200
-        assert len(data['features']) == 2
+        assert len(data['features']) == 4
+        rings = {f['properties']['slug']: f['geometry']['coordinates'][0][0] for f in data['features']}
+        on_edge = lambda ring: sorted({tuple(p) for p in ring if p[0] == -120.1})
+        assert on_edge(rings['left']) == on_edge(rings['right'])
 
     def test_simplify_bypasses_the_response_cache(self):
         response, _ = self.get({'type': 'county', 'simplify': '1'})

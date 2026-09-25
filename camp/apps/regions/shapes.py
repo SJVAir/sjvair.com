@@ -56,6 +56,49 @@ def full_geometry(region):
     return round_coords(_as_multipolygon(json.loads(geometry.geojson)))
 
 
+def _simplify_each(shapes, tolerance):
+    return [shapely.simplify(shape, tolerance, preserve_topology=True) for shape in shapes]
+
+
+def _simplify_partial(shapes, tolerance, region_type):
+    """
+    The coverage isn't clean, but on real data it's typically a small
+    handful of shapes out of hundreds (e.g. 2 of 980 tracts) -- falling back
+    to per-shape simplification for every shape in the type would throw away
+    shared-border simplification for the whole layer over a couple of bad
+    ones. Only the actual offenders (the shapes coverage_invalid_edges
+    points to) are simplified alone; everyone else still goes through
+    coverage_simplify together as one coverage.
+    """
+    edges = shapely.coverage_invalid_edges(shapes)
+    offenders = {index for index, edge in enumerate(edges) if edge is not None and not edge.is_empty}
+    good = [index for index in range(len(shapes)) if index not in offenders]
+
+    logger.warning(
+        "%s: %d of %d shapes aren't part of a clean coverage; simplified on their own",
+        region_type, len(offenders), len(shapes),
+    )
+
+    if good:
+        try:
+            good_simplified = list(shapely.coverage_simplify([shapes[index] for index in good], tolerance))
+        except (shapely.errors.GEOSException, TypeError):
+            logger.warning(
+                '%s: coverage_simplify failed on the valid subset; simplifying every shape on its own',
+                region_type,
+            )
+            return _simplify_each(shapes, tolerance)
+    else:
+        good_simplified = []
+
+    simplified = [None] * len(shapes)
+    for index, shape in zip(good, good_simplified):
+        simplified[index] = shape
+    for index in offenders:
+        simplified[index] = shapely.simplify(shapes[index], tolerance, preserve_topology=True)
+    return simplified
+
+
 def _simplify(regions, tolerance, region_type):
     shapes = [wkb.loads(bytes(_latlon(region.boundary.geometry).wkb)) for region in regions]
     try:
@@ -63,17 +106,17 @@ def _simplify(regions, tolerance, region_type):
         # silently returns bad topology -- so the coverage is validated
         # first rather than relying on an exception from the simplify call.
         if shapely.coverage_is_valid(shapes):
-            simplified = shapely.coverage_simplify(shapes, tolerance)
+            simplified = list(shapely.coverage_simplify(shapes, tolerance))
         else:
-            logger.warning(
-                'Region type %r is not a valid coverage; simplifying shapes individually.',
-                region_type,
-            )
-            simplified = [shapely.simplify(shape, tolerance, preserve_topology=True) for shape in shapes]
+            simplified = _simplify_partial(shapes, tolerance, region_type)
     except (shapely.errors.GEOSException, TypeError):
         # Belt-and-suspenders guard for whatever coverage_is_valid/simplify
         # itself can still raise on: fall back to shape by shape.
-        simplified = [shapely.simplify(shape, tolerance, preserve_topology=True) for shape in shapes]
+        logger.warning(
+            '%s: coverage validation raised; simplifying every shape on its own',
+            region_type,
+        )
+        simplified = _simplify_each(shapes, tolerance)
     return [round_coords(_as_multipolygon(json.loads(shapely.to_geojson(shape)))) for shape in simplified]
 
 
