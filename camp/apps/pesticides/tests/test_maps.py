@@ -79,6 +79,91 @@ class QuantileClassTests(TestCase):
             assert row['low'] <= row['high']
 
 
+class SampleRampTests(TestCase):
+    def test_interpolates_between_stops(self):
+        ramp = ['#000000', '#ffffff']
+        assert maps.sample_ramp(ramp, 2) == ['#000000', '#ffffff']
+        assert maps.sample_ramp(ramp, 3) == ['#000000', '#808080', '#ffffff']
+
+    def test_more_classes_than_stops_never_repeats(self):
+        # Selecting the nearest stop (what this replaces) would hand back
+        # duplicates here, so two classes would share a fill.
+        colors = maps.sample_ramp(['#000000', '#ffffff'], 5)
+        assert len(set(colors)) == 5
+
+    def test_single_class_takes_the_darkest(self):
+        assert maps.sample_ramp(maps.RAMP, 1) == [maps.RAMP[-1]]
+
+    def test_quantile_classes_still_end_on_the_darkest(self):
+        classes = maps.quantile_classes({i: i * 10 for i in range(1, 9)})
+        assert classes.colors[-1] == maps.RAMP[-1]
+        assert classes.colors[0] == maps.RAMP[0]
+
+
+class DivergingClassTests(TestCase):
+    def test_breaks_mirror_around_zero(self):
+        classes = maps.diverging_classes({'a': -100.0, 'b': -10.0, 'c': 10.0, 'd': 100.0})
+        assert classes.breaks == sorted(classes.breaks)
+        negative = [b for b in classes.breaks if b < 0]
+        positive = [b for b in classes.breaks if b > 0]
+        assert sorted(abs(b) for b in negative) == sorted(positive)
+        assert 0.0 in classes.breaks
+
+    def test_equal_magnitudes_sit_the_same_distance_from_the_centre(self):
+        classes = maps.diverging_classes({'a': -100.0, 'b': -10.0, 'c': 10.0, 'd': 100.0})
+        centre = classes.breaks.index(0.0)
+        assert centre - classes.index_for(-100.0) == classes.index_for(100.0) - centre
+        assert centre - classes.index_for(-10.0) == classes.index_for(10.0) - centre
+
+    def test_three_states_are_distinct(self):
+        classes = maps.diverging_classes({'a': -50.0, 'b': 0.0, 'c': 50.0, 'd': None})
+        # No data, no change, and a real change are three different things.
+        assert classes.color_for(None) == maps.NO_DATA
+        assert classes.color_for(0.0) != maps.NO_DATA
+        assert classes.color_for(0.0) != classes.color_for(50.0)
+        assert classes.color_for(-50.0) != classes.color_for(50.0)
+
+    def test_decreases_and_increases_take_opposite_ends(self):
+        ramp = maps.DIVERGING_RAMPS['rdbu']
+        classes = maps.diverging_classes({'a': -100.0, 'b': 100.0})
+        assert classes.color_for(-100.0) == ramp[0]
+        assert classes.color_for(100.0) == ramp[-1]
+
+    def test_no_duplicate_colours_at_the_default_class_count(self):
+        # CLASSES is 8 against a seven-stop ramp -- four a side from a
+        # four-stop half -- so the colours have to be interpolated.
+        values = {i: float(i - 8) * 10 for i in range(1, 16)}
+        classes = maps.diverging_classes(values)
+        assert len(set(classes.colors)) == len(classes.colors)
+
+    def test_degenerate_inputs(self):
+        assert maps.diverging_classes({}).breaks == []
+        assert maps.diverging_classes({}).color_for(None) == maps.NO_DATA
+        # Every delta zero: nothing to grade, but zero is still "no change".
+        flat = maps.diverging_classes({'a': 0.0, 'b': 0.0})
+        assert flat.color_for(0.0) != maps.NO_DATA
+        assert maps.diverging_classes({'a': None}).color_for(None) == maps.NO_DATA
+
+    def test_a_single_magnitude(self):
+        classes = maps.diverging_classes({'a': -5.0, 'b': 5.0})
+        assert classes.color_for(-5.0) != classes.color_for(5.0)
+        assert classes.color_for(0.0) not in (classes.color_for(-5.0), classes.color_for(5.0))
+
+    def test_legend_covers_every_class(self):
+        classes = maps.diverging_classes({'a': -100.0, 'b': -10.0, 'c': 0.0, 'd': 10.0, 'e': 100.0})
+        legend = classes.legend()
+        assert len(legend) == len(classes.breaks)
+        for row in legend:
+            assert row['low'] <= row['high']
+
+    def test_diverging_ramp_for_refuses_a_sequential_name(self):
+        assert maps.diverging_ramp_for('brbg') == maps.DIVERGING_RAMPS['brbg']
+        # 'blues' is sequential: a diff map must not be drawn one-sided.
+        assert maps.diverging_ramp_for('blues') == maps.DIVERGING_RAMP
+        assert maps.diverging_ramp_for(None) == maps.DIVERGING_RAMP
+        assert maps.diverging_ramp_for('nonsense') == maps.DIVERGING_RAMP
+
+
 class CountyMapTests(TestCase):
     fixtures = ['pesticides-explorer']
 

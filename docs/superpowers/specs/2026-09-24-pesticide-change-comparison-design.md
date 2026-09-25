@@ -161,14 +161,15 @@ colors = [ramp[round(i * (len(ramp) - 1) / (count - 1))] for i in range(count)]
 
 which cannot produce more distinct colours than the ramp has stops, and
 silently emits duplicates past that. It is never hit today because
-`CLASSES = len(RAMP) = 5` with five-stop ramps. With seven-stop diverging
-ramps it still is not hit, but the latent bug is a foot-gun as soon as either
-number moves, so Python gains a `sample_ramp(ramp, count)` that interpolates
-exactly as the JS does, and both classification functions use it.
+`CLASSES = len(RAMP) = 8` and the sequential ramps carry exactly eight stops.
+The diverging ramps have seven, and eight classes means four a side sampled
+from a four-stop half, so selection *would* repeat colours here. Python gains
+a `sample_ramp(ramp, count)` that interpolates exactly as the JS does, and
+both classification functions use it.
 
 The two maps will still cut a different number of classes -- the interactive
 map defaults to six (three per side) and honours `?bins=`, while the county
-figure is fixed at `CLASSES` (two per side). They already differ this way for
+figure is fixed at `CLASSES` (four per side). They already differ this way for
 sequential maps, so this is existing behaviour, not something the diff mode
 introduces.
 
