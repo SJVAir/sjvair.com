@@ -67,3 +67,9 @@ body.emissions
       border-bottom: 2px solid $primary
     .card-content p:last-child
       margin-bottom: 0
+    // The Counted in tooltip sits inside a .heading (uppercase, spaced):
+    // its text shouldn't inherit that.
+    [data-tooltip]::before
+      text-transform: none
+      letter-spacing: normal
+      font-weight: normal

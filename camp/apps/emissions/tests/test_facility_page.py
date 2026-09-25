@@ -21,7 +21,9 @@ class FacilityHeaderTests(TestCase):
         assert re.search(r'<a class="tag[^"]*" href="/tools/emissions/sectors/glass/', content)
         assert 'class="identifiers has-text-grey"' in content and 'SIC 3221' in content
         # The address as reported, and the regulator's card.
-        assert '123 Main St' in content and 'Fresno 93728' in content
+        assert '123 Main St' in content and 'Fresno, CA 93728' in content
+        # The county is in Counted in, not repeated in the address.
+        assert 'Fresno, CA 93728 · Fresno County' not in content
         assert 'Regulated by' in content and 'San Joaquin Valley APCD' in content
         # The district's phone is tappable, and the complaint form is the page's one button.
         assert 'href="tel:5592306000"' in content

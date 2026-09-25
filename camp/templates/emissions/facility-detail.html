@@ -25,11 +25,11 @@
             <header class="card-header"><p class="card-header-title">Where</p></header>
             <div class="card-content">
                 <p class="mb-0">{{ facility.address.street|title }}</p>
-                <p>{% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}{% if facility.address.zipcode %} {{ facility.address.zipcode }}{% endif %} · {{ facility.county.name }}</p>
+                <p>{% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}, CA{% if facility.address.zipcode %} {{ facility.address.zipcode }}{% endif %}</p>
                 {% if area_links %}
                 <p class="heading mt-4 mb-1">Counted in
                     {# From the facility's location on the map, which can differ from its reported address (the state's data, shown as given). #}
-                    <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-arrow" data-tooltip="Where this facility's point on the map falls. It can differ from the address the state has on file, which is shown above as reported."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span>
+                    <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="Where this facility's point on the map falls. It can differ from the address the state has on file, which is shown above as reported."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span>
                 </p>
                 <p class="facility-areas">{% for link in area_links %}<a href="{{ link.url }}{{ scope_qs }}">{{ link.label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>
                 {% endif %}
