@@ -25,6 +25,15 @@ body.emissions
     &.is-measure
       --fa-primary-color: #5a6b7b
       --fa-secondary-color: #c8d1da
+  // The scope bar's two toggles, while off (on, they go white on the orange
+  // fill): toxics in a warning red, minor sources in a fuel-pump gold.
+  .explorer-scope-toggle:not(.is-set) .explorer-icon
+    &.is-toxics
+      --fa-primary-color: #c0392b
+      --fa-secondary-color: #f4a3a0
+    &.is-minor
+      --fa-primary-color: #b7791f
+      --fa-secondary-color: #f6d58e
   // On the selected (blue) half of the Facilities | Areas switch, go white.
   .facility-map-view .button.is-link .explorer-icon
     --fa-primary-color: #fff
