@@ -100,6 +100,39 @@ def resolve_year_param(requested):
     return resolve_year(requested), False
 
 
+def previous_year(year):
+    """The loaded year before `year`, or None when it is the earliest (or not loaded)."""
+    years = available_years()
+    if not years or year not in years:
+        return None
+    index = years.index(year)
+    return years[index - 1] if index else None
+
+
+def resolve_compare_param(requested, year, all_years=False):
+    """
+    The year the explorer is comparing against for a raw `?compare=` value,
+    or None when there is nothing to compare: a year with no rollup, the
+    scope year itself, or any value at all while the scope is All years -- a
+    range has no second term.
+
+    Nothing requires the compared year to be the earlier of the two. The
+    change is always the scope year minus this one, so picking a later year
+    simply inverts the sign, and every surface names the pair in order rather
+    than showing a bare signed number.
+    """
+    years = available_years()
+    if all_years or year is None or not years:
+        return None
+    try:
+        compare = int(str(requested).strip())
+    except (TypeError, ValueError):
+        return None
+    if compare == year or compare not in years:
+        return None
+    return compare
+
+
 def year_label(year, all_years=False):
     """'2023', '2014–2023', or '' when nothing is loaded -- for page headings."""
     if all_years:
@@ -125,12 +158,12 @@ def year_param(year, all_years=False):
     return year_query(year, all_years).lstrip('?')
 
 
-def scope_param(year, all_years=False, county=None, concern=False):
+def scope_param(year, all_years=False, county=None, concern=False, compare=None):
     """
     The explorer's scope as query parameters: a non-default year, a county,
-    and/or the chemicals-of-concern toggle
-    ('year=2020&county=kern&concern=1'), '' when they're all the defaults.
-    `county` is a Region or a slug.
+    a year to compare against, and/or the chemicals-of-concern toggle
+    ('year=2020&county=kern&compare=2019&concern=1'), '' when they're all the
+    defaults. `county` is a Region or a slug.
     """
     parts = []
     year_part = year_param(year, all_years)
@@ -139,14 +172,16 @@ def scope_param(year, all_years=False, county=None, concern=False):
     slug = getattr(county, 'slug', county)
     if slug:
         parts.append(f'county={slug}')
+    if compare:
+        parts.append(f'compare={compare}')
     if concern:
         parts.append(f'{CONCERN_PARAM}=1')
     return '&'.join(parts)
 
 
-def scope_query(year, all_years=False, county=None, concern=False):
+def scope_query(year, all_years=False, county=None, concern=False, compare=None):
     """`scope_param()` with a leading '?', for appending to a bare path ('' when nothing is pinned)."""
-    param = scope_param(year, all_years, county, concern)
+    param = scope_param(year, all_years, county, concern, compare)
     return f'?{param}' if param else ''
 
 

@@ -176,6 +176,37 @@ class StatsTests(RollupTestMixin, TestCase):
         assert stats.year_label(2022) == '2022'
         assert stats.year_label(None) == ''
 
+    def test_resolve_compare_param(self):
+        assert stats.resolve_compare_param('2022', 2023) == 2022
+        # Comparing the scope year to itself is not a mode, and a year with
+        # no rollup has nothing to compare against.
+        assert stats.resolve_compare_param('2023', 2023) is None
+        assert stats.resolve_compare_param('1999', 2023) is None
+        assert stats.resolve_compare_param('banana', 2023) is None
+        assert stats.resolve_compare_param(None, 2023) is None
+        # Nothing requires the compared year to be the earlier of the two.
+        assert stats.resolve_compare_param('2023', 2022) == 2023
+        # A range has no second term.
+        assert stats.resolve_compare_param('2022', None, all_years=True) is None
+
+    def test_resolve_compare_param_empty_db(self):
+        PesticideUse.objects.all().delete()
+        PesticideUseRollup.objects.all().delete()
+        cache.clear()
+        assert stats.resolve_compare_param('2022', 2023) is None
+
+    def test_previous_year(self):
+        assert stats.previous_year(2023) == 2022
+        assert stats.previous_year(2022) is None
+        assert stats.previous_year(1999) is None
+
+    def test_scope_param_carries_compare(self):
+        assert stats.scope_param(2023, compare=2022) == 'compare=2022'
+        assert stats.scope_query(2023, compare=2022) == '?compare=2022'
+        assert stats.scope_param(2022, False, 'kern', compare=2023, concern=True) == (
+            'year=2022&county=kern&compare=2023&concern=1')
+        assert stats.scope_param(2023) == ''
+
     def test_resolve_year_param_empty_db(self):
         PesticideUse.objects.all().delete()
         PesticideUseRollup.objects.all().delete()

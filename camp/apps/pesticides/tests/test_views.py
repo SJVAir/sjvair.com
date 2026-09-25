@@ -61,6 +61,29 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert response.context['year'] == 2023
         assert response.context['scope_qs'] == ''
 
+    def test_compare_rides_in_the_scope(self):
+        response = self.client.get(self.url, {'year': '2023', 'compare': '2022'})
+        assert response.context['compare'] == 2022
+        assert response.context['compare_label'] == '2022 to 2023'
+        assert response.context['compare_options'] == [2022]
+        assert response.context['scope_qs'] == '?compare=2022'
+
+    def test_compare_is_dropped_when_it_cannot_apply(self):
+        # All years has no second term, and a year with no rollup is not a
+        # comparison. Both leave the scope untouched.
+        for params in ({'year': 'all', 'compare': '2022'}, {'year': '2023', 'compare': '1999'}):
+            response = self.client.get(self.url, params)
+            assert response.context['compare'] is None
+            assert response.context['compare_label'] == ''
+            assert 'compare=' not in response.context['scope_qs']
+
+    def test_compare_pins_links_to_both_years(self):
+        response = self.client.get(self.url, {'year': '2022', 'compare': '2023'})
+        assert response.context['scope_qs'] == '?year=2022&compare=2023'
+        html = response.content.decode()
+        # Autoescaped in the markup, as any multi-parameter scope is.
+        assert Chemical.objects.get(pk=1).get_absolute_url() + '?year=2022&amp;compare=2023' in html
+
     def test_all_years_sums_every_loaded_year(self):
         response = self.client.get(self.url, {'year': 'all'})
         assert response.context['all_years'] is True
