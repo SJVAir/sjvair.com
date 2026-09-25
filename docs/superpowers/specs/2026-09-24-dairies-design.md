@@ -108,7 +108,8 @@ cows, operating digesters.
 
 **Table** under the map: name, city, county (links to its region page), animal
 units, milk cows, other cattle, digester (yes/since year). Sortable by name,
-city, county, animal units; name search and the city/place/ZIP region picker
+city, county, animal units. Filters sit in the sidebar box the facility and
+pesticides lists use: name search and the city/place/ZIP region picker
 (point-in-region); also accepts near-me's `lat`/`lng`/`radius` (shown as a
 removable "Within N mi of …" tag); paginated; CSV download. A row's name zooms the map to the
 dairy and opens its popup. No dairy detail pages.
