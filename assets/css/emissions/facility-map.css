@@ -76,7 +76,18 @@
 .map-toolbar:has(.map-toolbar-filters .dropdown.is-active) {
   z-index: 1002;
 }
+/* One row: the Facilities | Areas switch, sector, then level and measure. */
+.map-toolbar .map-toolbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
 .facility-map-view.buttons {
+  margin-bottom: 0;
+  flex-wrap: nowrap;
+}
+.facility-map-view.buttons .button {
   margin-bottom: 0;
 }
 .facility-map-view .button {
