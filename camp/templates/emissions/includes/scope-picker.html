@@ -1,9 +1,14 @@
-{% load pesticides_explorer %}
+{% load pesticides_explorer emissions_explorer %}
 {% comment %}
 The explorer scope: year, county and pollutant dropdowns, then two toggles
 (toxic air contaminants; include minor sources). Each option is a link that
 keeps the rest of the query string minus the page number. Hidden on pages
 the scope doesn't apply to (hide_scope).
+
+A page can show options that don't apply to it as disabled, each with a
+tooltip saying why: `disabled_years` ({year: tooltip}), `disabled_pollutants`
+({key: tooltip}) and `disabled_toggles` ({'toxics': tooltip, 'minor':
+tooltip}). Pages that set none render exactly as before.
 {% endcomment %}
 {% if not hide_scope %}
 <div class="explorer-scope-pickers">
@@ -19,7 +24,11 @@ the scope doesn't apply to (hide_scope).
         <div class="dropdown-menu" role="menu">
             <div class="dropdown-content explorer-scope-years">
                 {% for option in year_options reversed %}
+                {% if option in disabled_years %}
+                <span class="dropdown-item is-disabled has-tooltip-left has-tooltip-arrow" aria-disabled="true" data-tooltip="{{ disabled_years|lookup:option }}">{{ option }}</span>
+                {% else %}
                 <a class="dropdown-item{% if option == year %} is-active{% endif %}" href="{% qs_replace year=option page=None %}"{% if option == year %} aria-current="page"{% endif %}>{{ option }}</a>
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -56,22 +65,40 @@ the scope doesn't apply to (hide_scope).
         <div class="dropdown-menu" role="menu">
             <div class="dropdown-content">
                 {% for option in pollutant_options %}
+                {% if option.key in disabled_pollutants %}
+                <span class="dropdown-item is-disabled has-tooltip-left has-tooltip-arrow" aria-disabled="true" data-tooltip="{{ disabled_pollutants|lookup:option.key }}">{{ option.label }}{% if option.label != option.name %} <span class="has-text-grey-light">{{ option.name }}</span>{% endif %}</span>
+                {% else %}
                 <a class="dropdown-item{% if option.key == pollutant.key %} is-active{% endif %}" href="{% qs_replace pollutant=option.key page=None %}">{{ option.label }}{% if option.label != option.name %} <span class="has-text-grey">{{ option.name }}</span>{% endif %}</a>
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
     </div>
+    {% if disabled_toggles.toxics %}
+    <a class="button is-small explorer-scope-toggle has-tooltip-bottom has-tooltip-multiline has-tooltip-arrow" disabled aria-disabled="true" data-tooltip="{{ disabled_toggles.toxics }}">
+        <span class="icon"><span class="fa-duotone fa-fw fa-skull-crossbones explorer-icon is-toxics" aria-hidden="true"></span></span>
+        <span class="explorer-scope-label">Toxic air contaminants</span>
+    </a>
+    {% else %}
     <a class="button is-small explorer-scope-toggle{% if toxics %} is-set{% endif %}" role="button"
        href="{% if toxics %}{% qs_replace toxics=None pollutant=None page=None %}{% else %}{% qs_replace toxics=1 pollutant=None page=None %}{% endif %}"
        aria-pressed="{% if toxics %}true{% else %}false{% endif %}">
         <span class="icon"><span class="fa-duotone fa-fw {% if toxics %}fa-circle-check{% else %}fa-skull-crossbones{% endif %} explorer-icon is-toxics" aria-hidden="true"></span></span>
         <span class="explorer-scope-label">Toxic air contaminants</span>
     </a>
+    {% endif %}
+    {% if disabled_toggles.minor %}
+    <a class="button is-small explorer-scope-toggle has-tooltip-bottom has-tooltip-multiline has-tooltip-arrow" disabled aria-disabled="true" data-tooltip="{{ disabled_toggles.minor }}">
+        <span class="icon"><span class="fa-duotone fa-fw fa-gas-pump explorer-icon is-minor" aria-hidden="true"></span></span>
+        <span class="explorer-scope-label">Include minor sources</span>
+    </a>
+    {% else %}
     <a class="button is-small explorer-scope-toggle{% if minor %} is-set{% endif %}" role="button"
        href="{% if minor %}{% qs_replace minor=None page=None %}{% else %}{% qs_replace minor=1 page=None %}{% endif %}"
        aria-pressed="{% if minor %}true{% else %}false{% endif %}">
         <span class="icon"><span class="fa-duotone fa-fw {% if minor %}fa-circle-check{% else %}fa-gas-pump{% endif %} explorer-icon is-minor" aria-hidden="true"></span></span>
         <span class="explorer-scope-label">Include minor sources</span>
     </a>
+    {% endif %}
 </div>
 {% endif %}

@@ -1,0 +1,24 @@
+{% comment %}
+The Dairies tab map's own toolbar controls (dairy-map.js binds them): the
+Dairies | Counties switch and, in Counties, the measure. They borrow the
+facility map's classes for their look.
+{% endcomment %}
+<div class="map-toolbar-filters" role="group" aria-label="Map filters">
+    <div class="buttons has-addons facility-map-view dairy-map-view" role="group" aria-label="Show">
+        {% for value, label in map_config.view_options %}
+        <button type="button" class="button{% if map_config.view == value %} is-selected is-link{% endif %}" data-view="{{ value }}" aria-pressed="{% if map_config.view == value %}true{% else %}false{% endif %}" aria-label="{{ label }}" title="{{ label }}"><span class="icon"><span class="fa-duotone fa-fw {% if value == 'dairies' %}fa-cow explorer-icon is-dairies{% else %}fa-draw-polygon explorer-icon is-areas{% endif %}" aria-hidden="true"></span></span><span class="map-toolbar-label">{{ label }}</span></button>
+        {% endfor %}
+    </div>
+    <div class="dropdown map-toolbar-dropdown facility-map-measure dairy-map-measure" data-counties-only{% if map_config.view != 'counties' %} hidden{% endif %}>
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                <span class="icon"><span class="fa-duotone fa-fw fa-ruler-combined explorer-icon is-measure" aria-hidden="true"></span></span>
+                <span class="map-toolbar-label">{% for value, label in map_config.measure_options %}{% if value == map_config.measure %}{{ label }}{% endif %}{% endfor %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu"><div class="dropdown-content">
+            {% for value, label in map_config.measure_options %}<a href="#" class="dropdown-item{% if value == map_config.measure %} is-active{% endif %}" data-measure="{{ value }}">{{ label }}</a>{% endfor %}
+        </div></div>
+    </div>
+</div>

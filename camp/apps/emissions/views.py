@@ -75,13 +75,18 @@ def list_filters(get):
     }
 
 
-def get_filter_region(sqid):
-    """The ?region= of the facility list, or None for a missing or unsearchable one."""
+def get_filter_region(sqid, types=None):
+    """
+    The ?region= of a table's region filter, or None for a missing or
+    unsearchable one. `types` narrows which region page types are accepted;
+    the facility list's default is areas.FILTER_REGION_TYPES (cities, places
+    and ZIPs), and the Dairies tab passes its own (dairy_views.FILTER_TYPES).
+    """
     if not sqid:
         return None
     return (
-        Region.objects.filter(sqid=sqid, type__in=areas.FILTER_REGION_TYPES, boundary__isnull=False)
-        .select_related('boundary').first()
+        Region.objects.filter(sqid=sqid, type__in=types or areas.FILTER_REGION_TYPES, boundary__isnull=False)
+        .current_vintage().select_related('boundary').first()
     )
 
 
@@ -510,6 +515,31 @@ class RegionPage(AreaPage):
         )
 
 
+def radius_area(get):
+    """A RadiusArea from ?lat=&lng=&radius= (1, 3 or 5 miles; 1 when left out), or None when any of it is missing or bad."""
+    try:
+        lat = float(get['lat'])
+        lng = float(get['lng'])
+        radius = int(get.get('radius', 1))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (math.isfinite(lat) and math.isfinite(lng) and -90 <= lat <= 90 and -180 <= lng <= 180):
+        return None
+    if radius not in RADIUS_CHOICES:
+        return None
+    return areas.RadiusArea(round(lat, 4), round(lng, 4), radius)
+
+
+def radius_label(get, lat, lng):
+    """
+    The near-me point's display label from ?label= or the point itself, with
+    a stray "near " prefix stripped and long labels cut. Shared by NearMe's
+    page title and the Dairies tab's near-me filter tag (dairy_views.near_label).
+    """
+    label = (get.get('label') or f'{lat:.3f}, {lng:.3f}')[:MAX_LABEL]
+    return NEAR_PREFIX.sub('', label)
+
+
 class NearMe(AreaPage):
     """
     The area page for a point and a 1, 3 or 5 mile radius, from the address
@@ -518,17 +548,9 @@ class NearMe(AreaPage):
     """
 
     def get(self, request, *args, **kwargs):
-        try:
-            lat = float(request.GET['lat'])
-            lng = float(request.GET['lng'])
-            radius = int(request.GET.get('radius', 1))
-        except (KeyError, TypeError, ValueError):
+        self.near = radius_area(request.GET)
+        if self.near is None:
             return self.bounce()
-        if not (math.isfinite(lat) and math.isfinite(lng) and -90 <= lat <= 90 and -180 <= lng <= 180):
-            return self.bounce()
-        if radius not in RADIUS_CHOICES:
-            return self.bounce()
-        self.near = areas.RadiusArea(round(lat, 4), round(lng, 4), radius)
         self.county = Region.objects.counties().filter(boundary__geometry__intersects=self.near.point).first()
         if self.county is None:
             return self.bounce()
@@ -564,10 +586,10 @@ class NearMe(AreaPage):
         return f'{self.request.path}?{params.urlencode()}'
 
     def get_context_data(self, **kwargs):
-        label = (self.request.GET.get('label') or f'{self.near.lat:.3f}, {self.near.lng:.3f}')[:MAX_LABEL]
+        label = radius_label(self.request.GET, self.near.lat, self.near.lng)
         return super().get_context_data(
             # find-area.js labels read "near X"; the title already says "of".
-            title=f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {NEAR_PREFIX.sub("", label)}',
+            title=f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {label}',
             kind='Near me',
             population=None,
             context_bar=None,

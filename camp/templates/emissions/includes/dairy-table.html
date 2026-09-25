@@ -1,0 +1,37 @@
+{% load humanize emissions_explorer pesticides_explorer %}
+{% comment %}
+Dairies (DairyHerd rows from dairies.table) as a table. On the Dairies tab it's
+`sortable`, and with `zoom` a name moves the tab's map to the dairy
+(dairy-map.js). A region page's top ten is `compact`: name, city, animal
+units, digester.
+{% endcomment %}
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow dairy-table">
+    <thead>
+        <tr>
+            <th>{% if sortable %}{% sort_link 'name' 'Dairy' %}{% else %}Dairy{% endif %}</th>
+            <th>{% if sortable %}{% sort_link 'city' 'City' %}{% else %}City{% endif %}</th>
+            {% if not compact %}<th>{% if sortable %}{% sort_link 'county' 'County' %}{% else %}County{% endif %}</th>{% endif %}
+            <th class="has-text-right">{% if sortable %}{% sort_link 'animal_units' 'Animal units (EPA)' %}{% else %}Animal units (EPA){% endif %}</th>
+            {% if not compact %}<th class="has-text-right">Milk cows</th><th class="has-text-right">Other cattle</th>{% endif %}
+            <th>Digester</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for herd in rows %}
+        {% with dairy=herd.dairy %}
+        <tr>
+            <td>{% if zoom %}<a href="#dairy-map" class="dairy-zoom" data-dairy="{{ dairy.sqid }}" data-lng="{{ dairy.point.x|stringformat:'.5f' }}" data-lat="{{ dairy.point.y|stringformat:'.5f' }}">{{ dairy.name }}</a>{% else %}{{ dairy.name }}{% endif %}</td>
+            <td>{{ dairy.address.city }}</td>
+            {% if not compact %}<td><a href="{{ dairy.county.get_emissions_url }}{{ region_qs }}">{{ dairy.county.name|cut:" County" }}</a></td>{% endif %}
+            <td class="has-text-right">{{ herd.animal_units|whole }}</td>
+            {% if not compact %}<td class="has-text-right">{{ herd.milk_cows|whole }}</td><td class="has-text-right">{{ herd.other_cattle|whole }}</td>{% endif %}
+            <td>{% if herd.digester %}Yes, since {{ herd.digester_since }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endwith %}
+        {% empty %}
+        <tr><td colspan="7">No dairies match.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>

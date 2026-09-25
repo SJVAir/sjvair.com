@@ -45,6 +45,7 @@
                 {% endblock %}
                 <li class="{% if section == 'facilities' %}is-active{% endif %}"><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}" title="Facilities"><span class="icon is-small"><span class="fa-duotone fa-fw fa-industry explorer-icon is-facilities" aria-hidden="true"></span></span><span class="tab-label">Facilities</span></a></li>
                 <li class="{% if section == 'sectors' %}is-active{% endif %}"><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}" title="Sectors"><span class="icon is-small"><span class="fa-duotone fa-fw fa-layer-group explorer-icon is-sectors" aria-hidden="true"></span></span><span class="tab-label">Sectors</span></a></li>
+                <li class="{% if section == 'dairies' %}is-active{% endif %}"><a href="{% url 'emissions:dairy-list' %}{{ scope_qs }}" title="Dairies"><span class="icon is-small"><span class="fa-duotone fa-fw fa-cow explorer-icon is-dairies" aria-hidden="true"></span></span><span class="tab-label">Dairies</span></a></li>
                 <li class="{% if section == 'about' %}is-active{% endif %}"><a href="{% url 'emissions:about' %}" title="About the data"><span class="icon is-small"><span class="fa-duotone fa-fw fa-circle-info explorer-icon" aria-hidden="true"></span></span><span class="tab-label">About</span></a></li>
             </ul>
         </div>

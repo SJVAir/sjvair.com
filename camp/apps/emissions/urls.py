@@ -1,6 +1,6 @@
 from django.urls import path
 
-from camp.apps.emissions import views
+from camp.apps.emissions import dairy_views, views
 
 urlpatterns = [
     path('', views.Home.as_view(), name='home'),
@@ -14,4 +14,5 @@ urlpatterns = [
     path('facilities/<str:sqid>/<slug:slug>/', views.FacilityDetail.as_view(), name='facility-detail'),
     path('sectors/', views.SectorList.as_view(), name='sector-list'),
     path('sectors/<slug:sector>/', views.SectorDetail.as_view(), name='sector-detail'),
+    path('dairies/', dairy_views.DairyList.as_view(), name='dairy-list'),
 ]

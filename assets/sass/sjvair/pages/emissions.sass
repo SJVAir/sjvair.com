@@ -25,6 +25,9 @@ body.emissions
     &.is-measure
       --fa-primary-color: #5a6b7b
       --fa-secondary-color: #c8d1da
+    &.is-dairies
+      --fa-primary-color: #b45309
+      --fa-secondary-color: #fcd34d
   // The scope bar's two toggles, while off (on, they go white on the orange
   // fill): toxics in a warning red, minor sources in a fuel-pump gold.
   .explorer-scope-toggle:not(.is-set) .explorer-icon
@@ -38,6 +41,18 @@ body.emissions
   .facility-map-view .button.is-link .explorer-icon
     --fa-primary-color: #fff
     --fa-secondary-color: rgba(255, 255, 255, 0.6)
+  // Scope options that don't apply on a page (the Dairies tab): shown, not links.
+  .explorer-scope-picker .dropdown-item.is-disabled
+    color: $grey-light
+    cursor: not-allowed
+    &:hover
+      background-color: transparent
+  // A region page's Dairies block outside CADD's years, and a county line
+  // for a pollutant CARB doesn't report for dairy cattle.
+  .dairy-block.is-greyed, .dairy-county-line.is-greyed
+    color: $grey
+    .title
+      color: $grey
   .emissions-context-bar
     display: flex
     height: 1.25rem

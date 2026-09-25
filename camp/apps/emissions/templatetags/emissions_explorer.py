@@ -3,7 +3,7 @@ import uuid
 from django import template
 from django.utils.html import format_html
 
-from camp.apps.emissions import sectors
+from camp.apps.emissions import dairies, sectors
 
 register = template.Library()
 
@@ -88,6 +88,55 @@ def emissions_trend_chart(points, pollutant, year=None, title=None):
         'has_data': bool(rows),
         'title': title or f'{pollutant.label} by year ({pollutant.unit}/yr)',
         'sentence': _change_sentence(dict(zip(years, values)), year),
+        'first_year': years[0] if years else None,
+        'last_year': years[-1] if years else None,
+    }
+
+
+@register.filter
+def lookup(mapping, key):
+    """mapping[key], or '' when there's no such key (or no mapping)."""
+    try:
+        return mapping.get(key, '')
+    except AttributeError:
+        return ''
+
+
+@register.filter
+def whole(value):
+    """A head count or animal-unit total, rounded, with commas: '2,310'; '—' for none (a blank CADD count)."""
+    if value is None or value == '':
+        return '—'
+    return f'{round(float(value)):,}'
+
+
+@register.inclusion_tag('pesticides/includes/trend-chart.html')
+def dairy_trend_chart(points, year=None):
+    """
+    CADD's animal units (solid) and milk cows (dashed) by year, marked where
+    CADD's coverage grew. The same markup as the emissions trend;
+    js/pesticides/charts.js draws the second series and the marker.
+    """
+    rows = sorted(points, key=lambda row: row['year'])
+    years = [row['year'] for row in rows]
+    marker = None
+    if years and years[0] < dairies.COVERAGE_CHANGE_YEAR <= years[-1]:
+        marker = {'x': dairies.COVERAGE_CHANGE_YEAR, 'label': 'More dairies tracked'}
+    return {
+        'chart_id': f'chart-{uuid.uuid4().hex[:8]}',
+        'chart': {
+            'type': 'line',
+            'unit': 'animal units',
+            'x': years,
+            'y': [round(row['animal_units']) for row in rows],
+            'y2': [row['milk_cows'] for row in rows],
+            'labels': ['animal units', 'milk cows'],
+            'marker': marker,
+            'selected': year if year in years else None,
+        },
+        'has_data': bool(rows),
+        'title': 'Animal units (solid) and milk cows (dashed) by year',
+        'sentence': '',
         'first_year': years[0] if years else None,
         'last_year': years[-1] if years else None,
     }
