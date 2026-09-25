@@ -193,7 +193,19 @@ class Chemical(TimeStampedModel):
 
     @property
     def is_of_concern(self):
-        return self.is_prop65 or self.is_tac or self.is_iarc_concern
+        """
+        On any of the lists the explorer treats as a flag: Prop 65, CARB's
+        toxic air contaminants, IARC 1/2A/2B, or California's restricted
+        materials (3 CCR 6400).
+
+        The first three are health-hazard listings and the last is a
+        regulatory control, but a reader asking "is this one of the bad ones"
+        is asking one question, and a material the state restricts belongs in
+        the answer. Keep stats._of_concern_query() in step: it is this
+        predicate as a queryset filter.
+        """
+        return (self.is_prop65 or self.is_tac or self.is_iarc_concern
+            or self.is_california_restricted)
 
     @property
     def comptox_url(self):

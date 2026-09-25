@@ -54,7 +54,11 @@ NARROW_CONCERN = 'concern'
 NARROW_FUMIGANT = 'fumigant'
 NARROW_RESTRICTED = 'restricted'
 NARROW_CHOICES = (
-    (NARROW_CONCERN, 'Chemicals of concern'),
+    # "Flagged" rather than "of concern": the set is the union of four
+    # lists, and three of them (Prop 65, CARB TAC, IARC) are what a reader
+    # familiar with the term already hears in "of concern". The param keeps
+    # its old value so existing links still resolve.
+    (NARROW_CONCERN, 'Flagged chemicals'),
     (NARROW_RESTRICTED, 'Restricted materials'),
     (NARROW_FUMIGANT, 'Fumigants'),
 )
@@ -870,8 +874,11 @@ def notice_window():
 
 
 def _of_concern_query():
+    """`Chemical.is_of_concern` as a queryset filter -- keep the two in step."""
+    flagged = (Chemical.PROP65_CATEGORIES
+        | {Chemical.Category.TOXIC_AIR_CONTAMINANT, Chemical.Category.CALIFORNIA_RESTRICTED})
     return (
-        Q(categories__overlap=list(Chemical.PROP65_CATEGORIES | {Chemical.Category.TOXIC_AIR_CONTAMINANT}))
+        Q(categories__overlap=list(flagged))
         | Q(iarc_group__in=list(Chemical.IARC_CONCERN_GROUPS))
     )
 
@@ -1059,6 +1066,7 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         notices = narrow_notices(notices, concern)
         totals = narrow_rows(totals, concern)
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50, all_years=all_years)
+    top_chemicals = top_chemicals_all[:RELATED_LIMIT]
     year_uses = in_year(uses, year, all_years)
     counts = {
         'chemicals': Count('chemical', distinct=True, filter=~Q(chemical__chem_code__in=Chemical.PLACEHOLDER_CODES)),
@@ -1088,18 +1096,29 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         # Each board's rows carry their own by-year series, for the
         # sparkline that says whether a big number is growing or receding.
         'top_products': with_series(uses, 'product',
-            top_related(uses, year, 'product', lbs_field='lbs_product', all_years=all_years), 'lbs_product'),
-        'top_chemicals': with_series(uses, 'chemical', top_chemicals_all[:10]),
+            top_related(uses, year, 'product', lbs_field='lbs_product',
+                limit=RELATED_LIMIT, all_years=all_years), 'lbs_product'),
+        'top_chemicals': with_series(uses, 'chemical', top_chemicals),
         'top_commodities': with_series(uses, 'commodity',
-            top_related(uses, year, 'commodity', all_years=all_years)),
+            top_related(uses, year, 'commodity', limit=RELATED_LIMIT, all_years=all_years)),
         'by_county': county_totals(year, all_years, concern) if (year or all_years) else [],
         'by_year': by_year(totals),
     }
     # Under the concern scope every leaderboard is already of concern, so
     # the dedicated one would just restate the top chemicals.
     if not concern:
-        data['top_chemicals_of_concern'] = with_series(uses, 'chemical',
-            top_chemicals_of_concern(top_chemicals_all, uses, year, all_years=all_years))
+        # Only the ones the board beside it doesn't already list. At five rows
+        # apiece the two boards otherwise repeat each other three rows out of
+        # five, and a repeat says nothing the first board hadn't -- those rows
+        # carry their badges there too. The pair reads as one ranking split in
+        # two: the heaviest chemicals, then the heaviest flagged ones that
+        # didn't make it. Fetched at twice the cap so the board still fills
+        # after the overlap comes out.
+        listed = {row.obj.pk for row in top_chemicals}
+        of_concern = top_chemicals_of_concern(top_chemicals_all, uses, year,
+            limit=RELATED_LIMIT * 2, all_years=all_years)
+        kept = [row for row in of_concern if row.obj.pk not in listed]
+        data['top_chemicals_of_concern'] = with_series(uses, 'chemical', kept[:RELATED_LIMIT])
     return data
 
 

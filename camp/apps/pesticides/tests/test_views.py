@@ -1079,7 +1079,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         url = reverse('pesticides:chemical-list')
         response = self.client.get(url, {'concern': '1'})
         assert response.context['concern'] == stats.NARROW_CONCERN
-        assert 'aria-label="Narrow to: Chemicals of concern"' in response.content.decode()
+        assert 'aria-label="Narrow to: Flagged chemicals"' in response.content.decode()
 
     def test_an_unknown_narrowing_shows_everything(self):
         # A subset must never be presented as the total.
@@ -1099,18 +1099,21 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert 'data-concern=""' in html
 
     def test_landing_leaderboard_titles_follow_the_scope(self):
-        # Unscoped: a chemicals board and a dedicated of-concern board.
+        # Unscoped: a chemicals board, plus an of-concern board carrying only
+        # what it doesn't already list. Every chemical in the fixture is in
+        # the top five, so nothing is left and that board is left off rather
+        # than rendered empty.
         html = self.client.get(reverse('pesticides:home')).content.decode()
-        assert html.count('Most applied chemicals of concern') == 1
         assert html.count('Most applied chemicals ·') == 1
+        assert 'flagged chemicals' not in html
         # Scoped: one board, and its title says what it now is.
         html = self.client.get(reverse('pesticides:home'), {'concern': '1'}).content.decode()
-        assert html.count('Most applied chemicals of concern') == 1
+        assert html.count('Most applied flagged chemicals') == 1
         assert 'Most applied chemicals ·' not in html
 
     def test_scope_banner_says_the_numbers_are_concern_only(self):
         url = reverse('pesticides:chemical-list')
-        banner = 'Showing chemicals of concern only'
+        banner = 'Showing flagged chemicals only'
         assert banner not in self.client.get(url).content.decode()
         html = self.client.get(url, {'concern': '1'}).content.decode()
         assert banner in html
@@ -1130,12 +1133,12 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         # numbers are concern-only would contradict its own note.
         sulfur = Chemical.objects.get(name='SULFUR')
         html = self.client.get(sulfur.get_absolute_url(), {'concern': '1'}).content.decode()
-        assert 'Showing chemicals of concern only' not in html
-        assert "so the chemicals of concern narrowing doesn't apply to this page" in html
+        assert 'Showing flagged chemicals only' not in html
+        assert "so the flagged chemicals narrowing doesn't apply to this page" in html
         # It's still there on a page the scope does narrow.
         glyphosate = Chemical.objects.get(name='GLYPHOSATE')
         html = self.client.get(glyphosate.get_absolute_url(), {'concern': '1'}).content.decode()
-        assert 'Showing chemicals of concern only' in html
+        assert 'Showing flagged chemicals only' in html
 
     def test_product_page_without_a_concern_chemical_explains_itself(self):
         dust = Product.objects.get(name='SULFUR DUST')
@@ -1160,11 +1163,11 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         response = self.client.get(grape.get_absolute_url(), {'concern': '1', 'year': '2022'})
         assert response.context['concern_excluded'] is True
         assert response.context['totals']['lbs'] == 400.0
-        assert 'No chemical of concern was reported on this commodity' in response.content.decode()
+        assert 'No flagged chemical was reported on this commodity' in response.content.decode()
 
     def test_excluded_chemical_page_explains_itself(self):
         sulfur = Chemical.objects.get(name='SULFUR')
-        note = "so the chemicals of concern narrowing doesn't apply to this page"
+        note = "so the flagged chemicals narrowing doesn't apply to this page"
         html = self.client.get(sulfur.get_absolute_url(), {'concern': '1'}).content.decode()
         assert note in html
         html = self.client.get(sulfur.get_absolute_url()).content.decode()

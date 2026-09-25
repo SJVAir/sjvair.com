@@ -6,7 +6,7 @@
 {% block identifiers %}Site code {{ object.site_code }}{% endblock %}
 {% block notes %}
     {% if concern_excluded %}
-    {% include 'pesticides/includes/concern-note.html' with reason="No chemical of concern was reported on this commodity in this year and county," %}
+    {% include 'pesticides/includes/concern-note.html' with reason="No flagged chemical was reported on this commodity in this year and county," %}
     {% endif %}
     {{ block.super }}
 {% endblock %}

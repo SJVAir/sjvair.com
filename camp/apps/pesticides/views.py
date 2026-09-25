@@ -577,6 +577,11 @@ class Home(vanilla.TemplateView):
             stats.with_rates(data['by_county'], year, all_years, concern), county_rank, ramp=ramp)
         county_map = maps.county_map(by_county, query=stats.scope_param(year, all_years, concern=concern), metric=county_rank, ramp=ramp) if by_county else None
         find_area_places = find_area_place_list()
+        # The concern board's "View all" narrows the chemicals list the way
+        # the board does, whatever the page's own scope is -- the same idea as
+        # a place page's concern_records_url.
+        concern_scope_qs = stats.scope_query(year, all_years, county, stats.NARROW_CONCERN)
+        scope_qs = stats.scope_query(year, all_years, county, concern)
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
         return super().get_context_data(
             section=None,
@@ -584,6 +589,12 @@ class Home(vanilla.TemplateView):
             api_docs_url=API_DOCS_URL,
             client_docs_url=CLIENT_DOCS_URL,
             find_area_places=find_area_places,
+            # Where each leaderboard's "View all" goes: its own list page,
+            # carrying the page's scope.
+            product_list_url=reverse('pesticides:product-list') + scope_qs,
+            chemical_list_url=reverse('pesticides:chemical-list') + scope_qs,
+            commodity_list_url=reverse('pesticides:commodity-list') + scope_qs,
+            concern_chemical_list_url=reverse('pesticides:chemical-list') + concern_scope_qs,
             find_area_counties=[
                 place for place in find_area_places
                 if place['type'] == Region.Type.COUNTY
@@ -1656,7 +1667,7 @@ def _place_cards(context):
     return {
         'products_card': _section_card('Top products', 'products', context['top_products'], records_url),
         'chemicals_card': _section_card(
-            'Top chemicals' if of_concern is not None else 'Top chemicals of concern',
+            'Top chemicals' if of_concern is not None else 'Top flagged chemicals',
             'chemicals', context['top_chemicals'], records_url),
         'commodities_card': _section_card('Top commodities', 'commodities', context['top_commodities'], records_url),
     }

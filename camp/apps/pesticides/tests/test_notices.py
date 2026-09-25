@@ -114,13 +114,13 @@ class NoticeDetailTests(TestCase):
         assert 'year_options' not in response.context
         html = response.content.decode()
         assert 'data-scope="narrow"' in html
-        assert 'Chemicals of concern' in html
+        assert 'Flagged chemicals' in html
         assert 'data-scope="county"' in html
         assert 'data-scope="year"' not in html
         # And it reflects the scope it was asked for.
         html = self.client.get(url, {'narrow': 'concern', 'county': 'kern'}).content.decode()
-        assert 'aria-label="Narrow to: Chemicals of concern"' in html
-        assert 'Showing chemicals of concern only' in html
+        assert 'aria-label="Narrow to: Flagged chemicals"' in html
+        assert 'Showing flagged chemicals only' in html
 
     def test_404(self):
         assert self.client.get(reverse('pesticides:notice-detail', kwargs={'sqid': 'nope'})).status_code == 404

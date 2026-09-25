@@ -281,7 +281,8 @@ class SectionList(CachedEndpointMixin, SectionListBase):
     Give either `bbox=west,south,east,north` or `lat`, `lng`, `radius` (miles: 1, 3, or 5).
     Filters: `year` (default latest), `month`, `chemical` (chem code), `product`
     (prodno), `commodity` (site code), `county` (slug), and `concern=1` to
-    count only the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B).
+    count only the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B,
+    California restricted materials).
     """
     cache_timeout = 60 * 60
 
