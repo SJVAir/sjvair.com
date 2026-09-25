@@ -223,6 +223,17 @@
       if (index === breaks.length) return round(breaks[index - 1]) + ' and up';
       return round(breaks[index - 1]) + '–' + round(breaks[index]);
     },
+    // A legend's classes, largest first: a swatch from `ramp` (one colour
+    // per class) and its label, with `swatchClass` on each swatch and
+    // `round` passed on to label().
+    bins: function (breaks, ramp, swatchClass, round) {
+      var bins = '';
+      for (var i = breaks.length; i >= 0; i--) {
+        bins += '<span class="legend-bin"><span class="legend-swatch' + (swatchClass ? ' ' + swatchClass : '') +
+          '" style="background:' + ramp[i] + '"></span>' + classes.label(i, breaks, round) + '</span>';
+      }
+      return '<div class="legend-bins">' + bins + '</div>';
+    },
   };
 
   // `path` (a URL or path) with its query rewritten by write(URLSearchParams),
