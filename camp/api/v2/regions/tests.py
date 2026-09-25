@@ -392,6 +392,14 @@ class RegionGeoJSONTests(TestCase):
         on_edge = lambda ring: sorted({tuple(p) for p in ring if p[0] == -120.1})
         assert on_edge(rings['left']) == on_edge(rings['right'])
 
+    def test_simplify_rejects_a_type_outside_the_areas_levels(self):
+        # mtrs sections number in the tens of thousands; simplifying them on
+        # demand for an anonymous request is the cost I2 flags. Only the
+        # Areas levels (county, zipcode, tract) may use simplify=1.
+        response, data = self.get({'type': 'mtrs', 'simplify': '1'})
+        assert response.status_code == 400
+        assert 'simplify' in str(data)
+
     def test_simplify_bypasses_the_response_cache(self):
         response, _ = self.get({'type': 'county', 'simplify': '1'})
         assert response['X-Cache-Status'] == 'MISS'
