@@ -15,9 +15,11 @@ from django.utils import timezone
 
 from resticus import generics, http
 
-from camp.apps.pesticides import stats
-from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup
-from camp.apps.pesticides.townships import township_geometries
+from camp.apps.pesticides import maps, stats
+from camp.apps.pesticides.models import (
+    PesticideNotice, PesticideSectionTotal, PesticideUseRollup,
+)
+from camp.apps.pesticides.townships import round_coords, township_geometries
 from camp.apps.regions.models import Region
 from camp.utils.gis import round_coords
 from camp.utils.views import CachedEndpointMixin
@@ -83,6 +85,41 @@ def apply_filters(rows, params):
     if narrow:
         rows = stats.narrow_rows(rows, narrow)
     return rows, None
+
+
+# What apply_filters() narrows on. A request carrying none of these wants
+# plain section totals, which PesticideSectionTotal already holds; anything
+# here has to go back to the rollup, the only place those dimensions survive.
+SECTION_FILTER_PARAMS = ('month', 'chemical', 'product', 'commodity', 'county')
+
+
+def section_totals_available(params):
+    """Whether this request can read the pre-summed per-section totals."""
+    if any(params.get(name) for name in SECTION_FILTER_PARAMS):
+        return False
+    return not stats.resolve_narrow(params)
+
+
+def section_totals(section_pks, year, all_years):
+    """
+    `{section pk: totals}` for `year` from PesticideSectionTotal.
+
+    All years sums the stored years, which is still a fraction of the rollup
+    rows behind them. No year at all matches in_year()'s "nothing loaded
+    means nothing", rather than quietly totalling every year.
+    """
+    rows = PesticideSectionTotal.objects.filter(mtrs__in=section_pks)
+    if all_years:
+        return {
+            r['mtrs']: r
+            for r in rows.values('mtrs').annotate(**TOTALS)
+        }
+    if year is None:
+        return {}
+    return {
+        r['mtrs']: r
+        for r in rows.filter(year=year).values('mtrs', *TOTALS)
+    }
 
 
 def parse_year(params):
@@ -242,28 +279,49 @@ class SectionListBase(generics.Endpoint):
         if error:
             return bad_request(error)
 
-        in_bbox = PesticideUseRollup.objects.filter(mtrs__in=section_pks)
-        rows = stats.in_year(in_bbox, year, all_years)
-        rows, error = apply_filters(rows, params)
-        if error:
-            return bad_request(error)
-        totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**TOTALS)}
-        previous = {}
-        if compare:
-            # The same filters over the compared year, so the change is the
-            # one the reader's filters describe and not the section's total.
-            compare_rows, _ = apply_filters(stats.in_year(in_bbox, compare), params)
-            previous = {r['mtrs']: r for r in compare_rows.values('mtrs').annotate(**TOTALS)}
+        # Unfiltered, the totals are already summed per section: a block of
+        # the valley-wide map otherwise aggregates tens of thousands of
+        # rollup rows to reach a few hundred section totals, twice over when
+        # two years are compared.
+        if section_totals_available(params):
+            totals = section_totals(section_pks, year, all_years)
+            previous = section_totals(section_pks, compare, False) if compare else {}
+        else:
+            in_bbox = PesticideUseRollup.objects.filter(mtrs__in=section_pks)
+            rows = stats.in_year(in_bbox, year, all_years)
+            rows, error = apply_filters(rows, params)
+            if error:
+                return bad_request(error)
+            totals = {r['mtrs']: r for r in rows.values('mtrs').annotate(**TOTALS)}
+            previous = {}
+            if compare:
+                # The same filters over the compared year, so the change is
+                # the one the reader's filters describe and not the section's
+                # total.
+                compare_rows, _ = apply_filters(stats.in_year(in_bbox, compare), params)
+                previous = {r['mtrs']: r for r in compare_rows.values('mtrs').annotate(**TOTALS)}
         counties = county_name_for(section_pks, year, all_years)
 
-        section_qs = Region.objects.filter(pk__in=section_pks).select_related('boundary').order_by('external_id')
+        # Section outlines never change, so a reader who already has them --
+        # after a year, comparison or filter change -- asks for `geometry=0`
+        # and gets the numbers alone. Fetching, parsing and re-serialising
+        # the polygons is most of the work and most of the bytes in a
+        # response that is otherwise a few hundred rows of totals. The
+        # township endpoint does the same for the same reason.
+        with_geometry = params.get('geometry') != '0'
+
+        section_qs = Region.objects.filter(pk__in=section_pks).order_by('external_id')
+        if with_geometry:
+            section_qs = section_qs.select_related('boundary')
+        else:
+            section_qs = section_qs.only('id', 'external_id')
         features = []
         for section in section_qs:
             t = totals.get(section.pk, ZERO)
             features.append({
                 'type': 'Feature',
                 'id': section.sqid,
-                'geometry': round_coords(json.loads(section.boundary.geometry.geojson)),
+                'geometry': round_coords(json.loads(section.boundary.geometry.geojson)) if with_geometry else None,
                 'properties': {
                     'id': section.sqid,
                     'mtrs': section.external_id,
@@ -282,7 +340,8 @@ class SectionList(CachedEndpointMixin, SectionListBase):
     Give either `bbox=west,south,east,north` or `lat`, `lng`, `radius` (miles: 1, 3, or 5).
     Filters: `year` (default latest), `month`, `chemical` (chem code), `product`
     (prodno), `commodity` (site code), `county` (slug), and `concern=1` to
-    count only the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B).
+    count only the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B,
+    California restricted materials).
     """
     cache_timeout = 60 * 60
 

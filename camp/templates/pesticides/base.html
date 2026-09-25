@@ -95,7 +95,7 @@ unscoped and carries its own note saying why, which this would contradict.
         {% elif concern == 'fumigant' %}
         <span>Showing fumigants only — products registered as soil or structural fumigants, which move through air and soil after they're applied. <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a></span>
         {% else %}
-        <span>Showing chemicals of concern only — Prop 65, CARB toxic air contaminants, IARC 1/2A/2B. <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a></span>
+        <span>Showing flagged chemicals only — Prop 65, CARB toxic air contaminants, IARC 1/2A/2B, and California restricted materials. <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a></span>
         {% endif %}
     </div>
 </div>

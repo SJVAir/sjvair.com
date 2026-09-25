@@ -172,7 +172,9 @@ class StatsTests(RollupTestMixin, TestCase):
         assert data['total_lbs'] == 740.0
         assert data['active_notices'] == 2   # the two 2099 notices; the 2020 one is long past
         assert [r.obj.name for r in data['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
-        assert [r.obj.name for r in data['top_chemicals_of_concern']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
+        # Only what the chemicals board doesn't already list, and here it
+        # lists all three, so there is nothing left for this one.
+        assert [r.obj.name for r in data['top_chemicals_of_concern']] == []
         assert [r.obj.name for r in data['top_commodities']] == ['GRAPE', 'ALMOND', 'COTTON']
         assert [r.obj.name for r in data['top_products']] and all(r.lbs >= 0 for r in data['top_products'])
         assert [(r['county_name'], r['lbs']) for r in data['by_county']] == [('Fresno County', 670.0), ('Kern County', 70.0)]
@@ -536,3 +538,32 @@ class NarrowScopeTests(RollupTestMixin, TestCase):
         for value, _label in stats.NARROW_CHOICES:
             assert stats.resolve_narrow({'narrow': value}) == value
             assert stats.narrow_label(value)
+
+
+class ConcernIncludesRestrictedTests(TestCase):
+    """
+    A California restricted material counts as a chemical of concern on its
+    own, without appearing on any of the health-hazard lists. The property and
+    the queryset filter are separate implementations of the same rule, so both
+    are checked here.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.chemical = Chemical.objects.create(
+            chem_code=9500, name='RESTRICTED ONLY',
+            categories=[Chemical.Category.CALIFORNIA_RESTRICTED])
+
+    def test_restricted_alone_is_of_concern(self):
+        assert self.chemical.is_prop65 is False
+        assert self.chemical.is_tac is False
+        assert self.chemical.is_iarc_concern is False
+        assert self.chemical.is_of_concern is True
+
+    def test_the_queryset_agrees_with_the_property(self):
+        assert self.chemical in stats.of_concern_chemicals()
+
+    def test_a_chemical_on_no_list_is_still_not_of_concern(self):
+        plain = Chemical.objects.create(chem_code=9501, name='INERT ONLY', categories=[])
+        assert plain.is_of_concern is False
+        assert plain not in stats.of_concern_chemicals()

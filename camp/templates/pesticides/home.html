@@ -60,16 +60,23 @@ Four boards, two by two; products before chemicals. Under the
 chemicals-of-concern scope every board is already of concern, so the
 dedicated board drops out, the chemicals board's title says what it now is,
 and the remaining three lay out 2 + 1.
+
+"Other flagged chemicals" carries only the flagged chemicals the board
+beside it doesn't already list (stats.landing_stats), so the two together
+are one ranking split in two rather than two overlapping ones. It is left
+off entirely when nothing is left, rather than rendered empty.
 {% endcomment %}
 <div class="columns leaderboards is-multiline">
-    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied products' rows=top_products kind='products' %}</div>
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied products' rows=top_products kind='products' view_all_url=product_list_url %}</div>
     {% if concern %}
-    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals of concern' rows=top_chemicals kind='chemicals' %}</div>
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied flagged chemicals' rows=top_chemicals kind='chemicals' view_all_url=chemical_list_url %}</div>
     {% else %}
-    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals' rows=top_chemicals kind='chemicals' %}</div>
-    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals of concern' rows=top_chemicals_of_concern kind='chemicals' %}</div>
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals' rows=top_chemicals kind='chemicals' view_all_url=chemical_list_url %}</div>
+    {% if top_chemicals_of_concern %}
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Other flagged chemicals' rows=top_chemicals_of_concern kind='chemicals' view_all_url=concern_chemical_list_url %}</div>
     {% endif %}
-    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most treated commodities' rows=top_commodities kind='commodities' %}</div>
+    {% endif %}
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most treated commodities' rows=top_commodities kind='commodities' view_all_url=commodity_list_url %}</div>
 </div>
 
 {% if movers %}

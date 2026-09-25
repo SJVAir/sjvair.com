@@ -193,7 +193,19 @@ class Chemical(TimeStampedModel):
 
     @property
     def is_of_concern(self):
-        return self.is_prop65 or self.is_tac or self.is_iarc_concern
+        """
+        On any of the lists the explorer treats as a flag: Prop 65, CARB's
+        toxic air contaminants, IARC 1/2A/2B, or California's restricted
+        materials (3 CCR 6400).
+
+        The first three are health-hazard listings and the last is a
+        regulatory control, but a reader asking "is this one of the bad ones"
+        is asking one question, and a material the state restricts belongs in
+        the answer. Keep stats._of_concern_query() in step: it is this
+        predicate as a queryset filter.
+        """
+        return (self.is_prop65 or self.is_tac or self.is_iarc_concern
+            or self.is_california_restricted)
 
     @property
     def comptox_url(self):
@@ -522,6 +534,55 @@ class PesticideUseRollup(models.Model):
 
     def __str__(self):
         return f'{self.year}-{self.month:02d} / {self.mtrs_id or "no section"}'
+
+
+class PesticideSectionTotal(models.Model):
+    """
+    Per-year totals for one MTRS section -- what the map's section grid and
+    its "all sections" blocks shade. Rebuilt from PesticideUseRollup by
+    camp.apps.pesticides.rollup. Never exposed by id, so no sqid.
+
+    The same idea as PesticideUseTotal, keyed by section instead of county
+    and entity. A block of the valley-wide map summed ~57,000 rollup rows to
+    reach ~840 section totals, twice over when comparing two years; reading
+    them back costs an index scan of as many rows as there are sections.
+
+    Only the unfiltered map reads this. Narrowing to a chemical, product or
+    commodity still sums the rollup, which is the only place those
+    dimensions survive.
+    """
+    year = models.IntegerField(_('Year'))
+    mtrs = models.ForeignKey(
+        'regions.Region',
+        on_delete=models.CASCADE,
+        related_name='pesticide_section_totals',
+        verbose_name=_('Section'),
+        limit_choices_to={'type': Region.Type.MTRS},
+    )
+    lbs_chemical = models.FloatField(_('Pounds of Chemical'), default=0)
+    lbs_product = models.FloatField(_('Pounds of Product'), default=0)
+    acres_treated = models.FloatField(_('Acres Treated'), default=0)
+    applications = models.IntegerField(_('Applications'), default=0)
+
+    class Meta:
+        verbose_name = _('Pesticide Section Total')
+        verbose_name_plural = _('Pesticide Section Totals')
+        constraints = [
+            models.UniqueConstraint(fields=['year', 'mtrs'], name='pesticides_section_total_key'),
+        ]
+        indexes = [
+            # The map asks for a bbox's sections in one or two years at once,
+            # so the year leads and the totals ride along: an index-only scan
+            # rather than a heap fetch per section.
+            models.Index(
+                fields=['year', 'mtrs'],
+                include=['lbs_chemical', 'lbs_product', 'acres_treated', 'applications'],
+                name='pesticides_section_total_cov',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.year} / {self.mtrs_id}'
 
 
 class PesticideUseTotal(models.Model):

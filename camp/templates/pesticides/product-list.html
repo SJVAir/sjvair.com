@@ -21,7 +21,7 @@
                     <tr>
                         <th>{% sort_link 'name' 'Product' %}</th>
                         <th>{% sort_link 'reg' 'Reg. number' %}</th>
-                        <th>{% if concern %}Chemicals of concern{% else %}Flags{% endif %}</th>
+                        <th>Flags</th>
                         {% if not related.chemical %}<th class="has-text-right">{% sort_link 'chemicals' 'Active ingredients' %}</th>{% endif %}
                         <th class="has-text-right">{% sort_link 'lbs' lbs_label %}</th>
                     </tr>

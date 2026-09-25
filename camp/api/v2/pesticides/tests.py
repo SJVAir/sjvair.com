@@ -1425,3 +1425,78 @@ class ConcernScopeEndpointTests(RollupTestMixin, TestCase):
         assert results(type='commodity', q='grape', year='2023', concern='1') == ['Grape']
         assert results(type='commodity', q='almond', concern='1') == ['Almond']
         assert results(type='commodity', q='grape', concern='1', county='kern') == []
+
+
+class SectionTotalsTableTests(TestCase):
+    """
+    The unfiltered section map reads PesticideSectionTotal instead of summing
+    the rollup. The two must agree exactly -- the table is an optimisation,
+    not a second source of truth -- and any narrowing has to fall back, since
+    the totals carry no chemical, product or commodity.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        rollup.rebuild_all()
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:pesticides:section-list')
+        self.bbox = '-119.9,36.6,-119.7,36.8'
+
+    def props(self, **params):
+        body = self.client.get(self.url, {'bbox': self.bbox, **params}).json()
+        return {f['properties']['mtrs']: f['properties'] for f in body['features']}
+
+    def test_the_rollup_built_the_section_totals(self):
+        from camp.apps.pesticides.models import PesticideSectionTotal, PesticideUseRollup
+        assert PesticideSectionTotal.objects.exists()
+        # One row per (year, section) the rollup has.
+        pairs = set(PesticideUseRollup.objects
+            .filter(mtrs__isnull=False).values_list('year', 'mtrs_id').distinct())
+        assert set(PesticideSectionTotal.objects.values_list('year', 'mtrs_id')) == pairs
+
+    def test_totals_match_summing_the_rollup(self):
+        from camp.apps.pesticides.models import PesticideSectionTotal
+        served = self.props(year=2023)
+        for mtrs, p in served.items():
+            row = PesticideSectionTotal.objects.get(year=2023, mtrs__external_id=mtrs)
+            assert p['lbs_chemical'] == row.lbs_chemical
+            assert p['applications'] == row.applications
+
+    def test_the_two_paths_agree(self):
+        # `month=1..12` covers every row the fixture has, so filtering by it
+        # forces the rollup path over the same data the totals path serves.
+        from camp.apps.pesticides.models import PesticideUseRollup
+        months = sorted(set(PesticideUseRollup.objects.values_list('month', flat=True)))
+        assert months == [m for m in months if 1 <= m <= 12], 'fixture has undated rows'
+        viaTotals = self.props(year=2023)
+        merged = {}
+        for month in months:
+            for mtrs, p in self.props(year=2023, month=month).items():
+                acc = merged.setdefault(mtrs, {'lbs_chemical': 0, 'applications': 0})
+                acc['lbs_chemical'] += p['lbs_chemical']
+                acc['applications'] += p['applications']
+        for mtrs, p in viaTotals.items():
+            if not p['applications']:
+                continue
+            assert round(p['lbs_chemical'], 6) == round(merged[mtrs]['lbs_chemical'], 6), mtrs
+            assert p['applications'] == merged[mtrs]['applications'], mtrs
+
+    def test_a_narrowed_request_falls_back_to_the_rollup(self):
+        from camp.apps.pesticides.models import Chemical
+        chem = Chemical.objects.get(pk=1)
+        narrowed = self.props(year=2023, chemical=chem.chem_code)
+        plain = self.props(year=2023)
+        # The narrowed numbers are a subset, so they can't come from the
+        # per-section totals, which know nothing about chemicals.
+        assert narrowed['MDM-T14S-R20E-01']['lbs_chemical'] < plain['MDM-T14S-R20E-01']['lbs_chemical']
+
+    def test_compare_reads_both_years_from_the_table(self):
+        props = self.props(year=2023, compare=2022)['MDM-T14S-R20E-01']
+        assert props['lbs_chemical'] == 670.0
+        assert props['lbs_chemical_prev'] == 480.0

@@ -407,7 +407,13 @@
   // The grids are shaded from properties the classing step writes on each
   // feature (`fill`, `opacity`, and `value`, the metric or 0), and hover is
   // a feature state, so a metric or hover change never touches the layers.
-  var HAS_VALUE = ['>', ['to-number', ['get', 'value']], 0];
+  // Whether a feature has anything to shade, written by classFeatures as
+  // `shaded`. Not `value > 0`: comparing two years makes `value` the signed
+  // change, so that test hid every decrease at the zooms it applies to --
+  // the map showed increases only until you zoomed past
+  // SECTION_LINES_MIN_ZOOM. `shaded` also keeps a change of exactly zero
+  // (real, and its own legend class) apart from no data at all.
+  var HAS_VALUE = ['>', ['to-number', ['get', 'shaded']], 0];
 
   function hoverCase(hovered, rest) {
     return ['case', ['boolean', ['feature-state', 'hover'], false], hovered, rest];
@@ -779,6 +785,12 @@
     this.noticesRequest = null;
     this.locationsRequest = null;
     this.lensCache = {};
+    // Section outlines, by section id, and the townships whose outlines we
+    // hold. Unlike lensCache these survive a scope or filter change -- the
+    // shapes don't depend on the year or the filters, only the numbers do --
+    // so a rescope refetches totals and reuses the polygons.
+    this.sectionGeometry = {};
+    this.geometryTownships = {};
     this.pendingLocate = null;
     // The grid on the map: its features (classed in place), by id, and the
     // classes the legend shows -- over the grid, or over the "all sections"
@@ -1801,6 +1813,7 @@
       var value = this.valueFor(props);
       var missing = value === null || (!classes.diverging && !value);
       props.value = value === null ? 0 : value;
+      props.shaded = missing ? 0 : 1;
       props.fill = classes.diverging ? divergingColorFor(classes, value) : colorFor(classes, value);
       props.opacity = missing ? opacities[1] : opacities[0];
     }
@@ -2507,11 +2520,19 @@
   // abortable: a superseded fetch's result is either still-good cache, or
   // lands in a cache onAdopt() has already replaced (see below).
   SectionMap.prototype.fetchLensSections = function (hosts, done) {
+    var self = this;
     var ids = hosts.map(function (host) { return host.properties.id; });
     var union = null;
     hosts.forEach(function (host) { union = unionBounds(union, featureBounds(host)); });
     var params = this.commonParams();
     params.bbox = bboxParam(union);
+    // Section outlines never change, so once every township in this block
+    // has been fetched before, ask for the numbers alone and put the stored
+    // outlines back on. Most of a response's bytes -- and most of the work
+    // behind it -- is geometry, and a year, comparison or filter change
+    // would otherwise re-download every polygon in view.
+    var haveGeometry = ids.every(function (townshipId) { return self.geometryTownships[townshipId]; });
+    if (haveGeometry) params.geometry = '0';
     // Results go into the cache that was current when the fetch started:
     // if the filters change meanwhile, onAdopt() swaps in a fresh cache and
     // this one is simply dropped.
@@ -2524,9 +2545,16 @@
         body.features.forEach(function (section) {
           var mtrs = section.properties.mtrs || '';
           var townshipId = mtrs.slice(0, mtrs.lastIndexOf('-'));
+          if (section.geometry) self.sectionGeometry[section.properties.id] = section.geometry;
+          else section.geometry = self.sectionGeometry[section.properties.id] || null;
           if (byTownship[townshipId]) byTownship[townshipId].push(section);
         });
-        ids.forEach(function (townshipId) { cache[townshipId] = byTownship[townshipId]; });
+        ids.forEach(function (townshipId) {
+          cache[townshipId] = byTownship[townshipId];
+          // Only once its sections are actually held: a block that came back
+          // empty must not claim outlines it never saw.
+          if (byTownship[townshipId].length) self.geometryTownships[townshipId] = true;
+        });
       })
       .catch(function () {})
       .then(function () { if (done) done(); });
@@ -2580,12 +2608,34 @@
     this.reopenSelectedSection(this.allSectionsFeatures, 'all-sections');
   };
 
+  // Whether two class sets shade a feature identically: same breaks, same
+  // colours. Only the numbers matter -- the members are counts.
+  function sameClasses(a, b) {
+    if (!a || !b || !a.breaks || !b.breaks) return false;
+    if (a.breaks.length !== b.breaks.length || a.colors.length !== b.colors.length) return false;
+    if (a.neutral !== b.neutral || !a.diverging !== !b.diverging) return false;
+    for (var i = 0; i < a.breaks.length; i++) if (a.breaks[i] !== b.breaks[i]) return false;
+    for (var c = 0; c < a.colors.length; c++) if (a.colors[c] !== b.colors[c]) return false;
+    return true;
+  }
+
   // Recomputes the classes over everything drawn and reshades it; also
   // what a metric change calls.
   SectionMap.prototype.restyleAllSections = function () {
     if (!this.allSectionsAdded) return;
     var self = this;
-    this.currentClasses = this.classify(this.allSectionsFeatures);
+    var classes = this.classify(this.allSectionsFeatures);
+    // Each block is classed against the current breaks as it lands
+    // (drawAllSections), so the drawn shades are already right unless the
+    // breaks themselves moved. Repainting anyway meant pushing every drawn
+    // feature to the SDK once per block that landed -- tens of thousands of
+    // property writes a second, which froze the page for the whole of a
+    // valley-wide load.
+    if (this.currentClassesAreSections && sameClasses(this.currentClasses, classes)) {
+      this.updateLegend();
+      return;
+    }
+    this.currentClasses = classes;
     this.currentClassesAreSections = true;
     this.classFeatures(this.allSectionsFeatures, this.currentClasses, LENS_OPACITY);
     this.updateAllSectionsSource({
@@ -2595,6 +2645,7 @@
           id: props.id,
           addOrUpdateProperties: [
             { key: 'value', value: props.value },
+            { key: 'shaded', value: props.shaded },
             { key: 'fill', value: props.fill },
             { key: 'opacity', value: props.opacity },
           ],

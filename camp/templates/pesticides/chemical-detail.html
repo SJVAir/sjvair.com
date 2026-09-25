@@ -16,7 +16,7 @@
     </div>
     {% endif %}
     {% if concern_excluded %}
-    {% include 'pesticides/includes/concern-note.html' with reason="This chemical isn't on the Prop 65, CARB toxic air contaminant or IARC lists," %}
+    {% include 'pesticides/includes/concern-note.html' with reason="This chemical isn't on the Prop 65, CARB toxic air contaminant, IARC or California restricted lists," %}
     {% endif %}
     {{ block.super }}
 {% endblock %}

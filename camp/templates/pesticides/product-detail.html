@@ -7,7 +7,7 @@
 {% block identifiers %}Registration {{ object.reg_number }} · Product no. {{ object.prodno }}{% endblock %}
 {% block notes %}
     {% if concern_excluded %}
-    {% include 'pesticides/includes/concern-note.html' with reason="None of this product's active ingredients is on the Prop 65, CARB toxic air contaminant or IARC lists," %}
+    {% include 'pesticides/includes/concern-note.html' with reason="None of this product's active ingredients is on the Prop 65, CARB toxic air contaminant, IARC or California restricted lists," %}
     {% endif %}
     {{ block.super }}
 {% endblock %}

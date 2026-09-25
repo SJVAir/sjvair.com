@@ -1,6 +1,11 @@
 {% load pesticides_explorer %}
 <div class="card related-card{% if card.compact %} is-compact{% endif %}">
-    <header class="card-header"><p class="card-header-title">{{ card.title }}</p></header>
+    <header class="card-header">
+        <p class="card-header-title">{{ card.title }}</p>
+        {# Fewer rows than the cap means these are all of them, and there is #}
+        {# nothing for "View all" to show. #}
+        {% if not card.complete %}<a class="card-header-icon view-all" href="{{ card.show_all_url }}">View all</a>{% endif %}
+    </header>
     <div class="card-content">
         {% if card.rows %}
         <table class="table is-fullwidth is-narrow is-striped">
@@ -29,7 +34,4 @@
         <p class="has-text-grey">None{% if year_label %} in {{ year_label }}{% endif %}.</p>
         {% endif %}
     </div>
-    {% if not card.complete %}
-    <footer class="card-footer"><a class="card-footer-item" href="{{ card.show_all_url }}">Show all</a></footer>
-    {% endif %}
 </div>

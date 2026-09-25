@@ -727,7 +727,7 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
 
         assert 'chemicals_of_concern_card' not in response.context
         assert 'top_chemicals_of_concern' not in response.context
-        assert response.context['chemicals_card']['title'] == 'Top chemicals of concern'
+        assert response.context['chemicals_card']['title'] == 'Top flagged chemicals'
         assert response.content.decode().count('class="card related-card"') == 3
 
 

@@ -1,6 +1,10 @@
 {% load pesticides_explorer %}
 <div class="card leaderboard">
-    <header class="card-header"><p class="card-header-title">{{ title }}{% if year_label %} · {{ year_label }}{% endif %}</p></header>
+    <header class="card-header">
+        <p class="card-header-title">{{ title }}{% if year_label %} · {{ year_label }}{% endif %}</p>
+        {# The board is a top five; this is the way to the rest of them. #}
+        {% if view_all_url %}<a class="card-header-icon view-all" href="{{ view_all_url }}">View all</a>{% endif %}
+    </header>
     <div class="card-content">
         {% if rows %}
         <ol class="leaderboard-list">
