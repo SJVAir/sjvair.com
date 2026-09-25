@@ -1433,3 +1433,28 @@ class SeasonalityHeatmapTests(RollupTestMixin, TestCase):
             html = self.client.get(self.pages()['chemical'], {'year': year}).content.decode()
             marked = re.findall(r'<tr class="is-selected">\s*<th scope="row">(\d{4})<', html)
             assert marked == [str(year)], year
+
+
+class AboutTabTests(TestCase):
+    """The About page is a tab like the rest, and marks itself active."""
+
+    fixtures = ['pesticides-explorer']
+
+    def test_every_explorer_page_offers_the_tab(self):
+        for name in ('pesticides:home', 'pesticides:map', 'pesticides:chemical-list',
+                     'pesticides:records', 'pesticides:notice-list', 'pesticides:about'):
+            html = self.client.get(reverse(name)).content.decode()
+            assert f'href="{reverse("pesticides:about")}"' in html, name
+
+    def test_the_tab_is_active_on_the_about_page(self):
+        response = self.client.get(reverse('pesticides:about'))
+        assert response.context['section'] == 'about'
+        html = response.content.decode()
+        marked = re.findall(r'<li class="is-active"><a href="([^"]+)"', html)
+        assert marked == [reverse('pesticides:about')]
+
+    def test_the_tab_carries_no_scope(self):
+        # Where the data comes from doesn't change with the year or county,
+        # so the link is bare while every other tab carries the scope.
+        html = self.client.get(reverse('pesticides:home'), {'year': 2022, 'county': 'kern'}).content.decode()
+        assert f'href="{reverse("pesticides:about")}" title="About this data"' in html

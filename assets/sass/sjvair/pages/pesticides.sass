@@ -96,6 +96,9 @@ body.pesticides
         &.is-notices
             --fa-primary-color: #d35400
             --fa-secondary-color: #ffc078
+        &.is-about
+            --fa-primary-color: #5a6b7b
+            --fa-secondary-color: #c8d1da
         &.is-concern
             --fa-primary-color: #d35400
             --fa-secondary-color: #ffc078
@@ -379,6 +382,23 @@ body.pesticides
         th, td
             white-space: nowrap
             font-variant-numeric: tabular-nums
+    // The one data column's header is a menu, not a link (see
+    // includes/by-county-table.html).
+    .column-picker
+        .button
+            border: none
+            background: transparent
+            font-weight: 600
+            color: $text
+            padding: 0 0.25rem
+            height: auto
+            &:hover
+                color: $link
+        .dropdown-menu
+            min-width: 11rem
+        .dropdown-item.is-active
+            font-weight: 600
+
     .by-county-table
         th.is-ranked
             color: $text
@@ -625,6 +645,20 @@ body.pesticides
         font-size: 0.8em
         &:hover
             color: $link
+        // With words in front of it the icon is the affordance, not the
+        // whole control, so the text carries the colour.
+        .note-help-label
+            margin-right: 0.25rem
+            color: $grey
+            text-decoration: underline dotted
+            text-underline-offset: 2px
+        &:hover .note-help-label
+            color: $link
+
+    // A caption under a table, outside its scrolling container.
+    .table-note
+        margin: 0.35rem 0 0
+        font-size: 0.75rem
 
     .what-this-means
         margin: .5rem 0 1rem
@@ -648,6 +682,13 @@ body.pesticides
             margin-bottom: $size-7
         .tags
             margin-bottom: 0
+
+    // What the sparklines cover, under the rows they belong to.
+    .leaderboard-note
+        margin: 0.6rem 0 0
+        font-size: 0.7rem
+        color: $grey-light
+        text-align: right
 
     .related-card, .leaderboard
         height: 100%

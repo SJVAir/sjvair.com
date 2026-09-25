@@ -604,6 +604,8 @@ class Home(vanilla.TemplateView):
             movers=movers,
             **{**data, 'by_county': by_county, **year_context(year, all_years, county, concern=concern)},
             county_rank=county_rank,
+            county_metric_options=maps.county_metric_options(county_rank),
+            county_metric_column=maps.county_metric_column(county_rank),
             **kwargs,
         )
 
@@ -619,7 +621,7 @@ class About(vanilla.TemplateView):
         scope = year_context(None, county_scope=False, concern_scope=False)
         scope.pop('year_options', None)
         return super().get_context_data(
-            section=None,
+            section='about',
             **scope,
             years=stats.years_loaded(),
             api_docs_url=API_DOCS_URL,
@@ -963,13 +965,15 @@ class ExplorerDetailMixin:
         context['full_map_url'] = reverse('pesticides:map') + f'?{self.use_field}={self.object.sqid}' + (
             f'&{scope}' if scope else ''
         )
-        county_rank = maps.county_metric(self.request.GET.get('rank'))
+        county_rank = maps.county_metric(self.request.GET.get('rank'), hide_lbs=self.hide_lbs())
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
         # The axis flips on an entity page: which counties moved for this one.
         context['movers'] = movers_context(rows, year, all_years, 'county', self.lbs_field)
         context['by_county'] = maps.rank_counties(
             stats.with_rates(context['by_county'], year, all_years, self.concern), county_rank, ramp=ramp)
         context['county_rank'] = county_rank
+        context['county_metric_options'] = maps.county_metric_options(county_rank, hide_lbs=self.hide_lbs())
+        context['county_metric_column'] = maps.county_metric_column(county_rank, hide_lbs=self.hide_lbs())
         context['county_map'] = maps.county_map(context['by_county'], query=stats.scope_param(year, all_years, concern=self.concern), metric=county_rank, ramp=ramp) if context['by_county'] else None
         return context
 
