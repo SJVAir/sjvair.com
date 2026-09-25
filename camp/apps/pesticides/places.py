@@ -24,6 +24,7 @@ from django.urls import reverse
 from camp.api.v2.pesticides.sections import radius_bbox
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup, PesticideUseTotal
+from camp.apps.regions import nearby
 from camp.apps.regions.models import Location, Region
 
 PLACE_REGION_TYPES = (
@@ -31,7 +32,6 @@ PLACE_REGION_TYPES = (
 )
 # v2: the 'places' group became 'communities', each entry labelled.
 WITHIN_KEY = 'pesticides:within:v2'
-WITHIN_TTL = 60 * 60 * 24
 RADIUS_CHOICES = (1, 3, 5)
 AREA_SECTIONS_TTL = 60 * 60 * 24
 SCHOOLS_NEARBY_TTL = 60 * 60 * 24
@@ -81,6 +81,20 @@ class Area:
     point: Point | None = None  # SRID 4326
     radius: int | None = None  # miles
     section_pks: list[int] = field(default_factory=list)
+
+    @property
+    def page_title(self):
+        """
+        The <title> and breadcrumb text: `label`, plus its type for a
+        community region (city, urban area, CDP) -- Fresno the city and
+        Fresno the urban area are both just "Fresno" otherwise, in a browser
+        tab or a breadcrumb where the identifiers line under the h1 isn't
+        visible. Every other kind (and the h1 itself, always `label`) is
+        already unambiguous on its own.
+        """
+        if self.kind == 'region' and self.region.type in Region.COMMUNITY_TYPES:
+            return f'{self.label} ({self.region.type_label})'
+        return self.label
 
     @property
     def county(self):
@@ -203,55 +217,13 @@ def point_area(lat, lng, radius, label=''):
 
 def regions_within(region):
     """
-    Quick-navigation lists for a place page: the counties, communities, school
-    districts, and ZIP codes related to `region`. For a county that is
-    everything whose boundary centroid falls inside it; for any other region
-    it is everything whose boundary overlaps it (sharing only an edge doesn't
-    count), plus the county or counties it lies in. The region itself is left
-    out. Communities are the cities, urban areas and CDPs, each listed as-is
-    with its `type_label` (a town can be both a city and an urban area). Each
-    entry is {'name', 'url'} (communities add 'type_label'). Cached a day per
-    region.
+    The pesticides explorer's "In and around <place>" lists -- see
+    camp.apps.regions.nearby.regions_within for what's in them. Linked with
+    pesticides pages; the emissions explorer calls the shared function
+    directly with its own URL method and cache prefix (see
+    camp.apps.emissions.views.region_within).
     """
-    from django.contrib.gis.db.models.functions import Centroid
-
-    key = f'{WITHIN_KEY}:{region.pk}'
-    data = cache.get(key)
-    if data is not None:
-        return data
-    geometry = region.boundary.geometry
-    kinds = (*Region.COMMUNITY_TYPES, Region.Type.SCHOOL_DISTRICT, Region.Type.ZIPCODE)
-    if region.type == Region.Type.COUNTY:
-        rows = (
-            Region.objects.filter(type__in=kinds, boundary__isnull=False)
-            .annotate(centroid=Centroid('boundary__geometry'))
-            .filter(centroid__within=geometry)
-        )
-    else:
-        rows = (
-            Region.objects.filter(type__in=kinds + (Region.Type.COUNTY,), boundary__isnull=False)
-            .filter(boundary__geometry__intersects=geometry)
-            .exclude(boundary__geometry__touches=geometry)
-            .exclude(pk=region.pk)
-        )
-    groups = {'counties': [], 'communities': [], 'school_districts': [], 'zipcodes': []}
-    community_order = {region_type: index for index, region_type in enumerate(Region.COMMUNITY_TYPES)}
-    for other in sorted(rows, key=lambda other: (other.name, community_order.get(other.type, 0))):
-        entry = {
-            'name': other.name,
-            'url': other.get_pesticides_url(),
-        }
-        if other.type == Region.Type.COUNTY:
-            groups['counties'].append(entry)
-        elif other.type == Region.Type.SCHOOL_DISTRICT:
-            groups['school_districts'].append(entry)
-        elif other.type == Region.Type.ZIPCODE:
-            groups['zipcodes'].append(entry)
-        else:
-            groups['communities'].append({**entry, 'type_label': other.type_label})
-    data = {**groups, 'any': any(groups.values())}
-    cache.set(key, data, WITHIN_TTL)
-    return data
+    return nearby.regions_within(region, url_method='get_pesticides_url', cache_prefix=WITHIN_KEY)
 
 
 def region_area(region):

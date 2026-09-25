@@ -38,7 +38,10 @@ class Command(CountyFilterMixin, BaseCommand):
                     metadata={
                         'uace10': row.UACE10,
                         'uace20': row.UACE20,
-                        'population': row.Population,
+                        # The CKAN source's Population column is a float
+                        # (geopandas reads it as float64); the region pages
+                        # want a whole head count, not "717589.0".
+                        'population': int(row.Population),
                         'area_sqm': row.Area_sqm,
                         'urban_area_type': 'urbanized' if row.UrbanAreas == 2 else 'small_urban',
                         'urban_area_code': row.UrbanAreas,
