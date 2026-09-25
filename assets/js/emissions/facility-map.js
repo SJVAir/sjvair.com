@@ -123,7 +123,6 @@
     // The container's live dataset (an adopt rewrites this same element's).
     this.data = shell.data;
     this.map = shell.map;
-    this.popup = null;
     this.fitted = false;
     this.legendData = null;
     // The Areas view: shapes per level (they never change with the scope),
@@ -154,11 +153,8 @@
       var elt = detail && detail.elt;
       if (!elt || !elt.closest || !elt.closest('.explorer-scope') || typeof detail.path !== 'string') return;
       if (!self.areasEnabled && self.data.mode !== 'full') return;
-      var url = new URL(detail.path, window.location.href);
-      if (url.origin !== window.location.origin) return;
-      self.writeState(url.searchParams);
-      var search = url.searchParams.toString();
-      detail.path = url.pathname + (search ? '?' + search : '') + url.hash;
+      var path = M.rewriteQuery(detail.path, self.writeState.bind(self));
+      if (path !== null) detail.path = path;
     };
     document.body.addEventListener('htmx:configRequest', this.onConfigRequest);
     // For debugging from the console: document.querySelector('.facility-map').facilityMap
@@ -246,22 +242,15 @@
       set(this.map, 'areas-fill', areas);
       set(this.map, 'areas-line', areas);
     }
-    Array.prototype.forEach.call(this.controls('[data-view]'), function (button) {
+    Array.prototype.forEach.call(this.shell.controls('[data-view]'), function (button) {
       var on = button.getAttribute('data-view') === (areas ? 'areas' : 'facilities');
       button.classList.toggle('is-selected', on);
       button.classList.toggle('is-link', on);
       button.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    Array.prototype.forEach.call(this.controls('[data-areas-only]'), function (control) {
+    Array.prototype.forEach.call(this.shell.controls('[data-areas-only]'), function (control) {
       control.hidden = !areas;
     });
-  };
-
-  // The toolbar's own controls matching `selector`. Not the whole wrap: the
-  // map container carries data-view, data-level and data-measure too.
-  FacilityMap.prototype.controls = function (selector) {
-    var toolbar = this.shell.toolbarEl;
-    return toolbar ? toolbar.querySelectorAll(selector) : [];
   };
 
   FacilityMap.prototype.url = function () {
@@ -444,20 +433,10 @@
     return url + (query ? '?' + query : '');
   };
 
-  FacilityMap.prototype.placePopup = function (html, lngLat) {
-    var self = this;
-    if (this.popup) this.popup.remove();
-    this.popup = new maptilersdk.Popup({ maxWidth: this.shell.popupMaxWidth() }).setLngLat(lngLat).setHTML(html).addTo(this.map);
-    // Clear of the toolbar and legend card, as on the pesticides map.
-    this.shell.panPopupIntoView(this.popup);
-    this.popup.on('close', function () { self.popup = null; });
-    return this.popup;
-  };
-
   FacilityMap.prototype.openPopup = function (feature, lngLat) {
     var p = feature.properties;
     var value = p._empty ? 'none reported' : quantity(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
-    this.placePopup('<div class="facility-popup">' +
+    this.shell.placePopup('<div class="facility-popup">' +
       '<p class="facility-popup-name"><a href="' + escapeHtml(this.facilityUrl(p.id)) + '">' + escapeHtml(p.name) + '</a></p>' +
       '<p>' + escapeHtml(p.sector) + '</p>' +
       '<p>' + escapeHtml(this.data.label) + ': <strong>' + value + '</strong>' + (p.rank ? ' · #' + p.rank : '') + '</p>' +
@@ -483,7 +462,7 @@
       line('Total', p.total, '') + line('Per square mile', p.per_sq_mi, '') + line('Per 1,000 residents', p.per_1k_residents, '') +
       (count ? '<p><button type="button" class="button is-small is-link is-light" data-show-facilities>Show facilities</button></p>' : '') +
       '</div>';
-    var popup = this.placePopup(html, lngLat);
+    var popup = this.shell.placePopup(html, lngLat);
     var button = popup.getElement().querySelector('[data-show-facilities]');
     if (button) {
       button.addEventListener('click', function () {
@@ -555,26 +534,16 @@
   FacilityMap.prototype.onChrome = function (wrap) {
     var self = this;
     if (this.shell.legendPanelEl && !this.legendData && !this.areaData) this.shell.legendPanelEl.hidden = true;
-    var bind = function (selector, handler) {
-      Array.prototype.forEach.call(self.controls(selector), function (item) {
-        if (item.getAttribute('data-bound')) return;
-        item.setAttribute('data-bound', '1');
-        item.addEventListener('click', function (event) {
-          event.preventDefault();
-          M.chrome.closeDropdowns(self.shell, null);
-          handler(item);
-        });
-      });
-    };
-    bind('[data-sector]', function (item) { self.setSector(item.getAttribute('data-sector'), item.textContent.trim()); });
-    bind('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
-    bind('[data-level]', function (item) { self.setLevel(item.getAttribute('data-level'), item.textContent.trim()); });
-    bind('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
+    var shell = this.shell;
+    shell.bindControls('[data-sector]', function (item) { self.setSector(item.getAttribute('data-sector'), item.textContent.trim()); });
+    shell.bindControls('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
+    shell.bindControls('[data-level]', function (item) { self.setLevel(item.getAttribute('data-level'), item.textContent.trim()); });
+    shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
     this.applyView();
   };
 
   FacilityMap.prototype.onDropdownOpen = function () {
-    if (this.popup) this.popup.remove();
+    this.shell.closePopup();
   };
 
   // Sets the map's state on `params` (a URLSearchParams), defaults left out:
@@ -597,10 +566,7 @@
   // The address bar follows the view, level and measure (and the sector) so
   // a view can be shared.
   FacilityMap.prototype.syncUrl = function () {
-    var page = new URLSearchParams(window.location.search);
-    this.writeState(page);
-    var search = page.toString();
-    window.history.replaceState(window.history.state, '', window.location.pathname + (search ? '?' + search : ''));
+    M.syncUrl(this.writeState.bind(this));
   };
 
   FacilityMap.prototype.setView = function (view) {
@@ -678,7 +644,7 @@
   // popup, the located dot, its area values and outline), take the new
   // page's view, frame it, and reload.
   FacilityMap.prototype.onAdopt = function () {
-    if (this.popup) this.popup.remove();
+    this.shell.closePopup();
     // The new page's legend card waits for its own data, as on a first build.
     this.legendData = null;
     this.areaData = null;
@@ -698,7 +664,7 @@
   };
 
   FacilityMap.prototype.destroy = function () {
-    if (this.popup) this.popup.remove();
+    this.shell.closePopup();
     document.body.removeEventListener('htmx:configRequest', this.onConfigRequest);
     this.map = null;
   };

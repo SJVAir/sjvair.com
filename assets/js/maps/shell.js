@@ -14,6 +14,11 @@
  *   home()                      {bounds, padding} or {center, zoom}, or null
  *   legend(bodyEl)              fill the legend card (shell.updateLegend())
  *   destroy()                   let go of anything it holds
+ *
+ * and which it builds on with the shell's helpers: its toolbar controls
+ * (controls, bindControls), one popup at a time (placePopup, closePopup,
+ * shell.popup), sources and layers (ensureSource, ensureLayer,
+ * setSourceData), fetch tickets, the status pill and the legend.
  */
 (function () {
   'use strict';
@@ -73,6 +78,7 @@
     this.expanded = false;
     this.loaded = false;
     this.tickets = 0;
+    this.popup = null;
     this.reducedMotion = M.prefersReducedMotion();
     this.tileStyle = M.tileStyle(el);
 
@@ -316,6 +322,44 @@
 
   Shell.prototype.updateLegend = function () {
     if (this.module.legend && this.legendBodyEl) this.module.legend(this.legendBodyEl);
+  };
+
+  // The toolbar's own controls matching `selector`. Not the whole wrap: the
+  // map container carries data-view, data-measure and the like too.
+  Shell.prototype.controls = function (selector) {
+    return this.toolbarEl ? this.toolbarEl.querySelectorAll(selector) : [];
+  };
+
+  // Binds a click on each toolbar control matching `selector` to
+  // handler(control), once per control (an adopt re-runs onChrome over the
+  // new page's chrome): it closes any open dropdown first.
+  Shell.prototype.bindControls = function (selector, handler) {
+    var self = this;
+    Array.prototype.forEach.call(this.controls(selector), function (item) {
+      if (item.getAttribute('data-bound')) return;
+      item.setAttribute('data-bound', '1');
+      item.addEventListener('click', function (event) {
+        event.preventDefault();
+        M.chrome.closeDropdowns(self, null);
+        handler(item);
+      });
+    });
+  };
+
+  // Opens the map's one popup at `lngLat` (closing any other), clear of the
+  // toolbar and legend card; shell.popup is it until it closes.
+  Shell.prototype.placePopup = function (html, lngLat) {
+    var self = this;
+    this.closePopup();
+    var popup = new maptilersdk.Popup({ maxWidth: this.popupMaxWidth() }).setLngLat(lngLat).setHTML(html).addTo(this.map);
+    this.popup = popup;
+    this.panPopupIntoView(popup);
+    popup.on('close', function () { if (self.popup === popup) self.popup = null; });
+    return popup;
+  };
+
+  Shell.prototype.closePopup = function () {
+    if (this.popup) this.popup.remove();
   };
 
   Shell.prototype.popupMaxWidth = function () {

@@ -157,7 +157,6 @@
     // The container's live dataset (an adopt rewrites this same element's).
     this.data = shell.data;
     this.map = shell.map;
-    this.popup = null;
     this.popupRequest = 0;
     this.dairies = null;
     this.counties = null;
@@ -188,11 +187,8 @@
     this.onConfigRequest = function (event) {
       var detail = event.detail;
       if (!detail || typeof detail.path !== 'string') return;
-      var url = new URL(detail.path, window.location.href);
-      if (url.origin !== window.location.origin || url.pathname !== window.location.pathname) return;
-      self.writeState(url.searchParams);
-      var search = url.searchParams.toString();
-      detail.path = url.pathname + (search ? '?' + search : '') + url.hash;
+      var path = M.rewriteQuery(detail.path, self.writeState.bind(self), true);
+      if (path !== null) detail.path = path;
     };
     document.body.addEventListener('htmx:configRequest', this.onConfigRequest);
     // For debugging from the console: document.querySelector('.dairy-map').dairyMap
@@ -242,13 +238,13 @@
       set(this.map, 'dairies', !counties);
       set(this.map, 'counties-fill', counties);
     }
-    Array.prototype.forEach.call(this.controls('[data-view]'), function (button) {
+    Array.prototype.forEach.call(this.shell.controls('[data-view]'), function (button) {
       var on = button.getAttribute('data-view') === (counties ? 'counties' : 'dairies');
       button.classList.toggle('is-selected', on);
       button.classList.toggle('is-link', on);
       button.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    Array.prototype.forEach.call(this.controls('[data-counties-only]'), function (control) {
+    Array.prototype.forEach.call(this.shell.controls('[data-counties-only]'), function (control) {
       control.hidden = !counties;
     });
   };
@@ -259,11 +255,6 @@
     var county = this.data.county || '';
     this.map.setFilter('dairies', county ? ['==', ['get', 'county'], county] : null);
     this.map.setPaintProperty('counties-line', 'line-width', county ? ['case', ['==', ['get', 'slug'], county], 3, 1] : 1);
-  };
-
-  DairyMap.prototype.controls = function (selector) {
-    var toolbar = this.shell.toolbarEl;
-    return toolbar ? toolbar.querySelectorAll(selector) : [];
   };
 
   DairyMap.prototype.load = function () {
@@ -356,28 +347,19 @@
     return this.data.query ? '?' + this.data.query : '';
   };
 
-  DairyMap.prototype.placePopup = function (html, lngLat) {
-    var self = this;
-    if (this.popup) this.popup.remove();
-    this.popup = new maptilersdk.Popup({ maxWidth: this.shell.popupMaxWidth() }).setLngLat(lngLat).setHTML(html).addTo(this.map);
-    this.shell.panPopupIntoView(this.popup);
-    this.popup.on('close', function () { self.popup = null; });
-    return this.popup;
-  };
-
   // Fetched on click: the herd by class, digesters and "Counted in".
   DairyMap.prototype.openPopup = function (id, lngLat) {
     var self = this;
     var request = ++this.popupRequest;
-    var popup = this.placePopup(LOADING, lngLat);
+    var popup = this.shell.placePopup(LOADING, lngLat);
     getJson((this.data.popupUrl || '').replace('{id}', encodeURIComponent(id)))
       .then(function (data) {
-        if (request !== self.popupRequest || self.popup !== popup) return;
+        if (request !== self.popupRequest || self.shell.popup !== popup) return;
         popup.setHTML(popupHtml(data, self.regionQuery()));
         self.shell.panPopupIntoView(popup);
       })
       .catch(function (err) {
-        if (request !== self.popupRequest || self.popup !== popup) return;
+        if (request !== self.popupRequest || self.shell.popup !== popup) return;
         popup.setHTML(FAILED);
         logError('failed to load a dairy', err);
       });
@@ -388,7 +370,7 @@
     var unit = escapeHtml(this.data.unit);
     var url = (this.data.regionUrl || '').replace('{id}', encodeURIComponent(p.id)) + this.regionQuery();
     var line = function (label, value) { return '<p>' + label + ': <strong>' + value + '</strong></p>'; };
-    this.placePopup('<div class="facility-popup dairy-popup">' +
+    this.shell.placePopup('<div class="facility-popup dairy-popup">' +
       '<p class="facility-popup-name"><a href="' + escapeHtml(url) + '">' + escapeHtml(p.name) + '</a></p>' +
       line('Dairy emissions, ' + escapeHtml(this.data.label), quantity(p.emissions) + ' ' + unit + '/yr') +
       line('Per square mile', quantity(p.emissions_per_sq_mi) + ' ' + unit + '/yr') +
@@ -452,24 +434,13 @@
   DairyMap.prototype.onChrome = function () {
     var self = this;
     if (this.shell.legendPanelEl && !this.dairies) this.shell.legendPanelEl.hidden = true;
-    var bind = function (selector, handler) {
-      Array.prototype.forEach.call(self.controls(selector), function (item) {
-        if (item.getAttribute('data-bound')) return;
-        item.setAttribute('data-bound', '1');
-        item.addEventListener('click', function (event) {
-          event.preventDefault();
-          M.chrome.closeDropdowns(self.shell, null);
-          handler(item);
-        });
-      });
-    };
-    bind('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
-    bind('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
+    this.shell.bindControls('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
+    this.shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
     this.applyView();
   };
 
   DairyMap.prototype.onDropdownOpen = function () {
-    if (this.popup) this.popup.remove();
+    this.shell.closePopup();
   };
 
   // The map's state on `params` (a URLSearchParams), defaults left out: view
@@ -481,15 +452,12 @@
   };
 
   DairyMap.prototype.syncUrl = function () {
-    var page = new URLSearchParams(window.location.search);
-    this.writeState(page);
-    var search = page.toString();
-    window.history.replaceState(window.history.state, '', window.location.pathname + (search ? '?' + search : ''));
+    M.syncUrl(this.writeState.bind(this));
   };
 
   DairyMap.prototype.setView = function (view) {
     this.view = view === 'counties' ? 'counties' : 'dairies';
-    if (this.popup) this.popup.remove();
+    this.shell.closePopup();
     this.applyView();
     this.syncUrl();
     this.shell.updateLegend();
@@ -525,7 +493,7 @@
       if (this.dairies) this.el.dataset.loaded = '1';
       return;
     }
-    if (this.popup) this.popup.remove();
+    this.shell.closePopup();
     this.dairies = null;
     this.counties = null;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
@@ -537,7 +505,7 @@
   };
 
   DairyMap.prototype.destroy = function () {
-    if (this.popup) this.popup.remove();
+    this.shell.closePopup();
     document.body.removeEventListener('htmx:configRequest', this.onConfigRequest);
     document.body.removeEventListener('click', this.onZoomClick);
     this.map = null;
