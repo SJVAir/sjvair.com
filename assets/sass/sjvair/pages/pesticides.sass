@@ -147,6 +147,11 @@ body.pesticides
         .dropdown-item.is-active
             background-color: $link
             color: $white
+            // Its muted secondary text (a pollutant's full name) stays muted,
+            // in white, rather than grey on the blue. Bulma's text helpers are
+            // !important, so this has to be too.
+            .has-text-grey, .has-text-grey-light
+                color: rgba($white, 0.75) !important
     // The years as a compact grid, so the whole span is in view at once --
     // the scope bar's year picker and the map toolbar's Compare picker both.
     .explorer-scope-years
