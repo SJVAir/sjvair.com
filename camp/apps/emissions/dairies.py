@@ -34,7 +34,7 @@ from camp.apps.emissions.models import (
 from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.regions.models import Region
 
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 GENERATION_KEY = 'emissions:dairies:generation'
 
 # CARB's county inventory rows for dairy cattle waste. Silage has its own EIC

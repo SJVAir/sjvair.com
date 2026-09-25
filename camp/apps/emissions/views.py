@@ -380,7 +380,8 @@ FIND_AREA_TYPE_LABELS = {
     Region.Type.ZIPCODE: 'ZIP',
     Region.Type.SCHOOL_DISTRICT: 'School district',
 }
-FIND_AREA_PLACES_KEY = f'emissions:v{stats.CACHE_VERSION}:find-area-places'
+# :v2 -- the synthetic places are gone; a list cached before then must not be served.
+FIND_AREA_PLACES_KEY = f'emissions:v{stats.CACHE_VERSION}:find-area-places:v2'
 RADIUS_CHOICES = (1, 3, 5)
 RADIUS_ZOOMS = {1: 13, 3: 12, 5: 11}
 MAX_LABEL = 120
