@@ -54,9 +54,14 @@ def styles(ctx):
         include_paths=(assets('sass'), path('node_modules')),
         output_style='compressed',
     )
+    # Compressed output with non-ASCII in it starts with a byte-order mark in
+    # place of @charset. Wrapped in the layer below, the mark would land inside
+    # it and glue onto Bulma's first selector (.pagination-previous), so take
+    # it off and declare the charset up front instead.
+    compiled_css = compiled_css.lstrip('\ufeff')
     # Wrap compiled output in a CSS layer so it doesn't
     # override third-party utilities in embedded micro-frontends
-    layered_css = f'@layer bulma{{{compiled_css}}}'
+    layered_css = f'@charset "UTF-8";@layer bulma{{{compiled_css}}}'
     mkdir('dist/css')
     with open(path('dist/css/style.css'), 'w') as f:
         f.write(layered_css)
