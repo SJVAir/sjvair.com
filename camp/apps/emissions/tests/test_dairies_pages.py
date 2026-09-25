@@ -174,6 +174,8 @@ class DairyTabContentTests(DairyPageTestCase):
         content = self.get().content.decode()
         assert 'No dairy data has been loaded yet.' in content
         assert 'class="dairy-map map-canvas"' not in content
+        assert 'Year: None' not in content
+        assert 'data-tooltip=""' not in content
 
     def test_tab(self):
         content = self.client.get(reverse('emissions:facility-list')).content.decode()

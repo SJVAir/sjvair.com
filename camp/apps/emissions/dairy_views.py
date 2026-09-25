@@ -135,7 +135,11 @@ class DairyList(ScopeMixin, vanilla.TemplateView):
         area = filters['area']
         rows = dairies.table(scope.year, county=scope.county, **filters)
         page = Paginator(rows, PAGE_SIZE).get_page(self.request.GET.get('page'))
-        year_options = sorted(set(stats.available_years()) | set(known))
+        # No CADD years at all yet (before any import): the no-data state
+        # covers the page, and the scope bar's year picker has nothing of
+        # its own to offer, so it's hidden rather than showing every
+        # explorer year as a dead "None" fallback.
+        year_options = sorted(set(stats.available_years()) | set(known)) if known else []
         span = f'{known[0]}–{known[-1]}' if known else ''
         params = page_params(scope)
         near = isinstance(area, areas.RadiusArea)
@@ -158,10 +162,9 @@ class DairyList(ScopeMixin, vanilla.TemplateView):
             scope_params=params,
             scope_qs=f'?{urlencode(params)}' if params else '',
             # The scope bar: what doesn't apply to dairies is shown, disabled.
+            # (year_options is [] with no CADD data yet, so this is naturally {}.)
             year_options=year_options,
-            # No CADD years at all yet (before any import): the no-data state
-            # covers it, and `known` is empty so there's no span to name.
-            disabled_years={year: f'CADD has herd data for {span}' for year in year_options if year not in known} if known else {},
+            disabled_years={year: f'CADD has herd data for {span}' for year in year_options if year not in known},
             pollutant_options=CRITERIA,
             disabled_pollutants={
                 pollutant.key: f'CARB reports no {pollutant.label} from dairy cattle'
