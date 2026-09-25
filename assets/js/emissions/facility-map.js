@@ -66,7 +66,6 @@
   var quantity = M.format.quantity;
   var roundLabel = M.format.round;
   var classIndex = M.classes.index;
-  var classLabel = M.classes.label;
 
   function breaksFor(unit) {
     return CLASS_BREAKS[unit] || CLASS_BREAKS.tons;
@@ -83,12 +82,7 @@
 
   // A legend's classes on the blue ramp, largest first.
   function facilityBins(breaks, swatchClass) {
-    var bins = '';
-    for (var i = breaks.length; i >= 0; i--) {
-      bins += '<span class="legend-bin"><span class="legend-swatch' + (swatchClass ? ' ' + swatchClass : '') +
-        '" style="background:' + RAMP[i] + '"></span>' + classLabel(i, breaks) + '</span>';
-    }
-    return '<div class="legend-bins">' + bins + '</div>';
+    return M.classes.bins(breaks, RAMP, swatchClass);
   }
 
   // Precompute each circle so the layer's paint is plain `get`s. With a

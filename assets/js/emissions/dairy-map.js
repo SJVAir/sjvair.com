@@ -59,11 +59,6 @@
     return M.format.round(value, true);
   }
 
-  // "under 500", "500–1,500", ..., "6,000 and up"
-  function classLabel(index, breaks) {
-    return M.classes.label(index, breaks, roundLabel);
-  }
-
   function colorFor(units) {
     return RAMP[classIndex(units || 0, BREAKS)];
   }
@@ -85,12 +80,7 @@
 
   // A legend's classes, largest first.
   function rampBins(breaks, swatchClass) {
-    var bins = '';
-    for (var i = breaks.length; i >= 0; i--) {
-      bins += '<span class="legend-bin"><span class="legend-swatch' + (swatchClass ? ' ' + swatchClass : '') +
-        '" style="background:' + RAMP[i] + '"></span>' + classLabel(i, breaks) + '</span>';
-    }
-    return '<div class="legend-bins">' + bins + '</div>';
+    return M.classes.bins(breaks, RAMP, swatchClass, roundLabel);
   }
 
   function digesterText(digester) {
