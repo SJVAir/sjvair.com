@@ -1,13 +1,18 @@
 {% extends 'emissions/base.html' %}
 {% load humanize emissions_explorer %}
 
-{% block explorer-lede %}
-<p class="is-size-5">Air pollution reported by permitted facilities, from power plants and glass factories to dairies and gas stations, in the California Air Resources Board's facility inventory.</p>
-{% endblock %}
-
 {% block breadcrumbs %}<span></span>{% endblock %}
 
 {% block explorer-content %}
+<div class="content intro">
+    <p class="is-size-5">
+        See the air pollution reported by permitted facilities across the eight San Joaquin Valley counties, from power
+        plants, refineries and glass factories to dairies, food processors and gas stations: what each one emits, where,
+        and how it compares. Facility emissions come from the California Air Resources Board's
+        <a href="{% url 'emissions:about' %}">facility inventory (CEIDARS)</a>, with CARB's county-wide estimates of all
+        sources for context.
+    </p>
+</div>
 <div class="columns is-multiline has-text-centered">
     <div class="column"><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p></div>
     <div class="column"><p class="heading">{{ pollutant.name }}</p><p class="title">{{ total|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div>
