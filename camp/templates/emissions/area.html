@@ -9,7 +9,7 @@
     <p class="heading mb-1">{{ kind }}{% if county_region and county_region != area.region %} · {{ county_region.name }}{% endif %}{% if population %} · {{ population|intcomma }} people{% endif %}</p>
     <h1 class="title is-3">{{ title }}</h1>
     {% if radius_options %}
-    <div class="buttons has-addons">
+    <div class="buttons has-addons explorer-scope">
         {% for option in radius_options %}<a class="button is-small{% if option.current %} is-link is-selected{% endif %}" href="{{ option.url }}">{{ option.miles }} mi</a>{% endfor %}
     </div>
     {% endif %}
