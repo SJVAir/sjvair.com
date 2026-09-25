@@ -1,4 +1,5 @@
 from django.contrib.gis.db import models
+from django.db.models import Q
 from django.urls import reverse
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
@@ -266,3 +267,120 @@ class CountyInventory(models.Model):
 
     def __str__(self):
         return f'{self.eic} {self.county} {self.year}'
+
+
+# CADD's reference code for a count that was reported; every other code
+# (2a-2f, 3a-3g) marks one of CARB's estimates or gap fills.
+REPORTED_REF_CODE = '1'
+
+# EPA animal units (40 CFR 122, Appendix B): each mature dairy cow, milking or
+# dry, counts 1.4; every other head of cattle 1.0.
+MATURE_DAIRY_FACTOR = 1.4
+OTHER_CATTLE_FACTOR = 1.0
+MATURE_DAIRY_FIELDS = ('milk_cows', 'dry_cows')
+OTHER_CATTLE_FIELDS = ('old_heifers', 'young_heifers', 'old_calves', 'young_calves', 'beef_cattle')
+HERD_FIELDS = MATURE_DAIRY_FIELDS + OTHER_CATTLE_FIELDS
+
+
+def animal_units(counts):
+    """EPA animal units from {herd field: count}; a blank (None) count is unknown and left out."""
+    mature = sum(counts.get(field) or 0 for field in MATURE_DAIRY_FIELDS)
+    other = sum(counts.get(field) or 0 for field in OTHER_CATTLE_FIELDS)
+    return mature * MATURE_DAIRY_FACTOR + other * OTHER_CATTLE_FACTOR
+
+
+class Dairy(TimeStampedModel):
+    """
+    A dairy in CARB's California Dairy & Livestock Database (CADD): where it
+    is. Its herd by year is DairyHerd, its anaerobic digesters Digester.
+    Nothing here is an emission estimate.
+    """
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.Dairy'))
+    cadd_id = models.IntegerField(_('CADD ID'), unique=True)
+    place_id = models.IntegerField(_('Place ID'))
+    name = models.CharField(_('Name'), max_length=128)
+    # As CADD gives it: street, city, zipcode.
+    address = models.JSONField(_('Address'), default=dict, blank=True)
+    point = models.PointField(_('Point'))
+    # Resolved from CADD's county name at import.
+    county = models.ForeignKey(
+        'regions.Region',
+        verbose_name=_('County'),
+        on_delete=models.PROTECT,
+        related_name='dairies',
+    )
+    water_board = models.CharField(_('Regional water board'), max_length=8, blank=True)
+    cadd_version = models.CharField(_('CADD version'), max_length=16)
+
+    class Meta:
+        verbose_name_plural = 'dairies'
+
+    def __str__(self):
+        return f'{self.name} ({self.address.get("city", "")})'
+
+
+class DairyHerd(models.Model):
+    """One dairy's herd in one year, as CADD counts it. A blank count is unknown, not zero."""
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.DairyHerd'))
+    dairy = models.ForeignKey(Dairy, verbose_name=_('Dairy'), on_delete=models.CASCADE, related_name='herds')
+    year = models.IntegerField(_('Year'))
+    milk_cows = models.IntegerField(_('Milk cows'), null=True, blank=True)
+    dry_cows = models.IntegerField(_('Dry cows'), null=True, blank=True)
+    old_heifers = models.IntegerField(_('Heifers (older)'), null=True, blank=True)
+    young_heifers = models.IntegerField(_('Heifers (younger)'), null=True, blank=True)
+    old_calves = models.IntegerField(_('Calves (older)'), null=True, blank=True)
+    young_calves = models.IntegerField(_('Calves (younger)'), null=True, blank=True)
+    beef_cattle = models.IntegerField(_('Beef cattle'), null=True, blank=True)
+    # The milk cows' code, and the one for every other class.
+    milk_cows_ref_code = models.CharField(_('Milk cows reference code'), max_length=8, blank=True)
+    non_milking_ref_code = models.CharField(_('Non-milking cattle reference code'), max_length=8, blank=True)
+    labeled_as_dairy = models.BooleanField(_('Labeled as dairy'), default=False)
+    # Computed at import from the counts that aren't blank (animal_units()).
+    animal_units = models.FloatField(_('Animal units (EPA)'), default=0)
+
+    class Meta:
+        unique_together = [('dairy', 'year')]
+        indexes = [
+            models.Index(fields=['year', 'dairy']),
+        ]
+
+    def __str__(self):
+        return f'{self.dairy.name} ({self.year})'
+
+    @property
+    def other_cattle(self):
+        """Every head but the milk cows, over the counts that aren't blank; None when all are."""
+        counts = [getattr(self, field) for field in HERD_FIELDS[1:] if getattr(self, field) is not None]
+        return sum(counts) if counts else None
+
+    def estimated(self, field):
+        """Whether CARB estimated this class's count rather than it being reported."""
+        code = self.milk_cows_ref_code if field == 'milk_cows' else self.non_milking_ref_code
+        return code != REPORTED_REF_CODE
+
+
+class DigesterQuerySet(models.QuerySet):
+    def operating_in(self, year):
+        """Operating in `year`: started by then, and not shut down by then."""
+        return self.filter(operational_year__lte=year).filter(Q(shutdown_year__isnull=True) | Q(shutdown_year__gt=year))
+
+
+class Digester(models.Model):
+    """An anaerobic digester at a dairy, per CADD."""
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.Digester'))
+    dairy = models.ForeignKey(Dairy, verbose_name=_('Dairy'), on_delete=models.CASCADE, related_name='digesters')
+    operational_year = models.IntegerField(_('Operational year'))
+    shutdown_year = models.IntegerField(_('Shutdown year'), null=True, blank=True)
+    # DDRDP, AgSTAR or LCFS.
+    source = models.CharField(_('Data source'), max_length=16, blank=True)
+
+    objects = DigesterQuerySet.as_manager()
+
+    def __str__(self):
+        return f'{self.dairy.name} digester ({self.operational_year})'
+
+    def operating_in(self, year):
+        return self.operational_year <= year and (self.shutdown_year is None or self.shutdown_year > year)
