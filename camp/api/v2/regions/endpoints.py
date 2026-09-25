@@ -1,12 +1,9 @@
-import json
-
 from django import forms
-from django.contrib.gis.geos import MultiPolygon
 
 from resticus import generics, http
 
+from camp.apps.regions import shapes
 from camp.apps.regions.models import Region
-from camp.utils.gis import EPSG_LATLON, round_coords
 from camp.utils.views import CachedEndpointMixin
 
 from .filters import RegionFilter
@@ -58,32 +55,29 @@ class RegionGeoJSONBase(RegionList):
     def get(self, request, *args, **kwargs):
         # Unfiltered this is every region in the database -- thousands of
         # square-mile sections among them -- so a type is required.
-        if not request.GET.get('type', '').strip():
+        region_type = request.GET.get('type', '').strip()
+        if not region_type:
             return http.Http400({'error': 'The type parameter is required.'})
-        regions = self.filter_queryset(self.get_queryset()).exclude(boundary=None).order_by('name')
-        return {'type': 'FeatureCollection', 'features': [self.feature(region) for region in regions]}
-
-    @staticmethod
-    def feature(region):
-        properties = {'id': region.sqid, 'name': region.name, 'slug': region.slug, 'type': region.type}
-        geometry = region.boundary.geometry
-        if geometry.srid and geometry.srid != EPSG_LATLON:
-            geometry = geometry.transform(EPSG_LATLON, clone=True)
-        if geometry.geom_type == 'Polygon':
-            geometry = MultiPolygon(geometry)
-        return {
-            'type': 'Feature',
-            'id': region.sqid,
-            'geometry': round_coords(json.loads(geometry.geojson)),
-            'properties': properties,
-        }
+        regions = (
+            self.filter_queryset(self.get_queryset())
+            .exclude(boundary=None).current_vintage().order_by('name')
+        )
+        if request.GET.get('simplify') == '1':
+            # The whole type is simplified together (shared borders stay
+            # shared); the filters then pick from it.
+            wanted = set(regions.values_list('sqid', flat=True))
+            features = [f for f in shapes.simplified_features(region_type) if f['id'] in wanted]
+        else:
+            features = [shapes.region_feature(region, shapes.full_geometry(region)) for region in regions]
+        return {'type': 'FeatureCollection', 'features': features}
 
 
 class RegionGeoJSON(CachedEndpointMixin, RegionGeoJSONBase):
-    """Regions as GeoJSON for a map: ?type= (required), plus ?slug=, ?name=, ?within=."""
+    """Regions as GeoJSON for a map: ?type= (required), plus ?slug=, ?name=, ?within=.
+    ?simplify=1 returns shapes simplified together (for area maps)."""
     # Boundaries change only when an import runs; ?_cc=1 clears one early.
     cache_timeout = 60 * 60 * 24
-    cache_key_version = 1
+    cache_key_version = 2
 
 
 class RegionDetail(RegionMixin, generics.DetailEndpoint):
