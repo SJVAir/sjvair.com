@@ -694,7 +694,15 @@
       });
     }
     this.loadFacilities();
-    if (this.view === 'areas') this.loadAreas();
+    if (this.view === 'areas') {
+      this.loadAreas();
+    } else {
+      // A sector change made while off the areas view must not leave a
+      // stale areaData behind: setView('areas') would otherwise reuse it
+      // because the level still matches.
+      this.areaData = null;
+      this.areaRequest++;
+    }
   };
 
   // A swap brought a new page: drop what belonged to the old one (its

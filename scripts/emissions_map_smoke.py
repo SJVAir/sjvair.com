@@ -216,6 +216,27 @@ def main():
         check(results, 'glass, then All sectors, a year change: no sector',
               unfiltered and 'sector=' not in driver.current_url, driver.current_url)
 
+        # Areas, then Facilities, pick a sector, back to Areas: the areas
+        # values must be refetched for the new sector rather than reusing
+        # the stale all-sector cache (I1).
+        driver.get(args.base + '/tools/emissions/map/?view=areas')
+        wait_loaded(driver)
+        wait_areas(driver)
+        driver.execute_script("document.querySelector('.facility-map-view [data-view=facilities]').click()")
+        wait_loaded(driver)
+        driver.find_element(By.CSS_SELECTOR, '.facility-map-sector .dropdown-trigger .button').click()
+        driver.find_element(By.CSS_SELECTOR, '.facility-map-sector [data-sector="glass"]').click()
+        time.sleep(0.5)
+        driver.execute_script("performance.clearResourceTimings();")
+        driver.execute_script("document.querySelector('.facility-map-view [data-view=areas]').click()")
+        wait_areas(driver)
+        areas_request = driver.execute_script(
+            "var m = window.EmissionsFacilityMap.instances()[0];"
+            "var entries = performance.getEntriesByType('resource').filter(function (e) { return e.name.indexOf(m.data.areasUrl) !== -1; });"
+            "return entries.length ? entries[entries.length - 1].name : '';")
+        check(results, 'sector change in Facilities, back to Areas: areas refetch carries sector',
+              'sector=glass' in areas_request, areas_request)
+
         driver.get(args.base + '/tools/emissions/')
         link = driver.find_element(By.CSS_SELECTOR, '.find-area-counties a').get_attribute('href')
         driver.get(link)
@@ -249,6 +270,16 @@ def main():
         near = wait_loaded(driver) and driver.execute_script(
             "var m = window.EmissionsFacilityMap.instances()[0]; return !!m.outlineBounds;")
         check(results, 'near-me page loads, with its circle', near)
+
+        # The radius buttons must carry the map's live state (M5), same as
+        # the scope bar: switch to Areas, then follow a radius button.
+        driver.execute_script("document.querySelector('.facility-map-view [data-view=areas]').click()")
+        wait_areas(driver)
+        driver.find_element(By.CSS_SELECTOR, '.buttons.explorer-scope a').click()
+        time.sleep(1)
+        stayed = wait_areas(driver) and driver.execute_script(
+            "var list = window.EmissionsFacilityMap.instances(); return list.length === 1 && list[0].view === 'areas';")
+        check(results, 'near-me radius button keeps Areas view', stayed and 'view=areas' in driver.current_url, driver.current_url)
 
         errors = console_errors(driver)
         check(results, 'no console errors', not errors, '; '.join(errors)[:300])
