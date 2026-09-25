@@ -592,8 +592,9 @@
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>';
   };
 
-  // With dairies: two small ramps, the facilities' (blue, by tons) and the
-  // dairies' (amber, by animal units), and no size key (every point is one size).
+  // With dairies: two small ramps side by side, the facilities' (blue, by
+  // tons) and the dairies' (amber, by animal units), and no size key (every
+  // point is one size).
   FacilityMap.prototype.combinedLegend = function () {
     var html = '<div class="legend-ramp"><p class="legend-title">Facilities (' + escapeHtml(this.data.unit) + '/yr)</p>' +
       facilityBins(this.legendData.breaks) +
@@ -601,7 +602,7 @@
     if (this.dairyData) {
       html += '<div class="legend-ramp"><p class="legend-title">Dairies (animal units)</p>' + M.dairies.rampBins() + '</div>';
     }
-    return html;
+    return '<div class="legend-ramps">' + html + '</div>';
   };
 
   FacilityMap.prototype.areaLegend = function (legend) {

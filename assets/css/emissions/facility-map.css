@@ -145,3 +145,14 @@
 .dairy-popup-herd td {
   padding: 0 0.75rem 0 0;
 }
+
+/* Region and near-me maps with dairies: the two ramps side by side. The
+   legend card widens to fit them. */
+.facility-map-legend .legend-ramps {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+.map-legend-panel:has(.legend-ramps) {
+  max-width: 24rem;
+}
