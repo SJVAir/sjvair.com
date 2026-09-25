@@ -346,6 +346,10 @@ def main():
             "var m = window.EmissionsFacilityMap.instances()[0]; return !!m.outlineBounds;")
         check(results, 'county page loads, outlined', outlined, link)
         settled_count(driver, feature_count)
+        # The map sits below the header and stats box: bring it on screen
+        # before finding a point to click, or the click can land off the
+        # viewport (same fix as the county dairy-popup check below).
+        driver.execute_script("document.querySelector('.facility-map').scrollIntoView({block: 'center'});")
         time.sleep(0.5)
         hit = driver.execute_script(CIRCLE_UNDER_WASH)
         if hit:
