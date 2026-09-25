@@ -9,11 +9,11 @@
 {% if not has_data %}
 <p class="has-text-grey">No dairy data has been loaded yet.</p>
 {% else %}
-<div class="columns is-multiline has-text-centered">
-    <div class="column"><p class="heading">Dairies in {{ year }}</p><p class="title">{{ summary.dairies|intcomma }}</p></div>
-    <div class="column"><p class="heading">Mature dairy cows</p><p class="title">{{ summary.mature_cows|whole }}</p></div>
-    <div class="column"><p class="heading">Large CAFOs</p><p class="title">{{ summary.large|intcomma }}</p></div>
-    <div class="column"><p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p></div>
+<div class="columns is-mobile is-multiline has-text-centered">
+    <div class="column is-half-mobile"><p class="heading">Dairies in {{ year }}</p><p class="title">{{ summary.dairies|intcomma }}</p></div>
+    <div class="column is-half-mobile"><p class="heading">Mature dairy cows</p><p class="title">{{ summary.mature_cows|whole }}</p></div>
+    <div class="column is-half-mobile"><p class="heading">Large CAFOs</p><p class="title">{{ summary.large|intcomma }}</p></div>
+    <div class="column is-half-mobile"><p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p></div>
 </div>
 
 {% include 'maps/includes/map.html' with map=map_config.map %}
@@ -35,7 +35,7 @@
                     <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
                 </div>
             </div>
-            {# Cities, places and ZIP codes; a dairy counts in the one its map point falls in, as on the region pages. #}
+            {# Cities, places and ZIP codes; a dairy counts in a city or place by point or mailing city, in a ZIP or tract by point only. #}
             {% url 'api:v2:emissions:places' as places_url %}{% include 'pesticides/includes/entity-picker.html' with kind='region' label='City, place or ZIP' selected=region search_url=places_url autosubmit=1 %}
             {% if near %}
             <div class="field"><span class="tag is-info is-light is-medium">{{ near }} <a class="delete is-small" href="{% qs_replace lat=None lng=None radius=None label=None page=None %}" aria-label="Remove the distance filter"></a></span></div>
