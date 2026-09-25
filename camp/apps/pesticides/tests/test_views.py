@@ -510,7 +510,10 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         assert ctx['related_b']['show_all_url'] == reverse('pesticides:commodity-list') + f'?chemical={self.chemical.sqid}'
         assert ctx['related_a']['show_pct'] is True
         assert ctx['related_b']['show_pct'] is False
-        assert ctx['related_a']['complete'] is False
+        # One product and two commodities in the fixture, both well under
+        # the cap, so each card is already showing everything it has.
+        assert ctx['related_a']['complete'] is True
+        assert ctx['related_b']['complete'] is True
 
     def test_notices_split(self):
         ctx = self.client.get(Chemical.objects.get(pk=2).get_absolute_url()).context
@@ -620,7 +623,8 @@ class ProductDetailTests(RollupTestMixin, TestCase):
         card = ctx['related_a']
         assert (card['show_pct'], card['show_lbs'], card['complete']) == (True, False, True)
         html = self.client.get(self.product.get_absolute_url()).content.decode()
-        assert html.count('Show all') == 1
+        # Neither card has more than it's showing, so neither offers to.
+        assert html.count('Show all') == 0
 
     def test_totals_use_lbs_product(self):
         ctx = self.client.get(self.product.get_absolute_url()).context
@@ -1294,3 +1298,66 @@ class TemplateCommentTests(TestCase):
         assert not offenders, (
             'multi-line {# #} renders as page text; use {%% comment %%}: %s'
             % ', '.join(offenders))
+
+
+class ShowAllTests(RollupTestMixin, TestCase):
+    """
+    "Show all" is an offer to see more. A card holding fewer rows than its
+    cap is already showing everything, so the footer would link to what's
+    on screen.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def card_titles_offering_show_all(self, url, **params):
+        import re
+
+        html = self.client.get(url, params).content.decode()
+        offering = []
+        for block in re.findall(r'<div class="card related-card.*?</div>\s*</div>', html, re.S):
+            if 'Show all' in block:
+                title = re.search(r'card-header-title">([^<]*)<', block)
+                offering.append(title.group(1).strip() if title else '?')
+        return offering
+
+    def test_a_short_list_does_not_offer_show_all(self):
+        # The fixture has three chemicals and one commodity: nowhere near
+        # the ten-row cap, so no card has more to show.
+        chemical = Chemical.objects.get(pk=1)
+        assert self.card_titles_offering_show_all(chemical.get_absolute_url(), year='2023') == []
+
+    def test_a_full_list_still_offers_it(self):
+        card = views.ExplorerDetailMixin.related_card(
+            _StubDetail(), 'Applied to', 'commodities', list(range(views.RELATED_LIMIT)),
+            'pesticides:commodity-list', 'chemical')
+        assert card['complete'] is False
+        short = views.ExplorerDetailMixin.related_card(
+            _StubDetail(), 'Applied to', 'commodities', list(range(views.RELATED_LIMIT - 1)),
+            'pesticides:commodity-list', 'chemical')
+        assert short['complete'] is True
+
+    def test_a_section_card_infers_it_too(self):
+        assert views._section_card('Top products', 'products', [1, 2], '/x/')['complete'] is True
+        assert views._section_card(
+            'Top products', 'products', list(range(views.RELATED_LIMIT)), '/x/')['complete'] is False
+
+    def test_a_product_lists_five_commodities_not_ten(self):
+        product = Product.objects.first()
+        ctx = self.client.get(product.get_absolute_url(), {'year': 'all'}).context
+        applied_to = ctx['related_b']
+        assert applied_to['title'] == 'Applied to'
+        assert len(applied_to['rows']) <= views.PRODUCT_COMMODITY_LIMIT
+
+
+class _StubDetail:
+    """Just enough of ExplorerDetailMixin for related_card()'s bookkeeping."""
+    year, all_years, county, concern = 2023, False, None, False
+
+    def hide_lbs(self):
+        return False
+
+    class object:
+        sqid = 'abc'
