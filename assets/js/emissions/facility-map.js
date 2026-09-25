@@ -332,7 +332,7 @@
     this.el.dataset.loaded = '1';
   };
 
-  // The page's dairies for its year, amber by animal-unit class; none (and
+  // The page's dairies for its year, amber by EPA size class; none (and
   // no dairy ramp) when the page has no dairies URL.
   FacilityMap.prototype.loadDairies = function () {
     var self = this;
@@ -346,7 +346,7 @@
       .then(function (collection) {
         if (request !== self.dairyRequest || !self.map) return;
         (collection.features || []).forEach(function (feature) {
-          feature.properties._color = M.dairies.colorFor(feature.properties.animal_units);
+          feature.properties._color = M.dairies.colorFor(feature.properties.size_class);
         });
         self.dairyData = collection;
         self.shell.setSourceData('dairies', collection);
@@ -593,14 +593,15 @@
   };
 
   // With dairies: two small ramps side by side, the facilities' (blue, by
-  // tons) and the dairies' (amber, by animal units), and no size key (every
+  // tons) and the dairies' (amber, by EPA size class), and no size key (every
   // point is one size).
   FacilityMap.prototype.combinedLegend = function () {
     var html = '<div class="legend-ramp"><p class="legend-title">Facilities (' + escapeHtml(this.data.unit) + '/yr)</p>' +
       facilityBins(this.legendData.breaks) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p></div>';
     if (this.dairyData) {
-      html += '<div class="legend-ramp"><p class="legend-title">Dairies (animal units)</p>' + M.dairies.rampBins() + '</div>';
+      html += '<div class="legend-ramp"><p class="legend-title">Dairies (EPA size)</p>' +
+        M.dairies.sizeBins((this.dairyData.properties || {}).size_classes, true) + '</div>';
     }
     return '<div class="legend-ramps">' + html + '</div>';
   };

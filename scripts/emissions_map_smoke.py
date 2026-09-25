@@ -335,29 +335,33 @@ def main():
         check(results, 'dairies tab loads', wait_dairies(driver))
         drawn = settled_count(driver, dairy_count)
         check(results, 'dairies tab draws dairies', drawn > 0, f'{drawn} dairies')
+        legend = driver.execute_script("return document.querySelector('.dairy-map-legend').textContent;")
+        check(results, 'its legend has the size key and the three EPA size classes',
+              'Mature dairy cows' in legend and 'EPA size class' in legend
+              and '700 or more mature dairy cows' in legend and 'Small: Fewer than 200' in legend, legend[:160])
         driver.execute_script("document.querySelector('.dairy-map-view [data-view=counties]').click()")
         shaded = settled_count(driver, shaded_counties)
         check(results, 'counties view shades counties', shaded > 0 and 'view=counties' in driver.current_url, f'{shaded} shaded')
-        driver.execute_script("document.querySelector('.dairy-map-measure [data-measure=animal_units]').click()")
+        driver.execute_script("document.querySelector('.dairy-map-measure [data-measure=mature_cows]').click()")
         time.sleep(0.5)
         legend = driver.execute_script("return document.querySelector('.dairy-map-legend .legend-title').textContent;")
         check(results, 'a measure change redraws the legend',
-              'Animal units' in legend and 'measure=animal_units' in driver.current_url, legend)
+              'Mature dairy cows' in legend and 'measure=mature_cows' in driver.current_url, legend)
         # A boosted swap from the table (a sort) keeps the view and measure.
         driver.find_element(By.CSS_SELECTOR, '.dairy-table thead a.sort-link').click()
         time.sleep(1)
         kept = wait_dairies(driver) and driver.execute_script(
             "var list = window.EmissionsDairyMap.instances();"
-            "return list.length === 1 && list[0].view === 'counties' && list[0].measure === 'animal_units';")
+            "return list.length === 1 && list[0].view === 'counties' && list[0].measure === 'mature_cows';")
         check(results, 'a sort (boosted swap) keeps Counties and its measure',
-              kept and 'view=counties' in driver.current_url and 'measure=animal_units' in driver.current_url, driver.current_url)
+              kept and 'view=counties' in driver.current_url and 'measure=mature_cows' in driver.current_url, driver.current_url)
         driver.execute_script("var a = document.querySelector('.dairy-zoom'); a.scrollIntoView(); a.click();")
         opened = False
         deadline = time.time() + 8
         while time.time() < deadline and not opened:
             opened = driver.execute_script(
                 "var p = document.querySelector('.maplibregl-popup .dairy-popup');"
-                "return !!p && p.textContent.indexOf('Animal units') !== -1;")
+                "return !!p && p.textContent.indexOf('Mature dairy cows') !== -1 && p.textContent.indexOf('EPA size') !== -1;")
             time.sleep(0.25)
         back = driver.execute_script("return window.EmissionsDairyMap.instances()[0].view === 'dairies';")
         check(results, 'a row name zooms to its dairy, back in Dairies, with its popup', opened and back)
@@ -386,7 +390,8 @@ def main():
         check(results, 'a county page maps its dairies (2023)', drawn > 0, f'{drawn} dairies')
         legend = driver.execute_script("return document.querySelector('.facility-map-legend').textContent;")
         check(results, 'its legend has both ramps',
-              'Facilities (tons/yr)' in legend and 'Dairies (animal units)' in legend, legend[:120])
+              'Facilities (tons/yr)' in legend and 'Dairies (EPA size)' in legend
+              and all(label in legend for label in ('Large', 'Medium', 'Small')), legend[:160])
         time.sleep(0.5)
         hit = driver.execute_script(DAIRY_ALONE)
         if hit:
@@ -394,7 +399,7 @@ def main():
             ActionChains(driver).move_to_element_with_offset(canvas, int(hit[0]), int(hit[1])).click().perform()
             time.sleep(1.5)
         popup = driver.execute_script("var p = document.querySelector('.maplibregl-popup .dairy-popup'); return p ? p.textContent : '';")
-        check(results, 'a dairy on the county map opens its popup', bool(hit) and 'Animal units' in popup, popup[:80])
+        check(results, 'a dairy on the county map opens its popup', bool(hit) and 'Mature dairy cows' in popup, popup[:80])
         driver.execute_script("var p = document.querySelector('.maplibregl-popup-close-button'); if (p) p.click();")
         driver.find_element(By.CSS_SELECTOR, '.explorer-scope-picker[data-scope=year] .button').click()
         driver.find_element(By.XPATH, "//div[@data-scope='year']//a[contains(@class, 'dropdown-item') and normalize-space()='2024']").click()

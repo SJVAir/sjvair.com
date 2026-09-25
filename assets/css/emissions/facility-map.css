@@ -44,6 +44,16 @@
   border-radius: 50%;
   vertical-align: middle;
 }
+/* The Dairies tab's EPA size classes: each label spells out its thresholds,
+   so it wraps beside its swatch rather than under it. */
+.facility-map-legend .legend-bins.is-size-classes .legend-bin {
+  display: flex;
+  align-items: baseline;
+  max-width: 15rem;
+}
+.facility-map-legend .legend-bins.is-size-classes .legend-swatch {
+  flex: none;
+}
 .facility-map-legend .legend-ring {
   display: inline-block;
   width: 0.6rem;

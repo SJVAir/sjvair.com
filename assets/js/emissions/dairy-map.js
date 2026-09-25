@@ -1,16 +1,17 @@
 /*
  * The Dairies tab's map, a module on the map core (assets/js/maps/)
  * registered as 'dairy', and the dairy pieces the facility map borrows for
- * region pages (SJVAirMaps.dairies: the amber ramp and its classes, the popup).
+ * region pages (SJVAirMaps.dairies: the EPA size-class colours and legend, the popup).
  *
  * Two views, one at a time:
  *   Dairies   one circle per dairy in CARB's dairy database (CADD) with a
- *             counted herd that year: area by EPA animal units (square root,
- *             on a fixed scale so years and counties compare), amber by
- *             fixed animal-unit classes; a green ring when a digester ran.
+ *             counted herd that year: area by its mature dairy cows (other
+ *             cattle for a site with none; square root, on a fixed scale so
+ *             years and counties compare), amber by its EPA size class
+ *             (40 CFR 122.23); a green ring when a digester ran.
  *   Counties  the covered counties shaded by a measure: CARB's county dairy
- *             cattle emissions (tons/yr) or the herd (animal units), each
- *             also per square mile.
+ *             cattle emissions (tons/yr) or its mature dairy cows, each also
+ *             per square mile.
  *
  * Its own module rather than a view of the facility map: its data, views,
  * legend and URL state are its own, and as a separate registry module a tab
@@ -24,20 +25,22 @@
   var M = window.SJVAirMaps;
   if (!M || !M.register) return;
 
-  // ColorBrewer YlOrBr: one amber per animal-unit class below.
+  // ColorBrewer YlOrBr, for the counties' classes.
   var RAMP = ['#fee391', '#fec44f', '#fe9929', '#d95f0e', '#993404'];
-  // Fixed classes in EPA animal units, set against CADD's 2023 Valley herds
-  // (about 170 / 300 / 260 / 230 / 170 counted dairies in each).
-  var BREAKS = [500, 1500, 3000, 6000];
+  // The EPA size classes (the API's size_class): light, mid and dark amber
+  // from the same ramp. The geojson's properties carry their labels and
+  // thresholds (dairies.size_classes).
+  var SIZE_COLORS = { small: RAMP[0], medium: RAMP[2], large: RAMP[4] };
   var EMPTY_COLOR = '#8a94a3';
   var COUNTY_COLOR = '#1f2d3d';
   var DIGESTER_COLOR = '#2e7d32';
   var MIN_RADIUS = 3;
   var MAX_RADIUS = 22;
-  // Circle areas are scaled to this herd, the same in every year and county,
-  // so sizes compare; the few larger herds are drawn at the largest size.
-  var SCALE_UNITS = 40000;
-  var SIZE_KEY = [20000, 5000, 1000];
+  // Circle areas are scaled to this many head, the same in every year and
+  // county, so sizes compare; the few larger herds are drawn at the largest
+  // size. (CADD's largest 2023 Valley dairy has 12,000 mature dairy cows.)
+  var SCALE_HEAD = 15000;
+  var SIZE_KEY = [10000, 3000, 500];
   var ZOOM_TO = 12;
 
   var escapeHtml = M.escapeHtml;
@@ -47,7 +50,7 @@
   var quantity = M.format.quantity;
   var classIndex = M.classes.index;
 
-  // A head count or an animal-unit total: whole, with commas; '—' for none.
+  // A head count: whole, with commas; '—' for none.
   function whole(value) {
     if (value === null || value === undefined) return '—';
     return Math.round(value).toLocaleString('en-US');
@@ -59,13 +62,31 @@
     return M.format.round(value, true);
   }
 
-  function colorFor(units) {
-    return RAMP[classIndex(units || 0, BREAKS)];
+  // A dairy's colour from its EPA size class ('large', 'medium', 'small').
+  function colorFor(sizeClass) {
+    return SIZE_COLORS[sizeClass] || EMPTY_COLOR;
   }
 
-  function radiusFor(units) {
-    var capped = Math.min(Math.max(units || 0, 0), SCALE_UNITS);
-    return MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * Math.sqrt(capped / SCALE_UNITS);
+  // What a dairy's circle is sized by: its mature dairy cows, or its other
+  // cattle when it has none (a heifer ranch or a beef site).
+  function headFor(p) {
+    return p.mature_cows > 0 ? p.mature_cows : (p.other_cattle || 0);
+  }
+
+  function radiusFor(head) {
+    var capped = Math.min(Math.max(head || 0, 0), SCALE_HEAD);
+    return MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * Math.sqrt(capped / SCALE_HEAD);
+  }
+
+  // The size classes' legend, largest first: a swatch and the class's label,
+  // with its thresholds unless `short` (the region maps' narrow column).
+  // `sizes` is the geojson's properties.size_classes.
+  function sizeBins(sizes, short) {
+    var bins = (sizes || []).map(function (size) {
+      return '<span class="legend-bin"><span class="legend-swatch" style="background:' + colorFor(size.key) + '"></span>' +
+        '<span>' + escapeHtml(size.label) + (short ? '' : ': ' + escapeHtml(size.threshold)) + '</span></span>';
+    }).join('');
+    return '<div class="legend-bins' + (short ? '' : ' is-size-classes') + '">' + bins + '</div>';
   }
 
   // Five classes up to `max` on round steps (1, 2, 2.5 or 5 times a power of
@@ -91,7 +112,7 @@
   }
 
   // A dairy's popup from /api/2.0/emissions/dairies/<id>/: name, address,
-  // animal units and the herd by class (CARB's estimates starred), its
+  // mature dairy cows, EPA size and the herd by class (CARB's estimates starred), its
   // digesters, and the region pages it counts in (`qs`, the scope, rides along).
   function popupHtml(data, qs) {
     var address = data.address || {};
@@ -108,7 +129,8 @@
         if (starred) estimated = true;
         return '<tr><td>' + escapeHtml(row.label) + '</td><td class="has-text-right">' + whole(row.count) + (starred ? '*' : '') + '</td></tr>';
       }).join('');
-      parts.push('<p>Animal units (EPA), ' + escapeHtml(data.year) + ': <strong>' + whole(herd.animal_units) + '</strong></p>');
+      parts.push('<p>Mature dairy cows, ' + escapeHtml(data.year) + ': <strong>' + whole(herd.mature_cows) + '</strong>' +
+        (herd.size_label ? ' · EPA size: <strong>' + escapeHtml(herd.size_label) + '</strong>' : '') + '</p>');
       parts.push('<table class="dairy-popup-herd"><tbody>' + rows + '</tbody></table>');
       if (estimated) parts.push('<p class="is-size-7">* CARB\'s estimate, not a reported count</p>');
     } else {
@@ -131,10 +153,8 @@
 
   // What the facility map borrows for region and near-me pages.
   M.dairies = {
-    RAMP: RAMP,
-    BREAKS: BREAKS,
     colorFor: colorFor,
-    rampBins: function () { return rampBins(BREAKS); },
+    sizeBins: sizeBins,
     popupHtml: popupHtml,
     LOADING: LOADING,
     FAILED: FAILED,
@@ -205,7 +225,7 @@
     });
     this.shell.ensureLayer({
       id: 'dairies', type: 'circle', source: 'dairies',
-      layout: { 'circle-sort-key': ['*', -1, ['get', 'animal_units']] },
+      layout: { 'circle-sort-key': ['*', -1, ['get', '_radius']] },
       paint: {
         'circle-radius': ['get', '_radius'],
         'circle-color': ['get', '_color'],
@@ -275,8 +295,8 @@
   DairyMap.prototype.showDairies = function (collection) {
     (collection.features || []).forEach(function (feature) {
       var p = feature.properties;
-      p._radius = radiusFor(p.animal_units);
-      p._color = colorFor(p.animal_units);
+      p._radius = radiusFor(headFor(p));
+      p._color = colorFor(p.size_class);
     });
     this.dairies = collection;
     this.shell.setSourceData('dairies', collection);
@@ -304,8 +324,8 @@
         properties: Object.assign({}, feature.properties, {
           emissions: row.emissions,
           emissions_per_sq_mi: row.emissions_per_sq_mi,
-          animal_units: row.animal_units,
-          animal_units_per_sq_mi: row.animal_units_per_sq_mi,
+          mature_cows: row.mature_cows,
+          mature_cows_per_sq_mi: row.mature_cows_per_sq_mi,
           _color: shaded ? RAMP[classIndex(value, breaks)] : EMPTY_COLOR,
           _empty: shaded ? 0 : 1,
         }),
@@ -364,8 +384,8 @@
       '<p class="facility-popup-name"><a href="' + escapeHtml(url) + '">' + escapeHtml(p.name) + '</a></p>' +
       line('Dairy emissions, ' + escapeHtml(this.data.label), quantity(p.emissions) + ' ' + unit + '/yr') +
       line('Per square mile', quantity(p.emissions_per_sq_mi) + ' ' + unit + '/yr') +
-      line('Animal units (EPA)', whole(p.animal_units)) +
-      line('Per square mile', quantity(p.animal_units_per_sq_mi)) +
+      line('Mature dairy cows', whole(p.mature_cows)) +
+      line('Per square mile', quantity(p.mature_cows_per_sq_mi)) +
       '<p class="is-size-7">' + escapeHtml(this.data.sourceNote) + '</p></div>', lngLat);
   };
 
@@ -385,22 +405,24 @@
     return {
       emissions: 'Dairy emissions, ' + label + ' (' + unit + '/yr)',
       emissions_per_sq_mi: 'Dairy emissions, ' + label + ' (' + unit + '/yr per sq mi)',
-      animal_units: 'Animal units (EPA)',
-      animal_units_per_sq_mi: 'Animal units (EPA) per sq mi',
+      mature_cows: 'Mature dairy cows',
+      mature_cows_per_sq_mi: 'Mature dairy cows per sq mi',
     }[this.measure] || '';
   };
 
   DairyMap.prototype.dairyLegend = function () {
-    var sizes = SIZE_KEY.map(function (units) {
-      var r = radiusFor(units);
+    var sizes = SIZE_KEY.map(function (head) {
+      var r = radiusFor(head);
       return '<span class="legend-size"><svg width="' + (2 * MAX_RADIUS + 2) + '" height="' + (2 * r + 2) + '">' +
         '<circle class="is-dairy" cx="' + (MAX_RADIUS + 1) + '" cy="' + (r + 1) + '" r="' + r + '"/></svg>' +
-        units.toLocaleString('en-US') + '</span>';
+        head.toLocaleString('en-US') + '</span>';
     }).join('');
-    return '<p class="legend-title">Animal units (EPA)</p>' +
-      '<div class="legend-sizes">' + sizes + '</div>' + rampBins(BREAKS) +
-      '<p class="legend-empty"><span class="legend-ring is-digester"></span>Digester operating in ' + escapeHtml(this.data.year) + '</p>' +
-      '<p class="legend-note">(Milk + dry cows) × 1.4 + other cattle × 1.0</p>';
+    var sizeClasses = this.dairies && this.dairies.properties ? this.dairies.properties.size_classes : [];
+    return '<p class="legend-title">Mature dairy cows</p>' +
+      '<div class="legend-sizes">' + sizes + '</div>' +
+      '<p class="legend-note">Other cattle for a site with no mature dairy cows</p>' +
+      '<p class="legend-title">EPA size class (40 CFR 122.23)</p>' + sizeBins(sizeClasses) +
+      '<p class="legend-empty"><span class="legend-ring is-digester"></span>Digester operating in ' + escapeHtml(this.data.year) + '</p>';
   };
 
   DairyMap.prototype.countyLegend = function () {
