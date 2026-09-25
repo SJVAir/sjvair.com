@@ -13,11 +13,11 @@
         sources for context.
     </p>
 </div>
-<div class="columns is-multiline has-text-centered">
-    <div class="column"><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p></div>
-    <div class="column"><p class="heading">{{ pollutant.name }}</p><p class="title">{{ total|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div>
+<div class="level stat-row box">
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{{ pollutant.name }}</p><p class="title">{{ total|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div></div>
     {% if top_sectors %}
-    <div class="column"><p class="heading">Largest sector</p><p class="title is-4"><a href="{% url 'emissions:sector-detail' top_sectors.0.sector %}{{ scope_qs }}">{{ top_sectors.0.label }}</a></p></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Largest sector</p><p class="title is-4"><a href="{% url 'emissions:sector-detail' top_sectors.0.sector %}{{ scope_qs }}">{{ top_sectors.0.label }}</a></p></div></div>
     {% endif %}
 </div>
 

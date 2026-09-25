@@ -14,10 +14,10 @@
 </div>
 
 {% if summary %}
-<div class="columns has-text-centered">
-    <div class="column"><p class="heading">Facilities</p><p class="title">{{ summary.facilities|intcomma }}</p></div>
-    <div class="column"><p class="heading">{{ pollutant.name }}, {{ year }}</p><p class="title">{{ summary.value|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div>
-    <div class="column"><p class="heading">Share of all facilities</p><p class="title">{{ summary.share|percent }}</p></div>
+<div class="level stat-row box">
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities</p><p class="title">{{ summary.facilities|intcomma }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{{ pollutant.name }}, {{ year }}</p><p class="title">{{ summary.value|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Share of all facilities</p><p class="title">{{ summary.share|percent }}</p></div></div>
 </div>
 {% else %}
 <p class="notification is-light">No facilities in this sector reported {{ pollutant.label }} in {{ year }}.</p>

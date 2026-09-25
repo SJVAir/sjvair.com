@@ -9,11 +9,11 @@
 {% if not has_data %}
 <p class="has-text-grey">No dairy data has been loaded yet.</p>
 {% else %}
-<div class="columns is-mobile is-multiline has-text-centered">
-    <div class="column is-half-mobile"><p class="heading">Dairies in {{ year }}</p><p class="title">{{ summary.dairies|intcomma }}</p></div>
-    <div class="column is-half-mobile"><p class="heading">Mature dairy cows</p><p class="title">{{ summary.mature_cows|whole }}</p></div>
-    <div class="column is-half-mobile"><p class="heading">Large CAFOs</p><p class="title">{{ summary.large|intcomma }}</p></div>
-    <div class="column is-half-mobile"><p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p></div>
+<div class="level is-mobile stat-row box is-grid-mobile">
+    <div class="level-item has-text-centered"><div><p class="heading">Dairies in {{ year }}</p><p class="title">{{ summary.dairies|intcomma }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Mature dairy cows</p><p class="title">{{ summary.mature_cows|whole }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Large CAFOs</p><p class="title">{{ summary.large|intcomma }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p></div></div>
 </div>
 
 {% include 'maps/includes/map.html' with map=map_config.map %}

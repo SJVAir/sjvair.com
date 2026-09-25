@@ -1,5 +1,15 @@
 // Emissions explorer additions; the shared explorer chrome is in pesticides.sass (body.pesticides).
 body.emissions
+  // A stats row that stays two by two on a phone (the Dairies tab's four).
+  .stat-row.is-grid-mobile
+    +mobile
+      .level-item
+        flex-basis: 50%
+        margin-bottom: 0.75rem
+      // Half a phone is narrow: a smaller figure that never breaks mid-number.
+      .title
+        font-size: $size-4
+        white-space: nowrap
   .hook
     // Photo: "Pumpjacks, San Joaquin Valley, California" by Downtowngal
     // (east of Paso Robles, 2011), Wikimedia Commons, CC BY-SA 3.0; credited
