@@ -17,6 +17,7 @@ class MapFigureMixin:
         css={
             'all': [
                 'maptiler-sdk/maptiler-sdk.css',
+                'css/maps/map.css',
                 'js/admin/map-figure.css',
             ],
         },
