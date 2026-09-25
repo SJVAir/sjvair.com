@@ -64,13 +64,13 @@ the scope doesn't apply to (hide_scope).
     <a class="button is-small explorer-scope-toggle{% if toxics %} is-set{% endif %}" role="button"
        href="{% if toxics %}{% qs_replace toxics=None pollutant=None page=None %}{% else %}{% qs_replace toxics=1 pollutant=None page=None %}{% endif %}"
        aria-pressed="{% if toxics %}true{% else %}false{% endif %}">
-        <span class="icon">{% if toxics %}<span class="fa-regular fa-check" aria-hidden="true"></span>{% else %}<span class="fa-duotone fa-fw fa-skull-crossbones explorer-icon" aria-hidden="true"></span>{% endif %}</span>
+        <span class="icon"><span class="fa-duotone fa-fw {% if toxics %}fa-circle-check{% else %}fa-skull-crossbones{% endif %} explorer-icon is-scope" aria-hidden="true"></span></span>
         <span class="explorer-scope-label">Toxic air contaminants</span>
     </a>
     <a class="button is-small explorer-scope-toggle{% if minor %} is-set{% endif %}" role="button"
        href="{% if minor %}{% qs_replace minor=None page=None %}{% else %}{% qs_replace minor=1 page=None %}{% endif %}"
        aria-pressed="{% if minor %}true{% else %}false{% endif %}">
-        <span class="icon">{% if minor %}<span class="fa-regular fa-check" aria-hidden="true"></span>{% else %}<span class="fa-duotone fa-fw fa-gas-pump explorer-icon" aria-hidden="true"></span>{% endif %}</span>
+        <span class="icon"><span class="fa-duotone fa-fw {% if minor %}fa-circle-check{% else %}fa-gas-pump{% endif %} explorer-icon is-scope" aria-hidden="true"></span></span>
         <span class="explorer-scope-label">Include minor sources</span>
     </a>
 </div>

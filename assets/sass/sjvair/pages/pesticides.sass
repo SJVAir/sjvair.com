@@ -173,6 +173,10 @@ body.pesticides
             background-color: #d35400
             border-color: #d35400
             color: $white
+            // The duotone icon goes white on the orange fill.
+            .explorer-icon
+                --fa-primary-color: #{$white}
+                --fa-secondary-color: #{rgba($white, 0.55)}
             &:hover
                 background-color: #b94800
                 border-color: #b94800
