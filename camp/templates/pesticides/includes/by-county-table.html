@@ -11,25 +11,44 @@ wrapper scrolls before they overflow (all-years pounds run to ten digits).
 <div class="table-container">
 <table class="table is-fullwidth is-narrow is-striped by-county-table">
     <thead><tr>
-        <th>County{% include 'pesticides/includes/note-help.html' with key='shades' anchor='shades' %}</th>
-        {% if not hide_lbs %}<th class="has-text-right{% if county_rank == 'lbs' %} is-ranked{% endif %}">{% if county_rank == 'lbs' %}Lbs{% else %}<a href="{% qs_replace rank=None %}" title="Rank by pounds">Lbs</a>{% endif %}</th>
-        {# Two rates, because they disagree: a county's whole area counts the ground nobody farms. #}
-        <th class="has-text-right{% if county_rank == 'lbs_per_sqmi' %} is-ranked{% endif %}">{% if county_rank == 'lbs_per_sqmi' %}Per sq mi{% else %}<a href="{% qs_replace rank='lbs_per_sqmi' %}" title="Rank by pounds per square mile of county">Per sq mi</a>{% endif %}</th>
-        <th class="has-text-right{% if county_rank == 'lbs_per_used_sqmi' %} is-ranked{% endif %}">{% if county_rank == 'lbs_per_used_sqmi' %}Per sq mi used{% else %}<a href="{% qs_replace rank='lbs_per_used_sqmi' %}" title="Rank by pounds per square mile that reported any use">Per sq mi used</a>{% endif %}</th>{% endif %}
-        <th class="has-text-right{% if county_rank == 'acres' %} is-ranked{% endif %}">{% if county_rank == 'acres' %}Acres treated{% else %}<a href="{% qs_replace rank='acres' %}" title="Rank by acres treated">Acres treated</a>{% endif %}</th>
-        <th class="has-text-right{% if county_rank == 'applications' %} is-ranked{% endif %}">{% if county_rank == 'applications' %}Applications{% else %}<a href="{% qs_replace rank='applications' %}" title="Rank by applications">Applications</a>{% endif %}</th>
+        <th>County</th>
+        {# One data column, the one the map beside it is shaded by; the #}
+        {# header picks which. Five columns of large numbers was more than #}
+        {# "which counties are worst" needs, and the rates in particular are #}
+        {# read one at a time. #}
+        <th class="has-text-right is-ranked">
+            <div class="dropdown is-right column-picker">
+                <div class="dropdown-trigger">
+                    <button type="button" class="button is-small" aria-haspopup="true"
+                            aria-expanded="false" title="{{ county_metric_column.1 }}">
+                        <span>{{ county_metric_column.0 }}</span>
+                        <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+                    </button>
+                </div>
+                <div class="dropdown-menu" role="menu">
+                    <div class="dropdown-content">
+                        {% for option in county_metric_options %}
+                        <a class="dropdown-item{% if option.active %} is-active{% endif %}"
+                           href="{% qs_replace rank=option.value %}" title="{{ option.title }}"
+                           {% if option.active %}aria-current="true"{% endif %}>{{ option.label }}</a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </th>
     </tr></thead>
     <tbody>
     {% for row in by_county %}
         <tr>
             <td><span class="county-swatch" style="background-color: {{ row.color }};" aria-hidden="true"></span><a href="{% url 'pesticides:region' sqid=row.county_sqid slug=row.county_slug %}{{ scope_qs }}">{{ row.county_name|cut:" County" }}</a></td>
-            {% if not hide_lbs %}<td class="has-text-right">{{ row.lbs|lbs }}</td>
-            <td class="has-text-right">{% if row.area %}{% widthratio row.lbs row.area 1 as per_sqmi %}{{ per_sqmi|add:0|lbs }}{% else %}—{% endif %}</td>
-            <td class="has-text-right">{% if row.used %}{% widthratio row.lbs row.used 1 as per_used %}{{ per_used|add:0|lbs }}{% else %}—{% endif %}</td>{% endif %}
-            <td class="has-text-right">{{ row.acres|lbs }}</td>
-            <td class="has-text-right">{{ row.applications|lbs }}</td>
+            {# rank_counties() already put the chosen metric on the row, so #}
+            {# the column and the map's shade can't drift apart. #}
+            <td class="has-text-right">{% if row.value %}{{ row.value|lbs }}{% else %}—{% endif %}</td>
         </tr>
     {% endfor %}
     </tbody>
 </table>
 </div>
+{# Outside the scrolling container on purpose: a tooltip inside one is #}
+{# clipped by its overflow. #}
+<p class="table-note">{% include 'pesticides/includes/note-help.html' with key='shades' anchor='shades' label='What the shades mean' %}</p>

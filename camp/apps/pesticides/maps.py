@@ -88,13 +88,48 @@ COUNTY_METRICS = {
     'acres': 'acres treated',
     'applications': 'applications',
 }
+# What the by-county table's one data column is headed and titled for each
+# metric. The table shows a single column -- the one the map is shaded by --
+# and the header picks which; five columns of large numbers was more than the
+# question "which counties are worst" needs.
+COUNTY_METRIC_COLUMNS = {
+    'lbs': ('Pounds applied', 'Pounds of active ingredient applied'),
+    'lbs_per_sqmi': ('Pounds per square mile', 'Over the whole county, including the ground nobody farms'),
+    'lbs_per_used_sqmi': ('Pounds per square mile with use', 'Over only the square miles that reported any use'),
+    'acres': ('Acres treated', 'Acres treated, counting a field once per application'),
+    'applications': ('Applications', 'Applications reported'),
+}
+
+
+# The metrics measured in pounds, which a page with no pounds to show (a
+# placeholder chemical: see views.ExplorerDetailMixin.hide_lbs) can't offer.
+LBS_METRICS = ('lbs', 'lbs_per_sqmi', 'lbs_per_used_sqmi')
+
+
+def county_metric_options(current, hide_lbs=False):
+    """The column picker's entries: every metric, the current one marked."""
+    return [
+        {'value': metric, 'label': label, 'title': title, 'active': metric == current}
+        for metric, (label, title) in COUNTY_METRIC_COLUMNS.items()
+        if not (hide_lbs and metric in LBS_METRICS)
+    ]
+
+
+def county_metric_column(metric, hide_lbs=False):
+    """`(label, title)` for the chosen metric, for the header the picker opens from."""
+    return COUNTY_METRIC_COLUMNS[county_metric(metric, hide_lbs=hide_lbs)]
+
+
 # A rate metric -> the by_county key holding its denominator (see
 # stats.with_rates). Anything absent here is read straight off the row.
 RATE_DENOMINATORS = {'lbs_per_sqmi': 'area', 'lbs_per_used_sqmi': 'used'}
 
 
-def county_metric(value):
+def county_metric(value, hide_lbs=False):
     """A `?rank=` value narrowed to a known metric (pounds by default)."""
+    if hide_lbs:
+        # Nothing to rank by pounds, so acres leads instead.
+        return value if value in COUNTY_METRICS and value not in LBS_METRICS else 'acres'
     return value if value in COUNTY_METRICS else 'lbs'
 
 

@@ -1,5 +1,6 @@
 from django.core.cache import cache
 from django.test import TestCase
+from django.urls import reverse
 
 from camp.apps.pesticides import maps, stats
 from camp.apps.pesticides.models import PesticideUseRollup
@@ -217,3 +218,48 @@ class CountyRateTests(RollupTestMixin, TestCase):
             assert row['used'] > 0
             # Every square mile that reported use is inside the county.
             assert row['used'] <= row['area']
+
+
+class CountyColumnPickerTests(RollupTestMixin, TestCase):
+    """
+    The by-county table shows one data column -- the one the map beside it is
+    shaded by -- and its header picks which.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def test_options_cover_every_metric_and_mark_the_current_one(self):
+        options = maps.county_metric_options('acres')
+        assert [o['value'] for o in options] == list(maps.COUNTY_METRICS)
+        assert [o['value'] for o in options if o['active']] == ['acres']
+
+    def test_a_page_without_pounds_is_not_offered_them(self):
+        # A placeholder chemical has no pounds, so ranking by them is a
+        # column of dashes.
+        options = maps.county_metric_options('acres', hide_lbs=True)
+        assert [o['value'] for o in options] == ['acres', 'applications']
+        assert maps.county_metric('lbs', hide_lbs=True) == 'acres'
+        assert maps.county_metric('lbs') == 'lbs'
+
+    def test_the_header_names_the_chosen_metric(self):
+        assert maps.county_metric_column('lbs_per_used_sqmi')[0] == 'Pounds per square mile with use'
+        assert maps.county_metric_column('nonsense')[0] == 'Pounds applied'
+
+    def table(self, html):
+        start = html.index('by-county-table')
+        return html[start:html.index('</table>', start)]
+
+    def test_the_table_renders_one_data_column(self):
+        response = self.client.get(reverse('pesticides:home'), {'rank': 'applications'})
+        body = self.table(response.content.decode())
+        # Two cells a row: the county and the one metric.
+        assert body.count('<td') == 2 * len(response.context['by_county'])
+        assert 'Applications' in body
+
+    def test_the_shades_note_sits_outside_the_scrolling_container(self):
+        # A tooltip inside .table-container is clipped by its overflow.
+        html = self.client.get(reverse('pesticides:home')).content.decode()
+        start = html.index('by-county-table')
+        table_end = html.index('</table>', start)
+        assert 'What the shades mean' in html[table_end:]
+        assert 'What the shades mean' not in html[start:table_end]

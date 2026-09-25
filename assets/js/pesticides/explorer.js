@@ -41,13 +41,17 @@
     if (window.PesticidesEntityPicker) window.PesticidesEntityPicker.init(root);
   });
 
-  // The scope bar's dropdowns (year, county): a click on a trigger opens its
-  // menu, a click anywhere else or Escape closes it. Delegated from the
-  // document, so it survives the body swaps that replace the bar.
+  // Menu dropdowns: the scope bar's (year, county, narrow) and the
+  // by-county table's column picker. A click on a trigger opens its menu, a
+  // click anywhere else or Escape closes it. Delegated from the document, so
+  // it survives the body swaps that replace them.
+  var DROPDOWNS = '.explorer-scope-picker, .column-picker';
+  var DROPDOWN_TRIGGERS = '.explorer-scope-picker .dropdown-trigger .button, .column-picker .dropdown-trigger .button';
+  var DROPDOWNS_OPEN = '.explorer-scope-picker.is-active, .column-picker.is-active';
   document.addEventListener('click', function (evt) {
-    var trigger = evt.target.closest ? evt.target.closest('.explorer-scope-picker .dropdown-trigger .button') : null;
-    var open = trigger ? trigger.closest('.explorer-scope-picker') : null;
-    document.querySelectorAll('.explorer-scope-picker.is-active').forEach(function (picker) {
+    var trigger = evt.target.closest ? evt.target.closest(DROPDOWN_TRIGGERS) : null;
+    var open = trigger ? trigger.closest(DROPDOWNS) : null;
+    document.querySelectorAll(DROPDOWNS_OPEN).forEach(function (picker) {
       if (picker === open) return;
       picker.classList.remove('is-active');
       var button = picker.querySelector('.dropdown-trigger .button');
@@ -80,7 +84,7 @@
 
   document.addEventListener('keydown', function (evt) {
     if (evt.key !== 'Escape') return;
-    document.querySelectorAll('.explorer-scope-picker.is-active').forEach(function (picker) {
+    document.querySelectorAll(DROPDOWNS_OPEN).forEach(function (picker) {
       picker.classList.remove('is-active');
       var button = picker.querySelector('.dropdown-trigger .button');
       if (button) button.setAttribute('aria-expanded', 'false');
