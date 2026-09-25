@@ -75,10 +75,13 @@ class ProductRestrictedTests(TestCase):
         assert Product.objects.get(prodno=1).fumigant is True
         assert Product.objects.get(prodno=2).fumigant is False
 
-    def test_no_import_sets_the_restricted_flag(self):
+    def test_the_product_import_classifies_nothing_as_restricted(self):
+        # CDPR's distribution says nothing about restricted materials -- that
+        # comes from 3 CCR 6400, via import_restricted_materials, and lands on
+        # the active ingredients rather than the product.
         Command()._import_products(lookup_dir(
             product__txt='prodno,product_name,show_regno,fumigant_sw\n1,K-PAM HL,5481-483-AA,X\n'))
-        assert Product.objects.filter(california_restricted=True).count() == 0
+        assert Product.objects.get(prodno=1).is_restricted is False
 
 
 class RestrictedMaterialsImportTests(TestCase):
@@ -129,5 +132,5 @@ class RestrictedMaterialsImportTests(TestCase):
         call_command('import_restricted_materials', verbosity=0)
         lorsban = Product.objects.get(prodno=2)
         assert lorsban.is_restricted is True
-        # ...and the deprecated flag is not what says so.
-        assert lorsban.california_restricted is False
+        # ...and a product whose ingredients aren't restricted isn't.
+        assert Product.objects.get(prodno=1).is_restricted is False

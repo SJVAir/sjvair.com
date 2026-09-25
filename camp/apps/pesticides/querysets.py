@@ -1,5 +1,5 @@
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
-from django.db.models import Prefetch, Q, QuerySet
+from django.db.models import Exists, OuterRef, Prefetch, Q, QuerySet
 
 
 class SearchMixin:
@@ -60,7 +60,9 @@ class CommodityQuerySet(SearchMixin, QuerySet):
 
     def with_products(self, **filters):
         from camp.apps.pesticides.models import Product
-        queryset = Product.objects.all()
+        # with_restricted() so a serialized product's `is_restricted` reads an
+        # annotation rather than walking its chemicals once per row.
+        queryset = Product.objects.with_restricted()
         if filters:
             queryset = queryset.filter(**filters)
         return self.prefetch_related(
@@ -70,6 +72,21 @@ class CommodityQuerySet(SearchMixin, QuerySet):
 
 class ProductQuerySet(SearchMixin, QuerySet):
     search_secondary = 'reg_number'
+
+    def with_restricted(self):
+        """
+        Annotate whether each product carries a restricted active ingredient
+        (3 CCR 6400), so `Product.is_restricted` costs no query per row.
+        Serializing a list without this walks each product's chemicals.
+        """
+        from camp.apps.pesticides.models import Chemical, ProductChemical
+        return self.annotate(has_restricted_chemical=Exists(
+            ProductChemical.objects.filter(
+                product=OuterRef('pk'),
+                chemical__categories__contains=[Chemical.Category.CALIFORNIA_RESTRICTED],
+            )
+        ))
+
     def with_commodities(self, **filters):
         from camp.apps.pesticides.models import Commodity
         queryset = Commodity.objects.all()

@@ -75,13 +75,13 @@
 
 - model: pesticides.product
   pk: 1
-  fields: {prodno: 1, reg_number: 524-475, name: ROUNDUP PRO, fumigant: false, california_restricted: false}
+  fields: {prodno: 1, reg_number: 524-475, name: ROUNDUP PRO, fumigant: false}
 - model: pesticides.product
   pk: 2
   fields: {prodno: 2, reg_number: 62719-220, name: LORSBAN 4E, fumigant: true}
 - model: pesticides.product
   pk: 3
-  fields: {prodno: 3, reg_number: 100-1, name: SULFUR DUST, fumigant: false, california_restricted: false}
+  fields: {prodno: 3, reg_number: 100-1, name: SULFUR DUST, fumigant: false}
 
 - model: pesticides.productchemical
   pk: 1
