@@ -652,10 +652,20 @@ class ProductList(ExplorerListMixin, vanilla.ListView):
             queryset = queryset.filter(pk__in=ProductChemical.objects
                 .filter(chemical__in=stats.of_concern_chemicals())
                 .values('product'))
-        for name in ('fumigant', 'california_restricted'):
-            value = self.form.bool_value(name)
-            if value is not None:
-                queryset = queryset.filter(**{name: value})
+        fumigant = self.form.bool_value('fumigant')
+        if fumigant is not None:
+            queryset = queryset.filter(fumigant=fumigant)
+        # Restricted is a property of the active ingredient (3 CCR 6400), so
+        # it reads off the chemicals the way "of concern" above does rather
+        # than off the deprecated Product.california_restricted flag, which
+        # no import has ever set.
+        restricted = self.form.bool_value('california_restricted')
+        if restricted is not None:
+            has_restricted = ProductChemical.objects.filter(
+                chemical__categories__contains=[Chemical.Category.CALIFORNIA_RESTRICTED],
+            ).values('product')
+            queryset = (queryset.filter(pk__in=has_restricted) if restricted
+                else queryset.exclude(pk__in=has_restricted))
         return queryset
 
     def annotate_queryset(self, queryset, year):

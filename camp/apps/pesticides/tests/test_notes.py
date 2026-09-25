@@ -18,14 +18,17 @@ class NotesModuleTests(TestCase):
 
     def test_keys_for_chemical(self):
         assert notes.keys_for_chemical(Chemical.objects.get(pk=1)) == ['prop65', 'iarc_2a']
-        assert notes.keys_for_chemical(Chemical.objects.get(pk=2)) == ['carb_tac', 'cholinesterase_inhibitor']
+        assert notes.keys_for_chemical(Chemical.objects.get(pk=2)) == [
+            'carb_tac', 'cholinesterase_inhibitor', 'california_restricted']
         assert notes.keys_for_chemical(Chemical.objects.get(pk=3)) == []
 
     def test_keys_for_product_and_notice(self):
         assert notes.keys_for_product(Product.objects.get(pk=2)) == ['fumigant', 'restricted_material']
         assert notes.keys_for_product(Product.objects.get(pk=1)) == []
         notice = PesticideNotice.objects.prefetch_related('chemicals', 'products').get(pk=3)
-        assert notes.keys_for_notice(notice) == ['noi_meaning', 'restricted_material', 'prop65', 'iarc_2a', 'carb_tac', 'cholinesterase_inhibitor', 'fumigant']
+        assert notes.keys_for_notice(notice) == [
+            'noi_meaning', 'restricted_material', 'prop65', 'iarc_2a', 'carb_tac',
+            'cholinesterase_inhibitor', 'california_restricted', 'fumigant']
 
     def test_notes_for_skips_unknown(self):
         assert [n['key'] for n in notes.notes_for(['prop65', 'nope', 'prop65'])] == ['prop65']

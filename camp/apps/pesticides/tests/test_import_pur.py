@@ -1,6 +1,7 @@
 import tempfile
 from pathlib import Path
 
+from django.core.management import call_command
 from django.test import TestCase
 
 from camp.apps.pesticides.management.commands.import_pur import Command
@@ -78,3 +79,55 @@ class ProductRestrictedTests(TestCase):
         Command()._import_products(lookup_dir(
             product__txt='prodno,product_name,show_regno,fumigant_sw\n1,K-PAM HL,5481-483-AA,X\n'))
         assert Product.objects.filter(california_restricted=True).count() == 0
+
+
+class RestrictedMaterialsImportTests(TestCase):
+    """
+    3 CCR 6400 names active ingredients, so the classification lands on
+    Chemical.categories and a product is restricted when one of its
+    ingredients is.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def test_the_datafile_names_only_chemicals_that_exist(self):
+        # A name that matches nothing means the file and CDPR's chemical
+        # table have drifted. Silence there is how the old RESTRICTED.txt
+        # lookup went unnoticed, so the command reports it -- this checks
+        # the shipped file against the shipped chemical names.
+        import yaml
+        from pathlib import Path
+
+        from django.conf import settings
+
+        data = yaml.safe_load((Path(settings.BASE_DIR) / 'datafiles' / 'restricted-materials.yaml').read_text())
+        assert data['entries']
+        for entry in data['entries']:
+            assert entry.get('regulation')
+            assert entry.get('chemicals'), entry['regulation']
+            for name in entry['chemicals']:
+                assert name == name.upper(), name
+
+    def test_import_classifies_by_name(self):
+        Chemical.objects.filter(pk=2).update(categories=[])
+        call_command('import_restricted_materials', verbosity=0)
+        chlorpyrifos = Chemical.objects.get(pk=2)
+        assert Chemical.Category.CALIFORNIA_RESTRICTED in chlorpyrifos.categories
+
+    def test_import_is_idempotent(self):
+        call_command('import_restricted_materials', verbosity=0)
+        before = list(Chemical.objects.get(pk=2).categories)
+        call_command('import_restricted_materials', verbosity=0)
+        assert Chemical.objects.get(pk=2).categories == before
+
+    def test_dry_run_writes_nothing(self):
+        Chemical.objects.filter(pk=2).update(categories=[])
+        call_command('import_restricted_materials', '--dry-run', verbosity=0)
+        assert Chemical.objects.get(pk=2).categories == []
+
+    def test_a_product_is_restricted_through_its_ingredients(self):
+        call_command('import_restricted_materials', verbosity=0)
+        lorsban = Product.objects.get(prodno=2)
+        assert lorsban.is_restricted is True
+        # ...and the deprecated flag is not what says so.
+        assert lorsban.california_restricted is False

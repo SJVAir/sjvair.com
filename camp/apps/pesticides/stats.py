@@ -51,8 +51,10 @@ CONCERN_PARAM = 'concern'
 NARROW_PARAM = 'narrow'
 NARROW_CONCERN = 'concern'
 NARROW_FUMIGANT = 'fumigant'
+NARROW_RESTRICTED = 'restricted'
 NARROW_CHOICES = (
     (NARROW_CONCERN, 'Chemicals of concern'),
+    (NARROW_RESTRICTED, 'Restricted materials'),
     (NARROW_FUMIGANT, 'Fumigants'),
 )
 NARROW_VALUES = {value for value, _label in NARROW_CHOICES}
@@ -241,6 +243,8 @@ def narrow_rows(rows, narrow):
     """
     if narrow == NARROW_CONCERN:
         return concern_rows(rows)
+    if narrow == NARROW_RESTRICTED:
+        return rows.filter(chemical__in=restricted_chemicals())
     if narrow == NARROW_FUMIGANT:
         return rows.filter(product__fumigant=True)
     return rows
@@ -250,6 +254,8 @@ def narrow_notices(notices, narrow):
     """`notices` restricted the same way; a notice lists products and chemicals."""
     if narrow == NARROW_CONCERN:
         return concern_notices(notices)
+    if narrow == NARROW_RESTRICTED:
+        return notices.filter(chemicals__in=restricted_chemicals()).distinct()
     if narrow == NARROW_FUMIGANT:
         return notices.filter(products__fumigant=True).distinct()
     return notices
@@ -735,6 +741,16 @@ def _of_concern_query():
 def of_concern_chemicals():
     """The chemicals the explorer's "chemicals of concern" scope keeps (see `_of_concern_query`)."""
     return Chemical.objects.filter(_of_concern_query())
+
+
+def restricted_chemicals():
+    """
+    The chemicals California restricts (3 CCR 6400), as set by
+    import_restricted_materials. A restriction is a property of the active
+    ingredient, so it filters on the chemical the way "of concern" does --
+    the product flag beside it is deprecated and never populated.
+    """
+    return Chemical.objects.filter(categories__contains=[Chemical.Category.CALIFORNIA_RESTRICTED])
 
 
 def concern_rows(rows):

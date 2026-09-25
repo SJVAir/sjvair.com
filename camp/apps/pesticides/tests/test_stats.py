@@ -489,3 +489,28 @@ class NarrowScopeTests(RollupTestMixin, TestCase):
         a = stats.county_totals(2023, concern=stats.NARROW_CONCERN)
         b = stats.county_totals(2023, concern=stats.NARROW_FUMIGANT)
         assert sum(r['lbs'] or 0 for r in a) != sum(r['lbs'] or 0 for r in b)
+
+    def test_restricted_narrows_on_the_chemical_category(self):
+        rows = PesticideUseRollup.objects.all()
+        narrowed = stats.narrow_rows(rows, stats.NARROW_RESTRICTED)
+        assert narrowed.exists()
+        for row in narrowed.select_related('chemical'):
+            assert Chemical.Category.CALIFORNIA_RESTRICTED in row.chemical.categories
+
+    def test_restricted_is_its_own_narrowing(self):
+        rows = PesticideUseRollup.objects.all()
+        everything = set(rows.values_list('pk', flat=True))
+        restricted = set(stats.narrow_rows(rows, stats.NARROW_RESTRICTED).values_list('pk', flat=True))
+        concern = set(stats.narrow_rows(rows, stats.NARROW_CONCERN).values_list('pk', flat=True))
+        # A real subset, and not the same question as "of concern" --
+        # chlorpyrifos is both, 1,3-dichloropropene is restricted and not on
+        # the concern lists. (Restricted and fumigant do coincide in this
+        # fixture, where the one restricted product is also a fumigant.)
+        assert restricted
+        assert restricted < everything
+        assert restricted != concern
+
+    def test_every_narrowing_resolves(self):
+        for value, _label in stats.NARROW_CHOICES:
+            assert stats.resolve_narrow({'narrow': value}) == value
+            assert stats.narrow_label(value)
