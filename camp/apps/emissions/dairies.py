@@ -108,6 +108,22 @@ def key(*parts):
     return ':'.join(str(part) for part in (f'emissions:dairies:v{CACHE_VERSION}', generation(), *parts))
 
 
+def city_urls():
+    """
+    {lowercased city or place name: its region page}, for linking a dairy's
+    mailing city. CITY wins over PLACE when both carry the name, as at import
+    (cadd._city_lookup); only regions with a boundary have a page.
+    """
+    def compute():
+        urls = {}
+        for region_type in (Region.Type.CITY, Region.Type.PLACE):
+            regions = Region.objects.filter(type=region_type, boundary__isnull=False).order_by('pk')
+            for region in regions.only('name', 'slug', 'sqid'):
+                urls.setdefault(region.name.lower(), region.get_emissions_url())
+        return urls
+    return cache.get_or_set(key('city-urls'), compute, stats.CACHE_TIMEOUT)
+
+
 def _where(county, area):
     return f"{county.pk if county else 'all'}:{area.key if area else 'anywhere'}"
 

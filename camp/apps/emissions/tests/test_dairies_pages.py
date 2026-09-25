@@ -307,3 +307,19 @@ class DairyAboutTests(DairyPageTestCase):
     def test_integrations_list_cadd(self):
         content = self.client.get('/about/integrations/').content.decode()
         assert 'California Dairy &amp; Livestock Database' in content
+
+
+class DairyTableCityLinkTests(DairyPageTestCase):
+    def test_a_city_with_a_page_links_to_it(self):
+        city = make(Region.Type.CITY, 'Dairyville', AROUND_PLANT)
+        make(Region.Type.PLACE, 'Dairyville', AROUND_PLANT)
+        self.big.address = dict(self.big.address, city='Dairyville')
+        self.big.save(update_fields=['address'])
+        self.small.address = dict(self.small.address, city='Nowhere Special')
+        self.small.save(update_fields=['address'])
+        cache.clear()
+        content = self.get({'year': 2023}).content.decode()
+        # The city wins over a place of the same name; a city without a page stays text.
+        # The link carries the tab's scope, like the county link beside it.
+        assert f'<a href="{city.get_emissions_url()}?year=2023&amp;pollutant=rog">Dairyville</a>' in content
+        assert '<td>Nowhere Special</td>' in content

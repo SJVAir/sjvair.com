@@ -102,6 +102,16 @@ def lookup(mapping, key):
         return ''
 
 
+@register.simple_tag(takes_context=True)
+def dairy_city(context, dairy):
+    """A dairy's mailing city, linked to that city's (or place's) page when it has one."""
+    city = (dairy.address or {}).get('city') or ''
+    url = dairies.city_urls().get(city.lower()) if city else None
+    if not url:
+        return city
+    return format_html('<a href="{}{}">{}</a>', url, context.get('region_qs', ''), city)
+
+
 @register.filter
 def whole(value):
     """A head count, rounded, with commas: '2,310'; '—' for none (a blank CADD count)."""
