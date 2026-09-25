@@ -47,3 +47,10 @@ body.emissions
     stroke-width: 1.5
   .facility-table tr.is-minor td
     color: #6b7280
+  // A bottom tooltip in a row's last column: anchored to its icon's right edge
+  // so it opens leftward and stays inside the table, instead of centring past
+  // the edge and making the table scroll sideways.
+  [data-tooltip].has-tooltip-bottom.has-tooltip-end::before
+    left: auto
+    right: -0.5rem
+    transform: translate(0, 100%)
