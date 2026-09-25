@@ -375,6 +375,35 @@ html.map-expanded .explorer-scope-bar {
   }
 }
 
+/* A hover label: the SDK's popup, styled as the tooltip it replaces (a small
+   bold white box with a tip), and never in the way of the cursor, so a hover
+   label doesn't take the hover that opened it. Shared by every map that
+   highlights a feature under the cursor (map-figure.js's areas, the dairy
+   map's counties): SJVAirMaps.hover.label() (assets/js/maps/core.js) sets
+   this class on every label it creates. */
+.map-hover-label,
+/* The SDK sets `pointer-events: auto` on a popup's content, which beats the
+   `none` inherited from the popup itself. A label that takes the pointer
+   makes the map think the cursor left the feature underneath it: the label
+   closes, the cursor is over the feature again, the label reopens, and it
+   flickers for as long as the cursor rests there. */
+.map-hover-label .maplibregl-popup-content,
+.map-hover-label .maplibregl-popup-tip {
+  pointer-events: none;
+}
+
+.map-hover-label .maplibregl-popup-content {
+  padding: 2px 5px;
+  border: 1px solid #fff;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  font-size: 11px;
+  font-weight: bold;
+  line-height: 1.4;
+  color: #222;
+  white-space: nowrap;
+}
+
 /* Without WebGL the container holds a note instead of a map. */
 .map-canvas.is-unavailable {
   display: flex;
