@@ -124,6 +124,7 @@ def read(path):
 class Report:
     dairies_created: int = 0
     dairies_updated: int = 0
+    dairies_removed: int = 0
     herds: int = 0
     digesters: int = 0
     outside: int = 0
@@ -134,6 +135,7 @@ class Report:
         lines = [
             f'Dairies: {self.dairies_created:,} added, {self.dairies_updated:,} updated. '
             f'Herd-years: {self.herds:,}. Digesters: {self.digesters:,}.',
+            f'Removed: {self.dairies_removed:,}.',
             f'Outside the covered counties: {self.outside:,}.',
         ]
         if self.missing_coordinates:
@@ -240,6 +242,11 @@ def apply(sheets, version=VERSION):
         Dairy.objects.bulk_create(new, batch_size=500)
         Dairy.objects.bulk_update(changed, DAIRY_FIELDS, batch_size=500)
         report.dairies_created, report.dairies_updated = len(new), len(changed)
+
+        # A dairy this import dropped (a later CADD version removed it, or it
+        # moved out of the covered counties): CASCADE takes its herds and digesters.
+        _, deleted = Dairy.objects.exclude(cadd_id__in=rows_by_id).delete()
+        report.dairies_removed = deleted.get('emissions.Dairy', 0)
 
         ids = dict(Dairy.objects.filter(cadd_id__in=rows_by_id).values_list('cadd_id', 'pk'))
         DairyHerd.objects.filter(dairy_id__in=ids.values()).delete()

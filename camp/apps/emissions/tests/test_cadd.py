@@ -152,6 +152,15 @@ class ImportCADDTests(TestCase):
         assert DairyHerd.objects.get(dairy__cadd_id=1).milk_cows == 300
         assert 'Dairies: 0 added, 2 updated.' in output
 
+    def test_rerun_without_a_dairy_removes_it(self):
+        self.run_import([facility(1), facility(2)], [herd(1, 2023, milk=100), herd(2, 2023)])
+        assert sorted(Dairy.objects.values_list('cadd_id', flat=True)) == [1, 2]
+        output = self.run_import([facility(1)], [herd(1, 2023, milk=100)])
+        assert sorted(Dairy.objects.values_list('cadd_id', flat=True)) == [1]
+        # Dropping dairy 2 also drops its herd (CASCADE).
+        assert DairyHerd.objects.filter(dairy__cadd_id=2).count() == 0
+        assert 'Removed: 1.' in output
+
     def test_digesters_operating_and_shut_down(self):
         self.run_import(
             [facility(1)], [herd(1, 2023)],
