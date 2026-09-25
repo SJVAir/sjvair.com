@@ -1,5 +1,39 @@
-{# The sector filter narrows the map without a page swap (facility-map.js handles the choice). #}
+{% comment %}
+The facility map's own toolbar controls (facility-map.js binds them):
+the Facilities | Areas switch and, in Areas, the level and measure; the
+sector filter on the full map only.
+{% endcomment %}
 <div class="map-toolbar-filters" role="group" aria-label="Map filters">
+    {% if map_config.areas %}
+    <div class="buttons has-addons facility-map-view" role="group" aria-label="Show">
+        <button type="button" class="button{% if map_config.view != 'areas' %} is-selected is-link{% endif %}" data-view="facilities" aria-pressed="{% if map_config.view != 'areas' %}true{% else %}false{% endif %}">Facilities</button>
+        <button type="button" class="button{% if map_config.view == 'areas' %} is-selected is-link{% endif %}" data-view="areas" aria-pressed="{% if map_config.view == 'areas' %}true{% else %}false{% endif %}">Areas</button>
+    </div>
+    <div class="dropdown map-toolbar-dropdown facility-map-level" data-areas-only{% if map_config.view != 'areas' %} hidden{% endif %}>
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                <span class="map-toolbar-label">{% for value, label in map_config.level_options %}{% if value == map_config.level %}{{ label }}{% endif %}{% endfor %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu"><div class="dropdown-content">
+            {% for value, label in map_config.level_options %}<a href="#" class="dropdown-item{% if value == map_config.level %} is-active{% endif %}" data-level="{{ value }}">{{ label }}</a>{% endfor %}
+        </div></div>
+    </div>
+    <div class="dropdown map-toolbar-dropdown facility-map-measure" data-areas-only{% if map_config.view != 'areas' %} hidden{% endif %}>
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                <span class="map-toolbar-label">{% for value, label in map_config.measure_options %}{% if value == map_config.measure %}{{ label }}{% endif %}{% endfor %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu"><div class="dropdown-content">
+            {% for value, label in map_config.measure_options %}<a href="#" class="dropdown-item{% if value == map_config.measure %} is-active{% endif %}" data-measure="{{ value }}">{{ label }}</a>{% endfor %}
+        </div></div>
+    </div>
+    {% endif %}
+    {% if map_config.mode == 'full' %}
+    {# The sector filter narrows the map without a page swap. #}
     <div class="dropdown map-toolbar-dropdown facility-map-sector{% if map_config.sector %} is-set{% endif %}">
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
@@ -18,4 +52,5 @@
             </div>
         </div>
     </div>
+    {% endif %}
 </div>

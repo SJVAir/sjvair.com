@@ -176,6 +176,22 @@ class MapTests(ViewTestCase):
         assert 'map-legend-panel' in content
         assert 'class="facility-map-legend"' in content
 
+    def test_map_page_has_the_areas_controls(self):
+        content = self.get('map', params={'view': 'areas', 'level': 'tract'}).content.decode()
+        assert 'data-view="facilities"' in content and 'data-view="areas"' in content
+        assert 'data-level="tract"' in content and 'data-measure="per_resident"' in content
+        assert 'data-areas="1"' in content
+
+    def test_region_pages_have_the_switch_but_no_sector_filter(self):
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        content = self.client.get(fresno.get_emissions_url()).content.decode()
+        assert 'data-view="areas"' in content
+        assert 'facility-map-sector' not in content
+
+    def test_facility_pages_have_no_areas_controls(self):
+        content = self.client.get(self.plant.get_absolute_url()).content.decode()
+        assert 'data-view="areas"' not in content
+
     def test_compact_maps_have_no_sector_filter(self):
         content = self.get('sector-detail', 'glass').content.decode()
         assert 'map-wrap is-compact' in content

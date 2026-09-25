@@ -64,3 +64,49 @@
 .facility-popup-name {
   font-weight: 600;
 }
+
+/* The Facilities | Areas switch. The Areas-only dropdowns hide with the
+   `hidden` attribute, which Bulma's .dropdown display would otherwise beat. */
+.map-toolbar [data-areas-only][hidden] {
+  display: none;
+}
+/* An open toolbar menu goes over the legend card (both sit at z-index 1000,
+   and the card comes later): the sector menu, on the switch's second row,
+   reaches it. */
+.map-toolbar:has(.map-toolbar-filters .dropdown.is-active) {
+  z-index: 1002;
+}
+.facility-map-view.buttons {
+  margin-bottom: 0;
+}
+.facility-map-view .button {
+  height: 33px; /* the SDK's control buttons, as the other toolbar buttons */
+  font-size: 0.85rem;
+}
+
+/* Area classes: square swatches, and an outline-only "no facilities". */
+.facility-map-legend .legend-swatch.is-area {
+  border-radius: 2px;
+}
+.facility-map-legend .legend-swatch.is-none {
+  background: transparent;
+  border: 1px solid #4a5568;
+}
+.facility-map-legend .legend-note {
+  margin-top: 0.35rem;
+  color: #7a7a7a;
+  max-width: 14rem;
+}
+.area-popup p {
+  margin: 0 0 0.2rem;
+}
+
+/* On a phone the core folds toolbar labels down to their icons; the level and
+   measure have no icon, so they keep their labels. */
+@media (max-width: 768px) {
+  .map-toolbar .facility-map-level .map-toolbar-label,
+  .map-toolbar .facility-map-measure .map-toolbar-label {
+    display: inline;
+    max-width: 8.5rem;
+  }
+}

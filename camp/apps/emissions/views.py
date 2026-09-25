@@ -286,15 +286,18 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'unit': scope.pollutant.unit,
         'sector': sector or '',
         'sector_label': Facility.Sector(sector).label if sector else '',
+        'level_options': [(level, label) for level, label in (
+            (Region.Type.COUNTY, 'Counties'), (Region.Type.ZIPCODE, 'ZIP areas'), (Region.Type.TRACT, 'Census tracts'))],
+        'measure_options': [('density', 'Per square mile'), ('total', 'Total'), ('per_resident', 'Per 1,000 residents')],
     }
-    # The container's data attributes; sector and its label are for the
-    # toolbar template, which reads them off map_config.
-    template_only = {'sector', 'sector_label'}
+    # The container's data attributes; the sector, its label and the level and
+    # measure options are for the toolbar template, which reads them off map_config.
+    template_only = {'sector', 'sector_label', 'level_options', 'measure_options'}
     config['map'] = mapconfig.map_config(
         'facility-map',
         data={key.replace('_', '-'): value for key, value in config.items() if key not in template_only},
         features={'toolbar': True, 'expand': True, 'legend': True},
-        toolbar_template='emissions/includes/map-toolbar.html' if mode == 'full' else None,
+        toolbar_template='emissions/includes/map-toolbar.html' if mode == 'full' or areas_view else None,
         legend_template='emissions/includes/facility-map-legend.html',
         compact=mode == 'compact',
     )
