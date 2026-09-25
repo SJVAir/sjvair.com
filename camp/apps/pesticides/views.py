@@ -93,6 +93,27 @@ def scope_compare(request, year, all_years=False):
     return stats.resolve_compare_param(request.GET.get('compare'), year, all_years)
 
 
+def movers_context(rows, year, all_years, compare, field, lbs_field='lbs_chemical'):
+    """
+    The "biggest movers" card's context, or None when there is nothing to
+    compare against and the card should be left off the page.
+
+    Unlike the maps, movers always compares -- a card with no comparison
+    would say nothing -- so an absent `?compare=` falls back to the loaded
+    year before this one. The maps stay on their single-year view instead,
+    because a map that silently defaulted to a change would be misread.
+    """
+    if all_years or not year:
+        return None
+    year_from = compare or stats.previous_year(year)
+    if not year_from:
+        return None
+    movers = stats.top_movers(rows, year_from, year, field, lbs_field)
+    if not movers['rising'] and not movers['falling']:
+        return None
+    return {**movers, 'year_from': year_from, 'year_to': year}
+
+
 # Public pages link developers to the documentation, never to raw endpoints.
 API_DOCS_URL = '/api/2.0/docs/#tag/pesticides'
 CLIENT_DOCS_URL = 'https://sjvair.github.io/sjvair-python/client/resources/pesticides.html'
@@ -546,6 +567,12 @@ class Home(vanilla.TemplateView):
         data = stats.landing_stats(year, all_years, county, concern)
         county_rank = maps.county_metric(self.request.GET.get('rank'))
         compare = scope_compare(self.request, year, all_years)
+        movers_rows = PesticideUseRollup.objects.all()
+        if county is not None:
+            movers_rows = movers_rows.filter(county=county)
+        if concern:
+            movers_rows = stats.concern_rows(movers_rows)
+        movers = movers_context(movers_rows, year, all_years, compare, 'chemical')
         ramp_name = self.request.GET.get('ramp')
         ramp = maps.diverging_ramp_for(ramp_name) if compare else maps.ramp_for(ramp_name)
         compare_by_county = stats.county_totals(compare, concern=concern) if compare else None
@@ -565,7 +592,8 @@ class Home(vanilla.TemplateView):
             ],
             maptiler_key=settings.MAPTILER_API_KEY,
             focus_find=self.request.GET.get('find') == '1',
-            **{**data, 'by_county': by_county, **year_context(year, all_years, county, concern=concern, compare=scope_compare(self.request, year, all_years))},
+            movers=movers,
+            **{**data, 'by_county': by_county, **year_context(year, all_years, county, concern=concern, compare=compare)},
             county_rank=county_rank,
             **kwargs,
         )
@@ -892,6 +920,8 @@ class ExplorerDetailMixin:
         # This entity's own rows for the compared year, so the change is the
         # chemical's (or product's, or commodity's) and not the valley's.
         compare_by_county = stats.by_county(rows, compare, self.lbs_field) if compare else None
+        # The axis flips on an entity page: which counties moved for this one.
+        context['movers'] = movers_context(rows, year, all_years, compare, 'county', self.lbs_field)
         context['by_county'] = maps.rank_counties(context['by_county'], county_rank, ramp=ramp, compare_by_county=compare_by_county)
         context['county_rank'] = county_rank
         context['county_map'] = maps.county_map(context['by_county'], query=stats.scope_param(year, all_years, concern=self.concern, compare=compare), metric=county_rank, ramp=ramp, compare_by_county=compare_by_county) if context['by_county'] else None
@@ -1996,10 +2026,17 @@ class RegionPage(vanilla.TemplateView):
         area = places.region_area(self.region)
         context = places.place_context(area, year, all_years, concern, params=self.request.GET)
         within = places.regions_within(self.region) if self.region.boundary_id else None
+        # Not part of place_context: that block is cached per area and year,
+        # and the compared year is the reader's choice.
+        movers_rows = area.rollup_rows()
+        if concern:
+            movers_rows = stats.concern_rows(movers_rows)
         return super().get_context_data(
             section=None,
             years=stats.years_loaded(),
             within=within,
+            movers=movers_context(movers_rows, year, all_years,
+                scope_compare(self.request, year, all_years), 'chemical'),
             **context,
             **_place_cards(context),
             **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern,

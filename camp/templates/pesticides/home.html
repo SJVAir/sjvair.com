@@ -74,6 +74,12 @@ and the remaining three lay out 2 + 1.
     <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most treated commodities' rows=top_commodities kind='commodities' %}</div>
 </div>
 
+{% if movers %}
+<div class="columns leaderboards">
+    <div class="column">{% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}</div>
+</div>
+{% endif %}
+
 <div class="content about-teaser mt-6" id="about">
     <h2>About this data</h2>
     <p>Confirmed applications come from DPR's <a href="{% url 'pesticides:about' %}#pur">Pesticide Use Reporting</a> program, which releases each year's records one to two years after the fact{% if latest_year %} (the newest full year here is {{ latest_year }}){% endif %}. Planned applications are <a href="{% url 'pesticides:about' %}#spraydays">SprayDays notices of intent</a>, which are plans, not confirmations. Badges mark chemicals on official lists (Prop 65, IARC, CARB); they say a chemical is listed, not how much of it reached anyone.</p>

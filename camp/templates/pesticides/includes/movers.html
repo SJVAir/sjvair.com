@@ -1,0 +1,53 @@
+{% load pesticides_explorer %}
+{% comment %}
+What rose and fell most between two years (stats.top_movers), in the idiom of
+includes/leaderboard.html. `movers` is the view's movers_context(): rising,
+falling, year_from and year_to. The heading names the pair in order, so the
+sign on a row never has to be inferred from which column it is in.
+Context: `movers`, `title`, `kind` ('chemicals' for the concern badges).
+{% endcomment %}
+<div class="card leaderboard movers">
+    <header class="card-header">
+        <p class="card-header-title">{{ title|default:"Biggest movers" }} · {{ movers.year_from }} to {{ movers.year_to }}</p>
+    </header>
+    <div class="card-content">
+        <div class="columns">
+            <div class="column is-half">
+                <p class="heading">Rose most</p>
+                {% if movers.rising %}
+                <ol class="leaderboard-list">
+                    {% for row in movers.rising %}
+                    <li>
+                        <span class="entry">
+                            <a href="{{ row.url }}{{ scope_qs }}">{{ row.name }}</a>
+                            {% if kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
+                        </span>
+                        <span class="lbs">{{ row.change|signed_lbs }} lbs{% if row.pct %} <span class="has-text-grey">{{ row.pct|signed_pct }}</span>{% endif %}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="has-text-grey">Nothing rose.</p>
+                {% endif %}
+            </div>
+            <div class="column is-half">
+                <p class="heading">Fell most</p>
+                {% if movers.falling %}
+                <ol class="leaderboard-list">
+                    {% for row in movers.falling %}
+                    <li>
+                        <span class="entry">
+                            <a href="{{ row.url }}{{ scope_qs }}">{{ row.name }}</a>
+                            {% if kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
+                        </span>
+                        <span class="lbs">{{ row.change|signed_lbs }} lbs{% if row.pct %} <span class="has-text-grey">{{ row.pct|signed_pct }}</span>{% endif %}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="has-text-grey">Nothing fell.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>

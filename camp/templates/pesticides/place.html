@@ -92,6 +92,11 @@
         {% endif %}
         <div class="column is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
     </div>
+    {% if movers %}
+    <div class="columns">
+        <div class="column">{% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}</div>
+    </div>
+    {% endif %}
 </section>
 
 {% if is_school_district %}

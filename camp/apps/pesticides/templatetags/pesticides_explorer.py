@@ -83,6 +83,29 @@ def lbs(value):
     return intcomma(int(round(value)))
 
 
+@register.filter
+def signed_lbs(value):
+    """
+    `lbs` with the sign always shown, for a change. An increase reads "+400"
+    rather than "400", so the direction never rests on the colour of a map
+    swatch or the column a row happens to be in.
+    """
+    if value is None:
+        return '—'
+    if not value:
+        return '0'
+    return f'+{lbs(value)}' if value > 0 else lbs(value)
+
+
+@register.filter
+def signed_pct(value):
+    """A percent change, signed, to one decimal. Blank for None -- top_movers
+    leaves it off where the baseline is too small to mean anything."""
+    if value is None:
+        return ''
+    return f'{value:+.1f}%'
+
+
 # A word, with an apostrophe inside it kept ("CHILDREN'S" -> "Children's").
 # Letters rather than [A-Za-z] so an accented name ("CANADA" with a tilde)
 # doesn't come back out half-shouted.

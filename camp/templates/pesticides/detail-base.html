@@ -33,6 +33,7 @@
                 <p class="is-size-7 mt-2"><a href="{{ full_map_url }}">Open in the full map</a></p>
                 {% if by_county %}
                     <div class="mt-4">{% include 'pesticides/includes/by-county-table.html' %}</div>
+                    {% if movers %}<div class="mt-4">{% include 'pesticides/includes/movers.html' with title='Counties that moved most' %}</div>{% endif %}
                 {% endif %}
             </div>
         </div>

@@ -460,6 +460,25 @@ def top_related(rows, year, field, lbs_field='lbs_chemical', limit=10, all_years
     ]
 
 
+def mover_name(obj):
+    """
+    What a movers row calls its subject. The entity models title-case
+    themselves through `display_name`; a Region is already a proper name.
+    """
+    return getattr(obj, 'display_name', None) or obj.name
+
+
+def mover_url(obj):
+    """
+    Where a movers row links. A Region's explorer page is `get_pesticides_url`
+    -- it has no `get_absolute_url`, and the entity models have no
+    `get_pesticides_url` -- so the axis decides which one answers.
+    """
+    if hasattr(obj, 'get_pesticides_url'):
+        return obj.get_pesticides_url()
+    return obj.get_absolute_url()
+
+
 def top_movers(rows, year_from, year_to, field, lbs_field='lbs_chemical', limit=10):
     """
     What rose and fell most on `field` ('chemical' | 'product' | 'commodity'
@@ -507,7 +526,7 @@ def top_movers(rows, year_from, year_to, field, lbs_field='lbs_chemical', limit=
             lbs_to = row['lbs_to'] or 0
             pct = (lbs_to - lbs_from) / lbs_from * 100 if lbs_from >= MOVERS_PCT_MIN_LBS else None
             movers.append(SimpleNamespace(obj=obj, lbs_from=lbs_from, lbs_to=lbs_to,
-                change=row['change'], pct=pct))
+                change=row['change'], pct=pct, name=mover_name(obj), url=mover_url(obj)))
         return movers
 
     return {'rising': build(rising), 'falling': build(falling)}

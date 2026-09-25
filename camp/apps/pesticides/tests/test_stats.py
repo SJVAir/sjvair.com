@@ -251,6 +251,16 @@ class StatsTests(RollupTestMixin, TestCase):
         assert movers['rising'] or movers['falling']
         for mover in movers['rising'] + movers['falling']:
             assert mover.obj.type == Region.Type.COUNTY
+            # A Region has get_pesticides_url and no get_absolute_url; the
+            # entity models are the other way round. Both answer `url`.
+            assert mover.url == mover.obj.get_pesticides_url()
+            assert mover.name == mover.obj.name
+
+    def test_top_movers_name_and_url_on_the_entity_axis(self):
+        movers = stats.top_movers(PesticideUseRollup.objects.all(), 2022, 2023, 'chemical')
+        for mover in movers['rising'] + movers['falling']:
+            assert mover.url == mover.obj.get_absolute_url()
+            assert mover.name == mover.obj.display_name
 
     def test_top_movers_respects_the_limit(self):
         movers = stats.top_movers(PesticideUseRollup.objects.all(), 2022, 2023, 'chemical', limit=1)

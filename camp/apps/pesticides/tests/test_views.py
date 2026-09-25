@@ -61,6 +61,35 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         assert response.context['year'] == 2023
         assert response.context['scope_qs'] == ''
 
+    def test_movers_defaults_to_the_previous_year(self):
+        response = self.client.get(reverse('pesticides:home'), {'year': '2023'})
+        movers = response.context['movers']
+        assert movers['year_from'] == 2022
+        assert movers['year_to'] == 2023
+        assert movers['rising'] or movers['falling']
+
+    def test_movers_follows_an_explicit_compare_year(self):
+        response = self.client.get(reverse('pesticides:home'), {'year': '2022', 'compare': '2023'})
+        movers = response.context['movers']
+        assert movers['year_from'] == 2023
+        assert movers['year_to'] == 2022
+
+    def test_movers_is_absent_without_a_comparable_year(self):
+        # 2022 is the earliest loaded year, so there is nothing before it.
+        response = self.client.get(reverse('pesticides:home'), {'year': '2022'})
+        assert response.context['movers'] is None
+        assert 'Biggest movers' not in response.content.decode()
+
+    def test_movers_is_absent_for_all_years(self):
+        response = self.client.get(reverse('pesticides:home'), {'year': 'all'})
+        assert response.context['movers'] is None
+
+    def test_movers_renders_signed_changes(self):
+        html = self.client.get(reverse('pesticides:home'), {'year': '2023'}).content.decode()
+        assert 'Biggest movers' in html
+        assert '2022 to 2023' in html
+        assert 'Rose most' in html and 'Fell most' in html
+
     def test_compare_rides_in_the_scope(self):
         response = self.client.get(self.url, {'year': '2023', 'compare': '2022'})
         assert response.context['compare'] == 2022
@@ -566,7 +595,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         assert Product.objects.get(pk=1).get_absolute_url() in html
 
     def test_query_ceiling(self):
-        # Honest count with the current implementation is 23 (verified
+        # Honest count with the current implementation is 26 (verified
         # query-by-query: every related-object fetch is batched via
         # in_bulk/prefetch/select_related, no N+1s -- 18 base queries
         # (including the by_month rollup aggregate for the future month
@@ -574,8 +603,10 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         # region-name lookup, the by-county-table's in_bulk() for
         # county_sqid, the available-years lookup for the year picker, and
         # the county list for the county picker; all cached after the first
-        # request).
-        with self.assertNumQueries(23):
+        # request). The last three are the movers card: one group-by per
+        # direction and one in_bulk for the regions, a fixed cost that
+        # doesn't grow with the number of movers shown.
+        with self.assertNumQueries(26):
             self.client.get(self.chemical.get_absolute_url())
 
     def test_by_month_in_context(self):
