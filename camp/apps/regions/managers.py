@@ -83,34 +83,20 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
         Resolves a community name to a single best-match region.
 
         With a type, returns the top similarity match within that type.
-        Without a type, tries Place names first, then falls back to City/CDP
-        names and returns the Place with the greatest spatial overlap.
+        Without one, tries the community layers in turn -- City, then CDP,
+        then Urban Area -- and returns the best match in the first type that
+        has one at or above the threshold, so "Fresno" is the city even
+        though an urban area carries the same name.
         """
         from .models import Region
 
         if type:
             return self.search_regions(name, type=type, threshold=threshold).first()
 
-        place = (
-            self.filter(type=Region.Type.PLACE)
-            .annotate(similarity=TrigramWordSimilarity(name, 'name'))
-            .filter(similarity__gte=threshold)
-            .order_by('-similarity')
-            .first()
-        )
-        if place:
-            return place
-
-        region = (
-            self.filter(type__in=[Region.Type.CITY, Region.Type.CDP], boundary__isnull=False)
-            .annotate(similarity=TrigramWordSimilarity(name, 'name'))
-            .filter(similarity__gte=threshold)
-            .order_by('-similarity')
-            .first()
-        )
-        if region:
-            return self.get_containing_region(region, Region.Type.PLACE)
-
+        for region_type in (Region.Type.CITY, Region.Type.CDP, Region.Type.URBAN_AREA):
+            region = self.search_regions(name, type=region_type, threshold=threshold).filter(boundary__isnull=False).first()
+            if region:
+                return region
         return None
 
     def import_or_update(cls,
