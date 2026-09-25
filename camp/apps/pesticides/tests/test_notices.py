@@ -2,6 +2,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
+from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, PesticideNotice
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Region
@@ -112,13 +113,13 @@ class NoticeDetailTests(TestCase):
         assert response.context['scope_concern'] is True
         assert 'year_options' not in response.context
         html = response.content.decode()
-        assert 'explorer-scope-toggle' in html
+        assert 'data-scope="narrow"' in html
         assert 'Chemicals of concern' in html
         assert 'data-scope="county"' in html
         assert 'data-scope="year"' not in html
         # And it reflects the scope it was asked for.
-        html = self.client.get(url, {'concern': '1', 'county': 'kern'}).content.decode()
-        assert 'explorer-scope-toggle is-set' in html
+        html = self.client.get(url, {'narrow': 'concern', 'county': 'kern'}).content.decode()
+        assert 'aria-label="Narrow to: Chemicals of concern"' in html
         assert 'Showing chemicals of concern only' in html
 
     def test_404(self):
@@ -138,7 +139,7 @@ class EntityPageLinksTests(RollupTestMixin, TestCase):
 
 
 class NoticeConcernScopeTests(TestCase):
-    """`?concern=1` keeps only notices listing a chemical of concern."""
+    """`?narrow=concern` keeps only notices listing a chemical of concern."""
 
     fixtures = ['pesticides-explorer']
 
@@ -152,7 +153,7 @@ class NoticeConcernScopeTests(TestCase):
         notice.chemicals.set([sulfur])
         response = self.client.get(self.url, {'concern': '1'})
         assert [n.pk for n in response.context['object_list']] == [3]
-        assert response.context['concern'] is True
+        assert response.context['concern'] == stats.NARROW_CONCERN
         assert [n.pk for n in self.client.get(self.url).context['object_list']] == [2, 3]
 
     def test_a_notice_is_listed_once_even_with_several_concern_chemicals(self):

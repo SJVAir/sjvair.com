@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from django.contrib.gis.db.models.functions import Centroid
 from django.contrib.gis.measure import D
 from django.core.cache import cache
-from django.db.models import Count, F, Max, Min, Q, Sum
+from django.db.models import Case, Count, F, FloatField, Max, Min, Q, Sum, When
 from django.utils import timezone
 
 from camp.apps.pesticides.models import (
@@ -27,6 +27,13 @@ LANDING_KEY = 'pesticides:landing-stats:v3'
 NOTICE_WINDOW_KEY = 'pesticides:notice-window'
 YEARS_KEY = 'pesticides:years'
 ALL_YEARS = 'all'
+# Below this many pounds in the compared year, a percent change says more
+# about the baseline than the movement, so top_movers() leaves it off.
+MOVERS_PCT_MIN_LBS = 100
+# How many rows a related card (includes/related-card.html) shows before it
+# offers "Show all" -- on the entity, place and section pages alike. Not the
+# landing page's leaderboards, which are that page's main content.
+RELATED_LIMIT = 5
 # Aggregates that read more than one year of rollup rows for a whole county or
 # the whole valley. They only change on import, so an hour is plenty.
 ALL_YEARS_KEY = 'pesticides:all-years'
@@ -37,6 +44,18 @@ NOTICE_WINDOW_TTL = 60 * 60
 SJV_COUNTY_COUNT = 8
 # The explorer's third scope control, beside year and county.
 CONCERN_PARAM = 'concern'
+# The explorer can narrow to one kind of use at a time. One parameter rather
+# than a toggle each, because the question is "show me which of these" and
+# the combinations ("fumigants that are also of concern") are a report, not a
+# browsing mode. `concern=1` is still read, as the links that shipped with it.
+NARROW_PARAM = 'narrow'
+NARROW_CONCERN = 'concern'
+NARROW_FUMIGANT = 'fumigant'
+NARROW_CHOICES = (
+    (NARROW_CONCERN, 'Chemicals of concern'),
+    (NARROW_FUMIGANT, 'Fumigants'),
+)
+NARROW_VALUES = {value for value, _label in NARROW_CHOICES}
 # The "within about a mile" block: a section plus the eight around it. MTRS
 # sections are roughly one mile square, so a neighbour's centroid is about a
 # mile away (1.5 miles diagonally) and the next ring out is about two.
@@ -100,6 +119,39 @@ def resolve_year_param(requested):
     return resolve_year(requested), False
 
 
+def previous_year(year):
+    """The loaded year before `year`, or None when it is the earliest (or not loaded)."""
+    years = available_years()
+    if not years or year not in years:
+        return None
+    index = years.index(year)
+    return years[index - 1] if index else None
+
+
+def resolve_compare_param(requested, year, all_years=False):
+    """
+    The year a map is comparing against for a raw `?compare=` value, or None
+    when there is nothing to compare: a year with no rollup, the
+    scope year itself, or any value at all while the scope is All years -- a
+    range has no second term.
+
+    Nothing requires the compared year to be the earlier of the two. The
+    change is always the scope year minus this one, so picking a later year
+    simply inverts the sign, and every surface names the pair in order rather
+    than showing a bare signed number.
+    """
+    years = available_years()
+    if all_years or year is None or not years:
+        return None
+    try:
+        compare = int(str(requested).strip())
+    except (TypeError, ValueError):
+        return None
+    if compare == year or compare not in years:
+        return None
+    return compare
+
+
 def year_label(year, all_years=False):
     """'2023', '2014–2023', or '' when nothing is loaded -- for page headings."""
     if all_years:
@@ -140,7 +192,8 @@ def scope_param(year, all_years=False, county=None, concern=False):
     if slug:
         parts.append(f'county={slug}')
     if concern:
-        parts.append(f'{CONCERN_PARAM}=1')
+        parts.append(f'{NARROW_PARAM}={concern}' if concern in NARROW_VALUES
+            else f'{CONCERN_PARAM}=1')
     return '&'.join(parts)
 
 
@@ -148,6 +201,58 @@ def scope_query(year, all_years=False, county=None, concern=False):
     """`scope_param()` with a leading '?', for appending to a bare path ('' when nothing is pinned)."""
     param = scope_param(year, all_years, county, concern)
     return f'?{param}' if param else ''
+
+
+def resolve_narrow(params):
+    """
+    What the explorer is narrowed to, from a request's GET: one of
+    NARROW_VALUES, or '' for all use. Anything unrecognised is all use --
+    a bad value shouldn't silently show a subset and call it the total.
+    """
+    value = str(params.get(NARROW_PARAM) or '').strip().lower()
+    if value in NARROW_VALUES:
+        return value
+    # The chemicals-of-concern toggle's original parameter.
+    return NARROW_CONCERN if is_concern(params.get(CONCERN_PARAM)) else ''
+
+
+def narrow_label(narrow):
+    """What a heading calls the current narrowing ('' for all use)."""
+    return dict(NARROW_CHOICES).get(narrow, '')
+
+
+def narrow_needs_product(narrow):
+    """
+    Whether this narrowing filters on the product rather than the chemical.
+    PesticideUseTotal is binned per entity, so its chemical rows carry no
+    product at all: a source that pre-sums by chemical can answer "of
+    concern" but not "fumigant", and has to give way to the rollup, where
+    both sit on the same row.
+    """
+    return narrow == NARROW_FUMIGANT
+
+
+def narrow_rows(rows, narrow):
+    """
+    `rows` (rollup or totals rows) restricted to what the explorer is
+    narrowed to. Fumigants are a property of the product applied, chemicals
+    of concern a property of the chemical, so the two filter on different
+    ends of the same row.
+    """
+    if narrow == NARROW_CONCERN:
+        return concern_rows(rows)
+    if narrow == NARROW_FUMIGANT:
+        return rows.filter(product__fumigant=True)
+    return rows
+
+
+def narrow_notices(notices, narrow):
+    """`notices` restricted the same way; a notice lists products and chemicals."""
+    if narrow == NARROW_CONCERN:
+        return concern_notices(notices)
+    if narrow == NARROW_FUMIGANT:
+        return notices.filter(products__fumigant=True).distinct()
+    return notices
 
 
 def is_concern(value):
@@ -259,6 +364,70 @@ def by_county(rows, year, lbs_field='lbs_chemical', all_years=False):
             'applications': row['applications'],
         }
         for row in counties
+    ]
+
+
+COUNTY_AREAS_KEY = 'pesticides:county-areas'
+COUNTY_AREAS_TTL = 60 * 60 * 24 * 7
+
+
+def county_areas():
+    """
+    {county_id: square miles}, from the boundary reprojected to California
+    Albers. Cached for a week: county lines don't move, and the eight
+    multipolygons run to thousands of points each.
+    """
+    value = cache.get(COUNTY_AREAS_KEY, _MISSING)
+    if value is _MISSING:
+        value = {
+            region.pk: region.boundary.area
+            for region in Region.objects
+                .filter(type=Region.Type.COUNTY, boundary__isnull=False)
+                .select_related('boundary')
+        }
+        cache.set(COUNTY_AREAS_KEY, value, COUNTY_AREAS_TTL)
+    return value
+
+
+def county_used_sections(year, all_years=False, concern=False):
+    """
+    {county_id: how many square-mile sections reported any use}. The other
+    denominator for a rate: a county's full area counts the Sierra and the
+    desert, where nobody sprays, so per-square-mile-of-county reads Kern --
+    8,163 square miles, mostly neither -- as the lightest in the valley.
+
+    Unlike the totals it divides, this always comes off the rollup:
+    PesticideUseTotal has no section, and the figure has to mean the same
+    thing whichever source the totals came from.
+    """
+    rows = PesticideUseRollup.objects.filter(chemical__isnull=False)
+    if concern:
+        rows = narrow_rows(rows, concern)
+    parts = ['county-used-sections', ALL_YEARS if all_years else year]
+    if concern:
+        parts.append(concern if concern in NARROW_VALUES else CONCERN_PARAM)
+
+    def build():
+        counted = (in_year(rows, year, all_years)
+            .values('county_id')
+            .annotate(used=Count('mtrs_id', distinct=True)))
+        return {row['county_id']: row['used'] for row in counted}
+
+    return cached(all_years_key(*parts), build)
+
+
+def with_rates(by_county, year, all_years=False, concern=False):
+    """
+    `by_county` rows with the denominators a rate needs: `area` (the whole
+    county) and `used` (the square miles that reported anything). The rates
+    themselves are computed where they're ranked and shaded
+    (camp.apps.pesticides.maps.metric_value), so one row serves every metric.
+    """
+    areas = county_areas()
+    used = county_used_sections(year, all_years, concern)
+    return [
+        {**row, 'area': areas.get(row['county_id']), 'used': used.get(row['county_id'])}
+        for row in by_county
     ]
 
 
@@ -382,13 +551,20 @@ def by_township(rows, year, all_years=False):
 def year_totals(rows, year, lbs_field='lbs_chemical', all_years=False):
     data = in_year(rows, year, all_years).aggregate(
         lbs=Sum(lbs_field),
+        acres=Sum('acres_treated'),
         applications=Sum('applications'),
         counties=Count('county', distinct=True),
     )
     return {
         'lbs': data['lbs'] or 0,
+        'acres': data['acres'] or 0,
         'applications': data['applications'] or 0,
         'counties': data['counties'] or 0,
+        # Pounds per acre actually treated: how heavily it goes on where it
+        # goes on, as opposed to how much of it there is. Only meaningful for
+        # a single chemical or product -- summed across them the acres
+        # double-count, since two chemicals on one orchard is twice the acres.
+        'lbs_per_acre': (data['lbs'] or 0) / data['acres'] if data['acres'] else None,
     }
 
 
@@ -420,6 +596,78 @@ def top_related(rows, year, field, lbs_field='lbs_chemical', limit=10, all_years
         SimpleNamespace(obj=objects[row[field]], lbs=row['lbs'] or 0)
         for row in found if row[field] in objects
     ]
+
+
+def mover_name(obj):
+    """
+    What a movers row calls its subject. The entity models title-case
+    themselves through `display_name`; a Region is already a proper name.
+    """
+    return getattr(obj, 'display_name', None) or obj.name
+
+
+def mover_url(obj):
+    """
+    Where a movers row links. A Region's explorer page is `get_pesticides_url`
+    -- it has no `get_absolute_url`, and the entity models have no
+    `get_pesticides_url` -- so the axis decides which one answers.
+    """
+    if hasattr(obj, 'get_pesticides_url'):
+        return obj.get_pesticides_url()
+    return obj.get_absolute_url()
+
+
+def top_movers(rows, year_from, year_to, field, lbs_field='lbs_chemical', limit=10):
+    """
+    What rose and fell most on `field` ('chemical' | 'product' | 'commodity'
+    | 'county') between two years, ranked by absolute change. Percent change
+    would rank on the smallest baselines instead -- 0.1 lbs to 1.0 lbs is
+    +900% -- so `pct` is carried alongside for display, and only where
+    `lbs_from` is at least MOVERS_PCT_MIN_LBS.
+
+    `change` is `lbs_to - lbs_from`: always the scope year minus the compared
+    one, whichever is earlier. A year with no rows counts as zero rather than
+    dropping the row, so a chemical new to the scope year still shows up.
+
+    Three queries, as top_related(): the group-by sliced each way, then
+    in_bulk for the instances (sqid is not a DB column and templates need
+    get_absolute_url()). A chemical ranking leaves out the placeholders.
+    """
+    if field == 'chemical':
+        rows = real_chemicals(rows)
+    grouped = (
+        rows.filter(year__in=[year_from, year_to], **{f'{field}__isnull': False})
+        .values(field)
+        .annotate(
+            lbs_from=Sum(Case(When(year=year_from, then=F(lbs_field)),
+                default=0.0, output_field=FloatField())),
+            lbs_to=Sum(Case(When(year=year_to, then=F(lbs_field)),
+                default=0.0, output_field=FloatField())),
+        )
+        .annotate(change=F('lbs_to') - F('lbs_from'))
+    )
+    # Filtered by sign, not just ordered: with fewer movers than `limit` a
+    # single ordered queryset hands the tail of one side to the other.
+    rising = list(grouped.filter(change__gt=0).order_by(F('change').desc(), field)[:limit])
+    falling = list(grouped.filter(change__lt=0).order_by(F('change').asc(), field)[:limit])
+
+    model = rows.model._meta.get_field(field).related_model
+    objects = model.objects.in_bulk([row[field] for row in rising + falling])
+
+    def build(found):
+        movers = []
+        for row in found:
+            obj = objects.get(row[field])
+            if obj is None:
+                continue
+            lbs_from = row['lbs_from'] or 0
+            lbs_to = row['lbs_to'] or 0
+            pct = (lbs_to - lbs_from) / lbs_from * 100 if lbs_from >= MOVERS_PCT_MIN_LBS else None
+            movers.append(SimpleNamespace(obj=obj, lbs_from=lbs_from, lbs_to=lbs_to,
+                change=row['change'], pct=pct, name=mover_name(obj), url=mover_url(obj)))
+        return movers
+
+    return {'rising': build(rising), 'falling': build(falling)}
 
 
 def recent_uses(uses, limit=10):
@@ -500,6 +748,8 @@ def concern_notices(notices):
 
 
 def top_chemicals_of_concern(top_chemicals, uses, year, limit=10, all_years=False):
+    # The default is the landing leaderboards'; a place page passes
+    # RELATED_LIMIT, since there it's a related card like the ones beside it.
     """
     The heaviest chemicals of concern, for the board beside "top chemicals".
     `top_chemicals` is an already-fetched group-by (the landing and place
@@ -523,12 +773,16 @@ def county_totals(year=None, all_years=False, concern=False):
     don't count the same pounds again. Cached, because the all-years pass
     reads every year at once.
     """
-    rows = PesticideUseTotal.objects.filter(chemical__isnull=False)
-    if concern:
-        rows = concern_rows(rows)
+    if narrow_needs_product(concern):
+        # The totals table can't answer this one (see narrow_needs_product).
+        rows = narrow_rows(PesticideUseRollup.objects.filter(chemical__isnull=False), concern)
+    else:
+        rows = PesticideUseTotal.objects.filter(chemical__isnull=False)
+        if concern:
+            rows = narrow_rows(rows, concern)
     parts = ['county-totals', ALL_YEARS if all_years else year]
     if concern:
-        parts.append(CONCERN_PARAM)
+        parts.append(concern if concern in NARROW_VALUES else CONCERN_PARAM)
     return cached(
         all_years_key(*parts),
         lambda: by_county(rows, year, all_years=all_years),
@@ -546,10 +800,10 @@ def commodity_chemical_counts(county=None, concern=False):
     if county is not None:
         rows = rows.filter(county=county)
     if concern:
-        rows = concern_rows(rows)
+        rows = narrow_rows(rows, concern)
     parts = ['commodity-chemicals', county.pk if county is not None else ALL_YEARS]
     if concern:
-        parts.append(CONCERN_PARAM)
+        parts.append(concern if concern in NARROW_VALUES else CONCERN_PARAM)
     return cached(
         all_years_key(*parts),
         lambda: dict(
@@ -568,6 +822,9 @@ def commodity_concern_lbs(year=None, all_years=False, county=None):
     correlated subquery the list would otherwise run sums the concern rows for
     every commodity on the page, which takes seconds across all years.
     """
+    # Always the chemicals of concern, whatever the explorer is narrowed to:
+    # this feeds the commodity list's dedicated concern column, not the
+    # page's scoped totals.
     rows = concern_rows(PesticideUseRollup.objects.filter(commodity__isnull=False))
     if county is not None:
         rows = rows.filter(county=county)
@@ -587,9 +844,42 @@ def commodity_concern_lbs(year=None, all_years=False, county=None):
     )
 
 
+def yearly_series(rows, field, objects, lbs_field='lbs_chemical'):
+    """
+    {pk: [pounds per loaded year]} for the given `objects`, aligned to
+    available_years() with a zero wherever a year is missing, so every
+    sparkline on a page shares one x axis and their shapes are comparable.
+
+    One group-by for the whole board rather than one per row: the rows are
+    already resolved, so this only needs their ids.
+    """
+    years = available_years()
+    ids = [obj.pk for obj in objects]
+    if not years or not ids:
+        return {}
+    grouped = (rows.filter(**{f'{field}__in': ids})
+        .values(field, 'year')
+        .annotate(lbs=Sum(lbs_field)))
+    index = {year: i for i, year in enumerate(years)}
+    series = {pk: [0.0] * len(years) for pk in ids}
+    for row in grouped:
+        position = index.get(row['year'])
+        if position is not None and row[field] in series:
+            series[row[field]][position] = row['lbs'] or 0
+    return series
+
+
+def with_series(rows, field, ranked, lbs_field='lbs_chemical'):
+    """`ranked` (top_related rows) with a `series` on each, for its sparkline."""
+    series = yearly_series(rows, field, [row.obj for row in ranked], lbs_field)
+    for row in ranked:
+        row.series = series.get(row.obj.pk) or []
+    return ranked
+
+
 def landing_key(year, concern=False):
     key = f'{LANDING_KEY}:{year}'
-    return f'{key}:{CONCERN_PARAM}' if concern else key
+    return f'{key}:{concern}' if concern else key
 
 
 def _build_landing_stats(year, all_years=False, county=None, concern=False):
@@ -611,9 +901,9 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         notices = notices.filter(county=county)
         totals = totals.filter(county=county)
     if concern:
-        uses = concern_rows(uses)
-        notices = concern_notices(notices)
-        totals = concern_rows(totals)
+        uses = narrow_rows(uses, concern)
+        notices = narrow_notices(notices, concern)
+        totals = narrow_rows(totals, concern)
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50, all_years=all_years)
     year_uses = in_year(uses, year, all_years)
     counts = {
@@ -641,18 +931,21 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         'applications': year_totals_['applications'] or 0,
         'total_lbs': year_totals_['lbs'] or 0,
         'active_notices': upcoming_count(notices),
-        'top_products': top_related(uses, year, 'product', lbs_field='lbs_product', all_years=all_years),
-        'top_chemicals': top_chemicals_all[:10],
-        'top_commodities': top_related(uses, year, 'commodity', all_years=all_years),
+        # Each board's rows carry their own by-year series, for the
+        # sparkline that says whether a big number is growing or receding.
+        'top_products': with_series(uses, 'product',
+            top_related(uses, year, 'product', lbs_field='lbs_product', all_years=all_years), 'lbs_product'),
+        'top_chemicals': with_series(uses, 'chemical', top_chemicals_all[:10]),
+        'top_commodities': with_series(uses, 'commodity',
+            top_related(uses, year, 'commodity', all_years=all_years)),
         'by_county': county_totals(year, all_years, concern) if (year or all_years) else [],
         'by_year': by_year(totals),
     }
     # Under the concern scope every leaderboard is already of concern, so
     # the dedicated one would just restate the top chemicals.
     if not concern:
-        data['top_chemicals_of_concern'] = top_chemicals_of_concern(
-            top_chemicals_all, uses, year, all_years=all_years,
-        )
+        data['top_chemicals_of_concern'] = with_series(uses, 'chemical',
+            top_chemicals_of_concern(top_chemicals_all, uses, year, all_years=all_years))
     return data
 
 

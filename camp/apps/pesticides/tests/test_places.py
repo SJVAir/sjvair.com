@@ -1,4 +1,8 @@
 from django.contrib.gis.geos import Point
+import math
+
+import pytest
+
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
@@ -31,7 +35,12 @@ class AreaTests(RollupTestMixin, TestCase):
 
     def test_place_context_totals_and_peak(self):
         ctx = places.place_context(places.region_area(Region.objects.get(pk=9001)), 2023)
-        assert ctx['totals'] == {'lbs': 670.0, 'applications': 4, 'sections_used': 1, 'sections_total': 1, 'chemicals': 3}
+        totals = ctx['totals']
+        assert (totals['lbs'], totals['applications']) == (670.0, 4)
+        assert (totals['sections_used'], totals['sections_total'], totals['chemicals']) == (1, 1, 3)
+        # One square mile reported use, so that rate is the whole total.
+        assert totals['lbs_per_used_sqmi'] == 670.0
+        assert totals['lbs_per_sqmi'] == pytest.approx(670.0 / totals['square_miles'])
         assert ctx['peak_month'] == 'August'
         assert [r.obj.name for r in ctx['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
         assert ctx['records_url'].startswith(reverse('pesticides:records') + '?')
@@ -41,9 +50,9 @@ class AreaTests(RollupTestMixin, TestCase):
     def test_place_context_all_years(self):
         area = places.region_area(Region.objects.get(pk=9001))
         ctx = places.place_context(area, None, all_years=True)
-        assert ctx['totals'] == {
-            'lbs': 1150.0, 'applications': 6, 'sections_used': 1, 'sections_total': 1, 'chemicals': 3,
-        }
+        totals = ctx['totals']
+        assert (totals['lbs'], totals['applications']) == (1150.0, 6)
+        assert (totals['sections_used'], totals['sections_total'], totals['chemicals']) == (1, 1, 3)
         assert ctx['by_month'][7]['lbs'] == 900.0
         assert 'year=all' in ctx['records_url']
         assert ctx['map_config']['year'] == 'all'
@@ -64,8 +73,8 @@ class AreaTests(RollupTestMixin, TestCase):
         # heaviest here and isn't one.
         assert [row.obj.name for row in concern_card['rows']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         # "Show all" narrows the records browser the way the card does.
-        assert 'concern=1' in concern_card['show_all_url']
-        assert 'concern=1' not in response.context['chemicals_card']['show_all_url']
+        assert 'narrow=concern' in concern_card['show_all_url']
+        assert 'narrow=concern' not in response.context['chemicals_card']['show_all_url']
 
         html = response.content.decode()
         assert html.count('class="card related-card"') == 4
@@ -451,7 +460,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
     def test_panel_section_links_carry_the_scope(self):
         section_url = reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid})
         html = self.client.get(self.url, {'year': '2022', 'concern': '1'}).content.decode()
-        assert f'{section_url}?year=2022&amp;concern=1' in html
+        assert f'{section_url}?year=2022&amp;narrow=concern' in html
 
     def test_rows_past_the_cap_render_collapsed(self):
         for index in range(20):
@@ -562,7 +571,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
     def test_schools_nearby_follows_the_concern_scope(self):
         # Section 9101's concern pounds only (170); the neighbouring
         # section's rollup row carries no chemical at all.
-        assert [row['lbs'] for row in places.schools_nearby(self.district, 2023, concern=True)['run_by']] == [170.0]
+        assert [row['lbs'] for row in places.schools_nearby(self.district, 2023, concern=stats.NARROW_CONCERN)['run_by']] == [170.0]
         assert [row['lbs'] for row in places.schools_nearby(self.district, 2023)['run_by']] == [695.0]
 
     def test_demographics_strip(self):
@@ -652,17 +661,17 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
 
     def test_place_context_totals_narrow(self):
         area = places.region_area(self.fresno)
-        ctx = places.place_context(area, 2023, concern=True)
+        ctx = places.place_context(area, 2023, concern=stats.NARROW_CONCERN)
         assert ctx['totals']['lbs'] == 170.0
         assert ctx['totals']['chemicals'] == 2
         assert [r.obj.name for r in ctx['top_chemicals']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         assert [(r['year'], r['lbs']) for r in ctx['by_year']] == [(2023, 170.0), (2022, 80.0)]
         assert ctx['map_config']['concern'] == '1'
-        assert 'concern=1' in ctx['records_url']
+        assert 'narrow=concern' in ctx['records_url']
 
     def test_place_context_all_years_caches_separately(self):
         area = places.region_area(self.fresno)
-        assert places.place_context(area, None, all_years=True, concern=True)['totals']['lbs'] == 250.0
+        assert places.place_context(area, None, all_years=True, concern=stats.NARROW_CONCERN)['totals']['lbs'] == 250.0
         assert places.place_context(area, None, all_years=True)['totals']['lbs'] == 1150.0
 
     def test_notices_are_counted_once_per_county_under_the_scope(self):
@@ -677,7 +686,7 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         notice.save()
         notice.chemicals.set([1, 2])                 # GLYPHOSATE and CHLORPYRIFOS
 
-        ctx = places.place_context(places.region_area(city), 2023, concern=True)
+        ctx = places.place_context(places.region_area(city), 2023, concern=stats.NARROW_CONCERN)
         assert ctx['upcoming_by_county'] == [{'county_name': 'Fresno County', 'count': 1}]
         assert ctx['upcoming_count'] == 1
         assert [n.pk for n in ctx['upcoming']] == [notice.pk]
@@ -686,7 +695,7 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         url = reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})
         response = self.client.get(url, {'concern': '1'})
         assert response.context['totals']['lbs'] == 170.0
-        assert response.context['concern'] is True
+        assert response.context['concern'] == stats.NARROW_CONCERN
 
     def test_the_concern_card_drops_out_under_the_scope(self):
         # Every card is already of concern, so a dedicated one would just
@@ -699,3 +708,32 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         assert 'top_chemicals_of_concern' not in response.context
         assert response.context['chemicals_card']['title'] == 'Top chemicals of concern'
         assert response.content.decode().count('class="card related-card"') == 3
+
+
+class AreaSquareMilesTests(TestCase):
+    """The denominator behind a place's per-square-mile rate."""
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_a_region_measures_its_boundary(self):
+        area = places.region_area(Region.objects.get(pk=9001))
+        assert area.square_miles == Region.objects.get(pk=9001).boundary.area
+        assert area.square_miles > 0
+
+    def test_a_radius_measures_its_circle(self):
+        area = places.point_area(36.71, -119.79, 5)
+        assert area.square_miles == pytest.approx(math.pi * 25)
+
+    def test_a_region_without_a_boundary_has_no_rate(self):
+        Region.objects.filter(pk=9001).update(boundary=None)
+        area = places.region_area(Region.objects.get(pk=9001))
+        assert area.square_miles is None
+
+    def test_the_section_count_is_not_used_as_the_area(self):
+        # Sections overlap a boundary rather than tiling it, so counting
+        # them would overstate anything smaller than a county.
+        area = places.region_area(Region.objects.get(pk=9001))
+        assert area.square_miles != len(area.section_pks)

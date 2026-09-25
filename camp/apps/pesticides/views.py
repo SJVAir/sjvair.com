@@ -44,7 +44,8 @@ def county_options():
     return list(Region.objects.filter(type=Region.Type.COUNTY).order_by('name').values_list('slug', 'name'))
 
 
-def year_context(year, all_years=False, county=None, county_scope=True, concern=False, concern_scope=True):
+def year_context(year, all_years=False, county=None, county_scope=True, concern=False,
+        concern_scope=True):
     """
     Context every explorer page needs for the scope controls (year, county,
     and the chemicals-of-concern toggle) and the scope-pinned links.
@@ -65,6 +66,8 @@ def year_context(year, all_years=False, county=None, county_scope=True, concern=
         'county': county,
         'county_options': county_options() if county_scope else [],
         'concern': concern,
+        'narrow_label': stats.narrow_label(concern),
+        'narrow_choices': stats.NARROW_CHOICES,
         'scope_concern': concern_scope,
         'scope_qs': stats.scope_query(year, all_years, county, concern),
     }
@@ -76,8 +79,46 @@ def scope_county(request):
 
 
 def scope_concern(request):
-    """Is the explorer scoped to the chemicals of concern (`?concern=1`)?"""
-    return stats.is_concern(request.GET.get(stats.CONCERN_PARAM))
+    """
+    What the explorer is narrowed to: '' (all use), 'concern' or 'fumigant'.
+
+    Still called `concern` everywhere downstream, where it's only ever tested
+    for truth or passed along -- widening the value rather than threading a
+    second flag is what keeps one control in the scope bar instead of two.
+    """
+    return stats.resolve_narrow(request.GET)
+
+
+
+def movers_context(rows, year, all_years, field, lbs_field='lbs_chemical'):
+    """
+    The "biggest movers" card's context, or None when there is nothing to
+    compare against and the card should be left off the page.
+
+    Always the loaded year before the scope year. Picking the pair is a map
+    control (assets/js/pesticides/section-map.js), not an explorer-wide
+    scope, so this card has no year of its own to be told -- which keeps it
+    a fixed "what changed since last year" rather than a second thing to
+    configure.
+    """
+    if all_years or not year:
+        return None
+    year_from = stats.previous_year(year)
+    if not year_from:
+        return None
+    movers = stats.top_movers(rows, year_from, year, field, lbs_field)
+    if not movers['rising'] and not movers['falling']:
+        return None
+    return {
+        **movers,
+        'year_from': year_from,
+        'year_to': year,
+        # Paired for the template, which renders the two sides identically.
+        'groups': [
+            {'label': 'Rose most', 'rows': movers['rising'], 'empty': 'Nothing rose.'},
+            {'label': 'Fell most', 'rows': movers['falling'], 'empty': 'Nothing fell.'},
+        ],
+    }
 
 
 # Public pages link developers to the documentation, never to raw endpoints.
@@ -101,7 +142,7 @@ def lbs_subquery(field, year, lbs_field='lbs_chemical', county=None, all_years=F
     else:
         rows = PesticideUseTotal.objects.filter(**{field: OuterRef('pk')})
     if concern:
-        rows = stats.concern_rows(rows)
+        rows = stats.narrow_rows(rows, concern)
     if not all_years:
         rows = rows.filter(year=year)
     if county is not None:
@@ -139,7 +180,7 @@ def related_pks(field, obj, target, year=None, county=None, all_years=False, con
     if county is not None:
         rows = rows.filter(county=county)
     if concern:
-        rows = stats.concern_rows(rows)
+        rows = stats.narrow_rows(rows, concern)
     return rows.values(target)
 
 
@@ -290,7 +331,7 @@ class ExplorerListMixin:
         # Under the concern scope the totals table can't answer the question
         # (its product and commodity rows carry no chemical), so "used" comes
         # off the rollup, where every row names all three.
-        used = stats.concern_rows(PesticideUseRollup.objects.all()) if self.concern else PesticideUseTotal.objects.all()
+        used = stats.narrow_rows(PesticideUseRollup.objects.all(), self.concern) if self.concern else PesticideUseTotal.objects.all()
         if not self.all_years:
             used = used.filter(year=self.year)
         if self.county is not None:
@@ -531,8 +572,15 @@ class Home(vanilla.TemplateView):
         concern = scope_concern(self.request)
         data = stats.landing_stats(year, all_years, county, concern)
         county_rank = maps.county_metric(self.request.GET.get('rank'))
+        movers_rows = PesticideUseRollup.objects.all()
+        if county is not None:
+            movers_rows = movers_rows.filter(county=county)
+        if concern:
+            movers_rows = stats.narrow_rows(movers_rows, concern)
+        movers = movers_context(movers_rows, year, all_years, 'chemical')
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
-        by_county = maps.rank_counties(data['by_county'], county_rank, ramp=ramp)
+        by_county = maps.rank_counties(
+            stats.with_rates(data['by_county'], year, all_years, concern), county_rank, ramp=ramp)
         county_map = maps.county_map(by_county, query=stats.scope_param(year, all_years, concern=concern), metric=county_rank, ramp=ramp) if by_county else None
         find_area_places = find_area_place_list()
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
@@ -548,6 +596,7 @@ class Home(vanilla.TemplateView):
             ],
             maptiler_key=settings.MAPTILER_API_KEY,
             focus_find=self.request.GET.get('find') == '1',
+            movers=movers,
             **{**data, 'by_county': by_county, **year_context(year, all_years, county, concern=concern)},
             county_rank=county_rank,
             **kwargs,
@@ -700,7 +749,7 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
         if self.county is not None:
             rows = rows.filter(county=self.county)
         if self.concern:
-            rows = stats.concern_rows(rows)
+            rows = stats.narrow_rows(rows, self.concern)
         return Coalesce(Subquery(
             rows
             .values('commodity')
@@ -715,20 +764,26 @@ class ExplorerDetailMixin:
     section = None
     lbs_field = 'lbs_chemical'
     use_field = None          # PesticideUse FK name for this entity
+    # Whether pounds per treated acre means anything here. It's the acreage
+    # each application covered, so summing it across the chemicals on one
+    # field counts that ground once per chemical: sound for a product, near
+    # enough for a chemical, and badly inflated for a commodity, where every
+    # chemical used on the crop piles onto the same orchards.
+    shows_lbs_per_acre = True
     api_param = None          # v2 API query param name, shown as a hint for developers
     has_notices = True
     # Set from the request in get_context_data; declared here so
     # get_rollup() is safe to call from anywhere.
     concern = False
     concern_excluded = False
-    concern_active = False
+    concern_active = ''
 
     def get_rollup(self):
         rows = PesticideUseRollup.objects.filter(**{self.use_field: self.object})
         if self.county is not None:
             rows = rows.filter(county=self.county)
         if self.concern_active:
-            rows = stats.concern_rows(rows)
+            rows = stats.narrow_rows(rows, self.concern_active)
         return rows
 
     def concern_applies(self):
@@ -767,18 +822,28 @@ class ExplorerDetailMixin:
             scope = f'{scope}:{stats.CONCERN_PARAM}'
         return stats.cached(stats.all_years_key('detail', self.use_field, self.object.pk, scope, name), build)
 
-    def top_related(self, field, lbs_field=None, limit=10):
+    def top_related(self, field, lbs_field=None, limit=stats.RELATED_LIMIT):
         lbs_field = lbs_field or self.lbs_field
         return self.cached_stat(f'top:{field}:{lbs_field}:{limit}', lambda: stats.top_related(
             self.get_rollup(), self.year, field, lbs_field, limit, all_years=self.all_years,
         ))
 
-    def related_card(self, title, kind, rows, list_url_name, param, show_pct=False, show_lbs=True, complete=False):
+    def related_card(self, title, kind, rows, list_url_name, param, show_pct=False, show_lbs=True,
+            complete=None, compact=False, limit=stats.RELATED_LIMIT):
         """
         show_pct: rows carry pct_active (only product<->chemical relations do).
         show_lbs: rows carry pounds (a product's ingredient list does not).
         complete: every related object is already listed, so no "Show all".
+            Worked out from the row count against `limit` unless given: a
+            list shorter than the cap is the whole list, and offering to
+            show all of one row links to what's already on screen.
+        compact: the list is short by nature rather than by chance -- three
+            products in five have a single active ingredient and four in five
+            have at most two -- so the card takes the narrow column and sizes
+            to its rows instead of stretching to match a top-ten beside it.
         """
+        if complete is None:
+            complete = len(rows) < limit
         scope = stats.scope_param(self.year, self.all_years, self.county, self.concern)
         return {
             'title': title,
@@ -787,6 +852,7 @@ class ExplorerDetailMixin:
             'show_pct': show_pct,
             'show_lbs': show_lbs and not self.hide_lbs(),
             'complete': complete,
+            'compact': compact,
             'show_all_url': reverse(list_url_name) + f'?{param}={self.object.sqid}' + (
                 f'&{scope}' if scope else ''
             ),
@@ -817,12 +883,17 @@ class ExplorerDetailMixin:
         # The toggle stays on in the links and the scope bar even where it
         # can't narrow this page; `concern_excluded` is what says so.
         self.concern = scope_concern(self.request)
-        self.concern_excluded = self.concern and not self.concern_applies()
-        self.concern_active = self.concern and not self.concern_excluded
+        self.concern_excluded = bool(self.concern) and not self.concern_applies()
+        # The narrowing's value, not just whether one is on: `x and not y`
+        # would collapse 'concern' to True and stop narrow_rows() telling
+        # the two narrowings apart.
+        self.concern_active = '' if self.concern_excluded else self.concern
         rows = self.get_rollup()
         notices = self.get_notices()
         scope = stats.scope_param(year, all_years, self.county, self.concern)
         totals = self.cached_stat('totals', lambda: stats.year_totals(rows, year, self.lbs_field, all_years=all_years))
+        if not self.shows_lbs_per_acre:
+            totals = {**totals, 'lbs_per_acre': None}
         related_a, related_b = self.get_related()
         context = super().get_context_data(
             section=self.section,
@@ -870,7 +941,10 @@ class ExplorerDetailMixin:
         )
         county_rank = maps.county_metric(self.request.GET.get('rank'))
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
-        context['by_county'] = maps.rank_counties(context['by_county'], county_rank, ramp=ramp)
+        # The axis flips on an entity page: which counties moved for this one.
+        context['movers'] = movers_context(rows, year, all_years, 'county', self.lbs_field)
+        context['by_county'] = maps.rank_counties(
+            stats.with_rates(context['by_county'], year, all_years, self.concern), county_rank, ramp=ramp)
         context['county_rank'] = county_rank
         context['county_map'] = maps.county_map(context['by_county'], query=stats.scope_param(year, all_years, concern=self.concern), metric=county_rank, ramp=ramp) if context['by_county'] else None
         return context
@@ -958,7 +1032,7 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
         ]
         commodities = self.top_related('commodity')
         return (
-            self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product', show_pct=True, show_lbs=False, complete=True),
+            self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product', show_pct=True, show_lbs=False, complete=True, compact=True),
             self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'product'),
         )
 
@@ -968,6 +1042,7 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
     template_name = 'pesticides/commodity-detail.html'
     section = 'commodities'
     use_field = 'commodity'
+    shows_lbs_per_acre = False
     api_param = 'commodity'
     has_notices = False
 
@@ -981,7 +1056,7 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
         rows = PesticideUseRollup.objects.filter(commodity=self.object)
         if self.county is not None:
             rows = rows.filter(county=self.county)
-        return stats.in_year(stats.concern_rows(rows), self.year, self.all_years).exists()
+        return stats.in_year(stats.narrow_rows(rows, self.concern), self.year, self.all_years).exists()
 
     def get_related(self):
         return (
@@ -1013,7 +1088,7 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None):
     year = year or stats.latest_year()
     config = {
         # Upcoming-notice markers start on where notices are the subject of
@@ -1059,6 +1134,10 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # The chemicals-of-concern scope, passed straight through to the grid
         # endpoints as `concern=1`.
         'concern': '1' if concern else '',
+        # The year the map shades the change against. A control on the main
+        # map's toolbar, not explorer scope: it stays out of scope_param, so
+        # no other page offers it or carries it in a link.
+        'compare': str(compare) if compare else '',
         'highlight': highlight or '',
         # A regions-API URL whose boundary the map draws and fits to (place pages).
         'outline_url': outline_url or '',
@@ -1098,6 +1177,7 @@ class MapPage(vanilla.TemplateView):
         county = scope_county(request)
         concern = scope_concern(request)
 
+        compare = stats.resolve_compare_param(request.GET.get('compare'), year, all_years)
         map_config = section_map_config(
             year,
             chemical=resolved.get('chemical'),
@@ -1106,6 +1186,7 @@ class MapPage(vanilla.TemplateView):
             county=county.slug if county else None,
             all_years=all_years,
             concern=concern,
+            compare=compare,
             toolbar=True,
         )
 
@@ -1124,8 +1205,9 @@ class MapPage(vanilla.TemplateView):
         county_map = None
         if (year or all_years) and not no_matches:
             county_map = maps.county_map(
-                stats.county_totals(year, all_years, concern),
+                stats.with_rates(stats.county_totals(year, all_years, concern), year, all_years, concern),
                 query=stats.scope_param(year, all_years, concern=concern),
+                metric=maps.county_metric(request.GET.get('rank')),
             )
 
         return super().get_context_data(
@@ -1141,6 +1223,9 @@ class MapPage(vanilla.TemplateView):
             ],
             no_matches=no_matches,
             county_map=county_map,
+            compare=compare,
+            # Every other loaded year, newest first, for the toolbar's picker.
+            compare_options=[y for y in reversed(stats.available_years()) if y != year] if year else [],
             **year_context(year, all_years, county, concern=concern),
             **kwargs,
         )
@@ -1345,7 +1430,7 @@ class RecordsBrowser(vanilla.ListView):
                 queryset = queryset.filter(**{param: obj})
 
         if self.concern:
-            queryset = stats.concern_rows(queryset)
+            queryset = stats.narrow_rows(queryset, self.concern)
 
         return queryset
 
@@ -1498,8 +1583,10 @@ class RecordsBrowser(vanilla.ListView):
         county_map = None
         if self.year or self.all_years:
             county_map = maps.county_map(
-                stats.county_totals(self.year, self.all_years, self.concern),
+                stats.with_rates(stats.county_totals(self.year, self.all_years, self.concern),
+                    self.year, self.all_years, self.concern),
                 query=stats.scope_param(self.year, self.all_years, concern=self.concern),
+                metric=maps.county_metric(self.request.GET.get('rank')),
             )
         return super().get_context_data(
             form=self.form,
@@ -1520,7 +1607,7 @@ class RecordsBrowser(vanilla.ListView):
         )
 
 
-def _section_card(title, kind, rows, show_all_url):
+def _section_card(title, kind, rows, show_all_url, limit=stats.RELATED_LIMIT):
     """
     related-card.html dict for a section page's top lists. Unlike
     ExplorerDetailMixin.related_card (which links "Show all" to the
@@ -1534,7 +1621,9 @@ def _section_card(title, kind, rows, show_all_url):
         'rows': rows,
         'show_pct': False,
         'show_lbs': True,
-        'complete': False,
+        # Fewer rows than the cap means these are all of them, so there is
+        # nothing for "Show all" to show.
+        'complete': len(rows) < limit,
         'show_all_url': show_all_url,
     }
 
@@ -1583,7 +1672,7 @@ class SectionDetail(vanilla.DetailView):
         concern = scope_concern(self.request)
         rows = PesticideUseRollup.objects.filter(mtrs=section)
         if concern:
-            rows = stats.concern_rows(rows)
+            rows = stats.narrow_rows(rows, concern)
 
         county_name = (
             rows.exclude(county__isnull=True)
@@ -1611,9 +1700,9 @@ class SectionDetail(vanilla.DetailView):
             peak = max(by_month, key=lambda month: month['lbs'])
             peak_month = calendar.month_name[peak['month']]
 
-        top_chemicals = stats.top_related(rows, year, 'chemical', limit=10, all_years=all_years)
-        top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10, all_years=all_years)
-        top_commodities = stats.top_related(rows, year, 'commodity', limit=10, all_years=all_years)
+        top_chemicals = stats.top_related(rows, year, 'chemical', limit=stats.RELATED_LIMIT, all_years=all_years)
+        top_products = stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=stats.RELATED_LIMIT, all_years=all_years)
+        top_commodities = stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years)
 
         notices = PesticideNotice.objects.filter(mtrs=section)
         upcoming = stats.upcoming_notices(notices)
@@ -1706,7 +1795,7 @@ class NoticeList(vanilla.ListView):
                 queryset = queryset.filter(**{field: obj})
 
         if self.concern:
-            queryset = stats.concern_notices(queryset)
+            queryset = stats.narrow_notices(queryset, self.concern)
 
         if self.mode == 'past':
             cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
@@ -1967,10 +2056,16 @@ class RegionPage(vanilla.TemplateView):
         area = places.region_area(self.region)
         context = places.place_context(area, year, all_years, concern, params=self.request.GET)
         within = places.regions_within(self.region) if self.region.boundary_id else None
+        # Not part of place_context: that block is cached per area and year,
+        # and the compared year is the reader's choice.
+        movers_rows = area.rollup_rows()
+        if concern:
+            movers_rows = stats.narrow_rows(movers_rows, concern)
         return super().get_context_data(
             section=None,
             years=stats.years_loaded(),
             within=within,
+            movers=movers_context(movers_rows, year, all_years, 'chemical'),
             **context,
             **_place_cards(context),
             **year_context(year, all_years, scope_county(self.request), county_scope=False, concern=concern),

@@ -12,6 +12,7 @@ MTRS section, since `PesticideUseRollup`/`PesticideNotice` don't carry
 arbitrary geometry.
 """
 import calendar
+import math
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
@@ -87,6 +88,23 @@ class Area:
             return self.region
         return None
 
+    @property
+    def square_miles(self):
+        """
+        How much ground this place covers, for a per-square-mile rate. A
+        radius is its own circle; a region is its boundary reprojected to
+        California Albers. None where there's nothing to measure, which
+        leaves the rate off rather than guessing at it.
+
+        Not the section count: sections overlap a boundary rather than tiling
+        it, so counting them overstates anything smaller than a county.
+        """
+        if self.kind == 'point':
+            return math.pi * (self.radius ** 2) if self.radius else None
+        if self.region is not None and self.region.boundary_id:
+            return self.region.boundary.area
+        return None
+
     def rollup_rows(self):
         county = self.county
         if county is not None:
@@ -135,13 +153,13 @@ class Area:
         params = self._area_params()
         params['year'] = stats.ALL_YEARS if all_years else year
         if concern:
-            params[stats.CONCERN_PARAM] = 1
+            params[stats.NARROW_PARAM] = concern
         return reverse('pesticides:records') + '?' + urlencode(params)
 
     def notices_url(self, concern=False):
         params = self._area_params()
         if concern:
-            params[stats.CONCERN_PARAM] = 1
+            params[stats.NARROW_PARAM] = concern
         return reverse('pesticides:notice-list') + '?' + urlencode(params)
 
     def map_kwargs(self):
@@ -292,7 +310,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
         'pesticides:schools-nearby:v3',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
-        stats.CONCERN_PARAM if concern else '',
+        concern or '',
     ])
 
     district_code = (region.external_id or '')[:7]
@@ -300,7 +318,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
     def build():
         rows = PesticideUseRollup.objects.all()
         if concern:
-            rows = stats.concern_rows(rows)
+            rows = stats.narrow_rows(rows, concern)
 
         # select_related: the table prints each location's city.
         run_by = list(Location.objects
@@ -487,14 +505,16 @@ def _place_stats(area, year, all_years, concern=False):
     """
     rows = area.rollup_rows()
     if concern:
-        rows = stats.concern_rows(rows)
+        rows = stats.narrow_rows(rows, concern)
     scoped = stats.in_year(rows, year, all_years)
     # Only across every year: a single year's rollup rows are cheap, and a
     # totals row exists only where a chemical was identified, so switching
     # sources would quietly drop unattributed applications from the count.
-    total_rows = area.total_rows() if all_years else None
+    # ...and never when the narrowing filters on the product, which the
+    # per-chemical totals rows don't carry (stats.narrow_needs_product).
+    total_rows = area.total_rows() if (all_years and not stats.narrow_needs_product(concern)) else None
     if total_rows is not None and concern:
-        total_rows = stats.concern_rows(total_rows)
+        total_rows = stats.narrow_rows(total_rows, concern)
     totals_source = rows if total_rows is None else total_rows
     summed = stats.year_totals(totals_source, year, all_years=all_years)
 
@@ -508,26 +528,34 @@ def _place_stats(area, year, all_years, concern=False):
     # of the same group-by instead of paying for a second one.
     top_chemicals = stats.top_related(rows, year, 'chemical', limit=50, all_years=all_years)
 
+    sections_used = scoped.filter(mtrs__isnull=False).values('mtrs').distinct().count()
+    square_miles = area.square_miles
     data = {
         'totals': {
             'lbs': summed['lbs'],
             'applications': summed['applications'],
-            'sections_used': scoped.filter(mtrs__isnull=False).values('mtrs').distinct().count(),
+            'sections_used': sections_used,
             'sections_total': len(area.section_pks),
+            'square_miles': square_miles,
+            # Two rates, as on the county table: over the whole place, and
+            # over just the square miles that reported anything. They differ
+            # most where a place is largely unfarmed.
+            'lbs_per_sqmi': (summed['lbs'] / square_miles) if square_miles else None,
+            'lbs_per_used_sqmi': (summed['lbs'] / sections_used) if sections_used else None,
             'chemicals': stats.real_chemicals(scoped.filter(chemical__isnull=False)).values('chemical').distinct().count(),
         },
         'by_month': by_month,
         'peak_month': peak_month,
-        'top_chemicals': top_chemicals[:10],
-        'top_commodities': stats.top_related(rows, year, 'commodity', limit=10, all_years=all_years),
-        'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=10, all_years=all_years),
+        'top_chemicals': top_chemicals[:stats.RELATED_LIMIT],
+        'top_commodities': stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years),
+        'top_products': stats.top_related(rows, year, 'product', lbs_field='lbs_product', limit=stats.RELATED_LIMIT, all_years=all_years),
     }
 
     # Under the concern scope every board is already of concern, so the
     # dedicated one would just restate the top chemicals.
     if not concern:
         data['top_chemicals_of_concern'] = stats.top_chemicals_of_concern(
-            top_chemicals, rows, year, all_years=all_years,
+            top_chemicals, rows, year, limit=stats.RELATED_LIMIT, all_years=all_years,
         )
     return data
 
@@ -540,7 +568,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
 
     # The concern scope gets its own cache entries; without it the keys stay
     # exactly what they were.
-    scope_key = (stats.CONCERN_PARAM,) if concern else ()
+    scope_key = (concern,) if concern else ()
     if all_years:
         data = stats.cached(stats.all_years_key('place-v2', area.cache_key(), *scope_key), build)
     else:
@@ -549,7 +577,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
 
     notices = area.notices()
     if concern:
-        notices = stats.concern_notices(notices)
+        notices = stats.narrow_notices(notices, concern)
     upcoming_qs = stats._upcoming(notices)
     upcoming = list(
         upcoming_qs
@@ -574,7 +602,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
     # page does.
     def build_by_year():
         if concern:
-            return stats.by_year(stats.concern_rows(area.rollup_rows()))
+            return stats.by_year(stats.narrow_rows(area.rollup_rows(), concern))
         rows = area.total_rows()
         # `or` would evaluate the queryset; None is the only "no totals" case.
         return stats.by_year(area.rollup_rows() if rows is None else rows)
@@ -593,7 +621,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         'records_url': area.records_url(year, all_years, concern),
         # The chemicals-of-concern card's "Show all" narrows the records
         # browser the way the card does, whatever the page's own scope is.
-        'concern_records_url': area.records_url(year, all_years, concern=True),
+        'concern_records_url': area.records_url(year, all_years, concern=stats.NARROW_CONCERN),
         'notices_url': area.notices_url(concern),
         'map_config': section_map_config(
             year, all_years=all_years, show_locations=is_district, concern=concern, **area.map_kwargs(),

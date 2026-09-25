@@ -4,7 +4,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils.html import escape
 
-from camp.apps.pesticides import views
+from camp.apps.pesticides import stats, views
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideUseRollup, PesticideUseTotal, Product, ProductChemical,
 )
@@ -60,6 +60,29 @@ class ChemicalListTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'year': '1999'})
         assert response.context['year'] == 2023
         assert response.context['scope_qs'] == ''
+
+    def test_movers_defaults_to_the_previous_year(self):
+        response = self.client.get(reverse('pesticides:home'), {'year': '2023'})
+        movers = response.context['movers']
+        assert movers['year_from'] == 2022
+        assert movers['year_to'] == 2023
+        assert movers['rising'] or movers['falling']
+
+    def test_movers_is_absent_without_a_comparable_year(self):
+        # 2022 is the earliest loaded year, so there is nothing before it.
+        response = self.client.get(reverse('pesticides:home'), {'year': '2022'})
+        assert response.context['movers'] is None
+        assert 'Biggest movers' not in response.content.decode()
+
+    def test_movers_is_absent_for_all_years(self):
+        response = self.client.get(reverse('pesticides:home'), {'year': 'all'})
+        assert response.context['movers'] is None
+
+    def test_movers_renders_signed_changes(self):
+        html = self.client.get(reverse('pesticides:home'), {'year': '2023'}).content.decode()
+        assert 'Biggest movers' in html
+        assert '2022 to 2023' in html
+        assert 'Rose most' in html and 'Fell most' in html
 
     def test_all_years_sums_every_loaded_year(self):
         response = self.client.get(self.url, {'year': 'all'})
@@ -474,7 +497,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
 
     def test_totals_and_tables(self):
         ctx = self.client.get(self.chemical.get_absolute_url()).context
-        assert ctx['totals'] == {'lbs': 180.0, 'applications': 3, 'counties': 2}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (180.0, 3, 2)
         assert [r['year'] for r in ctx['by_year']] == [2023, 2022]
         assert [r['county_name'] for r in ctx['by_county']] == ['Fresno County', 'Kern County']
         assert ctx['years'] == (2022, 2023)
@@ -487,7 +510,10 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         assert ctx['related_b']['show_all_url'] == reverse('pesticides:commodity-list') + f'?chemical={self.chemical.sqid}'
         assert ctx['related_a']['show_pct'] is True
         assert ctx['related_b']['show_pct'] is False
-        assert ctx['related_a']['complete'] is False
+        # One product and two commodities in the fixture, both well under
+        # the cap, so each card is already showing everything it has.
+        assert ctx['related_a']['complete'] is True
+        assert ctx['related_b']['complete'] is True
 
     def test_notices_split(self):
         ctx = self.client.get(Chemical.objects.get(pk=2).get_absolute_url()).context
@@ -501,7 +527,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
     def test_year_param_on_detail(self):
         ctx = self.client.get(self.chemical.get_absolute_url(), {'year': '2022'}).context
         assert ctx['year'] == 2022
-        assert ctx['totals'] == {'lbs': 80.0, 'applications': 1, 'counties': 1}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (80.0, 1, 1)
         assert [r['county_name'] for r in ctx['by_county']] == ['Fresno County']
         assert [r.obj.name for r in ctx['related_b']['rows']] == ['ALMOND']
         assert ctx['summary_sentence'] == 'Applied in 1 of 8 SJV counties in 2022, mostly on Almond.'
@@ -518,7 +544,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         ctx = self.client.get(url, {'year': 'all'}).context
         assert ctx['all_years'] is True and ctx['year'] is None
         # Uses 1, 2, 3 in 2023 (180 lbs) plus use 7 in 2022 (80 lbs).
-        assert ctx['totals'] == {'lbs': 260.0, 'applications': 4, 'counties': 2}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (260.0, 4, 2)
         assert [r['year'] for r in ctx['by_year']] == [2023, 2022]
         assert [(r['county_name'], r['lbs']) for r in ctx['by_county']] == [
             ('Fresno County', 230.0), ('Kern County', 30.0),
@@ -543,7 +569,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         assert Product.objects.get(pk=1).get_absolute_url() in html
 
     def test_query_ceiling(self):
-        # Honest count with the current implementation is 23 (verified
+        # Honest count with the current implementation is 26 (verified
         # query-by-query: every related-object fetch is batched via
         # in_bulk/prefetch/select_related, no N+1s -- 18 base queries
         # (including the by_month rollup aggregate for the future month
@@ -551,8 +577,12 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         # region-name lookup, the by-county-table's in_bulk() for
         # county_sqid, the available-years lookup for the year picker, and
         # the county list for the county picker; all cached after the first
-        # request).
-        with self.assertNumQueries(23):
+        # request). Three of those are the movers card: one group-by per
+        # direction and one in_bulk for the regions, a fixed cost that
+        # doesn't grow with the number of movers shown. The last two are the
+        # rate denominators -- the county areas and the count of sections
+        # that reported anything -- both cached after the first request.
+        with self.assertNumQueries(28):
             self.client.get(self.chemical.get_absolute_url())
 
     def test_by_month_in_context(self):
@@ -593,7 +623,8 @@ class ProductDetailTests(RollupTestMixin, TestCase):
         card = ctx['related_a']
         assert (card['show_pct'], card['show_lbs'], card['complete']) == (True, False, True)
         html = self.client.get(self.product.get_absolute_url()).content.decode()
-        assert html.count('Show all') == 1
+        # Neither card has more than it's showing, so neither offers to.
+        assert html.count('Show all') == 0
 
     def test_totals_use_lbs_product(self):
         ctx = self.client.get(self.product.get_absolute_url()).context
@@ -627,7 +658,7 @@ class CommodityDetailTests(RollupTestMixin, TestCase):
 
     def test_renders(self):
         ctx = self.client.get(self.commodity.get_absolute_url()).context
-        assert ctx['totals'] == {'lbs': 550.0, 'applications': 2, 'counties': 1}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (550.0, 2, 1)
         assert [r.obj.name for r in ctx['related_a']['rows']] == ['SULFUR', 'GLYPHOSATE']
         assert [r.obj.name for r in ctx['related_b']['rows']] == ['SULFUR DUST', 'ROUNDUP PRO']
         assert ctx['has_notices'] is False
@@ -926,14 +957,14 @@ class AboutTests(RollupTestMixin, TestCase):
         assert 'id="pur"' not in html
 
 
-# The commodity list's query count under `?year=all&concern=1`; it must not
+# The commodity list's query count under `?year=all&narrow=concern`; it must not
 # grow with the number of commodities on the page (see the test below).
 CONCERN_COMMODITY_QUERIES = 9
 
 
 class ConcernScopeTests(RollupTestMixin, TestCase):
     """
-    `?concern=1` as an explorer-wide scope. GLYPHOSATE and CHLORPYRIFOS are
+    `?narrow=concern` as an explorer-wide scope. GLYPHOSATE and CHLORPYRIFOS are
     of concern in the fixture; SULFUR (and SULFUR DUST, its only product)
     are not, and they carry most of the pounds.
     """
@@ -948,8 +979,8 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
             ('GLYPHOSATE', 180.0), ('CHLORPYRIFOS', 60.0),
         ]
-        assert response.context['concern'] is True
-        assert response.context['scope_qs'] == '?concern=1'
+        assert response.context['concern'] == stats.NARROW_CONCERN
+        assert response.context['scope_qs'] == '?narrow=concern'
         assert 'of concern' in response.context['summary_sentence']
 
     def test_product_list_keeps_products_with_a_concern_chemical(self):
@@ -967,7 +998,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
     def test_landing_page_totals_narrow(self):
         response = self.client.get(reverse('pesticides:home'), {'concern': '1'})
         assert response.context['total_lbs'] == 240.0
-        assert response.context['concern'] is True
+        assert response.context['concern'] == stats.NARROW_CONCERN
         assert [r.obj.name for r in response.context['top_chemicals']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         assert 'top_chemicals_of_concern' not in response.context
 
@@ -996,7 +1027,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert self.client.get(url).context['totals']['lbs'] == 670.0
         response = self.client.get(url, {'concern': '1'})
         assert response.context['totals']['lbs'] == 170.0
-        assert response.context['concern'] is True
+        assert response.context['concern'] == stats.NARROW_CONCERN
 
     def test_county_choropleth_is_scoped_and_keeps_the_scope_in_its_links(self):
         fresno = Region.objects.get(pk=9001)
@@ -1004,38 +1035,49 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         for url in (reverse('pesticides:home'), reverse('pesticides:map'), reverse('pesticides:records')):
             html = self.client.get(url, {'concern': '1'}).content.decode()
             assert 'Fresno County: 170 lbs' in html, url
-            assert f'{county_url}?concern=1' in html, url
+            assert f'{county_url}?narrow=concern' in html, url
 
     def test_detail_page_county_links_keep_the_scope(self):
         glyphosate = Chemical.objects.get(name='GLYPHOSATE')
         fresno = Region.objects.get(pk=9001)
         html = self.client.get(glyphosate.get_absolute_url(), {'concern': '1'}).content.decode()
-        assert reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'}) + '?concern=1' in html
+        assert reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'}) + '?narrow=concern' in html
 
     def test_map_page_passes_the_scope_to_the_grid(self):
         response = self.client.get(reverse('pesticides:map'), {'concern': '1'})
         assert response.context['map_config']['concern'] == '1'
         assert self.client.get(reverse('pesticides:map')).context['map_config']['concern'] == ''
 
-    def test_scope_bar_toggle_reflects_and_flips_the_scope(self):
+    def test_narrow_picker_offers_every_narrowing(self):
         url = reverse('pesticides:chemical-list')
         html = self.client.get(url).content.decode()
-        assert 'explorer-scope-toggle' in html
-        assert 'Chemicals of concern' in html
-        assert 'data-tooltip="Prop 65, CARB toxic air contaminants, IARC 1/2A/2B"' in html
-        assert 'explorer-scope-toggle is-set' not in html
-        assert 'aria-pressed="false"' in html
-        assert 'href="?concern=1"' in html
+        assert 'data-scope="narrow"' in html
+        assert 'All use' in html
+        for value, label in stats.NARROW_CHOICES:
+            assert f'href="?narrow={value}"' in html
+            assert label in html
 
-        html = self.client.get(url, {'concern': '1'}).content.decode()
-        assert 'explorer-scope-toggle is-set' in html
-        assert 'aria-pressed="true"' in html
-        assert 'role="button"' in html
-        # Turning it off clears the param, keeping the rest of the scope. With
-        # nothing left in the query string the link is the bare path.
+    def test_narrow_picker_reflects_the_current_narrowing(self):
+        url = reverse('pesticides:chemical-list')
+        html = self.client.get(url, {'narrow': 'fumigant'}).content.decode()
+        assert 'aria-label="Narrow to: Fumigants"' in html
+        assert 'is-active' in html
+        # Back to all use clears the parameter, keeping the rest of the scope.
         assert f'href="{url}"' in html
-        html = self.client.get(url, {'concern': '1', 'county': 'kern'}).content.decode()
+        html = self.client.get(url, {'narrow': 'fumigant', 'county': 'kern'}).content.decode()
         assert 'href="?county=kern"' in html
+
+    def test_the_original_concern_parameter_still_works(self):
+        # Links that shipped with ?concern=1 keep landing on the same scope.
+        url = reverse('pesticides:chemical-list')
+        response = self.client.get(url, {'concern': '1'})
+        assert response.context['concern'] == stats.NARROW_CONCERN
+        assert 'aria-label="Narrow to: Chemicals of concern"' in response.content.decode()
+
+    def test_an_unknown_narrowing_shows_everything(self):
+        # A subset must never be presented as the total.
+        response = self.client.get(reverse('pesticides:chemical-list'), {'narrow': 'banana'})
+        assert response.context['concern'] == ''
 
     def test_filter_forms_carry_the_scope_as_a_hidden_input(self):
         html = self.client.get(reverse('pesticides:chemical-list'), {'concern': '1'}).content.decode()
@@ -1065,12 +1107,12 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert banner not in self.client.get(url).content.decode()
         html = self.client.get(url, {'concern': '1'}).content.decode()
         assert banner in html
-        assert 'Show all chemicals' in html
+        assert 'Show all use' in html
 
     def test_about_page_defines_the_scope_and_hides_the_toggle(self):
         html = self.client.get(reverse('pesticides:about')).content.decode()
         assert 'id="concern"' in html
-        assert 'explorer-scope-toggle' not in html
+        assert 'data-scope="narrow"' not in html
         assert 'explorer-scope-pickers' not in html
         # And the toggle links to that definition where it does render.
         html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
@@ -1082,7 +1124,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         sulfur = Chemical.objects.get(name='SULFUR')
         html = self.client.get(sulfur.get_absolute_url(), {'concern': '1'}).content.decode()
         assert 'Showing chemicals of concern only' not in html
-        assert "so the chemicals-of-concern scope doesn't narrow this page" in html
+        assert "so the chemicals of concern narrowing doesn't apply to this page" in html
         # It's still there on a page the scope does narrow.
         glyphosate = Chemical.objects.get(name='GLYPHOSATE')
         html = self.client.get(glyphosate.get_absolute_url(), {'concern': '1'}).content.decode()
@@ -1096,7 +1138,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert response.context['totals']['lbs'] == 550.0
         html = response.content.decode()
         assert "None of this product's active ingredients is on the Prop 65" in html
-        assert 'Show all chemicals' in html
+        assert 'Show all use' in html
 
     def test_product_page_active_ingredients_ignore_the_scope(self):
         # What a product is made of is a registration fact, not a scoped one.
@@ -1115,14 +1157,14 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
 
     def test_excluded_chemical_page_explains_itself(self):
         sulfur = Chemical.objects.get(name='SULFUR')
-        note = "so the chemicals-of-concern scope doesn't narrow this page"
+        note = "so the chemicals of concern narrowing doesn't apply to this page"
         html = self.client.get(sulfur.get_absolute_url(), {'concern': '1'}).content.decode()
         assert note in html
         html = self.client.get(sulfur.get_absolute_url()).content.decode()
         assert note not in html
 
     def test_commodity_list_all_years_concern_pounds_come_from_one_group_by(self):
-        # The pounds column under `?year=all&concern=1` used to be a
+        # The pounds column under `?year=all&narrow=concern` used to be a
         # correlated sum over the rollup, run once per commodity on the page;
         # it now comes from one cached group-by (stats.commodity_concern_lbs),
         # so the page's query count doesn't grow with the number of rows.
@@ -1139,3 +1181,205 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         cache.clear()
         with self.assertNumQueries(CONCERN_COMMODITY_QUERIES):
             self.client.get(url, {'year': 'all', 'concern': '1'})
+
+
+class CompareIsAMapControlTests(RollupTestMixin, TestCase):
+    """
+    Comparing two years is a control on the main map and nowhere else. It
+    isn't part of the explorer scope, so no other page offers it and no
+    page's links carry it; the map reads `?compare=` off the URL itself.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def pages(self):
+        fresno = Region.objects.get(pk=9001)
+        section = Region.objects.get(pk=9101)
+        chemical = Chemical.objects.get(pk=1)
+        return {
+            'map': reverse('pesticides:map'),
+            'records': reverse('pesticides:records'),
+            'place': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            'section': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
+            'chemical': chemical.get_absolute_url(),
+            'chemical-list': reverse('pesticides:chemical-list'),
+            'notices': reverse('pesticides:notice-list'),
+            'home': reverse('pesticides:home'),
+            'about': reverse('pesticides:about'),
+        }
+
+    def test_only_the_main_map_offers_the_control(self):
+        offered = set()
+        for name, url in self.pages().items():
+            html = self.client.get(url, {'year': '2023'}).content.decode()
+            if 'Compare with:' in html:
+                offered.add(name)
+        assert offered == {'map'}, 'compare control on: %s' % (', '.join(sorted(offered)) or 'nothing')
+
+    def test_the_toolbar_offers_every_other_loaded_year(self):
+        html = self.client.get(reverse('pesticides:map'), {'year': '2023'}).content.decode()
+        assert 'compare=2022' in html
+        # Never itself: comparing a year to itself is not a comparison.
+        assert 'compare=2023' not in html
+
+    def test_the_map_is_told_the_compared_year(self):
+        html = self.client.get(reverse('pesticides:map'), {'year': '2023', 'compare': '2022'}).content.decode()
+        assert 'data-compare="2022"' in html
+        plain = self.client.get(reverse('pesticides:map'), {'year': '2023'}).content.decode()
+        assert 'data-compare=""' in plain
+
+    def test_an_unloaded_compared_year_is_ignored(self):
+        html = self.client.get(reverse('pesticides:map'), {'year': '2023', 'compare': '1999'}).content.decode()
+        assert 'data-compare=""' in html
+
+    def test_a_filter_change_keeps_the_comparison(self):
+        # The filter pickers submit the toolbar form with GET, which would
+        # drop the comparison without the hidden input beside them.
+        html = self.client.get(reverse('pesticides:map'), {'year': '2023', 'compare': '2022'}).content.decode()
+        assert '<input type="hidden" name="compare" value="2022">' in html
+
+    def test_no_page_puts_the_comparison_in_its_scope_links(self):
+        # It is a map view param like metric and bins, so it stays out of
+        # scope_qs and off every link the page renders.
+        for name, url in self.pages().items():
+            response = self.client.get(url, {'year': '2022', 'compare': '2023'})
+            assert 'compare=' not in response.context['scope_qs'], name
+
+    def test_the_scope_bar_has_no_compare_picker(self):
+        html = self.client.get(reverse('pesticides:home'), {'year': '2023'}).content.decode()
+        assert 'data-scope="compare"' not in html
+
+
+class LbsPerTreatedAcreTests(RollupTestMixin, TestCase):
+    """
+    Pounds per treated acre is the acreage each application covered, so it
+    only survives where the applications don't pile onto the same ground.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_a_chemical_page_shows_it(self):
+        chemical = Chemical.objects.get(pk=1)
+        ctx = self.client.get(chemical.get_absolute_url(), {'year': '2023'}).context
+        assert ctx['totals']['lbs_per_acre'] == ctx['totals']['lbs'] / ctx['totals']['acres']
+        assert 'Lbs per treated acre' in self.client.get(chemical.get_absolute_url()).content.decode()
+
+    def test_a_product_page_shows_it(self):
+        product = Product.objects.first()
+        html = self.client.get(product.get_absolute_url(), {'year': '2023'}).content.decode()
+        assert 'Lbs per treated acre' in html
+
+    def test_a_commodity_page_does_not(self):
+        # Every chemical used on the crop is counted against the same acres,
+        # so the figure would be inflated by however many were applied.
+        commodity = Commodity.objects.first()
+        ctx = self.client.get(commodity.get_absolute_url(), {'year': '2023'}).context
+        assert ctx['totals']['lbs_per_acre'] is None
+        assert 'Lbs per treated acre' not in self.client.get(commodity.get_absolute_url()).content.decode()
+
+    def test_it_is_left_off_when_nothing_was_treated(self):
+        totals = stats.year_totals(PesticideUseRollup.objects.none(), 2023)
+        assert totals['acres'] == 0
+        assert totals['lbs_per_acre'] is None
+
+
+class TemplateCommentTests(TestCase):
+    """
+    Django's `{# #}` comment is single-line only: one that spans lines is
+    rendered as page content, not stripped. It has shipped to the browser
+    twice now, so this is the guard rather than a habit.
+    """
+
+    def test_no_template_opens_a_comment_it_does_not_close(self):
+        import glob
+
+        offenders = []
+        for path in glob.glob('camp/templates/**/*.html', recursive=True):
+            with open(path) as handle:
+                for number, line in enumerate(handle, 1):
+                    head, sep, tail = line.partition('{#')
+                    if sep and '#}' not in tail:
+                        offenders.append(f'{path}:{number}')
+        assert not offenders, (
+            'multi-line {# #} renders as page text; use {%% comment %%}: %s'
+            % ', '.join(offenders))
+
+
+class ShowAllTests(RollupTestMixin, TestCase):
+    """
+    "Show all" is an offer to see more. A card holding fewer rows than its
+    cap is already showing everything, so the footer would link to what's
+    on screen.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def card_titles_offering_show_all(self, url, **params):
+        import re
+
+        html = self.client.get(url, params).content.decode()
+        offering = []
+        for block in re.findall(r'<div class="card related-card.*?</div>\s*</div>', html, re.S):
+            if 'Show all' in block:
+                title = re.search(r'card-header-title">([^<]*)<', block)
+                offering.append(title.group(1).strip() if title else '?')
+        return offering
+
+    def test_a_short_list_does_not_offer_show_all(self):
+        # The fixture has three chemicals and one commodity: nowhere near
+        # the ten-row cap, so no card has more to show.
+        chemical = Chemical.objects.get(pk=1)
+        assert self.card_titles_offering_show_all(chemical.get_absolute_url(), year='2023') == []
+
+    def test_a_full_list_still_offers_it(self):
+        card = views.ExplorerDetailMixin.related_card(
+            _StubDetail(), 'Applied to', 'commodities', list(range(stats.RELATED_LIMIT)),
+            'pesticides:commodity-list', 'chemical')
+        assert card['complete'] is False
+        short = views.ExplorerDetailMixin.related_card(
+            _StubDetail(), 'Applied to', 'commodities', list(range(stats.RELATED_LIMIT - 1)),
+            'pesticides:commodity-list', 'chemical')
+        assert short['complete'] is True
+
+    def test_a_section_card_infers_it_too(self):
+        assert views._section_card('Top products', 'products', [1, 2], '/x/')['complete'] is True
+        assert views._section_card(
+            'Top products', 'products', list(range(stats.RELATED_LIMIT)), '/x/')['complete'] is False
+
+    def test_every_related_card_stops_at_the_cap(self):
+        fresno = Region.objects.get(pk=9001)
+        section = Region.objects.get(pk=9101)
+        pages = [
+            Chemical.objects.get(pk=1).get_absolute_url(),
+            Product.objects.first().get_absolute_url(),
+            Commodity.objects.first().get_absolute_url(),
+            reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
+        ]
+        for url in pages:
+            ctx = self.client.get(url, {'year': 'all'}).context
+            for key in ('related_a', 'related_b', 'products_card', 'chemicals_card',
+                    'commodities_card', 'chemicals_of_concern_card'):
+                card = ctx.get(key)
+                if card:
+                    assert len(card['rows']) <= stats.RELATED_LIMIT, f'{url} {key}'
+
+
+class _StubDetail:
+    """Just enough of ExplorerDetailMixin for related_card()'s bookkeeping."""
+    year, all_years, county, concern = 2023, False, None, False
+
+    def hide_lbs(self):
+        return False
+
+    class object:
+        sqid = 'abc'

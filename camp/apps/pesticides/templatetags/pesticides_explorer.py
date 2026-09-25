@@ -84,6 +84,29 @@ def lbs(value):
     return intcomma(int(round(value)))
 
 
+@register.filter
+def signed_lbs(value):
+    """
+    `lbs` with the sign always shown, for a change. An increase reads "+400"
+    rather than "400", so the direction never rests on the colour of a map
+    swatch or the column a row happens to be in.
+    """
+    if value is None:
+        return '—'
+    if not value:
+        return '0'
+    return f'+{lbs(value)}' if value > 0 else lbs(value)
+
+
+@register.filter
+def signed_pct(value):
+    """A percent change, signed, to one decimal. Blank for None -- top_movers
+    leaves it off where the baseline is too small to mean anything."""
+    if value is None:
+        return ''
+    return f'{value:+.1f}%'
+
+
 # A word, with an apostrophe inside it kept ("CHILDREN'S" -> "Children's").
 # Letters rather than [A-Za-z] so an accented name ("CANADA" with a tilde)
 # doesn't come back out half-shouted.
@@ -258,3 +281,46 @@ def month_chart(by_month, year_label=None):
         'rows': rows,
         'year_label': year_label,
     }
+
+
+# A leaderboard sparkline: wide enough to read a shape, short enough to sit
+# on one table row. Drawn as inline SVG rather than through charts.js --
+# forty uPlot instances on the landing page to draw forty static 64x18
+# polylines is a lot of canvas for a picture nobody interacts with.
+SPARK_WIDTH = 64
+SPARK_HEIGHT = 18
+SPARK_PAD = 2
+
+
+@register.filter
+def sparkline(values):
+    """
+    `values` (a by-year series) as an inline SVG polyline, scaled to its own
+    maximum so the shape is readable whatever the magnitude -- these say
+    "rising" or "receding", never "bigger than the row below".
+
+    Empty, single-point and flat-zero series render nothing: a line needs two
+    points to have a shape, and a flat line at zero would read as a real
+    measurement of nothing.
+    """
+    series = [float(v or 0) for v in (values or [])]
+    if len(series) < 2 or not any(series):
+        return ''
+    top = max(series)
+    span = len(series) - 1
+    inner_w = SPARK_WIDTH - 2 * SPARK_PAD
+    inner_h = SPARK_HEIGHT - 2 * SPARK_PAD
+    points = ' '.join(
+        '%.1f,%.1f' % (
+            SPARK_PAD + inner_w * i / span,
+            SPARK_PAD + inner_h * (1 - (value / top)),
+        )
+        for i, value in enumerate(series)
+    )
+    return format_html(
+        '<svg class="sparkline" viewBox="0 0 {} {}" width="{}" height="{}" '
+        'preserveAspectRatio="none" aria-hidden="true" focusable="false">'
+        '<polyline points="{}" fill="none" stroke="currentColor" '
+        'stroke-width="1.25" stroke-linejoin="round" stroke-linecap="round"/></svg>',
+        SPARK_WIDTH, SPARK_HEIGHT, SPARK_WIDTH, SPARK_HEIGHT, points,
+    )

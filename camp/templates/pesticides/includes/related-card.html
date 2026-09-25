@@ -1,5 +1,5 @@
 {% load pesticides_explorer %}
-<div class="card related-card">
+<div class="card related-card{% if card.compact %} is-compact{% endif %}">
     <header class="card-header"><p class="card-header-title">{{ card.title }}</p></header>
     <div class="card-content">
         {% if card.rows %}

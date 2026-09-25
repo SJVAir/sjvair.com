@@ -104,6 +104,23 @@
   font-size: 1.05rem;
 }
 
+/* How the figure moved, beside the scope year's total in a popup. */
+.section-popup .section-popup-change {
+  color: #4a4a4a;
+}
+
+
+/* Names the compared pair once, above the change legend's rows. */
+.map-wrap .map-legend-panel .section-map-legend .legend-caption {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #7a7a7a;
+}
+
 .section-popup .section-popup-label {
   margin: 0 0 0.15rem;
   font-size: 0.7rem;

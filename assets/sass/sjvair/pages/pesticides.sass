@@ -142,17 +142,20 @@ body.pesticides
                 white-space: nowrap
         .dropdown-menu
             min-width: 11rem
+    // The chosen option, in both pickers that use these menus.
+    .explorer-scope-picker, .map-toolbar-dropdown
         .dropdown-item.is-active
             background-color: $link
             color: $white
-        // The years as a compact grid, so the whole span is in view at once.
-        .explorer-scope-years
-            display: grid
-            grid-template-columns: repeat(2, 1fr)
-            .dropdown-item
-                text-align: center
-                padding-left: 0.5rem
-                padding-right: 0.5rem
+    // The years as a compact grid, so the whole span is in view at once --
+    // the scope bar's year picker and the map toolbar's Compare picker both.
+    .explorer-scope-years
+        display: grid
+        grid-template-columns: repeat(2, 1fr)
+        .dropdown-item
+            text-align: center
+            padding-left: 0.5rem
+            padding-right: 0.5rem
     .explorer-icon.is-scope
         --fa-primary-color: #{$link}
         --fa-secondary-color: #{$grey-light}
@@ -519,6 +522,10 @@ body.pesticides
 
     .related-card, .leaderboard
         height: 100%
+        // ...except a card whose list is short by nature: stretching it to
+        // match a top-ten beside it is a screenful of empty box.
+        &.is-compact
+            height: auto
         .card-header
             box-shadow: none
             border-bottom: 2px solid $primary
@@ -544,6 +551,34 @@ body.pesticides
             margin-bottom: 0
             .tag
                 margin-bottom: 0
+
+    // Two numbers a row, so they get their own columns: run inline they
+    // don't line up and can't be read down the column, which is the point
+    // of a ranking. Tabular figures keep the digits in step.
+    .movers-table
+        .movers-change,
+        .movers-pct
+            white-space: nowrap
+            font-variant-numeric: tabular-nums
+        .movers-pct
+            width: 1%
+            color: $grey
+        thead th
+            font-size: 0.7rem
+            text-transform: uppercase
+            letter-spacing: 0.03em
+            color: $grey
+
+    // The by-year shape beside each leaderboard row: grey enough to read as
+    // context rather than data, and it disappears on a phone, where the row
+    // needs its width for the name.
+    .spark
+        display: none
+        flex: 0 0 auto
+        line-height: 0
+        color: $grey-light
+        +tablet
+            display: inline-block
 
     .leaderboard-list
         // Pulled out half an em each side so the zebra stripes run past the

@@ -4,6 +4,7 @@ from django.test import TestCase
 from camp.apps.pesticides import rollup, stats, tasks
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
+from camp.apps.regions.models import Region
 
 
 class StatsTests(RollupTestMixin, TestCase):
@@ -46,11 +47,11 @@ class StatsTests(RollupTestMixin, TestCase):
 
     def test_year_totals(self):
         totals = stats.year_totals(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
-        assert totals == {'lbs': 180.0, 'applications': 3, 'counties': 2}
+        assert (totals['lbs'], totals['applications'], totals['counties']) == (180.0, 3, 2)
 
     def test_year_totals_empty(self):
         totals = stats.year_totals(PesticideUseRollup.objects.none(), 2023)
-        assert totals == {'lbs': 0, 'applications': 0, 'counties': 0}
+        assert (totals['lbs'], totals['applications'], totals['counties']) == (0, 0, 0)
 
     def test_top_related_commodities_for_chemical(self):
         rows = stats.top_related(PesticideUseRollup.objects.filter(chemical_id=1), 2023, 'commodity')
@@ -176,6 +177,30 @@ class StatsTests(RollupTestMixin, TestCase):
         assert stats.year_label(2022) == '2022'
         assert stats.year_label(None) == ''
 
+    def test_resolve_compare_param(self):
+        assert stats.resolve_compare_param('2022', 2023) == 2022
+        # Comparing the scope year to itself is not a mode, and a year with
+        # no rollup has nothing to compare against.
+        assert stats.resolve_compare_param('2023', 2023) is None
+        assert stats.resolve_compare_param('1999', 2023) is None
+        assert stats.resolve_compare_param('banana', 2023) is None
+        assert stats.resolve_compare_param(None, 2023) is None
+        # Nothing requires the compared year to be the earlier of the two.
+        assert stats.resolve_compare_param('2023', 2022) == 2023
+        # A range has no second term.
+        assert stats.resolve_compare_param('2022', None, all_years=True) is None
+
+    def test_resolve_compare_param_empty_db(self):
+        PesticideUse.objects.all().delete()
+        PesticideUseRollup.objects.all().delete()
+        cache.clear()
+        assert stats.resolve_compare_param('2022', 2023) is None
+
+    def test_previous_year(self):
+        assert stats.previous_year(2023) == 2022
+        assert stats.previous_year(2022) is None
+        assert stats.previous_year(1999) is None
+
     def test_resolve_year_param_empty_db(self):
         PesticideUse.objects.all().delete()
         PesticideUseRollup.objects.all().delete()
@@ -185,7 +210,8 @@ class StatsTests(RollupTestMixin, TestCase):
 
     def test_all_years_aggregates_span_every_year(self):
         rows = PesticideUseRollup.objects.filter(chemical_id=1)
-        assert stats.year_totals(rows, None, all_years=True) == {'lbs': 260.0, 'applications': 4, 'counties': 2}
+        totals = stats.year_totals(rows, None, all_years=True)
+        assert (totals['lbs'], totals['applications'], totals['counties']) == (260.0, 4, 2)
         assert [(r['county_name'], r['lbs']) for r in stats.by_county(rows, None, all_years=True)] == [
             ('Fresno County', 230.0), ('Kern County', 30.0),
         ]
@@ -348,9 +374,9 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         cache.clear()
 
     def test_scope_param_carries_concern(self):
-        assert stats.scope_param(2023, concern=True) == 'concern=1'
-        assert stats.scope_query(2023, concern=True) == '?concern=1'
-        assert stats.scope_param(2022, False, 'kern', concern=True) == 'year=2022&county=kern&concern=1'
+        assert stats.scope_param(2023, concern=stats.NARROW_CONCERN) == 'narrow=concern'
+        assert stats.scope_query(2023, concern=stats.NARROW_CONCERN) == '?narrow=concern'
+        assert stats.scope_param(2022, False, 'kern', concern=stats.NARROW_CONCERN) == 'year=2022&county=kern&narrow=concern'
         assert stats.scope_param(2023) == ''
 
     def test_of_concern_chemicals(self):
@@ -358,11 +384,12 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
 
     def test_concern_rows_drop_the_rest(self):
         rows = stats.concern_rows(PesticideUseRollup.objects.all())
-        assert stats.year_totals(rows, 2023) == {'lbs': 240.0, 'applications': 5, 'counties': 2}
+        totals = stats.year_totals(rows, 2023)
+        assert (totals['lbs'], totals['applications'], totals['counties']) == (240.0, 5, 2)
         assert stats.year_totals(rows, None, all_years=True)['lbs'] == 380.0
 
     def test_landing_stats_narrow_to_chemicals_of_concern(self):
-        data = stats.landing_stats(2023, concern=True)
+        data = stats.landing_stats(2023, concern=stats.NARROW_CONCERN)
         assert data['total_lbs'] == 240.0
         assert data['applications'] == 5
         assert data['chemical_count'] == 2
@@ -376,15 +403,89 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert 'top_chemicals_of_concern' not in data
 
     def test_landing_stats_cache_key_is_separate(self):
-        stats.landing_stats(2023, concern=True)
-        assert cache.get(stats.landing_key(2023, concern=True)) is not None
+        stats.landing_stats(2023, concern=stats.NARROW_CONCERN)
+        assert cache.get(stats.landing_key(2023, concern=stats.NARROW_CONCERN)) is not None
         assert cache.get(stats.landing_key(2023)) is None
         assert stats.landing_stats(2023)['total_lbs'] == 740.0
 
     def test_county_totals_narrow(self):
-        assert [(r['county_name'], r['lbs']) for r in stats.county_totals(2023, concern=True)] == [
+        assert [(r['county_name'], r['lbs']) for r in stats.county_totals(2023, concern=stats.NARROW_CONCERN)] == [
             ('Fresno County', 170.0), ('Kern County', 70.0),
         ]
         assert [(r['county_name'], r['lbs']) for r in stats.county_totals(2023)] == [
             ('Fresno County', 670.0), ('Kern County', 70.0),
         ]
+
+
+class NarrowScopeTests(RollupTestMixin, TestCase):
+    """
+    The explorer narrows to one kind of use at a time. Chemicals of concern
+    filters on the chemical; fumigants filter on the product applied, which
+    is why the two can't share a code path all the way down.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_resolve_reads_the_one_parameter(self):
+        assert stats.resolve_narrow({'narrow': 'fumigant'}) == stats.NARROW_FUMIGANT
+        assert stats.resolve_narrow({'narrow': 'concern'}) == stats.NARROW_CONCERN
+        assert stats.resolve_narrow({}) == ''
+
+    def test_an_unknown_value_shows_everything(self):
+        # Never silently show a subset and call it the total.
+        assert stats.resolve_narrow({'narrow': 'banana'}) == ''
+        assert stats.resolve_narrow({'narrow': ''}) == ''
+
+    def test_the_original_concern_parameter_still_resolves(self):
+        assert stats.resolve_narrow({'concern': '1'}) == stats.NARROW_CONCERN
+        assert stats.resolve_narrow({'concern': '0'}) == ''
+        # The one parameter wins where both are somehow present.
+        assert stats.resolve_narrow({'narrow': 'fumigant', 'concern': '1'}) == stats.NARROW_FUMIGANT
+
+    def test_scope_param_emits_the_one_parameter(self):
+        assert stats.scope_param(2023, concern=stats.NARROW_FUMIGANT) == 'narrow=fumigant'
+        assert stats.scope_param(2023, concern=stats.NARROW_CONCERN) == 'narrow=concern'
+        assert stats.scope_param(2023) == ''
+
+    def test_fumigant_narrows_on_the_product(self):
+        rows = PesticideUseRollup.objects.all()
+        narrowed = stats.narrow_rows(rows, stats.NARROW_FUMIGANT)
+        assert narrowed.count() < rows.count()
+        for row in narrowed.select_related('product'):
+            assert row.product.fumigant
+
+    def test_concern_narrows_on_the_chemical(self):
+        rows = PesticideUseRollup.objects.all()
+        narrowed = stats.narrow_rows(rows, stats.NARROW_CONCERN)
+        of_concern = set(stats.of_concern_chemicals().values_list('pk', flat=True))
+        for row in narrowed:
+            assert row.chemical_id in of_concern
+
+    def test_nothing_narrows_to_everything(self):
+        rows = PesticideUseRollup.objects.all()
+        assert stats.narrow_rows(rows, '').count() == rows.count()
+
+    def test_only_the_product_narrowing_needs_the_product(self):
+        # PesticideUseTotal's per-chemical rows carry no product, so a
+        # fumigant narrowing has to read the rollup instead.
+        assert stats.narrow_needs_product(stats.NARROW_FUMIGANT) is True
+        assert stats.narrow_needs_product(stats.NARROW_CONCERN) is False
+        assert stats.narrow_needs_product('') is False
+
+    def test_county_totals_answer_the_fumigant_narrowing(self):
+        # The regression this guards: filtering PesticideUseTotal's chemical
+        # rows on product__fumigant matches nothing, so every county read
+        # zero while the leaderboards beside them showed real pounds.
+        totals = stats.county_totals(2023, concern=stats.NARROW_FUMIGANT)
+        assert totals
+        assert sum(row['lbs'] or 0 for row in totals) > 0
+        plain = stats.county_totals(2023)
+        assert sum(row['lbs'] or 0 for row in totals) < sum(row['lbs'] or 0 for row in plain)
+
+    def test_each_narrowing_caches_separately(self):
+        a = stats.county_totals(2023, concern=stats.NARROW_CONCERN)
+        b = stats.county_totals(2023, concern=stats.NARROW_FUMIGANT)
+        assert sum(r['lbs'] or 0 for r in a) != sum(r['lbs'] or 0 for r in b)

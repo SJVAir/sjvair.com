@@ -1,0 +1,54 @@
+{% load pesticides_explorer %}
+{% comment %}
+What rose and fell most between two years (stats.top_movers), as two ranked
+tables. Tables rather than the leaderboard's list because each row carries
+two numbers: run inline they don't line up and can't be compared down the
+column, which is the whole point of a ranking.
+
+`movers` is the view's movers_context(): rising, falling, year_from and
+year_to. The heading names the pair in order, so the sign on a row never has
+to be inferred from which table it is in.
+Context: `movers`, `title`, `kind` ('chemicals' for the concern badges).
+{% endcomment %}
+<div class="card leaderboard movers">
+    <header class="card-header">
+        <p class="card-header-title">{{ title|default:"Biggest movers" }} · {{ movers.year_from }} to {{ movers.year_to }}</p>
+    </header>
+    <div class="card-content">
+        <div class="columns">
+            {% for group in movers.groups %}
+            <div class="column is-half">
+                <p class="heading">{{ group.label }}</p>
+                {% if group.rows %}
+                <div class="table-container">
+                <table class="table is-fullwidth is-narrow is-striped movers-table">
+                    <thead><tr>
+                        <th class="rank"><span class="is-sr-only">Rank</span></th>
+                        <th>Name</th>
+                        <th class="has-text-right">Change (lbs)</th>
+                        <th class="has-text-right">%</th>
+                    </tr></thead>
+                    <tbody>
+                    {% for row in group.rows %}
+                        <tr>
+                            <td class="rank">{{ forloop.counter }}.</td>
+                            <td>
+                                <a href="{{ row.url }}{{ scope_qs }}">{{ row.name }}</a>
+                                {% if kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
+                            </td>
+                            <td class="has-text-right movers-change">{{ row.change|signed_lbs }}</td>
+                            {# An em dash where the compared year was too small for a percentage to mean anything. #}
+                            <td class="has-text-right movers-pct">{{ row.pct|signed_pct|default:"—" }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                {% else %}
+                <p class="has-text-grey">{{ group.empty }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

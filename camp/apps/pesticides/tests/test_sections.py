@@ -20,7 +20,7 @@ class SectionDetailTests(RollupTestMixin, TestCase):
         assert response.status_code == 200
         ctx = response.context
         assert ctx['county_name'] == 'Fresno County'
-        assert ctx['totals'] == {'lbs': 670.0, 'applications': 4, 'counties': 1}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (670.0, 4, 1)
         assert [r.obj.name for r in ctx['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
         assert len(ctx['by_month']) == 12 and ctx['peak_month'] == 'August'
         assert ctx['map_config']['zoom'] == 13 and ctx['map_config']['center'] == '36.7100,-119.7900'
@@ -37,7 +37,7 @@ class SectionDetailTests(RollupTestMixin, TestCase):
         ctx = response.context
         assert ctx['all_years'] is True
         # 670 lbs in 2023 (uses 1, 2, 4, 6) + 480 in 2022 (uses 7, 9).
-        assert ctx['totals'] == {'lbs': 1150.0, 'applications': 6, 'counties': 1}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (1150.0, 6, 1)
         assert ctx['chemical_count'] == 3
         assert ctx['by_month'][7]['lbs'] == 900.0   # August in both years
         assert [(r.obj.name, r.lbs) for r in ctx['top_chemicals']][0] == ('SULFUR', 900.0)

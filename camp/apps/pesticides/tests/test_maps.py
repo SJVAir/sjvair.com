@@ -1,7 +1,9 @@
 from django.core.cache import cache
 from django.test import TestCase
 
-from camp.apps.pesticides import maps
+from camp.apps.pesticides import maps, stats
+from camp.apps.pesticides.models import PesticideUseRollup
+from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Region
 
 
@@ -79,6 +81,27 @@ class QuantileClassTests(TestCase):
             assert row['low'] <= row['high']
 
 
+class SampleRampTests(TestCase):
+    def test_interpolates_between_stops(self):
+        ramp = ['#000000', '#ffffff']
+        assert maps.sample_ramp(ramp, 2) == ['#000000', '#ffffff']
+        assert maps.sample_ramp(ramp, 3) == ['#000000', '#808080', '#ffffff']
+
+    def test_more_classes_than_stops_never_repeats(self):
+        # Selecting the nearest stop (what this replaces) would hand back
+        # duplicates here, so two classes would share a fill.
+        colors = maps.sample_ramp(['#000000', '#ffffff'], 5)
+        assert len(set(colors)) == 5
+
+    def test_single_class_takes_the_darkest(self):
+        assert maps.sample_ramp(maps.RAMP, 1) == [maps.RAMP[-1]]
+
+    def test_quantile_classes_still_end_on_the_darkest(self):
+        classes = maps.quantile_classes({i: i * 10 for i in range(1, 9)})
+        assert classes.colors[-1] == maps.RAMP[-1]
+        assert classes.colors[0] == maps.RAMP[0]
+
+
 class CountyMapTests(TestCase):
     fixtures = ['pesticides-explorer']
 
@@ -132,3 +155,65 @@ class CountyMapTests(TestCase):
         html = maps.county_map(self.rows)
         assert '"labelOnHover": true' in html
         assert '"labelOnHover": false' not in html
+
+
+class CountyRateTests(RollupTestMixin, TestCase):
+    """
+    Ranking by a rate rather than a total. The two denominators disagree on
+    purpose: a county's whole area counts the ground nobody farms, so a big
+    mostly-empty county ranks light per square mile of county and heavy per
+    square mile that reported anything.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def rows(self):
+        # Same pounds, very different areas and footprints.
+        return [
+            {'county_id': 9001, 'county_name': 'Fresno County', 'county_slug': 'fresno',
+             'lbs': 1000.0, 'acres': 10, 'applications': 2, 'area': 100.0, 'used': 10},
+            {'county_id': 9002, 'county_name': 'Kern County', 'county_slug': 'kern',
+             'lbs': 1000.0, 'acres': 10, 'applications': 2, 'area': 1000.0, 'used': 5},
+        ]
+
+    def test_metric_value_divides_by_the_right_denominator(self):
+        fresno, kern = self.rows()
+        assert maps.metric_value(fresno, 'lbs') == 1000.0
+        assert maps.metric_value(fresno, 'lbs_per_sqmi') == 10.0
+        assert maps.metric_value(fresno, 'lbs_per_used_sqmi') == 100.0
+        assert maps.metric_value(kern, 'lbs_per_sqmi') == 1.0
+        assert maps.metric_value(kern, 'lbs_per_used_sqmi') == 200.0
+
+    def test_a_missing_denominator_is_not_a_crash(self):
+        row = {'county_id': 1, 'lbs': 500.0, 'area': None, 'used': 0}
+        assert maps.metric_value(row, 'lbs_per_sqmi') == 0
+        assert maps.metric_value(row, 'lbs_per_used_sqmi') == 0
+
+    def test_the_two_rates_rank_the_same_counties_oppositely(self):
+        by_sqmi = [r['county_name'] for r in maps.rank_counties(self.rows(), 'lbs_per_sqmi')]
+        by_used = [r['county_name'] for r in maps.rank_counties(self.rows(), 'lbs_per_used_sqmi')]
+        assert by_sqmi == ['Fresno County', 'Kern County']
+        assert by_used == ['Kern County', 'Fresno County']
+
+    def test_equal_totals_still_shade_differently_on_a_rate(self):
+        ranked = maps.rank_counties(self.rows(), 'lbs_per_sqmi')
+        assert ranked[0]['color'] != ranked[1]['color']
+        # ...and identically when the metric is the total they share.
+        flat = maps.rank_counties(self.rows(), 'lbs')
+        assert flat[0]['color'] == flat[1]['color']
+
+    def test_unknown_rank_falls_back_to_pounds(self):
+        assert maps.county_metric('lbs_per_sqmi') == 'lbs_per_sqmi'
+        assert maps.county_metric('per_person') == 'lbs'
+
+    def test_with_rates_attaches_both_denominators(self):
+        rows = stats.with_rates(stats.by_county(PesticideUseRollup.objects.all(), 2023), 2023)
+        assert rows
+        for row in rows:
+            assert row['area'] > 0
+            assert row['used'] > 0
+            # Every square mile that reported use is inside the county.
+            assert row['used'] <= row['area']
