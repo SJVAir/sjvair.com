@@ -820,11 +820,16 @@ class ExplorerDetailMixin:
             self.get_rollup(), self.year, field, lbs_field, limit, all_years=self.all_years,
         ))
 
-    def related_card(self, title, kind, rows, list_url_name, param, show_pct=False, show_lbs=True, complete=False):
+    def related_card(self, title, kind, rows, list_url_name, param, show_pct=False, show_lbs=True,
+            complete=False, compact=False):
         """
         show_pct: rows carry pct_active (only product<->chemical relations do).
         show_lbs: rows carry pounds (a product's ingredient list does not).
         complete: every related object is already listed, so no "Show all".
+        compact: the list is short by nature rather than by chance -- three
+            products in five have a single active ingredient and four in five
+            have at most two -- so the card takes the narrow column and sizes
+            to its rows instead of stretching to match a top-ten beside it.
         """
         scope = stats.scope_param(self.year, self.all_years, self.county, self.concern)
         return {
@@ -834,6 +839,7 @@ class ExplorerDetailMixin:
             'show_pct': show_pct,
             'show_lbs': show_lbs and not self.hide_lbs(),
             'complete': complete,
+            'compact': compact,
             'show_all_url': reverse(list_url_name) + f'?{param}={self.object.sqid}' + (
                 f'&{scope}' if scope else ''
             ),
@@ -1010,7 +1016,7 @@ class ProductDetail(ExplorerDetailMixin, vanilla.DetailView):
         ]
         commodities = self.top_related('commodity')
         return (
-            self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product', show_pct=True, show_lbs=False, complete=True),
+            self.related_card('Active ingredients', 'chemicals', chemicals, 'pesticides:chemical-list', 'product', show_pct=True, show_lbs=False, complete=True, compact=True),
             self.related_card('Applied to', 'commodities', commodities, 'pesticides:commodity-list', 'product'),
         )
 

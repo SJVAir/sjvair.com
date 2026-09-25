@@ -522,6 +522,10 @@ body.pesticides
 
     .related-card, .leaderboard
         height: 100%
+        // ...except a card whose list is short by nature: stretching it to
+        // match a top-ten beside it is a screenful of empty box.
+        &.is-compact
+            height: auto
         .card-header
             box-shadow: none
             border-bottom: 2px solid $primary

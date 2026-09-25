@@ -15,9 +15,15 @@
 {% include 'pesticides/includes/stat-row.html' %}
 {% if summary_sentence %}<p class="summary-sentence is-size-5 mb-5">{{ summary_sentence }}</p>{% endif %}
 
+{% comment %}
+A card marked `compact` is short by nature, not by chance: a product's
+active ingredients are a registration fact, and three products in five have
+exactly one. It takes the narrow column and doesn't stretch, so the pair
+doesn't render as one row of content beside ten and a screen of whitespace.
+{% endcomment %}
 <div class="columns">
-    <div class="column">{% include 'pesticides/includes/related-card.html' with card=related_a %}</div>
-    <div class="column">{% include 'pesticides/includes/related-card.html' with card=related_b %}</div>
+    <div class="column{% if related_a.compact %} is-4-desktop{% elif related_b.compact %} is-8-desktop{% endif %}">{% include 'pesticides/includes/related-card.html' with card=related_a %}</div>
+    <div class="column{% if related_b.compact %} is-4-desktop{% elif related_a.compact %} is-8-desktop{% endif %}">{% include 'pesticides/includes/related-card.html' with card=related_b %}</div>
 </div>
 
 <section class="applications mt-6">
