@@ -27,10 +27,26 @@
 
   // ColorBrewer YlOrBr, for the counties' classes.
   var RAMP = ['#fee391', '#fec44f', '#fe9929', '#d95f0e', '#993404'];
-  // The EPA size classes (the API's size_class): light, mid and dark amber
-  // from the same ramp. The geojson's properties carry their labels and
-  // thresholds (dairies.size_classes).
-  var SIZE_COLORS = { small: RAMP[0], medium: RAMP[2], large: RAMP[4] };
+  // The EPA size classes (the API's size_class), from the same ramp: golden,
+  // deep orange and brown, skipping the palest yellow, which vanished on the
+  // light basemap. The geojson's properties carry their labels and thresholds
+  // (dairies.size_classes).
+  var SIZE_COLORS = { small: RAMP[1], medium: RAMP[3], large: RAMP[4] };
+  // Draw order where every point is one size (the region maps): Large at the
+  // back, Small on top, so a small dairy is never hidden under a large one.
+  var SIZE_SORT_KEY = ['match', ['get', 'size_class'], 'large', 0, 'medium', 1, 'small', 2, 1];
+  // A hovered dairy gets the map's dark hover ring, at least as thick as its
+  // own stroke (a digester's ring is 2.5).
+  var HOVER_RING_WIDTH = 3;
+
+  // The dairy circle's stroke paint, hover-aware (feature-state), around the
+  // caller's resting colour and width expressions. Both maps use it.
+  function hoverStroke(color, width) {
+    return {
+      'circle-stroke-color': M.hover.paint(M.hover.COLOR, color),
+      'circle-stroke-width': M.hover.paint(HOVER_RING_WIDTH, width),
+    };
+  }
   var EMPTY_COLOR = '#8a94a3';
   var COUNTY_COLOR = '#1f2d3d';
   var DIGESTER_COLOR = '#2e7d32';
@@ -161,6 +177,8 @@
   M.dairies = {
     colorFor: colorFor,
     sizeBins: sizeBins,
+    SIZE_SORT_KEY: SIZE_SORT_KEY,
+    hoverStroke: hoverStroke,
     popupHtml: popupHtml,
     LOADING: LOADING,
     FAILED: FAILED,
@@ -186,14 +204,19 @@
       label: function (feature) { return feature.properties.name + ' · ' + self.measureText(feature.properties); },
       anchor: function (feature) { return self.countyAnchors[feature.id]; },
     });
+    // The hovered dairy's ring (feature-state; highlight only, the click
+    // popup has its details).
+    this.dairyHover = M.hover.controller(this.map, 'dairies');
     this.readState();
+    this.map.on('mousemove', 'dairies', function (evt) { self.dairyHover.set(evt.features[0], evt.lngLat); });
+    this.map.on('mouseleave', 'dairies', function () { self.dairyHover.clear(); });
     this.map.on('click', 'dairies', function (evt) {
       var feature = evt.features[0];
       self.openPopup(feature.properties.id, feature.geometry.coordinates.slice());
     });
     this.map.on('click', 'counties-fill', function (evt) { self.openCountyPopup(evt.features[0], evt.lngLat); });
     this.map.on('mousemove', 'counties-fill', function (evt) { self.onCountyHover(evt); });
-    this.map.on('mouseleave', 'counties-fill', function () { self.clearCountyHover(); });
+    this.map.on('mouseleave', 'counties-fill', function () { self.countyHover.clear(); });
     ['dairies', 'counties-fill'].forEach(function (layer) {
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
@@ -242,13 +265,11 @@
     this.shell.ensureLayer({
       id: 'dairies', type: 'circle', source: 'dairies',
       layout: { 'circle-sort-key': ['*', -1, ['get', '_radius']] },
-      paint: {
+      paint: Object.assign({
         'circle-radius': ['get', '_radius'],
         'circle-color': ['get', '_color'],
         'circle-opacity': 0.85,
-        'circle-stroke-color': ['case', ['get', 'digester'], DIGESTER_COLOR, '#ffffff'],
-        'circle-stroke-width': ['case', ['get', 'digester'], 2.5, 0.75],
-      },
+      }, hoverStroke(['case', ['get', 'digester'], DIGESTER_COLOR, '#ffffff'], ['case', ['get', 'digester'], 2.5, 0.75])),
     });
     this.applyView();
     this.applyCounty();
@@ -325,6 +346,9 @@
       p._radius = radiusFor(headFor(p));
       p._color = colorFor(p.size_class);
     });
+    // Largest first in the data as well as by sort key: MapLibre sorts within
+    // a tile, and the data order settles circles that straddle tiles.
+    (collection.features || []).sort(function (a, b) { return b.properties._radius - a.properties._radius; });
     this.dairies = collection;
     this.shell.setSourceData('dairies', collection);
     this.shell.updateLegend();
@@ -402,8 +426,10 @@
     this.countyHover.set(feature, evt.lngLat);
   };
 
-  DairyMap.prototype.clearCountyHover = function () {
+  // Before a view, measure or page change swaps the data: no hover outlives it.
+  DairyMap.prototype.clearHover = function () {
     this.countyHover.clear();
+    this.dairyHover.clear();
   };
 
   DairyMap.prototype.countyBounds = function () {
@@ -540,7 +566,7 @@
   DairyMap.prototype.setView = function (view) {
     this.view = view === 'counties' ? 'counties' : 'dairies';
     this.shell.closePopup();
-    this.clearCountyHover();
+    this.clearHover();
     this.applyView();
     this.syncUrl();
     this.shell.updateLegend();
@@ -548,7 +574,7 @@
 
   DairyMap.prototype.setMeasure = function (measure, label) {
     this.measure = measure;
-    this.clearCountyHover();
+    this.clearHover();
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-measure');
     if (dropdown) {
       var text = dropdown.querySelector('.map-toolbar-label');
@@ -568,7 +594,7 @@
     var reloads = ['geojsonUrl', 'countiesUrl', 'county', 'year', 'label', 'unit'];
     var reload = changed.some(function (key) { return reloads.indexOf(key) !== -1; });
     this.readState();
-    this.clearCountyHover();
+    this.clearHover();
     this.applyView();
     if (!reload) {
       if (changed.indexOf('measure') !== -1) this.showCounties();
@@ -591,7 +617,7 @@
 
   DairyMap.prototype.destroy = function () {
     this.shell.closePopup();
-    this.clearCountyHover();
+    this.clearHover();
     document.body.removeEventListener('htmx:configRequest', this.onConfigRequest);
     document.body.removeEventListener('click', this.onZoomClick);
     this.map = null;

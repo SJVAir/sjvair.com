@@ -152,6 +152,8 @@
     // the click popup already carries the values (M.hover.controller, shared
     // with the dairy map's counties).
     this.areaHover = M.hover.controller(this.map, 'areas');
+    // Dairy points (region and near-me pages): the hovered one's ring.
+    this.dairyHover = M.hover.controller(this.map, 'dairies');
     // Dairies (region and near-me pages): their data and request counters.
     this.dairyData = null;
     this.dairyRequest = 0;
@@ -163,6 +165,8 @@
     this.map.on('click', 'areas-fill', function (evt) { self.openAreaPopup(evt.features[0], evt.lngLat); });
     this.map.on('mousemove', 'areas-fill', function (evt) { self.areaHover.set(evt.features[0], evt.lngLat); });
     this.map.on('mouseleave', 'areas-fill', function () { self.areaHover.clear(); });
+    this.map.on('mousemove', 'dairies', function (evt) { self.dairyHover.set(evt.features[0], evt.lngLat); });
+    this.map.on('mouseleave', 'dairies', function () { self.dairyHover.clear(); });
     // Facilities draw above dairies: a click on both is the facility's.
     this.map.on('click', 'dairies', function (evt) {
       if (self.map.queryRenderedFeatures(evt.point, { layers: ['facilities'] }).length) return;
@@ -238,13 +242,13 @@
     });
     this.shell.ensureLayer({
       id: 'dairies', type: 'circle', source: 'dairies',
-      paint: {
+      // Large dairies at the back, small on top (the points are one size).
+      layout: M.dairies ? { 'circle-sort-key': M.dairies.SIZE_SORT_KEY } : {},
+      paint: Object.assign({
         'circle-radius': POINT_RADIUS,
         'circle-color': ['get', '_color'],
         'circle-opacity': 0.9,
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 0.75,
-      },
+      }, M.dairies ? M.dairies.hoverStroke('#ffffff', 0.75) : { 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 0.75 }),
     });
     this.shell.ensureLayer({
       id: 'facilities', type: 'circle', source: 'facilities',
@@ -610,6 +614,13 @@
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>';
   };
 
+  // Before a view, level, measure, sector or page change swaps the data: no
+  // hover (an area's or a dairy's) outlives it.
+  FacilityMap.prototype.clearHover = function () {
+    this.areaHover.clear();
+    this.dairyHover.clear();
+  };
+
   // With dairies: two small ramps side by side, the facilities' (blue, by
   // tons) and the dairies' (amber, by EPA size class), and no size key (every
   // point is one size).
@@ -682,7 +693,7 @@
   FacilityMap.prototype.setView = function (view) {
     if (!this.areasEnabled) return;
     this.view = view === 'areas' ? 'areas' : 'facilities';
-    this.areaHover.clear();
+    this.clearHover();
     this.applyView();
     this.syncUrl();
     if (this.view === 'areas' && (!this.areaData || this.areaData.level !== this.level)) {
@@ -700,7 +711,7 @@
 
   FacilityMap.prototype.setLevel = function (level, label) {
     this.level = level;
-    this.areaHover.clear();
+    this.clearHover();
     this.markDropdown('.facility-map-level', '[data-level]', level, label);
     this.syncUrl();
     this.loadAreas();
@@ -708,7 +719,7 @@
 
   FacilityMap.prototype.setMeasure = function (measure, label) {
     this.measure = measure;
-    this.areaHover.clear();
+    this.clearHover();
     this.markDropdown('.facility-map-measure', '[data-measure]', measure, label);
     this.syncUrl();
     this.showAreas();
@@ -731,7 +742,7 @@
     var params = new URLSearchParams(this.data.query || '');
     if (sector) params.set('sector', sector); else params.delete('sector');
     this.data.query = params.toString();
-    this.areaHover.clear();
+    this.clearHover();
     this.syncUrl();
     var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-sector');
     if (dropdown) {
@@ -771,7 +782,7 @@
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
     // Before the areas source is replaced: a stale hover feature-state on
     // the new page's data would otherwise point at the wrong feature.
-    this.areaHover.clear();
+    this.clearHover();
     this.shell.setSourceData('locate', M.EMPTY);
     this.shell.setSourceData('areas', M.EMPTY);
     this.shell.setSourceData('dairies', M.EMPTY);
@@ -786,7 +797,7 @@
 
   FacilityMap.prototype.destroy = function () {
     this.shell.closePopup();
-    this.areaHover.clear();
+    this.clearHover();
     document.body.removeEventListener('htmx:configRequest', this.onConfigRequest);
     this.map = null;
   };
