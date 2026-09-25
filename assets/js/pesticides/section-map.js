@@ -407,7 +407,13 @@
   // The grids are shaded from properties the classing step writes on each
   // feature (`fill`, `opacity`, and `value`, the metric or 0), and hover is
   // a feature state, so a metric or hover change never touches the layers.
-  var HAS_VALUE = ['>', ['to-number', ['get', 'value']], 0];
+  // Whether a feature has anything to shade, written by classFeatures as
+  // `shaded`. Not `value > 0`: comparing two years makes `value` the signed
+  // change, so that test hid every decrease at the zooms it applies to --
+  // the map showed increases only until you zoomed past
+  // SECTION_LINES_MIN_ZOOM. `shaded` also keeps a change of exactly zero
+  // (real, and its own legend class) apart from no data at all.
+  var HAS_VALUE = ['>', ['to-number', ['get', 'shaded']], 0];
 
   function hoverCase(hovered, rest) {
     return ['case', ['boolean', ['feature-state', 'hover'], false], hovered, rest];
@@ -1801,6 +1807,7 @@
       var value = this.valueFor(props);
       var missing = value === null || (!classes.diverging && !value);
       props.value = value === null ? 0 : value;
+      props.shaded = missing ? 0 : 1;
       props.fill = classes.diverging ? divergingColorFor(classes, value) : colorFor(classes, value);
       props.opacity = missing ? opacities[1] : opacities[0];
     }
@@ -2595,6 +2602,7 @@
           id: props.id,
           addOrUpdateProperties: [
             { key: 'value', value: props.value },
+            { key: 'shaded', value: props.shaded },
             { key: 'fill', value: props.fill },
             { key: 'opacity', value: props.opacity },
           ],
