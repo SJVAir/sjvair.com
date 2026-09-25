@@ -79,6 +79,15 @@ class RegionGeoJSON(CachedEndpointMixin, RegionGeoJSONBase):
     cache_timeout = 60 * 60 * 24
     cache_key_version = 2
 
+    def is_cacheable(self, response):
+        # simplify=1's per-type shapes are already cached (compressed) by
+        # shapes.simplified_features(); the per-request work above that is
+        # only a set filter, so caching the assembled response here too
+        # would just be a second, redundant copy of the same payload.
+        if self.request.GET.get('simplify') == '1':
+            return False
+        return super().is_cacheable(response)
+
 
 class RegionDetail(RegionMixin, generics.DetailEndpoint):
     lookup_field = 'sqid'
