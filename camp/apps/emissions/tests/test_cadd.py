@@ -95,6 +95,14 @@ class ImportCADDTests(TestCase):
         # Blank stays blank.
         assert by_id[4].city == '' and by_id[4].address['city'] == ''
 
+    def test_city_lookup_prefers_city_over_place_on_a_name_collision(self):
+        # The PLACE is created first (lower pk) so a naive row-order lookup
+        # would pick it; the CITY must still win.
+        Region.objects.create(name='SELMA', slug='selma-place', type=Region.Type.PLACE, external_id='selma-place')
+        Region.objects.create(name='Selma', slug='selma-city', type=Region.Type.CITY, external_id='selma-city')
+        self.run_import([facility(1, city='selma')])
+        assert Dairy.objects.get(cadd_id=1).city == 'Selma'
+
     def test_blank_and_nan_counts_are_unknown(self):
         self.run_import([facility(1)], [herd(1, 2023, dry=None, beef=None), herd(1, 2022, milk='NaN')])
         row = DairyHerd.objects.get(year=2023)

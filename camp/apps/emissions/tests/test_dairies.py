@@ -193,6 +193,16 @@ class AreaTests(DairyTestCase):
         assert dairies.dairy_areas(self.big) == [self.fresno, tract]
         assert dairies.dairy_areas(self.small) == [self.kern]
 
+    def test_dairy_areas_agrees_with_dairy_q_on_city_and_place(self):
+        # SMALL's point is nowhere near this boundary; only its mailing city matches.
+        city = make(Region.Type.CITY, 'Bakersfield', self.FAR_AWAY)
+        place = make(Region.Type.PLACE, 'Riverdale', self.FAR_AWAY)
+        Dairy.objects.filter(pk=self.small.pk).update(city='Bakersfield')
+        small = Dairy.objects.get(pk=self.small.pk)
+        assert city in dairies.dairy_areas(small)
+        # BIG's mailing city is 'Riverdale' too, so the PLACE match applies to it as well.
+        assert place in dairies.dairy_areas(self.big)
+
 
 class CountyEmissionsTests(DairyTestCase):
     def test_dairy_cattle_only(self):

@@ -138,9 +138,17 @@ class Report:
 
 
 def _city_lookup():
-    """{lowercased CITY/PLACE Region name: canonical name}, built once per import."""
-    regions = Region.objects.filter(type__in=(Region.Type.CITY, Region.Type.PLACE))
-    return {region.name.lower(): region.name for region in regions}
+    """
+    {lowercased CITY/PLACE Region name: canonical name}, built once per import.
+    When a CITY and a PLACE share a name (or two Regions of the same type do),
+    the result must not depend on database row order: CITY wins over PLACE,
+    and within a type the lowest pk wins. Two queries, not one per row.
+    """
+    lookup = {}
+    for region_type in (Region.Type.CITY, Region.Type.PLACE):
+        for region in Region.objects.filter(type=region_type).order_by('pk'):
+            lookup.setdefault(region.name.lower(), region.name)
+    return lookup
 
 
 def _normalize_city(raw, lookup):

@@ -21,7 +21,7 @@ Everything is cached a day under a generation number that import_cadd bumps
 import time
 
 from django.core.cache import cache
-from django.db.models import Count, Exists, F, OuterRef, Subquery, Sum
+from django.db.models import Count, Exists, F, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Lower
 
 from camp.apps.emissions import areas, cepam, stats
@@ -234,14 +234,17 @@ def county_values(year, pollutant):
 
 
 def dairy_areas(dairy):
-    """The region pages a dairy counts in: its county, the city its point is in, its ZIP area and 2020 tract."""
+    """
+    The region pages a dairy counts in: its county, the CITY/PLACE regions its
+    point falls in or whose name matches its mailing city (Dairy.city) --
+    the same rule as RegionArea.dairy_q() -- its ZIP area and 2020 tract.
+    """
     pks = [dairy.county_id]
-    city = (
-        Region.objects.filter(type=Region.Type.CITY, boundary__geometry__intersects=dairy.point)
-        .order_by('pk').values_list('pk', flat=True).first()
-    )
-    if city:
-        pks.append(city)
+    city_place = Region.objects.filter(
+        Q(type__in=(Region.Type.CITY, Region.Type.PLACE)),
+        Q(boundary__geometry__intersects=dairy.point) | (Q(name__iexact=dairy.city) if dairy.city else Q(pk__in=())),
+    ).order_by('type', 'pk').values_list('pk', flat=True)
+    pks.extend(city_place)
     for level in (Region.Type.ZIPCODE, Region.Type.TRACT):
         pk = region_index(level).get(dairy.pk)
         if pk:
