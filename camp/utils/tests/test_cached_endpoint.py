@@ -168,3 +168,22 @@ class CachedEndpointTests(TestCase):
 
         for view_cls, status in results:
             assert status == 200
+
+
+class CacheWriteFailureTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        cache.clear()
+
+    def test_a_failed_write_serves_the_response_uncached(self):
+        # memcached refuses items over 1 MB ("Too large"); that must never
+        # turn into a 500 for the reader.
+        from unittest.mock import patch
+
+        request = self.factory.get(reverse('api:v2:monitors:monitor-list'))
+        with patch('camp.utils.views.cache.set', side_effect=Exception('Too large.')):
+            with self.assertLogs('camp.utils.views', level='WARNING') as logs:
+                response = monitor_list(request)
+        assert response.status_code == 200
+        assert response['X-Cache-Status'] == 'MISS'
+        assert 'Too large' in logs.output[0]

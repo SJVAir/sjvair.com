@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import mimetypes
 import urllib
 
@@ -30,6 +31,9 @@ from resticus.http import JSONResponse
 from ua_parser import parse as ua_parse
 
 from camp.apps.entries.models import PM25
+
+
+logger = logging.getLogger(__name__)
 
 
 class CachedEndpointMixin:
@@ -93,7 +97,12 @@ class CachedEndpointMixin:
         status = 'REFRESH' if warm else 'BYPASS' if clear else 'MISS'
         response = super().get(request, *args, **kwargs)
         if self.is_cacheable(response):
-            cache.set(cache_key, response, self.cache_timeout)
+            try:
+                cache.set(cache_key, response, self.cache_timeout)
+            except Exception as err:
+                # A cache that won't take the item (memcached's 1 MB limit, a
+                # backend hiccup) is a miss next time, never an error now.
+                logger.warning('Could not cache %s: %s', cache_key, err)
         return self._finalize_response(response, status)
 
     def is_cacheable(self, response) -> bool:
