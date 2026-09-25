@@ -17,6 +17,13 @@
   'use strict';
 
   if (typeof window.htmx === 'undefined') return;
+  // Once per page. A Back/Forward restore (historyCacheSize is 0, so htmx
+  // refetches the page and swaps the body) runs this script again, but the
+  // document and body keep the listeners bound the first time. Binding them
+  // twice made every toggle below (scope dropdowns, the schools list) flip
+  // open and straight back shut.
+  if (window.SJVAirExplorerBound) return;
+  window.SJVAirExplorerBound = true;
 
   // The map scripts mutate the DOM they are given, so a cached history
   // snapshot would restore dead map markup that our init() would then skip
