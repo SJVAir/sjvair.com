@@ -122,6 +122,7 @@ class About(ScopeMixin, vanilla.TemplateView):
         dairies_before, dairies_after = dairies.coverage_counts()
         return super().get_context_data(
             dairy_span=dairies.coverage_span(),
+            dairy_count=dairies.dairy_count(),
             dairies_before=dairies_before,
             dairies_after=dairies_after,
             dairy_size_classes=dairies.size_classes(),
