@@ -118,6 +118,15 @@ class About(ScopeMixin, vanilla.TemplateView):
     section = 'about'
     hide_scope = True
 
+    def get_context_data(self, **kwargs):
+        dairies_before, dairies_after = dairies.coverage_counts()
+        return super().get_context_data(
+            dairy_span=dairies.coverage_span(),
+            dairies_before=dairies_before,
+            dairies_after=dairies_after,
+            **kwargs,
+        )
+
 
 class FacilityList(ScopeMixin, vanilla.TemplateView):
     template_name = 'emissions/facility-list.html'

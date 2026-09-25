@@ -99,6 +99,26 @@ def latest_year():
     return known[-1] if known else None
 
 
+def coverage_span():
+    """The years CADD has a counted herd for, as "2022–2023" (or a single year, or '' with none)."""
+    known = years()
+    if not known:
+        return ''
+    if known[0] == known[-1]:
+        return str(known[0])
+    return f'{known[0]}–{known[-1]}'
+
+
+def coverage_counts():
+    """(dairies counted before COVERAGE_CHANGE_YEAR, dairies counted from it on), for the about page."""
+    def compute():
+        counted = DairyHerd.objects.filter(animal_units__gt=0)
+        before = counted.filter(year__lt=COVERAGE_CHANGE_YEAR).values('dairy_id').distinct().count()
+        after = counted.filter(year__gte=COVERAGE_CHANGE_YEAR).values('dairy_id').distinct().count()
+        return before, after
+    return cache.get_or_set(key('coverage-counts'), compute, stats.CACHE_TIMEOUT)
+
+
 def region_index(level):
     """
     {dairy pk: region pk} for one Areas level: counties by Dairy.county, ZIP

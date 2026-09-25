@@ -128,7 +128,7 @@
     name: fa-industry-windows
     primary: sienna
     secondary: burlywood
-  description: 'The CARB records behind the <a href="/tools/emissions/">Facility Emissions Explorer</a>: what each permitted facility in the San Joaquin Valley reports releasing, where each one is, and the county-wide inventories that put those facilities in context.'
+  description: 'The CARB records behind the <a href="/tools/emissions/">Facility Emissions Explorer</a>: what each permitted facility in the San Joaquin Valley reports releasing, where each one is, the Valley''s dairies and their herds, and the county-wide inventories that put them in context.'
   integrations:
     - name: CEIDARS
       logo: img/logo/carb-vertical.png
@@ -139,6 +139,11 @@
       logo: img/logo/carb-vertical.png
       url: https://ww2.arb.ca.gov/applications/cepam2019v1-04-standard-emission-tool
       description: The California Emission Projection Analysis Model (CEPAM) is CARB's county-level emissions inventory, covering every source category — cars and trucks, off-road equipment, farming, wildfires, and consumer products as well as permitted facilities — projected from a 2017 base year. SJVAir uses its county totals to show how much of a county's pollution comes from the facilities on the map, and how much from everything else.
+
+    - name: California Dairy & Livestock Database
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd
+      description: CARB's California Dairy & Livestock Database (CADD) locates the state's dairies and counts each one's herd by year, with the anaerobic digesters that capture manure methane. Coverage of the Valley's dairies grew in 2019. SJVAir shows every Valley dairy CADD tracks on the explorer's Dairies tab, beside CARB's county estimates of dairy cattle emissions.
 
     - name: CARB Pollution Mapping Tool
       logo: img/logo/carb-vertical.png

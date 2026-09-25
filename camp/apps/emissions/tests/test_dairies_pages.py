@@ -258,3 +258,21 @@ class CombinedMapTests(DairyPageTestCase):
         for url in (reverse('emissions:map'), plant.get_absolute_url(), reverse('emissions:sector-detail', args=['glass'])):
             content = self.client.get(url, {'year': '2023'}).content.decode()
             assert map_data(content, 'dairies-url') == '', url
+
+
+class DairyAboutTests(DairyPageTestCase):
+    def test_about_has_a_dairy_section(self):
+        content = self.client.get(reverse('emissions:about')).content.decode()
+        assert 'id="dairies"' in content
+        assert '40 CFR 122' in content and '1.4' in content
+        assert 'Silage' in content and '2019' in content and 'reference code' in content
+        # The two always-true assertions from the original brief (the tab link
+        # is on every page, and "CEPAM 2019" already makes '2019' true) are
+        # replaced with the section's own markup.
+        assert f'<a href="{reverse("emissions:dairy-list")}">Dairies</a> tab covers what the facility inventory barely sees' in content
+        assert '<strong>Coverage grew in 2019.</strong> Before 2019 CADD has herds for 0 Valley dairies; from 2019 on, for 2.' in content
+        assert 'https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd' in content
+
+    def test_integrations_list_cadd(self):
+        content = self.client.get('/about/integrations/').content.decode()
+        assert 'California Dairy &amp; Livestock Database' in content
