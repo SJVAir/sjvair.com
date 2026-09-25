@@ -63,6 +63,8 @@ class RegionGeoJSONBase(RegionList):
             .exclude(boundary=None).current_vintage().order_by('name')
         )
         if request.GET.get('simplify') == '1':
+            if region_type not in shapes.SIMPLIFY_TYPES:
+                return http.Http400({'error': 'simplify=1 is only supported for county, zipcode and tract.'})
             # The whole type is simplified together (shared borders stay
             # shared); the filters then pick from it.
             wanted = set(regions.values_list('sqid', flat=True))

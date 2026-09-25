@@ -33,6 +33,15 @@ TOLERANCES = {Region.Type.COUNTY: 0.0002}
 SHAPES_TTL = 60 * 60 * 24
 SHAPES_KEY = 'regions:v1:simplified:{type}:{tolerance}'
 
+# The only region types ?simplify=1 is allowed to run against: the levels the
+# Areas map actually shades. Every other type (mtrs sections most notably,
+# ~28k of them) is expensive enough per request -- seconds of CPU and a few
+# hundred MB of RSS -- that it must be rejected rather than computed on
+# demand. See camp/apps/emissions/areas.py LEVELS, which this mirrors; kept
+# here instead of imported from emissions to avoid a regions -> emissions
+# dependency.
+SIMPLIFY_TYPES = {Region.Type.COUNTY, Region.Type.ZIPCODE, Region.Type.TRACT}
+
 
 def _latlon(geometry):
     if geometry.srid and geometry.srid != EPSG_LATLON:
