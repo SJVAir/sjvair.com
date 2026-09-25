@@ -5,7 +5,8 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.emissions import views
+from camp.apps.emissions import cepam, views
+from camp.apps.emissions.models import CountyInventory
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
 from camp.apps.regions.models import Region
 
@@ -73,6 +74,26 @@ class RegionPageTests(TestCase):
         assert (map_data(content, 'view'), map_data(content, 'level'), map_data(content, 'measure')) == ('facilities', 'zipcode', 'density')
 
 
+    def test_county_page_context_bar_names_its_own_county(self):
+        CountyInventory.objects.create(county=self.fresno, year=2024, inventory=cepam.INVENTORY,
+                                       source_type='mobile', eic='723', nox=1.0)
+        content = self.get(self.fresno, {'year': '2024', 'county': 'kern'})
+        bar = re.search(r'<div class="box emissions-context">(.*?)</div>', content, re.S).group(1)
+        assert 'Fresno County' in bar and 'Kern County' not in bar
+        assert 'these counties' not in bar
+
+    def test_stray_county_is_dropped_from_picker_links(self):
+        content = self.get(self.fresno, {'year': '2024', 'county': 'kern'})
+        hrefs = re.findall(r'href="([^"]*)"', content)
+        assert [href for href in hrefs if 'year=' in href]  # the pickers are there
+        assert not [href for href in hrefs if 'county=' in href]
+
+    def test_short_url_of_a_retired_tract_404s(self):
+        old = make(Region.Type.TRACT, 'Old', AROUND_PLANT, version='2010')
+        response = self.client.get(reverse('emissions:region-redirect', args=[old.sqid]))
+        assert response.status_code == 404
+
+
 class NearMeTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
 
@@ -84,7 +105,7 @@ class NearMeTests(TestCase):
         response = self.client.get(self.url, {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Fresno', 'year': '2024'})
         assert response.status_code == 200
         content = response.content.decode()
-        assert 'near Fresno' in content and 'TEST PLANT' in content
+        assert 'Within 1 mile of Fresno' in content and 'TEST PLANT' in content
         assert map_data(content, 'radius') == '1'
         assert map_data(content, 'center') == '36.7370,-119.7870'
 
@@ -100,6 +121,12 @@ class NearMeTests(TestCase):
         response = self.client.get(self.url, {'lat': '36.737', 'lng': '-119.787', 'label': 'x' * 500})
         assert 'x' * 121 not in response.content.decode()
 
+    def test_title_drops_a_leading_near(self):
+        response = self.client.get(self.url, {'lat': '36.737', 'lng': '-119.787', 'label': 'Near East Main Street, Fresno'})
+        content = response.content.decode()
+        assert 'Within 1 mile of East Main Street, Fresno' in content
+        assert 'of Near' not in content and 'of near' not in content
+
 
 class FindAreaTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
@@ -113,3 +140,10 @@ class FindAreaTests(TestCase):
         assert {place['type'] for place in places} <= {'county', 'city', 'zipcode', 'place', 'school_district'}
         fresno = next(place for place in places if place['name'] == 'Fresno County')
         assert fresno['url'] == Region.objects.get(type='county', slug='fresno').get_emissions_url()
+
+    def test_jump_links_leave_the_county_out(self):
+        cache.clear()
+        content = self.client.get(reverse('emissions:home'), {'county': 'kern', 'year': '2024'}).content.decode()
+        jumps = re.search(r'<p class="find-area-counties">(.*?)</p>', content, re.S).group(1)
+        hrefs = re.findall(r'href="([^"]*)"', jumps)
+        assert hrefs and all('county=' not in href for href in hrefs)

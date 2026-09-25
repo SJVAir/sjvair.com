@@ -1,5 +1,6 @@
 import csv
 import math
+import re
 
 from urllib.parse import urlencode
 
@@ -83,6 +84,8 @@ class Home(ScopeMixin, vanilla.TemplateView):
             find_area_places=find_area_places(),
             find_area_counties=[p for p in find_area_places() if p['type'] == Region.Type.COUNTY],
             focus_find=self.request.GET.get('find') == '1',
+            # The jump links go to county pages: the page is the county, so no ?county=.
+            find_area_qs=scope.query(county=None),
             maptiler_key=settings.MAPTILER_API_KEY,
             **kwargs,
         )
@@ -327,6 +330,7 @@ FIND_AREA_PLACES_KEY = f'emissions:v{stats.CACHE_VERSION}:find-area-places'
 RADIUS_CHOICES = (1, 3, 5)
 RADIUS_ZOOMS = {1: 13, 3: 12, 5: 11}
 MAX_LABEL = 120
+NEAR_PREFIX = re.compile(r'^near\s+', re.IGNORECASE)
 
 
 def find_area_places():
@@ -359,6 +363,15 @@ def region_title(region):
 class AreaPage(ScopeMixin, vanilla.TemplateView):
     """What a region page and near-me share: one area's facilities, totals, map, sectors and trend."""
     template_name = 'emissions/area.html'
+
+    def get(self, request, *args, **kwargs):
+        # The page is the area: a stray ?county= would ride along on the
+        # scope-picker links (built from request.GET), so drop it here.
+        if 'county' in request.GET:
+            params = request.GET.copy()
+            params.pop('county')
+            request.GET = params
+        return super().get(request, *args, **kwargs)
 
     def get_area(self):
         raise NotImplementedError
@@ -404,7 +417,10 @@ class RegionRedirect(vanilla.View):
     """`region/<sqid>/` -> the slugged URL, keeping the query string (the map's popups link here)."""
 
     def get(self, request, sqid):
-        region = Region.objects.filter(sqid=sqid, type__in=AREA_PAGE_TYPES).first()
+        region = (
+            Region.objects.filter(sqid=sqid, type__in=AREA_PAGE_TYPES, boundary__isnull=False)
+            .current_vintage().first()
+        )
         if region is None:
             raise Http404('No such region.')
         query = request.GET.urlencode()
@@ -442,6 +458,10 @@ class RegionPage(AreaPage):
 
     def get_context_data(self, **kwargs):
         region = self.region
+        extra = {}
+        if region.type == Region.Type.COUNTY:
+            # The context bar names `county`; on a county page that's the page's own.
+            extra['county'] = region
         return super().get_context_data(
             title=region_title(region),
             kind=region.get_type_display(),
@@ -450,6 +470,7 @@ class RegionPage(AreaPage):
                 year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant,
                 minor=self.get_scope().minor,
             )) if region.type == Region.Type.COUNTY else None,
+            **extra,
             **kwargs,
         )
 
@@ -510,7 +531,8 @@ class NearMe(AreaPage):
     def get_context_data(self, **kwargs):
         label = (self.request.GET.get('label') or f'{self.near.lat:.3f}, {self.near.lng:.3f}')[:MAX_LABEL]
         return super().get_context_data(
-            title=f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {label}',
+            # find-area.js labels read "near X"; the title already says "of".
+            title=f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {NEAR_PREFIX.sub("", label)}',
             kind='Near me',
             population=None,
             context_bar=None,
