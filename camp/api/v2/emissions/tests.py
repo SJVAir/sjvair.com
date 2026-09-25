@@ -1,9 +1,12 @@
+import pytest
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.emissions.models import EmissionsRecord, Facility
+from camp.apps.emissions import dairies
+from camp.apps.emissions.models import DairyHerd, EmissionsRecord, Facility
+from camp.apps.emissions.tests.test_dairies import dairy_inventory, make_dairies
 from camp.apps.regions.models import Boundary, Region
 
 
@@ -169,3 +172,95 @@ class AreaValuesEndpointTests(TestCase):
     def test_level_is_required_and_checked(self):
         assert self.client.get(reverse('api:v2:emissions:areas')).status_code == 400
         assert self.client.get(reverse('api:v2:emissions:areas'), {'level': 'mtrs'}).status_code == 400
+
+
+class DairyEndpointTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.big, self.small, self.closed = make_dairies()
+        self.fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+
+    def get(self, name, params=None, **kwargs):
+        return self.client.get(reverse(f'api:v2:emissions:{name}', kwargs=kwargs or None), params or {})
+
+    def test_geojson(self):
+        response = self.get('dairy-geojson')
+        assert response.status_code == 200
+        body = response.json()
+        assert body['properties'] == {'year': 2023}
+        features = body['features']
+        assert [f['properties']['name'] for f in features] == ['BIG DAIRY', 'SMALL DAIRY']
+        big = features[0]
+        assert big['id'] == self.big.sqid
+        assert big['geometry'] == {'type': 'Point', 'coordinates': [-119.785, 36.735]}
+        assert big['properties'] == {'id': self.big.sqid, 'name': 'BIG DAIRY', 'animal_units': 2120, 'digester': True, 'county': 'fresno'}
+        assert features[1]['properties']['digester'] is False
+
+    def test_geojson_leaves_out_empty_herds(self):
+        names = [f['properties']['name'] for f in self.get('dairy-geojson', {'year': 2023}).json()['features']]
+        assert 'CLOSED DAIRY' not in names
+        assert [f['properties']['name'] for f in self.get('dairy-geojson', {'year': 2022}).json()['features']] == ['BIG DAIRY']
+
+    def test_an_invalid_year_is_a_400(self):
+        for year in ('1999', 'x'):
+            response = self.get('dairy-geojson', {'year': year})
+            assert response.status_code == 400 and 'error' in response.json()
+            assert self.get('dairy-counties', {'year': year}).status_code == 400
+            assert self.get('dairy-detail', {'year': year}, sqid=self.big.sqid).status_code == 400
+
+    def test_cached_until_a_reimport(self):
+        assert self.get('dairy-geojson')['X-Cache-Status'] == 'MISS'
+        assert self.get('dairy-geojson')['X-Cache-Status'] == 'HIT'
+        dairies.clear_caches()
+        assert self.get('dairy-geojson')['X-Cache-Status'] == 'MISS'
+
+    def test_counties(self):
+        dairy_inventory(self.fresno, rog=2.0)
+        response = self.get('dairy-counties', {'year': 2023, 'pollutant': 'rog', 'measure': 'animal_units'})
+        assert response.status_code == 200
+        body = response.json()
+        assert (body['pollutant'], body['label'], body['unit'], body['measure']) == ('rog', 'ROG', 'tons', 'animal_units')
+        assert body['source'] == 'CARB county inventory, dairy cattle waste; silage not included'
+        assert len(body['counties']) == 8
+        fresno = next(row for row in body['counties'] if row['slug'] == 'fresno')
+        assert set(fresno) == {'id', 'slug', 'name', 'emissions', 'emissions_per_sq_mi', 'animal_units', 'animal_units_per_sq_mi', 'value'}
+        assert fresno['emissions'] == pytest.approx(730)
+        assert fresno['value'] == fresno['animal_units'] == pytest.approx(2120)
+        assert self.get('dairy-counties')['X-Cache-Status'] == 'MISS'
+        assert self.get('dairy-counties').json()['pollutant'] == 'rog'
+
+    def test_counties_reject_what_dairies_dont_report(self):
+        for params in ({'pollutant': 'nox'}, {'pollutant': 'benzene'}, {'measure': 'bogus'}):
+            response = self.get('dairy-counties', params)
+            assert response.status_code == 400 and 'error' in response.json(), params
+
+    def test_detail(self):
+        DairyHerd.objects.filter(dairy=self.big, year=2023).update(milk_cows_ref_code='2a')
+        response = self.get('dairy-detail', sqid=self.big.sqid)
+        assert response.status_code == 200
+        body = response.json()
+        assert (body['id'], body['name'], body['county'], body['year']) == (self.big.sqid, 'BIG DAIRY', 'Fresno County', 2023)
+        assert body['address'] == {'street': '1 Dairy Rd', 'city': 'Riverdale', 'zipcode': '93656'}
+        assert body['herd']['animal_units'] == pytest.approx(2120)
+        classes = {row['key']: row for row in body['herd']['classes']}
+        assert classes['milk_cows'] == {'key': 'milk_cows', 'label': 'Milk cows', 'count': 1100, 'estimated': True}
+        assert classes['dry_cows']['estimated'] is False
+        assert classes['beef_cattle']['count'] is None
+        assert body['digesters'] == [{'operational_year': 2019, 'shutdown_year': None, 'source': 'DDRDP', 'operating': True}]
+        assert body['areas'][0] == {'label': 'Fresno County', 'url': self.fresno.get_emissions_url()}
+
+    def test_detail_in_a_year_without_a_herd(self):
+        body = self.get('dairy-detail', {'year': 2022}, sqid=self.small.sqid).json()
+        assert body['herd'] is None
+        # SMALL's digester shut down in 2021.
+        assert body['digesters'] == [{'operational_year': 2015, 'shutdown_year': 2021, 'source': 'DDRDP', 'operating': False}]
+        assert self.get('dairy-detail', sqid='doesnotexist').status_code == 404
+
+    def test_no_data_yet_is_empty_not_an_error(self):
+        DairyHerd.objects.all().delete()
+        dairies.clear_caches()
+        response = self.get('dairy-geojson')
+        assert response.status_code == 200 and response.json()['features'] == []
+        assert self.get('dairy-counties').status_code == 200
