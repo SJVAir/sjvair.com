@@ -1,6 +1,8 @@
 from unittest.mock import MagicMock, patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
+import requests
 
 from django.contrib.gis.geos import GEOSGeometry
 from django.core.management import call_command, CommandError
@@ -45,6 +47,26 @@ class PopulationTests(TestCase):
             with patch('requests.get', return_value=response(rows[geography])) as get:
                 assert population.fetch(geography, 2024) == expected
             assert '/2024/acs/acs5' in get.call_args[0][0]
+
+    def test_geography_params_encode_as_a_single_in_value(self):
+        # `in` must be a single Census-style "state:06 county:*" string, not a
+        # list -- `requests` encodes a list value as repeated `in=` keys,
+        # which the Census API rejects/misinterprets. This guards the
+        # tract geography, whose `in` combines two hierarchy levels.
+        for geography, (_, params, _) in population.GEOGRAPHIES.items():
+            query = {'get': population.VARIABLE, **params}
+            url = requests.Request('GET', population.URL.format(year=2024), params=query).prepare().url
+            parsed = parse_qs(urlparse(url).query)
+            if 'in' in params:
+                assert url.count('in=') == 1
+                assert len(parsed['in']) == 1
+
+        # The tract geography's combined hierarchy, specifically.
+        _, tract_params, _ = population.GEOGRAPHIES['tract']
+        query = {'get': population.VARIABLE, **tract_params}
+        url = requests.Request('GET', population.URL.format(year=2024), params=query).prepare().url
+        assert url.count('in=') == 1
+        assert 'state%3A06+county%3A%2A' in url
 
     def test_fetch_passes_key_when_given(self):
         with patch('requests.get', return_value=response([['B01003_001E', 'state', 'county'],

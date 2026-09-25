@@ -18,7 +18,7 @@ STATE = '06'
 GEOGRAPHIES = {
     'county': (Region.Type.COUNTY, {'for': 'county:*', 'in': f'state:{STATE}'}, ('state', 'county')),
     'zipcode': (Region.Type.ZIPCODE, {'for': 'zip code tabulation area:*'}, ('zip code tabulation area',)),
-    'tract': (Region.Type.TRACT, {'for': 'tract:*', 'in': [f'state:{STATE}', 'county:*']}, ('state', 'county', 'tract')),
+    'tract': (Region.Type.TRACT, {'for': 'tract:*', 'in': f'state:{STATE} county:*'}, ('state', 'county', 'tract')),
 }
 
 
