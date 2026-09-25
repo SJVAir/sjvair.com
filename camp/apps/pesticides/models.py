@@ -178,6 +178,10 @@ class Chemical(TimeStampedModel):
         return self.Category.TOXIC_AIR_CONTAMINANT in (self.categories or [])
 
     @property
+    def is_california_restricted(self):
+        return self.Category.CALIFORNIA_RESTRICTED in (self.categories or [])
+
+    @property
     def other_categories(self):
         """Categories not already expressed by the Prop 65 / CARB TAC badges."""
         implied = self.PROP65_CATEGORIES | {self.Category.TOXIC_AIR_CONTAMINANT}

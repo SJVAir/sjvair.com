@@ -106,7 +106,9 @@ def movers_context(rows, year, all_years, field, lbs_field='lbs_chemical'):
     year_from = stats.previous_year(year)
     if not year_from:
         return None
-    movers = stats.top_movers(rows, year_from, year, field, lbs_field)
+    # The same cap as the leaderboards beside it: ten rows of two numbers
+    # each was the heaviest block on the page, for the least-read position.
+    movers = stats.top_movers(rows, year_from, year, field, lbs_field, limit=stats.RELATED_LIMIT)
     if not movers['rising'] and not movers['falling']:
         return None
     return {
@@ -818,14 +820,18 @@ class ExplorerDetailMixin:
         """Return (related_a, related_b) dicts. Each: {title, kind, rows, show_all_url}."""
         raise NotImplementedError
 
-    def cached_stat(self, name, build):
+    def cached_stat(self, name, build, always=False):
         """
         An all-years aggregate reads every loaded year of this entity's rollup
         rows -- hundreds of thousands for a widely-used chemical, and seconds
         per page. They only change on import, so cache them; a single year is
         cheap enough to compute per request.
+
+        `always` for the aggregates that read every year whatever the scope --
+        the seasonality grid -- which are the expensive kind on a year-scoped
+        page too.
         """
-        if not self.all_years:
+        if not (always or self.all_years):
             return build()
         scope = self.county.slug if self.county is not None else ''
         if self.concern_active:
@@ -905,6 +911,7 @@ class ExplorerDetailMixin:
         if not self.shows_lbs_per_acre:
             totals = {**totals, 'lbs_per_acre': None}
         related_a, related_b = self.get_related()
+        upcoming_days = stats.upcoming_by_day(notices) if self.has_notices else []
         context = super().get_context_data(
             section=self.section,
             years=stats.years_loaded(),
@@ -915,6 +922,9 @@ class ExplorerDetailMixin:
             by_year=stats.by_year(rows, self.lbs_field),
             by_county=self.cached_stat('by_county', lambda: stats.by_county(rows, year, self.lbs_field, all_years=all_years)),
             by_month=self.cached_stat('by_month', lambda: stats.by_month(rows, year, self.lbs_field, all_years=all_years)) if (year or all_years) else [],
+            # Always every year: seasonality only reads as a shift across them.
+            by_year_month=self.cached_stat(
+                'by_year_month', lambda: stats.by_year_month(rows, self.lbs_field), always=True),
             related_a=related_a,
             related_b=related_b,
             records_url=reverse('pesticides:records') + f'?{self.use_field}={self.object.sqid}' + (
@@ -926,7 +936,8 @@ class ExplorerDetailMixin:
                 + (f'&county={self.county.slug}' if self.county is not None else '')
                 + (f'&{stats.CONCERN_PARAM}=1' if self.concern else '')
             ) if self.has_notices else '',
-            upcoming=stats.upcoming_notices(notices) if self.has_notices else [],
+            upcoming=stats.notices_in_days(upcoming_days),
+            upcoming_days=upcoming_days,
             upcoming_by_county=stats.upcoming_by_county(notices) if self.has_notices else [],
             upcoming_count=stats.upcoming_count(notices) if self.has_notices else 0,
             notice_window=stats.notice_window(),
@@ -1639,26 +1650,24 @@ def _section_card(title, kind, rows, show_all_url, limit=stats.RELATED_LIMIT):
 
 def _place_cards(context):
     """
-    The place page's top lists, all pointing "Show all" at the area's records
-    browser -- there's no single entity to filter by, same as a section
-    page's top lists. The chemicals-of-concern card is only built outside the
-    concern scope; under it every card is already of concern and the
-    chemicals card says so in its title instead.
+    The place page's top lists -- one card per kind, all pointing "Show all"
+    at the area's records browser, since there's no single entity to filter
+    by (same as a section page's).
+
+    There is no separate chemicals-of-concern card: it repeated the chemicals
+    card row for row, and those rows already carry their Prop 65 / IARC
+    badges there. Under the concern scope every card is of concern anyway,
+    and the chemicals card's title says so.
     """
     records_url = context['records_url']
     of_concern = context.get('top_chemicals_of_concern')
-    cards = {
+    return {
         'products_card': _section_card('Top products', 'products', context['top_products'], records_url),
         'chemicals_card': _section_card(
             'Top chemicals' if of_concern is not None else 'Top chemicals of concern',
             'chemicals', context['top_chemicals'], records_url),
         'commodities_card': _section_card('Top commodities', 'commodities', context['top_commodities'], records_url),
     }
-    if of_concern is not None:
-        cards['chemicals_of_concern_card'] = _section_card(
-            'Top chemicals of concern', 'chemicals', of_concern,
-            context['concern_records_url'])
-    return cards
 
 
 class SectionDetail(vanilla.DetailView):
@@ -1714,7 +1723,8 @@ class SectionDetail(vanilla.DetailView):
         top_commodities = stats.top_related(rows, year, 'commodity', limit=stats.RELATED_LIMIT, all_years=all_years)
 
         notices = PesticideNotice.objects.filter(mtrs=section)
-        upcoming = stats.upcoming_notices(notices)
+        upcoming_days = stats.upcoming_by_day(notices)
+        upcoming = stats.notices_in_days(upcoming_days)
         upcoming_count = stats.upcoming_count(notices)
 
         year_param = stats.year_param(year, all_years)
@@ -1738,6 +1748,7 @@ class SectionDetail(vanilla.DetailView):
             chemical_count=chemical_count,
             by_year=stats.by_year(rows),
             by_month=by_month,
+            by_year_month=stats.by_year_month(rows),
             peak_month=peak_month,
             top_chemicals=top_chemicals,
             top_products=top_products,
@@ -1746,6 +1757,7 @@ class SectionDetail(vanilla.DetailView):
             products_card=_section_card('Top products', 'products', top_products, records_url),
             commodities_card=_section_card('Top commodities', 'commodities', top_commodities, records_url),
             upcoming=upcoming,
+            upcoming_days=upcoming_days,
             upcoming_count=upcoming_count,
             records_url=records_url,
             map_config=map_config,

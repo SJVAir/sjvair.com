@@ -57,10 +57,29 @@ class NotesRenderingTests(RollupTestMixin, TestCase):
         html = self.client.get(reverse('pesticides:notice-detail', kwargs={'sqid': notice.sqid})).content.decode()
         assert 'What this means' not in html
 
-    def test_landing_and_how_to_read_use_notes(self):
+    def test_notes_sit_on_what_they_explain(self):
+        # The "How to read this page" block is gone: each of its notes now
+        # rides the element it describes, as the tooltip on a "?".
         html = self.client.get(reverse('pesticides:home')).content.decode()
         assert notes.note('prop65')['summary'] in html
-        assert notes.note('pur_lag')['summary'] in html and notes.note('shades')['summary'] in html
+        # In the year picker -- the control that raises "why is this the
+        # newest year?", and the one thing on every explorer page.
+        assert f'data-tooltip="{notes.note("pur_lag")["summary"]}"' in html
+        # On the map legend that carries the shades.
+        assert f'data-tooltip="{notes.note("shades")["summary"]}"' in html
+
+    def test_the_notices_note_rides_the_notices_box(self):
+        from camp.apps.regions.models import Region
+        fresno = Region.objects.get(pk=9001)
+        html = self.client.get(reverse('pesticides:region',
+            kwargs={'sqid': fresno.sqid, 'slug': fresno.slug})).content.decode()
+        assert f'data-tooltip="{notes.note("noi_meaning")["summary"]}"' in html
+
+    def test_the_about_page_carries_the_long_version_of_each(self):
+        # Every "?" links here, so every key it uses needs a section.
+        html = self.client.get(reverse('pesticides:about')).content.decode()
+        for anchor in ('caveats', 'shades', 'notices', 'restricted', 'fumigant'):
+            assert f'id="{anchor}"' in html, anchor
 
     def test_list_pages_have_tooltips(self):
         html = self.client.get(reverse('pesticides:product-list')).content.decode()

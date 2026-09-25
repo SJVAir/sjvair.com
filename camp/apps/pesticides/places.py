@@ -578,14 +578,9 @@ def place_context(area, year, all_years=False, concern=False, params=None):
     notices = area.notices()
     if concern:
         notices = stats.narrow_notices(notices, concern)
-    upcoming_qs = stats._upcoming(notices)
-    upcoming = list(
-        upcoming_qs
-        .select_related('county')
-        .prefetch_related('chemicals', 'products')
-        .order_by('scheduled_application')[:20]
-    )
-    upcoming_count = upcoming_qs.count()
+    upcoming_count = stats._upcoming(notices).distinct().count()
+    upcoming_days = stats.upcoming_by_day(notices)
+    upcoming = stats.notices_in_days(upcoming_days)
 
     # The district's own schools are the subject of a school-district page,
     # so its map opens with the markers on and the page lists them.
@@ -612,11 +607,33 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         build_by_year,
     )
 
+    # The seasonality grid always reads every year, so it's cached the way
+    # by_year is rather than only under the all-years scope. It stays on the
+    # rollup whatever the scope: the totals table carries no month.
+    def build_by_year_month():
+        rows = area.rollup_rows()
+        return stats.by_year_month(stats.narrow_rows(rows, concern) if concern else rows)
+
+    by_year_month = stats.cached(
+        stats.all_years_key('place-by-year-month', area.cache_key(), *scope_key),
+        build_by_year_month,
+    )
+
+    # A county reads against the average valley county: same kind of place,
+    # same axis. Nothing for a city, district or radius -- an average county
+    # is the wrong size to compare those to, and a baseline that doesn't
+    # match the thing beside it is worse than none.
+    compare_by_year = stats.average_county_by_year(concern) if area.county is not None else None
+
     context = {
         'area': area,
         **data,
         'by_year': by_year,
+        'compare_by_year': compare_by_year,
+        'compare_label': 'Average valley county' if compare_by_year else '',
+        'by_year_month': by_year_month,
         'upcoming': upcoming,
+        'upcoming_days': upcoming_days,
         'upcoming_count': upcoming_count,
         'records_url': area.records_url(year, all_years, concern),
         # The chemicals-of-concern card's "Show all" narrows the records

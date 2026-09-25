@@ -1,4 +1,5 @@
 import calendar
+import math
 import re
 import uuid
 
@@ -215,12 +216,18 @@ def _chart_id():
 
 
 @register.inclusion_tag('pesticides/includes/trend-chart.html')
-def trend_chart(by_year, year=None, hide_lbs=False, title=None):
+def trend_chart(by_year, year=None, hide_lbs=False, title=None, compare=None, compare_label=''):
     """
     The by-year trend: a uPlot line drawn in the browser from the data this
     tag embeds (see assets/js/pesticides/charts.js), with the delta sentence
     under it rendered here. Pounds, except on a placeholder chemical's page,
     which has none and charts its applications instead.
+
+    `compare` is an optional second by-year series -- the average valley
+    county, on a county's page -- drawn dashed behind the first so the line
+    can be read against something. It's aligned to the years the main series
+    has, with a gap for any year it doesn't cover, rather than stretched to
+    fit; a baseline that invented values would be worse than no baseline.
     """
     field = 'applications' if hide_lbs else 'lbs'
     metric_label = 'applications' if hide_lbs else 'pounds'
@@ -238,6 +245,7 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
     title = title or ('Applications by year' if hide_lbs else 'Lbs applied by year')
     first_year = years[0] if years else None
     last_year = years[-1] if years else None
+    baseline = {row['year']: row[field] or 0 for row in (compare or [])}
     return {
         'chart_id': _chart_id(),
         'chart': {
@@ -245,6 +253,8 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
             'unit': metric_label,
             'x': years,
             'y': values,
+            'compare': [baseline.get(y) for y in years] if baseline else None,
+            'compare_label': compare_label,
             # Under All years no single point is the one being looked at, so
             # nothing is emphasised.
             'selected': year if year in years else None,
@@ -252,6 +262,7 @@ def trend_chart(by_year, year=None, hide_lbs=False, title=None):
         'has_data': bool(rows),
         'title': title,
         'metric_label': metric_label,
+        'compare_label': compare_label if baseline else '',
         'sentence': sentence,
         'first_year': first_year,
         'last_year': last_year,
@@ -279,6 +290,72 @@ def month_chart(by_month, year_label=None):
         },
         'rows': rows,
         'year_label': year_label,
+    }
+
+
+# The seasonality heatmap's scale: five steps sampled from the county map's
+# default ramp, so a heavy month and a heavy county look the same shade.
+HEATMAP_CLASSES = 5
+
+
+def _heatmap_colors():
+    from camp.apps.pesticides import maps
+    return maps.sample_ramp(maps.RAMP, HEATMAP_CLASSES), maps.NO_DATA
+
+
+def _heatmap_class(value, top):
+    """
+    Which of HEATMAP_CLASSES a cell falls in, linear on the heaviest cell in
+    the grid. Linear rather than quantiled on purpose: use really is packed
+    into two or three months, and quantiling the cells would spread that
+    across the whole ramp and paint a flat year as a seasonal one. The cost is
+    that a light month sits in the palest class -- which is the truth.
+    """
+    if not value or not top:
+        return None
+    step = math.ceil(value / top * HEATMAP_CLASSES)
+    return min(HEATMAP_CLASSES, max(1, step)) - 1
+
+
+@register.inclusion_tag('pesticides/includes/month-heatmap.html')
+def month_heatmap(grid, year=None):
+    """
+    Months across, years down, each cell shaded by pounds: the seasonal shape
+    of the use and whether it has moved. `grid` is stats.by_year_month().
+
+    A single year renders nothing -- there is no shift to see, and the by-month
+    bars already say everything one row could.
+    """
+    rows = list(grid or [])
+    colors, no_data = _heatmap_colors()
+    top = max((cell['lbs'] for row in rows for cell in row['months']), default=0)
+    if len(rows) < 2 or not top:
+        return {'has_data': False}
+
+    def cell(row, entry):
+        index = _heatmap_class(entry['lbs'], top)
+        return {
+            'lbs': entry['lbs'],
+            'color': no_data if index is None else colors[index],
+            'label': f"{calendar.month_name[entry['month']]} {row['year']}",
+            'empty': index is None,
+        }
+
+    return {
+        'has_data': True,
+        'months': [calendar.month_abbr[month] for month in range(1, 13)],
+        'rows': [
+            {
+                'year': row['year'],
+                'lbs': row['lbs'],
+                'selected': row['year'] == year,
+                'cells': [cell(row, entry) for entry in row['months']],
+            }
+            for row in rows
+        ],
+        # Palest to darkest, for the legend under the grid.
+        'scale': colors,
+        'top': top,
     }
 
 

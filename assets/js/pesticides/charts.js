@@ -91,6 +91,9 @@
     var colors = palette(figure);
     var readout = figure.querySelector('.chart-readout');
     var x = data.x, y = data.y;
+    // The baseline the line is read against (the average valley county), or
+    // null where there's nothing to compare to.
+    var compare = data.compare && data.compare.length ? data.compare : null;
     var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
     var pad = x.length > 1 ? 0.5 : 1;
     var opts = Object.assign(size(el, LINE_HEIGHT), {
@@ -99,7 +102,8 @@
       cursor: {y: false, drag: {x: false, y: false}, points: {size: 9, width: 2}},
       scales: {
         x: {time: false, range: [x[0] - pad, x[x.length - 1] + pad]},
-        // From zero: a flat decade should look flat.
+        // From zero: a flat decade should look flat. Across both series, so
+        // a baseline above the line it explains doesn't draw off the top.
         y: {range: function (u, min, max) { return [0, (max || 1) * 1.12]; }},
       },
       axes: [
@@ -126,7 +130,15 @@
           points: {show: true, size: 6, width: 1.5, stroke: colors.color, fill: '#fff'},
           spanGaps: false,
         },
-      ],
+      ].concat(compare ? [{
+        // Dashed and muted: context, not a second measurement competing for
+        // attention. No points, so the series with points stays the subject.
+        stroke: colors.muted,
+        width: 1.5,
+        dash: [4, 3],
+        points: {show: false},
+        spanGaps: false,
+      }] : []),
       hooks: {
         // The scope year's point is filled, the way the old chart marked it.
         draw: [function (u) {
@@ -144,11 +156,19 @@
         setCursor: [function (u) {
           if (!readout) return;
           var index = u.cursor.idx;
-          readout.textContent = index == null ? '' : x[index] + ' · ' + amount(y[index], data.unit);
+          if (index == null) {
+            readout.textContent = '';
+            return;
+          }
+          var text = x[index] + ' · ' + amount(y[index], data.unit);
+          if (compare && compare[index] != null) {
+            text += ' · ' + (data.compare_label || 'valley average') + ' ' + amount(compare[index], data.unit);
+          }
+          readout.textContent = text;
         }],
       },
     });
-    return new uPlot(opts, [x, y], el);
+    return new uPlot(opts, compare ? [x, y, compare] : [x, y], el);
   }
 
   function bars(el, figure, data) {

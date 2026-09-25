@@ -2,7 +2,7 @@ from django.template.loader import render_to_string
 from django.test import SimpleTestCase
 
 from camp.apps.pesticides.templatetags.pesticides_explorer import (
-    lbs, month_chart, sparkline, title_case_name, trend_chart,
+    lbs, month_chart, month_heatmap, sparkline, title_case_name, trend_chart,
 )
 
 
@@ -78,6 +78,7 @@ class TrendChartTests(SimpleTestCase):
             'type': 'line', 'unit': 'pounds',
             'x': [2014, 2021, 2022, 2023], 'y': [128.0, 50.0, 300.0, 88.0],
             'selected': 2023,
+            'compare': None, 'compare_label': '',
         }
         assert data['has_data'] and data['first_year'] == 2014 and data['last_year'] == 2023
         assert data['chart_id'].startswith('chart-')
@@ -191,3 +192,118 @@ class SparklineTests(SimpleTestCase):
         points = self.points(sparkline([10, 0, 10]))
         assert len(points) == 3
         assert points[1][1] == max(y for _x, y in points)
+
+
+def grid(*years):
+    """`stats.by_year_month()`-shaped rows from (year, [12 lbs]) pairs."""
+    return [
+        {
+            'year': year,
+            'months': [{'month': m + 1, 'lbs': value, 'acres': 0, 'applications': 0}
+                for m, value in enumerate(values)],
+            'lbs': sum(values),
+            'applications': 0,
+        }
+        for year, values in years
+    ]
+
+
+ONE_MONTH = [0] * 2 + [100] + [0] * 9
+
+
+class MonthHeatmapTests(SimpleTestCase):
+    """Months across, years down, shaded by pounds."""
+
+    def cells(self, context, row=0):
+        return context['rows'][row]['cells']
+
+    def test_twelve_cells_per_year_newest_row_first(self):
+        context = month_heatmap(grid((2023, ONE_MONTH), (2022, ONE_MONTH)))
+        assert context['has_data'] is True
+        assert [row['year'] for row in context['rows']] == [2023, 2022]
+        assert len(self.cells(context)) == 12
+        assert context['months'][0] == 'Jan'
+
+    def test_the_scale_is_shared_across_years(self):
+        # One grid, one scale: a heavy month in a light year has to read as
+        # lighter than the peak, or the rows can't be compared to each other.
+        context = month_heatmap(grid((2023, [0, 0, 100] + [0] * 9), (2022, [0, 0, 10] + [0] * 9)))
+        assert context['top'] == 100
+        assert self.cells(context, 0)[2]['color'] != self.cells(context, 1)[2]['color']
+
+    def test_the_heaviest_cell_takes_the_darkest_class(self):
+        context = month_heatmap(grid((2023, ONE_MONTH), (2022, ONE_MONTH)))
+        assert self.cells(context)[2]['color'] == context['scale'][-1]
+
+    def test_a_month_with_nothing_reported_is_not_the_palest_class(self):
+        # Absent and nearly-nothing are different claims.
+        context = month_heatmap(grid((2023, ONE_MONTH), (2022, ONE_MONTH)))
+        empty = self.cells(context)[0]
+        assert empty['empty'] is True
+        assert empty['color'] not in context['scale']
+
+    def test_the_scope_year_is_marked_not_filtered_to(self):
+        context = month_heatmap(grid((2023, ONE_MONTH), (2022, ONE_MONTH)), year=2022)
+        assert [row['selected'] for row in context['rows']] == [False, True]
+
+    def test_nothing_to_draw(self):
+        # One year has no shift to show, and the by-month bars already say
+        # everything a single row could.
+        assert month_heatmap(grid((2023, ONE_MONTH)))['has_data'] is False
+        assert month_heatmap([])['has_data'] is False
+        assert month_heatmap(None)['has_data'] is False
+        assert month_heatmap(grid((2023, [0] * 12), (2022, [0] * 12)))['has_data'] is False
+
+    def test_renders_a_cell_per_month_with_a_readable_value(self):
+        html = render_to_string('pesticides/includes/month-heatmap.html',
+            month_heatmap(grid((2023, ONE_MONTH), (2022, ONE_MONTH))))
+        assert html.count('class="heatmap-cell') == 24
+        assert 'March 2023: 100 lbs' in html
+
+    def test_renders_nothing_for_a_single_year(self):
+        html = render_to_string('pesticides/includes/month-heatmap.html',
+            month_heatmap(grid((2023, ONE_MONTH))))
+        assert html.strip() == ''
+
+
+class TrendChartComparisonTests(SimpleTestCase):
+    """The optional second series: the average valley county, on a county page."""
+
+    def series(self, *years):
+        return [{'year': year, 'lbs': value} for year, value in years]
+
+    def test_no_comparison_by_default(self):
+        context = trend_chart(self.series((2023, 10), (2022, 20)))
+        assert context['chart']['compare'] is None
+        assert context['compare_label'] == ''
+
+    def test_the_baseline_is_aligned_to_the_years_of_the_main_series(self):
+        context = trend_chart(
+            self.series((2023, 10), (2022, 20)),
+            compare=self.series((2023, 5), (2022, 6)),
+            compare_label='Average valley county')
+        assert context['chart']['x'] == [2022, 2023]
+        assert context['chart']['compare'] == [6, 5]
+        assert context['compare_label'] == 'Average valley county'
+
+    def test_a_year_the_baseline_does_not_cover_is_a_gap_not_a_zero(self):
+        # Filling it would draw a baseline dropping to nothing in a year it
+        # simply says nothing about.
+        context = trend_chart(
+            self.series((2023, 10), (2022, 20), (2021, 30)),
+            compare=self.series((2023, 5)),
+            compare_label='Average valley county')
+        assert context['chart']['compare'] == [None, None, 5]
+
+    def test_an_empty_baseline_is_no_baseline(self):
+        context = trend_chart(self.series((2023, 10)), compare=[], compare_label='Average valley county')
+        assert context['chart']['compare'] is None
+        assert context['compare_label'] == ''
+
+    def test_the_legend_names_the_baseline(self):
+        html = render_to_string('pesticides/includes/trend-chart.html', trend_chart(
+            self.series((2023, 10), (2022, 20)),
+            compare=self.series((2023, 5), (2022, 6)),
+            compare_label='Average valley county'))
+        assert 'Average valley county' in html
+        assert 'chart-key is-line' in html

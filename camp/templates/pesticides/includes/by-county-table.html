@@ -11,7 +11,7 @@ wrapper scrolls before they overflow (all-years pounds run to ten digits).
 <div class="table-container">
 <table class="table is-fullwidth is-narrow is-striped by-county-table">
     <thead><tr>
-        <th>County</th>
+        <th>County{% include 'pesticides/includes/note-help.html' with key='shades' anchor='shades' %}</th>
         {% if not hide_lbs %}<th class="has-text-right{% if county_rank == 'lbs' %} is-ranked{% endif %}">{% if county_rank == 'lbs' %}Lbs{% else %}<a href="{% qs_replace rank=None %}" title="Rank by pounds">Lbs</a>{% endif %}</th>
         {# Two rates, because they disagree: a county's whole area counts the ground nobody farms. #}
         <th class="has-text-right{% if county_rank == 'lbs_per_sqmi' %} is-ranked{% endif %}">{% if county_rank == 'lbs_per_sqmi' %}Per sq mi{% else %}<a href="{% qs_replace rank='lbs_per_sqmi' %}" title="Rank by pounds per square mile of county">Per sq mi</a>{% endif %}</th>

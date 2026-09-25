@@ -1,3 +1,5 @@
+import re
+
 from django.core.cache import cache
 from django.db.models import Sum
 from django.test import TestCase, override_settings
@@ -582,6 +584,11 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         # doesn't grow with the number of movers shown. The last two are the
         # rate denominators -- the county areas and the count of sections
         # that reported anything -- both cached after the first request.
+        # The last is the seasonality grid's year-and-month group-by, which
+        # always reads every loaded year and so is cached whatever the scope.
+        # The upcoming-notices box costs two (the notices and their
+        # chemicals); it used to cost three, before the day summary replaced
+        # the per-notice table and its products prefetch went with it.
         with self.assertNumQueries(28):
             self.client.get(self.chemical.get_absolute_url())
 
@@ -1383,3 +1390,43 @@ class _StubDetail:
 
     class object:
         sqid = 'abc'
+
+
+class SeasonalityHeatmapTests(RollupTestMixin, TestCase):
+    """
+    Months across, years down, on the pages that have a by-month view: a
+    place, a section, and an entity. It always reads every loaded year, so the
+    year scope marks a row rather than filtering the grid to one.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def pages(self):
+        fresno = Region.objects.get(pk=9001)
+        section = Region.objects.get(pk=9101)
+        return {
+            'place': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            'section': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
+            'chemical': Chemical.objects.get(pk=1).get_absolute_url(),
+        }
+
+    def test_every_by_month_page_draws_the_grid(self):
+        for name, url in self.pages().items():
+            response = self.client.get(url)
+            assert response.status_code == 200, name
+            assert 'class="heatmap-grid"' in response.content.decode(), name
+
+    def test_the_grid_spans_every_loaded_year_under_a_single_year_scope(self):
+        for name, url in self.pages().items():
+            grid = self.client.get(url, {'year': 2023}).context['by_year_month']
+            assert [row['year'] for row in grid] == [2023, 2022], name
+
+    def test_the_scope_year_is_the_marked_row(self):
+        # The marked row is the scope year's, not simply the newest.
+        for year in (2022, 2023):
+            html = self.client.get(self.pages()['chemical'], {'year': year}).content.decode()
+            marked = re.findall(r'<tr class="is-selected">\s*<th scope="row">(\d{4})<', html)
+            assert marked == [str(year)], year

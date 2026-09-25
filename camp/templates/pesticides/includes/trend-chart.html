@@ -6,6 +6,11 @@
     <div class="chart-canvas" data-chart="{{ chart_id }}" role="img"
          aria-label="{{ title }}, {{ first_year }} to {{ last_year }}{% if sentence %}. {{ sentence }}{% endif %}"></div>
     {{ chart|json_script:chart_id }}
+    {% if compare_label %}
+        <p class="chart-legend">
+            <span class="chart-key is-line"></span>{{ compare_label }}
+        </p>
+    {% endif %}
     {% if sentence %}<figcaption class="trend-delta">{{ sentence }}</figcaption>{% endif %}
 </figure>
 {% endif %}

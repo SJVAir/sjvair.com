@@ -27,7 +27,6 @@ class FindAreaTests(RollupTestMixin, TestCase):
         assert 'data-maptiler-key="test-key"' in html
         assert reverse('pesticides:near-me') in html
         assert 'find-area.js' in html
-        assert 'How to read this page' in html
         assert 'Search a city, ZIP, county, or address' in html
         assert html.index('id="find"') < html.index('leaderboards')
 

@@ -83,6 +83,28 @@ class StatsTests(RollupTestMixin, TestCase):
         assert [r['lbs'] for r in rows][2:5] == [100.0, 50.0, 30.0]   # Mar, Apr, May
         assert sum(r['applications'] for r in rows) == 3
 
+    def test_by_year_month_grid(self):
+        grid = stats.by_year_month(PesticideUseRollup.objects.filter(chemical_id=1))
+        assert [row['year'] for row in grid] == [2023, 2022]
+        assert [cell['month'] for cell in grid[0]['months']] == list(range(1, 13))
+        assert [cell['lbs'] for cell in grid[0]['months']] == [0, 0, 100.0, 50.0, 30.0, 0, 0, 0, 0, 0, 0, 0]
+        assert [cell['lbs'] for cell in grid[1]['months']] == [0, 0, 80.0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    def test_by_year_month_row_total_is_the_sum_of_its_cells(self):
+        # Including undated rows in the total would leave a row claiming more
+        # than the twelve cells beside it can account for.
+        PesticideUseRollup.objects.create(
+            year=2023, month=0, county_id=9001, chemical_id=1, lbs_chemical=999.0, applications=1)
+        grid = stats.by_year_month(PesticideUseRollup.objects.filter(chemical_id=1))
+        assert grid[0]['lbs'] == 180.0
+        assert grid[0]['lbs'] == sum(cell['lbs'] for cell in grid[0]['months'])
+
+    def test_by_year_month_ignores_the_year_scope(self):
+        # Seasonality is a cross-year question, so every loaded year is here
+        # whatever the scope. No rows at all is an empty grid, not blank years.
+        assert len(stats.by_year_month(PesticideUseRollup.objects.all())) == 2
+        assert stats.by_year_month(PesticideUseRollup.objects.none()) == []
+
     def test_by_section(self):
         rows = stats.by_section(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
         assert [(r['mtrs_id'], r['lbs'], r['applications']) for r in rows] == [(9101, 150.0, 2), (9102, 30.0, 1)]

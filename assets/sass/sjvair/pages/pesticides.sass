@@ -112,10 +112,19 @@ body.pesticides
     .breadcrumbs
         background-color: $grey-lightest
         padding: 0.75rem 0px
+        // Pinned once it scrolls off, so the pickers are reachable from
+        // anywhere down a long page rather than a scroll to the top and back.
+        // Sticky rather than fixed: it keeps its space in the flow, so nothing
+        // below it jumps when it pins.
+        //
         // Above the map below it: the section map's panels and popups run
         // to z-index 1001 and would otherwise sit over the open pickers.
-        position: relative
+        position: sticky
+        top: 0
         z-index: 1010
+        // Flat against the content it's now covering, it needs an edge. Inset
+        // so it costs no height and nothing below shifts.
+        box-shadow: inset 0 -1px 0 $grey-lighter
     .explorer-scope
         display: flex
         align-items: center
@@ -232,6 +241,19 @@ body.pesticides
             width: 100%
         .u-over
             cursor: crosshair
+        // Names the dashed baseline, which the hover readout otherwise only
+        // says once the cursor is on the chart.
+        .chart-legend
+            display: flex
+            align-items: center
+            gap: 0.4rem
+            margin-top: 0.35rem
+            font-size: 0.75rem
+            color: $grey
+        .chart-key.is-line
+            display: inline-block
+            width: 1.25rem
+            border-top: 1.5px dashed $grey
         .trend-delta
             margin-top: 0.35rem
             font-size: 0.9rem
@@ -241,6 +263,114 @@ body.pesticides
     // as the line is worth reading, left-aligned in whatever column it's in.
     .trend-chart
         max-width: 32rem
+
+    // Months across, years down. Sized in rem rather than percentages so the
+    // cells stay square-ish and a twenty-year grid scrolls instead of
+    // squeezing twelve columns into slivers.
+    .month-heatmap
+        .heatmap-grid
+            // Full width so the twelve columns line up with the month bars
+            // above it: the same month sits over the same month.
+            width: 100%
+            table-layout: fixed
+            border-collapse: separate
+            border-spacing: 2px
+            font-size: 0.75rem
+            font-variant-numeric: tabular-nums
+            th
+                color: $grey
+                font-weight: 400
+                text-align: center
+                padding: 0
+            th[scope="row"]
+                text-align: right
+                padding-right: 0.4rem
+                white-space: nowrap
+                width: 2.6rem
+            tr.is-selected th[scope="row"]
+                color: $text
+                font-weight: 700
+        .heatmap-cell
+            // table-layout: fixed shares the row out between the twelve
+            // columns; the year label takes its content width first.
+            height: 1.15rem
+            padding: 0
+            border-radius: 2px
+            &.is-empty
+                // A month with nothing reported reads as absent, not as light.
+                background-image: none
+                opacity: 0.55
+        // Hover: the cell's own row and column, so a square can be read back
+        // to its month and its year. An outline rather than a fill, which
+        // would misreport the value the shade is carrying.
+        .heatmap-cell.is-cross, th.is-cross
+            box-shadow: inset 0 0 0 1px rgba($black, 0.25)
+        .heatmap-cell.is-hovered
+            box-shadow: inset 0 0 0 2px $text
+        th.is-cross
+            box-shadow: none
+            color: $text
+            font-weight: 700
+        .heatmap-legend
+            display: flex
+            align-items: center
+            gap: 0.3rem
+            margin-top: 0.4rem
+            font-size: 0.75rem
+            color: $grey
+        .heatmap-swatch
+            display: inline-block
+            width: 0.9rem
+            height: 0.7rem
+            border-radius: 2px
+        .heatmap-top
+            margin-left: auto
+            font-variant-numeric: tabular-nums
+
+    // Upcoming notices: a summary line per scheduled day, opening onto that
+    // day's filings. Closed by default -- a county's notices are dozens of
+    // near-identical rows, which is what buried the page before.
+    .upcoming-day
+        border-top: 1px solid $grey-lighter
+        &:last-child
+            border-bottom: 1px solid $grey-lighter
+        > summary
+            display: flex
+            align-items: center
+            flex-wrap: wrap
+            gap: 0.5rem
+            padding: 0.5rem 0.25rem
+            cursor: pointer
+            font-size: 0.9rem
+            // The native marker is replaced by the chevron in the markup.
+            list-style: none
+            &::-webkit-details-marker
+                display: none
+            &:hover
+                background-color: $grey-lightest
+        .day-caret
+            color: $grey
+            transition: transform 120ms ease-in-out
+        &[open] > summary .day-caret
+            transform: rotate(180deg)
+        @media (prefers-reduced-motion: reduce)
+            .day-caret
+                transition: none
+        .day-date
+            font-weight: 600
+            min-width: 6rem
+        .day-count, .day-acres
+            color: $grey
+            font-variant-numeric: tabular-nums
+        .day-chemicals
+            margin-left: auto
+            text-align: right
+        .day-notices
+            margin: 0.25rem 0 0.75rem
+            font-size: 0.85rem
+            th, td
+                white-space: nowrap
+                font-variant-numeric: tabular-nums
 
     .by-year-table, .by-county-table
         // Four numeric columns in a narrow column: keep them on one line and
@@ -488,14 +618,13 @@ body.pesticides
         .tag .delete
             margin-left: 0.35rem
 
-    .how-to-read
-        margin: 1rem 0 1.5rem
-        summary
-            cursor: pointer
-            font-weight: 600
-        p
-            @extend .has-text-grey-dark
-            margin-top: 0.5rem
+    // The "?" that explains the thing it sits beside (includes/note-help.html).
+    .note-help
+        margin-left: 0.35rem
+        color: $grey-light
+        font-size: 0.8em
+        &:hover
+            color: $link
 
     .what-this-means
         margin: .5rem 0 1rem
@@ -531,6 +660,9 @@ body.pesticides
             border-bottom: 2px solid $primary
         .card-header-title
             font-weight: 600
+        // "Lbs (2023)" wraps to two lines once three cards share a row.
+        thead th
+            white-space: nowrap
         // The rank column, styled like the landing boards' counters: a
         // narrow grey "1." hugging the name.
         .rank

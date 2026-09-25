@@ -1,23 +1,44 @@
-{% load pesticides_explorer %}
+{% load humanize pesticides_explorer %}
 {% if upcoming_by_county %}
 <div class="tags mb-3">
     {% for row in upcoming_by_county %}<span class="tag is-medium">{{ row.county_name|cut:" County" }} <strong class="ml-1">{{ row.count }}</strong></span>{% endfor %}
 </div>
 {% endif %}
-<table class="table is-fullwidth is-narrow is-striped">
-    <thead><tr><th>Scheduled</th><th>County</th><th>Method</th><th class="has-text-right">Treated</th><th>Also on this notice</th></tr></thead>
-    <tbody>
-    {% for notice in upcoming %}
-        <tr>
-            <td>{{ notice.scheduled_application|date:'M j, Y' }}</td>
-            <td>{% if notice.county %}<a href="{% region_url notice.county %}">{{ notice.county.short_name }}</a>{% else %}—{% endif %}</td>
-            <td>{{ notice.application_method|default:'—' }}</td>
-            <td class="has-text-right">{% if notice.treated_amount %}{{ notice.treated_amount|floatformat:1 }} {{ notice.treated_units|lower }}{% else %}—{% endif %}</td>
-            <td>
-                {% for product in notice.products.all %}{% if product != object %}<a class="tag is-light" href="{{ product.get_absolute_url }}">{{ product.name }}</a> {% endif %}{% endfor %}
-                {% for chem in notice.chemicals.all %}{% if chem != object %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.display_name }}</a> {% endif %}{% endfor %}
-            </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+{# One row per scheduled day, opening onto the filings behind it. Each filing #}
+{# is its own notice, so the same product, method and day repeat for as many #}
+{# blocks as were filed -- a dozen near-identical rows by default, which is #}
+{# what the summary is for. #}
+<div class="upcoming-days">
+{% for day in upcoming_days %}
+    <details class="upcoming-day">
+        {# The chevron is ours rather than the native ::marker: a flex summary #}
+        {# drops the marker, and a block child of a list-item summary wraps #}
+        {# below it. This keeps the row on one line and matches the chevrons #}
+        {# on the scope and map pickers. #}
+        <summary>
+            <span class="icon is-small day-caret"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            <span class="day-date">{{ day.date|date:'D M j' }}</span>
+            <span class="day-count">{{ day.count|intcomma }} notice{{ day.count|pluralize }}</span>
+            {% if day.acres %}<span class="day-acres">{{ day.acres|floatformat:'-1'|intcomma }} acres</span>{% endif %}
+            <span class="day-chemicals">
+                {% for chem in day.chemicals %}<a class="tag" href="{{ chem.get_absolute_url }}">{{ chem.display_name }}</a> {% endfor %}
+            </span>
+        </summary>
+        <table class="table is-fullwidth is-narrow is-striped day-notices">
+            <thead><tr><th>Time</th><th>Method</th><th class="has-text-right">Treated</th><th>Section</th></tr></thead>
+            <tbody>
+            {% for notice in day.notices %}
+                <tr>
+                    <td><a href="{% url 'pesticides:notice-detail' sqid=notice.sqid %}">{{ notice.scheduled_application|date:'g:i A' }}</a></td>
+                    <td>{{ notice.application_method|default:'—' }}</td>
+                    <td class="has-text-right">{% if notice.treated_amount %}{{ notice.treated_amount|floatformat:'-1'|intcomma }} {{ notice.treated_units|lower }}{% else %}—{% endif %}</td>
+                    <td>
+                        {% if notice.mtrs %}<a href="{% url 'pesticides:section-detail' sqid=notice.mtrs.sqid %}">{{ notice.mtrs.external_id }}</a>{% else %}—{% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </details>
+{% endfor %}
+</div>

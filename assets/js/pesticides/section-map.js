@@ -115,6 +115,7 @@
     allSections: 'Each square is one square-mile section, across every township in view.',
   };
 
+
   // The base grid: present, but barely, so the fills read as a surface.
   var GRID_LINE = { color: '#1f2d3d', opacity: 0.18 };
   // The section whose popup is open keeps an outline until it closes: the

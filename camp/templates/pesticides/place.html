@@ -26,20 +26,6 @@
     {% endif %}
 </div>
 
-<div class="box right-now">
-    <p>
-        {% if upcoming_count %}
-            <strong>{{ upcoming_count }}</strong> notice{{ upcoming_count|pluralize }} scheduled nearby.
-        {% else %}
-            No notices of intent are currently scheduled here.
-        {% endif %}
-    </p>
-    {% if upcoming %}
-        {% include 'pesticides/includes/upcoming-notices.html' %}
-    {% endif %}
-    <p class="mt-2 mb-0"><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
-</div>
-
 <div class="level stat-row box">
     <div class="level-item has-text-centered">
         <div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
@@ -65,48 +51,74 @@
     </div>
 </div>
 
-{% include 'pesticides/includes/how-to-read.html' %}
-
 {% include 'pesticides/includes/section-map.html' %}
+
+<div class="box right-now mt-5">
+    <p>
+        {% if upcoming_count %}
+            <strong>{{ upcoming_count }}</strong> notice{{ upcoming_count|pluralize }} scheduled in this area.{% include 'pesticides/includes/note-help.html' with key='noi_meaning' anchor='notices' %}
+        {% else %}
+            No notices of intent are currently scheduled here.
+        {% endif %}
+    </p>
+    {% if upcoming %}
+        {% include 'pesticides/includes/upcoming-notices.html' %}
+    {% endif %}
+    <p class="mt-2 mb-0"><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
+</div>
 
 <div class="columns mt-6">
     <section class="column is-5-desktop trend-section">
         <h2 class="title is-4">By year</h2>
-        {% trend_chart by_year year %}
+        {% trend_chart by_year year compare=compare_by_year compare_label=compare_label %}
     </section>
-    <section class="column is-7-desktop month-bars-section">
+    <section class="column is-7-desktop season-section">
         <h2 class="title is-4">By month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
         {% if by_month %}
-            {% month_chart by_month year_label %}
-            {% if peak_month %}<p class="mt-2">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
+            {% if peak_month %}<p class="mb-3">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
+            {# The heatmap's top row is the same year the bars drew, so only #}
+            {# one of them runs. The bars are the fallback for a place with a #}
+            {# single year loaded, where a one-row grid would say less. #}
+            {% if by_year_month|length > 1 %}
+                {% month_heatmap by_year_month year %}
+            {% else %}
+                {% month_chart by_month year_label %}
+            {% endif %}
         {% else %}
             <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
         {% endif %}
     </section>
 </div>
 
+{# Directly under the trend it explains: "Down 2% since 2022" and the #}
+{# chemicals that account for it used to sit 800px apart. Full width because #}
+{# two four-column tables don't fit a half -- the percent column was the #}
+{# first thing to get cut off. #}
+{% if movers %}
+<section class="movers-section mt-6">
+    <h2 class="title is-4">What moved most</h2>
+    {% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}
+</section>
+{% endif %}
+
 <section class="top-lists mt-6">
     <h2 class="title is-4">What's applied here</h2>
     {% comment %}
-    Four cards, two by two; products before chemicals. Under the
+    The three kinds across one row; products before chemicals. Under the
     chemicals-of-concern scope every card is already of concern, so the
-    dedicated card drops out, the chemicals card's title says what it now is,
-    and the remaining three lay out 2 + 1 -- the same rules as the landing
-    page's leaderboards.
+    dedicated card drops out and the chemicals card's title says what it now
+    is -- the same rules as the landing page's leaderboards.
+
+    The concern card sits below rather than in the row: it carries only the
+    chemicals of concern the chemicals card doesn't already list (see
+    views._place_cards), so it reads as a continuation of that card, not a
+    fourth kind.
     {% endcomment %}
     <div class="columns is-multiline">
-        <div class="column is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
-        <div class="column is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
-        {% if chemicals_of_concern_card %}
-        <div class="column is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=chemicals_of_concern_card %}</div>
-        {% endif %}
-        <div class="column is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
+        <div class="column is-one-third-desktop is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
+        <div class="column is-one-third-desktop is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
+        <div class="column is-one-third-desktop is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
     </div>
-    {% if movers %}
-    <div class="columns">
-        <div class="column">{% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}</div>
-    </div>
-    {% endif %}
 </section>
 
 {% if is_school_district %}

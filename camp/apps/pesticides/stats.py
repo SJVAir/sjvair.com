@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 from django.contrib.gis.db.models.functions import Centroid
 from django.contrib.gis.measure import D
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Case, Count, F, FloatField, Max, Min, Q, Sum, When
 from django.utils import timezone
@@ -307,6 +308,37 @@ def by_year(rows, lbs_field='lbs_chemical'):
     )
 
 
+def valley_by_year(concern=''):
+    """
+    Lbs per year across all eight counties -- the baseline a single county's
+    trend is read against. One series for every county page, so it's cached.
+
+    Reads the totals table for the same reason build_by_year() does: one row
+    per year, county and chemical instead of the millions of rollup rows those
+    years span. A narrowing stays on the rollup, where the totals rows can't
+    follow it.
+    """
+    def build():
+        if concern:
+            return by_year(narrow_rows(PesticideUseRollup.objects.all(), concern))
+        return by_year(PesticideUseTotal.objects.filter(chemical__isnull=False))
+
+    return cached(all_years_key('valley-by-year', concern or ''), build)
+
+
+def average_county_by_year(concern=''):
+    """
+    valley_by_year() divided by the eight counties: what a typical valley
+    county applied that year. Dividing rather than plotting the valley total
+    keeps the comparison on the same axis as the county's own line -- a total
+    eight times the size would flatten the line it's meant to be read against.
+    """
+    return [
+        {**row, 'lbs': (row['lbs'] or 0) / SJV_COUNTY_COUNT}
+        for row in valley_by_year(concern)
+    ]
+
+
 def trend_deltas(by_year, year, field='lbs'):
     """
     How the selected year compares to the year before it and to the first
@@ -457,6 +489,46 @@ def by_month(rows, year, lbs_field='lbs_chemical', all_years=False):
     ]
 
 
+def by_year_month(rows, lbs_field='lbs_chemical'):
+    """
+    Lbs per (year, month) as one row per year, newest first, each carrying
+    twelve zero-filled months. Feeds the seasonality heatmap.
+
+    Deliberately not scoped to a year: a shift in when something is applied is
+    only visible across years, so this always reads every loaded year and the
+    heatmap marks the scope year rather than filtering to it -- the same thing
+    the by-year trend chart does.
+
+    Undated rows (month 0) are left out, as by_month() leaves them out, and
+    each row's `lbs` is the sum of its twelve cells rather than the year's
+    total, so a row never claims more than its cells can account for.
+    """
+    found = {}
+    for row in (rows.filter(month__gte=1)
+            .values('year', 'month')
+            .annotate(**_totals(lbs_field))):
+        found[(row['year'], row['month'])] = row
+
+    grid = []
+    for year in sorted({key[0] for key in found}, reverse=True):
+        months = [
+            {
+                'month': month,
+                'lbs': (found.get((year, month)) or {}).get('lbs') or 0,
+                'acres': (found.get((year, month)) or {}).get('acres') or 0,
+                'applications': (found.get((year, month)) or {}).get('applications') or 0,
+            }
+            for month in range(1, 13)
+        ]
+        grid.append({
+            'year': year,
+            'months': months,
+            'lbs': sum(cell['lbs'] for cell in months),
+            'applications': sum(cell['applications'] for cell in months),
+        })
+    return grid
+
+
 def by_section(rows, year, lbs_field='lbs_chemical'):
     return [
         {'mtrs_id': r['mtrs'], 'lbs': r['lbs'] or 0, 'acres': r['acres'] or 0, 'applications': r['applications'] or 0}
@@ -597,7 +669,12 @@ def top_related(rows, year, field, lbs_field='lbs_chemical', limit=10, all_years
         .order_by(F('lbs').desc(nulls_last=True), field)[:limit]
     )
     model = rows.model._meta.get_field(field).related_model
-    objects = model.objects.in_bulk([row[field] for row in found])
+    objects = model.objects
+    if field == 'product':
+        # The product badge reads is_restricted, which walks the ingredients
+        # once per row without this.
+        objects = objects.with_restricted()
+    objects = objects.in_bulk([row[field] for row in found])
     return [
         SimpleNamespace(obj=objects[row[field]], lbs=row['lbs'] or 0)
         for row in found if row[field] in objects
@@ -700,6 +777,67 @@ def upcoming_notices(notices, limit=10):
         .prefetch_related('chemicals', 'products')
         .order_by('scheduled_application')[:limit]
     )
+
+
+# The unit a treated amount has to be in to be summed with the others.
+# Everything else (a handful of "Cubic Feet" structural fumigations) still
+# counts as a notice; only its amount stays out of the total.
+ACRES = 'acres'
+UPCOMING_DAYS = 7
+
+
+def upcoming_by_day(notices, limit=UPCOMING_DAYS):
+    """
+    Upcoming notices collapsed to one row per scheduled day: how many, how
+    many acres, and which chemicals. A county's notices are otherwise dozens
+    of near-identical rows -- the same product, method and day, differing only
+    in acreage -- because each filing is its own notice.
+
+    Grouped in Python rather than with TruncDate: the settings' TIME_ZONE is
+    UTC while the valley's day boundary is DEFAULT_TIMEZONE, so a database
+    truncation would cut the days in the wrong place (see local_month_bounds
+    in views.py for the same trap). The set is one area's upcoming notices --
+    tens of rows -- so it's cheap to walk.
+
+    `acres` is None where nothing that day reported an amount in acres, rather
+    than 0, which would read as a measured nothing.
+
+    Each row keeps its own `notices`, so the summary can open onto the filings
+    it stands for -- a day's row is a way into them, not a replacement.
+    """
+    tz = settings.DEFAULT_TIMEZONE
+    days = {}
+    # distinct(): a narrowed queryset joins the chemicals M2M, which would
+    # otherwise count a notice once per chemical it matched.
+    rows = (_upcoming(notices)
+        .distinct()
+        .select_related('mtrs')
+        .prefetch_related('chemicals')
+        .order_by('scheduled_application'))
+    for notice in rows:
+        day = notice.scheduled_application.astimezone(tz).date()
+        row = days.setdefault(day, {'date': day, 'count': 0, 'acres': None, 'chemicals': {}, 'notices': []})
+        row['count'] += 1
+        row['notices'].append(notice)
+        if notice.treated_amount and (notice.treated_units or '').strip().lower() == ACRES:
+            row['acres'] = (row['acres'] or 0) + notice.treated_amount
+        for chemical in notice.chemicals.all():
+            row['chemicals'].setdefault(chemical.pk, chemical)
+
+    return [
+        {**row, 'chemicals': sorted(row['chemicals'].values(), key=lambda c: c.display_name)}
+        for row in sorted(days.values(), key=lambda row: row['date'])[:limit]
+    ]
+
+
+def notices_in_days(days):
+    """
+    The individual notices behind upcoming_by_day()'s rows, in order. The
+    pages render the day rows, but templates still guard on a flat list and
+    the section page asserts against one -- deriving it here keeps that from
+    costing a second query for the same notices.
+    """
+    return [notice for day in days for notice in day['notices']]
 
 
 def upcoming_count(notices):
