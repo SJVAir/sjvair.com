@@ -96,23 +96,6 @@ def rollup_years():
     return list(PesticideUseRollup.objects.order_by('year').values_list('year', flat=True).distinct())
 
 
-def rebuild_totals_year(year, atomic=True):
-    """
-    Replace the per-county entity totals for `year` from the rollup.
-    Returns the number of rows written. Pass `atomic=False` when the caller
-    already holds the transaction (rebuild_year does).
-    """
-    context = transaction.atomic() if atomic else nullcontext()
-    with context:
-        PesticideUseTotal.objects.filter(year=year).delete()
-        written = 0
-        with connection.cursor() as cursor:
-            for field in TOTALS_FIELDS:
-                cursor.execute(totals_sql(field), [year])
-                written += cursor.rowcount
-        return written
-
-
 def rebuild_section_totals_year(year, atomic=True):
     """
     Replace the per-section totals for `year` from the rollup. Returns the
@@ -127,6 +110,28 @@ def rebuild_section_totals_year(year, atomic=True):
             return cursor.rowcount
 
 
+def rebuild_totals_year(year, atomic=True):
+    """
+    Replace everything derived from the rollup for `year`: the per-county
+    entity totals and the per-section totals. Returns the number of rows
+    written. Pass `atomic=False` when the caller already holds the
+    transaction (rebuild_year does).
+
+    Both live here so there is one way to rebuild what the rollup feeds --
+    `rebuild_pesticide_rollup --totals-only` calls this, and a table it
+    didn't know about would be left empty and the map would read zeros.
+    """
+    context = transaction.atomic() if atomic else nullcontext()
+    with context:
+        PesticideUseTotal.objects.filter(year=year).delete()
+        written = 0
+        with connection.cursor() as cursor:
+            for field in TOTALS_FIELDS:
+                cursor.execute(totals_sql(field), [year])
+                written += cursor.rowcount
+        return written + rebuild_section_totals_year(year, atomic=False)
+
+
 def rebuild_year(year):
     """Replace the rollup rows (and their totals) for `year`. Returns the number of rollup rows written."""
     with transaction.atomic():
@@ -135,7 +140,6 @@ def rebuild_year(year):
             cursor.execute(REBUILD_SQL, [year])
             written = cursor.rowcount
         rebuild_totals_year(year, atomic=False)
-        rebuild_section_totals_year(year, atomic=False)
         return written
 
 
@@ -144,7 +148,4 @@ def rebuild_all():
 
 
 def rebuild_totals_all():
-    return {
-        year: rebuild_totals_year(year) + rebuild_section_totals_year(year)
-        for year in rollup_years()
-    }
+    return {year: rebuild_totals_year(year) for year in rollup_years()}

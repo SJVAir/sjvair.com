@@ -2,7 +2,7 @@ import pytest
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
-from camp.apps.pesticides.models import PesticideUseRollup, PesticideUseTotal
+from camp.apps.pesticides.models import PesticideSectionTotal, PesticideUseRollup, PesticideUseTotal
 
 
 class RollupModelTests(TestCase):
@@ -150,9 +150,21 @@ class TotalsTests(TestCase):
         assert PesticideUseTotal.objects.filter(year=2023, county_id=9001, chemical_id=1).get().lbs_chemical == 150.0
         assert 'total rows' in out.getvalue()
 
+    def test_totals_only_rebuilds_the_section_totals_too(self):
+        # Everything the rollup feeds is rebuilt by the one command. A table
+        # it didn't know about would be left empty and the map would read
+        # zeros for every section.
+        PesticideSectionTotal.objects.all().delete()
+
+        call_command('rebuild_pesticide_rollup', '--all', '--totals-only', stdout=StringIO())
+
+        assert PesticideSectionTotal.objects.filter(year=2023, mtrs_id=9101).get().lbs_chemical == 670.0
+
     def test_rebuild_totals_year_is_idempotent(self):
         written = rollup.rebuild_totals_year(2023)
-        assert written == PesticideUseTotal.objects.filter(year=2023).count()
+        expected = (PesticideUseTotal.objects.filter(year=2023).count()
+            + PesticideSectionTotal.objects.filter(year=2023).count())
+        assert written == expected
         assert rollup.rebuild_totals_year(2023) == written
 
 
