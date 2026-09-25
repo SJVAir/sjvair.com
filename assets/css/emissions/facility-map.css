@@ -121,3 +121,27 @@
     max-width: 8.5rem;
   }
 }
+
+/* The Dairies tab map (dairy-map.js), and dairies on region pages' maps. */
+.map-toolbar [data-counties-only][hidden] {
+  display: none;
+}
+.facility-map-legend .legend-size circle.is-dairy {
+  stroke: #d95f0e;
+}
+.facility-map-legend .legend-ring.is-digester {
+  width: 0.75rem;
+  height: 0.75rem;
+  background: #fec44f;
+  border: 2.5px solid #2e7d32;
+}
+.facility-map-legend .legend-ramp + .legend-ramp {
+  margin-top: 0.6rem;
+}
+.dairy-popup-herd {
+  margin: 0.15rem 0 0.3rem;
+  font-size: 0.8rem;
+}
+.dairy-popup-herd td {
+  padding: 0 0.75rem 0 0;
+}

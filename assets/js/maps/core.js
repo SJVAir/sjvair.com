@@ -179,6 +179,52 @@
     },
   };
 
+  // A same-origin JSON fetch that rejects on an HTTP error.
+  function getJson(url) {
+    return fetch(url, { credentials: 'same-origin' }).then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    });
+  }
+
+  // Numbers as the maps' popups and legends write them.
+  var format = {
+    // A data value, by the same rules as the `quantity` template filter:
+    // always one decimal, thousands separators, '<0.1' for a nonzero value
+    // under 0.05, '—' for none.
+    quantity: function (value) {
+      if (value === null || value === undefined) return '—';
+      if (value && Math.abs(value) < 0.05) return '<0.1';
+      return value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    },
+    // A legend's round number (a class boundary, a size in the circle key):
+    // no forced decimals, so 0.01 reads '0.01', 10 reads '10', 1456 '1,456'.
+    // A nonzero value under 0.01 reads '<0.01', or with `precise` its two
+    // significant digits ('0.0025').
+    round: function (value, precise) {
+      if (value && Math.abs(value) < 0.01) return precise ? String(Number(value.toPrecision(2))) : '<0.01';
+      return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    },
+  };
+
+  // Classed colour ramps: `breaks` are the ascending boundaries between
+  // breaks.length + 1 classes.
+  var classes = {
+    index: function (value, breaks) {
+      var index = 0;
+      while (index < breaks.length && value >= breaks[index]) index++;
+      return index;
+    },
+    // "under 0.1", "0.1–1", ..., "100 and up"; `round` writes the boundaries
+    // (format.round by default).
+    label: function (index, breaks, round) {
+      round = round || format.round;
+      if (index === 0) return 'under ' + round(breaks[0]);
+      if (index === breaks.length) return round(breaks[index - 1]) + ' and up';
+      return round(breaks[index - 1]) + '–' + round(breaks[index]);
+    },
+  };
+
   window.SJVAirMaps = {
     TILE_STYLES: Object.keys(TILE_STYLE_PATHS),
     EMPTY: EMPTY,
@@ -197,5 +243,8 @@
     logger: logger,
     debounce: debounce,
     counties: counties,
+    getJson: getJson,
+    format: format,
+    classes: classes,
   };
 })();

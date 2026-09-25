@@ -56,22 +56,11 @@
 
   var escapeHtml = M.escapeHtml;
   var logError = M.logger('facility-map');
-
-  // A data value (a facility's or an area's), by the same rules as the
-  // `quantity` template filter: always one decimal, thousands separators,
-  // '<0.1' for a nonzero value under 0.05, '—' for none.
-  function quantity(value) {
-    if (value === null || value === undefined) return '—';
-    if (value && Math.abs(value) < 0.05) return '<0.1';
-    return value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  }
-
-  // A legend's round number (a class boundary, a size in the circle key):
-  // no forced decimals, so 0.01 reads '0.01', 10 reads '10', 1456 '1,456'.
-  function roundLabel(value) {
-    if (value && Math.abs(value) < 0.01) return '<0.01';
-    return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
-  }
+  var getJson = M.getJson;
+  var quantity = M.format.quantity;
+  var roundLabel = M.format.round;
+  var classIndex = M.classes.index;
+  var classLabel = M.classes.label;
 
   function breaksFor(unit) {
     return CLASS_BREAKS[unit] || CLASS_BREAKS.tons;
@@ -82,28 +71,8 @@
     return set[unit] || set.tons;
   }
 
-  function classIndex(value, breaks) {
-    var index = 0;
-    while (index < breaks.length && value >= breaks[index]) index++;
-    return index;
-  }
-
-  // "under 0.1", "0.1–1", ..., "100 and up"
-  function classLabel(index, breaks) {
-    if (index === 0) return 'under ' + roundLabel(breaks[0]);
-    if (index === breaks.length) return roundLabel(breaks[index - 1]) + ' and up';
-    return roundLabel(breaks[index - 1]) + '–' + roundLabel(breaks[index]);
-  }
-
   function radiusFor(value, max) {
     return MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * Math.sqrt(value / max);
-  }
-
-  function getJson(url) {
-    return fetch(url, { credentials: 'same-origin' }).then(function (response) {
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      return response.json();
-    });
   }
 
   // Precompute each circle so the layer's paint is plain `get`s.

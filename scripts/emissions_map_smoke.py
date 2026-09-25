@@ -10,9 +10,14 @@ the view in the URL, tracts, a measure change, back to facilities), a county
 page (outlined, and a boosted year change keeping one map still in Areas) and
 a near-me page (its circle), and checks the scope bar's boosted swaps carry
 the map's current state (back to Facilities, a cleared sector, no repeated
-parameters), and fails on any console error. Dev-only;
+parameters). Then the Dairies tab: its two views (dairies drawn, counties
+shaded), a measure change redrawing the legend, a sort (a boosted swap)
+keeping Counties and its measure, a table row's name zooming to its dairy
+with its popup, a county narrowing the dairies, and the NOx / 2024 fallback
+notes. Fails on any console error. Dev-only;
 nothing here runs in CI. Needs local data (import_air_districts,
-import_ceidars, import_cepam, and the regions with their boundaries).
+import_ceidars, import_cepam, import_cadd, and the regions with their
+boundaries).
 
 Setup (Chrome must be installed):
     python3 -m venv .venv && .venv/bin/pip install selenium
@@ -75,6 +80,29 @@ def area_count(driver):
     return driver.execute_script(
         "var m = window.EmissionsFacilityMap.instances()[0];"
         "return m ? m.map.querySourceFeatures('areas').filter(function (f) { return f.properties._empty === 0; }).length : 0;"
+    )
+
+
+def wait_dairies(driver, timeout=MAP_TIMEOUT):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if driver.execute_script("var el = document.querySelector('.dairy-map'); return !!el && el.dataset.loaded === '1';"):
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def dairy_count(driver):
+    return driver.execute_script(
+        "var m = window.EmissionsDairyMap.instances()[0];"
+        "return m ? m.map.querySourceFeatures('dairies').length : 0;"
+    )
+
+
+def shaded_counties(driver):
+    return driver.execute_script(
+        "var m = window.EmissionsDairyMap.instances()[0];"
+        "return m ? m.map.querySourceFeatures('counties').filter(function (f) { return f.properties._empty === 0; }).length : 0;"
     )
 
 
@@ -280,6 +308,53 @@ def main():
         stayed = wait_areas(driver) and driver.execute_script(
             "var list = window.EmissionsFacilityMap.instances(); return list.length === 1 && list[0].view === 'areas';")
         check(results, 'near-me radius button keeps Areas view', stayed and 'view=areas' in driver.current_url, driver.current_url)
+
+        driver.get(args.base + '/tools/emissions/dairies/')
+        check(results, 'dairies tab loads', wait_dairies(driver))
+        drawn = settled_count(driver, dairy_count)
+        check(results, 'dairies tab draws dairies', drawn > 0, f'{drawn} dairies')
+        driver.execute_script("document.querySelector('.dairy-map-view [data-view=counties]').click()")
+        shaded = settled_count(driver, shaded_counties)
+        check(results, 'counties view shades counties', shaded > 0 and 'view=counties' in driver.current_url, f'{shaded} shaded')
+        driver.execute_script("document.querySelector('.dairy-map-measure [data-measure=animal_units]').click()")
+        time.sleep(0.5)
+        legend = driver.execute_script("return document.querySelector('.dairy-map-legend .legend-title').textContent;")
+        check(results, 'a measure change redraws the legend',
+              'Animal units' in legend and 'measure=animal_units' in driver.current_url, legend)
+        # A boosted swap from the table (a sort) keeps the view and measure.
+        driver.find_element(By.CSS_SELECTOR, '.dairy-table thead a.sort-link').click()
+        time.sleep(1)
+        kept = wait_dairies(driver) and driver.execute_script(
+            "var list = window.EmissionsDairyMap.instances();"
+            "return list.length === 1 && list[0].view === 'counties' && list[0].measure === 'animal_units';")
+        check(results, 'a sort (boosted swap) keeps Counties and its measure',
+              kept and 'view=counties' in driver.current_url and 'measure=animal_units' in driver.current_url, driver.current_url)
+        driver.execute_script("var a = document.querySelector('.dairy-zoom'); a.scrollIntoView(); a.click();")
+        opened = False
+        deadline = time.time() + 8
+        while time.time() < deadline and not opened:
+            opened = driver.execute_script(
+                "var p = document.querySelector('.maplibregl-popup .dairy-popup');"
+                "return !!p && p.textContent.indexOf('Animal units') !== -1;")
+            time.sleep(0.25)
+        back = driver.execute_script("return window.EmissionsDairyMap.instances()[0].view === 'dairies';")
+        check(results, 'a row name zooms to its dairy, back in Dairies, with its popup', opened and back)
+
+        driver.get(args.base + '/tools/emissions/dairies/?county=tulare')
+        wait_dairies(driver)
+        settled_count(driver, dairy_count)
+        time.sleep(0.5)
+        seen = driver.execute_script(
+            "var m = window.EmissionsDairyMap.instances()[0], seen = {};"
+            "m.map.queryRenderedFeatures({layers: ['dairies']}).forEach(function (f) { seen[f.properties.county] = 1; });"
+            "return Object.keys(seen);")
+        check(results, 'a county narrows the dairy map', seen == ['tulare'], str(seen))
+
+        driver.get(args.base + '/tools/emissions/dairies/?pollutant=nox&year=2024')
+        notes = driver.execute_script(
+            "return Array.prototype.map.call(document.querySelectorAll('.dairy-note'), function (n) { return n.textContent; });")
+        check(results, 'NOx and 2024 fall back to ROG and 2023, with notes',
+              len(notes) == 2 and 'showing ROG' in ' '.join(notes), str(notes))
 
         errors = console_errors(driver)
         check(results, 'no console errors', not errors, '; '.join(errors)[:300])

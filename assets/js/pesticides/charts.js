@@ -7,7 +7,9 @@
  * markup has gone. explorer.js calls init() from its htmx:load hook, which
  * fires on page load and again for every swapped-in element.
  *
- * Two kinds: `line` (the by-year trend) and `bars` (the by-month totals).
+ * Two kinds: `line` (the by-year trend, optionally with a dashed second
+ * series `y2`, readout `labels` and a marked year `marker`) and `bars` (the
+ * by-month totals).
  * Colours come from CSS custom properties on `.explorer-chart`, so the Sass
  * stays the one place the palette lives.
  */
@@ -61,6 +63,7 @@
   function palette(figure) {
     return {
       color: cssVar(figure, '--chart-color', '#3273dc'),
+      color2: cssVar(figure, '--chart-color-2', '#d95f0e'),
       grid: cssVar(figure, '--chart-grid', '#ededed'),
       muted: cssVar(figure, '--chart-muted', '#7a7a7a'),
       text: cssVar(figure, '--chart-text', '#4a4a4a'),
@@ -91,8 +94,31 @@
     var colors = palette(figure);
     var readout = figure.querySelector('.chart-readout');
     var x = data.x, y = data.y;
+    // Optional: a second series (dashed), labels for the readout, and a
+    // marked year (the dairy trend's coverage change).
+    var y2 = data.y2 || null;
+    var labels = data.labels || null;
+    var marker = data.marker || null;
     var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
     var pad = x.length > 1 ? 0.5 : 1;
+    var series = [
+      {},
+      {
+        stroke: colors.color,
+        width: 2,
+        points: {show: true, size: 6, width: 1.5, stroke: colors.color, fill: '#fff'},
+        spanGaps: false,
+      },
+    ];
+    if (y2) {
+      series.push({
+        stroke: colors.color2,
+        width: 2,
+        dash: [6, 4],
+        points: {show: true, size: 5, width: 1.5, stroke: colors.color2, fill: '#fff'},
+        spanGaps: false,
+      });
+    }
     var opts = Object.assign(size(el, LINE_HEIGHT), {
       legend: {show: false},
       select: {show: false},
@@ -118,25 +144,34 @@
           size: 46,
         }),
       ],
-      series: [
-        {},
-        {
-          stroke: colors.color,
-          width: 2,
-          points: {show: true, size: 6, width: 1.5, stroke: colors.color, fill: '#fff'},
-          spanGaps: false,
-        },
-      ],
+      series: series,
       hooks: {
-        // The scope year's point is filled, the way the old chart marked it.
         draw: [function (u) {
-          if (selectedIndex < 0) return;
           var ctx = u.ctx;
+          var ratio = devicePixelRatio;
+          if (marker && x.indexOf(marker.x) !== -1) {
+            var mx = u.valToPos(marker.x, 'x', true);
+            ctx.save();
+            ctx.strokeStyle = colors.muted;
+            ctx.fillStyle = colors.muted;
+            ctx.lineWidth = ratio;
+            ctx.setLineDash([3 * ratio, 3 * ratio]);
+            ctx.beginPath();
+            ctx.moveTo(mx, u.bbox.top);
+            ctx.lineTo(mx, u.bbox.top + u.bbox.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.font = colors.font.replace(/^(\d+)px/, function (match, px) { return (px * ratio) + 'px'; });
+            ctx.fillText(marker.label, mx + 4 * ratio, u.bbox.top + 10 * ratio);
+            ctx.restore();
+          }
+          // The scope year's point is filled, the way the old chart marked it.
+          if (selectedIndex < 0) return;
           var cx = u.valToPos(x[selectedIndex], 'x', true);
           var cy = u.valToPos(y[selectedIndex], 'y', true);
           ctx.save();
           ctx.beginPath();
-          ctx.arc(cx, cy, 4.5 * devicePixelRatio, 0, Math.PI * 2);
+          ctx.arc(cx, cy, 4.5 * ratio, 0, Math.PI * 2);
           ctx.fillStyle = colors.color;
           ctx.fill();
           ctx.restore();
@@ -144,11 +179,18 @@
         setCursor: [function (u) {
           if (!readout) return;
           var index = u.cursor.idx;
-          readout.textContent = index == null ? '' : x[index] + ' · ' + amount(y[index], data.unit);
+          if (index == null) {
+            readout.textContent = '';
+          } else if (labels) {
+            readout.textContent = x[index] + ' · ' + full(y[index]) + ' ' + labels[0] +
+              (y2 ? ' · ' + full(y2[index]) + ' ' + labels[1] : '');
+          } else {
+            readout.textContent = x[index] + ' · ' + amount(y[index], data.unit);
+          }
         }],
       },
     });
-    return new uPlot(opts, [x, y], el);
+    return new uPlot(opts, y2 ? [x, y, y2] : [x, y], el);
   }
 
   function bars(el, figure, data) {
