@@ -44,6 +44,14 @@ class RegionPageTests(TestCase):
         assert 'TEST PLANT' in content
         assert map_data(content, 'level') == 'tract'
 
+    def test_urban_area_and_cdp_pages(self):
+        for region_type, kind in ((Region.Type.URBAN_AREA, 'Urban area'), (Region.Type.CDP, 'Community')):
+            region = make(region_type, f'Plantville {region_type}', AROUND_PLANT)
+            content = self.get(region, {'year': '2024'})
+            assert f'<p class="heading mb-1">{kind}' in content
+            assert 'TEST PLANT' in content
+            assert map_data(content, 'level') == 'tract'
+
     def test_tract_page(self):
         tract = make(Region.Type.TRACT, '06019000100', AROUND_PLANT, population=4321)
         tract.metadata = {**tract.metadata, 'namelsad': 'Census Tract 1'}
@@ -147,9 +155,18 @@ class FindAreaTests(TestCase):
         content = self.client.get(reverse('emissions:home')).content.decode()
         assert f'data-near-url="{reverse("emissions:near-me")}"' in content
         places = json.loads(re.search(r'id="find-area-places"[^>]*>(.*?)</script>', content, re.S).group(1))
-        assert {place['type'] for place in places} <= {'county', 'city', 'zipcode', 'place', 'school_district'}
+        assert {place['type'] for place in places} <= {'county', 'city', 'urban_area', 'cdp', 'zipcode', 'school_district'}
         fresno = next(place for place in places if place['name'] == 'Fresno County')
         assert fresno['url'] == Region.objects.get(type='county', slug='fresno').get_emissions_url()
+
+    def test_every_community_layer_is_listed_labelled(self):
+        # No de-duplication across layers: a city and an urban area of the
+        # same name are both listed; a CDP reads as a "Community".
+        cache.clear()
+        make(Region.Type.URBAN_AREA, 'Fresno', AROUND_PLANT)
+        make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
+        labels = {(place['name'], place['type_label']) for place in views.find_area_places()}
+        assert {('Fresno', 'City'), ('Fresno', 'Urban area'), ('Plantville', 'Community')} <= labels
 
     def test_jump_links_leave_the_county_out(self):
         cache.clear()

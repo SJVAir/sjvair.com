@@ -193,10 +193,30 @@ class AreaTests(DairyTestCase):
         set_city(self.small, 'Bakersfield')
         assert self.names(area=areas.RegionArea(city)) == ['SMALL DAIRY']
 
-    def test_place_region_matches_by_mailing_city_too(self):
-        place = make(Region.Type.PLACE, 'Riverdale', self.FAR_AWAY)
+    def test_cdp_region_matches_by_mailing_city_too(self):
+        cdp = make(Region.Type.CDP, 'Riverdale', self.FAR_AWAY)
         # BIG and SMALL both default to 'Riverdale'.
-        assert self.names(area=areas.RegionArea(place)) == ['BIG DAIRY', 'SMALL DAIRY']
+        assert self.names(area=areas.RegionArea(cdp)) == ['BIG DAIRY', 'SMALL DAIRY']
+
+    def test_urban_area_is_point_only(self):
+        # An urban area never matches by name: BIG's point is inside, SMALL's
+        # mailing city 'Riverdale' matches the name but its point is not.
+        urban = make(Region.Type.URBAN_AREA, 'Riverdale', AROUND_PLANT)
+        assert self.names(area=areas.RegionArea(urban)) == ['BIG DAIRY']
+
+    def test_an_aliased_mailing_city_counts_in_its_cdp(self):
+        # CADD's "Hilmar" is the Census's "Hilmar-Irwin" (cities.CITY_ALIASES).
+        cdp = make(Region.Type.CDP, 'Hilmar-Irwin', self.FAR_AWAY)
+        set_city(self.small, 'Hilmar')
+        assert self.names(area=areas.RegionArea(cdp)) == ['SMALL DAIRY']
+
+    def test_a_cdp_named_like_a_city_does_not_take_its_mailing_city(self):
+        # The resolver prefers the CITY, so only the city counts the dairy by name.
+        city = make(Region.Type.CITY, 'Bakersfield', self.FAR_AWAY)
+        cdp = make(Region.Type.CDP, 'Bakersfield', self.FAR_AWAY)
+        set_city(self.small, 'Bakersfield')
+        assert self.names(area=areas.RegionArea(city)) == ['SMALL DAIRY']
+        assert self.names(area=areas.RegionArea(cdp)) == []
 
     def test_a_dairy_with_neither_the_city_nor_the_point_does_not_match(self):
         city = make(Region.Type.CITY, 'Hanford', self.FAR_AWAY)
@@ -215,24 +235,30 @@ class AreaTests(DairyTestCase):
         assert dairies.dairy_areas(self.big) == [self.fresno, tract]
         assert dairies.dairy_areas(self.small) == [self.kern]
 
-    def test_dairy_areas_agrees_with_dairy_q_on_city_and_place(self):
+    def test_dairy_areas_agrees_with_dairy_q_on_city_and_cdp(self):
         # SMALL's point is nowhere near this boundary; only its mailing city matches.
         city = make(Region.Type.CITY, 'Bakersfield', self.FAR_AWAY)
-        place = make(Region.Type.PLACE, 'Riverdale', self.FAR_AWAY)
+        cdp = make(Region.Type.CDP, 'Riverdale', self.FAR_AWAY)
         set_city(self.small, 'Bakersfield')
         small = Dairy.objects.get(pk=self.small.pk)
         assert city in dairies.dairy_areas(small)
-        # BIG's mailing city is 'Riverdale' too, so the PLACE match applies to it as well.
-        assert place in dairies.dairy_areas(self.big)
+        # BIG's mailing city is 'Riverdale', so the CDP match applies to it.
+        assert cdp in dairies.dairy_areas(self.big)
 
-    def test_dairy_areas_drops_a_place_named_like_a_city(self):
-        # A synthetic PLACE built from the same town as a CITY only
-        # duplicates it in the popup; the PLACE is dropped, the CITY kept.
+    def test_dairy_areas_follows_an_alias(self):
+        cdp = make(Region.Type.CDP, 'Hilmar-Irwin', self.FAR_AWAY)
+        set_city(self.small, 'Hilmar')
+        assert cdp in dairies.dairy_areas(Dairy.objects.get(pk=self.small.pk))
+
+    def test_dairy_areas_lists_each_community_layer(self):
+        # A city and an urban area of the same name are both listed, city
+        # first; a region reached by point and by name is listed once.
+        urban = make(Region.Type.URBAN_AREA, 'Bakersfield', AROUND_PLANT)
         city = make(Region.Type.CITY, 'Bakersfield', AROUND_PLANT)
-        place = make(Region.Type.PLACE, 'Bakersfield', AROUND_PLANT)
-        result = dairies.dairy_areas(self.big)
-        assert city in result and place not in result
-        assert [r.name for r in result].count('Bakersfield') == 1
+        set_city(self.big, 'Bakersfield')
+        result = dairies.dairy_areas(Dairy.objects.get(pk=self.big.pk))
+        assert [r.pk for r in result].count(city.pk) == 1
+        assert result.index(city) < result.index(urban)
 
 
 class CountyEmissionsTests(DairyTestCase):

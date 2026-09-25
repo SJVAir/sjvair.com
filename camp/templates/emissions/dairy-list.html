@@ -35,8 +35,8 @@
                     <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
                 </div>
             </div>
-            {# Cities, places and ZIP codes; a dairy counts in a city or place by point or mailing city, in a ZIP or tract by point only. #}
-            {% url 'api:v2:emissions:places' as places_url %}{% include 'pesticides/includes/entity-picker.html' with kind='region' label='City, place or ZIP' selected=region search_url=places_url autosubmit=1 %}
+            {# Cities, urban areas, communities (CDPs) and ZIP codes; a dairy counts in a city or community by point or mailing city, in an urban area, ZIP or tract by point only. #}
+            {% url 'api:v2:emissions:places' as places_url %}{% include 'pesticides/includes/entity-picker.html' with kind='region' label='City, community or ZIP' selected=region search_url=places_url autosubmit=1 %}
             {% if near %}
             <div class="field"><span class="tag is-info is-light is-medium">{{ near }} <a class="delete is-small" href="{% qs_replace lat=None lng=None radius=None label=None page=None %}" aria-label="Remove the distance filter"></a></span></div>
             {% endif %}

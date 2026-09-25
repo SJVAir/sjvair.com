@@ -79,8 +79,8 @@ def get_filter_region(sqid, types=None):
     """
     The ?region= of a table's region filter, or None for a missing or
     unsearchable one. `types` narrows which region page types are accepted;
-    the facility list's default is areas.FILTER_REGION_TYPES (cities, places
-    and ZIPs), and the Dairies tab passes its own (dairy_views.FILTER_TYPES).
+    the facility list's default is areas.FILTER_REGION_TYPES (cities, urban
+    areas, CDPs and ZIPs), and the Dairies tab passes its own (dairy_views.FILTER_TYPES).
     """
     if not sqid:
         return None
@@ -368,15 +368,16 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
 
 
 AREA_PAGE_TYPES = (
-    Region.Type.COUNTY, Region.Type.CITY, Region.Type.ZIPCODE, Region.Type.PLACE,
+    Region.Type.COUNTY, *Region.COMMUNITY_TYPES, Region.Type.ZIPCODE,
     Region.Type.SCHOOL_DISTRICT, Region.Type.TRACT,
 )
 # The search box lists every page type but tracts: a tract's name is its GEOID.
+# Each community layer (city, urban area, CDP) is listed as-is, labelled, so
+# "Fresno" is both "Fresno · City" and "Fresno · Urban area".
 FIND_AREA_TYPE_LABELS = {
     Region.Type.COUNTY: 'County',
-    Region.Type.CITY: 'City',
+    **Region.COMMUNITY_LABELS,
     Region.Type.ZIPCODE: 'ZIP',
-    Region.Type.PLACE: 'Place',
     Region.Type.SCHOOL_DISTRICT: 'School district',
 }
 FIND_AREA_PLACES_KEY = f'emissions:v{stats.CACHE_VERSION}:find-area-places'
@@ -393,17 +394,13 @@ def find_area_places():
             Region.objects.filter(type__in=FIND_AREA_TYPE_LABELS, boundary__isnull=False)
             .order_by('name').values_list('sqid', 'slug', 'name', 'type')
         )
-        places = [{
+        return [{
             'name': name,
             'type': region_type,
             'type_label': FIND_AREA_TYPE_LABELS[region_type],
             'short_name': name[:-len(' County')] if name.endswith(' County') else name,
             'url': reverse('emissions:region', kwargs={'sqid': sqid, 'slug': slug}),
         } for sqid, slug, name, region_type in regions]
-        # Synthetic places share their names with the cities they were built
-        # from; "Selma · City" beside "Selma · Place" only confuses.
-        cities = {place['name'] for place in places if place['type'] == Region.Type.CITY}
-        return [p for p in places if not (p['type'] == Region.Type.PLACE and p['name'] in cities)]
     return cache.get_or_set(FIND_AREA_PLACES_KEY, compute, stats.CACHE_TIMEOUT)
 
 
@@ -578,7 +575,7 @@ class RegionPage(AreaPage):
             extra['county'] = region
         return super().get_context_data(
             title=region_title(region),
-            kind=region.get_type_display(),
+            kind=region.type_label,
             population=(region.metadata or {}).get('population'),
             context_bar=stats.county_context(stats.Scope(
                 year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant,

@@ -26,7 +26,7 @@ from django.db.models import Count, Exists, F, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Lower
 
-from camp.apps.emissions import areas, cepam, stats
+from camp.apps.emissions import areas, cepam, cities, stats
 from camp.apps.emissions.models import (
     LARGE_MATURE_COWS, LARGE_OTHER_CATTLE, MEDIUM_MATURE_COWS, MEDIUM_OTHER_CATTLE,
     CountyInventory, Dairy, DairyHerd, Digester, SizeClass,
@@ -110,18 +110,25 @@ def key(*parts):
 
 def city_urls():
     """
-    {lowercased city or place name: its region page}, for linking a dairy's
-    mailing city. CITY wins over PLACE when both carry the name, as at import
-    (cadd._city_lookup); only regions with a boundary have a page.
+    {lowercased mailing-city name: its region page}, for linking a dairy's
+    mailing city: every name cities.resolve() maps to a region with a page
+    (a boundary), aliases included. Use city_url() for one city.
     """
     def compute():
+        index = cities.regions_by_name()
+        names = set(index) | {alias.lower() for alias in cities.CITY_ALIASES}
         urls = {}
-        for region_type in (Region.Type.CITY, Region.Type.PLACE):
-            regions = Region.objects.filter(type=region_type, boundary__isnull=False).order_by('pk')
-            for region in regions.only('name', 'slug', 'sqid'):
-                urls.setdefault(region.name.lower(), region.get_emissions_url())
+        for name in names:
+            region = cities.resolve(name, index)
+            if region is not None and region.boundary_id:
+                urls[name] = region.get_emissions_url()
         return urls
     return cache.get_or_set(key('city-urls'), compute, stats.CACHE_TIMEOUT)
+
+
+def city_url(city):
+    """The region page a dairy's mailing city links to, or None."""
+    return city_urls().get(cities.lookup_key(city)) if city else None
 
 
 def _where(county, area):
@@ -304,20 +311,24 @@ def county_values(year, pollutant):
 
 def dairy_areas(dairy):
     """
-    The region pages a dairy counts in: its county, the CITY/PLACE regions its
-    point falls in or whose name matches its mailing city (address['city']) --
-    the same rule as RegionArea.dairy_q() -- its ZIP area and 2020 tract.
+    The region pages a dairy counts in, the same rule as RegionArea.dairy_q():
+    its county; the cities, urban areas and CDPs its point falls in, plus the
+    city or CDP its mailing city (address['city']) resolves to (cities.resolve());
+    its ZIP area and 2020 tract. Each community layer is listed as-is, so a
+    town can appear as its city and its urban area; only a region reached
+    twice (by point and by name) is listed once.
     """
     pks = [dairy.county_id]
-    city = dairy.address.get('city', '')
-    city_place = Region.objects.filter(
-        Q(type__in=(Region.Type.CITY, Region.Type.PLACE)),
-        Q(boundary__geometry__intersects=dairy.point) | (Q(name__iexact=city) if city else Q(pk__in=())),
-    ).order_by('type', 'pk')
-    # A synthetic PLACE shares its name with the CITY it was built from;
-    # listing both only shows "Bakersfield, Bakersfield" (views.find_area_places drops it the same way).
-    cities = {region.name for region in city_place if region.type == Region.Type.CITY}
-    pks.extend(region.pk for region in city_place if not (region.type == Region.Type.PLACE and region.name in cities))
+    order = {region_type: index for index, region_type in enumerate(Region.COMMUNITY_TYPES)}
+    communities = list(Region.objects.filter(
+        type__in=Region.COMMUNITY_TYPES, boundary__isnull=False, boundary__geometry__intersects=dairy.point,
+    ))
+    named = cities.resolve(dairy.address.get('city', ''), cities.regions_by_name())
+    if named is not None and named.boundary_id:
+        communities.append(named)
+    for region in sorted(communities, key=lambda region: (order[region.type], region.pk)):
+        if region.pk not in pks:
+            pks.append(region.pk)
     for level in (Region.Type.ZIPCODE, Region.Type.TRACT):
         pk = region_index(level).get(dairy.pk)
         if pk:

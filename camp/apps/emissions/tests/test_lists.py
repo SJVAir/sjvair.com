@@ -50,10 +50,10 @@ class FacilitySortTests(ListTestCase):
 
 class RegionFilterTests(ListTestCase):
     def test_filters_to_the_facilities_whose_point_is_in_the_region(self):
-        place = make(Region.Type.PLACE, 'Plantville', AROUND_PLANT)
-        assert self.names(area=areas.RegionArea(place)) == ['TEST PLANT']
+        cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
+        assert self.names(area=areas.RegionArea(cdp)) == ['TEST PLANT']
 
-        content = self.client.get(reverse('emissions:facility-list'), {'region': place.sqid}).content.decode()
+        content = self.client.get(reverse('emissions:facility-list'), {'region': cdp.sqid}).content.decode()
         assert 'TEST PLANT' in content
         assert 'TEST CEMENT' not in content
         # The picker shows the chosen region, ready to clear.
@@ -65,8 +65,8 @@ class RegionFilterTests(ListTestCase):
         assert 'TEST CEMENT' in content
 
     def test_csv_follows_the_region(self):
-        place = make(Region.Type.PLACE, 'Plantville', AROUND_PLANT)
-        response = self.client.get(reverse('emissions:facility-list'), {'region': place.sqid, 'format': 'csv'})
+        urban = make(Region.Type.URBAN_AREA, 'Plantville', AROUND_PLANT)
+        response = self.client.get(reverse('emissions:facility-list'), {'region': urban.sqid, 'format': 'csv'})
         body = response.content.decode()
         assert 'TEST PLANT' in body
         assert 'TEST CEMENT' not in body
@@ -87,28 +87,29 @@ class PlaceSearchTests(ListTestCase):
         assert response.status_code == 200
         return response.json()['results']
 
-    def test_cities_places_and_zips_prefix_first(self):
+    def test_cities_urban_areas_cdps_and_zips_prefix_first(self):
         zipcode = make(Region.Type.ZIPCODE, '93999', AROUND_PLANT)
-        make(Region.Type.PLACE, 'West Plantville', AROUND_PLANT)
-        make(Region.Type.PLACE, 'Plantville', AROUND_PLANT)
+        make(Region.Type.CDP, 'West Plantville', AROUND_PLANT)
+        make(Region.Type.URBAN_AREA, 'Plantville', AROUND_PLANT)
         make(Region.Type.TRACT, 'Plantville Tract', AROUND_PLANT)
         assert [(r['name'], r['detail']) for r in self.search('plantv')] == [
-            ('Plantville', 'Place'), ('West Plantville', 'Place'),
+            ('Plantville', 'Urban area'), ('West Plantville', 'Community'),
         ]
         assert self.search('9399') == [{'id': zipcode.sqid, 'name': '93999', 'detail': 'ZIP'}]
 
-    def test_a_place_named_like_a_city_is_left_out(self):
+    def test_every_layer_of_a_name_is_offered(self):
+        # A city and the urban area of the same name are both offered, labelled.
         city = self.plant.city
-        make(Region.Type.PLACE, city.name, AROUND_PLANT)
-        assert [r['detail'] for r in self.search(city.name) if r['name'] == city.name] == ['City']
+        make(Region.Type.URBAN_AREA, city.name, AROUND_PLANT)
+        assert [r['detail'] for r in self.search(city.name) if r['name'] == city.name] == ['City', 'Urban area']
 
     def test_a_county_limits_it_to_places_in_that_county(self):
-        inside = make(Region.Type.PLACE, 'Plantville', AROUND_PLANT)
-        # A place well outside Fresno County (out by the Mojave cement plant).
-        make(Region.Type.PLACE, 'Plantdale', 'MULTIPOLYGON(((-118.2 35.0, -118.1 35.0, -118.1 35.1, -118.2 35.1, -118.2 35.0)))')
+        inside = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
+        # A CDP well outside Fresno County (out by the Mojave cement plant).
+        make(Region.Type.CDP, 'Plantdale', 'MULTIPOLYGON(((-118.2 35.0, -118.1 35.0, -118.1 35.1, -118.2 35.1, -118.2 35.0)))')
         assert {r['name'] for r in self.search('plant')} == {'Plantville', 'Plantdale'}
         response = self.client.get(reverse('api:v2:emissions:places'), {'q': 'plant', 'county': 'fresno'})
-        assert response.json()['results'] == [{'id': inside.sqid, 'name': 'Plantville', 'detail': 'Place'}]
+        assert response.json()['results'] == [{'id': inside.sqid, 'name': 'Plantville', 'detail': 'Community'}]
         response = self.client.get(reverse('api:v2:emissions:places'), {'q': 'plant', 'county': 'nowhere'})
         assert response.json()['results'] == []
 

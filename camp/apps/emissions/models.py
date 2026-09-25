@@ -331,7 +331,8 @@ class Dairy(TimeStampedModel):
     name = models.CharField(_('Name'), max_length=128)
     # As CADD gives it: street, zipcode. address['city'] is normalized at
     # import: known misspellings/non-city values fixed, then matched against
-    # a CITY or PLACE Region's name case-insensitively, else title-cased.
+    # a CITY or CDP Region's name case-insensitively, else title-cased
+    # (see camp.apps.emissions.cities).
     address = models.JSONField(_('Address'), default=dict, blank=True)
     point = models.PointField(_('Point'))
     # Resolved from CADD's county name at import.

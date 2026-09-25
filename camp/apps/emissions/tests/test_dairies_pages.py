@@ -119,8 +119,8 @@ class DairyTabContentTests(DairyPageTestCase):
         assert 'since None' not in content and 'since null' not in content
 
     def test_region_filter(self):
-        place = make(Region.Type.PLACE, 'Plantville', AROUND_PLANT)
-        content = self.get({'region': place.sqid}).content.decode()
+        cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
+        content = self.get({'region': cdp.sqid}).content.decode()
         assert 'BIG DAIRY' in content and 'SMALL DAIRY' not in content
         assert 'Plantville <button' in content
 
@@ -242,8 +242,8 @@ class DairyBlockTests(DairyPageTestCase):
         assert f'href="{self.url}?year=2023&amp;region={city.sqid}&amp;pollutant=rog"' in content
 
     def test_an_area_without_dairies(self):
-        place = make(Region.Type.PLACE, 'Faraway', 'MULTIPOLYGON(((-118.2 35.0, -118.1 35.0, -118.1 35.1, -118.2 35.1, -118.2 35.0)))')
-        content = self.region_page(place, {'year': '2023'})
+        urban = make(Region.Type.URBAN_AREA, 'Faraway', 'MULTIPOLYGON(((-118.2 35.0, -118.1 35.0, -118.1 35.1, -118.2 35.1, -118.2 35.0)))')
+        content = self.region_page(urban, {'year': '2023'})
         assert "No dairies in CARB's dairy database here." in content
         assert 'All dairies here' not in content
 
@@ -312,14 +312,22 @@ class DairyAboutTests(DairyPageTestCase):
 class DairyTableCityLinkTests(DairyPageTestCase):
     def test_a_city_with_a_page_links_to_it(self):
         city = make(Region.Type.CITY, 'Dairyville', AROUND_PLANT)
-        make(Region.Type.PLACE, 'Dairyville', AROUND_PLANT)
+        make(Region.Type.CDP, 'Dairyville', AROUND_PLANT)
         self.big.address = dict(self.big.address, city='Dairyville')
         self.big.save(update_fields=['address'])
         self.small.address = dict(self.small.address, city='Nowhere Special')
         self.small.save(update_fields=['address'])
         cache.clear()
         content = self.get({'year': 2023}).content.decode()
-        # The city wins over a place of the same name; a city without a page stays text.
+        # The city wins over a CDP of the same name; a city without a page stays text.
         # The link carries the tab's scope, like the county link beside it.
         assert f'<a href="{city.get_emissions_url()}?year=2023&amp;pollutant=rog">Dairyville</a>' in content
         assert '<td>Nowhere Special</td>' in content
+
+    def test_an_aliased_city_links_to_its_cdp_and_keeps_its_name(self):
+        cdp = make(Region.Type.CDP, 'Hilmar-Irwin', AROUND_PLANT)
+        self.big.address = dict(self.big.address, city='Hilmar')
+        self.big.save(update_fields=['address'])
+        cache.clear()
+        content = self.get({'year': 2023}).content.decode()
+        assert f'<a href="{cdp.get_emissions_url()}?year=2023&amp;pollutant=rog">Hilmar</a>' in content

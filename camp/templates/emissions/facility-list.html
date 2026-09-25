@@ -25,8 +25,8 @@
                     {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select></div></div>
             </div>
-            {# Cities, places and ZIP codes; a facility counts in the one its map point falls in, as on the region pages. #}
-            {% url 'api:v2:emissions:places' as places_url %}{% include 'pesticides/includes/entity-picker.html' with kind='region' label='City, place or ZIP' selected=region search_url=places_url autosubmit=1 %}
+            {# Cities, urban areas, communities (CDPs) and ZIP codes; a facility counts in the one its map point falls in, as on the region pages. #}
+            {% url 'api:v2:emissions:places' as places_url %}{% include 'pesticides/includes/entity-picker.html' with kind='region' label='City, community or ZIP' selected=region search_url=places_url autosubmit=1 %}
             <div class="field is-grouped">
                 <div class="control"><button class="button is-link" type="submit">Apply</button></div>
                 <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}">Clear</a></div>

@@ -11,10 +11,12 @@ MAX_LIMIT = 25
 
 class PlaceSearch(generics.Endpoint):
     """
-    Autocomplete for the facility list's region filter: cities, places and ZIP
-    codes whose name contains `q` (two characters or more), prefix matches
-    first. `limit` defaults to 10, capped at 25. Each result is the region's
-    `id` (sqid, the list's ?region=), `name`, and `detail` (City, Place or ZIP).
+    Autocomplete for the facility list's region filter: cities, urban areas,
+    CDPs and ZIP codes whose name contains `q` (two characters or more), prefix
+    matches first. Each layer is offered as-is, so "Fresno" is both the city
+    and the urban area. `limit` defaults to 10, capped at 25. Each result is
+    the region's `id` (sqid, the list's ?region=), `name`, and `detail` (City,
+    Urban area, Community or ZIP).
     `county` (slug), the explorer's county, offers only the ones that overlap
     it (a ZIP straddling the line is offered in both counties). The entity
     picker's `type` and the rest of the scope are ignored.
@@ -30,9 +32,6 @@ class PlaceSearch(generics.Endpoint):
             limit = DEFAULT_LIMIT
         regions = (
             Region.objects.filter(type__in=FILTER_REGION_TYPES, boundary__isnull=False, name__icontains=query)
-            # A place shares its name with the city it was built from; "Selma"
-            # twice only confuses, so offer the city.
-            .exclude(type=Region.Type.PLACE, name__in=Region.objects.filter(type=Region.Type.CITY).values('name'))
             .annotate(prefix=Case(When(Q(name__istartswith=query), then=0), default=1))
             .order_by('prefix', 'name', 'type')
         )

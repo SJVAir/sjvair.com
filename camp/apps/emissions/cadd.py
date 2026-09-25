@@ -20,6 +20,7 @@ from django.contrib.gis.geos import Point
 from django.db import transaction
 from django.utils import timezone
 
+from camp.apps.emissions import cities
 from camp.apps.emissions.models import Dairy, DairyHerd, Digester, herd_totals
 from camp.apps.regions.models import Region
 
@@ -144,26 +145,14 @@ class Report:
         return lines
 
 
-def _city_lookup():
-    """
-    {lowercased CITY/PLACE Region name: canonical name}, built once per import.
-    When a CITY and a PLACE share a name (or two Regions of the same type do),
-    the result must not depend on database row order: CITY wins over PLACE,
-    and within a type the lowest pk wins. Two queries, not one per row.
-    """
-    lookup = {}
-    for region_type in (Region.Type.CITY, Region.Type.PLACE):
-        for region in Region.objects.filter(type=region_type).order_by('pk'):
-            lookup.setdefault(region.name.lower(), region.name)
-    return lookup
-
-
-def _normalize_city(raw, lookup):
+def _normalize_city(raw, index):
     """
     CADD's raw city: CITY_FIXES applied to the trimmed, upper-cased value first
     (misspellings and non-city values like 'KERN COUNTY'), then matched
-    case-insensitively against a CITY/PLACE Region's name, else title-cased.
-    Blank (before or after CITY_FIXES) stays blank.
+    case-insensitively against a CITY/CDP Region's name (cities.regions_by_name(),
+    built once per import), else title-cased. Blank (before or after
+    CITY_FIXES) stays blank. cities.CITY_ALIASES doesn't apply here: an alias
+    only steers links and membership, so a Hilmar dairy stays "Hilmar".
     """
     city = _text(raw)
     if not city:
@@ -173,9 +162,9 @@ def _normalize_city(raw, lookup):
         city = fixed
     if not city:
         return ''
-    match = lookup.get(city.lower())
+    match = index.get(city.lower())
     if match:
-        return match
+        return match.name
     return string.capwords(city.lower())
 
 
@@ -209,7 +198,7 @@ def apply(sheets, version=VERSION):
     report = Report()
     covered = {name.lower() for name in settings.SJVAIR_COUNTIES}
     regions = {region.name.removesuffix(' County').lower(): region for region in Region.objects.counties()}
-    city_lookup = _city_lookup()
+    city_lookup = cities.regions_by_name()
     rows_by_id = {}
     for row in sheets[FACILITIES]:
         name = _text(row['County'])

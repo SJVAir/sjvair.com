@@ -77,9 +77,9 @@ class ImportCADDTests(TestCase):
         assert DairyHerd.objects.count() == 1
         assert 'Outside the covered counties: 1.' in output
 
-    def test_city_is_normalized_against_city_and_place_regions(self):
+    def test_city_is_normalized_against_city_and_cdp_regions(self):
         Region.objects.create(name='Hanford', slug='hanford', type=Region.Type.CITY, external_id='hanford')
-        Region.objects.create(name='McFarland', slug='mcfarland', type=Region.Type.PLACE, external_id='mcfarland')
+        Region.objects.create(name='McFarland', slug='mcfarland', type=Region.Type.CDP, external_id='mcfarland')
         self.run_import([
             facility(1, city='HANFORD'),
             facility(2, city='MCFARLAND'),
@@ -95,13 +95,20 @@ class ImportCADDTests(TestCase):
         # Blank stays blank.
         assert by_id[4].address['city'] == ''
 
-    def test_city_lookup_prefers_city_over_place_on_a_name_collision(self):
-        # The PLACE is created first (lower pk) so a naive row-order lookup
+    def test_city_lookup_prefers_city_over_cdp_on_a_name_collision(self):
+        # The CDP is created first (lower pk) so a naive row-order lookup
         # would pick it; the CITY must still win.
-        Region.objects.create(name='SELMA', slug='selma-place', type=Region.Type.PLACE, external_id='selma-place')
+        Region.objects.create(name='SELMA', slug='selma-cdp', type=Region.Type.CDP, external_id='selma-cdp')
         Region.objects.create(name='Selma', slug='selma-city', type=Region.Type.CITY, external_id='selma-city')
         self.run_import([facility(1, city='selma')])
         assert Dairy.objects.get(cadd_id=1).address['city'] == 'Selma'
+
+    def test_an_alias_keeps_the_cadd_name(self):
+        # CITY_ALIASES only steers links and membership: a HILMAR dairy reads
+        # "Hilmar", not the CDP's "Hilmar-Irwin".
+        Region.objects.create(name='Hilmar-Irwin', slug='hilmar-irwin', type=Region.Type.CDP, external_id='hilmar-irwin')
+        self.run_import([facility(1, city='HILMAR')])
+        assert Dairy.objects.get(cadd_id=1).address['city'] == 'Hilmar'
 
     def test_city_fixes_applied_before_the_region_match(self):
         Region.objects.create(name='Visalia', slug='visalia', type=Region.Type.CITY, external_id='visalia')

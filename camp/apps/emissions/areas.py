@@ -18,7 +18,7 @@ from django.contrib.gis.measure import D
 from django.core.cache import cache
 from django.db.models import OuterRef, Q, Subquery
 
-from camp.apps.emissions import stats
+from camp.apps.emissions import cities, stats
 from camp.apps.emissions.models import Facility
 from camp.apps.regions.models import Region
 from camp.utils.gis import EPSG_CALIFORNIA_ALBERS, EPSG_LATLON
@@ -32,8 +32,9 @@ DEFAULT_MEASURE = 'density'
 NEXT_LEVEL = {
     Region.Type.COUNTY: Region.Type.ZIPCODE,
     Region.Type.CITY: Region.Type.TRACT,
+    Region.Type.URBAN_AREA: Region.Type.TRACT,
+    Region.Type.CDP: Region.Type.TRACT,
     Region.Type.ZIPCODE: Region.Type.TRACT,
-    Region.Type.PLACE: Region.Type.TRACT,
     Region.Type.SCHOOL_DISTRICT: Region.Type.TRACT,
 }
 SQ_METERS_PER_SQ_MILE = 2_589_988.110336
@@ -128,11 +129,10 @@ def area_values(scope, level, sector=None):
     return cache.get_or_set(scope.key('areas', level, sector or ''), compute, stats.CACHE_TIMEOUT)
 
 
-# What the facility list's region filter searches: cities and places (the
-# urban areas and census places, merged) and ZIP codes.
+# What the facility list's region filter searches: the community layers
+# (cities, urban areas and CDPs, each as-is) and ZIP codes.
 FILTER_REGION_TYPES = {
-    Region.Type.CITY: 'City',
-    Region.Type.PLACE: 'Place',
+    **Region.COMMUNITY_LABELS,
     Region.Type.ZIPCODE: 'ZIP',
 }
 
@@ -158,8 +158,9 @@ class RegionArea:
     def dairy_q(self):
         """
         The same area as a Q on DairyHerd: counties by the dairy's county, ZIP
-        areas and tracts by its point, CITY and PLACE by its point OR its
-        mailing city (Dairy.address['city']), and every other type by point alone.
+        areas and tracts by its point, CITY and CDP by its point OR its mailing
+        city (Dairy.address['city']) resolving to the region (cities.resolve(),
+        aliases included), and every other type, urban areas too, by point alone.
         """
         from camp.apps.emissions import dairies  # dairies imports this module
 
@@ -170,8 +171,9 @@ class RegionArea:
             ids = [dairy for dairy, pk in dairies.region_index(region.type).items() if pk == region.pk]
             return Q(dairy_id__in=ids)
         point_q = Q(dairy__point__intersects=region.boundary.geometry)
-        if region.type in (Region.Type.CITY, Region.Type.PLACE):
-            return Q(dairy__address__city__iexact=region.name) | point_q
+        if region.type in cities.TYPES:
+            for name in cities.mailing_names(region, cities.regions_by_name()):
+                point_q |= Q(dairy__address__city__iexact=name)
         return point_q
 
     @property
