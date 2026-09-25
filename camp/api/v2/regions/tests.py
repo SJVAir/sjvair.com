@@ -334,6 +334,36 @@ class RegionGeoJSONTests(TestCase):
         assert response.status_code == 400
         assert 'type' in str(data)
 
+    def test_retired_tracts_are_left_out(self):
+        current = make_tract('Tract 2020', FRESNO_TRACT_WKT)
+        retired = make_tract('Tract 2010', KERN_TRACT_WKT)
+        retired.boundary.version = '2010'
+        retired.boundary.save(update_fields=['version'])
+        _, data = self.get({'type': 'tract'})
+        slugs = {f['properties']['slug'] for f in data['features']}
+        assert current.slug in slugs and retired.slug not in slugs
+
+    def test_simplified_shapes_share_their_borders(self):
+        # Two tracts sharing the edge x = -120.1: simplified together, the
+        # shared edge must come out identical on both sides (no gap, no
+        # doubled line), and the result is lighter than the input.
+        left = 'MULTIPOLYGON(((-120.2 36.8, -120.1 36.8, ' + ', '.join(
+            f'-120.1 {36.8 + i * 0.0001:.4f}' for i in range(1, 2000)) + ', -120.1 37.0, -120.2 37.0, -120.2 36.8)))'
+        right = 'MULTIPOLYGON(((-120.1 36.8, -120.0 36.8, -120.0 37.0, -120.1 37.0, ' + ', '.join(
+            f'-120.1 {37.0 - i * 0.0001:.4f}' for i in range(1, 2000)) + ', -120.1 36.8)))'
+        make_tract('Left', left)
+        make_tract('Right', right)
+        _, data = self.get({'type': 'tract', 'simplify': '1'})
+        rings = {f['properties']['slug']: f['geometry']['coordinates'][0][0] for f in data['features']}
+        on_edge = lambda ring: sorted({tuple(p) for p in ring if p[0] == -120.1})
+        assert on_edge(rings['left']) == on_edge(rings['right'])
+        assert len(rings['left']) < 100
+
+    def test_simplified_keeps_the_filters(self):
+        _, data = self.get({'type': 'county', 'slug': 'fresno', 'simplify': '1'})
+        assert [f['properties']['slug'] for f in data['features']] == ['fresno']
+        assert data['features'][0]['geometry']['type'] == 'MultiPolygon'
+
 
 class RegionWithinFilterTests(TestCase):
     def setUp(self):

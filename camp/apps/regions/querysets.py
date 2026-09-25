@@ -2,6 +2,7 @@ from django.contrib.gis.db import models
 from django.contrib.gis.db.models import Count, FloatField, Func, F, OuterRef, Subquery, Union
 from django.contrib.gis.db.models.functions import Intersection
 from django.contrib.gis.geos import GEOSGeometry
+from django.db.models import Q
 from django.db.models.functions import NullIf
 
 import geopandas as gpd
@@ -9,8 +10,19 @@ from shapely.wkt import loads as load_wkt
 
 from camp.utils import maps
 
+# The census tract vintage every current feature uses (the ACS and
+# CalEnviroScreen 5 are on 2020 tracts). Tracts whose current boundary is an
+# older vintage are retired: kept for CalEnviroScreen 4, never shown.
+TRACT_VINTAGE = '2020'
+
 
 class RegionQuerySet(models.QuerySet):
+    def current_vintage(self):
+        """Leave out retired census tracts (see TRACT_VINTAGE); other types pass through."""
+        from camp.apps.regions.models import Region
+
+        return self.exclude(Q(type=Region.Type.TRACT) & ~Q(boundary__version=TRACT_VINTAGE))
+
     def with_monitor_count(self):
         from camp.apps.monitors.models import Monitor
 
