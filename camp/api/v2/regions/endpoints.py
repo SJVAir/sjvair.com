@@ -134,9 +134,9 @@ class PlaceSearch(generics.Endpoint):
 
 
 class PlaceLookup(generics.Endpoint):
-    """Resolve a name to the single best-match region. Without ?type, resolves to the
-    containing Place using City/CDP fallback. With ?type=<type>, returns the top match
-    within that type directly."""
+    """Resolve a name to the single best-match region. Without ?type, returns the best
+    match among cities, then CDPs, then urban areas (the first of those types with a
+    match). With ?type=<type>, returns the top match within that type directly."""
 
     form_class = PlaceQueryForm
 

@@ -38,9 +38,6 @@ class Region(TimeStampedModel):
         LAND_USE = 'land_use', _('Land Use')
         PROTECTED = 'protected', _('Protected Area')
 
-        # Synthetic community areas (union of UA + city + CDP)
-        PLACE = 'place', _('Place')
-
         # Agricultural survey geography (PLSS / MTRS)
         MTRS = 'mtrs', _('MTRS Section')
 
@@ -52,7 +49,6 @@ class Region(TimeStampedModel):
         CENSUS = 'census', _('Census-Based Geography')
         DISTRICT = 'district', _('Governmental District')
         ENVIRONMENTAL = 'environmental', _('Environmental / Land Context')
-        SYNTHETIC = 'synthetic', _('Synthetic Community Area')
         AGRICULTURAL = 'agricultural', _('Agricultural Survey Geography')
         CUSTOM = 'custom', _('Custom')
 
@@ -77,8 +73,6 @@ class Region(TimeStampedModel):
         Type.URBAN_AREA: Category.ENVIRONMENTAL,
         Type.LAND_USE: Category.ENVIRONMENTAL,
         Type.PROTECTED: Category.ENVIRONMENTAL,
-
-        Type.PLACE: Category.SYNTHETIC,
 
         Type.MTRS: Category.AGRICULTURAL,
 

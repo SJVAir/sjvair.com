@@ -175,7 +175,7 @@ class MonitorsPanel(Panel):
     types = (
         Region.Type.ZIPCODE, Region.Type.SCHOOL_DISTRICT, Region.Type.CONGRESSIONAL_DISTRICT,
         Region.Type.STATE_ASSEMBLY, Region.Type.STATE_SENATE, Region.Type.PROTECTED,
-        Region.Type.LAND_USE, Region.Type.PLACE, Region.Type.CUSTOM, Region.Type.MTRS,
+        Region.Type.LAND_USE, Region.Type.CUSTOM, Region.Type.MTRS,
     )
     title = 'Monitors inside'
     template_name = 'admin/regions/panels/monitors.html'
