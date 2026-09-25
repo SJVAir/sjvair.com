@@ -68,8 +68,19 @@
     mako: ['#def5e5', '#60ceac', '#3497a9', '#3e5ba9', '#382a54'],
     cividis: ['#fde725', '#c7b76e', '#7f7c75', '#4b5a6a', '#00224e'],
   };
+  // Diverging ramps for the change view, stored already reversed: index 0 is
+  // the largest decrease, the last the largest increase. Same stops as
+  // camp.apps.pesticides.maps.DIVERGING_RAMPS. Kept in their own table so a
+  // sequential `?ramp=` name can't grade signed data one-sided.
+  var DIVERGING_RAMPS = {
+    rdbu: ['#2166ac', '#67a9cf', '#d1e5f0', '#f7f7f7', '#fddbc7', '#ef8a62', '#b2182b'],
+    puor: ['#542788', '#998ec3', '#d8daeb', '#f7f7f7', '#fee0b6', '#f1a340', '#b35806'],
+    brbg: ['#01665e', '#5ab4ac', '#c7eae5', '#f5f5f5', '#f6e8c3', '#d8b365', '#8c510a'],
+  };
   var rampMatch = /[?&]ramp=([a-z]+)/.exec(window.location.search || '');
   var RAMP = RAMPS[rampMatch && rampMatch[1]] || RAMPS.blues;
+  var DIVERGING_RAMP = DIVERGING_RAMPS[rampMatch && rampMatch[1]] || DIVERGING_RAMPS.rdbu;
+  var DIVERGING_CENTER = (DIVERGING_RAMP.length - 1) / 2;
   // How many quantile classes: ?bins=4|5|6|8|10 (quartiles ... deciles).
   var BIN_OPTIONS = [[4, 'Quartiles'], [5, 'Quintiles'], [6, 'Sextiles'], [8, 'Octiles'], [10, 'Deciles']];
   var binsMatch = /[?&]bins=(\d+)/.exec(window.location.search || '');
@@ -176,7 +187,86 @@
     return classes.colors[indexFor(classes.breaks, value)];
   }
 
-  function renderLegend(el, classes, unit) {
+  // -- change classes --
+  //
+  // The same method as camp.apps.pesticides.maps.diverging_classes, so the
+  // interactive map and the county figure grade a change the same way: the
+  // magnitudes are quantiled and mirrored around zero, giving equal changes
+  // up and down equal saturation. Classification runs on the magnitude and
+  // then takes the sign; scanning the mirrored breaks would drop every
+  // change smaller than the first bound into the neutral class, painting
+  // the smallest decrease on the map as no change at all.
+  function divergingClasses(values) {
+    var neutral = DIVERGING_RAMP[DIVERGING_CENTER];
+    var seen = {};
+    var magnitudes = [];
+    for (var i = 0; i < values.length; i++) {
+      var value = values[i];
+      if (!value) continue;
+      var magnitude = Math.abs(value);
+      if (!seen[magnitude]) {
+        seen[magnitude] = true;
+        magnitudes.push(magnitude);
+      }
+    }
+    magnitudes.sort(function (a, b) { return a - b; });
+    if (!magnitudes.length) {
+      return { breaks: [], bounds: [], colors: [], members: [], neutral: neutral, diverging: true };
+    }
+
+    var perSide = Math.max(1, Math.min(Math.floor(NUM_CLASSES / 2), magnitudes.length));
+    var bounds = [];
+    for (var k = 1; k <= perSide; k++) {
+      bounds.push(magnitudes[Math.ceil((k * magnitudes.length) / perSide) - 1]);
+    }
+
+    var breaks = [];
+    for (var b = bounds.length - 1; b >= 0; b--) breaks.push(-bounds[b]);
+    breaks.push(0);
+    for (var c = 0; c < bounds.length; c++) breaks.push(bounds[c]);
+
+    // Both halves include the centre stop then drop it, so the sides mirror
+    // and the neutral class keeps the ramp's middle.
+    var colors = sampleRamp(DIVERGING_RAMP.slice(0, DIVERGING_CENTER + 1), perSide + 1).slice(0, -1);
+    colors.push(neutral);
+    colors = colors.concat(sampleRamp(DIVERGING_RAMP.slice(DIVERGING_CENTER), perSide + 1).slice(1));
+
+    var classes = {
+      breaks: breaks, bounds: bounds, colors: colors, neutral: neutral, diverging: true,
+      members: [],
+    };
+    for (var m = 0; m < colors.length; m++) classes.members.push([]);
+    for (var v = 0; v < values.length; v++) {
+      if (values[v] === null || values[v] === undefined) continue;
+      classes.members[divergingIndexFor(classes, values[v])].push(values[v]);
+    }
+    for (var s = 0; s < classes.members.length; s++) {
+      classes.members[s].sort(function (a, b) { return a - b; });
+    }
+    return classes;
+  }
+
+  function divergingIndexFor(classes, value) {
+    var centre = classes.bounds.length;
+    if (!value || !classes.bounds.length) return centre;
+    var i = classes.bounds.length - 1;
+    for (var k = 0; k < classes.bounds.length; k++) {
+      if (Math.abs(value) <= classes.bounds[k]) { i = k; break; }
+    }
+    return value < 0 ? centre - 1 - i : centre + 1 + i;
+  }
+
+  // null means neither year had rows: no data, grey. 0 is a real "no
+  // change" and takes the neutral centre -- collapsing the two would claim
+  // a section was unsprayed in both years when nothing was reported.
+  function divergingColorFor(classes, delta) {
+    if (delta === null || delta === undefined) return NO_DATA_COLOR;
+    if (!classes.colors.length) return classes.neutral;
+    return classes.colors[divergingIndexFor(classes, delta)];
+  }
+
+  function renderLegend(el, classes, unit, caption) {
+    if (classes.diverging) return renderDivergingLegend(el, classes, unit, caption);
     el.innerHTML = '';
     for (var i = 0; i < classes.members.length; i++) {
       var values = classes.members[i];
@@ -192,11 +282,51 @@
         '<span class="range">' + escapeHtml(range) + '</span>';
       el.appendChild(li);
     }
-    var noDataLi = document.createElement('li');
-    noDataLi.innerHTML =
+    el.appendChild(noDataRow());
+  }
+
+  function noDataRow() {
+    var li = document.createElement('li');
+    li.innerHTML =
       '<span class="swatch" style="background-color: ' + NO_DATA_COLOR + ';"></span>' +
       '<span class="range">No data</span>';
-    el.appendChild(noDataLi);
+    return li;
+  }
+
+  // Decreases, "No change", increases, then no data. The signed ranges make
+  // the direction readable without the colour, which matters because a
+  // diverging ramp can't be luminance-monotonic.
+  function renderDivergingLegend(el, classes, unit, caption) {
+    el.innerHTML = '';
+    if (caption) {
+      var head = document.createElement('li');
+      head.className = 'legend-caption';
+      head.textContent = caption;
+      el.appendChild(head);
+    }
+    var centre = classes.bounds.length;
+    for (var i = 0; i < classes.members.length; i++) {
+      var values = classes.members[i];
+      if (i !== centre && !values.length) continue;
+      var label;
+      if (i === centre) {
+        label = 'No change';
+      } else {
+        var low = values[0];
+        var high = values[values.length - 1];
+        label = (low === high ? signed(low) : signed(low) + '–' + signed(high)) + ' ' + unit;
+      }
+      var li = document.createElement('li');
+      li.innerHTML =
+        '<span class="swatch" style="background-color: ' + classes.colors[i] + ';"></span>' +
+        '<span class="range">' + escapeHtml(label) + '</span>';
+      el.appendChild(li);
+    }
+    el.appendChild(noDataRow());
+  }
+
+  function signed(value) {
+    return (value > 0 ? '+' : value < 0 ? '−' : '') + formatNumber(Math.abs(value));
   }
 
   // "Fresno County" -> "Fresno", where the label already says county.
@@ -553,12 +683,16 @@
         home = entry;
       }
     }
-    if (!home) return { lbs: 0, applications: 0, section: null };
-    var totals = { lbs: 0, applications: 0, section: home.feature.properties };
+    if (!home) return { lbs: 0, applications: 0, lbs_prev: 0, applications_prev: 0, section: null };
+    var totals = { lbs: 0, applications: 0, lbs_prev: 0, applications_prev: 0, section: home.feature.properties };
     for (var j = 0; j < measured.length; j++) {
       if (distanceMeters(measured[j].center, home.center) > BLOCK_METERS) continue;
-      totals.lbs += measured[j].feature.properties.lbs_chemical || 0;
-      totals.applications += measured[j].feature.properties.applications || 0;
+      var props = measured[j].feature.properties;
+      totals.lbs += props.lbs_chemical || 0;
+      totals.applications += props.applications || 0;
+      // Present only while comparing; zero otherwise, and unread.
+      totals.lbs_prev += props.lbs_chemical_prev || 0;
+      totals.applications_prev += props.applications_prev || 0;
     }
     return totals;
   }
@@ -598,6 +732,11 @@
     // share it; the toggles write them back (see syncViewParams).
     var metricMatch = /[?&]metric=(lbs_chemical|applications)/.exec(window.location.search || '');
     this.metric = metricMatch ? metricMatch[1] : 'lbs_chemical';
+    // The year being compared against, from the explorer scope. Set, the
+    // grid shades the change between the two years instead of the metric;
+    // it stays orthogonal to the metric, since change-in-pounds and
+    // change-in-applications are both meaningful.
+    this.compare = this.data.compare || '';
     // Notice markers are on by default only where notices are the subject of
     // the page; `data-show-notices` says which this is, a ?notices= param
     // overrides it, and the "Show notices" checkbox flips it from there.
@@ -1078,7 +1217,7 @@
   };
 
   // Keys whose change means the data on the map is different.
-  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'concern'];
+  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'concern', 'compare'];
 
   // An htmx swap handed this map a new container (the shell has moved the
   // map into it, taken its data attributes and bound its chrome): follow
@@ -1374,6 +1513,7 @@
   SectionMap.prototype.commonParams = function () {
     return {
       year: this.data.year,
+      compare: this.compare,
       chemical: this.data.chemical,
       product: this.data.product,
       commodity: this.data.commodity,
@@ -1602,14 +1742,32 @@
   // Writes each feature's shade onto its properties for the paint to read:
   // `value` (the metric, 0 for none), `fill`, and `opacity` from
   // `opacities` ([with data, without]).
+  // What a feature is shaded by: the metric, or the change in it against the
+  // compared year. null means neither year had rows -- no data, which stays
+  // distinct from a change of exactly zero.
+  SectionMap.prototype.valueFor = function (props) {
+    var value = Number(props[this.metric]) || 0;
+    if (!this.compare) return value;
+    var previous = Number(props[this.metric + '_prev']) || 0;
+    if (!value && !previous) return null;
+    return value - previous;
+  };
+
+  // The classes for a set of features, diverging while comparing.
+  SectionMap.prototype.classify = function (features) {
+    var self = this;
+    var values = features.map(function (feature) { return self.valueFor(feature.properties); });
+    return this.compare ? divergingClasses(values) : quantileClasses(values);
+  };
+
   SectionMap.prototype.classFeatures = function (features, classes, opacities) {
-    var metric = this.metric;
     for (var i = 0; i < features.length; i++) {
       var props = features[i].properties;
-      var value = Number(props[metric]) || 0;
-      props.value = value;
-      props.fill = colorFor(classes, value);
-      props.opacity = value ? opacities[0] : opacities[1];
+      var value = this.valueFor(props);
+      var missing = value === null || (!classes.diverging && !value);
+      props.value = value === null ? 0 : value;
+      props.fill = classes.diverging ? divergingColorFor(classes, value) : colorFor(classes, value);
+      props.opacity = missing ? opacities[1] : opacities[0];
     }
   };
 
@@ -1618,7 +1776,7 @@
     var reopenId = this.openGridId;
     this.level = level;
     var features = (geojson && geojson.features) || [];
-    this.currentClasses = quantileClasses(features.map(function (feature) { return feature.properties[self.metric]; }));
+    this.currentClasses = this.classify(features);
     this.currentClassesAreSections = false;
 
     // The lens and the "all sections" layer were drawn over the grid this
@@ -1683,7 +1841,7 @@
   SectionMap.prototype.restyle = function () {
     if (!this.map || !this.gridFeatures.length) return;
     var self = this;
-    this.currentClasses = quantileClasses(this.gridFeatures.map(function (feature) { return feature.properties[self.metric]; }));
+    this.currentClasses = this.classify(this.gridFeatures);
     this.currentClassesAreSections = false;
     this.classFeatures(this.gridFeatures, this.currentClasses, GRID_OPACITY);
     this.setSourceData('grid', { type: 'FeatureCollection', features: this.gridFeatures });
@@ -1717,12 +1875,21 @@
 
   SectionMap.prototype.legendUnit = function () {
     var unit = METRIC_UNITS[this.metric] || '';
-    return this.level === 'township' && !this.allSectionsActive() ? unit + ' per township' : unit;
+    if (this.level === 'township' && !this.allSectionsActive()) unit += ' per township';
+    return unit;
+  };
+
+  // Named once above the rows rather than repeated on each: "Change, 2022 to
+  // 2023". In order, so a signed range never has to be read against the
+  // colour alone -- a diverging ramp can't be luminance-monotonic.
+  SectionMap.prototype.legendCaption = function () {
+    if (!this.compare) return '';
+    return 'Change, ' + this.compare + ' to ' + this.data.year;
   };
 
   SectionMap.prototype.updateLegend = function () {
     if (this.legendEl) {
-      renderLegend(this.legendEl, this.currentClasses, this.legendUnit());
+      renderLegend(this.legendEl, this.currentClasses, this.legendUnit(), this.legendCaption());
       this.appendMarkerLegend();
     }
     // "All sections" only means something at the township zoom.
@@ -1996,12 +2163,35 @@
   // The headline figure of a grid popup: "5,966 lbs applied in 2023" or
   // "312 applications in 2023", following the metric toggle.
   SectionMap.prototype.metricLine = function (props) {
+    if (this.compare) return this.changeLine(props);
     var value = formatNumber(props[this.metric] || 0);
     var year = this.yearPhrase();
     var text = this.metric === 'applications'
       ? '<strong>' + value + '</strong> application' + (props.applications === 1 ? '' : 's') + year
       : '<strong>' + value + ' lbs</strong> applied' + year;
     return '<p class="section-popup-metric">' + text + '</p>';
+  };
+
+  // While comparing: both years and the change between them, in order --
+  // "200 → 670 lbs (+470) · 2022 to 2023". Both numbers are shown because
+  // the change alone hides whether it is a big shift or a rounding error on
+  // a large total.
+  SectionMap.prototype.changeLine = function (props) {
+    var unit = this.metric === 'applications' ? '' : ' lbs';
+    var previous = Number(props[this.metric + '_prev']) || 0;
+    var current = Number(props[this.metric]) || 0;
+    if (!previous && !current) {
+      return '<p class="section-popup-metric">No use reported in ' +
+        escapeHtml(this.compare) + ' or ' + escapeHtml(this.data.year) + '.</p>';
+    }
+    var delta = current - previous;
+    return (
+      '<p class="section-popup-metric">' +
+        '<strong>' + formatNumber(previous) + ' → ' + formatNumber(current) + unit + '</strong> ' +
+        '<span class="section-popup-change">(' + signed(delta) + ')</span>' +
+      '</p>' +
+      '<p class="section-popup-compare">' + escapeHtml(this.compare) + ' to ' + escapeHtml(this.data.year) + '</p>'
+    );
   };
 
   SectionMap.prototype.townshipPopupHtml = function (props, center) {
@@ -2342,7 +2532,7 @@
     // (a first block with no data at all gives no classes; the next one
     // with data classes again rather than waiting on the reshade).
     if (!this.currentClassesAreSections || !this.currentClasses.breaks.length) {
-      this.currentClasses = quantileClasses(this.allSectionsFeatures.map(function (f) { return f.properties[self.metric]; }));
+      this.currentClasses = this.classify(this.allSectionsFeatures);
       this.currentClassesAreSections = true;
       this.updateLegend();
     }
@@ -2356,7 +2546,7 @@
   SectionMap.prototype.restyleAllSections = function () {
     if (!this.allSectionsAdded) return;
     var self = this;
-    this.currentClasses = quantileClasses(this.allSectionsFeatures.map(function (f) { return f.properties[self.metric]; }));
+    this.currentClasses = this.classify(this.allSectionsFeatures);
     this.currentClassesAreSections = true;
     this.classFeatures(this.allSectionsFeatures, this.currentClasses, LENS_OPACITY);
     this.updateAllSectionsSource({
@@ -2599,7 +2789,7 @@
     // The township shade stays until the sections are here to replace it,
     // so the lens never shows an empty grid while the request is in flight.
     this.setHostFills(false);
-    this.lensClasses = quantileClasses(features.map(function (section) { return section.properties[self.metric]; }));
+    this.lensClasses = this.classify(features);
     this.classFeatures(features, this.lensClasses, LENS_OPACITY);
     this.setSourceData('lens', { type: 'FeatureCollection', features: features });
     // The selected section wears its outline while a section layer holds it.
@@ -2952,9 +3142,21 @@
       headline = '<p class="section-popup-note">Couldn\'t load nearby use.</p>';
     } else {
       var within = ' within about a mile' + this.yearPhrase();
-      var text = this.metric === 'applications'
-        ? '<strong>' + formatNumber(block.applications) + '</strong> application' + (block.applications === 1 ? '' : 's') + within
-        : '<strong>' + formatNumber(block.lbs) + ' lbs</strong> applied' + within;
+      var text;
+      if (this.compare) {
+        // The same "both years, then the change" shape as a grid popup.
+        var applications = this.metric === 'applications';
+        var previous = applications ? block.applications_prev : block.lbs_prev;
+        var current = applications ? block.applications : block.lbs;
+        text = '<strong>' + formatNumber(previous) + ' → ' + formatNumber(current) +
+          (applications ? '' : ' lbs') + '</strong> <span class="section-popup-change">(' +
+          signed(current - previous) + ')</span> within about a mile, ' +
+          escapeHtml(this.compare) + ' to ' + escapeHtml(this.data.year);
+      } else {
+        text = this.metric === 'applications'
+          ? '<strong>' + formatNumber(block.applications) + '</strong> application' + (block.applications === 1 ? '' : 's') + within
+          : '<strong>' + formatNumber(block.lbs) + ' lbs</strong> applied' + within;
+      }
       headline = '<p class="section-popup-metric">' + text + '</p>';
     }
 

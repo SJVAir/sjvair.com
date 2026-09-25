@@ -904,17 +904,18 @@ class ExplorerDetailMixin:
         context['summary_sentence'] = self.get_summary_sentence(totals, context['year_label'], self.summary_top(context))
         # The section map, filtered to this entity, shows where it's applied;
         # the county choropleth stays as the map's noscript fallback.
+        compare = scope_compare(self.request, year, all_years)
         context['map_config'] = section_map_config(
             year, all_years=all_years, show_notices=False,
             county=self.county.slug if self.county is not None else None,
             concern=self.concern_active,
+            compare=compare,
             **{self.use_field: self.object},
         )
         context['full_map_url'] = reverse('pesticides:map') + f'?{self.use_field}={self.object.sqid}' + (
             f'&{scope}' if scope else ''
         )
         county_rank = maps.county_metric(self.request.GET.get('rank'))
-        compare = scope_compare(self.request, year, all_years)
         ramp_name = self.request.GET.get('ramp')
         ramp = maps.diverging_ramp_for(ramp_name) if compare else maps.ramp_for(ramp_name)
         # This entity's own rows for the compared year, so the change is the
@@ -1065,7 +1066,7 @@ def page_url_pattern(name):
 MAP_STYLE = mapfigure.MAP_STYLE
 
 
-def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False):
+def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None):
     year = year or stats.latest_year()
     config = {
         # Upcoming-notice markers start on where notices are the subject of
@@ -1110,6 +1111,9 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         # The chemicals-of-concern scope, passed straight through to the grid
         # endpoints as `concern=1`.
         'concern': '1' if concern else '',
+        # The year being compared against. Empty is the ordinary single-year
+        # view; set, the grid shades the change between the two.
+        'compare': str(compare) if compare else '',
         'highlight': highlight or '',
         # A regions-API URL whose boundary the map draws and fits to (place pages).
         'outline_url': outline_url or '',
@@ -1157,6 +1161,7 @@ class MapPage(vanilla.TemplateView):
             county=county.slug if county else None,
             all_years=all_years,
             concern=concern,
+            compare=scope_compare(request, year, all_years),
             toolbar=True,
         )
 
@@ -1545,6 +1550,7 @@ class RecordsBrowser(vanilla.ListView):
             all_years=self.all_years,
             show_notices=False,
             concern=self.concern,
+            compare=self.compare,
         )
 
     def get_context_data(self, **kwargs):
@@ -1684,6 +1690,7 @@ class SectionDetail(vanilla.DetailView):
             center, zoom = centroid(section), 13
         map_config = section_map_config(
             year, center=center, zoom=zoom, highlight=section.sqid, all_years=all_years, concern=concern,
+            compare=scope_compare(self.request, year, all_years),
         )
 
         return super().get_context_data(
