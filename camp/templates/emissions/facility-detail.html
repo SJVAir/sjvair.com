@@ -17,10 +17,17 @@
         <a class="tag is-link is-light" href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a>
         {% if facility.is_minor_source %}<a class="tag" href="{% url 'emissions:about' %}#minor-sources">Minor source</a>{% endif %}
     </div>
+    <p class="facility-regulator">
+        Regulated by {% if district.metadata.carb_url %}<a href="{{ district.metadata.carb_url }}">{{ district.name }}</a>{% else %}{{ district.name }}{% endif %}
+        {% if district.metadata.phone %}{% with phone=district.metadata.phone %} · <a href="tel:{{ phone|cut:'('|cut:')'|cut:' '|cut:'-' }}">{{ phone }}</a>{% endwith %}{% endif %}
+        {% if district.metadata.complaints_url %}
+        <a class="button is-small is-link is-light ml-2" href="{{ district.metadata.complaints_url }}"><span class="icon"><span class="fa-regular fa-bullhorn" aria-hidden="true"></span></span><span>Report an air pollution problem</span></a>
+        {% endif %}
+    </p>
 </div>
 
 <div class="columns facility-cards">
-    <div class="column">
+    <div class="column is-half">
         <div class="card">
             <header class="card-header"><p class="card-header-title">Where</p></header>
             <div class="card-content">
@@ -32,20 +39,6 @@
                     <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="Where this facility's point on the map falls. It can differ from the address the state has on file, which is shown above as reported."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span>
                 </p>
                 <p class="facility-areas">{% for link in area_links %}<a href="{{ link.url }}{{ scope_qs }}">{{ link.label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="column">
-        <div class="card">
-            <header class="card-header"><p class="card-header-title">Regulated by</p></header>
-            <div class="card-content">
-                <p class="mb-1">{% if district.metadata.carb_url %}<a href="{{ district.metadata.carb_url }}">{{ district.name }}</a>{% else %}{{ district.name }}{% endif %}</p>
-                {% if district.metadata.phone %}{% with phone=district.metadata.phone %}
-                <p><a href="tel:{{ phone|cut:'('|cut:')'|cut:' '|cut:'-' }}"><span class="icon"><span class="fa-regular fa-phone" aria-hidden="true"></span></span>{{ phone }}</a></p>
-                {% endwith %}{% endif %}
-                {% if district.metadata.complaints_url %}
-                <a class="button is-link is-light" href="{{ district.metadata.complaints_url }}"><span class="icon"><span class="fa-regular fa-bullhorn" aria-hidden="true"></span></span><span>Report an air pollution problem</span></a>
                 {% endif %}
             </div>
         </div>

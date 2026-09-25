@@ -24,7 +24,10 @@ class FacilityHeaderTests(TestCase):
         assert '123 Main St' in content and 'Fresno, CA 93728' in content
         # The county is in Counted in, not repeated in the address.
         assert 'Fresno, CA 93728 · Fresno County' not in content
-        assert 'Regulated by' in content and 'San Joaquin Valley APCD' in content
+        # The regulator is one line under the tags, not a card.
+        assert re.search(r'<p class="facility-regulator">\s*Regulated by', content)
+        assert 'San Joaquin Valley APCD' in content
+        assert 'card-header-title">Regulated by' not in content
         # The district's phone is tappable, and the complaint form is the page's one button.
         assert 'href="tel:5592306000"' in content
         assert re.search(r'<a class="button[^"]*" href="https://ww2.valleyair.org/file-a-complaint"', content)
