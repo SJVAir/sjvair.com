@@ -785,6 +785,12 @@
     this.noticesRequest = null;
     this.locationsRequest = null;
     this.lensCache = {};
+    // Section outlines, by section id, and the townships whose outlines we
+    // hold. Unlike lensCache these survive a scope or filter change -- the
+    // shapes don't depend on the year or the filters, only the numbers do --
+    // so a rescope refetches totals and reuses the polygons.
+    this.sectionGeometry = {};
+    this.geometryTownships = {};
     this.pendingLocate = null;
     // The grid on the map: its features (classed in place), by id, and the
     // classes the legend shows -- over the grid, or over the "all sections"
@@ -2514,11 +2520,19 @@
   // abortable: a superseded fetch's result is either still-good cache, or
   // lands in a cache onAdopt() has already replaced (see below).
   SectionMap.prototype.fetchLensSections = function (hosts, done) {
+    var self = this;
     var ids = hosts.map(function (host) { return host.properties.id; });
     var union = null;
     hosts.forEach(function (host) { union = unionBounds(union, featureBounds(host)); });
     var params = this.commonParams();
     params.bbox = bboxParam(union);
+    // Section outlines never change, so once every township in this block
+    // has been fetched before, ask for the numbers alone and put the stored
+    // outlines back on. Most of a response's bytes -- and most of the work
+    // behind it -- is geometry, and a year, comparison or filter change
+    // would otherwise re-download every polygon in view.
+    var haveGeometry = ids.every(function (townshipId) { return self.geometryTownships[townshipId]; });
+    if (haveGeometry) params.geometry = '0';
     // Results go into the cache that was current when the fetch started:
     // if the filters change meanwhile, onAdopt() swaps in a fresh cache and
     // this one is simply dropped.
@@ -2531,9 +2545,16 @@
         body.features.forEach(function (section) {
           var mtrs = section.properties.mtrs || '';
           var townshipId = mtrs.slice(0, mtrs.lastIndexOf('-'));
+          if (section.geometry) self.sectionGeometry[section.properties.id] = section.geometry;
+          else section.geometry = self.sectionGeometry[section.properties.id] || null;
           if (byTownship[townshipId]) byTownship[townshipId].push(section);
         });
-        ids.forEach(function (townshipId) { cache[townshipId] = byTownship[townshipId]; });
+        ids.forEach(function (townshipId) {
+          cache[townshipId] = byTownship[townshipId];
+          // Only once its sections are actually held: a block that came back
+          // empty must not claim outlines it never saw.
+          if (byTownship[townshipId].length) self.geometryTownships[townshipId] = true;
+        });
       })
       .catch(function () {})
       .then(function () { if (done) done(); });
