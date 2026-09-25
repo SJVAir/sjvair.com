@@ -56,6 +56,25 @@ def latest_year():
     return years[-1] if years else None
 
 
+def resolve_compare_param(requested, year):
+    """
+    The year the map's Areas view shades a change against, for a raw
+    `?compare=` value: None when there's nothing to compare (no loaded
+    years, no scope year, the same year, or a year with no data). Mirrors
+    the pesticides map's `resolve_compare_param` -- the change is always the
+    scope year minus this one, so a later comparison year just inverts the
+    sign; every surface names the pair in order rather than showing a bare
+    signed number.
+    """
+    years = available_years()
+    if year is None or not years:
+        return None
+    compare = _int(requested)
+    if compare is None or compare == year or compare not in years:
+        return None
+    return compare
+
+
 @dataclass(frozen=True)
 class Scope:
     year: Optional[int]

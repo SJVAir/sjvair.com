@@ -1,9 +1,9 @@
 {% extends 'pesticides/base.html' %}
 {% load humanize pesticides_explorer %}
 
-{% block title %}{{ area.label }} | {{ block.super }}{% endblock %}
+{% block title %}{{ area.page_title }} | {{ block.super }}{% endblock %}
 {% block body-class %}{{ block.super }} place{% endblock %}
-{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ area.label }}</a></li>{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ area.page_title }}</a></li>{% endblock %}
 
 {% block explorer-content %}
 <div class="content detail-header">

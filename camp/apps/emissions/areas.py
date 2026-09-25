@@ -10,7 +10,7 @@ every other region type by the facility's point. Facility data is never
 rewritten: the point-to-region mapping is computed and cached.
 """
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from django.contrib.gis.db.models.functions import Area as AreaOf, Transform
 from django.contrib.gis.geos import Point, Polygon
@@ -95,38 +95,66 @@ def _per(total, divisor, scale=1):
     return total / divisor * scale if total is not None and divisor else None
 
 
-def area_values(scope, level, sector=None):
-    """What the Areas view shades: per region with facilities in scope, its count, total and the two rates."""
+def _area_sums(scope, level, sector, index, field):
+    """{region pk: summed field value} over every facility in `scope` that falls in `level`."""
+    rows = stats.records(scope)
+    if sector:
+        rows = rows.filter(facility__sector=sector)
+    sums, counts = {}, {}
+    for facility_id, value in rows.values_list('facility_id', field):
+        region = index.get(facility_id)
+        if region is None:
+            continue
+        counts[region] = counts.get(region, 0) + 1
+        sums[region] = sums.get(region, 0.0) + float(value or 0)
+    return counts, sums, rows
+
+
+def area_values(scope, level, sector=None, compare=None):
+    """
+    What the Areas view shades: per region with facilities in `scope`, its
+    count, total and the two rates. `compare` (a loaded year, not
+    `scope.year`) adds the same total and rates for that year under a
+    `_prev` suffix, for every region already in the result -- both years
+    travel together so the map's Compare toggle needs no refetch. A region
+    with nothing in `scope` doesn't appear even if `compare`'s year had
+    facilities there: the view is always framed on the current year's map.
+    """
     field = scope.pollutant.key
 
     def compute():
         index = region_index(level)
-        rows = stats.records(scope)
-        if sector:
-            rows = rows.filter(facility__sector=sector)
-        counts, sums = {}, {}
-        for facility_id, value in rows.values_list('facility_id', field):
-            region = index.get(facility_id)
-            if region is None:
-                continue
-            counts[region] = counts.get(region, 0) + 1
-            sums[region] = sums.get(region, 0.0) + float(value or 0)
+        counts, sums, rows = _area_sums(scope, level, sector, index, field)
+        compare_sums = {}
+        if compare:
+            _, compare_sums, _ = _area_sums(replace(scope, year=compare), level, sector, index, field)
         miles = region_sq_miles(level)
         regions = Region.objects.filter(pk__in=counts).values_list('pk', 'sqid', 'metadata')
         result = []
         for pk, sqid, metadata in regions:
             total = scope.pollutant.display(sums[pk])
-            result.append({
+            row = {
                 'id': sqid,
                 'facilities': counts[pk],
                 'total': total,
                 'per_sq_mi': _per(total, miles.get(pk)),
                 'per_1k_residents': _per(total, (metadata or {}).get('population'), 1000),
-            })
+            }
+            if compare:
+                prev_total = scope.pollutant.display(compare_sums[pk]) if pk in compare_sums else None
+                row.update({
+                    'total_prev': prev_total,
+                    'per_sq_mi_prev': _per(prev_total, miles.get(pk)),
+                    'per_1k_residents_prev': _per(prev_total, (metadata or {}).get('population'), 1000),
+                })
+            result.append(row)
         result.sort(key=lambda area: area['id'])
         without_point = 0 if level == Region.Type.COUNTY else rows.filter(facility__point=None).count()
-        return {'level': level, 'unit': scope.pollutant.unit, 'facilities_without_point': without_point, 'areas': result}
-    return cache.get_or_set(scope.key('areas', level, sector or ''), compute, stats.CACHE_TIMEOUT)
+        return {
+            'level': level, 'unit': scope.pollutant.unit, 'facilities_without_point': without_point,
+            'compare': compare or '', 'areas': result,
+        }
+    return cache.get_or_set(scope.key('areas', level, sector or '', compare or ''), compute, stats.CACHE_TIMEOUT)
 
 
 # What the facility list's region filter searches: the community layers

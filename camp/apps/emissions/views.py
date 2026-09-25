@@ -16,8 +16,19 @@ import vanilla
 from camp.apps.emissions import areas, dairies, stats
 from camp.apps.emissions.models import Facility
 from camp.apps.emissions.pollutants import CRITERIA, TOXICS
+from camp.apps.regions import nearby
 from camp.apps.regions.models import Region
 from camp.utils import mapconfig
+
+# The "In and around <place>" lists (camp.apps.regions.nearby), linked with
+# emissions pages; separate cache namespace from the pesticides explorer's,
+# since the two link different pages.
+WITHIN_KEY = 'emissions:within:v1'
+
+
+def region_within(region):
+    return nearby.regions_within(region, url_method='get_emissions_url', cache_prefix=WITHIN_KEY)
+
 
 PAGE_SIZE = 50
 SECTOR_PAGE_ROWS = 25
@@ -269,20 +280,27 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
         )
 
 
-def map_view(get, default_level=areas.DEFAULT_LEVEL):
+def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None):
     """
-    The map's view, level and measure from a request's GET, validated; defaults
-    when unknown. Also the page's default level: the map leaves defaults out of
-    the URLs it writes, so it needs to know it.
+    The map's view, level, measure and Areas-view year comparison from a
+    request's GET, validated; defaults when unknown. Also the page's default
+    level: the map leaves defaults out of the URLs it writes, so it needs to
+    know it. `year` (the scope's) resolves `compare` and its option list; a
+    caller with no year to compare against (none passed) gets neither.
     """
     view = get.get('view')
     level = get.get('level')
     measure = get.get('measure')
+    compare = stats.resolve_compare_param(get.get('compare'), year) if year is not None else None
     return {
         'view': view if view in ('facilities', 'areas') else 'facilities',
         'level': level if level in areas.LEVELS else default_level,
         'measure': measure if measure in areas.MEASURES else areas.DEFAULT_MEASURE,
         'default_level': default_level,
+        'compare': compare or '',
+        # Every other loaded year, newest first, for the toolbar's picker;
+        # none until there's a year to compare against.
+        'compare_options': [y for y in reversed(stats.available_years()) if y != year] if year else [],
     }
 
 
@@ -331,17 +349,25 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'level': areas_view['level'] if areas_view else '',
         'measure': areas_view['measure'] if areas_view else '',
         'default_level': areas_view['default_level'] if areas_view else '',
+        # The year the Areas view shades the change against: a toolbar
+        # control (like the pesticides map's), not explorer scope -- it
+        # stays out of scope_params, so no other page offers or carries it.
+        'compare': areas_view['compare'] if areas_view else '',
+        # Only for the Compare legend's "change <compare> to <year>" title.
+        'year': scope.year or '',
         'label': scope.pollutant.label,
         'unit': scope.pollutant.unit,
         'sector': sector or '',
         'sector_label': Facility.Sector(sector).label if sector else '',
         'level_options': [(level, label) for level, label in (
-            (Region.Type.COUNTY, 'Counties'), (Region.Type.ZIPCODE, 'ZIP areas'), (Region.Type.TRACT, 'Census tracts'))],
+            (Region.Type.COUNTY, 'Counties'), (Region.Type.ZIPCODE, 'ZIP codes'), (Region.Type.TRACT, 'Census tracts'))],
         'measure_options': [('density', 'Per square mile'), ('total', 'Total'), ('per_resident', 'Per 1,000 residents')],
+        'compare_options': areas_view['compare_options'] if areas_view else [],
     }
-    # The container's data attributes; the sector, its label and the level and
-    # measure options are for the toolbar template, which reads them off map_config.
-    template_only = {'sector', 'sector_label', 'level_options', 'measure_options'}
+    # The container's data attributes; the sector, its label and the level,
+    # measure and compare options are for the toolbar template, which reads
+    # them off map_config.
+    template_only = {'sector', 'sector_label', 'level_options', 'measure_options', 'compare_options'}
     config['map'] = mapconfig.map_config(
         'facility-map',
         data={key.replace('_', '-'): value for key, value in config.items() if key not in template_only},
@@ -361,7 +387,7 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
         sector = self.request.GET.get('sector')
         sector = sector if sector in Facility.Sector.values else None
         return super().get_context_data(
-            map_config=facility_map_config(self.get_scope(), sector=sector, areas_view=map_view(self.request.GET)),
+            map_config=facility_map_config(self.get_scope(), sector=sector, areas_view=map_view(self.request.GET, year=self.get_scope().year)),
             sector_options=sector_options(),
             **kwargs,
         )
@@ -409,6 +435,22 @@ def region_title(region):
     if region.type == Region.Type.TRACT:
         return (region.metadata or {}).get('namelsad') or f'Census tract {region.name}'
     return region.name
+
+
+def region_page_title(region):
+    """
+    The <title> and breadcrumb text: `region_title()`, plus its type for a
+    community region (city, urban area, CDP) -- Fresno the city and Fresno
+    the urban area otherwise both read as plain "Fresno" in a browser tab or
+    a breadcrumb, where the page's own heading line (type · county ·
+    population) isn't visible. Counties, ZIPs, tracts, and school districts
+    are already unambiguous on their own. The visible h1 stays the plain
+    name (AreaPage's `name`).
+    """
+    name = region_title(region)
+    if region.type in Region.COMMUNITY_TYPES:
+        return f'{name} ({region.type_label})'
+    return name
 
 
 def area_links(regions):
@@ -495,6 +537,9 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         county = self.get_county()
         county_scope = stats.Scope(year=base.year, county=county, pollutant=base.pollutant, minor=base.minor)
         county_total = stats.totals(county_scope)[field] if county else None
+        # A region page overrides this with its own "In and around" lists;
+        # a near-me page (a point, not a region) has none.
+        kwargs.setdefault('within', None)
         return super().get_context_data(
             area=area,
             county_region=county,
@@ -555,7 +600,7 @@ class RegionPage(AreaPage):
         level = areas.NEXT_LEVEL.get(self.region.type)
         return facility_map_config(
             scope, mode='compact', params=scope.params(county=None),
-            areas_view=map_view(self.request.GET, level) if level else None,
+            areas_view=map_view(self.request.GET, level, year=scope.year) if level else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
             dairies_year=map_dairies_year(scope),
         )
@@ -575,13 +620,18 @@ class RegionPage(AreaPage):
             # The context bar names `county`; on a county page that's the page's own.
             extra['county'] = region
         return super().get_context_data(
-            title=region_title(region),
+            # `name` is the plain heading (h1); `title` (the <title> tag and
+            # the breadcrumb, which have no identifiers line under them to
+            # disambiguate) adds the type for a community region.
+            name=region_title(region),
+            title=region_page_title(region),
             kind=region.type_label,
             population=(region.metadata or {}).get('population'),
             context_bar=stats.county_context(stats.Scope(
                 year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant,
                 minor=self.get_scope().minor,
             )) if region.type == Region.Type.COUNTY else None,
+            within=region_within(region) if region.boundary_id else None,
             **extra,
             **kwargs,
         )
@@ -647,7 +697,7 @@ class NearMe(AreaPage):
     def get_map_config(self, scope):
         return facility_map_config(
             scope, mode='compact', params=scope.params(county=None),
-            areas_view=map_view(self.request.GET, Region.Type.TRACT),
+            areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year),
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius, dairies_year=map_dairies_year(scope),
         )
@@ -669,9 +719,13 @@ class NearMe(AreaPage):
 
     def get_context_data(self, **kwargs):
         label = radius_label(self.request.GET, self.near.lat, self.near.lng)
+        # find-area.js labels read "near X"; the title already says "of".
+        # Not a region, so nothing to disambiguate with a type -- `name`
+        # (the h1) and `title` (the <title> tag and breadcrumb) are the same.
+        title = f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {label}'
         return super().get_context_data(
-            # find-area.js labels read "near X"; the title already says "of".
-            title=f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {label}',
+            name=title,
+            title=title,
             kind='Near me',
             population=None,
             context_bar=None,

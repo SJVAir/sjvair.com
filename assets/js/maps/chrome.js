@@ -85,7 +85,29 @@
       dropdown.classList.remove('is-active');
       var trigger = dropdown.querySelector('.dropdown-trigger .button');
       if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      // Clear any nudge from keepMenuInView: a stale shift must not carry
+      // into the next open, where the trigger (and so the overflow) may differ.
+      var menu = dropdown.querySelector('.dropdown-menu');
+      if (menu) menu.style.transform = '';
     });
+  }
+
+  // A dropdown near the toolbar's own left or right end (the Dairies map's
+  // Size and Digester controls, right after the view switch, unlike the
+  // wider dropdowns further along the row) can open with its menu running
+  // past the map's edge on a narrow phone, however the toolbar wraps that
+  // day. Rather than guess safe widths per control and viewport, nudge the
+  // opened menu back into view with a transform -- it still opens from the
+  // same trigger, just shifted the least amount needed.
+  function keepMenuInView(menu) {
+    if (!menu) return;
+    menu.style.transform = '';
+    var rect = menu.getBoundingClientRect();
+    var margin = 8;
+    var shift = 0;
+    if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
+    if (rect.left + shift < margin) shift = margin - rect.left;
+    if (shift) menu.style.transform = 'translateX(' + Math.round(shift) + 'px)';
   }
 
   function bindToolbar(shell) {
@@ -105,6 +127,7 @@
         if (shell.module && shell.module.onDropdownOpen) shell.module.onDropdownOpen();
         var focusable = dropdown.querySelector('input[type="search"], select');
         if (focusable) focusable.focus();
+        keepMenuInView(dropdown.querySelector('.dropdown-menu'));
       });
       // Clicks inside the menu (typing, picking) shouldn't close it.
       var menu = dropdown.querySelector('.dropdown-menu');

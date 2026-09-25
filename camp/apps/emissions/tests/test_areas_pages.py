@@ -46,9 +46,17 @@ class RegionPageTests(TestCase):
 
     def test_urban_area_and_cdp_pages(self):
         for region_type, kind in ((Region.Type.URBAN_AREA, 'Urban area'), (Region.Type.CDP, 'Community')):
-            region = make(region_type, f'Plantville {region_type}', AROUND_PLANT)
+            name = f'Plantville {region_type}'
+            region = make(region_type, name, AROUND_PLANT)
             content = self.get(region, {'year': '2024'})
-            assert f'<p class="heading mb-1">{kind}' in content
+            # The h1 (plain name) comes first, its type/county/population
+            # line below it; the <title>/breadcrumb add the type since a
+            # community layer's name alone is ambiguous (a city and an
+            # urban area can share a name).
+            assert f'<h1 class="title is-3 mb-1">{name}</h1>' in content
+            assert f'<p class="heading">{kind}' in content
+            assert f'<title>{name} ({kind}) | ' in content
+            assert f'<a aria-current="page">{name} ({kind})</a>' in content
             assert 'TEST PLANT' in content
             assert map_data(content, 'level') == 'tract'
 

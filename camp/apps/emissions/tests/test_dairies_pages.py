@@ -178,6 +178,54 @@ class DairyTabContentTests(DairyPageTestCase):
         assert config['map']['data']['source-note'] == 'CARB county inventory, dairy cattle waste; silage not included'
         assert config['map']['container_id'] == 'dairy-map'
 
+    def test_map_sizes_default_is_all_three(self):
+        # No `sizes` in the query: every class is on.
+        assert dairy_views.dairy_map_view({})['sizes'] == dairy_views.SIZE_VALUES
+
+    def test_map_sizes_drops_unknown_tokens(self):
+        view = dairy_views.dairy_map_view({'sizes': 'large,bogus,medium'})
+        assert view['sizes'] == {'large', 'medium'}
+
+    def test_map_sizes_blank_means_none_not_default(self):
+        # Present but empty (every checkbox unticked) must not fall back to
+        # "absent" (every checkbox ticked) -- they're opposite choices.
+        assert dairy_views.dairy_map_view({'sizes': ''})['sizes'] == set()
+
+    def test_map_digester_only_yes_or_no_pass_through(self):
+        assert dairy_views.dairy_map_view({'digester': 'yes'})['digester'] == 'yes'
+        assert dairy_views.dairy_map_view({'digester': 'no'})['digester'] == 'no'
+        assert dairy_views.dairy_map_view({'digester': 'maybe'})['digester'] == ''
+        assert dairy_views.dairy_map_view({})['digester'] == ''
+
+    def test_map_config_sizes_and_digester(self):
+        scope, _ = dairies.resolve_scope({})
+        # Canonical (small, medium, large) order regardless of the query's
+        # order, and the button labels the toolbar template reads.
+        config = dairy_views.dairy_map_config(scope, dairy_views.dairy_map_view({'sizes': 'large,medium', 'digester': 'yes'}))
+        assert config['sizes'] == ['medium', 'large']
+        assert config['size_label'] == 'Medium, Large'
+        assert (config['digester'], config['digester_label']) == ('yes', 'With a digester')
+        assert (config['map']['data']['sizes'], config['map']['data']['digester']) == ('medium,large', 'yes')
+        # The default (all sizes, no digester choice): still present on the
+        # container (so the map always has something to read), but the
+        # toolbar reads it as "All sizes" / "All dairies", not a filter.
+        default = dairy_views.dairy_map_config(scope, dairy_views.dairy_map_view({}))
+        assert default['size_label'] == 'All sizes'
+        assert default['digester_label'] == 'All dairies'
+        assert default['map']['data']['sizes'] == 'small,medium,large'
+        assert default['map']['data']['digester'] == ''
+
+    def test_sizes_and_digester_stay_out_of_the_canonical_query_and_its_links(self):
+        # A plain visit (no sizes=/digester= in the request) must not have
+        # dairy_views.canonical_query() or the page's own links (sort, the
+        # scope querystring) invent them from the map_config defaults --
+        # the map's filter choices are the map's own client-side state
+        # (writeState/M.rewriteQuery), not part of the page's scope.
+        content = self.get().content.decode()
+        # `[?&]sizes=`, not a bare substring match: the page's favicon links
+        # carry their own unrelated `sizes="32x32"` attribute.
+        assert not re.search(r'[?&](sizes|digester)=', content)
+
     def test_coverage_note_before_2019(self):
         DairyHerd.objects.create(dairy=self.big, year=2018, milk_cows=900, mature_cows=900, size_class='large')
         dairies.clear_caches()

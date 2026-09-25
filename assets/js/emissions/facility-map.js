@@ -47,6 +47,14 @@
   };
   var AREA_FIELDS = { density: 'per_sq_mi', total: 'total', per_resident: 'per_1k_residents' };
   var AREA_SUFFIX = { density: ' per sq mi', total: '', per_resident: ' per 1,000 people' };
+  // Compare mode: the Areas view shades the selected measure's percent
+  // change instead of its value, on a fixed diverging scale (ColorBrewer
+  // RdBu) -- blue for a fall, red for a rise, pale grey near zero. Fixed
+  // rather than data-driven, like CLASS_BREAKS/AREA_BREAKS: stable classes
+  // across a measure, county or year change, at the cost of an outlier
+  // pinning the top bucket.
+  var CHANGE_BREAKS = [-0.5, -0.25, -0.1, 0.1, 0.25, 0.5];
+  var CHANGE_RAMP = ['#2166ac', '#4393c3', '#92c5de', '#f7f7f7', '#f4a582', '#d6604d', '#b2182b'];
   var LEVEL_NAMES = { county: '', zipcode: 'ZIP ', tract: 'Tract ' };
   var EMPTY_COLOR = '#8a94a3';
   var HIGHLIGHT_COLOR = '#d35400';
@@ -85,6 +93,18 @@
   // A legend's classes on the blue ramp, largest first.
   function facilityBins(breaks, swatchClass) {
     return M.classes.bins(breaks, RAMP, swatchClass);
+  }
+
+  // A fraction (0.234) as the change legend and popup write it: '+23%',
+  // '-8%', '0%'.
+  function pctRound(value) {
+    var pct = Math.round(value * 100);
+    return (pct > 0 ? '+' : '') + pct + '%';
+  }
+
+  // The change legend's classes on the diverging ramp, largest fall first.
+  function changeBins(swatchClass) {
+    return M.classes.bins(CHANGE_BREAKS, CHANGE_RAMP, swatchClass, pctRound);
   }
 
   // Precompute each circle so the layer's paint is plain `get`s. With a
@@ -201,6 +221,9 @@
     this.defaultLevel = this.data.defaultLevel || 'zipcode';
     this.level = this.data.level || this.defaultLevel;
     this.measure = this.data.measure || 'density';
+    // The year the Areas view shades the change against, or '' for plain
+    // values; a toolbar control, not part of the page's scope.
+    this.compare = this.data.compare || '';
     this.withDairies = !!this.data.dairiesUrl && !!M.dairies;
   };
 
@@ -407,6 +430,7 @@
   FacilityMap.prototype.areasUrl = function () {
     var params = new URLSearchParams(this.data.query || '');
     params.set('level', this.level);
+    if (this.compare) params.set('compare', this.compare); else params.delete('compare');
     return this.data.areasUrl + '?' + params.toString();
   };
 
@@ -438,19 +462,34 @@
       });
   };
 
+  // A value and its compared-year counterpart (either may be null/undefined)
+  // as a fraction change, or null when there's nothing to compare (either
+  // year's missing, or the compared year was zero -- no percentage of zero).
+  function changeFraction(value, prevValue) {
+    if (value === null || value === undefined || !(prevValue > 0)) return null;
+    return (value - prevValue) / prevValue;
+  }
+
   // Joins the values to the shapes and colours them by the current measure
-  // (a measure change re-runs this without fetching).
+  // (a measure change re-runs this without fetching) -- or, in Compare mode,
+  // by that measure's percent change from the compared year (both years came
+  // with the fetch, so switching the measure or clearing Compare still needs
+  // no refetch; only picking a different compared year does, since the
+  // server computes the pair).
   FacilityMap.prototype.showAreas = function () {
     var data = this.areaData;
     if (!data) return;
+    var compare = this.compare && data.values.compare;
     var byId = {};
     data.values.areas.forEach(function (area) { byId[area.id] = area; });
     var field = AREA_FIELDS[this.measure] || AREA_FIELDS.density;
-    var breaks = areaBreaksFor(this.measure, data.values.unit);
+    var breaks = compare ? CHANGE_BREAKS : areaBreaksFor(this.measure, data.values.unit);
+    var ramp = compare ? CHANGE_RAMP : RAMP;
     var features = (data.shapes.features || []).map(function (feature) {
       var area = byId[feature.id];
       var value = area ? area[field] : null;
-      var shaded = value !== null && value !== undefined && value > 0;
+      var change = compare && area ? changeFraction(value, area[field + '_prev']) : null;
+      var shaded = compare ? change !== null : (value !== null && value !== undefined && value > 0);
       return {
         type: 'Feature',
         id: feature.id,
@@ -460,12 +499,17 @@
           total: area ? area.total : null,
           per_sq_mi: area ? area.per_sq_mi : null,
           per_1k_residents: area ? area.per_1k_residents : null,
-          _color: shaded ? RAMP[classIndex(value, breaks)] : EMPTY_COLOR,
+          total_prev: area ? area.total_prev : null,
+          per_sq_mi_prev: area ? area.per_sq_mi_prev : null,
+          per_1k_residents_prev: area ? area.per_1k_residents_prev : null,
+          _change: change,
+          _color: shaded ? ramp[classIndex(compare ? change : value, breaks)] : EMPTY_COLOR,
           _empty: shaded ? 0 : 1,
         }),
       };
     });
     data.breaks = breaks;
+    data.compareActive = compare;
     this.shell.setSourceData('areas', { type: 'FeatureCollection', features: features });
     this.shell.updateLegend();
     if (this.view === 'areas') this.shell.setStatus('');
@@ -562,10 +606,18 @@
     var line = function (label, value, suffix) {
       return '<p>' + label + ': <strong>' + (value === null || value === undefined ? '—' : quantity(value) + ' ' + unit + '/yr' + suffix) + '</strong></p>';
     };
+    var compare = this.areaData && this.areaData.compareActive;
+    var changeLine = '';
+    if (compare) {
+      changeLine = '<p>Change, ' + escapeHtml(String(compare)) + ' to ' + escapeHtml(this.data.year || '') + ': <strong>' +
+        (p._change === null || p._change === undefined ? 'not comparable' : pctRound(p._change)) + '</strong></p>';
+    }
     var html = '<div class="facility-popup area-popup">' +
       '<p class="facility-popup-name">' + (regionUrl ? '<a href="' + escapeHtml(regionUrl + (qs ? '?' + qs : '')) + '">' + escapeHtml(name) + '</a>' : escapeHtml(name)) + '</p>' +
       '<p>' + count.toLocaleString('en-US') + ' facilit' + (count === 1 ? 'y' : 'ies') + ' · ' + escapeHtml(this.data.label) + '</p>' +
+      changeLine +
       line('Total', p.total, '') + line('Per square mile', p.per_sq_mi, '') + line('Per 1,000 residents', p.per_1k_residents, '') +
+      (compare ? line('Total, ' + escapeHtml(String(compare)), p.total_prev, '') : '') +
       (count ? '<p><button type="button" class="button is-small is-link is-light" data-show-facilities>Show facilities</button></p>' : '') +
       '</div>';
     var popup = this.shell.placePopup(html, lngLat);
@@ -640,9 +692,18 @@
     if (!data || !data.breaks) return;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
     var breaks = data.breaks;
-    var title = escapeHtml(this.data.label) + ' (' + escapeHtml(data.values.unit) + '/yr' + (AREA_SUFFIX[this.measure] || '') + ')';
     var missing = Number(data.values.facilities_without_point) || 0;
-    legend.innerHTML = '<p class="legend-title">' + title + '</p>' +
+    if (data.compareActive) {
+      var title = escapeHtml(this.data.label) + (AREA_SUFFIX[this.measure] || '') + ', change ' +
+        escapeHtml(String(data.compareActive)) + ' to ' + escapeHtml(this.data.year || '');
+      legend.innerHTML = '<p class="legend-title">' + title + '</p>' +
+        changeBins('is-area') +
+        '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>Not comparable' +
+        (this.measure === 'per_resident' ? ' or no population' : '') + '</p>';
+      return;
+    }
+    var plainTitle = escapeHtml(this.data.label) + ' (' + escapeHtml(data.values.unit) + '/yr' + (AREA_SUFFIX[this.measure] || '') + ')';
+    legend.innerHTML = '<p class="legend-title">' + plainTitle + '</p>' +
       facilityBins(breaks, 'is-area') +
       '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>No facilities' +
       (this.measure === 'per_resident' ? ' or no population' : '') + '</p>' +
@@ -660,6 +721,7 @@
     shell.bindControls('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
     shell.bindControls('[data-level]', function (item) { self.setLevel(item.getAttribute('data-level'), item.textContent.trim()); });
     shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
+    shell.bindControls('[data-compare]', function (item) { self.setCompare(item.getAttribute('data-compare')); });
     this.applyView();
   };
 
@@ -677,6 +739,7 @@
       if (areas) params.set('view', 'areas'); else params.delete('view');
       if (areas && this.level !== this.defaultLevel) params.set('level', this.level); else params.delete('level');
       if (areas && this.measure !== 'density') params.set('measure', this.measure); else params.delete('measure');
+      if (areas && this.compare) params.set('compare', this.compare); else params.delete('compare');
     }
     if (this.data.mode === 'full') {
       var sector = new URLSearchParams(this.data.query || '').get('sector');
@@ -723,6 +786,25 @@
     this.markDropdown('.facility-map-measure', '[data-measure]', measure, label);
     this.syncUrl();
     this.showAreas();
+  };
+
+  // The compared year: unlike a measure switch, this needs a refetch (the
+  // server pairs both years' totals; the client never fetches a bare year on
+  // its own).
+  FacilityMap.prototype.setCompare = function (compare) {
+    this.compare = compare || '';
+    this.clearHover();
+    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-compare');
+    if (dropdown) {
+      dropdown.classList.toggle('is-set', !!this.compare);
+      var text = dropdown.querySelector('.map-toolbar-label');
+      if (text) text.textContent = this.compare ? 'vs ' + this.compare : 'Compare';
+      Array.prototype.forEach.call(dropdown.querySelectorAll('[data-compare]'), function (item) {
+        item.classList.toggle('is-active', item.getAttribute('data-compare') === (compare || ''));
+      });
+    }
+    this.syncUrl();
+    this.loadAreas();
   };
 
   FacilityMap.prototype.markDropdown = function (selector, itemSelector, value, label) {

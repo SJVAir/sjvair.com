@@ -56,5 +56,22 @@ only) and, in Areas, the level and measure.
             {% for value, label in map_config.measure_options %}<a href="#" class="dropdown-item{% if value == map_config.measure %} is-active{% endif %}" data-measure="{{ value }}">{{ label }}</a>{% endfor %}
         </div></div>
     </div>
+    {% if map_config.compare_options %}
+    {# The year the shading compares against; not part of the scope, so no other page offers or carries it. #}
+    <div class="dropdown map-toolbar-dropdown facility-map-compare{% if map_config.compare %} is-set{% endif %}" data-areas-only{% if map_config.view != 'areas' %} hidden{% endif %}>
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                <span class="icon"><span class="fa-duotone fa-fw fa-left-right explorer-icon is-compare" aria-hidden="true"></span></span>
+                <span class="map-toolbar-label">{% if map_config.compare %}vs {{ map_config.compare }}{% else %}Compare{% endif %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu"><div class="dropdown-content">
+            <a href="#" class="dropdown-item{% if not map_config.compare %} is-active{% endif %}" data-compare="">Don't compare</a>
+            <hr class="dropdown-divider">
+            {% for option in map_config.compare_options %}<a href="#" class="dropdown-item{% if map_config.compare == option|stringformat:"s" %} is-active{% endif %}" data-compare="{{ option }}">vs {{ option }}</a>{% endfor %}
+        </div></div>
+    </div>
+    {% endif %}
     {% endif %}
 </div>
