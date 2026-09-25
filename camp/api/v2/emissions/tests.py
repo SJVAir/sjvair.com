@@ -123,9 +123,25 @@ class FacilityGeoJSONTests(TestCase):
     def test_collection_properties(self):
         response = self.client.get(reverse('api:v2:emissions:geojson'), {'toxics': 1})
         body = response.json()
-        assert body['properties'] == {'year': 2024, 'pollutant': 'benzene', 'label': 'Benzene', 'unit': 'lbs'}
+        assert body['properties'] == {'year': 2024, 'pollutant': 'benzene', 'label': 'Benzene', 'unit': 'lbs', 'compare': ''}
         plant = [f for f in body['features'] if f['properties']['name'] == 'TEST PLANT'][0]
         assert plant['properties']['value'] == 2.0
+
+    def test_compare(self):
+        response = self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': 2023})
+        body = response.json()
+        assert body['properties']['compare'] == 2023
+        by_name = {f['properties']['name']: f['properties'] for f in body['features']}
+        # TEST PLANT has a 2023 record; TEST CEMENT doesn't (test_specific_year).
+        assert by_name['TEST PLANT']['value_prev'] is not None
+        assert by_name['TEST CEMENT']['value_prev'] is None
+
+    def test_compare_ignores_the_scope_year_and_an_unloaded_year(self):
+        for bad in (2024, 1999, 'garbage'):
+            response = self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': bad})
+            body = response.json()
+            assert body['properties']['compare'] == ''
+            assert all('value_prev' not in f['properties'] for f in body['features'])
 
     def test_filters(self):
         assert len(self.features(minor=1)) == 3
@@ -172,6 +188,18 @@ class AreaValuesEndpointTests(TestCase):
     def test_level_is_required_and_checked(self):
         assert self.client.get(reverse('api:v2:emissions:areas')).status_code == 400
         assert self.client.get(reverse('api:v2:emissions:areas'), {'level': 'mtrs'}).status_code == 400
+
+    def test_compare(self):
+        response = self.client.get(reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2023'})
+        data = response.json()
+        assert data['compare'] == 2023
+        area = data['areas'][0]
+        assert {'total_prev', 'per_sq_mi_prev', 'per_1k_residents_prev'} <= set(area)
+
+    def test_compare_ignores_the_scope_year(self):
+        response = self.client.get(reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2024'})
+        data = response.json()
+        assert data['compare'] == '' and 'total_prev' not in data['areas'][0]
 
 
 class DairyEndpointTests(TestCase):

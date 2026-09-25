@@ -57,8 +57,12 @@ only) and, in Areas, the level and measure.
         </div></div>
     </div>
     {% if map_config.compare_options %}
-    {# The year the shading compares against; not part of the scope, so no other page offers or carries it. #}
-    <div class="dropdown map-toolbar-dropdown facility-map-compare{% if map_config.compare %} is-set{% endif %}" data-areas-only{% if map_config.view != 'areas' %} hidden{% endif %}>
+    {% comment %}
+    The year the shading compares against, in both views (a facility's own
+    circle, or an area's total); not part of the scope, so no other page
+    offers or carries it.
+    {% endcomment %}
+    <div class="dropdown map-toolbar-dropdown facility-map-compare{% if map_config.compare %} is-set{% endif %}">
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
                 <span class="icon"><span class="fa-duotone fa-fw fa-left-right explorer-icon is-compare" aria-hidden="true"></span></span>

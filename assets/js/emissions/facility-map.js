@@ -62,10 +62,10 @@
   var DISTRICT_COLOR = '#6a3d9a';
   var AREA_LINE_COLOR = '#4a5568';
   var AREA_LINE_WIDTH = 0.5;
-  var MIN_RADIUS = 3;
-  var MAX_RADIUS = 26;
+  var MIN_RADIUS = 4;
+  var MAX_RADIUS = 34;
   // Region and near-me pages with dairies: every point one size, coloured by class.
-  var POINT_RADIUS = 6;
+  var POINT_RADIUS = 7;
   var WORLD_RING = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
   var CIRCLE_POINTS = 64;
   var METERS_PER_MILE = 1609.344;
@@ -107,22 +107,40 @@
     return M.classes.bins(CHANGE_BREAKS, CHANGE_RAMP, swatchClass, pctRound);
   }
 
+  // A value and its compared-year counterpart (either may be null/undefined)
+  // as a fraction change, or null when there's nothing to compare (either
+  // year's missing, or the compared year was zero -- no percentage of zero).
+  // Shared by the Areas view (per-region totals) and the Facilities view
+  // (per-facility values, below).
+  function changeFraction(value, prevValue) {
+    if (value === null || value === undefined || !(prevValue > 0)) return null;
+    return (value - prevValue) / prevValue;
+  }
+
   // Precompute each circle so the layer's paint is plain `get`s. With a
-  // `pointRadius` (a map with dairies), every circle is that size.
-  function prepare(collection, unit, pointRadius) {
+  // `pointRadius` (a map with dairies), every circle is that size. `compare`
+  // (a loaded year, from the geojson's own properties.compare) keeps the
+  // circle's size by this year's value -- still a useful scale -- but
+  // colours it by the percent change from that year instead, on the same
+  // diverging ramp as the Areas view.
+  function prepare(collection, unit, pointRadius, compare) {
     var features = collection.features || [];
     var positive = features.map(function (f) { return f.properties.value; }).filter(function (v) { return v > 0; });
     var max = positive.length ? Math.max.apply(null, positive) : 0;
-    var breaks = breaksFor(unit);
+    var breaks = compare ? CHANGE_BREAKS : breaksFor(unit);
+    var ramp = compare ? CHANGE_RAMP : RAMP;
     features.forEach(function (feature) {
       var p = feature.properties;
-      var reported = p.value > 0 && max > 0;
-      p._radius = pointRadius || (reported ? radiusFor(p.value, max) : MIN_RADIUS);
-      p._color = reported ? RAMP[classIndex(p.value, breaks)] : EMPTY_COLOR;
-      p._empty = reported ? 0 : 1;
-      p._sort = reported ? p.value : 0;
+      var sized = p.value > 0 && max > 0;
+      var change = compare ? changeFraction(p.value, p.value_prev) : null;
+      var coloured = compare ? change !== null : sized;
+      p._radius = pointRadius || (sized ? radiusFor(p.value, max) : MIN_RADIUS);
+      p._color = coloured ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_COLOR;
+      p._empty = coloured ? 0 : 1;
+      p._sort = sized ? p.value : 0;
+      p._change = change;
     });
-    return { collection: collection, breaks: breaks, max: max };
+    return { collection: collection, breaks: breaks, max: max, compare: compare || '' };
   }
 
   // Everything outside `geometry` (a Polygon or MultiPolygon), as one polygon
@@ -332,7 +350,9 @@
   };
 
   FacilityMap.prototype.url = function () {
-    var query = this.data.query || '';
+    var params = new URLSearchParams(this.data.query || '');
+    if (this.compare) params.set('compare', this.compare); else params.delete('compare');
+    var query = params.toString();
     return this.data.geojsonUrl + (query ? '?' + query : '');
   };
 
@@ -364,7 +384,11 @@
   };
 
   FacilityMap.prototype.show = function (collection) {
-    var prepared = prepare(collection, this.data.unit, this.withDairies ? POINT_RADIUS : 0);
+    // The geojson's own `compare` (its properties, not `this.compare`)
+    // confirms the fetch actually paired a compared year -- e.g. it's
+    // absent if the request raced a Compare toggle-off.
+    var compare = this.compare && (collection.properties || {}).compare;
+    var prepared = prepare(collection, this.data.unit, this.withDairies ? POINT_RADIUS : 0, compare);
     this.legendData = prepared;
     this.shell.setSourceData('facilities', prepared.collection);
     this.applyHighlight();
@@ -461,14 +485,6 @@
         logError('failed to load areas', err);
       });
   };
-
-  // A value and its compared-year counterpart (either may be null/undefined)
-  // as a fraction change, or null when there's nothing to compare (either
-  // year's missing, or the compared year was zero -- no percentage of zero).
-  function changeFraction(value, prevValue) {
-    if (value === null || value === undefined || !(prevValue > 0)) return null;
-    return (value - prevValue) / prevValue;
-  }
 
   // Joins the values to the shapes and colours them by the current measure
   // (a measure change re-runs this without fetching) -- or, in Compare mode,
@@ -585,11 +601,21 @@
 
   FacilityMap.prototype.openPopup = function (feature, lngLat) {
     var p = feature.properties;
-    var value = p._empty ? 'none reported' : quantity(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
+    var value = p._empty && !this.compare ? 'none reported' : quantity(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
+    var compare = this.legendData && this.legendData.compare;
+    var changeLine = '';
+    if (compare) {
+      changeLine = '<p>Change, ' + escapeHtml(String(compare)) + ' to ' + escapeHtml(this.data.year || '') + ': <strong>' +
+        (p._change === null || p._change === undefined ? 'not comparable' : pctRound(p._change)) + '</strong></p>' +
+        (p.value_prev === null || p.value_prev === undefined ? '' :
+          '<p>' + escapeHtml(this.data.label) + ', ' + escapeHtml(String(compare)) + ': ' +
+          quantity(p.value_prev) + ' ' + escapeHtml(this.data.unit) + '/yr</p>');
+    }
     this.shell.placePopup('<div class="facility-popup">' +
       '<p class="facility-popup-name"><a href="' + escapeHtml(this.facilityUrl(p.id)) + '">' + escapeHtml(p.name) + '</a></p>' +
       '<p>' + escapeHtml(p.sector) + '</p>' +
       '<p>' + escapeHtml(this.data.label) + ': <strong>' + value + '</strong>' + (p.rank ? ' · #' + p.rank : '') + '</p>' +
+      changeLine +
       '</div>', lngLat);
   };
 
@@ -644,11 +670,27 @@
     }
     if (!this.legendData) return;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
+    var max = this.legendData.max;
+    if (this.legendData.compare) {
+      // Circles still size by this year's value (still a useful scale), so
+      // the size key stays; the colour classes swap to the change ramp.
+      // Dairies (a separate, uncompared layer) drop out of the legend here
+      // rather than sharing space with a ramp they have no part in.
+      var changeTitle = escapeHtml(this.data.label) + ', change ' + escapeHtml(String(this.legendData.compare)) +
+        ' to ' + escapeHtml(this.data.year || '');
+      var changeSizes = max ? '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
+        var r = radiusFor(value, max);
+        return '<span class="legend-size"><svg width="' + (2 * MAX_RADIUS + 2) + '" height="' + (2 * r + 2) + '">' +
+          '<circle cx="' + (MAX_RADIUS + 1) + '" cy="' + (r + 1) + '" r="' + r + '"/></svg>' + roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
+      }).join('') + '</div>' : '';
+      legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + changeSizes +
+        changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>Not comparable</p>';
+      return;
+    }
     if (this.withDairies) {
       legend.innerHTML = this.combinedLegend();
       return;
     }
-    var max = this.legendData.max;
     var breaks = this.legendData.breaks;
     var label = escapeHtml(this.data.label) + ' (' + escapeHtml(this.data.unit) + '/yr)';
     if (!max) {
@@ -739,7 +781,9 @@
       if (areas) params.set('view', 'areas'); else params.delete('view');
       if (areas && this.level !== this.defaultLevel) params.set('level', this.level); else params.delete('level');
       if (areas && this.measure !== 'density') params.set('measure', this.measure); else params.delete('measure');
-      if (areas && this.compare) params.set('compare', this.compare); else params.delete('compare');
+      // Compare applies to both views (a facility's own circle too), so it's
+      // written whenever it's set, not only in Areas.
+      if (this.compare) params.set('compare', this.compare); else params.delete('compare');
     }
     if (this.data.mode === 'full') {
       var sector = new URLSearchParams(this.data.query || '').get('sector');
@@ -804,7 +848,11 @@
       });
     }
     this.syncUrl();
+    // Both views shade by the change now (the dropdown lives in the Areas
+    // toolbar, but the Facilities circles compare too, so the reader doesn't
+    // lose the comparison switching back to look at individual facilities).
     this.loadAreas();
+    this.loadFacilities();
   };
 
   FacilityMap.prototype.markDropdown = function (selector, itemSelector, value, label) {

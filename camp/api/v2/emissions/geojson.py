@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 from resticus import generics
 
@@ -15,10 +16,28 @@ class FacilityGeoJSONBase(generics.Endpoint):
         scope = stats.resolve_scope(request.GET)
         sector = request.GET.get('sector')
         sector = sector if sector in Facility.Sector.values else None
+        compare = stats.resolve_compare_param(request.GET.get('compare'), scope.year)
         rank_map = stats.ranks(scope)
+        field = scope.pollutant.key
+        prev_by_facility = {}
+        if compare:
+            prev_rows = stats.records(replace(scope, year=compare))
+            if sector:
+                prev_rows = prev_rows.filter(facility__sector=sector)
+            prev_by_facility = dict(prev_rows.values_list('facility_id', field))
         features = []
         for record in stats.facility_table(scope, sector=sector).filter(facility__point__isnull=False):
             facility = record.facility
+            properties = {
+                'id': facility.sqid,
+                'name': facility.name,
+                'sector': facility.get_sector_display(),
+                'value': scope.pollutant.display(record.value),
+                'rank': rank_map.get(record.facility_id),
+            }
+            if compare:
+                prev_value = prev_by_facility.get(facility.pk)
+                properties['value_prev'] = scope.pollutant.display(prev_value) if prev_value is not None else None
             features.append({
                 'type': 'Feature',
                 'id': facility.sqid,
@@ -26,13 +45,7 @@ class FacilityGeoJSONBase(generics.Endpoint):
                     'type': 'Point',
                     'coordinates': [round(facility.point.x, 5), round(facility.point.y, 5)],
                 },
-                'properties': {
-                    'id': facility.sqid,
-                    'name': facility.name,
-                    'sector': facility.get_sector_display(),
-                    'value': scope.pollutant.display(record.value),
-                    'rank': rank_map.get(record.facility_id),
-                },
+                'properties': properties,
             })
         return {
             'type': 'FeatureCollection',
@@ -41,6 +54,7 @@ class FacilityGeoJSONBase(generics.Endpoint):
                 'pollutant': scope.pollutant.key,
                 'label': scope.pollutant.label,
                 'unit': scope.pollutant.unit,
+                'compare': compare or '',
             },
             'features': features,
         }
@@ -49,11 +63,14 @@ class FacilityGeoJSONBase(generics.Endpoint):
 class FacilityGeoJSON(CachedEndpointMixin, FacilityGeoJSONBase):
     """
     Facilities in scope as GeoJSON points, for the explorer map. Parameters:
-    year, county (slug), pollutant, toxics=1, minor=1, sector. `value` is in
-    the pollutant's unit (tons/yr, or lbs/yr for toxics).
+    year, county (slug), pollutant, toxics=1, minor=1, sector, and
+    ?compare=<year> (a loaded year other than the scope's, ignored
+    otherwise) for that year's value under `value_prev`, alongside the
+    current one. `value`/`value_prev` are in the pollutant's unit (tons/yr,
+    or lbs/yr for toxics).
     """
     cache_timeout = 60 * 60
-    cache_key_version = 1
+    cache_key_version = 2
 
 
 class DistrictListBase(generics.Endpoint):
