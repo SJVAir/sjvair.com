@@ -510,6 +510,9 @@ def main():
         check(results, 'its legend has both ramps',
               'Facilities (tons/yr)' in legend and 'Dairies (EPA size)' in legend
               and all(label in legend for label in ('Large', 'Medium', 'Small')), legend[:160])
+        # The map sits below the stats box: bring it on screen before finding
+        # a point to click, or the click can land off the viewport.
+        driver.execute_script("document.querySelector('.facility-map').scrollIntoView({block: 'center'});")
         time.sleep(0.5)
         hit = driver.execute_script(DAIRY_ALONE)
         if hit:
