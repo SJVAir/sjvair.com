@@ -15,7 +15,9 @@ class PlaceSearch(generics.Endpoint):
     codes whose name contains `q` (two characters or more), prefix matches
     first. `limit` defaults to 10, capped at 25. Each result is the region's
     `id` (sqid, the list's ?region=), `name`, and `detail` (City, Place or ZIP).
-    Takes the entity picker's `type` and scope params and ignores them.
+    `county` (slug), the explorer's county, offers only the ones that overlap
+    it (a ZIP straddling the line is offered in both counties). The entity
+    picker's `type` and the rest of the scope are ignored.
     """
 
     def get(self, request):
@@ -33,8 +35,16 @@ class PlaceSearch(generics.Endpoint):
             .exclude(type=Region.Type.PLACE, name__in=Region.objects.filter(type=Region.Type.CITY).values('name'))
             .annotate(prefix=Case(When(Q(name__istartswith=query), then=0), default=1))
             .order_by('prefix', 'name', 'type')
-            .values_list('sqid', 'name', 'type')[:limit]
         )
+        county = request.GET.get('county')
+        if county:
+            county = Region.objects.counties().filter(slug=county, boundary__isnull=False).select_related('boundary').first()
+            if county is None:
+                return {'results': []}
+            geometry = county.boundary.geometry
+            # Overlapping, not just sharing an edge with the county.
+            regions = regions.filter(boundary__geometry__intersects=geometry).exclude(boundary__geometry__touches=geometry)
+        regions = regions.values_list('sqid', 'name', 'type')[:limit]
         return {'results': [
             {'id': sqid, 'name': name, 'detail': FILTER_REGION_TYPES[region_type]}
             for sqid, name, region_type in regions

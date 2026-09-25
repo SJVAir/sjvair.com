@@ -100,6 +100,16 @@ class PlaceSearchTests(ListTestCase):
         make(Region.Type.PLACE, city.name, AROUND_PLANT)
         assert [r['detail'] for r in self.search(city.name) if r['name'] == city.name] == ['City']
 
+    def test_a_county_limits_it_to_places_in_that_county(self):
+        inside = make(Region.Type.PLACE, 'Plantville', AROUND_PLANT)
+        # A place well outside Fresno County (out by the Mojave cement plant).
+        make(Region.Type.PLACE, 'Plantdale', 'MULTIPOLYGON(((-118.2 35.0, -118.1 35.0, -118.1 35.1, -118.2 35.1, -118.2 35.0)))')
+        assert {r['name'] for r in self.search('plant')} == {'Plantville', 'Plantdale'}
+        response = self.client.get(reverse('api:v2:emissions:places'), {'q': 'plant', 'county': 'fresno'})
+        assert response.json()['results'] == [{'id': inside.sqid, 'name': 'Plantville', 'detail': 'Place'}]
+        response = self.client.get(reverse('api:v2:emissions:places'), {'q': 'plant', 'county': 'nowhere'})
+        assert response.json()['results'] == []
+
     def test_short_queries_find_nothing(self):
         assert self.search('p') == []
 
