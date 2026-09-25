@@ -10,6 +10,8 @@
                     <a href="{{ row.obj.get_absolute_url }}{{ scope_qs }}">{{ row.obj.display_name }}</a>
                     {% if kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
                 </span>
+                {# Shape, not scale: each is drawn against its own maximum. #}
+                <span class="spark">{{ row.series|sparkline }}</span>
                 <span class="lbs">{{ row.lbs|lbs }} lbs</span>
             </li>
             {% endfor %}

@@ -1,7 +1,9 @@
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase
 
-from camp.apps.pesticides.templatetags.pesticides_explorer import lbs, month_chart, title_case_name, trend_chart
+from camp.apps.pesticides.templatetags.pesticides_explorer import (
+    lbs, month_chart, sparkline, title_case_name, trend_chart,
+)
 
 
 class LbsFilterTests(SimpleTestCase):
@@ -146,3 +148,46 @@ class MonthChartTests(SimpleTestCase):
         assert 'class="explorer-chart month-chart"' in html
         assert 'aria-label="Lbs applied by month, 2023"' in html
         assert '<noscript>' in html and '<td>August</td>' in html and '1,234' in html
+
+
+class SparklineTests(SimpleTestCase):
+    """
+    A leaderboard row's by-year shape, as inline SVG. Each is scaled to its
+    own maximum: these say "rising" or "receding", never "bigger than the
+    row below".
+    """
+
+    def points(self, svg):
+        import re
+
+        match = re.search(r'points="([^"]+)"', svg)
+        return [tuple(float(n) for n in pair.split(',')) for pair in match.group(1).split()]
+
+    def test_draws_a_point_per_year(self):
+        points = self.points(sparkline([1, 2, 3, 4]))
+        assert len(points) == 4
+        # Spread across the width, in order.
+        assert [x for x, _y in points] == sorted(x for x, _y in points)
+
+    def test_the_maximum_sits_at_the_top(self):
+        # y grows downward in SVG, so the largest value has the smallest y.
+        points = self.points(sparkline([5, 100, 20]))
+        assert points[1][1] == min(y for _x, y in points)
+
+    def test_two_series_of_different_magnitude_draw_the_same_shape(self):
+        small = self.points(sparkline([1, 2, 1]))
+        large = self.points(sparkline([1000, 2000, 1000]))
+        assert small == large
+
+    def test_nothing_to_draw(self):
+        # A line needs two points to have a shape, and a flat zero would read
+        # as a real measurement of nothing.
+        assert sparkline([]) == ''
+        assert sparkline([5]) == ''
+        assert sparkline([0, 0, 0]) == ''
+        assert sparkline(None) == ''
+
+    def test_missing_years_are_zeroes_not_gaps(self):
+        points = self.points(sparkline([10, 0, 10]))
+        assert len(points) == 3
+        assert points[1][1] == max(y for _x, y in points)

@@ -844,6 +844,39 @@ def commodity_concern_lbs(year=None, all_years=False, county=None):
     )
 
 
+def yearly_series(rows, field, objects, lbs_field='lbs_chemical'):
+    """
+    {pk: [pounds per loaded year]} for the given `objects`, aligned to
+    available_years() with a zero wherever a year is missing, so every
+    sparkline on a page shares one x axis and their shapes are comparable.
+
+    One group-by for the whole board rather than one per row: the rows are
+    already resolved, so this only needs their ids.
+    """
+    years = available_years()
+    ids = [obj.pk for obj in objects]
+    if not years or not ids:
+        return {}
+    grouped = (rows.filter(**{f'{field}__in': ids})
+        .values(field, 'year')
+        .annotate(lbs=Sum(lbs_field)))
+    index = {year: i for i, year in enumerate(years)}
+    series = {pk: [0.0] * len(years) for pk in ids}
+    for row in grouped:
+        position = index.get(row['year'])
+        if position is not None and row[field] in series:
+            series[row[field]][position] = row['lbs'] or 0
+    return series
+
+
+def with_series(rows, field, ranked, lbs_field='lbs_chemical'):
+    """`ranked` (top_related rows) with a `series` on each, for its sparkline."""
+    series = yearly_series(rows, field, [row.obj for row in ranked], lbs_field)
+    for row in ranked:
+        row.series = series.get(row.obj.pk) or []
+    return ranked
+
+
 def landing_key(year, concern=False):
     key = f'{LANDING_KEY}:{year}'
     return f'{key}:{concern}' if concern else key
@@ -898,18 +931,21 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         'applications': year_totals_['applications'] or 0,
         'total_lbs': year_totals_['lbs'] or 0,
         'active_notices': upcoming_count(notices),
-        'top_products': top_related(uses, year, 'product', lbs_field='lbs_product', all_years=all_years),
-        'top_chemicals': top_chemicals_all[:10],
-        'top_commodities': top_related(uses, year, 'commodity', all_years=all_years),
+        # Each board's rows carry their own by-year series, for the
+        # sparkline that says whether a big number is growing or receding.
+        'top_products': with_series(uses, 'product',
+            top_related(uses, year, 'product', lbs_field='lbs_product', all_years=all_years), 'lbs_product'),
+        'top_chemicals': with_series(uses, 'chemical', top_chemicals_all[:10]),
+        'top_commodities': with_series(uses, 'commodity',
+            top_related(uses, year, 'commodity', all_years=all_years)),
         'by_county': county_totals(year, all_years, concern) if (year or all_years) else [],
         'by_year': by_year(totals),
     }
     # Under the concern scope every leaderboard is already of concern, so
     # the dedicated one would just restate the top chemicals.
     if not concern:
-        data['top_chemicals_of_concern'] = top_chemicals_of_concern(
-            top_chemicals_all, uses, year, all_years=all_years,
-        )
+        data['top_chemicals_of_concern'] = with_series(uses, 'chemical',
+            top_chemicals_of_concern(top_chemicals_all, uses, year, all_years=all_years))
     return data
 
 

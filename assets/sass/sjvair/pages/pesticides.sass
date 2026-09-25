@@ -569,6 +569,17 @@ body.pesticides
             letter-spacing: 0.03em
             color: $grey
 
+    // The by-year shape beside each leaderboard row: grey enough to read as
+    // context rather than data, and it disappears on a phone, where the row
+    // needs its width for the name.
+    .spark
+        display: none
+        flex: 0 0 auto
+        line-height: 0
+        color: $grey-light
+        +tablet
+            display: inline-block
+
     .leaderboard-list
         // Pulled out half an em each side so the zebra stripes run past the
         // text the way a striped table's cells do, with the text itself
