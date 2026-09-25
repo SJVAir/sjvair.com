@@ -92,6 +92,58 @@ class RegionTests(TestCase):
         assert combined.contains(fresno.boundary.geometry.centroid)
 
 
+class ImportOrUpdateTests(TestCase):
+    def make_geometry(self):
+        return MultiPolygon(Polygon((
+            (0, 0), (1, 0), (1, 1), (0, 1), (0, 0)
+        )))
+
+    def test_reimport_carries_over_population(self):
+        # import_population writes metadata['population'] separately from
+        # the region imports (import_counties etc.), which call
+        # import_or_update with their own metadata dict that knows nothing
+        # about population. A re-import must not drop it.
+        geometry = self.make_geometry()
+        region, _ = Region.objects.import_or_update(
+            name='Test County', slug='test-county', type=Region.Type.COUNTY,
+            external_id='06999', geometry=geometry, version='v1',
+            metadata={'fips': '06999'},
+        )
+        region.metadata['population'] = 12345
+        region.save(update_fields=['metadata'])
+
+        region, _ = Region.objects.import_or_update(
+            name='Test County', slug='test-county', type=Region.Type.COUNTY,
+            external_id='06999', geometry=geometry, version='v1',
+            metadata={'fips': '06999'},
+        )
+        assert region.metadata['population'] == 12345
+        assert region.metadata['fips'] == '06999'
+
+    def test_reimport_with_its_own_population_wins(self):
+        geometry = self.make_geometry()
+        region, _ = Region.objects.import_or_update(
+            name='Test County', slug='test-county', type=Region.Type.COUNTY,
+            external_id='06999', geometry=geometry, version='v1',
+            metadata={'population': 1},
+        )
+        region, _ = Region.objects.import_or_update(
+            name='Test County', slug='test-county', type=Region.Type.COUNTY,
+            external_id='06999', geometry=geometry, version='v1',
+            metadata={'population': 2},
+        )
+        assert region.metadata['population'] == 2
+
+    def test_first_import_without_population_has_none(self):
+        geometry = self.make_geometry()
+        region, _ = Region.objects.import_or_update(
+            name='Test County', slug='test-county', type=Region.Type.COUNTY,
+            external_id='06999', geometry=geometry, version='v1',
+            metadata={'fips': '06999'},
+        )
+        assert 'population' not in region.metadata
+
+
 class BuildMtrsTests(TestCase):
     def test_single_digit_section_is_zero_padded(self):
         assert build_mtrs('MD', 'T13S', 'R14E', 8) == 'MD-T13S-R14E-08'

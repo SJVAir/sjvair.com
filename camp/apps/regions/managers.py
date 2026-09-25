@@ -126,6 +126,15 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
         from .models import Region, Boundary
         region_defaults = {'name': name, 'slug': slug}
         if metadata is not None:
+            # A region import's metadata doesn't carry population -- that's
+            # written separately by import_population. update_or_create
+            # below replaces metadata wholesale, so without this a re-import
+            # (import_counties, import_zipcodes, import_census_tracts) would
+            # silently wipe a population any prior import_population run set.
+            if 'population' not in metadata:
+                existing = Region.objects.filter(external_id=external_id, type=type).values_list('metadata', flat=True).first()
+                if existing and 'population' in existing:
+                    metadata = {**metadata, 'population': existing['population']}
             region_defaults['metadata'] = metadata
         region, created = Region.objects.update_or_create(
             external_id=external_id,
