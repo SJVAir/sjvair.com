@@ -82,17 +82,34 @@ class BoundaryInline(MapFigureMixin, admin.TabularInline):
 @admin.register(Region)
 class RegionAdmin(MapFigureMixin, ReadOnlyAdminMixin, GISModelAdmin):
     inlines = [BoundaryInline]
-    list_display = ['name', 'type', 'external_id', 'current_version', 'monitor_count']
+    list_display = ['name', 'sqid', 'type', 'external_id', 'current_version', 'monitor_count']
     list_filter = ['type', CountyFilter, 'boundary__version']
     # The monitor map is rendered by the change form itself (beside the tiles);
     # see admin/regions/region/change_form.html.
     fieldsets = [
         ('Region', {
             'classes': ['collapse'],
-            'fields': ['name', 'slug', 'external_id', 'type', 'boundary', 'get_metadata', 'get_overview_map'],
+            'fields': ['name', 'sqid', 'slug', 'external_id', 'type', 'boundary', 'get_metadata', 'get_overview_map'],
         }),
     ]
     search_fields = ['name', 'external_id']
+
+    def get_search_results(self, request, queryset, search_term):
+        """
+        Also match a pasted sqid exactly.
+
+        Not a `search_fields` entry: Django's `=` prefix is an `iexact`
+        lookup and SqidsField supports only `exact`, so it's resolved to a pk
+        here. A sqid is a whole opaque identifier -- there is no partial match
+        worth offering.
+        """
+        results, may_have_duplicates = super().get_search_results(request, queryset, search_term)
+        term = (search_term or '').strip()
+        if term:
+            pk = self.model.objects.filter(sqid=term).values_list('pk', flat=True).first()
+            if pk is not None:
+                results = results | queryset.filter(pk=pk)
+        return results, may_have_duplicates
 
     def get_queryset(self, *args, **kwargs):
         queryset = (super()
