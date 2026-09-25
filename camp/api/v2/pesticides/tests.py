@@ -1366,7 +1366,7 @@ class LocationEndpointTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Chemicals-of-concern scope (`?concern=1`)
+# Chemicals-of-concern scope (`?narrow=concern`)
 # ---------------------------------------------------------------------------
 
 class ConcernScopeEndpointTests(RollupTestMixin, TestCase):

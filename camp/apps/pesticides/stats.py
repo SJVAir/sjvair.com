@@ -44,6 +44,18 @@ NOTICE_WINDOW_TTL = 60 * 60
 SJV_COUNTY_COUNT = 8
 # The explorer's third scope control, beside year and county.
 CONCERN_PARAM = 'concern'
+# The explorer can narrow to one kind of use at a time. One parameter rather
+# than a toggle each, because the question is "show me which of these" and
+# the combinations ("fumigants that are also of concern") are a report, not a
+# browsing mode. `concern=1` is still read, as the links that shipped with it.
+NARROW_PARAM = 'narrow'
+NARROW_CONCERN = 'concern'
+NARROW_FUMIGANT = 'fumigant'
+NARROW_CHOICES = (
+    (NARROW_CONCERN, 'Chemicals of concern'),
+    (NARROW_FUMIGANT, 'Fumigants'),
+)
+NARROW_VALUES = {value for value, _label in NARROW_CHOICES}
 # The "within about a mile" block: a section plus the eight around it. MTRS
 # sections are roughly one mile square, so a neighbour's centroid is about a
 # mile away (1.5 miles diagonally) and the next ring out is about two.
@@ -180,7 +192,8 @@ def scope_param(year, all_years=False, county=None, concern=False):
     if slug:
         parts.append(f'county={slug}')
     if concern:
-        parts.append(f'{CONCERN_PARAM}=1')
+        parts.append(f'{NARROW_PARAM}={concern}' if concern in NARROW_VALUES
+            else f'{CONCERN_PARAM}=1')
     return '&'.join(parts)
 
 
@@ -188,6 +201,58 @@ def scope_query(year, all_years=False, county=None, concern=False):
     """`scope_param()` with a leading '?', for appending to a bare path ('' when nothing is pinned)."""
     param = scope_param(year, all_years, county, concern)
     return f'?{param}' if param else ''
+
+
+def resolve_narrow(params):
+    """
+    What the explorer is narrowed to, from a request's GET: one of
+    NARROW_VALUES, or '' for all use. Anything unrecognised is all use --
+    a bad value shouldn't silently show a subset and call it the total.
+    """
+    value = str(params.get(NARROW_PARAM) or '').strip().lower()
+    if value in NARROW_VALUES:
+        return value
+    # The chemicals-of-concern toggle's original parameter.
+    return NARROW_CONCERN if is_concern(params.get(CONCERN_PARAM)) else ''
+
+
+def narrow_label(narrow):
+    """What a heading calls the current narrowing ('' for all use)."""
+    return dict(NARROW_CHOICES).get(narrow, '')
+
+
+def narrow_needs_product(narrow):
+    """
+    Whether this narrowing filters on the product rather than the chemical.
+    PesticideUseTotal is binned per entity, so its chemical rows carry no
+    product at all: a source that pre-sums by chemical can answer "of
+    concern" but not "fumigant", and has to give way to the rollup, where
+    both sit on the same row.
+    """
+    return narrow == NARROW_FUMIGANT
+
+
+def narrow_rows(rows, narrow):
+    """
+    `rows` (rollup or totals rows) restricted to what the explorer is
+    narrowed to. Fumigants are a property of the product applied, chemicals
+    of concern a property of the chemical, so the two filter on different
+    ends of the same row.
+    """
+    if narrow == NARROW_CONCERN:
+        return concern_rows(rows)
+    if narrow == NARROW_FUMIGANT:
+        return rows.filter(product__fumigant=True)
+    return rows
+
+
+def narrow_notices(notices, narrow):
+    """`notices` restricted the same way; a notice lists products and chemicals."""
+    if narrow == NARROW_CONCERN:
+        return concern_notices(notices)
+    if narrow == NARROW_FUMIGANT:
+        return notices.filter(products__fumigant=True).distinct()
+    return notices
 
 
 def is_concern(value):
@@ -337,10 +402,10 @@ def county_used_sections(year, all_years=False, concern=False):
     """
     rows = PesticideUseRollup.objects.filter(chemical__isnull=False)
     if concern:
-        rows = concern_rows(rows)
+        rows = narrow_rows(rows, concern)
     parts = ['county-used-sections', ALL_YEARS if all_years else year]
     if concern:
-        parts.append(CONCERN_PARAM)
+        parts.append(concern if concern in NARROW_VALUES else CONCERN_PARAM)
 
     def build():
         counted = (in_year(rows, year, all_years)
@@ -708,12 +773,16 @@ def county_totals(year=None, all_years=False, concern=False):
     don't count the same pounds again. Cached, because the all-years pass
     reads every year at once.
     """
-    rows = PesticideUseTotal.objects.filter(chemical__isnull=False)
-    if concern:
-        rows = concern_rows(rows)
+    if narrow_needs_product(concern):
+        # The totals table can't answer this one (see narrow_needs_product).
+        rows = narrow_rows(PesticideUseRollup.objects.filter(chemical__isnull=False), concern)
+    else:
+        rows = PesticideUseTotal.objects.filter(chemical__isnull=False)
+        if concern:
+            rows = narrow_rows(rows, concern)
     parts = ['county-totals', ALL_YEARS if all_years else year]
     if concern:
-        parts.append(CONCERN_PARAM)
+        parts.append(concern if concern in NARROW_VALUES else CONCERN_PARAM)
     return cached(
         all_years_key(*parts),
         lambda: by_county(rows, year, all_years=all_years),
@@ -731,10 +800,10 @@ def commodity_chemical_counts(county=None, concern=False):
     if county is not None:
         rows = rows.filter(county=county)
     if concern:
-        rows = concern_rows(rows)
+        rows = narrow_rows(rows, concern)
     parts = ['commodity-chemicals', county.pk if county is not None else ALL_YEARS]
     if concern:
-        parts.append(CONCERN_PARAM)
+        parts.append(concern if concern in NARROW_VALUES else CONCERN_PARAM)
     return cached(
         all_years_key(*parts),
         lambda: dict(
@@ -753,6 +822,9 @@ def commodity_concern_lbs(year=None, all_years=False, county=None):
     correlated subquery the list would otherwise run sums the concern rows for
     every commodity on the page, which takes seconds across all years.
     """
+    # Always the chemicals of concern, whatever the explorer is narrowed to:
+    # this feeds the commodity list's dedicated concern column, not the
+    # page's scoped totals.
     rows = concern_rows(PesticideUseRollup.objects.filter(commodity__isnull=False))
     if county is not None:
         rows = rows.filter(county=county)
@@ -774,7 +846,7 @@ def commodity_concern_lbs(year=None, all_years=False, county=None):
 
 def landing_key(year, concern=False):
     key = f'{LANDING_KEY}:{year}'
-    return f'{key}:{CONCERN_PARAM}' if concern else key
+    return f'{key}:{concern}' if concern else key
 
 
 def _build_landing_stats(year, all_years=False, county=None, concern=False):
@@ -796,9 +868,9 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         notices = notices.filter(county=county)
         totals = totals.filter(county=county)
     if concern:
-        uses = concern_rows(uses)
-        notices = concern_notices(notices)
-        totals = concern_rows(totals)
+        uses = narrow_rows(uses, concern)
+        notices = narrow_notices(notices, concern)
+        totals = narrow_rows(totals, concern)
     top_chemicals_all = top_related(uses, year, 'chemical', limit=50, all_years=all_years)
     year_uses = in_year(uses, year, all_years)
     counts = {

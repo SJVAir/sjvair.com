@@ -89,7 +89,11 @@ unscoped and carries its own note saying why, which this would contradict.
 <div class="explorer-scope-banner">
     <div class="container">
         <span class="icon"><span class="fa-duotone fa-fw fa-triangle-exclamation explorer-icon is-concern" aria-hidden="true"></span></span>
-        <span>Showing chemicals of concern only — Prop 65, CARB toxic air contaminants, IARC 1/2A/2B. <a href="{% qs_replace concern=None page=None %}">Show all chemicals</a></span>
+        {% if concern == 'fumigant' %}
+        <span>Showing fumigants only — products registered as soil or structural fumigants, which move through air and soil after they're applied. <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a></span>
+        {% else %}
+        <span>Showing chemicals of concern only — Prop 65, CARB toxic air contaminants, IARC 1/2A/2B. <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a></span>
+        {% endif %}
     </div>
 </div>
 {% endif %}

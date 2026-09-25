@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideUse, Product
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Region
@@ -184,7 +185,7 @@ class RecordsBrowserTests(RollupTestMixin, TestCase):
 
 
 class RecordsConcernScopeTests(RollupTestMixin, TestCase):
-    """`?concern=1` narrows the records browser to concern-chemical rows."""
+    """`?narrow=concern` narrows the records browser to concern-chemical rows."""
 
     fixtures = ['pesticides-explorer']
 
@@ -196,7 +197,7 @@ class RecordsConcernScopeTests(RollupTestMixin, TestCase):
         response = self.client.get(self.url, {'concern': '1'})
         assert [u.pk for u in response.context['object_list']] == [5, 4, 3, 2, 1]
         assert response.context['totals'] == {'applications': 5, 'lbs': 240.0, 'acres': 24.0}
-        assert response.context['concern'] is True
+        assert response.context['concern'] == stats.NARROW_CONCERN
         assert response.context['map_config']['concern'] == '1'
 
     def test_totals_cache_key_is_separate_from_the_unscoped_one(self):

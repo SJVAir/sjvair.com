@@ -1,11 +1,11 @@
 {% load pesticides_explorer %}
 {% comment %}
-The chemicals-of-concern scope is on but can't narrow this page: scoping it
-would blank the page, so it renders unscoped and says so here. `reason` is
+A narrowing is on but can't apply to this page: applying it would blank the
+page, so it renders unnarrowed and says so here. `reason` is
 the page's own sentence (see the detail templates' {% block notes %}).
 {% endcomment %}
 <div class="notification is-light placeholder-note">
     <strong>{{ reason }}</strong>
-    so the chemicals-of-concern scope doesn't narrow this page.
-    <a href="{% qs_replace concern=None page=None %}">Show all chemicals</a>.
+    so the {{ narrow_label|lower }} narrowing doesn't apply to this page.
+    <a href="{% qs_replace narrow=None concern=None page=None %}">Show all use</a>.
 </div>

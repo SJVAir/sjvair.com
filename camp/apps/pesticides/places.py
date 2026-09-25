@@ -153,13 +153,13 @@ class Area:
         params = self._area_params()
         params['year'] = stats.ALL_YEARS if all_years else year
         if concern:
-            params[stats.CONCERN_PARAM] = 1
+            params[stats.NARROW_PARAM] = concern
         return reverse('pesticides:records') + '?' + urlencode(params)
 
     def notices_url(self, concern=False):
         params = self._area_params()
         if concern:
-            params[stats.CONCERN_PARAM] = 1
+            params[stats.NARROW_PARAM] = concern
         return reverse('pesticides:notice-list') + '?' + urlencode(params)
 
     def map_kwargs(self):
@@ -310,7 +310,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
         'pesticides:schools-nearby:v3',
         str(region.pk),
         stats.year_param(year, all_years) or 'none',
-        stats.CONCERN_PARAM if concern else '',
+        concern or '',
     ])
 
     district_code = (region.external_id or '')[:7]
@@ -318,7 +318,7 @@ def schools_nearby(region, year, all_years=False, concern=False):
     def build():
         rows = PesticideUseRollup.objects.all()
         if concern:
-            rows = stats.concern_rows(rows)
+            rows = stats.narrow_rows(rows, concern)
 
         # select_related: the table prints each location's city.
         run_by = list(Location.objects
@@ -505,14 +505,16 @@ def _place_stats(area, year, all_years, concern=False):
     """
     rows = area.rollup_rows()
     if concern:
-        rows = stats.concern_rows(rows)
+        rows = stats.narrow_rows(rows, concern)
     scoped = stats.in_year(rows, year, all_years)
     # Only across every year: a single year's rollup rows are cheap, and a
     # totals row exists only where a chemical was identified, so switching
     # sources would quietly drop unattributed applications from the count.
-    total_rows = area.total_rows() if all_years else None
+    # ...and never when the narrowing filters on the product, which the
+    # per-chemical totals rows don't carry (stats.narrow_needs_product).
+    total_rows = area.total_rows() if (all_years and not stats.narrow_needs_product(concern)) else None
     if total_rows is not None and concern:
-        total_rows = stats.concern_rows(total_rows)
+        total_rows = stats.narrow_rows(total_rows, concern)
     totals_source = rows if total_rows is None else total_rows
     summed = stats.year_totals(totals_source, year, all_years=all_years)
 
@@ -566,7 +568,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
 
     # The concern scope gets its own cache entries; without it the keys stay
     # exactly what they were.
-    scope_key = (stats.CONCERN_PARAM,) if concern else ()
+    scope_key = (concern,) if concern else ()
     if all_years:
         data = stats.cached(stats.all_years_key('place-v2', area.cache_key(), *scope_key), build)
     else:
@@ -575,7 +577,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
 
     notices = area.notices()
     if concern:
-        notices = stats.concern_notices(notices)
+        notices = stats.narrow_notices(notices, concern)
     upcoming_qs = stats._upcoming(notices)
     upcoming = list(
         upcoming_qs
@@ -600,7 +602,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
     # page does.
     def build_by_year():
         if concern:
-            return stats.by_year(stats.concern_rows(area.rollup_rows()))
+            return stats.by_year(stats.narrow_rows(area.rollup_rows(), concern))
         rows = area.total_rows()
         # `or` would evaluate the queryset; None is the only "no totals" case.
         return stats.by_year(area.rollup_rows() if rows is None else rows)
@@ -619,7 +621,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         'records_url': area.records_url(year, all_years, concern),
         # The chemicals-of-concern card's "Show all" narrows the records
         # browser the way the card does, whatever the page's own scope is.
-        'concern_records_url': area.records_url(year, all_years, concern=True),
+        'concern_records_url': area.records_url(year, all_years, concern=stats.NARROW_CONCERN),
         'notices_url': area.notices_url(concern),
         'map_config': section_map_config(
             year, all_years=all_years, show_locations=is_district, concern=concern, **area.map_kwargs(),

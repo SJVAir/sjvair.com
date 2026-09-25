@@ -957,14 +957,14 @@ class AboutTests(RollupTestMixin, TestCase):
         assert 'id="pur"' not in html
 
 
-# The commodity list's query count under `?year=all&concern=1`; it must not
+# The commodity list's query count under `?year=all&narrow=concern`; it must not
 # grow with the number of commodities on the page (see the test below).
 CONCERN_COMMODITY_QUERIES = 9
 
 
 class ConcernScopeTests(RollupTestMixin, TestCase):
     """
-    `?concern=1` as an explorer-wide scope. GLYPHOSATE and CHLORPYRIFOS are
+    `?narrow=concern` as an explorer-wide scope. GLYPHOSATE and CHLORPYRIFOS are
     of concern in the fixture; SULFUR (and SULFUR DUST, its only product)
     are not, and they carry most of the pounds.
     """
@@ -979,8 +979,8 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert [(c.name, c.lbs_applied) for c in response.context['object_list']] == [
             ('GLYPHOSATE', 180.0), ('CHLORPYRIFOS', 60.0),
         ]
-        assert response.context['concern'] is True
-        assert response.context['scope_qs'] == '?concern=1'
+        assert response.context['concern'] == stats.NARROW_CONCERN
+        assert response.context['scope_qs'] == '?narrow=concern'
         assert 'of concern' in response.context['summary_sentence']
 
     def test_product_list_keeps_products_with_a_concern_chemical(self):
@@ -998,7 +998,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
     def test_landing_page_totals_narrow(self):
         response = self.client.get(reverse('pesticides:home'), {'concern': '1'})
         assert response.context['total_lbs'] == 240.0
-        assert response.context['concern'] is True
+        assert response.context['concern'] == stats.NARROW_CONCERN
         assert [r.obj.name for r in response.context['top_chemicals']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         assert 'top_chemicals_of_concern' not in response.context
 
@@ -1027,7 +1027,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert self.client.get(url).context['totals']['lbs'] == 670.0
         response = self.client.get(url, {'concern': '1'})
         assert response.context['totals']['lbs'] == 170.0
-        assert response.context['concern'] is True
+        assert response.context['concern'] == stats.NARROW_CONCERN
 
     def test_county_choropleth_is_scoped_and_keeps_the_scope_in_its_links(self):
         fresno = Region.objects.get(pk=9001)
@@ -1035,38 +1035,49 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         for url in (reverse('pesticides:home'), reverse('pesticides:map'), reverse('pesticides:records')):
             html = self.client.get(url, {'concern': '1'}).content.decode()
             assert 'Fresno County: 170 lbs' in html, url
-            assert f'{county_url}?concern=1' in html, url
+            assert f'{county_url}?narrow=concern' in html, url
 
     def test_detail_page_county_links_keep_the_scope(self):
         glyphosate = Chemical.objects.get(name='GLYPHOSATE')
         fresno = Region.objects.get(pk=9001)
         html = self.client.get(glyphosate.get_absolute_url(), {'concern': '1'}).content.decode()
-        assert reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'}) + '?concern=1' in html
+        assert reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'}) + '?narrow=concern' in html
 
     def test_map_page_passes_the_scope_to_the_grid(self):
         response = self.client.get(reverse('pesticides:map'), {'concern': '1'})
         assert response.context['map_config']['concern'] == '1'
         assert self.client.get(reverse('pesticides:map')).context['map_config']['concern'] == ''
 
-    def test_scope_bar_toggle_reflects_and_flips_the_scope(self):
+    def test_narrow_picker_offers_every_narrowing(self):
         url = reverse('pesticides:chemical-list')
         html = self.client.get(url).content.decode()
-        assert 'explorer-scope-toggle' in html
-        assert 'Chemicals of concern' in html
-        assert 'data-tooltip="Prop 65, CARB toxic air contaminants, IARC 1/2A/2B"' in html
-        assert 'explorer-scope-toggle is-set' not in html
-        assert 'aria-pressed="false"' in html
-        assert 'href="?concern=1"' in html
+        assert 'data-scope="narrow"' in html
+        assert 'All use' in html
+        for value, label in stats.NARROW_CHOICES:
+            assert f'href="?narrow={value}"' in html
+            assert label in html
 
-        html = self.client.get(url, {'concern': '1'}).content.decode()
-        assert 'explorer-scope-toggle is-set' in html
-        assert 'aria-pressed="true"' in html
-        assert 'role="button"' in html
-        # Turning it off clears the param, keeping the rest of the scope. With
-        # nothing left in the query string the link is the bare path.
+    def test_narrow_picker_reflects_the_current_narrowing(self):
+        url = reverse('pesticides:chemical-list')
+        html = self.client.get(url, {'narrow': 'fumigant'}).content.decode()
+        assert 'aria-label="Narrow to: Fumigants"' in html
+        assert 'is-active' in html
+        # Back to all use clears the parameter, keeping the rest of the scope.
         assert f'href="{url}"' in html
-        html = self.client.get(url, {'concern': '1', 'county': 'kern'}).content.decode()
+        html = self.client.get(url, {'narrow': 'fumigant', 'county': 'kern'}).content.decode()
         assert 'href="?county=kern"' in html
+
+    def test_the_original_concern_parameter_still_works(self):
+        # Links that shipped with ?concern=1 keep landing on the same scope.
+        url = reverse('pesticides:chemical-list')
+        response = self.client.get(url, {'concern': '1'})
+        assert response.context['concern'] == stats.NARROW_CONCERN
+        assert 'aria-label="Narrow to: Chemicals of concern"' in response.content.decode()
+
+    def test_an_unknown_narrowing_shows_everything(self):
+        # A subset must never be presented as the total.
+        response = self.client.get(reverse('pesticides:chemical-list'), {'narrow': 'banana'})
+        assert response.context['concern'] == ''
 
     def test_filter_forms_carry_the_scope_as_a_hidden_input(self):
         html = self.client.get(reverse('pesticides:chemical-list'), {'concern': '1'}).content.decode()
@@ -1096,12 +1107,12 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert banner not in self.client.get(url).content.decode()
         html = self.client.get(url, {'concern': '1'}).content.decode()
         assert banner in html
-        assert 'Show all chemicals' in html
+        assert 'Show all use' in html
 
     def test_about_page_defines_the_scope_and_hides_the_toggle(self):
         html = self.client.get(reverse('pesticides:about')).content.decode()
         assert 'id="concern"' in html
-        assert 'explorer-scope-toggle' not in html
+        assert 'data-scope="narrow"' not in html
         assert 'explorer-scope-pickers' not in html
         # And the toggle links to that definition where it does render.
         html = self.client.get(reverse('pesticides:chemical-list')).content.decode()
@@ -1113,7 +1124,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         sulfur = Chemical.objects.get(name='SULFUR')
         html = self.client.get(sulfur.get_absolute_url(), {'concern': '1'}).content.decode()
         assert 'Showing chemicals of concern only' not in html
-        assert "so the chemicals-of-concern scope doesn't narrow this page" in html
+        assert "so the chemicals of concern narrowing doesn't apply to this page" in html
         # It's still there on a page the scope does narrow.
         glyphosate = Chemical.objects.get(name='GLYPHOSATE')
         html = self.client.get(glyphosate.get_absolute_url(), {'concern': '1'}).content.decode()
@@ -1127,7 +1138,7 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
         assert response.context['totals']['lbs'] == 550.0
         html = response.content.decode()
         assert "None of this product's active ingredients is on the Prop 65" in html
-        assert 'Show all chemicals' in html
+        assert 'Show all use' in html
 
     def test_product_page_active_ingredients_ignore_the_scope(self):
         # What a product is made of is a registration fact, not a scoped one.
@@ -1146,14 +1157,14 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
 
     def test_excluded_chemical_page_explains_itself(self):
         sulfur = Chemical.objects.get(name='SULFUR')
-        note = "so the chemicals-of-concern scope doesn't narrow this page"
+        note = "so the chemicals of concern narrowing doesn't apply to this page"
         html = self.client.get(sulfur.get_absolute_url(), {'concern': '1'}).content.decode()
         assert note in html
         html = self.client.get(sulfur.get_absolute_url()).content.decode()
         assert note not in html
 
     def test_commodity_list_all_years_concern_pounds_come_from_one_group_by(self):
-        # The pounds column under `?year=all&concern=1` used to be a
+        # The pounds column under `?year=all&narrow=concern` used to be a
         # correlated sum over the rollup, run once per commodity on the page;
         # it now comes from one cached group-by (stats.commodity_concern_lbs),
         # so the page's query count doesn't grow with the number of rows.

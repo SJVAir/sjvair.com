@@ -73,8 +73,8 @@ class AreaTests(RollupTestMixin, TestCase):
         # heaviest here and isn't one.
         assert [row.obj.name for row in concern_card['rows']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         # "Show all" narrows the records browser the way the card does.
-        assert 'concern=1' in concern_card['show_all_url']
-        assert 'concern=1' not in response.context['chemicals_card']['show_all_url']
+        assert 'narrow=concern' in concern_card['show_all_url']
+        assert 'narrow=concern' not in response.context['chemicals_card']['show_all_url']
 
         html = response.content.decode()
         assert html.count('class="card related-card"') == 4
@@ -460,7 +460,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
     def test_panel_section_links_carry_the_scope(self):
         section_url = reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid})
         html = self.client.get(self.url, {'year': '2022', 'concern': '1'}).content.decode()
-        assert f'{section_url}?year=2022&amp;concern=1' in html
+        assert f'{section_url}?year=2022&amp;narrow=concern' in html
 
     def test_rows_past_the_cap_render_collapsed(self):
         for index in range(20):
@@ -571,7 +571,7 @@ class SchoolDistrictPageTests(RollupTestMixin, TestCase):
     def test_schools_nearby_follows_the_concern_scope(self):
         # Section 9101's concern pounds only (170); the neighbouring
         # section's rollup row carries no chemical at all.
-        assert [row['lbs'] for row in places.schools_nearby(self.district, 2023, concern=True)['run_by']] == [170.0]
+        assert [row['lbs'] for row in places.schools_nearby(self.district, 2023, concern=stats.NARROW_CONCERN)['run_by']] == [170.0]
         assert [row['lbs'] for row in places.schools_nearby(self.district, 2023)['run_by']] == [695.0]
 
     def test_demographics_strip(self):
@@ -661,17 +661,17 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
 
     def test_place_context_totals_narrow(self):
         area = places.region_area(self.fresno)
-        ctx = places.place_context(area, 2023, concern=True)
+        ctx = places.place_context(area, 2023, concern=stats.NARROW_CONCERN)
         assert ctx['totals']['lbs'] == 170.0
         assert ctx['totals']['chemicals'] == 2
         assert [r.obj.name for r in ctx['top_chemicals']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
         assert [(r['year'], r['lbs']) for r in ctx['by_year']] == [(2023, 170.0), (2022, 80.0)]
         assert ctx['map_config']['concern'] == '1'
-        assert 'concern=1' in ctx['records_url']
+        assert 'narrow=concern' in ctx['records_url']
 
     def test_place_context_all_years_caches_separately(self):
         area = places.region_area(self.fresno)
-        assert places.place_context(area, None, all_years=True, concern=True)['totals']['lbs'] == 250.0
+        assert places.place_context(area, None, all_years=True, concern=stats.NARROW_CONCERN)['totals']['lbs'] == 250.0
         assert places.place_context(area, None, all_years=True)['totals']['lbs'] == 1150.0
 
     def test_notices_are_counted_once_per_county_under_the_scope(self):
@@ -686,7 +686,7 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         notice.save()
         notice.chemicals.set([1, 2])                 # GLYPHOSATE and CHLORPYRIFOS
 
-        ctx = places.place_context(places.region_area(city), 2023, concern=True)
+        ctx = places.place_context(places.region_area(city), 2023, concern=stats.NARROW_CONCERN)
         assert ctx['upcoming_by_county'] == [{'county_name': 'Fresno County', 'count': 1}]
         assert ctx['upcoming_count'] == 1
         assert [n.pk for n in ctx['upcoming']] == [notice.pk]
@@ -695,7 +695,7 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         url = reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})
         response = self.client.get(url, {'concern': '1'})
         assert response.context['totals']['lbs'] == 170.0
-        assert response.context['concern'] is True
+        assert response.context['concern'] == stats.NARROW_CONCERN
 
     def test_the_concern_card_drops_out_under_the_scope(self):
         # Every card is already of concern, so a dedicated one would just

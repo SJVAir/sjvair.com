@@ -66,6 +66,8 @@ def year_context(year, all_years=False, county=None, county_scope=True, concern=
         'county': county,
         'county_options': county_options() if county_scope else [],
         'concern': concern,
+        'narrow_label': stats.narrow_label(concern),
+        'narrow_choices': stats.NARROW_CHOICES,
         'scope_concern': concern_scope,
         'scope_qs': stats.scope_query(year, all_years, county, concern),
     }
@@ -77,8 +79,14 @@ def scope_county(request):
 
 
 def scope_concern(request):
-    """Is the explorer scoped to the chemicals of concern (`?concern=1`)?"""
-    return stats.is_concern(request.GET.get(stats.CONCERN_PARAM))
+    """
+    What the explorer is narrowed to: '' (all use), 'concern' or 'fumigant'.
+
+    Still called `concern` everywhere downstream, where it's only ever tested
+    for truth or passed along -- widening the value rather than threading a
+    second flag is what keeps one control in the scope bar instead of two.
+    """
+    return stats.resolve_narrow(request.GET)
 
 
 
@@ -134,7 +142,7 @@ def lbs_subquery(field, year, lbs_field='lbs_chemical', county=None, all_years=F
     else:
         rows = PesticideUseTotal.objects.filter(**{field: OuterRef('pk')})
     if concern:
-        rows = stats.concern_rows(rows)
+        rows = stats.narrow_rows(rows, concern)
     if not all_years:
         rows = rows.filter(year=year)
     if county is not None:
@@ -172,7 +180,7 @@ def related_pks(field, obj, target, year=None, county=None, all_years=False, con
     if county is not None:
         rows = rows.filter(county=county)
     if concern:
-        rows = stats.concern_rows(rows)
+        rows = stats.narrow_rows(rows, concern)
     return rows.values(target)
 
 
@@ -323,7 +331,7 @@ class ExplorerListMixin:
         # Under the concern scope the totals table can't answer the question
         # (its product and commodity rows carry no chemical), so "used" comes
         # off the rollup, where every row names all three.
-        used = stats.concern_rows(PesticideUseRollup.objects.all()) if self.concern else PesticideUseTotal.objects.all()
+        used = stats.narrow_rows(PesticideUseRollup.objects.all(), self.concern) if self.concern else PesticideUseTotal.objects.all()
         if not self.all_years:
             used = used.filter(year=self.year)
         if self.county is not None:
@@ -568,7 +576,7 @@ class Home(vanilla.TemplateView):
         if county is not None:
             movers_rows = movers_rows.filter(county=county)
         if concern:
-            movers_rows = stats.concern_rows(movers_rows)
+            movers_rows = stats.narrow_rows(movers_rows, concern)
         movers = movers_context(movers_rows, year, all_years, 'chemical')
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
         by_county = maps.rank_counties(
@@ -741,7 +749,7 @@ class CommodityList(ExplorerListMixin, vanilla.ListView):
         if self.county is not None:
             rows = rows.filter(county=self.county)
         if self.concern:
-            rows = stats.concern_rows(rows)
+            rows = stats.narrow_rows(rows, self.concern)
         return Coalesce(Subquery(
             rows
             .values('commodity')
@@ -768,14 +776,14 @@ class ExplorerDetailMixin:
     # get_rollup() is safe to call from anywhere.
     concern = False
     concern_excluded = False
-    concern_active = False
+    concern_active = ''
 
     def get_rollup(self):
         rows = PesticideUseRollup.objects.filter(**{self.use_field: self.object})
         if self.county is not None:
             rows = rows.filter(county=self.county)
         if self.concern_active:
-            rows = stats.concern_rows(rows)
+            rows = stats.narrow_rows(rows, self.concern_active)
         return rows
 
     def concern_applies(self):
@@ -875,8 +883,11 @@ class ExplorerDetailMixin:
         # The toggle stays on in the links and the scope bar even where it
         # can't narrow this page; `concern_excluded` is what says so.
         self.concern = scope_concern(self.request)
-        self.concern_excluded = self.concern and not self.concern_applies()
-        self.concern_active = self.concern and not self.concern_excluded
+        self.concern_excluded = bool(self.concern) and not self.concern_applies()
+        # The narrowing's value, not just whether one is on: `x and not y`
+        # would collapse 'concern' to True and stop narrow_rows() telling
+        # the two narrowings apart.
+        self.concern_active = '' if self.concern_excluded else self.concern
         rows = self.get_rollup()
         notices = self.get_notices()
         scope = stats.scope_param(year, all_years, self.county, self.concern)
@@ -1045,7 +1056,7 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
         rows = PesticideUseRollup.objects.filter(commodity=self.object)
         if self.county is not None:
             rows = rows.filter(county=self.county)
-        return stats.in_year(stats.concern_rows(rows), self.year, self.all_years).exists()
+        return stats.in_year(stats.narrow_rows(rows, self.concern), self.year, self.all_years).exists()
 
     def get_related(self):
         return (
@@ -1418,7 +1429,7 @@ class RecordsBrowser(vanilla.ListView):
                 queryset = queryset.filter(**{param: obj})
 
         if self.concern:
-            queryset = stats.concern_rows(queryset)
+            queryset = stats.narrow_rows(queryset, self.concern)
 
         return queryset
 
@@ -1660,7 +1671,7 @@ class SectionDetail(vanilla.DetailView):
         concern = scope_concern(self.request)
         rows = PesticideUseRollup.objects.filter(mtrs=section)
         if concern:
-            rows = stats.concern_rows(rows)
+            rows = stats.narrow_rows(rows, concern)
 
         county_name = (
             rows.exclude(county__isnull=True)
@@ -1783,7 +1794,7 @@ class NoticeList(vanilla.ListView):
                 queryset = queryset.filter(**{field: obj})
 
         if self.concern:
-            queryset = stats.concern_notices(queryset)
+            queryset = stats.narrow_notices(queryset, self.concern)
 
         if self.mode == 'past':
             cutoff = timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
@@ -2048,7 +2059,7 @@ class RegionPage(vanilla.TemplateView):
         # and the compared year is the reader's choice.
         movers_rows = area.rollup_rows()
         if concern:
-            movers_rows = stats.concern_rows(movers_rows)
+            movers_rows = stats.narrow_rows(movers_rows, concern)
         return super().get_context_data(
             section=None,
             years=stats.years_loaded(),

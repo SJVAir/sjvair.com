@@ -78,8 +78,9 @@ def apply_filters(rows, params):
         value = params.get(param)
         if value:
             rows = rows.filter(**{lookup: value})
-    if stats.is_concern(params.get(stats.CONCERN_PARAM)):
-        rows = stats.concern_rows(rows)
+    narrow = stats.resolve_narrow(params)
+    if narrow:
+        rows = stats.narrow_rows(rows, narrow)
     return rows, None
 
 
@@ -295,8 +296,9 @@ class SectionDetailBase(generics.Endpoint):
         )
         year, all_years = parse_year(request.GET)
         rows = PesticideUseRollup.objects.filter(mtrs=section)
-        if stats.is_concern(request.GET.get(stats.CONCERN_PARAM)):
-            rows = stats.concern_rows(rows)
+        narrow = stats.resolve_narrow(request.GET)
+        if narrow:
+            rows = stats.narrow_rows(rows, narrow)
         years = list(rows.values('year').annotate(**TOTALS).order_by('-year'))
         months = stats.by_month(rows, year, all_years=all_years) if (year or all_years) else []
         county = rows.values_list('county__name', flat=True).order_by('county__name').first()

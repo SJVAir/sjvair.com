@@ -5,7 +5,7 @@ as two dropdowns in the scope bar. Each option is a link that keeps the rest
 of the querystring (minus the page number), so it works as a plain page and
 as a boosted swap. The year picker is left out where a page passes no
 year_options (notices), the county picker where it passes no county_options
-(a place or section page), and the chemicals-of-concern toggle where a page
+(a place or section page), and the "Narrow to" picker where a page
 passes scope_concern false (the About page). With none of the three, the row
 itself is left out rather than rendering an empty flex box.
 {% endcomment %}
@@ -60,22 +60,30 @@ itself is left out rather than rendering an empty flex box.
     filters.
     {% endcomment %}
     {% if scope_concern %}
-    <span class="explorer-scope-concern">
-        <a class="button is-small explorer-scope-toggle{% if concern %} is-set{% endif %} has-tooltip-multiline has-tooltip-arrow"
-           role="button"
-           href="{% if concern %}{% qs_replace concern=None page=None %}{% else %}{% qs_replace concern=1 page=None %}{% endif %}"
-           aria-pressed="{% if concern %}true{% else %}false{% endif %}"
-           aria-label="Chemicals of concern: {% if concern %}on{% else %}off{% endif %}"
-           data-tooltip="Prop 65, CARB toxic air contaminants, IARC 1/2A/2B">
-            <span class="icon">{% if concern %}<span class="fa-regular fa-check" aria-hidden="true"></span>{% else %}<span class="fa-duotone fa-fw fa-triangle-exclamation explorer-icon is-concern" aria-hidden="true"></span>{% endif %}</span>
-            <span class="explorer-scope-label">Chemicals of concern</span>
-        </a>
-        {# The definition itself, for anyone who can't hover the tooltip. #}
-        <a class="explorer-scope-help has-tooltip-multiline has-tooltip-arrow"
-           href="{% url 'pesticides:about' %}#concern"
-           data-tooltip="What counts as a chemical of concern?"
-           aria-label="What counts as a chemical of concern?"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
-    </span>
+    <div class="dropdown is-right explorer-scope-picker" data-scope="narrow">
+        <div class="dropdown-trigger">
+            <button type="button" class="button is-small{% if concern %} is-set{% endif %}" aria-haspopup="true" aria-expanded="false"
+                    aria-label="Narrow to: {% if concern %}{{ narrow_label }}{% else %}all use{% endif %}">
+                <span class="icon"><span class="fa-duotone fa-fw {% if concern %}fa-filter-circle-xmark{% else %}fa-filter{% endif %} explorer-icon is-concern" aria-hidden="true"></span></span>
+                <span class="explorer-scope-label">{% if concern %}{{ narrow_label }}{% else %}All use{% endif %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu">
+            <div class="dropdown-content">
+                <a class="dropdown-item{% if not concern %} is-active{% endif %}" href="{% qs_replace narrow=None concern=None page=None %}"{% if not concern %} aria-current="page"{% endif %}>All use</a>
+                <hr class="dropdown-divider">
+                {% for value, label in narrow_choices %}
+                <a class="dropdown-item{% if concern == value %} is-active{% endif %}" href="{% qs_replace narrow=value concern=None page=None %}"{% if concern == value %} aria-current="page"{% endif %}>{{ label }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {# What the narrowings mean, for anyone who can't hover a tooltip. #}
+    <a class="explorer-scope-help has-tooltip-multiline has-tooltip-arrow"
+       href="{% url 'pesticides:about' %}#concern"
+       data-tooltip="What counts as a chemical of concern, or a fumigant?"
+       aria-label="What counts as a chemical of concern, or a fumigant?"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
     {% endif %}
 </div>
 {% endif %}
