@@ -154,7 +154,8 @@ class RegionsWithinTests(RollupTestMixin, TestCase):
         outside = 'SRID=4326;MULTIPOLYGON (((-118.5 35.2, -118.4 35.2, -118.4 35.3, -118.5 35.3, -118.5 35.2)))'
         for name, slug, kind, geom in (
             ('Selma', 'selma', Region.Type.CITY, square),
-            ('Selma', 'selma-place', Region.Type.PLACE, square),
+            ('Selma', 'selma-ua', Region.Type.URBAN_AREA, square),
+            ('Caruthers', 'caruthers', Region.Type.CDP, square),
             ('Selma Unified', 'selma-unified', Region.Type.SCHOOL_DISTRICT, square),
             ('93662', '93662', Region.Type.ZIPCODE, square),
             ('Tehachapi', 'tehachapi', Region.Type.CITY, outside),
@@ -163,11 +164,14 @@ class RegionsWithinTests(RollupTestMixin, TestCase):
             region.boundary = Boundary.objects.create(region=region, version='t', geometry=geom)
             region.save()
 
-    def test_county_lists_places_districts_and_zips_inside_it(self):
+    def test_county_lists_communities_districts_and_zips_inside_it(self):
         within = places.regions_within(self.fresno)
         assert within['counties'] == []
-        assert [p['name'] for p in within['places']] == ['Selma']
-        assert '/selma/' in within['places'][0]['url']
+        # Every community layer, as-is and labelled; same names by layer order.
+        assert [(p['name'], p['type_label']) for p in within['communities']] == [
+            ('Caruthers', 'Community'), ('Selma', 'City'), ('Selma', 'Urban area'),
+        ]
+        assert '/selma/' in within['communities'][1]['url']
         assert [d['name'] for d in within['school_districts']] == ['Selma Unified']
         assert [z['name'] for z in within['zipcodes']] == ['93662']
 
@@ -175,8 +179,10 @@ class RegionsWithinTests(RollupTestMixin, TestCase):
         selma = Region.objects.get(slug='selma')
         within = places.regions_within(selma)
         assert [c['name'] for c in within['counties']] == ['Fresno County']
-        # Itself and its same-name place twin are left out; Tehachapi is elsewhere.
-        assert within['places'] == []
+        # Itself is left out, its same-name urban area is not; Tehachapi is elsewhere.
+        assert [(p['name'], p['type_label']) for p in within['communities']] == [
+            ('Caruthers', 'Community'), ('Selma', 'Urban area'),
+        ]
         assert [d['name'] for d in within['school_districts']] == ['Selma Unified']
         assert [z['name'] for z in within['zipcodes']] == ['93662']
         assert within['any'] is True
@@ -185,6 +191,15 @@ class RegionsWithinTests(RollupTestMixin, TestCase):
         html = self.client.get(reverse('pesticides:region', kwargs={'sqid': self.fresno.sqid, 'slug': 'fresno'})).content.decode()
         assert 'In Fresno County' in html and 'Selma Unified' in html and '93662' in html
         assert 'Tehachapi' not in html
+
+    def test_community_pages_render_labelled(self):
+        for slug, label in (('selma-ua', 'Urban area'), ('caruthers', 'Community')):
+            region = Region.objects.get(slug=slug)
+            response = self.client.get(reverse('pesticides:region', kwargs={'sqid': region.sqid, 'slug': slug}))
+            assert response.status_code == 200
+            html = response.content.decode()
+            assert label in html
+            assert 'Census Designated Place' not in html
 
     def test_school_district_pages_render(self):
         district = Region.objects.get(slug='selma-unified')

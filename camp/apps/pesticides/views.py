@@ -516,17 +516,17 @@ class ExplorerRedirect(vanilla.GenericView):
         return redirect(obj.get_absolute_url() + (f'?{query}' if query else ''), permanent=True)
 
 
-FIND_AREA_PLACES_CACHE_KEY = 'pesticides:find-area-places'
+FIND_AREA_PLACES_CACHE_KEY = 'pesticides:find-area-places:v2'
 FIND_AREA_PLACES_TTL = 60 * 60 * 24
 
 # Short, human labels for the "Find your area" dropdown. Region.Type's own
 # labels read a little long there ("ZIP Code"), and the dropdown shows the
-# type as a trailing tag: "93725 · ZIP".
+# type as a trailing tag: "93725 · ZIP". Each community layer (city, urban
+# area, CDP) is listed as-is, labelled: "Fresno · City", "Fresno · Urban area".
 FIND_AREA_TYPE_LABELS = {
     Region.Type.COUNTY: 'County',
-    Region.Type.CITY: 'City',
+    **Region.COMMUNITY_LABELS,
     Region.Type.ZIPCODE: 'ZIP',
-    Region.Type.PLACE: 'Place',
     Region.Type.SCHOOL_DISTRICT: 'School district',
 }
 
@@ -553,14 +553,6 @@ def find_area_place_list():
             'short_name': name[:-len(' County')] if name.endswith(' County') else name,
             'url': reverse('pesticides:region', kwargs={'sqid': sqid, 'slug': slug}),
         } for sqid, slug, name, region_type in regions]
-        # Synthetic Place regions carry the same names as the cities they
-        # were built from; showing "Selma · City" and "Selma · Place" side by
-        # side just confuses people, so keep the city.
-        city_names = {p['name'] for p in place_list if p['type'] == Region.Type.CITY}
-        place_list = [
-            p for p in place_list
-            if not (p['type'] == Region.Type.PLACE and p['name'] in city_names)
-        ]
         cache.set(FIND_AREA_PLACES_CACHE_KEY, place_list, FIND_AREA_PLACES_TTL)
     return place_list
 

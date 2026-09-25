@@ -45,6 +45,21 @@ class FindAreaTests(RollupTestMixin, TestCase):
         # Sorted by name, and only places that have a boundary to scope.
         assert [place['name'] for place in places] == sorted(place['name'] for place in places)
 
+    def test_every_community_layer_is_listed_labelled(self):
+        from camp.apps.regions.models import Boundary
+        square = 'SRID=4326;MULTIPOLYGON (((-119.85 36.65, -119.75 36.65, -119.75 36.75, -119.85 36.75, -119.85 36.65)))'
+        for name, slug, kind in (
+            ('Selma', 'selma', Region.Type.CITY),
+            ('Selma', 'selma-ua', Region.Type.URBAN_AREA),
+            ('Caruthers', 'caruthers', Region.Type.CDP),
+        ):
+            region = Region.objects.create(name=name, slug=slug, type=kind, external_id=f'x-{slug}')
+            region.boundary = Boundary.objects.create(region=region, version='t', geometry=square)
+            region.save()
+        places = self.embedded_places(self.client.get(self.url).content.decode())
+        labels = [(place['name'], place['type_label']) for place in places if place['name'] in ('Selma', 'Caruthers')]
+        assert sorted(labels) == [('Caruthers', 'Community'), ('Selma', 'City'), ('Selma', 'Urban area')]
+
     def test_county_links_row(self):
         html = self.client.get(self.url).content.decode()
         fresno = Region.objects.get(pk=9001)
