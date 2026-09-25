@@ -147,3 +147,33 @@ class FindAreaTests(TestCase):
         jumps = re.search(r'<p class="find-area-counties">(.*?)</p>', content, re.S).group(1)
         hrefs = re.findall(r'href="([^"]*)"', jumps)
         assert hrefs and all('county=' not in href for href in hrefs)
+
+
+class FacilityAreaLineTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_area_links_from_the_point_beside_the_reported_address(self):
+        from camp.apps.emissions.models import Facility
+
+        plant = Facility.objects.get(name='TEST PLANT')
+        tract = make(Region.Type.TRACT, '06019000100', AROUND_PLANT)
+        tract.metadata = {**tract.metadata, 'namelsad': 'Census Tract 1'}
+        tract.save(update_fields=['metadata'])
+        content = self.client.get(plant.get_absolute_url()).content.decode()
+        # The address as the state reported it, ZIP included...
+        assert '93728' in content
+        # ...and the areas the facility counts in, from its point.
+        assert f'href="{plant.county.get_emissions_url()}' in content
+        assert f'href="{tract.get_emissions_url()}' in content and 'Census Tract 1' in content
+
+    def test_no_point_links_the_county_only(self):
+        from camp.apps.emissions.models import Facility
+
+        cement = Facility.objects.get(name='TEST CEMENT')
+        cement.point = None
+        cement.save(update_fields=['point'])
+        links = views.area_links([cement.county])
+        assert [link['url'] for link in links] == [cement.county.get_emissions_url()]

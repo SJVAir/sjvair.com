@@ -10,7 +10,12 @@
 {% block explorer-content %}
 <div class="content">
     <h2 class="title is-3">{{ facility.name }}</h2>
-    <p>{{ facility.address.street|title }}, {% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %} · {{ facility.county.name }}</p>
+    <p>{{ facility.address.street|title }}, {% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}{% if facility.address.zipcode %} {{ facility.address.zipcode }}{% endif %} · {{ facility.county.name }}</p>
+    {% if area_links %}
+    {# From the facility's location on the map, which can differ from its reported address (the state's data, shown as given). #}
+    <p class="facility-areas is-size-7">Counted in: {% for link in area_links %}<a href="{{ link.url }}{{ scope_qs }}">{{ link.label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}
+        <span class="has-text-grey">(by its location on the map)</span></p>
+    {% endif %}
     <p>
         <a href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a>
         {% if facility.sic_code %}{% sic_title facility.sic_code as sic_label %} · SIC {{ facility.sic_code }}{% if sic_label %}: {{ sic_label }}{% endif %}{% endif %}

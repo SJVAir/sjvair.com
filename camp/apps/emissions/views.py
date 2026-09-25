@@ -188,6 +188,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             toxics_rows=stats.facility_toxics(facility, shown_year),
             changes=stats.large_changes(facility, shown_year),
             criteria=CRITERIA,
+            area_links=area_links(areas.facility_areas(facility)),
             # The facility's own map always includes it: the page scope can
             # exclude it (a minor source with `minor` off, no record in the
             # scope year, or a different `county`), but its map shouldn't.
@@ -358,6 +359,15 @@ def region_title(region):
     if region.type == Region.Type.TRACT:
         return (region.metadata or {}).get('namelsad') or f'Census tract {region.name}'
     return region.name
+
+
+def area_links(regions):
+    """The facility page's "Area" line: each region it counts in, labelled, linking to its page."""
+    labels = {Region.Type.ZIPCODE: 'ZIP {}'}
+    return [{
+        'label': labels.get(region.type, '{}').format(region_title(region)),
+        'url': region.get_emissions_url(),
+    } for region in regions]
 
 
 class AreaPage(ScopeMixin, vanilla.TemplateView):
