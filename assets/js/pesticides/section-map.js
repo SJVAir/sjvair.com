@@ -2587,12 +2587,34 @@
     this.reopenSelectedSection(this.allSectionsFeatures, 'all-sections');
   };
 
+  // Whether two class sets shade a feature identically: same breaks, same
+  // colours. Only the numbers matter -- the members are counts.
+  function sameClasses(a, b) {
+    if (!a || !b || !a.breaks || !b.breaks) return false;
+    if (a.breaks.length !== b.breaks.length || a.colors.length !== b.colors.length) return false;
+    if (a.neutral !== b.neutral || !a.diverging !== !b.diverging) return false;
+    for (var i = 0; i < a.breaks.length; i++) if (a.breaks[i] !== b.breaks[i]) return false;
+    for (var c = 0; c < a.colors.length; c++) if (a.colors[c] !== b.colors[c]) return false;
+    return true;
+  }
+
   // Recomputes the classes over everything drawn and reshades it; also
   // what a metric change calls.
   SectionMap.prototype.restyleAllSections = function () {
     if (!this.allSectionsAdded) return;
     var self = this;
-    this.currentClasses = this.classify(this.allSectionsFeatures);
+    var classes = this.classify(this.allSectionsFeatures);
+    // Each block is classed against the current breaks as it lands
+    // (drawAllSections), so the drawn shades are already right unless the
+    // breaks themselves moved. Repainting anyway meant pushing every drawn
+    // feature to the SDK once per block that landed -- tens of thousands of
+    // property writes a second, which froze the page for the whole of a
+    // valley-wide load.
+    if (this.currentClassesAreSections && sameClasses(this.currentClasses, classes)) {
+      this.updateLegend();
+      return;
+    }
+    this.currentClasses = classes;
     this.currentClassesAreSections = true;
     this.classFeatures(this.allSectionsFeatures, this.currentClasses, LENS_OPACITY);
     this.updateAllSectionsSource({
