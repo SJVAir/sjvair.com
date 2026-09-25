@@ -298,6 +298,70 @@ def by_county(rows, year, lbs_field='lbs_chemical', all_years=False):
     ]
 
 
+COUNTY_AREAS_KEY = 'pesticides:county-areas'
+COUNTY_AREAS_TTL = 60 * 60 * 24 * 7
+
+
+def county_areas():
+    """
+    {county_id: square miles}, from the boundary reprojected to California
+    Albers. Cached for a week: county lines don't move, and the eight
+    multipolygons run to thousands of points each.
+    """
+    value = cache.get(COUNTY_AREAS_KEY, _MISSING)
+    if value is _MISSING:
+        value = {
+            region.pk: region.boundary.area
+            for region in Region.objects
+                .filter(type=Region.Type.COUNTY, boundary__isnull=False)
+                .select_related('boundary')
+        }
+        cache.set(COUNTY_AREAS_KEY, value, COUNTY_AREAS_TTL)
+    return value
+
+
+def county_used_sections(year, all_years=False, concern=False):
+    """
+    {county_id: how many square-mile sections reported any use}. The other
+    denominator for a rate: a county's full area counts the Sierra and the
+    desert, where nobody sprays, so per-square-mile-of-county reads Kern --
+    8,163 square miles, mostly neither -- as the lightest in the valley.
+
+    Unlike the totals it divides, this always comes off the rollup:
+    PesticideUseTotal has no section, and the figure has to mean the same
+    thing whichever source the totals came from.
+    """
+    rows = PesticideUseRollup.objects.filter(chemical__isnull=False)
+    if concern:
+        rows = concern_rows(rows)
+    parts = ['county-used-sections', ALL_YEARS if all_years else year]
+    if concern:
+        parts.append(CONCERN_PARAM)
+
+    def build():
+        counted = (in_year(rows, year, all_years)
+            .values('county_id')
+            .annotate(used=Count('mtrs_id', distinct=True)))
+        return {row['county_id']: row['used'] for row in counted}
+
+    return cached(all_years_key(*parts), build)
+
+
+def with_rates(by_county, year, all_years=False, concern=False):
+    """
+    `by_county` rows with the denominators a rate needs: `area` (the whole
+    county) and `used` (the square miles that reported anything). The rates
+    themselves are computed where they're ranked and shaded
+    (camp.apps.pesticides.maps.metric_value), so one row serves every metric.
+    """
+    areas = county_areas()
+    used = county_used_sections(year, all_years, concern)
+    return [
+        {**row, 'area': areas.get(row['county_id']), 'used': used.get(row['county_id'])}
+        for row in by_county
+    ]
+
+
 def by_month(rows, year, lbs_field='lbs_chemical', all_years=False):
     """
     Twelve entries, one per month, zero-filled. Month 0 (undated) is folded
@@ -418,13 +482,20 @@ def by_township(rows, year, all_years=False):
 def year_totals(rows, year, lbs_field='lbs_chemical', all_years=False):
     data = in_year(rows, year, all_years).aggregate(
         lbs=Sum(lbs_field),
+        acres=Sum('acres_treated'),
         applications=Sum('applications'),
         counties=Count('county', distinct=True),
     )
     return {
         'lbs': data['lbs'] or 0,
+        'acres': data['acres'] or 0,
         'applications': data['applications'] or 0,
         'counties': data['counties'] or 0,
+        # Pounds per acre actually treated: how heavily it goes on where it
+        # goes on, as opposed to how much of it there is. Only meaningful for
+        # a single chemical or product -- summed across them the acres
+        # double-count, since two chemicals on one orchard is twice the acres.
+        'lbs_per_acre': (data['lbs'] or 0) / data['acres'] if data['acres'] else None,
     }
 
 

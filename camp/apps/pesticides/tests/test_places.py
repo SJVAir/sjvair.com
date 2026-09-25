@@ -1,4 +1,8 @@
 from django.contrib.gis.geos import Point
+import math
+
+import pytest
+
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
@@ -31,7 +35,12 @@ class AreaTests(RollupTestMixin, TestCase):
 
     def test_place_context_totals_and_peak(self):
         ctx = places.place_context(places.region_area(Region.objects.get(pk=9001)), 2023)
-        assert ctx['totals'] == {'lbs': 670.0, 'applications': 4, 'sections_used': 1, 'sections_total': 1, 'chemicals': 3}
+        totals = ctx['totals']
+        assert (totals['lbs'], totals['applications']) == (670.0, 4)
+        assert (totals['sections_used'], totals['sections_total'], totals['chemicals']) == (1, 1, 3)
+        # One square mile reported use, so that rate is the whole total.
+        assert totals['lbs_per_used_sqmi'] == 670.0
+        assert totals['lbs_per_sqmi'] == pytest.approx(670.0 / totals['square_miles'])
         assert ctx['peak_month'] == 'August'
         assert [r.obj.name for r in ctx['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
         assert ctx['records_url'].startswith(reverse('pesticides:records') + '?')
@@ -41,9 +50,9 @@ class AreaTests(RollupTestMixin, TestCase):
     def test_place_context_all_years(self):
         area = places.region_area(Region.objects.get(pk=9001))
         ctx = places.place_context(area, None, all_years=True)
-        assert ctx['totals'] == {
-            'lbs': 1150.0, 'applications': 6, 'sections_used': 1, 'sections_total': 1, 'chemicals': 3,
-        }
+        totals = ctx['totals']
+        assert (totals['lbs'], totals['applications']) == (1150.0, 6)
+        assert (totals['sections_used'], totals['sections_total'], totals['chemicals']) == (1, 1, 3)
         assert ctx['by_month'][7]['lbs'] == 900.0
         assert 'year=all' in ctx['records_url']
         assert ctx['map_config']['year'] == 'all'
@@ -699,3 +708,32 @@ class PlaceConcernScopeTests(RollupTestMixin, TestCase):
         assert 'top_chemicals_of_concern' not in response.context
         assert response.context['chemicals_card']['title'] == 'Top chemicals of concern'
         assert response.content.decode().count('class="card related-card"') == 3
+
+
+class AreaSquareMilesTests(TestCase):
+    """The denominator behind a place's per-square-mile rate."""
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_a_region_measures_its_boundary(self):
+        area = places.region_area(Region.objects.get(pk=9001))
+        assert area.square_miles == Region.objects.get(pk=9001).boundary.area
+        assert area.square_miles > 0
+
+    def test_a_radius_measures_its_circle(self):
+        area = places.point_area(36.71, -119.79, 5)
+        assert area.square_miles == pytest.approx(math.pi * 25)
+
+    def test_a_region_without_a_boundary_has_no_rate(self):
+        Region.objects.filter(pk=9001).update(boundary=None)
+        area = places.region_area(Region.objects.get(pk=9001))
+        assert area.square_miles is None
+
+    def test_the_section_count_is_not_used_as_the_area(self):
+        # Sections overlap a boundary rather than tiling it, so counting
+        # them would overstate anything smaller than a county.
+        area = places.region_area(Region.objects.get(pk=9001))
+        assert area.square_miles != len(area.section_pks)

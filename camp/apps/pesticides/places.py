@@ -12,6 +12,7 @@ MTRS section, since `PesticideUseRollup`/`PesticideNotice` don't carry
 arbitrary geometry.
 """
 import calendar
+import math
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
@@ -85,6 +86,23 @@ class Area:
         """The county FK filter, when this area *is* a county region."""
         if self.kind == 'region' and self.region.type == Region.Type.COUNTY:
             return self.region
+        return None
+
+    @property
+    def square_miles(self):
+        """
+        How much ground this place covers, for a per-square-mile rate. A
+        radius is its own circle; a region is its boundary reprojected to
+        California Albers. None where there's nothing to measure, which
+        leaves the rate off rather than guessing at it.
+
+        Not the section count: sections overlap a boundary rather than tiling
+        it, so counting them overstates anything smaller than a county.
+        """
+        if self.kind == 'point':
+            return math.pi * (self.radius ** 2) if self.radius else None
+        if self.region is not None and self.region.boundary_id:
+            return self.region.boundary.area
         return None
 
     def rollup_rows(self):
@@ -508,12 +526,20 @@ def _place_stats(area, year, all_years, concern=False):
     # of the same group-by instead of paying for a second one.
     top_chemicals = stats.top_related(rows, year, 'chemical', limit=50, all_years=all_years)
 
+    sections_used = scoped.filter(mtrs__isnull=False).values('mtrs').distinct().count()
+    square_miles = area.square_miles
     data = {
         'totals': {
             'lbs': summed['lbs'],
             'applications': summed['applications'],
-            'sections_used': scoped.filter(mtrs__isnull=False).values('mtrs').distinct().count(),
+            'sections_used': sections_used,
             'sections_total': len(area.section_pks),
+            'square_miles': square_miles,
+            # Two rates, as on the county table: over the whole place, and
+            # over just the square miles that reported anything. They differ
+            # most where a place is largely unfarmed.
+            'lbs_per_sqmi': (summed['lbs'] / square_miles) if square_miles else None,
+            'lbs_per_used_sqmi': (summed['lbs'] / sections_used) if sections_used else None,
             'chemicals': stats.real_chemicals(scoped.filter(chemical__isnull=False)).values('chemical').distinct().count(),
         },
         'by_month': by_month,

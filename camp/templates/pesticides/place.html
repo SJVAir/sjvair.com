@@ -44,6 +44,16 @@
     <div class="level-item has-text-centered">
         <div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
     </div>
+    {% if totals.lbs_per_sqmi %}
+    {# The rate, so a small dense place isn't read as light next to a big one. #}
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">Lbs per sq mi</p>
+            <p class="title">{{ totals.lbs_per_sqmi|lbs }}</p>
+            {% if totals.lbs_per_used_sqmi %}<p class="is-size-7 has-text-grey">{{ totals.lbs_per_used_sqmi|lbs }} where used</p>{% endif %}
+        </div>
+    </div>
+    {% endif %}
     <div class="level-item has-text-centered">
         <div><p class="heading">Applications</p><p class="title">{{ totals.applications|lbs }}</p></div>
     </div>

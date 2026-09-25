@@ -4,7 +4,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils.html import escape
 
-from camp.apps.pesticides import views
+from camp.apps.pesticides import stats, views
 from camp.apps.pesticides.models import (
     Chemical, Commodity, PesticideUseRollup, PesticideUseTotal, Product, ProductChemical,
 )
@@ -497,7 +497,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
 
     def test_totals_and_tables(self):
         ctx = self.client.get(self.chemical.get_absolute_url()).context
-        assert ctx['totals'] == {'lbs': 180.0, 'applications': 3, 'counties': 2}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (180.0, 3, 2)
         assert [r['year'] for r in ctx['by_year']] == [2023, 2022]
         assert [r['county_name'] for r in ctx['by_county']] == ['Fresno County', 'Kern County']
         assert ctx['years'] == (2022, 2023)
@@ -524,7 +524,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
     def test_year_param_on_detail(self):
         ctx = self.client.get(self.chemical.get_absolute_url(), {'year': '2022'}).context
         assert ctx['year'] == 2022
-        assert ctx['totals'] == {'lbs': 80.0, 'applications': 1, 'counties': 1}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (80.0, 1, 1)
         assert [r['county_name'] for r in ctx['by_county']] == ['Fresno County']
         assert [r.obj.name for r in ctx['related_b']['rows']] == ['ALMOND']
         assert ctx['summary_sentence'] == 'Applied in 1 of 8 SJV counties in 2022, mostly on Almond.'
@@ -541,7 +541,7 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         ctx = self.client.get(url, {'year': 'all'}).context
         assert ctx['all_years'] is True and ctx['year'] is None
         # Uses 1, 2, 3 in 2023 (180 lbs) plus use 7 in 2022 (80 lbs).
-        assert ctx['totals'] == {'lbs': 260.0, 'applications': 4, 'counties': 2}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (260.0, 4, 2)
         assert [r['year'] for r in ctx['by_year']] == [2023, 2022]
         assert [(r['county_name'], r['lbs']) for r in ctx['by_county']] == [
             ('Fresno County', 230.0), ('Kern County', 30.0),
@@ -574,10 +574,12 @@ class ChemicalDetailTests(RollupTestMixin, TestCase):
         # region-name lookup, the by-county-table's in_bulk() for
         # county_sqid, the available-years lookup for the year picker, and
         # the county list for the county picker; all cached after the first
-        # request). The last three are the movers card: one group-by per
+        # request). Three of those are the movers card: one group-by per
         # direction and one in_bulk for the regions, a fixed cost that
-        # doesn't grow with the number of movers shown.
-        with self.assertNumQueries(26):
+        # doesn't grow with the number of movers shown. The last two are the
+        # rate denominators -- the county areas and the count of sections
+        # that reported anything -- both cached after the first request.
+        with self.assertNumQueries(28):
             self.client.get(self.chemical.get_absolute_url())
 
     def test_by_month_in_context(self):
@@ -652,7 +654,7 @@ class CommodityDetailTests(RollupTestMixin, TestCase):
 
     def test_renders(self):
         ctx = self.client.get(self.commodity.get_absolute_url()).context
-        assert ctx['totals'] == {'lbs': 550.0, 'applications': 2, 'counties': 1}
+        assert (ctx['totals']['lbs'], ctx['totals']['applications'], ctx['totals']['counties']) == (550.0, 2, 1)
         assert [r.obj.name for r in ctx['related_a']['rows']] == ['SULFUR', 'GLYPHOSATE']
         assert [r.obj.name for r in ctx['related_b']['rows']] == ['SULFUR DUST', 'ROUNDUP PRO']
         assert ctx['has_notices'] is False
@@ -1234,3 +1236,39 @@ class CompareIsAMapControlTests(RollupTestMixin, TestCase):
     def test_the_scope_bar_has_no_compare_picker(self):
         html = self.client.get(reverse('pesticides:home'), {'year': '2023'}).content.decode()
         assert 'data-scope="compare"' not in html
+
+
+class LbsPerTreatedAcreTests(RollupTestMixin, TestCase):
+    """
+    Pounds per treated acre is the acreage each application covered, so it
+    only survives where the applications don't pile onto the same ground.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_a_chemical_page_shows_it(self):
+        chemical = Chemical.objects.get(pk=1)
+        ctx = self.client.get(chemical.get_absolute_url(), {'year': '2023'}).context
+        assert ctx['totals']['lbs_per_acre'] == ctx['totals']['lbs'] / ctx['totals']['acres']
+        assert 'Lbs per treated acre' in self.client.get(chemical.get_absolute_url()).content.decode()
+
+    def test_a_product_page_shows_it(self):
+        product = Product.objects.first()
+        html = self.client.get(product.get_absolute_url(), {'year': '2023'}).content.decode()
+        assert 'Lbs per treated acre' in html
+
+    def test_a_commodity_page_does_not(self):
+        # Every chemical used on the crop is counted against the same acres,
+        # so the figure would be inflated by however many were applied.
+        commodity = Commodity.objects.first()
+        ctx = self.client.get(commodity.get_absolute_url(), {'year': '2023'}).context
+        assert ctx['totals']['lbs_per_acre'] is None
+        assert 'Lbs per treated acre' not in self.client.get(commodity.get_absolute_url()).content.decode()
+
+    def test_it_is_left_off_when_nothing_was_treated(self):
+        totals = stats.year_totals(PesticideUseRollup.objects.none(), 2023)
+        assert totals['acres'] == 0
+        assert totals['lbs_per_acre'] is None

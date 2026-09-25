@@ -571,7 +571,8 @@ class Home(vanilla.TemplateView):
             movers_rows = stats.concern_rows(movers_rows)
         movers = movers_context(movers_rows, year, all_years, 'chemical')
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
-        by_county = maps.rank_counties(data['by_county'], county_rank, ramp=ramp)
+        by_county = maps.rank_counties(
+            stats.with_rates(data['by_county'], year, all_years, concern), county_rank, ramp=ramp)
         county_map = maps.county_map(by_county, query=stats.scope_param(year, all_years, concern=concern), metric=county_rank, ramp=ramp) if by_county else None
         find_area_places = find_area_place_list()
         # landing_stats carries `year`/`latest_year` too; year_context wins on overlap.
@@ -755,6 +756,12 @@ class ExplorerDetailMixin:
     section = None
     lbs_field = 'lbs_chemical'
     use_field = None          # PesticideUse FK name for this entity
+    # Whether pounds per treated acre means anything here. It's the acreage
+    # each application covered, so summing it across the chemicals on one
+    # field counts that ground once per chemical: sound for a product, near
+    # enough for a chemical, and badly inflated for a commodity, where every
+    # chemical used on the crop piles onto the same orchards.
+    shows_lbs_per_acre = True
     api_param = None          # v2 API query param name, shown as a hint for developers
     has_notices = True
     # Set from the request in get_context_data; declared here so
@@ -863,6 +870,8 @@ class ExplorerDetailMixin:
         notices = self.get_notices()
         scope = stats.scope_param(year, all_years, self.county, self.concern)
         totals = self.cached_stat('totals', lambda: stats.year_totals(rows, year, self.lbs_field, all_years=all_years))
+        if not self.shows_lbs_per_acre:
+            totals = {**totals, 'lbs_per_acre': None}
         related_a, related_b = self.get_related()
         context = super().get_context_data(
             section=self.section,
@@ -912,7 +921,8 @@ class ExplorerDetailMixin:
         ramp = maps.ramp_for(self.request.GET.get('ramp'))
         # The axis flips on an entity page: which counties moved for this one.
         context['movers'] = movers_context(rows, year, all_years, 'county', self.lbs_field)
-        context['by_county'] = maps.rank_counties(context['by_county'], county_rank, ramp=ramp)
+        context['by_county'] = maps.rank_counties(
+            stats.with_rates(context['by_county'], year, all_years, self.concern), county_rank, ramp=ramp)
         context['county_rank'] = county_rank
         context['county_map'] = maps.county_map(context['by_county'], query=stats.scope_param(year, all_years, concern=self.concern), metric=county_rank, ramp=ramp) if context['by_county'] else None
         return context
@@ -1010,6 +1020,7 @@ class CommodityDetail(ExplorerDetailMixin, vanilla.DetailView):
     template_name = 'pesticides/commodity-detail.html'
     section = 'commodities'
     use_field = 'commodity'
+    shows_lbs_per_acre = False
     api_param = 'commodity'
     has_notices = False
 
@@ -1171,8 +1182,9 @@ class MapPage(vanilla.TemplateView):
         county_map = None
         if (year or all_years) and not no_matches:
             county_map = maps.county_map(
-                stats.county_totals(year, all_years, concern),
+                stats.with_rates(stats.county_totals(year, all_years, concern), year, all_years, concern),
                 query=stats.scope_param(year, all_years, concern=concern),
+                metric=maps.county_metric(request.GET.get('rank')),
             )
 
         return super().get_context_data(
@@ -1548,8 +1560,10 @@ class RecordsBrowser(vanilla.ListView):
         county_map = None
         if self.year or self.all_years:
             county_map = maps.county_map(
-                stats.county_totals(self.year, self.all_years, self.concern),
+                stats.with_rates(stats.county_totals(self.year, self.all_years, self.concern),
+                    self.year, self.all_years, self.concern),
                 query=stats.scope_param(self.year, self.all_years, concern=self.concern),
+                metric=maps.county_metric(self.request.GET.get('rank')),
             )
         return super().get_context_data(
             form=self.form,

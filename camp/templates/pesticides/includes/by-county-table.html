@@ -1,6 +1,7 @@
 {% load pesticides_explorer %}
 {% comment %}
-Counties ranked by one metric (`county_rank`: lbs | acres | applications),
+Counties ranked by one metric (`county_rank`: lbs | lbs_per_sqmi |
+lbs_per_used_sqmi | acres | applications),
 most to least; the other columns' headers link to rank by them instead.
 The swatch is the county's fill on the map beside it, so this table is
 also the map's legend. Rows come from maps.rank_counties.
@@ -11,7 +12,10 @@ wrapper scrolls before they overflow (all-years pounds run to ten digits).
 <table class="table is-fullwidth is-narrow is-striped by-county-table">
     <thead><tr>
         <th>County</th>
-        {% if not hide_lbs %}<th class="has-text-right{% if county_rank == 'lbs' %} is-ranked{% endif %}">{% if county_rank == 'lbs' %}Lbs{% else %}<a href="{% qs_replace rank=None %}" title="Rank by pounds">Lbs</a>{% endif %}</th>{% endif %}
+        {% if not hide_lbs %}<th class="has-text-right{% if county_rank == 'lbs' %} is-ranked{% endif %}">{% if county_rank == 'lbs' %}Lbs{% else %}<a href="{% qs_replace rank=None %}" title="Rank by pounds">Lbs</a>{% endif %}</th>
+        {# Two rates, because they disagree: a county's whole area counts the ground nobody farms. #}
+        <th class="has-text-right{% if county_rank == 'lbs_per_sqmi' %} is-ranked{% endif %}">{% if county_rank == 'lbs_per_sqmi' %}Per sq mi{% else %}<a href="{% qs_replace rank='lbs_per_sqmi' %}" title="Rank by pounds per square mile of county">Per sq mi</a>{% endif %}</th>
+        <th class="has-text-right{% if county_rank == 'lbs_per_used_sqmi' %} is-ranked{% endif %}">{% if county_rank == 'lbs_per_used_sqmi' %}Per sq mi used{% else %}<a href="{% qs_replace rank='lbs_per_used_sqmi' %}" title="Rank by pounds per square mile that reported any use">Per sq mi used</a>{% endif %}</th>{% endif %}
         <th class="has-text-right{% if county_rank == 'acres' %} is-ranked{% endif %}">{% if county_rank == 'acres' %}Acres treated{% else %}<a href="{% qs_replace rank='acres' %}" title="Rank by acres treated">Acres treated</a>{% endif %}</th>
         <th class="has-text-right{% if county_rank == 'applications' %} is-ranked{% endif %}">{% if county_rank == 'applications' %}Applications{% else %}<a href="{% qs_replace rank='applications' %}" title="Rank by applications">Applications</a>{% endif %}</th>
     </tr></thead>
@@ -19,7 +23,9 @@ wrapper scrolls before they overflow (all-years pounds run to ten digits).
     {% for row in by_county %}
         <tr>
             <td><span class="county-swatch" style="background-color: {{ row.color }};" aria-hidden="true"></span><a href="{% url 'pesticides:region' sqid=row.county_sqid slug=row.county_slug %}{{ scope_qs }}">{{ row.county_name|cut:" County" }}</a></td>
-            {% if not hide_lbs %}<td class="has-text-right">{{ row.lbs|lbs }}</td>{% endif %}
+            {% if not hide_lbs %}<td class="has-text-right">{{ row.lbs|lbs }}</td>
+            <td class="has-text-right">{% if row.area %}{% widthratio row.lbs row.area 1 as per_sqmi %}{{ per_sqmi|add:0|lbs }}{% else %}—{% endif %}</td>
+            <td class="has-text-right">{% if row.used %}{% widthratio row.lbs row.used 1 as per_used %}{{ per_used|add:0|lbs }}{% else %}—{% endif %}</td>{% endif %}
             <td class="has-text-right">{{ row.acres|lbs }}</td>
             <td class="has-text-right">{{ row.applications|lbs }}</td>
         </tr>

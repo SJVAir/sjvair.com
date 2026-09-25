@@ -77,14 +77,38 @@ def sample_ramp(ramp, count):
         ))
     return colors
 
-# What the county map and table can rank counties by: by_county row key ->
-# the unit its labels say.
-COUNTY_METRICS = {'lbs': 'lbs', 'acres': 'acres treated', 'applications': 'applications'}
+# What the county map and table can rank counties by: metric -> the unit its
+# labels say. The two rates answer different questions and disagree sharply:
+# Kern is 8,163 square miles of mostly desert and mountain, so it ranks last
+# per square mile of county and first per square mile that reported anything.
+COUNTY_METRICS = {
+    'lbs': 'lbs',
+    'lbs_per_sqmi': 'lbs per sq mi',
+    'lbs_per_used_sqmi': 'lbs per sq mi with use',
+    'acres': 'acres treated',
+    'applications': 'applications',
+}
+# A rate metric -> the by_county key holding its denominator (see
+# stats.with_rates). Anything absent here is read straight off the row.
+RATE_DENOMINATORS = {'lbs_per_sqmi': 'area', 'lbs_per_used_sqmi': 'used'}
 
 
 def county_metric(value):
     """A `?rank=` value narrowed to a known metric (pounds by default)."""
     return value if value in COUNTY_METRICS else 'lbs'
+
+
+def metric_value(row, metric):
+    """
+    What a county ranks and shades by. A rate divides the row's pounds by its
+    denominator; a county with no denominator (no boundary, or nothing
+    reported) is 0, which classifies as no data the way a zero total does.
+    """
+    denominator = RATE_DENOMINATORS.get(metric)
+    if denominator is None:
+        return row.get(metric) or 0
+    divisor = row.get(denominator) or 0
+    return (row.get('lbs') or 0) / divisor if divisor else 0
 
 
 def rank_counties(by_county, metric='lbs', ramp=None):
@@ -94,9 +118,9 @@ def rank_counties(by_county, metric='lbs', ramp=None):
     can carry the swatches. No-data rows sort last.
     """
     metric = county_metric(metric)
-    rows = sorted(by_county, key=lambda row: (-(row.get(metric) or 0), row['county_name']))
-    classes = quantile_classes({row['county_id']: (row.get(metric) or 0) for row in rows}, ramp=ramp)
-    return [{**row, 'color': classes.color_for(row.get(metric) or 0)} for row in rows]
+    rows = sorted(by_county, key=lambda row: (-metric_value(row, metric), row['county_name']))
+    classes = quantile_classes({row['county_id']: metric_value(row, metric) for row in rows}, ramp=ramp)
+    return [{**row, 'value': metric_value(row, metric), 'color': classes.color_for(metric_value(row, metric))} for row in rows]
 
 
 def _build_county_geometries(tolerance=None):
@@ -200,7 +224,7 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
     metric = county_metric(metric)
     unit = COUNTY_METRICS[metric]
     counties = {region.pk: region for region in Region.objects.filter(pk__in=geometries)}
-    value_by_pk = {row['county_id']: (row.get(metric) or 0) for row in by_county}
+    value_by_pk = {row['county_id']: metric_value(row, metric) for row in by_county}
     classes = quantile_classes(value_by_pk, ramp=ramp)
 
     figure = mapfigure.MapFigure(width=width, height=height, padding=10)

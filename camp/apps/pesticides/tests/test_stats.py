@@ -47,11 +47,11 @@ class StatsTests(RollupTestMixin, TestCase):
 
     def test_year_totals(self):
         totals = stats.year_totals(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
-        assert totals == {'lbs': 180.0, 'applications': 3, 'counties': 2}
+        assert (totals['lbs'], totals['applications'], totals['counties']) == (180.0, 3, 2)
 
     def test_year_totals_empty(self):
         totals = stats.year_totals(PesticideUseRollup.objects.none(), 2023)
-        assert totals == {'lbs': 0, 'applications': 0, 'counties': 0}
+        assert (totals['lbs'], totals['applications'], totals['counties']) == (0, 0, 0)
 
     def test_top_related_commodities_for_chemical(self):
         rows = stats.top_related(PesticideUseRollup.objects.filter(chemical_id=1), 2023, 'commodity')
@@ -210,7 +210,8 @@ class StatsTests(RollupTestMixin, TestCase):
 
     def test_all_years_aggregates_span_every_year(self):
         rows = PesticideUseRollup.objects.filter(chemical_id=1)
-        assert stats.year_totals(rows, None, all_years=True) == {'lbs': 260.0, 'applications': 4, 'counties': 2}
+        totals = stats.year_totals(rows, None, all_years=True)
+        assert (totals['lbs'], totals['applications'], totals['counties']) == (260.0, 4, 2)
         assert [(r['county_name'], r['lbs']) for r in stats.by_county(rows, None, all_years=True)] == [
             ('Fresno County', 230.0), ('Kern County', 30.0),
         ]
@@ -383,7 +384,8 @@ class ConcernScopeTests(RollupTestMixin, TestCase):
 
     def test_concern_rows_drop_the_rest(self):
         rows = stats.concern_rows(PesticideUseRollup.objects.all())
-        assert stats.year_totals(rows, 2023) == {'lbs': 240.0, 'applications': 5, 'counties': 2}
+        totals = stats.year_totals(rows, 2023)
+        assert (totals['lbs'], totals['applications'], totals['counties']) == (240.0, 5, 2)
         assert stats.year_totals(rows, None, all_years=True)['lbs'] == 380.0
 
     def test_landing_stats_narrow_to_chemicals_of_concern(self):
