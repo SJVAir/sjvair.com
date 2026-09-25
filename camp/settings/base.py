@@ -447,6 +447,11 @@ CIMIS_API_KEY = env('CIMIS_API_KEY')
 COMPTOX_API_KEY = env('COMPTOX_API_KEY', '')
 
 
+# Census
+
+CENSUS_API_KEY = env('CENSUS_API_KEY', '')
+
+
 # Purple Air
 
 PURPLEAIR_READ_KEY = env('PURPLEAIR_READ_KEY')
