@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from django.contrib.gis.db.models.functions import Centroid
 from django.contrib.gis.measure import D
 from django.core.cache import cache
-from django.db.models import Count, F, Max, Min, Q, Sum
+from django.db.models import Case, Count, F, FloatField, Max, Min, Q, Sum, When
 from django.utils import timezone
 
 from camp.apps.pesticides.models import (
@@ -27,6 +27,9 @@ LANDING_KEY = 'pesticides:landing-stats:v3'
 NOTICE_WINDOW_KEY = 'pesticides:notice-window'
 YEARS_KEY = 'pesticides:years'
 ALL_YEARS = 'all'
+# Below this many pounds in the compared year, a percent change says more
+# about the baseline than the movement, so top_movers() leaves it off.
+MOVERS_PCT_MIN_LBS = 100
 # Aggregates that read more than one year of rollup rows for a whole county or
 # the whole valley. They only change on import, so an hour is plenty.
 ALL_YEARS_KEY = 'pesticides:all-years'
@@ -455,6 +458,59 @@ def top_related(rows, year, field, lbs_field='lbs_chemical', limit=10, all_years
         SimpleNamespace(obj=objects[row[field]], lbs=row['lbs'] or 0)
         for row in found if row[field] in objects
     ]
+
+
+def top_movers(rows, year_from, year_to, field, lbs_field='lbs_chemical', limit=10):
+    """
+    What rose and fell most on `field` ('chemical' | 'product' | 'commodity'
+    | 'county') between two years, ranked by absolute change. Percent change
+    would rank on the smallest baselines instead -- 0.1 lbs to 1.0 lbs is
+    +900% -- so `pct` is carried alongside for display, and only where
+    `lbs_from` is at least MOVERS_PCT_MIN_LBS.
+
+    `change` is `lbs_to - lbs_from`: always the scope year minus the compared
+    one, whichever is earlier. A year with no rows counts as zero rather than
+    dropping the row, so a chemical new to the scope year still shows up.
+
+    Three queries, as top_related(): the group-by sliced each way, then
+    in_bulk for the instances (sqid is not a DB column and templates need
+    get_absolute_url()). A chemical ranking leaves out the placeholders.
+    """
+    if field == 'chemical':
+        rows = real_chemicals(rows)
+    grouped = (
+        rows.filter(year__in=[year_from, year_to], **{f'{field}__isnull': False})
+        .values(field)
+        .annotate(
+            lbs_from=Sum(Case(When(year=year_from, then=F(lbs_field)),
+                default=0.0, output_field=FloatField())),
+            lbs_to=Sum(Case(When(year=year_to, then=F(lbs_field)),
+                default=0.0, output_field=FloatField())),
+        )
+        .annotate(change=F('lbs_to') - F('lbs_from'))
+    )
+    # Filtered by sign, not just ordered: with fewer movers than `limit` a
+    # single ordered queryset hands the tail of one side to the other.
+    rising = list(grouped.filter(change__gt=0).order_by(F('change').desc(), field)[:limit])
+    falling = list(grouped.filter(change__lt=0).order_by(F('change').asc(), field)[:limit])
+
+    model = rows.model._meta.get_field(field).related_model
+    objects = model.objects.in_bulk([row[field] for row in rising + falling])
+
+    def build(found):
+        movers = []
+        for row in found:
+            obj = objects.get(row[field])
+            if obj is None:
+                continue
+            lbs_from = row['lbs_from'] or 0
+            lbs_to = row['lbs_to'] or 0
+            pct = (lbs_to - lbs_from) / lbs_from * 100 if lbs_from >= MOVERS_PCT_MIN_LBS else None
+            movers.append(SimpleNamespace(obj=obj, lbs_from=lbs_from, lbs_to=lbs_to,
+                change=row['change'], pct=pct))
+        return movers
+
+    return {'rising': build(rising), 'falling': build(falling)}
 
 
 def recent_uses(uses, limit=10):

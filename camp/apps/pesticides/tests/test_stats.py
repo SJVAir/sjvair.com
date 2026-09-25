@@ -4,6 +4,7 @@ from django.test import TestCase
 from camp.apps.pesticides import rollup, stats, tasks
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, Product
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
+from camp.apps.regions.models import Region
 
 
 class StatsTests(RollupTestMixin, TestCase):
@@ -206,6 +207,59 @@ class StatsTests(RollupTestMixin, TestCase):
         assert stats.scope_param(2022, False, 'kern', compare=2023, concern=True) == (
             'year=2022&county=kern&compare=2023&concern=1')
         assert stats.scope_param(2023) == ''
+
+    def test_top_movers_ranks_by_absolute_change(self):
+        movers = stats.top_movers(PesticideUseRollup.objects.all(), 2022, 2023, 'chemical')
+        rising, falling = movers['rising'], movers['falling']
+        assert [m.change for m in rising] == sorted((m.change for m in rising), reverse=True)
+        assert [m.change for m in falling] == sorted(m.change for m in falling)
+        # Each side only holds its own sign, even when there are fewer
+        # movers than the limit.
+        assert all(m.change > 0 for m in rising)
+        assert all(m.change < 0 for m in falling)
+        # The change is always the scope year minus the compared one.
+        for mover in rising + falling:
+            assert mover.change == mover.lbs_to - mover.lbs_from
+
+    def test_top_movers_resolves_instances(self):
+        movers = stats.top_movers(PesticideUseRollup.objects.all(), 2022, 2023, 'chemical')
+        assert movers['rising']
+        for mover in movers['rising']:
+            assert mover.obj.get_absolute_url()
+            assert not mover.obj.name.startswith('UNKNOWN')
+
+    def test_top_movers_suppresses_a_meaningless_percentage(self):
+        movers = stats.top_movers(PesticideUseRollup.objects.all(), 2022, 2023, 'chemical')
+        for mover in movers['rising'] + movers['falling']:
+            if mover.lbs_from < stats.MOVERS_PCT_MIN_LBS:
+                assert mover.pct is None
+            else:
+                assert mover.pct == (mover.lbs_to - mover.lbs_from) / mover.lbs_from * 100
+
+    def test_top_movers_counts_a_year_with_no_rows_as_zero(self):
+        # GLYPHOSATE has rows in both years; drop 2022's so it reads as a
+        # rise from nothing rather than dropping out of the ranking.
+        PesticideUseRollup.objects.filter(chemical_id=2, year=2022).delete()
+        movers = stats.top_movers(PesticideUseRollup.objects.all(), 2022, 2023, 'chemical')
+        glyphosate = next((m for m in movers['rising'] if m.obj.pk == 2), None)
+        assert glyphosate is not None
+        assert glyphosate.lbs_from == 0
+        assert glyphosate.pct is None
+
+    def test_top_movers_on_the_county_axis(self):
+        movers = stats.top_movers(PesticideUseRollup.objects.all(), 2022, 2023, 'county')
+        assert movers['rising'] or movers['falling']
+        for mover in movers['rising'] + movers['falling']:
+            assert mover.obj.type == Region.Type.COUNTY
+
+    def test_top_movers_respects_the_limit(self):
+        movers = stats.top_movers(PesticideUseRollup.objects.all(), 2022, 2023, 'chemical', limit=1)
+        assert len(movers['rising']) <= 1
+        assert len(movers['falling']) <= 1
+
+    def test_top_movers_with_nothing_to_compare(self):
+        movers = stats.top_movers(PesticideUseRollup.objects.none(), 2022, 2023, 'chemical')
+        assert movers == {'rising': [], 'falling': []}
 
     def test_resolve_year_param_empty_db(self):
         PesticideUse.objects.all().delete()
