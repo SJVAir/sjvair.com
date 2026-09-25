@@ -86,6 +86,7 @@ def display_chemical_name(name, preferred_name):
 class Chemical(TimeStampedModel):
     class Category(models.TextChoices):
         BIOPESTICIDE             = 'biopesticide',             _('Biopesticide')
+        CALIFORNIA_RESTRICTED    = 'california_restricted',    _('California Restricted Material')
         CARCINOGEN               = 'carcinogen',               _('Carcinogen')
         CHOLINESTERASE_INHIBITOR = 'cholinesterase_inhibitor', _('Cholinesterase Inhibitor')
         DEVELOPMENTAL_TOXIN      = 'developmental_toxin',      _('Developmental Toxin')
@@ -177,6 +178,10 @@ class Chemical(TimeStampedModel):
         return self.Category.TOXIC_AIR_CONTAMINANT in (self.categories or [])
 
     @property
+    def is_california_restricted(self):
+        return self.Category.CALIFORNIA_RESTRICTED in (self.categories or [])
+
+    @property
     def other_categories(self):
         """Categories not already expressed by the Prop 65 / CARB TAC badges."""
         implied = self.PROP65_CATEGORIES | {self.Category.TOXIC_AIR_CONTAMINANT}
@@ -234,7 +239,24 @@ class Product(TimeStampedModel):
     reg_number = models.CharField(_('Registration Number'), max_length=64, unique=True)
     name = models.CharField(_('Name'), max_length=256)
     fumigant = models.BooleanField(_('Fumigant'), default=False)
-    california_restricted = models.BooleanField(_('California Restricted'), default=False)
+    @property
+    def is_restricted(self):
+        """
+        Does this product contain an active ingredient California restricts
+        (3 CCR 6400)? The regulation names ingredients, so the status is a
+        property of the chemicals rather than a column here.
+
+        Reads the annotation `ProductQuerySet.with_restricted()` adds when
+        it's there, and falls back to walking `chemicals.all()` -- which is
+        a query per product, so a list should annotate or prefetch.
+        """
+        annotated = getattr(self, 'has_restricted_chemical', None)
+        if annotated is not None:
+            return annotated
+        return any(
+            Chemical.Category.CALIFORNIA_RESTRICTED in (chemical.categories or [])
+            for chemical in self.chemicals.all()
+        )
     chemicals = models.ManyToManyField(
         'pesticides.Chemical',
         through='ProductChemical',

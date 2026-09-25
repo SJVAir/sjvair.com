@@ -46,6 +46,10 @@ oil:
   title: Oil
   summary: Petroleum or plant oils used to smother insects and mites. They are low in toxicity to people, but they are counted by weight, so they often top the pounds-applied lists.
   source_url: https://www.cdpr.ca.gov/pesticide-use-in-california/pesticide-use-reporting/
+california_restricted:
+  title: California restricted material
+  summary: An active ingredient California restricts because of its hazard to people or the environment. Applying one needs a permit from the county agricultural commissioner and a notice of intent before each application, which is why these show up in SprayDays.
+  source_url: https://www.cdpr.ca.gov/enforcement/restricted-materials/
 restricted_material:
   title: California restricted material
   summary: This product can only be used with a permit from the county agricultural commissioner, and a notice of intent must be filed before each application. That is why it shows up in SprayDays.

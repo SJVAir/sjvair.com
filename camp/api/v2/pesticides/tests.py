@@ -227,7 +227,11 @@ class CommodityDetailTests(TestCase):
 class ProductListTests(TestCase):
     def setUp(self):
         self.url = reverse('api:v2:pesticides:product-list')
-        self.product = make_product(fumigant=True, california_restricted=True)
+        self.product = make_product(fumigant=True)
+        # Restricted is a property of the active ingredient (3 CCR 6400),
+        # not a column on the product.
+        self.product.chemicals.add(make_chemical(
+            categories=[Chemical.Category.CALIFORNIA_RESTRICTED]))
 
     def test_list_returns_200(self):
         assert self.client.get(self.url).status_code == 200
@@ -249,9 +253,14 @@ class ProductListTests(TestCase):
         assert data['data'][0]['fumigant'] is True
 
     def test_filter_by_california_restricted(self):
-        make_product(prodno=2, reg_number='100-2', name='OTHER', california_restricted=False)
+        # A product with no restricted ingredient is not restricted.
+        make_product(prodno=2, reg_number='100-2', name='OTHER')
         data = self.client.get(self.url, {'california_restricted': 'true'}).json()
         assert data['count'] == 1
+        assert data['data'][0]['california_restricted'] is True
+        data = self.client.get(self.url, {'california_restricted': 'false'}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['california_restricted'] is False
 
 
 class ProductDetailTests(TestCase):
@@ -365,14 +374,19 @@ class PesticideUseListTests(TestCase):
         assert item['mtrs'] is None
 
     def test_no_n_plus_1_queries(self):
-        # select_related means query count stays flat as rows grow
+        # select_related means query count stays flat as rows grow. The third
+        # query is the products' chemicals, which a serialized product's
+        # `california_restricted` is computed from -- one query for the page,
+        # not one per row, which is what the count here is guarding.
+        with self.assertNumQueries(3):
+            self.client.get(self.url)
         for i in range(4):
             make_use(self.county,
                 chemical=self.chemical,
                 commodity=self.commodity,
                 product=self.product,
                 year=2023, use_no=i + 10)
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             self.client.get(self.url)
 
 

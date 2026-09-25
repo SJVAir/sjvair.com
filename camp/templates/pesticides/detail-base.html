@@ -33,6 +33,7 @@ doesn't render as one row of content beside ten and a screen of whitespace.
             <div class="column is-5-desktop is-4-widescreen">
                 {% trend_chart by_year year hide_lbs %}
                 {% include 'pesticides/includes/by-year-table.html' %}
+                <div class="mt-5">{% month_heatmap by_year_month year %}</div>
             </div>
             <div class="column is-7-desktop is-8-widescreen">
                 {% include 'pesticides/includes/section-map.html' %}

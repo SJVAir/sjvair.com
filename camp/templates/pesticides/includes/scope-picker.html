@@ -29,6 +29,12 @@ itself is left out rather than rendering an empty flex box.
                     <a class="dropdown-item{% if option == year and not all_years %} is-active{% endif %}" href="{% qs_replace year=option page=None %}"{% if option == year and not all_years %} aria-current="page"{% endif %}>{{ option }}</a>
                     {% endfor %}
                 </div>
+                <hr class="dropdown-divider">
+                {# Why the newest year is the newest -- the question the year #}
+                {# list itself raises. #}
+                {% health_note 'pur_lag' as pur_lag_note %}
+                <a class="dropdown-item is-size-7 has-text-grey" href="{% url 'pesticides:about' %}#caveats"
+                   data-tooltip="{{ pur_lag_note.summary }}">{{ pur_lag_note.title }}</a>
             </div>
         </div>
     </div>

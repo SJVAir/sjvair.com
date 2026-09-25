@@ -1,0 +1,12 @@
+{% load pesticides_explorer %}
+{# A "?" that explains the thing it sits beside, with the long version on the #}
+{# About page. Replaces the old "How to read this page" block: those four #}
+{# notes described four elements elsewhere on the page, so each one now sits #}
+{# on the element it describes. #}
+{% health_note key as note %}
+{% if note %}
+<a class="note-help has-tooltip-multiline has-tooltip-arrow"
+   href="{% url 'pesticides:about' %}{% if anchor %}#{{ anchor }}{% endif %}"
+   data-tooltip="{{ note.summary }}"
+   aria-label="{{ note.title }}"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
+{% endif %}

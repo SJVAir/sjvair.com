@@ -27,7 +27,7 @@ class ChemicalClassificationTests(TestCase):
 
     def test_other_categories_excludes_badge_implied_ones(self):
         chlorpyrifos = Chemical.objects.get(pk=2)   # TAC + cholinesterase inhibitor
-        assert chlorpyrifos.other_categories == ['cholinesterase_inhibitor']
+        assert chlorpyrifos.other_categories == ['cholinesterase_inhibitor', 'california_restricted']
         glyphosate = Chemical.objects.get(pk=1)     # carcinogen only
         assert glyphosate.other_categories == []
         assert Chemical.objects.get(pk=3).other_categories == []

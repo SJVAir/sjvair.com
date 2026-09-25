@@ -83,6 +83,28 @@ class StatsTests(RollupTestMixin, TestCase):
         assert [r['lbs'] for r in rows][2:5] == [100.0, 50.0, 30.0]   # Mar, Apr, May
         assert sum(r['applications'] for r in rows) == 3
 
+    def test_by_year_month_grid(self):
+        grid = stats.by_year_month(PesticideUseRollup.objects.filter(chemical_id=1))
+        assert [row['year'] for row in grid] == [2023, 2022]
+        assert [cell['month'] for cell in grid[0]['months']] == list(range(1, 13))
+        assert [cell['lbs'] for cell in grid[0]['months']] == [0, 0, 100.0, 50.0, 30.0, 0, 0, 0, 0, 0, 0, 0]
+        assert [cell['lbs'] for cell in grid[1]['months']] == [0, 0, 80.0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    def test_by_year_month_row_total_is_the_sum_of_its_cells(self):
+        # Including undated rows in the total would leave a row claiming more
+        # than the twelve cells beside it can account for.
+        PesticideUseRollup.objects.create(
+            year=2023, month=0, county_id=9001, chemical_id=1, lbs_chemical=999.0, applications=1)
+        grid = stats.by_year_month(PesticideUseRollup.objects.filter(chemical_id=1))
+        assert grid[0]['lbs'] == 180.0
+        assert grid[0]['lbs'] == sum(cell['lbs'] for cell in grid[0]['months'])
+
+    def test_by_year_month_ignores_the_year_scope(self):
+        # Seasonality is a cross-year question, so every loaded year is here
+        # whatever the scope. No rows at all is an empty grid, not blank years.
+        assert len(stats.by_year_month(PesticideUseRollup.objects.all())) == 2
+        assert stats.by_year_month(PesticideUseRollup.objects.none()) == []
+
     def test_by_section(self):
         rows = stats.by_section(PesticideUseRollup.objects.filter(chemical_id=1), 2023)
         assert [(r['mtrs_id'], r['lbs'], r['applications']) for r in rows] == [(9101, 150.0, 2), (9102, 30.0, 1)]
@@ -489,3 +511,28 @@ class NarrowScopeTests(RollupTestMixin, TestCase):
         a = stats.county_totals(2023, concern=stats.NARROW_CONCERN)
         b = stats.county_totals(2023, concern=stats.NARROW_FUMIGANT)
         assert sum(r['lbs'] or 0 for r in a) != sum(r['lbs'] or 0 for r in b)
+
+    def test_restricted_narrows_on_the_chemical_category(self):
+        rows = PesticideUseRollup.objects.all()
+        narrowed = stats.narrow_rows(rows, stats.NARROW_RESTRICTED)
+        assert narrowed.exists()
+        for row in narrowed.select_related('chemical'):
+            assert Chemical.Category.CALIFORNIA_RESTRICTED in row.chemical.categories
+
+    def test_restricted_is_its_own_narrowing(self):
+        rows = PesticideUseRollup.objects.all()
+        everything = set(rows.values_list('pk', flat=True))
+        restricted = set(stats.narrow_rows(rows, stats.NARROW_RESTRICTED).values_list('pk', flat=True))
+        concern = set(stats.narrow_rows(rows, stats.NARROW_CONCERN).values_list('pk', flat=True))
+        # A real subset, and not the same question as "of concern" --
+        # chlorpyrifos is both, 1,3-dichloropropene is restricted and not on
+        # the concern lists. (Restricted and fumigant do coincide in this
+        # fixture, where the one restricted product is also a fumigant.)
+        assert restricted
+        assert restricted < everything
+        assert restricted != concern
+
+    def test_every_narrowing_resolves(self):
+        for value, _label in stats.NARROW_CHOICES:
+            assert stats.resolve_narrow({'narrow': value}) == value
+            assert stats.narrow_label(value)

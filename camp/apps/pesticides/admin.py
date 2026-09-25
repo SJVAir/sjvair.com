@@ -25,9 +25,9 @@ class CommodityAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ['name', 'prodno', 'reg_number', 'fumigant', 'california_restricted']
+    list_display = ['name', 'prodno', 'reg_number', 'fumigant']
     search_fields = ['name', 'prodno', 'reg_number']
-    list_filter = ['fumigant', 'california_restricted']
+    list_filter = ['fumigant']
     inlines = [ProductChemicalInline]
 
 
@@ -35,7 +35,7 @@ class ProductAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 class PesticideUseAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     date_hierarchy = 'application_date'
     list_display = ['year', 'use_no', 'get_county', 'get_mtrs', 'get_commodity', 'get_product', 'get_chemical', 'lbs_chemical', 'acres_treated', 'application_date']
-    list_filter = ['aerial_ground', 'county', 'product__fumigant', 'product__california_restricted']
+    list_filter = ['aerial_ground', 'county', 'product__fumigant']
     list_select_related = ['county', 'mtrs', 'commodity', 'product', 'chemical']
     ordering = ['-application_date']
     raw_id_fields = ['county', 'mtrs', 'product', 'chemical', 'commodity']
@@ -67,7 +67,7 @@ class PesticideUseAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 class PesticideNoticeAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     date_hierarchy = 'scheduled_application'
     list_display = ['application_id', 'comtrs', 'get_county', 'scheduled_application', 'treated_amount', 'treated_units', 'application_method']
-    list_filter = ['county', 'application_method', 'products__fumigant', 'products__california_restricted']
+    list_filter = ['county', 'application_method', 'products__fumigant']
     list_select_related = ['county', 'mtrs']
     ordering = ['-scheduled_application']
     raw_id_fields = ['county', 'mtrs']

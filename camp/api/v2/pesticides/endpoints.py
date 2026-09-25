@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from django.db.models import Case, Count, Q, Sum, When
+from django.db.models import Case, Count, Prefetch, Q, Sum, When
 from django.shortcuts import get_object_or_404
 
 from resticus import generics, http
@@ -65,7 +65,9 @@ class ChemicalDetail(generics.DetailEndpoint):
     lookup_url_kwarg = 'chemical_id'
 
     def get_queryset(self):
-        return Chemical.objects.prefetch_related('products').with_commodities()
+        return Chemical.objects.prefetch_related(
+            Prefetch('products', queryset=Product.objects.with_restricted())
+        ).with_commodities()
 
 
 class ProductList(generics.ListEndpoint):
@@ -75,6 +77,9 @@ class ProductList(generics.ListEndpoint):
     serializer_class = ProductSerializer
     filter_class = ProductFilter
     paginate = True
+
+    def get_queryset(self):
+        return Product.objects.with_restricted()
 
 
 class ProductDetail(generics.DetailEndpoint):
@@ -86,7 +91,7 @@ class ProductDetail(generics.DetailEndpoint):
     lookup_url_kwarg = 'product_id'
 
     def get_queryset(self):
-        return Product.objects.prefetch_related('chemicals').with_commodities()
+        return Product.objects.with_restricted().prefetch_related('chemicals').with_commodities()
 
 
 class PesticideUseMixin:
@@ -95,7 +100,12 @@ class PesticideUseMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().select_related('county', 'mtrs', 'product', 'chemical', 'commodity')
+        # `product` is select_related, so it can't carry with_restricted()'s
+        # annotation; prefetching its chemicals instead makes is_restricted's
+        # fallback one query for the page rather than one per row.
+        return (super().get_queryset()
+            .select_related('county', 'mtrs', 'product', 'chemical', 'commodity')
+            .prefetch_related('product__chemicals'))
 
 
 class PesticideUseList(PesticideUseMixin, generics.ListEndpoint):
@@ -117,7 +127,10 @@ class PesticideNoticeMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().select_related('county').prefetch_related('chemicals', 'products')
+        return super().get_queryset().select_related('county').prefetch_related(
+            'chemicals',
+            Prefetch('products', queryset=Product.objects.with_restricted()),
+        )
 
 
 class PesticideNoticeList(PesticideNoticeMixin, generics.ListEndpoint):

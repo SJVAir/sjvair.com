@@ -18,12 +18,13 @@ NOTES_FILE = 'pesticide-health-notes.yaml'
 REQUIRED_KEYS = (
     'prop65', 'iarc_1', 'iarc_2a', 'iarc_2b', 'iarc_3', 'carb_tac',
     'fumigant', 'cholinesterase_inhibitor', 'groundwater_contaminant', 'biopesticide', 'oil',
-    'restricted_material', 'noi_meaning', 'pur_lag', 'shades', 'badges',
+    'california_restricted', 'restricted_material', 'noi_meaning', 'pur_lag', 'shades', 'badges',
 )
 
 # Chemical.Category values (other than the Prop 65 / CARB TAC categories,
 # which are already covered by is_prop65 / is_tac) that have their own note.
-_CATEGORY_NOTE_KEYS = ('fumigant', 'cholinesterase_inhibitor', 'groundwater_contaminant', 'biopesticide', 'oil')
+_CATEGORY_NOTE_KEYS = ('fumigant', 'cholinesterase_inhibitor', 'groundwater_contaminant', 'biopesticide', 'oil',
+    'california_restricted')
 
 
 @lru_cache(maxsize=1)
@@ -69,7 +70,9 @@ def keys_for_product(product):
     keys = []
     if product.fumigant:
         keys.append('fumigant')
-    if product.california_restricted:
+    # From the active ingredients, not the deprecated product flag: 3 CCR
+    # 6400 names ingredients, and nothing ever set the flag.
+    if product.is_restricted:
         keys.append('restricted_material')
     return keys
 

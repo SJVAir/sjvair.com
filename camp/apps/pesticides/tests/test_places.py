@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from camp.apps.pesticides import places, stats
-from camp.apps.pesticides.models import PesticideNotice, PesticideUseRollup
+from camp.apps.pesticides.models import Chemical, PesticideNotice, PesticideUseRollup
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Boundary, Location, Region
 from camp.apps.regions.tests.test_locations import make_district
@@ -60,24 +60,27 @@ class AreaTests(RollupTestMixin, TestCase):
         # Built once and cached; a later import is what clears it.
         assert cache.get(stats.all_years_key('place-v2', 'region:9001')) is not None
 
-    def test_place_page_shows_four_cards(self):
+    def test_place_page_cards(self):
         fresno = Region.objects.get(pk=9001)
         url = reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'})
 
         response = self.client.get(url, {'year': 2023})
 
         assert response.context['chemicals_card']['title'] == 'Top chemicals'
-        concern_card = response.context['chemicals_of_concern_card']
-        assert concern_card['title'] == 'Top chemicals of concern'
-        # Only the of-concern chemicals, in pounds order; SULFUR is the
-        # heaviest here and isn't one.
-        assert [row.obj.name for row in concern_card['rows']] == ['GLYPHOSATE', 'CHLORPYRIFOS']
-        # "Show all" narrows the records browser the way the card does.
-        assert 'narrow=concern' in concern_card['show_all_url']
         assert 'narrow=concern' not in response.context['chemicals_card']['show_all_url']
+        # One card per kind and no more: the chemicals-of-concern card
+        # repeated the chemicals card, whose rows carry the same badges.
+        assert 'chemicals_of_concern_card' not in response.context
+        assert response.content.decode().count('class="card related-card"') == 3
 
-        html = response.content.decode()
-        assert html.count('class="card related-card"') == 4
+    def test_concern_chemicals_are_badged_in_the_chemicals_card(self):
+        # What the dedicated concern card used to say, said in place.
+        fresno = Region.objects.get(pk=9001)
+        url = reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': 'fresno'})
+
+        html = self.client.get(url, {'year': 2023}).content.decode()
+
+        assert 'Prop 65' in html
 
     def test_place_context_active_notices(self):
         PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326), mtrs_id=9101)
@@ -202,7 +205,10 @@ class RegionPageTests(RollupTestMixin, TestCase):
         assert response.status_code == 200
         assert response.context['totals']['lbs'] == 670.0
         html = response.content.decode()
-        assert 'Fresno County' in html and 'Spraying peaks in August here' in html and 'month-chart' in html
+        assert 'Fresno County' in html and 'Spraying peaks in August here' in html
+        # Two years are loaded, so seasonality is the grid; the bars would
+        # redraw the grid's own top row.
+        assert 'month-heatmap' in html and 'month-chart' not in html
         assert 'only in this page' not in html
 
     def test_trend_chart(self):

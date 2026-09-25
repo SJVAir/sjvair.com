@@ -99,6 +99,9 @@
     var y2 = data.y2 || null;
     var labels = data.labels || null;
     var marker = data.marker || null;
+    // The baseline the line is read against (the average valley county), or
+    // null where there's nothing to compare to.
+    var compare = data.compare && data.compare.length ? data.compare : null;
     var selectedIndex = data.selected == null ? -1 : x.indexOf(data.selected);
     var pad = x.length > 1 ? 0.5 : 1;
     var series = [
@@ -119,13 +122,25 @@
         spanGaps: false,
       });
     }
+    if (compare) {
+      series.push({
+        // Dashed and muted: context, not a second measurement competing for
+        // attention. No points, so the series with points stays the subject.
+        stroke: colors.muted,
+        width: 1.5,
+        dash: [4, 3],
+        points: {show: false},
+        spanGaps: false,
+      });
+    }
     var opts = Object.assign(size(el, LINE_HEIGHT), {
       legend: {show: false},
       select: {show: false},
       cursor: {y: false, drag: {x: false, y: false}, points: {size: 9, width: 2}},
       scales: {
         x: {time: false, range: [x[0] - pad, x[x.length - 1] + pad]},
-        // From zero: a flat decade should look flat.
+        // From zero: a flat decade should look flat. Across both series, so
+        // a baseline above the line it explains doesn't draw off the top.
         y: {range: function (u, min, max) { return [0, (max || 1) * 1.12]; }},
       },
       axes: [
@@ -181,16 +196,26 @@
           var index = u.cursor.idx;
           if (index == null) {
             readout.textContent = '';
-          } else if (labels) {
-            readout.textContent = x[index] + ' · ' + full(y[index]) + ' ' + labels[0] +
+            return;
+          }
+          var text;
+          if (labels) {
+            text = x[index] + ' · ' + full(y[index]) + ' ' + labels[0] +
               (y2 ? ' · ' + full(y2[index]) + ' ' + labels[1] : '');
           } else {
-            readout.textContent = x[index] + ' · ' + amount(y[index], data.unit);
+            text = x[index] + ' · ' + amount(y[index], data.unit);
           }
+          if (compare && compare[index] != null) {
+            text += ' · ' + (data.compare_label || 'valley average') + ' ' + amount(compare[index], data.unit);
+          }
+          readout.textContent = text;
         }],
       },
     });
-    return new uPlot(opts, y2 ? [x, y, y2] : [x, y], el);
+    var columns = [x, y];
+    if (y2) columns.push(y2);
+    if (compare) columns.push(compare);
+    return new uPlot(opts, columns, el);
   }
 
   function bars(el, figure, data) {

@@ -160,3 +160,36 @@ class NoticeConcernScopeTests(TestCase):
         # Notice 3 carries both GLYPHOSATE and CHLORPYRIFOS.
         response = self.client.get(self.url, {'concern': '1'})
         assert [n.pk for n in response.context['object_list']] == [2, 3]
+
+
+class UpcomingNoticeLinkTests(TestCase):
+    """
+    Each row in the upcoming-notices box reaches its own notice, the way a row
+    in the notices list does. Without it the box is a dead end: it names a
+    scheduled application and offers no way to see the rest of it.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+        # The fixture leaves the upcoming notices unplaced, so the section
+        # page has none of its own to render.
+        PesticideNotice.objects.filter(pk=2).update(mtrs_id=9101)
+
+    def test_every_upcoming_page_links_each_notice(self):
+        fresno = Region.objects.get(pk=9001)
+        section = Region.objects.get(pk=9101)
+        pages = {
+            'place': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            'section': reverse('pesticides:section-detail', kwargs={'sqid': section.sqid}),
+            'chemical': Chemical.objects.get(pk=1).get_absolute_url(),
+        }
+        for name, url in pages.items():
+            response = self.client.get(url)
+            upcoming = response.context.get('upcoming') or []
+            assert upcoming, f'{name} has no upcoming notices to link'
+            html = response.content.decode()
+            for notice in upcoming:
+                href = reverse('pesticides:notice-detail', kwargs={'sqid': notice.sqid})
+                assert href in html, f'{name} does not link notice {notice.pk}'

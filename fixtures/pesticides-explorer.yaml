@@ -68,20 +68,20 @@
   fields: {chem_code: 1855, name: GLYPHOSATE, cas_number: 1071-83-6, dtxsid: DTXSID1024143, iarc_group: 2A, categories: [carcinogen]}
 - model: pesticides.chemical
   pk: 2
-  fields: {chem_code: 253, name: CHLORPYRIFOS, cas_number: 2921-88-2, dtxsid: '', iarc_group: '', categories: [toxic_air_contaminant, cholinesterase_inhibitor]}
+  fields: {chem_code: 253, name: CHLORPYRIFOS, cas_number: 2921-88-2, dtxsid: '', iarc_group: '', categories: [toxic_air_contaminant, cholinesterase_inhibitor, california_restricted]}
 - model: pesticides.chemical
   pk: 3
   fields: {chem_code: 560, name: SULFUR, cas_number: 7704-34-9, dtxsid: '', iarc_group: '', categories: []}
 
 - model: pesticides.product
   pk: 1
-  fields: {prodno: 1, reg_number: 524-475, name: ROUNDUP PRO, fumigant: false, california_restricted: false}
+  fields: {prodno: 1, reg_number: 524-475, name: ROUNDUP PRO, fumigant: false}
 - model: pesticides.product
   pk: 2
-  fields: {prodno: 2, reg_number: 62719-220, name: LORSBAN 4E, fumigant: true, california_restricted: true}
+  fields: {prodno: 2, reg_number: 62719-220, name: LORSBAN 4E, fumigant: true}
 - model: pesticides.product
   pk: 3
-  fields: {prodno: 3, reg_number: 100-1, name: SULFUR DUST, fumigant: false, california_restricted: false}
+  fields: {prodno: 3, reg_number: 100-1, name: SULFUR DUST, fumigant: false}
 
 - model: pesticides.productchemical
   pk: 1
