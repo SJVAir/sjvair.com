@@ -35,6 +35,13 @@ POLLUTANT_COLUMNS = {
 }
 POLLUTANT_FIELDS = tuple(POLLUTANT_COLUMNS.values())
 
+DAYS_PER_YEAR = 365
+
+
+def tons_per_year(tons_per_day):
+    """CEPAM's tons/day (annual average) as tons/yr; None stays None."""
+    return None if tons_per_day is None else tons_per_day * DAYS_PER_YEAR
+
 
 def params(year, county_code):
     return {

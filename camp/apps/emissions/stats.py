@@ -324,7 +324,7 @@ def county_context(scope):
         parts = [{
             'source_type': source_type,
             'label': source_type.label,
-            'tons': (sums.get(source_type) or 0) * 365,
+            'tons': cepam.tons_per_year(sums.get(source_type) or 0),
         } for source_type in CountyInventory.SourceType]
         total = sum(part['tons'] for part in parts)
         if not total:

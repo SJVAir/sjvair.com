@@ -50,20 +50,29 @@ def level_regions(level):
     return queryset.filter(boundary__isnull=False).current_vintage()
 
 
+def containing_region(level, point_field='point'):
+    """
+    The Region of `level` whose boundary contains a point field on the outer
+    query (`intersects`, so a point exactly on a shared border still lands
+    somewhere, and `[:1]` so it lands in only one). Shared by facility and
+    dairy region indexes.
+    """
+    return (
+        level_regions(level).filter(boundary__geometry__intersects=OuterRef(point_field))
+        .order_by('pk').values('pk')[:1]
+    )
+
+
 def region_index(level):
     """
     {facility pk: region pk} for one level. Counties by Facility.county;
-    otherwise the region the facility's point falls in (`intersects`, so a
-    point exactly on a shared border still lands somewhere, and `[:1]` so it
-    lands in only one). Facilities without a point are only in counties.
+    otherwise the region the facility's point falls in. Facilities without a
+    point are only in counties.
     """
     def compute():
         if level == Region.Type.COUNTY:
             return dict(Facility.objects.exclude(county=None).values_list('pk', 'county_id'))
-        containing = (
-            level_regions(level).filter(boundary__geometry__intersects=OuterRef('point'))
-            .order_by('pk').values('pk')[:1]
-        )
+        containing = containing_region(level)
         rows = Facility.objects.exclude(point=None).annotate(region_pk=Subquery(containing)).values_list('pk', 'region_pk')
         return {facility: region for facility, region in rows if region is not None}
     return cache.get_or_set(_key('region-index', level), compute, stats.CACHE_TIMEOUT)
@@ -146,6 +155,18 @@ class RegionArea:
             return Q(facility_id__in=ids)
         return Q(facility__point__intersects=region.boundary.geometry)
 
+    def dairy_q(self):
+        """The same area as a Q on DairyHerd: counties by the dairy's county, other types by its point."""
+        from camp.apps.emissions import dairies  # dairies imports this module
+
+        region = self.region
+        if region.type == Region.Type.COUNTY:
+            return Q(dairy__county=region)
+        if region.type in LEVELS:
+            ids = [dairy for dairy, pk in dairies.region_index(region.type).items() if pk == region.pk]
+            return Q(dairy_id__in=ids)
+        return Q(dairy__point__intersects=region.boundary.geometry)
+
     @property
     def sq_miles(self):
         if self.region.type in LEVELS:
@@ -173,14 +194,20 @@ class RadiusArea:
     def point(self):
         return Point(self.lng, self.lat, srid=EPSG_LATLON)
 
-    def q(self):
+    def _within(self, field):
         # A bounding-box prefilter first, so the index does the work and the
         # exact distance runs on a handful of rows.
         dlat = self.radius / MILES_PER_DEGREE
         dlng = self.radius / (MILES_PER_DEGREE * max(math.cos(math.radians(self.lat)), 0.01))
         box = Polygon.from_bbox((self.lng - dlng, self.lat - dlat, self.lng + dlng, self.lat + dlat))
         box.srid = EPSG_LATLON
-        return Q(facility__point__bboverlaps=box, facility__point__distance_lte=(self.point, D(mi=self.radius)))
+        return Q(**{f'{field}__bboverlaps': box, f'{field}__distance_lte': (self.point, D(mi=self.radius))})
+
+    def q(self):
+        return self._within('facility__point')
+
+    def dairy_q(self):
+        return self._within('dairy__point')
 
     @property
     def sq_miles(self):
