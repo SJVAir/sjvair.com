@@ -57,6 +57,11 @@ class ScopeMixin:
         return super().get_context_data(**context)
 
 
+def sector_options():
+    """Sectors A–Z for the pickers, the catch-all "Other" last."""
+    return sorted(Facility.Sector.choices, key=lambda choice: (choice[0] == Facility.Sector.OTHER, choice[1]))
+
+
 def list_filters(get):
     """The facility table's own filters (beyond the scope), validated."""
     sector = get.get('sector')
@@ -129,7 +134,7 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
             sort=filters['sort'],
             filters=filters,
             region=filters['area'].region if filters['area'] else None,
-            sector_options=Facility.Sector.choices,
+            sector_options=sector_options(),
             **kwargs,
         )
 
@@ -330,7 +335,7 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
         sector = sector if sector in Facility.Sector.values else None
         return super().get_context_data(
             map_config=facility_map_config(self.get_scope(), sector=sector, areas_view=map_view(self.request.GET)),
-            sector_options=Facility.Sector.choices,
+            sector_options=sector_options(),
             **kwargs,
         )
 

@@ -1,3 +1,5 @@
+import re
+
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
@@ -130,3 +132,14 @@ class SectorSortTests(ListTestCase):
         assert 'href="?sort=-name"' in content
         assert 'href="?sort=-facilities"' in content
         assert 'href="?sort=-share"' in content
+
+
+class FacilityListLayoutTests(ListTestCase):
+    def test_filters_sit_in_the_sidebar_with_sectors_a_to_z(self):
+        content = self.client.get(reverse('emissions:facility-list')).content.decode()
+        form = content[content.index('class="explorer-filters box"'):content.index('</form>')]
+        assert 'id="facility-q"' in form and 'id="facility-sector"' in form and 'data-kind="region"' in form
+        labels = re.findall(r'<option value="([^"]+)"[^>]*>([^<]+)</option>', form)
+        names = [label for value, label in labels]
+        assert names[-1] == 'Other'
+        assert names[:-1] == sorted(names[:-1])
