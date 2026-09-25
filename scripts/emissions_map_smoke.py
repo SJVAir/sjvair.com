@@ -535,15 +535,21 @@ def main():
         driver.execute_script("document.querySelector('.facility-map-compare .dropdown-trigger .button').click()")
         time.sleep(0.3)
         driver.execute_script("document.querySelector('.facility-map-compare [data-compare]:not([data-compare=\"\"])').click()")
-        time.sleep(1)
-        compare_state = driver.execute_script(
-            "var m = window.EmissionsFacilityMap.instances()[0];"
-            "return {vis: m.map.getLayoutProperty('dairies', 'visibility'),"
-            " rendered: m.map.queryRenderedFeatures({layers: ['dairies']}).length,"
-            " legend: document.querySelector('.facility-map-legend').innerHTML};")
+        # Poll: the compared year's values load before the legend redraws.
+        def compare_settled(state):
+            return (state['vis'] == 'none' and state['rendered'] == 0
+                    and 'legend-sizes' not in state['legend'] and 'Dairies' not in state['legend'])
+        for _ in range(25):
+            time.sleep(0.2)
+            compare_state = driver.execute_script(
+                "var m = window.EmissionsFacilityMap.instances()[0];"
+                "return {vis: m.map.getLayoutProperty('dairies', 'visibility'),"
+                " rendered: m.map.queryRenderedFeatures({layers: ['dairies']}).length,"
+                " legend: document.querySelector('.facility-map-legend').innerHTML};")
+            if compare_settled(compare_state):
+                break
         check(results, 'Compare on a page with dairies hides them and drops the size key',
-              compare_state['vis'] == 'none' and compare_state['rendered'] == 0
-              and 'legend-sizes' not in compare_state['legend'] and 'Dairies' not in compare_state['legend'],
+              compare_settled(compare_state),
               str({k: v for k, v in compare_state.items() if k != 'legend'}))
         driver.execute_script("document.querySelector('.facility-map-compare .dropdown-trigger .button').click()")
         time.sleep(0.3)
