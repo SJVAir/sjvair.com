@@ -10,7 +10,7 @@ from camp.apps.emissions import dairies, dairy_views
 from camp.apps.emissions.models import DairyHerd, Facility
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
 from camp.apps.emissions.tests.test_areas_pages import map_data
-from camp.apps.emissions.tests.test_dairies import dairy_inventory, make_dairies
+from camp.apps.emissions.tests.test_dairies import IN_KERN, dairy_inventory, make_dairies, make_dairy
 from camp.apps.regions.models import Region
 
 
@@ -109,6 +109,14 @@ class DairyTabContentTests(DairyPageTestCase):
         assert 'sort=-mature_cows' in content
         content = self.get({'q': 'small'}).content.decode()
         assert 'SMALL DAIRY' in content and 'BIG DAIRY' not in content
+
+    def test_digester_with_unknown_start_year(self):
+        # A handful of CADD's AgSTAR digesters carry no recorded start year.
+        make_dairy(4, 'AGSTAR DAIRY', IN_KERN, self.kern, herds={2023: {'milk_cows': 50}}, digesters=[(None, None)])
+        dairies.clear_caches()
+        content = self.get().content.decode()
+        assert 'Yes (start year unknown)' in content
+        assert 'since None' not in content and 'since null' not in content
 
     def test_region_filter(self):
         place = make(Region.Type.PLACE, 'Plantville', AROUND_PLANT)
@@ -274,6 +282,12 @@ class CombinedMapTests(DairyPageTestCase):
 
 class DairyAboutTests(DairyPageTestCase):
     def test_about_has_a_dairy_section(self):
+        # A dairy counted the year before COVERAGE_CHANGE_YEAR and one counted
+        # in it, so the two coverage-count figures differ from each other and
+        # from the 3 Dairy rows CADD locates (big, small, closed).
+        DairyHerd.objects.create(dairy=self.big, year=2018, milk_cows=900, mature_cows=900, size_class='large')
+        DairyHerd.objects.create(dairy=self.small, year=2019, milk_cows=50, mature_cows=50, size_class='small')
+        dairies.clear_caches()
         content = self.client.get(reverse('emissions:about')).content.decode()
         assert 'id="dairies"' in content
         assert 'https://www.ecfr.gov/current/title-40/chapter-I/subchapter-D/part-122/subpart-B/section-122.23' in content
@@ -285,7 +299,9 @@ class DairyAboutTests(DairyPageTestCase):
         # is on every page, and "CEPAM 2019" already makes '2019' true) are
         # replaced with the section's own markup.
         assert f'<a href="{reverse("emissions:dairy-list")}">Dairies</a> tab covers what the facility inventory barely sees' in content
-        assert '<strong>Coverage grew in 2019.</strong> Before 2019 CADD has herds for 0 Valley dairies; from 2019 on, for 2.' in content
+        # dairy_count is every imported Dairy row (3), not just the ones with a counted herd.
+        assert 'locates every dairy CARB tracks, 3 of them in the eight Valley counties.' in content
+        assert "<strong>Coverage grew in 2019.</strong> CADD has herds for 1 Valley dairies in 2018 and 1 in 2019. The two years aren't a like-for-like comparison." in content
         assert 'https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd' in content
 
     def test_integrations_list_cadd(self):

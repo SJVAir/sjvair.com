@@ -105,9 +105,15 @@
   }
 
   function digesterText(digester) {
-    var span = digester.shutdown_year
-      ? digester.operational_year + '–' + digester.shutdown_year + ', shut down'
-      : 'since ' + digester.operational_year;
+    var start = digester.operational_year === null ? '?' : digester.operational_year;
+    var span;
+    if (digester.shutdown_year) {
+      span = start + '–' + digester.shutdown_year + ', shut down';
+    } else if (digester.operational_year === null) {
+      span = 'start year unknown';
+    } else {
+      span = 'since ' + start;
+    }
     return escapeHtml(span) + (digester.source ? ' (' + escapeHtml(digester.source) + ')' : '');
   }
 
@@ -271,10 +277,12 @@
 
   // The scope's county's outline drawn heavier, hover still layered on top
   // (M.hover.paint reads the same feature-state the fill and click share).
+  // max() so hovering the scoped county never draws thinner than its normal 3px.
   DairyMap.prototype.countyLineWidth = function () {
     var county = this.data.county || '';
     var normal = county ? ['case', ['==', ['get', 'slug'], county], 3, 1] : 1;
-    return M.hover.paint(M.hover.WIDTH, normal);
+    var hovered = county ? ['case', ['==', ['get', 'slug'], county], Math.max(M.hover.WIDTH, 3), M.hover.WIDTH] : M.hover.WIDTH;
+    return M.hover.paint(hovered, normal);
   };
 
   // The scope's county: only its dairies, and its outline drawn heavier.

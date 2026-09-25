@@ -28,7 +28,7 @@ dairy cows, EPA size, digester.
             <td class="has-text-right">{{ herd.mature_cows|whole }}</td>
             {% if not compact %}<td class="has-text-right">{{ herd.other_cattle|whole }}</td>{% endif %}
             <td>{{ herd.get_size_class_display }}</td>
-            <td>{% if herd.digester %}Yes, since {{ herd.digester_since }}{% else %}—{% endif %}</td>
+            <td>{% if herd.digester %}Yes{% if herd.digester_since %}, since {{ herd.digester_since }}{% else %} (start year unknown){% endif %}{% else %}—{% endif %}</td>
         </tr>
         {% endwith %}
         {% empty %}

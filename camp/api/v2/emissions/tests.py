@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from camp.apps.emissions import dairies
-from camp.apps.emissions.models import DairyHerd, EmissionsRecord, Facility
+from camp.apps.emissions.models import DairyHerd, Digester, EmissionsRecord, Facility
 from camp.apps.emissions.tests.test_dairies import dairy_inventory, make_dairies
 from camp.apps.regions.models import Boundary, Region
 
@@ -257,6 +257,13 @@ class DairyEndpointTests(TestCase):
         assert classes['beef_cattle']['count'] is None
         assert body['digesters'] == [{'operational_year': 2019, 'shutdown_year': None, 'source': 'DDRDP', 'operating': True}]
         assert body['areas'][0] == {'label': 'Fresno County', 'url': self.fresno.get_emissions_url()}
+
+    def test_detail_with_an_unknown_digester_start_year(self):
+        # A handful of CADD's AgSTAR digesters carry no recorded start year.
+        Digester.objects.create(dairy=self.big, operational_year=None, shutdown_year=None, source='AgSTAR')
+        body = self.get('dairy-detail', sqid=self.big.sqid).json()
+        digester = next(d for d in body['digesters'] if d['source'] == 'AgSTAR')
+        assert digester == {'operational_year': None, 'shutdown_year': None, 'source': 'AgSTAR', 'operating': True}
 
     def test_detail_in_a_year_without_a_herd(self):
         body = self.get('dairy-detail', {'year': 2022}, sqid=self.small.sqid).json()
