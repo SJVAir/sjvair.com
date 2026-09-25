@@ -6,9 +6,11 @@
     </div>
     {% endif %}
     {% if totals.lbs_per_acre %}
-    {# How heavily it goes on where it goes on, as opposed to how much of it
-       there is. Only shown for a single chemical or product: summed across
-       them the treated acres double-count the same ground. #}
+    {% comment %}
+    How heavily it goes on where it goes on, as opposed to how much of it
+    there is. Only shown for a single chemical or product: summed across
+    them the treated acres double-count the same ground.
+    {% endcomment %}
     <div class="level-item has-text-centered">
         <div><p class="heading">Lbs per treated acre</p><p class="title">{{ totals.lbs_per_acre|floatformat:2 }}</p></div>
     </div>

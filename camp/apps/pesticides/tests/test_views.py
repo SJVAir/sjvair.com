@@ -1272,3 +1272,25 @@ class LbsPerTreatedAcreTests(RollupTestMixin, TestCase):
         totals = stats.year_totals(PesticideUseRollup.objects.none(), 2023)
         assert totals['acres'] == 0
         assert totals['lbs_per_acre'] is None
+
+
+class TemplateCommentTests(TestCase):
+    """
+    Django's `{# #}` comment is single-line only: one that spans lines is
+    rendered as page content, not stripped. It has shipped to the browser
+    twice now, so this is the guard rather than a habit.
+    """
+
+    def test_no_template_opens_a_comment_it_does_not_close(self):
+        import glob
+
+        offenders = []
+        for path in glob.glob('camp/templates/**/*.html', recursive=True):
+            with open(path) as handle:
+                for number, line in enumerate(handle, 1):
+                    head, sep, tail = line.partition('{#')
+                    if sep and '#}' not in tail:
+                        offenders.append(f'{path}:{number}')
+        assert not offenders, (
+            'multi-line {# #} renders as page text; use {%% comment %%}: %s'
+            % ', '.join(offenders))
