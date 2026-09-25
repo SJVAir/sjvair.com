@@ -133,8 +133,16 @@
 }
 
 /* The Dairies tab map (dairy-map.js), and dairies on region pages' maps. */
-.map-toolbar [data-counties-only][hidden] {
+.map-toolbar [data-counties-only][hidden],
+.map-toolbar [data-dairies-only][hidden] {
   display: none;
+}
+/* The size legend: a class the toolbar filter has unticked, dimmed and
+   struck through rather than removed, so its swatch still explains the
+   colour a moment ago on the map. */
+.facility-map-legend .legend-bin.is-filtered-out {
+  opacity: 0.45;
+  text-decoration: line-through;
 }
 .facility-map-legend .legend-size circle.is-dairy {
   stroke: #d95f0e;

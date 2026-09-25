@@ -391,9 +391,53 @@ def main():
         check(results, 'its legend has the size key and the three EPA size classes',
               'Mature dairy cows' in legend and 'EPA size class' in legend
               and '700 or more mature dairy cows' in legend and 'Small: Fewer than 200' in legend, legend[:160])
+
+        # X7: the size and digester toolbar filters (a MapLibre layer filter,
+        # no refetch). Clicking the checkbox/item directly (as the measure
+        # check above clicks its dropdown-item) exercises the bound
+        # handler without needing the dropdown visibly open first.
+        driver.execute_script("document.querySelector('.dairy-map-sizes [data-size=small]').click()")
+        time.sleep(0.4)
+        rendered = driver.execute_script(
+            "var m = window.EmissionsDairyMap.instances()[0];"
+            "return m.map.queryRenderedFeatures({layers: ['dairies']}).map(function (f) { return f.properties.size_class; });")
+        check(results, 'unticking Small removes small dairies from the layer, and sizes= lands in the URL',
+              bool(rendered) and 'small' not in rendered and query(driver).get('sizes') == ['medium,large'],
+              f'{len(rendered)} left, sizes={query(driver).get("sizes")}')
+        legend = driver.execute_script("return document.querySelector('.dairy-map-legend').textContent;")
+        struck = driver.execute_script(
+            "return !!document.querySelector('.dairy-map-legend .legend-bin.is-filtered-out');")
+        check(results, 'the unticked size class shows dimmed/struck through in the legend', struck)
+
+        driver.execute_script("document.querySelector('.dairy-map-digester [data-digester=yes]').click()")
+        time.sleep(0.4)
+        rendered = driver.execute_script(
+            "var m = window.EmissionsDairyMap.instances()[0];"
+            "return m.map.queryRenderedFeatures({layers: ['dairies']}).map(function (f) { return f.properties.digester; });")
+        check(results, "'With a digester' leaves only digester dairies, and digester=yes lands in the URL",
+              bool(rendered) and all(rendered) and query(driver).get('digester') == ['yes'], str(rendered))
+
+        # Reloading the URL (sizes=medium,large&digester=yes now in it) restores both.
+        reload_url = driver.current_url
+        driver.get(reload_url)
+        check(results, 'reloading the URL restores the size and digester filters', wait_dairies(driver))
+        settled_count(driver, dairy_count)
+        restored = driver.execute_script(
+            "var m = window.EmissionsDairyMap.instances()[0]; return {sizes: m.sizes, digester: m.digester};")
+        check(results, 'the reloaded map state matches the URL',
+              restored['digester'] == 'yes' and restored['sizes'] == ['medium', 'large'], str(restored))
+        rendered = driver.execute_script(
+            "var m = window.EmissionsDairyMap.instances()[0];"
+            "return m.map.queryRenderedFeatures({layers: ['dairies']}).map(function (f) { return [f.properties.size_class, f.properties.digester]; });")
+        check(results, 'the reloaded map only draws medium/large digester dairies',
+              bool(rendered) and all(sc != 'small' and dig for sc, dig in rendered), str(rendered[:5]))
+
         driver.execute_script("document.querySelector('.dairy-map-view [data-view=counties]').click()")
         shaded = settled_count(driver, shaded_counties)
         check(results, 'counties view shades counties', shaded > 0 and 'view=counties' in driver.current_url, f'{shaded} shaded')
+        hidden = driver.execute_script(
+            "return document.querySelector('.dairy-map-sizes').hidden && document.querySelector('.dairy-map-digester').hidden;")
+        check(results, 'the size and digester controls are hidden in the Counties view', hidden)
 
         # Hovering a county (a real mouse move, not a synthetic event) shows a
         # label with its name and the measure on display, and it disappears

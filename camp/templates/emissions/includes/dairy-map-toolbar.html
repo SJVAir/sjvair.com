@@ -1,13 +1,44 @@
 {% comment %}
 The Dairies tab map's own toolbar controls (dairy-map.js binds them): the
-Dairies | Counties switch and, in Counties, the measure. They borrow the
-facility map's classes for their look.
+Dairies | Counties switch, the Dairies view's size-class and digester
+filters, and, in Counties, the measure. They borrow the facility map's
+classes for their look. `map_config.sizes` is the current selection in
+canonical (small, medium, large) order; `map_config.digester` is '', 'yes'
+or 'no'.
 {% endcomment %}
 <div class="map-toolbar-filters" role="group" aria-label="Map filters">
     <div class="buttons has-addons facility-map-view dairy-map-view" role="group" aria-label="Show">
         {% for value, label in map_config.view_options %}
         <button type="button" class="button{% if map_config.view == value %} is-selected is-link{% endif %}" data-view="{{ value }}" aria-pressed="{% if map_config.view == value %}true{% else %}false{% endif %}" aria-label="{{ label }}" title="{{ label }}"><span class="icon"><span class="fa-duotone fa-fw {% if value == 'dairies' %}fa-cow explorer-icon is-dairies{% else %}fa-draw-polygon explorer-icon is-areas{% endif %}" aria-hidden="true"></span></span><span class="map-toolbar-label">{{ label }}</span></button>
         {% endfor %}
+    </div>
+    <div class="dropdown map-toolbar-dropdown dairy-map-sizes{% if map_config.sizes|length != map_config.size_options|length %} is-set{% endif %}" data-dairies-only{% if map_config.view != 'dairies' %} hidden{% endif %}>
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                <span class="icon"><span class="fa-duotone fa-fw fa-arrow-up-big-small explorer-icon is-size" aria-hidden="true"></span></span>
+                <span class="map-toolbar-label">{{ map_config.size_label }}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu"><div class="dropdown-content">
+            {% for value, label in map_config.size_options %}
+            <div class="field">
+                <label class="checkbox"><input type="checkbox" data-size="{{ value }}"{% if value in map_config.sizes %} checked{% endif %}> {{ label }}</label>
+            </div>
+            {% endfor %}
+        </div></div>
+    </div>
+    <div class="dropdown map-toolbar-dropdown dairy-map-digester{% if map_config.digester %} is-set{% endif %}" data-dairies-only{% if map_config.view != 'dairies' %} hidden{% endif %}>
+        <div class="dropdown-trigger">
+            <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
+                <span class="icon"><span class="fa-duotone fa-fw fa-recycle explorer-icon is-digester" aria-hidden="true"></span></span>
+                <span class="map-toolbar-label">{{ map_config.digester_label }}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu"><div class="dropdown-content">
+            {% for value, label in map_config.digester_options %}<a href="#" class="dropdown-item{% if value == map_config.digester %} is-active{% endif %}" data-digester="{{ value }}">{{ label }}</a>{% endfor %}
+        </div></div>
     </div>
     <div class="dropdown map-toolbar-dropdown facility-map-measure dairy-map-measure" data-counties-only{% if map_config.view != 'counties' %} hidden{% endif %}>
         <div class="dropdown-trigger">

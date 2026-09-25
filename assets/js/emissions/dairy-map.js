@@ -59,6 +59,11 @@
   var SIZE_KEY = [10000, 3000, 500];
   var ZOOM_TO = 12;
 
+  // The size-class filter's canonical order (small to large: the checkboxes'
+  // order, and how a chosen subset reads in the toolbar button and the URL).
+  var SIZE_VALUES = ['small', 'medium', 'large'];
+  var SIZE_LABELS = { small: 'Small', medium: 'Medium', large: 'Large' };
+
   var escapeHtml = M.escapeHtml;
   var logError = M.logger('dairy-map');
 
@@ -96,13 +101,31 @@
 
   // The size classes' legend, largest first: a swatch and the class's label,
   // with its thresholds unless `short` (the region maps' narrow column).
-  // `sizes` is the geojson's properties.size_classes.
-  function sizeBins(sizes, short) {
+  // `sizes` is the geojson's properties.size_classes. `activeSizes`, when
+  // given (the dairy map's own legend, not the region maps' borrowed one),
+  // dims a class the toolbar filter has unticked.
+  function sizeBins(sizes, short, activeSizes) {
     var bins = (sizes || []).map(function (size) {
-      return '<span class="legend-bin"><span class="legend-swatch" style="background:' + colorFor(size.key) + '"></span>' +
+      var muted = activeSizes && activeSizes.indexOf(size.key) === -1;
+      return '<span class="legend-bin' + (muted ? ' is-filtered-out' : '') + '"><span class="legend-swatch" style="background:' + colorFor(size.key) + '"></span>' +
         '<span>' + escapeHtml(size.label) + (short ? '' : ': ' + escapeHtml(size.threshold)) + '</span></span>';
     }).join('');
     return '<div class="legend-bins' + (short ? '' : ' is-size-classes') + '">' + bins + '</div>';
+  }
+
+  // `value` ("large,medium", '', or null/undefined for the default all) as
+  // the checked size classes, in the canonical order, unknown tokens ignored.
+  function parseSizes(value) {
+    var tokens = (value == null ? SIZE_VALUES.join(',') : value).split(',');
+    return SIZE_VALUES.filter(function (v) { return tokens.indexOf(v) !== -1; });
+  }
+
+  // The size dropdown's button label: 'All sizes', 'No sizes', or the chosen
+  // classes' labels, smallest first ('Medium, Large').
+  function sizesLabel(sizes) {
+    if (sizes.length === SIZE_VALUES.length) return 'All sizes';
+    if (!sizes.length) return 'No sizes';
+    return sizes.map(function (v) { return SIZE_LABELS[v]; }).join(', ');
   }
 
   // Five classes up to `max` on round steps (1, 2, 2.5 or 5 times a power of
@@ -247,6 +270,8 @@
   DairyMap.prototype.readState = function () {
     this.view = this.data.view === 'counties' ? 'counties' : 'dairies';
     this.measure = this.data.measure || 'emissions';
+    this.sizes = parseSizes(this.data.sizes);
+    this.digester = this.data.digester === 'yes' || this.data.digester === 'no' ? this.data.digester : '';
   };
 
   // Bottom to top: the shaded counties, their outlines, the dairies. Smaller
@@ -272,10 +297,11 @@
       }, hoverStroke(['case', ['get', 'digester'], DIGESTER_COLOR, '#ffffff'], ['case', ['get', 'digester'], 2.5, 0.75])),
     });
     this.applyView();
-    this.applyCounty();
+    this.applyFilters();
   };
 
-  // One view at a time: the layers, the switch and the Counties-only measure follow `this.view`.
+  // One view at a time: the layers, the switch and the Counties-only measure
+  // (Dairies-only, the size and digester filters) follow `this.view`.
   DairyMap.prototype.applyView = function () {
     var counties = this.view === 'counties';
     if (this.map) {
@@ -294,6 +320,9 @@
     Array.prototype.forEach.call(this.shell.controls('[data-counties-only]'), function (control) {
       control.hidden = !counties;
     });
+    Array.prototype.forEach.call(this.shell.controls('[data-dairies-only]'), function (control) {
+      control.hidden = counties;
+    });
   };
 
   // The scope's county's outline drawn heavier, hover still layered on top
@@ -306,11 +335,25 @@
     return M.hover.paint(hovered, normal);
   };
 
-  // The scope's county: only its dairies, and its outline drawn heavier.
-  DairyMap.prototype.applyCounty = function () {
-    if (!this.map || !this.map.getLayer('dairies')) return;
+  // The 'dairies' layer's filter: the scope's county (if any), the toolbar's
+  // size classes (skipped when all three are on) and its digester choice.
+  // No refetch -- this narrows what's already on the map.
+  DairyMap.prototype.dairyFilter = function () {
+    var clauses = [];
     var county = this.data.county || '';
-    this.map.setFilter('dairies', county ? ['==', ['get', 'county'], county] : null);
+    if (county) clauses.push(['==', ['get', 'county'], county]);
+    if (this.sizes.length < SIZE_VALUES.length) clauses.push(['in', ['get', 'size_class'], ['literal', this.sizes]]);
+    if (this.digester === 'yes') clauses.push(['==', ['get', 'digester'], true]);
+    if (this.digester === 'no') clauses.push(['==', ['get', 'digester'], false]);
+    if (!clauses.length) return null;
+    return clauses.length === 1 ? clauses[0] : ['all'].concat(clauses);
+  };
+
+  // The scope's county, the size and digester filters: only the matching
+  // dairies, and the scoped county's outline drawn heavier.
+  DairyMap.prototype.applyFilters = function () {
+    if (!this.map || !this.map.getLayer('dairies')) return;
+    this.map.setFilter('dairies', this.dairyFilter());
     this.map.setPaintProperty('counties-line', 'line-width', this.countyLineWidth());
   };
 
@@ -517,7 +560,7 @@
     return '<p class="legend-title">Mature dairy cows</p>' +
       '<div class="legend-sizes">' + sizes + '</div>' +
       '<p class="legend-note">Other cattle for a site with no mature dairy cows</p>' +
-      '<p class="legend-title">EPA size class (40 CFR 122.23)</p>' + sizeBins(sizeClasses) +
+      '<p class="legend-title">EPA size class (40 CFR 122.23)</p>' + sizeBins(sizeClasses, false, this.sizes) +
       '<p class="legend-empty"><span class="legend-ring is-digester"></span>Digester operating in ' + escapeHtml(this.data.year) + '</p>';
   };
 
@@ -544,7 +587,25 @@
     if (this.shell.legendPanelEl && !this.dairies) this.shell.legendPanelEl.hidden = true;
     this.shell.bindControls('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
     this.shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
+    this.shell.bindControls('[data-digester]', function (item) { self.setDigester(item.getAttribute('data-digester'), item.textContent.trim()); });
+    this.bindSizeCheckboxes();
     this.applyView();
+  };
+
+  // The size dropdown's checkboxes: bindControls always closes its dropdown
+  // and takes over the click, which suits an item that replaces the whole
+  // choice (view, measure, digester) but not one of three independent
+  // toggles -- so this binds `change` directly, once per checkbox (an adopt
+  // re-runs onChrome over the new page's chrome, same as bindControls).
+  // A click inside the menu never reaches the document (chrome.js), so
+  // ticking a box doesn't close the dropdown.
+  DairyMap.prototype.bindSizeCheckboxes = function () {
+    var self = this;
+    Array.prototype.forEach.call(this.shell.controls('[data-size]'), function (input) {
+      if (input.getAttribute('data-bound')) return;
+      input.setAttribute('data-bound', '1');
+      input.addEventListener('change', function () { self.onSizeChange(); });
+    });
   };
 
   DairyMap.prototype.onDropdownOpen = function () {
@@ -552,11 +613,14 @@
   };
 
   // The map's state on `params` (a URLSearchParams), defaults left out: view
-  // `dairies`, and measure `emissions` (written only in Counties).
+  // `dairies`, measure `emissions` (written only in Counties), all three
+  // sizes, and no digester choice.
   DairyMap.prototype.writeState = function (params) {
     var counties = this.view === 'counties';
     if (counties) params.set('view', 'counties'); else params.delete('view');
     if (counties && this.measure !== 'emissions') params.set('measure', this.measure); else params.delete('measure');
+    if (this.sizes.length === SIZE_VALUES.length) params.delete('sizes'); else params.set('sizes', this.sizes.join(','));
+    if (this.digester) params.set('digester', this.digester); else params.delete('digester');
   };
 
   DairyMap.prototype.syncUrl = function () {
@@ -587,6 +651,43 @@
     this.showCounties();
   };
 
+  // The size checkboxes changed: read what's ticked (canonical order),
+  // update the button and its `is-set`, re-filter the layer, and clear a
+  // hovered dairy the new filter drops (its ring wouldn't draw anyway --
+  // this also drops the stale feature-state so a re-hover starts clean).
+  DairyMap.prototype.onSizeChange = function () {
+    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-sizes');
+    var checked = dropdown ? Array.prototype.filter.call(dropdown.querySelectorAll('[data-size]'), function (input) { return input.checked; }) : [];
+    this.sizes = SIZE_VALUES.filter(function (value) {
+      return checked.some(function (input) { return input.getAttribute('data-size') === value; });
+    });
+    if (dropdown) {
+      dropdown.classList.toggle('is-set', this.sizes.length !== SIZE_VALUES.length);
+      var text = dropdown.querySelector('.map-toolbar-label');
+      if (text) text.textContent = sizesLabel(this.sizes);
+    }
+    this.dairyHover.clear();
+    this.applyFilters();
+    this.syncUrl();
+    this.shell.updateLegend();
+  };
+
+  DairyMap.prototype.setDigester = function (digester, label) {
+    this.digester = digester === 'yes' || digester === 'no' ? digester : '';
+    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.dairy-map-digester');
+    if (dropdown) {
+      dropdown.classList.toggle('is-set', !!this.digester);
+      var text = dropdown.querySelector('.map-toolbar-label');
+      if (text && label) text.textContent = label;
+      Array.prototype.forEach.call(dropdown.querySelectorAll('[data-digester]'), function (item) {
+        item.classList.toggle('is-active', item.getAttribute('data-digester') === (digester || ''));
+      });
+    }
+    this.dairyHover.clear();
+    this.applyFilters();
+    this.syncUrl();
+  };
+
   // A swap brought a new page. Only the table changed (a sort, a page, a
   // filter): keep the map as it is and refill the new page's legend card. A
   // new year, pollutant or county: drop the old data, frame, and reload.
@@ -596,6 +697,7 @@
     this.readState();
     this.clearHover();
     this.applyView();
+    this.applyFilters();
     if (!reload) {
       if (changed.indexOf('measure') !== -1) this.showCounties();
       this.shell.updateLegend();
@@ -610,7 +712,6 @@
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
     this.shell.setSourceData('locate', M.EMPTY);
     this.shell.setSourceData('dairies', M.EMPTY);
-    this.applyCounty();
     if (!this.data.county) this.shell.frame();
     this.load();
   };

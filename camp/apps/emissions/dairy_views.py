@@ -32,6 +32,13 @@ MEASURE_OPTIONS = (
     ('mature_cows', 'Mature dairy cows'),
     ('mature_cows_per_sq_mi', 'Mature dairy cows per sq mi'),
 )
+# The Dairies view's own toolbar filters: the map draws to these client-side
+# (a MapLibre layer filter, dairy-map.js), so the server only needs to know
+# them for the initial render (a bookmarked or shared link).
+SIZE_OPTIONS = (('small', 'Small'), ('medium', 'Medium'), ('large', 'Large'))
+SIZE_VALUES = frozenset(value for value, label in SIZE_OPTIONS)
+DIGESTER_OPTIONS = (('', 'All dairies'), ('yes', 'With a digester'), ('no', 'Without a digester'))
+DIGESTER_VALUES = frozenset(value for value, label in DIGESTER_OPTIONS if value)
 
 
 def table_filters(get):
@@ -72,12 +79,22 @@ def canonical_query(get, scope):
 
 
 def dairy_map_view(get):
-    """The map's view and measure from a request's GET, validated; defaults when unknown."""
+    """
+    The map's view, measure, and Dairies-view filters (size classes,
+    digester) from a request's GET, validated; defaults when unknown. `sizes`
+    absent means all three; present (even blank) is exactly what's listed,
+    unknown values dropped -- so a link can name none of them.
+    """
     view = get.get('view')
     measure = get.get('measure')
+    raw_sizes = get.get('sizes')
+    sizes = SIZE_VALUES if raw_sizes is None else {value for value in raw_sizes.split(',') if value in SIZE_VALUES}
+    digester = get.get('digester')
     return {
         'view': view if view in dairies.VIEWS else dairies.DEFAULT_VIEW,
         'measure': measure if measure in dairies.MEASURES else dairies.DEFAULT_MEASURE,
+        'sizes': sizes,
+        'digester': digester if digester in DIGESTER_VALUES else '',
     }
 
 
@@ -101,12 +118,28 @@ def dairy_map_config(scope, view):
         'source_note': dairies.CEPAM_NOTE,
         'view_options': VIEW_OPTIONS,
         'measure_options': MEASURE_OPTIONS,
+        # Canonical (small, medium, large) order, whatever order the query named them in.
+        'sizes': [value for value, label in SIZE_OPTIONS if value in view['sizes']],
+        'digester': view['digester'],
+        'size_options': SIZE_OPTIONS,
+        'digester_options': DIGESTER_OPTIONS,
     }
-    # The options are for the toolbar template, which reads them off map_config.
-    template_only = {'view_options', 'measure_options'}
+    config['size_label'] = (
+        'All sizes' if len(config['sizes']) == len(SIZE_OPTIONS)
+        else ', '.join(label for value, label in SIZE_OPTIONS if value in config['sizes']) or 'No sizes'
+    )
+    config['digester_label'] = dict(DIGESTER_OPTIONS)[config['digester']]
+    # The options (and the labels built from them) are for the toolbar
+    # template, which reads them off map_config; `sizes` goes to the
+    # container as a comma-joined string, same as every other data-* value.
+    template_only = {'view_options', 'measure_options', 'size_options', 'digester_options', 'size_label', 'digester_label'}
+    data = {key.replace('_', '-'): value for key, value in config.items() if key not in template_only}
+    # `sizes` is a list above (so the template can test membership); the
+    # container wants it the same shape as the `sizes=` URL param.
+    data['sizes'] = ','.join(config['sizes'])
     config['map'] = mapconfig.map_config(
         'dairy-map',
-        data={key.replace('_', '-'): value for key, value in config.items() if key not in template_only},
+        data=data,
         features={'toolbar': True, 'expand': True, 'legend': True},
         toolbar_template='emissions/includes/dairy-map-toolbar.html',
         legend_template='emissions/includes/dairy-map-legend.html',
