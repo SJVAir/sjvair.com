@@ -150,3 +150,22 @@ class DistrictListTests(TestCase):
         assert [f['properties']['code'] for f in features] == ['SJU']
         assert features[0]['properties']['name'] == 'San Joaquin Valley APCD'
         assert features[0]['geometry']['type'] in ('Polygon', 'MultiPolygon')
+
+
+class AreaValuesEndpointTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_county_values(self):
+        response = self.client.get(reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024'})
+        assert response.status_code == 200
+        data = response.json()
+        assert data['level'] == 'county' and data['unit'] == 'tons'
+        assert {area['facilities'] for area in data['areas']} >= {1}
+        assert set(data['areas'][0]) == {'id', 'facilities', 'total', 'per_sq_mi', 'per_1k_residents'}
+
+    def test_level_is_required_and_checked(self):
+        assert self.client.get(reverse('api:v2:emissions:areas')).status_code == 400
+        assert self.client.get(reverse('api:v2:emissions:areas'), {'level': 'mtrs'}).status_code == 400
