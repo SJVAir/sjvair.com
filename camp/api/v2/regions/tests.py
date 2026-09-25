@@ -264,6 +264,21 @@ class TestPlaceLookup(TestCase):
         response = self.client.get(self.url, {'q': 'Pixley'})
         assert response.json()['data']['type'] == Region.Type.CDP
 
+    def test_an_exact_name_beats_a_fuzzy_match_in_an_earlier_type(self):
+        # "Riverbank" (a city) is a trigram hit for "Riverdale"; the CDP
+        # carrying the exact name still wins.
+        make_city('Riverbank', 'riverbank', CLOVIS_CITY_WKT)
+        make_region(Region.Type.CDP, 'Riverdale', 'riverdale', ELSEWHERE_WKT)
+        response = self.client.get(self.url, {'q': 'riverdale'})
+        assert response.json()['data']['name'] == 'Riverdale'
+        assert response.json()['data']['type'] == Region.Type.CDP
+
+    def test_an_exact_name_prefers_the_city_over_the_cdp(self):
+        make_region(Region.Type.CDP, 'Selma', 'selma-cdp', ELSEWHERE_WKT)
+        make_city('Selma', 'selma', CLOVIS_CITY_WKT)
+        response = self.client.get(self.url, {'q': 'Selma'})
+        assert response.json()['data']['type'] == Region.Type.CITY
+
     def test_type_returns_direct_match(self):
         make_region(Region.Type.URBAN_AREA, 'Fresno', 'fresno-ua', FRESNO_WKT)
         response = self.client.get(self.url, {'q': 'Fresno', 'type': 'urban_area'})
