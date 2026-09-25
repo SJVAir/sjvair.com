@@ -1,5 +1,5 @@
 {% extends 'emissions/base.html' %}
-{% load emissions_explorer pesticides_explorer %}
+{% load humanize emissions_explorer pesticides_explorer %}
 
 {% block title %}{{ sector.label }} | {{ block.super }}{% endblock %}
 {% block breadcrumb-list %}
@@ -15,7 +15,7 @@
 
 {% if summary %}
 <div class="columns has-text-centered">
-    <div class="column"><p class="heading">Facilities</p><p class="title">{{ summary.facilities }}</p></div>
+    <div class="column"><p class="heading">Facilities</p><p class="title">{{ summary.facilities|intcomma }}</p></div>
     <div class="column"><p class="heading">{{ pollutant.name }}, {{ year }}</p><p class="title">{{ summary.value|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div>
     <div class="column"><p class="heading">Share of all facilities</p><p class="title">{{ summary.share|percent }}</p></div>
 </div>
@@ -31,7 +31,7 @@
             <thead><tr><th>County</th><th class="has-text-right">Facilities</th><th class="has-text-right">{{ pollutant.unit|capfirst }}/yr</th><th>Share</th></tr></thead>
             <tbody>
                 {% for row in counties %}
-                <tr><td><a href="{% qs_replace county=row.county.slug %}">{{ row.county.name|cut:" County" }}</a></td><td class="has-text-right">{{ row.facilities }}</td><td class="has-text-right">{{ row.value|amount:pollutant }}</td><td>{{ row.share|percent }}</td></tr>
+                <tr><td><a href="{% qs_replace county=row.county.slug %}">{{ row.county.name|cut:" County" }}</a></td><td class="has-text-right">{{ row.facilities|intcomma }}</td><td class="has-text-right">{{ row.value|amount:pollutant }}</td><td>{{ row.share|percent }}</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -42,6 +42,6 @@
 <h3 class="title is-4">Facilities</h3>
 {% include 'emissions/includes/facility-table.html' with sortable=False %}
 {% if facility_count > rows|length %}
-<p><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}{% if scope_qs %}&amp;{% else %}?{% endif %}sector={{ sector.value }}">All {{ facility_count }} facilities in this sector →</a></p>
+<p><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}{% if scope_qs %}&amp;{% else %}?{% endif %}sector={{ sector.value }}">All {{ facility_count|intcomma }} facilities in this sector →</a></p>
 {% endif %}
 {% endblock %}

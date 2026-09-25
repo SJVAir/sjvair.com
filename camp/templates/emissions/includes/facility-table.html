@@ -1,4 +1,4 @@
-{% load emissions_explorer pesticides_explorer %}
+{% load humanize emissions_explorer pesticides_explorer %}
 <div class="table-container">
 <table class="table is-fullwidth is-hoverable is-narrow facility-table">
     <thead>
@@ -17,7 +17,7 @@
         {% for rank, record in rows %}
         {% with facility=record.facility %}
         <tr{% if facility.is_minor_source %} class="is-minor"{% endif %}>
-            <td class="has-text-right">{{ rank|default:"—" }}</td>
+            <td class="has-text-right">{{ rank|intcomma|default:"—" }}</td>
             <td><a href="{{ facility.get_absolute_url }}{{ scope_qs }}">{{ facility.name }}</a></td>
             <td>{% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}</td>
             <td>{{ facility.county.name|cut:" County" }}</td>

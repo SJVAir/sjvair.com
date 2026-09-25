@@ -1,5 +1,5 @@
 {% extends 'emissions/base.html' %}
-{% load emissions_explorer pesticides_explorer %}
+{% load humanize emissions_explorer pesticides_explorer %}
 
 {% block title %}{{ facility.name|title }} | {{ block.super }}{% endblock %}
 {% block breadcrumb-list %}
@@ -53,8 +53,8 @@
         <tr>
             <td><a href="{% qs_replace pollutant=row.pollutant.key toxics=None %}">{{ row.pollutant.label }}</a>{% if row.pollutant.label != row.pollutant.name %} <span class="has-text-grey is-size-7">{{ row.pollutant.name }}</span>{% endif %}</td>
             <td class="has-text-right">{{ row.value|amount:row.pollutant }}</td>
-            <td>{% if row.county_rank %}#{{ row.county_rank }} <span class="has-text-grey is-size-7">of {{ row.county_count }}</span>{% else %}—{% endif %}</td>
-            <td>{% if row.sector_rank %}#{{ row.sector_rank }} <span class="has-text-grey is-size-7">of {{ row.sector_count }}</span>{% else %}—{% endif %}</td>
+            <td>{% if row.county_rank %}#{{ row.county_rank|intcomma }} <span class="has-text-grey is-size-7">of {{ row.county_count|intcomma }}</span>{% else %}—{% endif %}</td>
+            <td>{% if row.sector_rank %}#{{ row.sector_rank|intcomma }} <span class="has-text-grey is-size-7">of {{ row.sector_count|intcomma }}</span>{% else %}—{% endif %}</td>
             <td>{{ row.county_share|percent }}</td>
         </tr>
         {% endfor %}
@@ -80,8 +80,8 @@
         {% for row in toxics_rows %}
         <tr>
             <td>{{ row.pollutant.name }}</td>
-            <td class="has-text-right">{{ row.value|floatformat:"-2" }}</td>
-            <td class="has-text-right">{% if row.previous is not None %}{{ row.previous|floatformat:"-2" }}{% else %}—{% endif %}</td>
+            <td class="has-text-right">{{ row.value|quantity }}</td>
+            <td class="has-text-right">{% if row.previous is not None %}{{ row.previous|quantity }}{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>

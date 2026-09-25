@@ -9,16 +9,23 @@ register = template.Library()
 
 
 @register.filter
-def amount(tons, pollutant):
-    """A pollutant amount in its display unit: '1,456', '8.2', '0.25', '<0.01', '—'."""
-    value = pollutant.display(tons)
+def quantity(value):
+    """
+    A number already in its display unit, always to one decimal so a column
+    of them lines up: '1,456.4', '214.0', '8.2', '<0.1', '0.0', '—'.
+    """
     if value is None:
         return '—'
-    size = abs(value)
-    if size and size < 0.01:
-        return '<0.01'
-    digits = 2 if size and size < 1 else (1 if size and size < 10 else 0)
-    return f'{value:,.{digits}f}'
+    value = float(value)
+    if value and abs(value) < 0.05:
+        return '<0.1'
+    return f'{value:,.1f}'
+
+
+@register.filter
+def amount(tons, pollutant):
+    """A pollutant amount (stored in tons) in its display unit; see quantity()."""
+    return quantity(pollutant.display(tons))
 
 
 @register.filter

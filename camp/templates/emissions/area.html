@@ -16,7 +16,7 @@
 </div>
 
 <div class="columns is-multiline has-text-centered">
-    <div class="column"><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities }}</p></div>
+    <div class="column"><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p></div>
     <div class="column"><p class="heading">{{ pollutant.name }}</p><p class="title">{{ total|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div>
     <div class="column"><p class="heading">Per square mile</p><p class="title">{{ per_sq_mi|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div>
     {% if county_share is not None and county_region != area.region %}
@@ -26,7 +26,7 @@
 
 {% include 'emissions/includes/facility-map.html' %}
 
-{% if context_bar %}<div class="mt-5">{% include 'emissions/includes/context-bar.html' %}</div>{% endif %}
+{% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
 
 <h2 class="title is-4 mt-5">Top facilities</h2>
 {% if top_rows %}

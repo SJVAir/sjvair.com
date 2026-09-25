@@ -1,4 +1,4 @@
-{% load emissions_explorer %}
+{% load humanize emissions_explorer %}
 <div class="table-container">
 <table class="table is-fullwidth is-narrow sector-table">
     <thead>
@@ -8,7 +8,7 @@
         {% for row in rows %}
         <tr>
             <td><a href="{% url 'emissions:sector-detail' row.sector %}{{ scope_qs }}">{{ row.label }}</a>{% if show_description %}<br><span class="is-size-7 has-text-grey">{% sector_description row.sector %}</span>{% endif %}</td>
-            <td class="has-text-right">{{ row.facilities }}</td>
+            <td class="has-text-right">{{ row.facilities|intcomma }}</td>
             <td class="has-text-right">{{ row.value|amount:pollutant }}</td>
             <td><div class="share-bar" title="{{ row.share|percent }}"><span style="width: {{ row.share|width_pct }}"></span></div>{{ row.share|percent }}</td>
             {% if show_trend %}<td>{% sparkline row.trend %}</td>{% endif %}

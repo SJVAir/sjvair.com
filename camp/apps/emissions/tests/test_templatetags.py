@@ -6,13 +6,20 @@ from camp.apps.emissions.templatetags import emissions_explorer as tags
 
 class AmountTests(TestCase):
     def test_tons(self):
+        # One decimal everywhere, so a column of values lines up and reads the same.
         nox = POLLUTANTS['nox']
-        assert tags.amount(1456.4, nox) == '1,456'
+        assert tags.amount(1456.4, nox) == '1,456.4'
+        assert tags.amount(214, nox) == '214.0'
         assert tags.amount(8.25, nox) == '8.2'
-        assert tags.amount(0.25, nox) == '0.25'
-        assert tags.amount(0.001, nox) == '<0.01'
-        assert tags.amount(0, nox) == '0'
+        assert tags.amount(0.25, nox) == '0.2'
+        assert tags.amount(0.001, nox) == '<0.1'
+        assert tags.amount(0, nox) == '0.0'
         assert tags.amount(None, nox) == '—'
+
+    def test_quantity(self):
+        assert tags.quantity(50547.57) == '50,547.6'
+        assert tags.quantity(0.01) == '<0.1'
+        assert tags.quantity(None) == '—'
 
     def test_toxics_convert_to_lbs(self):
         assert tags.amount(0.001, POLLUTANTS['benzene']) == '2.0'
