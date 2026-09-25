@@ -79,10 +79,40 @@
     {% health_note 'fumigant' as fumigant_note %}
     <p>{{ fumigant_note.summary }}{% if fumigant_note.detail %} {{ fumigant_note.detail }}{% endif %}</p>
 
+    <h3 id="methodology">How these numbers are made</h3>
+    <p>Everything here is arithmetic on the records described above. Nothing is modelled, estimated or interpolated: if a number appears on this site, a grower filed it. What that arithmetic does and does not support:</p>
+
+    <h4>What the records are</h4>
+    <ul>
+        <li><strong>They are reports, not measurements.</strong> A record says what a grower told the county they applied. Nobody sampled the air or the soil. An error in a filing carries through to every page here, and DPR checks the paperwork rather than re-measuring the field.</li>
+        <li><strong>A location is a square mile, not a field.</strong> Applications are reported to a one-square-mile MTRS section. A section's total covers everything reported inside that square mile; it does not say where in it, or how near a home, a school or a property line. The same limit applies to notices of intent.</li>
+        <li><strong>Some active ingredients are withheld.</strong> CDPR reports a few as &ldquo;AI IS CONFIDENTIAL&rdquo; or &ldquo;UNKNOWN&rdquo;. Those pounds are counted in the totals, because they were applied, but they are left out of chemical rankings and chemical counts, where naming them is the point.</li>
+        <li><strong>A notice of intent is a plan.</strong> It says an application was scheduled, not that it happened, and only restricted materials require one. Confirmed use arrives later, through PUR.</li>
+    </ul>
+
+    <h4>What a pound means</h4>
+    <ul>
+        <li><strong>Chemicals and commodities are pounds of active ingredient</strong> &mdash; the pesticide itself, not the mixture it was sold in. <strong>Products are pounds of product</strong>, which includes everything else in the container. The two are not comparable, and this explorer never adds them together. A product leaderboard and a chemical leaderboard are measuring different things, which is why the same application can rank very differently on each.</li>
+        <li><strong>Pounds are not harm.</strong> Twenty tonnes of sulfur and twenty pounds of a fumigant are not the same exposure, and this site does not weight them. A badge says a chemical appears on an official list; it says nothing about how much of it reached anyone.</li>
+    </ul>
+
+    <h4>How the aggregates are built</h4>
+    <ul>
+        <li><strong>Every page reads a rollup</strong> summed from the raw records by year, month, county, section, chemical, product and commodity, with per-county and per-section totals derived from that. It is the same arithmetic as summing the records directly, kept ready so a page doesn't re-add millions of rows on each visit.</li>
+        <li><strong>Rates carry two denominators.</strong> Pounds per square mile of a whole place, and pounds per square mile that reported any use at all. They disagree sharply wherever much of a place is unfarmed &mdash; Kern is last in the valley on the first and first on the second &mdash; so both are shown rather than a single figure that could be argued either way.</li>
+        <li><strong>A comparison between two years applies the same filters to both.</strong> The change you see is the change in what you are looking at, not the section's overall change.</li>
+    </ul>
+
+    <h4>Reading the maps</h4>
+    <ul>
+        <li><strong>Shades are relative to what is on the screen.</strong> Squares are sorted into classes against each other, so the same colour means different amounts on different maps, and a map of one county is not comparable to a map of the valley by colour alone. The legend gives the actual range.</li>
+        <li><strong>&ldquo;No data&rdquo; is not &ldquo;no change&rdquo;.</strong> When comparing two years, a square with nothing reported in either year is drawn as having no data; a square that reported the same amount in both is drawn as unchanged. They look different on purpose.</li>
+    </ul>
+
     <h3 id="caveats">Caveats</h3>
     <ul>
         <li>PUR data lags: DPR releases each year's records one to two years after the fact, so the most recent full year available is {% if latest_year %}{{ latest_year }}{% else %}not yet available{% endif %}.</li>
-        <li>Pounds are pounds of active ingredient for chemicals and commodities, and pounds of product for products.</li>
+        <li>Absence of a record is not proof that nothing was applied. Reporting gaps, late filings and corrections all exist, and a section with no use reported is not the same as a section where nothing happened.</li>
         <li>Developers can pull the underlying records through the <a href="{{ api_docs_url }}" hx-boost="false">pesticides API</a> or the <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.</li>
     </ul>
 </div>
