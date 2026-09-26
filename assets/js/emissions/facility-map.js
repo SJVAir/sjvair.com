@@ -90,6 +90,17 @@
     return MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * Math.sqrt(value / max);
   }
 
+  // A size key's sample circle, its own square viewBox (2*MAX_RADIUS+2 on a
+  // side, however small `r` is) so a phone's narrower CSS width scales the
+  // whole drawing down rather than clipping it -- the map's own circles
+  // (paint's `_radius`, from this same radiusFor) are untouched either way.
+  function sizeCircle(r, value) {
+    var box = 2 * MAX_RADIUS + 2;
+    return '<span class="legend-size"><svg viewBox="0 0 ' + box + ' ' + box + '" width="' + box + '" height="' + box + '">' +
+      '<circle cx="' + (box / 2) + '" cy="' + (box - r - 1) + '" r="' + r + '"/></svg>' +
+      roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
+  }
+
   // A legend's classes on the blue ramp, largest first.
   function facilityBins(breaks, swatchClass) {
     return M.classes.bins(breaks, RAMP, swatchClass);
@@ -239,8 +250,8 @@
     this.defaultLevel = this.data.defaultLevel || 'zipcode';
     this.level = this.data.level || this.defaultLevel;
     this.measure = this.data.measure || 'density';
-    // The year the Areas view shades the change against, or '' for plain
-    // values; a toolbar control, not part of the page's scope.
+    // The year Compare shades the change against, in both views, or ''
+    // for plain values; a toolbar control, not part of the page's scope.
     this.compare = this.data.compare || '';
     this.withDairies = !!this.data.dairiesUrl && !!M.dairies;
   };
@@ -329,6 +340,7 @@
   // controls follow `this.view`.
   FacilityMap.prototype.applyView = function () {
     var areas = this.view === 'areas';
+    var compareActive = !!this.compare;
     if (this.map) {
       var set = function (map, id, visible) {
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
@@ -350,6 +362,14 @@
     });
     Array.prototype.forEach.call(this.shell.controls('[data-areas-only]'), function (control) {
       control.hidden = !areas;
+    });
+    // The Measure dropdown picks which per-area value is shaded, but
+    // Compare always shades the percent change regardless of measure, so
+    // its choice is inert while Compare is on -- hide it rather than let
+    // it look like a live control. Its value (and the dropdown's own
+    // selected state) is untouched, so turning Compare off restores it.
+    Array.prototype.forEach.call(this.shell.controls('[data-measure-only]'), function (control) {
+      control.hidden = !areas || compareActive;
     });
   };
 
@@ -605,7 +625,11 @@
 
   FacilityMap.prototype.openPopup = function (feature, lngLat) {
     var p = feature.properties;
-    var value = p._empty && !this.compare ? 'none reported' : quantity(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
+    // p._empty means something different in Compare mode (not comparable,
+    // regardless of whether this year has a value), so a null or 0 current
+    // value is checked directly rather than through it.
+    var noneReported = p.value === null || p.value === undefined || !(p.value > 0);
+    var value = noneReported ? 'none reported' : quantity(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
     var compare = this.legendData && this.legendData.compare;
     var changeLine = '';
     if (compare) {
@@ -684,12 +708,13 @@
       var changeTitle = escapeHtml(this.data.label) + ', change ' + escapeHtml(String(this.legendData.compare)) +
         ' to ' + escapeHtml(this.data.year || '');
       var changeSizes = (max && !this.withDairies) ? '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
-        var r = radiusFor(value, max);
-        return '<span class="legend-size"><svg width="' + (2 * MAX_RADIUS + 2) + '" height="' + (2 * r + 2) + '">' +
-          '<circle cx="' + (MAX_RADIUS + 1) + '" cy="' + (r + 1) + '" r="' + r + '"/></svg>' + roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
+        return sizeCircle(radiusFor(value, max), value);
       }).join('') + '</div>' : '';
       legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + changeSizes +
-        changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>Not comparable</p>';
+        changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>' +
+        'New, or none reported in ' + escapeHtml(String(this.legendData.compare)) + '</p>' +
+        '<p class="legend-note">Facilities that closed before ' + escapeHtml(this.data.year || '') +
+        ' aren\'t shown.</p>';
       return;
     }
     if (this.withDairies) {
@@ -703,9 +728,7 @@
       return;
     }
     var sizes = [max, max / 10, max / 100].map(function (value) {
-      var r = radiusFor(value, max);
-      return '<span class="legend-size"><svg width="' + (2 * MAX_RADIUS + 2) + '" height="' + (2 * r + 2) + '">' +
-        '<circle cx="' + (MAX_RADIUS + 1) + '" cy="' + (r + 1) + '" r="' + r + '"/></svg>' + roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
+      return sizeCircle(radiusFor(value, max), value);
     }).join('');
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
       '<div class="legend-sizes">' + sizes + '</div>' +
@@ -745,8 +768,10 @@
         escapeHtml(String(data.compareActive)) + ' to ' + escapeHtml(this.data.year || '');
       legend.innerHTML = '<p class="legend-title">' + title + '</p>' +
         changeBins('is-area') +
-        '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>Not comparable' +
-        (this.measure === 'per_resident' ? ' or no population' : '') + '</p>';
+        '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>New, or none reported in ' +
+        escapeHtml(String(data.compareActive)) + (this.measure === 'per_resident' ? ', or no population' : '') + '</p>' +
+        '<p class="legend-note">Areas whose only facilities closed before ' + escapeHtml(this.data.year || '') +
+        ' aren\'t shown.</p>';
       return;
     }
     var plainTitle = escapeHtml(this.data.label) + ' (' + escapeHtml(data.values.unit) + '/yr' + (AREA_SUFFIX[this.measure] || '') + ')';

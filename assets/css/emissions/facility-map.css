@@ -132,6 +132,21 @@
   }
 }
 
+/* The size key's three sample circles (70px cells at MAX_RADIUS 34) crowd a
+   phone-width legend card. Each sample's svg carries its own viewBox
+   (sizeCircle(), facility-map.js), so shrinking its CSS width scales the
+   whole drawing down rather than clipping it -- the map's own circles
+   (paint's `_radius`) are a separate size and untouched. */
+@media (max-width: 480px) {
+  .facility-map-legend .legend-size svg {
+    width: 44px;
+    height: 44px;
+  }
+  .facility-map-legend .legend-sizes {
+    gap: 0.25rem;
+  }
+}
+
 /* The Dairies tab map (dairy-map.js), and dairies on region pages' maps. */
 .map-toolbar [data-counties-only][hidden],
 .map-toolbar [data-dairies-only][hidden] {

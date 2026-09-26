@@ -1,7 +1,9 @@
 {% comment %}
 The facility map's own toolbar controls (facility-map.js binds them):
 one row of the Facilities | Areas switch, the sector filter (full map
-only) and, in Areas, the level and measure.
+only), in Areas the level and measure (measure hidden while Compare is
+on -- it has no effect on the change it shades), and Compare itself,
+which applies to both views.
 {% endcomment %}
 <div class="map-toolbar-filters" role="group" aria-label="Map filters">
     {% if map_config.areas %}
@@ -44,7 +46,7 @@ only) and, in Areas, the level and measure.
             {% for value, label in map_config.level_options %}<a href="#" class="dropdown-item{% if value == map_config.level %} is-active{% endif %}" data-level="{{ value }}">{{ label }}</a>{% endfor %}
         </div></div>
     </div>
-    <div class="dropdown map-toolbar-dropdown facility-map-measure" data-areas-only{% if map_config.view != 'areas' %} hidden{% endif %}>
+    <div class="dropdown map-toolbar-dropdown facility-map-measure" data-areas-only data-measure-only{% if map_config.view != 'areas' or map_config.compare %} hidden{% endif %}>
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
                 <span class="icon"><span class="fa-duotone fa-fw fa-ruler-combined explorer-icon is-measure" aria-hidden="true"></span></span>
