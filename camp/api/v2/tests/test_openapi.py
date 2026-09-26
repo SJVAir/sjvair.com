@@ -76,6 +76,10 @@ class OpenAPISchemaTests(TestCase):
         assert any('pesticides' in p and p.endswith('use/') for p in self.paths)
         assert any('pesticides' in p and p.endswith('notice/') for p in self.paths)
         assert any('pesticides' in p and 'summary' in p for p in self.paths)
+        assert any('pesticides' in p and p.endswith('sections/') for p in self.paths)
+        assert any('pesticides' in p and 'sections/{' in p for p in self.paths)
+        assert any('pesticides' in p and p.endswith('notices/active/') for p in self.paths)
+        assert any('pesticides' in p and p.endswith('search/') for p in self.paths)
 
     def test_ces4_paths_are_documented(self):
         assert any(p.endswith('calenviroscreen/4.0/') for p in self.paths)

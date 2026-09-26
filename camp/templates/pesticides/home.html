@@ -1,0 +1,93 @@
+{% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+
+{% block explorer-lede %}<p class="lede">Which pesticides are applied in the San Joaquin Valley, where, and on what.</p>{% endblock %}
+{% block body-class %}{{ block.super }} home{% endblock %}
+{% block breadcrumbs %}{% endblock %}
+
+{% block explorer-content %}
+<div class="content intro">
+    <p class="is-size-5">
+        Browse the pesticides applied across the eight San Joaquin Valley counties: which chemicals, in which products,
+        on which crops, and where. Confirmed applications come from the California Department of Pesticide Regulation's
+        <a href="{% url 'pesticides:about' %}#pur">Pesticide Use Reporting</a> program. Planned applications come from <a href="{% url 'pesticides:about' %}#spraydays">SprayDays</a>
+        notices of intent.
+    </p>
+</div>
+
+<div class="columns landing-top">
+    <div class="column is-8">{% include 'pesticides/includes/find-area.html' %}</div>
+    <div class="column is-4">{% include 'pesticides/includes/spraydays-signup.html' %}</div>
+</div>
+
+<p class="notice-callout">
+    <span class="icon has-text-info"><span class="fa-regular fa-fw fa-calendar-clock"></span></span>
+    <span>
+        <a href="{% url 'pesticides:notice-list' %}"><strong>{{ active_notices }}</strong></a> SprayDays notice{{ active_notices|pluralize }} of intent currently scheduled.
+        <a href="{% url 'pesticides:about' %}#spraydays">What are notices of intent?</a>
+    </span>
+</p>
+
+<hr>
+
+{% if show_stat_row %}
+<div class="level stat-row box">
+    <div class="level-item has-text-centered"><div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ total_lbs|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ applications|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Chemicals used</p><p class="title">{{ chemical_count|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Products used</p><p class="title">{{ product_count|lbs }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Commodities treated</p><p class="title">{{ commodity_count|lbs }}</p></div></div>
+</div>
+{% endif %}
+
+{% if county_map %}
+<div class="columns">
+    <div class="column is-6-tablet is-5-widescreen">
+        {% include 'pesticides/includes/by-county-table.html' %}
+        <div class="mt-4">{% trend_chart by_year year %}</div>
+    </div>
+    <div class="column is-6-tablet is-7-widescreen">
+        {% include 'pesticides/includes/county-map.html' %}
+    </div>
+</div>
+{% else %}
+<div class="mt-5">{% trend_chart by_year year %}</div>
+{% endif %}
+
+
+{% comment %}
+Four boards, two by two; products before chemicals. Under the
+chemicals-of-concern scope every board is already of concern, so the
+dedicated board drops out, the chemicals board's title says what it now is,
+and the remaining three lay out 2 + 1.
+
+"Other flagged chemicals" carries only the flagged chemicals the board
+beside it doesn't already list (stats.landing_stats), so the two together
+are one ranking split in two rather than two overlapping ones. It is left
+off entirely when nothing is left, rather than rendered empty.
+{% endcomment %}
+<div class="columns leaderboards is-multiline">
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied products' rows=top_products kind='products' view_all_url=product_list_url %}</div>
+    {% if concern %}
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied flagged chemicals' rows=top_chemicals kind='chemicals' view_all_url=chemical_list_url %}</div>
+    {% else %}
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals' rows=top_chemicals kind='chemicals' view_all_url=chemical_list_url %}</div>
+    {% if top_chemicals_of_concern %}
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Other flagged chemicals' rows=top_chemicals_of_concern kind='chemicals' view_all_url=concern_chemical_list_url %}</div>
+    {% endif %}
+    {% endif %}
+    <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most treated commodities' rows=top_commodities kind='commodities' view_all_url=commodity_list_url %}</div>
+</div>
+
+{% if movers %}
+<div class="columns leaderboards">
+    <div class="column">{% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}</div>
+</div>
+{% endif %}
+
+<div class="content about-teaser mt-6" id="about">
+    <h2>About this data</h2>
+    <p>Confirmed applications come from DPR's <a href="{% url 'pesticides:about' %}#pur">Pesticide Use Reporting</a> program, which releases each year's records one to two years after the fact{% if latest_year %} (the newest full year here is {{ latest_year }}){% endif %}. Planned applications are <a href="{% url 'pesticides:about' %}#spraydays">SprayDays notices of intent</a>, which are plans, not confirmations. Badges mark chemicals on official lists (Prop 65, IARC, CARB); they say a chemical is listed, not how much of it reached anyone.</p>
+    <p><a href="{% url 'pesticides:about' %}">Read more about the data, the badges, and the caveats</a>. Developers can pull the records through the <a href="{{ api_docs_url }}" hx-boost="false">pesticides API</a> or the <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.</p>
+</div>
+{% endblock %}

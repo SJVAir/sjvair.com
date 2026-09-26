@@ -1,0 +1,228 @@
+{% extends 'pesticides/base.html' %}
+{% load humanize pesticides_explorer %}
+
+{% block title %}{{ area.label }} | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} place{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ area.label }}</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="content detail-header">
+    <h1 class="mb-1">{{ area.label }}</h1>
+    <p class="identifiers has-text-grey">
+        {% if area.kind == 'point' %}
+            Within {{ area.radius }} mile{{ area.radius|pluralize }}
+        {% else %}
+            {{ area.region.type_label }}
+        {% endif %}
+    </p>
+    {% if area.kind == 'point' and radius_options %}
+    <nav class="radius-switcher" aria-label="Radius">
+        <div class="buttons has-addons are-small">
+            {% for option in radius_options %}
+            <a class="button{% if option.current %} is-selected is-primary{% endif %}" href="{{ option.url }}"{% if option.current %} aria-current="page"{% endif %}>{{ option.miles }} mi</a>
+            {% endfor %}
+        </div>
+    </nav>
+    {% endif %}
+</div>
+
+<div class="level stat-row box">
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
+    </div>
+    {% if totals.lbs_per_sqmi %}
+    {# The rate, so a small dense place isn't read as light next to a big one. #}
+    <div class="level-item has-text-centered">
+        <div>
+            <p class="heading">Lbs per sq mi</p>
+            <p class="title">{{ totals.lbs_per_sqmi|lbs }}</p>
+            {% if totals.lbs_per_used_sqmi %}<p class="is-size-7 has-text-grey">{{ totals.lbs_per_used_sqmi|lbs }} where used</p>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Applications</p><p class="title">{{ totals.applications|lbs }}</p></div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Sections with use</p><p class="title fraction">{{ totals.sections_used }} / {{ totals.sections_total }}</p></div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Chemicals used</p><p class="title">{{ totals.chemicals|lbs }}</p></div>
+    </div>
+</div>
+
+{% include 'pesticides/includes/section-map.html' %}
+
+<div class="box right-now mt-5">
+    <p>
+        {% if upcoming_count %}
+            <strong>{{ upcoming_count }}</strong> notice{{ upcoming_count|pluralize }} scheduled in this area.{% include 'pesticides/includes/note-help.html' with key='noi_meaning' anchor='notices' %}
+        {% else %}
+            No notices of intent are currently scheduled here.
+        {% endif %}
+    </p>
+    {% if upcoming %}
+        {% include 'pesticides/includes/upcoming-notices.html' %}
+    {% endif %}
+    <p class="mt-2 mb-0"><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
+</div>
+
+<div class="columns mt-6">
+    <section class="column is-5-desktop trend-section">
+        <h2 class="title is-4">By year</h2>
+        {% trend_chart by_year year compare=compare_by_year compare_label=compare_label %}
+    </section>
+    <section class="column is-7-desktop season-section">
+        <h2 class="title is-4">By month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
+        {% if by_month %}
+            {% if peak_month %}<p class="mb-3">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
+            {# The heatmap's top row is the same year the bars drew, so only #}
+            {# one of them runs. The bars are the fallback for a place with a #}
+            {# single year loaded, where a one-row grid would say less. #}
+            {% if by_year_month|length > 1 %}
+                {% month_heatmap by_year_month year %}
+            {% else %}
+                {% month_chart by_month year_label %}
+            {% endif %}
+        {% else %}
+            <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
+        {% endif %}
+    </section>
+</div>
+
+{# Directly under the trend it explains: "Down 2% since 2022" and the #}
+{# chemicals that account for it used to sit 800px apart. Full width because #}
+{# two four-column tables don't fit a half -- the percent column was the #}
+{# first thing to get cut off. #}
+{% if movers %}
+<section class="movers-section mt-6">
+    <h2 class="title is-4">What moved most</h2>
+    {% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}
+</section>
+{% endif %}
+
+<section class="top-lists mt-6">
+    <h2 class="title is-4">What's applied here</h2>
+    {% comment %}
+    The three kinds across one row; products before chemicals. Under the
+    chemicals-of-concern scope every card is already of concern, so the
+    dedicated card drops out and the chemicals card's title says what it now
+    is -- the same rules as the landing page's leaderboards.
+
+    The concern card sits below rather than in the row: it carries only the
+    chemicals of concern the chemicals card doesn't already list (see
+    views._place_cards), so it reads as a continuation of that card, not a
+    fourth kind.
+    {% endcomment %}
+    <div class="columns is-multiline">
+        <div class="column is-one-third-desktop is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=products_card %}</div>
+        <div class="column is-one-third-desktop is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=chemicals_card %}</div>
+        <div class="column is-one-third-desktop is-half-tablet">{% include 'pesticides/includes/related-card.html' with card=commodities_card %}</div>
+    </div>
+</section>
+
+{% if is_school_district %}
+<section class="schools-nearby mt-6">
+    {# Most rows are child care, not schools, so the heading says both. #}
+    <h2 class="title is-4">Schools &amp; child care in this district</h2>
+
+    {% if district_demographics %}
+    <div class="district-demographics">
+        <h3 class="title is-6 mb-2">Who goes to school here{% if district_demographics.year_label %} <span class="source-stamp">{{ district_demographics.year_label }}</span>{% endif %}</h3>
+        <div class="level stat-row">
+            {% if district_demographics.enrollment != None %}
+            <div class="level-item has-text-centered">
+                <div><p class="heading">Students enrolled</p><p class="title">{{ district_demographics.enrollment|intcomma }}</p></div>
+            </div>
+            {% endif %}
+            {% for metric in district_demographics.metrics %}
+            <div class="level-item has-text-centered">
+                <div><p class="heading">{{ metric.label }}</p><p class="title">{{ metric.pct|floatformat:"-1" }}%</p></div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="is-size-7 has-text-grey">Enrollment and student groups as the <a href="https://www.cde.ca.gov/ds/si/ds/pubschls.asp" target="_blank" rel="noopener">California Department of Education</a> reports them for this district.</p>
+    </div>
+    {% endif %}
+
+    {% if schools.total %}
+    <p class="is-size-7 has-text-grey mt-4">
+        &ldquo;Lbs nearby&rdquo; is the pesticide use reported in the three-mile-square block of
+        sections around each site &mdash; the section it sits in and the eight around it{% if year_label %}, in {{ year_label }}{% endif %}{% if concern %},
+        flagged chemicals only{% endif %}.{% if schools.sort_is_default %} Rows start with the highest
+        pounds nearby first; click a column heading to sort by something else.{% endif %}
+    </p>
+    {% include 'pesticides/includes/schools-table.html' %}
+    {% else %}
+    <p class="has-text-grey">{% if district_demographics %}We don't have school or child care addresses for this district yet.{% else %}No schools or child care on record here.{% endif %}</p>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if within and within.any %}
+<section class="within mt-6">
+    <h2 class="title is-4">{% if within.counties %}In and around{% else %}In{% endif %} {{ area.label }}</h2>
+    <div class="columns within-panels">
+        {% if within.counties %}
+        <div class="column within-panel is-narrow">
+            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-map explorer-icon is-map"></span></span> {% if within.counties|length == 1 %}County{% else %}Counties{% endif %}</h3>
+            <ul class="within-list">
+                {% for county in within.counties %}<li><a href="{{ county.url }}{{ scope_qs }}">{{ county.name }}</a></li>{% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if within.communities %}
+        <div class="column within-panel">
+            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-city explorer-icon is-chemicals"></span></span> Communities <span class="tag is-light is-rounded">{{ within.communities|length }}</span></h3>
+            <ul class="within-list is-two-column">
+                {% for place in within.communities %}<li><a href="{{ place.url }}{{ scope_qs }}">{{ place.name }}</a> <span class="has-text-grey is-size-7">{{ place.type_label }}</span></li>{% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if within.school_districts %}
+        <div class="column within-panel">
+            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-school explorer-icon is-commodities"></span></span> School districts <span class="tag is-light is-rounded">{{ within.school_districts|length }}</span></h3>
+            <ul class="within-list is-two-column">
+                {% for district in within.school_districts %}<li><a href="{{ district.url }}{{ scope_qs }}">{{ district.name }}</a></li>{% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if within.zipcodes %}
+        <div class="column within-panel is-narrow within-zips">
+            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-envelope explorer-icon is-records"></span></span> ZIP codes <span class="tag is-light is-rounded">{{ within.zipcodes|length }}</span></h3>
+            <div class="tags">
+                {% for zip in within.zipcodes %}<a class="tag is-light" href="{{ zip.url }}{{ scope_qs }}">{{ zip.name }}</a>{% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+
+<div class="buttons mt-6 explorer-actions">
+    <a class="button" href="{{ records_url }}">
+        <span class="icon"><span class="fa-duotone fa-fw fa-table-list explorer-icon is-records" aria-hidden="true"></span></span>
+        <span>Browse all records for this area</span>
+    </a>
+    <a class="button" href="{{ notices_url }}">
+        <span class="icon"><span class="fa-duotone fa-fw fa-calendar-clock explorer-icon is-notices" aria-hidden="true"></span></span>
+        <span>See notices here</span>
+    </a>
+</div>
+
+{% if privacy_note %}
+<p class="is-size-7 has-text-grey">Your location is only in this page's address bar; we don't store it.</p>
+{% endif %}
+
+<footer class="sources mt-6 has-text-grey is-size-7">
+    <p>
+        Confirmed applications: CDPR Pesticide Use Reporting{% if years %}, {{ years.0 }}–{{ years.1 }}{% endif %}.
+        <a href="{% url 'pesticides:about' %}#about">About this data</a>.
+    </p>
+    <p>
+        Developers: the full records are available through the
+        <a href="{{ api_docs_url }}" hx-boost="false">pesticides API</a> or the
+        <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>.
+    </p>
+</footer>
+{% endblock %}

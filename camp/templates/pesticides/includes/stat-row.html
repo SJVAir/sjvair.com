@@ -1,0 +1,24 @@
+{% load pesticides_explorer %}
+<div class="level stat-row box">
+    {% if not hide_lbs %}
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
+    </div>
+    {% endif %}
+    {% if totals.lbs_per_acre %}
+    {% comment %}
+    How heavily it goes on where it goes on, as opposed to how much of it
+    there is. Only shown for a single chemical or product: summed across
+    them the treated acres double-count the same ground.
+    {% endcomment %}
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Lbs per treated acre</p><p class="title">{{ totals.lbs_per_acre|floatformat:2 }}</p></div>
+    </div>
+    {% endif %}
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.applications|lbs }}</p></div>
+    </div>
+    <div class="level-item has-text-centered">
+        <div><p class="heading">Counties</p><p class="title">{{ totals.counties }} <span class="is-size-5 has-text-grey">of {{ county_total }}</span></p></div>
+    </div>
+</div>

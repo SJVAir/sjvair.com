@@ -1,0 +1,82 @@
+{% extends 'pesticides/base.html' %}
+{% load pesticides_explorer %}
+
+{% block title %}{{ object.display_name }} | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} detail{% endblock %}
+
+{% block explorer-content %}
+<div class="content detail-header">
+    <h1 class="mb-1">{{ object.display_name }}</h1>
+    <p class="identifiers has-text-grey">{% block identifiers %}{% endblock %}</p>
+    <div class="tags are-medium">{% block badges %}{% endblock %}</div>
+    {% block notes %}{% include 'pesticides/includes/what-this-means.html' %}{% endblock %}
+</div>
+
+{% include 'pesticides/includes/stat-row.html' %}
+{% if summary_sentence %}<p class="summary-sentence is-size-5 mb-5">{{ summary_sentence }}</p>{% endif %}
+
+{% comment %}
+A card marked `compact` is short by nature, not by chance: a product's
+active ingredients are a registration fact, and three products in five have
+exactly one. It takes the narrow column and doesn't stretch, so the pair
+doesn't render as one row of content beside ten and a screen of whitespace.
+{% endcomment %}
+<div class="columns">
+    <div class="column{% if related_a.compact %} is-4-desktop{% elif related_b.compact %} is-8-desktop{% endif %}">{% include 'pesticides/includes/related-card.html' with card=related_a %}</div>
+    <div class="column{% if related_b.compact %} is-4-desktop{% elif related_a.compact %} is-8-desktop{% endif %}">{% include 'pesticides/includes/related-card.html' with card=related_b %}</div>
+</div>
+
+<section class="applications mt-6">
+    <h2 class="title is-4">Confirmed applications <small class="has-text-grey is-size-6">Pesticide Use Reporting (PUR)</small></h2>
+    {% if by_year %}
+        <div class="columns">
+            <div class="column is-5-desktop is-4-widescreen">
+                {% trend_chart by_year year hide_lbs %}
+                {% include 'pesticides/includes/by-year-table.html' %}
+                <div class="mt-5">{% month_heatmap by_year_month year %}</div>
+            </div>
+            <div class="column is-7-desktop is-8-widescreen">
+                {% include 'pesticides/includes/section-map.html' %}
+                <p class="is-size-7 mt-2"><a href="{{ full_map_url }}">Open in the full map</a></p>
+                {% if by_county %}
+                    <div class="mt-4">{% include 'pesticides/includes/by-county-table.html' %}</div>
+                    {% if movers %}<div class="mt-4">{% include 'pesticides/includes/movers.html' with title='Counties that moved most' %}</div>{% endif %}
+                {% endif %}
+            </div>
+        </div>
+        <p class="mt-4"><a href="{{ records_url }}">Browse all {{ totals.applications|lbs }} records</a></p>
+    {% else %}
+        <p class="has-text-grey">No confirmed applications on record{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
+    {% endif %}
+</section>
+
+{% if has_notices %}
+<section class="notices mt-6">
+    <h2 class="title is-4">
+        Planned applications
+        <small class="has-text-grey is-size-6">SprayDays notices of intent</small>
+        <span class="tag is-info is-light is-medium ml-2">{{ upcoming_count }} scheduled</span>
+    </h2>
+    <p class="mb-3"><a href="{{ notices_url }}">See all notices for this {{ section|slice:":-1" }}</a></p>
+    {% if upcoming %}
+        {% include 'pesticides/includes/upcoming-notices.html' %}
+    {% else %}
+        <p class="has-text-grey">No upcoming notices.</p>
+    {% endif %}
+</section>
+{% endif %}
+
+<footer class="sources mt-6 has-text-grey is-size-7">
+    <p>
+        Confirmed applications: CDPR Pesticide Use Reporting{% if years %}, {{ years.0 }}–{{ years.1 }}{% endif %}.
+        {% if notice_window %}Planned applications: SprayDays, {{ notice_window.count }} notices from {{ notice_window.first|date:'M j, Y' }} to {{ notice_window.last|date:'M j, Y' }}.{% endif %}
+        <a href="{% url 'pesticides:about' %}#about">About this data</a>.
+    </p>
+    <p>
+        Developers: the full records are available through the
+        <a href="{{ api_docs_url }}" hx-boost="false">pesticides API</a> or the
+        <a href="{{ client_docs_url }}" target="_blank" rel="noopener">Python client</a>,
+        filtered with <code>{{ api_filter }}</code>.
+    </p>
+</footer>
+{% endblock %}

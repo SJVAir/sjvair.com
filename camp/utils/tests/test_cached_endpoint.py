@@ -7,6 +7,8 @@ from django.test import TestCase, RequestFactory, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from resticus import http
+
 from camp.api.v2.monitors.endpoints import MonitorList
 from camp.utils.test import debug, get_response_data
 from camp.utils.views import CachedEndpointMixin
@@ -98,6 +100,67 @@ class CachedEndpointTests(TestCase):
         assert resp4.status_code == 200
         assert resp4['X-Cache-Status'] == 'HIT'
         assert q4 == q2
+
+    def test_failures_are_not_cached(self):
+        # A rejected request used to be cached like any other response, which
+        # pinned the error to that querystring for the whole timeout -- on a
+        # day-long cache, long after the endpoint would have answered.
+        calls = []
+
+        class Base:
+            def get(self, request, *args, **kwargs):
+                calls.append(1)
+                if request.GET.get('bad'):
+                    return http.Http400({'error': 'nope'})
+                return {'ok': True}
+
+        class Endpoint(CachedEndpointMixin, Base):
+            cache_timeout = 600
+
+            def __init__(self, request):
+                self.request = request
+                self.kwargs = {}
+
+            def is_streaming(self):
+                return False
+
+        request = self.factory.get('/x/?bad=1')
+        first = Endpoint(request).get(request)
+        assert first.status_code == 400
+        assert first['X-Cache-Status'] == 'MISS'
+
+        # Same querystring again: recomputed rather than served from cache.
+        second = Endpoint(request).get(request)
+        assert second.status_code == 400
+        assert second['X-Cache-Status'] == 'MISS'
+        assert len(calls) == 2
+
+        # A successful result still caches.
+        ok_request = self.factory.get('/x/')
+        assert Endpoint(ok_request).get(ok_request)['X-Cache-Status'] == 'MISS'
+        assert Endpoint(ok_request).get(ok_request)['X-Cache-Status'] == 'HIT'
+        assert len(calls) == 3
+
+    def test_cache_key_version_separates_the_entries(self):
+        # Bumping the version has to leave the old entry unread: a day-long
+        # cache would otherwise keep serving the shape the deploy changed.
+        class Endpoint(CachedEndpointMixin):
+            def __init__(self, request, version=None):
+                self.request = request
+                self.kwargs = {}
+                if version is not None:
+                    self.cache_key_version = version
+
+        request = self.factory.get('/x/?foo=1')
+        unversioned = Endpoint(request).get_view_cache_key()
+        v1 = Endpoint(request, version=1).get_view_cache_key()
+        v2 = Endpoint(request, version=2).get_view_cache_key()
+
+        assert '|v:' not in unversioned
+        assert '|v:1|' in v1
+        assert len({unversioned, v1, v2}) == 3
+        # The version is the only thing that moved.
+        assert v1.replace('|v:1', '') == unversioned
 
     def test_prewarm(self):
         results = CachedEndpointMixin.prewarm_all_registered()

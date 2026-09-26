@@ -1,0 +1,54 @@
+{% load pesticides_explorer %}
+{% comment %}
+Counties ranked by one metric (`county_rank`: lbs | lbs_per_sqmi |
+lbs_per_used_sqmi | acres | applications),
+most to least; the other columns' headers link to rank by them instead.
+The swatch is the county's fill on the map beside it, so this table is
+also the map's legend. Rows come from maps.rank_counties.
+Like the by-year table: numbers on one line, a touch smaller, and the
+wrapper scrolls before they overflow (all-years pounds run to ten digits).
+{% endcomment %}
+<div class="table-container">
+<table class="table is-fullwidth is-narrow is-striped by-county-table">
+    <thead><tr>
+        <th>County</th>
+        {# One data column, the one the map beside it is shaded by; the #}
+        {# header picks which. Five columns of large numbers was more than #}
+        {# "which counties are worst" needs, and the rates in particular are #}
+        {# read one at a time. #}
+        <th class="has-text-right is-ranked">
+            <div class="dropdown is-right column-picker">
+                <div class="dropdown-trigger">
+                    <button type="button" class="button is-small" aria-haspopup="true"
+                            aria-expanded="false" title="{{ county_metric_column.1 }}">
+                        <span>{{ county_metric_column.0 }}</span>
+                        <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+                    </button>
+                </div>
+                <div class="dropdown-menu" role="menu">
+                    <div class="dropdown-content">
+                        {% for option in county_metric_options %}
+                        <a class="dropdown-item{% if option.active %} is-active{% endif %}"
+                           href="{% qs_replace rank=option.value %}" title="{{ option.title }}"
+                           {% if option.active %}aria-current="true"{% endif %}>{{ option.label }}</a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </th>
+    </tr></thead>
+    <tbody>
+    {% for row in by_county %}
+        <tr>
+            <td><span class="county-swatch" style="background-color: {{ row.color }};" aria-hidden="true"></span><a href="{% url 'pesticides:region' sqid=row.county_sqid slug=row.county_slug %}{{ scope_qs }}">{{ row.county_name|cut:" County" }}</a></td>
+            {# rank_counties() already put the chosen metric on the row, so #}
+            {# the column and the map's shade can't drift apart. #}
+            <td class="has-text-right">{% if row.value %}{{ row.value|lbs }}{% else %}—{% endif %}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{# Outside the scrolling container on purpose: a tooltip inside one is #}
+{# clipped by its overflow. #}
+<p class="table-note">{% include 'pesticides/includes/note-help.html' with key='shades' anchor='shades' label='What the shades mean' %}</p>

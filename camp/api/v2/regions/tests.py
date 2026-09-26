@@ -129,8 +129,8 @@ class RegionDetailTests(TestCase):
 
 
 
-def make_place(name, slug, geom_wkt):
-    region = Region.objects.create(name=name, slug=slug, type=Region.Type.PLACE)
+def make_region(region_type, name, slug, geom_wkt):
+    region = Region.objects.create(name=name, slug=slug, type=region_type)
     boundary = Boundary.objects.create(
         region=region,
         version='2020',
@@ -177,7 +177,7 @@ def make_tract(name, geom_wkt):
     return region
 
 
-FRESNO_PLACE_WKT = 'MULTIPOLYGON(((-119.9 36.7, -119.7 36.7, -119.7 36.9, -119.9 36.9, -119.9 36.7)))'
+FRESNO_WKT = 'MULTIPOLYGON(((-119.9 36.7, -119.7 36.7, -119.7 36.9, -119.9 36.9, -119.9 36.7)))'
 CLOVIS_CITY_WKT = 'MULTIPOLYGON(((-119.83 36.75, -119.73 36.75, -119.73 36.85, -119.83 36.85, -119.83 36.75)))'
 FRESNO_COUNTY_WKT = 'MULTIPOLYGON(((-120.5 36.5, -119.0 36.5, -119.0 37.5, -120.5 37.5, -120.5 36.5)))'
 KERN_COUNTY_WKT = 'MULTIPOLYGON(((-119.5 34.5, -118.0 34.5, -118.0 35.5, -119.5 35.5, -119.5 34.5)))'
@@ -188,7 +188,7 @@ ELSEWHERE_WKT = 'MULTIPOLYGON(((-116.0 33.0, -115.8 33.0, -115.8 33.2, -116.0 33
 
 class TestPlaceSearch(TestCase):
     def setUp(self):
-        self.fresno = make_place('Fresno', 'fresno', FRESNO_PLACE_WKT)
+        self.fresno = make_region(Region.Type.URBAN_AREA, 'Fresno', 'fresno', FRESNO_WKT)
         self.clovis = make_city('Clovis', 'clovis', CLOVIS_CITY_WKT)
         self.url = reverse('api:v2:regions:place-search')
 
@@ -232,14 +232,14 @@ class TestPlaceSearch(TestCase):
 
 class TestPlaceLookup(TestCase):
     def setUp(self):
-        self.fresno = make_place('Fresno', 'fresno', FRESNO_PLACE_WKT)
+        self.fresno = make_city('Fresno', 'fresno', FRESNO_WKT)
         self.url = reverse('api:v2:regions:place-lookup')
 
     def test_exact_match(self):
         response = self.client.get(self.url, {'q': 'Fresno'})
         assert response.status_code == 200
         assert response.json()['data']['name'] == 'Fresno'
-        assert response.json()['data']['type'] == Region.Type.PLACE
+        assert response.json()['data']['type'] == Region.Type.CITY
 
     def test_case_insensitive(self):
         response = self.client.get(self.url, {'q': 'fresno'})
@@ -251,18 +251,40 @@ class TestPlaceLookup(TestCase):
         assert response.status_code == 200
         assert response.json()['data']['name'] == 'Fresno'
 
-    def test_city_resolves_to_containing_place(self):
-        make_city('Clovis', 'clovis', CLOVIS_CITY_WKT)
-        response = self.client.get(self.url, {'q': 'Clovis'})
+    def test_city_wins_over_urban_area_of_the_same_name(self):
+        make_region(Region.Type.URBAN_AREA, 'Fresno', 'fresno-ua', FRESNO_WKT)
+        response = self.client.get(self.url, {'q': 'Fresno'})
+        assert response.json()['data']['type'] == Region.Type.CITY
+
+    def test_falls_back_to_cdp_then_urban_area(self):
+        make_region(Region.Type.URBAN_AREA, 'Pixley', 'pixley-ua', ELSEWHERE_WKT)
+        response = self.client.get(self.url, {'q': 'Pixley'})
+        assert response.json()['data']['type'] == Region.Type.URBAN_AREA
+        make_region(Region.Type.CDP, 'Pixley', 'pixley', ELSEWHERE_WKT)
+        response = self.client.get(self.url, {'q': 'Pixley'})
+        assert response.json()['data']['type'] == Region.Type.CDP
+
+    def test_an_exact_name_beats_a_fuzzy_match_in_an_earlier_type(self):
+        # "Riverbank" (a city) is a trigram hit for "Riverdale"; the CDP
+        # carrying the exact name still wins.
+        make_city('Riverbank', 'riverbank', CLOVIS_CITY_WKT)
+        make_region(Region.Type.CDP, 'Riverdale', 'riverdale', ELSEWHERE_WKT)
+        response = self.client.get(self.url, {'q': 'riverdale'})
+        assert response.json()['data']['name'] == 'Riverdale'
+        assert response.json()['data']['type'] == Region.Type.CDP
+
+    def test_an_exact_name_prefers_the_city_over_the_cdp(self):
+        make_region(Region.Type.CDP, 'Selma', 'selma-cdp', ELSEWHERE_WKT)
+        make_city('Selma', 'selma', CLOVIS_CITY_WKT)
+        response = self.client.get(self.url, {'q': 'Selma'})
+        assert response.json()['data']['type'] == Region.Type.CITY
+
+    def test_type_returns_direct_match(self):
+        make_region(Region.Type.URBAN_AREA, 'Fresno', 'fresno-ua', FRESNO_WKT)
+        response = self.client.get(self.url, {'q': 'Fresno', 'type': 'urban_area'})
         assert response.status_code == 200
         assert response.json()['data']['name'] == 'Fresno'
-
-    def test_type_returns_direct_match_not_place(self):
-        make_city('Clovis', 'clovis', CLOVIS_CITY_WKT)
-        response = self.client.get(self.url, {'q': 'Clovis', 'type': 'city'})
-        assert response.status_code == 200
-        assert response.json()['data']['name'] == 'Clovis'
-        assert response.json()['data']['type'] == 'city'
+        assert response.json()['data']['type'] == 'urban_area'
 
     def test_no_match_returns_null(self):
         response = self.client.get(self.url, {'q': 'nonexistent'})

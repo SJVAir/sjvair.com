@@ -13,8 +13,8 @@ from camp.apps.alerts.models import Alert
 from camp.apps.archive.models import EntryArchive
 from camp.apps.qaqc.admin import HealthCheckInline
 from camp.template_tags import admin_changelist_url
-from camp.utils import leaflet
-from camp.utils.admin import LeafletMapMixin
+from camp.utils import mapfigure
+from camp.utils.admin import MapFigureMixin
 
 from .forms import MonitorAdminForm, EntryExportForm
 from .models import Group, Host, LatestEntry, Monitor
@@ -76,7 +76,7 @@ class MonitorIsActiveFilter(admin.SimpleListFilter):
             return queryset
 
 
-class MonitorAdmin(LeafletMapMixin, gisadmin.GISModelAdmin):
+class MonitorAdmin(MapFigureMixin, gisadmin.GISModelAdmin):
     inlines = [HealthCheckInline]
     actions = ['export_monitor_list_csv']
     form = MonitorAdminForm
@@ -147,14 +147,14 @@ class MonitorAdmin(LeafletMapMixin, gisadmin.GISModelAdmin):
         if not instance or not instance.position:
             return '-'
 
-        lmap = leaflet.LeafletMap(width=600, height=400, zoom=15)
-        lmap.add(leaflet.Marker(
+        figure = mapfigure.MapFigure(width=600, height=400, zoom=15)
+        figure.add(mapfigure.Marker(
             geometry=instance.position,
             shape='star',
             size=28,
             fill_color='dodgerblue',
         ))
-        return lmap.render()
+        return figure.render()
     get_map.short_description = 'Map'
 
     def get_alerts(self, object_id):

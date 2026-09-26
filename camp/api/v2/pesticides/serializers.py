@@ -12,6 +12,8 @@ class ChemicalSerializer(serializers.Serializer):
         ('id', lambda c: c.sqid),
         'chem_code',
         'name',
+        'preferred_name',
+        'display_name',
         'cas_number',
         'dtxsid',
         'iarc_group',
@@ -34,7 +36,10 @@ class ProductSerializer(serializers.Serializer):
         'reg_number',
         'name',
         'fumigant',
-        'california_restricted',
+        # Computed from the active ingredients; the key is kept so the
+        # response shape doesn't change, but the value is now true rather
+        # than a column nothing ever set.
+        ('california_restricted', lambda p: p.is_restricted),
     )
 
 

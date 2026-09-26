@@ -1,12 +1,16 @@
 from types import SimpleNamespace
 
-from django.db.models import Count, Sum
+from django.db.models import Case, Count, Prefetch, Q, Sum, When
 from django.shortcuts import get_object_or_404
 
-from resticus import generics
+from resticus import generics, http
 
-from camp.apps.pesticides.models import Chemical, Commodity, PesticideNotice, PesticideUse, Product
+from camp.apps.pesticides import stats
+from camp.apps.pesticides.models import (
+    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal, Product, ProductChemical,
+)
 from camp.apps.regions.models import Region
+from camp.utils.views import CachedEndpointMixin
 
 from .filters import ChemicalFilter, CommodityFilter, PesticideNoticeFilter, PesticideSummaryFilter, PesticideUseFilter, ProductFilter
 from .serializers import (
@@ -61,7 +65,9 @@ class ChemicalDetail(generics.DetailEndpoint):
     lookup_url_kwarg = 'chemical_id'
 
     def get_queryset(self):
-        return Chemical.objects.prefetch_related('products').with_commodities()
+        return Chemical.objects.prefetch_related(
+            Prefetch('products', queryset=Product.objects.with_restricted())
+        ).with_commodities()
 
 
 class ProductList(generics.ListEndpoint):
@@ -71,6 +77,9 @@ class ProductList(generics.ListEndpoint):
     serializer_class = ProductSerializer
     filter_class = ProductFilter
     paginate = True
+
+    def get_queryset(self):
+        return Product.objects.with_restricted()
 
 
 class ProductDetail(generics.DetailEndpoint):
@@ -82,7 +91,7 @@ class ProductDetail(generics.DetailEndpoint):
     lookup_url_kwarg = 'product_id'
 
     def get_queryset(self):
-        return Product.objects.prefetch_related('chemicals').with_commodities()
+        return Product.objects.with_restricted().prefetch_related('chemicals').with_commodities()
 
 
 class PesticideUseMixin:
@@ -91,7 +100,12 @@ class PesticideUseMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().select_related('county', 'mtrs', 'product', 'chemical', 'commodity')
+        # `product` is select_related, so it can't carry with_restricted()'s
+        # annotation; prefetching its chemicals instead makes is_restricted's
+        # fallback one query for the page rather than one per row.
+        return (super().get_queryset()
+            .select_related('county', 'mtrs', 'product', 'chemical', 'commodity')
+            .prefetch_related('product__chemicals'))
 
 
 class PesticideUseList(PesticideUseMixin, generics.ListEndpoint):
@@ -113,7 +127,10 @@ class PesticideNoticeMixin:
     paginate = True
 
     def get_queryset(self):
-        return super().get_queryset().select_related('county').prefetch_related('chemicals', 'products')
+        return super().get_queryset().select_related('county').prefetch_related(
+            'chemicals',
+            Prefetch('products', queryset=Product.objects.with_restricted()),
+        )
 
 
 class PesticideNoticeList(PesticideNoticeMixin, generics.ListEndpoint):
@@ -219,3 +236,110 @@ class PesticideRegionUse(PesticideRegionMixin, PesticideUseMixin, generics.ListE
 
     def get_queryset(self):
         return self.get_region_queryset(super().get_queryset())
+
+
+# Backs the entity picker (`includes/entity-picker.html`) on the explorer's
+# list and records pages. One endpoint for all three kinds, so the picker JS
+# only needs a single URL plus a `type`.
+SEARCH_KINDS = {
+    'chemical': (Chemical, 'chem_code'),
+    'product': (Product, 'reg_number'),
+    'commodity': (Commodity, 'site_code'),
+}
+SEARCH_DEFAULT_LIMIT = 10
+SEARCH_MAX_LIMIT = 25
+SEARCH_MIN_LENGTH = 2
+
+
+class EntitySearchBase(generics.Endpoint):
+    # See the comment on sections.SectionListBase: the get() implementation
+    # lives on this un-cached base so CachedEndpointMixin.get() on
+    # EntitySearch below is the one actually dispatched to.
+    def get(self, request):
+        params = request.GET
+        kind = params.get('type') or ''
+        if kind not in SEARCH_KINDS:
+            return http.Http400({'error': f'type must be one of {", ".join(sorted(SEARCH_KINDS))}'})
+
+        model, detail_field = SEARCH_KINDS[kind]
+
+        try:
+            limit = int(params.get('limit') or SEARCH_DEFAULT_LIMIT)
+        except ValueError:
+            return http.Http400({'error': 'limit must be a number'})
+        limit = max(1, min(limit, SEARCH_MAX_LIMIT))
+
+        query = (params.get('q') or '').strip()
+        if len(query) < SEARCH_MIN_LENGTH:
+            return {'results': []}
+
+        # Only names that actually appear in the use data -- in the year and
+        # county the page is showing, when it says (`year=2020`, `year=all`,
+        # `county=fresno`): suggesting one that filters the list down to
+        # nothing isn't a useful suggestion.
+        used = PesticideUseTotal.objects.filter(**{f'{kind}__isnull': False})
+        year = (params.get('year') or '').strip()
+        if year and year != 'all':
+            if not year.isdigit():
+                return http.Http400({'error': 'year must be a year or "all"'})
+            used = used.filter(year=int(year))
+        if params.get('county'):
+            used = used.filter(county__slug=params['county'])
+        used = used.values(kind)
+        # Prefix matches first: an autocomplete for "gly" should lead with
+        # the glyphosates, not with every glycol that contains the letters.
+        starts = Q(name__istartswith=query)
+        if kind == 'chemical':
+            starts |= Q(preferred_name__istartswith=query)
+        queryset = (model.objects.search(query)
+            .filter(pk__in=used)
+            .annotate(prefix=Case(When(starts, then=0), default=1))
+            .order_by('prefix', '-rank', 'name', 'pk'))
+
+        # The explorer's chemicals-of-concern scope: only concern chemicals,
+        # only the products that carry one as an active ingredient, and only
+        # the commodities a chemical of concern was applied to in scope. A
+        # totals row names one entity, so its commodity rows carry no
+        # chemical -- the commodity pass reads the rollup, where every row
+        # names all three.
+        if stats.is_concern(params.get(stats.CONCERN_PARAM)):
+            if kind == 'chemical':
+                queryset = queryset.filter(pk__in=stats.of_concern_chemicals())
+            elif kind == 'product':
+                queryset = queryset.filter(pk__in=ProductChemical.objects
+                    .filter(chemical__in=stats.of_concern_chemicals())
+                    .values('product'))
+            elif kind == 'commodity':
+                rows = stats.concern_rows(PesticideUseRollup.objects.filter(commodity__isnull=False))
+                if year and year != 'all':
+                    rows = rows.filter(year=int(year))
+                if params.get('county'):
+                    rows = rows.filter(county__slug=params['county'])
+                queryset = queryset.filter(pk__in=rows.values('commodity'))
+
+        # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
+        # Chemicals show their preferred name; the CDPR name rides along as
+        # the detail when it differs, so a reader who typed "1080" sees why
+        # "Sodium fluoroacetate" came up.
+        def entry(obj):
+            detail = str(getattr(obj, detail_field) or '')
+            alias = getattr(obj, 'cdpr_alias', '')
+            if alias:
+                detail = f'{alias} · {detail}' if detail else alias
+            return {'id': obj.sqid, 'name': obj.display_name, 'detail': detail}
+
+        return {'results': [entry(obj) for obj in queryset[:limit]]}
+
+
+class EntitySearch(CachedEndpointMixin, EntitySearchBase):
+    """
+    Autocomplete over the chemicals, products, and commodities that appear in the use data.
+
+    `type=chemical|product|commodity` (required), `q` (the search text; fewer
+    than two characters returns no results), `year` (a year or `all`) and
+    `county` (slug) to offer only names with reported use there, `concern=1`
+    to offer only chemicals of concern (and the products carrying one), and
+    `limit` (default 10, capped at 25). Each result carries the entity's `id` (sqid), `name`, and a
+    `detail` string -- chem code, registration number, or site code.
+    """
+    cache_timeout = 60 * 5

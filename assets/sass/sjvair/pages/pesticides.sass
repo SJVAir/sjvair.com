@@ -1,0 +1,914 @@
+// The combobox dropdown shared by "Find your area" and the entity pickers:
+// an absolutely-positioned list hanging off the field above it. Both lists
+// are siblings of their field, so whatever they hang from has to be
+// `position: relative` itself.
+%combobox-results
+    position: absolute
+    z-index: 30
+    left: 0
+    right: 0
+    background: $white
+    border: 1px solid $grey-lighter
+    border-radius: 4px
+    box-shadow: 0 4px 12px rgba($black, 0.12)
+    list-style: none
+    margin: 0
+    padding: 0.25rem 0
+    max-height: 18rem
+    overflow-y: auto
+    li
+        padding: 0.4rem 0.75rem
+        cursor: pointer
+        &[aria-selected="true"], &:hover
+            background: $grey-lightest
+
+
+body.pesticides
+    .hook
+        // Photo: "Aerial View of Tractor Spraying Field" on Pexels
+        // (https://www.pexels.com/photo/37993891/), free to use. Darkened so
+        // the white text, tabs, and year pills stay readable.
+        // Darker toward the bottom, where the tabs and year pills sit, lighter
+        // behind the title so the photo shows through.
+        background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.55) 100%), url('/static/img/tractor-spraying-field.jpg')
+        background-position: center 48%
+        // The tabs sit flush on the scope bar below: no padding under them,
+        // and no rule under the tab row.
+        padding-bottom: 0
+        .lede
+            color: rgba($white, 0.92)
+            margin-bottom: 0
+        h1 a
+            font-weight: 700
+            text-decoration: none
+        .explorer-nav.tabs
+            margin-top: $size-6
+            margin-bottom: 0
+            // Six boxed tabs don't fit a phone; the coloured icons carry them.
+            +mobile
+                .tab-label
+                    display: none
+                .icon.is-small
+                    margin: 0
+                li a
+                    padding-left: 0.75em
+                    padding-right: 0.75em
+            ul
+                border-bottom: 0
+                gap: 0.35rem
+            a
+                text-decoration: none
+                border-color: transparent
+                margin-bottom: 0
+            // The tabs take the old year pills' look: translucent white for
+            // the rest, solid white with the site blue for the active one.
+            li.is-active a
+                color: $text
+                background-color: $white
+                border-color: $white
+            li:not(.is-active) a
+                color: $white
+                background-color: rgba($white, 0.14)
+                border-bottom-color: transparent
+                &:hover
+                    background-color: rgba($white, 0.24)
+                    border-bottom-color: transparent
+
+    // Duotone icon colours for the explorer's sections (same palette on the
+    // landing cards and the tab bar).
+    .explorer-icon
+        --fa-secondary-opacity: 1
+        &.is-map
+            --fa-primary-color: #{$primary}
+            --fa-secondary-color: #9ed0f5
+        &.is-chemicals
+            --fa-primary-color: #7b4fb8
+            --fa-secondary-color: #c9a7ff
+        &.is-products
+            --fa-primary-color: #6b8e23
+            --fa-secondary-color: #b7f542
+        &.is-commodities
+            --fa-primary-color: #2e8b57
+            --fa-secondary-color: #9acd32
+        &.is-records
+            --fa-primary-color: #5a6b7b
+            --fa-secondary-color: #c8d1da
+        &.is-notices
+            --fa-primary-color: #d35400
+            --fa-secondary-color: #ffc078
+        &.is-about
+            --fa-primary-color: #5a6b7b
+            --fa-secondary-color: #c8d1da
+        &.is-concern
+            --fa-primary-color: #d35400
+            --fa-secondary-color: #ffc078
+    // On the blue hero the dark primaries vanish, so inactive tabs use a
+    // white primary with the section's accent as the secondary.
+    .hook .explorer-nav li:not(.is-active) .explorer-icon
+        --fa-primary-color: rgba(255, 255, 255, 0.92)
+
+    .columns > .column
+        min-width: 0
+
+    // The scope bar under the hero: breadcrumbs on the left, the year and
+    // county pickers on the right.
+    .breadcrumbs
+        background-color: $grey-lightest
+        padding: 0.75rem 0px
+        // Pinned once it scrolls off, so the pickers are reachable from
+        // anywhere down a long page rather than a scroll to the top and back.
+        // Sticky rather than fixed: it keeps its space in the flow, so nothing
+        // below it jumps when it pins.
+        //
+        // Above the map below it: the section map's panels and popups run
+        // to z-index 1001 and would otherwise sit over the open pickers.
+        position: sticky
+        top: 0
+        z-index: 1010
+        // Flat against the content it's now covering, it needs an edge. Inset
+        // so it costs no height and nothing below shifts.
+        box-shadow: inset 0 -1px 0 $grey-lighter
+    .explorer-scope
+        display: flex
+        align-items: center
+        justify-content: space-between
+        gap: 0.75rem
+        flex-wrap: wrap
+        min-height: 2rem
+        .breadcrumb
+            margin-bottom: 0
+    .explorer-scope-pickers
+        display: flex
+        flex-wrap: wrap
+        align-items: center
+        gap: 0.5rem
+        margin-left: auto
+    .explorer-scope-picker
+        .button
+            background-color: $white
+            border-color: $grey-lighter
+            .explorer-scope-label
+                max-width: 10rem
+                overflow: hidden
+                text-overflow: ellipsis
+                white-space: nowrap
+        .dropdown-menu
+            min-width: 11rem
+    // The chosen option, in both pickers that use these menus.
+    .explorer-scope-picker, .map-toolbar-dropdown
+        .dropdown-item.is-active
+            background-color: $link
+            color: $white
+    // The years as a compact grid, so the whole span is in view at once --
+    // the scope bar's year picker and the map toolbar's Compare picker both.
+    .explorer-scope-years
+        display: grid
+        grid-template-columns: repeat(2, 1fr)
+        .dropdown-item
+            text-align: center
+            padding-left: 0.5rem
+            padding-right: 0.5rem
+    .explorer-icon.is-scope
+        --fa-primary-color: #{$link}
+        --fa-secondary-color: #{$grey-light}
+    // The chemicals-of-concern toggle sits with the pickers, with the link to
+    // its definition beside it. When it's on it fills with the notices orange
+    // and shows a check, so the state doesn't ride on colour alone.
+    .explorer-scope-concern
+        display: inline-flex
+        align-items: center
+        gap: 0.25rem
+    .explorer-scope-toggle
+        background-color: $white
+        border-color: $grey-lighter
+        &.is-set
+            background-color: #d35400
+            border-color: #d35400
+            color: $white
+            &:hover
+                background-color: #b94800
+                border-color: #b94800
+                color: $white
+        // On a phone the scope bar has no room for three labelled controls:
+        // the toggle keeps its icon, and the tooltip and aria-label still
+        // say what it is.
+        +mobile
+            .explorer-scope-label
+                display: none
+    .explorer-scope-help
+        color: $grey
+        line-height: 1
+        &:hover
+            color: $link
+
+    // Says, once, that every number below is concern-only. Inside
+    // #explorer-body, so it swaps with the page it describes.
+    .explorer-scope-banner
+        background-color: #fdf3e7
+        border-bottom: 1px solid #f3d3ac
+        color: #7a3c06
+        font-size: 0.9rem
+        padding: 0.5rem 0
+        .container
+            display: flex
+            align-items: center
+            gap: 0.5rem
+        a
+            color: #7a3c06
+            text-decoration: underline
+            white-space: nowrap
+
+    // The charts (assets/js/pesticides/charts.js draws them with uPlot). The
+    // palette lives here as custom properties the script reads.
+    .explorer-chart
+        --chart-color: #{$link}
+        --chart-grid: #{$grey-lightest}
+        --chart-muted: #{$grey}
+        --chart-text: #{$text}
+        margin: 0 0 1rem
+        .chart-title
+            font-size: 0.8rem
+            text-transform: uppercase
+            letter-spacing: 0.04em
+            color: $grey
+            margin-bottom: 0
+        // The hovered point's year and value. Reserved height, so the chart
+        // doesn't jump when the text appears.
+        .chart-readout
+            min-height: 1.4rem
+            font-size: $size-7
+            font-weight: 600
+            font-variant-numeric: tabular-nums
+            color: $text
+        .chart-canvas
+            width: 100%
+        .u-over
+            cursor: crosshair
+        // Names the dashed baseline, which the hover readout otherwise only
+        // says once the cursor is on the chart.
+        .chart-legend
+            display: flex
+            align-items: center
+            gap: 0.4rem
+            margin-top: 0.35rem
+            font-size: 0.75rem
+            color: $grey
+        .chart-key.is-line
+            display: inline-block
+            width: 1.25rem
+            border-top: 1.5px dashed $grey
+        .trend-delta
+            margin-top: 0.35rem
+            font-size: 0.9rem
+            font-variant-numeric: tabular-nums
+            color: $text
+    // Full width the trend is a huge box around a hairline; this is as wide
+    // as the line is worth reading, left-aligned in whatever column it's in.
+    .trend-chart
+        max-width: 32rem
+
+    // Months across, years down. Sized in rem rather than percentages so the
+    // cells stay square-ish and a twenty-year grid scrolls instead of
+    // squeezing twelve columns into slivers.
+    .month-heatmap
+        .heatmap-grid
+            // Full width so the twelve columns line up with the month bars
+            // above it: the same month sits over the same month.
+            width: 100%
+            table-layout: fixed
+            border-collapse: separate
+            border-spacing: 2px
+            font-size: 0.75rem
+            font-variant-numeric: tabular-nums
+            th
+                color: $grey
+                font-weight: 400
+                text-align: center
+                padding: 0
+            th[scope="row"]
+                text-align: right
+                padding-right: 0.4rem
+                white-space: nowrap
+                width: 2.6rem
+            tr.is-selected th[scope="row"]
+                color: $text
+                font-weight: 700
+        .heatmap-cell
+            // table-layout: fixed shares the row out between the twelve
+            // columns; the year label takes its content width first.
+            height: 1.15rem
+            padding: 0
+            border-radius: 2px
+            &.is-empty
+                // A month with nothing reported reads as absent, not as light.
+                background-image: none
+                opacity: 0.55
+        // Hover: the cell's own row and column, so a square can be read back
+        // to its month and its year. An outline rather than a fill, which
+        // would misreport the value the shade is carrying.
+        .heatmap-cell.is-cross, th.is-cross
+            box-shadow: inset 0 0 0 1px rgba($black, 0.25)
+        .heatmap-cell.is-hovered
+            box-shadow: inset 0 0 0 2px $text
+        th.is-cross
+            box-shadow: none
+            color: $text
+            font-weight: 700
+        .heatmap-legend
+            display: flex
+            align-items: center
+            gap: 0.3rem
+            margin-top: 0.4rem
+            font-size: 0.75rem
+            color: $grey
+        .heatmap-swatch
+            display: inline-block
+            width: 0.9rem
+            height: 0.7rem
+            border-radius: 2px
+        .heatmap-top
+            margin-left: auto
+            font-variant-numeric: tabular-nums
+
+    // Upcoming notices: a summary line per scheduled day, opening onto that
+    // day's filings. Closed by default -- a county's notices are dozens of
+    // near-identical rows, which is what buried the page before.
+    .upcoming-day
+        border-top: 1px solid $grey-lighter
+        &:last-child
+            border-bottom: 1px solid $grey-lighter
+        > summary
+            display: flex
+            align-items: center
+            flex-wrap: wrap
+            gap: 0.5rem
+            padding: 0.5rem 0.25rem
+            cursor: pointer
+            font-size: 0.9rem
+            // The native marker is replaced by the chevron in the markup.
+            list-style: none
+            &::-webkit-details-marker
+                display: none
+            &:hover
+                background-color: $grey-lightest
+        .day-caret
+            color: $grey
+            transition: transform 120ms ease-in-out
+        &[open] > summary .day-caret
+            transform: rotate(180deg)
+        @media (prefers-reduced-motion: reduce)
+            .day-caret
+                transition: none
+        .day-date
+            font-weight: 600
+            min-width: 6rem
+        .day-count, .day-acres
+            color: $grey
+            font-variant-numeric: tabular-nums
+        .day-chemicals
+            margin-left: auto
+            text-align: right
+        .day-notices
+            margin: 0.25rem 0 0.75rem
+            font-size: 0.85rem
+            th, td
+                white-space: nowrap
+                font-variant-numeric: tabular-nums
+
+    .by-year-table, .by-county-table
+        // Four numeric columns in a narrow column: keep them on one line and
+        // a touch smaller, and let the wrapper scroll before they overflow.
+        font-size: 0.9rem
+        th, td
+            white-space: nowrap
+            font-variant-numeric: tabular-nums
+    // The one data column's header is a menu, not a link (see
+    // includes/by-county-table.html).
+    .column-picker
+        .button
+            border: none
+            background: transparent
+            font-weight: 600
+            color: $text
+            padding: 0 0.25rem
+            height: auto
+            &:hover
+                color: $link
+        .dropdown-menu
+            min-width: 11rem
+        .dropdown-item.is-active
+            font-weight: 600
+
+    .by-county-table
+        th.is-ranked
+            color: $text
+        th a
+            color: $text
+            font-weight: 600
+            text-decoration: underline dotted
+            text-underline-offset: 2px
+            &:hover
+                color: $link
+        .county-swatch
+            display: inline-block
+            width: 0.8rem
+            height: 0.8rem
+            margin-right: 0.45rem
+            vertical-align: -1px
+            border: 1px solid rgba($black, 0.2)
+            border-radius: 2px
+        tr.is-selected
+            background-color: $primary
+            color: $white
+            a
+                color: $white
+                font-weight: 600
+
+    .explorer-filters, .records-filters, .notice-filters
+        padding: 1.25rem
+        .label
+            @extend .is-size-7
+            @extend .has-text-grey
+            text-transform: uppercase
+            letter-spacing: 0.04em
+        .field:not(:last-child)
+            margin-bottom: 1rem
+        ul
+            list-style: none
+            margin-left: 0
+            li
+                display: block
+                margin-bottom: 0.25em
+
+    .records-table, .notice-rows
+        // Date (1st column), Section (3rd column, MTRS names like
+        // "MDM-T17S-R15E-10"), and the Lbs/Acres columns should never wrap.
+        td.has-text-right, td:first-child, td:nth-child(3)
+            white-space: nowrap
+
+    .notice-signup
+        border-left: 3px solid $link
+        background-color: $grey-lightest
+        .notice-signup-logo
+            display: block
+            margin: 0 auto 0.75rem
+            max-width: 220px
+            img
+                display: block
+                width: 100%
+                height: auto
+        // Beside a table: logo on the left, copy and link stacked on the right.
+        &.notice-signup-side
+            +tablet
+                display: flex
+                align-items: center
+                gap: 1.25rem
+                .notice-signup-logo
+                    flex: 0 0 150px
+                    margin: 0
+                .notice-signup-copy
+                    flex: 1 1 auto
+                    p
+                        margin: 0
+                    p + p
+                        margin-top: 0.35rem
+
+    // Landing: "Find your area" beside the SprayDays box, same height.
+    .landing-top
+        .column > .box
+            height: 100%
+            margin-bottom: 0
+        .notice-signup
+            display: flex
+            flex-direction: column
+            justify-content: center
+            .notice-signup-logo
+                max-width: 150px
+
+    .within
+        .within-panels
+            +tablet
+                .within-panel + .within-panel
+                    border-left: 1px solid $grey-lighter
+        .within-panel
+            padding: 0.75rem 1.25rem
+        .within-heading
+            display: flex
+            align-items: center
+            gap: 0.4rem
+            font-weight: 600
+            margin-bottom: 0.5rem
+            .tag
+                margin-left: 0.25rem
+        .within-list
+            list-style: none
+            margin: 0
+            font-size: $size-7
+            line-height: 1.35
+            li
+                break-inside: avoid
+                padding: 0.2em 0
+            &.is-two-column
+                columns: 2
+                column-gap: 1.25rem
+        .within-zips
+            max-width: 24rem
+            .tags
+                gap: 0.3rem
+                .tag
+                    font-variant-numeric: tabular-nums
+
+    .right-now
+        border-left: 3px solid $info
+
+    .summary-sentence
+        @extend .has-text-grey-dark
+
+    .data-table
+        thead th
+            border-bottom-width: 2px
+            border-bottom-color: $grey-lighter
+            vertical-align: middle
+        th .sort-link
+            @extend .has-text-grey-dark
+            white-space: nowrap
+            .icon
+                @extend .has-text-grey-light
+            &.is-active
+                @extend .has-text-link
+                .icon
+                    @extend .has-text-link
+        tbody td
+            vertical-align: middle
+        td .tags
+            flex-wrap: nowrap
+            margin-bottom: 0
+            .tag
+                margin-bottom: 0
+
+    .notice-callout
+        display: flex
+        align-items: center
+        gap: 0.5rem
+        margin: -0.5rem 0 1.5rem
+        @extend .has-text-grey-dark
+
+    .stat-row
+        // The strip runs to five or six tiles on a district page; let them
+        // wrap rather than squeezing every label onto two lines.
+        flex-wrap: wrap
+        .level-item
+            min-width: 0
+        .heading
+            @extend .has-text-grey
+            letter-spacing: 0.02em
+        .title
+            @extend .has-text-weight-semibold
+            font-variant-numeric: tabular-nums
+        .fraction
+            font-variant-numeric: tabular-nums
+        +mobile
+            // Bulma stacks .level-items one per row on mobile, which turns a
+            // six-tile strip into a screenful. Two columns instead.
+            display: grid
+            grid-template-columns: repeat(2, 1fr)
+            gap: 0.75rem 0.5rem
+            .level-item
+                margin-bottom: 0
+
+    // A "where this came from" stamp beside a heading, not a scope year.
+    .source-stamp
+        @extend .has-text-grey
+        font-size: $size-7
+        font-weight: 400
+        text-transform: none
+        letter-spacing: 0.01em
+        white-space: nowrap
+
+    .find-area
+        // The results list is a sibling of the field, not a child, so the
+        // positioned ancestor has to be .find-area itself.
+        position: relative
+        .find-area-results
+            @extend %combobox-results
+            li.find-area-group
+                cursor: default
+                padding: 0.4rem 0.75rem 0.15rem
+                font-size: $size-7
+                font-weight: 600
+                text-transform: uppercase
+                letter-spacing: 0.03em
+                color: $grey
+                &:hover
+                    background: transparent
+            .find-area-result-type
+                margin-left: 0.4rem
+                font-size: $size-7
+                color: $grey
+                &::before
+                    content: '· '
+        .find-area-counties
+            margin-top: 0.75rem
+            font-size: $size-7
+            a
+                font-weight: 600
+            .find-area-sep
+                color: $grey-light
+                margin: 0 0.15rem
+            > span:first-child
+                margin-right: 0.25rem
+
+    .entity-picker
+        // Same deal as .find-area: the results list is a sibling of the
+        // field's control, so the picker itself is the positioned ancestor.
+        position: relative
+        .entity-picker-results
+            @extend %combobox-results
+            li.entity-picker-empty
+                cursor: default
+                color: $grey
+                &:hover
+                    background: transparent
+            .entity-picker-result-detail
+                margin-left: 0.4rem
+                font-size: $size-7
+                color: $grey
+                &::before
+                    content: '· '
+        .tag .delete
+            margin-left: 0.35rem
+
+    // The "?" that explains the thing it sits beside (includes/note-help.html).
+    .note-help
+        margin-left: 0.35rem
+        color: $grey-light
+        font-size: 0.8em
+        &:hover
+            color: $link
+        // With words in front of it the icon is the affordance, not the
+        // whole control, so the text carries the colour.
+        .note-help-label
+            margin-right: 0.25rem
+            color: $grey
+            text-decoration: underline dotted
+            text-underline-offset: 2px
+        &:hover .note-help-label
+            color: $link
+
+    // A caption under a table, outside its scrolling container.
+    .table-note
+        margin: 0.35rem 0 0
+        font-size: 0.75rem
+
+    .what-this-means
+        margin: .5rem 0 1rem
+        summary
+            cursor: pointer
+            font-weight: 600
+            color: $primary
+        dl
+            margin: .5rem 0 0
+        dt
+            font-weight: 600
+            margin-top: .5rem
+        dd
+            margin-left: 0
+            @extend .has-text-grey-dark
+
+    .detail-header
+        h1
+            font-weight: 700
+        .identifiers
+            margin-bottom: $size-7
+        .tags
+            margin-bottom: 0
+
+    // What the sparklines cover, under the rows they belong to. It names the
+    // trend lines outright (stats.series_label), so sitting under the pounds
+    // column doesn't read as describing those numbers.
+    .leaderboard-note
+        margin: 0.6rem 0 0
+        font-size: 0.7rem
+        color: $grey-light
+        text-align: right
+
+    .related-card, .leaderboard
+        height: 100%
+        // ...except a card whose list is short by nature: stretching it to
+        // match a top-ten beside it is a screenful of empty box.
+        &.is-compact
+            height: auto
+        .card-header
+            box-shadow: none
+            border-bottom: 2px solid $primary
+        .card-header-title
+            font-weight: 600
+        // The way out of a top-five board, in the header rather than a
+        // footer: it sits on the title's line instead of adding a row.
+        .view-all
+            color: $link
+            font-size: 0.8rem
+            font-weight: 600
+            white-space: nowrap
+            &:hover
+                text-decoration: underline
+        // "Lbs (2023)" wraps to two lines once three cards share a row.
+        thead th
+            white-space: nowrap
+        // The rank column, styled like the landing boards' counters: a
+        // narrow grey "1." hugging the name.
+        .rank
+            width: 1%
+            white-space: nowrap
+            text-align: right
+            padding-right: 0.15em
+            color: $grey
+            font-weight: 600
+            font-variant-numeric: tabular-nums
+        // Badges sit in the line, not under it: Bulma's tag groups carry
+        // bottom margins for wrapping rows, which here only make a badged row
+        // taller than its neighbours. A tag is 2em of 0.75rem, exactly the
+        // line box, so with the margins gone the rows all come out even.
+        .tags.is-inline
+            display: inline-flex
+            vertical-align: middle
+            margin-bottom: 0
+            .tag
+                margin-bottom: 0
+
+    // Two numbers a row, so they get their own columns: run inline they
+    // don't line up and can't be read down the column, which is the point
+    // of a ranking. Tabular figures keep the digits in step.
+    .movers-table
+        .movers-change,
+        .movers-pct
+            white-space: nowrap
+            font-variant-numeric: tabular-nums
+        .movers-pct
+            width: 1%
+            color: $grey
+        thead th
+            font-size: 0.7rem
+            text-transform: uppercase
+            letter-spacing: 0.03em
+            color: $grey
+
+    // The by-year shape beside each leaderboard row: grey enough to read as
+    // context rather than data, and it disappears on a phone, where the row
+    // needs its width for the name.
+    .spark
+        display: none
+        flex: 0 0 auto
+        line-height: 0
+        color: $grey-light
+        +tablet
+            display: inline-block
+
+    .leaderboard-list
+        // Pulled out half an em each side so the zebra stripes run past the
+        // text the way a striped table's cells do, with the text itself
+        // staying where it was.
+        margin: 0 -0.5em
+        padding-left: 0
+        list-style: none
+        counter-reset: rank
+        li
+            display: flex
+            align-items: baseline
+            gap: 0.6rem
+            padding: 0.4em 0.5em
+            border-bottom: 1px solid $grey-lightest
+            // The same stripe Bulma's `is-striped` tables use, so the landing
+            // boards match the cards on the place pages.
+            &:nth-child(even)
+                background-color: $white-bis
+            // Flex items lose their list marker, so number them with a counter.
+            &::before
+                counter-increment: rank
+                content: counter(rank) "."
+                flex: 0 0 1.6em
+                text-align: right
+                color: $grey
+                font-weight: 600
+                font-variant-numeric: tabular-nums
+            &:last-child
+                border-bottom: none
+            .entry
+                flex: 1 1 auto
+                min-width: 0
+                .tags
+                    display: inline-flex
+                    flex-wrap: wrap
+                    vertical-align: middle
+                    margin-bottom: 0
+            .lbs
+                @extend .has-text-grey
+                // A fixed column, not auto: sized to the value it holds, the
+                // pounds pushed the sparkline beside it left or right by a
+                // digit or two on every row, so the lines never lined up.
+                // Wide enough for the largest figure the boards reach --
+                // "313,996,576 lbs" across every loaded year -- and no wider,
+                // since the slack comes out of the names. Tabular figures
+                // keep the digits themselves aligned.
+                flex: 0 0 7.25em
+                text-align: right
+                white-space: nowrap
+                font-variant-numeric: tabular-nums
+
+    .county-map
+        .map-figure
+            width: 100% !important
+            border-color: $grey-lighter
+        figcaption
+            margin-top: $size-7
+
+    .section-map-legend
+        display: flex
+        flex-wrap: wrap
+        gap: 0.25rem 1rem
+        margin: 0.5rem 0 0
+        padding: 0
+        list-style: none
+        font-size: $size-7
+        li
+            display: inline-flex
+            align-items: center
+            gap: 0.35rem
+        .swatch
+            display: inline-block
+            width: 1rem
+            height: 1rem
+            border: 1px solid rgba($black, 0.25)
+            border-radius: 2px
+            // The marker rows: dots, because that's what's on the map.
+            &.is-dot
+                width: 0.7rem
+                height: 0.7rem
+                border-radius: 50%
+                border-color: $white
+                box-shadow: 0 0 0 1px rgba($black, 0.25)
+        .range
+            font-variant-numeric: tabular-nums
+
+    // The district page's schools chapter: the demographics strip reads as the
+    // chapter's intro rather than its own boxed panel, the filter bar sits
+    // tight above the table, and everything past the first fifteen rows is
+    // hidden until the toggle reveals it.
+    .district-demographics
+        margin-bottom: 1.25rem
+        .stat-row
+            margin-bottom: 0.25rem
+
+    .schools-filters
+        padding: 0
+        box-shadow: none
+        background: transparent
+        margin-bottom: 0.5rem
+        .schools-filter-fields
+            margin-bottom: 0.25rem
+            .control
+                margin-bottom: 0.5rem
+        .schools-count
+            margin-bottom: 0
+
+    .schools-table
+        tbody tr.is-collapsed
+            display: none
+            &.is-revealed
+                display: table-row
+
+    .schools-toggle
+        margin-top: 0.25rem
+
+    // htmx swap feedback. `#explorer` sets hx-indicator="body", so htmx puts
+    // `htmx-request` on <body> for the duration of every boosted request.
+    &.htmx-request::before
+        content: ''
+        position: fixed
+        top: 0
+        left: 0
+        right: 0
+        height: 2px
+        z-index: 100
+        background: $primary
+        transform-origin: 0 50%
+        animation: pesticides-progress 1.2s ease-in-out infinite
+
+    #explorer
+        transition: opacity 150ms ease-in-out
+        &.htmx-swapping
+            opacity: 0.6
+
+    @media (prefers-reduced-motion: reduce)
+        &.htmx-request::before
+            animation: none
+        #explorer
+            transition: none
+
+@keyframes pesticides-progress
+    0%
+        transform: scaleX(0)
+    50%
+        transform: scaleX(0.7)
+    100%
+        transform: scaleX(1)

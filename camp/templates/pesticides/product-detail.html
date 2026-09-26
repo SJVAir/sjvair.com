@@ -1,0 +1,20 @@
+{% extends 'pesticides/detail-base.html' %}
+{% load pesticides_explorer %}
+{% block breadcrumb-list %}
+    <li><a href="{% url 'pesticides:product-list' %}">Products</a></li>
+    <li class="is-active"><a aria-current="page">{{ object.name }}</a></li>
+{% endblock %}
+{% block identifiers %}Registration {{ object.reg_number }} · Product no. {{ object.prodno }}{% endblock %}
+{% block notes %}
+    {% if concern_excluded %}
+    {% include 'pesticides/includes/concern-note.html' with reason="None of this product's active ingredients is on the Prop 65, CARB toxic air contaminant, IARC or California restricted lists," %}
+    {% endif %}
+    {{ block.super }}
+{% endblock %}
+{% block badges %}
+    {% if object.fumigant %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:product-list' %}?fumigant=true" data-tooltip="{{ 'fumigant'|note_summary }}">Fumigant</a>{% endif %}
+    {% if object.is_restricted %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger is-light" href="{% url 'pesticides:product-list' %}?california_restricted=true" data-tooltip="{{ 'restricted_material'|note_summary }}">CA restricted</a>{% endif %}
+    {% if object.contains_prop65 %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger is-light" href="{% url 'pesticides:about' %}#prop65" data-tooltip="{{ 'prop65'|note_summary }}">Prop 65</a>{% endif %}
+    {% if object.contains_tac %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-warning is-light" href="{% url 'pesticides:about' %}#tac" data-tooltip="{{ 'carb_tac'|note_summary }}">CARB TAC</a>{% endif %}
+    {% if object.contains_iarc %}<a class="tag has-tooltip-multiline has-tooltip-arrow is-danger" href="{% url 'pesticides:about' %}#iarc" data-tooltip="{{ 'badges'|note_summary }}">IARC</a>{% endif %}
+{% endblock %}

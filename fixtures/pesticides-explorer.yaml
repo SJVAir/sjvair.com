@@ -1,0 +1,142 @@
+- model: regions.region
+  pk: 9001
+  fields:
+    name: Fresno County
+    slug: fresno
+    type: county
+    external_id: '06019'
+    metadata: {ca_county_code: '10'}
+    boundary: 9001
+- model: regions.region
+  pk: 9002
+  fields:
+    name: Kern County
+    slug: kern
+    type: county
+    external_id: '06029'
+    metadata: {ca_county_code: '15'}
+    boundary: 9002
+- model: regions.boundary
+  pk: 9001
+  fields:
+    region: 9001
+    version: 'test'
+    metadata: {}
+    geometry: SRID=4326;MULTIPOLYGON (((-120.5 36.0, -119.0 36.0, -119.0 37.0, -120.5 37.0, -120.5 36.0)))
+- model: regions.boundary
+  pk: 9002
+  fields:
+    region: 9002
+    version: 'test'
+    metadata: {}
+    geometry: SRID=4326;MULTIPOLYGON (((-120.0 35.0, -118.0 35.0, -118.0 35.9, -120.0 35.9, -120.0 35.0)))
+- model: regions.region
+  pk: 9101
+  fields:
+    name: MDM-T14S-R20E-01
+    slug: mdm-t14s-r20e-01
+    type: mtrs
+    external_id: MDM-T14S-R20E-01
+    metadata: {county_code: '10'}
+    boundary: 9101
+- model: regions.region
+  pk: 9102
+  fields:
+    name: MDM-T30S-R28E-01
+    slug: mdm-t30s-r28e-01
+    type: mtrs
+    external_id: MDM-T30S-R28E-01
+    metadata: {county_code: '15'}
+    boundary: 9102
+- model: regions.boundary
+  pk: 9101
+  fields:
+    region: 9101
+    version: 'test'
+    metadata: {}
+    geometry: SRID=4326;MULTIPOLYGON (((-119.80 36.70, -119.78 36.70, -119.78 36.72, -119.80 36.72, -119.80 36.70)))
+- model: regions.boundary
+  pk: 9102
+  fields:
+    region: 9102
+    version: 'test'
+    metadata: {}
+    geometry: SRID=4326;MULTIPOLYGON (((-119.05 35.35, -119.03 35.35, -119.03 35.37, -119.05 35.37, -119.05 35.35)))
+
+- model: pesticides.chemical
+  pk: 1
+  fields: {chem_code: 1855, name: GLYPHOSATE, cas_number: 1071-83-6, dtxsid: DTXSID1024143, iarc_group: 2A, categories: [carcinogen]}
+- model: pesticides.chemical
+  pk: 2
+  fields: {chem_code: 253, name: CHLORPYRIFOS, cas_number: 2921-88-2, dtxsid: '', iarc_group: '', categories: [toxic_air_contaminant, cholinesterase_inhibitor, california_restricted]}
+- model: pesticides.chemical
+  pk: 3
+  fields: {chem_code: 560, name: SULFUR, cas_number: 7704-34-9, dtxsid: '', iarc_group: '', categories: []}
+
+- model: pesticides.product
+  pk: 1
+  fields: {prodno: 1, reg_number: 524-475, name: ROUNDUP PRO, fumigant: false}
+- model: pesticides.product
+  pk: 2
+  fields: {prodno: 2, reg_number: 62719-220, name: LORSBAN 4E, fumigant: true}
+- model: pesticides.product
+  pk: 3
+  fields: {prodno: 3, reg_number: 100-1, name: SULFUR DUST, fumigant: false}
+
+- model: pesticides.productchemical
+  pk: 1
+  fields: {product: 1, chemical: 1, pct_active: 41.0}
+- model: pesticides.productchemical
+  pk: 2
+  fields: {product: 2, chemical: 2, pct_active: 44.9}
+- model: pesticides.productchemical
+  pk: 3
+  fields: {product: 3, chemical: 3, pct_active: 90.0}
+
+- model: pesticides.commodity
+  pk: 1
+  fields: {site_code: '3001', name: ALMOND}
+- model: pesticides.commodity
+  pk: 2
+  fields: {site_code: '29143', name: GRAPE}
+- model: pesticides.commodity
+  pk: 3
+  fields: {site_code: '2500', name: COTTON}
+
+- model: pesticides.pesticideuse
+  pk: 1
+  fields: {year: 2023, use_no: 1, county: 9001, mtrs: 9101, product: 1, chemical: 1, commodity: 1, lbs_chemical: 100, lbs_product: 250, acres_treated: 10, application_date: 2023-03-01, aerial_ground: G}
+- model: pesticides.pesticideuse
+  pk: 2
+  fields: {year: 2023, use_no: 2, county: 9001, mtrs: 9101, product: 1, chemical: 1, commodity: 2, lbs_chemical: 50, lbs_product: 125, acres_treated: 5, application_date: 2023-04-01, aerial_ground: G}
+- model: pesticides.pesticideuse
+  pk: 3
+  fields: {year: 2023, use_no: 3, county: 9002, mtrs: 9102, product: 1, chemical: 1, commodity: 1, lbs_chemical: 30, lbs_product: 75, acres_treated: 3, application_date: 2023-05-01, aerial_ground: A}
+- model: pesticides.pesticideuse
+  pk: 4
+  fields: {year: 2023, use_no: 4, county: 9001, mtrs: 9101, product: 2, chemical: 2, commodity: 1, lbs_chemical: 20, lbs_product: 45, acres_treated: 2, application_date: 2023-06-01, aerial_ground: G}
+- model: pesticides.pesticideuse
+  pk: 5
+  fields: {year: 2023, use_no: 5, county: 9002, mtrs: 9102, product: 2, chemical: 2, commodity: 3, lbs_chemical: 40, lbs_product: 90, acres_treated: 4, application_date: 2023-07-01, aerial_ground: A}
+- model: pesticides.pesticideuse
+  pk: 6
+  fields: {year: 2023, use_no: 6, county: 9001, mtrs: 9101, product: 3, chemical: 3, commodity: 2, lbs_chemical: 500, lbs_product: 550, acres_treated: 50, application_date: 2023-08-01, aerial_ground: G}
+- model: pesticides.pesticideuse
+  pk: 7
+  fields: {year: 2022, use_no: 1, county: 9001, mtrs: 9101, product: 1, chemical: 1, commodity: 1, lbs_chemical: 80, lbs_product: 200, acres_treated: 8, application_date: 2022-03-01, aerial_ground: G}
+- model: pesticides.pesticideuse
+  pk: 8
+  fields: {year: 2022, use_no: 2, county: 9002, mtrs: 9102, product: 2, chemical: 2, commodity: 3, lbs_chemical: 60, lbs_product: 135, acres_treated: 6, application_date: 2022-07-01, aerial_ground: A}
+- model: pesticides.pesticideuse
+  pk: 9
+  fields: {year: 2022, use_no: 3, county: 9001, mtrs: 9101, product: 3, chemical: 3, commodity: 2, lbs_chemical: 400, lbs_product: 440, acres_treated: 40, application_date: 2022-08-01, aerial_ground: G}
+
+- model: pesticides.pesticidenotice
+  pk: 1
+  fields: {application_id: 1, comtrs: 10M13S14E08, county: 9001, scheduled_application: 2020-01-15 08:00:00+00:00, treated_amount: 5, treated_units: Acres, application_method: Ground, products: [2], chemicals: [2]}
+- model: pesticides.pesticidenotice
+  pk: 2
+  fields: {application_id: 2, comtrs: 10M13S14E09, county: 9001, scheduled_application: 2099-01-10 08:00:00+00:00, treated_amount: 12.5, treated_units: Acres, application_method: Ground, products: [2], chemicals: [2]}
+- model: pesticides.pesticidenotice
+  pk: 3
+  fields: {application_id: 3, comtrs: 15M30S28E01, county: 9002, scheduled_application: 2099-02-01 08:00:00+00:00, treated_amount: 40, treated_units: Acres, application_method: Aerial, products: [1, 2], chemicals: [1, 2]}

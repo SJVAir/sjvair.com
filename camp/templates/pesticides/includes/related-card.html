@@ -1,0 +1,37 @@
+{% load pesticides_explorer %}
+<div class="card related-card{% if card.compact %} is-compact{% endif %}">
+    <header class="card-header">
+        <p class="card-header-title">{{ card.title }}</p>
+        {# Fewer rows than the cap means these are all of them, and there is #}
+        {# nothing for "View all" to show. #}
+        {% if not card.complete %}<a class="card-header-icon view-all" href="{{ card.show_all_url }}">View all</a>{% endif %}
+    </header>
+    <div class="card-content">
+        {% if card.rows %}
+        <table class="table is-fullwidth is-narrow is-striped">
+            <thead><tr>
+                <th class="rank"><span class="is-sr-only">Rank</span></th>
+                <th>Name</th>
+                {% if card.show_pct %}<th class="has-text-right">% active</th>{% endif %}
+                {% if card.show_lbs %}<th class="has-text-right">Lbs{% if year_label %} ({{ year_label }}){% endif %}</th>{% endif %}
+            </tr></thead>
+            <tbody>
+            {% for row in card.rows %}
+                <tr>
+                    <td class="rank">{{ forloop.counter }}.</td>
+                    <td>
+                        <a href="{{ row.obj.get_absolute_url }}{{ scope_qs }}">{{ row.obj.display_name }}</a>
+                        {% if card.kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
+                        {% if card.kind == 'products' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/product-badges.html' with product=row.obj %}</span>{% endif %}
+                    </td>
+                    {% if card.show_pct %}<td class="has-text-right">{% if row.pct_active is not None %}{{ row.pct_active|floatformat:1 }}%{% else %}—{% endif %}</td>{% endif %}
+                    {% if card.show_lbs %}<td class="has-text-right">{{ row.lbs|lbs }}</td>{% endif %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="has-text-grey">None{% if year_label %} in {{ year_label }}{% endif %}.</p>
+        {% endif %}
+    </div>
+</div>

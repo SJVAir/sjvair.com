@@ -1,0 +1,29 @@
+{% comment %}
+Autocomplete filter for one entity kind (chemical, product, or commodity),
+backed by /api/2.0/pesticides/search/ and wired up by
+assets/js/pesticides/entity-picker.js.
+
+    {% include 'pesticides/includes/entity-picker.html' with kind='chemical' label='Chemical' selected=related.chemical autosubmit=1 %}
+
+The hidden input carries the sqid under the kind's own query parameter -- the
+same `?chemical=/?product=/?commodity=` the list views already resolve -- so
+the picker works with JS off (the field simply keeps whatever is already set)
+and needs no new param scheme.
+
+`autosubmit` says whether choosing or clearing a result submits the enclosing
+form: on for the lists, whose form is boosted by htmx and swaps in place; off
+for the records form, which submits on Apply only.
+{% endcomment %}
+<div class="field entity-picker" data-kind="{{ kind }}" data-search-url="{% url 'api:v2:pesticides:entity-search' %}" data-autosubmit="{% if autosubmit %}1{% else %}0{% endif %}">
+    <label class="label" for="picker-{{ kind }}">{{ label }}</label>
+    <input type="hidden" name="{{ kind }}" value="{{ selected.sqid|default:'' }}">
+    {% if selected %}
+    <div class="control"><span class="tag is-info is-light is-medium">{{ selected.display_name }} <button type="button" class="delete is-small entity-picker-clear" aria-label="Clear"></button></span></div>
+    {% else %}
+    <div class="control has-icons-left">
+        <input class="input" type="search" id="picker-{{ kind }}" placeholder="Type to search…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="picker-{{ kind }}-results">
+        <span class="icon is-small is-left"><span class="fa-regular fa-magnifying-glass"></span></span>
+    </div>
+    <ul class="entity-picker-results" id="picker-{{ kind }}-results" role="listbox" hidden></ul>
+    {% endif %}
+</div>

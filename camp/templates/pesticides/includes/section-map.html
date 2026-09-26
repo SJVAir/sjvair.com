@@ -1,0 +1,9 @@
+{% comment %}
+The pesticides section map (assets/js/pesticides/section-map.js) in the shared
+map chrome (maps/includes/map.html). Its config is map_config.map, from
+views.section_map_config: the filter pickers on the map page only, Options
+(map-options.html) and Expand everywhere, and the legend body (map-legend.html)
+the script fills.
+{% endcomment %}
+{% include 'maps/includes/map.html' with map=map_config.map %}
+<noscript>{% if county_map %}{% include 'pesticides/includes/county-map.html' %}{% endif %}</noscript>

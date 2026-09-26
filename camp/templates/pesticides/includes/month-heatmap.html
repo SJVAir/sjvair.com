@@ -1,0 +1,38 @@
+{% load pesticides_explorer %}
+{% if has_data %}
+<figure class="explorer-chart month-heatmap">
+    <p class="chart-title">Lbs applied by month and year</p>
+    {# The hovered cell; assets/js/pesticides/heatmap.js writes here. #}
+    <p class="chart-readout" aria-live="polite"></p>
+    <table class="heatmap-grid">
+        <caption class="is-sr-only">Pounds applied by month, one row per year. Darker cells are heavier months.</caption>
+        <thead>
+            <tr>
+                <th><span class="is-sr-only">Year</span></th>
+                {% for month in months %}<th scope="col">{{ month }}</th>{% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+                <tr{% if row.selected %} class="is-selected"{% endif %}>
+                    <th scope="row">{{ row.year }}</th>
+                    {% for cell in row.cells %}
+                        <td class="heatmap-cell{% if cell.empty %} is-empty{% endif %}"
+                            style="background: {{ cell.color }}"
+                            data-readout="{{ cell.label }} · {{ cell.lbs|lbs }} lbs"
+                            title="{{ cell.label }} · {{ cell.lbs|lbs }} lbs">
+                            <span class="is-sr-only">{{ cell.label }}: {{ cell.lbs|lbs }} lbs</span>
+                        </td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <figcaption class="heatmap-legend">
+        <span>Less</span>
+        {% for color in scale %}<span class="heatmap-swatch" style="background: {{ color }}"></span>{% endfor %}
+        <span>More</span>
+        <span class="heatmap-top">peak month {{ top|lbs }} lbs</span>
+    </figcaption>
+</figure>
+{% endif %}

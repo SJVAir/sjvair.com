@@ -1,0 +1,74 @@
+{% extends 'pesticides/base.html' %}
+{% load static pesticides_explorer %}
+
+{% block title %}Notices | {{ block.super }}{% endblock %}
+{% block body-class %}{{ block.super }} notice-list{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Notices</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="content">
+    <p class="is-size-5">SprayDays notices of intent, filed before a grower applies a California-restricted material.</p>
+</div>
+
+<div class="tabs is-toggle is-small mb-4">
+    <ul>
+        <li class="{% if mode == 'active' %}is-active{% endif %}"><a href="{% qs_replace past=None archive_year=None month=None page=None %}">Active</a></li>
+        <li class="{% if mode == 'past' %}is-active{% endif %}"><a href="{% qs_replace past=1 page=None %}">Archive</a></li>
+    </ul>
+</div>
+
+<div class="columns">
+    <div class="column is-3-desktop">
+        <form method="GET" class="notice-filters box" hx-trigger="submit, change delay:250ms">
+            {% if county %}<input type="hidden" name="county" value="{{ county.slug }}">{% endif %}
+            {{ form.chemical }}
+            {{ form.product }}
+            {{ form.region }}
+            {{ form.section }}
+            {{ form.lat }}
+            {{ form.lng }}
+            {{ form.radius }}
+            {% if mode == 'past' %}
+            <input type="hidden" name="past" value="1">
+            {% if filter_year %}<input type="hidden" name="archive_year" value="{{ filter_year }}">{% endif %}
+            {% if filter_month %}<input type="hidden" name="month" value="{{ filter_month }}">{% endif %}
+            {% endif %}
+            <div class="field">
+                <label class="label" for="{{ form.method.id_for_label }}">{{ form.method.label }}</label>
+                <div class="control"><div class="select is-fullwidth">{{ form.method }}</div></div>
+            </div>
+            <div class="field is-grouped">
+                <div class="control"><button class="button is-link" type="submit">Apply</button></div>
+                <div class="control"><a class="button is-light" href="{% if mode == 'past' %}?past=1{% else %}{{ request.path }}{% endif %}">Clear</a></div>
+            </div>
+        </form>
+
+        {% if mode == 'past' and archive_months %}
+        <div class="box archive-months">
+            <p class="menu-label">Archive</p>
+            <ul class="menu-list">
+                {% for m in archive_months %}
+                <li><a href="{% qs_replace past=1 archive_year=m.year month=m.month page=None %}"{% if filter_year == m.year and filter_month == m.month %} class="is-active"{% endif %}>{{ m.label }} <span class="tag is-light">{{ m.count }}</span></a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% include 'pesticides/includes/spraydays-signup.html' %}
+    </div>
+    <div class="column">
+        {% if active_filters %}
+        <div class="tags">
+            {% for f in active_filters %}<span class="tag is-info is-light is-medium">{{ f.label }} <a class="delete is-small ml-1" href="{{ f.clear_url }}" aria-label="Remove filter"></a></span>{% endfor %}
+        </div>
+        {% endif %}
+        {% include 'pesticides/includes/section-map.html' %}
+        <p class="summary-sentence mt-4 mb-3">
+            {{ count }} notice{{ count|pluralize }}
+            {% if mode == 'active' %}currently scheduled{% else %}in the archive{% endif %}.
+        </p>
+        {% include 'pesticides/includes/notice-rows.html' %}
+        {% include 'pesticides/includes/pagination.html' %}
+    </div>
+</div>
+
+{% endblock %}

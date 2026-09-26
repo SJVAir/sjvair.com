@@ -22,9 +22,9 @@
   logo: img/logo/tech/openstreetmap.svg
   url: https://www.openstreetmap.org/
 
-- name: Leaflet
-  logo: img/logo/tech/leaflet.svg
-  url: https://leafletjs.com/
+- name: MapLibre GL JS
+  logo: img/logo/tech/maplibre.svg
+  url: https://maplibre.org/
 
 - name: PostgreSQL
   logo: img/logo/tech/postgresql.svg

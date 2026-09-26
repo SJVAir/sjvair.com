@@ -1,0 +1,30 @@
+{% load pesticides_explorer %}
+<div class="card leaderboard">
+    <header class="card-header">
+        <p class="card-header-title">{{ title }}{% if year_label %} · {{ year_label }}{% endif %}</p>
+        {# The board is a top five; this is the way to the rest of them. #}
+        {% if view_all_url %}<a class="card-header-icon view-all" href="{{ view_all_url }}">View all</a>{% endif %}
+    </header>
+    <div class="card-content">
+        {% if rows %}
+        <ol class="leaderboard-list">
+            {% for row in rows %}
+            <li>
+                <span class="entry">
+                    <a href="{{ row.obj.get_absolute_url }}{{ scope_qs }}">{{ row.obj.display_name }}</a>
+                    {% if kind == 'chemicals' %}<span class="tags is-inline ml-1">{% include 'pesticides/includes/classification-badges.html' with chemical=row.obj %}</span>{% endif %}
+                </span>
+                {# Shape, not scale: each is drawn against its own maximum. #}
+                <span class="spark">{{ row.series|sparkline }}</span>
+                <span class="lbs">{{ row.lbs|lbs }} lbs</span>
+            </li>
+            {% endfor %}
+        </ol>
+        {# What the lines break the numbers into -- the scope year's months, #}
+        {# or the loaded years when the number is the all-years total. #}
+        {% if series_label %}<p class="leaderboard-note">{{ series_label }}</p>{% endif %}
+        {% else %}
+        <p class="has-text-grey">No use data loaded.</p>
+        {% endif %}
+    </div>
+</div>

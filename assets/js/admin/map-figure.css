@@ -1,0 +1,63 @@
+.map-figure {
+  max-width: 100%;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 4px;
+  background: #e5e3df;
+}
+
+/* A figure, not a map to drag: no grab cursor. The script sets a pointer
+   over a linked area. */
+.map-figure .maplibregl-canvas-container.maplibregl-interactive,
+.map-figure .maplibregl-canvas-container.maplibregl-interactive:active {
+  cursor: default;
+}
+
+.map-figure .maplibregl-ctrl-attrib {
+  font-size: 9px;
+}
+
+.map-figure-marker svg {
+  display: block;
+  filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.3));
+}
+
+/* Labels: the SDK's popup, styled as the tooltip it replaces (a small bold
+   white box with a tip), and never in the way of the cursor, so a hover
+   label doesn't take the hover that opened it. */
+.map-figure-label,
+/* The SDK sets `pointer-events: auto` on a popup's content, which beats the
+   `none` inherited from the popup itself. A label that takes the pointer
+   makes the map think the cursor left the county underneath it: the label
+   closes, the cursor is over the county again, the label reopens, and it
+   flickers for as long as the cursor rests there. */
+.map-figure-label .maplibregl-popup-content,
+.map-figure-label .maplibregl-popup-tip {
+  pointer-events: none;
+}
+
+.map-figure-label .maplibregl-popup-content {
+  padding: 2px 5px;
+  border: 1px solid #fff;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  font-size: 11px;
+  font-weight: bold;
+  line-height: 1.4;
+  color: #222;
+  white-space: nowrap;
+}
+
+/* Without WebGL the container holds a note instead of a map. */
+.map-figure.is-unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.map-figure .map-note {
+  margin: 0;
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+}

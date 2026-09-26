@@ -101,6 +101,11 @@ class Command(BaseCommand):
                 self.stdout.write('')
 
             self._import_use_records(paths, year)
+
+            from camp.apps.pesticides import rollup, stats
+            written = rollup.rebuild_year(year)
+            self.stdout.write(f'Rollup: {written:,} rows for {year}')
+            stats.refresh_landing_stats()
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -168,9 +173,16 @@ class Command(BaseCommand):
         if cas_path:
             for row in read_csv(cas_path):
                 code = parse_int(row.get('chem_code'))
-                cas = clean(row.get('cas_number'))
+                # CDPR's column is `casnum`. It was read as `cas_number`,
+                # which matched nothing, so every one of the ~3,200 CAS
+                # numbers in this file was dropped without a word -- leaving
+                # import_comptox to match on name alone.
+                cas = clean(row.get('casnum'))
                 if code and cas:
                     cas_map[code] = cas
+            self.stdout.write(f'    {len(cas_map):,} CAS numbers from {cas_path.name}')
+        else:
+            self.stdout.write('    [chem_cas] file not found, no CAS numbers')
 
         self.stdout.write('  Importing chemicals...')
         created = updated = 0
@@ -214,18 +226,10 @@ class Command(BaseCommand):
 
     def _import_products(self, lookup_dir):
         path = self._find(lookup_dir, 'PRODUCT.txt', 'product.txt')
-        restricted_path = self._find(lookup_dir, 'RESTRICTED.txt')
 
         if not path:
             self.stdout.write('  [products] file not found, skipping')
             return
-
-        restricted = set()
-        if restricted_path:
-            for row in read_csv(restricted_path):
-                prodno = parse_int(row.get('prodno'))
-                if prodno and clean(row.get('california_restricted')):
-                    restricted.add(prodno)
 
         self.stdout.write('  Importing products...')
         created = updated = skipped = 0
@@ -244,7 +248,6 @@ class Command(BaseCommand):
                         'reg_number': reg_number,
                         'name': name,
                         'fumigant': fumigant,
-                        'california_restricted': prodno in restricted,
                     },
                 )
                 if was_created:

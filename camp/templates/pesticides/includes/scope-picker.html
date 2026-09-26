@@ -1,0 +1,95 @@
+{% load pesticides_explorer %}
+{% comment %}
+The explorer's scope: a year (or every year) and a county (or all of them),
+as two dropdowns in the scope bar. Each option is a link that keeps the rest
+of the querystring (minus the page number), so it works as a plain page and
+as a boosted swap. The year picker is left out where a page passes no
+year_options (notices), the county picker where it passes no county_options
+(a place or section page), and the "Narrow to" picker where a page
+passes scope_concern false (the About page). With none of the three, the row
+itself is left out rather than rendering an empty flex box.
+{% endcomment %}
+{% if year_options|length > 1 or county_options or scope_concern %}
+<div class="explorer-scope-pickers">
+    {% if year_options|length > 1 %}
+    <div class="dropdown is-right explorer-scope-picker" data-scope="year">
+        <div class="dropdown-trigger">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-label="Year: {% if all_years %}all years{% else %}{{ year }}{% endif %}">
+                <span class="icon"><span class="fa-duotone fa-fw fa-calendar explorer-icon is-scope" aria-hidden="true"></span></span>
+                <span class="explorer-scope-label">{% if all_years %}All years{% else %}{{ year }}{% endif %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu">
+            <div class="dropdown-content">
+                <a class="dropdown-item{% if all_years %} is-active{% endif %}" href="{% qs_replace year='all' page=None %}"{% if all_years %} aria-current="page"{% endif %}>All years</a>
+                <hr class="dropdown-divider">
+                <div class="explorer-scope-years">
+                    {% for option in year_options reversed %}
+                    <a class="dropdown-item{% if option == year and not all_years %} is-active{% endif %}" href="{% qs_replace year=option page=None %}"{% if option == year and not all_years %} aria-current="page"{% endif %}>{{ option }}</a>
+                    {% endfor %}
+                </div>
+                <hr class="dropdown-divider">
+                {# Why the newest year is the newest -- the question the year #}
+                {# list itself raises. #}
+                {% health_note 'pur_lag' as pur_lag_note %}
+                <a class="dropdown-item is-size-7 has-text-grey" href="{% url 'pesticides:about' %}#caveats"
+                   data-tooltip="{{ pur_lag_note.summary }}">{{ pur_lag_note.title }}</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% if county_options %}
+    <div class="dropdown is-right explorer-scope-picker" data-scope="county">
+        <div class="dropdown-trigger">
+            <button type="button" class="button is-small" aria-haspopup="true" aria-expanded="false" aria-label="County: {% if county %}{{ county.short_name }}{% else %}all counties{% endif %}">
+                <span class="icon"><span class="fa-duotone fa-fw fa-map explorer-icon is-scope" aria-hidden="true"></span></span>
+                <span class="explorer-scope-label">{% if county %}{{ county.short_name }}{% else %}All counties{% endif %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu">
+            <div class="dropdown-content">
+                <a class="dropdown-item{% if not county %} is-active{% endif %}" href="{% qs_replace county=None page=None %}"{% if not county %} aria-current="page"{% endif %}>All counties</a>
+                <hr class="dropdown-divider">
+                {% for slug, name in county_options %}
+                <a class="dropdown-item{% if county and county.slug == slug %} is-active{% endif %}" href="{% qs_replace county=slug page=None %}"{% if county and county.slug == slug %} aria-current="page"{% endif %}>{{ name|cut:" County" }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% comment %}
+    The chemicals-of-concern scope: one button, on every explorer page, that
+    adds or clears `?concern=1`. It narrows the whole explorer, so it lives in
+    the scope bar with the year and county pickers rather than in a page's
+    filters.
+    {% endcomment %}
+    {% if scope_concern %}
+    <div class="dropdown is-right explorer-scope-picker" data-scope="narrow">
+        <div class="dropdown-trigger">
+            <button type="button" class="button is-small{% if concern %} is-set{% endif %}" aria-haspopup="true" aria-expanded="false"
+                    aria-label="Narrow to: {% if concern %}{{ narrow_label }}{% else %}all use{% endif %}">
+                <span class="icon"><span class="fa-duotone fa-fw {% if concern %}fa-filter-circle-xmark{% else %}fa-filter{% endif %} explorer-icon is-concern" aria-hidden="true"></span></span>
+                <span class="explorer-scope-label">{% if concern %}{{ narrow_label }}{% else %}All use{% endif %}</span>
+                <span class="icon is-small"><span class="fa-regular fa-chevron-down" aria-hidden="true"></span></span>
+            </button>
+        </div>
+        <div class="dropdown-menu" role="menu">
+            <div class="dropdown-content">
+                <a class="dropdown-item{% if not concern %} is-active{% endif %}" href="{% qs_replace narrow=None concern=None page=None %}"{% if not concern %} aria-current="page"{% endif %}>All use</a>
+                <hr class="dropdown-divider">
+                {% for value, label in narrow_choices %}
+                <a class="dropdown-item{% if concern == value %} is-active{% endif %}" href="{% qs_replace narrow=value concern=None page=None %}"{% if concern == value %} aria-current="page"{% endif %}>{{ label }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {# What the narrowings mean, for anyone who can't hover a tooltip. #}
+    <a class="explorer-scope-help has-tooltip-multiline has-tooltip-arrow"
+       href="{% url 'pesticides:about' %}#concern"
+       data-tooltip="What counts as a flagged chemical, or a fumigant?"
+       aria-label="What counts as a flagged chemical, or a fumigant?"><span class="fa-regular fa-fw fa-circle-question" aria-hidden="true"></span></a>
+    {% endif %}
+</div>
+{% endif %}

@@ -83,34 +83,30 @@ class RegionManager(models.Manager.from_queryset(RegionQuerySet)):
         Resolves a community name to a single best-match region.
 
         With a type, returns the top similarity match within that type.
-        Without a type, tries Place names first, then falls back to City/CDP
-        names and returns the Place with the greatest spatial overlap.
+        Without one, tries the community layers -- City, then CDP, then Urban
+        Area -- first for an exact (case-insensitive) name, then by trigram
+        similarity at or above the threshold, returning the first type with a
+        match. The exact pass keeps "Riverdale" on the Riverdale CDP rather
+        than a fuzzy hit on the city of Riverbank; the type order makes
+        "Fresno" the city though an urban area carries the same name.
         """
         from .models import Region
 
         if type:
             return self.search_regions(name, type=type, threshold=threshold).first()
 
-        place = (
-            self.filter(type=Region.Type.PLACE)
-            .annotate(similarity=TrigramWordSimilarity(name, 'name'))
-            .filter(similarity__gte=threshold)
-            .order_by('-similarity')
-            .first()
-        )
-        if place:
-            return place
-
-        region = (
-            self.filter(type__in=[Region.Type.CITY, Region.Type.CDP], boundary__isnull=False)
-            .annotate(similarity=TrigramWordSimilarity(name, 'name'))
-            .filter(similarity__gte=threshold)
-            .order_by('-similarity')
-            .first()
-        )
-        if region:
-            return self.get_containing_region(region, Region.Type.PLACE)
-
+        types = (Region.Type.CITY, Region.Type.CDP, Region.Type.URBAN_AREA)
+        for region_type in types:
+            region = (
+                self.filter(type=region_type, boundary__isnull=False, name__iexact=name.strip())
+                .order_by('pk').first()
+            )
+            if region:
+                return region
+        for region_type in types:
+            region = self.search_regions(name, type=region_type, threshold=threshold).filter(boundary__isnull=False).first()
+            if region:
+                return region
         return None
 
     def import_or_update(cls,

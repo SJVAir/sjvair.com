@@ -19,6 +19,16 @@
       url: https://cimis.water.ca.gov/
       classes: is-6-mobile is-4-tablet is-4-desktop
 
+    - name: International Agency for Research on Cancer
+      logo: img/logo/iarc.svg
+      url: https://monographs.iarc.who.int/
+      classes: is-6-mobile is-4-tablet is-4-desktop
+
+    - name: Public Health Alliance of Southern California
+      logo: img/logo/public-health-alliance.png
+      url: https://www.thepublichealthalliance.org/
+      classes: is-6-mobile is-4-tablet is-4-desktop
+
 
     - name: Central California Environmental Justice Network
       logo: img/logo/ccejn.png
@@ -49,4 +59,9 @@
     - name: Office of Environmental Health Hazard Assessment
       logo: img/logo/oehha.png
       url: https://oehha.ca.gov/
+      classes: is-3-mobile is-2-tablet is-2-desktop
+
+    - name: California Department of Pesticide Regulation
+      logo: img/logo/cdpr.png
+      url: https://www.cdpr.ca.gov/
       classes: is-3-mobile is-2-tablet is-2-desktop

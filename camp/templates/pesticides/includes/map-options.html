@@ -1,0 +1,15 @@
+<div class="section-map-controls">
+    <span class="section-map-group-label">Shade by</span>
+    <div class="section-map-metric" role="group" aria-label="Shade by">
+        <label><input type="radio" name="metric" value="lbs_chemical" checked> Pounds</label>
+        <label><input type="radio" name="metric" value="applications"> Applications</label>
+    </div>
+    <span class="section-map-group-label">Show</span>
+    <label class="section-map-notices-toggle"><input type="checkbox" name="notices"{% if map_config.show_notices == '1' %} checked{% endif %}> Notices of intent</label>
+    <label class="section-map-locations-toggle"><input type="checkbox" name="locations"{% if map_config.show_locations == '1' %} checked{% endif %}> Schools &amp; child care</label>
+    <label class="section-map-sections-toggle"><input type="checkbox" name="sections"> All sections</label>
+    {# Experiment controls while a basemap and ramp are chosen; the script fills the options and applies them live. #}
+    <label class="section-map-select">Tiles <select name="tiles"></select></label>
+    <label class="section-map-select">Ramp <select name="ramp"></select></label>
+    <label class="section-map-select">Bins <select name="bins"></select></label>
+</div>

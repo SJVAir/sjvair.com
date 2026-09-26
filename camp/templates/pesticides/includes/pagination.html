@@ -1,0 +1,27 @@
+{% load pesticides_explorer %}
+{% if is_paginated %}
+<nav class="pagination is-centered mt-5" role="navigation" aria-label="pagination">
+    {% if page_obj.has_previous %}
+        <a class="pagination-previous" href="{% qs_replace page=page_obj.previous_page_number %}">Previous</a>
+    {% else %}
+        <a class="pagination-previous" disabled>Previous</a>
+    {% endif %}
+    {% if page_obj.has_next %}
+        <a class="pagination-next" href="{% qs_replace page=page_obj.next_page_number %}">Next</a>
+    {% else %}
+        <a class="pagination-next" disabled>Next</a>
+    {% endif %}
+    <ul class="pagination-list">
+        {% elided_page_range page_obj as pages %}
+        {% for number in pages %}
+            {% if number is None %}
+                <li><span class="pagination-ellipsis">&hellip;</span></li>
+            {% elif number == page_obj.number %}
+                <li><a class="pagination-link is-current" aria-label="Page {{ number }}" aria-current="page">{{ number }}</a></li>
+            {% else %}
+                <li><a class="pagination-link" href="{% qs_replace page=number %}" aria-label="Go to page {{ number }}">{{ number }}</a></li>
+            {% endif %}
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
