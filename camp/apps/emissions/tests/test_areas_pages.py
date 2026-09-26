@@ -119,6 +119,47 @@ class RegionPageTests(TestCase):
         assert response.status_code == 404
 
 
+class WithinSectionTests(TestCase):
+    """
+    The shared "In and around" include (camp/templates/regions/includes/
+    within.html, camp.apps.regions.nearby.regions_within) on emissions'
+    region pages: it must link this explorer, not the pesticides one it's
+    shared with (M10), and stay off a near-me page (a point, not a region).
+    """
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        self.fresno_city = Region.objects.get(type=Region.Type.CITY, slug='fresno')
+
+    def within_section(self, content):
+        match = re.search(r'<section class="within mt-6">(.*?)</section>', content, re.S)
+        assert match, 'no "In and around" section rendered'
+        return match.group(1)
+
+    def test_county_page_links_emissions_not_pesticides(self):
+        content = self.client.get(self.fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        section = self.within_section(content)
+        assert 'In Fresno County' in section
+        assert '/tools/emissions/region/' in section
+        assert '/tools/pesticides/' not in section
+
+    def test_community_page_links_emissions_not_pesticides(self):
+        content = self.client.get(self.fresno_city.get_emissions_url(), {'year': '2024'}).content.decode()
+        section = self.within_section(content)
+        assert '/tools/emissions/region/' in section
+        assert '/tools/pesticides/' not in section
+
+    def test_near_me_page_has_no_section(self):
+        response = self.client.get(
+            reverse('emissions:near-me'),
+            {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Fresno', 'year': '2024'},
+        )
+        content = response.content.decode()
+        assert 'class="within' not in content
+
+
 class NearMeTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
 
