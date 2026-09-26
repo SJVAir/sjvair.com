@@ -105,7 +105,11 @@
     var rect = menu.getBoundingClientRect();
     var margin = 8;
     var shift = 0;
-    if (rect.right > window.innerWidth - margin) shift = (window.innerWidth - margin) - rect.right;
+    // clientWidth, not window.innerWidth: the latter includes the
+    // scrollbar's own width, which would let the nudge undershoot on
+    // browsers with a visible scrollbar.
+    var viewportWidth = document.documentElement.clientWidth;
+    if (rect.right > viewportWidth - margin) shift = (viewportWidth - margin) - rect.right;
     if (rect.left + shift < margin) shift = margin - rect.left;
     if (shift) menu.style.transform = 'translateX(' + Math.round(shift) + 'px)';
   }
@@ -125,9 +129,12 @@
         trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
         if (!open) return;
         if (shell.module && shell.module.onDropdownOpen) shell.module.onDropdownOpen();
-        var focusable = dropdown.querySelector('input[type="search"], select');
-        if (focusable) focusable.focus();
+        // Nudge before focusing: focus() can itself scroll the page (even
+        // with preventScroll on some browsers) and shift the menu's
+        // measured position, so settle the transform first.
         keepMenuInView(dropdown.querySelector('.dropdown-menu'));
+        var focusable = dropdown.querySelector('input[type="search"], select');
+        if (focusable) focusable.focus({ preventScroll: true });
       });
       // Clicks inside the menu (typing, picking) shouldn't close it.
       var menu = dropdown.querySelector('.dropdown-menu');
@@ -146,6 +153,11 @@
       },
       resize: function () {
         if (shell.expanded) fitBelowNavbar(shell);
+        // A nudged dropdown menu was measured against the viewport at
+        // open time; rather than re-measure on every resize/orientation
+        // change, just close it -- the reader can reopen it in the new
+        // layout.
+        closeDropdowns(shell, null);
       },
     };
     document.addEventListener('click', handlers.click);
