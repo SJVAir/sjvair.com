@@ -201,6 +201,20 @@ class MapTests(ViewTestCase):
         assert views.map_view({'level': 'tract'}, 'zipcode')['default_level'] == 'zipcode'
         assert views.map_view({})['default_level'] == 'zipcode'
 
+    def test_map_view_compare_and_compare_options(self):
+        # No year to compare against: neither a compare nor any options,
+        # whatever the request asks for.
+        result = views.map_view({'compare': '2023'}, year=None)
+        assert result['compare'] == '' and result['compare_options'] == []
+        # A year to compare against: every other loaded year is an option,
+        # newest first, and a valid request resolves.
+        result = views.map_view({'compare': '2023'}, year=2024)
+        assert result['compare'] == 2023 and result['compare_options'] == [2023]
+        # The scope year itself and an unloaded year both resolve to nothing.
+        assert views.map_view({'compare': '2024'}, year=2024)['compare'] == ''
+        assert views.map_view({'compare': '1999'}, year=2024)['compare'] == ''
+        assert views.map_view({}, year=2024)['compare'] == ''
+
     def test_compact_maps_have_no_sector_filter(self):
         content = self.get('sector-detail', 'glass').content.decode()
         assert 'map-wrap is-compact' in content

@@ -123,7 +123,7 @@ class FacilityGeoJSONTests(TestCase):
     def test_collection_properties(self):
         response = self.client.get(reverse('api:v2:emissions:geojson'), {'toxics': 1})
         body = response.json()
-        assert body['properties'] == {'year': 2024, 'pollutant': 'benzene', 'label': 'Benzene', 'unit': 'lbs', 'compare': ''}
+        assert body['properties'] == {'year': 2024, 'pollutant': 'benzene', 'label': 'Benzene', 'unit': 'lbs', 'compare': None}
         plant = [f for f in body['features'] if f['properties']['name'] == 'TEST PLANT'][0]
         assert plant['properties']['value'] == 2.0
 
@@ -140,8 +140,23 @@ class FacilityGeoJSONTests(TestCase):
         for bad in (2024, 1999, 'garbage'):
             response = self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': bad})
             body = response.json()
-            assert body['properties']['compare'] == ''
+            assert body['properties']['compare'] is None
             assert all('value_prev' not in f['properties'] for f in body['features'])
+
+    def test_compare_with_a_sector_filter(self):
+        response = self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': 2023, 'sector': 'glass'})
+        body = response.json()
+        assert [f['properties']['name'] for f in body['features']] == ['TEST PLANT']
+        assert body['features'][0]['properties']['value_prev'] == 3.0
+
+    def test_compare_below_the_small_baseline_floor_is_not_comparable(self):
+        # TEST CEMENT reported 0 NOx in 2023: too small a baseline for a
+        # percent change to mean anything (stats.SMALL_BASELINE_FLOOR).
+        EmissionsRecord.objects.create(facility=Facility.objects.get(name='TEST CEMENT'), year=2023, nox='0')
+        response = self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': 2023})
+        body = response.json()
+        cement = [f for f in body['features'] if f['properties']['name'] == 'TEST CEMENT'][0]
+        assert cement['properties']['value_prev'] is None
 
     def test_filters(self):
         assert len(self.features(minor=1)) == 3
@@ -193,13 +208,28 @@ class AreaValuesEndpointTests(TestCase):
         response = self.client.get(reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2023'})
         data = response.json()
         assert data['compare'] == 2023
-        area = data['areas'][0]
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        area = next(a for a in data['areas'] if a['id'] == fresno.sqid)
         assert {'total_prev', 'per_sq_mi_prev', 'per_1k_residents_prev'} <= set(area)
+        # TEST PLANT, Fresno's only facility here, reported 3.0 tons NOx in
+        # 2023 -- the compared year's sum.
+        assert area['total_prev'] == 3.0
+
+    def test_compare_below_the_small_baseline_floor_is_not_comparable(self):
+        # Kern's compared-year (2023) NOx sum is 0 (TEST CEMENT has no 2023
+        # record; TEST GAS STATION's does, but reports rog/tog, not nox) --
+        # too small a baseline for a percent change to mean anything.
+        response = self.client.get(reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2023'})
+        data = response.json()
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        area = next(a for a in data['areas'] if a['id'] == kern.sqid)
+        assert area['total'] == 100.0
+        assert area['total_prev'] is None
 
     def test_compare_ignores_the_scope_year(self):
         response = self.client.get(reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2024'})
         data = response.json()
-        assert data['compare'] == '' and 'total_prev' not in data['areas'][0]
+        assert data['compare'] is None and 'total_prev' not in data['areas'][0]
 
 
 class DairyEndpointTests(TestCase):

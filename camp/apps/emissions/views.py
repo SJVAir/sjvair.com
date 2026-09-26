@@ -282,11 +282,12 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
 
 def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None):
     """
-    The map's view, level, measure and Areas-view year comparison from a
-    request's GET, validated; defaults when unknown. Also the page's default
-    level: the map leaves defaults out of the URLs it writes, so it needs to
-    know it. `year` (the scope's) resolves `compare` and its option list; a
-    caller with no year to compare against (none passed) gets neither.
+    The map's view, level, measure and compared year (Compare applies to
+    both the Facilities and Areas views) from a request's GET, validated;
+    defaults when unknown. Also the page's default level: the map leaves
+    defaults out of the URLs it writes, so it needs to know it. `year` (the
+    scope's) resolves `compare` and its option list; a caller with no year
+    to compare against (none passed) gets neither.
     """
     view = get.get('view')
     level = get.get('level')
@@ -349,9 +350,10 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'level': areas_view['level'] if areas_view else '',
         'measure': areas_view['measure'] if areas_view else '',
         'default_level': areas_view['default_level'] if areas_view else '',
-        # The year the Areas view shades the change against: a toolbar
-        # control (like the pesticides map's), not explorer scope -- it
-        # stays out of scope_params, so no other page offers or carries it.
+        # The year Compare shades the change against, in both views (a
+        # facility's own circle too, not just Areas): a toolbar control
+        # (like the pesticides map's), not explorer scope -- it stays out
+        # of scope_params, so no other page offers or carries it.
         'compare': areas_view['compare'] if areas_view else '',
         # Only for the Compare legend's "change <compare> to <year>" title.
         'year': scope.year or '',

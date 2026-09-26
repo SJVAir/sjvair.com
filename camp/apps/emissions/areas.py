@@ -118,7 +118,11 @@ def area_values(scope, level, sector=None, compare=None):
     `_prev` suffix, for every region already in the result -- both years
     travel together so the map's Compare toggle needs no refetch. A region
     with nothing in `scope` doesn't appear even if `compare`'s year had
-    facilities there: the view is always framed on the current year's map.
+    facilities there: the view is always framed on the current year's map,
+    so a region whose only facilities closed before it isn't shown. The
+    `_prev` fields are left out (null) when the compared year's total is
+    below stats.SMALL_BASELINE_FLOOR for the unit -- too small a baseline
+    for a percent change to mean anything.
     """
     field = scope.pollutant.key
 
@@ -142,6 +146,8 @@ def area_values(scope, level, sector=None, compare=None):
             }
             if compare:
                 prev_total = scope.pollutant.display(compare_sums[pk]) if pk in compare_sums else None
+                if prev_total is not None and not stats.comparable_baseline(prev_total, scope.pollutant.unit):
+                    prev_total = None
                 row.update({
                     'total_prev': prev_total,
                     'per_sq_mi_prev': _per(prev_total, miles.get(pk)),
@@ -152,7 +158,7 @@ def area_values(scope, level, sector=None, compare=None):
         without_point = 0 if level == Region.Type.COUNTY else rows.filter(facility__point=None).count()
         return {
             'level': level, 'unit': scope.pollutant.unit, 'facilities_without_point': without_point,
-            'compare': compare or '', 'areas': result,
+            'compare': compare or None, 'areas': result,
         }
     return cache.get_or_set(scope.key('areas', level, sector or '', compare or ''), compute, stats.CACHE_TIMEOUT)
 

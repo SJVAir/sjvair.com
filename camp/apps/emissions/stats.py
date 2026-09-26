@@ -27,6 +27,12 @@ CACHE_TIMEOUT = 60 * 60 * 24
 # A year-over-year change larger than this gets the "may reflect estimation
 # methods" note on a facility page.
 LARGE_CHANGE = 0.5
+# A percent change against a compared-year value below this floor (in the
+# pollutant's own display unit -- tons/yr for criteria, lbs/yr for toxics)
+# reads as "not comparable" instead of a swing that's mostly noise off a
+# near-zero baseline. Applied wherever a compared year's value is computed,
+# for both the Facilities and Areas compare paths.
+SMALL_BASELINE_FLOOR = {'tons': 1.0, 'lbs': 10.0}
 SORTS = ('-value', 'value', 'rank', '-rank', 'name', '-name', 'city', '-city', 'county', '-county')
 SORT_FIELDS = {'name': 'facility__name', 'county': 'facility__county__name'}
 # The sectors table's sorts: the sector's name, its facility count, and its
@@ -56,15 +62,27 @@ def latest_year():
     return years[-1] if years else None
 
 
+def comparable_baseline(value, unit):
+    """
+    Whether a compared-year value (already converted to `unit`) clears
+    SMALL_BASELINE_FLOOR -- False for None, 0, or anything below the floor,
+    which the map and popups show as "not comparable" rather than a percent.
+    """
+    if value is None:
+        return False
+    return value >= SMALL_BASELINE_FLOOR.get(unit, SMALL_BASELINE_FLOOR['tons'])
+
+
 def resolve_compare_param(requested, year):
     """
-    The year the map's Areas view shades a change against, for a raw
-    `?compare=` value: None when there's nothing to compare (no loaded
-    years, no scope year, the same year, or a year with no data). Mirrors
-    the pesticides map's `resolve_compare_param` -- the change is always the
-    scope year minus this one, so a later comparison year just inverts the
-    sign; every surface names the pair in order rather than showing a bare
-    signed number.
+    The year the map's Compare shades a change against, in both the
+    Facilities and Areas views, for a raw `?compare=` value: None when
+    there's nothing to compare (no loaded years, no scope year, the same
+    year, or a year with no data). Mirrors the pesticides map's
+    `resolve_compare_param` -- the change is always the scope year minus
+    this one, so a later comparison year just inverts the sign; every
+    surface names the pair in order rather than showing a bare signed
+    number.
     """
     years = available_years()
     if year is None or not years:

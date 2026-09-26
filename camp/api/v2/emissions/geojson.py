@@ -37,7 +37,11 @@ class FacilityGeoJSONBase(generics.Endpoint):
             }
             if compare:
                 prev_value = prev_by_facility.get(facility.pk)
-                properties['value_prev'] = scope.pollutant.display(prev_value) if prev_value is not None else None
+                if prev_value is not None:
+                    prev_value = scope.pollutant.display(prev_value)
+                    if not stats.comparable_baseline(prev_value, scope.pollutant.unit):
+                        prev_value = None
+                properties['value_prev'] = prev_value
             features.append({
                 'type': 'Feature',
                 'id': facility.sqid,
@@ -54,7 +58,7 @@ class FacilityGeoJSONBase(generics.Endpoint):
                 'pollutant': scope.pollutant.key,
                 'label': scope.pollutant.label,
                 'unit': scope.pollutant.unit,
-                'compare': compare or '',
+                'compare': compare or None,
             },
             'features': features,
         }
@@ -67,7 +71,11 @@ class FacilityGeoJSON(CachedEndpointMixin, FacilityGeoJSONBase):
     ?compare=<year> (a loaded year other than the scope's, ignored
     otherwise) for that year's value under `value_prev`, alongside the
     current one. `value`/`value_prev` are in the pollutant's unit (tons/yr,
-    or lbs/yr for toxics).
+    or lbs/yr for toxics). `value_prev` is left out (null) when the compared
+    year's value is below stats.SMALL_BASELINE_FLOOR for the unit -- too
+    small a baseline for a percent change to mean anything -- and this
+    endpoint is always scoped to the current year's facilities, so one that
+    closed before it isn't shown even if it reported in the compared year.
     """
     cache_timeout = 60 * 60
     cache_key_version = 2
