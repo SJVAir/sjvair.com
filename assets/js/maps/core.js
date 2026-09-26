@@ -30,6 +30,58 @@
   var PHONE_QUERY = '(max-width: 768px)';
   var EMPTY = { type: 'FeatureCollection', features: [] };
 
+  // Candidate sequential colour ramps for the `?ramp=` experiment control
+  // (the Options menu's Ramp select), shared by every map that offers one
+  // (the pesticides section map, the emissions facility map). `sampleRamp`
+  // interpolates any of these to however many classes a map needs.
+  var RAMPS = {
+    blues: ['#deebf7', '#9ecae1', '#6baed6', '#3182bd', '#08519c'],
+    purd: ['#f1eef6', '#d7b5d8', '#df65b0', '#dd1c77', '#980043'],
+    bupu: ['#edf8fb', '#b3cde3', '#8c96c6', '#8856a7', '#810f7c'],
+    ylorbr: ['#ffffd4', '#fed98e', '#fe9929', '#d95f0e', '#993404'],
+    putrid: ['#eef2b8', '#cfd96e', '#a3b53c', '#72871f', '#3f4f12'],
+    bile: ['#f5f2a4', '#d9d95a', '#a9b62e', '#6b7615', '#3a400c'],
+    // Putrid with a paler, greyer light end and the middle steps spread apart.
+    putrid2: ['#eceedc', '#c9d18c', '#98ab3f', '#5f7a1c', '#2f3f0e'],
+    // Multi-hue sequential: yellow-green through teal to navy (ColorBrewer YlGnBu).
+    ylgnbu: ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494'],
+    // Cool teal-to-green (ColorBrewer PuBuGn).
+    pubugn: ['#f6eff7', '#bdc9e1', '#67a9cf', '#1c9099', '#016c59'],
+    // Perceptually uniform (matplotlib): mako and cividis.
+    mako: ['#def5e5', '#60ceac', '#3497a9', '#3e5ba9', '#382a54'],
+    cividis: ['#fde725', '#c7b76e', '#7f7c75', '#4b5a6a', '#00224e'],
+    // The emissions facility map's original default: ColorBrewer Blues
+    // without its palest step, which vanishes on the basemap.
+    steelblue: ['#c6dbef', '#9ecae1', '#6baed6', '#3182bd', '#08519c'],
+  };
+  // Diverging ramps for a change/compare view, stored already reversed:
+  // index 0 is the largest decrease, the last the largest increase.
+  var DIVERGING_RAMPS = {
+    rdbu: ['#2166ac', '#67a9cf', '#d1e5f0', '#f7f7f7', '#fddbc7', '#ef8a62', '#b2182b'],
+    puor: ['#542788', '#998ec3', '#d8daeb', '#f7f7f7', '#fee0b6', '#f1a340', '#b35806'],
+    brbg: ['#01665e', '#5ab4ac', '#c7eae5', '#f5f5f5', '#f6e8c3', '#d8b365', '#8c510a'],
+    // The emissions facility map's original default change ramp
+    // (ColorBrewer RdBu, at its own 7-class fixed breaks).
+    rdbu7: ['#2166ac', '#4393c3', '#92c5de', '#f7f7f7', '#f4a582', '#d6604d', '#b2182b'],
+  };
+
+  // `count` colours evenly spaced along a ramp, interpolated in RGB between
+  // its stops, so a ramp serves any number of classes.
+  function sampleRamp(ramp, count) {
+    if (count <= 1) return [ramp[ramp.length - 1]];
+    var stops = ramp.map(function (hex) {
+      return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+    });
+    var out = [];
+    for (var i = 0; i < count; i++) {
+      var t = (i * (stops.length - 1)) / (count - 1);
+      var lo = Math.floor(t), hi = Math.min(stops.length - 1, lo + 1), f = t - lo;
+      var rgb = stops[lo].map(function (v, ch) { return Math.round(v + (stops[hi][ch] - v) * f); });
+      out.push('#' + rgb.map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join(''));
+    }
+    return out;
+  }
+
   function styleFor(id) {
     var path = TILE_STYLE_PATHS[id];
     var style = path ? maptilersdk.MapStyle : null;
@@ -388,6 +440,8 @@
   window.SJVAirMaps = {
     TILE_STYLES: Object.keys(TILE_STYLE_PATHS),
     EMPTY: EMPTY,
+    ramps: { sequential: RAMPS, diverging: DIVERGING_RAMPS },
+    sampleRamp: sampleRamp,
     styleFor: styleFor,
     tileStyle: tileStyle,
     webglAvailable: webglAvailable,
