@@ -567,3 +567,50 @@ class ConcernIncludesRestrictedTests(TestCase):
         plain = Chemical.objects.create(chem_code=9501, name='INERT ONLY', categories=[])
         assert plain.is_of_concern is False
         assert plain not in stats.of_concern_chemicals()
+
+
+class SeriesFollowsTheScopeTests(RollupTestMixin, TestCase):
+    """
+    A sparkline breaks down the number beside it: the scope year's months, or
+    the loaded years when the number is the all-years total. A decade-long
+    line next to one year's pounds covered a different period than the rest
+    of the row.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def ranked(self, year=None, all_years=False):
+        rows = PesticideUseRollup.objects.all()
+        return stats.with_series(
+            rows, 'chemical',
+            stats.top_related(rows, year, 'chemical', all_years=all_years),
+            year=year, all_years=all_years)
+
+    def test_a_single_year_gets_that_year_by_month(self):
+        rows = self.ranked(year=2023)
+        assert rows, 'nothing ranked'
+        for row in rows:
+            assert len(row.series) == 12, row.obj.name
+        # Chemical 1 in 2023: 100 in March, 50 in April, 30 in May.
+        by_name = {r.obj.name: r.series for r in rows}
+        assert by_name['GLYPHOSATE'][2:5] == [100.0, 50.0, 30.0]
+
+    def test_the_months_sum_to_the_number_beside_them(self):
+        for row in self.ranked(year=2023):
+            assert round(sum(row.series), 6) == round(row.lbs, 6), row.obj.name
+
+    def test_all_years_gets_one_point_per_loaded_year(self):
+        rows = self.ranked(all_years=True)
+        years = stats.available_years()
+        for row in rows:
+            assert len(row.series) == len(years), row.obj.name
+        by_name = {r.obj.name: r.series for r in rows}
+        assert by_name['GLYPHOSATE'] == [80.0, 180.0]   # 2022, 2023
+
+    def test_the_label_says_which(self):
+        assert stats.series_label(2023) == 'Trend lines show pounds per month in 2023'
+        assert stats.series_label(None, all_years=True) == 'Trend lines show pounds per year, 2022–2023'
+        assert stats.series_label(None) == ''

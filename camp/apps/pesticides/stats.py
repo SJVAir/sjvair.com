@@ -1030,12 +1030,61 @@ def yearly_series(rows, field, objects, lbs_field='lbs_chemical'):
     return series
 
 
-def with_series(rows, field, ranked, lbs_field='lbs_chemical'):
-    """`ranked` (top_related rows) with a `series` on each, for its sparkline."""
-    series = yearly_series(rows, field, [row.obj for row in ranked], lbs_field)
+def monthly_series(rows, field, objects, year, lbs_field='lbs_chemical'):
+    """
+    {pk: [pounds per month]} for `year`, twelve entries, zero-filled. Month 0
+    (undated) is left out, as by_month() leaves it out, so the twelve points
+    are the twelve months and nothing else.
+
+    One group-by for the whole board, like yearly_series().
+    """
+    ids = [obj.pk for obj in objects]
+    if year is None or not ids:
+        return {}
+    grouped = (rows.filter(year=year, month__gte=1, **{f'{field}__in': ids})
+        .values(field, 'month')
+        .annotate(lbs=Sum(lbs_field)))
+    series = {pk: [0.0] * 12 for pk in ids}
+    for row in grouped:
+        if row[field] in series:
+            series[row[field]][row['month'] - 1] = row['lbs'] or 0
+    return series
+
+
+def with_series(rows, field, ranked, lbs_field='lbs_chemical', year=None, all_years=False):
+    """
+    `ranked` (top_related rows) with a `series` on each, for its sparkline.
+
+    The line breaks down the number beside it, so it follows the scope: the
+    months of the scope year, or the loaded years when the number is the
+    all-years total. A line covering a decade next to one year's pounds
+    described a different period than everything else on the row.
+    """
+    objects = [row.obj for row in ranked]
+    if all_years:
+        series = yearly_series(rows, field, objects, lbs_field)
+    else:
+        series = monthly_series(rows, field, objects, year, lbs_field)
     for row in ranked:
         row.series = series.get(row.obj.pk) or []
     return ranked
+
+
+def series_label(year, all_years=False):
+    """
+    What the sparklines on a board cover. Names the trend lines rather than
+    just stating a period: the caption sits under a column of pounds, and a
+    bare span there reads as describing those numbers.
+    """
+    if all_years:
+        years = available_years()
+        if not years:
+            return ''
+        span = str(years[0]) if years[0] == years[-1] else f'{years[0]}\u2013{years[-1]}'
+        return f'Trend lines show pounds per year, {span}'
+    if year is None:
+        return ''
+    return f'Trend lines show pounds per month in {year}'
 
 
 def landing_key(year, concern=False):
@@ -1097,12 +1146,15 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         # sparkline that says whether a big number is growing or receding.
         'top_products': with_series(uses, 'product',
             top_related(uses, year, 'product', lbs_field='lbs_product',
-                limit=RELATED_LIMIT, all_years=all_years), 'lbs_product'),
-        'top_chemicals': with_series(uses, 'chemical', top_chemicals),
+                limit=RELATED_LIMIT, all_years=all_years), 'lbs_product',
+            year=year, all_years=all_years),
+        'top_chemicals': with_series(uses, 'chemical', top_chemicals, year=year, all_years=all_years),
         'top_commodities': with_series(uses, 'commodity',
-            top_related(uses, year, 'commodity', limit=RELATED_LIMIT, all_years=all_years)),
+            top_related(uses, year, 'commodity', limit=RELATED_LIMIT, all_years=all_years),
+            year=year, all_years=all_years),
         'by_county': county_totals(year, all_years, concern) if (year or all_years) else [],
         'by_year': by_year(totals),
+        'series_label': series_label(year, all_years),
     }
     # Under the concern scope every leaderboard is already of concern, so
     # the dedicated one would just restate the top chemicals.
@@ -1118,7 +1170,8 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         of_concern = top_chemicals_of_concern(top_chemicals_all, uses, year,
             limit=RELATED_LIMIT * 2, all_years=all_years)
         kept = [row for row in of_concern if row.obj.pk not in listed]
-        data['top_chemicals_of_concern'] = with_series(uses, 'chemical', kept[:RELATED_LIMIT])
+        data['top_chemicals_of_concern'] = with_series(
+            uses, 'chemical', kept[:RELATED_LIMIT], year=year, all_years=all_years)
     return data
 
 

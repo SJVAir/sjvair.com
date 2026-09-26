@@ -368,21 +368,6 @@ SPARK_HEIGHT = 18
 SPARK_PAD = 2
 
 
-@register.simple_tag
-def series_label():
-    """
-    What a sparkline covers, for the caption under a board. Every series is
-    aligned to the loaded years (stats.yearly_series), so one label serves
-    the page.
-    """
-    years = stats.available_years()
-    if not years:
-        return ''
-    if years[0] == years[-1]:
-        return f'Lbs per year, {years[0]}'
-    return f'Lbs per year, {years[0]}\u2013{years[-1]}'
-
-
 @register.filter
 def sparkline(values):
     """
@@ -392,7 +377,7 @@ def sparkline(values):
 
     Stays aria-hidden and unlabelled: the row already reads as its name and
     its pounds, and what the line covers is said once under the board
-    (`series_label`) rather than five times over. Keeping it out of here also
+    (stats.series_label) rather than five times over. Keeping it out of here also
     keeps this a pure formatting filter with no database behind it.
 
     Empty, single-point and flat-zero series render nothing: a line needs two
