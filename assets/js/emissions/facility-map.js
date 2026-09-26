@@ -712,7 +712,7 @@
       }).join('') + '</div>' : '';
       legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + changeSizes +
         changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>' +
-        'New, or none reported in ' + escapeHtml(String(this.legendData.compare)) + '</p>' +
+        'New, too small to compare, or none reported in ' + escapeHtml(String(this.legendData.compare)) + '</p>' +
         '<p class="legend-note">Facilities that closed before ' + escapeHtml(this.data.year || '') +
         ' aren\'t shown.</p>';
       return;
@@ -768,7 +768,7 @@
         escapeHtml(String(data.compareActive)) + ' to ' + escapeHtml(this.data.year || '');
       legend.innerHTML = '<p class="legend-title">' + title + '</p>' +
         changeBins('is-area') +
-        '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>New, or none reported in ' +
+        '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>New, too small to compare, or none reported in ' +
         escapeHtml(String(data.compareActive)) + (this.measure === 'per_resident' ? ', or no population' : '') + '</p>' +
         '<p class="legend-note">Areas whose only facilities closed before ' + escapeHtml(this.data.year || '') +
         ' aren\'t shown.</p>';
