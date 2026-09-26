@@ -683,13 +683,14 @@ body.pesticides
         .tags
             margin-bottom: 0
 
-    // What the sparklines cover, under the rows they belong to. Left, not
-    // right: against the right edge it sits under the pounds column and
-    // reads as describing those numbers.
+    // What the sparklines cover, under the rows they belong to. It names the
+    // trend lines outright (stats.series_label), so sitting under the pounds
+    // column doesn't read as describing those numbers.
     .leaderboard-note
         margin: 0.6rem 0 0
         font-size: 0.7rem
         color: $grey-light
+        text-align: right
 
     .related-card, .leaderboard
         height: 100%
@@ -802,7 +803,15 @@ body.pesticides
                     margin-bottom: 0
             .lbs
                 @extend .has-text-grey
-                flex: 0 0 auto
+                // A fixed column, not auto: sized to the value it holds, the
+                // pounds pushed the sparkline beside it left or right by a
+                // digit or two on every row, so the lines never lined up.
+                // Wide enough for the largest figure the boards reach --
+                // "313,996,576 lbs" across every loaded year -- and no wider,
+                // since the slack comes out of the names. Tabular figures
+                // keep the digits themselves aligned.
+                flex: 0 0 7.25em
+                text-align: right
                 white-space: nowrap
                 font-variant-numeric: tabular-nums
 
