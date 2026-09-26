@@ -30,7 +30,7 @@ def regions_within(region, *, url_method, cache_prefix):
     `url_method` is the name of the `Region` method that builds each
     entry's link ('get_pesticides_url' or 'get_emissions_url').
     """
-    key = f'{cache_prefix}:within:{region.pk}'
+    key = f'{cache_prefix}:{region.pk}'
     data = cache.get(key)
     if data is not None:
         return data
