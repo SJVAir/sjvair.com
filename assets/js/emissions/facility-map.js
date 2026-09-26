@@ -33,9 +33,19 @@
   var M = window.SJVAirMaps;
   if (!M || !M.register) return;
 
-  // ColorBrewer Blues, one colour per class below (the pesticides map's
-  // default ramp, without its palest step, which vanishes on the basemap).
-  var RAMP = ['#c6dbef', '#9ecae1', '#6baed6', '#3182bd', '#08519c'];
+  // The ramps live on the map core (assets/js/maps/core.js), shared with
+  // the pesticides section map's Options menu. RAMP and CHANGE_RAMP are
+  // reassigned by onRampChange (below) when the reader picks a different
+  // one from the Options menu's Ramp select; every function that shades by
+  // them reads the variable at call time, so a change takes effect at once.
+  // 'steelblue'/'rdbu7' are this map's original defaults (ColorBrewer Blues
+  // without its palest step, which vanishes on the basemap; ColorBrewer
+  // RdBu at this map's own 7-class fixed breaks) -- sampling either at its
+  // native length reproduces the exact original colours.
+  var DEFAULT_RAMP = 'steelblue';
+  var DEFAULT_DRAMP = 'rdbu7';
+  var sampleRamp = M.sampleRamp;
+  var RAMP = sampleRamp(M.ramps.sequential[DEFAULT_RAMP], 5);
   // Fixed classes on a log scale, per display unit: stable across pollutants,
   // counties and years, and readable ("1-10 tons"). Toxics are shown in lbs.
   var CLASS_BREAKS = { tons: [0.1, 1, 10, 100], lbs: [1, 10, 100, 1000] };
@@ -54,7 +64,7 @@
   // across a measure, county or year change, at the cost of an outlier
   // pinning the top bucket.
   var CHANGE_BREAKS = [-0.5, -0.25, -0.1, 0.1, 0.25, 0.5];
-  var CHANGE_RAMP = ['#2166ac', '#4393c3', '#92c5de', '#f7f7f7', '#f4a582', '#d6604d', '#b2182b'];
+  var CHANGE_RAMP = sampleRamp(M.ramps.diverging[DEFAULT_DRAMP], CHANGE_BREAKS.length + 1);
   var LEVEL_NAMES = { county: '', zipcode: 'ZIP ', tract: 'Tract ' };
   var EMPTY_COLOR = '#8a94a3';
   var HIGHLIGHT_COLOR = '#d35400';
@@ -207,6 +217,21 @@
     this.dairyData = null;
     this.dairyRequest = 0;
     this.dairyPopupRequest = 0;
+    // The Options menu's experiment controls: basemap style and colour
+    // ramp, applied live and written to the URL (?tiles=, ?ramp=, ?dramp=).
+    // Not page scope (readViewState), so they survive a scope swap
+    // untouched. The shell already resolved the basemap style from
+    // ?tiles=/data-style; the ramp names are read the same way pesticides'
+    // section map reads ?ramp=, but kept as two names (sequential and
+    // diverging) so switching Compare on and off doesn't forget either.
+    this.defaultTileStyle = this.data.style || 'dataviz';
+    this.tileStyle = shell.tileStyle;
+    var rampMatch = /[?&]ramp=([a-z0-9]+)/.exec(window.location.search || '');
+    this.rampName = rampMatch && M.ramps.sequential[rampMatch[1]] ? rampMatch[1] : DEFAULT_RAMP;
+    var dRampMatch = /[?&]dramp=([a-z0-9]+)/.exec(window.location.search || '');
+    this.dRampName = dRampMatch && M.ramps.diverging[dRampMatch[1]] ? dRampMatch[1] : DEFAULT_DRAMP;
+    RAMP = sampleRamp(M.ramps.sequential[this.rampName], 5);
+    CHANGE_RAMP = sampleRamp(M.ramps.diverging[this.dRampName], CHANGE_BREAKS.length + 1);
     this.readViewState();
     // Layer-bound listeners wait for their layer, so they're bound once here
     // rather than on every style load.
@@ -795,6 +820,53 @@
     shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
     shell.bindControls('[data-compare]', function (item) { self.setCompare(item.getAttribute('data-compare')); });
     this.applyView();
+
+    // The Options menu's experiment controls (basemap style, colour ramp),
+    // same pattern as the pesticides section map: fill the selects, apply
+    // a change live and write it to the URL.
+    this.optionsEl = wrap.querySelector('.facility-map-options');
+    if (this.optionsEl) {
+      var options = this.optionsEl;
+      var fill = function (select, pairs) {
+        pairs.forEach(function (pair) {
+          var option = document.createElement('option');
+          option.value = pair[0];
+          option.textContent = pair[1];
+          select.appendChild(option);
+        });
+      };
+      var bindChange = function (selector, handler) {
+        var input = options.querySelector(selector);
+        if (input) input.addEventListener('change', handler.bind(self));
+        return input;
+      };
+      var tiles = bindChange('select[name="tiles"]', this.onTilesChange);
+      if (tiles) fill(tiles, M.TILE_STYLES.map(function (style) { return [style, style]; }));
+      this.rampSelect = bindChange('select[name="ramp"]', this.onRampChange);
+      // Diverging names while Compare is on: a sequential ramp can't grade
+      // signed data, and vice versa.
+      this.fillRampOptions = function () {
+        if (!self.rampSelect) return;
+        self.rampSelect.innerHTML = '';
+        fill(self.rampSelect, Object.keys(self.compare ? M.ramps.diverging : M.ramps.sequential)
+          .map(function (name) { return [name, name]; }));
+        self.rampSelect.value = self.compare ? self.dRampName : self.rampName;
+      };
+      this.fillRampOptions();
+    }
+    this.syncOptionsControls();
+  };
+
+  // Puts the Options controls in line with this map's view: after a bind
+  // (onChrome, including an adopt) and after a Compare toggle.
+  FacilityMap.prototype.syncOptionsControls = function () {
+    if (!this.optionsEl) return;
+    var set = function (selector, prop, value) {
+      var input = this.optionsEl.querySelector(selector);
+      if (input) input[prop] = value;
+    }.bind(this);
+    set('select[name="tiles"]', 'value', this.tileStyle);
+    set('select[name="ramp"]', 'value', this.compare ? this.dRampName : this.rampName);
   };
 
   FacilityMap.prototype.onDropdownOpen = function () {
@@ -819,6 +891,14 @@
       var sector = new URLSearchParams(this.data.query || '').get('sector');
       if (sector) params.set('sector', sector); else params.delete('sector');
     }
+    // The Options menu's experiment controls (basemap style, colour ramp);
+    // not page scope, so every map with a toolbar writes these regardless
+    // of mode. `dramp` is kept apart from `ramp` (rather than one name
+    // reused across both tables) so toggling Compare on and off never
+    // loses the other one's pick.
+    if (this.tileStyle && this.tileStyle !== this.defaultTileStyle) params.set('tiles', this.tileStyle); else params.delete('tiles');
+    if (this.rampName !== DEFAULT_RAMP) params.set('ramp', this.rampName); else params.delete('ramp');
+    if (this.dRampName !== DEFAULT_DRAMP) params.set('dramp', this.dRampName); else params.delete('dramp');
   };
 
   // The address bar follows the view, level and measure (and the sector) so
@@ -879,6 +959,10 @@
     }
     this.syncUrl();
     this.applyView();
+    // The Ramp select swaps tables (sequential <-> diverging) with Compare;
+    // refill it so it offers the right names and shows the one already
+    // chosen for whichever table is live now.
+    if (this.fillRampOptions) this.fillRampOptions();
     // Facilities always shade by the change when it's on; areas only need
     // the refetch while that view is up (same pattern as setSector) --
     // otherwise leave a stale areaData behind for setView('areas') to
@@ -890,6 +974,53 @@
       this.areaData = null;
       this.areaRequest++;
     }
+  };
+
+  // The basemap style is part of the map's style, so swapping it rebuilds
+  // the style outright (no diff, which would drop our layers without the
+  // style.load that puts them back). The shell's onStyleLoad calls
+  // addLayers() on load, which re-adds every source and layer from the
+  // data this map already has cached (facilities, areas, dairies, outline),
+  // so nothing here needs to refetch.
+  FacilityMap.prototype.onTilesChange = function (event) {
+    this.tileStyle = event.target.value;
+    this.map.setStyle(M.styleFor(this.tileStyle), { diff: false });
+    this.syncUrl();
+  };
+
+  // Recolours the facilities layer (Facilities view) and/or the areas
+  // choropleth (Areas view) after RAMP or CHANGE_RAMP changes, from data
+  // already on hand -- no refetch. The change ramp also recolours the
+  // Facilities circles while Compare is on (prepare() colours them by the
+  // change too, see `compare` there).
+  FacilityMap.prototype.recolor = function () {
+    if (this.legendData) {
+      this.legendData = prepare(this.legendData.collection, this.data.unit, this.withDairies ? POINT_RADIUS : 0, this.legendData.compare);
+      this.shell.setSourceData('facilities', this.legendData.collection);
+      this.applyHighlight();
+    }
+    if (this.areaData) this.showAreas();
+    this.shell.updateLegend();
+  };
+
+  // Picks a candidate ramp from the shared table (assets/js/maps/core.js):
+  // the sequential table normally, the diverging one while Compare is on
+  // (see fillRampOptions). Each is sampled to the class count its view
+  // uses, so the fixed breaks (CLASS_BREAKS/AREA_BREAKS, CHANGE_BREAKS)
+  // are unaffected -- only the colours change.
+  FacilityMap.prototype.onRampChange = function (event) {
+    var name = event.target.value;
+    if (this.compare) {
+      if (!M.ramps.diverging[name]) return;
+      this.dRampName = name;
+      CHANGE_RAMP = sampleRamp(M.ramps.diverging[name], CHANGE_BREAKS.length + 1);
+    } else {
+      if (!M.ramps.sequential[name]) return;
+      this.rampName = name;
+      RAMP = sampleRamp(M.ramps.sequential[name], 5);
+    }
+    this.recolor();
+    this.syncUrl();
   };
 
   FacilityMap.prototype.markDropdown = function (selector, itemSelector, value, label) {

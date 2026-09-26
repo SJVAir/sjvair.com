@@ -35,6 +35,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select
 
 MAP_TIMEOUT = 40
 
@@ -66,6 +67,36 @@ def feature_count(driver):
     return driver.execute_script(
         "var m = window.EmissionsFacilityMap.instances()[0];"
         "return m ? m.map.querySourceFeatures('facilities').length : 0;"
+    )
+
+
+def wait_style_loaded(driver, timeout=MAP_TIMEOUT):
+    """After a tiles change (map.setStyle): the SDK is back and addLayers()
+    has re-added our sources and layers from cached data."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if driver.execute_script(
+                "var m = window.EmissionsFacilityMap.instances()[0];"
+                "return !!m && m.map.isStyleLoaded() && !!m.map.getLayer('facilities');"):
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def facility_color(driver):
+    """A rendered facility's `_color` (its GeoJSON properties, not paint):
+    changes when the Ramp select picks a different colour ramp."""
+    return driver.execute_script(
+        "var m = window.EmissionsFacilityMap.instances()[0];"
+        "var f = m.map.querySourceFeatures('facilities').find(function (x) { return x.properties._empty === 0; });"
+        "return f ? f.properties._color : null;"
+    )
+
+
+def legend_swatch_color(driver):
+    return driver.execute_script(
+        "var el = document.querySelector('.facility-map-legend .legend-swatch');"
+        "return el ? el.style.background : null;"
     )
 
 
@@ -220,6 +251,53 @@ def main():
         drawn = settled_count(driver, feature_count)
         check(results, 'map page draws features', drawn > 0, f'{drawn} features')
         instance = driver.execute_script('return window.EmissionsFacilityMap.instances()[0].map._mapId || 1;')
+
+        # Options menu: Tiles and Ramp (X8). Picking a ramp recolours the
+        # facilities layer and the legend, and writes ?ramp=; picking a tile
+        # style swaps the basemap and redraws the facilities, and writes
+        # ?tiles=; a reload restores both.
+        driver.find_element(By.CSS_SELECTOR, '.map-wrap .map-options .dropdown-trigger .button').click()
+        time.sleep(0.3)
+        ramp_select = driver.find_element(By.CSS_SELECTOR, '.facility-map-options select[name="ramp"]')
+        tiles_select = driver.find_element(By.CSS_SELECTOR, '.facility-map-options select[name="tiles"]')
+        ramp_values = [o.get_attribute('value') for o in ramp_select.find_elements(By.TAG_NAME, 'option')]
+        tile_values = [o.get_attribute('value') for o in tiles_select.find_elements(By.TAG_NAME, 'option')]
+        check(results, 'Options menu lists ramp and tile choices', len(ramp_values) > 1 and len(tile_values) > 1,
+              f'{len(ramp_values)} ramps, {len(tile_values)} tiles')
+
+        before_color = facility_color(driver)
+        before_swatch = legend_swatch_color(driver)
+        # 'purd' (magenta) reliably differs from the default 'steelblue' at
+        # every class, unlike some sequential candidates that share a stop.
+        other_ramp = 'purd' if 'purd' in ramp_values else next(v for v in ramp_values if v != ramp_select.get_attribute('value'))
+        Select(ramp_select).select_by_value(other_ramp)
+        time.sleep(0.4)
+        after_color = facility_color(driver)
+        after_swatch = legend_swatch_color(driver)
+        check(results, 'choosing a ramp recolours the facilities layer and the legend, and writes ramp=',
+              before_color != after_color and before_swatch != after_swatch and f'ramp={other_ramp}' in driver.current_url,
+              f'{before_color} -> {after_color}; {driver.current_url}')
+
+        other_tile = next(v for v in tile_values if v != tiles_select.get_attribute('value'))
+        Select(tiles_select).select_by_value(other_tile)
+        time.sleep(0.3)
+        style_loaded = wait_style_loaded(driver)
+        redrawn = settled_count(driver, feature_count)
+        check(results, 'choosing tiles swaps the style, redraws the facilities, and writes tiles=',
+              style_loaded and redrawn > 0 and f'tiles={other_tile}' in driver.current_url,
+              f'{redrawn} features; {driver.current_url}')
+
+        reload_url = driver.current_url
+        driver.get(reload_url)
+        check(results, 'reloading with tiles= and ramp= loads facilities', wait_loaded(driver))
+        restored = driver.execute_script(
+            "var m = window.EmissionsFacilityMap.instances()[0];"
+            "return {ramp: m.rampName, tiles: m.tileStyle};")
+        check(results, 'reloading restores the chosen tiles and ramp',
+              restored['ramp'] == other_ramp and restored['tiles'] == other_tile, str(restored))
+
+        driver.get(args.base + '/tools/emissions/map/')
+        check(results, 'map page loads facilities (Options reset)', wait_loaded(driver))
 
         driver.find_element(By.CSS_SELECTOR, '.facility-map-sector .dropdown-trigger .button').click()
         driver.find_element(By.CSS_SELECTOR, '.facility-map-sector [data-sector="glass"]').click()

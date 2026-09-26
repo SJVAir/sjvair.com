@@ -375,6 +375,7 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         data={key.replace('_', '-'): value for key, value in config.items() if key not in template_only},
         features={'toolbar': True, 'expand': True, 'legend': True},
         toolbar_template='emissions/includes/map-toolbar.html' if mode == 'full' or areas_view else None,
+        options_template='emissions/includes/map-options.html',
         legend_template='emissions/includes/facility-map-legend.html',
         compact=mode == 'compact',
     )
