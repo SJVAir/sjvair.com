@@ -144,6 +144,12 @@
 
   function bindDocument(shell) {
     if (shell.documentHandlers) return;
+    // A mobile browser fires `resize` for a height-only change too -- the
+    // URL bar collapsing or expanding as the reader scrolls -- which must
+    // not close a dropdown they're mid-use with. Only clientWidth actually
+    // changing (a real narrower/wider layout, or an orientation change)
+    // means a nudged menu's measurement is stale.
+    shell.lastWidth = document.documentElement.clientWidth;
     var handlers = shell.documentHandlers = {
       click: function () { closeDropdowns(shell, null); },
       keydown: function (event) {
@@ -153,10 +159,12 @@
       },
       resize: function () {
         if (shell.expanded) fitBelowNavbar(shell);
+        var width = document.documentElement.clientWidth;
+        if (width === shell.lastWidth) return;
+        shell.lastWidth = width;
         // A nudged dropdown menu was measured against the viewport at
-        // open time; rather than re-measure on every resize/orientation
-        // change, just close it -- the reader can reopen it in the new
-        // layout.
+        // open time; rather than re-measure on every width change, just
+        // close it -- the reader can reopen it in the new layout.
         closeDropdowns(shell, null);
       },
     };
