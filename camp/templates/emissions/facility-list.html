@@ -1,0 +1,42 @@
+{% extends 'emissions/base.html' %}
+{% load pesticides_explorer %}
+
+{% block title %}Facilities | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">Facilities</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="columns">
+    <div class="column is-3-desktop">
+        <form method="get" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
+            {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+            <input type="hidden" name="sort" value="{{ sort }}">
+            <div class="field">
+                <label class="label" for="facility-q">Search</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="search" id="facility-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Facility name"
+                        hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
+                    <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+                </div>
+            </div>
+            <div class="field">
+                <label class="label" for="facility-sector">Sector</label>
+                <div class="control"><div class="select is-fullwidth"><select id="facility-sector" name="sector">
+                    <option value="">All sectors</option>
+                    {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select></div></div>
+            </div>
+            {# Cities, urban areas, communities (CDPs) and ZIP codes; a facility counts in the one its map point falls in, as on the region pages. #}
+            {% url 'api:v2:emissions:places' as places_url %}{% include 'pesticides/includes/entity-picker.html' with kind='region' label='City, community or ZIP' selected=region search_url=places_url autosubmit=1 %}
+            <div class="field is-grouped">
+                <div class="control"><button class="button is-link" type="submit">Apply</button></div>
+                <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}">Clear</a></div>
+            </div>
+        </form>
+    </div>
+    <div class="column">
+        {% include 'emissions/includes/facility-table.html' with sortable=True %}
+        {% include 'pesticides/includes/pagination.html' %}
+        <p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these facilities (CSV)</a></p>
+    </div>
+</div>
+{% endblock %}

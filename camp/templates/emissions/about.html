@@ -1,0 +1,60 @@
+{% extends 'emissions/base.html' %}
+{% load humanize %}
+
+{% block title %}About the data | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">About</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="content">
+<h2 id="coverage">What this covers</h2>
+<p>The Facility Emissions Explorer shows air pollution reported by <strong>permitted stationary sources</strong> in the San Joaquin Valley's eight counties: power plants, glass and cement plants, oil fields, food processors, dairies with permits, landfills, hospitals, gas stations and thousands more. The data is the California Air Resources Board's facility inventory (CEIDARS), which the air districts report to CARB every year. For the Valley's dairies, permitted or not, see <a href="#dairies">Dairies</a>.</p>
+<p>It does <strong>not</strong> cover cars and trucks, farm equipment, trains, most farming and dust, consumer products, wildfires, or facilities too small to need a permit. Those are most of the valley's air pollution; see <a href="#carb-estimates">CARB's estimates of all sources</a>.</p>
+
+<h2 id="districts">Two air districts</h2>
+<p>Seven of the eight counties are entirely within the San Joaquin Valley Air Pollution Control District. Kern County is split: its desert and mountain east is the Eastern Kern Air Pollution Control District, which regulates Kern's largest cement plants, US Borax at Boron and Edwards Air Force Base. Each facility's page names the district that regulates it and how to report a problem to them.</p>
+
+<h2 id="carb-estimates">CARB's estimates of all sources</h2>
+<p>For context, pages compare permitted facilities with CARB's estimate of all emissions in a county: stationary, areawide (farming, dust, consumer products, residential wood burning), mobile (vehicles and equipment) and natural sources. Those estimates come from CARB's CEPAM model, whose most recent inventory uses <strong>2017 as its base year</strong>; every other year is CARB's projection from it, not a new inventory. CARB publishes them in tons per day, which the explorer converts to tons per year.</p>
+
+<h2 id="units">Pollutants and units</h2>
+<ul>
+    <li><strong>NOx</strong> (nitrogen oxides) and <strong>ROG</strong> (reactive organic gases) form ozone and fine particles.</li>
+    <li><strong>Total PM</strong> is all particulate matter. CARB's facility inventory doesn't report PM2.5 by facility, so the explorer shows Total PM and PM10 instead.</li>
+    <li><strong>SOx</strong> (sulfur oxides), <strong>CO</strong> (carbon monoxide) and <strong>TOG</strong> (total organic gases) round out the criteria pollutants.</li>
+    <li>Criteria pollutants are in <strong>tons per year</strong>. The ten <strong>toxic air contaminants</strong> (benzene, formaldehyde, hexavalent chromium and others) are in <strong>pounds per year</strong>, because the amounts are small.</li>
+</ul>
+
+<h2 id="minor-sources">Minor sources</h2>
+<p>Gas stations, dry cleaners, auto body shops and small print shops are permitted, but CARB leaves them out of its facility totals by default and counts them in its county-wide estimates instead. The explorer does the same; turn on <em>Include minor sources</em> to add them.</p>
+
+<h2 id="years">Years and changes</h2>
+<p>The explorer covers 2010 onward. The number of facilities grows over those years partly because reporting coverage grew. A large change from one year to the next can reflect a new way of estimating a facility's emissions, not only a real change in what it emitted; facility pages point these out.</p>
+
+<h2 id="dairies">Dairies</h2>
+<p>The <a href="{% url 'emissions:dairy-list' %}">Dairies</a> tab covers what the facility inventory barely sees. CEIDARS lists a handful of permitted livestock facilities; CARB's <strong>California Dairy &amp; Livestock Database (CADD)</strong> locates every dairy CARB tracks, {{ dairy_count|intcomma }} of them in the eight Valley counties.</p>
+<ul>
+    <li><strong>Counted, not modelled.</strong> CADD gives each dairy's location, its herd by year ({{ dairy_span }}) and its anaerobic digesters. No public dataset reports emissions dairy by dairy, and the explorer doesn't estimate them.</li>
+    <li><strong>Herd size and EPA size classes.</strong> Herds are counted in head: <em>mature dairy cows</em> (milking and dry cows) and <em>other cattle</em> (heifers, calves and beef cattle). Each dairy gets the U.S. EPA's size class for animal feeding operations (<a href="https://www.ecfr.gov/current/title-40/chapter-I/subchapter-D/part-122/subpart-B/section-122.23">40 CFR 122.23</a>) from its counts that year, the larger of the two counts' classes:
+        <ul>
+            {% for size in dairy_size_classes %}<li><strong>{{ size.label }}</strong>: {{ size.threshold }}{% if forloop.last %} (at least one head of cattle){% endif %}.</li>
+            {% endfor %}</ul>
+        A Large one is a Large CAFO (concentrated animal feeding operation) by size alone. A count CADD leaves blank is unknown: it's left out, not counted as zero.</li>
+    <li><strong>Reported and estimated counts.</strong> Each count carries a CADD reference code. Code 1 means the count was reported; the other codes (2a–2f, 3a–3g) mark CARB's estimates and gap fills. Dairy popups star the estimated counts.</li>
+    <li><strong>Which dairies count in a year.</strong> A dairy counts in a year when CADD has a herd for it that year. A dairy with no cattle counted that year (closed, or not yet open) is left out of it.</li>
+    <li><strong>Where a dairy counts.</strong> A dairy counts toward a city or community by its mailing city or its point, whichever falls inside it; it counts toward an urban area, a ZIP area or a census tract by its point only.</li>
+    <li><strong>Coverage grew in 2019.</strong> CADD has herds for {{ dairies_before|intcomma }} Valley dairies in 2018 and {{ dairies_after|intcomma }} in 2019. The two years aren't a like-for-like comparison.</li>
+    <li><strong>Digesters.</strong> CADD lists the year each digester started and, for the few that closed, the year it shut down. A dairy has a digester in a year when one was operating that year.</li>
+    <li><strong>County dairy emissions.</strong> The Counties view and the county pages use CARB's county inventory (CEPAM) for dairy cattle waste. The explorer shows its ROG, TOG, total PM and PM10; CARB reports no NOx, SOx or CO from dairy cattle, and CEPAM has no ammonia. Silage is left out: CARB reports its emissions separately, without assigning them to an animal type. Like the rest of CEPAM, these are CARB's projections from its 2017 base year, converted from tons per day to tons per year.</li>
+</ul>
+
+<h2 id="sources">Sources</h2>
+<ul>
+    <li><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">CARB facility emissions inventory (CEIDARS)</a></li>
+    <li><a href="https://ww2.arb.ca.gov/applications/cepam2019v1-04-standard-emission-tool">CARB CEPAM 2019 emission projections</a></li>
+    <li><a href="https://ww2.arb.ca.gov/california-air-districts">CARB air district directory</a> and <a href="https://gis.data.ca.gov/datasets/CaliforniaARB::california-air-district-boundaries/about">district boundaries</a></li>
+    <li><a href="https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd">CARB California Dairy &amp; Livestock Database (CADD)</a></li>
+</ul>
+
+<p class="is-size-7 has-text-grey">Header photo: <a href="https://commons.wikimedia.org/wiki/File:Pumpjacks,_San_Joaquin_Valley,_California.jpg">Pumpjacks, San Joaquin Valley, California</a> by Downtowngal, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, resized, cropped and darkened.</p>
+</div>
+{% endblock %}

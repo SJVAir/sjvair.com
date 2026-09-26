@@ -5,6 +5,11 @@
     {{ block.super }}
     <link rel="stylesheet" href="{% static 'maptiler-sdk/maptiler-sdk.css' %}">
     <link rel="stylesheet" href="{% static 'js/admin/map-figure.css' %}">
+    {# The hover/permanent label look (.map-hover-label) moved here with the #}
+    {# rest of the map core's shared chrome; every "map-"-prefixed selector #}
+    {# in it is scoped under classes a figure (no toolbar, no .map-wrap) #}
+    {# never renders, so it changes nothing else on this admin page. #}
+    <link rel="stylesheet" href="{% static 'css/maps/map.css' %}">
     <style>
         .report-map { margin: 0 0 20px; }
         .report-map .map-figure { max-width: 100%; }

@@ -1,0 +1,985 @@
+/*
+ * Facility map for the Facility Emissions Explorer, a module on the map core
+ * (assets/js/maps/), registered as 'facility'.
+ *
+ * Two views, one at a time:
+ *   Facilities  one circle per permitted facility: area scaled by the
+ *               selected pollutant (square root, so the largest emitter
+ *               doesn't bury the rest), colour by a fixed log-scale class;
+ *               facilities that reported none are small hollow grey rings.
+ *   Areas       counties, ZIP areas or 2020 census tracts shaded by the
+ *               facilities inside them: per square mile, total, or per
+ *               1,000 residents (fixed log-scale classes). Shapes come from
+ *               the regions GeoJSON (simplified together, so shared borders
+ *               stay shared), numbers from /api/2.0/emissions/areas/.
+ *
+ * County and air district outlines sit under the data, and everything draws
+ * over the whole basemap, labels included. On a region or near-me page the
+ * page's own area is outlined and everything outside it washed out.
+ * In a year CARB's dairy database covers, those pages' Facilities view also
+ * shows the dairies: every point one size, facilities on the blue ramp above
+ * dairies on the amber one (SJVAirMaps.dairies, from dairy-map.js), with a
+ * ramp for each in the legend.
+ * Config comes from the container's data-* attributes
+ * (views.facility_map_config); the chrome is the core's.
+ *
+ * Modes: `full` (the map page, with the sector filter) and `compact`
+ * (facility, sector and region pages; a facility page's own facility is
+ * highlighted and the rest faded).
+ */
+(function () {
+  'use strict';
+
+  var M = window.SJVAirMaps;
+  if (!M || !M.register) return;
+
+  // ColorBrewer Blues, one colour per class below (the pesticides map's
+  // default ramp, without its palest step, which vanishes on the basemap).
+  var RAMP = ['#c6dbef', '#9ecae1', '#6baed6', '#3182bd', '#08519c'];
+  // Fixed classes on a log scale, per display unit: stable across pollutants,
+  // counties and years, and readable ("1-10 tons"). Toxics are shown in lbs.
+  var CLASS_BREAKS = { tons: [0.1, 1, 10, 100], lbs: [1, 10, 100, 1000] };
+  // The Areas view's classes, per measure and unit.
+  var AREA_BREAKS = {
+    density: { tons: [0.01, 0.1, 1, 10], lbs: [0.1, 1, 10, 100] },
+    total: { tons: [1, 10, 100, 1000], lbs: [10, 100, 1000, 10000] },
+    per_resident: { tons: [0.1, 1, 10, 100], lbs: [1, 10, 100, 1000] },
+  };
+  var AREA_FIELDS = { density: 'per_sq_mi', total: 'total', per_resident: 'per_1k_residents' };
+  var AREA_SUFFIX = { density: ' per sq mi', total: '', per_resident: ' per 1,000 people' };
+  // Compare mode: the Areas view shades the selected measure's percent
+  // change instead of its value, on a fixed diverging scale (ColorBrewer
+  // RdBu) -- blue for a fall, red for a rise, pale grey near zero. Fixed
+  // rather than data-driven, like CLASS_BREAKS/AREA_BREAKS: stable classes
+  // across a measure, county or year change, at the cost of an outlier
+  // pinning the top bucket.
+  var CHANGE_BREAKS = [-0.5, -0.25, -0.1, 0.1, 0.25, 0.5];
+  var CHANGE_RAMP = ['#2166ac', '#4393c3', '#92c5de', '#f7f7f7', '#f4a582', '#d6604d', '#b2182b'];
+  var LEVEL_NAMES = { county: '', zipcode: 'ZIP ', tract: 'Tract ' };
+  var EMPTY_COLOR = '#8a94a3';
+  var HIGHLIGHT_COLOR = '#d35400';
+  var COUNTY_COLOR = '#1f2d3d';
+  var DISTRICT_COLOR = '#6a3d9a';
+  var AREA_LINE_COLOR = '#4a5568';
+  var AREA_LINE_WIDTH = 0.5;
+  var MIN_RADIUS = 4;
+  var MAX_RADIUS = 34;
+  // Region and near-me pages with dairies: every point one size, coloured by class.
+  var POINT_RADIUS = 7;
+  var WORLD_RING = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+  var CIRCLE_POINTS = 64;
+  var METERS_PER_MILE = 1609.344;
+
+  var escapeHtml = M.escapeHtml;
+  var logError = M.logger('facility-map');
+  var getJson = M.getJson;
+  var quantity = M.format.quantity;
+  var roundLabel = M.format.round;
+  var classIndex = M.classes.index;
+
+  function breaksFor(unit) {
+    return CLASS_BREAKS[unit] || CLASS_BREAKS.tons;
+  }
+
+  function areaBreaksFor(measure, unit) {
+    var set = AREA_BREAKS[measure] || AREA_BREAKS.density;
+    return set[unit] || set.tons;
+  }
+
+  function radiusFor(value, max) {
+    return MIN_RADIUS + (MAX_RADIUS - MIN_RADIUS) * Math.sqrt(value / max);
+  }
+
+  // A size key's sample circle, its own square viewBox (2*MAX_RADIUS+2 on a
+  // side, however small `r` is) so a phone's narrower CSS width scales the
+  // whole drawing down rather than clipping it -- the map's own circles
+  // (paint's `_radius`, from this same radiusFor) are untouched either way.
+  function sizeCircle(r, value) {
+    var box = 2 * MAX_RADIUS + 2;
+    return '<span class="legend-size"><svg viewBox="0 0 ' + box + ' ' + box + '" width="' + box + '" height="' + box + '">' +
+      '<circle cx="' + (box / 2) + '" cy="' + (box - r - 1) + '" r="' + r + '"/></svg>' +
+      roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
+  }
+
+  // A legend's classes on the blue ramp, largest first.
+  function facilityBins(breaks, swatchClass) {
+    return M.classes.bins(breaks, RAMP, swatchClass);
+  }
+
+  // A fraction (0.234) as the change legend and popup write it: '+23%',
+  // '-8%', '0%'.
+  function pctRound(value) {
+    var pct = Math.round(value * 100);
+    return (pct > 0 ? '+' : '') + pct + '%';
+  }
+
+  // The change legend's classes on the diverging ramp, largest fall first.
+  function changeBins(swatchClass) {
+    return M.classes.bins(CHANGE_BREAKS, CHANGE_RAMP, swatchClass, pctRound);
+  }
+
+  // A value and its compared-year counterpart (either may be null/undefined)
+  // as a fraction change, or null when there's nothing to compare (either
+  // year's missing, or the compared year was zero -- no percentage of zero).
+  // Shared by the Areas view (per-region totals) and the Facilities view
+  // (per-facility values, below).
+  function changeFraction(value, prevValue) {
+    if (value === null || value === undefined || !(prevValue > 0)) return null;
+    return (value - prevValue) / prevValue;
+  }
+
+  // Precompute each circle so the layer's paint is plain `get`s. With a
+  // `pointRadius` (a map with dairies), every circle is that size. `compare`
+  // (a loaded year, from the geojson's own properties.compare) keeps the
+  // circle's size by this year's value -- still a useful scale -- but
+  // colours it by the percent change from that year instead, on the same
+  // diverging ramp as the Areas view.
+  function prepare(collection, unit, pointRadius, compare) {
+    var features = collection.features || [];
+    var positive = features.map(function (f) { return f.properties.value; }).filter(function (v) { return v > 0; });
+    var max = positive.length ? Math.max.apply(null, positive) : 0;
+    var breaks = compare ? CHANGE_BREAKS : breaksFor(unit);
+    var ramp = compare ? CHANGE_RAMP : RAMP;
+    features.forEach(function (feature) {
+      var p = feature.properties;
+      var sized = p.value > 0 && max > 0;
+      var change = compare ? changeFraction(p.value, p.value_prev) : null;
+      var coloured = compare ? change !== null : sized;
+      p._radius = pointRadius || (sized ? radiusFor(p.value, max) : MIN_RADIUS);
+      p._color = coloured ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_COLOR;
+      p._empty = coloured ? 0 : 1;
+      p._sort = sized ? p.value : 0;
+      p._change = change;
+    });
+    return { collection: collection, breaks: breaks, max: max, compare: compare || '' };
+  }
+
+  // Everything outside `geometry` (a Polygon or MultiPolygon), as one polygon
+  // with the geometry's outer rings as holes: the page's area stays clear,
+  // the rest is washed out.
+  function maskFor(geometry) {
+    var rings = [];
+    if (geometry.type === 'Polygon') rings = [geometry.coordinates[0]];
+    if (geometry.type === 'MultiPolygon') rings = geometry.coordinates.map(function (part) { return part[0]; });
+    if (!rings.length) return M.EMPTY;
+    return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [WORLD_RING].concat(rings) } };
+  }
+
+  // A `miles` circle around [lng, lat] as a polygon (the SDK has no circles in metres).
+  function circle(center, miles) {
+    var meters = miles * METERS_PER_MILE;
+    var dLat = meters / 111320;
+    var dLng = meters / (111320 * Math.cos(center[1] * Math.PI / 180));
+    var ring = [];
+    for (var i = 0; i <= CIRCLE_POINTS; i++) {
+      var angle = (i % CIRCLE_POINTS) * 2 * Math.PI / CIRCLE_POINTS;
+      ring.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
+    }
+    return { type: 'Polygon', coordinates: [ring] };
+  }
+
+  function FacilityMap(shell) {
+    var self = this;
+    this.shell = shell;
+    this.el = shell.el;
+    // The container's live dataset (an adopt rewrites this same element's).
+    this.data = shell.data;
+    this.map = shell.map;
+    this.fitted = false;
+    this.legendData = null;
+    // The Areas view: shapes per level (they never change with the scope),
+    // the current values, and a request counter of its own (the shell's
+    // ticket is the facilities fetch's).
+    this.shapes = {};
+    this.areaData = null;
+    this.areaRequest = 0;
+    // The page's outline (region JSON) has its own counter too.
+    this.outlineRequest = 0;
+    this.outlineBounds = null;
+    // Areas view: the hovered area's outline (feature-state, shared with the
+    // fill's click and the scope outline's own line width). Highlight only --
+    // the click popup already carries the values (M.hover.controller, shared
+    // with the dairy map's counties).
+    this.areaHover = M.hover.controller(this.map, 'areas');
+    // Dairy points (region and near-me pages): the hovered one's ring.
+    this.dairyHover = M.hover.controller(this.map, 'dairies');
+    // Dairies (region and near-me pages): their data and request counters.
+    this.dairyData = null;
+    this.dairyRequest = 0;
+    this.dairyPopupRequest = 0;
+    this.readViewState();
+    // Layer-bound listeners wait for their layer, so they're bound once here
+    // rather than on every style load.
+    this.map.on('click', 'facilities', function (evt) { self.openPopup(evt.features[0], evt.lngLat); });
+    this.map.on('click', 'areas-fill', function (evt) { self.openAreaPopup(evt.features[0], evt.lngLat); });
+    this.map.on('mousemove', 'areas-fill', function (evt) { self.areaHover.set(evt.features[0], evt.lngLat); });
+    this.map.on('mouseleave', 'areas-fill', function () { self.areaHover.clear(); });
+    this.map.on('mousemove', 'dairies', function (evt) { self.dairyHover.set(evt.features[0], evt.lngLat); });
+    this.map.on('mouseleave', 'dairies', function () { self.dairyHover.clear(); });
+    // Facilities draw above dairies: a click on both is the facility's.
+    this.map.on('click', 'dairies', function (evt) {
+      if (self.map.queryRenderedFeatures(evt.point, { layers: ['facilities'] }).length) return;
+      self.openDairyPopup(evt.features[0], evt.lngLat);
+    });
+    ['facilities', 'areas-fill', 'dairies'].forEach(function (layer) {
+      self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
+      self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
+    });
+    // The scope bar's links (year, pollutant, toggles) were rendered before
+    // the reader switched view, level, measure or sector here, and carry the
+    // page's original values. Rewrite the boosted request's URL (htmx reads
+    // detail.path back after this event) so the next page opens the way the
+    // map is now; defaults are left out.
+    this.onConfigRequest = function (event) {
+      var detail = event.detail;
+      var elt = detail && detail.elt;
+      if (!elt || !elt.closest || !elt.closest('.explorer-scope') || typeof detail.path !== 'string') return;
+      if (!self.areasEnabled && self.data.mode !== 'full') return;
+      var path = M.rewriteQuery(detail.path, self.writeState.bind(self));
+      if (path !== null) detail.path = path;
+    };
+    document.body.addEventListener('htmx:configRequest', this.onConfigRequest);
+    // For debugging from the console: document.querySelector('.facility-map').facilityMap
+    this.el.facilityMap = this;
+  }
+
+  FacilityMap.prototype.readViewState = function () {
+    this.areasEnabled = this.data.areas === '1';
+    this.view = this.areasEnabled && this.data.view === 'areas' ? 'areas' : 'facilities';
+    // The page's default level (the server's), left out of the URLs we write.
+    this.defaultLevel = this.data.defaultLevel || 'zipcode';
+    this.level = this.data.level || this.defaultLevel;
+    this.measure = this.data.measure || 'density';
+    // The year Compare shades the change against, in both views, or ''
+    // for plain values; a toolbar control, not part of the page's scope.
+    this.compare = this.data.compare || '';
+    this.withDairies = !!this.data.dairiesUrl && !!M.dairies;
+  };
+
+  // Bottom to top: the shaded areas, the county and district lines, the
+  // dairies, the facilities, the wash outside the page's area, its outline. On
+  // top of the whole basemap, labels included: the data is what the map is for.
+  FacilityMap.prototype.addLayers = function () {
+    this.shell.ensureSource('areas');
+    this.shell.ensureSource('outline');
+    this.shell.ensureSource('outline-mask');
+    this.shell.ensureSource('counties', { data: this.data.countiesUrl || M.EMPTY });
+    this.shell.ensureSource('districts', { data: this.data.districtsUrl || M.EMPTY });
+    this.shell.ensureSource('facilities');
+    this.shell.ensureSource('dairies');
+    this.shell.ensureLayer({
+      id: 'areas-fill', type: 'fill', source: 'areas',
+      paint: { 'fill-color': ['get', '_color'], 'fill-opacity': ['case', ['==', ['get', '_empty'], 1], 0, 0.72] },
+    });
+    this.shell.ensureLayer({
+      id: 'areas-line', type: 'line', source: 'areas',
+      // The hovered area's outline: dark and thicker, the same as the dairy
+      // map's counties (M.hover). max() so hovering never draws thinner than
+      // the area's own normal outline (X4's deferred minor). The page's own
+      // outline (region-page highlight, county scope) is on separate layers
+      // and sources, so it's unaffected either way.
+      paint: {
+        'line-color': M.hover.paint(M.hover.COLOR, AREA_LINE_COLOR),
+        'line-width': M.hover.paint(Math.max(M.hover.WIDTH, AREA_LINE_WIDTH), AREA_LINE_WIDTH),
+        'line-opacity': 0.5,
+      },
+    });
+    this.shell.ensureLayer({
+      id: 'counties', type: 'line', source: 'counties',
+      paint: { 'line-color': COUNTY_COLOR, 'line-width': 1, 'line-opacity': 0.5 },
+    });
+    this.shell.ensureLayer({
+      id: 'districts', type: 'line', source: 'districts',
+      paint: { 'line-color': DISTRICT_COLOR, 'line-width': 2, 'line-dasharray': [3, 2] },
+    });
+    this.shell.ensureLayer({
+      id: 'dairies', type: 'circle', source: 'dairies',
+      // Large dairies at the back, small on top (the points are one size).
+      layout: M.dairies ? { 'circle-sort-key': M.dairies.SIZE_SORT_KEY } : {},
+      paint: Object.assign({
+        'circle-radius': POINT_RADIUS,
+        'circle-color': ['get', '_color'],
+        'circle-opacity': 0.9,
+      }, M.dairies ? M.dairies.hoverStroke('#ffffff', 0.75) : { 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 0.75 }),
+    });
+    this.shell.ensureLayer({
+      id: 'facilities', type: 'circle', source: 'facilities',
+      // Larger values draw on top.
+      layout: { 'circle-sort-key': ['get', '_sort'] },
+      paint: { 'circle-radius': ['get', '_radius'], 'circle-color': ['get', '_color'] },
+    });
+    this.shell.ensureLayer({
+      id: 'outline-mask', type: 'fill', source: 'outline-mask',
+      paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 },
+    });
+    this.shell.ensureLayer({
+      id: 'outline-line', type: 'line', source: 'outline',
+      layout: { 'line-join': 'round' },
+      paint: { 'line-color': HIGHLIGHT_COLOR, 'line-width': 2.5, 'line-opacity': 0.9 },
+    });
+    this.applyHighlight();
+    this.applyView();
+  };
+
+  // Hollow rings for "none reported"; with a highlighted facility (a facility
+  // page), it gets an orange ring and everything else fades.
+  FacilityMap.prototype.applyHighlight = function () {
+    if (!this.map || !this.map.getLayer('facilities')) return;
+    var id = this.data.highlight || '';
+    var isHighlight = ['==', ['get', 'id'], id];
+    var isEmpty = ['==', ['get', '_empty'], 1];
+    this.map.setPaintProperty('facilities', 'circle-opacity',
+      ['case', isEmpty, 0, id ? ['case', isHighlight, 0.95, 0.35] : 0.85]);
+    this.map.setPaintProperty('facilities', 'circle-stroke-color',
+      ['case', isHighlight, HIGHLIGHT_COLOR, isEmpty, EMPTY_COLOR, '#ffffff']);
+    this.map.setPaintProperty('facilities', 'circle-stroke-width',
+      ['case', isHighlight, 3, isEmpty, 1.25, 0.75]);
+  };
+
+  // One view at a time: the layers, the toolbar's switch and its Areas-only
+  // controls follow `this.view`.
+  FacilityMap.prototype.applyView = function () {
+    var areas = this.view === 'areas';
+    var compareActive = !!this.compare;
+    if (this.map) {
+      var set = function (map, id, visible) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+      };
+      set(this.map, 'facilities', !areas);
+      // Dairies have no comparison of their own: while Compare is on they'd
+      // just sit on the map in their own EPA-size colours, which read like
+      // stray classes on the change ramp (a medium dairy's amber is close
+      // enough to the +25-50% red to pass for one at a glance).
+      set(this.map, 'dairies', !areas && !this.compare);
+      set(this.map, 'areas-fill', areas);
+      set(this.map, 'areas-line', areas);
+    }
+    Array.prototype.forEach.call(this.shell.controls('[data-view]'), function (button) {
+      var on = button.getAttribute('data-view') === (areas ? 'areas' : 'facilities');
+      button.classList.toggle('is-selected', on);
+      button.classList.toggle('is-link', on);
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(this.shell.controls('[data-areas-only]'), function (control) {
+      control.hidden = !areas;
+    });
+    // The Measure dropdown picks which per-area value is shaded, but
+    // Compare always shades the percent change regardless of measure, so
+    // its choice is inert while Compare is on -- hide it rather than let
+    // it look like a live control. Its value (and the dropdown's own
+    // selected state) is untouched, so turning Compare off restores it.
+    Array.prototype.forEach.call(this.shell.controls('[data-measure-only]'), function (control) {
+      control.hidden = !areas || compareActive;
+    });
+  };
+
+  FacilityMap.prototype.url = function () {
+    var params = new URLSearchParams(this.data.query || '');
+    if (this.compare) params.set('compare', this.compare); else params.delete('compare');
+    var query = params.toString();
+    return this.data.geojsonUrl + (query ? '?' + query : '');
+  };
+
+  // The facilities always load (switching back to them is then instant);
+  // the areas load when they're the view.
+  FacilityMap.prototype.load = function () {
+    this.loadFacilities();
+    this.loadDairies();
+    if (this.view === 'areas') this.loadAreas();
+    this.loadOutline();
+  };
+
+  FacilityMap.prototype.loadFacilities = function () {
+    var self = this;
+    var ticket = this.shell.ticket();
+    this.el.dataset.loaded = '';
+    if (this.view === 'facilities') this.shell.setStatus('Loading facilities…');
+    getJson(this.url())
+      .then(function (collection) {
+        // A newer request (a sector change, a swap) or a destroy superseded this one.
+        if (!self.shell.isCurrent(ticket)) return;
+        self.show(collection);
+      })
+      .catch(function (err) {
+        if (!self.shell.isCurrent(ticket)) return;
+        if (self.view === 'facilities') self.shell.setStatus('Couldn\'t load the facilities');
+        logError('failed to load facilities', err);
+      });
+  };
+
+  FacilityMap.prototype.show = function (collection) {
+    // The geojson's own `compare` (its properties, not `this.compare`)
+    // confirms the fetch actually paired a compared year -- e.g. it's
+    // absent if the request raced a Compare toggle-off.
+    var compare = this.compare && (collection.properties || {}).compare;
+    var prepared = prepare(collection, this.data.unit, this.withDairies ? POINT_RADIUS : 0, compare);
+    this.legendData = prepared;
+    this.shell.setSourceData('facilities', prepared.collection);
+    this.applyHighlight();
+    this.shell.updateLegend();
+    if (this.view === 'facilities') this.shell.setStatus('');
+    if (!this.fitted) {
+      this.fit(prepared.collection);
+      this.fitted = true;
+    }
+    this.el.dataset.loaded = '1';
+  };
+
+  // The page's dairies for its year, amber by EPA size class; none (and
+  // no dairy ramp) when the page has no dairies URL.
+  FacilityMap.prototype.loadDairies = function () {
+    var self = this;
+    var request = ++this.dairyRequest;
+    if (!this.withDairies) {
+      this.dairyData = null;
+      this.shell.setSourceData('dairies', M.EMPTY);
+      return;
+    }
+    getJson(this.data.dairiesUrl)
+      .then(function (collection) {
+        if (request !== self.dairyRequest || !self.map) return;
+        (collection.features || []).forEach(function (feature) {
+          feature.properties._color = M.dairies.colorFor(feature.properties.size_class);
+        });
+        self.dairyData = collection;
+        self.shell.setSourceData('dairies', collection);
+        self.shell.updateLegend();
+      })
+      .catch(function (err) {
+        if (request !== self.dairyRequest || !self.map) return;
+        logError('failed to load the dairies', err);
+      });
+  };
+
+  // Fetched on click, as on the Dairies tab (SJVAirMaps.dairies draws it).
+  FacilityMap.prototype.openDairyPopup = function (feature, lngLat) {
+    var self = this;
+    var request = ++this.dairyPopupRequest;
+    var url = (this.data.dairyPopupUrl || '').replace('{id}', encodeURIComponent(feature.properties.id));
+    var popup = this.shell.placePopup(M.dairies.LOADING, lngLat);
+    // The popup's region links carry the scope, not the map's own filters.
+    var query = new URLSearchParams(this.data.query || '');
+    query.delete('sector');
+    query.delete('minor');
+    var qs = query.toString() ? '?' + query.toString() : '';
+    getJson(url)
+      .then(function (data) {
+        if (request !== self.dairyPopupRequest || self.shell.popup !== popup) return;
+        popup.setHTML(M.dairies.popupHtml(data, qs));
+        self.shell.panPopupIntoView(popup);
+      })
+      .catch(function (err) {
+        if (request !== self.dairyPopupRequest || self.shell.popup !== popup) return;
+        popup.setHTML(M.dairies.FAILED);
+        logError('failed to load a dairy', err);
+      });
+  };
+
+  FacilityMap.prototype.areasUrl = function () {
+    var params = new URLSearchParams(this.data.query || '');
+    params.set('level', this.level);
+    if (this.compare) params.set('compare', this.compare); else params.delete('compare');
+    return this.data.areasUrl + '?' + params.toString();
+  };
+
+  FacilityMap.prototype.shapesFor = function (level) {
+    var self = this;
+    if (this.shapes[level]) return Promise.resolve(this.shapes[level]);
+    return getJson(this.data.shapesUrl + '?type=' + encodeURIComponent(level) + '&simplify=1').then(function (shapes) {
+      self.shapes[level] = shapes;
+      return shapes;
+    });
+  };
+
+  FacilityMap.prototype.loadAreas = function () {
+    var self = this;
+    var request = ++this.areaRequest;
+    var level = this.level;
+    this.el.dataset.areasLoaded = '';
+    this.shell.setStatus('Loading areas…');
+    Promise.all([this.shapesFor(level), getJson(this.areasUrl())])
+      .then(function (results) {
+        if (request !== self.areaRequest || !self.map) return;
+        self.areaData = { level: level, shapes: results[0], values: results[1] };
+        self.showAreas();
+      })
+      .catch(function (err) {
+        if (request !== self.areaRequest || !self.map) return;
+        if (self.view === 'areas') self.shell.setStatus('Couldn\'t load the areas');
+        logError('failed to load areas', err);
+      });
+  };
+
+  // Joins the values to the shapes and colours them by the current measure
+  // (a measure change re-runs this without fetching) -- or, in Compare mode,
+  // by that measure's percent change from the compared year (both years came
+  // with the fetch, so switching the measure or clearing Compare still needs
+  // no refetch; only picking a different compared year does, since the
+  // server computes the pair).
+  FacilityMap.prototype.showAreas = function () {
+    var data = this.areaData;
+    if (!data) return;
+    var compare = this.compare && data.values.compare;
+    var byId = {};
+    data.values.areas.forEach(function (area) { byId[area.id] = area; });
+    var field = AREA_FIELDS[this.measure] || AREA_FIELDS.density;
+    var breaks = compare ? CHANGE_BREAKS : areaBreaksFor(this.measure, data.values.unit);
+    var ramp = compare ? CHANGE_RAMP : RAMP;
+    var features = (data.shapes.features || []).map(function (feature) {
+      var area = byId[feature.id];
+      var value = area ? area[field] : null;
+      var change = compare && area ? changeFraction(value, area[field + '_prev']) : null;
+      var shaded = compare ? change !== null : (value !== null && value !== undefined && value > 0);
+      return {
+        type: 'Feature',
+        id: feature.id,
+        geometry: feature.geometry,
+        properties: Object.assign({}, feature.properties, {
+          facilities: area ? area.facilities : 0,
+          total: area ? area.total : null,
+          per_sq_mi: area ? area.per_sq_mi : null,
+          per_1k_residents: area ? area.per_1k_residents : null,
+          total_prev: area ? area.total_prev : null,
+          per_sq_mi_prev: area ? area.per_sq_mi_prev : null,
+          per_1k_residents_prev: area ? area.per_1k_residents_prev : null,
+          _change: change,
+          _color: shaded ? ramp[classIndex(compare ? change : value, breaks)] : EMPTY_COLOR,
+          _empty: shaded ? 0 : 1,
+        }),
+      };
+    });
+    data.breaks = breaks;
+    data.compareActive = compare;
+    this.shell.setSourceData('areas', { type: 'FeatureCollection', features: features });
+    this.shell.updateLegend();
+    if (this.view === 'areas') this.shell.setStatus('');
+    this.el.dataset.areasLoaded = '1';
+  };
+
+  // The page's own area: a region's boundary (region pages) or the radius
+  // (near-me), outlined, with everything outside washed out, and framed.
+  FacilityMap.prototype.loadOutline = function () {
+    var self = this;
+    var request = ++this.outlineRequest;
+    var center = M.parseCenter(this.data.center);
+    var radius = parseFloat(this.data.radius);
+    if (center && radius > 0) {
+      this.showOutline(circle(center, radius));
+      return;
+    }
+    if (!this.data.outlineUrl) {
+      this.showOutline(null);
+      return;
+    }
+    getJson(this.data.outlineUrl)
+      .then(function (json) {
+        if (request !== self.outlineRequest || !self.map) return;
+        var boundary = json && json.data && json.data.boundary;
+        self.showOutline(boundary ? boundary.geometry : null);
+      })
+      .catch(function (err) {
+        if (request !== self.outlineRequest || !self.map) return;
+        logError('failed to load the outline', err);
+      });
+  };
+
+  FacilityMap.prototype.showOutline = function (geometry) {
+    if (!geometry) {
+      this.outlineBounds = null;
+      this.shell.setSourceData('outline', M.EMPTY);
+      this.shell.setSourceData('outline-mask', M.EMPTY);
+      return;
+    }
+    this.shell.setSourceData('outline', { type: 'Feature', properties: {}, geometry: geometry });
+    this.shell.setSourceData('outline-mask', maskFor(geometry));
+    this.outlineBounds = M.geometryBounds(geometry);
+    if (this.outlineBounds) this.map.fitBounds(this.outlineBounds, { padding: 24, duration: 0 });
+  };
+
+  // Home goes back to the page's area when it has one.
+  FacilityMap.prototype.home = function () {
+    return this.outlineBounds ? { bounds: this.outlineBounds, padding: 24 } : null;
+  };
+
+  // Frame the facilities, unless the page framed the map itself (a facility
+  // page's centre, the covered counties' bounds, or the page's area).
+  FacilityMap.prototype.fit = function (collection) {
+    if (M.parseCenter(this.data.center) || M.parseBounds(this.data.bounds) || this.data.outlineUrl) return;
+    var features = collection.features || [];
+    if (!features.length) return;
+    var bounds = new maptilersdk.LngLatBounds();
+    features.forEach(function (f) { bounds.extend(f.geometry.coordinates); });
+    this.map.fitBounds(bounds, { padding: 40, maxZoom: 12, duration: 0 });
+  };
+
+  FacilityMap.prototype.facilityUrl = function (id) {
+    var url = (this.data.facilityUrl || '').replace('{id}', encodeURIComponent(id));
+    var query = this.data.query || '';
+    if (this.data.mode === 'compact') {
+      var params = new URLSearchParams(query);
+      params.delete('minor');
+      query = params.toString();
+    }
+    return url + (query ? '?' + query : '');
+  };
+
+  FacilityMap.prototype.openPopup = function (feature, lngLat) {
+    var p = feature.properties;
+    // p._empty means something different in Compare mode (not comparable,
+    // regardless of whether this year has a value), so a null or 0 current
+    // value is checked directly rather than through it.
+    var noneReported = p.value === null || p.value === undefined || !(p.value > 0);
+    var value = noneReported ? 'none reported' : quantity(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
+    var compare = this.legendData && this.legendData.compare;
+    var changeLine = '';
+    if (compare) {
+      changeLine = '<p>Change, ' + escapeHtml(String(compare)) + ' to ' + escapeHtml(this.data.year || '') + ': <strong>' +
+        (p._change === null || p._change === undefined ? 'not comparable' : pctRound(p._change)) + '</strong></p>' +
+        (p.value_prev === null || p.value_prev === undefined ? '' :
+          '<p>' + escapeHtml(this.data.label) + ', ' + escapeHtml(String(compare)) + ': ' +
+          quantity(p.value_prev) + ' ' + escapeHtml(this.data.unit) + '/yr</p>');
+    }
+    this.shell.placePopup('<div class="facility-popup">' +
+      '<p class="facility-popup-name"><a href="' + escapeHtml(this.facilityUrl(p.id)) + '">' + escapeHtml(p.name) + '</a></p>' +
+      '<p>' + escapeHtml(p.sector) + '</p>' +
+      '<p>' + escapeHtml(this.data.label) + ': <strong>' + value + '</strong>' + (p.rank ? ' · #' + p.rank : '') + '</p>' +
+      changeLine +
+      '</div>', lngLat);
+  };
+
+  FacilityMap.prototype.openAreaPopup = function (feature, lngLat) {
+    var self = this;
+    var p = feature.properties;
+    var count = Number(p.facilities) || 0;
+    var unit = escapeHtml(this.data.unit);
+    var name = (LEVEL_NAMES[this.level] || '') + p.name;
+    var query = new URLSearchParams(this.data.query || '');
+    query.delete('sector');
+    var regionUrl = (this.data.regionUrl || '').replace('{id}', encodeURIComponent(p.id));
+    var qs = query.toString();
+    var line = function (label, value, suffix) {
+      return '<p>' + label + ': <strong>' + (value === null || value === undefined ? '—' : quantity(value) + ' ' + unit + '/yr' + suffix) + '</strong></p>';
+    };
+    var compare = this.areaData && this.areaData.compareActive;
+    var changeLine = '';
+    if (compare) {
+      changeLine = '<p>Change, ' + escapeHtml(String(compare)) + ' to ' + escapeHtml(this.data.year || '') + ': <strong>' +
+        (p._change === null || p._change === undefined ? 'not comparable' : pctRound(p._change)) + '</strong></p>';
+    }
+    var html = '<div class="facility-popup area-popup">' +
+      '<p class="facility-popup-name">' + (regionUrl ? '<a href="' + escapeHtml(regionUrl + (qs ? '?' + qs : '')) + '">' + escapeHtml(name) + '</a>' : escapeHtml(name)) + '</p>' +
+      '<p>' + count.toLocaleString('en-US') + ' facilit' + (count === 1 ? 'y' : 'ies') + ' · ' + escapeHtml(this.data.label) + '</p>' +
+      changeLine +
+      line('Total', p.total, '') + line('Per square mile', p.per_sq_mi, '') + line('Per 1,000 residents', p.per_1k_residents, '') +
+      (compare ? line('Total, ' + escapeHtml(String(compare)), p.total_prev, '') : '') +
+      (count ? '<p><button type="button" class="button is-small is-link is-light" data-show-facilities>Show facilities</button></p>' : '') +
+      '</div>';
+    var popup = this.shell.placePopup(html, lngLat);
+    var button = popup.getElement().querySelector('[data-show-facilities]');
+    if (button) {
+      button.addEventListener('click', function () {
+        var shape = (self.areaData && self.areaData.shapes.features || []).filter(function (f) { return f.id === p.id; })[0];
+        popup.remove();
+        self.setView('facilities');
+        var bounds = shape && M.geometryBounds(shape.geometry);
+        if (bounds) self.map.fitBounds(bounds, { padding: 24, animate: !self.shell.reducedMotion });
+      });
+    }
+  };
+
+  // The legend card follows the view. It stays hidden until there's
+  // something to put in it.
+  FacilityMap.prototype.legend = function (body) {
+    var legend = body.querySelector('.facility-map-legend');
+    if (!legend) return;
+    if (this.view === 'areas') {
+      this.areaLegend(legend);
+      return;
+    }
+    if (!this.legendData) return;
+    if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
+    var max = this.legendData.max;
+    if (this.legendData.compare) {
+      // With dairies on the page every circle is the fixed POINT_RADIUS
+      // (applyView hides the dairies layer itself while Compare is on, so
+      // there's nothing left to explain a size key for either) -- otherwise
+      // circles still size by this year's value, a useful scale on its own,
+      // so the key stays; the colour classes swap to the change ramp either way.
+      var changeTitle = escapeHtml(this.data.label) + ', change ' + escapeHtml(String(this.legendData.compare)) +
+        ' to ' + escapeHtml(this.data.year || '');
+      var changeSizes = (max && !this.withDairies) ? '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
+        return sizeCircle(radiusFor(value, max), value);
+      }).join('') + '</div>' : '';
+      legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + changeSizes +
+        changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>' +
+        'New, too small to compare, or none reported in ' + escapeHtml(String(this.legendData.compare)) + '</p>' +
+        '<p class="legend-note">Facilities that closed before ' + escapeHtml(this.data.year || '') +
+        ' aren\'t shown.</p>';
+      return;
+    }
+    if (this.withDairies) {
+      legend.innerHTML = this.combinedLegend();
+      return;
+    }
+    var breaks = this.legendData.breaks;
+    var label = escapeHtml(this.data.label) + ' (' + escapeHtml(this.data.unit) + '/yr)';
+    if (!max) {
+      legend.innerHTML = '<p>No facilities here reported ' + escapeHtml(this.data.label) + '.</p>';
+      return;
+    }
+    var sizes = [max, max / 10, max / 100].map(function (value) {
+      return sizeCircle(radiusFor(value, max), value);
+    }).join('');
+    legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
+      '<div class="legend-sizes">' + sizes + '</div>' +
+      facilityBins(breaks) +
+      '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>';
+  };
+
+  // Before a view, level, measure, sector or page change swaps the data: no
+  // hover (an area's or a dairy's) outlives it.
+  FacilityMap.prototype.clearHover = function () {
+    this.areaHover.clear();
+    this.dairyHover.clear();
+  };
+
+  // With dairies: two small ramps side by side, the facilities' (blue, by
+  // tons) and the dairies' (amber, by EPA size class), and no size key (every
+  // point is one size).
+  FacilityMap.prototype.combinedLegend = function () {
+    var html = '<div class="legend-ramp"><p class="legend-title">Facilities (' + escapeHtml(this.data.unit) + '/yr)</p>' +
+      facilityBins(this.legendData.breaks) +
+      '<p class="legend-empty"><span class="legend-ring"></span>None reported</p></div>';
+    if (this.dairyData) {
+      html += '<div class="legend-ramp"><p class="legend-title">Dairies (EPA size)</p>' +
+        M.dairies.sizeBins((this.dairyData.properties || {}).size_classes, true) + '</div>';
+    }
+    return '<div class="legend-ramps">' + html + '</div>';
+  };
+
+  FacilityMap.prototype.areaLegend = function (legend) {
+    var data = this.areaData;
+    if (!data || !data.breaks) return;
+    if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
+    var breaks = data.breaks;
+    var missing = Number(data.values.facilities_without_point) || 0;
+    if (data.compareActive) {
+      var title = escapeHtml(this.data.label) + (AREA_SUFFIX[this.measure] || '') + ', change ' +
+        escapeHtml(String(data.compareActive)) + ' to ' + escapeHtml(this.data.year || '');
+      legend.innerHTML = '<p class="legend-title">' + title + '</p>' +
+        changeBins('is-area') +
+        '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>New, too small to compare, or none reported in ' +
+        escapeHtml(String(data.compareActive)) + (this.measure === 'per_resident' ? ', or no population' : '') + '</p>' +
+        '<p class="legend-note">Areas whose only facilities closed before ' + escapeHtml(this.data.year || '') +
+        ' aren\'t shown.</p>';
+      return;
+    }
+    var plainTitle = escapeHtml(this.data.label) + ' (' + escapeHtml(data.values.unit) + '/yr' + (AREA_SUFFIX[this.measure] || '') + ')';
+    legend.innerHTML = '<p class="legend-title">' + plainTitle + '</p>' +
+      facilityBins(breaks, 'is-area') +
+      '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>No facilities' +
+      (this.measure === 'per_resident' ? ' or no population' : '') + '</p>' +
+      (missing ? '<p class="legend-note">' + missing.toLocaleString('en-US') + ' facilit' + (missing === 1 ? 'y has' : 'ies have') +
+        ' no location and ' + (missing === 1 ? 'isn\'t' : 'aren\'t') + ' counted here.</p>' : '');
+  };
+
+  // The toolbar's controls: the view switch, level and measure (Areas), and
+  // the sector filter (full map). The core runs the dropdowns themselves.
+  FacilityMap.prototype.onChrome = function (wrap) {
+    var self = this;
+    if (this.shell.legendPanelEl && !this.legendData && !this.areaData) this.shell.legendPanelEl.hidden = true;
+    var shell = this.shell;
+    shell.bindControls('[data-sector]', function (item) { self.setSector(item.getAttribute('data-sector'), item.textContent.trim()); });
+    shell.bindControls('[data-view]', function (item) { self.setView(item.getAttribute('data-view')); });
+    shell.bindControls('[data-level]', function (item) { self.setLevel(item.getAttribute('data-level'), item.textContent.trim()); });
+    shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
+    shell.bindControls('[data-compare]', function (item) { self.setCompare(item.getAttribute('data-compare')); });
+    this.applyView();
+  };
+
+  FacilityMap.prototype.onDropdownOpen = function () {
+    this.shell.closePopup();
+  };
+
+  // Sets the map's state on `params` (a URLSearchParams), defaults left out:
+  // view `facilities`, the page's default level, measure `density`, and no
+  // sector. The sector is only the map's to write on the full map, where the
+  // reader picks it (a sector page's own sector is the page, not a filter).
+  FacilityMap.prototype.writeState = function (params) {
+    if (this.areasEnabled) {
+      var areas = this.view === 'areas';
+      if (areas) params.set('view', 'areas'); else params.delete('view');
+      if (areas && this.level !== this.defaultLevel) params.set('level', this.level); else params.delete('level');
+      if (areas && this.measure !== 'density') params.set('measure', this.measure); else params.delete('measure');
+      // Compare applies to both views (a facility's own circle too), so it's
+      // written whenever it's set, not only in Areas.
+      if (this.compare) params.set('compare', this.compare); else params.delete('compare');
+    }
+    if (this.data.mode === 'full') {
+      var sector = new URLSearchParams(this.data.query || '').get('sector');
+      if (sector) params.set('sector', sector); else params.delete('sector');
+    }
+  };
+
+  // The address bar follows the view, level and measure (and the sector) so
+  // a view can be shared.
+  FacilityMap.prototype.syncUrl = function () {
+    M.syncUrl(this.writeState.bind(this));
+  };
+
+  FacilityMap.prototype.setView = function (view) {
+    if (!this.areasEnabled) return;
+    this.view = view === 'areas' ? 'areas' : 'facilities';
+    this.clearHover();
+    this.applyView();
+    this.syncUrl();
+    if (this.view === 'areas' && (!this.areaData || this.areaData.level !== this.level)) {
+      this.loadAreas();
+      return;
+    }
+    this.shell.updateLegend();
+    // The status pill speaks for the view on screen.
+    if (this.view === 'facilities') {
+      this.shell.setStatus(this.el.dataset.loaded === '1' ? '' : 'Loading facilities…');
+    } else {
+      this.shell.setStatus('');
+    }
+  };
+
+  FacilityMap.prototype.setLevel = function (level, label) {
+    this.level = level;
+    this.clearHover();
+    this.markDropdown('.facility-map-level', '[data-level]', level, label);
+    this.syncUrl();
+    this.loadAreas();
+  };
+
+  FacilityMap.prototype.setMeasure = function (measure, label) {
+    this.measure = measure;
+    this.clearHover();
+    this.markDropdown('.facility-map-measure', '[data-measure]', measure, label);
+    this.syncUrl();
+    this.showAreas();
+  };
+
+  // The compared year: unlike a measure switch, this needs a refetch (the
+  // server pairs both years' totals; the client never fetches a bare year on
+  // its own).
+  FacilityMap.prototype.setCompare = function (compare) {
+    this.compare = compare || '';
+    this.clearHover();
+    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-compare');
+    if (dropdown) {
+      dropdown.classList.toggle('is-set', !!this.compare);
+      var text = dropdown.querySelector('.map-toolbar-label');
+      if (text) text.textContent = this.compare ? 'vs ' + this.compare : 'Compare';
+      Array.prototype.forEach.call(dropdown.querySelectorAll('[data-compare]'), function (item) {
+        item.classList.toggle('is-active', item.getAttribute('data-compare') === (compare || ''));
+      });
+    }
+    this.syncUrl();
+    this.applyView();
+    // Facilities always shade by the change when it's on; areas only need
+    // the refetch while that view is up (same pattern as setSector) --
+    // otherwise leave a stale areaData behind for setView('areas') to
+    // reuse and refetch itself.
+    this.loadFacilities();
+    if (this.view === 'areas') {
+      this.loadAreas();
+    } else {
+      this.areaData = null;
+      this.areaRequest++;
+    }
+  };
+
+  FacilityMap.prototype.markDropdown = function (selector, itemSelector, value, label) {
+    var dropdown = this.shell.wrap && this.shell.wrap.querySelector(selector);
+    if (!dropdown) return;
+    var text = dropdown.querySelector('.map-toolbar-label');
+    if (text && label) text.textContent = label;
+    var attribute = itemSelector.slice(1, -1);
+    Array.prototype.forEach.call(dropdown.querySelectorAll(itemSelector), function (item) {
+      item.classList.toggle('is-active', item.getAttribute(attribute) === value);
+    });
+  };
+
+  // The sector filter narrows both views without a page swap; the address
+  // bar follows so the view can be shared.
+  FacilityMap.prototype.setSector = function (sector, label) {
+    var params = new URLSearchParams(this.data.query || '');
+    if (sector) params.set('sector', sector); else params.delete('sector');
+    this.data.query = params.toString();
+    this.clearHover();
+    this.syncUrl();
+    var dropdown = this.shell.wrap && this.shell.wrap.querySelector('.facility-map-sector');
+    if (dropdown) {
+      dropdown.classList.toggle('is-set', !!sector);
+      var text = dropdown.querySelector('.map-toolbar-label');
+      if (text) text.textContent = label || 'All sectors';
+      Array.prototype.forEach.call(dropdown.querySelectorAll('[data-sector]'), function (item) {
+        item.classList.toggle('is-active', item.getAttribute('data-sector') === (sector || ''));
+      });
+    }
+    this.loadFacilities();
+    if (this.view === 'areas') {
+      this.loadAreas();
+    } else {
+      // A sector change made while off the areas view must not leave a
+      // stale areaData behind: setView('areas') would otherwise reuse it
+      // because the level still matches.
+      this.areaData = null;
+      this.areaRequest++;
+    }
+  };
+
+  // A swap brought a new page: drop what belonged to the old one (its
+  // popup, the located dot, its area values and outline), take the new
+  // page's view, frame it, and reload.
+  FacilityMap.prototype.onAdopt = function () {
+    this.shell.closePopup();
+    // The new page's legend card waits for its own data, as on a first build.
+    this.legendData = null;
+    this.areaData = null;
+    this.dairyData = null;
+    // An old page's areas, dairies or outline still in flight must not land here.
+    this.areaRequest++;
+    this.outlineRequest++;
+    this.dairyRequest++;
+    this.dairyPopupRequest++;
+    if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
+    // Before the areas source is replaced: a stale hover feature-state on
+    // the new page's data would otherwise point at the wrong feature.
+    this.clearHover();
+    this.shell.setSourceData('locate', M.EMPTY);
+    this.shell.setSourceData('areas', M.EMPTY);
+    this.shell.setSourceData('dairies', M.EMPTY);
+    this.shell.setStatus('');
+    this.readViewState();
+    this.applyView();
+    this.fitted = false;
+    this.shell.frame();
+    this.applyHighlight();
+    this.load();
+  };
+
+  FacilityMap.prototype.destroy = function () {
+    this.shell.closePopup();
+    this.clearHover();
+    document.body.removeEventListener('htmx:configRequest', this.onConfigRequest);
+    this.map = null;
+  };
+
+  M.register('facility', {
+    selector: '.facility-map',
+    lifecycle: 'adopt',
+    features: { controls: ['zoom', 'locate', 'home'], toolbar: true, legend: true, status: true, expand: true },
+    // The key readers' folded legends were saved under before the core.
+    panelStoragePrefix: 'emissions:facility-map:panel:',
+    create: function (shell) { return new FacilityMap(shell); },
+  });
+
+  window.EmissionsFacilityMap = {
+    init: M.init,
+    instances: function () { return M.instances('facility'); },
+  };
+})();

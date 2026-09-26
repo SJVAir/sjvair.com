@@ -179,6 +179,212 @@
     },
   };
 
+  // A same-origin JSON fetch that rejects on an HTTP error.
+  function getJson(url) {
+    return fetch(url, { credentials: 'same-origin' }).then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    });
+  }
+
+  // Numbers as the maps' popups and legends write them.
+  var format = {
+    // A data value, by the same rules as the `quantity` template filter:
+    // always one decimal, thousands separators, '<0.1' for a nonzero value
+    // under 0.05, '—' for none.
+    quantity: function (value) {
+      if (value === null || value === undefined) return '—';
+      if (value && Math.abs(value) < 0.05) return '<0.1';
+      return value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    },
+    // A legend's round number (a class boundary, a size in the circle key):
+    // no forced decimals, so 0.01 reads '0.01', 10 reads '10', 1456 '1,456'.
+    // A nonzero value under 0.01 reads '<0.01', or with `precise` its two
+    // significant digits ('0.0025').
+    round: function (value, precise) {
+      if (value && Math.abs(value) < 0.01) return precise ? String(Number(value.toPrecision(2))) : '<0.01';
+      return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    },
+  };
+
+  // Classed colour ramps: `breaks` are the ascending boundaries between
+  // breaks.length + 1 classes.
+  var classes = {
+    index: function (value, breaks) {
+      var index = 0;
+      while (index < breaks.length && value >= breaks[index]) index++;
+      return index;
+    },
+    // "under 0.1", "0.1–1", ..., "100 and up"; `round` writes the boundaries
+    // (format.round by default).
+    label: function (index, breaks, round) {
+      round = round || format.round;
+      if (index === 0) return 'under ' + round(breaks[0]);
+      if (index === breaks.length) return round(breaks[index - 1]) + ' and up';
+      return round(breaks[index - 1]) + '–' + round(breaks[index]);
+    },
+    // A legend's classes, largest first: a swatch from `ramp` (one colour
+    // per class) and its label, with `swatchClass` on each swatch and
+    // `round` passed on to label().
+    bins: function (breaks, ramp, swatchClass, round) {
+      var bins = '';
+      for (var i = breaks.length; i >= 0; i--) {
+        bins += '<span class="legend-bin"><span class="legend-swatch' + (swatchClass ? ' ' + swatchClass : '') +
+          '" style="background:' + ramp[i] + '"></span>' + classes.label(i, breaks, round) + '</span>';
+      }
+      return '<div class="legend-bins">' + bins + '</div>';
+    },
+  };
+
+  // A ring's planar centroid (shoelace), with its signed area, so the largest
+  // ring of a multipolygon can be picked.
+  function ringCentroid(ring) {
+    var area = 0, cx = 0, cy = 0;
+    for (var i = 0, n = ring.length; i < n; i++) {
+      var p = ring[i], q = ring[(i + 1) % n];
+      var cross = p[0] * q[1] - q[0] * p[1];
+      area += cross;
+      cx += (p[0] + q[0]) * cross;
+      cy += (p[1] + q[1]) * cross;
+    }
+    if (!area) return null;
+    return { point: [cx / (3 * area), cy / (3 * area)], area: Math.abs(area) };
+  }
+
+  // A geometry's own point: a Point's coordinates; a (Multi)Polygon's
+  // centroid (of its largest outer ring, by planar area); anything else (or
+  // a degenerate ring), the middle of its bounds. Used to place a permanent
+  // or hover label steadily, independent of the cursor.
+  function geometryCentroid(geometry) {
+    if (!geometry) return null;
+    if (geometry.type === 'Point') return geometry.coordinates;
+    var rings = [];
+    if (geometry.type === 'Polygon') rings = [geometry.coordinates[0]];
+    if (geometry.type === 'MultiPolygon') {
+      for (var i = 0; i < geometry.coordinates.length; i++) rings.push(geometry.coordinates[i][0]);
+    }
+    var best = null;
+    for (var j = 0; j < rings.length; j++) {
+      var c = ringCentroid(rings[j]);
+      if (c && (!best || c.area > best.area)) best = c;
+    }
+    if (best) return best.point;
+    var bounds = geometryBounds(geometry);
+    return bounds ? [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2] : null;
+  }
+
+  // Hovering an interactive area: the outline it takes while the cursor is
+  // over it (via feature-state), and the label that follows. Shared by every
+  // map that highlights a feature under the cursor (map-figure.js, the
+  // dairy map's counties), so the paint expression, the popup and the
+  // feature-state toggle are written once.
+  var HOVER_COLOR = '#222';
+  var HOVER_WIDTH = 2;
+
+  // A paint expression: `on` while the feature-state `hover` is true, else `off`.
+  function hoverPaint(on, off) {
+    return ['case', ['boolean', ['feature-state', 'hover'], false], on, off];
+  }
+
+  // A label: the SDK's popup, closed only by us, never taking focus (a
+  // permanent label opening on page load must not scroll the page to it).
+  // `extraClass` adds to the shared `map-hover-label` look (its CSS is in
+  // assets/css/maps/map.css) when a caller needs its own hook, e.g. for a
+  // smoke script's selector.
+  function hoverLabel(text, lngLat, offset, extraClass) {
+    return new maptilersdk.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      closeOnMove: false,
+      focusAfterOpen: false,
+      anchor: 'bottom',
+      offset: offset,
+      maxWidth: 'none',
+      className: extraClass ? 'map-hover-label ' + extraClass : 'map-hover-label',
+    }).setLngLat(lngLat).setText(text);
+  }
+
+  // Toggles a source's hover feature-state from `previousId` to `id` (either
+  // may be null/undefined for none), and returns `id` -- the caller keeps
+  // that as its own "currently hovered" field. A no-op source (already
+  // removed by a style swap) is skipped rather than throwing.
+  function setHoverState(map, source, previousId, id) {
+    if (previousId === id) return previousId;
+    if (previousId != null && map.getSource(source)) {
+      map.setFeatureState({ source: source, id: previousId }, { hover: false });
+    }
+    if (id != null) {
+      map.setFeatureState({ source: source, id: id }, { hover: true });
+    }
+    return id;
+  }
+
+  // A hover controller for one interactive layer: `set(feature, lngLat)` on
+  // mousemove, `clear()` on mouseleave (and whenever the caller is about to
+  // replace the source's data, or tears the map down). Tracks the
+  // feature-state toggle itself; with `options.label(feature)` it also shows
+  // a steady text label at the feature's own point (`options.anchor`, or
+  // `lngLat` when that's absent) and only rebuilds it when the hovered
+  // feature id changes -- the dairy map's counties and the facility map's
+  // areas both highlight a feature this way.
+  function createHoverController(map, source, options) {
+    options = options || {};
+    var hoverId = null;
+    var labelId = null;
+    var label = null;
+
+    function clearLabel() {
+      labelId = null;
+      if (label) {
+        label.remove();
+        label = null;
+      }
+    }
+
+    function set(feature, lngLat) {
+      if (!feature) return;
+      var id = feature.id;
+      hoverId = setHoverState(map, source, hoverId, id);
+      if (!options.label || labelId === id) return;
+      labelId = id;
+      if (label) {
+        label.remove();
+        label = null;
+      }
+      var text = options.label(feature);
+      if (!text) return;
+      var anchor = (options.anchor && options.anchor(feature)) || lngLat;
+      label = hoverLabel(text, anchor, options.offset || 0, options.labelClass).addTo(map);
+    }
+
+    function clear() {
+      hoverId = setHoverState(map, source, hoverId, null);
+      clearLabel();
+    }
+
+    return { set: set, clear: clear };
+  }
+
+  // `path` (a URL or path) with its query rewritten by write(URLSearchParams),
+  // as a same-origin path; null for another origin, or with `samePage` for
+  // another page than this one. A map writes its state (view, measure, ...)
+  // onto links rendered before the reader changed it.
+  function rewriteQuery(path, write, samePage) {
+    var url = new URL(path, window.location.href);
+    if (url.origin !== window.location.origin) return null;
+    if (samePage && url.pathname !== window.location.pathname) return null;
+    write(url.searchParams);
+    var search = url.searchParams.toString();
+    return url.pathname + (search ? '?' + search : '') + url.hash;
+  }
+
+  // The address bar's query rewritten by write(URLSearchParams), in place
+  // (replaceState): a map's view follows it, so it can be shared.
+  function syncUrl(write) {
+    var path = rewriteQuery(window.location.pathname + window.location.search, write);
+    window.history.replaceState(window.history.state, '', path);
+  }
+
   window.SJVAirMaps = {
     TILE_STYLES: Object.keys(TILE_STYLE_PATHS),
     EMPTY: EMPTY,
@@ -190,6 +396,7 @@
     parseBounds: parseBounds,
     extendBounds: extendBounds,
     geometryBounds: geometryBounds,
+    geometryCentroid: geometryCentroid,
     unionBounds: unionBounds,
     escapeHtml: escapeHtml,
     isPhone: isPhone,
@@ -197,5 +404,18 @@
     logger: logger,
     debounce: debounce,
     counties: counties,
+    getJson: getJson,
+    format: format,
+    classes: classes,
+    rewriteQuery: rewriteQuery,
+    syncUrl: syncUrl,
+    hover: {
+      COLOR: HOVER_COLOR,
+      WIDTH: HOVER_WIDTH,
+      paint: hoverPaint,
+      label: hoverLabel,
+      setState: setHoverState,
+      controller: createHoverController,
+    },
   };
 })();

@@ -1,0 +1,47 @@
+{% extends 'emissions/base.html' %}
+{% load humanize emissions_explorer pesticides_explorer %}
+
+{% block title %}{{ sector.label }} | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}
+<li><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}">Sectors</a></li>
+<li class="is-active"><a aria-current="page">{{ sector.label }}</a></li>
+{% endblock %}
+
+{% block explorer-content %}
+<div class="content">
+    <h2 class="title is-3">{{ sector.label }}</h2>
+    <p>{% sector_description sector %}</p>
+</div>
+
+{% if summary %}
+<div class="level stat-row box">
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities</p><p class="title">{{ summary.facilities|intcomma }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{{ pollutant.name }}, {{ year }}</p><p class="title">{{ summary.value|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Share of all facilities</p><p class="title">{{ summary.share|percent }}</p></div></div>
+</div>
+{% else %}
+<p class="notification is-light">No facilities in this sector reported {{ pollutant.label }} in {{ year }}.</p>
+{% endif %}
+
+<div class="columns">
+    <div class="column">{% emissions_trend_chart trend pollutant year %}</div>
+    <div class="column">
+        <h3 class="title is-5">By county</h3>
+        <table class="table is-fullwidth is-narrow">
+            <thead><tr><th>County</th><th class="has-text-right">Facilities</th><th class="has-text-right">{{ pollutant.unit|capfirst }}/yr</th><th>Share</th></tr></thead>
+            <tbody>
+                {% for row in counties %}
+                <tr><td><a href="{% qs_replace county=row.county.slug %}">{{ row.county.name|cut:" County" }}</a></td><td class="has-text-right">{{ row.facilities|intcomma }}</td><td class="has-text-right">{{ row.value|amount:pollutant }}</td><td>{{ row.share|percent }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include 'emissions/includes/facility-map.html' %}
+<h3 class="title is-4">Facilities</h3>
+{% include 'emissions/includes/facility-table.html' with sortable=False %}
+{% if facility_count > rows|length %}
+<p><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}{% if scope_qs %}&amp;{% else %}?{% endif %}sector={{ sector.value }}">All {{ facility_count|intcomma }} facilities in this sector →</a></p>
+{% endif %}
+{% endblock %}

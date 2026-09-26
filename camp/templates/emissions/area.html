@@ -1,0 +1,52 @@
+{% extends 'emissions/base.html' %}
+{% load humanize emissions_explorer %}
+
+{% block title %}{{ title }} | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}{% if county_region and county_region != area.region %}<li><a href="{{ county_region.get_emissions_url }}{{ scope_qs }}">{{ county_region.name }}</a></li>{% endif %}<li class="is-active"><a aria-current="page">{{ title }}</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="content">
+    <h1 class="title is-3 mb-1">{{ name }}</h1>
+    <p class="heading">{{ kind }}{% if county_region and county_region != area.region %} · {{ county_region.name }}{% endif %}{% if population %} · {{ population|whole }} people{% endif %}</p>
+    {% if radius_options %}
+    <div class="buttons has-addons explorer-scope">
+        {% for option in radius_options %}<a class="button is-small{% if option.current %} is-link is-selected{% endif %}" href="{{ option.url }}">{{ option.miles }} mi</a>{% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<div class="level stat-row box">
+    <div class="level-item has-text-centered"><div><p class="heading">Facilities in {{ year }}</p><p class="title">{{ totals.facilities|intcomma }}</p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{{ pollutant.name }}</p><p class="title">{{ total|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">Per square mile</p><p class="title">{{ per_sq_mi|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div></div>
+    {% if county_share is not None and county_region != area.region %}
+    <div class="level-item has-text-centered"><div><p class="heading">Share of {{ county_region.name }}</p><p class="title">{{ county_share|percent }}</p></div></div>
+    {% endif %}
+</div>
+
+{% include 'emissions/includes/facility-map.html' %}
+
+{% if context_bar %}{% include 'emissions/includes/context-bar.html' %}{% endif %}
+
+<h2 class="title is-4 mt-5">Top facilities</h2>
+{% if top_rows %}
+{% include 'emissions/includes/facility-table.html' with rows=top_rows sortable=False %}
+{% else %}
+<p class="has-text-grey">No facilities here reported {{ pollutant.name }} in {{ year }}.</p>
+{% endif %}
+
+<div class="columns mt-5">
+    <div class="column">
+        <h2 class="title is-4">By sector</h2>
+        {% include 'emissions/includes/sector-rows.html' with rows=top_sectors %}
+    </div>
+    <div class="column">
+        {% emissions_trend_chart by_year pollutant year %}
+    </div>
+</div>
+{% if dairy_block %}{% include 'emissions/includes/dairy-block.html' %}{% endif %}
+
+{% include 'regions/includes/within.html' with within_name=name %}
+
+{% if privacy_note %}<p class="is-size-7 has-text-grey">This page's location is only in its address; we don't store it.</p>{% endif %}
+{% endblock %}

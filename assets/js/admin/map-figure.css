@@ -21,31 +21,10 @@
   filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.3));
 }
 
-/* Labels: the SDK's popup, styled as the tooltip it replaces (a small bold
-   white box with a tip), and never in the way of the cursor, so a hover
-   label doesn't take the hover that opened it. */
-.map-figure-label,
-/* The SDK sets `pointer-events: auto` on a popup's content, which beats the
-   `none` inherited from the popup itself. A label that takes the pointer
-   makes the map think the cursor left the county underneath it: the label
-   closes, the cursor is over the county again, the label reopens, and it
-   flickers for as long as the cursor rests there. */
-.map-figure-label .maplibregl-popup-content,
-.map-figure-label .maplibregl-popup-tip {
-  pointer-events: none;
-}
-
-.map-figure-label .maplibregl-popup-content {
-  padding: 2px 5px;
-  border: 1px solid #fff;
-  border-radius: 3px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  font-size: 11px;
-  font-weight: bold;
-  line-height: 1.4;
-  color: #222;
-  white-space: nowrap;
-}
+/* The label look itself (the SDK's popup restyled as a tooltip) is shared:
+   see .map-hover-label in assets/css/maps/map.css. Every figure label also
+   carries the 'map-figure-label' class (assets/js/admin/map-figure.js), kept
+   only as a selector hook for this file's own pages and the smoke script. */
 
 /* Without WebGL the container holds a note instead of a map. */
 .map-figure.is-unavailable {

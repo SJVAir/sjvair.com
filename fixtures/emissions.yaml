@@ -1,0 +1,128 @@
+# Air districts (no boundaries needed for these tests)
+- model: regions.region
+  pk: 9001
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    name: San Joaquin Valley APCD
+    slug: san-joaquin-valley-apcd
+    type: air_district
+    external_id: SJU
+    metadata: {"code": "SJU", "carb_url": "https://ww2.arb.ca.gov/san-joaquin-valley-air-pollution-control-district", "complaints_url": "https://ww2.valleyair.org/file-a-complaint", "phone": "(559) 230-6000"}
+- model: regions.region
+  pk: 9002
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    name: Eastern Kern APCD
+    slug: eastern-kern-apcd
+    type: air_district
+    external_id: KER
+    metadata: {"code": "KER", "carb_url": "https://ww2.arb.ca.gov/eastern-kern-air-pollution-control-district", "complaints_url": "", "phone": "(661) 862-5250"}
+
+# Facility 1: major source in Fresno
+- model: emissions.facility
+  pk: 1
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    county_code: 10
+    air_district: 9001
+    facid: 1
+    metadata_year: 2024
+    name: TEST PLANT
+    sic_code: 3221
+    sector: glass
+    address: {"street": "123 MAIN ST", "city": "FRESNO", "zipcode": "93728"}
+    point: SRID=4326;POINT (-119.787 36.737)
+    county: 3
+    city: 9
+    zipcode: 11
+
+# Facility 2: minor source (gas station) in Kern's valley portion
+- model: emissions.facility
+  pk: 2
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    county_code: 15
+    air_district: 9001
+    facid: 2
+    metadata_year: 2024
+    name: TEST GAS STATION
+    sic_code: 5541
+    sector: gas-stations
+    address: {"street": "456 OAK AVE", "city": "BAKERSFIELD", "zipcode": "93301"}
+    point: SRID=4326;POINT (-119.018 35.373)
+    county: 2
+    city: null
+    zipcode: null
+
+# Facility 3: Eastern Kern cement plant (same county, other district)
+- model: emissions.facility
+  pk: 3
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    county_code: 15
+    air_district: 9002
+    facid: 2
+    metadata_year: 2024
+    name: TEST CEMENT
+    sic_code: 3241
+    sector: cement-minerals
+    address: {"street": "1 QUARRY RD", "city": "MOJAVE", "zipcode": "93501"}
+    point: SRID=4326;POINT (-118.17 35.05)
+    county: 2
+    city: null
+    zipcode: null
+
+- model: emissions.emissionsrecord
+  pk: 1
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    facility: 1
+    year: 2023
+    tog: "1.5"
+    nox: "3.0"
+    pm: "0.8"
+    pm10: "0.5"
+- model: emissions.emissionsrecord
+  pk: 2
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    facility: 2
+    year: 2023
+    tog: "0.1"
+    rog: "0.1"
+- model: emissions.emissionsrecord
+  pk: 3
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    facility: 1
+    year: 2024
+    nox: "6.0"
+    pm: "1.0"
+    pm10: "0.6"
+    benzene: "0.001"
+- model: emissions.emissionsrecord
+  pk: 4
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    facility: 3
+    year: 2024
+    nox: "100.0"
+    pm: "20.0"
+    pm10: "15.0"
+- model: emissions.emissionsrecord
+  pk: 5
+  fields:
+    created: 2024-01-01 00:00:00+00:00
+    modified: 2024-01-01 00:00:00+00:00
+    facility: 2
+    year: 2024
+    rog: "0.2"

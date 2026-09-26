@@ -1074,15 +1074,6 @@ class TownshipAndCountyTests(RollupTestMixin, TestCase):
         assert township_of('MDM-T14S-R20E-01') == 'MDM-T14S-R20E'
         assert township_of('MDM-T14S-R20E') == 'MDM-T14S-R20E'
 
-    def test_counties_geojson(self):
-        response = self.client.get('/api/2.0/pesticides/counties/')
-        assert response.status_code == 200
-        data = response.json()
-        assert data['type'] == 'FeatureCollection'
-        names = sorted(f['properties']['name'] for f in data['features'])
-        assert names == ['Fresno County', 'Kern County']
-        assert data['features'][0]['geometry']['type'] in ('Polygon', 'MultiPolygon')
-
     def test_townships_geojson_totals(self):
         response = self.client.get('/api/2.0/pesticides/townships/', {'year': 2023})
         assert response.status_code == 200

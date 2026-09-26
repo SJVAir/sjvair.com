@@ -1,0 +1,110 @@
+{% extends 'emissions/base.html' %}
+{% load humanize emissions_explorer pesticides_explorer %}
+
+{% block title %}{{ facility.name|title }} | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}
+<li><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">Facilities</a></li>
+<li class="is-active"><a aria-current="page">{{ facility.name }}</a></li>
+{% endblock %}
+
+{% block explorer-content %}
+<div class="content detail-header">
+    <h1 class="mb-1">{{ facility.name }}</h1>
+    {% if facility.sic_code %}{% sic_title facility.sic_code as sic_label %}
+    <p class="identifiers has-text-grey">SIC {{ facility.sic_code }}{% if sic_label %} · {{ sic_label }}{% endif %}</p>
+    {% endif %}
+    <div class="tags are-medium">
+        <a class="tag is-link is-light" href="{% url 'emissions:sector-detail' facility.sector %}{{ scope_qs }}">{{ facility.get_sector_display }}</a>
+        {% if facility.is_minor_source %}<a class="tag" href="{% url 'emissions:about' %}#minor-sources">Minor source</a>{% endif %}
+    </div>
+    <p class="facility-regulator">
+        Regulated by {% if district.metadata.carb_url %}<a href="{{ district.metadata.carb_url }}">{{ district.name }}</a>{% else %}{{ district.name }}{% endif %}
+        {% if district.metadata.phone %}{% with phone=district.metadata.phone %} · <a href="tel:{{ phone|cut:'('|cut:')'|cut:' '|cut:'-' }}">{{ phone }}</a>{% endwith %}{% endif %}
+        {% if district.metadata.complaints_url %}
+        <a class="button is-small is-link is-light ml-2" href="{{ district.metadata.complaints_url }}"><span class="icon"><span class="fa-regular fa-bullhorn" aria-hidden="true"></span></span><span>Report an air pollution problem</span></a>
+        {% endif %}
+    </p>
+</div>
+
+<div class="columns facility-cards">
+    <div class="column is-half">
+        <div class="card">
+            <header class="card-header"><p class="card-header-title">Where</p></header>
+            <div class="card-content">
+                <p class="mb-0">{{ facility.address.street|title }}</p>
+                <p>{% if facility.city %}{{ facility.city.name }}{% else %}{{ facility.address.city|title }}{% endif %}, CA{% if facility.address.zipcode %} {{ facility.address.zipcode }}{% endif %}</p>
+                {% if area_links %}
+                <p class="heading mt-4 mb-1">Counted in
+                    {# From the facility's location on the map, which can differ from its reported address (the state's data, shown as given). #}
+                    <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="Where this facility's point on the map falls. It can differ from the address the state has on file, which is shown above as reported."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span>
+                </p>
+                <p class="facility-areas">{% for link in area_links %}<a href="{{ link.url }}{{ scope_qs }}">{{ link.label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% include 'emissions/includes/facility-map.html' %}
+
+{% if shown_year != year %}
+<div class="notification is-light">This facility has no emissions reported for {{ year }}; showing {{ shown_year }}.</div>
+{% endif %}
+
+<h3 class="title is-4">Emissions in {{ shown_year }}</h3>
+<div class="table-container">
+<table class="table is-fullwidth is-narrow">
+    {% with county_name=facility.county.name|cut:" County" %}
+    <thead><tr>
+        <th>Pollutant</th>
+        <th class="has-text-right">Tons/yr</th>
+        <th>Rank in {{ county_name }} County
+            <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="By tons per year of this pollutant in {{ shown_year }}, among the permitted facilities in {{ county_name }} County that reported any. #1 reported the most.{% if not facility.is_minor_source %} Gas stations, dry cleaners and other small sources aren't counted.{% endif %}"><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span></th>
+        <th>Rank in sector
+            <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="By tons per year of this pollutant in {{ shown_year }}, among facilities in the {{ facility.get_sector_display }} sector, across all the covered counties, that reported any. #1 reported the most."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span></th>
+        <th>Share of the county's facility total
+            <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-end has-tooltip-arrow" data-tooltip="This facility's tons per year as a share of what all of {{ county_name }} County's permitted facilities reported. It isn't a share of all pollution in the county: cars, farms and other sources aren't included."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span></th>
+    </tr></thead>
+    {% endwith %}
+    <tbody>
+        {% for row in ranks %}
+        <tr>
+            <td><a href="{% qs_replace pollutant=row.pollutant.key toxics=None %}">{{ row.pollutant.label }}</a>{% if row.pollutant.label != row.pollutant.name %} <span class="has-text-grey is-size-7">{{ row.pollutant.name }}</span>{% endif %}</td>
+            <td class="has-text-right">{{ row.value|amount:row.pollutant }}</td>
+            <td>{% if row.county_rank %}#{{ row.county_rank|intcomma }} <span class="has-text-grey is-size-7">of {{ row.county_count|intcomma }}</span>{% else %}—{% endif %}</td>
+            <td>{% if row.sector_rank %}#{{ row.sector_rank|intcomma }} <span class="has-text-grey is-size-7">of {{ row.sector_count|intcomma }}</span>{% else %}—{% endif %}</td>
+            <td>{{ row.county_share|percent }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% if not pollutant.toxic %}{% emissions_trend_chart trend pollutant shown_year %}{% endif %}
+
+{% if changes %}
+<div class="notification is-warning is-light">
+    <p>Large year-to-year changes can reflect changes in how emissions are estimated, not only real changes in what the facility emitted:</p>
+    <ul>{% for change in changes %}<li>{{ change.pollutant.label }}: {{ change.pct|signed_pct }} from {{ change.previous_year }} to {{ change.year }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% if toxics_rows %}
+<h3 class="title is-4">Toxic air contaminants in {{ shown_year }}</h3>
+<div class="table-container">
+<table class="table is-fullwidth is-narrow">
+    <thead><tr><th>Contaminant</th><th class="has-text-right">Lbs/yr</th><th class="has-text-right">Year before</th></tr></thead>
+    <tbody>
+        {% for row in toxics_rows %}
+        <tr>
+            <td>{{ row.pollutant.name }}</td>
+            <td class="has-text-right">{{ row.value|quantity }}</td>
+            <td class="has-text-right">{% if row.previous is not None %}{{ row.previous|quantity }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+
+<p class="is-size-7 has-text-grey">Source: California Air Resources Board facility emissions inventory (CEIDARS). <a href="{% url 'emissions:about' %}">About this data</a>.</p>
+{% endblock %}

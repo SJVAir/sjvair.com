@@ -1,0 +1,30 @@
+{% load humanize emissions_explorer pesticides_explorer %}
+{% comment %}
+A region or near-me page's Dairies block (views.dairy_block): the scope
+year's counted dairies here and the ten largest; on county pages, CARB's
+county dairy-cattle emissions in the scope pollutant. Greyed outside CADD's
+years, with a link that changes only the year.
+{% endcomment %}
+<section class="dairy-block mt-5{% if not dairy_block.in_range %} is-greyed{% endif %}" id="dairies">
+    <h2 class="title is-4"><span class="icon"><span class="fa-duotone fa-fw fa-cow explorer-icon is-dairies" aria-hidden="true"></span></span> Dairies</h2>
+    {% if not dairy_block.in_range %}
+    <p>No dairy data for {{ year }}. CARB's dairy database covers {{ dairy_block.first_year }}–{{ dairy_block.last_year }}. <a href="{% qs_replace year=dairy_block.last_year %}">See {{ dairy_block.last_year }} →</a></p>
+    {% else %}
+    {% if dairy_block.is_county %}
+    {% if not dairy_block.county_pollutant %}
+    <p class="dairy-county-line is-greyed">No {{ pollutant.label }} data for dairies.</p>
+    {% elif dairy_block.county_tons is not None %}
+    <p class="dairy-county-line">Dairy cattle, CARB estimate: <strong>{{ dairy_block.county_tons|whole }} tons/yr {{ pollutant.label }}</strong> <a class="is-size-7" href="{% url 'emissions:about' %}#dairies">(silage not included)</a></p>
+    {% endif %}
+    {% endif %}
+    {% with summary=dairy_block.summary %}
+    {% if summary.dairies %}
+    <p class="dairy-summary">{{ summary.dairies|intcomma }} dair{{ summary.dairies|pluralize:"y,ies" }} · {{ summary.mature_cows|whole }} mature dairy cows · {{ summary.large|intcomma }} Large CAFO{{ summary.large|pluralize }} · {{ summary.digesters|intcomma }} with digesters</p>
+    {% include 'emissions/includes/dairy-table.html' with rows=dairy_block.top compact=True sortable=False zoom=False %}
+    <p><a href="{{ dairy_block.list_url }}">All dairies here →</a></p>
+    {% else %}
+    <p class="has-text-grey">No dairies in CARB's dairy database here.</p>
+    {% endif %}
+    {% endwith %}
+    {% endif %}
+</section>

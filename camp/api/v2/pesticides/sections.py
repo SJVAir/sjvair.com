@@ -21,6 +21,7 @@ from camp.apps.pesticides.models import (
 )
 from camp.apps.pesticides.townships import round_coords, township_geometries
 from camp.apps.regions.models import Region
+from camp.utils.gis import round_coords
 from camp.utils.views import CachedEndpointMixin
 
 MAX_SECTIONS = 2500
@@ -451,38 +452,6 @@ class ActiveNoticeListBase(generics.Endpoint):
         } for n in notices]
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
         return {'type': 'FeatureCollection', 'as_of': timezone.now().isoformat(), 'features': features}
-
-
-class CountyListBase(generics.Endpoint):
-    # See the comment on SectionListBase: the get() implementation lives on
-    # this un-cached base so CachedEndpointMixin.get() on CountyList below is
-    # the one actually dispatched to.
-    def get(self, request):
-        # Already cached by maps.county_geometries(); one
-        # in_bulk() for the names, which aren't part of the geometry cache.
-        geometries = maps.county_geometries()
-        regions = Region.objects.in_bulk(list(geometries))
-        features = [{
-            'type': 'Feature',
-            'id': regions[pk].sqid,
-            'geometry': round_coords(json.loads(geojson)),
-            'properties': {
-                'id': regions[pk].sqid,
-                'name': regions[pk].name,
-                'slug': regions[pk].slug,
-            },
-        } for pk, geojson in geometries.items() if pk in regions]
-        features.sort(key=lambda feature: feature['properties']['name'])
-        # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
-        return {'type': 'FeatureCollection', 'features': features}
-
-
-class CountyList(CachedEndpointMixin, CountyListBase):
-    """The eight San Joaquin Valley county outlines as GeoJSON. No parameters."""
-    cache_timeout = 60 * 60 * 24
-    # The outlines are full precision as of v2; a cached v1 response is the
-    # simplified set, whose shared borders doubled up when drawn.
-    cache_key_version = 2
 
 
 class TownshipListBase(generics.Endpoint):

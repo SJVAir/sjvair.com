@@ -127,6 +127,10 @@ class Region(TimeStampedModel):
         """This region's page in the pesticides explorer (the app that owns the URL keeps the name)."""
         return reverse('pesticides:region', kwargs={'sqid': self.sqid, 'slug': self.slug})
 
+    def get_emissions_url(self):
+        """This region's page in the emissions explorer."""
+        return reverse('emissions:region', kwargs={'sqid': self.sqid, 'slug': self.slug})
+
     @property
     def monitors(self):
         """

@@ -1,0 +1,19 @@
+{# Beside "Find your area" on the home page: a facility by name, keeping the explorer scope. #}
+<section class="box find-facility">
+    <h2 class="title is-5">Find a facility</h2>
+    <form method="get" action="{% url 'emissions:facility-list' %}">
+        {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+        <div class="field has-addons">
+            <div class="control is-expanded has-icons-left">
+                <input class="input" type="search" id="facility-search" name="q" placeholder="Facility name" aria-label="Search by facility name">
+                <span class="icon is-left"><span class="fa-regular fa-industry-windows" aria-hidden="true"></span></span>
+            </div>
+            <div class="control"><button class="button is-primary" type="submit">Search</button></div>
+        </div>
+    </form>
+    <p class="find-facility-browse">
+        <span class="has-text-grey">Or browse:</span>
+        <a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">All facilities</a><span class="find-area-sep" aria-hidden="true">·</span><a href="{% url 'emissions:sector-list' %}{{ scope_qs }}">By sector</a><span class="find-area-sep" aria-hidden="true">·</span><a href="{% url 'emissions:map' %}{{ scope_qs }}">On the map</a>
+    </p>
+    <p class="is-size-7 has-text-grey">Any permitted facility, from power plants and refineries to dairies, gas stations and dry cleaners. Part of a name works: "cement", "cogen", "dairy".</p>
+</section>

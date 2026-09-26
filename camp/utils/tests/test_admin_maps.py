@@ -4,7 +4,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from camp.apps.accounts.models import User
-from camp.apps.ceidars.models import Facility
+from camp.apps.emissions.models import Facility
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.regions.models import Region
 
@@ -61,9 +61,9 @@ class RegionAdminMapTests(AdminMapTestMixin, TestCase):
 
 
 class FacilityAdminMapTests(AdminMapTestMixin, TestCase):
-    fixtures = ['regions.yaml', 'ceidars.yaml']
+    fixtures = ['regions.yaml', 'emissions.yaml']
 
     def test_change_view_renders_map_figure(self):
         facility = Facility.objects.get(pk=1)
-        url = reverse('admin:ceidars_facility_change', args=[facility.pk])
+        url = reverse('admin:emissions_facility_change', args=[facility.pk])
         self.assert_map_figure_page(url)

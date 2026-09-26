@@ -1,0 +1,39 @@
+{% load humanize emissions_explorer pesticides_explorer %}
+{% comment %}
+Dairies (DairyHerd rows from dairies.table) as a table. On the Dairies tab it's
+`sortable`, and with `zoom` a name moves the tab's map to the dairy
+(dairy-map.js). A region page's top ten is `compact`: name, city, mature
+dairy cows, EPA size, digester.
+{% endcomment %}
+<div class="table-container">
+<table class="table is-fullwidth is-hoverable is-narrow dairy-table">
+    <thead>
+        <tr>
+            <th>{% if sortable %}{% sort_link 'name' 'Dairy' %}{% else %}Dairy{% endif %}</th>
+            <th>{% if sortable %}{% sort_link 'city' 'City' %}{% else %}City{% endif %}</th>
+            {% if not compact %}<th>{% if sortable %}{% sort_link 'county' 'County' %}{% else %}County{% endif %}</th>{% endif %}
+            <th class="has-text-right">{% if sortable %}{% sort_link 'mature_cows' 'Mature dairy cows' %}{% else %}Mature dairy cows{% endif %}</th>
+            {% if not compact %}<th class="has-text-right">Other cattle</th>{% endif %}
+            <th>EPA size</th>
+            <th>Digester</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for herd in rows %}
+        {% with dairy=herd.dairy %}
+        <tr>
+            <td>{% if zoom %}<a href="#dairy-map" class="dairy-zoom" data-dairy="{{ dairy.sqid }}" data-lng="{{ dairy.point.x|stringformat:'.5f' }}" data-lat="{{ dairy.point.y|stringformat:'.5f' }}">{{ dairy.name }}</a>{% else %}{{ dairy.name }}{% endif %}</td>
+            <td>{% dairy_city dairy %}</td>
+            {% if not compact %}<td><a href="{{ dairy.county.get_emissions_url }}{{ region_qs }}">{{ dairy.county.name|cut:" County" }}</a></td>{% endif %}
+            <td class="has-text-right">{{ herd.mature_cows|whole }}</td>
+            {% if not compact %}<td class="has-text-right">{{ herd.other_cattle|whole }}</td>{% endif %}
+            <td>{{ herd.get_size_class_display }}</td>
+            <td>{% if herd.digester %}Yes{% if herd.digester_since %}, since {{ herd.digester_since }}{% else %} (start year unknown){% endif %}{% else %}—{% endif %}</td>
+        </tr>
+        {% endwith %}
+        {% empty %}
+        <tr><td colspan="7">No dairies match.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>

@@ -127,6 +127,7 @@ INSTALLED_APPS = [
     'camp.apps.ces',
     'camp.apps.calheatscore',
     'camp.apps.ceidars',
+    'camp.apps.emissions',
     'camp.apps.monitors',
     'camp.apps.pesticides',
     'camp.apps.monitors.airgradient',
@@ -444,6 +445,11 @@ CIMIS_API_KEY = env('CIMIS_API_KEY')
 # CompTox
 
 COMPTOX_API_KEY = env('COMPTOX_API_KEY', '')
+
+
+# Census
+
+CENSUS_API_KEY = env('CENSUS_API_KEY', '')
 
 
 # Purple Air

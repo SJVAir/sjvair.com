@@ -1,9 +1,9 @@
 {% extends 'pesticides/base.html' %}
 {% load humanize pesticides_explorer %}
 
-{% block title %}{{ area.label }} | {{ block.super }}{% endblock %}
+{% block title %}{{ area.page_title }} | {{ block.super }}{% endblock %}
 {% block body-class %}{{ block.super }} place{% endblock %}
-{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ area.label }}</a></li>{% endblock %}
+{% block breadcrumb-list %}<li class="is-active"><a aria-current="page">{{ area.page_title }}</a></li>{% endblock %}
 
 {% block explorer-content %}
 <div class="content detail-header">
@@ -159,45 +159,7 @@
 </section>
 {% endif %}
 
-{% if within and within.any %}
-<section class="within mt-6">
-    <h2 class="title is-4">{% if within.counties %}In and around{% else %}In{% endif %} {{ area.label }}</h2>
-    <div class="columns within-panels">
-        {% if within.counties %}
-        <div class="column within-panel is-narrow">
-            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-map explorer-icon is-map"></span></span> {% if within.counties|length == 1 %}County{% else %}Counties{% endif %}</h3>
-            <ul class="within-list">
-                {% for county in within.counties %}<li><a href="{{ county.url }}{{ scope_qs }}">{{ county.name }}</a></li>{% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% if within.communities %}
-        <div class="column within-panel">
-            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-city explorer-icon is-chemicals"></span></span> Communities <span class="tag is-light is-rounded">{{ within.communities|length }}</span></h3>
-            <ul class="within-list is-two-column">
-                {% for place in within.communities %}<li><a href="{{ place.url }}{{ scope_qs }}">{{ place.name }}</a> <span class="has-text-grey is-size-7">{{ place.type_label }}</span></li>{% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% if within.school_districts %}
-        <div class="column within-panel">
-            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-school explorer-icon is-commodities"></span></span> School districts <span class="tag is-light is-rounded">{{ within.school_districts|length }}</span></h3>
-            <ul class="within-list is-two-column">
-                {% for district in within.school_districts %}<li><a href="{{ district.url }}{{ scope_qs }}">{{ district.name }}</a></li>{% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        {% if within.zipcodes %}
-        <div class="column within-panel is-narrow within-zips">
-            <h3 class="within-heading"><span class="icon"><span class="fa-duotone fa-fw fa-envelope explorer-icon is-records"></span></span> ZIP codes <span class="tag is-light is-rounded">{{ within.zipcodes|length }}</span></h3>
-            <div class="tags">
-                {% for zip in within.zipcodes %}<a class="tag is-light" href="{{ zip.url }}{{ scope_qs }}">{{ zip.name }}</a>{% endfor %}
-            </div>
-        </div>
-        {% endif %}
-    </div>
-</section>
-{% endif %}
+{% include 'regions/includes/within.html' with within_name=area.label %}
 
 <div class="buttons mt-6 explorer-actions">
     <a class="button" href="{{ records_url }}">

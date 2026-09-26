@@ -4,13 +4,14 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
-from camp.api.v2.regions.endpoints import RegionDetail, RegionList, RegionMetaEndpoint
+from camp.api.v2.regions.endpoints import RegionDetail, RegionGeoJSON, RegionList, RegionMetaEndpoint
 from camp.apps.regions.models import Boundary, Region
 from camp.utils.test import get_response_data
 
 region_list = RegionList.as_view()
 region_detail = RegionDetail.as_view()
 region_meta = RegionMetaEndpoint.as_view()
+region_geojson = RegionGeoJSON.as_view()
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -302,6 +303,130 @@ class TestPlaceLookup(TestCase):
         boundary = response.json()['data']['boundary']
         assert boundary is not None
         assert boundary['geometry']['type'] == 'MultiPolygon'
+
+
+class RegionGeoJSONTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.url = reverse('api:v2:regions:region-geojson')
+
+    def get(self, params):
+        response = region_geojson(RequestFactory().get(self.url, params))
+        return response, get_response_data(response)
+
+    def test_route_is_not_read_as_a_region_id(self):
+        assert self.url == '/api/2.0/regions/geojson/'
+
+    def test_counties_as_a_feature_collection(self):
+        response, data = self.get({'type': 'county'})
+        assert response.status_code == 200
+        assert data['type'] == 'FeatureCollection'
+        counties = Region.objects.filter(type=Region.Type.COUNTY).exclude(boundary=None)
+        assert len(data['features']) == counties.count() > 0
+        feature = data['features'][0]
+        assert feature['type'] == 'Feature'
+        assert feature['id'] == feature['properties']['id']
+        assert set(feature['properties']) == {'id', 'name', 'slug', 'type'}
+        assert feature['properties']['type'] == 'county'
+        assert feature['geometry']['type'] == 'MultiPolygon'
+        names = [f['properties']['name'] for f in data['features']]
+        assert names == sorted(names)
+
+    def test_coordinates_are_rounded(self):
+        _, data = self.get({'type': 'county'})
+        ring = data['features'][0]['geometry']['coordinates'][0][0]
+        assert all(round(value, 5) == value for point in ring for value in point)
+
+    def test_filters_are_the_region_lists(self):
+        _, data = self.get({'type': 'county', 'slug': 'fresno'})
+        assert [f['properties']['slug'] for f in data['features']] == ['fresno']
+
+    def test_regions_without_a_boundary_are_left_out(self):
+        Region.objects.create(name='Boundless County', slug='boundless', type=Region.Type.COUNTY)
+        _, data = self.get({'type': 'county'})
+        assert 'boundless' not in [f['properties']['slug'] for f in data['features']]
+
+    def test_type_is_required(self):
+        # Unfiltered, this would be every region in the database: thousands
+        # of square-mile sections among them.
+        response, data = self.get({})
+        assert response.status_code == 400
+        assert 'type' in str(data)
+
+    def test_retired_tracts_are_left_out(self):
+        current = make_tract('Tract 2020', FRESNO_TRACT_WKT)
+        retired = make_tract('Tract 2010', KERN_TRACT_WKT)
+        retired.boundary.version = '2010'
+        retired.boundary.save(update_fields=['version'])
+        _, data = self.get({'type': 'tract'})
+        slugs = {f['properties']['slug'] for f in data['features']}
+        assert current.slug in slugs and retired.slug not in slugs
+
+    def test_simplified_shapes_share_their_borders(self):
+        # Two tracts sharing the edge x = -120.1: simplified together, the
+        # shared edge must come out identical on both sides (no gap, no
+        # doubled line), and the result is lighter than the input.
+        left = 'MULTIPOLYGON(((-120.2 36.8, -120.1 36.8, ' + ', '.join(
+            f'-120.1 {36.8 + i * 0.0001:.4f}' for i in range(1, 2000)) + ', -120.1 37.0, -120.2 37.0, -120.2 36.8)))'
+        right = 'MULTIPOLYGON(((-120.1 36.8, -120.0 36.8, -120.0 37.0, -120.1 37.0, ' + ', '.join(
+            f'-120.1 {37.0 - i * 0.0001:.4f}' for i in range(1, 2000)) + ', -120.1 36.8)))'
+        make_tract('Left', left)
+        make_tract('Right', right)
+        _, data = self.get({'type': 'tract', 'simplify': '1'})
+        rings = {f['properties']['slug']: f['geometry']['coordinates'][0][0] for f in data['features']}
+        on_edge = lambda ring: sorted({tuple(p) for p in ring if p[0] == -120.1})
+        assert on_edge(rings['left']) == on_edge(rings['right'])
+        assert len(rings['left']) < 100
+
+    def test_simplified_keeps_the_filters(self):
+        _, data = self.get({'type': 'county', 'slug': 'fresno', 'simplify': '1'})
+        assert [f['properties']['slug'] for f in data['features']] == ['fresno']
+        assert data['features'][0]['geometry']['type'] == 'MultiPolygon'
+
+    def test_simplified_overlapping_shapes_fall_back_per_shape(self):
+        # An invalid coverage (two tracts overlapping instead of sharing an
+        # edge) must not blow up the whole request -- shapely.coverage_simplify
+        # silently mangles topology on this input rather than raising, so the
+        # coverage validity has to be checked before deciding which path to take.
+        # A third, unrelated pair (left/right, sharing a clean edge elsewhere)
+        # is included too: on real data, only a couple of shapes out of
+        # hundreds are ever actually invalid, so the two overlapping tracts
+        # must be simplified on their own while everyone else -- here, the
+        # clean pair -- still goes through coverage_simplify together and
+        # keeps an identical shared border.
+        overlap_a = 'MULTIPOLYGON(((-120.2 36.8, -120.0 36.8, -120.0 37.0, -120.2 37.0, -120.2 36.8)))'
+        overlap_b = 'MULTIPOLYGON(((-120.1 36.8, -119.9 36.8, -119.9 37.0, -120.1 37.0, -120.1 36.8)))'
+        left = 'MULTIPOLYGON(((-120.2 38.8, -120.1 38.8, ' + ', '.join(
+            f'-120.1 {38.8 + i * 0.0001:.4f}' for i in range(1, 2000)) + ', -120.1 39.0, -120.2 39.0, -120.2 38.8)))'
+        right = 'MULTIPOLYGON(((-120.1 38.8, -120.0 38.8, -120.0 39.0, -120.1 39.0, ' + ', '.join(
+            f'-120.1 {39.0 - i * 0.0001:.4f}' for i in range(1, 2000)) + ', -120.1 38.8)))'
+        make_tract('Overlap A', overlap_a)
+        make_tract('Overlap B', overlap_b)
+        make_tract('Left', left)
+        make_tract('Right', right)
+        response, data = self.get({'type': 'tract', 'simplify': '1'})
+        assert response.status_code == 200
+        assert len(data['features']) == 4
+        rings = {f['properties']['slug']: f['geometry']['coordinates'][0][0] for f in data['features']}
+        on_edge = lambda ring: sorted({tuple(p) for p in ring if p[0] == -120.1})
+        assert on_edge(rings['left']) == on_edge(rings['right'])
+
+    def test_simplify_rejects_a_type_outside_the_areas_levels(self):
+        # mtrs sections number in the tens of thousands; simplifying them on
+        # demand for an anonymous request is the cost I2 flags. Only the
+        # Areas levels (county, zipcode, tract) may use simplify=1.
+        response, data = self.get({'type': 'mtrs', 'simplify': '1'})
+        assert response.status_code == 400
+        assert 'simplify' in str(data)
+
+    def test_simplify_bypasses_the_response_cache(self):
+        response, _ = self.get({'type': 'county', 'simplify': '1'})
+        assert response['X-Cache-Status'] == 'MISS'
+        response, _ = self.get({'type': 'county', 'simplify': '1'})
+        assert response['X-Cache-Status'] != 'HIT'
 
 
 class RegionWithinFilterTests(TestCase):

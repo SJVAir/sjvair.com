@@ -69,12 +69,12 @@
       url: https://calheatscore.calepa.ca.gov/
       description: CalHeatScore is California's heat-risk forecasting tool, developed by the Office of Environmental Health Hazard Assessment at CalEPA with the Department of Insurance and the Department of Public Health. It rates each ZIP code's heat risk for the coming week on a five-step scale, from low to severe, based on forecast temperatures and local health data. SJVAir imports the daily scores for every Valley ZIP code so heat risk can be shown alongside air quality.
 
-- category: Environmental & Health Data
+- category: Environmental & Health Mapping
   icon:
     name: fa-earth-americas
     primary: forestgreen
     secondary: deepskyblue
-  description: 'Datasets on where pollution comes from and who bears it: screening indices that combine environmental, health, and socioeconomic indicators to identify the communities most impacted, and the emissions inventory behind them, which records what each permitted facility releases.'
+  description: Datasets that combine environmental, health, and socioeconomic indicators to identify communities most impacted by pollution and support equity-focused decision making.
   integrations:
     - name: CalEnvironScreen
       logo: img/logo/calenviroscreen-logo.png
@@ -85,11 +85,6 @@
       logo: img/logo/healthy-places-index-logo.png
       url: https://www.healthyplacesindex.org/
       description: The Healthy Places Index (HPI), developed by the Public Health Alliance, maps social and environmental conditions that shape health outcomes across California. By combining indicators such as education, housing, job opportunities, and environmental quality, HPI highlights community factors strongly linked to life expectancy and supports efforts to advance health equity.
-
-    - name: CEIDARS
-      logo: img/logo/carb-vertical.png
-      url: https://ww2.arb.ca.gov/our-work/programs/criteria-and-toxics-emissions-inventory
-      description: The California Emission Inventory Development and Reporting System (CEIDARS) is CARB's inventory of emissions from permitted stationary sources — refineries, power plants, dairies, manufacturers, and thousands of smaller facilities — reported each year by the local air districts. SJVAir imports the facility-level records for the San Joaquin Valley, with each facility's criteria pollutant and toxic emissions by year, so that what is released nearby can be shown alongside what is measured in the air.
 
 - category: Pesticide Data
   icon:
@@ -128,12 +123,39 @@
       url: https://monographs.iarc.who.int/
       description: The International Agency for Research on Cancer (IARC), part of the World Health Organization, reviews the evidence on whether agents cause cancer in humans and classifies them into groups, from Group 1 (carcinogenic) through Group 2A and 2B (probably and possibly carcinogenic) to Group 3 (not classifiable). SJVAir shows a chemical's IARC group where one has been assigned and treats Groups 1, 2A, and 2B as chemicals of concern.
 
+- category: Emissions Data
+  icon:
+    name: fa-industry-windows
+    primary: sienna
+    secondary: burlywood
+  description: 'The CARB records behind the <a href="/tools/emissions/">Facility Emissions Explorer</a>: what each permitted facility in the San Joaquin Valley reports releasing, where each one is, the Valley''s dairies and their herds, and the county-wide inventories that put them in context.'
+  integrations:
+    - name: CEIDARS
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/our-work/programs/criteria-and-toxics-emissions-inventory
+      description: The California Emission Inventory Development and Reporting System (CEIDARS) is CARB's inventory of emissions from permitted stationary sources — refineries, power plants, dairies, manufacturers, and thousands of smaller facilities — reported each year by the local air districts. SJVAir imports every facility in the eight Valley counties, with its criteria pollutant and toxic emissions for each year from 2010 on.
+
+    - name: CEPAM
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/applications/cepam2019v1-04-standard-emission-tool
+      description: The California Emission Projection Analysis Model (CEPAM) is CARB's county-level emissions inventory, covering every source category — cars and trucks, off-road equipment, farming, wildfires, and consumer products as well as permitted facilities — projected from a 2017 base year. SJVAir uses its county totals to show how much of a county's pollution comes from the facilities on the map, and how much from everything else.
+
+    - name: California Dairy & Livestock Database
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd
+      description: CARB's California Dairy & Livestock Database (CADD) locates the state's dairies and counts each one's herd by year, with the anaerobic digesters that capture manure methane. Coverage of the Valley's dairies grew in 2019. SJVAir shows the Valley's dairies, year by year, on the explorer's Dairies tab, beside CARB's county estimates of dairy cattle emissions.
+
+    - name: CARB Pollution Mapping Tool
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/resources/carb-pollution-mapping-tool
+      description: CARB's Pollution Mapping Tool maps greenhouse gas, criteria pollutant, and toxic emissions from California facilities, and publishes the coordinates it places each CEIDARS facility at. SJVAir uses those coordinates to locate facilities whose addresses can't be matched to a street — oil fields, pumping plants, remote sites — and in place of geocoder guesses.
+
 - category: Geospatial Data
   icon:
     name: fa-map-location-dot
     primary: steelblue
     secondary: lightsteelblue
-  description: 'The boundaries and points every page is organized around: counties, cities and census-designated places, ZIP codes, urban areas, the square-mile sections pesticide use is reported by, school districts, and the schools and child care centers shown alongside pesticide data. Most of it comes through the <a href="https://data.ca.gov/">California Open Data Portal</a>, maintained there by the state department named on each dataset.'
+  description: 'The boundaries and points every page is organized around: counties, cities and census-designated places, ZIP codes, urban areas, air districts, the square-mile sections pesticide use is reported by, school districts, and the schools and child care centers shown alongside pesticide data. Most of it comes through the <a href="https://data.ca.gov/">California Open Data Portal</a>, maintained there by the state department named on each dataset.'
   integrations:
     - name: U.S. Census Bureau
       logo: img/logo/census.svg
@@ -144,6 +166,11 @@
       logo: img/logo/ca-open-data.png
       url: https://data.ca.gov/dataset/ca-geographic-boundaries
       description: The California Department of Technology publishes the state's county and place boundaries on the California Open Data Portal, drawn from the Census Bureau's TIGER/Line files. SJVAir's eight Valley counties and its cities and census-designated places come from this dataset.
+
+    - name: CARB Air District Boundaries
+      logo: img/logo/carb-vertical.png
+      url: https://gis.data.ca.gov/datasets/CaliforniaARB::california-air-district-boundaries/about
+      description: The California Air Resources Board publishes the boundaries of California's 35 local air districts, the agencies that permit and regulate stationary sources. SJVAir uses them to show which district oversees each facility, with the district's contact details and complaint line taken from CARB's district directory.
 
     - name: Caltrans
       logo: img/logo/caltrans.png

@@ -41,7 +41,8 @@ def qs_replace(context, **kwargs):
 
 
 # Columns whose natural first click is A-Z rather than largest-first.
-TEXT_SORT_KEYS = ('name', 'city', 'type')
+# Keys whose first click sorts ascending: names, and the emissions rank (#1 first).
+TEXT_SORT_KEYS = ('name', 'city', 'type', 'rank')
 
 
 @register.simple_tag(takes_context=True)

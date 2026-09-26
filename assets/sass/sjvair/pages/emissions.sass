@@ -1,0 +1,178 @@
+// Emissions explorer additions; the shared explorer chrome is in pesticides.sass (body.pesticides).
+body.emissions
+  // A stats row that stays two by two on a phone (the Dairies tab's four).
+  .stat-row.is-grid-mobile
+    +mobile
+      .level-item
+        flex-basis: 50%
+        margin-bottom: 0.75rem
+      // Half a phone is narrow: a smaller figure that never breaks mid-number.
+      .title
+        font-size: $size-4
+        white-space: nowrap
+  .hook
+    // Photo: "Pumpjacks, San Joaquin Valley, California" by Downtowngal
+    // (east of Paso Robles, 2011), Wikimedia Commons, CC BY-SA 3.0; credited
+    // on the about page. Cropped to the hills and pumpjacks, and darkened
+    // for the white title over a bright sky.
+    background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.6) 100%), url('/static/img/pumpjacks-san-joaquin-valley.jpg')
+    background-position: center 60%
+  // Duotone colours for the emissions explorer's own icons (the tabs and the
+  // map toolbar), alongside the shared palette in pesticides.sass.
+  .explorer-icon
+    &.is-facilities
+      --fa-primary-color: #d35400
+      --fa-secondary-color: #ffc078
+    &.is-areas
+      --fa-primary-color: #{$primary}
+      --fa-secondary-color: #9ed0f5
+    &.is-sectors
+      --fa-primary-color: #7b4fb8
+      --fa-secondary-color: #c9a7ff
+    &.is-level
+      --fa-primary-color: #2e8b57
+      --fa-secondary-color: #9acd32
+    &.is-measure
+      --fa-primary-color: #5a6b7b
+      --fa-secondary-color: #c8d1da
+    // The Dairies tab's own filters: the size classes' amber-brown ramp, and
+    // the digester ring's green (dairy-map.js's DIGESTER_COLOR).
+    &.is-size
+      --fa-primary-color: #b45309
+      --fa-secondary-color: #fbbf24
+    &.is-digester
+      --fa-primary-color: #2e7d32
+      --fa-secondary-color: #a5d6a7
+    // The facility map's Areas-view year comparison, matching the
+    // pesticides map's own Compare control.
+    &.is-compare
+      --fa-primary-color: #6a3d9a
+      --fa-secondary-color: #cab2d6
+    // The About tab's circle-info: a slate circle with a white "i" on the
+    // white active tab (without its own colours both layers were one colour).
+    &.is-about
+      --fa-primary-color: #{$white}
+      --fa-secondary-color: #5a6b7b
+  // On the dark hero (inactive tab) it inverts: a white circle, a slate "i".
+  .hook .explorer-nav li:not(.is-active) .explorer-icon.is-about
+    --fa-primary-color: #5a6b7b
+    --fa-secondary-color: rgba(255, 255, 255, 0.92)
+    &.is-dairies
+      --fa-primary-color: #b45309
+      --fa-secondary-color: #fcd34d
+  // The scope bar's two toggles, while off (on, they go white on the orange
+  // fill): toxics in a warning red, minor sources in a fuel-pump gold.
+  .explorer-scope-toggle:not(.is-set) .explorer-icon
+    &.is-toxics
+      --fa-primary-color: #c0392b
+      --fa-secondary-color: #f4a3a0
+    &.is-minor
+      --fa-primary-color: #b7791f
+      --fa-secondary-color: #f6d58e
+  // On the selected (blue) half of the Facilities | Areas switch, go white.
+  .facility-map-view .button.is-link .explorer-icon
+    --fa-primary-color: #fff
+    --fa-secondary-color: rgba(255, 255, 255, 0.6)
+  // Scope options that don't apply on a page (the Dairies tab): shown, not links.
+  .explorer-scope-picker .dropdown-item.is-disabled
+    color: $grey-light
+    cursor: not-allowed
+    &:hover
+      background-color: transparent
+  // A region page's Dairies block outside CADD's years, and a county line
+  // for a pollutant CARB doesn't report for dairy cattle.
+  .dairy-block.is-greyed, .dairy-county-line.is-greyed
+    color: $grey
+    .title
+      color: $grey
+  .emissions-context-bar
+    display: flex
+    height: 1.25rem
+    border-radius: 4px
+    overflow: hidden
+    margin: 0.75rem 0 0.5rem
+  .segment, .swatch
+    &.is-stationary
+      background: #08519c
+    &.is-areawide
+      background: #6baed6
+    &.is-mobile
+      background: #9ecae1
+    &.is-natural
+      background: #deebf7
+  .segment
+    height: 100%
+  .emissions-legend
+    display: flex
+    flex-wrap: wrap
+    gap: 0.25rem 1rem
+    font-size: 0.875rem
+  .swatch
+    display: inline-block
+    width: 0.75rem
+    height: 0.75rem
+    margin-right: 0.3rem
+    border-radius: 2px
+    vertical-align: middle
+  .share-bar
+    background: #deebf7
+    height: 0.5rem
+    width: 6rem
+    border-radius: 2px
+    display: inline-block
+    margin-right: 0.5rem
+    vertical-align: middle
+    span
+      display: block
+      height: 100%
+      background: #3182bd
+  .sparkline polyline
+    fill: none
+    stroke: #3182bd
+    stroke-width: 1.5
+  .facility-table tr.is-minor td
+    color: #6b7280
+  // A bottom tooltip in a row's last column: anchored to its icon's right edge
+  // so it opens leftward and stays inside the table, instead of centring past
+  // the edge and making the table scroll sideways.
+  [data-tooltip].has-tooltip-bottom.has-tooltip-end::before
+    left: auto
+    right: -0.5rem
+    transform: translate(0, 100%)
+  // Every map on the explorer sits above page content (a heading, a table,
+  // the CARB context box); give it room.
+  .map-wrap
+    margin-bottom: 1.5rem
+  // The facility page's Where / Regulated by cards, in the related-card style.
+  .facility-cards
+    .card
+      height: 100%
+    .card-header
+      box-shadow: none
+      border-bottom: 2px solid $primary
+    .card-content p:last-child
+      margin-bottom: 0
+    // The Counted in tooltip sits inside a .heading (uppercase, spaced):
+    // its text shouldn't inherit that.
+    [data-tooltip]::before
+      text-transform: none
+      letter-spacing: normal
+      font-weight: normal
+  // A phone number never breaks across lines.
+  .facility-regulator a[href^="tel:"]
+    white-space: nowrap
+  // Home: "Find your area" and "Find a facility" side by side, the same height.
+  .find-row
+    .box
+      height: 100%
+    // Styled like the county links in "Find your area" beside it.
+    .find-facility-browse
+      margin-top: 0.75rem
+      font-size: $size-7
+      a
+        font-weight: 600
+      .find-area-sep
+        color: $grey-light
+        margin: 0 0.15rem
+      > span:first-child
+        margin-right: 0.25rem

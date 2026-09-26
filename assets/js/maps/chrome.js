@@ -85,7 +85,33 @@
       dropdown.classList.remove('is-active');
       var trigger = dropdown.querySelector('.dropdown-trigger .button');
       if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      // Clear any nudge from keepMenuInView: a stale shift must not carry
+      // into the next open, where the trigger (and so the overflow) may differ.
+      var menu = dropdown.querySelector('.dropdown-menu');
+      if (menu) menu.style.transform = '';
     });
+  }
+
+  // A dropdown near the toolbar's own left or right end (the Dairies map's
+  // Size and Digester controls, right after the view switch, unlike the
+  // wider dropdowns further along the row) can open with its menu running
+  // past the map's edge on a narrow phone, however the toolbar wraps that
+  // day. Rather than guess safe widths per control and viewport, nudge the
+  // opened menu back into view with a transform -- it still opens from the
+  // same trigger, just shifted the least amount needed.
+  function keepMenuInView(menu) {
+    if (!menu) return;
+    menu.style.transform = '';
+    var rect = menu.getBoundingClientRect();
+    var margin = 8;
+    var shift = 0;
+    // clientWidth, not window.innerWidth: the latter includes the
+    // scrollbar's own width, which would let the nudge undershoot on
+    // browsers with a visible scrollbar.
+    var viewportWidth = document.documentElement.clientWidth;
+    if (rect.right > viewportWidth - margin) shift = (viewportWidth - margin) - rect.right;
+    if (rect.left + shift < margin) shift = margin - rect.left;
+    if (shift) menu.style.transform = 'translateX(' + Math.round(shift) + 'px)';
   }
 
   function bindToolbar(shell) {
@@ -103,8 +129,12 @@
         trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
         if (!open) return;
         if (shell.module && shell.module.onDropdownOpen) shell.module.onDropdownOpen();
+        // Nudge before focusing: focus() can itself scroll the page (even
+        // with preventScroll on some browsers) and shift the menu's
+        // measured position, so settle the transform first.
+        keepMenuInView(dropdown.querySelector('.dropdown-menu'));
         var focusable = dropdown.querySelector('input[type="search"], select');
-        if (focusable) focusable.focus();
+        if (focusable) focusable.focus({ preventScroll: true });
       });
       // Clicks inside the menu (typing, picking) shouldn't close it.
       var menu = dropdown.querySelector('.dropdown-menu');
@@ -114,6 +144,12 @@
 
   function bindDocument(shell) {
     if (shell.documentHandlers) return;
+    // A mobile browser fires `resize` for a height-only change too -- the
+    // URL bar collapsing or expanding as the reader scrolls -- which must
+    // not close a dropdown they're mid-use with. Only clientWidth actually
+    // changing (a real narrower/wider layout, or an orientation change)
+    // means a nudged menu's measurement is stale.
+    shell.lastWidth = document.documentElement.clientWidth;
     var handlers = shell.documentHandlers = {
       click: function () { closeDropdowns(shell, null); },
       keydown: function (event) {
@@ -123,6 +159,13 @@
       },
       resize: function () {
         if (shell.expanded) fitBelowNavbar(shell);
+        var width = document.documentElement.clientWidth;
+        if (width === shell.lastWidth) return;
+        shell.lastWidth = width;
+        // A nudged dropdown menu was measured against the viewport at
+        // open time; rather than re-measure on every width change, just
+        // close it -- the reader can reopen it in the new layout.
+        closeDropdowns(shell, null);
       },
     };
     document.addEventListener('click', handlers.click);
