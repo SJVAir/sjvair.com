@@ -34,7 +34,7 @@ def covered_bounds():
 
 
 def map_config(container_class, *, data, features, toolbar_template=None, options_template=None,
-               legend_template=None, container_id='', compact=False):
+               options_ramp=True, legend_template=None, container_id='', compact=False):
     """
     The dict `maps/includes/map.html` renders as `map`. `data` maps
     data-attribute names (hyphenated, without `data-`) to values; the shared
@@ -61,6 +61,10 @@ def map_config(container_class, *, data, features, toolbar_template=None, option
         'features': features,
         'toolbar_template': toolbar_template,
         'options_template': options_template,
+        # Whether the shared options template (map-options.html) renders its
+        # Ramp select alongside Tiles -- off for a map with no colour ramp to
+        # pick (the Dairies tab: the size classes are fixed).
+        'options_ramp': options_ramp,
         'legend_template': legend_template,
         'compact': compact,
     }

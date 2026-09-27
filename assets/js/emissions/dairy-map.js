@@ -229,6 +229,11 @@
     // The hovered dairy's ring (feature-state; highlight only, the click
     // popup has its details).
     this.dairyHover = M.hover.controller(this.map, 'dairies');
+    // The Options menu's Tiles select (shell.bindTiles, shared with the
+    // facility map): the basemap experiment, applied live and written to
+    // the URL (?tiles=). No Ramp here -- the dairy colours are the fixed
+    // EPA size classes.
+    this.defaultTileStyle = this.data.style || 'dataviz';
     this.readState();
     this.map.on('mousemove', 'dairies', function (evt) { self.dairyHover.set(evt.features[0], evt.lngLat); });
     this.map.on('mouseleave', 'dairies', function () { self.dairyHover.clear(); });
@@ -587,6 +592,7 @@
     this.shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
     this.shell.bindControls('[data-digester]', function (item) { self.setDigester(item.getAttribute('data-digester'), item.textContent.trim()); });
     this.bindSizeCheckboxes();
+    this.shell.bindTiles('select[name="tiles"]', function () { self.syncUrl(); });
     this.applyView();
   };
 
@@ -612,13 +618,16 @@
 
   // The map's state on `params` (a URLSearchParams), defaults left out: view
   // `dairies`, measure `emissions` (written only in Counties), all three
-  // sizes, and no digester choice.
+  // sizes, no digester choice, and the page's own basemap style.
   DairyMap.prototype.writeState = function (params) {
     var counties = this.view === 'counties';
     if (counties) params.set('view', 'counties'); else params.delete('view');
     if (counties && this.measure !== 'emissions') params.set('measure', this.measure); else params.delete('measure');
     if (this.sizes.length === SIZE_VALUES.length) params.delete('sizes'); else params.set('sizes', this.sizes.join(','));
     if (this.digester) params.set('digester', this.digester); else params.delete('digester');
+    // The Options menu's Tiles experiment (shell.bindTiles); not page scope,
+    // so it's written regardless of view.
+    if (this.shell.tileStyle && this.shell.tileStyle !== this.defaultTileStyle) params.set('tiles', this.shell.tileStyle); else params.delete('tiles');
   };
 
   DairyMap.prototype.syncUrl = function () {

@@ -142,6 +142,11 @@ def dairy_map_config(scope, view):
         data=data,
         features={'toolbar': True, 'expand': True, 'legend': True},
         toolbar_template='emissions/includes/dairy-map-toolbar.html',
+        # Shared with the facility map (emissions/includes/map-options.html),
+        # Tiles only: the dairy colours are the fixed EPA size classes, no
+        # ramp to pick.
+        options_template='emissions/includes/map-options.html',
+        options_ramp=False,
         legend_template='emissions/includes/dairy-map-legend.html',
         container_id='dairy-map',
     )

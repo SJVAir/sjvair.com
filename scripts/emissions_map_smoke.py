@@ -11,8 +11,9 @@ page (outlined, and a boosted year change keeping one map still in Areas) and
 a near-me page (its circle), and checks the scope bar's boosted swaps carry
 the map's current state (back to Facilities, a cleared sector, no repeated
 parameters). Then the Dairies tab: its two views (dairies drawn, counties
-shaded), a measure change redrawing the legend, a sort (a boosted swap)
-keeping Counties and its measure, a table row's name zooming to its dairy
+shaded), an Options menu with Tiles only (a size filter surviving the style
+swap, tiles= in the URL), a measure change redrawing the legend, a sort (a
+boosted swap) keeping Counties and its measure, a table row's name zooming to its dairy
 with its popup, a county narrowing the dairies, and the NOx / 2024 fallback
 notes. Last, a county page in 2023 maps its dairies beside the facilities
 (points drawn, both ramps in the legend, a dairy's popup), and a boosted
@@ -78,6 +79,19 @@ def wait_style_loaded(driver, timeout=MAP_TIMEOUT):
         if driver.execute_script(
                 "var m = window.EmissionsFacilityMap.instances()[0];"
                 "return !!m && m.map.isStyleLoaded() && !!m.map.getLayer('facilities');"):
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def wait_dairy_style_loaded(driver, timeout=MAP_TIMEOUT):
+    """After a tiles change on the Dairies tab: the SDK is back and addLayers()
+    has re-added the dairies/counties sources and layers from cached data."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if driver.execute_script(
+                "var m = window.EmissionsDairyMap.instances()[0];"
+                "return !!m && m.map.isStyleLoaded() && !!m.map.getLayer('dairies');"):
             return True
         time.sleep(0.25)
     return False
@@ -491,6 +505,30 @@ def main():
             "return !!document.querySelector('.dairy-map-legend .legend-bin.is-filtered-out');")
         check(results, 'the unticked size class shows dimmed/struck through in the legend', struck)
 
+        # Options menu on the Dairies tab (X requirement): Tiles only, no Ramp
+        # (the dairy colours are the fixed EPA size classes) -- the shared
+        # shell.bindTiles logic the facility map uses. Small is still
+        # unticked from above; a tile swap must keep that filter.
+        driver.find_element(By.CSS_SELECTOR, '.map-wrap .map-options .dropdown-trigger .button').click()
+        time.sleep(0.3)
+        dairy_tiles_select = driver.find_element(By.CSS_SELECTOR, '.facility-map-options select[name="tiles"]')
+        no_ramp = len(driver.find_elements(By.CSS_SELECTOR, '.facility-map-options select[name="ramp"]')) == 0
+        dairy_tile_values = [o.get_attribute('value') for o in dairy_tiles_select.find_elements(By.TAG_NAME, 'option')]
+        check(results, 'Dairies Options menu offers Tiles only, no Ramp',
+              no_ramp and len(dairy_tile_values) > 1, f'{len(dairy_tile_values)} tiles, ramp present={not no_ramp}')
+
+        other_dairy_tile = next(v for v in dairy_tile_values if v != dairy_tiles_select.get_attribute('value'))
+        Select(dairy_tiles_select).select_by_value(other_dairy_tile)
+        time.sleep(0.3)
+        dairy_style_loaded = wait_dairy_style_loaded(driver)
+        redrawn = settled_count(driver, dairy_count)
+        still_filtered = driver.execute_script(
+            "var m = window.EmissionsDairyMap.instances()[0];"
+            "return m.map.queryRenderedFeatures({layers: ['dairies']}).every(function (f) { return f.properties.size_class !== 'small'; });")
+        check(results, 'choosing tiles on the Dairies tab swaps the style, redraws the dairies with the size filter kept, and writes tiles=',
+              dairy_style_loaded and redrawn > 0 and still_filtered and f'tiles={other_dairy_tile}' in driver.current_url,
+              f'{redrawn} dairies; filtered={still_filtered}; {driver.current_url}')
+
         driver.execute_script("document.querySelector('.dairy-map-digester [data-digester=yes]').click()")
         time.sleep(0.4)
         rendered = driver.execute_script(
@@ -499,15 +537,18 @@ def main():
         check(results, "'With a digester' leaves only digester dairies, and digester=yes lands in the URL",
               bool(rendered) and all(rendered) and query(driver).get('digester') == ['yes'], str(rendered))
 
-        # Reloading the URL (sizes=medium,large&digester=yes now in it) restores both.
+        # Reloading the URL (sizes=medium,large&digester=yes&tiles=... now in
+        # it) restores all three.
         reload_url = driver.current_url
         driver.get(reload_url)
         check(results, 'reloading the URL restores the size and digester filters', wait_dairies(driver))
         settled_count(driver, dairy_count)
         restored = driver.execute_script(
-            "var m = window.EmissionsDairyMap.instances()[0]; return {sizes: m.sizes, digester: m.digester};")
-        check(results, 'the reloaded map state matches the URL',
-              restored['digester'] == 'yes' and restored['sizes'] == ['medium', 'large'], str(restored))
+            "var m = window.EmissionsDairyMap.instances()[0];"
+            "return {sizes: m.sizes, digester: m.digester, tiles: m.shell.tileStyle};")
+        check(results, 'the reloaded map state matches the URL, tiles included',
+              restored['digester'] == 'yes' and restored['sizes'] == ['medium', 'large']
+              and restored['tiles'] == other_dairy_tile, str(restored))
         rendered = driver.execute_script(
             "var m = window.EmissionsDairyMap.instances()[0];"
             "return m.map.queryRenderedFeatures({layers: ['dairies']}).map(function (f) { return [f.properties.size_class, f.properties.digester]; });")

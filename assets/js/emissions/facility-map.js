@@ -840,8 +840,12 @@
         if (input) input.addEventListener('change', handler.bind(self));
         return input;
       };
-      var tiles = bindChange('select[name="tiles"]', this.onTilesChange);
-      if (tiles) fill(tiles, M.TILE_STYLES.map(function (style) { return [style, style]; }));
+      // The tiles select is the shell's: it fills, applies and writes its
+      // own style, and only tells us to catch up (this.tileStyle, syncUrl).
+      shell.bindTiles('select[name="tiles"]', function () {
+        self.tileStyle = shell.tileStyle;
+        self.syncUrl();
+      });
       this.rampSelect = bindChange('select[name="ramp"]', this.onRampChange);
       // Diverging names while Compare is on: a sequential ramp can't grade
       // signed data, and vice versa.
@@ -976,17 +980,12 @@
     }
   };
 
-  // The basemap style is part of the map's style, so swapping it rebuilds
-  // the style outright (no diff, which would drop our layers without the
-  // style.load that puts them back). The shell's onStyleLoad calls
-  // addLayers() on load, which re-adds every source and layer from the
-  // data this map already has cached (facilities, areas, dairies, outline),
-  // so nothing here needs to refetch.
-  FacilityMap.prototype.onTilesChange = function (event) {
-    this.tileStyle = event.target.value;
-    this.map.setStyle(M.styleFor(this.tileStyle), { diff: false });
-    this.syncUrl();
-  };
+  // The basemap style is part of the map's style, so swapping it (shell.
+  // bindTiles) rebuilds it outright (no diff, which would drop our layers
+  // without the style.load that puts them back). The shell's onStyleLoad
+  // calls addLayers() on load, which re-adds every source and layer from
+  // the data this map already has cached (facilities, areas, dairies,
+  // outline), so nothing here needs to refetch.
 
   // Recolours the facilities layer (Facilities view) and/or the areas
   // choropleth (Areas view) after RAMP or CHANGE_RAMP changes, from data
