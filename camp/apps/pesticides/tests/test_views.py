@@ -1458,3 +1458,44 @@ class AboutTabTests(TestCase):
         # so the link is bare while every other tab carries the scope.
         html = self.client.get(reverse('pesticides:home'), {'year': 2022, 'county': 'kern'}).content.decode()
         assert f'href="{reverse("pesticides:about")}" title="About this data"' in html
+
+
+class ExplorerLedeTests(RollupTestMixin, TestCase):
+    """
+    The hero's lede is the same on every page of the explorer.
+
+    It sits outside #explorer-body, which is the only region a boosted
+    navigation swaps, so anything page-specific there would persist from
+    whichever page was loaded first -- present on pages that never declared
+    it, missing from the one that did.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    LEDE = 'Which pesticides are applied in the San Joaquin Valley, where, and on what.'
+
+    def pages(self):
+        fresno = Region.objects.get(pk=9001)
+        return {
+            'home': reverse('pesticides:home'),
+            'map': reverse('pesticides:map'),
+            'products': reverse('pesticides:product-list'),
+            'chemicals': reverse('pesticides:chemical-list'),
+            'commodities': reverse('pesticides:commodity-list'),
+            'records': reverse('pesticides:records'),
+            'notices': reverse('pesticides:notice-list'),
+            'about': reverse('pesticides:about'),
+            'place': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            'chemical': Chemical.objects.get(pk=1).get_absolute_url(),
+        }
+
+    def test_every_page_carries_the_same_lede(self):
+        for name, url in self.pages().items():
+            html = self.client.get(url).content.decode()
+            assert html.count(self.LEDE) == 1, name
+
+    def test_the_lede_is_outside_the_swapped_region(self):
+        # Which is why it has to be page-independent: a swap replaces
+        # #explorer-body and never touches this.
+        html = self.client.get(reverse('pesticides:home')).content.decode()
+        assert html.index(self.LEDE) < html.index('id="explorer-body"')
