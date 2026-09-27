@@ -346,6 +346,35 @@
     });
   };
 
+  // The Options menu's Tiles select, shared by every module that offers one
+  // (the facility map, the Dairies tab map): fills it from the core's style
+  // list, sets it to the map's current style, and swaps the style live on a
+  // change (no diff, so onStyleLoad's addLayers() puts the module's own
+  // layers back from its cached data). `changed()` runs after the swap for
+  // whatever the module still needs of its own (recolouring, syncUrl) --
+  // the shell only knows the style itself. Called fresh from onChrome
+  // (including after an adopt, whose new chrome is fresh DOM), so no bound
+  // guard: same convention as the facility map's own Ramp select.
+  Shell.prototype.bindTiles = function (selector, changed) {
+    var self = this;
+    var select = this.wrap ? this.wrap.querySelector(selector) : null;
+    if (!select) return null;
+    select.innerHTML = '';
+    M.TILE_STYLES.forEach(function (style) {
+      var option = document.createElement('option');
+      option.value = style;
+      option.textContent = style;
+      select.appendChild(option);
+    });
+    select.value = this.tileStyle;
+    select.addEventListener('change', function (event) {
+      self.tileStyle = event.target.value;
+      self.map.setStyle(M.styleFor(self.tileStyle), { diff: false });
+      if (changed) changed();
+    });
+    return select;
+  };
+
   // Opens the map's one popup at `lngLat` (closing any other), clear of the
   // toolbar and legend card; shell.popup is it until it closes.
   Shell.prototype.placePopup = function (html, lngLat) {
