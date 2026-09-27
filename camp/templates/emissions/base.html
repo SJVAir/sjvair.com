@@ -37,7 +37,8 @@
     <div class="container">
         <div class="content">
             <h1 class="is-size-2 mb-1"><a href="{% url 'emissions:home' %}">Facility Emissions Explorer</a></h1>
-            {% block explorer-lede %}{% endblock %}
+            {# What this part of the app does, on every page (a page can override the block). #}
+            {% block explorer-lede %}<p class="lede">Air pollution reported by the Valley's permitted facilities, and the dairies CARB tracks: who emits what, how much, and where.</p>{% endblock %}
         </div>
         <div class="tabs is-boxed explorer-nav">
             <ul id="explorer-tabs">
