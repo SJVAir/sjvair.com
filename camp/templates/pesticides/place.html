@@ -26,9 +26,17 @@
     {% endif %}
 </div>
 
+{# Every figure carries a line of context under it, so the row sits on one #}
+{# baseline and each number says what it is: what it was last year, what it #}
+{# is over the ground that reported use, what it covers, how far it #}
+{# reaches, how much of it is flagged. #}
 <div class="level stat-row box">
     <div class="level-item has-text-centered">
-        <div><p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.lbs|lbs }}</p></div>
+        <div>
+            <p class="heading">Lbs applied{% if year_label %} in {{ year_label }}{% endif %}</p>
+            <p class="title">{{ totals.lbs|lbs }}</p>
+            <p class="stat-note">{% if lbs_delta %}{{ lbs_delta|delta_phrase }}{% endif %}</p>
+        </div>
     </div>
     {% if totals.lbs_per_sqmi %}
     {# The rate, so a small dense place isn't read as light next to a big one. #}
@@ -36,18 +44,30 @@
         <div>
             <p class="heading">Lbs per sq mi</p>
             <p class="title">{{ totals.lbs_per_sqmi|lbs }}</p>
-            {% if totals.lbs_per_used_sqmi %}<p class="is-size-7 has-text-grey">{{ totals.lbs_per_used_sqmi|lbs }} where used</p>{% endif %}
+            <p class="stat-note">{% if totals.lbs_per_used_sqmi %}{{ totals.lbs_per_used_sqmi|lbs }} where used{% endif %}</p>
         </div>
     </div>
     {% endif %}
     <div class="level-item has-text-centered">
-        <div><p class="heading">Applications</p><p class="title">{{ totals.applications|lbs }}</p></div>
+        <div>
+            <p class="heading">Applications</p>
+            <p class="title">{{ totals.applications|lbs }}</p>
+            <p class="stat-note">{% if totals.acres %}{{ totals.acres|lbs }} acres treated{% endif %}</p>
+        </div>
     </div>
     <div class="level-item has-text-centered">
-        <div><p class="heading">Sections with use</p><p class="title fraction">{{ totals.sections_used }} / {{ totals.sections_total }}</p></div>
+        <div>
+            <p class="heading">Sections with use</p>
+            <p class="title fraction">{{ totals.sections_used }} / {{ totals.sections_total }}</p>
+            <p class="stat-note">{% if totals.sections_total %}{% widthratio totals.sections_used totals.sections_total 100 %}% of this area{% endif %}</p>
+        </div>
     </div>
     <div class="level-item has-text-centered">
-        <div><p class="heading">Chemicals used</p><p class="title">{{ totals.chemicals|lbs }}</p></div>
+        <div>
+            <p class="heading">Chemicals used</p>
+            <p class="title">{{ totals.chemicals|lbs }}</p>
+            <p class="stat-note">{% if totals.chemicals_flagged %}{{ totals.chemicals_flagged|lbs }} flagged{% endif %}</p>
+        </div>
     </div>
 </div>
 

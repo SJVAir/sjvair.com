@@ -686,6 +686,15 @@ body.pesticides
     // What the sparklines cover, under the rows they belong to. It names the
     // trend lines outright (stats.series_label), so sitting under the pounds
     // column doesn't read as describing those numbers.
+    // The line under each figure in a stat row. Always rendered, even when a
+    // figure has nothing to add, so one subtext doesn't lift its neighbour
+    // off the row's baseline.
+    .stat-note
+        min-height: 1.15rem
+        margin-top: 0.15rem
+        font-size: $size-7
+        color: $grey
+
     .leaderboard-note
         margin: 0.6rem 0 0
         font-size: 0.7rem

@@ -211,6 +211,12 @@ def _delta_phrase(delta, lead):
     return phrase if lead else phrase[0].lower() + phrase[1:]
 
 
+@register.filter
+def delta_phrase(delta):
+    """A trend_deltas() entry as "down 2% since 2022", for a stat's subtext."""
+    return _delta_phrase(delta, lead=False) or ''
+
+
 def _chart_id():
     return f'chart-{uuid.uuid4().hex[:8]}'
 

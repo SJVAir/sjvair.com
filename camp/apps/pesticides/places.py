@@ -538,6 +538,12 @@ def _place_stats(area, year, all_years, concern=False):
             'lbs_per_sqmi': (summed['lbs'] / square_miles) if square_miles else None,
             'lbs_per_used_sqmi': (summed['lbs'] / sections_used) if sections_used else None,
             'chemicals': stats.real_chemicals(scoped.filter(chemical__isnull=False)).values('chemical').distinct().count(),
+            # Both already summed; the stat row uses them as subtext, so
+            # every figure says what it is rather than only the rate doing.
+            'acres': summed['acres'],
+            'chemicals_flagged': stats.concern_rows(
+                stats.real_chemicals(scoped.filter(chemical__isnull=False))
+            ).values('chemical').distinct().count(),
         },
         'by_month': by_month,
         'peak_month': peak_month,
@@ -624,6 +630,9 @@ def place_context(area, year, all_years=False, concern=False, params=None):
         'area': area,
         **data,
         'by_year': by_year,
+        # How the headline pounds compare with the year before, for the stat
+        # row's subtext. The trend chart says the same thing at length.
+        'lbs_delta': stats.trend_deltas(by_year, year)['previous'],
         'compare_by_year': compare_by_year,
         'compare_label': 'Average valley county' if compare_by_year else '',
         'by_year_month': by_year_month,
