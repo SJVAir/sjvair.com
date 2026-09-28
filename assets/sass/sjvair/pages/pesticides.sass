@@ -277,7 +277,11 @@ body.pesticides
             width: 100%
             table-layout: fixed
             border-collapse: separate
-            border-spacing: 2px
+            // The gaps between cells are the cells' own transparent borders
+            // rather than border-spacing, so a row or column background can
+            // show through them (see the hover bands below). border-spacing
+            // belongs to the table and would stay white.
+            border-spacing: 0
             font-size: 0.75rem
             font-variant-numeric: tabular-nums
             th
@@ -298,25 +302,26 @@ body.pesticides
             // columns; the year label takes its content width first.
             height: 1.15rem
             padding: 0
+            // The gap between cells, as a transparent border rather than
+            // border-spacing, so the row and column bands show through it.
+            border: 2px solid transparent
+            background-clip: padding-box
             border-radius: 2px
             &.is-empty
                 // A month with nothing reported reads as absent, not as light.
                 background-image: none
                 opacity: 0.55
-        // Hover: the cell's own row and column light up as a band, so a
-        // square can be read back to its month and its year. The band is the
-        // 2px gutter between the cells, filled by an outset ring on each
-        // crossed cell -- neighbours share a gutter, so it reads as one
-        // continuous strip. Nothing touches the fills, which are carrying
-        // the values.
-        .heatmap-cell.is-cross
-            box-shadow: 0 0 0 2px $grey-lighter
+        // Hover: the row and the column light up behind the cells, so a
+        // square can be read back to its month and its year. Rows and
+        // columns paint beneath cells, and each cell's fill stops at its
+        // padding box, so the band shows in the gaps without touching a
+        // single fill -- the fills are the values.
+        tr.is-band, col.is-band
+            background-color: $grey-light
         .heatmap-cell.is-hovered
-            box-shadow: 0 0 0 2px $grey
-        // The band runs out through the headers it names.
+            border-color: $text
+        // The headers the band runs out to.
         th.is-cross
-            background-color: $grey-lighter
-            border-radius: 2px
             color: $text
             font-weight: 700
         .heatmap-legend

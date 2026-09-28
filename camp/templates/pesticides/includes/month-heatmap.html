@@ -6,6 +6,13 @@
     <p class="chart-readout" aria-live="polite"></p>
     <table class="heatmap-grid">
         <caption class="is-sr-only">Pounds applied by month, one row per year. Darker cells are heavier months.</caption>
+        {# One <col> per month, so hovering can put a background behind a #}
+        {# whole column. Columns paint under rows and under cells, and the #}
+        {# cells leave a transparent border for it to show through. #}
+        <colgroup>
+            <col class="heatmap-col-years">
+            {% for month in months %}<col>{% endfor %}
+        </colgroup>
         <thead>
             <tr>
                 <th><span class="is-sr-only">Year</span></th>
@@ -18,7 +25,11 @@
                     <th scope="row">{{ row.year }}</th>
                     {% for cell in row.cells %}
                         <td class="heatmap-cell{% if cell.empty %} is-empty{% endif %}"
-                            style="background: {{ cell.color }}"
+                            {# background-color, not the `background` #}
+                            {# shorthand: that resets background-clip, and #}
+                            {# the fill would paint over the transparent #}
+                            {# border the hover bands show through. #}
+                            style="background-color: {{ cell.color }}"
                             data-readout="{{ cell.label }} · {{ cell.lbs|lbs }} lbs"
                             title="{{ cell.label }} · {{ cell.lbs|lbs }} lbs">
                             <span class="is-sr-only">{{ cell.label }}: {{ cell.lbs|lbs }} lbs</span>

@@ -18,9 +18,9 @@
   var CELL = 'heatmap-cell';
 
   function clear(grid) {
-    var marked = grid.querySelectorAll('.is-cross, .is-hovered');
+    var marked = grid.querySelectorAll('.is-cross, .is-hovered, .is-band');
     Array.prototype.forEach.call(marked, function (el) {
-      el.classList.remove('is-cross', 'is-hovered');
+      el.classList.remove('is-cross', 'is-hovered', 'is-band');
     });
     var figure = grid.closest('.explorer-chart');
     var readout = figure && figure.querySelector('.chart-readout');
@@ -37,13 +37,16 @@
     var index = Array.prototype.indexOf.call(row.children, cell);
 
     cell.classList.add('is-hovered');
-    Array.prototype.forEach.call(row.children, function (el) {
-      if (el !== cell) el.classList.add('is-cross');
-    });
-    Array.prototype.forEach.call(grid.rows, function (line) {
-      var other = line.children[index];
-      if (other && other !== cell) other.classList.add('is-cross');
-    });
+    // The bands themselves: a background on the row and on the column, both
+    // of which paint beneath the cells, so the fills stay exactly as they
+    // are. The headers take a class of their own so they can go bold too.
+    row.classList.add('is-band');
+    var col = grid.querySelectorAll('colgroup col')[index];
+    if (col) col.classList.add('is-band');
+    var header = grid.rows[0] && grid.rows[0].children[index];
+    if (header) header.classList.add('is-cross');
+    var rowHeader = row.children[0];
+    if (rowHeader && rowHeader !== cell) rowHeader.classList.add('is-cross');
 
     var figure = grid.closest('.explorer-chart');
     var readout = figure && figure.querySelector('.chart-readout');
