@@ -17,8 +17,16 @@ boosted swap) keeping Counties and its measure, a table row's name zooming to it
 with its popup, a county narrowing the dairies, and the NOx / 2024 fallback
 notes. Last, a county page in 2023 maps its facilities (sized circles, the
 plain legend with a size key -- dairies were removed from this map; the
-Dairies tab is the only place they're mapped), and the dairy charts on the
-Dairies tab and Tulare County's page, with its section nav. Fails on any console error. Dev-only;
+Dairies tab is the only place they're mapped), and the Dairies tab's own
+charts. Then the dairy pages: Tulare County's (outlined, Dairies only, its
+three charts, a row zooming to its dairy with its popup, a boosted year
+change keeping one outlined map), a community dairy page (outlined, every
+drawn dairy in the table's count, a dairy under the wash still opening its
+popup), and near-me dairies (the circle, a radius button keeping the page).
+Then the tab's `?region=` redirecting to the region's dairy page and its
+find box landing on a county dairy page, and Tulare County's emissions page
+showing the Dairies section as a summary only, linking to the dairy page,
+with its section nav unchanged. Fails on any console error. Dev-only;
 nothing here runs in CI. Needs local data (import_air_districts,
 import_ceidars, import_cepam, import_cadd, and the regions with their
 boundaries).
@@ -147,6 +155,18 @@ def dairy_count(driver):
     )
 
 
+def dairy_count_unique(driver):
+    # querySourceFeatures can return the same point more than once when it's
+    # drawn from more than one loaded tile (a MapLibre GL caveat, not a
+    # drawing bug); dedupe by id for an exact count.
+    return driver.execute_script(
+        "var m = window.EmissionsDairyMap.instances()[0], seen = {};"
+        "if (!m) return 0;"
+        "m.map.querySourceFeatures('dairies').forEach(function (f) { seen[f.properties.id] = 1; });"
+        "return Object.keys(seen).length;"
+    )
+
+
 def shaded_counties(driver):
     return driver.execute_script(
         "var m = window.EmissionsDairyMap.instances()[0];"
@@ -189,6 +209,19 @@ CIRCLE_UNDER_WASH = """
 var m = window.EmissionsFacilityMap.instances()[0], map = m.map, c = map.getCanvas(), r = c.getBoundingClientRect();
 for (var y = 60; y < r.height - 30; y += 5) for (var x = 20; x < r.width - 20; x += 5) {
   if (!map.queryRenderedFeatures([x, y], {layers: ['facilities']}).length) continue;
+  if (!map.queryRenderedFeatures([x, y], {layers: ['outline-mask']}).length) continue;
+  if (document.elementFromPoint(r.left + x, r.top + y) !== c) continue;
+  return [x - r.width / 2, y - r.height / 2];
+}
+return null;
+"""
+
+# A canvas pixel over a dairy circle that the wash outside the page's area
+# also covers, clear of the chrome: [x, y] from the canvas centre, or null.
+DAIRY_UNDER_WASH = """
+var m = window.EmissionsDairyMap.instances()[0], map = m.map, c = map.getCanvas(), r = c.getBoundingClientRect();
+for (var y = 60; y < r.height - 30; y += 5) for (var x = 20; x < r.width - 20; x += 5) {
+  if (!map.queryRenderedFeatures([x, y], {layers: ['dairies']}).length) continue;
   if (!map.queryRenderedFeatures([x, y], {layers: ['outline-mask']}).length) continue;
   if (document.elementFromPoint(r.left + x, r.top + y) !== c) continue;
   return [x - r.width / 2, y - r.height / 2];
@@ -627,20 +660,111 @@ def main():
         titles = driver.execute_script(chart_titles % '.dairy-charts')
         check(results, 'the Dairies tab draws its herd, CARB estimate and digester charts',
               len(titles) == 3 and 'Dairy cattle ROG, CARB estimate' in titles, str(titles))
+        # Tulare County's dairy page: the dairy map framed on the county
+        # (outlined), Dairies only (no view switch), the three charts, a
+        # row's name zooming to its dairy, and a year change keeping one map.
+        # Found on the Dairies tab's own find box, so it's already the
+        # county's dairy page URL (`find_area_places` there uses
+        # 'emissions:region-dairies'); the plain region URL is that minus
+        # its trailing 'dairies/'.
         tulare = driver.execute_script(
-            "var a = Array.prototype.find.call(document.querySelectorAll('a'), function (a) {"
-            " return /\\/region\\/[^/]+\\/tulare-county\\//.test(a.getAttribute('href') || ''); });"
-            "return a ? a.href.split('?')[0] : null;")
-        if not tulare:
-            driver.get(args.base + '/tools/emissions/')
-            tulare = driver.execute_script(
-                "var a = Array.prototype.find.call(document.querySelectorAll('.find-area-counties a'),"
-                " function (a) { return a.textContent.indexOf('Tulare') !== -1; }); return a ? a.href.split('?')[0] : null;")
+            "var a = Array.prototype.find.call(document.querySelectorAll('.find-area-counties a'),"
+            " function (a) { return a.textContent.indexOf('Tulare') !== -1; }); return a ? a.href.split('?')[0] : null;")
+        tulare_region = tulare[:-len('dairies/')] if tulare.endswith('dairies/') else tulare
         driver.get(tulare + '?year=2023&pollutant=rog')
-        time.sleep(1)
-        titles = driver.execute_script(chart_titles % '#dairies')
-        check(results, "Tulare County's Dairies block draws its three charts",
+        outlined = wait_dairies(driver) and driver.execute_script(
+            "var m = window.EmissionsDairyMap.instances()[0]; return !!m.outlineBounds;")
+        check(results, "Tulare County's dairy page loads its dairy map, outlined", outlined, tulare)
+        drawn = settled_count(driver, dairy_count)
+        check(results, 'it draws dairies', drawn > 0, f'{drawn} dairies')
+        legend = driver.execute_script("return document.querySelector('.dairy-map-legend').innerHTML;")
+        check(results, 'its legend has the size key', 'legend-sizes' in legend and 'EPA size class' in legend)
+        check(results, 'no view switch in its toolbar', driver.execute_script(
+            "return !document.querySelector('.dairy-map-view') && !!document.querySelector('.dairy-map-sizes');"))
+        titles = driver.execute_script(chart_titles % '.dairy-charts')
+        check(results, "the county dairy page draws its herd, CARB estimate and digester charts",
               len(titles) == 3 and 'Dairy cattle ROG, CARB estimate' in titles, str(titles))
+        check(results, 'no County column on a county dairy page', driver.execute_script(
+            "return Array.prototype.every.call(document.querySelectorAll('.dairy-table th'), function (th) { return th.textContent.trim() !== 'County'; });"))
+        driver.execute_script("document.querySelector('.dairy-zoom').click();")
+        opened = False
+        for _ in range(40):
+            opened = driver.execute_script(
+                "var p = document.querySelector('.maplibregl-popup .dairy-popup');"
+                "return !!p && p.textContent.indexOf('Mature dairy cows') !== -1;")
+            if opened:
+                break
+            time.sleep(0.25)
+        check(results, "a table row's name zooms to its dairy with its popup", opened)
+        driver.execute_script("var p = document.querySelector('.maplibregl-popup-close-button'); if (p) p.click();")
+        pick_year(driver, 2)
+        time.sleep(1)
+        kept = wait_dairies(driver) and driver.execute_script(
+            "var list = window.EmissionsDairyMap.instances(); return list.length === 1 && !!list[0].outlineBounds;")
+        check(results, 'a year change (boosted swap) keeps one map, still outlined', kept, driver.current_url)
+
+        # A community dairy page: outlined; every drawn dairy is in the
+        # table's count; a dairy under the wash still opens its popup.
+        # The first `.within-list a` may be a school district or a
+        # no-dairies-this-year CDP, so try a few until one has a map.
+        hrefs = driver.execute_script(
+            "return Array.prototype.slice.call(document.querySelectorAll('.within-list a'), 0, 8)"
+            ".map(function (a) { return a.href.split('?')[0]; });")
+        community = None
+        for href in hrefs:
+            driver.get(href + '?year=2023')
+            time.sleep(1)
+            if driver.execute_script("return !!document.querySelector('.dairy-map');"):
+                community = href
+                break
+        community = community or hrefs[0]
+        driver.get(community + '?year=2023')
+        outlined = wait_dairies(driver) and driver.execute_script(
+            "var m = window.EmissionsDairyMap.instances()[0]; return !!m.outlineBounds;")
+        check(results, 'a community dairy page loads, outlined', outlined, community)
+        drawn = settled_count(driver, dairy_count_unique)
+        total = driver.execute_script("return document.querySelector('.stat-row .title').textContent.replace(/,/g, '') | 0;")
+        check(results, "every drawn dairy is in the page's count", 0 < drawn <= total, f'{drawn} drawn, {total} counted')
+        driver.execute_script("document.querySelector('.dairy-map').scrollIntoView({block: 'center'});")
+        time.sleep(0.5)
+        hit = driver.execute_script(DAIRY_UNDER_WASH)
+        if hit:
+            canvas = driver.find_element(By.CSS_SELECTOR, '.dairy-map canvas')
+            ActionChains(driver).move_to_element_with_offset(canvas, int(hit[0]), int(hit[1])).click().perform()
+            time.sleep(1)
+        opened = driver.execute_script("return !!document.querySelector('.maplibregl-popup .dairy-popup');")
+        check(results, 'a dairy under the wash still opens its popup', (not hit) or opened, str(hit))
+
+        # Near-me dairies: the circle, and a radius button keeping the page.
+        driver.get(args.base + '/tools/emissions/near/dairies/?lat=36.3302&lng=-119.2921&radius=3')
+        near = wait_dairies(driver) and driver.execute_script(
+            "var m = window.EmissionsDairyMap.instances()[0]; return !!m.outlineBounds;")
+        check(results, 'near-me dairy page loads, with its circle', near)
+        driver.find_element(By.CSS_SELECTOR, '.buttons.explorer-scope a').click()
+        time.sleep(1)
+        stayed = wait_dairies(driver) and '/near/dairies/' in driver.current_url and 'radius=1' in driver.current_url
+        check(results, 'a radius button keeps the page and redraws', stayed, driver.current_url)
+
+        # The tab's old filters land on the pages; its find box goes to a county dairy page.
+        sqid = tulare_region.rstrip('/').split('/')[-2]
+        driver.get(args.base + '/tools/emissions/dairies/?region=' + sqid + '&year=2023')
+        check(results, 'the tab with ?region= lands on the region dairy page',
+              driver.current_url.split('?')[0] == tulare, driver.current_url)
+        driver.get(args.base + '/tools/emissions/dairies/')
+        driver.find_element(By.CSS_SELECTOR, '.find-area-counties a').click()
+        time.sleep(1)
+        check(results, "the tab's find box takes you to a county dairy page", '/dairies/' in driver.current_url, driver.current_url)
+
+        # Tulare County's emissions page: the Dairies section is the summary only.
+        driver.get(tulare_region + '?year=2023&pollutant=rog')
+        time.sleep(1)
+        summary_only = driver.execute_script(
+            "var s = document.getElementById('dairies'); return !!s && !s.querySelector('.dairy-table') && !s.querySelector('.dairy-charts')"
+            " && !!s.querySelector('.dairy-summary');")
+        check(results, "Tulare County's Dairies section is the summary only", summary_only)
+        link = driver.execute_script(
+            "var a = document.querySelector('#dairies a[href*=\"/dairies/\"]'); return a ? a.href : null;")
+        check(results, "'Dairies in Tulare County →' goes to the dairy page", bool(link) and link.split('?')[0] == tulare, str(link))
         nav = driver.execute_script(
             "return Array.prototype.map.call(document.querySelectorAll('.section-nav a'), function (a) { return a.getAttribute('href'); });")
         check(results, 'its section nav links Facilities, Dairies, In and around',
@@ -655,11 +779,6 @@ def main():
             "   document.getElementById('dairies').getBoundingClientRect().top,"
             "   document.querySelector('.breadcrumbs').getBoundingClientRect().bottom);")
         check(results, 'the Dairies link jumps in place, clear of the pinned scope bar', jumped)
-        driver.get(tulare + '?year=2023&pollutant=nox')
-        time.sleep(1)
-        titles = driver.execute_script(chart_titles % '#dairies')
-        check(results, 'with NOx, no CARB estimate chart (the herd and digesters stay)',
-              len(titles) == 2 and not any('CARB estimate' in title for title in titles), str(titles))
 
         errors = console_errors(driver)
         check(results, 'no console errors', not errors, '; '.join(errors)[:300])
