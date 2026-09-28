@@ -85,7 +85,7 @@ COUNTY_METRICS = {
     'lbs': 'lbs',
     'lbs_per_sqmi': 'lbs per sq mi',
     'lbs_per_used_sqmi': 'lbs per sq mi with use',
-    'acres': 'acres treated',
+    'acres': 'acre-treatments',
     'applications': 'applications',
 }
 # What the by-county table's one data column is headed and titled for each
@@ -96,7 +96,7 @@ COUNTY_METRIC_COLUMNS = {
     'lbs': ('Pounds applied', 'Pounds of active ingredient applied'),
     'lbs_per_sqmi': ('Pounds per square mile', 'Over the whole county, including the ground nobody farms'),
     'lbs_per_used_sqmi': ('Pounds per square mile with use', 'Over only the square miles that reported any use'),
-    'acres': ('Acres treated', 'Acres treated, counting a field once per application'),
+    'acres': ('Acre-treatments', 'One acre treated once: a field sprayed twice counts twice, so this runs well past the ground a county has'),
     'applications': ('Applications', 'Applications reported'),
 }
 

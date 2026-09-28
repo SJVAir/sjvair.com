@@ -148,7 +148,7 @@ class CountyMapTests(TestCase):
         assert [r['county_name'] for r in by_acres] == ['Kern County', 'Fresno County']
         # The map shades by the same metric and says so in its labels.
         html = maps.county_map(by_acres, metric='acres')
-        assert 'Kern County: 200 acres treated' in html
+        assert 'Kern County: 200 acre-treatments' in html
         assert 'county-legend' not in html
         assert maps.county_metric('nope') == 'lbs' and maps.county_metric('applications') == 'applications'
 
@@ -263,3 +263,23 @@ class CountyColumnPickerTests(RollupTestMixin, TestCase):
         table_end = html.index('</table>', start)
         assert 'What the shades mean' in html[table_end:]
         assert 'What the shades mean' not in html[start:table_end]
+
+
+class AcreTreatmentUnitTests(TestCase):
+    """
+    Acres treated counts a field once per application, so it runs well past
+    the ground a county has -- Fresno reports ~132M against ~3.8M acres of
+    county. It is named as a compound unit everywhere it appears, so it
+    isn't read as an amount of land.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def test_the_unit_is_named_as_a_compound(self):
+        assert maps.COUNTY_METRICS['acres'] == 'acre-treatments'
+        assert maps.county_metric_column('acres')[0] == 'Acre-treatments'
+
+    def test_the_about_page_defines_it(self):
+        html = self.client.get(reverse('pesticides:about')).content.decode()
+        assert 'An acre-treatment is one acre treated once' in html
+        assert 'counts applications over ground rather than ground itself' in html

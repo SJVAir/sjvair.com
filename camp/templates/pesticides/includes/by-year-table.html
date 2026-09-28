@@ -1,7 +1,7 @@
 {% load pesticides_explorer %}
 <div class="table-container">
 <table class="table is-fullwidth is-narrow is-striped by-year-table">
-    <thead><tr><th>Year</th>{% if not hide_lbs %}<th class="has-text-right">Lbs</th>{% endif %}<th class="has-text-right">Acres treated</th><th class="has-text-right">Applications</th></tr></thead>
+    <thead><tr><th>Year</th>{% if not hide_lbs %}<th class="has-text-right">Lbs</th>{% endif %}<th class="has-text-right">Acre-treatments</th><th class="has-text-right">Applications</th></tr></thead>
     <tbody>
     {% for row in by_year %}
         <tr{% if row.year == year %} class="is-selected"{% endif %}>
