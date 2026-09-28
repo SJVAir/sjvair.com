@@ -1,0 +1,73 @@
+{% extends 'emissions/base.html' %}
+{% load humanize emissions_explorer pesticides_explorer %}
+{% comment %}
+One area's dairies (dairy_views.DairyAreaPage): a region's or a near-me
+point's. The region page's header, the Dairies tab's tiles, map, table and
+charts scoped to the area, and "In and around" linking other areas' dairy
+pages. County pages add CARB's county estimate (a tile and a chart) and hide
+the table's County column.
+{% endcomment %}
+
+{% block title %}Dairies in {{ title }} | {{ block.super }}{% endblock %}
+{% block breadcrumb-list %}{% if county_region and county_region != area.region %}<li><a href="{{ county_region.get_emissions_url }}{{ scope_qs }}">{{ county_region.name }}</a></li>{% endif %}<li><a href="{% if region_page_url %}{{ region_page_url }}{{ scope_qs }}{% else %}{{ near_page_url }}{% endif %}">{{ title }}</a></li><li class="is-active"><a aria-current="page">Dairies</a></li>{% endblock %}
+
+{% block explorer-content %}
+<div class="content">
+    <h1 class="title is-3 mb-1">{{ name }}</h1>
+    <p class="heading">Dairies · {{ kind }}{% if county_region and county_region != area.region %} · {{ county_region.name }}{% endif %}{% if population %} · {{ population|whole }} people{% endif %}</p>
+    {% if radius_options %}
+    <div class="buttons has-addons explorer-scope">
+        {% for option in radius_options %}<a class="button is-small{% if option.current %} is-link is-selected{% endif %}" href="{{ option.url }}">{{ option.miles }} mi</a>{% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% for note in notes %}<p class="notification is-warning is-light py-2 px-3 dairy-note">{{ note }}</p>{% endfor %}
+{% if not has_data %}
+<p class="has-text-grey">No dairy data has been loaded yet.</p>
+{% else %}
+{% if has_dairies %}
+{% include 'emissions/includes/dairy-stats.html' %}
+
+{% include 'maps/includes/map.html' with map=map_config.map %}
+<p class="is-size-7 mt-2">Each circle is a dairy in CARB's dairy database (CADD), sized by its mature dairy cows (other cattle where it has none) and coloured by its EPA size class; the Digester filter shows the dairies that ran an anaerobic digester in {{ year }}. <a href="{% url 'emissions:about' %}#dairies">About the dairy data</a>.</p>
+{% if coverage_note %}<p class="is-size-7 has-text-grey dairy-coverage-note">CADD tracked fewer dairies before {{ coverage_year }}, so totals for {{ year }} aren't a like-for-like comparison with later years.</p>{% endif %}
+<noscript><p>The map needs JavaScript; the table below lists the same dairies.</p></noscript>
+
+<div class="columns mt-4">
+    <div class="column is-3-desktop">
+        <form method="get" class="explorer-filters box" hx-trigger="submit, change delay:250ms">
+            {% for key, value in scope_params.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+            <input type="hidden" name="sort" value="{{ sort }}">
+            <div class="field">
+                <label class="label" for="dairy-q">Search</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="search" id="dairy-q" name="q" value="{{ filters.q|default:'' }}" placeholder="Dairy name"
+                        hx-get="{{ request.path }}" hx-include="closest form" hx-trigger="keyup changed delay:500ms, search">
+                    <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
+                </div>
+            </div>
+            <div class="field is-grouped">
+                <div class="control"><button class="button is-link" type="submit">Apply</button></div>
+                <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}">Clear</a></div>
+            </div>
+        </form>
+    </div>
+    <div class="column">
+        {% include 'emissions/includes/dairy-table.html' with sortable=True zoom=True %}
+        {% include 'pesticides/includes/pagination.html' %}
+        <p class="mt-3"><a href="{% qs_replace format='csv' page=None %}" hx-boost="false" download>Download these dairies (CSV)</a></p>
+    </div>
+</div>
+{% else %}
+<p class="has-text-grey dairy-empty">No dairies in CARB's dairy database in {{ name }} for {{ year }}.</p>
+{% if carb_estimate %}<p class="dairy-county-line">Dairy cattle, CARB estimate: <strong>{{ carb_estimate.tons|whole }} tons/yr {{ pollutant.label }}</strong></p>{% endif %}
+{% endif %}
+{% if has_history %}{% include 'emissions/includes/dairy-charts.html' with chart_place=county_region.name %}{% endif %}
+{% if county_dairies_url %}<p class="mt-4">CARB estimates dairy emissions by county: <a href="{{ county_dairies_url }}{{ scope_qs }}">{{ county_region.name }} dairies →</a></p>{% endif %}
+<p class="is-size-7">These are CARB's counts: herds, digesters, and CARB's county estimate of dairy cattle emissions. Nothing here estimates one dairy's emissions. <a href="{% url 'emissions:about' %}#dairies">How the dairy data works</a>.</p>
+{% endif %}
+
+{% include 'regions/includes/within.html' with within_name=name %}
+
+{% if privacy_note %}<p class="is-size-7 has-text-grey">This page's location is only in its address; we don't store it.</p>{% endif %}
+{% endblock %}

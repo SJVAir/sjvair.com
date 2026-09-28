@@ -7,8 +7,12 @@ urlpatterns = [
     path('about/', views.About.as_view(), name='about'),
     path('map/', views.MapPage.as_view(), name='map'),
     path('near/', views.NearMe.as_view(), name='near-me'),
+    path('near/dairies/', dairy_views.NearMeDairies.as_view(), name='near-me-dairies'),
     path('region/<str:sqid>/', views.RegionRedirect.as_view(), name='region-redirect'),
+    # Before the slugged region page: `region/<sqid>/dairies/` isn't a slug.
+    path('region/<str:sqid>/dairies/', dairy_views.RegionDairiesRedirect.as_view(), name='region-dairies-redirect'),
     path('region/<str:sqid>/<slug:slug>/', views.RegionPage.as_view(), name='region'),
+    path('region/<str:sqid>/<slug:slug>/dairies/', dairy_views.RegionDairies.as_view(), name='region-dairies'),
     path('facilities/', views.FacilityList.as_view(), name='facility-list'),
     path('facilities/<str:sqid>/', views.FacilityRedirect.as_view(), name='facility-redirect'),
     path('facilities/<str:sqid>/<slug:slug>/', views.FacilityDetail.as_view(), name='facility-detail'),

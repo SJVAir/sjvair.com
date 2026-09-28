@@ -30,6 +30,14 @@ def region_within(region):
     return nearby.regions_within(region, url_method='get_emissions_url', cache_prefix=WITHIN_KEY)
 
 
+# The dairy region pages' own lists, linking other areas' dairy pages.
+WITHIN_DAIRIES_KEY = 'emissions:within-dairies:v1'
+
+
+def region_within_dairies(region):
+    return nearby.regions_within(region, url_method='get_emissions_dairies_url', cache_prefix=WITHIN_DAIRIES_KEY)
+
+
 PAGE_SIZE = 50
 SECTOR_PAGE_ROWS = 25
 

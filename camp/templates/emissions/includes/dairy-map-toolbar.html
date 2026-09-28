@@ -4,14 +4,16 @@ Dairies | Counties switch, the Dairies view's size-class and digester
 filters, and, in Counties, the measure. They borrow the facility map's
 classes for their look. `map_config.sizes` is the current selection in
 canonical (small, medium, large) order; `map_config.digester` is '', 'yes'
-or 'no'.
+or 'no'. An area page has no view switch and no measure: Dairies only.
 {% endcomment %}
 <div class="map-toolbar-filters" role="group" aria-label="Map filters">
+    {% if map_config.view_options %}
     <div class="buttons has-addons facility-map-view dairy-map-view" role="group" aria-label="Show">
         {% for value, label in map_config.view_options %}
         <button type="button" class="button{% if map_config.view == value %} is-selected is-link{% endif %}" data-view="{{ value }}" aria-pressed="{% if map_config.view == value %}true{% else %}false{% endif %}" aria-label="{{ label }}" title="{{ label }}"><span class="icon"><span class="fa-duotone fa-fw {% if value == 'dairies' %}fa-cow explorer-icon is-dairies{% else %}fa-draw-polygon explorer-icon is-areas{% endif %}" aria-hidden="true"></span></span><span class="map-toolbar-label">{{ label }}</span></button>
         {% endfor %}
     </div>
+    {% endif %}
     <div class="dropdown map-toolbar-dropdown dairy-map-sizes{% if map_config.sizes|length != map_config.size_options|length %} is-set{% endif %}" data-dairies-only{% if map_config.view != 'dairies' %} hidden{% endif %}>
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
@@ -40,6 +42,7 @@ or 'no'.
             {% for value, label in map_config.digester_options %}<a href="#" class="dropdown-item{% if value == map_config.digester %} is-active{% endif %}" data-digester="{{ value }}">{{ label }}</a>{% endfor %}
         </div></div>
     </div>
+    {% if map_config.view_options %}
     <div class="dropdown map-toolbar-dropdown facility-map-measure dairy-map-measure" data-counties-only{% if map_config.view != 'counties' %} hidden{% endif %}>
         <div class="dropdown-trigger">
             <button type="button" class="button" aria-haspopup="true" aria-expanded="false">
@@ -52,4 +55,5 @@ or 'no'.
             {% for value, label in map_config.measure_options %}<a href="#" class="dropdown-item{% if value == map_config.measure %} is-active{% endif %}" data-measure="{{ value }}">{{ label }}</a>{% endfor %}
         </div></div>
     </div>
+    {% endif %}
 </div>
