@@ -180,7 +180,8 @@ class Facility(TimeStampedModel):
 class EmissionsRecord(TimeStampedModel):
     """
     One facility's CEIDARS emissions for one inventory year: criteria
-    pollutants in tons/yr, named toxic air contaminants in lbs/yr.
+    pollutants in tons/yr and the AB 2588 Hot Spots summary fields. Its
+    toxic air contaminants are ToxicEmission rows.
     """
 
     sqid = SqidsField(alphabet=shuffle_alphabet('emissions.EmissionsRecord'))
@@ -209,20 +210,8 @@ class EmissionsRecord(TimeStampedModel):
     # chindex/ahindex are the chronic and acute hazard indices.
     total_score = models.DecimalField(_('Total toxics score'), max_digits=10, decimal_places=2, null=True, blank=True)
     hra = models.DecimalField(_('Health risk assessment'), max_digits=10, decimal_places=2, null=True, blank=True)
-    chindex = models.DecimalField(_('Cancer health index'), max_digits=10, decimal_places=2, null=True, blank=True)
-    ahindex = models.DecimalField(_('Acute health index'), max_digits=10, decimal_places=2, null=True, blank=True)
-
-    # Named toxic air contaminants (lbs/yr, as CARB's factox CSV reports them)
-    acetaldehyde = models.DecimalField(_('Acetaldehyde (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    benzene = models.DecimalField(_('Benzene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    butadiene = models.DecimalField(_('1,3-Butadiene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    carbon_tetrachloride = models.DecimalField(_('Carbon tetrachloride (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    chromium_hexavalent = models.DecimalField(_('Chromium hexavalent (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    dichlorobenzene = models.DecimalField(_('para-Dichlorobenzene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    formaldehyde = models.DecimalField(_('Formaldehyde (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    methylene_chloride = models.DecimalField(_('Methylene chloride (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    naphthalene = models.DecimalField(_('Naphthalene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    perchloroethylene = models.DecimalField(_('Perchloroethylene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    chindex = models.DecimalField(_('Chronic hazard index'), max_digits=10, decimal_places=2, null=True, blank=True)
+    ahindex = models.DecimalField(_('Acute hazard index'), max_digits=10, decimal_places=2, null=True, blank=True)
 
     class Meta:
         unique_together = [('facility', 'year')]
@@ -232,6 +221,147 @@ class EmissionsRecord(TimeStampedModel):
 
     def __str__(self):
         return f'{self.facility.name} ({self.year})'
+
+
+class SourceImport(models.Model):
+    """
+    One finished run of an external-source import (the Consolidated Table,
+    the CEIDARS toxics crawl, later ICIS-Air and the rest): when it ran, what
+    it covered. Templates read the newest row per source for their "as of"
+    stamps; nothing else depends on it.
+    """
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.SourceImport'))
+    source = models.CharField(_('Source'), max_length=32, db_index=True)
+    imported_at = models.DateTimeField(_('Imported at'), auto_now_add=True)
+    data_through = models.DateField(_('Data through'), null=True, blank=True)
+    version = models.CharField(_('Version'), max_length=64, blank=True)
+    notes = models.JSONField(_('Notes'), default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-imported_at', '-pk']
+
+    def __str__(self):
+        return f'{self.source} ({self.imported_at:%Y-%m-%d})'
+
+    @classmethod
+    def latest(cls, source):
+        return cls.objects.filter(source=source).order_by('-imported_at', '-pk').first()
+
+
+# CARB's toxicity weighting, reverse-engineered from its Pollution Mapping
+# Tool and reproduced to within 0.01% on 91 carcinogens (research:
+# .superpowers/research/toxics.md, section 2). Cancer weight per pound is
+# the inhalation unit risk × the molecular-weight adjustment factor × 7,700;
+# chronic and acute weights are a constant over the reference exposure level.
+CANCER_SCALE = 7700.0
+CHRONIC_SCALE = 0.01712
+ACUTE_SCALE = 0.1712
+# Ammonia: CARB delivers it in the toxics feed, but it's a PM2.5 precursor,
+# not a toxic; stored under kind='precursor', never weighted or listed as one.
+PRECURSOR_IDS = frozenset({'7664417'})
+# "PAHs, total, with individual components also reported" -- weighting it
+# would count the components twice.
+UNWEIGHTED_IDS = frozenset({'1150'})
+# The toxics picker's own keys; a pollutant slug can't be one of them.
+RESERVED_SLUGS = frozenset({'cancer', 'chronic'})
+
+
+class ToxicPollutant(models.Model):
+    """
+    A pollutant in CARB's toxics inventory: a CAS number without dashes
+    ('71432', benzene) or one of CARB's own 4-digit codes ('9901', diesel
+    PM), with the OEHHA health values from the Consolidated Table and the
+    per-pound weights derived from them. Rows exist for every table entry
+    and for every id a facility has reported, whether or not both.
+    """
+
+    class Kind(models.TextChoices):
+        TOXIC = 'toxic', _('Toxic air contaminant')
+        PRECURSOR = 'precursor', _('Precursor')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.ToxicPollutant'))
+    carb_id = models.CharField(_('CARB pollutant ID'), max_length=12, unique=True)
+    cas_number = models.CharField(_('CAS number'), max_length=16, blank=True)
+    name = models.CharField(_('Name'), max_length=128)
+    # For URLs (?pollutant=diesel-pm). Set when the row is created, never
+    # rewritten, so links stay good when a name is corrected.
+    slug = models.SlugField(_('Slug'), max_length=140, unique=True)
+    kind = models.CharField(_('Kind'), max_length=12, choices=Kind.choices, default=Kind.TOXIC, db_index=True)
+    # OEHHA values as the Consolidated Table gives them.
+    iur = models.FloatField(_('Inhalation unit risk (µg/m³)⁻¹'), null=True, blank=True)
+    chronic_rel = models.FloatField(_('Chronic REL (µg/m³)'), null=True, blank=True)
+    acute_rel = models.FloatField(_('Acute REL (µg/m³)'), null=True, blank=True)
+    mwaf = models.FloatField(_('Molecular weight adjustment factor'), default=1.0)
+    weighted = models.BooleanField(_('Weighted'), default=True)
+    # Derived by set_weights(); 0 where there's no value to derive from.
+    cancer_weight = models.FloatField(_('Cancer weight per lb'), default=0.0)
+    chronic_weight = models.FloatField(_('Chronic hazard weight per lb'), default=0.0)
+    acute_weight = models.FloatField(_('Acute hazard weight per lb'), default=0.0)
+    health_values_date = models.DateField(_('Health values date'), null=True, blank=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.name} ({self.carb_id})'
+
+    def set_weights(self):
+        """Recompute the three weights from the health values; a precursor or an unweighted id gets none."""
+        if self.kind != self.Kind.TOXIC:
+            self.cancer_weight = self.chronic_weight = self.acute_weight = 0.0
+            return
+        self.cancer_weight = self.iur * self.mwaf * CANCER_SCALE if self.weighted and self.iur else 0.0
+        self.chronic_weight = CHRONIC_SCALE / self.chronic_rel if self.chronic_rel else 0.0
+        self.acute_weight = ACUTE_SCALE / self.acute_rel if self.acute_rel else 0.0
+
+    @staticmethod
+    def cas_from_carb_id(carb_id):
+        """'71432' -> '71-43-2'; '' for a 4-digit CARB code (a CAS has at least five digits)."""
+        carb_id = str(carb_id).strip()
+        if len(carb_id) <= 4 or not carb_id.isdigit():
+            return ''
+        return f'{carb_id[:-3]}-{carb_id[-3:-1]}-{carb_id[-1]}'
+
+    @classmethod
+    def unique_slug(cls, name, carb_id):
+        """slugify(name), with the CARB id appended when that's taken or reserved."""
+        base = slugify(name) or f'pollutant-{carb_id}'
+        if base in RESERVED_SLUGS or cls.objects.filter(slug=base).exists():
+            return f'{base}-{carb_id}'
+        return base
+
+    @classmethod
+    def create_for(cls, carb_id, name):
+        """A new row for a CARB id first seen in a facility's CSV: no health values yet."""
+        carb_id = str(carb_id).strip()
+        return cls.objects.create(
+            carb_id=carb_id,
+            cas_number=cls.cas_from_carb_id(carb_id),
+            name=name,
+            slug=cls.unique_slug(name, carb_id),
+            kind=cls.Kind.PRECURSOR if carb_id in PRECURSOR_IDS else cls.Kind.TOXIC,
+        )
+
+
+class ToxicEmission(models.Model):
+    """One facility's reported pounds of one toxic pollutant in one inventory year (CARB's facdet CSV, EMISSIONS_LBS_YR)."""
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.ToxicEmission'))
+    facility = models.ForeignKey(Facility, verbose_name=_('Facility'), on_delete=models.CASCADE, related_name='toxic_emissions')
+    year = models.IntegerField(_('Year'))
+    pollutant = models.ForeignKey(ToxicPollutant, verbose_name=_('Pollutant'), on_delete=models.PROTECT, related_name='emissions')
+    lbs = models.DecimalField(_('Emissions (lbs/yr)'), max_digits=25, decimal_places=15)
+
+    class Meta:
+        unique_together = [('facility', 'year', 'pollutant')]
+        indexes = [
+            models.Index(fields=['year', 'pollutant']),
+            models.Index(fields=['pollutant', 'year']),
+        ]
+
+    def __str__(self):
+        return f'{self.facility.name} {self.pollutant.name} ({self.year})'
 
 
 class CountyInventory(models.Model):

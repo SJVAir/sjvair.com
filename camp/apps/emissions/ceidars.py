@@ -4,7 +4,7 @@ Fetching and parsing CARB's CEIDARS facility inventory CSVs.
 No air basin or district filter in the URLs: a request returns the whole
 county, so a county that spans two districts (Kern: SJU and KER) comes back
 complete. Districts assign FACIDs independently, so rows are identified by
-(DIS, FACID) everywhere below.
+(DIS, FACID) everywhere below; toxics come from facdet_url().
 """
 
 import io
@@ -25,20 +25,6 @@ CRITERIA_COLS = {
 TOXICS_COLS = {
     'TS': 'total_score', 'HRA': 'hra',
     'CHINDEX': 'chindex', 'AHINDEX': 'ahindex',
-}
-
-# CAS number -> EmissionsRecord field name for named toxic air contaminants.
-TOXIC_POLLUTANTS = {
-    '75070': 'acetaldehyde',
-    '71432': 'benzene',
-    '106990': 'butadiene',
-    '56235': 'carbon_tetrachloride',
-    '18540299': 'chromium_hexavalent',
-    '106467': 'dichlorobenzene',
-    '50000': 'formaldehyde',
-    '75092': 'methylene_chloride',
-    '91203': 'naphthalene',
-    '127184': 'perchloroethylene',
 }
 
 MERGE_KEYS = ['CO', 'AB', 'FACID', 'DIS', 'FNAME', 'FSTREET', 'FCITY', 'FZIP', 'FSIC']
@@ -86,12 +72,28 @@ def normalize_city(raw, city_lookup):
     return city_lookup.get(city)
 
 
-def csv_url(kind, year, county_code, cas_id=None):
-    """kind is 'faccrit' (criteria) or 'factox' (toxics)."""
-    url = f'{BASE_URL}/{kind}_output.csv?dbyr={year}&co_={county_code}'
-    if cas_id:
-        url += f'&showpol={cas_id}'
-    return url
+# CARB's DIS code -> the air basin its facilities are in (the facdet CSV's
+# ab_ parameter is required; Kern's two districts sit in two basins).
+AIR_BASINS = {'SJU': 'SJV', 'KER': 'MD'}
+
+
+def csv_url(kind, year, county_code):
+    """kind is 'faccrit' (criteria) or 'factox' (the Hot Spots summary columns)."""
+    return f'{BASE_URL}/{kind}_output.csv?dbyr={year}&co_={county_code}'
+
+
+def facdet_url(year, county_code, district_code, facid):
+    """
+    One facility's toxics for one year: every pollutant it reported, with
+    CARB's pollutant id and pounds per year (columns FACID, CO, AB, DIS,
+    POLLUTANT_ID, POLLUTANT, EMISSIONS_LBS_YR). Exhaustive where the
+    per-pollutant `showpol` sweep could miss an id.
+    """
+    basin = AIR_BASINS[district_code]
+    return (
+        f'{BASE_URL}/facdet_output.csv?&dbyr={year}&ab_={basin}&dis_={district_code}'
+        f'&co_={county_code}&sort=T&facid_={facid}'
+    )
 
 
 def fetch_csv(url, retries=5):
@@ -116,42 +118,18 @@ def decimal_or_none(val):
     return val
 
 
-def fetch_county(year, county_code, on_error=None):
+def fetch_county(year, county_code):
     """
-    (merged, toxic_ems) for one county and year.
-
-    merged: the criteria and toxics CSVs outer-joined on the facility columns
-    (an empty DataFrame when CARB has nothing). toxic_ems: {(DIS, FACID):
-    {field: lbs}} from the per-pollutant requests (CARB's factox `EMS` column
-    is lbs/yr); a failed pollutant request is reported through
-    on_error(field_name, exc) and skipped. Raises requests.RequestException
-    if the criteria or toxics request fails.
+    One county and year: the criteria and Hot Spots-summary CSVs outer-joined
+    on the facility columns (an empty DataFrame when CARB has nothing).
+    Raises requests.RequestException if either request fails. Per-pollutant
+    toxics are not here: import_toxics crawls facdet_url() per facility.
     """
     criteria = fetch_csv(csv_url('faccrit', year, county_code))
     toxics = fetch_csv(csv_url('factox', year, county_code))
-
-    toxic_ems = {}
-    for cas_id, field_name in TOXIC_POLLUTANTS.items():
-        try:
-            pollutant = fetch_csv(csv_url('factox', year, county_code, cas_id))
-        except requests.RequestException as exc:
-            if on_error:
-                on_error(field_name, exc)
-            continue
-        for _, row in pollutant.iterrows():
-            key = (row['DIS'], int(row['FACID']))
-            toxic_ems.setdefault(key, {})[field_name] = decimal_or_none(row.get('EMS', ''))
-
     frames = [frame for frame in (criteria, toxics) if not frame.empty]
     if not frames:
-        merged = pd.DataFrame()
-    elif len(frames) == 1:
-        merged = frames[0]
-    else:
-        merged = pd.merge(
-            criteria, toxics,
-            on=MERGE_KEYS,
-            how='outer',
-            suffixes=('_crit', '_tox'),
-        ).fillna('')
-    return merged, toxic_ems
+        return pd.DataFrame()
+    if len(frames) == 1:
+        return frames[0]
+    return pd.merge(criteria, toxics, on=MERGE_KEYS, how='outer', suffixes=('_crit', '_tox')).fillna('')

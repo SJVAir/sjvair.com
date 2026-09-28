@@ -8,7 +8,7 @@ from camp.apps.regions.models import Region
 from camp.utils import mapfigure
 from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
-from .models import CountyInventory, EmissionsRecord, Facility
+from .models import CountyInventory, EmissionsRecord, Facility, SourceImport, ToxicEmission, ToxicPollutant
 
 
 class CountyFilter(base_admin.SimpleListFilter):
@@ -68,9 +68,6 @@ class EmissionsRecordInline(admin.TabularInline):
         'year',
         'tog', 'rog', 'co', 'nox', 'sox', 'pm', 'pm10',
         'total_score', 'hra', 'chindex', 'ahindex',
-        'acetaldehyde', 'benzene', 'butadiene', 'carbon_tetrachloride',
-        'chromium_hexavalent', 'dichlorobenzene', 'formaldehyde',
-        'methylene_chloride', 'naphthalene', 'perchloroethylene',
     ]
 
     def get_fields(self, request, obj=None):
@@ -88,13 +85,38 @@ class EmissionsRecordInline(admin.TabularInline):
         return False
 
 
+class ToxicEmissionInline(admin.TabularInline):
+    model = ToxicEmission
+    extra = 0
+    can_delete = False
+    fields = ['year', 'pollutant', 'lbs']
+    readonly_fields = fields
+    ordering = ['-year', 'pollutant__name']
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ToxicPollutant)
+class ToxicPollutantAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
+    list_display = ['name', 'carb_id', 'cas_number', 'kind', 'iur', 'chronic_rel', 'acute_rel', 'mwaf', 'weighted', 'cancer_weight', 'chronic_weight', 'health_values_date']
+    list_filter = ['kind', 'weighted']
+    search_fields = ['name', 'carb_id', 'cas_number', 'slug']
+
+
+@admin.register(SourceImport)
+class SourceImportAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
+    list_display = ['source', 'imported_at', 'data_through', 'version']
+    list_filter = ['source']
+
+
 @admin.register(Facility)
 class FacilityAdmin(MapFigureMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
     list_display = ['name', 'get_county', 'air_district', 'get_city', 'get_zipcode', 'sic_code', 'sector', 'is_minor_source', 'has_point', 'latest_year']
     list_filter = [CountyFilter, 'air_district', 'sector', EmissionsYearFilter, SourceTypeFilter]
     search_fields = ['name', 'address__street', 'address__city']
     readonly_fields = ['sqid', 'county_code', 'air_district', 'facid', 'name', 'sic_code', 'sector', 'metadata_year', 'address', 'point', 'get_county_display', 'get_city_display', 'get_zipcode_display']
-    inlines = [EmissionsRecordInline]
+    inlines = [EmissionsRecordInline, ToxicEmissionInline]
     actions = ['regeocode_selected']
 
     fieldsets = [

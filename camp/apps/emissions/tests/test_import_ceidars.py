@@ -31,26 +31,21 @@ KERN_TOXICS = TOX_HEADER + (
     '15,SJV,1,SJU,VALLEY HOSPITAL,2215 TRUXTUN AVE,BAKERSFIELD,93301,8062,KER,,,,,SAN JOAQUIN VALLEY APCD,,\n'
     '15,MD,1,KER,DESERT QUARRY,7037 TROTTER AVE,MOJAVE,93501,1422,KER,,,,,EASTERN KERN APCD,,\n'
 )
-KERN_BENZENE = TOX_HEADER.rstrip('\n') + ',EMS\n' + '15,MD,1,KER,DESERT QUARRY,7037 TROTTER AVE,MOJAVE,93501,1422,KER,,,,,EASTERN KERN APCD,,,0.25\n'
 
 POINT = Point(-119.787, 36.737, srid=4326)
 
 
-def carb(criteria_by_county, toxics_by_county, pollutants=None, urls=None):
-    """A requests.get stand-in serving CARB CSVs by county code (`co_=`) and pollutant (`showpol=`)."""
-    pollutants = pollutants or {}
+def carb(criteria_by_county, toxics_by_county, urls=None):
+    """A requests.get stand-in serving CARB CSVs by county code (`co_=`)."""
 
     def get(url, **kwargs):
         if urls is not None:
             urls.append(url)
         county = int(url.split('co_=')[1].split('&')[0])
-        cas_id = url.partition('showpol=')[2]
         mock = MagicMock()
         mock.raise_for_status.return_value = None
         if 'faccrit' in url:
             mock.text = criteria_by_county.get(county, '')
-        elif cas_id:
-            mock.text = pollutants.get((county, cas_id), toxics_by_county.get(county, ''))
         else:
             mock.text = toxics_by_county.get(county, '')
         return mock
@@ -72,10 +67,10 @@ class ImportCeidarsTests(TestCase):
             county.metadata['ca_county_code'] = CA_COUNTY_CODES[county.name]
             county.save(update_fields=['metadata'])
 
-    def run_import(self, year=2024, county=None, criteria=None, toxics=None, pollutants=None, urls=None, geocode=geocode_all):
+    def run_import(self, year=2024, county=None, criteria=None, toxics=None, urls=None, geocode=geocode_all):
         criteria = criteria if criteria is not None else {10: FRESNO_CRITERIA, 15: KERN_CRITERIA}
         toxics = toxics if toxics is not None else {10: FRESNO_TOXICS, 15: KERN_TOXICS}
-        with patch('requests.get', side_effect=carb(criteria, toxics, pollutants, urls)):
+        with patch('requests.get', side_effect=carb(criteria, toxics, urls)):
             with patch('camp.utils.geocode.resolve_batch', side_effect=geocode):
                 kwargs = {'year': year}
                 if county:
@@ -120,12 +115,10 @@ class ImportCeidarsTests(TestCase):
         assert valley.emissions.get(year=2024).nox == Decimal('1.0')
         assert desert.emissions.get(year=2024).nox == Decimal('2.0')
 
-    def test_toxics_land_on_the_right_district(self):
-        self.run_import(county='kern', pollutants={(15, '71432'): KERN_BENZENE})
-        valley = Facility.objects.get(air_district__external_id='SJU', facid=1, county_code=15)
-        desert = Facility.objects.get(air_district__external_id='KER', facid=1, county_code=15)
-        assert valley.emissions.get(year=2024).benzene is None
-        assert desert.emissions.get(year=2024).benzene == Decimal('0.25')
+    def test_no_per_pollutant_requests(self):
+        urls = []
+        self.run_import(county='fresno', urls=urls)
+        assert urls and all('showpol' not in url and 'facdet' not in url for url in urls)
 
     def test_rerun_is_idempotent(self):
         self.run_import(county='kern')

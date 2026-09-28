@@ -53,10 +53,7 @@ class Command(BaseCommand):
 
             self.status(f'{label}: fetching...')
             try:
-                merged, toxic_ems = ceidars.fetch_county(
-                    year, county_code,
-                    on_error=lambda field, exc: self.stderr.write(f'{label}: {field} fetch failed -- {exc}'),
-                )
+                merged = ceidars.fetch_county(year, county_code)
             except requests.RequestException as exc:
                 self.stderr.write(f'{label}: fetch failed -- {exc}')
                 failed.append(county.name)
@@ -181,8 +178,6 @@ class Command(BaseCommand):
                     col: ceidars.decimal_or_none(row.get(src))
                     for src, col in ceidars.TOXICS_COLS.items()
                 })
-                emissions_data.update(toxic_ems.get(key, {}))
-
                 if all(v is None for v in emissions_data.values()):
                     continue
 
