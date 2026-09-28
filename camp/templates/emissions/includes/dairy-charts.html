@@ -1,0 +1,12 @@
+{% load emissions_explorer %}
+{% comment %}
+The dairy charts, on the Dairies tab and a dairy region page: the herd
+trend, CARB's county dairy-cattle estimate where there is one
+(`emissions_trend`, [] elsewhere) and the digester trend where any year had
+one. `chart_place` names the place in the CARB chart's caption.
+{% endcomment %}
+<div class="columns is-desktop is-multiline mt-5 dairy-charts">
+    <div class="column is-half-desktop">{% dairy_trend_chart trend year %}</div>
+    {% if emissions_trend %}<div class="column is-half-desktop">{% dairy_emissions_chart emissions_trend pollutant year chart_place %}</div>{% endif %}
+    {% if digester_trend %}<div class="column is-half-desktop">{% digester_trend_chart digester_trend year %}</div>{% endif %}
+</div>

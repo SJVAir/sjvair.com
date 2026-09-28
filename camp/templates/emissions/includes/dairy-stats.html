@@ -1,0 +1,33 @@
+{% load humanize emissions_explorer %}
+{% comment %}
+The dairy headline tiles (dairies.summary), on the Dairies tab and a dairy
+region page: the counted dairies with the Large CAFOs, digesters with their
+share, milk cows with their share of cattle, and all cattle. `carb_estimate`
+({tons, share, place}; county dairy pages only) adds CARB's county estimate
+of dairy-cattle emissions in the scope pollutant, with dairy cattle's share
+of the county's all-sources total.
+{% endcomment %}
+<div class="level is-mobile stat-row box is-grid-mobile">
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">Total dairies</p><p class="title">{{ summary.dairies|intcomma }}</p>
+        <p class="is-size-7 has-text-grey">{{ summary.large|intcomma }} large dair{{ summary.large|pluralize:"y,ies" }}</p>
+    </div></div>
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p>
+        {% if summary.digester_share is not None %}<p class="is-size-7 has-text-grey">{{ summary.digester_share|percent }} of dairies</p>{% endif %}
+    </div></div>
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">Milk cows</p><p class="title">{{ summary.milk_cows|whole }}</p>
+        {% if summary.milk_share is not None %}<p class="is-size-7 has-text-grey">{{ summary.milk_share|percent }} of cattle</p>{% endif %}
+    </div></div>
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">Total cattle</p><p class="title">{{ summary.cattle|whole }}</p>
+        <p class="is-size-7 has-text-grey">cows, heifers, calves &amp; beef</p>
+    </div></div>
+    {% if carb_estimate %}
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">Dairy cattle, CARB estimate</p><p class="title">{{ carb_estimate.tons|whole }} <span class="is-size-5">tons/yr {{ pollutant.label }}</span></p>
+        {% if carb_estimate.share is not None %}<p class="is-size-7 has-text-grey">{{ carb_estimate.share|percent }} of {{ carb_estimate.place }} {{ pollutant.label }}</p>{% endif %}
+    </div></div>
+    {% endif %}
+</div>

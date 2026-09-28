@@ -3,11 +3,13 @@ import io
 import re
 
 from django.core.cache import cache
+from django.template.loader import render_to_string
 from django.test import TestCase
 from django.urls import reverse
 
 from camp.apps.emissions import areas, dairies, dairy_views
 from camp.apps.emissions.models import DairyHerd, Facility
+from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
 from camp.apps.emissions.tests.test_areas_pages import map_data
 from camp.apps.emissions.tests.test_dairies import IN_KERN, dairy_inventory, make_dairies, make_dairy
@@ -494,3 +496,25 @@ class DairyTableCityLinkTests(DairyPageTestCase):
         cache.clear()
         content = self.get({'year': 2023}).content.decode()
         assert f'<a href="{cdp.get_emissions_url()}?year=2023&amp;pollutant=rog">Hilmar</a>' in content
+
+
+class DairyIncludeTests(DairyPageTestCase):
+    """The tiles, charts and table the Dairies tab and the dairy region pages share."""
+
+    def test_stats_include_with_and_without_the_carb_tile(self):
+        summary = dairies.summary(2023)
+        html = render_to_string('emissions/includes/dairy-stats.html', {'summary': summary, 'year': 2023})
+        assert '<p class="heading">Total dairies</p><p class="title">2</p>' in html
+        assert 'CARB estimate' not in html
+        html = render_to_string('emissions/includes/dairy-stats.html', {
+            'summary': summary, 'year': 2023, 'pollutant': POLLUTANTS['rog'],
+            'carb_estimate': {'tons': 730.0, 'share': 0.25, 'place': 'Fresno County'},
+        })
+        assert '<p class="heading">Dairy cattle, CARB estimate</p><p class="title">730 <span class="is-size-5">tons/yr ROG</span></p>' in html
+        assert '25% of Fresno County ROG' in html
+
+    def test_table_hides_the_county_column(self):
+        html = render_to_string('emissions/includes/dairy-table.html', {'rows': [], 'hide_county': True})
+        assert '<th>County</th>' not in html
+        html = render_to_string('emissions/includes/dairy-table.html', {'rows': []})
+        assert '<th>County</th>' in html

@@ -9,24 +9,7 @@
 {% if not has_data %}
 <p class="has-text-grey">No dairy data has been loaded yet.</p>
 {% else %}
-<div class="level is-mobile stat-row box is-grid-mobile">
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">Total dairies</p><p class="title">{{ summary.dairies|intcomma }}</p>
-        <p class="is-size-7 has-text-grey">{{ summary.large|intcomma }} large dair{{ summary.large|pluralize:"y,ies" }}</p>
-    </div></div>
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p>
-        {% if summary.digester_share is not None %}<p class="is-size-7 has-text-grey">{{ summary.digester_share|percent }} of dairies</p>{% endif %}
-    </div></div>
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">Milk cows</p><p class="title">{{ summary.milk_cows|whole }}</p>
-        {% if summary.milk_share is not None %}<p class="is-size-7 has-text-grey">{{ summary.milk_share|percent }} of cattle</p>{% endif %}
-    </div></div>
-    <div class="level-item has-text-centered"><div>
-        <p class="heading">Total cattle</p><p class="title">{{ summary.cattle|whole }}</p>
-        <p class="is-size-7 has-text-grey">cows, heifers, calves &amp; beef</p>
-    </div></div>
-</div>
+{% include 'emissions/includes/dairy-stats.html' %}
 
 {% include 'maps/includes/map.html' with map=map_config.map %}
 <p class="is-size-7 mt-2">Each circle is a dairy in CARB's dairy database (CADD), sized by its mature dairy cows (other cattle where it has none) and coloured by its EPA size class; the Digester filter shows the dairies that ran an anaerobic digester in {{ year }}. Counties shades each county by CARB's estimate of its dairy cattle emissions, or by its herd. <a href="{% url 'emissions:about' %}#dairies">About the dairy data</a>.</p>
@@ -65,11 +48,7 @@
     </div>
 </div>
 
-<div class="columns is-desktop is-multiline mt-5 dairy-charts">
-    <div class="column is-half-desktop">{% dairy_trend_chart trend year %}</div>
-    {% if emissions_trend %}<div class="column is-half-desktop">{% dairy_emissions_chart emissions_trend scope.pollutant year scope.county.name %}</div>{% endif %}
-    {% if digester_trend %}<div class="column is-half-desktop">{% digester_trend_chart digester_trend year %}</div>{% endif %}
-</div>
+{% include 'emissions/includes/dairy-charts.html' with chart_place=scope.county.name %}
 <p class="is-size-7">These are CARB's counts: herds, digesters, and CARB's county estimate of dairy cattle emissions. Nothing here estimates one dairy's emissions. <a href="{% url 'emissions:about' %}#dairies">How the dairy data works</a>.</p>
 {% endif %}
 {% endblock %}
