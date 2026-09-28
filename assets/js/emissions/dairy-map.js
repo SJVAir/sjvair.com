@@ -398,10 +398,14 @@
     this.map.setPaintProperty('counties-line', 'line-width', this.countyLineWidth());
   };
 
-  DairyMap.prototype.load = function () {
+  // `keepOutline`: an onAdopt reload whose outline, center and radius are
+  // unchanged (a year or pollutant change on the same area) -- the outline,
+  // wash and the reader's zoom stay as they are; only the dairies/counties
+  // data is refetched.
+  DairyMap.prototype.load = function (keepOutline) {
     var self = this;
     var ticket = this.shell.ticket();
-    this.loadOutline();
+    if (!keepOutline) this.loadOutline();
     this.el.dataset.loaded = '';
     this.shell.setStatus('Loading dairies…');
     var shapes = this.shapes ? Promise.resolve(this.shapes) : getJson(this.data.shapesUrl);
@@ -447,11 +451,25 @@
         if (request !== self.outlineRequest || !self.map) return;
         var boundary = json && json.data && json.data.boundary;
         self.showOutline(boundary ? boundary.geometry : null);
+        // No boundary on the region: frame() would otherwise stay stuck
+        // (outlineUrl is set), so fall back the same way a failed fetch does.
+        if (!boundary) self.frameFallback();
       })
       .catch(function (err) {
         if (request !== self.outlineRequest || !self.map) return;
+        self.showOutline(null);
+        self.frameFallback();
         logError('failed to load the outline', err);
       });
+  };
+
+  // The outline is missing or failed to load: frame() would stay put
+  // (outlineUrl is still set), so fall back to the scope's county bounds,
+  // or the page's own framing -- the same fallback the tab uses.
+  DairyMap.prototype.frameFallback = function () {
+    var bounds = this.countyBounds();
+    if (bounds) this.map.fitBounds(bounds, { padding: 24, duration: 0 });
+    else this.shell.frame();
   };
 
   DairyMap.prototype.showOutline = function (geometry) {
@@ -783,6 +801,10 @@
   DairyMap.prototype.onAdopt = function (changed) {
     var reloads = ['geojsonUrl', 'countiesUrl', 'county', 'year', 'label', 'unit', 'outlineUrl', 'center', 'radius'];
     var reload = changed.some(function (key) { return reloads.indexOf(key) !== -1; });
+    // A year or pollutant change on the same area leaves the outline, center
+    // and radius alone: keep the outline and wash on screen, and the
+    // reader's zoom, rather than blinking out for a round trip.
+    var outlineChanged = changed.some(function (key) { return ['outlineUrl', 'center', 'radius'].indexOf(key) !== -1; });
     this.readState();
     this.clearHover();
     this.applyView();
@@ -801,14 +823,16 @@
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
     this.shell.setSourceData('locate', M.EMPTY);
     this.shell.setSourceData('dairies', M.EMPTY);
-    // An old page's outline still in flight must not land here; the new
-    // page's own is fetched by load().
-    this.outlineRequest++;
-    this.outlineBounds = null;
-    this.shell.setSourceData('outline', M.EMPTY);
-    this.shell.setSourceData('outline-mask', M.EMPTY);
-    if (!this.data.county && !this.data.outlineUrl) this.shell.frame();
-    this.load();
+    if (outlineChanged) {
+      // An old page's outline still in flight must not land here; the new
+      // page's own is fetched by load().
+      this.outlineRequest++;
+      this.outlineBounds = null;
+      this.shell.setSourceData('outline', M.EMPTY);
+      this.shell.setSourceData('outline-mask', M.EMPTY);
+      if (!this.data.county && !this.data.outlineUrl) this.shell.frame();
+    }
+    this.load(!outlineChanged);
   };
 
   DairyMap.prototype.destroy = function () {
