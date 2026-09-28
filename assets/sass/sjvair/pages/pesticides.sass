@@ -303,15 +303,20 @@ body.pesticides
                 // A month with nothing reported reads as absent, not as light.
                 background-image: none
                 opacity: 0.55
-        // Hover: the cell's own row and column, so a square can be read back
-        // to its month and its year. An outline rather than a fill, which
-        // would misreport the value the shade is carrying.
-        .heatmap-cell.is-cross, th.is-cross
-            box-shadow: inset 0 0 0 1px rgba($black, 0.25)
+        // Hover: the cell's own row and column light up as a band, so a
+        // square can be read back to its month and its year. The band is the
+        // 2px gutter between the cells, filled by an outset ring on each
+        // crossed cell -- neighbours share a gutter, so it reads as one
+        // continuous strip. Nothing touches the fills, which are carrying
+        // the values.
+        .heatmap-cell.is-cross
+            box-shadow: 0 0 0 2px $grey-lighter
         .heatmap-cell.is-hovered
-            box-shadow: inset 0 0 0 2px $text
+            box-shadow: 0 0 0 2px $grey
+        // The band runs out through the headers it names.
         th.is-cross
-            box-shadow: none
+            background-color: $grey-lighter
+            border-radius: 2px
             color: $text
             font-weight: 700
         .heatmap-legend
