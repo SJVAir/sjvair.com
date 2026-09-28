@@ -65,8 +65,10 @@
     </div>
 </div>
 
-<div class="columns mt-5">
-    <div class="column is-8-desktop">{% dairy_trend_chart trend year %}</div>
+<div class="columns is-desktop is-multiline mt-5 dairy-charts">
+    <div class="column is-half-desktop">{% dairy_trend_chart trend year %}</div>
+    {% if emissions_trend %}<div class="column is-half-desktop">{% dairy_emissions_chart emissions_trend scope.pollutant year scope.county.name %}</div>{% endif %}
+    {% if digester_trend %}<div class="column is-half-desktop">{% digester_trend_chart digester_trend year %}</div>{% endif %}
 </div>
 <p class="is-size-7">These are CARB's counts: herds, digesters, and CARB's county estimate of dairy cattle emissions. Nothing here estimates one dairy's emissions. <a href="{% url 'emissions:about' %}#dairies">How the dairy data works</a>.</p>
 {% endif %}

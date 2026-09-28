@@ -134,7 +134,7 @@ class WithinSectionTests(TestCase):
         self.fresno_city = Region.objects.get(type=Region.Type.CITY, slug='fresno')
 
     def within_section(self, content):
-        match = re.search(r'<section class="within mt-6">(.*?)</section>', content, re.S)
+        match = re.search(r'<section class="within mt-6" id="in-and-around">(.*?)</section>', content, re.S)
         assert match, 'no "In and around" section rendered'
         return match.group(1)
 

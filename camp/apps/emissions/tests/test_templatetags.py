@@ -51,6 +51,32 @@ class TrendChartTests(TestCase):
         assert tags.emissions_trend_chart([], POLLUTANTS['nox'])['has_data'] is False
 
 
+class DairyChartTests(TestCase):
+    def test_emissions_chart_readout_notes_the_share(self):
+        points = [
+            {'year': 2023, 'value': 365.0, 'total': 3650.0, 'share': 0.1},
+            {'year': 2022, 'value': 730.0, 'total': 2920.0, 'share': 0.25},
+        ]
+        context = tags.dairy_emissions_chart(points, POLLUTANTS['rog'], 2023, 'Tulare County')
+        chart = context['chart']
+        assert (chart['x'], chart['y'], chart['selected'], chart['unit']) == ([2022, 2023], [730.0, 365.0], 2023, 'tons')
+        assert chart['notes'] == ['25% of Tulare County ROG', '10% of Tulare County ROG']
+        assert context['title'] == 'Dairy cattle ROG, CARB estimate'
+        assert context['note'] == 'CARB estimates these from herd counts, so they follow the herd.'
+        assert context['note_url'].endswith('#dairies')
+        everywhere = tags.dairy_emissions_chart(points, POLLUTANTS['rog'], 2024)
+        assert everywhere['chart']['notes'][0] == '25% of the covered counties ROG'
+        assert everywhere['chart']['selected'] is None
+        assert tags.dairy_emissions_chart([], POLLUTANTS['nox'])['has_data'] is False
+
+    def test_digester_chart(self):
+        context = tags.digester_trend_chart([{'year': 2023, 'digesters': 3}, {'year': 2022, 'digesters': 0}], 2023)
+        chart = context['chart']
+        assert (chart['x'], chart['y'], chart['selected'], chart['whole']) == ([2022, 2023], [0, 3], 2023, True)
+        assert context['title'] == 'Dairies with an operating digester'
+        assert tags.digester_trend_chart([{'year': 2023, 'digesters': 0}])['has_data'] is False
+
+
 class SparklineTests(TestCase):
     def test_sparkline(self):
         svg = tags.sparkline([{'year': 2023, 'value': 1.0}, {'year': 2024, 'value': 2.0}])

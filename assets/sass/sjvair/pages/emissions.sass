@@ -79,6 +79,20 @@ body.emissions
     cursor: not-allowed
     &:hover
       background-color: transparent
+  // A region or near-me page's in-page links under its heading.
+  .section-nav
+    margin-top: -0.5rem
+    a
+      white-space: nowrap
+  // Clear of the pinned scope bar (pesticides.sass .breadcrumbs), which
+  // wraps to two rows on a phone.
+  #facilities, #dairies, #in-and-around
+    scroll-margin-top: 4.5rem
+    +mobile
+      scroll-margin-top: 6.5rem
+  // A chart's one-line caption (the dairy emissions chart's source note).
+  .explorer-chart .chart-note
+    margin-top: 0.35rem
   // A region page's Dairies block outside CADD's years, and a county line
   // for a pollutant CARB doesn't report for dairy cattle.
   .dairy-block.is-greyed, .dairy-county-line.is-greyed

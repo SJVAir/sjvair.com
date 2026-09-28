@@ -8,8 +8,8 @@
  * fires on page load and again for every swapped-in element.
  *
  * Two kinds: `line` (the by-year trend, optionally with a dashed second
- * series `y2`, readout `labels` and a marked year `marker`) and `bars` (the
- * by-month totals).
+ * series `y2`, readout `labels`, per-year readout `notes`, a marked year
+ * `marker` and `whole` for counts) and `bars` (the by-month totals).
  * Colours come from CSS custom properties on `.explorer-chart`, so the Sass
  * stays the one place the palette lives.
  */
@@ -48,6 +48,7 @@
     if (unit === 'applications') {
       return Math.round(value).toLocaleString('en-US') + ' ' + (value === 1 ? 'application' : 'applications');
     }
+    if (unit === 'tons') return full(value) + ' tons/yr';
     return full(value) + ' lbs';
   }
 
@@ -99,6 +100,11 @@
     var y2 = data.y2 || null;
     var labels = data.labels || null;
     var marker = data.marker || null;
+    // Optional: a note per year for the readout (a share), and `whole` for
+    // counts (whole-number ticks and readout).
+    var notes = data.notes || null;
+    var whole = !!data.whole;
+    var count = function (value) { return whole ? Math.round(value).toLocaleString('en-US') : full(value); };
     // The baseline the line is read against (the average valley county), or
     // null where there's nothing to compare to.
     var compare = data.compare && data.compare.length ? data.compare : null;
@@ -200,11 +206,12 @@
           }
           var text;
           if (labels) {
-            text = x[index] + ' · ' + full(y[index]) + ' ' + labels[0] +
-              (y2 ? ' · ' + full(y2[index]) + ' ' + labels[1] : '');
+            text = x[index] + ' · ' + count(y[index]) + ' ' + labels[0] +
+              (y2 ? ' · ' + count(y2[index]) + ' ' + labels[1] : '');
           } else {
             text = x[index] + ' · ' + amount(y[index], data.unit);
           }
+          if (notes && notes[index]) text += ' · ' + notes[index];
           if (compare && compare[index] != null) {
             text += ' · ' + (data.compare_label || 'valley average') + ' ' + amount(compare[index], data.unit);
           }
@@ -212,6 +219,7 @@
         }],
       },
     });
+    if (whole) opts.axes[1].incrs = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
     var columns = [x, y];
     if (y2) columns.push(y2);
     if (compare) columns.push(compare);

@@ -194,6 +194,9 @@ class DairyList(ScopeMixin, vanilla.TemplateView):
             near=near_label(self.request.GET, area),
             near_params={key: self.request.GET[key] for key in NEAR_KEYS if key in self.request.GET} if near else {},
             trend=dairies.trend(county=scope.county),
+            # CARB's estimate is by county: the scope's county, else all of them.
+            emissions_trend=dairies.emissions_trend(scope.pollutant, county=scope.county),
+            digester_trend=dairies.digester_chart_points(county=scope.county, area=area),
             coverage_note=scope.year is not None and scope.year < dairies.COVERAGE_CHANGE_YEAR,
             coverage_year=dairies.COVERAGE_CHANGE_YEAR,
             map_config=dairy_map_config(scope, dairy_map_view(self.request.GET)) if known else None,

@@ -312,6 +312,103 @@ class DairyBlockTests(DairyPageTestCase):
         assert 'id="dairies"' not in self.region_page(self.fresno, {'year': '2023'})
 
 
+class DairyChartPageTests(DairyPageTestCase):
+    """The herd, CARB dairy-cattle emissions and digester charts on the Dairies tab and the region pages' Dairies block."""
+    EMISSIONS_TITLE = 'Dairy cattle ROG, CARB estimate'
+    HERD_TITLE = 'Mature dairy cows (solid) and other cattle (dashed) by year'
+    DIGESTER_TITLE = 'Dairies with an operating digester'
+
+    def region_page(self, region, params):
+        response = self.client.get(region.get_emissions_url(), params)
+        assert response.status_code == 200, response.status_code
+        return response.content.decode()
+
+    def test_dairies_tab(self):
+        dairy_inventory(self.fresno, year=2022, rog=2.0)
+        dairy_inventory(self.fresno, year=2023, rog=1.0)
+        content = self.get({'pollutant': 'rog'}).content.decode()
+        assert self.HERD_TITLE in content and self.EMISSIONS_TITLE in content and self.DIGESTER_TITLE in content
+        assert 'of the covered counties ROG' in content
+        assert 'CARB estimates these from herd counts, so they follow the herd.' in content
+        county = self.get({'pollutant': 'rog', 'county': 'fresno'}).content.decode()
+        assert '% of Fresno County ROG' in county
+        # NOx falls back to ROG on the tab, so the chart stays.
+        assert self.EMISSIONS_TITLE in self.get({'pollutant': 'nox'}).content.decode()
+
+    def test_dairies_tab_without_digesters(self):
+        content = self.get({'county': 'kern'}).content.decode()
+        assert self.HERD_TITLE in content
+        assert self.DIGESTER_TITLE not in content
+
+    def test_county_block(self):
+        dairy_inventory(self.fresno, year=2023, rog=2.0)
+        content = self.region_page(self.fresno, {'year': '2023', 'pollutant': 'rog'})
+        block = content[content.index('id="dairies"'):]
+        for title in (self.HERD_TITLE, self.EMISSIONS_TITLE, self.DIGESTER_TITLE):
+            assert title in block
+        assert '% of Fresno County ROG' in block
+
+    def test_county_block_for_nox_has_no_emissions_chart(self):
+        dairy_inventory(self.fresno, year=2023, rog=2.0)
+        content = self.region_page(self.fresno, {'year': '2023', 'pollutant': 'nox'})
+        assert 'No NOx data for dairies.' in content
+        assert 'CARB estimate' not in content
+        assert self.HERD_TITLE in content
+
+    def test_other_region_pages_get_the_herd_and_digesters(self):
+        dairy_inventory(self.fresno, year=2023, rog=2.0)
+        city = make(Region.Type.CITY, 'Somewhere', AROUND_PLANT)
+        content = self.region_page(city, {'year': '2023', 'pollutant': 'rog'})
+        assert self.HERD_TITLE in content and self.DIGESTER_TITLE in content
+        assert self.EMISSIONS_TITLE not in content
+
+    def test_near_me_without_digesters(self):
+        params = {'lat': str(IN_KERN[1]), 'lng': str(IN_KERN[0]), 'radius': '1', 'year': '2023'}
+        content = self.client.get(reverse('emissions:near-me'), params).content.decode()
+        assert '1 dairy · 100 mature dairy cows' in content
+        assert self.HERD_TITLE in content
+        assert self.DIGESTER_TITLE not in content
+
+    def test_no_charts_without_dairies(self):
+        urban = make(Region.Type.URBAN_AREA, 'Faraway', 'MULTIPOLYGON(((-118.2 35.0, -118.1 35.0, -118.1 35.1, -118.2 35.1, -118.2 35.0)))')
+        content = self.region_page(urban, {'year': '2023'})
+        assert self.HERD_TITLE not in content and self.DIGESTER_TITLE not in content
+
+
+class SectionNavTests(DairyPageTestCase):
+    """The in-page links under a region or near-me page's heading."""
+
+    def nav(self, content):
+        match = re.search(r'<nav class="section-nav[^"]*"[^>]*>(.*?)</nav>', content, re.S)
+        return match.group(1) if match else None
+
+    def test_county_page(self):
+        content = self.client.get(self.fresno.get_emissions_url(), {'year': '2023'}).content.decode()
+        nav = self.nav(content)
+        assert '<a href="#facilities">Facilities</a>' in nav
+        assert '<a href="#dairies">Dairies</a>' in nav
+        assert '<a href="#in-and-around">In and around</a>' in nav
+        for anchor in ('id="facilities"', 'id="dairies"', 'id="in-and-around"'):
+            assert anchor in content
+
+    def test_no_dairies_link_outside_cadd_years(self):
+        content = self.client.get(self.fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        nav = self.nav(content)
+        assert '#dairies' not in nav and '#in-and-around' in nav
+
+    def test_near_me_has_no_in_and_around(self):
+        params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023'}
+        nav = self.nav(self.client.get(reverse('emissions:near-me'), params).content.decode())
+        assert '#facilities' in nav and '#dairies' in nav
+        assert '#in-and-around' not in nav
+
+    def test_nothing_to_jump_to(self):
+        # A near-me page with no dairies this year and no "In and around": no nav at all.
+        params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2024'}
+        content = self.client.get(reverse('emissions:near-me'), params).content.decode()
+        assert self.nav(content) is None
+
+
 class CombinedMapTests(DairyPageTestCase):
     """
     Dairies were removed from the facility map (region/near-me pages included);

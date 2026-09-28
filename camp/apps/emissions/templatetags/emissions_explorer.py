@@ -1,6 +1,7 @@
 import uuid
 
 from django import template
+from django.urls import reverse
 from django.utils.html import format_html
 
 from camp.apps.emissions import dairies, sectors
@@ -146,6 +147,64 @@ def dairy_trend_chart(points, year=None):
         },
         'has_data': bool(rows),
         'title': 'Mature dairy cows (solid) and other cattle (dashed) by year',
+        'sentence': '',
+        'first_year': years[0] if years else None,
+        'last_year': years[-1] if years else None,
+    }
+
+
+@register.inclusion_tag('pesticides/includes/trend-chart.html')
+def dairy_emissions_chart(points, pollutant, year=None, place=None):
+    """
+    CARB's dairy cattle emissions by year (dairies.emissions_trend), the
+    readout adding each year's share of `place`'s all-sources total (the
+    covered counties when there's no place). Nothing for a pollutant CARB
+    doesn't report for dairy cattle: emissions_trend is [] for those.
+    """
+    rows = sorted(points, key=lambda row: row['year'])
+    years = [row['year'] for row in rows]
+    place = place or 'the covered counties'
+    return {
+        'chart_id': f'chart-{uuid.uuid4().hex[:8]}',
+        'chart': {
+            'type': 'line',
+            'unit': 'tons',
+            'x': years,
+            'y': [row['value'] for row in rows],
+            'notes': [
+                f"{percent(row['share'])} of {place} {pollutant.label}" if row['share'] is not None else ''
+                for row in rows
+            ],
+            'selected': year if year in years else None,
+        },
+        'has_data': bool(rows),
+        'title': f'Dairy cattle {pollutant.label}, CARB estimate',
+        'sentence': '',
+        'note': 'CARB estimates these from herd counts, so they follow the herd.',
+        'note_url': reverse('emissions:about') + '#dairies',
+        'first_year': years[0] if years else None,
+        'last_year': years[-1] if years else None,
+    }
+
+
+@register.inclusion_tag('pesticides/includes/trend-chart.html')
+def digester_trend_chart(points, year=None):
+    """Counted dairies with an operating digester by year (dairies.digester_trend); nothing when no year has one."""
+    rows = sorted(points, key=lambda row: row['year'])
+    years = [row['year'] for row in rows]
+    return {
+        'chart_id': f'chart-{uuid.uuid4().hex[:8]}',
+        'chart': {
+            'type': 'line',
+            'unit': 'dairies',
+            'whole': True,
+            'x': years,
+            'y': [row['digesters'] for row in rows],
+            'labels': ['dairies with a digester'],
+            'selected': year if year in years else None,
+        },
+        'has_data': any(row['digesters'] for row in rows),
+        'title': 'Dairies with an operating digester',
         'sentence': '',
         'first_year': years[0] if years else None,
         'last_year': years[-1] if years else None,

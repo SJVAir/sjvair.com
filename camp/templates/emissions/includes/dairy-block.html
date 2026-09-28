@@ -1,9 +1,10 @@
 {% load humanize emissions_explorer pesticides_explorer %}
 {% comment %}
 A region or near-me page's Dairies block (views.dairy_block): the scope
-year's counted dairies here and the ten largest; on county pages, CARB's
-county dairy-cattle emissions in the scope pollutant. Greyed outside CADD's
-years, with a link that changes only the year.
+year's counted dairies here and the ten largest, with the herd and digester
+trends; on county pages, CARB's county dairy-cattle emissions in the scope
+pollutant, and by year. Greyed outside CADD's years, with a link that
+changes only the year.
 {% endcomment %}
 <section class="dairy-block mt-5{% if not dairy_block.in_range %} is-greyed{% endif %}" id="dairies">
     <h2 class="title is-4"><span class="icon"><span class="fa-duotone fa-fw fa-cow explorer-icon is-dairies" aria-hidden="true"></span></span> Dairies</h2>
@@ -22,6 +23,12 @@ years, with a link that changes only the year.
     <p class="dairy-summary">{{ summary.dairies|intcomma }} dair{{ summary.dairies|pluralize:"y,ies" }} · {{ summary.mature_cows|whole }} mature dairy cows · {{ summary.large|intcomma }} Large CAFO{{ summary.large|pluralize }} · {{ summary.digesters|intcomma }} with digesters</p>
     {% include 'emissions/includes/dairy-table.html' with rows=dairy_block.top compact=True sortable=False zoom=False %}
     <p><a href="{{ dairy_block.list_url }}">Map these dairies →</a></p>
+    {# Two columns on desktop, stacked below: the herd, then (county pages) CARB's dairy cattle estimate, then digesters where there are any. #}
+    <div class="columns is-desktop is-multiline dairy-charts">
+        <div class="column is-half-desktop">{% dairy_trend_chart dairy_block.trend year %}</div>
+        {% if dairy_block.emissions_trend %}<div class="column is-half-desktop">{% dairy_emissions_chart dairy_block.emissions_trend pollutant year county_region.name %}</div>{% endif %}
+        {% if dairy_block.digester_trend %}<div class="column is-half-desktop">{% digester_trend_chart dairy_block.digester_trend year %}</div>{% endif %}
+    </div>
     {% else %}
     <p class="has-text-grey">No dairies in CARB's dairy database here.</p>
     {% endif %}

@@ -459,7 +459,8 @@ def dairy_block(scope, area, link_params, *, county=None):
     The Dairies block on a region or near-me page, or None before CARB's dairy
     database is imported. Outside CADD's years it only says so (the template
     greys it). `county` (county pages) adds CARB's county dairy-cattle
-    emissions in the scope pollutant; other areas have no county figure.
+    emissions in the scope pollutant, as a figure and by year; other areas
+    have no county figure. Every area gets its herd and digester trends.
     """
     known = dairies.years()
     if not known:
@@ -478,8 +479,14 @@ def dairy_block(scope, area, link_params, *, county=None):
     params = {'year': scope.year, **link_params}
     if reported:
         params['pollutant'] = scope.pollutant.key
+    summary = dairies.summary(scope.year, area=area)
     block.update(
-        summary=dairies.summary(scope.year, area=area),
+        summary=summary,
+        has_dairies=bool(summary['dairies']),
+        trend=dairies.trend(area=area),
+        digester_trend=dairies.digester_chart_points(area=area),
+        # [] for a pollutant CARB doesn't report for dairy cattle, so no chart.
+        emissions_trend=dairies.emissions_trend(scope.pollutant, county=county) if county is not None else [],
         top=list(dairies.table(scope.year, area=area)[:dairies.TOP_ROWS]),
         list_url=f"{reverse('emissions:dairy-list')}?{urlencode(params)}",
         county_pollutant=reported,
