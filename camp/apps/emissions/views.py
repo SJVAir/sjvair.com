@@ -560,31 +560,55 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         )
 
 
+def get_page_region(sqid):
+    """A region with a page (AREA_PAGE_TYPES, a boundary, the current tract vintage), or None."""
+    return (
+        Region.objects.filter(sqid=sqid, type__in=AREA_PAGE_TYPES, boundary__isnull=False)
+        .current_vintage().select_related('boundary').first()
+    )
+
+
 class RegionRedirect(vanilla.View):
     """`region/<sqid>/` -> the slugged URL, keeping the query string (the map's popups link here)."""
 
+    # The Region method that builds the slugged URL; the dairy pages' redirect overrides it.
+    url_method = 'get_emissions_url'
+
     def get(self, request, sqid):
-        region = (
-            Region.objects.filter(sqid=sqid, type__in=AREA_PAGE_TYPES, boundary__isnull=False)
-            .current_vintage().first()
-        )
+        region = get_page_region(sqid)
         if region is None:
             raise Http404('No such region.')
         query = request.GET.urlencode()
-        return redirect(region.get_emissions_url() + (f'?{query}' if query else ''), permanent=True)
+        return redirect(getattr(region, self.url_method)() + (f'?{query}' if query else ''), permanent=True)
 
 
-class RegionPage(AreaPage):
-    def get(self, request, sqid, slug):
-        self.region = (
-            Region.objects.filter(sqid=sqid, type__in=AREA_PAGE_TYPES, boundary__isnull=False)
-            .current_vintage().select_related('boundary').first()
-        )
+class RegionLookupMixin:
+    """
+    `region/<sqid>/<slug>/` for a page about one region: a page type with a
+    boundary and a current vintage (get_page_region), else a 404; a wrong
+    slug redirected to the right one with the query kept. The emissions
+    region page and the dairy region page share it so the rules can't drift.
+    """
+
+    def region_url(self, region):
+        return region.get_emissions_url()
+
+    def lookup_region(self, request, sqid, slug):
+        """Sets self.region; None when the URL is right, else the redirect. Raises Http404."""
+        self.region = get_page_region(sqid)
         if self.region is None:
             raise Http404('No such region.')
         if slug != self.region.slug:
             query = request.GET.urlencode()
-            return redirect(self.region.get_emissions_url() + (f'?{query}' if query else ''), permanent=True)
+            return redirect(self.region_url(self.region) + (f'?{query}' if query else ''), permanent=True)
+        return None
+
+
+class RegionPage(RegionLookupMixin, AreaPage):
+    def get(self, request, sqid, slug):
+        response = self.lookup_region(request, sqid, slug)
+        if response is not None:
+            return response
         return super().get(request, sqid=sqid, slug=slug)
 
     def get_area(self):
@@ -660,14 +684,17 @@ def radius_label(get, lat, lng):
     return NEAR_PREFIX.sub('', label)
 
 
-class NearMe(AreaPage):
+class NearLookupMixin:
     """
-    The area page for a point and a 1, 3 or 5 mile radius, from the address
-    bar (?lat=&lng=&radius=&label=); never stored. Anything invalid, or a
-    point outside the covered counties, bounces to the home page's find form.
+    ?lat=&lng=&radius=&label= for a page about a point and a 1, 3 or 5 mile
+    radius, from the address bar, never stored: `self.near` (a RadiusArea)
+    and `self.county` (the covered county the point is in). Anything invalid,
+    or a point outside the covered counties, bounces to the home page's find
+    form. The emissions near-me page and the dairy near-me page share it.
     """
 
-    def get(self, request, *args, **kwargs):
+    def lookup_near(self, request):
+        """Sets self.near and self.county; None when the point is good, else the bounce."""
         self.near = radius_area(request.GET)
         if self.near is None:
             return self.bounce()
@@ -681,10 +708,44 @@ class NearMe(AreaPage):
             params = request.GET.copy()
             params['label'] = label[:MAX_LABEL]
             request.GET = params
-        return super().get(request, *args, **kwargs)
+        return None
 
     def bounce(self):
         return redirect(reverse('emissions:home') + '?find=1')
+
+    def near_title(self):
+        """'Within 3 miles of <label>' -- find-area.js labels read "near X"; the title already says "of"."""
+        label = radius_label(self.request.GET, self.near.lat, self.near.lng)
+        return f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {label}'
+
+    def near_params(self):
+        """The point as query parameters, for links to the other near-me page."""
+        params = {'lat': f'{self.near.lat:.4f}', 'lng': f'{self.near.lng:.4f}', 'radius': self.near.radius}
+        label = (self.request.GET.get('label') or '')[:MAX_LABEL]
+        if label:
+            params['label'] = label
+        return params
+
+    def radius_url(self, miles):
+        params = self.request.GET.copy()
+        params['radius'] = miles
+        return f'{self.request.path}?{params.urlencode()}'
+
+    def radius_options(self):
+        return [
+            {'miles': miles, 'url': self.radius_url(miles), 'current': miles == self.near.radius}
+            for miles in RADIUS_CHOICES
+        ]
+
+
+class NearMe(NearLookupMixin, AreaPage):
+    """The area page for a point and a 1, 3 or 5 mile radius (NearLookupMixin)."""
+
+    def get(self, request, *args, **kwargs):
+        response = self.lookup_near(request)
+        if response is not None:
+            return response
+        return super().get(request, *args, **kwargs)
 
     def get_area(self):
         return self.near
@@ -700,37 +761,23 @@ class NearMe(AreaPage):
             radius=self.near.radius,
         )
 
-    def radius_url(self, miles):
-        params = self.request.GET.copy()
-        params['radius'] = miles
-        return f'{self.request.path}?{params.urlencode()}'
-
     def dairy_link_params(self):
-        params = {'lat': f'{self.near.lat:.4f}', 'lng': f'{self.near.lng:.4f}', 'radius': self.near.radius}
-        label = (self.request.GET.get('label') or '')[:MAX_LABEL]
-        if label:
-            params['label'] = label
-        return params
+        return self.near_params()
 
     def dairy_county(self):
         return None
 
     def get_context_data(self, **kwargs):
-        label = radius_label(self.request.GET, self.near.lat, self.near.lng)
-        # find-area.js labels read "near X"; the title already says "of".
         # Not a region, so nothing to disambiguate with a type -- `name`
         # (the h1) and `title` (the <title> tag and breadcrumb) are the same.
-        title = f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {label}'
+        title = self.near_title()
         return super().get_context_data(
             name=title,
             title=title,
             kind='Near me',
             population=None,
             context_bar=None,
-            radius_options=[
-                {'miles': miles, 'url': self.radius_url(miles), 'current': miles == self.near.radius}
-                for miles in RADIUS_CHOICES
-            ],
+            radius_options=self.radius_options(),
             privacy_note=True,
             **kwargs,
         )

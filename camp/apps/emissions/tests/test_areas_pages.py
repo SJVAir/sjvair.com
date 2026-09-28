@@ -2,7 +2,7 @@ import json
 import re
 
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
 from camp.apps.emissions import cepam, views
@@ -223,6 +223,43 @@ class FindAreaTests(TestCase):
         jumps = re.search(r'<p class="find-area-counties">(.*?)</p>', content, re.S).group(1)
         hrefs = re.findall(r'href="([^"]*)"', jumps)
         assert hrefs and all('county=' not in href for href in hrefs)
+
+
+class LookupMixinTests(TestCase):
+    """The region and point lookups the emissions and dairy pages share."""
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+
+    def test_get_page_region(self):
+        assert views.get_page_region(self.fresno.sqid) == self.fresno
+        retired = make(Region.Type.TRACT, '06019000199', AROUND_PLANT, version='2010')
+        assert views.get_page_region(retired.sqid) is None
+        assert views.get_page_region('nope') is None
+
+    def test_region_redirect_uses_its_url_method(self):
+        class DairyRedirect(views.RegionRedirect):
+            url_method = 'get_emissions_url'
+        request = RequestFactory().get('/x/', {'year': '2023'})
+        response = DairyRedirect.as_view()(request, sqid=self.fresno.sqid)
+        assert response.status_code == 301
+        assert response['Location'] == f'{self.fresno.get_emissions_url()}?year=2023'
+
+    def test_near_lookup(self):
+        mixin = views.NearLookupMixin()
+        request = RequestFactory().get('/x/', {'lat': '36.737', 'lng': '-119.787', 'radius': '3', 'label': 'x' * 500})
+        mixin.request = request
+        assert mixin.lookup_near(request) is None
+        assert mixin.county == self.fresno and mixin.near.radius == 3
+        assert len(request.GET['label']) == views.MAX_LABEL
+        assert mixin.near_params() == {'lat': '36.7370', 'lng': '-119.7870', 'radius': 3, 'label': 'x' * views.MAX_LABEL}
+        assert mixin.near_title().startswith('Within 3 miles of xxx')
+        assert [option['miles'] for option in mixin.radius_options()] == [1, 3, 5]
+        bounced = views.NearLookupMixin()
+        response = bounced.lookup_near(RequestFactory().get('/x/', {'lat': '47.6', 'lng': '-122.3'}))
+        assert response.status_code == 302 and response['Location'].endswith('?find=1')
 
 
 class FacilityAreaLineTests(TestCase):
