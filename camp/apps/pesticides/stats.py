@@ -1122,7 +1122,11 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         'products': Count('product', distinct=True),
         'commodities': Count('commodity', distinct=True),
     }
-    sums = {'lbs': Sum('lbs_chemical'), 'applications': Sum('applications')}
+    sums = {
+        'lbs': Sum('lbs_chemical'),
+        'applications': Sum('applications'),
+        'acres': Sum('acres_treated'),
+    }
     if from_totals:
         year_totals_ = year_uses.aggregate(**counts)
         year_totals_ |= year_uses.filter(chemical__isnull=False).aggregate(**sums)
@@ -1141,6 +1145,13 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         'commodity_count': year_totals_['commodities'] or 0,
         'applications': year_totals_['applications'] or 0,
         'total_lbs': year_totals_['lbs'] or 0,
+        # Subtext for the stat row, as on a place page: what the figure was
+        # last year, what the applications cover, how many of the chemicals
+        # are flagged.
+        'acres': year_totals_['acres'] or 0,
+        'chemicals_flagged': real_chemicals(
+            concern_rows(year_uses.filter(chemical__isnull=False))
+        ).values('chemical').distinct().count(),
         'active_notices': upcoming_count(notices),
         # Each board's rows carry their own by-year series, for the
         # sparkline that says whether a big number is growing or receding.
@@ -1156,6 +1167,7 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         'by_year': by_year(totals),
         'series_label': series_label(year, all_years),
     }
+    data['lbs_delta'] = trend_deltas(data['by_year'], year)['previous']
     # Under the concern scope every leaderboard is already of concern, so
     # the dedicated one would just restate the top chemicals.
     if not concern:
