@@ -22,8 +22,11 @@ from camp.apps.emissions.models import MINOR_SOURCE_SIC_CODES, CountyInventory, 
 from camp.apps.emissions.pollutants import CRITERIA, DEFAULT_CRITERIA, DEFAULT_TOXIC, TOXICS, Pollutant, get_pollutant
 from camp.apps.regions.models import Region
 
-# Bump when the shape of anything cached here changes.
-CACHE_VERSION = 1
+# Bump when the shape of anything cached here changes. Bumped to 2 for the
+# toxics units fix (stored values had been x2000): any environment that ran
+# the pre-fix branch could otherwise keep serving cached x2000 area totals
+# for up to a day.
+CACHE_VERSION = 2
 CACHE_TIMEOUT = 60 * 60 * 24
 # A year-over-year change larger than this gets the "may reflect estimation
 # methods" note on a facility page.
@@ -33,7 +36,13 @@ LARGE_CHANGE = 0.5
 # reads as "not comparable" instead of a swing that's mostly noise off a
 # near-zero baseline. Applied wherever a compared year's value is computed,
 # for both the Facilities and Areas compare paths.
-SMALL_BASELINE_FLOOR = {'tons': 1.0, 'lbs': 10.0}
+# The lbs floor was 10.0 back when toxics were stored at 2000x their real
+# value (a units bug), so it was effectively 0.005 real lbs. Fixing that bug
+# without lowering this floor left it 2000x stricter in real terms, which hid
+# hexavalent chromium's county compare in 7 of 8 counties. 1.0 lb keeps a
+# floor -- a fraction of a pound is still noise -- without suppressing
+# low-mass-but-real toxics like this one.
+SMALL_BASELINE_FLOOR = {'tons': 1.0, 'lbs': 1.0}
 SORTS = ('-value', 'value', 'rank', '-rank', 'name', '-name', 'city', '-city', 'county', '-county')
 SORT_FIELDS = {'name': 'facility__name', 'county': 'facility__county__name'}
 # The sectors table's sorts: the sector's name, its facility count, and its

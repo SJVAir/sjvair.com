@@ -169,21 +169,21 @@ class FacilityGeoJSONTests(TestCase):
         assert cement['properties']['value_prev'] is None
 
     def test_compare_floor_uses_the_toxics_lbs_threshold(self):
-        # Toxics floor at 10 lbs/yr, not the criteria pollutants' 1 ton/yr:
-        # 5 lbs is under it, 20 lbs clears it.
+        # Toxics floor at 1 lb/yr, not the criteria pollutants' 1 ton/yr:
+        # 0.5 lbs is under it, 5 lbs clears it.
         plant = Facility.objects.get(name='TEST PLANT')
-        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='5')
+        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='0.5')
         response = self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': 2023, 'toxics': 1})
         body = response.json()
         assert body['properties']['unit'] == 'lbs'
         plant_props = [f for f in body['features'] if f['properties']['name'] == 'TEST PLANT'][0]['properties']
         assert plant_props['value_prev'] is None
 
-        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='20')
+        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='5')
         cache.clear()
         response = self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': 2023, 'toxics': 1})
         plant_props = [f for f in response.json()['features'] if f['properties']['name'] == 'TEST PLANT'][0]['properties']
-        assert plant_props['value_prev'] == 20.0
+        assert plant_props['value_prev'] == 5.0
 
     def test_filters(self):
         assert len(self.features(minor=1)) == 3
@@ -263,12 +263,12 @@ class AreaValuesEndpointTests(TestCase):
         assert area['total_prev'] is None
 
     def test_compare_floor_uses_the_toxics_lbs_threshold(self):
-        # Fresno's only facility here (TEST PLANT) at a toxics floor of 10
-        # lbs/yr, not the criteria pollutants' 1 ton/yr: 5 lbs is under it,
-        # 20 lbs clears it.
+        # Fresno's only facility here (TEST PLANT) at a toxics floor of 1
+        # lb/yr, not the criteria pollutants' 1 ton/yr: 0.5 lbs is under it,
+        # 5 lbs clears it.
         plant = Facility.objects.get(name='TEST PLANT')
         fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
-        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='5')
+        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='0.5')
         response = self.client.get(
             reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2023', 'toxics': 1})
         data = response.json()
@@ -276,12 +276,12 @@ class AreaValuesEndpointTests(TestCase):
         area = next(a for a in data['areas'] if a['id'] == fresno.sqid)
         assert area['total_prev'] is None
 
-        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='20')
+        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='5')
         cache.clear()
         response = self.client.get(
             reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2023', 'toxics': 1})
         area = next(a for a in response.json()['areas'] if a['id'] == fresno.sqid)
-        assert area['total_prev'] == 20.0
+        assert area['total_prev'] == 5.0
 
     def test_compare_ignores_the_scope_year(self):
         response = self.client.get(reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2024'})
