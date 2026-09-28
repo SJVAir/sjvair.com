@@ -99,7 +99,8 @@ def get_filter_region(sqid, types=None):
     The ?region= of a table's region filter, or None for a missing or
     unsearchable one. `types` narrows which region page types are accepted;
     the facility list's default is areas.FILTER_REGION_TYPES (cities, urban
-    areas, CDPs and ZIPs), and the Dairies tab passes its own (dairy_views.FILTER_TYPES).
+    areas, CDPs and ZIPs), and the Dairies tab redirect and the dairy GeoJSON
+    endpoint pass AREA_PAGE_TYPES.
     """
     if not sqid:
         return None

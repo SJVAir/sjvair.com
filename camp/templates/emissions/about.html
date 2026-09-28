@@ -21,7 +21,7 @@
     <li><strong>NOx</strong> (nitrogen oxides) and <strong>ROG</strong> (reactive organic gases) form ozone and fine particles.</li>
     <li><strong>Total PM</strong> is all particulate matter. CARB's facility inventory doesn't report PM2.5 by facility, so the explorer shows Total PM and PM10 instead.</li>
     <li><strong>SOx</strong> (sulfur oxides), <strong>CO</strong> (carbon monoxide) and <strong>TOG</strong> (total organic gases) round out the criteria pollutants.</li>
-    <li>Criteria pollutants are in <strong>tons per year</strong>. The ten <strong>toxic air contaminants</strong> (benzene, formaldehyde, hexavalent chromium and others) are in <strong>pounds per year</strong>, because the amounts are small.</li>
+    <li>Criteria pollutants are in <strong>tons per year</strong>. The ten <strong>toxic air contaminants</strong> (benzene, formaldehyde, hexavalent chromium and others) are in <strong>pounds per year</strong>, as CARB reports them.</li>
 </ul>
 
 <h2 id="minor-sources">Minor sources</h2>
@@ -32,6 +32,7 @@
 
 <h2 id="dairies">Dairies</h2>
 <p>The <a href="{% url 'emissions:dairy-list' %}">Dairies</a> tab covers what the facility inventory barely sees. CEIDARS lists a handful of permitted livestock facilities; CARB's <strong>California Dairy &amp; Livestock Database (CADD)</strong> locates every dairy CARB tracks, {{ dairy_count|intcomma }} of them in the eight Valley counties.</p>
+<p>Every county, city, community, ZIP area, census tract and school district has its own dairy page, scoped to that area's dairies. Reach one from its area page, or from the Dairies tab's find box.</p>
 <ul>
     <li><strong>Counted, not modelled.</strong> CADD gives each dairy's location, its herd by year ({{ dairy_span }}) and its anaerobic digesters. No public dataset reports emissions dairy by dairy, and the explorer doesn't estimate them.</li>
     <li><strong>Herd size and EPA size classes.</strong> Herds are counted in head: <em>mature dairy cows</em> (milking and dry cows) and <em>other cattle</em> (heifers, calves and beef cattle). Each dairy gets the U.S. EPA's size class for animal feeding operations (<a href="https://www.ecfr.gov/current/title-40/chapter-I/subchapter-D/part-122/subpart-B/section-122.23">40 CFR 122.23</a>) from its counts that year, the larger of the two counts' classes:

@@ -120,7 +120,7 @@ def city_urls():
         for name in names:
             region = cities.resolve(name, index)
             if region is not None and region.boundary_id:
-                urls[name] = region.get_emissions_url()
+                urls[name] = region.get_emissions_dairies_url()
         return urls
     return cache.get_or_set(key('city-urls'), compute, stats.CACHE_TIMEOUT)
 

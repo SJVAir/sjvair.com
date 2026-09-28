@@ -110,7 +110,7 @@ class DairyTabContentTests(DairyPageTestCase):
         big_row = content[content.index('BIG DAIRY</a>'):]
         big_row = big_row[:big_row.index('</tr>')]
         assert re.findall(r'<td[^>]*>([^<]*)</td>', big_row)[1:4] == ['1,300', '300', 'Large']
-        assert f'href="{self.fresno.get_emissions_url()}?year=2023&amp;pollutant=rog"' in content
+        assert f'href="{self.fresno.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog"' in content
         content = self.get({'sort': 'name'}).content.decode()
         assert content.index('BIG DAIRY') < content.index('SMALL DAIRY')
         assert 'sort=-mature_cows' in content
@@ -140,6 +140,14 @@ class DairyTabContentTests(DairyPageTestCase):
             content = self.get({'region': sqid}).content.decode()
             assert 'BIG DAIRY' in content and 'SMALL DAIRY' in content
 
+    def test_an_unknown_region_falls_back_to_a_valid_point(self):
+        # ?region= that doesn't resolve, alongside a usable point: try the
+        # point instead of rendering unfiltered.
+        params = {'region': 'nope', 'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023'}
+        response = self.client.get(self.url, params)
+        assert response.status_code == 301
+        assert response['Location'] == f"{reverse('emissions:near-me-dairies')}?lat=36.737&lng=-119.787&radius=1&year=2023"
+
     def test_a_point_redirects_to_the_near_me_dairy_page(self):
         params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Tower District', 'year': '2023'}
         response = self.client.get(self.url, params)
@@ -148,6 +156,28 @@ class DairyTabContentTests(DairyPageTestCase):
         # A radius near-me doesn't offer is no filter at all: the tab renders.
         content = self.get({**params, 'radius': '2'}).content.decode()
         assert 'BIG DAIRY' in content and 'SMALL DAIRY' in content
+
+    def test_redirect_drops_the_page_number(self):
+        cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
+        response = self.client.get(self.url, {'region': cdp.sqid, 'year': '2023', 'page': '4'})
+        assert response.status_code == 301
+        assert response['Location'] == f'{cdp.get_emissions_dairies_url()}?year=2023'
+        params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023', 'page': '4'}
+        response = self.client.get(self.url, params)
+        assert response.status_code == 301
+        assert response['Location'] == f"{reverse('emissions:near-me-dairies')}?lat=36.737&lng=-119.787&radius=1&year=2023"
+
+    def test_a_valid_region_drops_the_point_params(self):
+        # region= wins over lat/lng/radius/label when both are given; they
+        # don't do anything on the region's own dairy page, so drop them.
+        cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
+        params = {
+            'region': cdp.sqid, 'lat': '36.737', 'lng': '-119.787', 'radius': '1',
+            'label': 'near Home', 'year': '2023',
+        }
+        response = self.client.get(self.url, params)
+        assert response.status_code == 301
+        assert response['Location'] == f'{cdp.get_emissions_dairies_url()}?year=2023'
 
     def test_find_box_points_at_dairy_pages(self):
         content = self.get({'county': 'kern', 'pollutant': 'pm10'}).content.decode()
@@ -287,7 +317,7 @@ class DairyBlockTests(DairyPageTestCase):
     def test_county_page(self):
         content = self.region_page(self.fresno, {'year': '2023'})
         block = content[content.index('id="dairies"'):block_end(content)]
-        assert '1 dairy · 1,300 mature dairy cows · 1 Large CAFO · 1 with digesters' in block
+        assert '1 dairy · 1,300 mature dairy cows · 1 Large CAFO · 1 with digester' in block
         assert f'<a href="{self.fresno.get_emissions_dairies_url()}?year=2023">Dairies in Fresno County →</a>' in block
         assert 'BIG DAIRY' not in block and 'dairy-table' not in content and 'dairy-charts' not in content
 
@@ -476,7 +506,7 @@ class DairyTableCityLinkTests(DairyPageTestCase):
         content = self.get({'year': 2023}).content.decode()
         # The city wins over a CDP of the same name; a city without a page stays text.
         # The link carries the tab's scope, like the county link beside it.
-        assert f'<a href="{city.get_emissions_url()}?year=2023&amp;pollutant=rog">Dairyville</a>' in content
+        assert f'<a href="{city.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog">Dairyville</a>' in content
         assert '<td>Nowhere Special</td>' in content
 
     def test_an_aliased_city_links_to_its_cdp_and_keeps_its_name(self):
@@ -485,7 +515,7 @@ class DairyTableCityLinkTests(DairyPageTestCase):
         self.big.save(update_fields=['address'])
         cache.clear()
         content = self.get({'year': 2023}).content.decode()
-        assert f'<a href="{cdp.get_emissions_url()}?year=2023&amp;pollutant=rog">Hilmar</a>' in content
+        assert f'<a href="{cdp.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog">Hilmar</a>' in content
 
 
 class DairyIncludeTests(DairyPageTestCase):

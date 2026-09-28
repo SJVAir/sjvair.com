@@ -105,7 +105,7 @@ def lookup(mapping, key):
 
 @register.simple_tag(takes_context=True)
 def dairy_city(context, dairy):
-    """A dairy's mailing city, linked to the city's (or CDP's) page when it has one; the text is the city as stored."""
+    """A dairy's mailing city, linked to the city's (or CDP's) dairy page when it has one; the text is the city as stored."""
     city = (dairy.address or {}).get('city') or ''
     url = dairies.city_url(city)
     if not url:

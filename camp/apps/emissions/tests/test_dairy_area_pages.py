@@ -200,7 +200,9 @@ class ContentTests(DairyAreaTestCase):
         west = make(Region.Type.CDP, 'Westside', 'MULTIPOLYGON(((-119.79 36.738, -119.77 36.738, -119.77 36.75, -119.79 36.75, -119.79 36.738)))')
         dairies.clear_caches()
         content = self.get(west, {'year': '2023'}).content.decode()
-        assert "No dairies in CARB's dairy database in Westside for 2023." in content
+        # Westside is a CDP (a community region): dairies_label matches the
+        # title tag and breadcrumb, which already add the type for it.
+        assert "No dairies in CARB's dairy database in Westside (Community) for 2023." in content
         # (Not a bare "dairy-map" substring check: base.html always links the
         # dairy-map.js script; the container class is what actually renders.)
         assert 'stat-row' not in content and 'dairy-table' not in content and 'class="dairy-map' not in content
@@ -209,7 +211,16 @@ class ContentTests(DairyAreaTestCase):
     def test_no_dairies_ever_has_no_charts(self):
         urban = make(Region.Type.URBAN_AREA, 'Faraway', FARAWAY)
         content = self.get(urban, {'year': '2023'}).content.decode()
-        assert "No dairies in CARB's dairy database in Faraway for 2023." in content
+        # Faraway is an urban area (a community region): dairies_label
+        # matches the title tag and breadcrumb, which already add the type.
+        assert "No dairies in CARB's dairy database in Faraway (Urban area) for 2023." in content
+        assert HERD_TITLE not in content
+
+    def test_no_dairies_near_me_has_no_charts(self):
+        # In Kern (IN_KERN is SMALL DAIRY's location), but 1.4+ miles from it,
+        # so it's outside a 1 mile radius while the point is still covered.
+        content = self.near({'lat': '35.39', 'lng': '-119.02', 'radius': '1', 'label': 'Home', 'year': '2023'}).content.decode()
+        assert "No dairies in CARB's dairy database within 1 mile of Home for 2023." in content
         assert HERD_TITLE not in content
 
     def test_no_cadd_data_at_all(self):

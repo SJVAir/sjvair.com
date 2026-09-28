@@ -249,24 +249,32 @@ class DairyList(DairyScopeMixin, vanilla.TemplateView):
         """
         ?region= and ?lat=&lng= were the tab's filters; each area has its own
         dairy page now. 301 there with the rest of the query (view=counties
-        dropped: the pages have no Counties view). An unknown region or a bad
-        point is ignored and the tab renders unfiltered, as it always did.
+        and page= dropped: the pages have no Counties view and no shared page
+        numbering). An unknown region falls back to a valid point, if one was
+        also given. An unknown region with no usable point, or a bad point,
+        is ignored and the tab renders unfiltered, as it always did.
         """
         get = request.GET
         target = None
+        region_won = False
         if get.get('region'):
             region = views.get_filter_region(get['region'], types=AREA_PAGE_TYPES)
             if region is not None:
                 target = region.get_emissions_dairies_url()
-        elif 'lat' in get or 'lng' in get:
+                region_won = True
+        if target is None and ('lat' in get or 'lng' in get):
             if radius_area(get) is not None:
                 target = reverse('emissions:near-me-dairies')
         if target is None:
             return None
         params = get.copy()
         params.pop('region', None)
+        params.pop('page', None)
         if params.get('view') == 'counties':
             params.pop('view')
+        if region_won:
+            for key in ('lat', 'lng', 'radius', 'label'):
+                params.pop(key, None)
         query = params.urlencode()
         return redirect(target + (f'?{query}' if query else ''), permanent=True)
 
