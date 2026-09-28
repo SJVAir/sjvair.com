@@ -34,7 +34,7 @@ from camp.apps.emissions.models import (
 from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.regions.models import Region
 
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 GENERATION_KEY = 'emissions:dairies:generation'
 
 # CARB's county inventory rows for dairy cattle waste. Silage has its own EIC
@@ -278,6 +278,13 @@ def trend(*, county=None, area=None):
     return cache.get_or_set(key('trend', _where(county, area)), compute, stats.CACHE_TIMEOUT)
 
 
+def cepam_rows(counties):
+    """CARB's county inventory rows for dairy cattle (silage left out) in `counties`, every year."""
+    return CountyInventory.objects.filter(
+        county__in=counties, inventory=cepam.INVENTORY, source_name=CEPAM_SOURCE, subcategory_name=CEPAM_SUBCATEGORY,
+    )
+
+
 def county_emissions(year, pollutant):
     """{county pk: tons/yr} of CARB's dairy cattle emissions; {} for a pollutant CARB doesn't report for them."""
     if pollutant.key not in POLLUTANT_KEYS or year is None:
@@ -285,13 +292,72 @@ def county_emissions(year, pollutant):
 
     def compute():
         rows = (
-            CountyInventory.objects
-            .filter(county__in=Region.objects.counties(), year=year, inventory=cepam.INVENTORY,
-                    source_name=CEPAM_SOURCE, subcategory_name=CEPAM_SUBCATEGORY)
+            cepam_rows(Region.objects.counties()).filter(year=year)
             .values('county').annotate(total=Sum(pollutant.key))
         )
         return {row['county']: cepam.tons_per_year(row['total']) for row in rows if row['total'] is not None}
     return cache.get_or_set(key('county-emissions', year, pollutant.key), compute, stats.CACHE_TIMEOUT)
+
+
+def emissions_trend(pollutant, county=None):
+    """
+    CARB's dairy cattle emissions (tons/yr) for every CEPAM year in a county,
+    or all the covered counties summed, with that year's all-sources total
+    for the same pollutant and counties and dairy cattle's share of it; []
+    for a pollutant CARB doesn't report for dairy cattle.
+    """
+    if pollutant.key not in POLLUTANT_KEYS:
+        return []
+
+    def compute():
+        counties = [county] if county is not None else Region.objects.counties()
+        field = pollutant.key
+        dairy = dict(
+            cepam_rows(counties).values('year').annotate(total=Sum(field)).values_list('year', 'total')
+        )
+        everything = dict(
+            CountyInventory.objects.filter(county__in=counties, inventory=cepam.INVENTORY)
+            .values('year').annotate(total=Sum(field)).values_list('year', 'total')
+        )
+        rows = []
+        for year in sorted(dairy):
+            if dairy[year] is None:
+                continue
+            value = cepam.tons_per_year(dairy[year])
+            total = cepam.tons_per_year(everything.get(year))
+            rows.append({'year': year, 'value': value, 'total': total, 'share': value / total if total else None})
+        return rows
+    return cache.get_or_set(key('emissions-trend', pollutant.key, county.pk if county else 'all'), compute, stats.CACHE_TIMEOUT)
+
+
+def digester_trend(*, county=None, area=None):
+    """
+    For every CADD year, the counted dairies that ran a digester that year
+    (Digester.operating_in: an unknown start year counts as operating).
+    """
+    def compute():
+        queryset = DairyHerd.objects.filter(COUNTED)
+        if county is not None:
+            queryset = queryset.filter(dairy__county=county)
+        if area is not None:
+            queryset = queryset.filter(area.dairy_q())
+        operating = Digester.objects.filter(dairy=OuterRef('dairy')).filter(
+            Q(operational_year__isnull=True) | Q(operational_year__lte=OuterRef('year')),
+            Q(shutdown_year__isnull=True) | Q(shutdown_year__gt=OuterRef('year')),
+        )
+        rows = (
+            queryset.annotate(digester=Exists(operating))
+            .values('year').annotate(digesters=Count('pk', filter=Q(digester=True)))
+            .order_by('year')
+        )
+        return [{'year': row['year'], 'digesters': row['digesters']} for row in rows]
+    return cache.get_or_set(key('digester-trend', _where(county, area)), compute, stats.CACHE_TIMEOUT)
+
+
+def digester_chart_points(*, county=None, area=None):
+    """digester_trend(), or [] when no year had a digester (so there's no chart)."""
+    rows = digester_trend(county=county, area=area)
+    return rows if any(row['digesters'] for row in rows) else []
 
 
 def county_values(year, pollutant):

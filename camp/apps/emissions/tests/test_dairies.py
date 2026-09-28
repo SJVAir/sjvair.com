@@ -289,6 +289,66 @@ class CountyEmissionsTests(DairyTestCase):
         assert rows['madera']['mature_cows'] == 0
 
 
+class EmissionsTrendTests(DairyTestCase):
+    def test_a_county_by_year_with_its_share(self):
+        dairy_inventory(self.fresno, year=2022, rog=2.0)
+        dairy_inventory(self.fresno, year=2023, rog=1.0)
+        # Every source in the county: dairy cattle, silage (5.0) and feedlot cattle (1.0).
+        rows = dairies.emissions_trend(POLLUTANTS['rog'], county=self.fresno)
+        assert [row['year'] for row in rows] == [2022, 2023]
+        assert rows[0]['value'] == pytest.approx(730)
+        assert rows[0]['total'] == pytest.approx(8.0 * 365)
+        assert rows[0]['share'] == pytest.approx(2.0 / 8.0)
+        assert rows[1]['value'] == pytest.approx(365)
+        assert rows[1]['share'] == pytest.approx(1.0 / 7.0)
+
+    def test_every_covered_county_summed(self):
+        dairy_inventory(self.fresno, year=2023, rog=2.0)
+        dairy_inventory(self.kern, year=2023, rog=1.0)
+        # Another source that isn't dairy cattle only moves the total.
+        CountyInventory.objects.create(
+            county=self.kern, year=2023, inventory=cepam.INVENTORY, source_type=CountyInventory.SourceType.MOBILE,
+            eic='700-700-0000-0000', source_name='LIGHT DUTY PASSENGER', subcategory_name='GASOLINE', rog=4.0,
+        )
+        [row] = dairies.emissions_trend(POLLUTANTS['rog'])
+        assert row['year'] == 2023
+        assert row['value'] == pytest.approx(3.0 * 365)
+        assert row['total'] == pytest.approx((8.0 + 7.0 + 4.0) * 365)
+        assert row['share'] == pytest.approx(3.0 / 19.0)
+        assert dairies.emissions_trend(POLLUTANTS['rog'], county=self.kern)[0]['share'] == pytest.approx(1.0 / 11.0)
+
+    def test_pollutants_carb_doesnt_report_for_dairy_cattle(self):
+        dairy_inventory(self.fresno, rog=2.0)
+        assert dairies.emissions_trend(POLLUTANTS['nox'], county=self.fresno) == []
+        assert dairies.emissions_trend(POLLUTANTS['benzene']) == []
+
+    def test_no_inventory(self):
+        assert dairies.emissions_trend(POLLUTANTS['rog']) == []
+
+
+class DigesterTrendTests(DairyTestCase):
+    def test_counts_by_year(self):
+        # BIG's digester (since 2019) runs both years; SMALL's shut down in 2021.
+        assert dairies.digester_trend() == [{'year': 2022, 'digesters': 1}, {'year': 2023, 'digesters': 1}]
+        assert dairies.digester_trend(county=self.kern) == [{'year': 2023, 'digesters': 0}]
+
+    def test_an_unknown_start_counts_and_a_shutdown_stops(self):
+        herds = {2022: {'milk_cows': 500}, 2023: {'milk_cows': 500}}
+        make_dairy(4, 'UNKNOWN START', IN_KERN, self.kern, herds=herds, digesters=[(None, None)])
+        make_dairy(5, 'SHUT IN 2023', IN_KERN, self.kern, herds=herds, digesters=[(2020, 2023)])
+        # And one that opened after the herd years: never counted.
+        make_dairy(6, 'NOT YET', IN_KERN, self.kern, herds=herds, digesters=[(2024, None)])
+        assert dairies.digester_trend(county=self.kern) == [{'year': 2022, 'digesters': 2}, {'year': 2023, 'digesters': 1}]
+
+    def test_an_area(self):
+        area = areas.RegionArea(make(Region.Type.CITY, 'Somewhere', AROUND_PLANT))
+        assert dairies.digester_trend(area=area) == [{'year': 2022, 'digesters': 1}, {'year': 2023, 'digesters': 1}]
+
+    def test_chart_points_are_empty_without_any_digester(self):
+        assert dairies.digester_chart_points(county=self.kern) == []
+        assert len(dairies.digester_chart_points(county=self.fresno)) == 2
+
+
 class ResolveScopeTests(DairyTestCase):
     def test_defaults_fall_back_quietly(self):
         scope, notes = dairies.resolve_scope({})
