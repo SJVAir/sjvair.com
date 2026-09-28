@@ -62,7 +62,7 @@ class DairyChartTests(TestCase):
         assert (chart['x'], chart['y'], chart['selected'], chart['unit']) == ([2022, 2023], [730.0, 365.0], 2023, 'tons')
         assert chart['notes'] == ['25% of Tulare County ROG', '10% of Tulare County ROG']
         assert context['title'] == 'Dairy cattle ROG, CARB estimate'
-        assert context['note'] == 'CARB estimates these from herd counts, so they follow the herd.'
+        assert context['note'] == 'CARB estimates these from herd counts; its inventory holds years after 2017 at the 2017 level.'
         assert context['note_url'].endswith('#dairies')
         everywhere = tags.dairy_emissions_chart(points, POLLUTANTS['rog'], 2024)
         assert everywhere['chart']['notes'][0] == '25% of the covered counties ROG'

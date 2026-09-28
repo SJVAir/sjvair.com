@@ -329,7 +329,7 @@ class DairyChartPageTests(DairyPageTestCase):
         content = self.get({'pollutant': 'rog'}).content.decode()
         assert self.HERD_TITLE in content and self.EMISSIONS_TITLE in content and self.DIGESTER_TITLE in content
         assert 'of the covered counties ROG' in content
-        assert 'CARB estimates these from herd counts, so they follow the herd.' in content
+        assert 'CARB estimates these from herd counts; its inventory holds years after 2017 at the 2017 level.' in content
         county = self.get({'pollutant': 'rog', 'county': 'fresno'}).content.decode()
         assert '% of Fresno County ROG' in county
         # NOx falls back to ROG on the tab, so the chart stays.
