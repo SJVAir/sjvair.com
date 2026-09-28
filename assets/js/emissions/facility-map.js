@@ -111,6 +111,17 @@
       roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
   }
 
+  // The size key (three sample circles at max/10/100 of it), shared by the
+  // plain Facilities legend, the Compare legend and the combined legend's
+  // Facilities column (whenever its circles are actually sized by value --
+  // not fixed at POINT_RADIUS). Empty when there's nothing to scale.
+  function sizeKeyHtml(max) {
+    if (!max) return '';
+    return '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
+      return sizeCircle(radiusFor(value, max), value);
+    }).join('') + '</div>';
+  }
+
   // A legend's classes on the blue ramp, largest first.
   function facilityBins(breaks, swatchClass) {
     return M.classes.bins(breaks, RAMP, swatchClass);
@@ -232,6 +243,19 @@
     this.dRampName = dRampMatch && M.ramps.diverging[dRampMatch[1]] ? dRampMatch[1] : DEFAULT_DRAMP;
     RAMP = sampleRamp(M.ramps.sequential[this.rampName], 5);
     CHANGE_RAMP = sampleRamp(M.ramps.diverging[this.dRampName], CHANGE_BREAKS.length + 1);
+    // The Facilities/Dairies show toggle (region and near-me pages with
+    // dairies, see the legend's combinedLegend()): which of the two draws.
+    // Read once from ?layers=, like the ramp names above, so it's a session
+    // setting that survives a boosted swap to another page untouched
+    // (readViewState doesn't reset it) rather than page scope.
+    var layersMatch = /[?&]layers=(facilities|dairies)/.exec(window.location.search || '');
+    this.layers = {
+      facilities: !layersMatch || layersMatch[1] === 'facilities',
+      dairies: !layersMatch || layersMatch[1] === 'dairies',
+    };
+    // Which layer the open popup (if any) belongs to, so hiding that layer
+    // closes it (openPopup/openDairyPopup set this when they place one).
+    this.popupLayer = '';
     this.readViewState();
     // Layer-bound listeners wait for their layer, so they're bound once here
     // rather than on every style load.
@@ -279,6 +303,16 @@
     // for plain values; a toolbar control, not part of the page's scope.
     this.compare = this.data.compare || '';
     this.withDairies = !!this.data.dairiesUrl && !!M.dairies;
+  };
+
+  // Whether the dairies actually draw right now: the page has them
+  // (withDairies) and the reader hasn't unticked the Dairies checkbox.
+  // Facilities are drawn as same-size points (POINT_RADIUS, prepare())
+  // only while this is true -- unticking Dairies puts the facilities back
+  // to the plain map's sized-by-value presentation, the same code path a
+  // page without dairies always uses.
+  FacilityMap.prototype.dairiesShown = function () {
+    return this.withDairies && this.layers.dairies;
   };
 
   // Bottom to top: the shaded areas, the county and district lines, the
@@ -370,12 +404,12 @@
       var set = function (map, id, visible) {
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
       };
-      set(this.map, 'facilities', !areas);
+      set(this.map, 'facilities', !areas && this.layers.facilities);
       // Dairies have no comparison of their own: while Compare is on they'd
       // just sit on the map in their own EPA-size colours, which read like
       // stray classes on the change ramp (a medium dairy's amber is close
       // enough to the +25-50% red to pass for one at a glance).
-      set(this.map, 'dairies', !areas && !this.compare);
+      set(this.map, 'dairies', !areas && this.layers.dairies && !this.compare);
       set(this.map, 'areas-fill', areas);
       set(this.map, 'areas-line', areas);
     }
@@ -437,7 +471,7 @@
     // confirms the fetch actually paired a compared year -- e.g. it's
     // absent if the request raced a Compare toggle-off.
     var compare = this.compare && (collection.properties || {}).compare;
-    var prepared = prepare(collection, this.data.unit, this.withDairies ? POINT_RADIUS : 0, compare);
+    var prepared = prepare(collection, this.data.unit, this.dairiesShown() ? POINT_RADIUS : 0, compare);
     this.legendData = prepared;
     this.shell.setSourceData('facilities', prepared.collection);
     this.applyHighlight();
@@ -481,6 +515,7 @@
     var self = this;
     var request = ++this.dairyPopupRequest;
     var url = (this.data.dairyPopupUrl || '').replace('{id}', encodeURIComponent(feature.properties.id));
+    this.popupLayer = 'dairies';
     var popup = this.shell.placePopup(M.dairies.LOADING, lngLat);
     // The popup's region links carry the scope, not the map's own filters.
     var query = new URLSearchParams(this.data.query || '');
@@ -649,6 +684,7 @@
   };
 
   FacilityMap.prototype.openPopup = function (feature, lngLat) {
+    this.popupLayer = 'facilities';
     var p = feature.properties;
     // p._empty means something different in Compare mode (not comparable,
     // regardless of whether this year has a value), so a null or 0 current
@@ -717,6 +753,7 @@
   FacilityMap.prototype.legend = function (body) {
     var legend = body.querySelector('.facility-map-legend');
     if (!legend) return;
+    if (this.withDairies) this.bindLegendToggles(legend);
     if (this.view === 'areas') {
       this.areaLegend(legend);
       return;
@@ -732,9 +769,7 @@
       // so the key stays; the colour classes swap to the change ramp either way.
       var changeTitle = escapeHtml(this.data.label) + ', change ' + escapeHtml(String(this.legendData.compare)) +
         ' to ' + escapeHtml(this.data.year || '');
-      var changeSizes = (max && !this.withDairies) ? '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
-        return sizeCircle(radiusFor(value, max), value);
-      }).join('') + '</div>' : '';
+      var changeSizes = this.dairiesShown() ? '' : sizeKeyHtml(max);
       legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + changeSizes +
         changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>' +
         'New, too small to compare, or none reported in ' + escapeHtml(String(this.legendData.compare)) + '</p>' +
@@ -752,11 +787,8 @@
       legend.innerHTML = '<p>No facilities here reported ' + escapeHtml(this.data.label) + '.</p>';
       return;
     }
-    var sizes = [max, max / 10, max / 100].map(function (value) {
-      return sizeCircle(radiusFor(value, max), value);
-    }).join('');
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
-      '<div class="legend-sizes">' + sizes + '</div>' +
+      sizeKeyHtml(max) +
       facilityBins(breaks) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>';
   };
@@ -768,18 +800,77 @@
     this.dairyHover.clear();
   };
 
+  // A combined-legend ramp's title as a checkbox label: unticking it hides
+  // that layer (setLayerVisible). `checked` is this.layers[layer]; `title`
+  // is an optional tooltip -- disabled either because it's the last layer
+  // still on (setLayerVisible refuses to turn off the only visible one), so
+  // this is dimmed and its box can't be unticked.
+  function layerToggle(layer, checked, disabled, title) {
+    return '<label class="legend-toggle"' + (title ? ' title="' + escapeHtml(title) + '"' : '') + '>' +
+      '<input type="checkbox" data-layer-toggle="' + layer + '"' +
+      (checked ? ' checked' : '') + (disabled ? ' disabled' : '') + '>' +
+      '<span class="legend-title">' + (layer === 'facilities'
+        ? 'Facilities (' + escapeHtml(this.data.unit) + '/yr)'
+        : 'Dairies (EPA size)') + '</span></label>';
+  }
+
   // With dairies: two small ramps side by side, the facilities' (blue, by
-  // tons) and the dairies' (amber, by EPA size class), and no size key (every
-  // point is one size).
+  // tons) and the dairies' (amber, by EPA size class), each behind a show
+  // checkbox (setLayerVisible). Unticking Dairies puts the facilities back
+  // to sized-by-value points (the plain legend's size key, sizeKeyHtml) --
+  // same-size points only exist to share the map with dairies.
   FacilityMap.prototype.combinedLegend = function () {
-    var html = '<div class="legend-ramp"><p class="legend-title">Facilities (' + escapeHtml(this.data.unit) + '/yr)</p>' +
+    var facilitiesOn = this.layers.facilities;
+    var dairiesOn = this.layers.dairies;
+    var onlyOne = facilitiesOn !== dairiesOn;
+    var html = '<div class="legend-ramp' + (facilitiesOn ? '' : ' is-layer-off') + '">' +
+      layerToggle.call(this, 'facilities', facilitiesOn, onlyOne && facilitiesOn,
+        onlyOne && facilitiesOn ? 'At least one layer must stay visible' : '') +
+      (dairiesOn ? '' : sizeKeyHtml(this.legendData.max)) +
       facilityBins(this.legendData.breaks) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p></div>';
     if (this.dairyData) {
-      html += '<div class="legend-ramp"><p class="legend-title">Dairies (EPA size)</p>' +
+      html += '<div class="legend-ramp' + (dairiesOn ? '' : ' is-layer-off') + '">' +
+        layerToggle.call(this, 'dairies', dairiesOn, onlyOne && dairiesOn,
+          onlyOne && dairiesOn ? 'At least one layer must stay visible' : '') +
         M.dairies.sizeBins((this.dairyData.properties || {}).size_classes, true) + '</div>';
     }
     return '<div class="legend-ramps">' + html + '</div>';
+  };
+
+  // Delegated so a legend redraw (innerHTML, every recolor()/updateLegend())
+  // never loses the binding -- bound once per legend element (an adopt's new
+  // chrome is a fresh one, same convention as shell.bindControls).
+  FacilityMap.prototype.bindLegendToggles = function (legend) {
+    var self = this;
+    if (legend.getAttribute('data-toggles-bound')) return;
+    legend.setAttribute('data-toggles-bound', '1');
+    legend.addEventListener('change', function (event) {
+      var input = event.target;
+      var layer = input && input.getAttribute && input.getAttribute('data-layer-toggle');
+      if (!layer) return;
+      self.setLayerVisible(layer, input.checked);
+    });
+  };
+
+  // A show checkbox flipped: at least one of the two stays on (the other
+  // one's box refuses to uncheck itself too, but a stray event is guarded
+  // here as well). Hiding a layer clears its own hover state and closes its
+  // popup, if one from that layer is open.
+  FacilityMap.prototype.setLayerVisible = function (layer, visible) {
+    var other = layer === 'facilities' ? 'dairies' : 'facilities';
+    if (!visible && !this.layers[other]) return;
+    this.layers[layer] = visible;
+    if (!visible) {
+      if (layer === 'dairies') this.dairyHover.clear();
+      if (this.popupLayer === layer) this.shell.closePopup();
+    }
+    this.applyView();
+    this.syncUrl();
+    // Facilities are re-prepared at their sized-by-value radius (or back to
+    // POINT_RADIUS) whenever the Dairies toggle changes; recolor() does
+    // exactly that from the data already on hand, no refetch.
+    this.recolor();
   };
 
   FacilityMap.prototype.areaLegend = function (legend) {
@@ -903,6 +994,12 @@
     if (this.tileStyle && this.tileStyle !== this.defaultTileStyle) params.set('tiles', this.tileStyle); else params.delete('tiles');
     if (this.rampName !== DEFAULT_RAMP) params.set('ramp', this.rampName); else params.delete('ramp');
     if (this.dRampName !== DEFAULT_DRAMP) params.set('dramp', this.dRampName); else params.delete('dramp');
+    // The Facilities/Dairies show toggle: omitted when both are on (the
+    // default). Only a page with dairies ever has one off, but this is
+    // harmless to write regardless of mode, like tiles/ramp/dramp above.
+    if (!this.layers.dairies) params.set('layers', 'facilities');
+    else if (!this.layers.facilities) params.set('layers', 'dairies');
+    else params.delete('layers');
   };
 
   // The address bar follows the view, level and measure (and the sector) so
@@ -994,7 +1091,7 @@
   // change too, see `compare` there).
   FacilityMap.prototype.recolor = function () {
     if (this.legendData) {
-      this.legendData = prepare(this.legendData.collection, this.data.unit, this.withDairies ? POINT_RADIUS : 0, this.legendData.compare);
+      this.legendData = prepare(this.legendData.collection, this.data.unit, this.dairiesShown() ? POINT_RADIUS : 0, this.legendData.compare);
       this.shell.setSourceData('facilities', this.legendData.collection);
       this.applyHighlight();
     }
