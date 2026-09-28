@@ -98,20 +98,23 @@
   // side, however small `r` is) so a phone's narrower CSS width scales the
   // whole drawing down rather than clipping it -- the map's own circles
   // (paint's `_radius`, from this same radiusFor) are untouched either way.
-  function sizeCircle(r, value) {
+  function sizeCircle(r, value, color) {
     var box = 2 * MAX_RADIUS + 2;
     return '<span class="legend-size"><svg viewBox="0 0 ' + box + ' ' + box + '" width="' + box + '" height="' + box + '">' +
-      '<circle cx="' + (box / 2) + '" cy="' + (box - r - 1) + '" r="' + r + '"/></svg>' +
+      '<circle cx="' + (box / 2) + '" cy="' + (box - r - 1) + '" r="' + r + '"' +
+      (color ? ' style="stroke: ' + color + '"' : '') + '/></svg>' +
       roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
   }
 
   // The size key (three sample circles at max/10/100 of it), shared by the
   // plain Facilities legend and the Compare legend. Empty when there's
-  // nothing to scale.
-  function sizeKeyHtml(max) {
+  // nothing to scale. `color` is the circles' stroke: the chosen ramp's
+  // darkest step, or the stylesheet's grey under Compare, where the circles'
+  // colour means change rather than size.
+  function sizeKeyHtml(max, color) {
     if (!max) return '';
     return '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
-      return sizeCircle(radiusFor(value, max), value);
+      return sizeCircle(radiusFor(value, max), value, color);
     }).join('') + '</div>';
   }
 
@@ -665,7 +668,7 @@
       return;
     }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
-      sizeKeyHtml(max) +
+      sizeKeyHtml(max, RAMP[RAMP.length - 1]) +
       facilityBins(breaks) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>';
   };

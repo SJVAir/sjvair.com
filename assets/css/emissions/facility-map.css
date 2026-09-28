@@ -27,7 +27,7 @@
 }
 .facility-map-legend .legend-size circle {
   fill: none;
-  stroke: #3182bd;
+  stroke: #7a7a7a;
   stroke-width: 1.25;
 }
 .facility-map-legend .legend-bins {
