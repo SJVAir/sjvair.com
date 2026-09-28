@@ -7,7 +7,7 @@ and pesticides explorers' place pages (camp/apps/regions/nearby.py builds
   scope_qs     the current scope as a query string, appended to every link
 {% endcomment %}
 {% if within and within.any %}
-<section class="within mt-6">
+<section class="within mt-6" id="in-and-around">
     <h2 class="title is-4">{% if within.counties %}In and around{% else %}In{% endif %} {{ within_name }}</h2>
     <div class="columns within-panels">
         {% if within.counties %}

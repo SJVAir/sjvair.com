@@ -12,5 +12,6 @@
         </p>
     {% endif %}
     {% if sentence %}<figcaption class="trend-delta">{{ sentence }}</figcaption>{% endif %}
+    {% if note %}<p class="chart-note is-size-7 has-text-grey">{% if note_url %}<a href="{{ note_url }}">{{ note }}</a>{% else %}{{ note }}{% endif %}</p>{% endif %}
 </figure>
 {% endif %}
