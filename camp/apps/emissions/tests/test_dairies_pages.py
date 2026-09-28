@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import re
 
 from django.core.cache import cache
@@ -124,41 +125,42 @@ class DairyTabContentTests(DairyPageTestCase):
         assert 'Yes (start year unknown)' in content
         assert 'since None' not in content and 'since null' not in content
 
-    def test_region_filter(self):
+    def test_a_region_redirects_to_its_dairy_page(self):
         cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
-        content = self.get({'region': cdp.sqid}).content.decode()
-        assert 'BIG DAIRY' in content and 'SMALL DAIRY' not in content
-        assert 'Plantville <button' in content
-
-    def test_region_filter_scopes_the_headline_and_charts_alike(self):
-        # The headline's "With a digester" and the digester chart's point for
-        # the year count the same dairies: the filtered ones, not the county's.
-        cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
-        context = self.get({'year': '2023', 'region': cdp.sqid}).context
-        summary = context['summary']
-        assert summary['dairies'] == 1
-        assert summary['mature_cows'] == 1300
-        assert summary['digesters'] == 1
-        by_year = {row['year']: row['digesters'] for row in context['digester_trend']}
-        assert by_year[2023] == summary['digesters']
-        assert context['trend'] == dairies.trend(area=areas.RegionArea(cdp))
-
-    def test_a_tract_from_its_region_page(self):
+        response = self.client.get(self.url, {'region': cdp.sqid, 'year': '2023', 'sort': 'name', 'view': 'counties', 'measure': 'mature_cows'})
+        assert response.status_code == 301
+        assert response['Location'] == f'{cdp.get_emissions_dairies_url()}?year=2023&sort=name&measure=mature_cows'
         tract = make(Region.Type.TRACT, '06019000100', AROUND_PLANT)
-        content = self.get({'region': tract.sqid}).content.decode()
-        assert 'BIG DAIRY' in content and 'SMALL DAIRY' not in content
+        assert self.client.get(self.url, {'region': tract.sqid})['Location'] == tract.get_emissions_dairies_url()
+        assert self.client.get(self.url, {'region': self.fresno.sqid})['Location'] == self.fresno.get_emissions_dairies_url()
 
-    def test_near_me_filter_and_its_tag(self):
-        params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Tower District'}
-        content = self.get(params).content.decode()
-        assert 'BIG DAIRY' in content and 'SMALL DAIRY' not in content
-        assert 'Within 1 mi of Tower District' in content
-        assert '<input type="hidden" name="lat" value="36.737">' in content
-        remove = re.search(r'href="([^"]*)" aria-label="Remove the distance filter"', content).group(1)
-        assert 'lat=' not in remove and 'label=' not in remove
-        # A radius near-me doesn't offer is no filter at all.
+    def test_an_unknown_region_renders_unfiltered(self):
+        retired = make(Region.Type.TRACT, '06019000199', AROUND_PLANT, version='2010')
+        for sqid in ('nope', retired.sqid):
+            content = self.get({'region': sqid}).content.decode()
+            assert 'BIG DAIRY' in content and 'SMALL DAIRY' in content
+
+    def test_a_point_redirects_to_the_near_me_dairy_page(self):
+        params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Tower District', 'year': '2023'}
+        response = self.client.get(self.url, params)
+        assert response.status_code == 301
+        assert response['Location'] == f"{reverse('emissions:near-me-dairies')}?lat=36.737&lng=-119.787&radius=1&label=near+Tower+District&year=2023"
+        # A radius near-me doesn't offer is no filter at all: the tab renders.
         content = self.get({**params, 'radius': '2'}).content.decode()
         assert 'BIG DAIRY' in content and 'SMALL DAIRY' in content
+
+    def test_find_box_points_at_dairy_pages(self):
+        content = self.get({'county': 'kern', 'pollutant': 'pm10'}).content.decode()
+        # (Not a bare "entity-picker" substring check: base.html always
+        # links entity-picker.js; the tab's own filter form has no picker.)
+        assert 'class="field entity-picker"' not in content
+        assert f'data-near-url="{reverse("emissions:near-me-dairies")}"' in content
+        places = json.loads(re.search(r'id="find-area-places"[^>]*>(.*?)</script>', content, re.S).group(1))
+        fresno = next(place for place in places if place['name'] == 'Fresno County')
+        assert fresno['url'] == self.fresno.get_emissions_dairies_url()
+        jumps = re.search(r'<p class="find-area-counties">(.*?)</p>', content, re.S).group(1)
+        hrefs = re.findall(r'href="([^"]*)"', jumps)
+        assert hrefs and all('/dairies/?' in href and 'county=' not in href and 'pollutant=pm10' in href for href in hrefs)
 
     def test_csv(self):
         response = self.client.get(self.url, {'format': 'csv', 'county': 'fresno'})
@@ -327,6 +329,9 @@ class DairyBlockTests(DairyPageTestCase):
         assert '1 dairy · 1,300 mature dairy cows' in content
         assert f'href="{reverse("emissions:near-me-dairies")}?year=2023&amp;lat=36.7370&amp;lng=-119.7870&amp;radius=1&amp;label=near+Home"' in content
         assert 'CARB estimate' not in content
+        # Not "Dairies in Within 1 mile of Home" -- the near-me phrase reads mid-sentence.
+        assert 'Dairies within 1 mile of Home →' in content
+        assert 'Dairies in Within' not in content
 
     def test_no_block_before_an_import(self):
         DairyHerd.objects.all().delete()

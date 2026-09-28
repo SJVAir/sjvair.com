@@ -9,8 +9,10 @@ scoped to one area instead of the whole valley or a county.
 import csv
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.core.paginator import Paginator
 from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.urls import reverse
 
 import vanilla
@@ -18,15 +20,11 @@ import vanilla
 from camp.apps.emissions import areas, dairies, stats, views
 from camp.apps.emissions.models import HERD_FIELDS
 from camp.apps.emissions.pollutants import CRITERIA
-from camp.apps.emissions.views import AREA_PAGE_TYPES, ScopeMixin, radius_area, radius_label, region_page_title, region_title
+from camp.apps.emissions.views import AREA_PAGE_TYPES, ScopeMixin, radius_area, region_page_title, region_title
 from camp.apps.regions.models import Region
 from camp.utils import mapconfig
 
 PAGE_SIZE = 50
-# The table's region filter: every region page type but county (the scope's
-# county picker is that), so each region page's "All dairies here" works.
-FILTER_TYPES = tuple(region_type for region_type in AREA_PAGE_TYPES if region_type != Region.Type.COUNTY)
-NEAR_KEYS = ('lat', 'lng', 'radius', 'label')
 VIEW_OPTIONS = (('dairies', 'Dairies'), ('counties', 'Counties'))
 MEASURE_OPTIONS = (
     ('emissions', 'Dairy emissions'),
@@ -50,22 +48,6 @@ def search_filters(get):
         'q': (get.get('q') or '').strip() or None,
         'sort': sort if sort in dairies.TABLE_SORTS else dairies.DEFAULT_SORT,
     }
-
-
-def table_filters(get):
-    """The Dairies tab's filters: search_filters() plus a region (by point) or else near-me's radius."""
-    region = views.get_filter_region(get.get('region'), types=FILTER_TYPES)
-    return {
-        **search_filters(get),
-        'area': areas.RegionArea(region) if region else radius_area(get),
-    }
-
-
-def near_label(get, area):
-    """The radius filter's tag: 'Within 1 mi of Tower District'."""
-    if not isinstance(area, areas.RadiusArea):
-        return None
-    return f'Within {area.radius} mi of {radius_label(get, area.lat, area.lng)}'
 
 
 def page_params(scope):
@@ -254,34 +236,65 @@ class DairyList(DairyScopeMixin, vanilla.TemplateView):
     template_name = 'emissions/dairy-list.html'
 
     def get(self, request, *args, **kwargs):
+        response = self.redirect_to_area(request)
+        if response is not None:
+            return response
         self.resolve(request)
         if request.GET.get('format') == 'csv':
             scope = self.get_scope()
-            return csv_response(dairies.table(scope.year, county=scope.county, **table_filters(request.GET)), f'dairies-{scope.year}.csv')
+            return csv_response(dairies.table(scope.year, county=scope.county, **search_filters(request.GET)), f'dairies-{scope.year}.csv')
         return super().get(request, *args, **kwargs)
+
+    def redirect_to_area(self, request):
+        """
+        ?region= and ?lat=&lng= were the tab's filters; each area has its own
+        dairy page now. 301 there with the rest of the query (view=counties
+        dropped: the pages have no Counties view). An unknown region or a bad
+        point is ignored and the tab renders unfiltered, as it always did.
+        """
+        get = request.GET
+        target = None
+        if get.get('region'):
+            region = views.get_filter_region(get['region'], types=AREA_PAGE_TYPES)
+            if region is not None:
+                target = region.get_emissions_dairies_url()
+        elif 'lat' in get or 'lng' in get:
+            if radius_area(get) is not None:
+                target = reverse('emissions:near-me-dairies')
+        if target is None:
+            return None
+        params = get.copy()
+        params.pop('region', None)
+        if params.get('view') == 'counties':
+            params.pop('view')
+        query = params.urlencode()
+        return redirect(target + (f'?{query}' if query else ''), permanent=True)
 
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
-        filters = table_filters(self.request.GET)
-        area = filters['area']
-        rows = dairies.table(scope.year, county=scope.county, **filters)
-        page = Paginator(rows, PAGE_SIZE).get_page(self.request.GET.get('page'))
-        near = isinstance(area, areas.RadiusArea)
+        filters = search_filters(self.request.GET)
+        page = Paginator(dairies.table(scope.year, county=scope.county, **filters), PAGE_SIZE).get_page(self.request.GET.get('page'))
+        # The find box: every page type's dairy page, and the county jump
+        # links; the links carry the scope less the county (the page is the
+        # county), the same as the home page's.
+        places = views.find_area_places('emissions:region-dairies')
         return super().get_context_data(
-            summary=dairies.summary(scope.year, county=scope.county, area=area),
+            summary=dairies.summary(scope.year, county=scope.county),
             rows=page.object_list,
             page_obj=page,
             is_paginated=page.has_other_pages(),
             sort=filters['sort'],
             filters=filters,
-            region={'sqid': area.region.sqid, 'name': region_title(area.region)} if isinstance(area, areas.RegionArea) else None,
-            near=near_label(self.request.GET, area),
-            near_params={key: self.request.GET[key] for key in NEAR_KEYS if key in self.request.GET} if near else {},
-            trend=dairies.trend(county=scope.county, area=area),
+            trend=dairies.trend(county=scope.county),
             # CARB's estimate is by county: the scope's county, else all of them.
             emissions_trend=dairies.emissions_trend(scope.pollutant, county=scope.county),
-            digester_trend=dairies.digester_chart_points(county=scope.county, area=area),
+            digester_trend=dairies.digester_chart_points(county=scope.county),
             map_config=dairy_map_config(scope, dairy_map_view(self.request.GET)) if dairies.years() else None,
+            find_area_places=places,
+            find_area_counties=[p for p in places if p['type'] == Region.Type.COUNTY],
+            find_area_qs=scope.query(county=None),
+            find_near_url=reverse('emissions:near-me-dairies'),
+            maptiler_key=settings.MAPTILER_API_KEY,
             **kwargs,
         )
 
@@ -399,6 +412,7 @@ class RegionDairies(views.RegionLookupMixin, DairyAreaPage):
             # the breadcrumb) adds the type for a community region.
             name=region_title(region),
             title=region_page_title(region),
+            dairies_label=f'in {region_page_title(region)}',
             kind=region.type_label,
             population=(region.metadata or {}).get('population'),
             county_region=county,
@@ -445,6 +459,7 @@ class NearMeDairies(views.NearLookupMixin, DairyAreaPage):
         return super().get_context_data(
             name=title,
             title=title,
+            dairies_label=self.near_phrase(),
             kind='Near me',
             population=None,
             county_region=None,

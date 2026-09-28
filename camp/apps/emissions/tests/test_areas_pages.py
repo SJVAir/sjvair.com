@@ -224,6 +224,12 @@ class FindAreaTests(TestCase):
         hrefs = re.findall(r'href="([^"]*)"', jumps)
         assert hrefs and all('county=' not in href for href in hrefs)
 
+    def test_places_per_url_name_are_cached_apart(self):
+        cache.clear()
+        fresno = Region.objects.get(type='county', slug='fresno')
+        assert next(p for p in views.find_area_places() if p['name'] == 'Fresno County')['url'] == fresno.get_emissions_url()
+        assert next(p for p in views.find_area_places('emissions:region-dairies') if p['name'] == 'Fresno County')['url'] == fresno.get_emissions_dairies_url()
+
 
 class LookupMixinTests(TestCase):
     """The region and point lookups the emissions and dairy pages share."""

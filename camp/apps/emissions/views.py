@@ -414,8 +414,13 @@ MAX_LABEL = 120
 NEAR_PREFIX = re.compile(r'^near\s+', re.IGNORECASE)
 
 
-def find_area_places():
-    """Every region page but tracts, as {name, type, type_label, short_name, url}, for the search box."""
+def find_area_places(url_name='emissions:region'):
+    """
+    Every region page but tracts, as {name, type, type_label, short_name,
+    url}, for the search box. `url_name` picks the page the box lands on:
+    the emissions region pages (the home page) or the dairy pages (the
+    Dairies tab); each is cached under its own key.
+    """
     def compute():
         regions = (
             Region.objects.filter(type__in=FIND_AREA_TYPE_LABELS, boundary__isnull=False)
@@ -426,9 +431,9 @@ def find_area_places():
             'type': region_type,
             'type_label': FIND_AREA_TYPE_LABELS[region_type],
             'short_name': name[:-len(' County')] if name.endswith(' County') else name,
-            'url': reverse('emissions:region', kwargs={'sqid': sqid, 'slug': slug}),
+            'url': reverse(url_name, kwargs={'sqid': sqid, 'slug': slug}),
         } for sqid, slug, name, region_type in regions]
-    return cache.get_or_set(FIND_AREA_PLACES_KEY, compute, stats.CACHE_TIMEOUT)
+    return cache.get_or_set(f'{FIND_AREA_PLACES_KEY}:{url_name}', compute, stats.CACHE_TIMEOUT)
 
 
 def region_title(region):
@@ -656,6 +661,9 @@ class RegionPage(RegionLookupMixin, AreaPage):
             # disambiguate) adds the type for a community region.
             name=region_title(region),
             title=region_page_title(region),
+            # The Dairies block's link text ("Dairies in <name> →"); a
+            # near-me page overrides this with its own lowercase phrase.
+            dairies_label=f'in {region_title(region)}',
             kind=region.type_label,
             population=(region.metadata or {}).get('population'),
             context_bar=stats.county_context(stats.Scope(
@@ -687,7 +695,7 @@ def radius_label(get, lat, lng):
     """
     The near-me point's display label from ?label= or the point itself, with
     a stray "near " prefix stripped and long labels cut. Shared by NearMe's
-    page title and the Dairies tab's near-me filter tag (dairy_views.near_label).
+    page title and the dairy near-me page's.
     """
     label = (get.get('label') or f'{lat:.3f}, {lng:.3f}')[:MAX_LABEL]
     return NEAR_PREFIX.sub('', label)
@@ -722,10 +730,15 @@ class NearLookupMixin:
     def bounce(self):
         return redirect(reverse('emissions:home') + '?find=1')
 
+    def near_phrase(self):
+        """'within 3 miles of <label>' -- lowercase, for use mid-sentence (near_title() capitalizes it for a heading)."""
+        label = radius_label(self.request.GET, self.near.lat, self.near.lng)
+        return f'within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {label}'
+
     def near_title(self):
         """'Within 3 miles of <label>' -- find-area.js labels read "near X"; the title already says "of"."""
-        label = radius_label(self.request.GET, self.near.lat, self.near.lng)
-        return f'Within {self.near.radius} mile{"s" if self.near.radius != 1 else ""} of {label}'
+        phrase = self.near_phrase()
+        return phrase[0].upper() + phrase[1:]
 
     def near_params(self):
         """The point as query parameters, for links to the other near-me page."""
@@ -787,6 +800,7 @@ class NearMe(NearLookupMixin, AreaPage):
         return super().get_context_data(
             name=title,
             title=title,
+            dairies_label=self.near_phrase(),
             kind='Near me',
             population=None,
             context_bar=None,
