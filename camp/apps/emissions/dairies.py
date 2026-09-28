@@ -34,7 +34,7 @@ from camp.apps.emissions.models import (
 from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.regions.models import Region
 
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 GENERATION_KEY = 'emissions:dairies:generation'
 
 # CARB's county inventory rows for dairy cattle waste. Silage has its own EIC
@@ -205,18 +205,26 @@ def _operating(year):
 
 
 def summary(year, *, county=None, area=None):
-    """The year's counted dairies, their mature dairy cows, how many are Large CAFOs, and how many ran a digester."""
+    """
+    The year's counted dairies and how many are Large CAFOs; their milk cows,
+    mature dairy cows and all cattle (mature dairy cows plus other cattle);
+    and how many ran a digester, with that as a share of the dairies.
+    """
     def compute():
         queryset = herds(year, county=county, area=area)
         row = queryset.aggregate(
-            dairies=Count('pk'), mature_cows=Sum('mature_cows'),
-            large=Count('pk', filter=Q(size_class=SizeClass.LARGE)),
+            dairies=Count('pk'), mature_cows=Sum('mature_cows'), other_cattle=Sum('other_cattle'),
+            milk_cows=Sum('milk_cows'), large=Count('pk', filter=Q(size_class=SizeClass.LARGE)),
         )
+        digesters = queryset.filter(Exists(_operating(year))).count() if year is not None else 0
         return {
             'dairies': row['dairies'],
             'mature_cows': row['mature_cows'] or 0,
+            'milk_cows': row['milk_cows'] or 0,
+            'cattle': (row['mature_cows'] or 0) + (row['other_cattle'] or 0),
             'large': row['large'],
-            'digesters': queryset.filter(Exists(_operating(year))).count() if year is not None else 0,
+            'digesters': digesters,
+            'digester_share': digesters / row['dairies'] if row['dairies'] else None,
         }
     return cache.get_or_set(key('summary', year, _where(county, area)), compute, stats.CACHE_TIMEOUT)
 

@@ -99,10 +99,16 @@ class YearAndSummaryTests(DairyTestCase):
 
     def test_summary(self):
         summary = dairies.summary(2023)
-        assert summary == {'dairies': 2, 'mature_cows': 1400, 'large': 1, 'digesters': 1}
+        assert summary == {
+            'dairies': 2, 'mature_cows': 1400, 'milk_cows': 1200, 'cattle': 1750,
+            'large': 1, 'digesters': 1, 'digester_share': 0.5,
+        }
         kern = dairies.summary(2023, county=self.kern)
         assert (kern['dairies'], kern['large'], kern['digesters']) == (1, 0, 0)
-        assert dairies.summary(2021) == {'dairies': 0, 'mature_cows': 0, 'large': 0, 'digesters': 0}
+        assert dairies.summary(2021) == {
+            'dairies': 0, 'mature_cows': 0, 'milk_cows': 0, 'cattle': 0,
+            'large': 0, 'digesters': 0, 'digester_share': None,
+        }
         assert dairies.summary(None)['dairies'] == 0
 
     def test_digester_operating_in_a_year(self):

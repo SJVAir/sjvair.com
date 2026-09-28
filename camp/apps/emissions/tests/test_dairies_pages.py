@@ -82,15 +82,18 @@ class DairyTabScopeTests(DairyPageTestCase):
 class DairyTabContentTests(DairyPageTestCase):
     def test_headline_numbers(self):
         content = self.get().content.decode()
-        assert '<p class="heading">Dairies in 2023</p><p class="title">2</p>' in content
-        assert '<p class="heading">Mature dairy cows</p><p class="title">1,400</p>' in content
-        assert '<p class="heading">Large CAFOs</p><p class="title">1</p>' in content
+        assert '<p class="heading">Total dairies</p><p class="title">2</p>' in content
+        assert '1 large dairy<' in content
+        assert '<p class="heading">Milk cows</p><p class="title">1,200</p>' in content
+        assert '<p class="heading">Total cattle</p><p class="title">1,750</p>' in content
         assert '<p class="heading">With a digester</p><p class="title">1</p>' in content
+        assert '50% of dairies' in content
+        assert 'CAFO' not in content.split('stat-row')[1].split('</div>\n</div>')[0]
 
     def test_the_county_narrows_the_numbers_the_table_and_the_map(self):
         content = self.get({'county': 'kern'}).content.decode()
         assert 'SMALL DAIRY' in content and 'BIG DAIRY' not in content
-        assert '<p class="heading">Dairies in 2023</p><p class="title">1</p>' in content
+        assert '<p class="heading">Total dairies</p><p class="title">1</p>' in content
         assert dairy_map_data(content, 'county') == 'kern'
 
     def test_table(self):

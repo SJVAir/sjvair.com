@@ -10,10 +10,21 @@
 <p class="has-text-grey">No dairy data has been loaded yet.</p>
 {% else %}
 <div class="level is-mobile stat-row box is-grid-mobile">
-    <div class="level-item has-text-centered"><div><p class="heading">Dairies in {{ year }}</p><p class="title">{{ summary.dairies|intcomma }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Mature dairy cows</p><p class="title">{{ summary.mature_cows|whole }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">Large CAFOs</p><p class="title">{{ summary.large|intcomma }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p></div></div>
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">Total dairies</p><p class="title">{{ summary.dairies|intcomma }}</p>
+        <p class="is-size-7 has-text-grey">{{ summary.large|intcomma }} large dair{{ summary.large|pluralize:"y,ies" }}</p>
+    </div></div>
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">Milk cows</p><p class="title">{{ summary.milk_cows|whole }}</p>
+    </div></div>
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">Total cattle</p><p class="title">{{ summary.cattle|whole }}</p>
+        <p class="is-size-7 has-text-grey">cows, heifers, calves &amp; beef</p>
+    </div></div>
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">With a digester</p><p class="title">{{ summary.digesters|intcomma }}</p>
+        {% if summary.digester_share is not None %}<p class="is-size-7 has-text-grey">{{ summary.digester_share|percent }} of dairies</p>{% endif %}
+    </div></div>
 </div>
 
 {% include 'maps/includes/map.html' with map=map_config.map %}
