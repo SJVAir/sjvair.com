@@ -203,6 +203,8 @@
 }
 .facility-map-legend .legend-toggle .legend-title {
   margin-bottom: 0;
+  /* One line each, so the two columns' checkboxes stay level. */
+  white-space: nowrap;
 }
 /* A ramp whose checkbox is unticked: dimmed, same as a filtered-out size
    class, rather than removed -- it still explains the colour a moment ago. */
