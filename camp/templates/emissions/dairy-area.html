@@ -8,7 +8,7 @@ pages. County pages add CARB's county estimate (a tile and a chart) and hide
 the table's County column.
 {% endcomment %}
 
-{% block title %}Dairies in {{ title }} | {{ block.super }}{% endblock %}
+{% block title %}Dairies {{ dairies_label }} | {{ block.super }}{% endblock %}
 {% block breadcrumb-list %}{% if county_region and county_region != area.region %}<li><a href="{{ county_region.get_emissions_url }}{{ scope_qs }}">{{ county_region.name }}</a></li>{% endif %}<li><a href="{% if region_page_url %}{{ region_page_url }}{{ scope_qs }}{% else %}{{ near_page_url }}{% endif %}">{{ title }}</a></li><li class="is-active"><a aria-current="page">Dairies</a></li>{% endblock %}
 
 {% block explorer-content %}

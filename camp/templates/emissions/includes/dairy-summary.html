@@ -22,7 +22,7 @@ the `dairy-block` class for the section nav and the greyed style.
     {% with summary=dairy_block.summary %}
     {% if summary.dairies %}
     <p class="dairy-summary">{{ summary.dairies|intcomma }} dair{{ summary.dairies|pluralize:"y,ies" }} · {{ summary.mature_cows|whole }} mature dairy cows · {{ summary.large|intcomma }} Large CAFO{{ summary.large|pluralize }} · {{ summary.digesters|intcomma }} with digesters</p>
-    <p><a href="{{ dairy_block.page_url }}">Dairies in {{ name }} →</a></p>
+    <p><a href="{{ dairy_block.page_url }}">Dairies {{ dairies_label }} →</a></p>
     {% else %}
     <p class="has-text-grey">No dairies in CARB's dairy database here.</p>
     {% endif %}

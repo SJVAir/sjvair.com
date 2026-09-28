@@ -240,6 +240,8 @@ class ContentTests(DairyAreaTestCase):
         near = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '3', 'label': 'near Home', 'year': '2023'}).content.decode()
         crumbs = re.search(r'<nav class="breadcrumb"[^>]*>(.*?)</nav>', near, re.S).group(1)
         assert f'<a href="{reverse("emissions:near-me")}?lat=36.7370&amp;lng=-119.7870&amp;radius=3&amp;label=near+Home&amp;year=2023&amp;pollutant=rog">Within 3 miles of Home</a>' in crumbs
+        # Not "<title>Dairies in Within 3 miles of Home" -- the near-me phrase reads mid-sentence.
+        assert '<title>Dairies within 3 miles of Home | ' in near
 
 
 class MapConfigTests(DairyAreaTestCase):

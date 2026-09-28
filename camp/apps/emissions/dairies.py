@@ -59,7 +59,6 @@ HERD_CLASSES = (
 )
 TABLE_SORTS = ('name', '-name', 'city', '-city', 'county', '-county', 'mature_cows', '-mature_cows')
 DEFAULT_SORT = '-mature_cows'
-TOP_ROWS = 10
 # The Dairies tab map's views and its Counties measures.
 VIEWS = ('dairies', 'counties')
 DEFAULT_VIEW = 'dairies'
