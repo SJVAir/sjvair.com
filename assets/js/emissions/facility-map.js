@@ -63,6 +63,9 @@
   var CHANGE_RAMP = sampleRamp(M.ramps.diverging[DEFAULT_DRAMP], CHANGE_BREAKS.length + 1);
   var LEVEL_NAMES = { county: '', zipcode: 'ZIP ', tract: 'Tract ' };
   var EMPTY_COLOR = '#8a94a3';
+  // A facility circle with nothing to colour it by: grey, outlined darker.
+  var EMPTY_FILL = '#c9ced6';
+  var EMPTY_STROKE = '#6b7480';
   var HIGHLIGHT_COLOR = '#d35400';
   var COUNTY_COLOR = '#1f2d3d';
   var DISTRICT_COLOR = '#6a3d9a';
@@ -162,12 +165,23 @@
       var change = compare ? changeFraction(p.value, p.value_prev) : null;
       var coloured = compare ? change !== null : sized;
       p._radius = sized ? radiusFor(p.value, max) : MIN_RADIUS;
-      p._color = coloured ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_COLOR;
+      p._color = coloured ? ramp[classIndex(compare ? change : p.value, breaks)] : EMPTY_FILL;
+      // Each circle's outline is a darker shade of its own fill, so two
+      // overlapping circles read as two rather than one half-bordered one.
+      p._stroke = coloured ? darken(p._color, 0.35) : EMPTY_STROKE;
       p._empty = coloured ? 0 : 1;
       p._sort = sized ? p.value : 0;
       p._change = change;
     });
     return { collection: collection, breaks: breaks, max: max, compare: compare || '' };
+  }
+
+  // `hex` (#rrggbb) moved `amount` of the way to black.
+  function darken(hex, amount) {
+    return '#' + [1, 3, 5].map(function (i) {
+      var v = Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - amount));
+      return ('0' + v.toString(16)).slice(-2);
+    }).join('');
   }
 
   // Everything outside `geometry` (a Polygon or MultiPolygon), as one polygon
@@ -327,19 +341,21 @@
     this.applyView();
   };
 
-  // Hollow rings for "none reported"; with a highlighted facility (a facility
-  // page), it gets an orange ring and everything else fades.
+  // Every circle outlined in a darker shade of its fill (grey for "none
+  // reported"); with a highlighted facility (a facility page), it gets an
+  // orange ring and everything else fades.
   FacilityMap.prototype.applyHighlight = function () {
     if (!this.map || !this.map.getLayer('facilities')) return;
     var id = this.data.highlight || '';
     var isHighlight = ['==', ['get', 'id'], id];
-    var isEmpty = ['==', ['get', '_empty'], 1];
     this.map.setPaintProperty('facilities', 'circle-opacity',
-      ['case', isEmpty, 0, id ? ['case', isHighlight, 0.95, 0.35] : 0.85]);
+      id ? ['case', isHighlight, 0.95, 0.35] : 0.85);
+    this.map.setPaintProperty('facilities', 'circle-stroke-opacity',
+      id ? ['case', isHighlight, 1, 0.5] : 1);
     this.map.setPaintProperty('facilities', 'circle-stroke-color',
-      ['case', isHighlight, HIGHLIGHT_COLOR, isEmpty, EMPTY_COLOR, '#ffffff']);
+      ['case', isHighlight, HIGHLIGHT_COLOR, ['get', '_stroke']]);
     this.map.setPaintProperty('facilities', 'circle-stroke-width',
-      ['case', isHighlight, 3, isEmpty, 1.25, 0.75]);
+      ['case', isHighlight, 3, 1]);
   };
 
   // One view at a time: the layers, the toolbar's switch and its Areas-only

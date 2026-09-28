@@ -59,8 +59,9 @@
   width: 0.6rem;
   height: 0.6rem;
   margin-right: 0.35rem;
-  border: 1.25px solid #8a94a3;
+  border: 1px solid #6b7480;
   border-radius: 50%;
+  background: #c9ced6;
   vertical-align: middle;
 }
 .facility-map-legend .legend-empty {

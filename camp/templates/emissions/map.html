@@ -5,6 +5,6 @@
 
 {% block explorer-content %}
 {% include 'emissions/includes/facility-map.html' %}
-<p class="is-size-7 mt-2">Each circle is a permitted facility; its area shows the facility's {{ pollutant.name|lower }} in {{ year }} and hollow grey circles reported none. Dashed purple lines are air district boundaries. <a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">See these facilities as a table</a>.</p>
+<p class="is-size-7 mt-2">Each circle is a permitted facility; its area shows the facility's {{ pollutant.name|lower }} in {{ year }} and grey circles reported none. Dashed purple lines are air district boundaries. <a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">See these facilities as a table</a>.</p>
 <noscript><p>The map needs JavaScript. <a href="{% url 'emissions:facility-list' %}{{ scope_qs }}">Browse the facility table instead</a>.</p></noscript>
 {% endblock %}
