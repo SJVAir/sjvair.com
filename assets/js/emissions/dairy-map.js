@@ -17,6 +17,11 @@
  * switch between the two maps is a clean release and build. Config comes
  * from the container's data-* attributes (dairy_views.dairy_map_config); the
  * chrome is the core's.
+ *
+ * On a dairy region page or near-me page, the map is Dairies only, framed on
+ * the page's area (the region's outline, or near-me's radius as a circle),
+ * with everything outside washed out; the points are already narrowed to
+ * the area by the GeoJSON's `region=` / `lat`/`lng`/`radius`.
  */
 (function () {
   'use strict';
@@ -53,6 +58,14 @@
   var SCALE_HEAD = 15000;
   var SIZE_KEY = [10000, 3000, 500];
   var ZOOM_TO = 12;
+
+  // The page's own area (a dairy region page's boundary, near-me's radius):
+  // its outline's colour, the world ring the mask is cut from, and the
+  // circle's resolution -- the same as the facility map's.
+  var OUTLINE_COLOR = '#d35400';
+  var WORLD_RING = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+  var CIRCLE_POINTS = 64;
+  var METERS_PER_MILE = 1609.344;
 
   // The size-class filter's canonical order (small to large: the checkboxes'
   // order, and how a chosen subset reads in the toolbar button and the URL).
@@ -188,6 +201,30 @@
     return parts.join('');
   }
 
+  // Everything outside `geometry` (a Polygon or MultiPolygon), as one polygon
+  // with the geometry's outer rings as holes: the page's area stays clear,
+  // the rest is washed out.
+  function maskFor(geometry) {
+    var rings = [];
+    if (geometry.type === 'Polygon') rings = [geometry.coordinates[0]];
+    if (geometry.type === 'MultiPolygon') rings = geometry.coordinates.map(function (part) { return part[0]; });
+    if (!rings.length) return M.EMPTY;
+    return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [WORLD_RING].concat(rings) } };
+  }
+
+  // A `miles` circle around [lng, lat] as a polygon (the SDK has no circles in metres).
+  function circle(center, miles) {
+    var meters = miles * METERS_PER_MILE;
+    var dLat = meters / 111320;
+    var dLng = meters / (111320 * Math.cos(center[1] * Math.PI / 180));
+    var ring = [];
+    for (var i = 0; i <= CIRCLE_POINTS; i++) {
+      var angle = (i % CIRCLE_POINTS) * 2 * Math.PI / CIRCLE_POINTS;
+      ring.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
+    }
+    return { type: 'Polygon', coordinates: [ring] };
+  }
+
   var LOADING = '<div class="facility-popup dairy-popup"><p>Loading…</p></div>';
   var FAILED = '<div class="facility-popup dairy-popup"><p>Couldn\'t load this dairy.</p></div>';
 
@@ -205,6 +242,9 @@
     this.shapes = null;
     this.countyBreaks = [];
     this.countyAnchors = {};
+    // The page's outline (region JSON) has its own request counter and bounds.
+    this.outlineRequest = 0;
+    this.outlineBounds = null;
     // The hovered county's outline (feature-state, shared with the fill's
     // click) and a label at its anchor with its name and the measure on
     // display (M.hover.controller, shared with the facility map's areas).
@@ -269,6 +309,8 @@
   DairyMap.prototype.addLayers = function () {
     this.shell.ensureSource('counties');
     this.shell.ensureSource('dairies');
+    this.shell.ensureSource('outline');
+    this.shell.ensureSource('outline-mask');
     this.shell.ensureLayer({
       id: 'counties-fill', type: 'fill', source: 'counties',
       paint: { 'fill-color': ['get', '_color'], 'fill-opacity': ['case', ['==', ['get', '_empty'], 1], 0, 0.72] },
@@ -285,6 +327,15 @@
         'circle-color': ['get', '_color'],
         'circle-opacity': 0.85,
       }, hoverStroke('#ffffff', 0.75)),
+    });
+    this.shell.ensureLayer({
+      id: 'outline-mask', type: 'fill', source: 'outline-mask',
+      paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 },
+    });
+    this.shell.ensureLayer({
+      id: 'outline-line', type: 'line', source: 'outline',
+      layout: { 'line-join': 'round' },
+      paint: { 'line-color': OUTLINE_COLOR, 'line-width': 2.5, 'line-opacity': 0.9 },
     });
     this.applyView();
     this.applyFilters();
@@ -350,6 +401,7 @@
   DairyMap.prototype.load = function () {
     var self = this;
     var ticket = this.shell.ticket();
+    this.loadOutline();
     this.el.dataset.loaded = '';
     this.shell.setStatus('Loading dairies…');
     var shapes = this.shapes ? Promise.resolve(this.shapes) : getJson(this.data.shapesUrl);
@@ -371,6 +423,48 @@
         self.shell.setStatus('Couldn\'t load the dairies');
         logError('failed to load the dairies', err);
       });
+  };
+
+  // The page's own area: a region's boundary (dairy region pages) or the
+  // radius (near-me), outlined, with everything outside washed out, and
+  // framed. A dairy counted by its mailing city can sit outside the
+  // boundary: it still draws, under the wash.
+  DairyMap.prototype.loadOutline = function () {
+    var self = this;
+    var request = ++this.outlineRequest;
+    var center = M.parseCenter(this.data.center);
+    var radius = parseFloat(this.data.radius);
+    if (center && radius > 0) {
+      this.showOutline(circle(center, radius));
+      return;
+    }
+    if (!this.data.outlineUrl) {
+      this.showOutline(null);
+      return;
+    }
+    getJson(this.data.outlineUrl)
+      .then(function (json) {
+        if (request !== self.outlineRequest || !self.map) return;
+        var boundary = json && json.data && json.data.boundary;
+        self.showOutline(boundary ? boundary.geometry : null);
+      })
+      .catch(function (err) {
+        if (request !== self.outlineRequest || !self.map) return;
+        logError('failed to load the outline', err);
+      });
+  };
+
+  DairyMap.prototype.showOutline = function (geometry) {
+    if (!geometry) {
+      this.outlineBounds = null;
+      this.shell.setSourceData('outline', M.EMPTY);
+      this.shell.setSourceData('outline-mask', M.EMPTY);
+      return;
+    }
+    this.shell.setSourceData('outline', { type: 'Feature', properties: {}, geometry: geometry });
+    this.shell.setSourceData('outline-mask', maskFor(geometry));
+    this.outlineBounds = M.geometryBounds(geometry);
+    if (this.outlineBounds) this.map.fitBounds(this.outlineBounds, { padding: 24, duration: 0 });
   };
 
   DairyMap.prototype.showDairies = function (collection) {
@@ -471,14 +565,16 @@
     return M.counties.bounds(this.shapes).bySlug[county] || null;
   };
 
-  // A county in scope frames the map on it; otherwise the page's bounds do.
+  // The page's area frames the map when it has one (fitted as the outline
+  // arrives); else a county in scope does; otherwise the page's bounds.
   DairyMap.prototype.frame = function () {
+    if (this.outlineBounds || this.data.outlineUrl || M.parseCenter(this.data.center)) return;
     var bounds = this.countyBounds();
     if (bounds) this.map.fitBounds(bounds, { padding: 24, duration: 0 });
   };
 
   DairyMap.prototype.home = function () {
-    var bounds = this.countyBounds();
+    var bounds = this.outlineBounds || this.countyBounds();
     return bounds ? { bounds: bounds, padding: 24 } : null;
   };
 
@@ -685,7 +781,7 @@
   // filter): keep the map as it is and refill the new page's legend card. A
   // new year, pollutant or county: drop the old data, frame, and reload.
   DairyMap.prototype.onAdopt = function (changed) {
-    var reloads = ['geojsonUrl', 'countiesUrl', 'county', 'year', 'label', 'unit'];
+    var reloads = ['geojsonUrl', 'countiesUrl', 'county', 'year', 'label', 'unit', 'outlineUrl', 'center', 'radius'];
     var reload = changed.some(function (key) { return reloads.indexOf(key) !== -1; });
     this.readState();
     this.clearHover();
@@ -705,7 +801,13 @@
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = true;
     this.shell.setSourceData('locate', M.EMPTY);
     this.shell.setSourceData('dairies', M.EMPTY);
-    if (!this.data.county) this.shell.frame();
+    // An old page's outline still in flight must not land here; the new
+    // page's own is fetched by load().
+    this.outlineRequest++;
+    this.outlineBounds = null;
+    this.shell.setSourceData('outline', M.EMPTY);
+    this.shell.setSourceData('outline-mask', M.EMPTY);
+    if (!this.data.county && !this.data.outlineUrl) this.shell.frame();
     this.load();
   };
 
