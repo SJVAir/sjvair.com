@@ -6,7 +6,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.emissions import dairies, dairy_views
+from camp.apps.emissions import areas, dairies, dairy_views
 from camp.apps.emissions.models import DairyHerd, Facility
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
 from camp.apps.emissions.tests.test_areas_pages import map_data
@@ -127,6 +127,19 @@ class DairyTabContentTests(DairyPageTestCase):
         content = self.get({'region': cdp.sqid}).content.decode()
         assert 'BIG DAIRY' in content and 'SMALL DAIRY' not in content
         assert 'Plantville <button' in content
+
+    def test_region_filter_scopes_the_headline_and_charts_alike(self):
+        # The headline's "With a digester" and the digester chart's point for
+        # the year count the same dairies: the filtered ones, not the county's.
+        cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
+        context = self.get({'year': '2023', 'region': cdp.sqid}).context
+        summary = context['summary']
+        assert summary['dairies'] == 1
+        assert summary['mature_cows'] == 1300
+        assert summary['digesters'] == 1
+        by_year = {row['year']: row['digesters'] for row in context['digester_trend']}
+        assert by_year[2023] == summary['digesters']
+        assert context['trend'] == dairies.trend(area=areas.RegionArea(cdp))
 
     def test_a_tract_from_its_region_page(self):
         tract = make(Region.Type.TRACT, '06019000100', AROUND_PLANT)

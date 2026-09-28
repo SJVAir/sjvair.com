@@ -184,7 +184,7 @@ class DairyList(ScopeMixin, vanilla.TemplateView):
         return super().get_context_data(
             notes=self.notes,
             has_data=bool(known),
-            summary=dairies.summary(scope.year, county=scope.county),
+            summary=dairies.summary(scope.year, county=scope.county, area=area),
             rows=page.object_list,
             page_obj=page,
             is_paginated=page.has_other_pages(),
@@ -193,7 +193,7 @@ class DairyList(ScopeMixin, vanilla.TemplateView):
             region={'sqid': area.region.sqid, 'name': region_title(area.region)} if isinstance(area, areas.RegionArea) else None,
             near=near_label(self.request.GET, area),
             near_params={key: self.request.GET[key] for key in NEAR_KEYS if key in self.request.GET} if near else {},
-            trend=dairies.trend(county=scope.county),
+            trend=dairies.trend(county=scope.county, area=area),
             # CARB's estimate is by county: the scope's county, else all of them.
             emissions_trend=dairies.emissions_trend(scope.pollutant, county=scope.county),
             digester_trend=dairies.digester_chart_points(county=scope.county, area=area),
