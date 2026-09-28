@@ -755,8 +755,12 @@ body.pesticides
         // The strip runs to five or six tiles on a district page; let them
         // wrap rather than squeezing every label onto two lines.
         flex-wrap: wrap
+        // Tiles line up by their headings, whether or not they carry a
+        // sub-line under the figure.
+        align-items: flex-start
         .level-item
             min-width: 0
+            align-items: flex-start
         .heading
             @extend .has-text-grey
             letter-spacing: 0.02em
