@@ -21,8 +21,8 @@ class AmountTests(TestCase):
         assert tags.quantity(0.01) == '<0.1'
         assert tags.quantity(None) == '—'
 
-    def test_toxics_convert_to_lbs(self):
-        assert tags.amount(0.001, POLLUTANTS['benzene']) == '2.0'
+    def test_toxics_are_already_in_lbs(self):
+        assert tags.amount(2.0, POLLUTANTS['benzene']) == '2.0'
 
 
 class PercentTests(TestCase):

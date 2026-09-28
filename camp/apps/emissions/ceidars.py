@@ -122,9 +122,10 @@ def fetch_county(year, county_code, on_error=None):
 
     merged: the criteria and toxics CSVs outer-joined on the facility columns
     (an empty DataFrame when CARB has nothing). toxic_ems: {(DIS, FACID):
-    {field: tons}} from the per-pollutant requests; a failed pollutant request
-    is reported through on_error(field_name, exc) and skipped. Raises
-    requests.RequestException if the criteria or toxics request fails.
+    {field: lbs}} from the per-pollutant requests (CARB's factox `EMS` column
+    is lbs/yr); a failed pollutant request is reported through
+    on_error(field_name, exc) and skipped. Raises requests.RequestException
+    if the criteria or toxics request fails.
     """
     criteria = fetch_csv(csv_url('faccrit', year, county_code))
     toxics = fetch_csv(csv_url('factox', year, county_code))

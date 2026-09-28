@@ -33,7 +33,7 @@ class PollutantTests(TestCase):
         assert POLLUTANTS['nox'].unit == 'tons'
         assert POLLUTANTS['nox'].display(2) == 2
         assert POLLUTANTS['benzene'].unit == 'lbs'
-        assert POLLUTANTS['benzene'].display(0.001) == 2
+        assert POLLUTANTS['benzene'].display(0.001) == 0.001
         assert POLLUTANTS['pm'].label == 'Total PM'
         assert 'pm25' not in POLLUTANTS
 

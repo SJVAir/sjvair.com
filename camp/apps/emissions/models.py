@@ -178,7 +178,10 @@ class Facility(TimeStampedModel):
 
 
 class EmissionsRecord(TimeStampedModel):
-    """One facility's CEIDARS emissions for one inventory year, in tons/yr."""
+    """
+    One facility's CEIDARS emissions for one inventory year: criteria
+    pollutants in tons/yr, named toxic air contaminants in lbs/yr.
+    """
 
     sqid = SqidsField(alphabet=shuffle_alphabet('emissions.EmissionsRecord'))
     facility = models.ForeignKey(
@@ -198,23 +201,28 @@ class EmissionsRecord(TimeStampedModel):
     pm = models.DecimalField(_('Total PM (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
     pm10 = models.DecimalField(_('PM10 (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
 
-    # Toxics summary (blank for all SJV facilities in current CARB exports; kept, not displayed)
+    # Toxics summary from CARB's AB 2588 Hot Spots program. Set for most SJV
+    # facilities (2024: total_score for 4,638, hra for 184, chindex for 158,
+    # ahindex for 109); not all facilities have a completed HRA. total_score
+    # is the district's Hot Spots prioritization score; hra is the cancer
+    # risk per million from the facility's approved health risk assessment;
+    # chindex/ahindex are the chronic and acute hazard indices.
     total_score = models.DecimalField(_('Total toxics score'), max_digits=10, decimal_places=2, null=True, blank=True)
     hra = models.DecimalField(_('Health risk assessment'), max_digits=10, decimal_places=2, null=True, blank=True)
     chindex = models.DecimalField(_('Cancer health index'), max_digits=10, decimal_places=2, null=True, blank=True)
     ahindex = models.DecimalField(_('Acute health index'), max_digits=10, decimal_places=2, null=True, blank=True)
 
-    # Named toxic air contaminants (tons/yr; the explorer shows lbs/yr)
-    acetaldehyde = models.DecimalField(_('Acetaldehyde (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    benzene = models.DecimalField(_('Benzene (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    butadiene = models.DecimalField(_('1,3-Butadiene (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    carbon_tetrachloride = models.DecimalField(_('Carbon tetrachloride (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    chromium_hexavalent = models.DecimalField(_('Chromium hexavalent (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    dichlorobenzene = models.DecimalField(_('para-Dichlorobenzene (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    formaldehyde = models.DecimalField(_('Formaldehyde (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    methylene_chloride = models.DecimalField(_('Methylene chloride (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    naphthalene = models.DecimalField(_('Naphthalene (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
-    perchloroethylene = models.DecimalField(_('Perchloroethylene (tons/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    # Named toxic air contaminants (lbs/yr, as CARB's factox CSV reports them)
+    acetaldehyde = models.DecimalField(_('Acetaldehyde (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    benzene = models.DecimalField(_('Benzene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    butadiene = models.DecimalField(_('1,3-Butadiene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    carbon_tetrachloride = models.DecimalField(_('Carbon tetrachloride (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    chromium_hexavalent = models.DecimalField(_('Chromium hexavalent (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    dichlorobenzene = models.DecimalField(_('para-Dichlorobenzene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    formaldehyde = models.DecimalField(_('Formaldehyde (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    methylene_chloride = models.DecimalField(_('Methylene chloride (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    naphthalene = models.DecimalField(_('Naphthalene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
+    perchloroethylene = models.DecimalField(_('Perchloroethylene (lbs/yr)'), max_digits=25, decimal_places=15, null=True, blank=True)
 
     class Meta:
         unique_together = [('facility', 'year')]

@@ -12,15 +12,14 @@ class Pollutant:
 
     @property
     def unit(self):
-        # Toxic air contaminants are fractions of a ton; pounds read better.
+        # Criteria pollutants are stored in tons/yr (CEIDARS); named toxic
+        # air contaminants are stored in lbs/yr already (CARB's factox
+        # EMS column), so no unit conversion is needed for either.
         return 'lbs' if self.toxic else 'tons'
 
-    @property
-    def factor(self):
-        return 2000 if self.toxic else 1
-
-    def display(self, tons):
-        return None if tons is None else float(tons) * self.factor
+    def display(self, value):
+        """The stored value in its display unit -- currently a no-op passthrough."""
+        return None if value is None else float(value)
 
 
 CRITERIA = [

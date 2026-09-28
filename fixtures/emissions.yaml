@@ -107,7 +107,7 @@
     nox: "6.0"
     pm: "1.0"
     pm10: "0.6"
-    benzene: "0.001"
+    benzene: "2.0"
 - model: emissions.emissionsrecord
   pk: 4
   fields:

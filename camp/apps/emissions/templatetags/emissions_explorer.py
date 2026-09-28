@@ -24,9 +24,9 @@ def quantity(value):
 
 
 @register.filter
-def amount(tons, pollutant):
-    """A pollutant amount (stored in tons) in its display unit; see quantity()."""
-    return quantity(pollutant.display(tons))
+def amount(value, pollutant):
+    """A pollutant amount (already in its display unit) formatted; see quantity()."""
+    return quantity(pollutant.display(value))
 
 
 @register.filter

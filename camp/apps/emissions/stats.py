@@ -3,8 +3,9 @@ Aggregates for the Facility Emissions Explorer.
 
 About 6,500 facilities x 15 years, so everything is computed per request from
 EmissionsRecord and cached per scope for a day; no rollup tables. Values are
-tons/yr (CEIDARS) unless a name says otherwise; templates convert toxics to
-lbs with Pollutant.display().
+tons/yr (CEIDARS) for criteria pollutants and lbs/yr for named toxic air
+contaminants, as stored; Pollutant.display() is a passthrough that exists so
+callers don't need to care which.
 """
 
 from dataclasses import dataclass
