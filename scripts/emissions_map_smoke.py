@@ -17,7 +17,8 @@ boosted swap) keeping Counties and its measure, a table row's name zooming to it
 with its popup, a county narrowing the dairies, and the NOx / 2024 fallback
 notes. Last, a county page in 2023 maps its facilities (sized circles, the
 plain legend with a size key -- dairies were removed from this map; the
-Dairies tab is the only place they're mapped). Fails on any console error. Dev-only;
+Dairies tab is the only place they're mapped), and the dairy charts on the
+Dairies tab and Tulare County's page, with its section nav. Fails on any console error. Dev-only;
 nothing here runs in CI. Needs local data (import_air_districts,
 import_ceidars, import_cepam, import_cadd, and the regions with their
 boundaries).
@@ -612,6 +613,53 @@ def main():
         check(results, 'its legend is the plain sized-facilities legend (a size key, no dairies ramp)',
               'legend-sizes' in driver.execute_script("return document.querySelector('.facility-map-legend').innerHTML;")
               and 'Dairies' not in legend, legend[:160])
+
+        # The dairy charts: the Dairies tab's herd, CARB estimate and
+        # digesters; a county page's Dairies block the same, with the section
+        # nav's plain anchors jumping in place (no boosted swap).
+        chart_titles = (
+            "return Array.prototype.filter.call(document.querySelectorAll('%s .explorer-chart'),"
+            " function (f) { return f.querySelector('.uplot'); })"
+            ".map(function (f) { return f.querySelector('.chart-title').textContent; });"
+        )
+        driver.get(args.base + '/tools/emissions/dairies/?pollutant=rog&county=tulare')
+        time.sleep(1)
+        titles = driver.execute_script(chart_titles % '.dairy-charts')
+        check(results, 'the Dairies tab draws its herd, CARB estimate and digester charts',
+              len(titles) == 3 and 'Dairy cattle ROG, CARB estimate' in titles, str(titles))
+        tulare = driver.execute_script(
+            "var a = Array.prototype.find.call(document.querySelectorAll('a'), function (a) {"
+            " return /\\/region\\/[^/]+\\/tulare-county\\//.test(a.getAttribute('href') || ''); });"
+            "return a ? a.href.split('?')[0] : null;")
+        if not tulare:
+            driver.get(args.base + '/tools/emissions/')
+            tulare = driver.execute_script(
+                "var a = Array.prototype.find.call(document.querySelectorAll('.find-area-counties a'),"
+                " function (a) { return a.textContent.indexOf('Tulare') !== -1; }); return a ? a.href.split('?')[0] : null;")
+        driver.get(tulare + '?year=2023&pollutant=rog')
+        time.sleep(1)
+        titles = driver.execute_script(chart_titles % '#dairies')
+        check(results, "Tulare County's Dairies block draws its three charts",
+              len(titles) == 3 and 'Dairy cattle ROG, CARB estimate' in titles, str(titles))
+        nav = driver.execute_script(
+            "return Array.prototype.map.call(document.querySelectorAll('.section-nav a'), function (a) { return a.getAttribute('href'); });")
+        check(results, 'its section nav links Facilities, Dairies, In and around',
+              nav == ['#facilities', '#dairies', '#in-and-around'], str(nav))
+        # A boosted swap would replace #explorer-body, and the mark with it.
+        driver.execute_script("document.getElementById('explorer-body').dataset.smoke = '1'; window.scrollTo(0, 0);")
+        driver.find_element(By.CSS_SELECTOR, '.section-nav a[href="#dairies"]').click()
+        time.sleep(0.5)
+        jumped = driver.execute_script(
+            "return document.getElementById('explorer-body').dataset.smoke === '1' && location.hash === '#dairies'"
+            " && (function (top, bar) { return top >= bar && top < bar + 60; })("
+            "   document.getElementById('dairies').getBoundingClientRect().top,"
+            "   document.querySelector('.breadcrumbs').getBoundingClientRect().bottom);")
+        check(results, 'the Dairies link jumps in place, clear of the pinned scope bar', jumped)
+        driver.get(tulare + '?year=2023&pollutant=nox')
+        time.sleep(1)
+        titles = driver.execute_script(chart_titles % '#dairies')
+        check(results, 'with NOx, no CARB estimate chart (the herd and digesters stay)',
+              len(titles) == 2 and not any('CARB estimate' in title for title in titles), str(titles))
 
         errors = console_errors(driver)
         check(results, 'no console errors', not errors, '; '.join(errors)[:300])
