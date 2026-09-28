@@ -41,7 +41,7 @@ GENERATION_KEY = 'emissions:dairies:generation'
 # and isn't attributed to an animal type, so it's left out.
 CEPAM_SOURCE = 'LIVESTOCK HUSBANDRY'
 CEPAM_SUBCATEGORY = 'DAIRY CATTLE'
-CEPAM_NOTE = 'CARB county inventory, dairy cattle waste; silage not included'
+CEPAM_NOTE = 'CARB county inventory, dairy cattle: animals and manure only, not feed or silage'
 # The explorer pollutants CARB reports for dairy cattle (its NOx, SOx and CO
 # are zero; CEPAM's PM2.5 has no explorer pollutant). ROG is the fallback.
 POLLUTANT_KEYS = ('rog', 'pm', 'pm10', 'tog')
@@ -279,7 +279,7 @@ def trend(*, county=None, area=None):
 
 
 def cepam_rows(counties):
-    """CARB's county inventory rows for dairy cattle (silage left out) in `counties`, every year."""
+    """CARB's county inventory rows for dairy cattle (animals and manure; feed and silage left out) in `counties`, every year."""
     return CountyInventory.objects.filter(
         county__in=counties, inventory=cepam.INVENTORY, source_name=CEPAM_SOURCE, subcategory_name=CEPAM_SUBCATEGORY,
     )

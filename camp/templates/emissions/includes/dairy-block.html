@@ -15,7 +15,7 @@ changes only the year.
     {% if not dairy_block.county_pollutant %}
     <p class="dairy-county-line is-greyed">No {{ pollutant.label }} data for dairies.</p>
     {% elif dairy_block.county_tons is not None %}
-    <p class="dairy-county-line">Dairy cattle, CARB estimate: <strong>{{ dairy_block.county_tons|whole }} tons/yr {{ pollutant.label }}</strong> <a class="is-size-7" href="{% url 'emissions:about' %}#dairies">(silage not included)</a></p>
+    <p class="dairy-county-line">Dairy cattle, CARB estimate: <strong>{{ dairy_block.county_tons|whole }} tons/yr {{ pollutant.label }}</strong> <a class="is-size-7" href="{% url 'emissions:about' %}#dairies">(animals and manure only)</a></p>
     {% endif %}
     {% endif %}
     {% with summary=dairy_block.summary %}

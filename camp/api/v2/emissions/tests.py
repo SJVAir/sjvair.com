@@ -341,7 +341,7 @@ class DairyEndpointTests(TestCase):
         assert response.status_code == 200
         body = response.json()
         assert (body['pollutant'], body['label'], body['unit'], body['measure']) == ('rog', 'ROG', 'tons', 'mature_cows')
-        assert body['source'] == 'CARB county inventory, dairy cattle waste; silage not included'
+        assert body['source'] == 'CARB county inventory, dairy cattle: animals and manure only, not feed or silage'
         assert len(body['counties']) == 8
         fresno = next(row for row in body['counties'] if row['slug'] == 'fresno')
         assert set(fresno) == {'id', 'slug', 'name', 'emissions', 'emissions_per_sq_mi', 'mature_cows', 'mature_cows_per_sq_mi', 'value'}

@@ -192,7 +192,7 @@ class DairyTabContentTests(DairyPageTestCase):
         assert config['counties_url'].endswith('/dairies/counties/?year=2023&pollutant=pm10')
         assert config['popup_url'].endswith('/dairies/{id}/?year=2023')
         assert (config['county'], config['label']) == ('kern', 'PM10')
-        assert config['map']['data']['source-note'] == 'CARB county inventory, dairy cattle waste; silage not included'
+        assert config['map']['data']['source-note'] == 'CARB county inventory, dairy cattle: animals and manure only, not feed or silage'
         assert config['map']['container_id'] == 'dairy-map'
 
     def test_map_sizes_default_is_all_three(self):
@@ -342,7 +342,7 @@ class DairyChartPageTests(DairyPageTestCase):
         content = self.get({'pollutant': 'rog'}).content.decode()
         assert self.HERD_TITLE in content and self.EMISSIONS_TITLE in content and self.DIGESTER_TITLE in content
         assert 'of the covered counties ROG' in content
-        assert 'CARB estimates these from herd counts; its inventory holds years after 2017 at the 2017 level.' in content
+        assert 'Animals and manure only: CARB counts feed and silage, dairies’ larger ROG source, separately. Years after 2017 are CARB projections.' in content
         county = self.get({'pollutant': 'rog', 'county': 'fresno'}).content.decode()
         assert '% of Fresno County ROG' in county
         # NOx falls back to ROG on the tab, so the chart stays.
@@ -457,7 +457,7 @@ class DairyAboutTests(DairyPageTestCase):
         assert '<li><strong>Large</strong>: 700 or more mature dairy cows, or 1,000 or more other cattle.</li>' in content
         assert '<li><strong>Medium</strong>: 200–699 mature dairy cows, or 300–999 other cattle.</li>' in content
         assert '<strong>Small</strong>: Fewer than 200 mature dairy cows and 300 other cattle (at least one head of cattle).' in content
-        assert 'Silage' in content and '2019' in content and 'reference code' in content
+        assert 'Feed and silage are left out' in content and '2019' in content and 'reference code' in content
         # The two always-true assertions from the original brief (the tab link
         # is on every page, and "CEPAM 2019" already makes '2019' true) are
         # replaced with the section's own markup.

@@ -180,7 +180,7 @@ def dairy_emissions_chart(points, pollutant, year=None, place=None):
         'has_data': bool(rows),
         'title': f'Dairy cattle {pollutant.label}, CARB estimate',
         'sentence': '',
-        'note': 'CARB estimates these from herd counts; its inventory holds years after 2017 at the 2017 level.',
+        'note': 'Animals and manure only: CARB counts feed and silage, dairies’ larger ROG source, separately. Years after 2017 are CARB projections.',
         'note_url': reverse('emissions:about') + '#dairies',
         'first_year': years[0] if years else None,
         'last_year': years[-1] if years else None,
