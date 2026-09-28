@@ -1,7 +1,6 @@
 /*
  * The Dairies tab's map, a module on the map core (assets/js/maps/)
- * registered as 'dairy', and the dairy pieces the facility map borrows for
- * region pages (SJVAirMaps.dairies: the EPA size-class colours and legend, the popup).
+ * registered as 'dairy'.
  *
  * Two views, one at a time:
  *   Dairies   one circle per dairy in CARB's dairy database (CADD) with a
@@ -32,15 +31,12 @@
   // light basemap. The geojson's properties carry their labels and thresholds
   // (dairies.size_classes).
   var SIZE_COLORS = { small: RAMP[1], medium: RAMP[3], large: RAMP[4] };
-  // Draw order where every point is one size (the region maps): Large at the
-  // back, Small on top, so a small dairy is never hidden under a large one.
-  var SIZE_SORT_KEY = ['match', ['get', 'size_class'], 'large', 0, 'medium', 1, 'small', 2, 1];
   // A hovered dairy gets the map's dark hover ring, at least as thick as its
   // own stroke (a digester's ring is 2.5).
   var HOVER_RING_WIDTH = 3;
 
   // The dairy circle's stroke paint, hover-aware (feature-state), around the
-  // caller's resting colour and width expressions. Both maps use it.
+  // caller's resting colour and width expressions.
   function hoverStroke(color, width) {
     return {
       'circle-stroke-color': M.hover.paint(M.hover.COLOR, color),
@@ -196,16 +192,6 @@
   var FAILED = '<div class="facility-popup dairy-popup"><p>Couldn\'t load this dairy.</p></div>';
 
   // What the facility map borrows for region and near-me pages.
-  M.dairies = {
-    colorFor: colorFor,
-    sizeBins: sizeBins,
-    SIZE_SORT_KEY: SIZE_SORT_KEY,
-    hoverStroke: hoverStroke,
-    popupHtml: popupHtml,
-    LOADING: LOADING,
-    FAILED: FAILED,
-  };
-
   function DairyMap(shell) {
     var self = this;
     this.shell = shell;

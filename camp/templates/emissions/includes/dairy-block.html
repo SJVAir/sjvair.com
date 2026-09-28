@@ -21,7 +21,7 @@ years, with a link that changes only the year.
     {% if summary.dairies %}
     <p class="dairy-summary">{{ summary.dairies|intcomma }} dair{{ summary.dairies|pluralize:"y,ies" }} · {{ summary.mature_cows|whole }} mature dairy cows · {{ summary.large|intcomma }} Large CAFO{{ summary.large|pluralize }} · {{ summary.digesters|intcomma }} with digesters</p>
     {% include 'emissions/includes/dairy-table.html' with rows=dairy_block.top compact=True sortable=False zoom=False %}
-    <p><a href="{{ dairy_block.list_url }}">All dairies here →</a></p>
+    <p><a href="{{ dairy_block.list_url }}">Map these dairies →</a></p>
     {% else %}
     <p class="has-text-grey">No dairies in CARB's dairy database here.</p>
     {% endif %}

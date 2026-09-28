@@ -305,13 +305,8 @@ def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None):
     }
 
 
-def map_dairies_year(scope):
-    """The year a region or near-me page's map shows dairies for: the scope's, when CADD covers it."""
-    return scope.year if scope.year in dairies.years() else None
-
-
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
-                        outline_url='', center='', zoom='', radius='', dairies_year=None):
+                        outline_url='', center='', zoom='', radius=''):
     """The data-* attributes of a `.facility-map` container (see assets/js/emissions/facility-map.js)."""
     params = dict(params) if params is not None else scope.params()
     if sector:
@@ -335,12 +330,6 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # The region or circle the page is about (region pages, near-me).
         'outline_url': outline_url,
         'radius': radius,
-        # Dairies beside the facilities (region and near-me pages, in a year CADD covers).
-        'dairies_url': f"{reverse('api:v2:emissions:dairy-geojson')}?year={dairies_year}" if dairies_year else '',
-        'dairy_popup_url': (
-            reverse('api:v2:emissions:dairy-detail', args=['__id__']).replace('__id__', '{id}') + f'?year={dairies_year}'
-            if dairies_year else ''
-        ),
         # The Areas view (the map page, region pages): off where it's None.
         'areas': '1' if areas_view else '',
         'areas_url': reverse('api:v2:emissions:areas') if areas_view else '',
@@ -605,7 +594,6 @@ class RegionPage(AreaPage):
             scope, mode='compact', params=scope.params(county=None),
             areas_view=map_view(self.request.GET, level, year=scope.year) if level else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
-            dairies_year=map_dairies_year(scope),
         )
 
     def dairy_link_params(self):
@@ -702,7 +690,7 @@ class NearMe(AreaPage):
             scope, mode='compact', params=scope.params(county=None),
             areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year),
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
-            radius=self.near.radius, dairies_year=map_dairies_year(scope),
+            radius=self.near.radius,
         )
 
     def radius_url(self, miles):

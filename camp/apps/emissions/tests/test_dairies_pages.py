@@ -266,7 +266,7 @@ class DairyBlockTests(DairyPageTestCase):
         block = content[content.index('id="dairies"'):]
         assert '1 dairy · 1,300 mature dairy cows · 1 Large CAFO · 1 with digesters' in block
         assert 'BIG DAIRY' in block and 'SMALL DAIRY' not in block and 'CLOSED DAIRY' not in block
-        assert f'href="{self.url}?year=2023&amp;county=fresno">All dairies here →</a>' in block
+        assert f'href="{self.url}?year=2023&amp;county=fresno">Map these dairies →</a>' in block
 
     def test_county_dairy_emissions(self):
         dairy_inventory(self.fresno, rog=2.0)
@@ -283,7 +283,7 @@ class DairyBlockTests(DairyPageTestCase):
         assert 'class="dairy-block mt-5 is-greyed"' in content
         assert "No dairy data for 2024. CARB's dairy database covers 2022–2023." in content
         assert '<a href="?year=2023">See 2023 →</a>' in content
-        assert '1 dairy ·' not in content and 'All dairies here' not in content
+        assert '1 dairy ·' not in content and 'Map these dairies' not in content
 
     def test_other_region_pages_have_no_county_figure(self):
         dairy_inventory(self.fresno, rog=2.0)
@@ -297,7 +297,7 @@ class DairyBlockTests(DairyPageTestCase):
         urban = make(Region.Type.URBAN_AREA, 'Faraway', 'MULTIPOLYGON(((-118.2 35.0, -118.1 35.0, -118.1 35.1, -118.2 35.1, -118.2 35.0)))')
         content = self.region_page(urban, {'year': '2023'})
         assert "No dairies in CARB's dairy database here." in content
-        assert 'All dairies here' not in content
+        assert 'Map these dairies' not in content
 
     def test_near_me(self):
         params = {'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'label': 'near Home', 'year': '2023'}
@@ -313,23 +313,24 @@ class DairyBlockTests(DairyPageTestCase):
 
 
 class CombinedMapTests(DairyPageTestCase):
-    def test_region_and_near_me_maps_show_the_dairies(self):
+    """
+    Dairies were removed from the facility map (region/near-me pages included);
+    the Dairies tab (dairy-map.js) is the only place they're mapped. Facility
+    maps never carry a dairies URL, in a CADD year or otherwise.
+    """
+
+    def test_region_and_near_me_maps_have_no_dairies_url(self):
         content = self.client.get(self.fresno.get_emissions_url(), {'year': '2023'}).content.decode()
-        assert map_data(content, 'dairies-url') == '/api/2.0/emissions/dairies/geojson/?year=2023'
-        assert map_data(content, 'dairy-popup-url') == '/api/2.0/emissions/dairies/{id}/?year=2023'
+        assert map_data(content, 'dairies-url') is None
+        assert map_data(content, 'dairy-popup-url') is None
         near = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'year': '2023'}).content.decode()
-        assert map_data(near, 'dairies-url') == '/api/2.0/emissions/dairies/geojson/?year=2023'
+        assert map_data(near, 'dairies-url') is None
 
-    def test_no_dairies_on_the_map_outside_cadds_years(self):
-        content = self.client.get(self.fresno.get_emissions_url()).content.decode()  # 2024
-        assert map_data(content, 'dairies-url') == ''
-        assert map_data(content, 'dairy-popup-url') == ''
-
-    def test_the_other_maps_have_no_dairies(self):
+    def test_the_other_maps_have_no_dairies_url_either(self):
         plant = Facility.objects.get(name='TEST PLANT')
         for url in (reverse('emissions:map'), plant.get_absolute_url(), reverse('emissions:sector-detail', args=['glass'])):
             content = self.client.get(url, {'year': '2023'}).content.decode()
-            assert map_data(content, 'dairies-url') == '', url
+            assert map_data(content, 'dairies-url') is None, url
 
 
 class DairyAboutTests(DairyPageTestCase):

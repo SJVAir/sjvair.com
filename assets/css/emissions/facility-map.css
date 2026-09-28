@@ -162,54 +162,12 @@
 .facility-map-legend .legend-size circle.is-dairy {
   stroke: #d95f0e;
 }
-.facility-map-legend .legend-ramp + .legend-ramp {
-  margin-top: 0.6rem;
-}
-/* Side-by-side ramps (.legend-ramps, below): the stacked spacing above
-   would otherwise push the second column down past the first one's title. */
-.facility-map-legend .legend-ramps > .legend-ramp + .legend-ramp {
-  margin-top: 0;
-}
 .dairy-popup-herd {
   margin: 0.15rem 0 0.3rem;
   font-size: 0.8rem;
 }
 .dairy-popup-herd td {
   padding: 0 0.75rem 0 0;
-}
-
-/* Region and near-me maps with dairies: the two ramps side by side. The
-   legend card widens to fit them. */
-.facility-map-legend .legend-ramps {
-  display: flex;
-  gap: 1.25rem;
-  align-items: flex-start;
-}
-.map-legend-panel:has(.legend-ramps) {
-  max-width: 24rem;
-}
-
-/* Each ramp's title as a show/hide checkbox (the Facilities/Dairies
-   toggle): the label lays out like the plain .legend-title it replaces. */
-.facility-map-legend .legend-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.25rem;
-  cursor: pointer;
-}
-.facility-map-legend .legend-toggle input[type="checkbox"] {
-  margin: 0;
-}
-.facility-map-legend .legend-toggle .legend-title {
-  margin-bottom: 0;
-  /* One line each, so the two columns' checkboxes stay level. */
-  white-space: nowrap;
-}
-/* A ramp whose checkbox is unticked: dimmed, same as a filtered-out size
-   class, rather than removed -- it still explains the colour a moment ago. */
-.facility-map-legend .legend-ramp.is-layer-off {
-  opacity: 0.45;
 }
 
 /* The Options menu's body (inside its toolbar dropdown): the Tiles and
