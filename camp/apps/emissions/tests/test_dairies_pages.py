@@ -88,6 +88,7 @@ class DairyTabContentTests(DairyPageTestCase):
         assert '<p class="heading">Total cattle</p><p class="title">1,750</p>' in content
         assert '<p class="heading">With a digester</p><p class="title">1</p>' in content
         assert '50% of dairies' in content
+        assert '69% of cattle' in content
         assert 'CAFO' not in content.split('stat-row')[1].split('</div>\n</div>')[0]
 
     def test_the_county_narrows_the_numbers_the_table_and_the_map(self):

@@ -34,7 +34,7 @@ from camp.apps.emissions.models import (
 from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.regions.models import Region
 
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 GENERATION_KEY = 'emissions:dairies:generation'
 
 # CARB's county inventory rows for dairy cattle waste. Silage has its own EIC
@@ -208,7 +208,8 @@ def summary(year, *, county=None, area=None):
     """
     The year's counted dairies and how many are Large CAFOs; their milk cows,
     mature dairy cows and all cattle (mature dairy cows plus other cattle);
-    and how many ran a digester, with that as a share of the dairies.
+    and how many ran a digester; milk cows as a share of all cattle and
+    digesters as a share of the dairies.
     """
     def compute():
         queryset = herds(year, county=county, area=area)
@@ -217,11 +218,13 @@ def summary(year, *, county=None, area=None):
             milk_cows=Sum('milk_cows'), large=Count('pk', filter=Q(size_class=SizeClass.LARGE)),
         )
         digesters = queryset.filter(Exists(_operating(year))).count() if year is not None else 0
+        cattle = (row['mature_cows'] or 0) + (row['other_cattle'] or 0)
         return {
             'dairies': row['dairies'],
             'mature_cows': row['mature_cows'] or 0,
             'milk_cows': row['milk_cows'] or 0,
-            'cattle': (row['mature_cows'] or 0) + (row['other_cattle'] or 0),
+            'milk_share': (row['milk_cows'] or 0) / cattle if cattle else None,
+            'cattle': cattle,
             'large': row['large'],
             'digesters': digesters,
             'digester_share': digesters / row['dairies'] if row['dairies'] else None,
