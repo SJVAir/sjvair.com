@@ -462,13 +462,25 @@ def area_links(regions):
     } for region in regions]
 
 
-def dairy_block(scope, area, link_params, *, county=None):
+def dairy_page_query(scope, year):
     """
-    The Dairies block on a region or near-me page, or None before CARB's dairy
-    database is imported. Outside CADD's years it only says so (the template
-    greys it). `county` (county pages) adds CARB's county dairy-cattle
-    emissions in the scope pollutant, as a figure and by year; other areas
-    have no county figure. Every area gets its herd and digester trends.
+    The area's dairy page's query from an emissions scope: the year, and the
+    pollutant only when dairies report it (else the page falls back to ROG
+    quietly, and the link needn't carry a pollutant it will drop).
+    """
+    params = {'year': year}
+    if scope.pollutant.key in dairies.POLLUTANT_KEYS:
+        params['pollutant'] = scope.pollutant.key
+    return urlencode(params)
+
+
+def dairy_block(scope, area, dairy_url, *, county=None):
+    """
+    The one-line Dairies summary on a region or near-me page, or None before
+    CARB's dairy database is imported. `dairy_url(query)` builds the area's
+    dairy page URL. Outside CADD's years it only says so (the template greys
+    it) and links the dairy page at CADD's last year. `county` (county
+    pages) adds CARB's county dairy-cattle emissions in the scope pollutant.
     """
     known = dairies.years()
     if not known:
@@ -478,25 +490,16 @@ def dairy_block(scope, area, link_params, *, county=None):
         'last_year': known[-1],
         'in_range': scope.year in known,
         'is_county': county is not None,
+        'last_year_url': dairy_url(dairy_page_query(scope, known[-1])),
     }
     if not block['in_range']:
         return block
     reported = scope.pollutant.key in dairies.POLLUTANT_KEYS
-    # The Dairies tab's link: the year always, the area, and the pollutant
-    # only when dairies report it (else the tab falls back to ROG quietly).
-    params = {'year': scope.year, **link_params}
-    if reported:
-        params['pollutant'] = scope.pollutant.key
     summary = dairies.summary(scope.year, area=area)
     block.update(
         summary=summary,
         has_dairies=bool(summary['dairies']),
-        trend=dairies.trend(area=area),
-        digester_trend=dairies.digester_chart_points(area=area),
-        # [] for a pollutant CARB doesn't report for dairy cattle, so no chart.
-        emissions_trend=dairies.emissions_trend(scope.pollutant, county=county) if county is not None else [],
-        top=list(dairies.table(scope.year, area=area)[:dairies.TOP_ROWS]),
-        list_url=f"{reverse('emissions:dairy-list')}?{urlencode(params)}",
+        page_url=dairy_url(dairy_page_query(scope, scope.year)),
         county_pollutant=reported,
         county_tons=dairies.county_emissions(scope.year, scope.pollutant).get(county.pk) if county is not None and reported else None,
     )
@@ -526,8 +529,8 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
     def get_map_config(self, scope):
         raise NotImplementedError
 
-    def dairy_link_params(self):
-        """The Dairies tab's filter for this area, as query parameters."""
+    def dairy_url(self, query):
+        """The area's dairy page, with `query` (year, pollutant) on it."""
         raise NotImplementedError
 
     def dairy_county(self):
@@ -558,7 +561,7 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             top_sectors=stats.sector_breakdown(scope),
             by_year=stats.by_year(scope),
             map_config=self.get_map_config(base),
-            dairy_block=dairy_block(base, area, self.dairy_link_params(), county=self.dairy_county()),
+            dairy_block=dairy_block(base, area, self.dairy_url, county=self.dairy_county()),
             # The page is the area: no county picker, and the scope links
             # leave the county out.
             county_options=[],
@@ -635,10 +638,8 @@ class RegionPage(RegionLookupMixin, AreaPage):
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
         )
 
-    def dairy_link_params(self):
-        if self.region.type == Region.Type.COUNTY:
-            return {'county': self.region.slug}
-        return {'region': self.region.sqid}
+    def dairy_url(self, query):
+        return f'{self.region.get_emissions_dairies_url()}?{query}'
 
     def dairy_county(self):
         return self.region if self.region.type == Region.Type.COUNTY else None
@@ -773,8 +774,8 @@ class NearMe(NearLookupMixin, AreaPage):
             radius=self.near.radius,
         )
 
-    def dairy_link_params(self):
-        return self.near_params()
+    def dairy_url(self, query):
+        return f"{reverse('emissions:near-me-dairies')}?{query}&{urlencode(self.near_params())}"
 
     def dairy_county(self):
         return None
