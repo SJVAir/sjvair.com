@@ -302,12 +302,6 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
             params.pop('county')
             request.GET = params
         self.resolve(request)
-        # The resolved sort (search_filters' own fallback) is canonicalized
-        # too, so pagination and the CSV link carry it explicitly rather than
-        # silently reapplying the default on the next request.
-        params = request.GET.copy()
-        params['sort'] = search_filters(request.GET)['sort']
-        request.GET = params
         if request.GET.get('format') == 'csv':
             return csv_response(self.rows(), self.csv_name(self.get_scope().year))
         return super().get(request, *args, **kwargs)

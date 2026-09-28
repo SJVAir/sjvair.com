@@ -82,6 +82,16 @@ class RouteTests(DairyAreaTestCase):
         long = self.near({'lat': '36.737', 'lng': '-119.787', 'label': 'x' * 500}).content.decode()
         assert 'x' * 121 not in long
 
+    def test_radius_buttons_drop_the_page_number(self):
+        # Enough dairies within the radius to paginate, so page=2 is real.
+        for n in range(10, 70):
+            make_dairy(n, f'DAIRY {n}', (-119.786, 36.736), self.fresno, herds={2023: {'milk_cows': n}})
+        dairies.clear_caches()
+        content = self.near({'lat': '36.737', 'lng': '-119.787', 'radius': '1', 'year': '2023', 'page': '2'}).content.decode()
+        scope = re.search(r'<div class="buttons has-addons explorer-scope">(.*?)</div>', content, re.S).group(1)
+        assert 'page=' not in scope
+        assert 'radius=3' in scope
+
 
 class ScopeTests(DairyAreaTestCase):
     def test_a_year_outside_cadd_falls_back_with_a_note(self):
@@ -123,15 +133,18 @@ class ContentTests(DairyAreaTestCase):
         assert '<p class="heading">Dairy cattle, CARB estimate</p><p class="title">730 <span class="is-size-5">tons/yr ROG</span></p>' in content
         assert '25% of Fresno County ROG' in content
         assert EMISSIONS_TITLE in content and HERD_TITLE in content and DIGESTER_TITLE in content
-        assert '<th>County</th>' not in content and 'Other cattle' in content
+        # (Not the vacuous '<th>County</th>' check: the header is a sort_link
+        # anchor, never a bare <th>County</th>, so that string can never appear.)
+        assert '>County <span class="icon' not in content and 'Other cattle' in content
         assert 'CARB estimates dairy emissions by county' not in content
 
     def test_city_page_has_no_carb_figure_and_links_the_county(self):
         dairy_inventory(self.fresno, rog=2.0)
         content = self.get(self.fresno_city, {'year': '2023', 'pollutant': 'rog'}).content.decode()
         # (Not a bare "CARB estimate" substring check: the county link line
-        # below legitimately reads "CARB estimates dairy emissions...".)
-        assert '<p class="heading">Dairy cattle, CARB estimate</p>' not in content and EMISSIONS_TITLE not in content
+        # below legitimately reads "CARB estimates dairy emissions...". This
+        # catches both the stat tile and the no-dairies line, not just the tile.)
+        assert 'Dairy cattle, CARB estimate' not in content and EMISSIONS_TITLE not in content
         assert HERD_TITLE in content and DIGESTER_TITLE in content
         assert f'CARB estimates dairy emissions by county: <a href="{self.fresno.get_emissions_dairies_url()}?year=2023&amp;pollutant=rog">Fresno County dairies →</a>' in content
         # (The column header is sortable, so it's a sort_link anchor, not a bare <th>County</th>.)
@@ -157,10 +170,14 @@ class ContentTests(DairyAreaTestCase):
         dairies.clear_caches()
         content = self.get(self.fresno, {'year': '2023'}).content.decode()
         assert content.index('BIG DAIRY') < content.index('DAIRY 69')
-        assert 'page=2' in content and 'sort=-mature_cows' in content
+        assert 'page=2' in content
         assert f'class="dairy-zoom" data-dairy="{self.big.sqid}"' in content
         content = self.get(self.fresno, {'year': '2023', 'sort': 'name'}).content.decode()
         assert content.index('BIG DAIRY') < content.index('DAIRY 10')
+        # The inactive Mature dairy cows header (not a TEXT_SORT_KEY) links
+        # to its own descending default first, same as test_dairies_pages.py's
+        # tab equivalent.
+        assert 'sort=-mature_cows' in content
         content = self.get(self.fresno, {'year': '2023', 'q': 'big'}).content.decode()
         assert 'BIG DAIRY' in content and 'DAIRY 10' not in content
         # (Not a bare "entity-picker" substring check: base.html always

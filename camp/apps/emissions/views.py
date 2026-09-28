@@ -737,6 +737,10 @@ class NearLookupMixin:
     def radius_url(self, miles):
         params = self.request.GET.copy()
         params['radius'] = miles
+        # A paginated dairy page's radius button would otherwise carry a page
+        # number the new radius's table may not have (Paginator clamps it to
+        # the last page, landing the reader mid-list instead of at the top).
+        params.pop('page', None)
         return f'{self.request.path}?{params.urlencode()}'
 
     def radius_options(self):
