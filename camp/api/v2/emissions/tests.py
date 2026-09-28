@@ -4,9 +4,10 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.emissions import dairies
+from camp.apps.emissions import areas, dairies
 from camp.apps.emissions.models import DairyHerd, Digester, EmissionsRecord, Facility
-from camp.apps.emissions.tests.test_dairies import dairy_inventory, make_dairies
+from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
+from camp.apps.emissions.tests.test_dairies import dairy_inventory, make_dairies, set_city
 from camp.apps.regions.models import Boundary, Region
 
 
@@ -334,6 +335,37 @@ class DairyEndpointTests(TestCase):
         assert self.get('dairy-geojson')['X-Cache-Status'] == 'HIT'
         dairies.clear_caches()
         assert self.get('dairy-geojson')['X-Cache-Status'] == 'MISS'
+
+    def test_region_narrows_by_the_same_rule_as_the_table(self):
+        # Plantville's boundary holds BIG DAIRY by point; SMALL DAIRY (Kern)
+        # counts in it by mailing city, though its point is far outside.
+        cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
+        set_city(self.small, 'Plantville')
+        dairies.clear_caches()
+        names = [f['properties']['name'] for f in self.get('dairy-geojson', {'region': cdp.sqid}).json()['features']]
+        assert names == [herd.dairy.name for herd in dairies.table(2023, area=areas.RegionArea(cdp))]
+        assert set(names) == {'BIG DAIRY', 'SMALL DAIRY'}
+        county = self.get('dairy-geojson', {'region': self.fresno.sqid}).json()['features']
+        assert [f['properties']['name'] for f in county] == ['BIG DAIRY']
+
+    def test_a_point_narrows_to_its_radius(self):
+        near = self.get('dairy-geojson', {'lat': '36.737', 'lng': '-119.787', 'radius': '1'}).json()['features']
+        assert [f['properties']['name'] for f in near] == ['BIG DAIRY']
+
+    def test_unknown_region_and_bad_point_are_400(self):
+        retired = make(Region.Type.TRACT, '06019000199', AROUND_PLANT, version='2010')
+        for params in ({'region': 'nope'}, {'region': retired.sqid}, {'lat': 'x', 'lng': '1'},
+                       {'lat': '36.7', 'lng': '-119.7', 'radius': '2'}, {'lat': '91', 'lng': '0'}):
+            response = self.get('dairy-geojson', params)
+            assert response.status_code == 400 and 'error' in response.json(), params
+
+    def test_area_responses_are_cached_apart(self):
+        cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
+        assert self.get('dairy-geojson', {'region': cdp.sqid})['X-Cache-Status'] == 'MISS'
+        assert self.get('dairy-geojson', {'region': cdp.sqid})['X-Cache-Status'] == 'HIT'
+        assert self.get('dairy-geojson')['X-Cache-Status'] == 'MISS'
+        dairies.clear_caches()
+        assert self.get('dairy-geojson', {'region': cdp.sqid})['X-Cache-Status'] == 'MISS'
 
     def test_counties(self):
         dairy_inventory(self.fresno, rog=2.0)

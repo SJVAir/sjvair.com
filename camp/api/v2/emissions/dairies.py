@@ -1,9 +1,9 @@
 from resticus import generics, http
 
-from camp.apps.emissions import dairies
+from camp.apps.emissions import areas, dairies
 from camp.apps.emissions.models import Dairy
 from camp.apps.emissions.pollutants import POLLUTANTS
-from camp.apps.emissions.views import area_links
+from camp.apps.emissions.views import AREA_PAGE_TYPES, area_links, get_filter_region, radius_area
 from camp.utils.views import CachedEndpointMixin
 
 
@@ -37,6 +37,27 @@ class DairyCachedEndpointMixin(CachedEndpointMixin):
         return f'{super().get_view_cache_key()}|g:{dairies.generation()}'
 
 
+def get_area(request):
+    """
+    (area, error): a RegionArea for ?region= (any region page type with a
+    boundary: the dairy region pages' map), a RadiusArea for
+    ?lat=&lng=&radius= (the near-me dairy page's), (None, None) with neither;
+    an unknown region or a bad point is an error message.
+    """
+    sqid = (request.GET.get('region') or '').strip()
+    if sqid:
+        region = get_filter_region(sqid, types=AREA_PAGE_TYPES)
+        if region is None:
+            return None, 'region must be the id of a county, community, ZIP code, school district or census tract with a page.'
+        return areas.RegionArea(region), None
+    if 'lat' in request.GET or 'lng' in request.GET:
+        near = radius_area(request.GET)
+        if near is None:
+            return None, 'lat and lng must be a point, and radius 1, 3 or 5 (miles).'
+        return near, None
+    return None, None
+
+
 class DairyGeoJSONBase(generics.Endpoint):
     # get() lives on this un-cached base so the mixin's get() on the subclass
     # is the one dispatched to (the explorer endpoints' pattern).
@@ -44,8 +65,11 @@ class DairyGeoJSONBase(generics.Endpoint):
         year, error = get_year(request)
         if error:
             return http.Http400({'error': error})
+        area, error = get_area(request)
+        if error:
+            return http.Http400({'error': error})
         features = []
-        for herd in dairies.table(year):
+        for herd in dairies.table(year, area=area):
             dairy = herd.dairy
             features.append({
                 'type': 'Feature',
@@ -74,9 +98,12 @@ class DairyGeoJSON(DairyCachedEndpointMixin, DairyGeoJSONBase):
     cows, other cattle and the EPA size class, whether a digester ran that
     year, and the county slug; the collection's properties carry the size
     classes' labels and thresholds for a legend. ?year= defaults to CADD's latest.
+    ?region=<sqid> or ?lat=&lng=&radius= narrows to the area's dairies only,
+    by the region pages' membership rule (RegionArea.dairy_q() / RadiusArea.dairy_q()).
     """
     cache_timeout = 60 * 60 * 24
-    cache_key_version = 2
+    # v3 -- a response cached under ?region= before this change was unfiltered.
+    cache_key_version = 3
 
 
 class DairyCountiesBase(generics.Endpoint):
