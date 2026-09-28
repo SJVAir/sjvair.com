@@ -130,15 +130,11 @@
 # 7700; 0.01712 / chronic REL; 0.1712 / acute REL). Ammonia is a precursor
 # and carries no weights; isopropyl alcohol has no OEHHA values.
 #
-# Benzene is pk 2, not 1: migration 0008_copy_named_toxics unconditionally
-# get_or_creates placeholder ToxicPollutant rows for its ten NAMED_TOXICS
-# (in that dict's order -- acetaldehyde=1, benzene=2, ... perchloroethylene=10)
-# every time the test database is built, empty EmissionsRecord table or not.
-# This fixture's Benzene row fills in that same pk's health values rather
-# than colliding with it; the other three pollutants aren't among the ten,
-# so they get fresh pks (11-13) that the migration never touches.
+# Natural pks 1-4: 0008_copy_named_toxics only creates a placeholder for a
+# NAMED_TOXICS column that has at least one non-null value, so a fresh
+# (empty) EmissionsRecord table -- as here -- gets none, leaving these free.
 - model: emissions.toxicpollutant
-  pk: 2
+  pk: 1
   fields:
     carb_id: "71432"
     cas_number: 71-43-2
@@ -155,7 +151,7 @@
     acute_weight: 0.006340740740740741
     health_values_date: 2024-12-17
 - model: emissions.toxicpollutant
-  pk: 11
+  pk: 2
   fields:
     carb_id: "9901"
     cas_number: ""
@@ -172,7 +168,7 @@
     acute_weight: 0.0
     health_values_date: 2024-12-17
 - model: emissions.toxicpollutant
-  pk: 12
+  pk: 3
   fields:
     carb_id: "7664417"
     cas_number: 7664-41-7
@@ -189,7 +185,7 @@
     acute_weight: 0.0
     health_values_date: 2024-12-17
 - model: emissions.toxicpollutant
-  pk: 13
+  pk: 4
   fields:
     carb_id: "67630"
     cas_number: 67-63-0
@@ -210,19 +206,19 @@
 # gas station 0.5 × 0.2233 = 0.11165; Valley total 23.65825.
 - model: emissions.toxicemission
   pk: 1
-  fields: {facility: 1, year: 2024, pollutant: 2, lbs: "2.0"}
+  fields: {facility: 1, year: 2024, pollutant: 1, lbs: "2.0"}
 - model: emissions.toxicemission
   pk: 2
-  fields: {facility: 1, year: 2023, pollutant: 2, lbs: "1.0"}
+  fields: {facility: 1, year: 2023, pollutant: 1, lbs: "1.0"}
 - model: emissions.toxicemission
   pk: 3
-  fields: {facility: 3, year: 2024, pollutant: 11, lbs: "10.0"}
+  fields: {facility: 3, year: 2024, pollutant: 2, lbs: "10.0"}
 - model: emissions.toxicemission
   pk: 4
-  fields: {facility: 2, year: 2024, pollutant: 2, lbs: "0.5"}
+  fields: {facility: 2, year: 2024, pollutant: 1, lbs: "0.5"}
 - model: emissions.toxicemission
   pk: 5
-  fields: {facility: 1, year: 2024, pollutant: 12, lbs: "100.0"}
+  fields: {facility: 1, year: 2024, pollutant: 3, lbs: "100.0"}
 - model: emissions.toxicemission
   pk: 6
-  fields: {facility: 1, year: 2024, pollutant: 13, lbs: "50.0"}
+  fields: {facility: 1, year: 2024, pollutant: 4, lbs: "50.0"}

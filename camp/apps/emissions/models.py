@@ -328,7 +328,9 @@ class ToxicPollutant(models.Model):
         """slugify(name), with the CARB id appended when that's taken or reserved."""
         base = slugify(name) or f'pollutant-{carb_id}'
         if base in RESERVED_SLUGS or cls.objects.filter(slug=base).exists():
-            return f'{base}-{carb_id}'
+            # slug's max_length is 140; clip base so 'base-carb_id' still fits.
+            clipped = base[:140 - len(carb_id) - 1]
+            return f'{clipped}-{carb_id}'
         return base
 
     @classmethod

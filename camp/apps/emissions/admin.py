@@ -93,6 +93,9 @@ class ToxicEmissionInline(admin.TabularInline):
     readonly_fields = fields
     ordering = ['-year', 'pollutant__name']
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('pollutant')
+
     def has_add_permission(self, request, obj=None):
         return False
 

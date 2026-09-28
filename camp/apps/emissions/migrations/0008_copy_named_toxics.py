@@ -1,9 +1,11 @@
 """
 Copy the ten named toxic air contaminant columns of EmissionsRecord into the
-long ToxicEmission table, behind ten placeholder ToxicPollutant rows (CARB id
-and a curated name; no health values -- import_health_values adds them).
-About 130k records; under a minute. Reverse is a no-op: 0009's reverse
-re-adds the empty columns, and the ToxicEmission rows stay.
+long ToxicEmission table, behind placeholder ToxicPollutant rows (CARB id and
+a curated name; no health values -- import_health_values adds them). A
+placeholder is created only for a column that has at least one non-null
+value, so a fresh (empty) database gets none. About 130k records; under a
+minute. Reverse is a no-op: 0009's reverse re-adds the empty columns, and the
+ToxicEmission rows stay.
 """
 from django.db import migrations
 from django.utils.text import slugify
@@ -34,14 +36,20 @@ def copy_named_toxics(apps, schema_editor):
     ToxicEmission = apps.get_model('emissions', 'ToxicEmission')
     EmissionsRecord = apps.get_model('emissions', 'EmissionsRecord')
 
+    # Only create a placeholder for a column that actually has data to copy;
+    # a fresh (empty) database gets none.
+    fields = [
+        field for field in NAMED_TOXICS
+        if EmissionsRecord.objects.filter(**{f'{field}__isnull': False}).exists()
+    ]
     pollutants = {}
-    for field, (carb_id, name) in NAMED_TOXICS.items():
+    for field in fields:
+        carb_id, name = NAMED_TOXICS[field]
         pollutants[field], _ = ToxicPollutant.objects.get_or_create(
             carb_id=carb_id,
             defaults={'cas_number': cas_number(carb_id), 'name': name, 'slug': slugify(name), 'kind': 'toxic'},
         )
 
-    fields = list(NAMED_TOXICS)
     batch = []
     rows = EmissionsRecord.objects.order_by('pk').values('facility_id', 'year', *fields).iterator(chunk_size=BATCH)
     for row in rows:

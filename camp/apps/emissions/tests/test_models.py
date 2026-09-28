@@ -122,6 +122,18 @@ class ToxicPollutantTests(TestCase):
         assert first.slug == 'cancer-1001'
         assert ToxicPollutant.create_for('1002', 'Ammonia').slug == 'ammonia-1002'
 
+    def test_unique_slug_clips_a_long_name_so_the_result_fits(self):
+        long_name = 'x' * 128
+        carb_id = '123456789012'
+        slug = ToxicPollutant.unique_slug(long_name, carb_id)
+        assert slug == long_name
+        # Force the collision branch: the plain slugify(long_name) is
+        # "reserved" from this pollutant's own point of view once it exists.
+        ToxicPollutant.objects.create(carb_id='1', cas_number='', name=long_name, slug=long_name, kind='toxic')
+        slug = ToxicPollutant.unique_slug(long_name, carb_id)
+        assert len(slug) <= 140
+        assert slug == f'{long_name[:140 - len(carb_id) - 1]}-{carb_id}'
+
 
 class SourceImportTests(TestCase):
     def test_latest(self):
