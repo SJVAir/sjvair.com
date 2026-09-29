@@ -1946,12 +1946,15 @@ class NoticeDetail(vanilla.DetailView):
         is_active = notice.scheduled_application >= timezone.now() - timedelta(days=stats.NOTICE_GRACE_DAYS)
         window_end = notice.scheduled_application + timedelta(days=stats.NOTICE_GRACE_DAYS)
 
-        center = None
-        if notice.point:
+        # SprayDays locates a notice to its square-mile section, not a field,
+        # so frame and highlight the section (as SectionDetail does) and only
+        # fall back to the pin when the notice has no section boundary.
+        center = highlight = None
+        if notice.mtrs_id and notice.mtrs.boundary_id:
+            center, highlight = centroid(notice.mtrs), notice.mtrs.sqid
+        elif notice.point:
             center = f'{notice.point.y:.4f},{notice.point.x:.4f}'
-        elif notice.mtrs_id and notice.mtrs.boundary_id:
-            center = centroid(notice.mtrs)
-        map_config = section_map_config(stats.latest_year(), center=center, zoom=13 if center else None)
+        map_config = section_map_config(stats.latest_year(), center=center, zoom=13 if center else None, highlight=highlight)
 
         related_notices = PesticideNotice.objects.none()
         if notice.mtrs_id:

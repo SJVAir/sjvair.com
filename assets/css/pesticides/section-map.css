@@ -232,3 +232,36 @@
     padding: 0.4rem 0.7rem;
   }
 }
+
+/* A section with several notices: one popup, a list that scrolls rather
+   than pushing the popup off the map. */
+.section-popup .notice-group-list {
+  max-height: 16rem;
+  overflow-y: auto;
+  margin-top: 0.4rem;
+}
+
+.section-popup .notice-group-entry {
+  padding: 0.45rem 0;
+  border-top: 1px solid #f0f0f0;
+  font-size: 0.85rem;
+}
+
+.section-popup .notice-group-entry:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.section-popup .notice-group-when,
+.section-popup .notice-group-line {
+  margin: 0;
+}
+
+.section-popup .notice-group-line .section-popup-label {
+  display: inline;
+  margin-right: 0.2rem;
+}
+
+.section-popup .notice-group-entry .section-popup-action {
+  margin-top: 0.3rem;
+}

@@ -50,7 +50,10 @@
         {% endif %}
         <p class="mt-4"><a href="{{ records_url }}">Browse confirmed records for this area</a></p>
     </div>
-    <div class="column">{% include 'pesticides/includes/section-map.html' %}</div>
+    <div class="column">
+        {% include 'pesticides/includes/section-map.html' %}
+        <p class="help mt-2">SprayDays gives the square-mile section, not the field; the application may be anywhere in it.</p>
+    </div>
 </div>
 
 {% endblock %}
