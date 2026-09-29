@@ -18,3 +18,11 @@ def import_icis_air():
 def import_wells():
     with get_queue('primary').lock_task('import-wells'):
         call_command('import_wells')
+
+
+# Carbon Mapper publishes new plumes continuously; monthly keeps the layer
+# current without leaning on their API. The 4th at 11:00 UTC.
+@db_periodic_task(crontab(day='4', hour='11', minute='0'), priority=20)
+def import_carbon_mapper():
+    with get_queue('primary').lock_task('import-carbon-mapper'):
+        call_command('import_carbon_mapper')

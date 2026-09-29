@@ -35,3 +35,10 @@ class ImportWellsTaskTests(TestCase):
         assert task_class.validate_datetime(task_class, datetime(2026, 10, 11, 12, 0))
         assert not task_class.validate_datetime(task_class, datetime(2026, 10, 5, 12, 0))  # Monday
         assert not task_class.validate_datetime(task_class, datetime(2026, 10, 4, 11, 0))
+
+
+class ImportCarbonMapperTaskTests(TestCase):
+    @patch('camp.apps.emissions.tasks.call_command')
+    def test_runs_the_command_under_the_lock(self, call_command):
+        tasks.import_carbon_mapper.call_local()
+        call_command.assert_called_once_with('import_carbon_mapper')

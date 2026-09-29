@@ -442,6 +442,13 @@ AIRNOW_API_KEY = env('AIRNOW_API_KEY')
 CIMIS_API_KEY = env('CIMIS_API_KEY')
 
 
+# Carbon Mapper
+
+# The public methane catalog works without a key; when set, it's sent as a
+# bearer token (carbonmapper.fetch_csv).
+CARBON_MAPPER_API_KEY = env('CARBON_MAPPER_API_KEY', '')
+
+
 # CompTox
 
 COMPTOX_API_KEY = env('COMPTOX_API_KEY', '')
