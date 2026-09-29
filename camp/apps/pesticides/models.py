@@ -366,6 +366,12 @@ class FumigationMethod(TimeStampedModel):
         """The technique without its trailing regulation citation."""
         return re.sub(r'\s*\[[^\]]*\]\s*$', '', self.name)
 
+    @property
+    def citation(self):
+        """The regulation the technique falls under ("6448.2(d)(6)"), or ''."""
+        match = re.search(r'\[([^\]]*)\]\s*$', self.name)
+        return match.group(1) if match else ''
+
 
 class PesticideUse(TimeStampedModel):
     class AerialGround(models.TextChoices):

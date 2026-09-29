@@ -128,6 +128,12 @@ body.pesticides
         // Flat against the content it's now covering, it needs an edge. Inset
         // so it costs no height and nothing below shifts.
         box-shadow: inset 0 -1px 0 $grey-lighter
+        // Bulma's container is edge to edge below desktop; the page's other
+        // content gets its gutter from a .section, which this bar isn't.
+        +touch
+            > .container
+                padding-left: 1.5rem
+                padding-right: 1.5rem
     .explorer-scope
         display: flex
         align-items: center
@@ -419,6 +425,15 @@ body.pesticides
         th, td
             white-space: nowrap
             font-variant-numeric: tabular-nums
+        // In a half-width column "Share of pounds" would scroll the table
+        // a few pixels; a header can take two lines.
+        th
+            white-space: normal
+    // CDPR's technique names run long ("Tarpaulin/Deep/Broadcast -with tarp
+    // eligible for 60% credit [...]"): they wrap, the numbers beside them don't.
+    .fume-breakdown .method-table td:first-child
+        white-space: normal
+        min-width: 7rem
 
     .by-year-table, .by-county-table
         // Four numeric columns in a narrow column: keep them on one line and
@@ -495,6 +510,77 @@ body.pesticides
         // "MDM-T17S-R15E-10"), and the Lbs/Acres columns should never wrap.
         td.has-text-right, td:first-child, td:nth-child(3)
             white-space: nowrap
+
+    // On a phone the wide tables become stacked rows: each record a short
+    // block whose cells flow as text, rather than nine columns scrolling off
+    // the right edge. The header keeps only its sort links, as a row of its own.
+    +mobile
+        .records-table, .notice-rows, .chemical-table
+            // A table sizes itself to its widest row; as blocks, the rows
+            // take the phone's width and wrap inside it.
+            &, thead, tbody
+                display: block
+            thead tr
+                display: flex
+                flex-wrap: wrap
+                gap: 0 1rem
+                th
+                    border: none
+                    padding: 0 0 0.5rem
+                    &:not(:has(a))
+                        display: none
+            tbody tr
+                display: flex
+                flex-wrap: wrap
+                align-items: baseline
+                gap: 0.15rem 0.6rem
+                padding: 0.6rem 0.25rem
+                border-bottom: 1px solid $grey-lighter
+                td
+                    display: block
+                    border: none
+                    padding: 0
+                    white-space: normal
+                    &[colspan]
+                        flex-basis: 100%
+            td[data-unit]::after
+                content: " " attr(data-unit)
+                color: $grey
+        // Date, county, section; then product and chemical a line each; then
+        // commodity, pounds, acres and method.
+        .records-table tbody tr
+            td:first-child
+                font-weight: 600
+            td:nth-child(4)
+                order: 6
+            td:nth-child(5), td:nth-child(6)
+                flex-basis: 100%
+                order: 4
+            td:nth-child(6)
+                order: 5
+            td:nth-child(n+7)
+                order: 7
+                font-size: $size-7
+        .notice-rows tbody tr
+            td:first-child
+                font-weight: 600
+            td:last-child
+                flex-basis: 100%
+        // The name and its pounds on one line, the badges under the name.
+        .chemical-table tbody tr
+            td:first-child
+                flex: 1
+            td.chemical-classes
+                order: 3
+                flex-basis: 100%
+                &:not(:has(.tag))
+                    display: none
+                // Every badge a chemical carries, wrapped, rather than the
+                // single clipped line the desktop table keeps them to.
+                .tags
+                    flex-wrap: wrap
+                    row-gap: 0.25rem
+                    margin-bottom: 0
 
     .notice-signup
         border-left: 3px solid $link
@@ -625,6 +711,11 @@ body.pesticides
             gap: 0.75rem 0.5rem
             .level-item
                 margin-bottom: 0
+            // Half a phone is ~160px: "22,994,238" at the desktop size breaks
+            // mid-number. Smaller, and never broken.
+            .title
+                font-size: $size-4
+                white-space: nowrap
 
     // A "where this came from" stamp beside a heading, not a scope year.
     .source-stamp

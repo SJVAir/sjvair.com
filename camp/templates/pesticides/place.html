@@ -58,7 +58,7 @@
     <div class="level-item has-text-centered">
         <div>
             <p class="heading">Sections with use</p>
-            <p class="title fraction">{{ totals.sections_used }} / {{ totals.sections_total }}</p>
+            <p class="title fraction">{{ totals.sections_used|intcomma }} / {{ totals.sections_total|intcomma }}</p>
             <p class="stat-note">{% if totals.sections_total %}{% widthratio totals.sections_used totals.sections_total 100 %}% of this area{% endif %}</p>
         </div>
     </div>

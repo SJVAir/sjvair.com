@@ -6,7 +6,8 @@ import uuid
 from django import template
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.urls import reverse
-from django.utils.html import format_html
+from django.utils.html import conditional_escape, format_html
+from django.utils.safestring import mark_safe
 
 from camp.apps.pesticides import notes as notes_module
 from camp.apps.pesticides import stats
@@ -82,6 +83,12 @@ def lbs(value):
     if value and abs(value) < 10:
         return f'{value:.1f}'
     return intcomma(int(round(value)))
+
+
+@register.filter
+def slash_breaks(value):
+    """Lets "Tarpaulin/Deep/Broadcast" wrap after a slash rather than setting a narrow column's width."""
+    return mark_safe(conditional_escape(value).replace('/', '/<wbr>'))
 
 
 @register.filter

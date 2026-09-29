@@ -16,12 +16,12 @@
             {% if related %}<a class="tag is-info is-light ml-2" href="{% qs_replace page=None product=None commodity=None %}">clear ×</a>{% endif %}
         </p>
         <div class="table-container">
-            <table class="table is-fullwidth is-striped is-hoverable data-table">
+            <table class="table is-fullwidth is-striped is-hoverable data-table chemical-table">
                 <thead>
                     <tr>
                         <th>{% sort_link 'name' 'Chemical' %}</th>
                         <th>Classifications</th>
-                        {% if not related.product %}<th class="has-text-right">{% sort_link 'products' 'Products' %}</th>{% endif %}
+                        {% if not related.product %}<th class="has-text-right is-hidden-mobile">{% sort_link 'products' 'Products' %}</th>{% endif %}
                         <th class="has-text-right">{% sort_link 'lbs' lbs_label %}</th>
                     </tr>
                 </thead>
@@ -29,7 +29,7 @@
                     {% for chemical in object_list %}
                     <tr>
                         <td><a href="{{ chemical.get_absolute_url }}{{ scope_qs }}">{{ chemical.display_name }}</a></td>
-                        <td>
+                        <td class="chemical-classes">
                             <div class="tags">
                                 {% include 'pesticides/includes/classification-badges.html' with chemical=chemical %}
                                 {% for category in chemical.other_categories %}
@@ -37,8 +37,8 @@
                                 {% endfor %}
                             </div>
                         </td>
-                        {% if not related.product %}<td class="has-text-right">{{ chemical.product_count }}</td>{% endif %}
-                        <td class="has-text-right">{{ chemical.lbs_applied|lbs }}</td>
+                        {% if not related.product %}<td class="has-text-right is-hidden-mobile">{{ chemical.product_count }}</td>{% endif %}
+                        <td class="has-text-right" data-unit="lbs">{{ chemical.lbs_applied|lbs }}</td>
                     </tr>
                     {% empty %}
                     <tr><td colspan="{% if related.product %}4{% else %}5{% endif %}" class="has-text-centered has-text-grey">No chemicals match.</td></tr>
