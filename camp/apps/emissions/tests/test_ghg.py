@@ -242,3 +242,118 @@ class ImportGHGRPTests(GHGTestCase):
                 call_command('import_ghgrp', year=2023, stdout=StringIO(), stderr=err)
         assert '502' in err.getvalue()
         assert set(GHGReport.objects.values_list('external_id', flat=True)) == {'501', '503', '601'}
+
+
+import shutil
+import tempfile
+
+from camp.apps.emissions import mrr
+
+SAMPLE = DATA / 'mrr-sample.xlsx'
+
+
+class MRRReadTests(TestCase):
+    def test_read_finds_headers_and_rows(self):
+        rows, gases = mrr.read(SAMPLE, 2024)
+        assert [r['arb_id'] for r in rows] == ['900001', '900002', '900003', '900004', '900005', '900006']
+        plant = rows[0]
+        assert plant['name'] == 'Test Plant Inc.' and plant['co2e'] == 87635.27178 and plant['co2e_biogenic'] == 0
+        assert plant['zipcode'] == '93728' and plant['city'] == 'Fresno' and plant['naics'] == '327213'
+        assert plant['subparts'] == 'C,N' and plant['sector'] == 'Other Combustion Source'
+        assert rows[3]['zipcode'] == '93728-1234' and rows[4]['zipcode'] == '93728'
+        assert gases['900001'] == {'co2': 87571.545182, 'ch4': 1.1628941, 'n2o': 0.11628941}
+        assert set(gases) == {r['arb_id'] for r in rows}
+
+    def test_other_year_rows_are_skipped_and_missing_columns_fail(self):
+        import openpyxl
+        wb = openpyxl.load_workbook(SAMPLE)
+        wb['2024 GHG Data']['D9'] = 2023
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+            wb.save(tmp.name)
+        rows, _ = mrr.read(tmp.name, 2024)
+        assert [r['arb_id'] for r in rows] == ['900002', '900003', '900004', '900005', '900006']
+        wb['2024 GHG Data']['I8'] = 'Renamed'
+        wb.save(tmp.name)
+        with pytest.raises(mrr.MRRFormatError, match='Emitter CO2e'):
+            mrr.read(tmp.name, 2024)
+        del wb['2024 Emissions by GHG']
+        wb.save(tmp.name)
+        with pytest.raises(mrr.MRRFormatError, match='2024 Emissions by GHG'):
+            mrr.read(tmp.name, 2024)
+
+    def test_basin_wide(self):
+        rows, _ = mrr.read(SAMPLE, 2024)
+        assert [mrr.is_basin_wide(r) for r in rows] == [False, True, False, False, False, False]
+        assert not mrr.is_basin_wide({'name': 'Basin Street Bakery', 'sector': 'Other Combustion Source'})
+
+
+class ImportMRRTests(GHGTestCase):
+    def run_import(self, path=SAMPLE, **options):
+        out = StringIO()
+        call_command('import_mrr', year=2024, path=str(path), stdout=out, **options)
+        return out.getvalue()
+
+    def rows(self):
+        return {r.external_id: r for r in GHGReport.objects.filter(program='mrr', year=2024)}
+
+    def test_zip_filter_and_emitter_columns_only(self):
+        out = self.run_import()
+        rows = self.rows()
+        # 900003 has 1.5 MMT of supplier CO2e and no emitter CO2e; 900006 isn't in a Valley ZIP.
+        assert set(rows) == {'900001', '900002', '900004', '900005'}
+        assert '4 emitters kept, 1 outside the Valley, 1 with no emitter CO2e' in out
+
+    def test_figures_join_match_and_basin(self):
+        self.run_import()
+        rows = self.rows()
+        plant = rows['900001']
+        assert plant.facility == self.plant and plant.match_method == 'auto' and plant.county == self.fresno
+        assert plant.co2e == 87635.27178 and plant.co2e_biogenic == 0 and plant.ch4 == 1.1628941 and plant.n2o == 0.11628941
+        assert plant.naics == '327213' and plant.subparts == 'C,N' and plant.sector == 'Other Combustion Source'
+        assert plant.zipcode == '93728' and plant.city == 'Fresno' and plant.point is None and plant.frs_id == ''
+        basin = rows['900002']
+        assert basin.basin_wide and basin.facility is None and basin.match_method == '' and basin.county == self.fresno
+        assert basin.ch4 == 1477.8195
+        cogen = rows['900005']
+        assert cogen.co2e == 7543.573321 and cogen.co2e_biogenic == 200969.2346 and cogen.facility is None
+        assert rows['900004'].zipcode == '93728-1234' and rows['900004'].facility is None
+
+    def test_crosswalk_then_auto(self):
+        with patch.dict(ghg_crosswalk.MRR, {'900004': (15, 'KER', 2), '900001': None}, clear=True):
+            self.run_import()
+        rows = self.rows()
+        kiln = rows['900004']
+        assert kiln.facility == self.cement and kiln.match_method == 'crosswalk' and kiln.county == self.kern
+        assert rows['900001'].facility is None and rows['900001'].match_method == 'crosswalk'
+        # Without the crosswalk the auto match is back, and the pinned row stays unmatched.
+        self.run_import()
+        assert self.rows()['900001'].facility == self.plant and self.rows()['900004'].facility is None
+
+    def test_idempotent_and_prunes(self):
+        self.run_import()
+        before = stats.generation()
+        self.run_import()
+        assert stats.generation() == before + 1 and GHGReport.objects.count() == 4
+        import openpyxl
+        wb = openpyxl.load_workbook(SAMPLE)
+        wb['2024 GHG Data'].delete_rows(13)   # Biomass Cogen
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+            wb.save(tmp.name)
+        self.run_import(tmp.name)
+        assert set(self.rows()) == {'900001', '900002', '900004'}
+        stamp = SourceImport.latest('mrr')
+        assert stamp.version == '2024' and stamp.data_through == date(2024, 12, 31) and stamp.notes['deleted'] == 1
+        assert SourceImport.objects.filter(source='mrr').count() == 3
+
+    def test_url_downloads_then_cleans_up(self):
+        copied = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False).name
+        shutil.copy(SAMPLE, copied)
+        with patch('camp.apps.emissions.mrr.download', return_value=copied) as download:
+            call_command('import_mrr', year=2024, url=mrr.URL, stdout=StringIO())
+        download.assert_called_once_with(mrr.URL)
+        assert GHGReport.objects.count() == 4 and not Path(copied).exists()
+
+    def test_report(self):
+        out = self.run_import(report=True)
+        assert 'Valley Oil - San Joaquin Valley Basin 745' in out and 'basin-wide' in out
+        assert 'Mojave Kiln Partners' in out and 'unmatched' in out and 'TEST PLANT' in out
