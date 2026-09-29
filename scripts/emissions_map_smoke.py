@@ -602,6 +602,9 @@ def main():
         driver.execute_script("document.querySelector('.dairy-map-view [data-view=counties]').click()")
         shaded = settled_count(driver, shaded_counties)
         check(results, 'counties view shades counties', shaded > 0 and 'view=counties' in driver.current_url, f'{shaded} shaded')
+        legend = driver.execute_script("return document.querySelector('.dairy-map-legend .legend-title').textContent;")
+        check(results, 'the Counties view defaults to mature dairy cows',
+              'Mature dairy cows' in legend and 'measure=' not in driver.current_url, legend)
         hidden = driver.execute_script(
             "return document.querySelector('.dairy-map-sizes').hidden && document.querySelector('.dairy-map-digester').hidden;")
         check(results, 'the size and digester controls are hidden in the Counties view', hidden)
@@ -621,25 +624,25 @@ def main():
         label_text = driver.execute_script(
             "var l = document.querySelector('.map-hover-label .maplibregl-popup-content'); return l ? l.textContent : '';")
         check(results, 'hovering a county shows its name and value',
-              bool(county_hit) and 'County' in label_text and 'tons/yr' in label_text, label_text)
+              bool(county_hit) and 'County' in label_text and any(c.isdigit() for c in label_text), label_text)
         ActionChains(driver).move_to_element(driver.find_element(By.CSS_SELECTOR, '.navbar-brand')).perform()
         time.sleep(0.5)
         gone = driver.execute_script("return document.querySelectorAll('.map-hover-label').length === 0")
         check(results, 'moving off the map clears the county hover label', gone)
 
-        driver.execute_script("document.querySelector('.dairy-map-measure [data-measure=mature_cows]').click()")
+        driver.execute_script("document.querySelector('.dairy-map-measure [data-measure=emissions]').click()")
         time.sleep(0.5)
-        legend = driver.execute_script("return document.querySelector('.dairy-map-legend .legend-title').textContent;")
-        check(results, 'a measure change redraws the legend',
-              'Mature dairy cows' in legend and 'measure=mature_cows' in driver.current_url, legend)
+        legend = driver.execute_script("return document.querySelector('.dairy-map-legend').textContent;")
+        check(results, 'a measure change redraws the legend, noting CARB\'s flat estimate',
+              'Dairy emissions' in legend and 'the same every year since' in legend and 'measure=emissions' in driver.current_url, legend[:200])
         # A boosted swap from the table (a sort) keeps the view and measure.
         driver.find_element(By.CSS_SELECTOR, '.dairy-table thead a.sort-link').click()
         time.sleep(1)
         kept = wait_dairies(driver) and driver.execute_script(
             "var list = window.EmissionsDairyMap.instances();"
-            "return list.length === 1 && list[0].view === 'counties' && list[0].measure === 'mature_cows';")
+            "return list.length === 1 && list[0].view === 'counties' && list[0].measure === 'emissions';")
         check(results, 'a sort (boosted swap) keeps Counties and its measure',
-              kept and 'view=counties' in driver.current_url and 'measure=mature_cows' in driver.current_url, driver.current_url)
+              kept and 'view=counties' in driver.current_url and 'measure=emissions' in driver.current_url, driver.current_url)
         driver.execute_script("var a = document.querySelector('.dairy-zoom'); a.scrollIntoView(); a.click();")
         opened = False
         deadline = time.time() + 8

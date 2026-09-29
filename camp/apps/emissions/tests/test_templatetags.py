@@ -71,6 +71,11 @@ class DairyChartTests(TestCase):
         assert everywhere['chart']['selected'] is None
         assert tags.dairy_emissions_chart([], POLLUTANTS['nox'])['has_data'] is False
 
+    def test_emissions_chart_notes_a_flat_estimate(self):
+        points = [{'year': year, 'value': 3.0 if year > 2011 else 4.0, 'total': 30.0, 'share': 0.1} for year in range(2010, 2016)]
+        note = tags.dairy_emissions_chart(points, POLLUTANTS['rog'])['note']
+        assert note.endswith('Years after 2017 are CARB projections; its estimate is the same every year since 2012.')
+
     def test_digester_chart(self):
         context = tags.digester_trend_chart([{'year': 2023, 'digesters': 3}, {'year': 2022, 'digesters': 0}], 2023)
         chart = context['chart']

@@ -27,10 +27,10 @@ from camp.utils import mapconfig
 PAGE_SIZE = 50
 VIEW_OPTIONS = (('dairies', 'Dairies'), ('counties', 'Counties'))
 MEASURE_OPTIONS = (
-    ('emissions', 'Dairy emissions'),
-    ('emissions_per_sq_mi', 'Dairy emissions per sq mi'),
     ('mature_cows', 'Mature dairy cows'),
     ('mature_cows_per_sq_mi', 'Mature dairy cows per sq mi'),
+    ('emissions', 'Dairy emissions'),
+    ('emissions_per_sq_mi', 'Dairy emissions per sq mi'),
 )
 # The Dairies view's own toolbar filters: the map draws to these client-side
 # (a MapLibre layer filter, dairy-map.js), so the server only needs to know
@@ -139,6 +139,8 @@ def dairy_map_config(scope, view, *, area_params=None, outline_url='', center=''
         'view': 'dairies' if area else view['view'],
         'measure': view['measure'],
         'source_note': dairies.CEPAM_NOTE,
+        # The year CARB's Valley dairy estimate stops changing ('' when it doesn't).
+        'flat_since': dairies.flat_since(dairies.emissions_trend(scope.pollutant)) or '',
         # The region or circle the page is about (dairy region pages, near-me).
         'outline_url': outline_url,
         'center': center,
@@ -356,6 +358,7 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
         # always has the chart when CEPAM has the county).
         emissions_trend = dairies.emissions_trend(scope.pollutant, county=county) if county is not None else []
         this_year = next((row for row in emissions_trend if row['year'] == scope.year), None)
+        flat_since = dairies.flat_since(emissions_trend)
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
@@ -373,7 +376,7 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
             trend=trend,
             emissions_trend=emissions_trend,
             digester_trend=dairies.digester_chart_points(area=area),
-            carb_estimate={'tons': this_year['value'], 'share': this_year['share'], 'place': county.name} if this_year else None,
+            carb_estimate={'tons': this_year['value'], 'share': this_year['share'], 'place': county.name, 'flat_since': flat_since if flat_since and scope.year >= flat_since else None} if this_year else None,
             hide_county=county is not None,
             map_config=self.get_map_config(scope) if dairies.years() else None,
             # The page is the area: no county picker.

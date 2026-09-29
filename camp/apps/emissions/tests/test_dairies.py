@@ -327,6 +327,17 @@ class EmissionsTrendTests(DairyTestCase):
         assert dairies.emissions_trend(POLLUTANTS['rog']) == []
 
 
+class FlatSinceTests(TestCase):
+    def test_the_first_year_of_the_unchanging_tail(self):
+        points = [{'year': 2013, 'value': 3.0000001}, {'year': 2010, 'value': 4.0}, {'year': 2011, 'value': 3.0}, {'year': 2012, 'value': 3.0}]
+        assert dairies.flat_since(points) == 2011
+
+    def test_none_when_the_last_years_differ_or_there_is_one_year(self):
+        assert dairies.flat_since([{'year': 2010, 'value': 3.0}, {'year': 2011, 'value': 4.0}]) is None
+        assert dairies.flat_since([{'year': 2010, 'value': 3.0}]) is None
+        assert dairies.flat_since([]) is None
+
+
 class DigesterTrendTests(DairyTestCase):
     def test_counts_by_year(self):
         # BIG's digester (since 2019) runs both years; SMALL's shut down in 2021.

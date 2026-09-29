@@ -49,6 +49,8 @@
     };
   }
   var EMPTY_COLOR = '#8a94a3';
+  // The Counties view's default measure (dairies.DEFAULT_MEASURE), left out of the URL.
+  var DEFAULT_MEASURE = 'mature_cows';
   var COUNTY_COLOR = '#1f2d3d';
   var MIN_RADIUS = 3;
   var MAX_RADIUS = 22;
@@ -299,7 +301,7 @@
 
   DairyMap.prototype.readState = function () {
     this.view = this.data.view === 'counties' ? 'counties' : 'dairies';
-    this.measure = this.data.measure || 'emissions';
+    this.measure = this.data.measure || DEFAULT_MEASURE;
     this.sizes = parseSizes(this.data.sizes);
     this.digester = this.data.digester === 'yes' || this.data.digester === 'no' ? this.data.digester : '';
   };
@@ -669,8 +671,12 @@
 
   DairyMap.prototype.countyLegend = function () {
     var title = '<p class="legend-title">' + escapeHtml(this.measureTitle()) + '</p>';
+    var since = Number(this.data.flatSince);
+    var flat = since && Number(this.data.year) >= since
+      ? '<p class="legend-note">CARB\'s estimate is the same every year since ' + since + '; herd counts change year to year.</p>'
+      : '';
     var note = this.measure.indexOf('emissions') === 0
-      ? '<p class="legend-note">' + escapeHtml(this.data.sourceNote) + '</p>'
+      ? '<p class="legend-note">' + escapeHtml(this.data.sourceNote) + '</p>' + flat
       : '<p class="legend-note">CARB\'s dairy database (CADD), ' + escapeHtml(this.data.year) + '</p>';
     if (!this.countyBreaks.length) return title + '<p>No county figures for ' + escapeHtml(this.data.year) + '.</p>' + note;
     return title + rampBins(this.countyBreaks, 'is-area') + note;
@@ -722,7 +728,7 @@
   DairyMap.prototype.writeState = function (params) {
     var counties = this.view === 'counties';
     if (counties) params.set('view', 'counties'); else params.delete('view');
-    if (counties && this.measure !== 'emissions') params.set('measure', this.measure); else params.delete('measure');
+    if (counties && this.measure !== DEFAULT_MEASURE) params.set('measure', this.measure); else params.delete('measure');
     if (this.sizes.length === SIZE_VALUES.length) params.delete('sizes'); else params.set('sizes', this.sizes.join(','));
     if (this.digester) params.set('digester', this.digester); else params.delete('digester');
     // The Options menu's Tiles experiment (shell.bindTiles); not page scope,

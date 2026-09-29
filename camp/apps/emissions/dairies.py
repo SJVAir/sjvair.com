@@ -63,7 +63,8 @@ DEFAULT_SORT = '-mature_cows'
 VIEWS = ('dairies', 'counties')
 DEFAULT_VIEW = 'dairies'
 MEASURES = ('emissions', 'emissions_per_sq_mi', 'mature_cows', 'mature_cows_per_sq_mi')
-DEFAULT_MEASURE = 'emissions'
+# Herd counts by default: CARB's county estimate is flat for most years (flat_since).
+DEFAULT_MEASURE = 'mature_cows'
 # A counted herd: at least one head of cattle.
 COUNTED = Q(mature_cows__gt=0) | Q(other_cattle__gt=0)
 # The EPA size classes with their thresholds, largest first (the maps' legends
@@ -327,6 +328,24 @@ def emissions_trend(pollutant, county=None):
             rows.append({'year': year, 'value': value, 'total': total, 'share': value / total if total else None})
         return rows
     return cache.get_or_set(key('emissions-trend', pollutant.key, county.pk if county else 'all'), compute, stats.CACHE_TIMEOUT)
+
+
+def flat_since(points):
+    """
+    The first year from which CARB's estimate (emissions_trend rows) is the
+    same every year through its last, or None when its last two years differ.
+    CEPAM holds dairy cattle constant for most projection years.
+    """
+    rows = sorted(points, key=lambda row: row['year'])
+    if len(rows) < 2:
+        return None
+    last = round(rows[-1]['value'], 3)
+    since = rows[-1]['year']
+    for row in reversed(rows[:-1]):
+        if round(row['value'], 3) != last:
+            break
+        since = row['year']
+    return since if since < rows[-1]['year'] else None
 
 
 def digester_trend(*, county=None, area=None):

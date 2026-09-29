@@ -28,6 +28,7 @@ of the county's all-sources total.
     <div class="level-item has-text-centered"><div>
         <p class="heading">Dairy cattle, CARB estimate</p><p class="title">{{ carb_estimate.tons|whole }} <span class="is-size-5">tons/yr {{ pollutant.label }}</span></p>
         {% if carb_estimate.share is not None %}<p class="is-size-7 has-text-grey">{{ carb_estimate.share|percent }} of {{ carb_estimate.place }} {{ pollutant.label }}</p>{% endif %}
+        {% if carb_estimate.flat_since %}<p class="is-size-7 has-text-grey">Same every year since {{ carb_estimate.flat_since }}</p>{% endif %}
     </div></div>
     {% endif %}
 </div>

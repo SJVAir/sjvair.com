@@ -195,6 +195,7 @@ def dairy_emissions_chart(points, pollutant, year=None, place=None):
     rows = sorted(points, key=lambda row: row['year'])
     years = [row['year'] for row in rows]
     place = place or 'the covered counties'
+    since = dairies.flat_since(rows)
     return {
         'chart_id': f'chart-{uuid.uuid4().hex[:8]}',
         'chart': {
@@ -211,7 +212,8 @@ def dairy_emissions_chart(points, pollutant, year=None, place=None):
         'has_data': bool(rows),
         'title': f'Dairy cattle {pollutant.label}, CARB estimate',
         'sentence': '',
-        'note': 'Animals and manure only: CARB counts feed and silage, dairies’ larger ROG source, separately. Years after 2017 are CARB projections.',
+        'note': 'Animals and manure only: CARB counts feed and silage, dairies’ larger ROG source, separately. Years after 2017 are CARB projections'
+        + (f'; its estimate is the same every year since {since}.' if since else '.'),
         'note_url': reverse('emissions:about') + '#dairies',
         'first_year': years[0] if years else None,
         'last_year': years[-1] if years else None,
