@@ -14,7 +14,7 @@ from shapely.geometry import Point as ShapelyPoint
 from shapely.wkb import loads as load_wkb
 
 from camp.apps.alerts.models import Subscription
-from camp.apps.ces.models import CES4, CES5
+from camp.apps.ces import stats as ces_stats
 from camp.apps.monitors.models import Monitor
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.reports.base import BaseReport, register
@@ -186,15 +186,11 @@ def per_10k(monitors, population):
 
 
 def ces_tracts():
-    """(model, version, tract queryset) for the newest CES data present, or (None, None, None)."""
-    for model in (CES5, CES4):
-        version = (model._base_manager
-            .order_by('-boundary__version')
-            .values_list('boundary__version', flat=True)
-            .first())
-        if version:
-            return model, version, model._base_manager.filter(boundary__version=version)
-    return None, None, None
+    """(model, version, tract queryset) for the newest CES data present (ces.stats.current_model), or (None, None, None)."""
+    model, version = ces_stats.current_model()
+    if model is None:
+        return None, None, None
+    return model, version, model._base_manager.filter(boundary__version=version)
 
 
 class MonitorScopeMixin:
