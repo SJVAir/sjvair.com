@@ -4,7 +4,8 @@ from django.urls import NoReverseMatch, reverse
 
 import pytest
 
-from camp.apps.emissions import carbonmapper, methane
+from camp.apps.emissions import methane
+from camp.apps.emissions.importers import carbonmapper
 from camp.apps.emissions.models import Facility, MethaneSource
 from camp.apps.emissions.tests.test_carbonmapper import AT_GAS_STATION, NEAR_BOTH, row
 from camp.apps.emissions.tests.test_dairies import make_dairies

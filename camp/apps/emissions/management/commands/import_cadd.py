@@ -5,7 +5,8 @@ import requests
 
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import cadd, dairies
+from camp.apps.emissions import dairies
+from camp.apps.emissions.importers import cadd
 
 
 class Command(BaseCommand):

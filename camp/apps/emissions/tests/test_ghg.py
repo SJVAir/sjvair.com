@@ -14,7 +14,8 @@ from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.emissions import ghg, ghg_crosswalk, ghgrp, icis, stats
+from camp.apps.emissions import ghg, stats
+from camp.apps.emissions.importers import ghg as ghg_matching, ghg_crosswalk, ghgrp, icis
 from camp.apps.emissions.models import Facility, GHGReport, SourceImport
 from camp.apps.regions.models import Region
 
@@ -54,49 +55,49 @@ def report(program='mrr', external_id='1', year=2024, **kwargs):
 
 class NameKeyTests(TestCase):
     def test_key_drops_corporate_noise(self):
-        assert ghg.name_key('Ardagh Glass Inc.') == 'ARDAGH GLASS'
-        assert ghg.name_key('PG&E McDonald Island Underground Storage Station') == 'PG AND E MCDONALD ISLAND UNDERGROUND STORAGE STATION'
-        assert ghg.name_key('The Test Plant, LLC (Fresno)') == 'TEST PLANT FRESNO'
-        assert ghg.name_key('') == ''
+        assert ghg_matching.name_key('Ardagh Glass Inc.') == 'ARDAGH GLASS'
+        assert ghg_matching.name_key('PG&E McDonald Island Underground Storage Station') == 'PG AND E MCDONALD ISLAND UNDERGROUND STORAGE STATION'
+        assert ghg_matching.name_key('The Test Plant, LLC (Fresno)') == 'TEST PLANT FRESNO'
+        assert ghg_matching.name_key('') == ''
 
     def test_similarity(self):
-        assert ghg.similarity('Test Plant Inc', 'TEST PLANT') == 1.0
-        assert ghg.similarity('Mt. Poso Cogeneration Company', 'Sycamore Cogeneration Co') < ghg.AUTO_RATIO
+        assert ghg_matching.similarity('Test Plant Inc', 'TEST PLANT') == 1.0
+        assert ghg_matching.similarity('Mt. Poso Cogeneration Company', 'Sycamore Cogeneration Co') < ghg_matching.AUTO_RATIO
 
 
 class ResolveTests(GHGTestCase):
     def test_frs_id_wins(self):
-        facility, method = ghg.resolve('ghgrp', '1', name='UNRELATED NAME', frs_air_id='CASJV00006019C0001', point=FAR_FROM_PLANT)
+        facility, method = ghg_matching.resolve('ghgrp', '1', name='UNRELATED NAME', frs_air_id='CASJV00006019C0001', point=FAR_FROM_PLANT)
         assert facility == self.plant and method == 'frs'
 
     def test_frs_id_for_an_unknown_facility_falls_through(self):
-        facility, method = ghg.resolve('ghgrp', '1', name='Nothing Like It', frs_air_id='CASJV00006019C9999', point=FAR_FROM_PLANT)
+        facility, method = ghg_matching.resolve('ghgrp', '1', name='Nothing Like It', frs_air_id='CASJV00006019C9999', point=FAR_FROM_PLANT)
         assert facility is None and method == ''
         # Eastern Kern ids don't parse; they fall through too.
-        facility, method = ghg.resolve('ghgrp', '1', name='Test Cement', frs_air_id='CAKCA000000000002', point=Point(-118.17, 35.05, srid=4326))
+        facility, method = ghg_matching.resolve('ghgrp', '1', name='Test Cement', frs_air_id='CAKCA000000000002', point=Point(-118.17, 35.05, srid=4326))
         assert facility == self.cement and method == 'auto'
 
     def test_crosswalk_beats_auto_and_can_pin_none(self):
         with patch.dict(ghg_crosswalk.MRR, {'7': (15, 'KER', 2), '8': None}, clear=True):
-            assert ghg.resolve('mrr', '7', name='Test Plant', zipcode='93728') == (self.cement, 'crosswalk')
-            assert ghg.resolve('mrr', '8', name='Test Plant', zipcode='93728') == (None, 'crosswalk')
+            assert ghg_matching.resolve('mrr', '7', name='Test Plant', zipcode='93728') == (self.cement, 'crosswalk')
+            assert ghg_matching.resolve('mrr', '8', name='Test Plant', zipcode='93728') == (None, 'crosswalk')
         with patch.dict(ghg_crosswalk.MRR, {'7': (15, 'KER', 999)}, clear=True):
             # A stale key (no such facility) is ignored, not fatal.
-            assert ghg.resolve('mrr', '7', name='Test Plant', zipcode='93728') == (self.plant, 'auto')
+            assert ghg_matching.resolve('mrr', '7', name='Test Plant', zipcode='93728') == (self.plant, 'auto')
 
     def test_auto_match_by_zip(self):
-        assert ghg.resolve('mrr', '1', name='Test Plant Inc.', zipcode='93728') == (self.plant, 'auto')
-        assert ghg.resolve('mrr', '1', name='Test Plant Inc.', zipcode='93728-1234') == (self.plant, 'auto')
+        assert ghg_matching.resolve('mrr', '1', name='Test Plant Inc.', zipcode='93728') == (self.plant, 'auto')
+        assert ghg_matching.resolve('mrr', '1', name='Test Plant Inc.', zipcode='93728-1234') == (self.plant, 'auto')
         # Same ZIP, different name.
-        assert ghg.resolve('mrr', '1', name='Fresno Cogeneration Partners', zipcode='93728') == (None, '')
+        assert ghg_matching.resolve('mrr', '1', name='Fresno Cogeneration Partners', zipcode='93728') == (None, '')
         # Right name, other ZIP.
-        assert ghg.resolve('mrr', '1', name='Test Plant', zipcode='93301') == (None, '')
+        assert ghg_matching.resolve('mrr', '1', name='Test Plant', zipcode='93301') == (None, '')
 
     def test_auto_match_by_distance(self):
-        assert ghg.resolve('ghgrp', '1', name='Test Plant', point=NEAR_PLANT) == (self.plant, 'auto')
-        assert ghg.resolve('ghgrp', '1', name='Test Plant', point=FAR_FROM_PLANT) == (None, '')
+        assert ghg_matching.resolve('ghgrp', '1', name='Test Plant', point=NEAR_PLANT) == (self.plant, 'auto')
+        assert ghg_matching.resolve('ghgrp', '1', name='Test Plant', point=FAR_FROM_PLANT) == (None, '')
         Facility.objects.filter(pk=self.plant.pk).update(point_source=Facility.PointSource.MAPTILER)
-        assert ghg.resolve('ghgrp', '1', name='Test Plant', point=NEAR_PLANT) == (None, '')
+        assert ghg_matching.resolve('ghgrp', '1', name='Test Plant', point=NEAR_PLANT) == (None, '')
 
     def test_auto_match_needs_a_clear_winner(self):
         # Multi-site companies reuse a name across CEIDARS facilities: two
@@ -106,13 +107,13 @@ class ResolveTests(GHGTestCase):
             address={'zipcode': '93728'}, point=Point(-119.788, 36.738, srid=4326), point_source=Facility.PointSource.CENSUS,
             county=self.fresno, zipcode=self.plant.zipcode,
         )
-        assert ghg.resolve('mrr', '1', name='Test Plant', zipcode='93728') == (None, '')
+        assert ghg_matching.resolve('mrr', '1', name='Test Plant', zipcode='93728') == (None, '')
         # 'TEST PLANT NORTH' scores 0.8 against 'Test Plant' (at the ratio floor)
         # and the original scores 1.0: a clear winner either way round.
         Facility.objects.filter(pk=twin.pk).update(name='TEST PLANT NORTH')
         twin.refresh_from_db()
-        assert ghg.resolve('mrr', '1', name='Test Plant', zipcode='93728') == (self.plant, 'auto')
-        assert ghg.resolve('mrr', '1', name='Test Plant North', zipcode='93728') == (twin, 'auto')
+        assert ghg_matching.resolve('mrr', '1', name='Test Plant', zipcode='93728') == (self.plant, 'auto')
+        assert ghg_matching.resolve('mrr', '1', name='Test Plant North', zipcode='93728') == (twin, 'auto')
 
 
 def envirofacts(responses):
@@ -200,7 +201,7 @@ class ImportGHGRPTests(GHGTestCase):
 
     def run_import(self, responses=None, **options):
         out = StringIO()
-        with patch('camp.apps.emissions.ghgrp.fetch_json', side_effect=envirofacts(responses or self.responses())):
+        with patch('camp.apps.emissions.importers.ghgrp.fetch_json', side_effect=envirofacts(responses or self.responses())):
             call_command('import_ghgrp', year=2023, stdout=out, **options)
         return out.getvalue()
 
@@ -244,7 +245,7 @@ class ImportGHGRPTests(GHGTestCase):
                 raise requests.ConnectionError('boom')
             return envirofacts(responses)(url)
         err = StringIO()
-        with patch('camp.apps.emissions.ghgrp.fetch_json', side_effect=fetch):
+        with patch('camp.apps.emissions.importers.ghgrp.fetch_json', side_effect=fetch):
             with pytest.raises(CommandError):
                 call_command('import_ghgrp', year=2023, stdout=StringIO(), stderr=err)
         assert '502' in err.getvalue()
@@ -254,7 +255,7 @@ class ImportGHGRPTests(GHGTestCase):
 import shutil
 import tempfile
 
-from camp.apps.emissions import mrr
+from camp.apps.emissions.importers import mrr
 
 SAMPLE = DATA / 'mrr-sample.xlsx'
 
@@ -305,7 +306,7 @@ class ImportMRRTests(GHGTestCase):
 
     def test_a_basin_wide_row_is_never_put_on_a_facility(self):
         # Even when a name match (here forced) would place it on a real facility.
-        with patch('camp.apps.emissions.ghg.resolve', return_value=(self.plant, 'auto')):
+        with patch('camp.apps.emissions.importers.ghg.resolve', return_value=(self.plant, 'auto')):
             self.run_import()
         rows = self.rows()
         assert rows['900002'].basin_wide and rows['900002'].facility is None and rows['900002'].match_method == ''
@@ -363,7 +364,7 @@ class ImportMRRTests(GHGTestCase):
     def test_url_downloads_then_cleans_up(self):
         copied = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False).name
         shutil.copy(SAMPLE, copied)
-        with patch('camp.apps.emissions.mrr.download', return_value=copied) as download:
+        with patch('camp.apps.emissions.importers.mrr.download', return_value=copied) as download:
             call_command('import_mrr', year=2024, url=mrr.URL, stdout=StringIO())
         download.assert_called_once_with(mrr.URL)
         assert GHGReport.objects.count() == 4 and not Path(copied).exists()

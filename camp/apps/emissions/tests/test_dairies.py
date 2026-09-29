@@ -4,7 +4,8 @@ from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.test import TestCase
 
-from camp.apps.emissions import areas, carbonmapper, cepam, dairies
+from camp.apps.emissions import areas, cepam, dairies
+from camp.apps.emissions.importers import carbonmapper
 from camp.apps.emissions.models import CountyInventory, Dairy, DairyHerd, Digester, SizeClass, herd_totals
 from camp.apps.emissions.pollutants import POLLUTANTS, toxic_pollutant
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make

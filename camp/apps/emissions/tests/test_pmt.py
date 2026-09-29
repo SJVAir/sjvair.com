@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
-from camp.apps.emissions import pmt
+from camp.apps.emissions.importers import pmt
 
 COMMA = (
     '"CO","AB","DIS","FACID","FACILITY","LATITUDE","LONGITUDE"\r\n'

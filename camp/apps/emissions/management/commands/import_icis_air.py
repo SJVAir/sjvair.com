@@ -2,7 +2,8 @@ import os
 
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import compliance, icis
+from camp.apps.emissions import compliance
+from camp.apps.emissions.importers import icis
 
 
 class Command(BaseCommand):

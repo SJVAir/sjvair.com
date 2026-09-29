@@ -20,7 +20,8 @@ from pathlib import Path
 from django.core.cache import cache
 from django.test import TestCase
 
-from camp.apps.emissions import ddrdp
+from camp.apps.emissions import dairies
+from camp.apps.emissions.importers import ddrdp
 from camp.apps.emissions.models import DigesterGrant, SourceImport
 from camp.apps.emissions.tests.test_dairies import make_dairies
 
@@ -86,7 +87,7 @@ class MatchAndApplyTests(TestCase):
         return values
 
     def test_two_match_paths_and_unmatched(self):
-        from camp.apps.emissions import ddrdp_crosswalk
+        from camp.apps.emissions.importers import ddrdp_crosswalk
         ddrdp_crosswalk.CROSSWALK['mystery'] = self.small.cadd_id
         try:
             rows = ddrdp.match([
@@ -106,9 +107,9 @@ class MatchAndApplyTests(TestCase):
                       grant_amount=Decimal('900000'), est_reduction_tco2e=5000.0),
         ]), '2026-06-27')
         assert DigesterGrant.objects.count() == 2 and SourceImport.latest('ddrdp').version == '2026-06-27'
-        totals = ddrdp.county_totals(self.big.county)
+        totals = dairies.grant_totals(self.big.county)
         assert totals == {'grants': 1, 'amount': Decimal('1500000'), 'reduction': 12000.0}
-        assert ddrdp.county_totals(self.closed.county) == totals  # same county
+        assert dairies.grant_totals(self.closed.county) == totals  # same county
 
     def test_county_totals_none_with_no_rows(self):
-        assert ddrdp.county_totals(self.big.county) is None
+        assert dairies.grant_totals(self.big.county) is None

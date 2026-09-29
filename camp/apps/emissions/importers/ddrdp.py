@@ -13,7 +13,7 @@ name plus its mailing city against a CADD Dairy's name and city; failing
 that, a normalised name that's unique Valley-wide; failing that,
 ddrdp_crosswalk.CROSSWALK (hand-kept, extended from import_ddrdp's
 unmatched-projects printout). Unmatched rows are kept, not dropped -- their
-county still counts toward county_totals().
+county still counts toward dairies.grant_totals().
 
 Manual: CDFA updates the PDF a few times a year, so there's no periodic
 task; re-run `import_ddrdp` when it changes (the "Updated <date>" line on
@@ -25,16 +25,14 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 import pdfplumber
-from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count, Sum
 
-from camp.apps.emissions import cities, ddrdp_crosswalk
+from camp.apps.emissions import cities
+from camp.apps.emissions.importers import ddrdp_crosswalk
 from camp.apps.emissions.models import Dairy, DigesterGrant, SourceImport
 
 URL = 'https://www.cdfa.ca.gov/oefi/DDRDP/docs/DDRDP_Project_Level_Data.pdf'
 SOURCE = 'ddrdp'
-CACHE_TIMEOUT = 60 * 60 * 24
 
 # Words normalise_name() drops so name variants ("Lakeside Dairy, LLC",
 # "LAKESIDE DAIRY") meet -- unless dropping them would leave nothing, in
@@ -134,7 +132,7 @@ def parse(path):
     it can't be found. A handful of terminated/cancelled projects carry a
     note instead of a GHG figure and have no city/county/dates -- they're
     kept (grant_amount and the project/dairy name are still there; only
-    county_totals(), which needs county, leaves them out).
+    dairies.grant_totals(), which needs county, leaves them out).
     """
     with pdfplumber.open(str(path)) as pdf:
         if not pdf.pages:
@@ -248,7 +246,7 @@ def apply(rows, version):
     """
     One transaction: replace every DigesterGrant with `rows` (as match()
     returns them), stamp SourceImport(SOURCE, version), and bump the
-    dairies cache generation (county_totals() is cached under it, same
+    dairies cache generation (dairies.grant_totals() is cached under it, same
     pattern as the rest of dairies.py -- there's no separate ddrdp
     generation).
     """
@@ -282,27 +280,3 @@ def apply(rows, version):
         SourceImport.objects.create(source=SOURCE, version=version or '', data_through=_version_date(version))
     dairies.clear_caches()
     return report
-
-
-def stamp():
-    return SourceImport.latest(SOURCE)
-
-
-def county_totals(county):
-    """
-    {'grants', 'amount', 'reduction'} over a county's DigesterGrant rows
-    (matched to `county` by CDFA's own county text, case-insensitively
-    against the Region's short_name), or None with no rows. Cached under
-    dairies.key('ddrdp', county.pk); apply()'s dairies.clear_caches()
-    invalidates it, same as every other dairies.py aggregate.
-    """
-    from camp.apps.emissions import dairies
-
-    def compute():
-        agg = DigesterGrant.objects.filter(county__iexact=county.short_name).aggregate(
-            grants=Count('pk'), amount=Sum('grant_amount'), reduction=Sum('est_reduction_tco2e'),
-        )
-        if not agg['grants']:
-            return None
-        return {'grants': agg['grants'], 'amount': agg['amount'], 'reduction': agg['reduction']}
-    return cache.get_or_set(dairies.key('ddrdp', county.pk), compute, CACHE_TIMEOUT)

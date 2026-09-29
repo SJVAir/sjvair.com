@@ -3,7 +3,7 @@ from pathlib import Path
 import requests
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import carbonmapper
+from camp.apps.emissions.importers import carbonmapper
 
 
 class Command(BaseCommand):

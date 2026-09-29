@@ -28,7 +28,8 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 
-from camp.apps.emissions import carbonmapper, dairies, methane
+from camp.apps.emissions import dairies, methane
+from camp.apps.emissions.importers import carbonmapper
 from camp.apps.emissions.models import Facility, MethanePlume, MethaneSource, SourceImport
 from camp.apps.emissions.tests.test_dairies import make_dairies
 from camp.apps.regions.models import Region
@@ -234,7 +235,7 @@ class CommandTests(TestCase):
         make_dairies()
 
     def test_fetches_and_reports(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([row(), row(name='co2', gas='CO2')])):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_csv', return_value=csv_text([row(), row(name='co2', gas='CO2')])):
             call_command('import_carbon_mapper', no_plumes=True)
         assert MethaneSource.objects.count() == 1
 
@@ -246,32 +247,32 @@ class CommandTests(TestCase):
         assert MethaneSource.objects.filter(source_name='p').exists()
 
     def test_an_empty_plume_feed_changes_nothing(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([row()])), \
-                patch('camp.apps.emissions.carbonmapper.fetch_all_plumes', return_value=[]), \
-                patch('camp.apps.emissions.carbonmapper.apply_plumes') as apply_plumes:
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_csv', return_value=csv_text([row()])), \
+                patch('camp.apps.emissions.importers.carbonmapper.fetch_all_plumes', return_value=[]), \
+                patch('camp.apps.emissions.importers.carbonmapper.apply_plumes') as apply_plumes:
             with pytest.raises(CommandError, match='no plumes'):
                 call_command('import_carbon_mapper')
         assert not apply_plumes.called
 
     def test_an_empty_feed_changes_nothing(self):
         carbonmapper.apply([row()])
-        with patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([])):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_csv', return_value=csv_text([])):
             with pytest.raises(CommandError, match='no sources'):
                 call_command('import_carbon_mapper', no_plumes=True)
         assert MethaneSource.objects.count() == 1
 
     def test_no_plumes_skips_the_plume_step(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([row()])), \
-                patch('camp.apps.emissions.carbonmapper.fetch_all_plumes') as fetch_plumes:
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_csv', return_value=csv_text([row()])), \
+                patch('camp.apps.emissions.importers.carbonmapper.fetch_all_plumes') as fetch_plumes:
             call_command('import_carbon_mapper', no_plumes=True)
         fetch_plumes.assert_not_called()
         assert MethanePlume.objects.count() == 0
 
     def test_plumes_are_imported_after_sources(self):
         with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root), \
-                patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([row()])), \
-                patch('camp.apps.emissions.carbonmapper.fetch_all_plumes', return_value=[plume_item()]), \
-                patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+                patch('camp.apps.emissions.importers.carbonmapper.fetch_csv', return_value=csv_text([row()])), \
+                patch('camp.apps.emissions.importers.carbonmapper.fetch_all_plumes', return_value=[plume_item()]), \
+                patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
             call_command('import_carbon_mapper')
         assert MethaneSource.objects.count() == 1
         plume = MethanePlume.objects.get(plume_id='tan-test-A')
@@ -296,7 +297,7 @@ class ApplyPlumesTests(TestCase):
         )
 
     def test_import_creates_links_and_fetches_the_image(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG) as fetch_image:
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG) as fetch_image:
             report = carbonmapper.apply_plumes([plume_item()])
         fetch_image.assert_called_once()
         plume = MethanePlume.objects.get(plume_id='tan-test-A')
@@ -306,21 +307,21 @@ class ApplyPlumesTests(TestCase):
         assert (report.created, report.matched, report.images_fetched, report.images_failed) == (1, 1, 1, 0)
 
     def test_a_far_plume_is_unmatched(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
             report = carbonmapper.apply_plumes([plume_item(plume_id='far', lnglat=OFFSHORE)])
         plume = MethanePlume.objects.get(plume_id='far')
         assert plume.source is None
         assert report.matched == 0
 
     def test_a_failed_image_download_is_counted_not_fatal(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=None):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=None):
             report = carbonmapper.apply_plumes([plume_item()])
         plume = MethanePlume.objects.get(plume_id='tan-test-A')
         assert not plume.image
         assert (report.created, report.images_fetched, report.images_failed) == (1, 0, 1)
 
     def test_an_image_already_on_file_is_never_refetched(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG) as fetch_image:
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG) as fetch_image:
             carbonmapper.apply_plumes([plume_item()])
             assert fetch_image.call_count == 1
             report = carbonmapper.apply_plumes([plume_item(rate=999)])
@@ -337,26 +338,26 @@ class ApplyPlumesTests(TestCase):
         assert (report.fetched, report.skipped) == (2, 2)
 
     def test_duplicate_plume_id_in_a_page_keeps_the_first(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
             report = carbonmapper.apply_plumes([plume_item(rate=100), plume_item(rate=999)])
         assert MethanePlume.objects.count() == 1
         assert MethanePlume.objects.get().emission_kg_h == 100
         assert report.skipped == 1
 
     def test_removed_plumes_are_deleted_with_their_files(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
             carbonmapper.apply_plumes([plume_item(plume_id='a'), plume_item(plume_id='b')])
         b = MethanePlume.objects.get(plume_id='b')
         image_name, storage = b.image.name, b.image.storage
         assert storage.exists(image_name)
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
             report = carbonmapper.apply_plumes([plume_item(plume_id='a')])
         assert report.deleted == 1
         assert not MethanePlume.objects.filter(plume_id='b').exists()
         assert not storage.exists(image_name)
 
     def test_a_partial_response_keeps_the_stored_plumes(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
             carbonmapper.apply_plumes([plume_item(plume_id=p) for p in 'abcd'])
             report = carbonmapper.apply_plumes([plume_item(plume_id='a')])  # 1 of 4 back: not 3 withdrawals
         assert report.deleted == 0 and report.kept_stale == 3
@@ -369,7 +370,7 @@ class FetchPlumesTests(TestCase):
         page1 = {'bbox_count': 3, 'items': [plume_item(plume_id='a'), plume_item(plume_id='b')]}
         page2 = {'bbox_count': 3, 'items': [plume_item(plume_id='c')]}
         with patch.object(carbonmapper, 'PLUME_PAGE_SIZE', 2), \
-                patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, page2]) as fetch_page:
+                patch('camp.apps.emissions.importers.carbonmapper.fetch_plumes_page', side_effect=[page1, page2]) as fetch_page:
             items = carbonmapper.fetch_all_plumes()
         assert [item['plume_id'] for item in items] == ['a', 'b', 'c']
         assert fetch_page.call_count == 2
@@ -379,7 +380,7 @@ class FetchPlumesTests(TestCase):
         page1 = {'items': [plume_item(plume_id='a'), plume_item(plume_id='b')]}
         page2 = {'items': [plume_item(plume_id='c')]}
         with patch.object(carbonmapper, 'PLUME_PAGE_SIZE', 2), \
-                patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, page2]):
+                patch('camp.apps.emissions.importers.carbonmapper.fetch_plumes_page', side_effect=[page1, page2]):
             items = carbonmapper.fetch_all_plumes()
         assert [item['plume_id'] for item in items] == ['a', 'b', 'c']
 
@@ -387,13 +388,13 @@ class FetchPlumesTests(TestCase):
         page1 = {'bbox_count': 10, 'items': [plume_item(plume_id='a')]}
         empty = {'bbox_count': 10, 'items': []}
         with patch.object(carbonmapper, 'PLUME_PAGE_SIZE', 1), \
-                patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, empty]):
+                patch('camp.apps.emissions.importers.carbonmapper.fetch_plumes_page', side_effect=[page1, empty]):
             items = carbonmapper.fetch_all_plumes()
         assert [item['plume_id'] for item in items] == ['a']
 
     def test_fetch_plumes_page_sends_the_bearer_key_and_never_the_url_beyond_that(self):
-        with patch('camp.apps.emissions.carbonmapper.settings') as mock_settings, \
-                patch('camp.apps.emissions.carbonmapper.requests.get') as mock_get:
+        with patch('camp.apps.emissions.importers.carbonmapper.settings') as mock_settings, \
+                patch('camp.apps.emissions.importers.carbonmapper.requests.get') as mock_get:
             mock_settings.CARBON_MAPPER_API_KEY = 'secret-key'
             mock_get.return_value.raise_for_status.return_value = None
             mock_get.return_value.json.return_value = {'items': [], 'bbox_count': 0}

@@ -3,7 +3,7 @@ import requests
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from camp.apps.emissions import carb, cepam
+from camp.apps.emissions.importers import carb, cepam
 from camp.apps.emissions.models import CountyInventory
 
 

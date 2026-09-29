@@ -3,7 +3,8 @@ from datetime import date
 
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import mrr, stats
+from camp.apps.emissions import stats
+from camp.apps.emissions.importers import mrr
 from camp.apps.emissions.models import SourceImport
 
 

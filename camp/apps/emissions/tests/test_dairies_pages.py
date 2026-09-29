@@ -543,7 +543,7 @@ class DairyIncludeTests(DairyPageTestCase):
 class MethaneTests(DairyPageTestCase):
     def setUp(self):
         super().setUp()
-        from camp.apps.emissions import carbonmapper
+        from camp.apps.emissions.importers import carbonmapper
         from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
         carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH, rate='120', unc='40')])
 

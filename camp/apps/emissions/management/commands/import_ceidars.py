@@ -6,7 +6,8 @@ import requests
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import carb, ceidars, locations, pmt
+from camp.apps.emissions import locations
+from camp.apps.emissions.importers import carb, ceidars, pmt
 from camp.apps.emissions.models import EmissionsRecord, Facility
 from camp.apps.emissions.sectors import sector_for_sic
 from camp.apps.regions.models import Region

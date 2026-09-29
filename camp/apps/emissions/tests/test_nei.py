@@ -17,6 +17,7 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from camp.apps.emissions import nei, stats
+from camp.apps.emissions.importers import nei as nei_importer
 from camp.apps.emissions.models import CountyNEI, SourceImport
 from camp.apps.regions.models import Region
 
@@ -77,16 +78,16 @@ class NEITestCase(TestCase):
         self.kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
         self.sector_zip = build_zip(self.tmp.name, 'sector.zip', SECTOR_HEADER, SECTOR_ROWS)
         self.nonpoint_zip = build_zip(self.tmp.name, 'nonpoint.zip', NONPOINT_HEADER, NONPOINT_ROWS)
-        self.fips = set(nei.county_fips())
+        self.fips = set(nei_importer.county_fips())
 
 
 class ReadTests(NEITestCase):
     def test_county_fips(self):
         assert self.fips == {'06019', '06029', '06031', '06039', '06047', '06077', '06099', '06107'}
-        assert nei.county_fips()['06019'] == self.fresno
+        assert nei_importer.county_fips()['06019'] == self.fresno
 
     def test_sector_rows_filter_convert_and_sum(self):
-        rows = nei.read_sector(self.sector_zip, self.fips)
+        rows = nei_importer.read_sector(self.sector_zip, self.fips)
         by_key = {(row['fips'], row['sector']): row['tons'] for row in rows}
         assert by_key[(FRESNO, nei.LIVESTOCK_SECTOR)] == 9784
         assert by_key[(FRESNO, 'Fuel Comb - Electric Generation - Natural Gas')] == 100  # LB -> tons
@@ -96,7 +97,7 @@ class ReadTests(NEITestCase):
         assert not any('NOX' in sector for _, sector in by_key)
 
     def test_nonpoint_keeps_livestock_only_and_sums_sccs(self):
-        rows = nei.read_nonpoint(self.nonpoint_zip, self.fips)
+        rows = nei_importer.read_nonpoint(self.nonpoint_zip, self.fips)
         by_key = {(row['fips'], row['level3']): row['tons'] for row in rows}
         assert by_key == {
             (FRESNO, nei.DAIRY_SUBSECTOR): 4070, (FRESNO, 'Beef cattle waste'): 5714, (KERN, nei.DAIRY_SUBSECTOR): 3492,
@@ -106,36 +107,36 @@ class ReadTests(NEITestCase):
         header = [name for name in NONPOINT_HEADER if name != 'sector']
         rows = [[value for name, value in zip(NONPOINT_HEADER, row) if name != 'sector'] for row in NONPOINT_ROWS]
         path = build_zip(self.tmp.name, 'nosector.zip', header, rows)
-        by_key = {(row['fips'], row['level3']) for row in nei.read_nonpoint(path, self.fips)}
+        by_key = {(row['fips'], row['level3']) for row in nei_importer.read_nonpoint(path, self.fips)}
         assert by_key == {(FRESNO, nei.DAIRY_SUBSECTOR), (FRESNO, 'Beef cattle waste'), (KERN, nei.DAIRY_SUBSECTOR)}
 
     def test_missing_column_is_a_format_error(self):
         import pytest
         path = build_zip(self.tmp.name, 'bad.zip', ['fips code', 'sector', 'value'], [[FRESNO, 'x', '1']])
-        with pytest.raises(nei.NEIFormatError, match='pollutant'):
-            nei.read_sector(path, self.fips)
+        with pytest.raises(nei_importer.NEIFormatError, match='pollutant'):
+            nei_importer.read_sector(path, self.fips)
 
     def test_reads_from_the_zip_without_extracting(self):
         # Nothing but the zips may appear in the temp directory: the 2.8 GB CSV must never touch the disk.
         before = set(os.listdir(self.tmp.name))
-        nei.read_sector(self.sector_zip, self.fips)
-        nei.read_nonpoint(self.nonpoint_zip, self.fips)
+        nei_importer.read_sector(self.sector_zip, self.fips)
+        nei_importer.read_nonpoint(self.nonpoint_zip, self.fips)
         assert set(os.listdir(self.tmp.name)) == before
 
     def test_the_real_layout(self):
         # The checked-in files carry EPA's real headers and sector names.
-        rows = nei.read_sector(zip_of(self.tmp.name, DATA / 'sector.csv'), self.fips)
+        rows = nei_importer.read_sector(zip_of(self.tmp.name, DATA / 'sector.csv'), self.fips)
         sectors = {row['sector'] for row in rows}
         assert nei.LIVESTOCK_SECTOR in sectors and nei.FERTILIZER_SECTOR in sectors
         assert {row['fips'] for row in rows} <= self.fips and len({row['fips'] for row in rows}) == 8
-        livestock = nei.read_nonpoint(zip_of(self.tmp.name, DATA / 'nonpoint.csv'), self.fips)
+        livestock = nei_importer.read_nonpoint(zip_of(self.tmp.name, DATA / 'nonpoint.csv'), self.fips)
         assert nei.DAIRY_SUBSECTOR in {row['level3'] for row in livestock}
         assert all(row['tons'] > 0 for row in livestock)
 
 
 class ApplyTests(NEITestCase):
     def run_apply(self):
-        return nei.apply(2023, nei.read_sector(self.sector_zip, self.fips), nei.read_nonpoint(self.nonpoint_zip, self.fips))
+        return nei_importer.apply(2023, nei_importer.read_sector(self.sector_zip, self.fips), nei_importer.read_nonpoint(self.nonpoint_zip, self.fips))
 
     def test_writes_sector_and_subsector_rows(self):
         report = self.run_apply()
@@ -166,9 +167,9 @@ class CommandTests(NEITestCase):
         assert CountyNEI.objects.count() == 9
 
     def test_default_downloads_and_unlinks(self):
-        with patch('camp.apps.emissions.nei.download', side_effect=[self.sector_zip, self.nonpoint_zip]) as download:
+        with patch('camp.apps.emissions.importers.nei.download', side_effect=[self.sector_zip, self.nonpoint_zip]) as download:
             call_command('import_nei', year=2023)
-        assert [c.args[0] for c in download.call_args_list] == list(nei.URLS[2023])
+        assert [c.args[0] for c in download.call_args_list] == list(nei_importer.URLS[2023])
         assert not os.path.exists(self.sector_zip) and not os.path.exists(self.nonpoint_zip)
         assert SourceImport.latest('nei') is not None
 
@@ -182,7 +183,7 @@ class CommandTests(NEITestCase):
 class ReadSideTests(NEITestCase):
     def setUp(self):
         super().setUp()
-        nei.apply(2023, nei.read_sector(self.sector_zip, self.fips), nei.read_nonpoint(self.nonpoint_zip, self.fips))
+        nei_importer.apply(2023, nei_importer.read_sector(self.sector_zip, self.fips), nei_importer.read_nonpoint(self.nonpoint_zip, self.fips))
         cache.clear()
 
     def test_context_for_a_county(self):
@@ -227,7 +228,7 @@ class ReadSideTests(NEITestCase):
 class NeiBarTests(NEITestCase):
     def setUp(self):
         super().setUp()
-        nei.apply(2023, nei.read_sector(self.sector_zip, self.fips), nei.read_nonpoint(self.nonpoint_zip, self.fips))
+        nei_importer.apply(2023, nei_importer.read_sector(self.sector_zip, self.fips), nei_importer.read_nonpoint(self.nonpoint_zip, self.fips))
         cache.clear()
 
     def test_county_page_shows_the_bar_for_ammonia_only(self):

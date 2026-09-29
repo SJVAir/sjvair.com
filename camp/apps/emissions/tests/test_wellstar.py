@@ -16,7 +16,8 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from camp.apps.emissions import wells, wellstar
+from camp.apps.emissions import wells
+from camp.apps.emissions.importers import wellstar
 from camp.apps.emissions.models import SourceImport, Well
 from camp.apps.emissions.tests.test_dairies import IN_KERN, NEAR_PLANT
 from camp.apps.regions.models import Region
@@ -96,7 +97,7 @@ class ParseTests(TestCase):
 
 class PagesTests(TestCase):
     def test_pages_follow_the_transfer_limit(self):
-        with patch('camp.apps.emissions.wellstar.fetch_page', side_effect=paged(FEATURES, 3)) as fetch:
+        with patch('camp.apps.emissions.importers.wellstar.fetch_page', side_effect=paged(FEATURES, 3)) as fetch:
             pages = list(wellstar.pages())
         assert [len(page) for page in pages] == [3, 3, 2]
         assert [c.args[0] for c in fetch.call_args_list] == [0, 3, 6]
@@ -151,7 +152,7 @@ class CommandAndTaskTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
 
     def test_fetches_every_page(self):
-        with patch('camp.apps.emissions.wellstar.fetch_page', side_effect=paged(FEATURES, 5)):
+        with patch('camp.apps.emissions.importers.wellstar.fetch_page', side_effect=paged(FEATURES, 5)):
             call_command('import_wells')
         assert Well.objects.count() == 4
 
@@ -165,7 +166,7 @@ class CommandAndTaskTests(TestCase):
 
     def test_empty_feed_changes_nothing(self):
         wellstar.apply(FEATURES[:1])
-        with patch('camp.apps.emissions.wellstar.fetch_page', side_effect=paged([], 5)):
+        with patch('camp.apps.emissions.importers.wellstar.fetch_page', side_effect=paged([], 5)):
             with pytest.raises(CommandError, match='no wells'):
                 call_command('import_wells')
         assert Well.objects.count() == 1

@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Avg, Count, F, Q, Sum
 
-from camp.apps.emissions import carb
+from camp.apps.emissions.importers import carb
 from camp.apps.emissions.models import EmissionsRecord, Facility
 
 

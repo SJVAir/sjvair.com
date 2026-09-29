@@ -8,7 +8,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from camp.apps.emissions.ceidars import normalize_city
+from camp.apps.emissions.importers.ceidars import normalize_city
 from camp.apps.emissions.models import EmissionsRecord, Facility
 from camp.apps.regions.models import Region
 
@@ -79,7 +79,7 @@ class ImportCeidarsTests(TestCase):
         criteria = criteria if criteria is not None else {10: FRESNO_CRITERIA, 15: KERN_CRITERIA}
         toxics = toxics if toxics is not None else {10: FRESNO_TOXICS, 15: KERN_TOXICS}
         with patch('requests.get', side_effect=carb(criteria, toxics, urls)), \
-                patch('camp.apps.emissions.pmt.fetch_markers', return_value=(markers or {}, [2024])), \
+                patch('camp.apps.emissions.importers.pmt.fetch_markers', return_value=(markers or {}, [2024])), \
                 patch('camp.utils.geocode.census_batch', side_effect=census), \
                 patch('camp.utils.geocode.maptiler_batch', side_effect=maptiler) as maptiler_mock:
             kwargs = {'year': year}

@@ -15,7 +15,8 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from camp.apps.emissions import contable, stats
+from camp.apps.emissions import stats
+from camp.apps.emissions.importers import contable
 from camp.apps.emissions.models import EmissionsRecord, Facility, SourceImport, ToxicEmission, ToxicPollutant
 from camp.apps.emissions.tests.test_import_ceidars import CA_COUNTY_CODES
 from camp.apps.regions.models import Region

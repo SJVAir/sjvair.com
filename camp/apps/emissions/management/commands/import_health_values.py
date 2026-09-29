@@ -4,7 +4,8 @@ import tempfile
 import requests
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import contable, stats
+from camp.apps.emissions import stats
+from camp.apps.emissions.importers import contable
 from camp.apps.emissions.models import SourceImport
 
 

@@ -5,7 +5,8 @@ import requests
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from camp.apps.emissions import carb, ceidars, stats
+from camp.apps.emissions import stats
+from camp.apps.emissions.importers import carb, ceidars
 from camp.apps.emissions.models import Facility, SourceImport, ToxicEmission, ToxicPollutant
 
 # CARB's names are abbreviations in mixed case ('1,2,4TriMeBenze'); shouting

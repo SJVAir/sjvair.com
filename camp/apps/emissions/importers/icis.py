@@ -7,7 +7,7 @@ Only federally reportable sources are here (about 660 of the Valley's
 11,000 permitted facilities). SJVAPCD's own id is embedded in the ICIS id:
 `CA` + `SJV` + `0000` + 5-digit county FIPS + a region letter (S/C/N) + the
 district facid, which is the CEIDARS facid. Eastern Kern and EPA-lead ids
-don't encode ours (icis_crosswalk). The district's reporting runs a year or
+don't encode ours (CROSSWALK below). The district's reporting runs a year or
 more behind: every surface stamps "reported through" the newest event date.
 """
 import csv
@@ -25,7 +25,6 @@ import requests
 from django.conf import settings
 from django.db import transaction
 
-from camp.apps.emissions.icis_crosswalk import CROSSWALK
 from camp.apps.emissions.models import AirComplianceFacility, ComplianceEvent, Facility, SourceImport
 from camp.apps.regions.models import Region
 
@@ -58,6 +57,12 @@ _SJV_ID = re.compile(r'^CASJV000(\d{5})([SCN])(\d{1,6})$')
 # inspection and violation-history files dashes (10-28-2022).
 DATE_FORMATS = ('%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%m/%d/%Y %H:%M:%S', '%d-%b-%y')
 TITLE_V_CODE = 'CAATVP'
+# ICIS-Air ids that don't encode a CEIDARS facility id (Eastern Kern APCD's
+# `CAKCA…`, EPA Region 9's `0900…` / `CA0000…`), matched by hand:
+# pgm_sys_id -> (CARB county code, air district external id, facid). Empty
+# until someone checks the rows against the permit portal; apply() stores
+# unmatched rows but never shows them.
+CROSSWALK = {}
 
 
 class ICISFormatError(ValueError):

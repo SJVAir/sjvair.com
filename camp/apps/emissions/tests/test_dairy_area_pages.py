@@ -158,7 +158,7 @@ class ContentTests(DairyAreaTestCase):
     def test_ddrdp_tile_on_a_county_page(self):
         from decimal import Decimal
 
-        from camp.apps.emissions import ddrdp
+        from camp.apps.emissions.importers import ddrdp
         row = dict(
             project_name='Big Dairy Digester', dairy_name='Big Dairy', city='Riverdale', county='Fresno',
             developer='Dev Co', grant_amount=Decimal('1500000'), end_use='Pipeline injection',
@@ -180,7 +180,7 @@ class ContentTests(DairyAreaTestCase):
         assert context['trend'] == dairies.trend(area=areas.RegionArea(cdp))
 
     def test_methane_tile_and_filter_on_an_area_page(self):
-        from camp.apps.emissions import carbonmapper
+        from camp.apps.emissions.importers import carbonmapper
         from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
         carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH)])
         content = self.get(self.fresno, {'year': '2023'}).content.decode()

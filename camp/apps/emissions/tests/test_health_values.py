@@ -8,7 +8,8 @@ from pathlib import Path
 from django.core.management import call_command
 from django.test import TestCase
 
-from camp.apps.emissions import contable, stats
+from camp.apps.emissions import stats
+from camp.apps.emissions.importers import contable
 from camp.apps.emissions.models import SourceImport, ToxicPollutant
 
 SAMPLE = Path(__file__).parent / 'data' / 'contable-sample.pdf'

@@ -11,7 +11,8 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from camp.apps.emissions import cadd, dairies
+from camp.apps.emissions import dairies
+from camp.apps.emissions.importers import cadd
 from camp.apps.emissions.models import Dairy, DairyHerd, Digester, SizeClass, herd_totals, size_class
 from camp.apps.regions.models import Region
 

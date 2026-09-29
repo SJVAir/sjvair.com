@@ -17,7 +17,7 @@ import requests
 
 from django.db import transaction
 
-from camp.apps.emissions import ghg
+from camp.apps.emissions.importers import ghg
 from camp.apps.emissions.models import GHGReport
 from camp.apps.regions.models import Region
 

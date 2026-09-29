@@ -2,7 +2,7 @@ import os
 
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import nei
+from camp.apps.emissions.importers import nei
 
 
 class Command(BaseCommand):

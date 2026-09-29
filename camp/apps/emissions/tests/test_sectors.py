@@ -73,7 +73,7 @@ class OilGasMethaneListTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
 
     def setUp(self):
-        from camp.apps.emissions import carbonmapper
+        from camp.apps.emissions.importers import carbonmapper
         from camp.apps.emissions.tests.test_carbonmapper import AT_GAS_STATION, row
         from camp.apps.emissions.tests.test_dairies import make_dairies
         cache.clear()

@@ -17,7 +17,7 @@ from django.urls import reverse
 
 import vanilla
 
-from camp.apps.emissions import areas, dairies, ddrdp, methane, nei, stats, views
+from camp.apps.emissions import areas, dairies, methane, nei, stats, views
 from camp.apps.emissions.models import HERD_FIELDS
 from camp.apps.emissions.pollutants import CRITERIA
 from camp.apps.emissions.views import AREA_PAGE_TYPES, ScopeMixin, radius_area, region_page_title, region_title
@@ -390,7 +390,7 @@ class DairyAreaPage(DairyScopeMixin, vanilla.TemplateView):
             digester_trend=dairies.digester_chart_points(area=area),
             carb_estimate={'tons': this_year['value'], 'share': this_year['share'], 'place': county.name, 'flat_since': flat_since if flat_since and scope.year >= flat_since else None} if this_year else None,
             nei_dairy=nei.dairy_tile(county) if county is not None else None,
-            ddrdp_totals=ddrdp.county_totals(county) if county is not None else None,
+            ddrdp_totals=dairies.grant_totals(county) if county is not None else None,
             hide_county=county is not None,
             map_config=self.get_map_config(scope) if dairies.years() else None,
             # The page is the area: no county picker.

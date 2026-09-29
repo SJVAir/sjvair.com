@@ -4,7 +4,8 @@ from datetime import date
 
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import ghgrp, stats
+from camp.apps.emissions import stats
+from camp.apps.emissions.importers import ghgrp
 from camp.apps.emissions.models import GHGReport, SourceImport
 from camp.apps.regions.models import Region
 

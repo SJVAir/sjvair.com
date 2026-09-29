@@ -6,7 +6,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from camp.apps.emissions import cepam
+from camp.apps.emissions.importers import cepam
 from camp.apps.emissions.models import CountyInventory
 from camp.apps.regions.models import Region
 
@@ -64,7 +64,7 @@ class ImportCepamTests(TestCase):
             mock.text = text
             mock.raise_for_status.return_value = None
             return mock
-        with patch('camp.apps.emissions.cepam.requests.get', side_effect=get):
+        with patch('camp.apps.emissions.importers.cepam.requests.get', side_effect=get):
             call_command('import_cepam', year=year, county='fresno')
 
     def test_imports_and_replaces_idempotently(self):

@@ -10,7 +10,7 @@ from pathlib import Path
 from django.db import models
 from django.test import TestCase
 
-from camp.apps.emissions import icis
+from camp.apps.emissions.importers import icis
 from camp.apps.emissions.models import AirComplianceFacility, ComplianceEvent, Facility, SourceImport
 
 DATA = Path(__file__).parent / 'data' / 'icis-air'
@@ -216,7 +216,7 @@ class CommandTests(TestCase):
         from django.core.management import call_command
         tmp = tempfile.mkdtemp()
         path = build_zip(tmp)
-        with patch('camp.apps.emissions.icis.download', return_value=path) as download:
+        with patch('camp.apps.emissions.importers.icis.download', return_value=path) as download:
             call_command('import_icis_air')
         download.assert_called_once_with()
         assert not os.path.exists(path)

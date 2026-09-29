@@ -29,7 +29,7 @@ from django.db.models.functions import Coalesce, Lower
 from camp.apps.emissions import areas, cepam, cities, stats
 from camp.apps.emissions.models import (
     LARGE_MATURE_COWS, LARGE_OTHER_CATTLE, MEDIUM_MATURE_COWS, MEDIUM_OTHER_CATTLE,
-    CountyInventory, Dairy, DairyHerd, Digester, MethaneSource, SizeClass,
+    CountyInventory, Dairy, DairyHerd, Digester, DigesterGrant, MethaneSource, SizeClass,
 )
 from camp.apps.emissions.pollutants import POLLUTANTS
 from camp.apps.regions.models import Region
@@ -492,3 +492,20 @@ def resolve_scope(params):
     if params.get('county'):
         county = Region.objects.counties().filter(slug=params['county']).first()
     return stats.Scope(year=year, county=county, pollutant=pollutant), notes
+
+
+def grant_totals(county):
+    """
+    {'grants', 'amount', 'reduction'} over a county's DigesterGrant rows
+    (matched to `county` by CDFA's own county text, case-insensitively
+    against the Region's short_name), or None with no rows. Cached under
+    key('ddrdp', county.pk); import_ddrdp's clear_caches() invalidates it.
+    """
+    def compute():
+        agg = DigesterGrant.objects.filter(county__iexact=county.short_name).aggregate(
+            grants=Count('pk'), amount=Sum('grant_amount'), reduction=Sum('est_reduction_tco2e'),
+        )
+        if not agg['grants']:
+            return None
+        return {'grants': agg['grants'], 'amount': agg['amount'], 'reduction': agg['reduction']}
+    return cache.get_or_set(key('ddrdp', county.pk), compute, stats.CACHE_TIMEOUT)

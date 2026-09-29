@@ -8,7 +8,8 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from camp.apps.emissions import areas, carbonmapper, dairies, methane, wells
+from camp.apps.emissions import areas, dairies, methane, wells
+from camp.apps.emissions.importers import carbonmapper
 from camp.apps.emissions.models import DairyHerd, Digester, EmissionsRecord, Facility, MethanePlume, MethaneSource, ToxicEmission, ToxicPollutant, Well
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
 from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, SAMPLE_PNG, plume_item, row
@@ -458,7 +459,7 @@ class DairyEndpointTests(TestCase):
         assert self.get('dairy-counties').status_code == 200
 
     def test_detail_carries_the_methane_block(self):
-        from camp.apps.emissions import carbonmapper
+        from camp.apps.emissions.importers import carbonmapper
         from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
         carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH, rate='120', unc='40')])
         block = self.get('dairy-detail', sqid=self.big.sqid).json()['methane']
@@ -468,7 +469,7 @@ class DairyEndpointTests(TestCase):
         assert self.get('dairy-detail', sqid=self.small.sqid).json()['methane']['sources'] == []
 
     def test_detail_carries_grants(self):
-        from camp.apps.emissions import ddrdp
+        from camp.apps.emissions.importers import ddrdp
         grant_row = dict(
             project_name='Big Dairy Digester', dairy_name='Big Dairy', city='Riverdale', county='Fresno',
             developer='Dev Co', grant_amount=Decimal('1500000'), end_use='Pipeline injection',
@@ -559,7 +560,7 @@ class MethaneEndpointTests(TestCase):
         assert response['X-Cache-Status'] == 'MISS' and len(response.json()['features']) == 2
 
     def test_plumes_newest_first_with_bounds_and_image_url(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
             carbonmapper.apply_plumes([
                 plume_item(plume_id='older', lnglat=NEAR_BOTH, scene_timestamp='2026-01-01T00:00:00.000Z',
                            rate=100, unc=20, wind_speed=1.5, wind_dir=90, bounds=[-119.79, 36.73, -119.78, 36.74]),
@@ -581,7 +582,7 @@ class MethaneEndpointTests(TestCase):
         assert body['source'] == self.source.sqid
 
     def test_plume_with_no_image_is_null(self):
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=None):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=None):
             carbonmapper.apply_plumes([plume_item(plume_id='noimg', lnglat=NEAR_BOTH)])
         body = self.client.get(reverse('api:v2:emissions:methane-plumes', args=[self.source.sqid])).json()
         assert body['plumes'][0]['image_url'] is None
@@ -603,7 +604,7 @@ class MethaneEndpointTests(TestCase):
         assert self.client.get(url)['X-Cache-Status'] == 'MISS'
         assert self.client.get(url)['X-Cache-Status'] == 'HIT'
         carbonmapper.apply([row(name='near', lnglat=NEAR_BOTH)])
-        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+        with patch('camp.apps.emissions.importers.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
             carbonmapper.apply_plumes([plume_item(plume_id='fresh', lnglat=NEAR_BOTH)])
         response = self.client.get(url)
         assert response['X-Cache-Status'] == 'MISS' and len(response.json()['plumes']) == 1

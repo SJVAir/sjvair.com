@@ -2,7 +2,7 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-from camp.apps.emissions import wellstar
+from camp.apps.emissions.importers import wellstar
 
 
 class Command(BaseCommand):
