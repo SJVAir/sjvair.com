@@ -5,6 +5,20 @@ FIXTURE_DIRS = [BASE_DIR.child('fixtures')]
 
 MEDIA_ROOT = tempfile.mkdtemp(prefix='sjvair-test-media-')
 
+# Database
+
+# The test tables are never ANALYZEd, so the planner wildly overestimates
+# row counts on the multi-table-inheritance Monitor joins and JIT-compiles
+# nearly every query, costing ~200ms each for sub-millisecond queries.
+DATABASES['default'].setdefault('OPTIONS', {})['options'] = '-c jit=off'
+
+# Argon2 is deliberately slow; tests don't need a secure hash. It stays
+# listed so the Argon2 hash in fixtures/users.yaml still verifies.
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.MD5PasswordHasher',
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+]
+
 # Mail
 
 EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'

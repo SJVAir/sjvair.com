@@ -1,11 +1,21 @@
+import contextlib
+import io
+import shutil
+import tempfile
+import uuid
+import zipfile
+
+from pathlib import Path
 from unittest.mock import patch
 
+import geopandas as gpd
 import numpy as np
 import pytest
 from django.contrib.gis.geos import Point, Polygon, MultiPolygon
+from django.core.management import call_command
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
-from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry import Polygon as ShapelyPolygon, box
 
 from camp.apps.accounts.models import User
 from camp.apps.ces.models import CES4, CES5
@@ -24,6 +34,7 @@ from camp.apps.regions.forecast_zones import (
     region_boundary_shape,
     transform_polygon,
 )
+from camp.utils import geodata
 
 
 class RegionTests(TestCase):
@@ -438,3 +449,60 @@ class CountyNameWithoutRegionsTests(TestCase):
         with self.assertLogs('camp.apps.regions.counties', level='WARNING') as logs:
             assert county_name(Point(-119.7871, 36.7378, srid=4326)) == ''
         assert 'import_counties' in logs.output[0]
+
+
+class CheckCes4TractsCommandTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def setUp(self):
+        # Two Fresno tracts and one in Los Angeles, which the county-overlap
+        # filter should drop. Tract IDs are numeric in the CES4 shapefile.
+        self.tracts = gpd.GeoDataFrame(
+            {'Tract': [6019000100.0, 6019000200.0, 6037000100.0], 'County': ['Fresno', 'Fresno', 'Los Angeles']},
+            geometry=[box(-119.76, 36.74, -119.75, 36.75), box(-119.74, 36.74, -119.73, 36.75), box(-118.25, 34.05, -118.24, 34.06)],
+            crs='EPSG:4326',
+        )
+        # 06019000100 has a 2010 boundary slightly offset from CES4's; 06019000200
+        # only has a 2020 boundary, so it's reported as missing.
+        self.add_tract('06019000100', '2010', Polygon.from_bbox((-119.76, 36.74, -119.749, 36.75)))
+        self.add_tract('06019000200', '2020', Polygon.from_bbox((-119.74, 36.74, -119.73, 36.75)))
+
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        self.zip_path = Path(tmpdir.name) / 'ces4.zip'
+        self.tracts.to_file(Path(tmpdir.name) / 'ces4.shp')
+        with zipfile.ZipFile(self.zip_path, 'w') as z:
+            for ext in ('shp', 'shx', 'dbf', 'prj', 'cpg'):
+                z.write(Path(tmpdir.name) / f'ces4.{ext}', f'ces4.{ext}')
+
+        url = f'https://example.com/{uuid.uuid4().hex}/ces4.zip'
+        self.addCleanup((geodata.GEODATA_CACHE_DIR / f'{geodata.cache_key(url)}.zip').unlink, missing_ok=True)
+        ckan = patch('camp.utils.geodata.ckanapi.RemoteCKAN').start()
+        ckan.return_value.action.package_show.return_value = {
+            'resources': [{'name': 'CalEnviroScreen 4.0 Results Shapefile', 'url': url}],
+        }
+        patch('camp.utils.geodata.stream_to_disk', side_effect=lambda url, dest, verify: shutil.copyfile(self.zip_path, dest)).start()
+        self.addCleanup(patch.stopall)
+
+    def add_tract(self, geoid, version, polygon):
+        region = Region.objects.create(name=geoid, slug=geoid, type=Region.Type.TRACT, external_id=geoid)
+        Boundary.objects.create(region=region, version=version, geometry=MultiPolygon(polygon, srid=4326))
+
+    def run_command(self):
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            call_command('check_ces4_tracts')
+        return stdout.getvalue()
+
+    def test_compares_tracts_inside_the_counties(self):
+        output = self.run_command()
+        assert 'Total tracts compared: 1' in output
+        assert '06019000100: ' in output
+        assert '06037000100' not in output
+
+    def test_reports_missing_tracts_with_their_county(self):
+        output = self.run_command()
+        assert 'CES4 Tracts missing in our database: 1' in output
+        missing = output.split('--- Missing Tracts With 2020 Boundary Present ---')[1]
+        assert '06019000200: ' in missing
+        assert '(gdf: Fresno / ces: Fresno County / db: Fresno County)' in missing

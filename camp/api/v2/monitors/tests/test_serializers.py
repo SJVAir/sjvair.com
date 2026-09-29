@@ -1,4 +1,3 @@
-import pytest
 
 from django.test import TestCase
 from django.utils import timezone
@@ -9,12 +8,10 @@ from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.apps.qaqc.models import HealthCheck
 
 
-pytestmark = [
-    pytest.mark.usefixtures('purpleair_monitor'),
-    pytest.mark.django_db(transaction=True),
-]
 
 class SerializerTests(TestCase):
+    fixtures = ['purple-air.yaml']
+
     def setUp(self):
         self.monitor = PurpleAir.objects.get(sensor_id=8892)
 

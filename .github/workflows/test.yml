@@ -40,7 +40,9 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run tests
-        run: docker compose --profile test run --rm test pytest
+        # --reuse-db only skips dropping the per-worker test DBs at the end;
+        # the db container is fresh here and torn down below anyway.
+        run: docker compose --profile test run --rm test pytest -n 4 --dist loadscope --reuse-db
 
       - name: Tear down
         if: always()

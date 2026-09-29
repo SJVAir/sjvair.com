@@ -12,13 +12,11 @@ def generate_sensor_value(mean, variance):
     return Decimal(str(round(random.gauss(mean, variance), 2)))
 
 
-def create_hourly_data_for_monitor(monitor, start_time=None):
+def create_hourly_data_for_monitor(monitor, start_time=None, minutes=60):
     if start_time is None:
-        start_time = datetime.now(tz=pytz.UTC) - timedelta(hours=1, minutes=1)
+        start_time = datetime.now(tz=pytz.UTC) - timedelta(minutes=minutes + 1)
 
-    entries = []
-    for i in range(60):  # One per minute
-        entries = []
+    for i in range(minutes):  # One per minute
         timestamp = start_time + timedelta(minutes=i)
 
         for EntryModel, config in monitor.ENTRY_CONFIG.items():
@@ -53,7 +51,6 @@ def create_hourly_data_for_monitor(monitor, start_time=None):
                     **fields
                 )
                 monitor.process_entry_pipeline(entry)
-                entries.append(entry)
 
 
 def queue_immediate_mode(enabled: bool, queue_name='primary'):
