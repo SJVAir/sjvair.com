@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import areas, dairies, endpoints, geojson, places, wells
+from . import areas, dairies, endpoints, geojson, methane, places, wells
 
 app_name = 'emissions'
 
@@ -16,5 +16,7 @@ urlpatterns = [
     path('dairies/<str:sqid>/', dairies.DairyDetail.as_view(), name='dairy-detail'),
     path('wells/geojson/', wells.WellGeoJSON.as_view(), name='wells-geojson'),
     path('wells/<str:sqid>/', wells.WellDetail.as_view(), name='well-detail'),
+    path('methane/geojson/', methane.MethaneGeoJSON.as_view(), name='methane-geojson'),
+    path('methane/sources/<str:sqid>/plumes/', methane.SourcePlumes.as_view(), name='methane-plumes'),
     path('<str:facility_id>/', endpoints.FacilityDetail.as_view(), name='detail'),
 ]

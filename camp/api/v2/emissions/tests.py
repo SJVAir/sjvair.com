@@ -1,12 +1,16 @@
+import tempfile
+from unittest.mock import patch
+
 import pytest
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from camp.apps.emissions import areas, dairies, wells
-from camp.apps.emissions.models import DairyHerd, Digester, EmissionsRecord, Facility, ToxicEmission, ToxicPollutant, Well
+from camp.apps.emissions import areas, carbonmapper, dairies, methane, wells
+from camp.apps.emissions.models import DairyHerd, Digester, EmissionsRecord, Facility, MethanePlume, MethaneSource, ToxicEmission, ToxicPollutant, Well
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
+from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, SAMPLE_PNG, plume_item, row
 from camp.apps.emissions.tests.test_dairies import IN_KERN, dairy_inventory, make_dairies, set_city
 from camp.apps.emissions.tests.test_wells import make_well
 from camp.apps.regions.models import Boundary, Region
@@ -498,3 +502,98 @@ class WellEndpointTests(TestCase):
         }
         assert self.client.get(reverse('api:v2:emissions:well-detail', args=[self.active.sqid])).json()['spud_year'] == 2015
         assert self.client.get(reverse('api:v2:emissions:well-detail', args=['nope'])).status_code == 404
+
+
+class MethaneEndpointTests(TestCase):
+    """
+    /api/2.0/emissions/methane/: what used to be the same-origin-only
+    /tools/emissions/methane/geojson/ (test_methane.py's ViewTests), now
+    public, plus the source plumes endpoint the map's popup stepper reads.
+    """
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.tmp = tempfile.mkdtemp()
+        self._media_root = override_settings(MEDIA_ROOT=self.tmp)
+        self._media_root.enable()
+        self.addCleanup(self._media_root.disable)
+        carbonmapper.apply([row(name='near', lnglat=NEAR_BOTH)])
+        self.source = MethaneSource.objects.get(source_name='near')
+
+    def test_geojson_carries_the_attribution_and_licence(self):
+        response = self.client.get(reverse('api:v2:emissions:methane-geojson'))
+        assert response.status_code == 200
+        body = response.json()
+        assert body['type'] == 'FeatureCollection' and len(body['features']) == 1
+        assert body['properties']['attribution'] == 'Data by Carbon Mapper®'
+        assert body['properties']['license'] == 'Carbon Mapper non-commercial terms, https://carbonmapper.org/terms'
+        assert body['properties']['license_url'] == 'https://carbonmapper.org/terms'
+        assert body['properties']['home_url'] == 'https://carbonmapper.org'
+
+    def test_geojson_is_404_before_any_import(self):
+        MethaneSource.objects.all().delete()
+        from camp.apps.emissions.models import SourceImport
+        SourceImport.objects.filter(source='carbon-mapper').delete()
+        methane.clear_caches()
+        assert self.client.get(reverse('api:v2:emissions:methane-geojson')).status_code == 404
+
+    def test_geojson_cache_follows_the_methane_generation(self):
+        assert self.client.get(reverse('api:v2:emissions:methane-geojson'))['X-Cache-Status'] == 'MISS'
+        assert self.client.get(reverse('api:v2:emissions:methane-geojson'))['X-Cache-Status'] == 'HIT'
+        carbonmapper.apply([row(name='near', lnglat=NEAR_BOTH), row(name='second', lnglat=(-119.0, 35.4))])
+        response = self.client.get(reverse('api:v2:emissions:methane-geojson'))
+        assert response['X-Cache-Status'] == 'MISS' and len(response.json()['features']) == 2
+
+    def test_plumes_newest_first_with_bounds_and_image_url(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            carbonmapper.apply_plumes([
+                plume_item(plume_id='older', lnglat=NEAR_BOTH, scene_timestamp='2026-01-01T00:00:00.000Z',
+                           rate=100, unc=20, wind_speed=1.5, wind_dir=90, bounds=[-119.79, 36.73, -119.78, 36.74]),
+                plume_item(plume_id='newer', lnglat=NEAR_BOTH, scene_timestamp='2026-06-01T00:00:00.000Z',
+                           rate=200, unc=None, wind_speed=None, wind_dir=None),
+            ])
+        response = self.client.get(reverse('api:v2:emissions:methane-plumes', args=[self.source.sqid]))
+        assert response.status_code == 200
+        body = response.json()
+        assert [p['id'] for p in body['plumes']] == [MethanePlume.objects.get(plume_id='newer').sqid, MethanePlume.objects.get(plume_id='older').sqid]
+        older = body['plumes'][1]
+        assert older['rate'] == 100.0 and older['uncertainty'] == 20.0 and older['rate_text'] == '100 ± 20 kg/h'
+        assert older['wind_speed'] == 1.5 and older['wind_direction'] == 90.0
+        assert older['bounds'] == [[-119.79, 36.74], [-119.78, 36.74], [-119.78, 36.73], [-119.79, 36.73]]
+        assert older['image_url'] and older['image_url'].startswith('/')
+        newer = body['plumes'][0]
+        assert newer['uncertainty'] is None and newer['wind_speed'] is None and newer['rate_text'] == '200 kg/h'
+        assert body['attribution'] == 'Data by Carbon Mapper®'
+        assert body['license'] == 'Carbon Mapper non-commercial terms, https://carbonmapper.org/terms'
+        assert body['license_url'] == 'https://carbonmapper.org/terms'
+        assert body['home_url'] == 'https://carbonmapper.org'
+        assert body['source'] == self.source.sqid
+
+    def test_plume_with_no_image_is_null(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=None):
+            carbonmapper.apply_plumes([plume_item(plume_id='noimg', lnglat=NEAR_BOTH)])
+        body = self.client.get(reverse('api:v2:emissions:methane-plumes', args=[self.source.sqid])).json()
+        assert body['plumes'][0]['image_url'] is None
+
+    def test_unknown_source_is_404(self):
+        response = self.client.get(reverse('api:v2:emissions:methane-plumes', args=['doesnotexist']))
+        assert response.status_code == 404
+
+    def test_source_with_no_plumes_is_empty(self):
+        MethanePlume.objects.all().delete()
+        body = self.client.get(reverse('api:v2:emissions:methane-plumes', args=[self.source.sqid])).json()
+        assert body['plumes'] == []
+
+    def test_plumes_cache_follows_the_methane_generation(self):
+        # import_carbon_mapper always runs apply() (which bumps the
+        # generation) before apply_plumes() in the same command invocation,
+        # so a real import's new plumes are never served from a stale cache.
+        url = reverse('api:v2:emissions:methane-plumes', args=[self.source.sqid])
+        assert self.client.get(url)['X-Cache-Status'] == 'MISS'
+        assert self.client.get(url)['X-Cache-Status'] == 'HIT'
+        carbonmapper.apply([row(name='near', lnglat=NEAR_BOTH)])
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            carbonmapper.apply_plumes([plume_item(plume_id='fresh', lnglat=NEAR_BOTH)])
+        response = self.client.get(url)
+        assert response['X-Cache-Status'] == 'MISS' and len(response.json()['plumes']) == 1

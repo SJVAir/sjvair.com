@@ -1,13 +1,20 @@
 /*
  * The "Methane sources (Carbon Mapper)" overlay, shared by facility-map.js
  * and dairy-map.js: one circle per Carbon Mapper CH4 source from
- * data-methane-url (/tools/emissions/methane/geojson/, our pages only),
- * sized by the square root of its rate and coloured by sector group; a
- * legend checkbox row toggles it and ?methane= carries it. The source
- * carries a MapLibre attribution, so the map's attribution control shows
- * "Data by Carbon Mapper®" whenever the layer is on; the popup repeats it
- * with the non-commercial terms. Nothing here is ours: every rate is
- * labelled a Carbon Mapper estimate.
+ * data-methane-url (/api/2.0/emissions/methane/geojson/), sized by the
+ * square root of its rate and coloured by sector group; a legend checkbox
+ * row toggles it and ?methane= carries it. The source carries a MapLibre
+ * attribution, so the map's attribution control shows "Data by Carbon
+ * Mapper®" whenever the layer is on; the popup repeats it with the
+ * non-commercial terms. Nothing here is ours: every rate is labelled a
+ * Carbon Mapper estimate.
+ *
+ * Opening a source's popup also fetches its plumes (data-methane-plumes-url,
+ * /api/2.0/emissions/methane/sources/<id>/plumes/) and drapes the newest
+ * one's image on the map as a MapLibre image source + raster layer, below
+ * the source circles; small "< date >" controls in the popup step through
+ * the source's other plumes. The image layer is removed when the popup
+ * closes or the overlay is turned off.
  */
 (function () {
   'use strict';
@@ -18,6 +25,8 @@
   var COLORS = { livestock: '#7c3aed', 'oil-gas': '#0f766e', waste: '#b45309', other: '#6b7280' };
   var GROUPS = [['livestock', 'Livestock'], ['oil-gas', 'Oil & gas'], ['waste', 'Waste & wastewater'], ['other', 'Other']];
   var TERMS_URL = 'https://carbonmapper.org/terms';
+  var PLUME_SOURCE = 'methane-plume-image';
+  var PLUME_LAYER = 'methane-plume-image';
 
   var escapeHtml = M.escapeHtml;
   var getJson = M.getJson;
@@ -28,6 +37,10 @@
     this.before = (opts || {}).before || null;
     this.collection = null;
     this.request = 0;
+    this.plumes = null;
+    this.plumeIndex = 0;
+    this.plumeRequest = 0;
+    this.activePopup = null;
     this.read();
     var self = this;
     host.map.on('click', 'methane', function (evt) { self.openPopup(evt.features[0], evt.lngLat); });
@@ -66,6 +79,7 @@
   Overlay.prototype.apply = function () {
     var map = this.host.map;
     if (map && map.getLayer('methane')) map.setLayoutProperty('methane', 'visibility', this.enabled && this.on ? 'visible' : 'none');
+    if (!this.enabled || !this.on) this.removePlumeLayer();
   };
 
   // Fetched once per page (the whole Valley, cached an hour server-side), only when on.
@@ -107,6 +121,7 @@
   };
 
   Overlay.prototype.openPopup = function (feature, lngLat) {
+    var self = this;
     var p = feature.properties;
     // Nested objects arrive as JSON strings in MapLibre feature properties.
     var link = p.facility ? JSON.parse(p.facility) : null;
@@ -119,8 +134,119 @@
       (dairy ? '<p>Nearest dairy: ' + escapeHtml(dairy.name) + '</p>' : '') +
       (link ? '<p>Nearest facility: <a href="' + escapeHtml(link.url) + '">' + escapeHtml(link.name) + '</a></p>' : '') +
       '<p><a href="' + escapeHtml(p.viewer_url) + '">View at Carbon Mapper →</a></p>' +
+      '<div class="methane-plume-panel" data-plume-panel><p class="is-size-7 has-text-grey">Loading plume imagery…</p></div>' +
       '<p class="is-size-7 has-text-grey"><a href="' + escapeHtml(this.host.data.methaneHome || 'https://carbonmapper.org') + '">' + escapeHtml(this.host.data.methaneAttribution || 'Data by Carbon Mapper®') + '</a>, for <a href="' + TERMS_URL + '">non-commercial use</a>.</p></div>';
-    this.host.shell.placePopup(html, lngLat);
+    var popup = this.host.shell.placePopup(html, lngLat);
+    this.plumes = null;
+    this.plumeIndex = 0;
+    this.activePopup = popup;
+    popup.on('close', function () { self.closePlumePanel(popup); });
+    this.loadPlumes(p.id, popup);
+  };
+
+  // Fetched fresh per popup open (a source's plumes rarely change): the
+  // stepper starts at the newest and drapes its image.
+  Overlay.prototype.loadPlumes = function (sourceId, popup) {
+    var self = this;
+    var url = this.host.data.methanePlumesUrl;
+    if (!url) return;
+    var request = ++this.plumeRequest;
+    getJson(url.replace('{id}', encodeURIComponent(sourceId)))
+      .then(function (data) {
+        if (request !== self.plumeRequest || self.activePopup !== popup) return;
+        self.plumes = (data && data.plumes) || [];
+        self.plumeIndex = 0;
+        self.renderPlumePanel(popup);
+      })
+      .catch(function (err) {
+        if (request !== self.plumeRequest || self.activePopup !== popup) return;
+        logError('failed to load the source\'s plumes', err);
+        var panel = self.plumePanel(popup);
+        if (panel) panel.innerHTML = '';
+      });
+  };
+
+  Overlay.prototype.plumePanel = function (popup) {
+    var el = popup && popup.getElement && popup.getElement();
+    return el ? el.querySelector('[data-plume-panel]') : null;
+  };
+
+  Overlay.prototype.formatPlumeDate = function (iso) {
+    try {
+      return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch (err) {
+      return iso || '';
+    }
+  };
+
+  Overlay.prototype.renderPlumePanel = function (popup) {
+    var panel = this.plumePanel(popup);
+    if (!panel) return;
+    if (!this.plumes || !this.plumes.length) {
+      panel.innerHTML = '<p class="is-size-7 has-text-grey">No plume detections on file.</p>';
+      this.removePlumeLayer();
+      return;
+    }
+    var self = this;
+    var plume = this.plumes[this.plumeIndex];
+    var hasRate = plume.rate !== null && plume.rate !== undefined;
+    var hasWind = plume.wind_speed !== null && plume.wind_speed !== undefined;
+    var platformText = plume.platform ? escapeHtml(plume.platform) + (plume.instrument ? ' (' + escapeHtml(plume.instrument) + ')' : '') : '';
+    var multi = this.plumes.length > 1;
+    panel.innerHTML =
+      '<div class="methane-plume-stepper">' +
+        '<button type="button" class="methane-plume-prev" aria-label="Earlier plume"' + (multi ? '' : ' disabled') + '>◀</button>' +
+        '<span class="methane-plume-date">' + escapeHtml(this.formatPlumeDate(plume.observed_at)) + '</span>' +
+        '<button type="button" class="methane-plume-next" aria-label="Later plume"' + (multi ? '' : ' disabled') + '>▶</button>' +
+      '</div>' +
+      (platformText ? '<p class="is-size-7">' + platformText + '</p>' : '') +
+      (hasRate ? '<p class="is-size-7">' + escapeHtml(plume.rate_text) + ' <span class="has-text-grey">(Carbon Mapper estimate)</span></p>' : '') +
+      (hasWind ? '<p class="is-size-7">Wind ' + escapeHtml(String(plume.wind_speed)) + ' m/s' + (plume.wind_direction !== null && plume.wind_direction !== undefined ? ' @ ' + escapeHtml(String(plume.wind_direction)) + '°' : '') + '</p>' : '') +
+      (!plume.image_url ? '<p class="is-size-7 has-text-grey">No image for this pass.</p>' : '');
+    var prevBtn = panel.querySelector('.methane-plume-prev');
+    var nextBtn = panel.querySelector('.methane-plume-next');
+    if (prevBtn) prevBtn.addEventListener('click', function () { self.stepPlume(-1, popup); });
+    if (nextBtn) nextBtn.addEventListener('click', function () { self.stepPlume(1, popup); });
+    this.drapePlume(plume);
+  };
+
+  Overlay.prototype.stepPlume = function (delta, popup) {
+    if (!this.plumes || this.plumes.length < 2) return;
+    this.plumeIndex = (this.plumeIndex + delta + this.plumes.length) % this.plumes.length;
+    this.renderPlumePanel(popup);
+  };
+
+  // The image source + raster layer, below the source circles (`before`
+  // 'methane' when it's on the map yet).
+  Overlay.prototype.drapePlume = function (plume) {
+    this.removePlumeLayer();
+    var map = this.host.map;
+    if (!map || !plume || !plume.image_url || !plume.bounds) return;
+    try {
+      map.addSource(PLUME_SOURCE, { type: 'image', url: plume.image_url, coordinates: plume.bounds });
+      map.addLayer(
+        { id: PLUME_LAYER, type: 'raster', source: PLUME_SOURCE, paint: { 'raster-opacity': 0.85 } },
+        map.getLayer('methane') ? 'methane' : undefined
+      );
+    } catch (err) {
+      logError('failed to drape the plume image', err);
+    }
+  };
+
+  Overlay.prototype.removePlumeLayer = function () {
+    var map = this.host.map;
+    if (!map) return;
+    if (map.getLayer(PLUME_LAYER)) map.removeLayer(PLUME_LAYER);
+    if (map.getSource(PLUME_SOURCE)) map.removeSource(PLUME_SOURCE);
+  };
+
+  Overlay.prototype.closePlumePanel = function (popup) {
+    if (this.activePopup !== popup) return;
+    this.activePopup = null;
+    this.plumes = null;
+    this.plumeIndex = 0;
+    this.plumeRequest += 1;
+    this.removePlumeLayer();
   };
 
   Overlay.prototype.writeState = function (params) {
@@ -137,8 +263,22 @@
     });
   };
 
-  Overlay.prototype.onAdopt = function () { this.read(); this.apply(); this.load(); };
-  Overlay.prototype.destroy = function () { this.collection = null; };
+  Overlay.prototype.onAdopt = function () {
+    this.activePopup = null;
+    this.plumes = null;
+    this.plumeIndex = 0;
+    this.plumeRequest += 1;
+    this.read();
+    this.apply();
+    this.load();
+  };
+  Overlay.prototype.destroy = function () {
+    this.collection = null;
+    this.activePopup = null;
+    this.plumes = null;
+    this.plumeRequest += 1;
+    this.removePlumeLayer();
+  };
 
   window.EmissionsMethaneOverlay = Overlay;
 })();

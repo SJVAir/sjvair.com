@@ -109,6 +109,50 @@ def for_dairy(dairy):
     return list(sources().filter(dairy=dairy))
 
 
+def plume_rate_text(plume):
+    """Same format as MethaneSource.rate_text, for a plume's own estimate."""
+    if plume.emission_kg_h is None:
+        return 'rate not estimated'
+    text = f'{plume.emission_kg_h:,.0f}'
+    if plume.uncertainty_kg_h is not None:
+        text += f' ± {plume.uncertainty_kg_h:,.0f}'
+    return f'{text} kg/h'
+
+
+def plume_data(plume):
+    """One plume for the plumes API/popup stepper: rate, wind, the 4-corner
+    bounds a MapLibre image source wants (top-left, top-right, bottom-right,
+    bottom-left), and the stored image's URL, or None when there isn't one."""
+    west, south, east, north = plume.bounds_bbox
+    return {
+        'id': plume.sqid,
+        'observed_at': plume.observed_at.isoformat(),
+        'platform': plume.platform,
+        'instrument': plume.instrument,
+        'rate': plume.emission_kg_h,
+        'uncertainty': plume.uncertainty_kg_h,
+        'rate_text': plume_rate_text(plume),
+        'wind_speed': plume.wind_speed,
+        'wind_direction': plume.wind_direction,
+        'bounds': [[west, north], [east, north], [east, south], [west, south]],
+        'image_url': plume.image.url if plume.image else None,
+    }
+
+
+def source_plumes(source):
+    """A source's plumes, newest first, for the API/popup stepper. Cached
+    under the generation; a re-import invalidates it."""
+    def compute():
+        plumes = [plume_data(plume) for plume in source.plumes.order_by('-observed_at')]
+        return {
+            'source': source.sqid,
+            'plumes': plumes,
+            'attribution': MethaneSource.ATTRIBUTION, 'license': MethaneSource.LICENSE,
+            'license_url': MethaneSource.LICENSE_URL, 'home_url': MethaneSource.HOME_URL,
+        }
+    return cache.get_or_set(key('plumes', source.pk), compute, CACHE_TIMEOUT)
+
+
 def oil_gas_sources():
     """Every oil & gas source, by county then rate, with its facility where the import matched one."""
     def compute():

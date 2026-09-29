@@ -80,24 +80,12 @@ class FacilityAndSectorTests(MethaneTestCase):
 
 
 class ViewTests(MethaneTestCase):
-    def test_the_view_is_same_origin_only(self):
-        response = self.client.get(reverse('emissions:methane-geojson'))
-        assert response.status_code == 200
-        assert response['Cache-Control'] == 'private, max-age=3600' and response['X-Robots-Tag'] == 'noindex'
-        body = response.json()
-        assert body['properties']['license'].startswith('Carbon Mapper non-commercial') and len(body['features']) == 3
-
-    def test_no_api_route(self):
+    def test_the_old_same_origin_route_is_gone(self):
+        # Moved to /api/2.0/emissions/methane/geojson/ (camp/api/v2/emissions/tests.py
+        # pins the new route and its attribution/licence).
         with pytest.raises(NoReverseMatch):
-            reverse('api:v2:emissions:methane-geojson')
-        assert self.client.get('/api/2.0/emissions/methane/geojson/').status_code == 404
-
-    def test_404_before_any_import(self):
-        MethaneSource.objects.all().delete()
-        from camp.apps.emissions.models import SourceImport
-        SourceImport.objects.filter(source='carbon-mapper').delete()
-        methane.clear_caches()
-        assert self.client.get(reverse('emissions:methane-geojson')).status_code == 404
+            reverse('emissions:methane-geojson')
+        assert self.client.get('/tools/emissions/methane/geojson/').status_code == 404
 
 
 class OverlayConfigTests(MethaneTestCase):
@@ -122,7 +110,8 @@ class OverlayConfigTests(MethaneTestCase):
         ]
         for url in urls:
             content = self.client.get(url, {'year': 2023}).content.decode()
-            assert map_data(content, 'methane-url') == reverse('emissions:methane-geojson'), url
+            assert map_data(content, 'methane-url') == reverse('api:v2:emissions:methane-geojson'), url
+            assert map_data(content, 'methane-plumes-url') == reverse('api:v2:emissions:methane-plumes', args=['__id__']).replace('__id__', '{id}'), url
             assert map_data(content, 'methane') == '', url
             assert 'Carbon Mapper' in map_data(content, 'methane-attribution'), url
         content = self.client.get(reverse('emissions:map'), {'methane': '1'}).content.decode()

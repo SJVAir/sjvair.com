@@ -686,7 +686,7 @@ def main():
         if has_toggle:
             driver.execute_script("document.querySelector('.dairy-map-legend [data-methane]').click()")
             loaded = wait_for(driver, "var el = document.querySelector('.dairy-map'); return !!el && el.dataset.methaneLoaded === '1';")
-            count = driver.execute_script("var m = window.EmissionsDairyMap.instances()[0]; return m.map.querySourceFeatures('methane').length;")
+            count = settled_count(driver, lambda d: d.execute_script("var m = window.EmissionsDairyMap.instances()[0]; return m.map.querySourceFeatures('methane').length;"))
             check(results, 'the methane layer loads and ?methane=1 lands in the URL', loaded and count > 0 and 'methane=1' in driver.current_url, f'{count} sources; {driver.current_url}')
             legend = driver.execute_script("return document.querySelector('.dairy-map-legend').textContent;")
             check(results, 'the methane legend carries the attribution', 'Data by Carbon Mapper' in legend and 'Livestock' in legend)
@@ -697,6 +697,32 @@ def main():
                 "m.methane.openPopup(f, {lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1]}); return true;")
             popup = driver.execute_script("var p = document.querySelector('.methane-popup'); return p ? p.textContent : '';") if opened else ''
             check(results, 'a methane popup says Carbon Mapper estimate and carries the attribution', 'Carbon Mapper estimate' in popup and 'Data by Carbon Mapper' in popup, popup[:160])
+
+            # Part 2: the popup's plume image stepper (methane-overlay.js
+            # loadPlumes/renderPlumePanel). The plumes fetch is async, so wait
+            # for the panel to render past "Loading plume imagery...".
+            panel_ready = wait_for(
+                driver,
+                "var p = document.querySelector('[data-plume-panel]');"
+                "return !!p && p.textContent.indexOf('Loading plume imagery') === -1;") if opened else False
+            if not panel_ready:
+                check(results, 'the source popup drapes a plume image (needs plumes imported on this DB)', False, 'plume panel never left the loading state -- skip if import_carbon_mapper plumes are still importing')
+            else:
+                panel_text = driver.execute_script("return document.querySelector('[data-plume-panel]').textContent;")
+                has_plumes = 'No plume detections on file' not in panel_text
+                if not has_plumes:
+                    check(results, 'the source popup drapes a plume image (needs plumes imported on this DB)', False, 'source has no plumes on file yet')
+                else:
+                    has_image_layer = driver.execute_script("var m = window.EmissionsDairyMap.instances()[0]; return !!(m.map.getLayer('methane-plume-image') && m.map.getSource('methane-plume-image'));")
+                    date_text = driver.execute_script("var d = document.querySelector('.methane-plume-date'); return d ? d.textContent : '';")
+                    check(results, 'the plume image layer appears with a dated stepper', has_image_layer or 'No image for this pass' in panel_text, f'layer={has_image_layer} date={date_text!r}')
+                    next_btn = driver.execute_script("var b = document.querySelector('.methane-plume-next'); return b && !b.disabled;")
+                    if next_btn:
+                        driver.execute_script("document.querySelector('.methane-plume-next').click();")
+                        new_date = driver.execute_script("var d = document.querySelector('.methane-plume-date'); return d ? d.textContent : '';")
+                        check(results, "stepping the plume popup's controls changes the date", new_date != date_text, f'{date_text!r} -> {new_date!r}')
+                    else:
+                        check(results, "stepping the plume popup's controls changes the date", True, 'only one plume on file -- stepper correctly disabled')
 
         driver.execute_script("document.querySelector('.dairy-map-view [data-view=counties]').click()")
         shaded = settled_count(driver, shaded_counties)

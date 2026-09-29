@@ -444,9 +444,13 @@ def methane_overlay(get, *, default=False):
 def methane_map_data(overlay):
     """The data-* values both map configs carry for the overlay; empty strings when it isn't offered."""
     if not overlay:
-        return {'methane_url': '', 'methane': '', 'methane_default': '', 'methane_attribution': '', 'methane_home': ''}
+        return {
+            'methane_url': '', 'methane_plumes_url': '', 'methane': '',
+            'methane_default': '', 'methane_attribution': '', 'methane_home': '',
+        }
     return {
-        'methane_url': reverse('emissions:methane-geojson'),
+        'methane_url': reverse('api:v2:emissions:methane-geojson'),
+        'methane_plumes_url': reverse('api:v2:emissions:methane-plumes', args=['__id__']).replace('__id__', '{id}'),
         'methane': '1' if overlay['on'] else '',
         'methane_default': '1' if overlay['default'] else '',
         'methane_attribution': MethaneSource.ATTRIBUTION,
