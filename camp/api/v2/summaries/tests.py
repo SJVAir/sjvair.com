@@ -1,8 +1,6 @@
 from datetime import datetime, timedelta
 from unittest import mock
 
-import pytest
-
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
@@ -24,10 +22,6 @@ region_summary_list = RegionSummaryList.as_view()
 bulk_monitor_summary_list = BulkMonitorSummaryList.as_view()
 bulk_region_summary_list = BulkRegionSummaryList.as_view()
 
-pytestmark = [
-    pytest.mark.usefixtures('purpleair_monitor'),
-    pytest.mark.django_db(transaction=True),
-]
 
 # Minimal stats for creating test records
 STATS = {
@@ -190,7 +184,7 @@ class MonitorSummaryListTests(TestCase):
 
 
 class BulkMonitorSummaryListTests(TestCase):
-    fixtures = ['purple-air.yaml', 'bam1022.yaml']
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'default-calibrations.yaml']
 
     def setUp(self):
         self.factory = RequestFactory()
