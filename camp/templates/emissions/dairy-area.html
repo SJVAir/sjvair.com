@@ -46,6 +46,12 @@ the table's County column.
                     <span class="icon is-small is-left"><span class="fas fa-search"></span></span>
                 </div>
             </div>
+            {% if methane_stamp %}
+            <div class="field">
+                <label class="checkbox"><input type="checkbox" name="methane" value="1"{% if filters.methane %} checked{% endif %}> With an observed methane source</label>
+                <p class="help">Carbon Mapper plumes within 1 km. <a href="{% url 'emissions:about' %}#methane">What this is</a>.</p>
+            </div>
+            {% endif %}
             <div class="field is-grouped">
                 <div class="control"><button class="button is-link" type="submit">Apply</button></div>
                 <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}">Clear</a></div>

@@ -168,7 +168,8 @@
 
   // A dairy's popup from /api/2.0/emissions/dairies/<id>/: name, address,
   // mature dairy cows, EPA size and the herd by class (CARB's estimates starred), its
-  // digesters, and the region pages it counts in (`qs`, the scope, rides along).
+  // digesters, any Carbon Mapper methane sources linked to it, and the region
+  // pages it counts in (`qs`, the scope, rides along).
   function popupHtml(data, qs) {
     var address = data.address || {};
     var parts = [
@@ -193,6 +194,16 @@
     }
     if (data.digesters && data.digesters.length) {
       parts.push('<p>Digester' + (data.digesters.length > 1 ? 's' : '') + ': ' + data.digesters.map(digesterText).join('; ') + '</p>');
+    }
+    var me = data.methane;
+    if (me && me.sources && me.sources.length) {
+      var lines = me.sources.map(function (s) {
+        return '<strong>Methane observed</strong>: ' + escapeHtml(s.rate_text) + ' (Carbon Mapper estimate)' +
+          (s.det ? ', ' + s.det + ' detection' + (s.det === 1 ? '' : 's') + ' of ' + s.obs + ' pass' + (s.obs === 1 ? '' : 'es') : '') +
+          ' · <a href="' + escapeHtml(s.viewer_url) + '">View at Carbon Mapper →</a>';
+      });
+      lines.push('<span class="has-text-grey"><a href="' + escapeHtml(me.attribution.url) + '">' + escapeHtml(me.attribution.text) + '</a>, non-commercial use</span>');
+      parts.push('<div class="dairy-popup-methane is-size-7"><p>' + lines.join('<br>') + '</p></div>');
     }
     if (data.areas && data.areas.length) {
       parts.push('<p>Counted in ' + data.areas.map(function (area) {

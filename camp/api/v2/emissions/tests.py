@@ -452,6 +452,16 @@ class DairyEndpointTests(TestCase):
         assert response.status_code == 200 and response.json()['features'] == []
         assert self.get('dairy-counties').status_code == 200
 
+    def test_detail_carries_the_methane_block(self):
+        from camp.apps.emissions import carbonmapper
+        from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
+        carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH, rate='120', unc='40')])
+        block = self.get('dairy-detail', sqid=self.big.sqid).json()['methane']
+        assert [s['rate_text'] for s in block['sources']] == ['120 ± 40 kg/h']
+        assert block['sources'][0]['viewer_url'].startswith('https://data.carbonmapper.org/#')
+        assert block['attribution']['text'] == 'Data by Carbon Mapper®'
+        assert self.get('dairy-detail', sqid=self.small.sqid).json()['methane']['sources'] == []
+
 
 class WellEndpointTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']

@@ -38,4 +38,10 @@ dairy-cattle ammonia and its share of the county's.
         <p class="is-size-7 has-text-grey">dairy cattle, {{ nei_dairy.share|percent }} of the county's ammonia ({{ nei_dairy.year }})</p>
     </div></div>
     {% endif %}
+    {% if methane_stamp %}
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">With observed methane plumes</p><p class="title">{{ summary.methane|intcomma }}</p>
+        <p class="is-size-7 has-text-grey"><a href="{{ methane_attribution.url }}">{{ methane_attribution.text }}</a>, snapshots</p>
+    </div></div>
+    {% endif %}
 </div>

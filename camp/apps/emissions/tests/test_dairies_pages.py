@@ -538,3 +538,33 @@ class DairyIncludeTests(DairyPageTestCase):
         assert '<th>County</th>' not in html
         html = render_to_string('emissions/includes/dairy-table.html', {'rows': []})
         assert '<th>County</th>' in html
+
+
+class MethaneTests(DairyPageTestCase):
+    def setUp(self):
+        super().setUp()
+        from camp.apps.emissions import carbonmapper
+        from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
+        carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH, rate='120', unc='40')])
+
+    def test_column_filter_and_tile(self):
+        content = self.get({'year': '2023'}).content.decode()
+        # The column header is sortable, so it's a sort_link anchor (label
+        # plus an icon span) rather than a bare <th>Methane observed</th>.
+        assert 'sort=-methane_kg_h">Methane observed ' in content and 'Carbon Mapper estimate' in content
+        big_row = content[content.index('BIG DAIRY</a>'):]
+        assert '120 kg/h' in big_row[:big_row.index('</tr>')]
+        assert '<p class="heading">With observed methane plumes</p><p class="title">1</p>' in content
+        assert 'name="methane" value="1"' in content and 'With an observed methane source' in content
+        assert 'Data by Carbon Mapper' in content
+        content = self.get({'year': '2023', 'methane': '1'}).content.decode()
+        assert 'BIG DAIRY' in content and 'SMALL DAIRY' not in content and 'checked' in content
+
+    def test_no_import_shows_nothing(self):
+        from camp.apps.emissions import dairies, methane
+        from camp.apps.emissions.models import MethaneSource, SourceImport
+        MethaneSource.objects.all().delete()
+        SourceImport.objects.filter(source='carbon-mapper').delete()
+        dairies.clear_caches(); methane.clear_caches()
+        content = self.get({'year': '2023'}).content.decode()
+        assert 'Methane observed' not in content and 'name="methane"' not in content and 'With observed methane plumes' not in content

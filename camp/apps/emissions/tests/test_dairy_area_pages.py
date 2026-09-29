@@ -163,6 +163,14 @@ class ContentTests(DairyAreaTestCase):
         assert by_year[2023] == 1
         assert context['trend'] == dairies.trend(area=areas.RegionArea(cdp))
 
+    def test_methane_tile_and_filter_on_an_area_page(self):
+        from camp.apps.emissions import carbonmapper
+        from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
+        carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH)])
+        content = self.get(self.fresno, {'year': '2023'}).content.decode()
+        assert '<p class="heading">With observed methane plumes</p><p class="title">1</p>' in content
+        assert self.get(self.fresno, {'year': '2023', 'methane': '1'}).context['summary']['dairies'] == 1
+
     def test_table_sorts_searches_and_pages(self):
         # cadd_ids 1-3 are make_dairies()'s; 60 more Fresno dairies make two pages.
         for n in range(10, 70):

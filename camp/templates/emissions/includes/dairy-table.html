@@ -3,7 +3,9 @@
 Dairies (DairyHerd rows from dairies.table) as a table. On the Dairies tab it's
 `sortable`, and with `zoom` a name moves the tab's map to the dairy
 (dairy-map.js). `hide_county` hides the County column too -- a county dairy
-page hides it (the page is the county).
+page hides it (the page is the county). The Methane observed column only
+shows once an import has run (`methane_stamp`, dairy_views.DairyScopeMixin);
+its rate is Carbon Mapper's estimate, not ours -- see the About page.
 {% endcomment %}
 <div class="table-container">
 <table class="table is-fullwidth is-hoverable is-narrow dairy-table">
@@ -16,6 +18,8 @@ page hides it (the page is the county).
             <th class="has-text-right">Other cattle</th>
             <th>EPA size</th>
             <th>Digester</th>
+            {% if methane_stamp %}<th>{% if sortable %}{% sort_link 'methane_kg_h' 'Methane observed' %}{% else %}Methane observed{% endif %}
+                <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-arrow" data-tooltip="Plumes Carbon Mapper has observed within 1 km, from aircraft and satellite passes since 2016: the largest source's rate (a Carbon Mapper estimate, an instantaneous snapshot with wide uncertainty, not an annual total) and its detection count. No plume doesn't mean no emissions. Data by Carbon Mapper®, non-commercial use."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span></th>{% endif %}
         </tr>
     </thead>
     <tbody>
@@ -29,10 +33,11 @@ page hides it (the page is the county).
             <td class="has-text-right">{{ herd.other_cattle|whole }}</td>
             <td>{{ herd.get_size_class_display }}</td>
             <td>{% if herd.digester %}Yes{% if herd.digester_since %}, since {{ herd.digester_since }}{% else %} (start year unknown){% endif %}{% else %}—{% endif %}</td>
+            {% if methane_stamp %}<td>{% if herd.methane %}{{ herd.methane_kg_h|whole }} kg/h{% if herd.methane_detections %}, {{ herd.methane_detections }} detection{{ herd.methane_detections|pluralize }}{% endif %}{% else %}—{% endif %}</td>{% endif %}
         </tr>
         {% endwith %}
         {% empty %}
-        <tr><td colspan="7">No dairies match.</td></tr>
+        <tr><td colspan="{% if methane_stamp %}8{% else %}7{% endif %}">No dairies match.</td></tr>
         {% endfor %}
     </tbody>
 </table>

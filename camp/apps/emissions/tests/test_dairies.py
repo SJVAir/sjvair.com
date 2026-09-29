@@ -4,11 +4,15 @@ from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.test import TestCase
 
-from camp.apps.emissions import areas, cepam, dairies
+from camp.apps.emissions import areas, carbonmapper, cepam, dairies
 from camp.apps.emissions.models import CountyInventory, Dairy, DairyHerd, Digester, SizeClass, herd_totals
 from camp.apps.emissions.pollutants import POLLUTANTS, toxic_pollutant
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
 from camp.apps.regions.models import Region
+
+# NEAR_BOTH, row: imported lazily inside MethaneTableTests (test_carbonmapper
+# imports make_dairies from this module -- a module-level import here would
+# be circular).
 
 # Beside TEST PLANT (-119.787, 36.737), inside AROUND_PLANT; IN_KERN is by Bakersfield.
 NEAR_PLANT = (-119.785, 36.735)
@@ -101,13 +105,13 @@ class YearAndSummaryTests(DairyTestCase):
         summary = dairies.summary(2023)
         assert summary == {
             'dairies': 2, 'mature_cows': 1400, 'milk_cows': 1200, 'milk_share': 1200 / 1750, 'cattle': 1750,
-            'large': 1, 'digesters': 1, 'digester_share': 0.5,
+            'large': 1, 'digesters': 1, 'digester_share': 0.5, 'methane': 0,
         }
         kern = dairies.summary(2023, county=self.kern)
         assert (kern['dairies'], kern['large'], kern['digesters']) == (1, 0, 0)
         assert dairies.summary(2021) == {
             'dairies': 0, 'mature_cows': 0, 'milk_cows': 0, 'milk_share': None, 'cattle': 0,
-            'large': 0, 'digesters': 0, 'digester_share': None,
+            'large': 0, 'digesters': 0, 'digester_share': None, 'methane': 0,
         }
         assert dairies.summary(None)['dairies'] == 0
 
@@ -394,3 +398,25 @@ class ResolveScopeTests(DairyTestCase):
         dairies.clear_caches()
         scope, notes = dairies.resolve_scope({'year': '2023'})
         assert scope.year is None and notes == []
+
+
+class MethaneTableTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        from camp.apps.emissions.tests.test_carbonmapper import NEAR_BOTH, row
+        cache.clear()
+        self.big, self.small, self.closed = make_dairies()
+        carbonmapper.apply([row(name='a', lnglat=NEAR_BOTH, rate='120', unc='40'), row(name='b', lnglat=NEAR_BOTH, rate='80', unc='10', detection_date_count='3')])
+
+    def test_annotation_filter_and_sort(self):
+        rows = {herd.dairy.name: herd for herd in dairies.table(2023)}
+        assert rows['BIG DAIRY'].methane is True and rows['BIG DAIRY'].methane_kg_h == 120 and rows['BIG DAIRY'].methane_detections == 8
+        assert rows['SMALL DAIRY'].methane is False and rows['SMALL DAIRY'].methane_kg_h is None
+        assert [h.dairy.name for h in dairies.table(2023, methane='1')] == ['BIG DAIRY']
+        assert [h.dairy.name for h in dairies.table(2023, sort='methane_kg_h')][-1] == 'BIG DAIRY'
+
+    def test_summary_key_and_filter(self):
+        assert dairies.summary(2023)['methane'] == 1
+        assert dairies.summary(2023, methane='1')['dairies'] == 1
+        assert dairies.summary(2023, county=self.small.county)['methane'] == 0
