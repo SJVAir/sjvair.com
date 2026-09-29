@@ -9,8 +9,8 @@ from camp.utils import mapfigure
 from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
 from .models import (
-    AirComplianceFacility, ComplianceEvent, CountyInventory, CountyNEI, EmissionsRecord, Facility,
-    GHGReport, MethaneSource, SourceImport, ToxicEmission, ToxicPollutant, Well,
+    AirComplianceFacility, ComplianceEvent, CountyInventory, CountyNEI, DigesterGrant, EmissionsRecord,
+    Facility, GHGReport, MethaneSource, SourceImport, ToxicEmission, ToxicPollutant, Well,
 )
 
 
@@ -270,3 +270,11 @@ class MethaneSourceAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
     list_filter = ['gas', 'sector_label', 'county']
     search_fields = ['source_name', 'dairy__name', 'facility__name']
     raw_id_fields = ['dairy', 'facility']
+
+
+@admin.register(DigesterGrant)
+class DigesterGrantAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
+    list_display = ['project_name', 'dairy_name', 'city', 'county', 'dairy', 'match_method', 'grant_amount', 'est_reduction_tco2e', 'awarded']
+    list_filter = ['match_method', 'county']
+    search_fields = ['project_name', 'dairy_name', 'dairy__name']
+    raw_id_fields = ['dairy']

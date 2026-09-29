@@ -985,3 +985,41 @@ class MethanePlume(models.Model):
         """[west, south, east, north], as Carbon Mapper's plume_bounds gives it."""
         west, south, east, north = self.bounds.extent
         return [west, south, east, north]
+
+
+class DigesterGrant(models.Model):
+    """
+    A CDFA Dairy Digester Research and Development Program (DDRDP) grant,
+    from CDFA's project-level PDF: the dairy, the developer, the award, the
+    biogas end use and CDFA's estimate of the annual reduction. Matched to a
+    Dairy by normalised name and city, then by ddrdp_crosswalk; unmatched
+    rows are kept (their county still counts them). The reduction is CDFA's
+    claim, shown as such.
+    """
+
+    class Match(models.TextChoices):
+        AUTO = 'auto', _('Name and city')
+        MANUAL = 'manual', _('Crosswalk')
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.DigesterGrant'))
+    dairy = models.ForeignKey(
+        Dairy, verbose_name=_('Dairy'), null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='grants',
+    )
+    project_name = models.CharField(_('Project'), max_length=128)
+    dairy_name = models.CharField(_('Dairy name'), max_length=128)
+    city = models.CharField(_('City'), max_length=64, blank=True)
+    county = models.CharField(_('County'), max_length=32, blank=True)
+    developer = models.CharField(_('Developer'), max_length=128, blank=True)
+    grant_amount = models.DecimalField(_('Grant amount'), max_digits=12, decimal_places=2, null=True, blank=True)
+    end_use = models.CharField(_('Biogas end use'), max_length=64, blank=True)
+    est_reduction_tco2e = models.FloatField(_('Estimated reduction (t CO2e/yr)'), null=True, blank=True)
+    awarded = models.DateField(_('Awarded'), null=True, blank=True)
+    operational = models.DateField(_('Operational'), null=True, blank=True)
+    match_method = models.CharField(_('Match method'), max_length=8, choices=Match.choices, blank=True)
+
+    class Meta:
+        ordering = ['-awarded', 'dairy_name']
+
+    def __str__(self):
+        return f'{self.project_name} ({self.dairy_name})'

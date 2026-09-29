@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -245,3 +246,49 @@ class MethaneSourceTests(TestCase):
         assert methane.stamp() is None and not methane.enabled()
         SourceImport.objects.create(source='carbon-mapper')
         assert methane.stamp() is not None and methane.enabled()
+
+
+class DigesterGrantTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def make(self, **overrides):
+        from camp.apps.emissions.models import DigesterGrant
+        values = dict(
+            project_name='Big Dairy Digester', dairy_name='Big Dairy', city='Riverdale',
+            county='Fresno', developer='Dev Co', grant_amount=Decimal('1500000'),
+            end_use='Pipeline injection', est_reduction_tco2e=12000.0,
+        )
+        values.update(overrides)
+        return DigesterGrant.objects.create(**values)
+
+    def test_fields_and_str(self):
+        grant = self.make()
+        assert grant.sqid
+        assert grant.dairy is None
+        assert grant.match_method == ''
+        assert grant.grant_amount == Decimal('1500000')
+        assert str(grant) == 'Big Dairy Digester (Big Dairy)'
+
+    def test_dairy_link_and_set_null_on_delete(self):
+        from camp.apps.emissions.tests.test_dairies import make_dairies
+        big, small, closed = make_dairies()
+        grant = self.make(dairy=big, match_method='auto')
+        assert grant in big.grants.all()
+        big.delete()
+        grant.refresh_from_db()
+        assert grant.dairy is None
+        assert grant.match_method == 'auto'
+
+    def test_ordering_is_newest_award_then_dairy_name(self):
+        from camp.apps.emissions.models import DigesterGrant
+        older = self.make(project_name='Older', dairy_name='Older Dairy', awarded=date(2020, 1, 1))
+        newer = self.make(project_name='Newer', dairy_name='Newer Dairy', awarded=date(2023, 1, 1))
+        # Dated grants sort newest-first; undated grants (awarded=None) are
+        # grouped separately (Postgres puts NULL first on a DESC order) and
+        # sorted by dairy_name among themselves.
+        assert list(DigesterGrant.objects.all())[-2:] == [newer, older]
+
+    def test_match_method_choices(self):
+        from camp.apps.emissions.models import DigesterGrant
+        assert self.make(match_method='auto').match_method == DigesterGrant.Match.AUTO
+        assert self.make(match_method='manual').match_method == DigesterGrant.Match.MANUAL
