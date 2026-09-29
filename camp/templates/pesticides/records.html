@@ -46,7 +46,6 @@
                 <div class="control"><a class="button is-light" href="{{ request.path }}{{ scope_qs }}">Clear</a></div>
             </div>
         </form>
-        {% include 'pesticides/includes/spraydays-signup.html' %}
     </div>
     <div class="column">
         {% if active_filters %}
@@ -55,8 +54,10 @@
         </div>
         {% endif %}
         {% include 'pesticides/includes/section-map.html' %}
-        <p class="summary-sentence mt-4 mb-3">{{ summary_sentence }}</p>
-        {% include 'pesticides/includes/records-table.html' %}
     </div>
 </div>
+{# The table runs the page's full width under the filters and map, rather #}
+{# than down a column beside a sidebar that ended screens ago. #}
+<p class="summary-sentence mt-4 mb-3">{{ summary_sentence }}</p>
+{% include 'pesticides/includes/records-table.html' %}
 {% endblock %}

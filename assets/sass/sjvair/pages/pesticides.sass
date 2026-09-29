@@ -159,7 +159,7 @@ body.pesticides
                 text-overflow: ellipsis
                 white-space: nowrap
         .dropdown-menu
-            min-width: 11rem
+            min-width: 13rem
     // The chosen option, in both pickers that use these menus.
     .explorer-scope-picker, .map-toolbar-dropdown
         .dropdown-item.is-active
@@ -455,7 +455,7 @@ body.pesticides
             &:hover
                 color: $link
         .dropdown-menu
-            min-width: 11rem
+            min-width: 13rem
         .dropdown-item.is-active
             font-weight: 600
 
@@ -510,6 +510,10 @@ body.pesticides
         // "MDM-T17S-R15E-10"), and the Lbs/Acres columns should never wrap.
         td.has-text-right, td:first-child, td:nth-child(3)
             white-space: nowrap
+    // "Wheat (forage - fodder)" on one line; the product column has the room.
+    +tablet
+        .records-table td:nth-child(4)
+            min-width: 13rem
 
     // On a phone the wide tables become stacked rows: each record a short
     // block whose cells flow as text, rather than nine columns scrolling off
