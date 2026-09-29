@@ -37,6 +37,8 @@ class Command(BaseCommand):
             items = carbonmapper.fetch_all_plumes()
         except requests.RequestException as exc:
             raise CommandError(f'Carbon Mapper plumes: {exc}')
+        if not items:
+            raise CommandError('Carbon Mapper returned no plumes; stored plumes unchanged.')
         plume_report = carbonmapper.apply_plumes(items)
         for line in plume_report.lines():
             self.stdout.write(line)

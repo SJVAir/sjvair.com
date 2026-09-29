@@ -260,15 +260,19 @@ def fetch_plumes_page(limit, offset):
 
 
 def fetch_all_plumes():
-    """Every published CH4 plume for BBOX, paged in order; the API's own bbox_count bounds the loop."""
+    """
+    Every published CH4 plume for BBOX, paged in order until a short or empty
+    page. The API's bbox_count isn't trusted to end the loop: a missing or
+    stale count would stop after page one, and apply_plumes would then delete
+    every plume on the pages never fetched.
+    """
     items = []
     offset = 0
     while True:
-        page = fetch_plumes_page(PLUME_PAGE_SIZE, offset)
-        page_items = page.get('items') or []
+        page_items = fetch_plumes_page(PLUME_PAGE_SIZE, offset).get('items') or []
         items.extend(page_items)
         offset += len(page_items)
-        if not page_items or offset >= (page.get('bbox_count') or 0):
+        if len(page_items) < PLUME_PAGE_SIZE:
             break
     return items
 
@@ -345,14 +349,21 @@ class PlumeReport:
     matched: int = 0
     images_fetched: int = 0
     images_failed: int = 0
+    kept_stale: int = 0
 
     def lines(self):
-        return [
+        lines = [
             f'Carbon Mapper plumes: {self.fetched:,} rows; {self.skipped:,} unparseable, unpublished, hidden, or duplicate.',
             f'{self.created:,} created, {self.updated:,} updated, {self.deleted:,} removed (no longer in the catalog); '
             f'{self.matched:,} linked to a source within {PLUME_MATCH_METERS:,} m.',
             f'{self.images_fetched:,} images fetched, {self.images_failed:,} failed.',
         ]
+        if self.kept_stale:
+            lines.append(
+                f"Kept {self.kept_stale:,} stored plumes this run didn't return: it returned under half of what "
+                'was stored, which looks like a partial response rather than removals.'
+            )
+        return lines
 
 
 def _save_plume_image(plume, image_bytes, filename):
@@ -417,8 +428,13 @@ def apply_plumes(items):
             report.created += is_new
             report.updated += not is_new
         stale = MethanePlume.objects.exclude(plume_id__in=seen)
-        for plume in stale:
-            if plume.image:
-                plume.image.delete(save=False)
-        report.deleted, _ = stale.delete()
+        if len(seen) < len(existing) / 2:
+            # Under half of what's stored came back: a partial or failed
+            # response, not half the catalog withdrawn. Keep them.
+            report.kept_stale = stale.count()
+        else:
+            for plume in stale:
+                if plume.image:
+                    plume.image.delete(save=False)
+            report.deleted, _ = stale.delete()
     return report

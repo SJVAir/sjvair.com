@@ -245,6 +245,14 @@ class CommandTests(TestCase):
             call_command('import_carbon_mapper', path=path, no_plumes=True)
         assert MethaneSource.objects.filter(source_name='p').exists()
 
+    def test_an_empty_plume_feed_changes_nothing(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([row()])), \
+                patch('camp.apps.emissions.carbonmapper.fetch_all_plumes', return_value=[]), \
+                patch('camp.apps.emissions.carbonmapper.apply_plumes') as apply_plumes:
+            with pytest.raises(CommandError, match='no plumes'):
+                call_command('import_carbon_mapper')
+        assert not apply_plumes.called
+
     def test_an_empty_feed_changes_nothing(self):
         carbonmapper.apply([row()])
         with patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([])):
@@ -347,21 +355,39 @@ class ApplyPlumesTests(TestCase):
         assert not MethanePlume.objects.filter(plume_id='b').exists()
         assert not storage.exists(image_name)
 
+    def test_a_partial_response_keeps_the_stored_plumes(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            carbonmapper.apply_plumes([plume_item(plume_id=p) for p in 'abcd'])
+            report = carbonmapper.apply_plumes([plume_item(plume_id='a')])  # 1 of 4 back: not 3 withdrawals
+        assert report.deleted == 0 and report.kept_stale == 3
+        assert MethanePlume.objects.count() == 4
+        assert 'Kept 3 stored plumes' in report.lines()[-1]
+
 
 class FetchPlumesTests(TestCase):
-    def test_pages_until_bbox_count_is_reached(self):
+    def test_pages_until_a_short_page(self):
         page1 = {'bbox_count': 3, 'items': [plume_item(plume_id='a'), plume_item(plume_id='b')]}
         page2 = {'bbox_count': 3, 'items': [plume_item(plume_id='c')]}
-        with patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, page2]) as fetch_page:
+        with patch.object(carbonmapper, 'PLUME_PAGE_SIZE', 2), \
+                patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, page2]) as fetch_page:
             items = carbonmapper.fetch_all_plumes()
         assert [item['plume_id'] for item in items] == ['a', 'b', 'c']
         assert fetch_page.call_count == 2
-        assert fetch_page.call_args_list[1].args == (carbonmapper.PLUME_PAGE_SIZE, 2)
+        assert fetch_page.call_args_list[1].args == (2, 2)
+
+    def test_a_missing_bbox_count_doesnt_stop_it_early(self):
+        page1 = {'items': [plume_item(plume_id='a'), plume_item(plume_id='b')]}
+        page2 = {'items': [plume_item(plume_id='c')]}
+        with patch.object(carbonmapper, 'PLUME_PAGE_SIZE', 2), \
+                patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, page2]):
+            items = carbonmapper.fetch_all_plumes()
+        assert [item['plume_id'] for item in items] == ['a', 'b', 'c']
 
     def test_stops_on_an_empty_page(self):
         page1 = {'bbox_count': 10, 'items': [plume_item(plume_id='a')]}
         empty = {'bbox_count': 10, 'items': []}
-        with patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, empty]):
+        with patch.object(carbonmapper, 'PLUME_PAGE_SIZE', 1), \
+                patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, empty]):
             items = carbonmapper.fetch_all_plumes()
         assert [item['plume_id'] for item in items] == ['a']
 
