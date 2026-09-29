@@ -54,7 +54,9 @@ COLUMNS = {
 FIPS_TO_CARB = {'019': 10, '029': 15, '031': 16, '039': 20, '047': 24, '077': 39, '099': 50, '107': 54}
 SJVAPCD = 'SJU'
 _SJV_ID = re.compile(r'^CASJV000(\d{5})([SCN])(\d{1,6})$')
-DATE_FORMATS = ('%m/%d/%Y', '%Y-%m-%d', '%m/%d/%Y %H:%M:%S', '%d-%b-%y')
+# EPA isn't consistent across files: the action files use slashes, the
+# inspection and violation-history files dashes (10-28-2022).
+DATE_FORMATS = ('%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%m/%d/%Y %H:%M:%S', '%d-%b-%y')
 TITLE_V_CODE = 'CAATVP'
 
 

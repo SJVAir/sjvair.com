@@ -126,6 +126,11 @@ class ReadTests(TestCase):
         assert data['inspections'] and data['formals']
         for row in data['facilities']:
             assert row['COUNTY_NAME'].upper() in {'FRESNO', 'KERN', 'KINGS', 'MADERA', 'MERCED', 'SAN JOAQUIN', 'STANISLAUS', 'TULARE'}
+        # Every file's real date column parses (the inspection and HPV files write 10-28-2022).
+        for kind, column in (('inspections', 'ACTUAL_END_DATE'), ('novs', 'ACHIEVED_DATE'), ('formals', 'SETTLEMENT_ENTERED_DATE')):
+            assert all(icis.parse_date(row[column]) for row in data[kind]), kind
+        assert all(icis.parse_date(row['HPV_DAYZERO_DATE'] or row['EARLIEST_FRV_DETERM_DATE']) for row in data['hpvs'] if row['HPV_DAYZERO_DATE'] or row['EARLIEST_FRV_DETERM_DATE'])
+        assert icis.parse_date('10-28-2022') == date(2022, 10, 28)
 
 
 class ApplyTests(TestCase):
