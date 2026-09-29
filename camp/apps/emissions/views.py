@@ -260,6 +260,8 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
         record = facility.emissions.filter(year=scope.year).first() or facility.emissions.order_by('-year').first()
         shown_year = record.year if record else scope.year
         nearby = schools.near(facility)
+        facility_regions = areas.facility_areas(facility)
+        tract = next((region for region in facility_regions if region.type == Region.Type.TRACT), None)
         return super().get_context_data(
             facility=facility,
             district=facility.air_district,
@@ -270,7 +272,8 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             changes=stats.large_changes(facility, shown_year),
             hot_spots=stats.hot_spots(record),
             health_values=SourceImport.latest('contable'),
-            area_links=area_links(areas.facility_areas(facility)),
+            area_links=area_links(facility_regions),
+            facility_ces=ces_stats.tract_record(tract),
             nearby=nearby,
             nearby_shown=schools.SHOWN,
             nearby_groups=nearby_groups(nearby),
