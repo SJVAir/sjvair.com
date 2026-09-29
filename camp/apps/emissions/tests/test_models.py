@@ -1,3 +1,4 @@
+from datetime import date
 from unittest.mock import patch
 
 import pytest
@@ -6,7 +7,9 @@ from django.contrib.gis.geos import Point
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 
-from camp.apps.emissions.models import EmissionsRecord, Facility, SourceImport, ToxicPollutant
+from camp.apps.emissions.models import (
+    AirComplianceFacility, ComplianceEvent, EmissionsRecord, Facility, SourceImport, ToxicPollutant,
+)
 from camp.apps.regions.models import Region
 
 
@@ -167,3 +170,24 @@ class SourceImportTests(TestCase):
         SourceImport.objects.create(source='contable', version='2024-12-17')
         newest = SourceImport.objects.create(source='contable', version='2025-09-25')
         assert SourceImport.latest('contable') == newest
+
+
+class AirComplianceFacilityTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def test_hpv_status_and_dfr_url(self):
+        row = AirComplianceFacility.objects.create(pgm_sys_id='CASJV00006019C0001', registry_id='110000000001', name='X')
+        assert row.hpv_status == 'none'
+        row.current_hpv = 'Unaddressed-Local'
+        assert row.hpv_status == 'unaddressed'
+        row.current_hpv = 'Addressed-EPA'
+        assert row.hpv_status == 'addressed'
+        assert row.dfr_url == 'https://echo.epa.gov/detailed-facility-report?fid=110000000001'
+        assert row.sqid
+
+    def test_events_are_unique_per_kind_and_id(self):
+        row = AirComplianceFacility.objects.create(pgm_sys_id='CASJV00006019C0001', name='X')
+        ComplianceEvent.objects.create(icis_facility=row, kind='nov', date=date(2024, 1, 1), agency='L', external_id='1')
+        ComplianceEvent.objects.create(icis_facility=row, kind='formal', date=date(2024, 1, 1), agency='L', external_id='1')
+        with pytest.raises(IntegrityError):
+            ComplianceEvent.objects.create(icis_facility=row, kind='nov', date=date(2024, 2, 2), agency='L', external_id='1')

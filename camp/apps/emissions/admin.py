@@ -8,7 +8,10 @@ from camp.apps.regions.models import Region
 from camp.utils import mapfigure
 from camp.utils.admin import MapFigureMixin, ReadOnlyAdminMixin
 
-from .models import CountyInventory, EmissionsRecord, Facility, SourceImport, ToxicEmission, ToxicPollutant
+from .models import (
+    AirComplianceFacility, ComplianceEvent, CountyInventory, EmissionsRecord, Facility,
+    SourceImport, ToxicEmission, ToxicPollutant,
+)
 
 
 class CountyFilter(base_admin.SimpleListFilter):
@@ -208,6 +211,27 @@ class FacilityAdmin(MapFigureMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
             else:
                 failed += 1
         self.message_user(request, f'Geocoded {success} facilities. {failed} failures.')
+
+
+class ComplianceEventInline(admin.TabularInline):
+    model = ComplianceEvent
+    extra = 0
+    can_delete = False
+    fields = ['kind', 'date', 'agency', 'action_type', 'description', 'penalty', 'resolved']
+    readonly_fields = fields
+    ordering = ['-date']
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AirComplianceFacility)
+class AirComplianceFacilityAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
+    list_display = ['pgm_sys_id', 'name', 'facility', 'pollutant_class', 'operating_status', 'title_v', 'current_hpv', 'match_method', 'reported_through']
+    list_filter = ['match_method', 'pollutant_class', 'title_v', 'current_hpv']
+    search_fields = ['pgm_sys_id', 'name', 'facility__name', 'registry_id']
+    raw_id_fields = ['facility']
+    inlines = [ComplianceEventInline]
 
 
 @admin.register(CountyInventory)
