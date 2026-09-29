@@ -385,6 +385,41 @@ body.pesticides
                 white-space: nowrap
                 font-variant-numeric: tabular-nums
 
+    // "How it was applied": a thin stacked bar over the method table. The
+    // same tone keys the bar segment and the table row.
+    .method-bar
+        display: flex
+        height: 0.75rem
+        border-radius: 999px
+        overflow: hidden
+        background: $grey-lighter
+        margin-bottom: 0.75rem
+    .method-bar-seg
+        display: block
+        min-width: 2px
+    .method-key
+        display: inline-block
+        width: 0.7rem
+        height: 0.7rem
+        border-radius: 2px
+        margin-right: 0.5rem
+    .method-bar-seg, .method-key
+        &.is-G
+            background: $link
+        &.is-A
+            background: $warning
+        &.is-F
+            background: $danger
+        &.is-O
+            background: $grey
+        &.is-none
+            background: $grey-light
+    .method-table
+        font-size: 0.9rem
+        th, td
+            white-space: nowrap
+            font-variant-numeric: tabular-nums
+
     .by-year-table, .by-county-table
         // Four numeric columns in a narrow column: keep them on one line and
         // a touch smaller, and let the wrapper scroll before they overflow.

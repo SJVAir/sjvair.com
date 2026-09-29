@@ -227,7 +227,7 @@ class CommodityDetailTests(TestCase):
 class ProductListTests(TestCase):
     def setUp(self):
         self.url = reverse('api:v2:pesticides:product-list')
-        self.product = make_product(fumigant=True)
+        self.product = make_product(fumigant=True, is_fumigant=True)
         # Restricted is a property of the active ingredient (3 CCR 6400),
         # not a column on the product.
         self.product.chemicals.add(make_chemical(
@@ -239,7 +239,7 @@ class ProductListTests(TestCase):
     def test_list_fields(self):
         data = self.client.get(self.url).json()
         item = data['data'][0]
-        assert set(item.keys()) == {'id', 'prodno', 'reg_number', 'name', 'fumigant', 'california_restricted'}
+        assert set(item.keys()) == {'id', 'prodno', 'reg_number', 'name', 'fumigant', 'cdpr_fumigant', 'california_restricted'}
 
     def test_filter_by_name(self):
         make_product(prodno=2, reg_number='100-2', name='COPPER SPRAY')
@@ -251,6 +251,13 @@ class ProductListTests(TestCase):
         data = self.client.get(self.url, {'fumigant': 'true'}).json()
         assert data['count'] == 1
         assert data['data'][0]['fumigant'] is True
+
+    def test_fumigant_is_the_classified_flag_and_cdpr_flag_is_separate(self):
+        make_product(prodno=2, reg_number='100-2', name='TELONE', fumigant=False, is_fumigant=True)
+        data = self.client.get(self.url, {'fumigant': 'true', 'name': 'telone'}).json()
+        assert data['count'] == 1
+        assert data['data'][0]['fumigant'] is True
+        assert data['data'][0]['cdpr_fumigant'] is False
 
     def test_filter_by_california_restricted(self):
         # A product with no restricted ingredient is not restricted.
@@ -279,7 +286,7 @@ class ProductDetailTests(TestCase):
     def test_detail_fields(self):
         item = self.client.get(self.url).json()['data']
         assert set(item.keys()) == {
-            'id', 'prodno', 'reg_number', 'name', 'fumigant', 'california_restricted',
+            'id', 'prodno', 'reg_number', 'name', 'fumigant', 'cdpr_fumigant', 'california_restricted',
             'chemicals', 'commodities',
         }
 
@@ -1434,6 +1441,57 @@ class ConcernScopeEndpointTests(RollupTestMixin, TestCase):
         assert results(type='commodity', q='grape', year='2023', concern='1') == ['Grape']
         assert results(type='commodity', q='almond', concern='1') == ['Almond']
         assert results(type='commodity', q='grape', concern='1', county='kern') == []
+
+
+class NarrowEndpointTests(RollupTestMixin, TestCase):
+    """The grid and search endpoints honour `narrow=<value>`, not just `concern=1`."""
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_sections_restricted_differs_from_flagged(self):
+        params = {'bbox': '-119.9,36.6,-119.7,36.8', 'year': 2023}
+        lbs = lambda **p: self.client.get('/api/2.0/pesticides/sections/', {**params, **p}).json()['features'][0]['properties']['lbs_chemical']
+        assert lbs(concern='1') == 170.0
+        assert lbs(narrow='concern') == 170.0
+        assert lbs(narrow='restricted') == 20.0
+        assert lbs(narrow='fumigant') == 20.0
+
+    def test_entity_search_honours_restricted_and_fumigant(self):
+        url = reverse('api:v2:pesticides:entity-search')
+        results = lambda **p: [r['name'] for r in self.client.get(url, p).json()['results']]
+        assert results(type='chemical', q='glyphosate', narrow='concern') == ['Glyphosate']
+        assert results(type='chemical', q='glyphosate', narrow='restricted') == []
+        assert results(type='chemical', q='chlorpyrifos', narrow='restricted') == ['Chlorpyrifos']
+        assert results(type='product', q='roundup', narrow='fumigant') == []
+        assert results(type='product', q='lorsban', narrow='fumigant') == ['LORSBAN 4E']
+        assert results(type='chemical', q='glyphosate', narrow='fumigant') == []
+
+    def test_entity_search_unknown_narrowing_is_not_flagged(self):
+        # A narrowing the search doesn't special-case is answered by the
+        # rollup rows it keeps, never read as "flagged chemicals".
+        from unittest import mock
+        from camp.apps.pesticides import stats
+        real = stats.narrow_rows
+        fake = lambda rows, narrow: rows.filter(product_id=1) if narrow == 'fake' else real(rows, narrow)
+        url = reverse('api:v2:pesticides:entity-search')
+        with mock.patch.object(stats, 'resolve_narrow', return_value='fake'), \
+                mock.patch.object(stats, 'narrow_rows', side_effect=fake):
+            results = lambda **p: [r['name'] for r in self.client.get(url, p).json()['results']]
+            assert results(type='chemical', q='glyphosate') == ['Glyphosate']
+            assert results(type='chemical', q='chlorpyrifos') == []
+            assert results(type='product', q='roundup') == ['ROUNDUP PRO']
+            assert results(type='product', q='lorsban') == []
+
+    def test_entity_search_commodities_follow_the_narrowing(self):
+        url = reverse('api:v2:pesticides:entity-search')
+        results = lambda **p: [r['name'] for r in self.client.get(url, p).json()['results']]
+        # Only LORSBAN (fumigant) touched ALMOND (commodity 1) and 3; GRAPE (2) took sulfur and glyphosate.
+        assert results(type='commodity', q='grape', year='2023', narrow='fumigant') == []
+        assert results(type='commodity', q='almond', year='2023', narrow='fumigant') == ['Almond']
 
 
 class SectionTotalsTableTests(TestCase):

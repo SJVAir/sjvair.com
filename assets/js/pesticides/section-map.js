@@ -1280,7 +1280,7 @@
   };
 
   // Keys whose change means the data on the map is different.
-  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'concern', 'compare'];
+  var DATA_KEYS = ['year', 'chemical', 'product', 'commodity', 'county', 'narrow', 'compare'];
 
   // An htmx swap handed this map a new container (the shell has moved the
   // map into it, taken its data attributes and bound its chrome): follow
@@ -1603,7 +1603,7 @@
       product: this.data.product,
       commodity: this.data.commodity,
       county: this.data.county,
-      concern: this.data.concern,
+      narrow: this.data.narrow,
     };
   };
 
@@ -2416,7 +2416,7 @@
     this.selectSection(props.id, feature);
 
     if (!this.data.sectionUrlPattern) return;
-    var url = this.data.sectionUrlPattern.replace('{id}', props.id) + '?year=' + encodeURIComponent(this.data.year || '');
+    var url = this.data.sectionUrlPattern.replace('{id}', props.id) + '?' + this.scopeQuery(['year', 'narrow']);
     fetchJson(url)
       .then(function (detail) {
         if (!self.popup || self.popupId !== props.id) return; // popup was closed before this resolved
@@ -2444,8 +2444,21 @@
     return fillUrl(this.data.chemicalPageUrl, id);
   };
 
+  // The page's scope as a query string: the named data keys that are set.
+  SectionMap.prototype.scopeQuery = function (keys) {
+    var data = this.data;
+    return keys.filter(function (key) { return data[key]; })
+      .map(function (key) { return key + '=' + encodeURIComponent(data[key] || ''); })
+      .join('&');
+  };
+
+  // The section's own page carries the map's scope, so the page it opens on
+  // is narrowed the way the map is.
   SectionMap.prototype.sectionUrl = function (id) {
-    return fillUrl(this.data.sectionPageUrl, id);
+    var url = fillUrl(this.data.sectionPageUrl, id);
+    if (!url) return url;
+    var query = this.scopeQuery(['year', 'county', 'narrow']);
+    return query ? url + (url.indexOf('?') === -1 ? '?' : '&') + query : url;
   };
 
   SectionMap.prototype.productUrl = function (id) {
@@ -3034,6 +3047,7 @@
       chemical: this.data.chemical,
       product: this.data.product,
       county: this.data.county,
+      narrow: this.data.narrow,
     };
 
     var self = this;
@@ -3149,7 +3163,7 @@
     }
     this.showSelectedOutline(null);
     if (!this.data.sectionUrlPattern) return;
-    var url = this.data.sectionUrlPattern.replace('{id}', id) + '?year=' + encodeURIComponent(this.data.year || '');
+    var url = this.data.sectionUrlPattern.replace('{id}', id) + '?' + this.scopeQuery(['year', 'narrow']);
     fetchJson(url)
       .then(function (detail) {
         if (!detail || !detail.geometry) return;

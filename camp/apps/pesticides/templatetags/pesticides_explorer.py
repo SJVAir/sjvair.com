@@ -85,6 +85,28 @@ def lbs(value):
 
 
 @register.filter
+def percent(value):
+    """A 0-1 share as a percentage to one decimal ("6.1%"), whole when exact; "<0.1%" for a sliver rather than "0%"."""
+    if not value:
+        return '0%'
+    pct = value * 100
+    if pct < 0.1:
+        return '<0.1%'
+    return f'{pct:.1f}'.removesuffix('.0') + '%'
+
+
+@register.filter
+def method_label(code):
+    return stats.METHOD_LABELS.get(code or '', stats.METHOD_LABELS[''])
+
+
+@register.filter
+def css_percent(value):
+    """A 0-1 share as a CSS width."""
+    return f'{(value or 0) * 100:.2f}%'
+
+
+@register.filter
 def signed_lbs(value):
     """
     `lbs` with the sign always shown, for a change. An increase reads "+400"

@@ -23,8 +23,9 @@ from camp.apps.regions.models import Region
 LATEST_YEAR_KEY = 'pesticides:latest-year'
 # Bumped whenever the cached shape changes -- v2 added `county_sqid` to
 # by_county() rows and v3 added `by_year`, so a landing-stats entry cached
-# under an old key would be missing them.
-LANDING_KEY = 'pesticides:landing-stats:v3'
+# under an old key would be missing them. v4: fumigants are now decided by
+# Product.is_fumigant, so cached fumigant counts and narrowings are stale.
+LANDING_KEY = 'pesticides:landing-stats:v4'
 NOTICE_WINDOW_KEY = 'pesticides:notice-window'
 YEARS_KEY = 'pesticides:years'
 ALL_YEARS = 'all'
@@ -53,6 +54,7 @@ NARROW_PARAM = 'narrow'
 NARROW_CONCERN = 'concern'
 NARROW_FUMIGANT = 'fumigant'
 NARROW_RESTRICTED = 'restricted'
+NARROW_AERIAL = 'aerial'
 NARROW_CHOICES = (
     # "Flagged" rather than "of concern": the set is the union of four
     # lists, and three of them (Prop 65, CARB TAC, IARC) are what a reader
@@ -61,8 +63,13 @@ NARROW_CHOICES = (
     (NARROW_CONCERN, 'Flagged chemicals'),
     (NARROW_RESTRICTED, 'Restricted materials'),
     (NARROW_FUMIGANT, 'Fumigants'),
+    (NARROW_AERIAL, 'Applied by air'),
 )
 NARROW_VALUES = {value for value, _label in NARROW_CHOICES}
+# Hover text for the options that need more than their label.
+NARROW_HELP = {
+    NARROW_AERIAL: "Applications reported as made by aircraft (CDPR's application method A)",
+}
 # The "within about a mile" block: a section plus the eight around it. MTRS
 # sections are roughly one mile square, so a neighbour's centroid is about a
 # mile away (1.5 miles diagonally) and the next ring out is about two.
@@ -187,8 +194,8 @@ def year_param(year, all_years=False):
 def scope_param(year, all_years=False, county=None, concern=False):
     """
     The explorer's scope as query parameters: a non-default year, a county,
-    and/or the chemicals-of-concern toggle
-    ('year=2020&county=kern&concern=1'), '' when they're all the defaults.
+    and/or the narrowing
+    ('year=2020&county=kern&narrow=concern'), '' when they're all the defaults.
     `county` is a Region or a slug.
     """
     parts = []
@@ -228,30 +235,33 @@ def narrow_label(narrow):
     return dict(NARROW_CHOICES).get(narrow, '')
 
 
-def narrow_needs_product(narrow):
+def narrow_needs_rollup(narrow):
     """
-    Whether this narrowing filters on the product rather than the chemical.
-    PesticideUseTotal is binned per entity, so its chemical rows carry no
-    product at all: a source that pre-sums by chemical can answer "of
-    concern" but not "fumigant", and has to give way to the rollup, where
-    both sit on the same row.
+    Whether the narrowing can only be answered from the rollup -- the totals
+    tables carry neither the product for chemical rows nor the application
+    method. A source that pre-sums by chemical can answer "of concern" but
+    not "fumigant", and has to give way to the rollup, where both sit on the
+    same row.
     """
-    return narrow == NARROW_FUMIGANT
+    return narrow in {NARROW_FUMIGANT, NARROW_AERIAL}
 
 
-def narrow_rows(rows, narrow):
+def narrow_rows(rows, narrow, method_field='method'):
     """
     `rows` (rollup or totals rows) restricted to what the explorer is
     narrowed to. Fumigants are a property of the product applied, chemicals
     of concern a property of the chemical, so the two filter on different
-    ends of the same row.
+    ends of the same row. Application method lives on `method_field`: the
+    rollup calls it `method`, the raw records `aerial_ground`.
     """
     if narrow == NARROW_CONCERN:
         return concern_rows(rows)
     if narrow == NARROW_RESTRICTED:
         return rows.filter(chemical__in=restricted_chemicals())
     if narrow == NARROW_FUMIGANT:
-        return rows.filter(product__fumigant=True)
+        return rows.filter(product__is_fumigant=True)
+    if narrow == NARROW_AERIAL:
+        return rows.filter(**{method_field: 'A'})
     return rows
 
 
@@ -262,7 +272,10 @@ def narrow_notices(notices, narrow):
     if narrow == NARROW_RESTRICTED:
         return notices.filter(chemicals__in=restricted_chemicals()).distinct()
     if narrow == NARROW_FUMIGANT:
-        return notices.filter(products__fumigant=True).distinct()
+        # A SprayDays fumigation notice can arrive without a linked product.
+        return notices.filter(Q(products__is_fumigant=True) | Q(application_method__iexact='Fumigation')).distinct()
+    if narrow == NARROW_AERIAL:
+        return notices.filter(application_method__iexact='Aircraft')
     return notices
 
 
@@ -294,6 +307,41 @@ def in_year(rows, year, all_years=False):
     if year is None:
         return rows.none()
     return rows.filter(year=year)
+
+
+METHOD_LABELS = {'G': 'Ground', 'A': 'Air', 'F': 'Field fumigation', 'O': 'Other', '': 'Not reported'}
+METHOD_ORDER = ('G', 'A', 'F', 'O', '')
+
+
+def by_method(rows, year, lbs_field='lbs_chemical', all_years=False):
+    """
+    How the scope's use was applied, from CDPR's per-record method
+    (aer_gnd_ind): pounds, applications and their shares per method, in
+    a fixed order. Blank stays as "Not reported" -- mostly the monthly
+    summaries of structural and landscape use -- rather than being dropped.
+    """
+    totals = {}
+    for r in in_year(rows, year, all_years).values('method').annotate(
+            lbs=Sum(lbs_field), applications=Sum('applications')):
+        # A code CDPR adds later counts as Other, so shares still add to 1.
+        method = r['method'] if r['method'] in METHOD_LABELS else 'O'
+        t = totals.setdefault(method, {'lbs': 0, 'applications': 0})
+        t['lbs'] += r['lbs'] or 0
+        t['applications'] += r['applications'] or 0
+    total = sum(t['lbs'] for t in totals.values())
+    total_apps = sum(t['applications'] for t in totals.values())
+    out = []
+    for method in METHOD_ORDER:
+        r = totals.get(method)
+        if not r or not (r['lbs'] or r['applications']):
+            continue
+        out.append({
+            'method': method, 'label': METHOD_LABELS[method], 'lbs': r['lbs'],
+            'share': r['lbs'] / total if total else 0,
+            'applications': r['applications'],
+            'app_share': r['applications'] / total_apps if total_apps else 0,
+        })
+    return out
 
 
 def _totals(lbs_field):
@@ -934,8 +982,8 @@ def county_totals(year=None, all_years=False, concern=False):
     don't count the same pounds again. Cached, because the all-years pass
     reads every year at once.
     """
-    if narrow_needs_product(concern):
-        # The totals table can't answer this one (see narrow_needs_product).
+    if narrow_needs_rollup(concern):
+        # The totals table can't answer this one (see narrow_needs_rollup).
         rows = narrow_rows(PesticideUseRollup.objects.filter(chemical__isnull=False), concern)
     else:
         rows = PesticideUseTotal.objects.filter(chemical__isnull=False)
@@ -983,31 +1031,49 @@ def commodity_chemical_counts(county=None, concern=False, year=None):
 def commodity_concern_lbs(year=None, all_years=False, county=None):
     """
     {commodity_id: pounds of chemicals of concern applied to it} in `year`
-    (or across every loaded year) and `county`, when given. One group-by over
-    the rollup, cached the way commodity_chemical_counts is: the per-commodity
-    correlated subquery the list would otherwise run sums the concern rows for
-    every commodity on the page, which takes seconds across all years.
+    (or across every loaded year) and `county`, when given. Always the
+    chemicals of concern, whatever the explorer is narrowed to: this feeds the
+    commodity list's dedicated concern column, not the page's scoped totals.
     """
-    # Always the chemicals of concern, whatever the explorer is narrowed to:
-    # this feeds the commodity list's dedicated concern column, not the
-    # page's scoped totals.
-    rows = concern_rows(PesticideUseRollup.objects.filter(commodity__isnull=False))
-    if county is not None:
-        rows = rows.filter(county=county)
+    return narrowed_lbs('commodity', 'lbs_chemical', NARROW_CONCERN, year, all_years, county)
+
+
+NARROWED_LBS_FIELDS = {'chemical': 'lbs_chemical', 'product': 'lbs_product', 'commodity': 'lbs_chemical'}
+
+
+def narrowed_lbs(field, lbs_field, narrow, year=None, all_years=False, county=None):
+    """
+    {pk: pounds} for every `field` entity (chemical, product or commodity)
+    with use under the `narrow`ing in `year` (or every loaded year) and
+    `county` (a Region or a slug), when given. One group-by over the
+    narrowed rollup, cached the way commodity_concern_lbs is: the list
+    pages' per-entity correlated sums over the whole rollup took minutes
+    across all years. The keys are also the entities that count as "used"
+    under the narrowing.
+    """
+    rows = narrow_rows(PesticideUseRollup.objects.filter(**{f'{field}__isnull': False}), narrow)
+    slug = getattr(county, 'slug', county)
+    if slug:
+        rows = rows.filter(county__slug=slug)
     parts = [
-        'commodity-concern-lbs',
+        'narrowed-lbs', field, lbs_field, narrow,
         ALL_YEARS if all_years else year,
-        county.pk if county is not None else '',
+        getattr(county, 'pk', slug) or '',
     ]
     return cached(
         all_years_key(*parts),
         lambda: dict(
             in_year(rows, year, all_years)
-            .values('commodity')
-            .annotate(lbs=Sum('lbs_chemical'))
-            .values_list('commodity', 'lbs')
+            .values(field)
+            .annotate(lbs=Sum(lbs_field))
+            .values_list(field, 'lbs')
         ),
     )
+
+
+def narrowed_keys(kind, narrow, year=None, all_years=False, county=None):
+    """The pks of the `kind` entities with use under the narrowing in scope (see narrowed_lbs)."""
+    return set(narrowed_lbs(kind, NARROWED_LBS_FIELDS[kind], narrow, year, all_years, county))
 
 
 def yearly_series(rows, field, objects, lbs_field='lbs_chemical'):
@@ -1110,7 +1176,13 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
     # Valley-wide by year, for the trend chart: always off the totals table,
     # whichever year is selected, and off its chemical rows only so the
     # product and commodity rows don't count the same pounds again.
-    totals = PesticideUseTotal.objects.filter(chemical__isnull=False)
+    # A narrowing the totals rows can't follow (fumigant needs the product
+    # they don't carry) reads the rollup; the others stay on the much
+    # faster totals table.
+    if narrow_needs_rollup(concern):
+        totals = PesticideUseRollup.objects.all()
+    else:
+        totals = PesticideUseTotal.objects.filter(chemical__isnull=False)
     if county is not None:
         uses = uses.filter(county=county)
         notices = notices.filter(county=county)
@@ -1158,7 +1230,7 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
             concern_rows(year_uses.filter(chemical__isnull=False))
         ).values('chemical').distinct().count(),
         'products_fumigant': year_uses.filter(
-            product__fumigant=True).values('product').distinct().count(),
+            product__is_fumigant=True).values('product').distinct().count(),
         'active_notices': upcoming_count(notices),
         # Each board's rows carry their own by-year series, for the
         # sparkline that says whether a big number is growing or receding.
@@ -1176,7 +1248,9 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
     }
     data['lbs_delta'] = trend_deltas(data['by_year'], year)['previous']
     # Under the concern scope every leaderboard is already of concern, so
-    # the dedicated one would just restate the top chemicals.
+    # the dedicated one would just restate the top chemicals. Under any other
+    # narrowing its "View all" (the flagged-chemicals list) would be a
+    # different narrowing from the page's, so it's all use only.
     if not concern:
         # Only the ones the board beside it doesn't already list. At five rows
         # apiece the two boards otherwise repeat each other three rows out of
@@ -1224,10 +1298,17 @@ def refresh_landing_stats():
     cache.delete(YEARS_KEY)
     cache.delete(NOTICE_WINDOW_KEY)
     year = latest_year()
-    available_years()
+    loaded_years = available_years()
     notice_window()
     cache.delete(all_years_key('county-totals', ALL_YEARS))
     cache.delete(all_years_key('county-totals', year))
+    # The narrowed entries were built from the rollup as it stood; drop them
+    # so a rebuild never leaves stale (or zeroed) narrowed stats for a day.
+    county_slugs = list(Region.objects.filter(type=Region.Type.COUNTY).values_list('slug', flat=True))
+    for scope_year in [ALL_YEARS, *loaded_years]:
+        for narrow in NARROW_VALUES:
+            key = landing_key(scope_year, narrow)
+            cache.delete_many([key, *(f'{key}:{slug}' for slug in county_slugs)])
     all_data = _build_landing_stats(None, all_years=True)
     cache.set(landing_key(ALL_YEARS), all_data, LANDING_TTL)
     data = _build_landing_stats(year)

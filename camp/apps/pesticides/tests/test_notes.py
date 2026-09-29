@@ -23,6 +23,7 @@ class NotesModuleTests(TestCase):
         assert notes.keys_for_chemical(Chemical.objects.get(pk=3)) == []
 
     def test_keys_for_product_and_notice(self):
+        Product.objects.filter(pk=2).update(is_fumigant=True)
         assert notes.keys_for_product(Product.objects.get(pk=2)) == ['fumigant', 'restricted_material']
         assert notes.keys_for_product(Product.objects.get(pk=1)) == []
         notice = PesticideNotice.objects.prefetch_related('chemicals', 'products').get(pk=3)

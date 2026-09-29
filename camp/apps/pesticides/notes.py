@@ -68,7 +68,7 @@ def keys_for_chemical(chemical):
 
 def keys_for_product(product):
     keys = []
-    if product.fumigant:
+    if product.is_fumigant:
         keys.append('fumigant')
     # From the active ingredients, not the deprecated product flag: 3 CCR
     # 6400 names ingredients, and nothing ever set the flag.

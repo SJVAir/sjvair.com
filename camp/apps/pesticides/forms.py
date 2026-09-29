@@ -2,9 +2,14 @@ from django import forms
 from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 
-from camp.apps.pesticides.models import Chemical, PesticideNotice, PesticideUse
+from camp.apps.pesticides.models import Chemical, PesticideNotice
+from camp.apps.pesticides.stats import METHOD_LABELS, METHOD_ORDER
 from camp.apps.pesticides.places import RADIUS_CHOICES as RADIUS_MILES
 
+# Blank is "no filter" in a select, so records CDPR left without a method get
+# their own value.
+NO_METHOD = 'none'
+METHOD_CHOICES = [(NO_METHOD if code == '' else code, _(METHOD_LABELS[code])) for code in METHOD_ORDER]
 BOOL_CHOICES = [('', _('Any')), ('true', _('Yes')), ('false', _('No'))]
 # The allowed radii live in places.RADIUS_CHOICES; these are just their
 # form-field (string) spellings.
@@ -86,7 +91,7 @@ class RecordsFilterForm(forms.Form):
     method = forms.ChoiceField(
         label=_('Method'),
         required=False,
-        choices=[('', _('Any'))] + list(PesticideUse.AerialGround.choices),
+        choices=[('', _('Any'))] + METHOD_CHOICES,
     )
 
     # Carried as hidden inputs -- set by the section map / entity pages, not

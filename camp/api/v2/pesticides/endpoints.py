@@ -7,7 +7,7 @@ from resticus import generics, http
 
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import (
-    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseRollup, PesticideUseTotal, Product, ProductChemical,
+    Chemical, Commodity, PesticideNotice, PesticideUse, PesticideUseTotal, Product,
 )
 from camp.apps.regions.models import Region
 from camp.utils.views import CachedEndpointMixin
@@ -296,26 +296,16 @@ class EntitySearchBase(generics.Endpoint):
             .annotate(prefix=Case(When(starts, then=0), default=1))
             .order_by('prefix', '-rank', 'name', 'pk'))
 
-        # The explorer's chemicals-of-concern scope: only concern chemicals,
-        # only the products that carry one as an active ingredient, and only
-        # the commodities a chemical of concern was applied to in scope. A
-        # totals row names one entity, so its commodity rows carry no
-        # chemical -- the commodity pass reads the rollup, where every row
-        # names all three.
-        if stats.is_concern(params.get(stats.CONCERN_PARAM)):
-            if kind == 'chemical':
-                queryset = queryset.filter(pk__in=stats.of_concern_chemicals())
-            elif kind == 'product':
-                queryset = queryset.filter(pk__in=ProductChemical.objects
-                    .filter(chemical__in=stats.of_concern_chemicals())
-                    .values('product'))
-            elif kind == 'commodity':
-                rows = stats.concern_rows(PesticideUseRollup.objects.filter(commodity__isnull=False))
-                if year and year != 'all':
-                    rows = rows.filter(year=int(year))
-                if params.get('county'):
-                    rows = rows.filter(county__slug=params['county'])
-                queryset = queryset.filter(pk__in=rows.values('commodity'))
+        # The explorer's narrowing: only the names applied under it in scope.
+        # A totals row names one entity, so it can't answer for the others;
+        # the rollup names all three on every row, and narrow_rows() knows
+        # every narrowing, so no value is ever read as another.
+        narrow = stats.resolve_narrow(params)
+        if narrow:
+            keys = stats.narrowed_keys(
+                kind, narrow, int(year) if year.isdigit() else None, year == 'all' or not year,
+                params.get('county') or None)
+            queryset = queryset.filter(pk__in=list(keys))
 
         # A plain dict: CachedEndpointMixin caches it and wraps it in Http200.
         # Chemicals show their preferred name; the CDPR name rides along as
@@ -337,8 +327,8 @@ class EntitySearch(CachedEndpointMixin, EntitySearchBase):
 
     `type=chemical|product|commodity` (required), `q` (the search text; fewer
     than two characters returns no results), `year` (a year or `all`) and
-    `county` (slug) to offer only names with reported use there, `concern=1`
-    to offer only chemicals of concern (and the products carrying one), and
+    `county` (slug) to offer only names with reported use there, `narrow=concern|restricted|fumigant|aerial`
+    (or the legacy `concern=1`) to offer only what that narrowing keeps, and
     `limit` (default 10, capped at 25). Each result carries the entity's `id` (sqid), `name`, and a
     `detail` string -- chem code, registration number, or site code.
     """

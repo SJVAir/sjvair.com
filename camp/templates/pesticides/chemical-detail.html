@@ -16,7 +16,11 @@
     </div>
     {% endif %}
     {% if concern_excluded %}
+    {% if concern == 'restricted' %}
+    {% include 'pesticides/includes/concern-note.html' with reason="This chemical isn't a California restricted material," %}
+    {% else %}
     {% include 'pesticides/includes/concern-note.html' with reason="This chemical isn't on the Prop 65, CARB toxic air contaminant, IARC or California restricted lists," %}
+    {% endif %}
     {% endif %}
     {{ block.super }}
 {% endblock %}

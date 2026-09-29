@@ -435,3 +435,46 @@ class WithChemicalsFilterTests(TestCase):
         # Glyphosate was used on Almond in 2022 and on Grape in 2023 —
         # should NOT appear in Almond's chemicals when filtered to 2023
         assert self.glyphosate not in self._almond().chemicals.all()
+
+
+class ProductMatchingTests(TestCase):
+    """SprayDays and PUR spell EPA registration numbers differently: PUR adds a
+    distributor suffix (95290-1-AA), so the match is on company-product."""
+
+    def make(self, prodno, reg_number):
+        return Product.objects.create(prodno=prodno, reg_number=reg_number, name=f'P{prodno}')
+
+    def product_map(self):
+        from camp.apps.pesticides.spraydays import build_product_map
+        return build_product_map()
+
+    def test_short_number_links_a_suffixed_product(self):
+        from camp.apps.pesticides.spraydays import _product_pks_from_raw
+        p = self.make(1, '95290-1-AA')
+        assert _product_pks_from_raw([{'EPARegNo': '95290-1'}], self.product_map()) == {p.pk}
+
+    def test_full_number_still_links(self):
+        from camp.apps.pesticides.spraydays import _product_pks_from_raw
+        p = self.make(1, '95290-1-AA')
+        assert _product_pks_from_raw([{'EPARegNo': '95290-1-AA'}], self.product_map()) == {p.pk}
+
+    def test_exact_match_beats_the_lowest_prodno(self):
+        from camp.apps.pesticides.spraydays import _product_pks_from_raw
+        self.make(1, '95290-1-AA')
+        q = self.make(2, '95290-1-ZA')
+        assert _product_pks_from_raw([{'EPARegNo': '95290-1-ZA'}], self.product_map()) == {q.pk}
+
+    def test_unknown_number_links_nothing(self):
+        from camp.apps.pesticides.spraydays import _product_pks_from_raw
+        self.make(1, '95290-1-AA')
+        assert _product_pks_from_raw([{'EPARegNo': '1-2'}, {'EPARegNo': ''}], self.product_map()) == set()
+
+    def test_registrants_own_label_beats_lowest_prodno(self):
+        from camp.apps.pesticides.spraydays import _product_pks_from_raw
+        self.make(1, '95290-1-ZA')
+        own = self.make(2, '95290-1-AA')
+        assert _product_pks_from_raw([{'EPARegNo': '95290-1'}], self.product_map()) == {own.pk}
+
+    def test_blank_number_is_not_looked_up(self):
+        from camp.apps.pesticides.spraydays import _product_pks_from_raw
+        assert _product_pks_from_raw([{'EPARegNo': '  '}, {}], {'': 99}) == set()

@@ -38,12 +38,13 @@ class ProductFilter(FilterSet):
     # Not a column: 3 CCR 6400 names active ingredients, so a product is
     # restricted when one of its chemicals carries the classification.
     california_restricted = django_filters.BooleanFilter(method='filter_restricted')
+    # The classified flag, not CDPR's raw one (which the response exposes as
+    # `cdpr_fumigant`).
+    fumigant = django_filters.BooleanFilter(field_name='is_fumigant')
 
     class Meta:
         model = Product
-        fields = {
-            'fumigant': ['exact'],
-        }
+        fields = []
 
     def filter_restricted(self, queryset, name, value):
         if value is None:

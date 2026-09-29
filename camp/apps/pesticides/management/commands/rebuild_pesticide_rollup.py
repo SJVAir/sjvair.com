@@ -12,17 +12,32 @@ class Command(BaseCommand):
         group = parser.add_mutually_exclusive_group(required=True)
         group.add_argument('--year', type=int)
         group.add_argument('--all', action='store_true')
+        group.add_argument('--fumigants-only', action='store_true',
+            help='Only reclassify fumigant products and ingredients over all loaded years; leave the rollup alone.')
         parser.add_argument('--totals-only', action='store_true',
             help='Rebuild only the totals derived from the existing rollup: the per-county entity totals and the per-section totals.')
 
     def handle(self, *args, **options):
+        from camp.apps.pesticides import fumigants, stats
+
+        if options['fumigants_only']:
+            self.write_fumigants(fumigants.classify_fumigants())
+            stats.refresh_landing_stats()
+            self.stdout.write('Refreshed cached year facts and landing stats.')
+            return
+
         totals_only = options['totals_only']
         if options['all']:
             years = rollup.rollup_years() if totals_only else rollup.loaded_years()
+            years.reverse()  # newest first, so the default page year has data soonest
         else:
             years = [options['year']]
         if not years:
             raise CommandError('No PesticideUseRollup rows loaded.' if totals_only else 'No PesticideUse rows loaded.')
+        if options['all'] and not totals_only:
+            # Before the year loop: it reads PesticideUse, not the rollup, so
+            # fumigants are flagged from the start rather than after the rebuild.
+            self.write_fumigants(fumigants.classify_fumigants())
         for year in years:
             started = time.monotonic()
             if totals_only:
@@ -33,6 +48,11 @@ class Command(BaseCommand):
                 label = 'rollup rows'
             self.stdout.write(f'{year}: {written:,} {label} in {time.monotonic() - started:.1f}s')
 
-        from camp.apps.pesticides import stats
         stats.refresh_landing_stats()
         self.stdout.write('Refreshed cached year facts and landing stats.')
+
+    def write_fumigants(self, counts):
+        self.stdout.write(
+            f"Fumigants: {counts['chemicals']:,} chemicals, {counts['products']:,} products "
+            f"({counts['added']:,} not flagged by CDPR)"
+        )

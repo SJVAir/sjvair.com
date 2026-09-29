@@ -9,13 +9,14 @@ from contextlib import nullcontext
 
 from django.db import connection, transaction
 
+from camp.apps.pesticides import fumigants
 from camp.apps.pesticides.models import (
     PesticideSectionTotal, PesticideUse, PesticideUseRollup, PesticideUseTotal,
 )
 
 REBUILD_SQL = """
 INSERT INTO pesticides_pesticideuserollup
-    (year, month, county_id, mtrs_id, chemical_id, product_id, commodity_id,
+    (year, month, county_id, mtrs_id, chemical_id, product_id, commodity_id, method,
      lbs_chemical, lbs_product, acres_treated, applications)
 SELECT
     year,
@@ -25,18 +26,19 @@ SELECT
     chemical_id,
     product_id,
     commodity_id,
+    COALESCE(aerial_ground, '') AS method,
     COALESCE(SUM(lbs_chemical), 0),
     COALESCE(SUM(lbs_product), 0),
     COALESCE(SUM(acres_treated), 0),
     COUNT(*)
 FROM pesticides_pesticideuse
 WHERE year = %s
--- `month` here resolves to the SELECT alias, not a source column --
--- pesticides_pesticideuse has no `month` column of its own. If one is ever
+-- `month` and `method` here resolve to the SELECT aliases, not source columns --
+-- pesticides_pesticideuse has no `month` or `method` column of its own. If one is ever
 -- added, this GROUP BY silently starts grouping by the real column instead
 -- of the derived one; switch to positional `GROUP BY 1, 2, ...` to keep
 -- grouping on the alias.
-GROUP BY year, month, county_id, mtrs_id, chemical_id, product_id, commodity_id
+GROUP BY year, month, county_id, mtrs_id, chemical_id, product_id, commodity_id, method
 """
 
 
@@ -144,7 +146,12 @@ def rebuild_year(year):
 
 
 def rebuild_all():
-    return {year: rebuild_year(year) for year in loaded_years()}
+    # Classify first: it reads PesticideUse, not the rollup, so fumigants are
+    # flagged before the (long) year loop and never vanish from the fumigant
+    # narrowing while the rollup rebuilds. Newest year first, so the default
+    # page year has data soonest.
+    fumigants.classify_fumigants()
+    return {year: rebuild_year(year) for year in reversed(loaded_years())}
 
 
 def rebuild_totals_all():

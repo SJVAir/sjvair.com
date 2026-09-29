@@ -1,3 +1,6 @@
+import importlib
+from unittest import mock
+
 import pytest
 from django.db import IntegrityError, transaction
 from django.test import TestCase
@@ -33,7 +36,7 @@ from django.core.management import call_command
 from io import StringIO
 
 from camp.apps.pesticides import rollup, stats
-from camp.apps.pesticides.models import PesticideUse
+from camp.apps.pesticides.models import PesticideUse, Product
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 
 
@@ -91,6 +94,52 @@ class RebuildTests(TestCase):
     def test_rebuild_all_and_loaded_years(self):
         assert rollup.loaded_years() == [2022, 2023]
         assert rollup.rebuild_all() == {2022: 3, 2023: 6}
+
+    def test_rebuild_all_classifies_fumigants(self):
+        from camp.apps.pesticides.tests.test_fumigants import add_use, make_telone_products
+        telone, flagged, reregistered = make_telone_products()
+        add_use(reregistered, telone, 1000, 'F')
+        assert not reregistered.is_fumigant
+        rollup.rebuild_all()
+        reregistered.refresh_from_db()
+        assert reregistered.is_fumigant
+
+    def test_rebuild_all_classifies_before_the_first_year_and_goes_newest_first(self):
+        calls = []
+        with mock.patch.object(rollup.fumigants, 'classify_fumigants', side_effect=lambda: calls.append('classify')), \
+                mock.patch.object(rollup, 'rebuild_year', side_effect=lambda year: calls.append(year) or 0):
+            written = rollup.rebuild_all()
+        assert calls == ['classify', 2023, 2022]
+        assert written == {2022: 0, 2023: 0}
+
+    def test_all_command_classifies_first_and_rebuilds_newest_first(self):
+        calls = []
+        with mock.patch('camp.apps.pesticides.fumigants.classify_fumigants',
+                side_effect=lambda: calls.append('classify') or {'chemicals': 1, 'products': 1234, 'added': 0}), \
+                mock.patch.object(rollup, 'rebuild_year', side_effect=lambda year: calls.append(year) or 0):
+            out = StringIO()
+            call_command('rebuild_pesticide_rollup', '--all', stdout=out)
+        assert calls == ['classify', 2023, 2022]
+        assert 'Fumigants: 1 chemicals, 1,234 products (0 not flagged by CDPR)' in out.getvalue()
+        assert out.getvalue().index('Fumigants:') < out.getvalue().index('2023:')
+
+    def test_migration_backfills_is_fumigant_from_the_cdpr_flag(self):
+        migration = importlib.import_module('camp.apps.pesticides.migrations.0013_product_is_fumigant').Migration
+        sql = [op.sql for op in migration.operations if op.__class__.__name__ == 'RunSQL']
+        assert sql == ['UPDATE pesticides_product SET is_fumigant = fumigant']
+        assert Product._meta.db_table == 'pesticides_product'
+
+    def test_fumigants_only_command_skips_the_rollup(self):
+        from camp.apps.pesticides.tests.test_fumigants import add_use, make_telone_products
+        telone, flagged, reregistered = make_telone_products()
+        add_use(reregistered, telone, 1000, 'F')
+        before = PesticideUseRollup.objects.count()
+        out = StringIO()
+        call_command('rebuild_pesticide_rollup', '--fumigants-only', stdout=out)
+        assert PesticideUseRollup.objects.count() == before
+        assert Product.objects.get(pk=reregistered.pk).is_fumigant
+        assert 'fumigant' in out.getvalue().lower()
+        assert 'Fumigants: 2 chemicals, 3 products (1 not flagged by CDPR)' in out.getvalue()
 
     def test_command(self):
         PesticideUseRollup.objects.all().delete()

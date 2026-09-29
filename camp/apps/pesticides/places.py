@@ -506,8 +506,8 @@ def _place_stats(area, year, all_years, concern=False):
     # totals row exists only where a chemical was identified, so switching
     # sources would quietly drop unattributed applications from the count.
     # ...and never when the narrowing filters on the product, which the
-    # per-chemical totals rows don't carry (stats.narrow_needs_product).
-    total_rows = area.total_rows() if (all_years and not stats.narrow_needs_product(concern)) else None
+    # per-chemical totals rows don't carry (stats.narrow_needs_rollup).
+    total_rows = area.total_rows() if (all_years and not stats.narrow_needs_rollup(concern)) else None
     if total_rows is not None and concern:
         total_rows = stats.narrow_rows(total_rows, concern)
     totals_source = rows if total_rows is None else total_rows
@@ -545,6 +545,7 @@ def _place_stats(area, year, all_years, concern=False):
                 stats.real_chemicals(scoped.filter(chemical__isnull=False))
             ).values('chemical').distinct().count(),
         },
+        'by_method': stats.by_method(rows, year, all_years=all_years),
         'by_month': by_month,
         'peak_month': peak_month,
         'top_chemicals': top_chemicals[:stats.RELATED_LIMIT],
@@ -571,7 +572,7 @@ def place_context(area, year, all_years=False, concern=False, params=None):
     # exactly what they were.
     scope_key = (concern,) if concern else ()
     if all_years:
-        data = stats.cached(stats.all_years_key('place-v2', area.cache_key(), *scope_key), build)
+        data = stats.cached(stats.all_years_key('place-v3', area.cache_key(), *scope_key), build)
     else:
         data = build()
     totals = data['totals']

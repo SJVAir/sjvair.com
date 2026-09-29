@@ -249,7 +249,7 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
     """
     The county choropleth, shaded by `metric` (see COUNTY_METRICS) as a
     ranking: darker is more. Each county links to its page; `query` (a scope
-    query string such as 'year=2020&concern=1') is carried on those links.
+    query string such as 'year=2020&narrow=concern') is carried on those links.
     It leaves out `county=` -- the link is what picks the county. The table
     beside it (rank_counties) is the legend.
     """

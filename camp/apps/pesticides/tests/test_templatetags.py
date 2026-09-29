@@ -307,3 +307,13 @@ class TrendChartComparisonTests(SimpleTestCase):
             compare_label='Average valley county'))
         assert 'Average valley county' in html
         assert 'chart-key is-line' in html
+
+
+class PercentFilterTests(TestCase):
+    def test_percent(self):
+        from camp.apps.pesticides.templatetags.pesticides_explorer import percent, css_percent
+        assert percent(0.0614) == '6.1%'
+        assert percent(1) == '100%'
+        assert percent(0.0002) == '<0.1%'
+        assert percent(0) == '0%'
+        assert css_percent(0.0614) == '6.14%'

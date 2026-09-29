@@ -198,7 +198,7 @@ class RecordsConcernScopeTests(RollupTestMixin, TestCase):
         assert [u.pk for u in response.context['object_list']] == [5, 4, 3, 2, 1]
         assert response.context['totals'] == {'applications': 5, 'lbs': 240.0, 'acres': 24.0}
         assert response.context['concern'] == stats.NARROW_CONCERN
-        assert response.context['map_config']['concern'] == '1'
+        assert response.context['map_config']['narrow'] == 'concern'
 
     def test_totals_cache_key_is_separate_from_the_unscoped_one(self):
         assert self.client.get(self.url).context['totals']['lbs'] == 740.0

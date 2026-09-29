@@ -52,7 +52,7 @@ def bad_request(message):
 
 
 def apply_filters(rows, params):
-    """Entity/county/month/concern filters shared by both endpoints. Returns (rows, error)."""
+    """Entity/county/month/narrowing filters shared by both endpoints. Returns (rows, error)."""
     if params.get('month'):
         try:
             month = int(params['month'])
@@ -338,8 +338,8 @@ class SectionList(CachedEndpointMixin, SectionListBase):
 
     Give either `bbox=west,south,east,north` or `lat`, `lng`, `radius` (miles: 1, 3, or 5).
     Filters: `year` (default latest), `month`, `chemical` (chem code), `product`
-    (prodno), `commodity` (site code), `county` (slug), and `concern=1` to
-    count only the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B,
+    (prodno), `commodity` (site code), `county` (slug), and `narrow=concern|restricted|fumigant|aerial` (or the legacy `concern=1`) to
+    count only what that narrowing keeps, e.g. the chemicals of concern (Prop 65, CARB TAC, IARC 1/2A/2B,
     California restricted materials).
     """
     cache_timeout = 60 * 60
@@ -393,7 +393,7 @@ class SectionDetailBase(generics.Endpoint):
 
 
 class SectionDetail(CachedEndpointMixin, SectionDetailBase):
-    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `concern=1` counts only the chemicals of concern."""
+    """One MTRS section: geometry, totals by year and by month, and top chemicals, products, and commodities for `year` (default latest). `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) counts only what that narrowing keeps."""
     cache_timeout = 60 * 60
 
 
@@ -411,6 +411,9 @@ class ActiveNoticeListBase(generics.Endpoint):
             if error:
                 return bad_request(error)
             notices = notices.filter(point__bboverlaps=Polygon.from_bbox(bbox))
+        narrow = stats.resolve_narrow(params)
+        if narrow:
+            notices = stats.narrow_notices(notices, narrow)
         for param, lookup, cast in (
             ('chemical', 'chemicals__chem_code', int),
             ('product', 'products__prodno', int),
@@ -559,11 +562,11 @@ class TownshipList(CachedEndpointMixin, TownshipListBase):
     a client that already holds the outlines.
     Filters: `year` (default latest), `month`, `chemical` (chem code),
     `product` (prodno), `commodity` (site code), `county` (slug), and
-    `concern=1` to count only the chemicals of concern.
+    `narrow=concern|restricted|fumigant|aerial` (or legacy `concern=1`) to count only what that narrowing keeps.
     """
     cache_timeout = 60 * 60
 
 
 class ActiveNoticeList(CachedEndpointMixin, ActiveNoticeListBase):
-    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug). A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
+    """Active SprayDays notices of intent (scheduled from four days ago onward) as GeoJSON points. Optional `bbox=west,south,east,north`, `chemical` (chem code), `product` (prodno), `county` (slug), `narrow=concern|restricted|fumigant|aerial`. A request matching more than 2000 notices returns 400; narrow it with a bbox or a filter."""
     cache_timeout = NOTICE_CACHE_TTL

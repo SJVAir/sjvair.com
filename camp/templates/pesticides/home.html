@@ -99,7 +99,7 @@ off entirely when nothing is left, rather than rendered empty.
 {% endcomment %}
 <div class="columns leaderboards is-multiline">
     <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied products' rows=top_products kind='products' view_all_url=product_list_url %}</div>
-    {% if concern %}
+    {% if concern == 'concern' %}
     <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied flagged chemicals' rows=top_chemicals kind='chemicals' view_all_url=chemical_list_url %}</div>
     {% else %}
     <div class="column is-half-tablet">{% include 'pesticides/includes/leaderboard.html' with title='Most applied chemicals' rows=top_chemicals kind='chemicals' view_all_url=chemical_list_url %}</div>

@@ -250,7 +250,11 @@ class Product(TimeStampedModel):
     prodno = models.IntegerField(_('Product Number'), unique=True)
     reg_number = models.CharField(_('Registration Number'), max_length=64, unique=True)
     name = models.CharField(_('Name'), max_length=256)
-    fumigant = models.BooleanField(_('Fumigant'), default=False)
+    fumigant = models.BooleanField(_('CDPR fumigant flag'), default=False)
+    # CDPR's flag, or a product containing an ingredient that is almost always
+    # applied as a fumigant (fumigants.classify_fumigants). CDPR's flag misses
+    # re-registrations -- the 2021 Telone products carry none.
+    is_fumigant = models.BooleanField(_('Fumigant'), default=False, db_index=True)
     @property
     def is_restricted(self):
         """
@@ -498,6 +502,8 @@ class PesticideUseRollup(models.Model):
     chemical = models.ForeignKey('pesticides.Chemical', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Chemical'))
     product = models.ForeignKey('pesticides.Product', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Product'))
     commodity = models.ForeignKey('pesticides.Commodity', on_delete=models.CASCADE, null=True, blank=True, related_name='rollups', verbose_name=_('pesticides.Commodity'))
+    # CDPR's aer_gnd_ind: A aerial, G ground, F field fumigation, O other, blank not reported
+    method = models.CharField(_('Application method'), max_length=1, blank=True, default='')
     lbs_chemical = models.FloatField(_('Pounds of Chemical'), default=0)
     lbs_product = models.FloatField(_('Pounds of Product'), default=0)
     acres_treated = models.FloatField(_('Acres Treated'), default=0)
@@ -508,7 +514,7 @@ class PesticideUseRollup(models.Model):
         verbose_name_plural = _('Pesticide Use Rollups')
         constraints = [
             models.UniqueConstraint(
-                fields=['year', 'month', 'county', 'mtrs', 'chemical', 'product', 'commodity'],
+                fields=['year', 'month', 'county', 'mtrs', 'chemical', 'product', 'commodity', 'method'],
                 nulls_distinct=False,
                 name='pesticides_rollup_key',
             ),

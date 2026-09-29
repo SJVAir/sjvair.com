@@ -102,9 +102,14 @@ class Command(BaseCommand):
 
             self._import_use_records(paths, year)
 
-            from camp.apps.pesticides import rollup, stats
+            from camp.apps.pesticides import fumigants, rollup, stats
             written = rollup.rebuild_year(year)
             self.stdout.write(f'Rollup: {written:,} rows for {year}')
+            counts = fumigants.classify_fumigants()
+            self.stdout.write(
+                f"Fumigants: {counts['chemicals']:,} chemicals, {counts['products']:,} products "
+                f"({counts['added']:,} not flagged by CDPR)"
+            )
             stats.refresh_landing_stats()
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)

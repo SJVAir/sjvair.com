@@ -38,7 +38,7 @@
                 </td>
                 <td class="has-text-right">{{ use.lbs_chemical|lbs }}</td>
                 <td class="has-text-right">{{ use.acres_treated|lbs }}</td>
-                <td>{{ use.get_aerial_ground_display|default:'—' }}</td>
+                <td>{{ use.aerial_ground|method_label }}</td>
             </tr>
             {% empty %}
             <tr><td colspan="9" class="has-text-centered has-text-grey">No records match.</td></tr>
