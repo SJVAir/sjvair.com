@@ -4,10 +4,11 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.emissions import areas, dairies
-from camp.apps.emissions.models import DairyHerd, Digester, EmissionsRecord, Facility, ToxicEmission, ToxicPollutant
+from camp.apps.emissions import areas, dairies, wells
+from camp.apps.emissions.models import DairyHerd, Digester, EmissionsRecord, Facility, ToxicEmission, ToxicPollutant, Well
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
-from camp.apps.emissions.tests.test_dairies import dairy_inventory, make_dairies, set_city
+from camp.apps.emissions.tests.test_dairies import IN_KERN, dairy_inventory, make_dairies, set_city
+from camp.apps.emissions.tests.test_wells import make_well
 from camp.apps.regions.models import Boundary, Region
 
 
@@ -450,3 +451,41 @@ class DairyEndpointTests(TestCase):
         response = self.get('dairy-geojson')
         assert response.status_code == 200 and response.json()['features'] == []
         assert self.get('dairy-counties').status_code == 200
+
+
+class WellEndpointTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        self.active = make_well('0402900001', IN_KERN, kern, spud_date='2015-03-04')
+        self.idle = make_well('0402900002', (IN_KERN[0] + 0.001, IN_KERN[1]), kern, status='Idle', hpz='Verified HPZ', directional=True)
+
+    def test_geojson_is_lean(self):
+        response = self.client.get(reverse('api:v2:emissions:wells-geojson'))
+        assert response.status_code == 200
+        body = response.json()
+        assert body['properties']['wells'] == 2 and body['properties']['imported'] is None
+        by_id = {f['id']: f for f in body['features']}
+        idle = by_id[self.idle.sqid]
+        assert idle['properties'] == {'id': self.idle.sqid, 's': 'Idle', 'h': 1}
+        assert by_id[self.active.sqid]['properties']['h'] == 0
+        assert idle['geometry'] == {'type': 'Point', 'coordinates': [round(IN_KERN[0] + 0.001, 5), IN_KERN[1]]}
+
+    def test_geojson_cache_follows_the_wells_generation(self):
+        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['features']) == 2
+        Well.objects.filter(pk=self.idle.pk).delete()
+        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['features']) == 2
+        wells.clear_caches()
+        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['features']) == 1
+
+    def test_detail(self):
+        body = self.client.get(reverse('api:v2:emissions:well-detail', args=[self.idle.sqid])).json()
+        assert body == {
+            'id': self.idle.sqid, 'api': '0402900002', 'label': 'TEST LEASE 02', 'lease_name': 'TEST LEASE', 'well_number': '02',
+            'status': 'Idle', 'well_type': 'Oil & Gas', 'operator': 'TEST OIL LLC', 'field': 'Test Field', 'county': 'Kern County',
+            'spud_year': None, 'in_hpz': 'Verified HPZ', 'directional': True, 'url': self.idle.calgem_url,
+        }
+        assert self.client.get(reverse('api:v2:emissions:well-detail', args=[self.active.sqid])).json()['spud_year'] == 2015
+        assert self.client.get(reverse('api:v2:emissions:well-detail', args=['nope'])).status_code == 404
