@@ -149,3 +149,21 @@ class SchoolsCardTests(TestCase):
         assert '<h2 id="schools">' in content
         assert 'Health &amp; Safety Code 42301.6' in content and 'Education Code 17213' in content
         assert 'Child care covers licensed centers only, not family child-care homes.' in content
+
+
+class FacilityAmmoniaRowTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_ammonia_row_in_the_emissions_table(self):
+        content = self.client.get(Facility.objects.get(name='TEST PLANT').get_absolute_url()).content.decode()
+        table = content[content.index('Emissions in 2024'):content.index('Toxic air contaminants in 2024')]
+        assert 'pollutant=nh3' in table and 'Ammonia' in table
+        assert table.index('TOG') < table.index('Ammonia')
+        content = self.client.get(Facility.objects.get(name='TEST CEMENT').get_absolute_url()).content.decode()
+        # TEST CEMENT reported no ammonia: no row for it, though the scope
+        # bar (every page) still offers nh3 as a pollutant to switch to.
+        table = content[content.index('Emissions in 2024'):content.index('Toxic air contaminants in 2024')]
+        assert 'Ammonia' not in table

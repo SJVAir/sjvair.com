@@ -17,7 +17,7 @@ import vanilla
 from camp.apps.ces import stats as ces_stats
 from camp.apps.emissions import areas, compliance, dairies, schools, stats
 from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport
-from camp.apps.emissions.pollutants import CRITERIA
+from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
 from camp.apps.regions.models import Region
 from camp.utils import mapconfig
@@ -79,7 +79,7 @@ class ScopeMixin:
             'county': scope.county,
             'county_options': list(Region.objects.counties().order_by('name').values_list('slug', 'name')),
             'pollutant': scope.pollutant,
-            'pollutant_options': stats.toxic_options(scope.year) if scope.toxics else CRITERIA,
+            'pollutant_options': stats.toxic_options(scope.year) if scope.toxics else CRITERIA + PRECURSORS,
             'toxics': scope.toxics,
             'minor': scope.minor,
             'scope_qs': scope.query(),
@@ -204,16 +204,21 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="facility-emissions-{scope.year}.csv"'
         writer = csv.writer(response)
-        toxic_column = [] if not scope.toxics else [f"{scope.pollutant.key}_{'share' if scope.pollutant.weighted else 'lbs'}"]
+        # One extra column for a pollutant that isn't a criteria column: a
+        # toxic (lbs or share) or ammonia (tons), the scope's `value`.
+        criteria_keys = {pollutant.key for pollutant in CRITERIA}
+        extra_column = [] if scope.pollutant.key in criteria_keys else [
+            f"{scope.pollutant.key}_{'share' if scope.pollutant.weighted else scope.pollutant.unit}"
+        ]
         writer.writerow(
             ['rank', 'facility', 'id', 'air_district', 'county', 'city', 'sector', 'sic_code', 'year']
-            + [f'{pollutant.key}_tons' for pollutant in CRITERIA] + toxic_column
+            + [f'{pollutant.key}_tons' for pollutant in CRITERIA] + extra_column
             + ['epa_tracked', 'hpv_status']
         )
         tracked = {row.facility_id: row for row in AirComplianceFacility.objects.exclude(facility=None).order_by('reported_through')}
         for record in stats.facility_table(scope, **list_filters(self.request.GET)):
             facility = record.facility
-            values = [pollutant.display(getattr(record, pollutant.key)) for pollutant in CRITERIA] + ([record.value] if scope.toxics else [])
+            values = [pollutant.display(getattr(record, pollutant.key)) for pollutant in CRITERIA] + ([record.value] if extra_column else [])
             writer.writerow(
                 [rank_map.get(record.facility_id, ''), facility.name, facility.sqid, facility.air_district.name,
                  facility.get_county() or '', facility.get_city(), facility.get_sector_display(),

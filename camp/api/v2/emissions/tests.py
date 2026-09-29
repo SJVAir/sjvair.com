@@ -205,6 +205,12 @@ class FacilityGeoJSONTests(TestCase):
         Facility.objects.filter(name='TEST PLANT').update(point=None)
         assert [f['properties']['name'] for f in self.features()] == ['TEST CEMENT']
 
+    def test_ammonia_in_tons(self):
+        body = self.client.get(reverse('api:v2:emissions:geojson'), {'pollutant': 'nh3'}).json()
+        assert body['properties']['pollutant'] == 'nh3' and body['properties']['unit'] == 'tons'
+        values = {f['properties']['name']: f['properties']['value'] for f in body['features']}
+        assert values['TEST PLANT'] == 0.05 and values['TEST CEMENT'] is None
+
 
 class DistrictListTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']

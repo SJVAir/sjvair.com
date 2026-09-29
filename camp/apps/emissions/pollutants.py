@@ -1,4 +1,4 @@
-"""The pollutants the explorer can show: the criteria pollutants, the two weighted toxics measures, and (from the database) every toxic CARB reports."""
+"""The pollutants the explorer can show: the criteria pollutants, ammonia (a precursor), the two weighted toxics measures, and (from the database) every toxic CARB reports."""
 
 from dataclasses import dataclass
 from typing import Optional
@@ -12,10 +12,15 @@ class Pollutant:
     toxic: bool = False
     weight_field: str = ''    # 'cancer_weight' or 'chronic_weight' for the two weighted measures
     pollutant_id: Optional[int] = None  # ToxicPollutant pk for one toxic
+    carb_id: str = ''  # a precursor CARB delivers in its toxics feed (ammonia): read from ToxicEmission, shown in tons
 
     @property
     def weighted(self):
         return bool(self.weight_field)
+
+    @property
+    def precursor(self):
+        return bool(self.carb_id)
 
     @property
     def slug(self):
@@ -52,6 +57,14 @@ CRITERIA = [
     Pollutant('tog', 'TOG', 'Total organic gases'),
 ]
 
+LBS_PER_TON = 2000.0
+
+# Ammonia: a PM2.5 precursor (winter ammonium nitrate), not a toxic. CARB
+# delivers it in the toxics feed (ToxicEmission, kind 'precursor', CARB id
+# 7664417); the explorer shows it beside the criteria pollutants, in tons/yr.
+NH3 = Pollutant('nh3', 'NH3', 'Ammonia', carb_id='7664417')
+PRECURSORS = [NH3]
+
 # The two toxicity-weighted measures (pounds × OEHHA potency, CARB's method;
 # see models.ToxicPollutant.set_weights). Shown as a share of the Valley
 # total, never as a number with a unit.
@@ -59,7 +72,7 @@ CANCER = Pollutant('cancer', 'Cancer-weighted', 'Cancer-weighted toxics (relativ
 CHRONIC = Pollutant('chronic', 'Hazard-weighted', 'Non-cancer hazard-weighted toxics (relative)', toxic=True, weight_field='chronic_weight')
 WEIGHTED = [CANCER, CHRONIC]
 
-POLLUTANTS = {pollutant.key: pollutant for pollutant in CRITERIA + WEIGHTED}
+POLLUTANTS = {pollutant.key: pollutant for pollutant in CRITERIA + PRECURSORS + WEIGHTED}
 DEFAULT_CRITERIA = 'nox'
 DEFAULT_TOXIC = 'cancer'
 

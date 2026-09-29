@@ -4,7 +4,7 @@ from django.test import TestCase
 
 from camp.apps.emissions import cepam, stats
 from camp.apps.emissions.models import CountyInventory, EmissionsRecord, Facility, ToxicPollutant
-from camp.apps.emissions.pollutants import POLLUTANTS, get_pollutant
+from camp.apps.emissions.pollutants import NH3, POLLUTANTS, PRECURSORS, get_pollutant
 from camp.apps.regions.models import Region
 
 
@@ -293,3 +293,39 @@ class FacilityDetailStatsTests(StatsTestCase):
         # The nox 3 -> 6 (+100%) change is between 2023 and 2024; asking about
         # 2023 (no 2022 record to compare against) must not surface it.
         assert stats.large_changes(self.plant, 2023) == []
+
+
+class PrecursorTests(StatsTestCase):
+    def test_nh3_is_a_criteria_side_pollutant_in_tons(self):
+        assert NH3.key == 'nh3' and NH3.precursor and not NH3.toxic and not NH3.weighted
+        assert NH3.unit == 'tons' and NH3.unit_label == 'tons/yr'
+        assert get_pollutant('nh3') is NH3 and PRECURSORS == [NH3]
+        s = scope(pollutant='nh3')
+        assert s.pollutant is NH3 and not s.toxics
+        assert s.query() == '?pollutant=nh3'
+        assert scope(toxics=1, pollutant='nh3').pollutant.key == 'cancer'  # never a toxic
+
+    def test_values_are_lbs_over_2000(self):
+        # The fixture: TEST PLANT reported 100 lbs of ammonia in 2024; nobody else reported any.
+        s = scope(pollutant='nh3')
+        assert dict(stats.values(s)) == {self.plant.pk: 0.05, self.cement.pk: None}
+        assert stats.totals(s)['value'] == 0.05
+        assert stats.ranks(s) == {self.plant.pk: 1}
+        assert [r.facility.name for r in stats.facility_table(s)] == ['TEST PLANT', 'TEST CEMENT']
+        assert stats.by_year(s, facility=self.plant) == [{'year': 2023, 'value': 0.0}, {'year': 2024, 'value': 0.05}]
+        sectors = {row['sector']: row['value'] for row in stats.sector_breakdown(s)}
+        assert sectors['glass'] == 0.05 and sectors['cement-minerals'] == 0.0
+
+    def test_county_context_is_none_for_ammonia(self):
+        CountyInventory.objects.create(county=self.fresno, year=2024, inventory=cepam.INVENTORY, source_type='mobile', eic='723', nox=1.0)
+        assert stats.county_context(scope(pollutant='nox', county='fresno')) is not None
+        assert stats.county_context(scope(pollutant='nh3', county='fresno')) is None
+
+    def test_facility_ranks_append_an_ammonia_row(self):
+        rows = stats.facility_ranks(self.plant, 2024)
+        assert [row['pollutant'].key for row in rows] == ['nox', 'rog', 'pm', 'pm10', 'sox', 'co', 'tog', 'nh3']
+        nh3 = rows[-1]
+        assert nh3['value'] == 0.05 and (nh3['county_rank'], nh3['county_count']) == (1, 1)
+        assert (nh3['sector_rank'], nh3['sector_count']) == (1, 1) and nh3['county_share'] == 1.0
+        assert [row['pollutant'].key for row in stats.facility_ranks(self.cement, 2024)][-1] == 'tog'
+        assert stats.precursor_row(self.cement, 2024) is None

@@ -65,6 +65,7 @@ tooltip}). Pages that set none render exactly as before.
         <div class="dropdown-menu" role="menu">
             <div class="dropdown-content">
                 {% for option in pollutant_options %}
+                {% if option.precursor %}<hr class="dropdown-divider"><span class="dropdown-item explorer-scope-group">Precursor</span>{% endif %}
                 {% if option.key in disabled_pollutants %}
                 <span class="dropdown-item is-disabled has-tooltip-left has-tooltip-arrow" aria-disabled="true" data-tooltip="{{ disabled_pollutants|lookup:option.key }}">{{ option.label }}{% if option.label != option.name %} <span class="has-text-grey-light">{{ option.name }}</span>{% endif %}</span>
                 {% else %}

@@ -33,7 +33,8 @@ class HomeTests(ViewTestCase):
     def test_renders_for_every_scope(self):
         for params in ({}, {'year': 2023}, {'county': 'fresno'}, {'county': 'kern', 'toxics': 1},
                        {'minor': 1}, {'pollutant': 'pm'}, {'year': 1900, 'pollutant': 'bogus'},
-                       {'toxics': 1, 'pollutant': 'diesel-pm'}, {'toxics': 1, 'pollutant': 'chronic'}):
+                       {'toxics': 1, 'pollutant': 'diesel-pm'}, {'toxics': 1, 'pollutant': 'chronic'},
+                       {'pollutant': 'nh3'}, {'pollutant': 'nh3', 'county': 'fresno'}):
             self.get('home', params=params)
 
     def test_top_facilities_and_totals(self):
@@ -335,3 +336,26 @@ class ToxicsPagesTests(ViewTestCase):
         assert views.map_view({'measure': 'density'}, year=2024, share=True)['measure'] == 'total'
         plain = self.get('map', params={'view': 'areas'}).content.decode()
         assert 'data-measure="density"' in plain and views.SHARE_MEASURE_TOOLTIP not in plain
+
+
+class AmmoniaPagesTests(ViewTestCase):
+    def test_picker_lists_ammonia_under_a_precursor_heading(self):
+        content = self.get('home').content.decode()
+        assert 'pollutant=nh3' in content and 'pollutant=nh3' not in self.get('home', params={'toxics': 1}).content.decode()
+        heading = content.index('explorer-scope-group">Precursor')
+        assert content.index('pollutant=tog') < heading < content.index('pollutant=nh3')
+        assert '<span class="has-text-grey">Ammonia</span>' in content
+
+    def test_ammonia_scope_pages(self):
+        content = self.get('home', params={'pollutant': 'nh3'}).content.decode()
+        assert '<span class="explorer-scope-label">NH3</span>' in content and 'tons/yr' in content
+        assert 'CARB estimates all sources' not in content  # CEPAM has no ammonia
+        self.get('map', params={'pollutant': 'nh3'})
+        self.get('sector-detail', 'glass', params={'pollutant': 'nh3'})
+        content = self.get('facility-list', params={'pollutant': 'nh3'}).content.decode()
+        assert 'NH3 (tons/yr)' in content
+
+    def test_csv_carries_an_nh3_tons_column(self):
+        rows = list(csv.DictReader(io.StringIO(self.get('facility-list', params={'format': 'csv', 'pollutant': 'nh3'}).content.decode())))
+        assert float(rows[0]['nh3_tons']) == 0.05 and rows[0]['facility'] == 'TEST PLANT'
+        assert 'nh3_tons' not in list(csv.DictReader(io.StringIO(self.get('facility-list', params={'format': 'csv'}).content.decode())))[0]

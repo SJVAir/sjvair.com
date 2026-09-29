@@ -3,7 +3,8 @@ Aggregates for the Facility Emissions Explorer.
 
 About 6,500 facilities x 15 years, so everything is computed per request from
 EmissionsRecord and ToxicEmission and cached per scope for a day; no rollup
-tables. Values are tons/yr (CEIDARS) for criteria pollutants, lbs/yr for one
+tables. Values are tons/yr (CEIDARS) for criteria pollutants, tons/yr for
+ammonia (a precursor, from ToxicEmission pounds ÷ 2,000), lbs/yr for one
 toxic, and a share of the Valley total for the two weighted measures;
 Pollutant.display() is a passthrough that exists so callers don't need to
 care which.
@@ -23,7 +24,8 @@ from django.db.models.functions import Cast, Coalesce, Lower
 from camp.apps.emissions import cepam
 from camp.apps.emissions.models import MINOR_SOURCE_SIC_CODES, CountyInventory, EmissionsRecord, Facility, ToxicEmission, ToxicPollutant
 from camp.apps.emissions.pollutants import (
-    CRITERIA, DEFAULT_CRITERIA, DEFAULT_TOXIC, LEGACY_TOXIC_KEYS, POLLUTANTS, WEIGHTED, Pollutant, get_pollutant, toxic_pollutant,
+    CRITERIA, DEFAULT_CRITERIA, DEFAULT_TOXIC, LBS_PER_TON, LEGACY_TOXIC_KEYS, NH3, POLLUTANTS, PRECURSORS, WEIGHTED, Pollutant,
+    get_pollutant, toxic_pollutant,
 )
 from camp.apps.regions.models import Region
 
@@ -261,11 +263,18 @@ def weighted_lbs(weight_field):
 def value_expr(pollutant):
     """
     The un-scaled `value` of one EmissionsRecord row for `pollutant`: its
-    column for a criteria pollutant; for one toxic, that facility-year's
+    column for a criteria pollutant; for a precursor (ammonia), that
+    facility-year's pounds ÷ 2,000; for one toxic, that facility-year's
     ToxicEmission pounds; for a weighted measure, Σ lbs × weight over the
     facility-year's toxics (precursors excluded by kind). Null where the
     facility reported none.
     """
+    if pollutant.precursor:
+        rows = ToxicEmission.objects.filter(
+            facility_id=OuterRef('facility_id'), year=OuterRef('year'), pollutant__carb_id=pollutant.carb_id,
+        )
+        lbs = Cast(Subquery(rows.values('lbs')[:1]), FloatField())
+        return ExpressionWrapper(lbs / Value(LBS_PER_TON), output_field=FloatField())
     if not pollutant.toxic:
         return F(pollutant.key)
     rows = ToxicEmission.objects.filter(facility_id=OuterRef('facility_id'), year=OuterRef('year'))
@@ -479,10 +488,10 @@ def sector_trends(scope):
 def county_context(scope):
     """
     CARB's estimate of every source in the scope's counties, by source type,
-    beside the permitted-facility total; None for toxics (CEPAM has none) or
-    a year CEPAM hasn't been imported for.
+    beside the permitted-facility total; None for toxics and ammonia (CEPAM
+    has neither) or a year CEPAM hasn't been imported for.
     """
-    if scope.toxics or scope.year is None:
+    if scope.toxics or scope.pollutant.precursor or scope.year is None:
         return None
     field = scope.pollutant.key
 
@@ -523,8 +532,39 @@ def _rank_of(value, values):
     return 1 + sum(1 for other in values if other > value)
 
 
+def precursor_row(facility, year, pollutant=NH3):
+    """
+    facility_ranks()'s row for ammonia: the facility's tons that year (its
+    ToxicEmission pounds ÷ 2,000) ranked among its county's and its sector's
+    facilities that reported any, on the same minor-source rule; None when it
+    reported none.
+    """
+    rows = ToxicEmission.objects.filter(year=year, pollutant__carb_id=pollutant.carb_id)
+    mine = rows.filter(facility=facility).values_list('lbs', flat=True).first()
+    if not mine:
+        return None
+    peers = rows
+    if not facility.is_minor_source:
+        peers = peers.exclude(facility__sic_code__in=MINOR_SOURCE_SIC_CODES)
+    to_tons = lambda values: [float(v) / LBS_PER_TON for v in values if v]
+    county_values = to_tons(peers.filter(facility__county_id=facility.county_id).values_list('lbs', flat=True))
+    sector_values = to_tons(peers.filter(facility__sector=facility.sector).values_list('lbs', flat=True))
+    value = float(mine) / LBS_PER_TON
+    county_total = sum(county_values)
+    return {
+        'pollutant': pollutant, 'value': value,
+        'county_rank': _rank_of(value, county_values), 'county_count': len(county_values),
+        'sector_rank': _rank_of(value, sector_values), 'sector_count': len(sector_values),
+        'county_share': value / county_total if county_total else None,
+    }
+
+
 def facility_ranks(facility, year):
-    """Criteria pollutants for one facility-year, ranked among its county's and its sector's facilities."""
+    """
+    Criteria pollutants for one facility-year, ranked among its county's and
+    its sector's facilities, then ammonia (in tons/yr from ToxicEmission)
+    when the facility reported any.
+    """
     record = facility.emissions.filter(year=year).first()
     if record is None:
         return []
@@ -554,6 +594,10 @@ def facility_ranks(facility, year):
                 'county_share': value / county_total if county_total else None,
             })
         result.append(row)
+    for pollutant in PRECURSORS:
+        row = precursor_row(facility, year, pollutant)
+        if row is not None:
+            result.append(row)
     return result
 
 
