@@ -42,7 +42,7 @@ MILES_PER_DEGREE = 69.0
 
 
 def _key(name, *parts):
-    return ':'.join(str(part) for part in (f'emissions:v{stats.CACHE_VERSION}', name, *parts))
+    return ':'.join(str(part) for part in (stats.prefix(), name, *parts))
 
 
 def level_regions(level):

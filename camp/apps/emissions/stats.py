@@ -28,6 +28,24 @@ from camp.apps.regions.models import Region
 # for up to a day.
 CACHE_VERSION = 2
 CACHE_TIMEOUT = 60 * 60 * 24
+# Every stats/areas key includes the generation; bumping it orphans them all
+# (an import just landed). Persistent (no timeout), like the dairies one.
+GENERATION_KEY = 'emissions:stats:generation'
+
+
+def generation():
+    return cache.get(GENERATION_KEY, 0)
+
+
+def clear_caches():
+    """Orphan every cached explorer aggregate and area value: they're keyed under the generation."""
+    cache.set(GENERATION_KEY, generation() + 1, None)
+
+
+def prefix():
+    return f'emissions:v{CACHE_VERSION}:g{generation()}'
+
+
 # A year-over-year change larger than this gets the "may reflect estimation
 # methods" note on a facility page.
 LARGE_CHANGE = 0.5
@@ -64,7 +82,7 @@ def _int(value):
 def available_years():
     def compute():
         return sorted(EmissionsRecord.objects.values_list('year', flat=True).distinct())
-    return cache.get_or_set(f'emissions:v{CACHE_VERSION}:years', compute, 60 * 60)
+    return cache.get_or_set(f'{prefix()}:years', compute, 60 * 60)
 
 
 def latest_year():
@@ -118,7 +136,7 @@ class Scope:
 
     def key(self, name, *extra):
         parts = [
-            f'emissions:v{CACHE_VERSION}', name, self.year,
+            prefix(), name, self.year,
             self.county.pk if self.county else 'all',
             self.pollutant.key, int(self.minor),
             self.area.key if self.area is not None else 'anywhere', *extra,
