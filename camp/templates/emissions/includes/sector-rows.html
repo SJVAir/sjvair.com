@@ -2,7 +2,7 @@
 <div class="table-container">
 <table class="table is-fullwidth is-narrow sector-table">
     <thead>
-        {% with heading=pollutant.label|add:" ("|add:pollutant.unit|add:"/yr)" %}
+        {% with heading=pollutant.label|add:" ("|add:pollutant.unit_label|add:")" %}
         <tr>{% if sortable %}<th>{% sort_link 'name' 'Sector' %}</th><th class="has-text-right">{% sort_link 'facilities' 'Facilities' %}</th><th class="has-text-right">{% sort_link 'value' heading %}</th><th>{% sort_link 'share' 'Share' %}</th>{% else %}<th>Sector</th><th class="has-text-right">Facilities</th><th class="has-text-right">{{ heading }}</th><th>Share</th>{% endif %}{% if show_trend %}<th>Trend</th>{% endif %}</tr>
         {% endwith %}
     </thead>

@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from camp.apps.emissions import areas, dairies
-from camp.apps.emissions.models import DairyHerd, Digester, EmissionsRecord, Facility
+from camp.apps.emissions.models import DairyHerd, Digester, EmissionsRecord, Facility, ToxicEmission, ToxicPollutant
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
 from camp.apps.emissions.tests.test_dairies import dairy_inventory, make_dairies, set_city
 from camp.apps.regions.models import Boundary, Region
@@ -122,7 +122,7 @@ class FacilityGeoJSONTests(TestCase):
         assert cement['properties']['id'] == Facility.objects.get(name='TEST CEMENT').sqid
 
     def test_collection_properties(self):
-        response = self.client.get(reverse('api:v2:emissions:geojson'), {'toxics': 1})
+        response = self.client.get(reverse('api:v2:emissions:geojson'), {'toxics': 1, 'pollutant': 'benzene'})
         body = response.json()
         assert body['properties'] == {'year': 2024, 'pollutant': 'benzene', 'label': 'Benzene', 'unit': 'lbs', 'compare': None}
         plant = [f for f in body['features'] if f['properties']['name'] == 'TEST PLANT'][0]
@@ -172,18 +172,29 @@ class FacilityGeoJSONTests(TestCase):
         # Toxics floor at 1 lb/yr, not the criteria pollutants' 1 ton/yr:
         # 0.5 lbs is under it, 5 lbs clears it.
         plant = Facility.objects.get(name='TEST PLANT')
-        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='0.5')
-        response = self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': 2023, 'toxics': 1})
+        benzene = ToxicPollutant.objects.get(slug='benzene')
+        ToxicEmission.objects.filter(facility=plant, year=2023, pollutant=benzene).update(lbs='0.5')
+        response = self.client.get(
+            reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': 2023, 'toxics': 1, 'pollutant': 'benzene'})
         body = response.json()
         assert body['properties']['unit'] == 'lbs'
         plant_props = [f for f in body['features'] if f['properties']['name'] == 'TEST PLANT'][0]['properties']
         assert plant_props['value_prev'] is None
 
-        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='5')
+        ToxicEmission.objects.filter(facility=plant, year=2023, pollutant=benzene).update(lbs='5')
         cache.clear()
-        response = self.client.get(reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': 2023, 'toxics': 1})
+        response = self.client.get(
+            reverse('api:v2:emissions:geojson'), {'year': 2024, 'compare': 2023, 'toxics': 1, 'pollutant': 'benzene'})
         plant_props = [f for f in response.json()['features'] if f['properties']['name'] == 'TEST PLANT'][0]['properties']
         assert plant_props['value_prev'] == 5.0
+
+    def test_weighted_measure_is_a_share(self):
+        data = self.client.get(reverse('api:v2:emissions:geojson'), {'toxics': '1', 'minor': '1'}).json()
+        assert data['properties']['unit'] == 'share' and data['properties']['pollutant'] == 'cancer'
+        values = {f['properties']['name']: f['properties']['value'] for f in data['features']}
+        assert abs(sum(values.values()) - 1.0) < 1e-9 and values['TEST CEMENT'] > 0.9
+        old = self.client.get(reverse('api:v2:emissions:geojson'), {'toxics': '1', 'pollutant': 'benzene'}).json()
+        assert old['properties']['unit'] == 'lbs' and old['properties']['pollutant'] == 'benzene'
 
     def test_filters(self):
         assert len(self.features(minor=1)) == 3
@@ -268,20 +279,29 @@ class AreaValuesEndpointTests(TestCase):
         # 5 lbs clears it.
         plant = Facility.objects.get(name='TEST PLANT')
         fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
-        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='0.5')
+        benzene = ToxicPollutant.objects.get(slug='benzene')
+        ToxicEmission.objects.filter(facility=plant, year=2023, pollutant=benzene).update(lbs='0.5')
         response = self.client.get(
-            reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2023', 'toxics': 1})
+            reverse('api:v2:emissions:areas'),
+            {'level': 'county', 'year': '2024', 'compare': '2023', 'toxics': 1, 'pollutant': 'benzene'})
         data = response.json()
         assert data['unit'] == 'lbs'
         area = next(a for a in data['areas'] if a['id'] == fresno.sqid)
         assert area['total_prev'] is None
 
-        EmissionsRecord.objects.filter(facility=plant, year=2023).update(benzene='5')
+        ToxicEmission.objects.filter(facility=plant, year=2023, pollutant=benzene).update(lbs='5')
         cache.clear()
         response = self.client.get(
-            reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2023', 'toxics': 1})
+            reverse('api:v2:emissions:areas'),
+            {'level': 'county', 'year': '2024', 'compare': '2023', 'toxics': 1, 'pollutant': 'benzene'})
         area = next(a for a in response.json()['areas'] if a['id'] == fresno.sqid)
         assert area['total_prev'] == 5.0
+
+    def test_weighted_measure_is_a_share(self):
+        response = self.client.get(reverse('api:v2:emissions:areas'), {'level': 'county', 'toxics': '1', 'minor': '1'})
+        data = response.json()
+        assert data['unit'] == 'share'
+        assert abs(sum(area['total'] for area in data['areas']) - 1.0) < 1e-9
 
     def test_compare_ignores_the_scope_year(self):
         response = self.client.get(reverse('api:v2:emissions:areas'), {'level': 'county', 'year': '2024', 'compare': '2024'})

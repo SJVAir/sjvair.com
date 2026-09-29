@@ -16,7 +16,7 @@
 {% if summary %}
 <div class="level stat-row box">
     <div class="level-item has-text-centered"><div><p class="heading">Facilities</p><p class="title">{{ summary.facilities|intcomma }}</p></div></div>
-    <div class="level-item has-text-centered"><div><p class="heading">{{ pollutant.name }}, {{ year }}</p><p class="title">{{ summary.value|amount:pollutant }} <span class="is-size-5">{{ pollutant.unit }}/yr</span></p></div></div>
+    <div class="level-item has-text-centered"><div><p class="heading">{{ pollutant.name }}, {{ year }}</p><p class="title">{{ summary.value|amount:pollutant }}{% if not pollutant.weighted %} <span class="is-size-5">{{ pollutant.unit_label }}</span>{% endif %}</p></div></div>
     <div class="level-item has-text-centered"><div><p class="heading">Share of all facilities</p><p class="title">{{ summary.share|percent }}</p></div></div>
 </div>
 {% else %}
@@ -28,7 +28,7 @@
     <div class="column">
         <h3 class="title is-5">By county</h3>
         <table class="table is-fullwidth is-narrow">
-            <thead><tr><th>County</th><th class="has-text-right">Facilities</th><th class="has-text-right">{{ pollutant.unit|capfirst }}/yr</th><th>Share</th></tr></thead>
+            <thead><tr><th>County</th><th class="has-text-right">Facilities</th><th class="has-text-right">{{ pollutant.unit_label|capfirst }}</th><th>Share</th></tr></thead>
             <tbody>
                 {% for row in counties %}
                 <tr><td><a href="{% qs_replace county=row.county.slug %}">{{ row.county.name|cut:" County" }}</a></td><td class="has-text-right">{{ row.facilities|intcomma }}</td><td class="has-text-right">{{ row.value|amount:pollutant }}</td><td>{{ row.share|percent }}</td></tr>

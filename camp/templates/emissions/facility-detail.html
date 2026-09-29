@@ -43,6 +43,7 @@
             </div>
         </div>
     </div>
+    {% if hot_spots %}<div class="column is-half">{% include 'emissions/includes/hot-spots.html' %}</div>{% endif %}
 </div>
 {% include 'emissions/includes/facility-map.html' %}
 
@@ -91,19 +92,30 @@
 {% if toxics_rows %}
 <h3 class="title is-4">Toxic air contaminants in {{ shown_year }}</h3>
 <div class="table-container">
-<table class="table is-fullwidth is-narrow">
-    <thead><tr><th>Contaminant</th><th class="has-text-right">Lbs/yr</th><th class="has-text-right">Year before</th></tr></thead>
+<table class="table is-fullwidth is-narrow toxics-table">
+    <thead><tr>
+        <th>Contaminant</th>
+        <th class="has-text-right">Lbs/yr</th>
+        <th class="has-text-right">Year before</th>
+        <th class="has-text-right">Share of the Valley's cancer-weighted total
+            <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-end has-tooltip-arrow" data-tooltip="This pollutant's pounds × its OEHHA cancer potency, as a share of the same sum over every permitted facility in the eight counties in {{ shown_year }}. Not a risk to anyone."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span></th>
+        <th>Non-cancer hazard
+            <span class="icon is-small has-text-grey has-tooltip-multiline has-tooltip-bottom has-tooltip-end has-tooltip-arrow" data-tooltip="Marked when OEHHA has set a chronic reference exposure level for the chemical."><span class="fa-regular fa-circle-info" aria-hidden="true"></span></span></th>
+    </tr></thead>
     <tbody>
         {% for row in toxics_rows %}
         <tr>
-            <td>{{ row.pollutant.name }}</td>
+            <td><a href="{% qs_replace toxics=1 pollutant=row.pollutant.slug %}">{{ row.pollutant.name }}</a></td>
             <td class="has-text-right">{{ row.value|quantity }}</td>
             <td class="has-text-right">{% if row.previous is not None %}{{ row.previous|quantity }}{% else %}—{% endif %}</td>
+            <td class="has-text-right">{% if row.has_cancer_value %}{{ row.share|share_pct }}{% else %}<span class="has-text-grey">no OEHHA cancer value</span>{% endif %}</td>
+            <td>{% if row.hazard %}<span class="hazard-dot" title="Has a chronic reference exposure level" aria-label="non-cancer hazard"></span>{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 </div>
+{% include 'emissions/includes/toxics-caveats.html' with compact=True %}
 {% endif %}
 
 <p class="is-size-7 has-text-grey">Source: California Air Resources Board facility emissions inventory (CEIDARS). <a href="{% url 'emissions:about' %}">About this data</a>.</p>

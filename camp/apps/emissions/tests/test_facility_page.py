@@ -3,7 +3,7 @@ import re
 from django.core.cache import cache
 from django.test import TestCase
 
-from camp.apps.emissions.models import Facility
+from camp.apps.emissions.models import EmissionsRecord, Facility, ToxicEmission
 
 
 class FacilityHeaderTests(TestCase):
@@ -55,3 +55,42 @@ class HomeSearchTests(TestCase):
         # The search keeps the scope, and there's only one facility search on the page.
         assert '<input type="hidden" name="minor" value="1">' in row[:row.index('Top 10 facilities')]
         assert content.count('id="facility-search"') == 1
+
+
+class FacilityToxicsTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.plant = Facility.objects.get(name='TEST PLANT')
+
+    def detail(self, facility):
+        return self.client.get(facility.get_absolute_url()).content.decode()
+
+    def test_toxics_table_order_flags_and_links(self):
+        content = self.detail(self.plant)
+        table = content[content.index('toxics-table'):content.index('toxics-caveats')]
+        assert table.index('Benzene') < table.index('Isopropyl alcohol')
+        assert 'pollutant=benzene' in table and 'no OEHHA cancer value' in table
+        assert table.count('hazard-dot') == 1
+        assert '1.9%' in table  # 0.4466 / 23.65825
+        assert 'What this is, and isn' in content
+
+    def test_ammonia_row_is_not_in_the_toxics_table(self):
+        content = self.detail(self.plant)
+        table = content[content.index('toxics-table'):content.index('toxics-caveats')]
+        assert 'Ammonia' not in table
+
+    def test_hot_spots_card_and_its_absence(self):
+        assert 'Hot Spots (AB 2588)' not in self.detail(self.plant)
+        EmissionsRecord.objects.filter(facility=self.plant, year=2024).update(total_score=12.5, hra=4.27)
+        content = self.detail(self.plant)
+        assert 'Hot Spots (AB 2588)' in content and 'High priority above 10' in content
+        assert 'public notification at 10, risk reduction required at 100' in content
+        assert 'Chronic hazard index' not in content
+        assert 'air-toxics-annual-reports' in content
+
+    def test_no_toxics_no_table(self):
+        cement = Facility.objects.get(name='TEST CEMENT')
+        ToxicEmission.objects.filter(facility=cement).delete()
+        assert 'toxics-table' not in self.detail(cement)

@@ -8,7 +8,7 @@
             <th>{% if sortable %}{% sort_link 'city' 'City' %}{% else %}City{% endif %}</th>
             <th>{% if sortable %}{% sort_link 'county' 'County' %}{% else %}County{% endif %}</th>
             <th>Sector</th>
-            {% with heading=pollutant.label|add:" ("|add:pollutant.unit|add:"/yr)" %}
+            {% with heading=pollutant.label|add:" ("|add:pollutant.unit_label|add:")" %}
             <th class="has-text-right">{% if sortable %}{% sort_link 'value' heading %}{% else %}{{ heading }}{% endif %}</th>
             {% endwith %}
         </tr>

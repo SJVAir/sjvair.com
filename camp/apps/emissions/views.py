@@ -14,8 +14,8 @@ from django.urls import reverse
 import vanilla
 
 from camp.apps.emissions import areas, dairies, stats
-from camp.apps.emissions.models import Facility
-from camp.apps.emissions.pollutants import CRITERIA, TOXICS
+from camp.apps.emissions.models import Facility, SourceImport
+from camp.apps.emissions.pollutants import CRITERIA
 from camp.apps.regions import nearby
 from camp.apps.regions.models import Region
 from camp.utils import mapconfig
@@ -40,6 +40,10 @@ def region_within_dairies(region):
 
 PAGE_SIZE = 50
 SECTOR_PAGE_ROWS = 25
+# The Areas view forces `measure=total` for a weighted toxics measure (its
+# density and per-resident measures have no meaning for a share); the
+# toolbar shows why with this tooltip instead of hiding the options.
+SHARE_MEASURE_TOOLTIP = 'Weighted toxics are shown as a share of the Valley total, not per square mile.'
 
 
 class ScopeMixin:
@@ -53,6 +57,17 @@ class ScopeMixin:
             self._scope = stats.resolve_scope(self.request.GET)
         return self._scope
 
+    def dispatch(self, request, *args, **kwargs):
+        # The ten toxics that used to be columns had their own picker keys;
+        # an old link 301s to the pollutant's slug (the API resolves the
+        # old key quietly instead).
+        slug = stats.legacy_toxic_slug(request.GET)
+        if slug:
+            params = request.GET.copy()
+            params['pollutant'] = slug
+            return redirect(f'{request.path}?{params.urlencode()}', permanent=True)
+        return super().dispatch(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         scope = self.get_scope()
         context = {
@@ -62,7 +77,7 @@ class ScopeMixin:
             'county': scope.county,
             'county_options': list(Region.objects.counties().order_by('name').values_list('slug', 'name')),
             'pollutant': scope.pollutant,
-            'pollutant_options': TOXICS if scope.toxics else CRITERIA,
+            'pollutant_options': stats.toxic_options(scope.year) if scope.toxics else CRITERIA,
             'toxics': scope.toxics,
             'minor': scope.minor,
             'scope_qs': scope.query(),
@@ -118,8 +133,9 @@ class Home(ScopeMixin, vanilla.TemplateView):
         totals = stats.totals(scope)
         return super().get_context_data(
             totals=totals,
-            total=totals[scope.pollutant.key],
+            total=totals['value'],
             context_bar=stats.county_context(scope),
+            toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
             top_rows=stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope)),
             top_sectors=stats.sector_breakdown(scope)[:6],
             by_year=stats.by_year(scope),
@@ -146,6 +162,8 @@ class About(ScopeMixin, vanilla.TemplateView):
             dairies_before=dairies_before,
             dairies_after=dairies_after,
             dairy_size_classes=dairies.size_classes(),
+            health_values=SourceImport.latest('contable'),
+            toxics_import=SourceImport.latest('ceidars-toxics'),
             **kwargs,
         )
 
@@ -180,14 +198,14 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="facility-emissions-{scope.year}.csv"'
         writer = csv.writer(response)
+        toxic_column = [] if not scope.toxics else [f"{scope.pollutant.key}_{'share' if scope.pollutant.weighted else 'lbs'}"]
         writer.writerow(
             ['rank', 'facility', 'id', 'air_district', 'county', 'city', 'sector', 'sic_code', 'year']
-            + [f'{pollutant.key}_tons' for pollutant in CRITERIA]
-            + [f'{pollutant.key}_lbs' for pollutant in TOXICS]
+            + [f'{pollutant.key}_tons' for pollutant in CRITERIA] + toxic_column
         )
         for record in stats.facility_table(scope, **list_filters(self.request.GET)):
             facility = record.facility
-            values = [pollutant.display(getattr(record, pollutant.key)) for pollutant in CRITERIA + TOXICS]
+            values = [pollutant.display(getattr(record, pollutant.key)) for pollutant in CRITERIA] + ([record.value] if scope.toxics else [])
             writer.writerow(
                 [rank_map.get(record.facility_id, ''), facility.name, facility.sqid, facility.air_district.name,
                  facility.get_county() or '', facility.get_city(), facility.get_sector_display(),
@@ -237,7 +255,8 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             trend=stats.by_year(scope, facility=facility),
             toxics_rows=stats.facility_toxics(facility, shown_year),
             changes=stats.large_changes(facility, shown_year),
-            criteria=CRITERIA,
+            hot_spots=stats.hot_spots(record),
+            health_values=SourceImport.latest('contable'),
             area_links=area_links(areas.facility_areas(facility)),
             # The facility's own map always includes it: the page scope can
             # exclude it (a minor source with `minor` off, no record in the
@@ -289,23 +308,28 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
         )
 
 
-def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None):
+def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None, *, share=False):
     """
     The map's view, level, measure and compared year (Compare applies to
     both the Facilities and Areas views) from a request's GET, validated;
     defaults when unknown. Also the page's default level: the map leaves
     defaults out of the URLs it writes, so it needs to know it. `year` (the
     scope's) resolves `compare` and its option list; a caller with no year
-    to compare against (none passed) gets neither.
+    to compare against (none passed) gets neither. `share` (a weighted
+    toxics measure) forces `measure` to 'total': density and per-resident
+    have no meaning for a share of the Valley total.
     """
     view = get.get('view')
     level = get.get('level')
     measure = get.get('measure')
     compare = stats.resolve_compare_param(get.get('compare'), year) if year is not None else None
+    measure = measure if measure in areas.MEASURES else areas.DEFAULT_MEASURE
+    if share:
+        measure = 'total'
     return {
         'view': view if view in ('facilities', 'areas') else 'facilities',
         'level': level if level in areas.LEVELS else default_level,
-        'measure': measure if measure in areas.MEASURES else areas.DEFAULT_MEASURE,
+        'measure': measure,
         'default_level': default_level,
         'compare': compare or '',
         # Every other loaded year, newest first, for the toolbar's picker;
@@ -356,6 +380,7 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # Only for the Compare legend's "change <compare> to <year>" title.
         'year': scope.year or '',
         'label': scope.pollutant.label,
+        'name': scope.pollutant.name,
         'unit': scope.pollutant.unit,
         'sector': sector or '',
         'sector_label': Facility.Sector(sector).label if sector else '',
@@ -363,11 +388,12 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
             (Region.Type.COUNTY, 'Counties'), (Region.Type.ZIPCODE, 'ZIP codes'), (Region.Type.TRACT, 'Census tracts'))],
         'measure_options': [('density', 'Per square mile'), ('total', 'Total'), ('per_resident', 'Per 1,000 residents')],
         'compare_options': areas_view['compare_options'] if areas_view else [],
+        'disabled_measures': {'density': SHARE_MEASURE_TOOLTIP, 'per_resident': SHARE_MEASURE_TOOLTIP} if scope.pollutant.unit == 'share' else {},
     }
     # The container's data attributes; the sector, its label and the level,
     # measure and compare options are for the toolbar template, which reads
     # them off map_config.
-    template_only = {'sector', 'sector_label', 'level_options', 'measure_options', 'compare_options'}
+    template_only = {'sector', 'sector_label', 'level_options', 'measure_options', 'compare_options', 'disabled_measures'}
     config['map'] = mapconfig.map_config(
         'facility-map',
         data={key.replace('_', '-'): value for key, value in config.items() if key not in template_only},
@@ -385,10 +411,14 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
     section = 'map'
 
     def get_context_data(self, **kwargs):
+        scope = self.get_scope()
         sector = self.request.GET.get('sector')
         sector = sector if sector in Facility.Sector.values else None
         return super().get_context_data(
-            map_config=facility_map_config(self.get_scope(), sector=sector, areas_view=map_view(self.request.GET, year=self.get_scope().year)),
+            map_config=facility_map_config(
+                scope, sector=sector,
+                areas_view=map_view(self.request.GET, year=scope.year, share=scope.pollutant.unit == 'share'),
+            ),
             sector_options=sector_options(),
             **kwargs,
         )
@@ -547,12 +577,11 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         base = self.get_scope()
         area = self.get_area()
         scope = stats.Scope(year=base.year, county=None, pollutant=base.pollutant, minor=base.minor, area=area)
-        field = scope.pollutant.key
         totals = stats.totals(scope)
-        total = totals[field] or 0
+        total = totals['value'] or 0
         county = self.get_county()
         county_scope = stats.Scope(year=base.year, county=county, pollutant=base.pollutant, minor=base.minor)
-        county_total = stats.totals(county_scope)[field] if county else None
+        county_total = stats.totals(county_scope)['value'] if county else None
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
@@ -568,6 +597,8 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             by_year=stats.by_year(scope),
             map_config=self.get_map_config(base),
             dairy_block=dairy_block(base, area, self.dairy_url, county=self.dairy_county()),
+            toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
+            share_unit=scope.pollutant.unit == 'share',
             # The page is the area: no county picker, and the scope links
             # leave the county out.
             county_options=[],
@@ -640,7 +671,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
         level = areas.NEXT_LEVEL.get(self.region.type)
         return facility_map_config(
             scope, mode='compact', params=scope.params(county=None),
-            areas_view=map_view(self.request.GET, level, year=scope.year) if level else None,
+            areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
         )
 
@@ -783,7 +814,7 @@ class NearMe(NearLookupMixin, AreaPage):
     def get_map_config(self, scope):
         return facility_map_config(
             scope, mode='compact', params=scope.params(county=None),
-            areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year),
+            areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share'),
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
         )

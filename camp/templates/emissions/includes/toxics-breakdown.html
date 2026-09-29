@@ -1,0 +1,15 @@
+{% load emissions_explorer pesticides_explorer %}
+{% comment %}
+"What drives it": the scope's cancer-weighted toxics by pollutant (stats.toxics_breakdown), on the home and area pages in the toxics scope.
+{% endcomment %}
+<div class="box emissions-context toxics-breakdown">
+    <p><strong>What drives it.</strong> The cancer-weighted toxics of the facilities shown, by pollutant, {{ year }}{% if toxics_breakdown.pollutants > toxics_breakdown.parts|length %} (top {{ toxics_breakdown.parts|length|add:"-1" }} of {{ toxics_breakdown.pollutants }}){% endif %}.
+       Together they hold <strong>{{ toxics_breakdown.valley_share|share_pct }}</strong> of the Valley's total.</p>
+    <div class="emissions-context-bar" role="img" aria-label="{% for part in toxics_breakdown.parts %}{{ part.name }} {{ part.share|percent }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+        {% for part in toxics_breakdown.parts %}<span class="segment is-toxic-{{ forloop.counter }}" style="width: {{ part.share|width_pct }}" title="{{ part.name }}: {{ part.share|percent }}"></span>{% endfor %}
+    </div>
+    <p class="emissions-legend">
+        {% for part in toxics_breakdown.parts %}<span><span class="swatch is-toxic-{{ forloop.counter }}"></span>{% if part.slug %}<a href="{% qs_replace toxics=1 pollutant=part.slug page=None %}">{{ part.name }}</a>{% else %}{{ part.name }}{% endif %} {{ part.share|percent }}</span>{% endfor %}
+    </p>
+    <p class="is-size-7"><a href="{% url 'emissions:about' %}#weighted-toxics">How toxics are weighted, and what this isn't</a></p>
+</div>

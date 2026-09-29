@@ -21,7 +21,7 @@
     <li><strong>NOx</strong> (nitrogen oxides) and <strong>ROG</strong> (reactive organic gases) form ozone and fine particles.</li>
     <li><strong>Total PM</strong> is all particulate matter. CARB's facility inventory doesn't report PM2.5 by facility, so the explorer shows Total PM and PM10 instead.</li>
     <li><strong>SOx</strong> (sulfur oxides), <strong>CO</strong> (carbon monoxide) and <strong>TOG</strong> (total organic gases) round out the criteria pollutants.</li>
-    <li>Criteria pollutants are in <strong>tons per year</strong>. The ten <strong>toxic air contaminants</strong> (benzene, formaldehyde, hexavalent chromium and others) are in <strong>pounds per year</strong>, as CARB reports them.</li>
+    <li>Criteria pollutants are in <strong>tons per year</strong>. <strong>Toxic air contaminants</strong> are in <strong>pounds per year</strong>, because the amounts are small; see <a href="#weighted-toxics">Toxicity-weighted emissions</a> for how they're compared.</li>
 </ul>
 
 <h2 id="minor-sources">Minor sources</h2>
@@ -29,6 +29,10 @@
 
 <h2 id="years">Years and changes</h2>
 <p>The explorer covers 2010 onward. The number of facilities grows over those years partly because reporting coverage grew. A large change from one year to the next can reflect a new way of estimating a facility's emissions, not only a real change in what it emitted; facility pages point these out.</p>
+
+<h2 id="weighted-toxics">Toxicity-weighted emissions</h2>
+<p>CARB's inventory lists every toxic air contaminant a facility reports, in pounds. Pounds alone rank ammonia and solvents above diesel particulate and hexavalent chromium, so the explorer's default toxics view weights each pollutant by how toxic it is, the way CARB's own Pollution Mapping Tool does: <strong>cancer-weighted</strong> is pounds × the OEHHA inhalation unit risk × a molecular-weight adjustment factor × 7,700; <strong>hazard-weighted</strong> is pounds ÷ the chronic reference exposure level × 0.01712. The values come from the CARB/OEHHA <a href="https://ww2.arb.ca.gov/resources/documents/consolidated-table-oehha-arb-approved-risk-assessment-health-values">Consolidated Table of health values</a>{% if health_values %}, dated {{ health_values.version }}{% endif %}. A facility's or area's number is shown as its share of the Valley total that year, and every facility that reported a pollutant is included, whether or not the table has a value for it (those without one count as zero). PAHs reported as a total alongside their components aren't weighted, to avoid counting them twice.{% if toxics_import %} Toxics were last fetched from CARB for {{ toxics_import.version }}.{% endif %}</p>
+{% include 'emissions/includes/toxics-caveats.html' %}
 
 <h2 id="dairies">Dairies</h2>
 <p>The <a href="{% url 'emissions:dairy-list' %}">Dairies</a> tab covers what the facility inventory barely sees. CEIDARS lists a handful of permitted livestock facilities; CARB's <strong>California Dairy &amp; Livestock Database (CADD)</strong> locates every dairy CARB tracks, {{ dairy_count|intcomma }} of them in the eight Valley counties.</p>
@@ -51,6 +55,7 @@
 <h2 id="sources">Sources</h2>
 <ul>
     <li><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">CARB facility emissions inventory (CEIDARS)</a></li>
+    <li><a href="https://ww2.arb.ca.gov/resources/documents/consolidated-table-oehha-arb-approved-risk-assessment-health-values">CARB/OEHHA Consolidated Table of health values</a></li>
     <li><a href="https://ww2.arb.ca.gov/applications/cepam2019v1-04-standard-emission-tool">CARB CEPAM 2019 emission projections</a></li>
     <li><a href="https://ww2.arb.ca.gov/california-air-districts">CARB air district directory</a> and <a href="https://gis.data.ca.gov/datasets/CaliforniaARB::california-air-district-boundaries/about">district boundaries</a></li>
     <li><a href="https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd">CARB California Dairy &amp; Livestock Database (CADD)</a></li>

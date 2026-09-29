@@ -70,6 +70,7 @@ tooltip}). Pages that set none render exactly as before.
                 {% else %}
                 <a class="dropdown-item{% if option.key == pollutant.key %} is-active{% endif %}" href="{% qs_replace pollutant=option.key page=None %}">{{ option.label }}{% if option.label != option.name %} <span class="has-text-grey">{{ option.name }}</span>{% endif %}</a>
                 {% endif %}
+                {% if option.key == 'chronic' %}<hr class="dropdown-divider">{% endif %}
                 {% endfor %}
             </div>
         </div>

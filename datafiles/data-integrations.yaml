@@ -135,6 +135,11 @@
       url: https://ww2.arb.ca.gov/our-work/programs/criteria-and-toxics-emissions-inventory
       description: The California Emission Inventory Development and Reporting System (CEIDARS) is CARB's inventory of emissions from permitted stationary sources — refineries, power plants, dairies, manufacturers, and thousands of smaller facilities — reported each year by the local air districts. SJVAir imports every facility in the eight Valley counties, with its criteria pollutant and toxic emissions for each year from 2010 on.
 
+    - name: OEHHA Consolidated Table
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/resources/documents/consolidated-table-oehha-arb-approved-risk-assessment-health-values
+      description: The Consolidated Table of OEHHA/CARB-approved health values lists, for each toxic air contaminant, the cancer potency and the reference exposure levels California's Hot Spots program uses in risk assessments. SJVAir uses it to weight facilities' reported toxics by toxicity, so diesel particulate and hexavalent chromium rank above high-volume, low-toxicity solvents.
+
     - name: CEPAM
       logo: img/logo/carb-vertical.png
       url: https://ww2.arb.ca.gov/applications/cepam2019v1-04-standard-emission-tool

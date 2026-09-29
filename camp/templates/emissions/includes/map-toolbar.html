@@ -1,3 +1,4 @@
+{% load emissions_explorer %}
 {% comment %}
 The facility map's own toolbar controls (facility-map.js binds them):
 one row of the Facilities | Areas switch, the sector filter (full map
@@ -55,7 +56,7 @@ which applies to both views.
             </button>
         </div>
         <div class="dropdown-menu" role="menu"><div class="dropdown-content">
-            {% for value, label in map_config.measure_options %}<a href="#" class="dropdown-item{% if value == map_config.measure %} is-active{% endif %}" data-measure="{{ value }}">{{ label }}</a>{% endfor %}
+            {% for value, label in map_config.measure_options %}{% if value in map_config.disabled_measures %}<span class="dropdown-item is-disabled has-tooltip-left has-tooltip-multiline has-tooltip-arrow" aria-disabled="true" data-tooltip="{{ map_config.disabled_measures|lookup:value }}">{{ label }}</span>{% else %}<a href="#" class="dropdown-item{% if value == map_config.measure %} is-active{% endif %}" data-measure="{{ value }}">{{ label }}</a>{% endif %}{% endfor %}
         </div></div>
     </div>
     {% if map_config.compare_options %}

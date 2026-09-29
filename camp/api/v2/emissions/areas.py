@@ -29,4 +29,4 @@ class AreaValues(CachedEndpointMixin, AreaValuesBase):
     /api/2.0/regions/geojson/?type=<level>&simplify=1, joined on `id`.
     """
     cache_timeout = 60 * 60
-    cache_key_version = 2
+    cache_key_version = 3

@@ -190,11 +190,17 @@ def resolve_toxic(key):
 
 
 def legacy_toxic_slug(params):
-    """The slug an old `?toxics=1&pollutant=<field>` link should redirect to, or None when it isn't one (or the pollutant is unknown)."""
+    """
+    The slug an old `?toxics=1&pollutant=<field>` link should redirect to, or
+    None when it isn't one (the pollutant is unknown, or its slug happens to
+    already equal the old key -- benzene's does by default -- so there's
+    nothing to redirect to).
+    """
     key = params.get('pollutant')
     if params.get('toxics') != '1' or key not in LEGACY_TOXIC_KEYS:
         return None
-    return ToxicPollutant.objects.filter(carb_id=LEGACY_TOXIC_KEYS[key]).values_list('slug', flat=True).first()
+    slug = ToxicPollutant.objects.filter(carb_id=LEGACY_TOXIC_KEYS[key]).values_list('slug', flat=True).first()
+    return slug if slug and slug != key else None
 
 
 def resolve_scope(params):

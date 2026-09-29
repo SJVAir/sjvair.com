@@ -11,7 +11,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from camp.apps.emissions import cepam, stats, views
-from camp.apps.emissions.models import CountyInventory, EmissionsRecord, Facility
+from camp.apps.emissions.models import CountyInventory, EmissionsRecord, Facility, ToxicPollutant
 from camp.apps.regions.models import Region
 
 
@@ -32,7 +32,8 @@ class ViewTestCase(TestCase):
 class HomeTests(ViewTestCase):
     def test_renders_for_every_scope(self):
         for params in ({}, {'year': 2023}, {'county': 'fresno'}, {'county': 'kern', 'toxics': 1},
-                       {'minor': 1}, {'pollutant': 'pm'}, {'year': 1900, 'pollutant': 'bogus'}):
+                       {'minor': 1}, {'pollutant': 'pm'}, {'year': 1900, 'pollutant': 'bogus'},
+                       {'toxics': 1, 'pollutant': 'diesel-pm'}, {'toxics': 1, 'pollutant': 'chronic'}):
             self.get('home', params=params)
 
     def test_top_facilities_and_totals(self):
@@ -73,7 +74,12 @@ class FacilityListTests(ViewTestCase):
         assert rows[0]['rank'] == '1'
         assert rows[0]['air_district'] == 'Eastern Kern APCD'
         assert float(rows[0]['nox_tons']) == 100.0
-        assert float(rows[1]['benzene_lbs']) == 2.0
+
+        rows = list(csv.DictReader(io.StringIO(
+            self.get('facility-list', params={'format': 'csv', 'toxics': 1, 'pollutant': 'benzene'}).content.decode())))
+        assert float(rows[0]['benzene_lbs']) == 2.0 and rows[0]['facility'] == 'TEST PLANT'
+        assert 'benzene_lbs' not in list(csv.DictReader(io.StringIO(
+            self.get('facility-list', params={'format': 'csv'}).content.decode())))[0]
 
     def test_queries_do_not_grow_with_rows(self):
         self.get('facility-list')
@@ -160,6 +166,7 @@ class AboutTests(ViewTestCase):
         assert 'Eastern Kern' in content
         assert 'id="carb-estimates"' in content
         assert 'id="minor-sources"' in content
+        assert 'id="weighted-toxics"' in content and 'Consolidated Table' in content
 
 
 class MapTests(ViewTestCase):
@@ -233,7 +240,7 @@ class MapTests(ViewTestCase):
         scope = stats.resolve_scope({'county': 'fresno', 'toxics': '1'})
         config = views.facility_map_config(scope, sector='glass')
         assert parse_qs(config['query']) == {'county': ['fresno'], 'toxics': ['1'], 'sector': ['glass']}
-        assert config['unit'] == 'lbs'
+        assert config['unit'] == 'share'
         assert config['facility_url'].endswith('/facilities/{id}/')
         assert config['highlight'] == '' and config['center'] == ''
 
@@ -275,3 +282,56 @@ class MapTests(ViewTestCase):
         # carry that county into its own map query, or the facility drops out.
         content = self.client.get(self.cement.get_absolute_url(), {'county': 'fresno'}).content.decode()
         assert 'county=' not in self.map_query(content)
+
+
+class ToxicsPagesTests(ViewTestCase):
+    def test_legacy_toxic_key_redirects(self):
+        # Benzene's slug happens to equal its old key; a renamed slug shows the redirect for real.
+        ToxicPollutant.objects.filter(carb_id='71432').update(slug='benzene-2')
+        response = self.client.get(reverse('emissions:home'), {'toxics': 1, 'pollutant': 'benzene', 'year': 2024})
+        assert response.status_code == 301
+        location = response['Location']
+        assert location.startswith(reverse('emissions:home') + '?')
+        assert parse_qs(location.split('?', 1)[1]) == {'toxics': ['1'], 'pollutant': ['benzene-2'], 'year': ['2024']}
+        # Not a toxics scope, or not an old key: no redirect.
+        assert self.client.get(reverse('emissions:facility-list'), {'pollutant': 'benzene'}).status_code == 200
+        assert self.client.get(reverse('emissions:facility-list'), {'toxics': 1, 'pollutant': 'benzene-2'}).status_code == 200
+
+    def test_picker_lists_weighted_measures_then_toxics(self):
+        content = self.get('home', params={'toxics': 1}).content.decode()
+        assert content.index('pollutant=chronic') < content.index('pollutant=diesel-pm') < content.index('pollutant=benzene')
+        assert 'pollutant=ammonia' not in content
+        assert '<span class="explorer-scope-label">Cancer-weighted</span>' in content
+
+    def test_home_shows_shares_and_the_breakdown(self):
+        content = self.get('home', params={'toxics': 1}).content.decode()
+        assert "Share of the Valley's cancer-weighted toxics" in content
+        # (23.1 + 0.4466) / 23.65825 = 0.99528, minor sources off; share_pct
+        # rounds a >=10% share to a whole percent, so this reads "100%" (the
+        # breakdown card below spells out that it's not the full total).
+        assert '100%' in content
+        assert 'What drives it' in content and 'Diesel PM' in content
+        assert 'share/yr' not in content and 'share of Valley total</span>' not in content
+
+    def test_region_page_shows_the_breakdown_and_no_per_square_mile(self):
+        # The stat row (before the map/toolbar, whose measure dropdown keeps
+        # "Per square mile" as a disabled option's label) is where the tile
+        # itself would appear.
+        kern = Region.objects.get(type=Region.Type.COUNTY, slug='kern')
+        content = self.client.get(kern.get_emissions_url(), {'toxics': 1}).content.decode()
+        stat_row = content[:content.index('class="facility-map map-canvas"')]
+        assert 'What drives it' in content and 'Per square mile' not in stat_row
+        content = self.client.get(kern.get_emissions_url()).content.decode()
+        stat_row = content[:content.index('class="facility-map map-canvas"')]
+        assert 'What drives it' not in content and 'Per square mile' in stat_row
+
+    def test_share_measures_are_disabled(self):
+        content = self.get('map', params={'toxics': 1, 'view': 'areas', 'measure': 'density'}).content.decode()
+        # Only Total is a live item; density and per-resident are disabled spans with the tooltip.
+        assert re.search(r'class="dropdown-item is-active" data-measure="total"', content)
+        assert 'data-measure="density"' not in content and 'data-measure="per_resident"' not in content
+        assert content.count(views.SHARE_MEASURE_TOOLTIP) == 2
+        assert 'data-unit="share"' in content and 'data-measure="total"' in content
+        assert views.map_view({'measure': 'density'}, year=2024, share=True)['measure'] == 'total'
+        plain = self.get('map', params={'view': 'areas'}).content.decode()
+        assert 'data-measure="density"' in plain and views.SHARE_MEASURE_TOOLTIP not in plain

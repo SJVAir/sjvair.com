@@ -18,13 +18,16 @@ class FacilityGeoJSONBase(generics.Endpoint):
         sector = sector if sector in Facility.Sector.values else None
         compare = stats.resolve_compare_param(request.GET.get('compare'), scope.year)
         rank_map = stats.ranks(scope)
-        field = scope.pollutant.key
         prev_by_facility = {}
         if compare:
-            prev_rows = stats.records(replace(scope, year=compare))
+            # value_expr()/scale() (through valued()) handle a criteria
+            # column, one toxic's ToxicEmission lbs, or a weighted measure's
+            # share of that compared year's Valley total alike; a compared
+            # year's own scale, not the scope year's.
+            prev_rows = stats.valued(replace(scope, year=compare))
             if sector:
                 prev_rows = prev_rows.filter(facility__sector=sector)
-            prev_by_facility = dict(prev_rows.values_list('facility_id', field))
+            prev_by_facility = dict(prev_rows.values_list('facility_id', 'value'))
         features = []
         for record in stats.facility_table(scope, sector=sector).filter(facility__point__isnull=False):
             facility = record.facility
@@ -70,15 +73,16 @@ class FacilityGeoJSON(CachedEndpointMixin, FacilityGeoJSONBase):
     year, county (slug), pollutant, toxics=1, minor=1, sector, and
     ?compare=<year> (a loaded year other than the scope's, ignored
     otherwise) for that year's value under `value_prev`, alongside the
-    current one. `value`/`value_prev` are in the pollutant's unit (tons/yr,
-    or lbs/yr for toxics). `value_prev` is left out (null) when the compared
-    year's value is below stats.SMALL_BASELINE_FLOOR for the unit -- too
-    small a baseline for a percent change to mean anything -- and this
-    endpoint is always scoped to the current year's facilities, so one that
-    closed before it isn't shown even if it reported in the compared year.
+    current one. `value`/`value_prev` are tons/yr, lbs/yr for one toxic, or
+    a share (0-1) of the Valley total for a weighted measure (`unit` says
+    which). `value_prev` is left out (null) when the compared year's value
+    is below stats.SMALL_BASELINE_FLOOR for the unit -- too small a baseline
+    for a percent change to mean anything -- and this endpoint is always
+    scoped to the current year's facilities, so one that closed before it
+    isn't shown even if it reported in the compared year.
     """
     cache_timeout = 60 * 60
-    cache_key_version = 2
+    cache_key_version = 3
 
 
 class DistrictListBase(generics.Endpoint):

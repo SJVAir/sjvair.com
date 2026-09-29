@@ -5,9 +5,6 @@ class EmissionsSerializer(serializers.Serializer):
     fields = (
         'year', 'tog', 'rog', 'co', 'nox', 'sox', 'pm', 'pm10',
         'total_score', 'hra', 'chindex', 'ahindex',
-        'acetaldehyde', 'benzene', 'butadiene', 'carbon_tetrachloride',
-        'chromium_hexavalent', 'dichlorobenzene', 'formaldehyde',
-        'methylene_chloride', 'naphthalene', 'perchloroethylene',
     )
 
 
