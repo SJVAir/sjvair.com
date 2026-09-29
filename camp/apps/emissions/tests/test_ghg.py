@@ -363,3 +363,52 @@ class ImportMRRTests(GHGTestCase):
         out = self.run_import(report=True)
         assert 'Valley Oil - San Joaquin Valley Basin 745' in out and 'basin-wide' in out
         assert 'Mojave Kiln Partners' in out and 'unmatched' in out and 'TEST PLANT' in out
+
+
+class ReadSideTests(GHGTestCase):
+    def test_facility_card(self):
+        assert ghg.facility_card(self.plant) is None
+        report('ghgrp', '501', 2022, facility=self.plant, county=self.fresno, co2e=900.0)
+        newest = report('ghgrp', '501', 2023, facility=self.plant, county=self.fresno, co2e=1000.0, ch4=2.0)
+        mrr_row = report('mrr', '900001', 2024, facility=self.plant, county=self.fresno, co2e=1100.0)
+        report('mrr', '900009', 2024, facility=self.cement, county=self.kern, co2e=5.0)
+        assert ghg.facility_card(self.plant) == [mrr_row, newest]
+        assert newest.source_url == 'https://ghgdata.epa.gov/ghgp/service/facilityDetail/2023?id=501&et=undefined'
+        assert mrr_row.source_url == 'https://ww2.arb.ca.gov/mrr-data'
+
+    def test_county_table_unifies_the_programs(self):
+        assert ghg.county_table(self.fresno) is None
+        report('mrr', '900001', 2024, facility=self.plant, county=self.fresno, co2e=1100.0, name='Test Plant Inc.', sector='Other Combustion Source')
+        report('ghgrp', '501', 2023, facility=self.plant, county=self.fresno, co2e=1000.0, ch4=3.0, name='TEST PLANT (EPA)', sector='Direct Emitter')
+        report('ghgrp', '501', 2022, facility=self.plant, county=self.fresno, co2e=5.0)   # an older year: ignored
+        report('mrr', '900002', 2024, county=self.fresno, co2e=2898915.0, name='Valley Oil - SJV Basin', basin_wide=True, ch4=1477.8, sector='Oil and Gas Production')
+        report('ghgrp', '503', 2023, county=self.fresno, co2e=800.0, name='Lonely Landfill')
+        report('ghgrp', '601', 2023, county=self.kern, co2e=30000.0, name='Basin Gathering')
+        table = ghg.county_table(self.fresno)
+        assert table['years'] == {'mrr': 2024, 'ghgrp': 2023}
+        assert [row['name'] for row in table['rows']] == ['Valley Oil - SJV Basin', 'TEST PLANT', 'Lonely Landfill']
+        basin, plant, landfill = table['rows']
+        assert basin['basin_wide'] and basin['facility'] is None and basin['mrr'] == 2898915.0 and basin['ghgrp'] is None and basin['ch4'] == 1477.8
+        assert plant['facility'] == self.plant and plant['mrr'] == 1100.0 and plant['ghgrp'] == 1000.0 and plant['ch4'] == 3.0
+        assert plant['sector'] == 'Other Combustion Source' and not plant['basin_wide']
+        assert landfill['ghgrp'] == 800.0 and landfill['mrr'] is None and landfill['facility'] is None
+        assert [row['name'] for row in ghg.county_table(self.kern)['rows']] == ['Basin Gathering']
+
+    def test_county_table_is_cached_under_the_stats_generation(self):
+        report('mrr', '1', 2024, county=self.fresno, co2e=10.0, name='One')
+        assert len(ghg.county_table(self.fresno)['rows']) == 1
+        report('mrr', '2', 2024, county=self.fresno, co2e=20.0, name='Two')
+        assert len(ghg.county_table(self.fresno)['rows']) == 1
+        stats.clear_caches()
+        assert len(ghg.county_table(self.fresno)['rows']) == 2
+
+    def test_limit(self):
+        for i in range(12):
+            report('mrr', str(i), 2024, county=self.fresno, co2e=float(i), name=f'R{i}')
+        assert len(ghg.county_table(self.fresno)['rows']) == 10
+        assert ghg.county_table(self.fresno, limit=3)['rows'][0]['name'] == 'R11'
+
+    def test_stamps(self):
+        assert ghg.stamps() == {'ghgrp': None, 'mrr': None}
+        SourceImport.objects.create(source='mrr', version='2024', data_through=date(2024, 12, 31))
+        assert ghg.stamps()['mrr'].version == '2024' and ghg.stamps()['ghgrp'] is None
