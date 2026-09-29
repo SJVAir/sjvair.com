@@ -44,11 +44,14 @@
   var RAMP = sampleRamp(M.ramps.sequential[DEFAULT_RAMP], 5);
   // Fixed classes on a log scale, per display unit: stable across pollutants,
   // counties and years, and readable ("1-10 tons"). Toxics are shown in lbs.
-  var CLASS_BREAKS = { tons: [0.1, 1, 10, 100], lbs: [1, 10, 100, 1000] };
+  // A weighted toxics measure has no unit: it's shown as a share of the
+  // Valley total, on fixed percent classes (0.01%, 0.1%, 1%, 5% and up).
+  var SHARE_BREAKS = [0.0001, 0.001, 0.01, 0.05];
+  var CLASS_BREAKS = { tons: [0.1, 1, 10, 100], lbs: [1, 10, 100, 1000], share: SHARE_BREAKS };
   // The Areas view's classes, per measure and unit.
   var AREA_BREAKS = {
     density: { tons: [0.01, 0.1, 1, 10], lbs: [0.1, 1, 10, 100] },
-    total: { tons: [1, 10, 100, 1000], lbs: [10, 100, 1000, 10000] },
+    total: { tons: [1, 10, 100, 1000], lbs: [10, 100, 1000, 10000], share: SHARE_BREAKS },
     per_resident: { tons: [0.1, 1, 10, 100], lbs: [1, 10, 100, 1000] },
   };
   var AREA_FIELDS = { density: 'per_sq_mi', total: 'total', per_resident: 'per_1k_residents' };
@@ -101,12 +104,12 @@
   // side, however small `r` is) so a phone's narrower CSS width scales the
   // whole drawing down rather than clipping it -- the map's own circles
   // (paint's `_radius`, from this same radiusFor) are untouched either way.
-  function sizeCircle(r, value, color) {
+  function sizeCircle(r, value, color, round) {
     var box = 2 * MAX_RADIUS + 2;
     return '<span class="legend-size"><svg viewBox="0 0 ' + box + ' ' + box + '" width="' + box + '" height="' + box + '">' +
       '<circle cx="' + (box / 2) + '" cy="' + (box - r - 1) + '" r="' + r + '"' +
       (color ? ' style="stroke: ' + color + '"' : '') + '/></svg>' +
-      roundLabel(value >= 1 ? Math.round(value) : value) + '</span>';
+      (round || roundLabel)(value >= 1 ? Math.round(value) : value) + '</span>';
   }
 
   // The size key (three sample circles at max/10/100 of it), shared by the
@@ -114,16 +117,16 @@
   // nothing to scale. `color` is the circles' stroke: the chosen ramp's
   // darkest step, or the stylesheet's grey under Compare, where the circles'
   // colour means change rather than size.
-  function sizeKeyHtml(max, color) {
+  function sizeKeyHtml(max, color, round) {
     if (!max) return '';
     return '<div class="legend-sizes">' + [max, max / 10, max / 100].map(function (value) {
-      return sizeCircle(radiusFor(value, max), value, color);
+      return sizeCircle(radiusFor(value, max), value, color, round);
     }).join('') + '</div>';
   }
 
   // A legend's classes on the blue ramp, largest first.
-  function facilityBins(breaks, swatchClass) {
-    return M.classes.bins(breaks, RAMP, swatchClass);
+  function facilityBins(breaks, swatchClass, round) {
+    return M.classes.bins(breaks, RAMP, swatchClass, round);
   }
 
   // A fraction (0.234) as the change legend and popup write it: '+23%',
@@ -131,6 +134,19 @@
   function pctRound(value) {
     var pct = Math.round(value * 100);
     return (pct > 0 ? '+' : '') + pct + '%';
+  }
+
+  // A share of the Valley total (0-1) as a percent: '0.01%', '0.1%', '1%',
+  // '5%', '24%' -- two significant digits, no trailing zeros.
+  function sharePct(value) {
+    if (value === null || value === undefined) return '—';
+    return String(Number((value * 100).toPrecision(2))) + '%';
+  }
+
+  // A data value with its unit as the popups and legends write it.
+  function valueText(value, unit) {
+    if (unit === 'share') return sharePct(value) + ' of Valley total';
+    return quantity(value) + ' ' + escapeHtml(unit) + '/yr';
   }
 
   // The change legend's classes on the diverging ramp, largest fall first.
@@ -282,6 +298,9 @@
     this.defaultLevel = this.data.defaultLevel || 'zipcode';
     this.level = this.data.level || this.defaultLevel;
     this.measure = this.data.measure || 'density';
+    // A weighted toxics measure is a share: only Total means anything (the
+    // server renders density and per-resident disabled).
+    if (this.data.unit === 'share') this.measure = 'total';
     // The year Compare shades the change against, in both views, or ''
     // for plain values; a toolbar control, not part of the page's scope.
     this.compare = this.data.compare || '';
@@ -595,7 +614,7 @@
     // regardless of whether this year has a value), so a null or 0 current
     // value is checked directly rather than through it.
     var noneReported = p.value === null || p.value === undefined || !(p.value > 0);
-    var value = noneReported ? 'none reported' : quantity(p.value) + ' ' + escapeHtml(this.data.unit) + '/yr';
+    var value = noneReported ? 'none reported' : valueText(p.value, this.data.unit);
     var compare = this.legendData && this.legendData.compare;
     var changeLine = '';
     if (compare) {
@@ -603,7 +622,7 @@
         (p._change === null || p._change === undefined ? 'not comparable' : pctRound(p._change)) + '</strong></p>' +
         (p.value_prev === null || p.value_prev === undefined ? '' :
           '<p>' + escapeHtml(this.data.label) + ', ' + escapeHtml(String(compare)) + ': ' +
-          quantity(p.value_prev) + ' ' + escapeHtml(this.data.unit) + '/yr</p>');
+          valueText(p.value_prev, this.data.unit) + '</p>');
     }
     this.shell.placePopup('<div class="facility-popup">' +
       '<p class="facility-popup-name"><a href="' + escapeHtml(this.facilityUrl(p.id)) + '">' + escapeHtml(p.name) + '</a></p>' +
@@ -617,14 +636,14 @@
     var self = this;
     var p = feature.properties;
     var count = Number(p.facilities) || 0;
-    var unit = escapeHtml(this.data.unit);
+    var share = this.data.unit === 'share';
     var name = (LEVEL_NAMES[this.level] || '') + p.name;
     var query = new URLSearchParams(this.data.query || '');
     query.delete('sector');
     var regionUrl = (this.data.regionUrl || '').replace('{id}', encodeURIComponent(p.id));
     var qs = query.toString();
     var line = function (label, value, suffix) {
-      return '<p>' + label + ': <strong>' + (value === null || value === undefined ? '—' : quantity(value) + ' ' + unit + '/yr' + suffix) + '</strong></p>';
+      return '<p>' + label + ': <strong>' + (value === null || value === undefined ? '—' : valueText(value, self.data.unit) + suffix) + '</strong></p>';
     };
     var compare = this.areaData && this.areaData.compareActive;
     var changeLine = '';
@@ -636,7 +655,7 @@
       '<p class="facility-popup-name">' + (regionUrl ? '<a href="' + escapeHtml(regionUrl + (qs ? '?' + qs : '')) + '">' + escapeHtml(name) + '</a>' : escapeHtml(name)) + '</p>' +
       '<p>' + count.toLocaleString('en-US') + ' facilit' + (count === 1 ? 'y' : 'ies') + ' · ' + escapeHtml(this.data.label) + '</p>' +
       changeLine +
-      line('Total', p.total, '') + line('Per square mile', p.per_sq_mi, '') + line('Per 1,000 residents', p.per_1k_residents, '') +
+      line(share ? 'Share' : 'Total', p.total, '') + (share ? '' : line('Per square mile', p.per_sq_mi, '') + line('Per 1,000 residents', p.per_1k_residents, '')) +
       (compare ? line('Total, ' + escapeHtml(String(compare)), p.total_prev, '') : '') +
       (count ? '<p><button type="button" class="button is-small is-link is-light" data-show-facilities>Show facilities</button></p>' : '') +
       '</div>';
@@ -664,13 +683,15 @@
     }
     if (!this.legendData) return;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
+    var share = this.data.unit === 'share';
+    var round = share ? sharePct : undefined;
     var max = this.legendData.max;
     if (this.legendData.compare) {
       // Circles still size by this year's value, a useful scale on its own,
       // so the key stays; the colour classes swap to the change ramp instead.
       var changeTitle = escapeHtml(this.data.label) + ', change ' + escapeHtml(String(this.legendData.compare)) +
         ' to ' + escapeHtml(this.data.year || '');
-      legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + sizeKeyHtml(max) +
+      legend.innerHTML = '<p class="legend-title">' + changeTitle + '</p>' + sizeKeyHtml(max, undefined, round) +
         changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>' +
         'New, too small to compare, or none reported in ' + escapeHtml(String(this.legendData.compare)) + '</p>' +
         '<p class="legend-note">Facilities that closed before ' + escapeHtml(this.data.year || '') +
@@ -678,15 +699,18 @@
       return;
     }
     var breaks = this.legendData.breaks;
-    var label = escapeHtml(this.data.label) + ' (' + escapeHtml(this.data.unit) + '/yr)';
+    var label = share
+      ? 'Share of Valley ' + escapeHtml(this.data.label).toLowerCase() + ' toxics, ' + escapeHtml(String(this.data.year || ''))
+      : escapeHtml(this.data.label) + ' (' + escapeHtml(this.data.unit) + '/yr)';
     if (!max) {
       legend.innerHTML = '<p>No facilities here reported ' + escapeHtml(this.data.label) + '.</p>';
       return;
     }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
-      sizeKeyHtml(max, RAMP[RAMP.length - 1]) +
-      facilityBins(breaks) +
-      '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>';
+      sizeKeyHtml(max, RAMP[RAMP.length - 1], round) +
+      facilityBins(breaks, undefined, round) +
+      '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>' +
+      (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '');
   };
 
   // Before a view, level, measure, sector or page change swaps the data: no
@@ -699,10 +723,11 @@
     var data = this.areaData;
     if (!data || !data.breaks) return;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
+    var share = data.values.unit === 'share';
     var breaks = data.breaks;
     var missing = Number(data.values.facilities_without_point) || 0;
     if (data.compareActive) {
-      var title = escapeHtml(this.data.label) + (AREA_SUFFIX[this.measure] || '') + ', change ' +
+      var title = escapeHtml(this.data.label) + (share ? '' : (AREA_SUFFIX[this.measure] || '')) + ', change ' +
         escapeHtml(String(data.compareActive)) + ' to ' + escapeHtml(this.data.year || '');
       legend.innerHTML = '<p class="legend-title">' + title + '</p>' +
         changeBins('is-area') +
@@ -712,9 +737,11 @@
         ' aren\'t shown.</p>';
       return;
     }
-    var plainTitle = escapeHtml(this.data.label) + ' (' + escapeHtml(data.values.unit) + '/yr' + (AREA_SUFFIX[this.measure] || '') + ')';
+    var plainTitle = share
+      ? 'Share of Valley ' + escapeHtml(this.data.label).toLowerCase() + ' toxics, ' + escapeHtml(String(this.data.year || ''))
+      : escapeHtml(this.data.label) + ' (' + escapeHtml(data.values.unit) + '/yr' + (AREA_SUFFIX[this.measure] || '') + ')';
     legend.innerHTML = '<p class="legend-title">' + plainTitle + '</p>' +
-      facilityBins(breaks, 'is-area') +
+      facilityBins(breaks, 'is-area', share ? sharePct : undefined) +
       '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>No facilities' +
       (this.measure === 'per_resident' ? ' or no population' : '') + '</p>' +
       (missing ? '<p class="legend-note">' + missing.toLocaleString('en-US') + ' facilit' + (missing === 1 ? 'y has' : 'ies have') +
@@ -852,6 +879,7 @@
   };
 
   FacilityMap.prototype.setMeasure = function (measure, label) {
+    if (this.data.unit === 'share' && measure !== 'total') return;
     this.measure = measure;
     this.clearHover();
     this.markDropdown('.facility-map-measure', '[data-measure]', measure, label);
