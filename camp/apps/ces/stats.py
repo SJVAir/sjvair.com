@@ -30,6 +30,18 @@ TOP_PERCENTILE = 75
 TOP_N = 5
 CACHE_VERSION = 1
 CACHE_TIMEOUT = 60 * 60 * 24
+# Every key includes the generation; an import bumps it (clear_caches) so a
+# re-imported CES isn't served from day-old summaries. Persistent, no timeout.
+GENERATION_KEY = 'ces:stats:generation'
+
+
+def generation():
+    return cache.get(GENERATION_KEY, 0)
+
+
+def clear_caches():
+    """Orphan every cached summary and tract record: they're keyed under the generation."""
+    cache.set(GENERATION_KEY, generation() + 1, None)
 
 
 def current_model():
@@ -141,7 +153,7 @@ def tract_summary(geometry, *, model=None):
     if model is None or not version:
         return None
     digest = hashlib.md5(geometry.ewkb).hexdigest()
-    key = f'ces:v{CACHE_VERSION}:summary:{model.__name__}:{version}:{digest}'
+    key = f'ces:v{CACHE_VERSION}:g{generation()}:summary:{model.__name__}:{version}:{digest}'
     return cache.get_or_set(key, lambda: _summary(geometry, model, version), CACHE_TIMEOUT)
 
 
@@ -169,4 +181,4 @@ def tract_record(region):
             'dac_category': str(record.get_dac_category_display()) if record.dac_category else None,
         }
 
-    return cache.get_or_set(f'ces:v{CACHE_VERSION}:tract:{model.__name__}:{region.boundary_id}', compute, CACHE_TIMEOUT)
+    return cache.get_or_set(f'ces:v{CACHE_VERSION}:g{generation()}:tract:{model.__name__}:{region.boundary_id}', compute, CACHE_TIMEOUT)

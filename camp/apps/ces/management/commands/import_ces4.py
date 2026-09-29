@@ -3,6 +3,7 @@ import pandas as pd
 
 from django.core.management.base import BaseCommand
 
+from camp.apps.ces import stats as ces_stats
 from camp.apps.ces.models import CES4, DACCategory
 from camp.apps.regions.models import Boundary, Region
 from camp.apps.regions.utils import get_tract_relationships
@@ -134,6 +135,7 @@ class Command(BaseCommand):
         self.stdout.write('\nSaving records...')
         self.save_records(ces4, geoid_col='Tract', version='2010')
         self.save_records(ces4_2020, geoid_col='Tract', version='2020')
+        ces_stats.clear_caches()
         self.stdout.write(self.style.SUCCESS('\n✓ Done'))
 
     def get_ces4(self):
