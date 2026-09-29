@@ -8,7 +8,7 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.core.management.base import BaseCommand
 
 from camp.apps.regions.models import Region, Boundary
-from camp.utils import geodata, maps
+from camp.utils import geodata, gis, maps
 
 
 def to_geos_4326(geometry, srid=None):
@@ -44,7 +44,7 @@ def print_top_diffs(diffs: List[Dict], tract_to_county: dict):
         print(f"{d['geoid']}: {d['diff_area']:,.2f} mi² (gdf: {gdf_county} / ces: {ces_geom_county} / db: {db_geom_county})")
 
 
-def print_missing_diffs(gdf, missing_rows, tract_to_county):
+def print_missing_diffs(missing_rows, tract_to_county):
     print('\n--- Missing Tracts With 2020 Boundary Present ---')
     for row in missing_rows:
         external_id = row.Tract
@@ -58,7 +58,7 @@ def print_missing_diffs(gdf, missing_rows, tract_to_county):
             continue
 
         gdf_county = tract_to_county.get(external_id, 'Unknown')
-        ces_geom_county = get_county_for_geometry(to_geos_4326(row.geometry, srid=gdf.crs.to_epsg()))
+        ces_geom_county = get_county_for_geometry(to_geos_4326(row.geometry, srid=gis.EPSG_LATLON))
         db_geom_county = get_county_for_geometry(boundary.geometry)
 
         ces_geom = maps.to_shape(row.geometry)
@@ -100,8 +100,9 @@ class Command(BaseCommand):
             dataset_id='calenviroscreen-4-0',
             resource_name='CalEnviroScreen 4.0 Results Shapefile',
             string_fields=['Tract'],
+            region_geometry=counties_gdf.union_all(),
+            threshold=0.25,
         )
-        gdf = geodata.filter_by_overlap(gdf, counties_gdf.unary_union, 0.25)
         gdf['Tract'] = gdf['Tract'].astype(str).str.zfill(11)
 
         boundary_map = {
@@ -139,4 +140,4 @@ class Command(BaseCommand):
         summarize_diffs(diffs)
         print_top_diffs(diffs, tract_to_county)
         print(f'\n--- CES4 Tracts missing in our database: {len(missing)} ---')
-        print_missing_diffs(gdf, missing, tract_to_county)
+        print_missing_diffs(missing, tract_to_county)
