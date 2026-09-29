@@ -46,4 +46,6 @@
 {% if facility_count > rows|length %}
 <p><a href="{% url 'emissions:facility-list' %}{{ scope_qs }}{% if scope_qs %}&amp;{% else %}?{% endif %}sector={{ sector.value }}">All {{ facility_count|intcomma }} facilities in this sector →</a></p>
 {% endif %}
+
+{% include 'emissions/includes/methane-oil-gas.html' %}
 {% endblock %}

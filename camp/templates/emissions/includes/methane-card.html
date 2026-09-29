@@ -1,0 +1,30 @@
+{% load humanize emissions_explorer %}
+{% comment %}
+Carbon Mapper methane sources the import linked to this facility (their nearest
+trusted-point facility within 1 km; methane.near_facility). Never rendered for
+oil & gas permit groupings. Every rate is Carbon Mapper's estimate; the
+attribution and the non-commercial terms are part of the card (the licence
+requires both wherever the data shows).
+{% endcomment %}
+{% if methane_sources %}
+<div class="card mt-5" id="methane">
+    <header class="card-header"><p class="card-header-title">Methane plumes observed nearby</p></header>
+    <div class="card-content content">
+        <table class="table is-fullwidth is-narrow">
+            <thead><tr><th>Source</th><th>Rate</th><th>Seen</th><th>Nearest dairy</th><th></th></tr></thead>
+            <tbody>
+            {% for source in methane_sources %}
+            <tr>
+                <td>{{ source.sector_label }} <span class="has-text-grey is-size-7">{{ source.distance_m|floatformat:0 }} m away</span></td>
+                <td>{{ source.rate_text }}{% if source.emission_kg_h is not None %} <span class="has-text-grey is-size-7">Carbon Mapper estimate</span>{% endif %}</td>
+                <td>{{ source.detections }} detection{{ source.detections|pluralize }} of {{ source.observations }} pass{{ source.observations|pluralize:"es" }}{% if source.persistence is not None %} <span class="has-text-grey is-size-7">(persistence {{ source.persistence|floatformat:2 }})</span>{% endif %}</td>
+                <td>{% if source.dairy %}{{ source.dairy.name }}{% else %}—{% endif %}</td>
+                <td><a href="{{ source.viewer_url }}">View at Carbon Mapper →</a></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p class="is-size-7 has-text-grey">Plumes are snapshots from aircraft and satellite passes. Each rate is an instantaneous estimate with wide uncertainty, not an annual total. A site with no plume hasn't been shown to be clean. <a href="{% url 'emissions:about' %}#methane">More</a>. <a href="{{ methane_attribution.url }}">{{ methane_attribution.text }}</a>, for <a href="{{ methane_attribution.license_url }}">non-commercial use</a>.{% if methane_stamp %} Catalog as of {{ methane_stamp.imported_at|date:"N j, Y" }}.{% endif %}</p>
+    </div>
+</div>
+{% endif %}

@@ -15,7 +15,7 @@ from django.urls import reverse
 import vanilla
 
 from camp.apps.ces import stats as ces_stats
-from camp.apps.emissions import areas, compliance, dairies, ghg, nei, schools, stats, wells
+from camp.apps.emissions import areas, compliance, dairies, ghg, methane, nei, schools, stats, wells
 from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
@@ -42,6 +42,7 @@ def region_within_dairies(region):
 
 PAGE_SIZE = 50
 SECTOR_PAGE_ROWS = 25
+METHANE_LIST_ROWS = 25
 # The Areas view forces `measure=total` for a weighted toxics measure (its
 # density and per-resident measures have no meaning for a share); the
 # toolbar shows why with this tooltip instead of hiding the options.
@@ -292,6 +293,9 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             facility_ces=ces_stats.tract_record(tract),
             compliance_card=compliance.facility_card(facility),
             ghg_card=ghg.facility_card(facility),
+            methane_sources=methane.near_facility(facility) if methane.enabled() else [],
+            methane_stamp=methane.stamp(),
+            methane_attribution=methane.attribution(),
             nearby=nearby,
             nearby_shown=schools.SHOWN,
             nearby_groups=nearby_groups(nearby),
@@ -347,6 +351,10 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             ),
             kern_callout=wells.kern_callout(scope.year) if self.sector == Facility.Sector.OIL_GAS else None,
             wells_stamp=wells.stamp(),
+            methane_oil_gas=methane.oil_gas_sources() if self.sector == Facility.Sector.OIL_GAS and methane.enabled() else None,
+            methane_list_rows=METHANE_LIST_ROWS,
+            methane_stamp=methane.stamp(),
+            methane_attribution=methane.attribution(),
             **kwargs,
         )
 

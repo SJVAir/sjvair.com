@@ -1,7 +1,9 @@
 from io import StringIO
 
+from django.core.cache import cache
 from django.core.management import call_command
 from django.test import TestCase
+from django.urls import reverse
 
 from camp.apps.emissions import sectors
 from camp.apps.emissions.models import Facility
@@ -65,3 +67,23 @@ class AssignSectorsTests(TestCase):
         assert Facility.objects.get(name='TEST PLANT').sector == S.GLASS
         assert Facility.objects.get(name='TEST CEMENT').sector == S.CEMENT_MINERALS
         assert '1 facilities updated' in out.getvalue()
+
+
+class OilGasMethaneListTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        from camp.apps.emissions import carbonmapper
+        from camp.apps.emissions.tests.test_carbonmapper import AT_GAS_STATION, row
+        from camp.apps.emissions.tests.test_dairies import make_dairies
+        cache.clear()
+        make_dairies()
+        Facility.objects.filter(name='TEST GAS STATION').update(point_source=Facility.PointSource.CARB, sector=Facility.Sector.OIL_GAS)
+        carbonmapper.apply([row(name='og', lnglat=AT_GAS_STATION, sector='1B2', rate='500', unc='150')])
+
+    def test_the_oil_gas_page_lists_sources(self):
+        content = self.client.get(reverse('emissions:sector-detail', args=['oil-gas'])).content.decode()
+        assert 'Methane sources observed at oil &amp; gas sites' in content
+        assert '500 ± 150 kg/h' in content and 'Kern' in content and 'TEST GAS STATION' in content
+        assert 'Data by Carbon Mapper®' in content
+        assert 'Methane sources observed' not in self.client.get(reverse('emissions:sector-detail', args=['glass'])).content.decode()

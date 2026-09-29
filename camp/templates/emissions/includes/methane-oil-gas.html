@@ -1,0 +1,31 @@
+{% load humanize %}
+{% comment %}
+The oil-gas sector page's list of Carbon Mapper's oil & gas methane sources
+(methane.oil_gas_sources): CEIDARS' oil & gas rows are permit groupings whose
+point is an office, so the plumes are listed here instead of on facility pages.
+{% endcomment %}
+{% if methane_oil_gas is not None %}
+<h3 class="title is-4 mt-5" id="methane">Methane sources observed at oil &amp; gas sites</h3>
+{% if methane_oil_gas %}
+<div class="table-container">
+<table class="table is-fullwidth is-narrow">
+    <thead><tr><th>County</th><th>Rate</th><th>Seen</th><th>Nearest facility</th><th></th></tr></thead>
+    <tbody>
+    {% for item in methane_oil_gas|slice:methane_list_rows %}
+    <tr>
+        <td>{{ item.county.short_name }}</td>
+        <td>{{ item.source.rate_text }}{% if item.source.emission_kg_h is not None %} <span class="has-text-grey is-size-7">Carbon Mapper estimate</span>{% endif %}</td>
+        <td>{{ item.source.detections }} of {{ item.source.observations }} passes</td>
+        <td>{% if item.facility %}<a href="{{ item.facility.get_absolute_url }}">{{ item.facility.name }}</a>{% else %}<span class="has-text-grey">{{ item.source.point.y|floatformat:4 }}, {{ item.source.point.x|floatformat:4 }}</span>{% endif %}</td>
+        <td><a href="{{ item.source.viewer_url }}">View at Carbon Mapper →</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% if methane_oil_gas|length > methane_list_rows %}<p class="is-size-7 has-text-grey">The {{ methane_list_rows }} largest of {{ methane_oil_gas|length|intcomma }}; turn on the map's <em>Methane sources (Carbon Mapper)</em> overlay for all of them.</p>{% endif %}
+{% else %}
+<p class="has-text-grey">No oil &amp; gas methane sources in Carbon Mapper's catalog for the covered counties.</p>
+{% endif %}
+<p class="is-size-7 has-text-grey">Snapshots from aircraft and satellite passes, not annual totals; a field with no plume hasn't been shown to be clean. <a href="{{ methane_attribution.url }}">{{ methane_attribution.text }}</a>, for <a href="{{ methane_attribution.license_url }}">non-commercial use</a>.</p>
+{% endif %}

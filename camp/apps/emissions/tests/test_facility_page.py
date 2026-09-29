@@ -167,3 +167,37 @@ class FacilityAmmoniaRowTests(TestCase):
         # bar (every page) still offers nh3 as a pollutant to switch to.
         table = content[content.index('Emissions in 2024'):content.index('Toxic air contaminants in 2024')]
         assert 'Ammonia' not in table
+
+
+class MethaneCardTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        from camp.apps.emissions import carbonmapper
+        from camp.apps.emissions.tests.test_carbonmapper import AT_GAS_STATION, NEAR_BOTH, row
+        from camp.apps.emissions.tests.test_dairies import make_dairies
+        cache.clear()
+        make_dairies()
+        Facility.objects.filter(name='TEST PLANT').update(point_source=Facility.PointSource.CENSUS)
+        Facility.objects.filter(name='TEST GAS STATION').update(point_source=Facility.PointSource.CARB, sector=Facility.Sector.OIL_GAS)
+        carbonmapper.apply([row(name='near', lnglat=NEAR_BOTH, rate='120', unc='40'), row(name='og', lnglat=AT_GAS_STATION, sector='1B2')])
+
+    def detail(self, name):
+        return self.client.get(Facility.objects.get(name=name).get_absolute_url()).content.decode()
+
+    def test_card_rows_and_attribution(self):
+        content = self.detail('TEST PLANT')
+        assert 'card-header-title">Methane plumes observed nearby' in content
+        assert '120 ± 40 kg/h' in content and 'Carbon Mapper estimate' in content
+        assert '5 detections of 12 passes' in content and 'View at Carbon Mapper →' in content
+        assert 'href="https://carbonmapper.org"' in content and 'Data by Carbon Mapper®' in content
+        assert 'BIG DAIRY' in content  # the nearest dairy is named
+        assert 'not an annual total' in content
+
+    def test_card_is_hidden_for_oil_gas_groupings(self):
+        from camp.apps.emissions.models import MethaneSource
+        assert MethaneSource.objects.get(source_name='og').facility.name == 'TEST GAS STATION'
+        assert 'Methane plumes observed nearby' not in self.detail('TEST GAS STATION')
+
+    def test_no_card_without_a_source(self):
+        assert 'Methane plumes observed nearby' not in self.detail('TEST CEMENT')
