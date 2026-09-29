@@ -1118,6 +1118,8 @@ MAP_STYLE = mapfigure.MAP_STYLE
 
 def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=None, product=None, commodity=None, county=None, highlight=None, outline_url=None, all_years=False, show_notices=True, show_locations=False, concern=False, toolbar=False, compare=None):
     year = year or stats.latest_year()
+    scope = stats.scope_param(year, all_years, county, concern)
+    scope_suffix = f'&{scope}' if scope else ''
     config = {
         # Upcoming-notice markers start on where notices are the subject of
         # the page, off where the reader came for the use data (records, and
@@ -1133,6 +1135,12 @@ def section_map_config(year, *, center=None, zoom=None, radius=None, chemical=No
         'locations_url': '/api/2.0/pesticides/locations/',
         'section_url_pattern': '/api/2.0/pesticides/sections/{id}/',
         'section_page_url': page_url_pattern('pesticides:section-detail'),
+        # Where a section's popup goes besides its own page: the records
+        # browser and the notices list, each narrowed to that section and
+        # carrying the page's scope. Built here rather than in the JS so
+        # there's one place that decides what the scope looks like.
+        'section_records_url': reverse('pesticides:records') + '?section={id}' + scope_suffix,
+        'section_notices_url': reverse('pesticides:notice-list') + '?section={id}' + scope_suffix,
         # The bare-sqid redirect: it 301s to the slugged detail URL, so the
         # JS doesn't need the slug.
         'chemical_page_url': page_url_pattern('pesticides:chemical-redirect'),

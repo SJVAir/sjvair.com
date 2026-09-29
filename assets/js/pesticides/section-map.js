@@ -2277,6 +2277,16 @@
     var links = url
       ? '<a class="section-popup-action" href="' + escapeHtml(url) + '"><span class="fa-regular fa-fw fa-circle-info"></span> Section details</a>'
       : '';
+    // Straight into the data for this square mile, rather than by way of
+    // its page: the two lists a reader standing on a section wants.
+    if (this.data.sectionRecordsUrl) {
+      links += '<a class="section-popup-action" href="' + escapeHtml(fillUrl(this.data.sectionRecordsUrl, props.id)) +
+        '"><span class="fa-regular fa-fw fa-table-list"></span> Records here</a>';
+    }
+    if (this.data.sectionNoticesUrl) {
+      links += '<a class="section-popup-action" href="' + escapeHtml(fillUrl(this.data.sectionNoticesUrl, props.id)) +
+        '"><span class="fa-regular fa-fw fa-calendar-clock"></span> Notices here</a>';
+    }
     if (center && this.level === 'township') {
       links += '<button type="button" class="section-popup-action section-map-zoom" data-id="' + escapeHtml(props.id) + '" data-lat="' + center.lat + '" data-lng="' + center.lng + '">' +
         '<span class="fa-regular fa-fw fa-magnifying-glass-plus"></span> Zoom in</button>';
