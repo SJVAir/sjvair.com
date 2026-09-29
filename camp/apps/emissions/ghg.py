@@ -117,7 +117,7 @@ def facility_card(facility):
     """The facility's newest report per program (MRR first, the newer year), or None for no card."""
     rows = []
     for program in PROGRAMS:
-        report = facility.ghg_reports.filter(program=program).order_by('-year', '-pk').first()
+        report = facility.ghg_reports.filter(program=program, basin_wide=False).order_by('-year', '-pk').first()
         if report is not None:
             rows.append(report)
     return rows or None

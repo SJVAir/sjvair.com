@@ -303,6 +303,14 @@ class ImportMRRTests(GHGTestCase):
     def rows(self):
         return {r.external_id: r for r in GHGReport.objects.filter(program='mrr', year=2024)}
 
+    def test_a_basin_wide_row_is_never_put_on_a_facility(self):
+        # Even when a name match (here forced) would place it on a real facility.
+        with patch('camp.apps.emissions.ghg.resolve', return_value=(self.plant, 'auto')):
+            self.run_import()
+        rows = self.rows()
+        assert rows['900002'].basin_wide and rows['900002'].facility is None and rows['900002'].match_method == ''
+        assert rows['900001'].facility == self.plant
+
     def test_zip_filter_and_emitter_columns_only(self):
         out = self.run_import()
         rows = self.rows()
@@ -374,6 +382,8 @@ class ReadSideTests(GHGTestCase):
         mrr_row = report('mrr', '900001', 2024, facility=self.plant, county=self.fresno, co2e=1100.0)
         report('mrr', '900009', 2024, facility=self.cement, county=self.kern, co2e=5.0)
         assert ghg.facility_card(self.plant) == [mrr_row, newest]
+        report('mrr', '900010', 2025, facility=self.plant, county=self.fresno, co2e=9.0, basin_wide=True)
+        assert ghg.facility_card(self.plant) == [mrr_row, newest]  # a basin-wide row is never a facility's own
         assert newest.source_url == 'https://ghgdata.epa.gov/ghgp/service/facilityDetail/2023?id=501&et=undefined'
         assert mrr_row.source_url == 'https://ww2.arb.ca.gov/mrr-data'
 

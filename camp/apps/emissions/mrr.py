@@ -159,6 +159,12 @@ def apply(rows, gases, year):
                 counts['no_emitter'] += 1
                 continue
             facility, method = ghg.resolve(PROGRAM, row['arb_id'], name=row['name'], zipcode=zip5)
+            basin = is_basin_wide(row)
+            if basin:
+                # A basin-wide report is many sites, never one facility's
+                # emissions, whatever a name match says; a crosswalk pin
+                # stays recorded as that.
+                facility, method = None, method if method == GHGReport.MatchMethod.CROSSWALK else ''
             if facility is not None and facility.county_id:
                 county = facility.county
             else:
@@ -166,7 +172,6 @@ def apply(rows, gases, year):
                     county_of_zip[zip5] = Region.objects.get_county_region(zip_region)
                 county = county_of_zip[zip5]
             per_gas = gases.get(row['arb_id'], {})
-            basin = is_basin_wide(row)
             GHGReport.objects.update_or_create(
                 program=PROGRAM, external_id=row['arb_id'], year=year,
                 defaults=dict(
