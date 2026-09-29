@@ -1247,7 +1247,7 @@
   // An htmx swap handed this map a new container (the shell has moved the
   // map into it, taken its data attributes and bound its chrome): follow
   // the page's defaults and refetch only what changed.
-  SectionMap.prototype.onAdopt = function (changed, oldData) {
+  SectionMap.prototype.onAdopt = function (changed) {
     var has = function (key) { return changed.indexOf(key) !== -1; };
 
     // A swap to a different page brings its own notices default with it;
@@ -1284,39 +1284,11 @@
       if (this.fillRampOptions) this.fillRampOptions();
     }
 
-    // The registry adopts this map across any boosted swap, so a page can
-    // change what a section click means. Entering filter mode drops the
-    // popup selection the last page left (it would otherwise be reopened by
-    // the next grid render and navigate without a click); leaving it drops
-    // the filter's own state.
-    if (has('select')) {
-      this.filterFeature = null;
-      this.filterLabelShownFor = null;
-      if (this.isFilterMap()) {
-        if (this.popup && this.popupKey !== 'openFilterId' && !this.isMarkerPopup()) this.closePopup();
-        this.openGridId = this.openLensId = this.openAllSectionsId = null;
-        this.pendingLocate = null;
-        this.clearSelection();
-      }
-    }
-    if (has('highlight') || has('select')) {
-      this.filterLabelShownFor = null;
-      if (this.popup && this.popupKey === 'openFilterId' &&
-          (!this.isFilterMap() || !this.data.highlight || has('highlight'))) this.closePopup();
-      this.updateHighlight();
-    }
     this.syncControls();
 
     var dataChanged = DATA_KEYS.some(has);
     var countyChanged = has('county');
-    // A selection made on this map never moves it: the reader clicked
-    // something they can already see. (A back/forward to a narrowed page
-    // isn't one, and frames it as a fresh load would.)
-    var viewChanged = !this.filterNavigating && (has('center') || has('zoom'));
-    // Nor does letting one go by a Clear link or back/forward to the
-    // unnarrowed page: the reader stays where they are.
-    if (this.isFilterMap() && oldData && oldData.highlight && !this.data.highlight) viewChanged = false;
-    this.filterNavigating = false;
+    var viewChanged = has('center') || has('zoom');
     var radiusChanged = has('radius');
     var outlineChanged = has('outlineUrl');
 
@@ -1908,16 +1880,8 @@
   // The page's own section (a section page) wears an orange outline while
   // the section grid is up.
   SectionMap.prototype.updateHighlight = function () {
-    var id = this.data.highlight;
-    var feature = null;
-    if (id && this.level === 'section') {
-      feature = this.gridById[id] || null;
-    } else if (id && this.isFilterMap() && this.filterFeature && this.filterFeature.properties.id === id) {
-      // The grid holds only townships under a lens / all-sections pick.
-      feature = this.filterFeature;
-    }
+    var feature = this.level === 'section' && this.data.highlight ? this.gridById[this.data.highlight] : null;
     this.setSourceData('highlight', feature || EMPTY);
-    this.showFilterLabel();
   };
 
   // Reclasses the grid (a metric, ramp, or bins change) and reshades it in
@@ -2219,10 +2183,6 @@
     if (!container || container.getAttribute('data-zoom-bound')) return;
     container.setAttribute('data-zoom-bound', '1');
     container.addEventListener('click', function (click) {
-      if (click.target.closest && click.target.closest('.section-filter-clear')) {
-        self.navigateWithSection(null);
-        return;
-      }
       var button = click.target.closest ? click.target.closest('.section-map-zoom') : null;
       if (!button) return;
       var lat = parseFloat(button.getAttribute('data-lat'));
@@ -2389,7 +2349,7 @@
       } else {
         this.showSectionPopup(feature, 'grid');
       }
-    } else if (this.popup && !this.isMarkerPopup() && this.popupKey !== 'openFilterId') {
+    } else if (this.popup && !this.isMarkerPopup()) {
       this.closePopup();
     }
   };
@@ -2398,19 +2358,9 @@
     return this.popupKey === 'openNoticeId' || this.popupKey === 'openLocationId';
   };
 
-  // A map whose page narrows to a clicked section (the map page, the entity
-  // pages): a section click navigates instead of opening the popup.
-  SectionMap.prototype.isFilterMap = function () {
-    return this.data.select === 'filter';
-  };
-
   // `source` says which layer the section was clicked on ('grid',
   // 'all-sections', or 'lens'), which is whose popup this is.
-  SectionMap.prototype.showSectionPopup = function (feature, source, locate) {
-    if (this.isFilterMap()) {
-      this.filterToSection(feature, !locate);
-      return;
-    }
+  SectionMap.prototype.showSectionPopup = function (feature, source) {
     var self = this;
     var props = feature.properties;
     var center = boundsCenter(featureBounds(feature));
@@ -2442,64 +2392,6 @@
         if (!self.popup || self.popupId !== props.id) return;
         self.popup.setHTML(self.sectionPopupHtml(props, '<p class="section-popup-note">Couldn\'t load the top chemicals.</p>', latlng));
       });
-  };
-
-  // Clicking the section the page is already narrowed to lets it go; the
-  // locate button (`toggle` false) only ever selects.
-  SectionMap.prototype.filterToSection = function (feature, toggle) {
-    var id = feature.properties.id;
-    if (!toggle && id === this.data.highlight) return;
-    this.filterFeature = feature;
-    this.navigateWithSection(toggle && id === this.data.highlight ? null : id);
-  };
-
-  // The same page with `section` set (or dropped), through the explorer's
-  // boosted swap so it's indistinguishable from following a link: the URL
-  // is pushed, #explorer-body swapped, and this map adopted in place. The
-  // flag tells onAdopt the camera stays where the reader is.
-  SectionMap.prototype.navigateWithSection = function (id) {
-    var url = new URL(window.location.href);
-    if (id) url.searchParams.set('section', id); else url.searchParams.delete('section');
-    url.searchParams.delete('page');
-    var href = url.pathname + url.search;
-    var body = document.getElementById('explorer-body');
-    if (!window.htmx || !body) {
-      window.location.assign(href);
-      return;
-    }
-    this.filterNavigating = true;
-    var link = document.createElement('a');
-    link.href = href;
-    link.hidden = true;
-    body.appendChild(link);
-    // A request that doesn't end in a swap leaves nothing to adopt, so the
-    // flag mustn't wait around to swallow a later camera move.
-    var self = this;
-    link.addEventListener('htmx:afterRequest', function (evt) {
-      if (!evt.detail.successful) self.filterNavigating = false;
-    });
-    window.htmx.process(link);
-    link.click();
-  };
-
-  // The narrowed page's section wears a one-line label: its name, its page,
-  // and Clear. Shown once per selection; closing it doesn't clear.
-  SectionMap.prototype.showFilterLabel = function () {
-    var id = this.data.highlight;
-    if (!this.isFilterMap() || !id || this.filterLabelShownFor === id) return;
-    var feature = this.gridById[id] ||
-      (this.filterFeature && this.filterFeature.properties.id === id ? this.filterFeature : null);
-    if (!feature) return;
-    this.filterLabelShownFor = id;
-    var props = feature.properties;
-    var url = this.sectionUrl(id);
-    var html = '<div class="section-popup section-filter-label">' +
-      '<h4>' + escapeHtml(props.mtrs || id) + '</h4>' +
-      '<div class="section-popup-actions">' +
-      (url ? '<a class="section-popup-action" href="' + escapeHtml(url) + '"><span class="fa-regular fa-fw fa-circle-info"></span> Section details</a>' : '') +
-      '<button type="button" class="section-popup-action section-filter-clear"><span class="fa-regular fa-fw fa-xmark"></span> Clear</button>' +
-      '</div></div>';
-    this.openPopup(boundsCenter(featureBounds(feature)), html, 'openFilterId', id);
   };
 
   SectionMap.prototype.chemicalUrl = function (id) {
@@ -2537,7 +2429,7 @@
       return;
     }
     this.pendingLocate = null;
-    this.showSectionPopup(hit, 'grid', true);
+    this.showSectionPopup(hit, 'grid');
   };
 
   // -- "all sections" --

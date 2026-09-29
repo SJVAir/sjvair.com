@@ -1,5 +1,7 @@
 # Pesticides map-as-filter Implementation Plan
 
+> **Shelved 2026-09-28** -- see the note at the top of the spec. Built in beb3def5 and taken back out in the next commit.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Clicking one square-mile section on the Map page or a chemical / product / commodity page narrows that page to the section.

@@ -1360,26 +1360,6 @@ class ShowAllTests(RollupTestMixin, TestCase):
             'pesticides:commodity-list', 'chemical')
         assert short['complete'] is True
 
-    def test_a_narrowed_page_shows_all_in_the_records_browser(self):
-        # The list pages don't take a section; the records browser does.
-        class Narrowed(_StubDetail):
-            use_field = 'chemical'
-            year = 2022
-
-            def section_param(self):
-                return 'section=xyz'
-
-        rows = list(range(stats.RELATED_LIMIT))
-        url = views.ExplorerDetailMixin.related_card(
-            Narrowed(), 'Applied to', 'commodities', rows, 'pesticides:commodity-list', 'chemical',
-        )['show_all_url']
-        assert url == reverse('pesticides:records') + '?chemical=abc&section=xyz&year=2022'
-        plain = views.ExplorerDetailMixin.related_card(
-            _StubDetail(), 'Applied to', 'commodities', rows, 'pesticides:commodity-list', 'chemical',
-        )['show_all_url']
-        assert plain.startswith(reverse('pesticides:commodity-list') + '?chemical=abc')
-        assert 'section' not in plain
-
     def test_a_section_card_infers_it_too(self):
         assert views._section_card('Top products', 'products', [1, 2], '/x/')['complete'] is True
         assert views._section_card(
@@ -1410,9 +1390,6 @@ class _StubDetail:
 
     def hide_lbs(self):
         return False
-
-    def section_param(self):
-        return ''
 
     class object:
         sqid = 'abc'
@@ -1524,15 +1501,8 @@ class ExplorerLedeTests(RollupTestMixin, TestCase):
         assert html.index(self.LEDE) < html.index('id="explorer-body"')
 
 
-class SectionMapSelectTests(RollupTestMixin, TestCase):
-    """`select='filter'` is how a page opts its section map into click-to-filter."""
+class SectionSummaryTests(RollupTestMixin, TestCase):
     fixtures = ['pesticides-explorer']
-
-    def test_select_defaults_off_and_is_emitted(self):
-        assert views.section_map_config(2023)['select'] == ''
-        config = views.section_map_config(2023, select='filter')
-        assert config['select'] == 'filter'
-        assert config['map']['data']['select'] == 'filter'
 
     def test_section_summary_matches_the_section_page(self):
         section = Region.objects.get(pk=9101)
@@ -1545,163 +1515,25 @@ class SectionMapSelectTests(RollupTestMixin, TestCase):
         assert views.section_county_name(section) == 'Fresno County'
 
 
-class SectionFilterDetailTests(RollupTestMixin, TestCase):
-    """`?section=` narrows a chemical/product/commodity page to one square mile."""
+class CountFormattingTests(RollupTestMixin, TestCase):
+    """Counts are whole numbers: `lbs` keeps a decimal below ten, which is
+    right for pounds and wrong for "7.0 applications"."""
     fixtures = ['pesticides-explorer']
 
     def setUp(self):
         cache.clear()
-        self.section = Region.objects.get(pk=9101)          # Fresno
-        self.kern_section = Region.objects.get(pk=9102)     # Kern
-        self.chemical = Chemical.objects.get(pk=1)
 
-    def lbs(self, **filters):
-        return PesticideUseRollup.objects.filter(year=2023, **filters).aggregate(n=Sum('lbs_chemical'))['n'] or 0
-
-    def get(self, obj, **params):
-        return self.client.get(obj.get_absolute_url(), params)
-
-    def test_chemical_page_narrows_to_the_section(self):
-        ctx = self.get(self.chemical, section=self.section.sqid).context
-        assert ctx['totals']['lbs'] == self.lbs(chemical=self.chemical, mtrs=self.section)
-        assert ctx['totals']['lbs'] < self.lbs(chemical=self.chemical)
-        assert ctx['section_filter']['sqid'] == self.section.sqid
-        assert ctx['section_filter']['county'] == 'Fresno County'
-        assert ctx['summary_sentence'].startswith(f'Applied in Section {self.section.external_id} in ')
-
-    def test_product_and_commodity_pages_narrow_too(self):
-        for obj, field, lbs_field in (
-            (Product.objects.filter(rollups__mtrs=self.section).distinct().first(), 'product', 'lbs_product'),
-            (Commodity.objects.filter(rollups__mtrs=self.section).distinct().first(), 'commodity', 'lbs_chemical'),
-        ):
-            expected = PesticideUseRollup.objects.filter(
-                year=2023, mtrs=self.section, **{field: obj},
-            ).aggregate(n=Sum(lbs_field))['n']
-            assert self.get(obj, section=self.section.sqid).context['totals']['lbs'] == expected
-
-    def test_county_blocks_are_hidden(self):
-        response = self.get(self.chemical, section=self.section.sqid)
-        assert response.context['by_county'] == []
-        assert response.context['movers'] is None
-        assert response.context['county_map'] is None
-        assert 'by-county-table' not in response.content.decode()
-
-    def test_links_out_carry_the_section(self):
-        ctx = self.get(self.chemical, section=self.section.sqid, year=2022).context
-        suffix = f'section={self.section.sqid}'
-        for url in (ctx['records_url'], ctx['notices_url'], ctx['full_map_url']):
-            assert suffix in url
-
-    def test_map_is_in_filter_mode_and_framed_on_the_section(self):
-        cfg = self.get(self.chemical, section=self.section.sqid).context['map_config']
-        assert cfg['select'] == 'filter'
-        assert cfg['highlight'] == self.section.sqid
-        assert cfg['zoom'] == 13 and cfg['center'] == views.centroid(self.section)
-        # Unnarrowed, still filter mode, framed on the valley.
-        cfg = self.get(self.chemical).context['map_config']
-        assert cfg['select'] == 'filter' and cfg['highlight'] == '' and cfg['fit'] == 'valley'
-
-    def test_banner_and_clear_link(self):
-        html = self.get(self.chemical, section=self.section.sqid, year=2022).content.decode()
-        assert 'section-filter-banner' in html
-        assert f'Section {self.section.external_id}' in html
-        # Clear keeps the scope and drops only the section.
-        assert f'href="{self.chemical.get_absolute_url()}?year=2022"' in html
-
-    def test_bad_section_is_no_match_not_unfiltered(self):
-        county = Region.objects.get(pk=9001)
-        for value in (county.sqid, 'nope'):
-            response = self.get(self.chemical, section=value)
-            assert response.status_code == 200
-            assert response.context['section_missing'] is True
-            assert response.context['totals']['lbs'] in (0, None)
-            assert 'No section matches that link' in response.content.decode()
-
-    def test_section_outside_the_county_scope_is_empty_not_an_error(self):
-        response = self.get(self.chemical, section=self.kern_section.sqid, county='fresno')
-        assert response.status_code == 200
-        assert not response.context['totals']['applications']
-
-    def test_section_with_no_use_still_renders_the_map(self):
-        # The live map is adopted across the swap, so the narrowed page must
-        # always carry a map container, use or no use.
-        empty = self.get(self.chemical, section=self.kern_section.sqid, county='fresno')
-        missing = self.get(self.chemical, section='nope')
-        for response in (empty, missing):
-            html = response.content.decode()
-            assert 'data-select="filter"' in html
-            assert 'No confirmed applications' in html
-            assert 'Open in the full map' in html
-
-    def test_narrowed_counts_are_whole_numbers(self):
-        response = self.get(self.chemical, section=self.section.sqid)
+    def test_small_application_counts_have_no_decimal(self):
+        chemical = Chemical.objects.get(pk=1)
+        response = self.client.get(chemical.get_absolute_url())
         applications = response.context['totals']['applications']
-        assert applications
+        assert 0 < applications < 10
         html = response.content.decode()
         assert f'<p class="title">{applications}</p>' in html
+        assert f'<p class="title">{applications}.0</p>' not in html
 
-    def test_counties_stat_is_hidden_when_narrowed(self):
-        narrowed = self.get(self.chemical, section=self.section.sqid).content.decode()
-        assert 'Counties</p>' not in narrowed
-        assert 'Counties</p>' in self.get(self.chemical).content.decode()
-
-    def test_no_section_is_unchanged(self):
-        ctx = self.get(self.chemical).context
-        assert ctx['section_filter'] is None and ctx['section_missing'] is False
-        assert ctx['by_county']
-
-
-class SectionFilterMapPageTests(RollupTestMixin, TestCase):
-    """`?section=` on the map page renders a panel for that square mile."""
-    fixtures = ['pesticides-explorer']
-
-    def setUp(self):
-        cache.clear()
-        self.url = reverse('pesticides:map')
-        self.section = Region.objects.get(pk=9101)
-        self.chemical = Chemical.objects.get(pk=1)
-
-    def test_no_section_no_panel(self):
-        response = self.client.get(self.url)
-        assert response.context['selected_section'] is None
-        assert 'id="section-panel"' not in response.content.decode()
-        assert response.context['map_config']['select'] == 'filter'
-
-    def test_section_renders_the_panel(self):
-        response = self.client.get(self.url, {'section': self.section.sqid})
-        ctx = response.context
-        assert ctx['selected_section']['sqid'] == self.section.sqid
-        assert ctx['totals']['lbs'] == 670.0
-        assert [r.obj.name for r in ctx['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
-        assert ctx['map_config']['highlight'] == self.section.sqid
-        html = response.content.decode()
-        assert 'id="section-panel"' in html and f'Section {self.section.external_id}' in html
-        # Products before chemicals.
-        assert html.index('Top products') < html.index('Top chemicals')
-
-    def test_panel_honours_the_entity_filter(self):
-        ctx = self.client.get(self.url, {'section': self.section.sqid, 'chemical': self.chemical.sqid}).context
-        expected = PesticideUseRollup.objects.filter(
-            year=2023, mtrs=self.section, chemical=self.chemical,
-        ).aggregate(n=Sum('lbs_chemical'))['n']
-        assert ctx['totals']['lbs'] == expected
-        assert f'chemical={self.chemical.sqid}' in ctx['records_url']
-        assert f'section={self.section.sqid}' in ctx['records_url']
-
-    def test_toolbar_keeps_the_section(self):
-        response = self.client.get(self.url, {'section': self.section.sqid})
-        html = response.content.decode()
-        assert f'<input type="hidden" name="section" value="{self.section.sqid}">' in html
-
-    def test_bad_section_is_no_match(self):
-        county = Region.objects.get(pk=9001)
-        response = self.client.get(self.url, {'section': county.sqid})
-        assert response.context['no_matches'] is True
-        assert response.context['selected_section'] is None
-
-    def test_unresolved_entity_suppresses_the_panel(self):
-        response = self.client.get(self.url, {'section': self.section.sqid, 'chemical': 'nope'})
-        assert response.context['no_matches'] is True
-        assert response.context['selected_section'] is None
-        assert response.context['map_config']['highlight'] == ''
-        assert 'id="section-panel"' not in response.content.decode()
+    def test_section_page_counts_have_no_decimal(self):
+        section = Region.objects.get(pk=9101)
+        html = self.client.get(reverse('pesticides:section-detail', kwargs={'sqid': section.sqid})).content.decode()
+        assert '<p class="title">4</p>' in html
+        assert '4.0' not in html

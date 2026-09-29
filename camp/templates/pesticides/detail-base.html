@@ -12,16 +12,6 @@
     {% block notes %}{% include 'pesticides/includes/what-this-means.html' %}{% endblock %}
 </div>
 
-{% if section_filter %}
-<div class="notification is-info is-light section-filter-banner">
-    Narrowed to <strong>Section {{ section_filter.external_id }}</strong>{% if section_filter.county %} ({{ section_filter.county }}){% endif %}
-    &middot; <a href="{{ section_filter.page_url }}">Section details</a>
-    &middot; <a href="{{ section_filter.clear_url }}">Clear</a>
-</div>
-{% elif section_missing %}
-<p class="notification is-warning is-light">No section matches that link.</p>
-{% endif %}
-
 {% include 'pesticides/includes/stat-row.html' %}
 {% if summary_sentence %}<p class="summary-sentence is-size-5 mb-5">{{ summary_sentence }}</p>{% endif %}
 
@@ -55,17 +45,6 @@ doesn't render as one row of content beside ten and a screen of whitespace.
             </div>
         </div>
         <p class="mt-4"><a href="{{ records_url }}">Browse all {{ totals.applications|default:0|intcomma }} records</a></p>
-    {% elif section_filter or section_missing %}
-        {# A narrowed page keeps its map even with no use here: the live map is adopted across the swap, not rebuilt. #}
-        <div class="columns">
-            <div class="column is-5-desktop is-4-widescreen">
-                <p class="has-text-grey">No confirmed applications on record{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
-            </div>
-            <div class="column is-7-desktop is-8-widescreen">
-                {% include 'pesticides/includes/section-map.html' %}
-                <p class="is-size-7 mt-2"><a href="{{ full_map_url }}">Open in the full map</a></p>
-            </div>
-        </div>
     {% else %}
         <p class="has-text-grey">No confirmed applications on record{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
     {% endif %}

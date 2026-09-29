@@ -1,5 +1,19 @@
 # Pesticides explorer: the section map as a filter
 
+> **Shelved 2026-09-28.** Built in full (commit beb3def5), reviewed, then taken
+> back out in the following commit. Derek's call after using it: a map click that
+> narrows the page changes scope outside the scope bar, and "we don't want to
+> surprise users". Scope has one home -- the scope bar. The section popup's
+> "Section details", "Records here" and "Notices here" links already lead to a
+> square mile's data without rewriting the page underneath the reader.
+> A UI review also found the response landed off-screen (banner and stat row sit
+> above a below-the-fold map; the Map page's panel starts at the fold), the page
+> shifted under the cursor as content above the map changed height, a click gave
+> less at the map than the popup it replaced, and at the valley zoom the lens's
+> ~3 px sections made the click a lottery. Kept from the work: the count
+> formatting fix (counts no longer read "7.0") and the shared
+> `section_summary()` / section includes behind the section page.
+
 Date: 2026-09-28. Branch: `feature/pesticides-explorer` (draft PR #275).
 
 ## Why

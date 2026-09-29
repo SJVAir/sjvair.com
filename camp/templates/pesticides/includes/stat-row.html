@@ -18,9 +18,7 @@
     <div class="level-item has-text-centered">
         <div><p class="heading">Applications{% if year_label %} in {{ year_label }}{% endif %}</p><p class="title">{{ totals.applications|default:0|intcomma }}</p></div>
     </div>
-    {% if not section_filter %}
     <div class="level-item has-text-centered">
         <div><p class="heading">Counties</p><p class="title">{{ totals.counties }} <span class="is-size-5 has-text-grey">of {{ county_total }}</span></p></div>
     </div>
-    {% endif %}
 </div>
