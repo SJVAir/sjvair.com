@@ -58,7 +58,7 @@
         <div>
             <p class="heading">Products used</p>
             <p class="title">{{ product_count|lbs }}</p>
-            <p class="stat-note"></p>
+            <p class="stat-note">{% if products_fumigant %}{{ products_fumigant|lbs }} fumigants{% endif %}</p>
         </div>
     </div>
     <div class="level-item has-text-centered">

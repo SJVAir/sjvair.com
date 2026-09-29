@@ -1152,6 +1152,8 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         'chemicals_flagged': real_chemicals(
             concern_rows(year_uses.filter(chemical__isnull=False))
         ).values('chemical').distinct().count(),
+        'products_fumigant': year_uses.filter(
+            product__fumigant=True).values('product').distinct().count(),
         'active_notices': upcoming_count(notices),
         # Each board's rows carry their own by-year series, for the
         # sparkline that says whether a big number is growing or receding.
