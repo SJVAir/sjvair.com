@@ -88,7 +88,7 @@
                     {% load_datafile 'school-districts.yaml' as district_list %}
                     {% for district in district_list %}
                     <div class="column is-5-mobile is-4-tablet is-4-desktop">
-                        <a href="{{ district.url }}" target="_blank" class="school-{{ district.slug }} org-logo">
+                        <a href="{{ district.url }}" target="_blank" class="school-{{ district.slug }} org-logo is-large">
                             <img src="{% static district.logo %}" alt="{{ district.name }}" class="is-responsive" />
                         </a>
                     </div>
@@ -121,7 +121,7 @@
                 <div class="columns is-mobile is-centered">
                     {% for funder in funder_list|slice:'1:' %}
                     <div class="column is-4-mobile is-5-tablet is-4-desktop">
-                        <a href="{{ funder.url }}" target="_blank" class="org-logo">
+                        <a href="{{ funder.url }}" target="_blank" class="org-logo is-large">
                             <img src="{% static funder.logo %}" alt="{{ funder.name }}" class="is-responsive" />
                         </a>
                     </div>
