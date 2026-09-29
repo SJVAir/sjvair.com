@@ -678,8 +678,9 @@
     var request = ++this.wellsRequest;
     this.el.dataset.wellsLoaded = '';
     getJson(this.data.wellsUrl)
-      .then(function (collection) {
+      .then(function (packed) {
         if (request !== self.wellsRequest || !self.map) return;
+        var collection = wellsCollection(packed);
         self.wellsData = collection;
         self.shell.setSourceData('wells', collection);
         self.shell.updateLegend();
@@ -690,6 +691,23 @@
         logError('failed to load the wells', err);
       });
   };
+
+  // The wells endpoint's compact rows ([id, lng, lat, status, hpz]) as the
+  // GeoJSON the clustered source takes; `imported` rides along on properties.
+  function wellsCollection(packed) {
+    var statuses = packed.statuses || [];
+    return {
+      type: 'FeatureCollection',
+      properties: { imported: packed.imported },
+      features: (packed.wells || []).map(function (row) {
+        return {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [row[1], row[2]] },
+          properties: { id: row[0], s: statuses[row[3]], h: row[4] },
+        };
+      }),
+    };
+  }
 
   FacilityMap.prototype.setWells = function (on) {
     if (!this.wellsEnabled) return;

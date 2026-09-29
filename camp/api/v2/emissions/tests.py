@@ -462,26 +462,22 @@ class WellEndpointTests(TestCase):
         self.active = make_well('0402900001', IN_KERN, kern, spud_date='2015-03-04')
         self.idle = make_well('0402900002', (IN_KERN[0] + 0.001, IN_KERN[1]), kern, status='Idle', hpz='Verified HPZ', directional=True)
 
-    def test_geojson_is_lean(self):
+    def test_geojson_is_compact_rows(self):
         response = self.client.get(reverse('api:v2:emissions:wells-geojson'))
-        assert response.status_code == 200
+        assert response.status_code == 200 and response['Content-Type'] == 'application/json'
         body = response.json()
-        assert body['properties']['wells'] == 2 and body['properties']['imported'] is None
-        by_id = {f['properties']['id']: f for f in body['features']}
-        idle = by_id[self.idle.sqid]
-        # No top-level `id`: properties.id alone (the map source's promoteId
-        # and the popup fetch both read it there) -- one id per well, not two.
-        assert set(idle) == {'type', 'geometry', 'properties'}
-        assert idle['properties'] == {'id': self.idle.sqid, 's': 'Idle', 'h': 1}
-        assert by_id[self.active.sqid]['properties']['h'] == 0
-        assert idle['geometry'] == {'type': 'Point', 'coordinates': [round(IN_KERN[0] + 0.001, 5), IN_KERN[1]]}
+        assert body['imported'] is None and body['statuses'] == ['Active', 'Idle', 'New']
+        by_id = {row[0]: row for row in body['wells']}
+        assert by_id[self.idle.sqid] == [self.idle.sqid, round(IN_KERN[0] + 0.001, 5), IN_KERN[1], 1, 1]
+        assert by_id[self.active.sqid][3:] == [0, 0]
 
-    def test_geojson_cache_follows_the_wells_generation(self):
-        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['features']) == 2
+    def test_geojson_cache_follows_the_wells_generation_and_holds_compressed_bytes(self):
+        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['wells']) == 2
+        assert isinstance(cache.get(wells.key('geojson')), bytes)  # zlib: small enough for memcached
         Well.objects.filter(pk=self.idle.pk).delete()
-        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['features']) == 2
+        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['wells']) == 2
         wells.clear_caches()
-        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['features']) == 1
+        assert len(self.client.get(reverse('api:v2:emissions:wells-geojson')).json()['wells']) == 1
 
     def test_detail(self):
         body = self.client.get(reverse('api:v2:emissions:well-detail', args=[self.idle.sqid])).json()

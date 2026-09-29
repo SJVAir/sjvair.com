@@ -1,52 +1,57 @@
-from django.http import Http404
+import json
+import logging
+import zlib
+
+from django.core.cache import cache
+from django.http import Http404, HttpResponse
 from resticus import generics
 
 from camp.apps.emissions import wells
 from camp.apps.emissions.models import Well
-from camp.utils.views import CachedEndpointMixin
+
+logger = logging.getLogger(__name__)
+STATUSES = [Well.Status.ACTIVE.value, Well.Status.IDLE.value, Well.Status.NEW.value]
 
 
-class WellsCachedEndpointMixin(CachedEndpointMixin):
-    """Response caching that a re-import (wells.clear_caches) invalidates."""
-
-    def get_view_cache_key(self):
-        return f'{super().get_view_cache_key()}|g:{wells.generation()}'
-
-
-class WellGeoJSONBase(generics.Endpoint):
-    # get() lives on this un-cached base so the mixin's get() on the subclass
-    # is the one dispatched to (the explorer endpoints' pattern).
-    def get(self, request):
-        features = []
-        for well in Well.objects.only('id', 'status', 'in_hpz', 'point').order_by('pk').iterator(chunk_size=5000):
-            features.append({
-                'type': 'Feature',
-                # No top-level `id` -- `properties.id` alone is what the map's
-                # GeoJSON source promotes (shell.ensureSource's `promoteId:
-                # 'id'`) and what the popup (openWellPopup) reads; a
-                # duplicate top-level id would just be more bytes ×66,000.
-                'geometry': {'type': 'Point', 'coordinates': [round(well.point.x, 5), round(well.point.y, 5)]},
-                'properties': {'id': well.sqid, 's': well.status, 'h': 1 if well.in_hpz == Well.HPZ.VERIFIED else 0},
-            })
-        stamp = wells.stamp()
-        return {
-            'type': 'FeatureCollection',
-            'properties': {'wells': len(features), 'imported': stamp.imported_at.date().isoformat() if stamp else None},
-            'features': features,
-        }
-
-
-class WellGeoJSON(WellsCachedEndpointMixin, WellGeoJSONBase):
+class WellGeoJSON(generics.Endpoint):
     """
     Every active, idle or new oil and gas well CalGEM lists in the covered
-    counties, as GeoJSON points for the facility map's wells overlay. Lean
-    by design (about 66,000 points): properties are `id` (for the detail
-    endpoint), `s` (Active / Idle / New) and `h` (1 inside a verified health
-    protection zone). Source: CalGEM WellSTAR (CC-BY); a regulatory record,
-    not emissions. Cached a day; a re-import invalidates it.
+    counties, for the facility map's wells overlay: `{"imported": date,
+    "statuses": [...], "wells": [[id, lng, lat, status, hpz], ...]}`, where
+    `status` indexes `statuses` and `hpz` is 1 inside a verified health
+    protection zone. The map rebuilds GeoJSON points from it. Compact on
+    purpose: about 66,000 wells. Source: CalGEM WellSTAR (CC-BY); a
+    regulatory record, not emissions. Cached a day as compressed bytes (a
+    GeoJSON dict of 66,000 features is ~10 MB, over memcached's 1 MB item
+    limit, and took seconds to re-encode per request); a re-import
+    invalidates it.
     """
     cache_timeout = 60 * 60 * 24
-    cache_key_version = 1
+
+    def get(self, request):
+        key = wells.key('geojson')
+        packed = cache.get(key)
+        if packed is None:
+            packed = zlib.compress(self.payload().encode(), 6)
+            try:
+                cache.set(key, packed, self.cache_timeout)
+            except Exception as err:
+                logger.warning('Could not cache %s: %s', key, err)
+        return HttpResponse(zlib.decompress(packed), content_type='application/json')
+
+    @staticmethod
+    def payload():
+        index = {status: i for i, status in enumerate(STATUSES)}
+        rows = [
+            [well.sqid, round(well.point.x, 5), round(well.point.y, 5), index.get(well.status, 0), 1 if well.in_hpz == Well.HPZ.VERIFIED else 0]
+            for well in Well.objects.only('id', 'status', 'in_hpz', 'point').order_by('pk').iterator(chunk_size=5000)
+        ]
+        stamp = wells.stamp()
+        return json.dumps({
+            'imported': stamp.imported_at.date().isoformat() if stamp else None,
+            'statuses': STATUSES,
+            'wells': rows,
+        }, separators=(',', ':'))
 
 
 class WellDetail(generics.Endpoint):
