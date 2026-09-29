@@ -186,7 +186,7 @@
       description: Carbon Mapper is a non-profit that finds methane and CO2 super-emitters from aircraft and satellites and publishes each source's location, estimated emission rate and how often it was seen. SJVAir shows the Valley's methane sources as a map overlay and links each to the nearest dairy or permitted facility. Data by Carbon Mapper®, for non-commercial use.
 
     - name: CDFA Dairy Digester Research and Development Program
-      logo: img/logo/cdfa.png
+      logo: img/logo/cdfa.svg
       url: https://www.cdfa.ca.gov/oefi/ddrdp/
       description: The California Department of Food and Agriculture's Dairy Digester Research and Development Program funds anaerobic digesters that capture the methane from dairy manure, and publishes each funded project with its grant, completion date and estimated greenhouse-gas reduction. SJVAir links the Valley's projects to the dairies they serve and shows each dairy's grants alongside its herd and any methane plumes observed nearby.
 
