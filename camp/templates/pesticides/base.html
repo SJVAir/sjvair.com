@@ -22,6 +22,7 @@
 {% include 'maps/includes/scripts.html' %}
 <script src="{% static 'js/admin/map-figure.js' %}"></script>
 <script src="{% static 'js/pesticides/section-map.js' %}"></script>
+<script src="{% static 'js/pesticides/county-hover.js' %}"></script>
 <script src="{% static 'js/pesticides/find-area.js' %}"></script>
 <script src="{% static 'js/pesticides/entity-picker.js' %}"></script>
 <script src="{% static 'js/pesticides/explorer.js' %}"></script>
@@ -43,7 +44,7 @@
         {% block explorer-header %}
         <div class="content">
             <h1 class="is-size-2 mb-1"><a href="{% url 'pesticides:home' %}">Pesticide Data Explorer</a></h1>
-            {% block explorer-lede %}{% endblock %}
+            <p class="lede">Which pesticides are applied in the San Joaquin Valley, where, and on what.</p>
         </div>
         {% endblock %}
         <div class="tabs is-boxed explorer-nav">
@@ -54,6 +55,8 @@
                 <li class="{% if section == 'commodities' %}is-active{% endif %}"><a href="{% url 'pesticides:commodity-list' %}{{ scope_qs }}" title="Commodities"><span class="icon is-small"><span class="fa-duotone fa-fw fa-seedling explorer-icon is-commodities"></span></span><span class="tab-label">Commodities</span></a></li>
                 <li class="{% if section == 'records' %}is-active{% endif %}"><a href="{% url 'pesticides:records' %}{{ scope_qs }}" title="Records"><span class="icon is-small"><span class="fa-duotone fa-fw fa-table-list explorer-icon is-records"></span></span><span class="tab-label">Records</span></a></li>
                 <li class="{% if section == 'notices' %}is-active{% endif %}"><a href="{% url 'pesticides:notice-list' %}{% if county %}?county={{ county.slug }}{% endif %}" title="Notices"><span class="icon is-small"><span class="fa-duotone fa-fw fa-calendar-clock explorer-icon is-notices"></span></span><span class="tab-label">Notices</span></a></li>
+                {# No scope: where the data comes from and how it's counted doesn't change with the year or the county. #}
+                <li class="{% if section == 'about' %}is-active{% endif %}"><a href="{% url 'pesticides:about' %}" title="About this data"><span class="icon is-small"><span class="fa-duotone fa-fw fa-circle-info explorer-icon is-about"></span></span><span class="tab-label">About</span></a></li>
             </ul>
         </div>
     </div>

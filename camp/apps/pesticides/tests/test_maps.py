@@ -1,5 +1,6 @@
 from django.core.cache import cache
 from django.test import TestCase
+from django.urls import reverse
 
 from camp.apps.pesticides import maps, stats
 from camp.apps.pesticides.models import PesticideUseRollup
@@ -147,7 +148,7 @@ class CountyMapTests(TestCase):
         assert [r['county_name'] for r in by_acres] == ['Kern County', 'Fresno County']
         # The map shades by the same metric and says so in its labels.
         html = maps.county_map(by_acres, metric='acres')
-        assert 'Kern County: 200 acres treated' in html
+        assert 'Kern County: 200 acre-treatments' in html
         assert 'county-legend' not in html
         assert maps.county_metric('nope') == 'lbs' and maps.county_metric('applications') == 'applications'
 
@@ -217,3 +218,68 @@ class CountyRateTests(RollupTestMixin, TestCase):
             assert row['used'] > 0
             # Every square mile that reported use is inside the county.
             assert row['used'] <= row['area']
+
+
+class CountyColumnPickerTests(RollupTestMixin, TestCase):
+    """
+    The by-county table shows one data column -- the one the map beside it is
+    shaded by -- and its header picks which.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def test_options_cover_every_metric_and_mark_the_current_one(self):
+        options = maps.county_metric_options('acres')
+        assert [o['value'] for o in options] == list(maps.COUNTY_METRICS)
+        assert [o['value'] for o in options if o['active']] == ['acres']
+
+    def test_a_page_without_pounds_is_not_offered_them(self):
+        # A placeholder chemical has no pounds, so ranking by them is a
+        # column of dashes.
+        options = maps.county_metric_options('acres', hide_lbs=True)
+        assert [o['value'] for o in options] == ['acres', 'applications']
+        assert maps.county_metric('lbs', hide_lbs=True) == 'acres'
+        assert maps.county_metric('lbs') == 'lbs'
+
+    def test_the_header_names_the_chosen_metric(self):
+        assert maps.county_metric_column('lbs_per_used_sqmi')[0] == 'Pounds per square mile with use'
+        assert maps.county_metric_column('nonsense')[0] == 'Pounds applied'
+
+    def table(self, html):
+        start = html.index('by-county-table')
+        return html[start:html.index('</table>', start)]
+
+    def test_the_table_renders_one_data_column(self):
+        response = self.client.get(reverse('pesticides:home'), {'rank': 'applications'})
+        body = self.table(response.content.decode())
+        # Two cells a row: the county and the one metric.
+        assert body.count('<td') == 2 * len(response.context['by_county'])
+        assert 'Applications' in body
+
+    def test_the_shades_note_sits_outside_the_scrolling_container(self):
+        # A tooltip inside .table-container is clipped by its overflow.
+        html = self.client.get(reverse('pesticides:home')).content.decode()
+        start = html.index('by-county-table')
+        table_end = html.index('</table>', start)
+        assert 'What the shades mean' in html[table_end:]
+        assert 'What the shades mean' not in html[start:table_end]
+
+
+class AcreTreatmentUnitTests(TestCase):
+    """
+    Acres treated counts a field once per application, so it runs well past
+    the ground a county has -- Fresno reports ~132M against ~3.8M acres of
+    county. It is named as a compound unit everywhere it appears, so it
+    isn't read as an amount of land.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def test_the_unit_is_named_as_a_compound(self):
+        assert maps.COUNTY_METRICS['acres'] == 'acre-treatments'
+        assert maps.county_metric_column('acres')[0] == 'Acre-treatments'
+
+    def test_the_about_page_defines_it(self):
+        html = self.client.get(reverse('pesticides:about')).content.decode()
+        assert 'An acre-treatment is one acre treated once' in html
+        assert 'counts applications over ground rather than ground itself' in html

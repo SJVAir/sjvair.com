@@ -409,6 +409,29 @@ class CommodityListTests(RollupTestMixin, TestCase):
     def test_search_site_code(self):
         assert self.names(self.client.get(self.url, {'q': '2500'})) == ['COTTON']
 
+    def test_single_year_chemical_counts_come_from_one_cached_group_by(self):
+        # The per-commodity correlated count was the list's whole cost
+        # (~0.3 s warm); one year now reads the same cached group-by the
+        # all-years list does.
+        fresno = Region.objects.get(pk=9001)
+        for year, county in ((2023, None), (2022, None), (2023, fresno)):
+            rows = PesticideUseRollup.objects.filter(year=year, commodity__isnull=False, chemical__isnull=False)
+            if county is not None:
+                rows = rows.filter(county=county)
+            expected = {}
+            for commodity, chemical in rows.values_list('commodity', 'chemical').distinct():
+                expected[commodity] = expected.get(commodity, 0) + 1
+            assert stats.commodity_chemical_counts(county, year=year) == expected
+        with self.assertNumQueries(0):
+            stats.commodity_chemical_counts(None, year=2023)
+
+    def test_chemical_count_for_a_past_year_and_county(self):
+        response = self.client.get(self.url, {'year': 2022, 'county': 'fresno'})
+        counts = {c.name: c.chemical_count for c in response.context['object_list']}
+        rows = PesticideUseRollup.objects.filter(year=2022, county__slug='fresno', chemical__isnull=False)
+        for name, n in counts.items():
+            assert n == rows.filter(commodity__name=name).values('chemical').distinct().count()
+
     def test_related_chemical(self):
         chem = Chemical.objects.get(pk=2)
         assert set(self.names(self.client.get(self.url, {'chemical': chem.sqid}))) == {'ALMOND', 'COTTON'}
@@ -1433,3 +1456,107 @@ class SeasonalityHeatmapTests(RollupTestMixin, TestCase):
             html = self.client.get(self.pages()['chemical'], {'year': year}).content.decode()
             marked = re.findall(r'<tr class="is-selected">\s*<th scope="row">(\d{4})<', html)
             assert marked == [str(year)], year
+
+
+class AboutTabTests(TestCase):
+    """The About page is a tab like the rest, and marks itself active."""
+
+    fixtures = ['pesticides-explorer']
+
+    def test_every_explorer_page_offers_the_tab(self):
+        for name in ('pesticides:home', 'pesticides:map', 'pesticides:chemical-list',
+                     'pesticides:records', 'pesticides:notice-list', 'pesticides:about'):
+            html = self.client.get(reverse(name)).content.decode()
+            assert f'href="{reverse("pesticides:about")}"' in html, name
+
+    def test_the_tab_is_active_on_the_about_page(self):
+        response = self.client.get(reverse('pesticides:about'))
+        assert response.context['section'] == 'about'
+        html = response.content.decode()
+        marked = re.findall(r'<li class="is-active"><a href="([^"]+)"', html)
+        assert marked == [reverse('pesticides:about')]
+
+    def test_the_tab_carries_no_scope(self):
+        # Where the data comes from doesn't change with the year or county,
+        # so the link is bare while every other tab carries the scope.
+        html = self.client.get(reverse('pesticides:home'), {'year': 2022, 'county': 'kern'}).content.decode()
+        assert f'href="{reverse("pesticides:about")}" title="About this data"' in html
+
+
+class ExplorerLedeTests(RollupTestMixin, TestCase):
+    """
+    The hero's lede is the same on every page of the explorer.
+
+    It sits outside #explorer-body, which is the only region a boosted
+    navigation swaps, so anything page-specific there would persist from
+    whichever page was loaded first -- present on pages that never declared
+    it, missing from the one that did.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    LEDE = 'Which pesticides are applied in the San Joaquin Valley, where, and on what.'
+
+    def pages(self):
+        fresno = Region.objects.get(pk=9001)
+        return {
+            'home': reverse('pesticides:home'),
+            'map': reverse('pesticides:map'),
+            'products': reverse('pesticides:product-list'),
+            'chemicals': reverse('pesticides:chemical-list'),
+            'commodities': reverse('pesticides:commodity-list'),
+            'records': reverse('pesticides:records'),
+            'notices': reverse('pesticides:notice-list'),
+            'about': reverse('pesticides:about'),
+            'place': reverse('pesticides:region', kwargs={'sqid': fresno.sqid, 'slug': fresno.slug}),
+            'chemical': Chemical.objects.get(pk=1).get_absolute_url(),
+        }
+
+    def test_every_page_carries_the_same_lede(self):
+        for name, url in self.pages().items():
+            html = self.client.get(url).content.decode()
+            assert html.count(self.LEDE) == 1, name
+
+    def test_the_lede_is_outside_the_swapped_region(self):
+        # Which is why it has to be page-independent: a swap replaces
+        # #explorer-body and never touches this.
+        html = self.client.get(reverse('pesticides:home')).content.decode()
+        assert html.index(self.LEDE) < html.index('id="explorer-body"')
+
+
+class SectionSummaryTests(RollupTestMixin, TestCase):
+    fixtures = ['pesticides-explorer']
+
+    def test_section_summary_matches_the_section_page(self):
+        section = Region.objects.get(pk=9101)
+        rows = PesticideUseRollup.objects.filter(mtrs=section)
+        summary = views.section_summary(rows, 2023, False, '/records/')
+        assert summary['totals']['lbs'] == 670.0
+        assert [r.obj.name for r in summary['top_chemicals']] == ['SULFUR', 'GLYPHOSATE', 'CHLORPYRIFOS']
+        assert summary['peak_month'] == 'August'
+        assert summary['products_card']['show_all_url'] == '/records/'
+        assert views.section_county_name(section) == 'Fresno County'
+
+
+class CountFormattingTests(RollupTestMixin, TestCase):
+    """Counts are whole numbers: `lbs` keeps a decimal below ten, which is
+    right for pounds and wrong for "7.0 applications"."""
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def test_small_application_counts_have_no_decimal(self):
+        chemical = Chemical.objects.get(pk=1)
+        response = self.client.get(chemical.get_absolute_url())
+        applications = response.context['totals']['applications']
+        assert 0 < applications < 10
+        html = response.content.decode()
+        assert f'<p class="title">{applications}</p>' in html
+        assert f'<p class="title">{applications}.0</p>' not in html
+
+    def test_section_page_counts_have_no_decimal(self):
+        section = Region.objects.get(pk=9101)
+        html = self.client.get(reverse('pesticides:section-detail', kwargs={'sqid': section.sqid})).content.decode()
+        assert '<p class="title">4</p>' in html
+        assert '4.0' not in html

@@ -10,10 +10,10 @@ All development runs inside Docker.
 # Start the full dev environment (web, DB, Redis, Memcached, Huey workers)
 docker compose --profile web up
 
-# Run the full test suite
-docker compose run --rm test pytest
+# Run the full test suite (4 xdist workers, each test class kept on one worker)
+docker compose run --rm test pytest -n 4 --dist loadscope
 
-# Run a specific test file or test
+# Run a specific test file or test (serial -- xdist worker startup costs ~7s)
 docker compose run --rm test pytest camp/apps/monitors/tests.py -v
 docker compose run --rm test pytest camp/apps/qaqc/tests.py::HealthCheckTests::test_grade_a_when_both_sensors_agree -v
 

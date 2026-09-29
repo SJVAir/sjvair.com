@@ -950,14 +950,17 @@ def county_totals(year=None, all_years=False, concern=False):
     )
 
 
-def commodity_chemical_counts(county=None, concern=False):
+def commodity_chemical_counts(county=None, concern=False, year=None):
     """
-    {commodity_id: distinct chemicals applied to it, across every loaded
-    year}. One group-by over the rollup, cached -- the per-commodity
-    correlated subquery the single-year list uses has no usable index without
-    a year to lead with.
+    {commodity_id: distinct chemicals applied to it} in `year`, or across
+    every loaded year when no year is given. One group-by over the rollup,
+    cached: the per-commodity correlated subquery it replaces ran once per
+    commodity on the page -- ~0.3 s for one year, and with no usable index
+    across every year.
     """
     rows = real_chemicals(PesticideUseRollup.objects.filter(commodity__isnull=False, chemical__isnull=False))
+    if year is not None:
+        rows = rows.filter(year=year)
     if county is not None:
         rows = rows.filter(county=county)
     if concern:
@@ -965,6 +968,8 @@ def commodity_chemical_counts(county=None, concern=False):
     parts = ['commodity-chemicals', county.pk if county is not None else ALL_YEARS]
     if concern:
         parts.append(concern if concern in NARROW_VALUES else CONCERN_PARAM)
+    if year is not None:
+        parts.append(year)
     return cached(
         all_years_key(*parts),
         lambda: dict(
@@ -1030,12 +1035,61 @@ def yearly_series(rows, field, objects, lbs_field='lbs_chemical'):
     return series
 
 
-def with_series(rows, field, ranked, lbs_field='lbs_chemical'):
-    """`ranked` (top_related rows) with a `series` on each, for its sparkline."""
-    series = yearly_series(rows, field, [row.obj for row in ranked], lbs_field)
+def monthly_series(rows, field, objects, year, lbs_field='lbs_chemical'):
+    """
+    {pk: [pounds per month]} for `year`, twelve entries, zero-filled. Month 0
+    (undated) is left out, as by_month() leaves it out, so the twelve points
+    are the twelve months and nothing else.
+
+    One group-by for the whole board, like yearly_series().
+    """
+    ids = [obj.pk for obj in objects]
+    if year is None or not ids:
+        return {}
+    grouped = (rows.filter(year=year, month__gte=1, **{f'{field}__in': ids})
+        .values(field, 'month')
+        .annotate(lbs=Sum(lbs_field)))
+    series = {pk: [0.0] * 12 for pk in ids}
+    for row in grouped:
+        if row[field] in series:
+            series[row[field]][row['month'] - 1] = row['lbs'] or 0
+    return series
+
+
+def with_series(rows, field, ranked, lbs_field='lbs_chemical', year=None, all_years=False):
+    """
+    `ranked` (top_related rows) with a `series` on each, for its sparkline.
+
+    The line breaks down the number beside it, so it follows the scope: the
+    months of the scope year, or the loaded years when the number is the
+    all-years total. A line covering a decade next to one year's pounds
+    described a different period than everything else on the row.
+    """
+    objects = [row.obj for row in ranked]
+    if all_years:
+        series = yearly_series(rows, field, objects, lbs_field)
+    else:
+        series = monthly_series(rows, field, objects, year, lbs_field)
     for row in ranked:
         row.series = series.get(row.obj.pk) or []
     return ranked
+
+
+def series_label(year, all_years=False):
+    """
+    What the sparklines on a board cover. Names the trend lines rather than
+    just stating a period: the caption sits under a column of pounds, and a
+    bare span there reads as describing those numbers.
+    """
+    if all_years:
+        years = available_years()
+        if not years:
+            return ''
+        span = str(years[0]) if years[0] == years[-1] else f'{years[0]}\u2013{years[-1]}'
+        return f'Trend lines show pounds per year, {span}'
+    if year is None:
+        return ''
+    return f'Trend lines show pounds per month in {year}'
 
 
 def landing_key(year, concern=False):
@@ -1073,7 +1127,11 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         'products': Count('product', distinct=True),
         'commodities': Count('commodity', distinct=True),
     }
-    sums = {'lbs': Sum('lbs_chemical'), 'applications': Sum('applications')}
+    sums = {
+        'lbs': Sum('lbs_chemical'),
+        'applications': Sum('applications'),
+        'acres': Sum('acres_treated'),
+    }
     if from_totals:
         year_totals_ = year_uses.aggregate(**counts)
         year_totals_ |= year_uses.filter(chemical__isnull=False).aggregate(**sums)
@@ -1092,18 +1150,31 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         'commodity_count': year_totals_['commodities'] or 0,
         'applications': year_totals_['applications'] or 0,
         'total_lbs': year_totals_['lbs'] or 0,
+        # Subtext for the stat row, as on a place page: what the figure was
+        # last year, what the applications cover, how many of the chemicals
+        # are flagged.
+        'acres': year_totals_['acres'] or 0,
+        'chemicals_flagged': real_chemicals(
+            concern_rows(year_uses.filter(chemical__isnull=False))
+        ).values('chemical').distinct().count(),
+        'products_fumigant': year_uses.filter(
+            product__fumigant=True).values('product').distinct().count(),
         'active_notices': upcoming_count(notices),
         # Each board's rows carry their own by-year series, for the
         # sparkline that says whether a big number is growing or receding.
         'top_products': with_series(uses, 'product',
             top_related(uses, year, 'product', lbs_field='lbs_product',
-                limit=RELATED_LIMIT, all_years=all_years), 'lbs_product'),
-        'top_chemicals': with_series(uses, 'chemical', top_chemicals),
+                limit=RELATED_LIMIT, all_years=all_years), 'lbs_product',
+            year=year, all_years=all_years),
+        'top_chemicals': with_series(uses, 'chemical', top_chemicals, year=year, all_years=all_years),
         'top_commodities': with_series(uses, 'commodity',
-            top_related(uses, year, 'commodity', limit=RELATED_LIMIT, all_years=all_years)),
+            top_related(uses, year, 'commodity', limit=RELATED_LIMIT, all_years=all_years),
+            year=year, all_years=all_years),
         'by_county': county_totals(year, all_years, concern) if (year or all_years) else [],
         'by_year': by_year(totals),
+        'series_label': series_label(year, all_years),
     }
+    data['lbs_delta'] = trend_deltas(data['by_year'], year)['previous']
     # Under the concern scope every leaderboard is already of concern, so
     # the dedicated one would just restate the top chemicals.
     if not concern:
@@ -1118,7 +1189,8 @@ def _build_landing_stats(year, all_years=False, county=None, concern=False):
         of_concern = top_chemicals_of_concern(top_chemicals_all, uses, year,
             limit=RELATED_LIMIT * 2, all_years=all_years)
         kept = [row for row in of_concern if row.obj.pk not in listed]
-        data['top_chemicals_of_concern'] = with_series(uses, 'chemical', kept[:RELATED_LIMIT])
+        data['top_chemicals_of_concern'] = with_series(
+            uses, 'chemical', kept[:RELATED_LIMIT], year=year, all_years=all_years)
     return data
 
 

@@ -447,6 +447,7 @@ class PesticideNotice(TimeStampedModel):
         verbose_name=_('County'),
         limit_choices_to={'type': 'county'},
     )
+    # The centre of the notice's section as SprayDays pins it, not a field location.
     point = models.PointField(_('Point'), null=True, blank=True, srid=4326)
     scheduled_application = models.DateTimeField(_('Scheduled Application'), db_index=True)
     treated_amount = models.FloatField(_('Treated Amount'), null=True, blank=True)

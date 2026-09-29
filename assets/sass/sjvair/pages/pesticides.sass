@@ -96,6 +96,9 @@ body.pesticides
         &.is-notices
             --fa-primary-color: #d35400
             --fa-secondary-color: #ffc078
+        &.is-about
+            --fa-primary-color: #5a6b7b
+            --fa-secondary-color: #c8d1da
         &.is-concern
             --fa-primary-color: #d35400
             --fa-secondary-color: #ffc078
@@ -283,7 +286,11 @@ body.pesticides
             width: 100%
             table-layout: fixed
             border-collapse: separate
-            border-spacing: 2px
+            // The gaps between cells are the cells' own transparent borders
+            // rather than border-spacing, so a row or column background can
+            // show through them (see the hover bands below). border-spacing
+            // belongs to the table and would stay white.
+            border-spacing: 0
             font-size: 0.75rem
             font-variant-numeric: tabular-nums
             th
@@ -304,20 +311,26 @@ body.pesticides
             // columns; the year label takes its content width first.
             height: 1.15rem
             padding: 0
+            // The gap between cells, as a transparent border rather than
+            // border-spacing, so the row and column bands show through it.
+            border: 2px solid transparent
+            background-clip: padding-box
             border-radius: 2px
             &.is-empty
                 // A month with nothing reported reads as absent, not as light.
                 background-image: none
                 opacity: 0.55
-        // Hover: the cell's own row and column, so a square can be read back
-        // to its month and its year. An outline rather than a fill, which
-        // would misreport the value the shade is carrying.
-        .heatmap-cell.is-cross, th.is-cross
-            box-shadow: inset 0 0 0 1px rgba($black, 0.25)
+        // Hover: the row and the column light up behind the cells, so a
+        // square can be read back to its month and its year. Rows and
+        // columns paint beneath cells, and each cell's fill stops at its
+        // padding box, so the band shows in the gaps without touching a
+        // single fill -- the fills are the values.
+        tr.is-band, col.is-band
+            background-color: $white-ter
         .heatmap-cell.is-hovered
-            box-shadow: inset 0 0 0 2px $text
+            border-color: $text
+        // The headers the band runs out to.
         th.is-cross
-            box-shadow: none
             color: $text
             font-weight: 700
         .heatmap-legend
@@ -388,6 +401,23 @@ body.pesticides
         th, td
             white-space: nowrap
             font-variant-numeric: tabular-nums
+    // The one data column's header is a menu, not a link (see
+    // includes/by-county-table.html).
+    .column-picker
+        .button
+            border: none
+            background: transparent
+            font-weight: 600
+            color: $text
+            padding: 0 0.25rem
+            height: auto
+            &:hover
+                color: $link
+        .dropdown-menu
+            min-width: 11rem
+        .dropdown-item.is-active
+            font-weight: 600
+
     .by-county-table
         th.is-ranked
             color: $text
@@ -412,6 +442,11 @@ body.pesticides
             a
                 color: $white
                 font-weight: 600
+        // The row and its county on the map, hovered together
+        // (js/pesticides/county-hover.js). A tint rather than a grey: the
+        // rows are already striped in greys.
+        tbody tr:hover, tbody tr:focus-within, tbody tr.is-hovered
+            background-color: rgba($link, 0.1)
 
     .explorer-filters, .records-filters, .notice-filters
         padding: 1.25rem
@@ -638,6 +673,20 @@ body.pesticides
         font-size: 0.8em
         &:hover
             color: $link
+        // With words in front of it the icon is the affordance, not the
+        // whole control, so the text carries the colour.
+        .note-help-label
+            margin-right: 0.25rem
+            color: $grey
+            text-decoration: underline dotted
+            text-underline-offset: 2px
+        &:hover .note-help-label
+            color: $link
+
+    // A caption under a table, outside its scrolling container.
+    .table-note
+        margin: 0.35rem 0 0
+        font-size: 0.75rem
 
     .what-this-means
         margin: .5rem 0 1rem
@@ -661,6 +710,24 @@ body.pesticides
             margin-bottom: $size-7
         .tags
             margin-bottom: 0
+
+    // What the sparklines cover, under the rows they belong to. It names the
+    // trend lines outright (stats.series_label), so sitting under the pounds
+    // column doesn't read as describing those numbers.
+    // The line under each figure in a stat row. Always rendered, even when a
+    // figure has nothing to add, so one subtext doesn't lift its neighbour
+    // off the row's baseline.
+    .stat-note
+        min-height: 1.15rem
+        margin-top: 0.15rem
+        font-size: $size-7
+        color: $grey
+
+    .leaderboard-note
+        margin: 0.6rem 0 0
+        font-size: 0.7rem
+        color: $grey-light
+        text-align: right
 
     .related-card, .leaderboard
         height: 100%
@@ -773,7 +840,15 @@ body.pesticides
                     margin-bottom: 0
             .lbs
                 @extend .has-text-grey
-                flex: 0 0 auto
+                // A fixed column, not auto: sized to the value it holds, the
+                // pounds pushed the sparkline beside it left or right by a
+                // digit or two on every row, so the lines never lined up.
+                // Wide enough for the largest figure the boards reach --
+                // "313,996,576 lbs" across every loaded year -- and no wider,
+                // since the slack comes out of the names. Tabular figures
+                // keep the digits themselves aligned.
+                flex: 0 0 7.25em
+                text-align: right
                 white-space: nowrap
                 font-variant-numeric: tabular-nums
 

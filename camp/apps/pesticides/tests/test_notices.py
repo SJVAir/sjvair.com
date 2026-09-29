@@ -2,7 +2,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from camp.apps.pesticides import stats
+from camp.apps.pesticides import stats, views
 from camp.apps.pesticides.models import Chemical, PesticideNotice
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
 from camp.apps.regions.models import Region
@@ -93,11 +93,33 @@ class NoticeDetailTests(TestCase):
         ctx = response.context
         assert ctx['is_active'] is True
         assert (ctx['window_end'] - notice.scheduled_application).days == 4
-        assert ctx['map_config']['center'] == '36.7100,-119.7900' and ctx['map_config']['zoom'] == 13
         html = response.content.decode()
         assert 'may begin any time through' in html and 'spraydays.cdpr.ca.gov' in html
         assert Chemical.objects.get(pk=2).get_absolute_url() in html
         assert reverse('pesticides:section-detail', kwargs={'sqid': Region.objects.get(pk=9101).sqid}) in html
+
+    def test_frames_the_section_not_the_point(self):
+        # SprayDays only gives the square-mile section, so the map frames and
+        # highlights it rather than centring a pin as if it were the field.
+        from django.contrib.gis.geos import Point
+        PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326), mtrs_id=9101)
+        notice = PesticideNotice.objects.get(pk=2)
+        response = self.client.get(reverse('pesticides:notice-detail', kwargs={'sqid': notice.sqid}))
+        config = response.context['map_config']
+        assert config['highlight'] == notice.mtrs.sqid
+        assert config['zoom'] == 13
+        assert config['center'] == views.centroid(notice.mtrs)
+        assert 'SprayDays gives the square-mile section, not the field' in response.content.decode()
+
+    def test_without_a_section_falls_back_to_the_point(self):
+        from django.contrib.gis.geos import Point
+        PesticideNotice.objects.filter(pk=2).update(point=Point(-119.79, 36.71, srid=4326), mtrs_id=None)
+        notice = PesticideNotice.objects.get(pk=2)
+        response = self.client.get(reverse('pesticides:notice-detail', kwargs={'sqid': notice.sqid}))
+        assert response.status_code == 200
+        config = response.context['map_config']
+        assert config['center'] == '36.7100,-119.7900' and config['zoom'] == 13
+        assert not config.get('highlight')
 
     def test_past_notice(self):
         notice = PesticideNotice.objects.get(pk=1)

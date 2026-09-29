@@ -1,5 +1,10 @@
+# Layer order matters for the build cache: each stage installs its
+# dependencies from the requirements file(s) it needs *before* copying the
+# source, so a code change only re-runs the final COPY, and a change to
+# develop.txt doesn't reinstall base.txt.
+
 # Use the official slim Python 3.14 image as base
-FROM python:3.14-slim AS base
+FROM python:3.14-slim AS deps
 
 # Enable colored terminal output
 ENV FORCE_COLOR=1
@@ -36,27 +41,36 @@ RUN apt-get update && apt-get install -y \
 RUN git config --global --add safe.directory /app
 
 # Install Python dependencies
-COPY requirements ./requirements/
+COPY requirements/base.txt ./requirements/
 RUN pip install --upgrade pip
 RUN pip install setuptools==80.10.2 wheel packaging
 RUN pip install --no-cache-dir -r requirements/base.txt
-
-# Copy the full project into the container
-COPY . .
 
 # Start with a bash shell (overridden in most services)
 CMD ["bash"]
 
 
+# BASE CONTAINER (workers)
+FROM deps AS base
+
+COPY . .
+
+
 # WEB CONTAINER
-FROM base AS web
+FROM deps AS web
 
 RUN curl -fsSL https://deb.nodesource.com/setup_26.x | bash - \
     && apt-get update && apt-get install -y nodejs \
     && npm install --global yarn \
     && rm -rf /var/lib/apt/lists/*
 
-# TEST CONTAINER
-FROM base AS test
+COPY . .
 
+
+# TEST CONTAINER
+FROM deps AS test
+
+COPY requirements/develop.txt ./requirements/
 RUN pip install --no-cache-dir -r requirements/develop.txt
+
+COPY . .

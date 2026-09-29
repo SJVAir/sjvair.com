@@ -20,6 +20,9 @@
             </li>
             {% endfor %}
         </ol>
+        {# What the lines break the numbers into -- the scope year's months, #}
+        {# or the loaded years when the number is the all-years total. #}
+        {% if series_label %}<p class="leaderboard-note">{{ series_label }}</p>{% endif %}
         {% else %}
         <p class="has-text-grey">No use data loaded.</p>
         {% endif %}

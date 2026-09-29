@@ -41,6 +41,7 @@ Later tasks extend this with more checks: add a `check_*` function that takes
 the `Page` and returns a (passed, detail) tuple, and list it in CHECKS.
 """
 import argparse
+import json
 import os
 import re
 import sys
@@ -129,13 +130,16 @@ return best;
 # Among the `source`'s point features, the one nearest the map's centre
 # that is rendered on `layer` at a spot on bare canvas, as an offset from
 # the container's centre.
-def js_pick_point(source, layer):
+def js_pick_point(source, layer, group=None):
+    """`group` narrows to notice markers standing for one notice (False) or
+    several (True); None takes either."""
     return """
 var canvas = inst.map.getCanvas();
 var rect = canvas.getBoundingClientRect();
 var best = null;
 ((inst.sourceData[%r] || {}).features || []).forEach(function (f) {
   if (!f.geometry) return;
+  if (%s !== null && (f.properties.count > 1) !== %s) return;
   var p = inst.map.project(f.geometry.coordinates);
   if (p.x < 0 || p.y < 0 || p.x > rect.width || p.y > rect.height) return;
   if (document.elementFromPoint(rect.left + p.x, rect.top + p.y) !== canvas) return;
@@ -146,7 +150,7 @@ var best = null;
   if (!best || d < best.d) best = { id: f.properties.id, dx: p.x - rect.width / 2, dy: p.y - rect.height / 2, d: d };
 });
 return best;
-""" % (source, layer)
+""" % (source, json.dumps(group), json.dumps(group), layer)
 
 
 POPUP = '.maplibregl-popup.section-popup-wrap .section-popup'
@@ -329,10 +333,10 @@ class Page:
         self.scroll_to_map()
         self.driver.save_screenshot(os.path.join(self.screenshots, self.name + suffix + '.png'))
 
-    def pick_point(self, source, layer):
+    def pick_point(self, source, layer, group=None):
         """A clickable marker (see js_pick_point), or None."""
         self.scroll_to_map()
-        return self.instance_js(js_pick_point(source, layer))
+        return self.instance_js(js_pick_point(source, layer, group))
 
     def marker_legend(self):
         """The legend's marker rows' labels, in order."""
@@ -432,7 +436,7 @@ def check_layers(page):
                     'all-sections-fill', 'all-sections-line', 'lens-fill', 'lens-line', 'lens-outline', 'outline-mask',
                     'selected-line', 'highlight-casing', 'highlight-line', 'counties-line',
                     'outline-fill', 'outline-casing', 'outline-line',
-                    'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'locate-circle'];
+                    'locations-hit', 'locations-circle', 'notices-hit', 'notices-circle', 'notices-count', 'locate-circle'];
         var missing = mine.filter(function (id) { return layers.indexOf(id) === -1; });
         mine.forEach(function (id) { mineSet[id] = true; });
         var lastBase = -1;
@@ -815,9 +819,13 @@ def check_notices(page):
         rendered = page.wait_for("var inst = (function () { %s })(); return !!inst && inst.map.queryRenderedFeatures({ layers: ['notices-circle'] }).length > 0;" % JS_INSTANCE, 10)
         if not rendered:
             problems.append('%d notices in view, none rendered' % in_view)
-        target = page.pick_point('notices', 'notices-circle')
+        # A marker for one notice first (a section's several share a
+        # grouped marker and popup, checked below).
+        target = page.pick_point('notices', 'notices-circle', group=False)
         if not target:
-            problems.append('no notice on bare canvas to click')
+            popup_detail = 'no single-notice marker on bare canvas (single popup check skipped)'
+            if not page.pick_point('notices', 'notices-circle', group=True):
+                problems.append('no notice on bare canvas to click')
         else:
             page.click_map(target['dx'], target['dy'], settle=0.8, instant=True)
             result = page.instance_js("""
@@ -837,6 +845,38 @@ def check_notices(page):
             if result['lists'] < 2:
                 problems.append('popup lists products and chemicals: %d block(s)' % result['lists'])
             popup_detail = 'popup for notice %s (%s)' % (target['id'], result['text'].split('\n')[0][:40])
+    if in_view:
+        grouped = page.pick_point('notices', 'notices-circle', group=True)
+        if not grouped:
+            popup_detail += '; no multi-notice section in view (group check skipped)'
+        else:
+            page.click_map(grouped['dx'], grouped['dy'], settle=1.2, instant=True)
+            group = page.instance_js("""
+                var el = document.querySelector(arguments[0]);
+                var f = inst.noticeById[inst.openNoticeId];
+                var list = el && el.querySelector('.notice-group-list');
+                return { count: f ? f.properties.count : 0, id: inst.openNoticeId,
+                         entries: el ? el.querySelectorAll('.notice-group-entry').length : 0,
+                         links: el ? el.querySelectorAll('.notice-group-entry a[href*="/notices/"]').length : 0,
+                         header: el && el.querySelector('h4') ? el.querySelector('h4').innerText : '',
+                         scrolls: !!list && getComputedStyle(list).overflowY === 'auto',
+                         outlined: (inst.sourceData.selected && inst.sourceData.selected.geometry) ? true : false,
+                         selected: inst.selectedSectionId };
+            """, POPUP)
+            if group['id'] != grouped['id'] or group['entries'] != group['count'] or group['links'] != group['count']:
+                problems.append('group popup for %s: %s entries, %s notice links, wanted %s' % (grouped['id'], group['entries'], group['links'], group['count']))
+            if ('%d notices of intent' % group['count']) not in group['header']:
+                problems.append('group popup header %r' % group['header'])
+            if not group['scrolls']:
+                problems.append('group popup list does not scroll')
+            outlined = page.wait_for("var inst = (function () { %s })(); return !!(inst.sourceData.selected && inst.sourceData.selected.geometry);" % JS_INSTANCE, 10)
+            if not outlined:
+                problems.append('group popup left the section unoutlined')
+            page.instance_js("inst.popup && inst.popup.remove(); return true;")
+            cleared = page.wait_for("var inst = (function () { %s })(); return !(inst.sourceData.selected && inst.sourceData.selected.geometry);" % JS_INSTANCE, 5)
+            if not cleared:
+                problems.append('section outline lingered after the group popup closed')
+            popup_detail += '; group popup lists %s of %s, outlined and cleared' % (group['entries'], group['count'])
     # Off: markers, legend row and popup go; the URL says so against the default.
     page.set_control('input[name="notices"]', False)
     after = page.instance_js("return { count: (inst.sourceData.notices || {features: []}).features.length, popup: !!inst.popup && inst.popupKey === 'openNoticeId', bounds: inst.loadedNoticeBounds };")

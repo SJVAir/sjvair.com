@@ -1,5 +1,3 @@
-import pytest
-
 from django.contrib.gis.geos import GEOSGeometry
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
@@ -12,10 +10,6 @@ region_list = RegionList.as_view()
 region_detail = RegionDetail.as_view()
 region_meta = RegionMetaEndpoint.as_view()
 region_geojson = RegionGeoJSON.as_view()
-
-pytestmark = [
-    pytest.mark.django_db(transaction=True),
-]
 
 
 class RegionListTests(TestCase):

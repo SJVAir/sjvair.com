@@ -212,6 +212,12 @@ def _delta_phrase(delta, lead):
     return phrase if lead else phrase[0].lower() + phrase[1:]
 
 
+@register.filter
+def delta_phrase(delta):
+    """A trend_deltas() entry as "down 2% since 2022", for a stat's subtext."""
+    return _delta_phrase(delta, lead=False) or ''
+
+
 def _chart_id():
     return f'chart-{uuid.uuid4().hex[:8]}'
 
@@ -375,6 +381,11 @@ def sparkline(values):
     `values` (a by-year series) as an inline SVG polyline, scaled to its own
     maximum so the shape is readable whatever the magnitude -- these say
     "rising" or "receding", never "bigger than the row below".
+
+    Stays aria-hidden and unlabelled: the row already reads as its name and
+    its pounds, and what the line covers is said once under the board
+    (stats.series_label) rather than five times over. Keeping it out of here also
+    keeps this a pure formatting filter with no database behind it.
 
     Empty, single-point and flat-zero series render nothing: a line needs two
     points to have a shape, and a flat line at zero would read as a real

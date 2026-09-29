@@ -84,3 +84,35 @@ class NotesRenderingTests(RollupTestMixin, TestCase):
     def test_list_pages_have_tooltips(self):
         html = self.client.get(reverse('pesticides:product-list')).content.decode()
         assert f'data-tooltip="{notes.note("fumigant")["summary"]}"' in html
+
+
+class AboutMethodologyTests(TestCase):
+    """
+    The About page states how the numbers are made. The claims here are the
+    ones the rest of the site depends on being true, so each has a test
+    somewhere -- this one only guards that the page still says them.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def test_the_methodology_section_is_reachable(self):
+        html = self.client.get(reverse('pesticides:about')).content.decode()
+        assert 'id="methodology"' in html
+        assert 'How these numbers are made' in html
+
+    def test_it_states_the_limits_the_data_actually_has(self):
+        html = self.client.get(reverse('pesticides:about')).content.decode()
+        for claim in (
+            'reports, not measurements',        # grower-reported, not sampled
+            'square mile, not a field',         # MTRS precision
+            'AI IS CONFIDENTIAL',               # withheld active ingredients
+            'Pounds are not harm',              # a badge is not a dose
+            'two denominators',                 # the rates disagree on purpose
+            'Shades are relative',              # classes are per-view
+        ):
+            assert claim in html, claim
+
+    def test_the_pounds_distinction_is_explained_once(self):
+        # It used to be a bare caveat bullet as well; methodology covers it.
+        html = self.client.get(reverse('pesticides:about')).content.decode()
+        assert html.count('pounds of active ingredient') == 1

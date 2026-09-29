@@ -77,10 +77,15 @@ class Area:
     label_on_hover: bool = False
     # A click on the area goes here (the script marks it interactive).
     url: Optional[str] = None
+    # The caller's own name for this area (a sqid, a slug), carried through to
+    # the figure so markup elsewhere on the page -- a table row beside the
+    # map -- can point at the same area; see Figure.highlight().
+    key: Optional[str] = None
 
     def properties(self) -> dict:
         return {
             'kind': 'area',
+            'key': self.key,
             'label': self.label,
             'labelOnHover': self.label_on_hover,
             'url': self.url,

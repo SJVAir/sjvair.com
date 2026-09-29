@@ -1,5 +1,5 @@
 from django.template.loader import render_to_string
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from camp.apps.pesticides.templatetags.pesticides_explorer import (
     lbs, month_chart, month_heatmap, sparkline, title_case_name, trend_chart,

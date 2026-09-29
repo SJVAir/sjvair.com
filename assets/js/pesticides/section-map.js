@@ -461,6 +461,11 @@
   // The markers' sizes: notices are the bigger dot, both ringed in white.
   // The popup offset clears the dot so its tip doesn't sit on the marker.
   var NOTICE_MARKER = { radius: 8, opacity: 0.9, stroke: 1.5 };
+  // A section with several notices wears one bigger marker with the count
+  // on it (SprayDays only places a notice to its square-mile section, so
+  // they'd otherwise stack on one point).
+  var NOTICE_GROUP_RADIUS = 11;
+  var NOTICE_COUNT_FALLBACK_FONT = ['Noto Sans Bold'];
   var LOCATION_MARKER = { radius: 5, opacity: 0.95, stroke: 1.5 };
   // An invisible disc under each marker, wide enough for a finger, that
   // takes the marker's hover and click (see addLayers, bindMarkerEvents).
@@ -774,6 +779,7 @@
     this.openAllSectionsId = null;
     this.openLensId = null;
     this.openNoticeId = null;
+    this.noticeOutline = null;
     this.openLocationId = null;
     this.selectedSectionId = null;
     // The markers on the map (notices of intent; schools and child care),
@@ -1161,12 +1167,27 @@
     this.ensureLayer({
       id: 'notices-circle', type: 'circle', source: 'notices',
       paint: {
-        'circle-radius': NOTICE_MARKER.radius,
+        'circle-radius': ['case', ['>', ['get', 'count'], 1], NOTICE_GROUP_RADIUS, NOTICE_MARKER.radius],
         'circle-color': NOTICE_COLOR,
         'circle-opacity': NOTICE_MARKER.opacity,
         'circle-stroke-color': '#fff',
         'circle-stroke-width': NOTICE_MARKER.stroke,
       },
+    });
+    // The count, only where a section has more than one notice. The font is
+    // borrowed from the basemap style's own labels, since that is what its
+    // glyph server is known to serve.
+    this.ensureLayer({
+      id: 'notices-count', type: 'symbol', source: 'notices',
+      filter: ['>', ['get', 'count'], 1],
+      layout: {
+        'text-field': ['to-string', ['get', 'count']],
+        'text-font': this.styleTextFont(),
+        'text-size': 11,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': '#fff' },
     });
     this.applyGridPaint();
     // Feature state (hover, the lens hosts) didn't survive a style swap:
@@ -1175,6 +1196,23 @@
     this.hoverIds = {};
     this.map.getCanvas().style.cursor = '';
     if (this.lensHosts) this.setHostFills(false);
+  };
+
+  // A text-font stack the current basemap style already uses, so the count
+  // badge asks the glyph server for something it has: the style's upright
+  // semi-bold labels, else any upright one (the style's first is italic).
+  SectionMap.prototype.styleTextFont = function () {
+    var layers = (this.map.getStyle() || {}).layers || [];
+    var upright = null;
+    for (var i = 0; i < layers.length; i++) {
+      var font = layers[i].layout && layers[i].layout['text-font'];
+      if (!Array.isArray(font) || !font.length || typeof font[0] !== 'string') continue;
+      var name = font.join(',');
+      if (/Italic/.test(name)) continue;
+      if (/Semi Bold/.test(name)) return font;
+      if (!upright) upright = font;
+    }
+    return upright || NOTICE_COUNT_FALLBACK_FONT;
   };
 
   // Home goes back to what the page is about: its own region when it has
@@ -1813,6 +1851,11 @@
       this.reopenSelectedSection(features, 'grid');
       this.resolvePendingLocate();
     }
+    // The grid rebuild cleared the outline; a notice popup's section
+    // (which the grid may not hold, at township level) gets it back.
+    if (this.popup && this.popupKey === 'openNoticeId' && this.noticeOutline && this.noticeOutline.id === this.popupId) {
+      this.showSelectedOutline(this.noticeOutline);
+    }
   };
 
   SectionMap.prototype.clearGrid = function () {
@@ -2136,6 +2179,9 @@
     if (!popup) return;
     this.popup = null;
     if (this.popupKey && this[this.popupKey] === this.popupId) this[this.popupKey] = null;
+    // A section's popup leaves its selection standing; a notice popup's
+    // outline is only for as long as the popup is up.
+    if (this.popupKey === 'openNoticeId' && this.selectedSectionId === this.popupId) this.clearSelection();
     this.popupKey = null;
     this.popupId = null;
     popup.remove();
@@ -2242,6 +2288,16 @@
     var links = url
       ? '<a class="section-popup-action" href="' + escapeHtml(url) + '"><span class="fa-regular fa-fw fa-circle-info"></span> Section details</a>'
       : '';
+    // Straight into the data for this square mile, rather than by way of
+    // its page: the two lists a reader standing on a section wants.
+    if (this.data.sectionRecordsUrl) {
+      links += '<a class="section-popup-action" href="' + escapeHtml(fillUrl(this.data.sectionRecordsUrl, props.id)) +
+        '"><span class="fa-regular fa-fw fa-table-list"></span> Records here</a>';
+    }
+    if (this.data.sectionNoticesUrl) {
+      links += '<a class="section-popup-action" href="' + escapeHtml(fillUrl(this.data.sectionNoticesUrl, props.id)) +
+        '"><span class="fa-regular fa-fw fa-calendar-clock"></span> Notices here</a>';
+    }
     if (center && this.level === 'township') {
       links += '<button type="button" class="section-popup-action section-map-zoom" data-id="' + escapeHtml(props.id) + '" data-lat="' + center.lat + '" data-lng="' + center.lng + '">' +
         '<span class="fa-regular fa-fw fa-magnifying-glass-plus"></span> Zoom in</button>';
@@ -2977,14 +3033,14 @@
     this.setSourceData('notices', EMPTY);
   };
 
-  // Puts a response's notices on the map, reopening the popup that was up
-  // if its notice is still there.
+  // Puts a response's notices on the map, one marker per section, reopening
+  // the popup that was up if its section is still there.
   SectionMap.prototype.renderNotices = function (geojson) {
     var reopenId = this.openNoticeId;
-    var features = ((geojson && geojson.features) || []).filter(function (f) { return f.geometry; });
+    var features = this.groupNotices(((geojson && geojson.features) || []).filter(function (f) { return f.geometry; }));
     this.clearHover('notices');
     this.noticeById = {};
-    for (var i = 0; i < features.length; i++) this.noticeById[features[i].properties.id] = features[i];
+    for (var i = 0; i < features.length; i++) this.noticeById[features[i].id] = features[i];
     this.setSourceData('notices', { type: 'FeatureCollection', features: features });
     if (reopenId) {
       var feature = this.noticeById[reopenId];
@@ -2996,10 +3052,128 @@
     }
   };
 
+  // SprayDays only places a notice to its section, and the API pins every
+  // one at the section's centre, so a section's notices share a point.
+  // Group them by section (a notice with none stands alone), soonest first.
+  SectionMap.prototype.groupNotices = function (features) {
+    var groups = {};
+    var order = [];
+    features.forEach(function (f) {
+      var key = f.properties.section_id || f.properties.id;
+      if (!groups[key]) {
+        groups[key] = { point: f.geometry, first: f.properties, notices: [] };
+        order.push(key);
+      }
+      groups[key].notices.push(f.properties);
+    });
+    return order.map(function (key) {
+      var group = groups[key];
+      group.notices.sort(function (a, b) {
+        return String(a.scheduled_application).localeCompare(String(b.scheduled_application));
+      });
+      return {
+        type: 'Feature',
+        id: key,
+        geometry: group.point,
+        properties: {
+          id: key,
+          section: group.first.section,
+          section_id: group.first.section_id,
+          county: group.first.county,
+          count: group.notices.length,
+          notices: group.notices,
+        },
+      };
+    });
+  };
+
   SectionMap.prototype.openNoticePopup = function (feature) {
     var props = feature.properties;
-    this.openPopup(feature.geometry.coordinates, this.noticePopupHtml(props), 'openNoticeId', props.id,
-      NOTICE_MARKER.radius + NOTICE_MARKER.stroke);
+    var offset = (props.count > 1 ? NOTICE_GROUP_RADIUS : NOTICE_MARKER.radius) + NOTICE_MARKER.stroke;
+    this.openPopup(feature.geometry.coordinates, this.noticeGroupPopupHtml(props), 'openNoticeId', props.id, offset);
+    this.showNoticeSectionOutline(props);
+  };
+
+  // The section the popup's notices are in wears the selected outline while
+  // the popup is up: the notices are placed to the whole square mile, and
+  // the outline shows how much. The grid has the shape when it holds the
+  // section; otherwise it comes from the section detail.
+  SectionMap.prototype.showNoticeSectionOutline = function (props) {
+    var self = this;
+    var id = props.section_id;
+    if (!id) return;
+    this.selectedSectionId = id;
+    var known = this.gridById[id];
+    if (known) {
+      this.showSelectedOutline(known);
+      return;
+    }
+    if (this.noticeOutline && this.noticeOutline.id === id) {
+      this.showSelectedOutline(this.noticeOutline);
+      return;
+    }
+    this.showSelectedOutline(null);
+    if (!this.data.sectionUrlPattern) return;
+    var url = this.data.sectionUrlPattern.replace('{id}', id) + '?year=' + encodeURIComponent(this.data.year || '');
+    fetchJson(url)
+      .then(function (detail) {
+        if (!detail || !detail.geometry) return;
+        var outline = { type: 'Feature', id: id, properties: { id: id }, geometry: detail.geometry };
+        self.noticeOutline = outline;
+        // The reader may have closed the popup or opened another by now.
+        if (!self.popup || self.popupKey !== 'openNoticeId' || self.popupId !== id) return;
+        self.showSelectedOutline(outline);
+      })
+      .catch(function (err) { logError('failed to load the notice section outline', err); });
+  };
+
+  // The popup for a section's notices: with one, the single-notice popup;
+  // with several, a header and a compact scrolling list, soonest first.
+  SectionMap.prototype.noticeGroupPopupHtml = function (props) {
+    var notices = props.notices || [];
+    if (notices.length === 1) return this.noticePopupHtml(notices[0]);
+    var subParts = [];
+    if (props.county) subParts.push(escapeHtml(shortCounty(props.county)));
+    if (props.section) subParts.push(linkHtml(props.section_id ? this.sectionUrl(props.section_id) : '', props.section));
+    var self = this;
+    return (
+      '<div class="section-popup notice-popup notice-group-popup">' +
+      '<h4>' + notices.length + ' notices of intent</h4>' +
+      '<p class="section-popup-sub">' + subParts.join(' · ') + '</p>' +
+      '<div class="notice-group-list">' +
+      notices.map(function (n) { return self.noticeEntryHtml(n); }).join('') +
+      '</div>' +
+      '</div>'
+    );
+  };
+
+  // One notice in a group's list: when, what and how much, the products
+  // and (flagged ones marked) chemicals, and a link to the notice.
+  SectionMap.prototype.noticeEntryHtml = function (n) {
+    var self = this;
+    var when = escapeHtml(formatDateTime(n.scheduled_application));
+    var through = n.scheduled_end ? ', may begin through ' + escapeHtml(formatDate(n.scheduled_end)) : '';
+    var treated = n.treated_amount
+      ? '<strong>' + formatNumber(n.treated_amount) + ' ' + escapeHtml((n.treated_units || '').toLowerCase()) + '</strong>'
+      : '';
+    var method = n.application_method ? escapeHtml(n.application_method.toLowerCase()) : '';
+    var headline = treated && method ? treated + ' by ' + method
+      : treated || (method ? method.charAt(0).toUpperCase() + method.slice(1) : '');
+    var products = (n.products || []).map(function (p) { return linkHtml(self.productUrl(p.id), p.name); }).join(', ');
+    var chemicals = (n.chemicals || []).map(function (c) {
+      return '<span class="name' + (c.is_of_concern ? ' is-of-concern' : '') + '">' +
+        linkHtml(self.chemicalUrl(c.id), c.display_name || c.name) + '</span>';
+    }).join(', ');
+    var noticeUrl = n.id ? this.noticeUrl(n.id) : '';
+    return (
+      '<div class="notice-group-entry">' +
+      '<p class="notice-group-when"><strong>' + when + '</strong>' + through + '</p>' +
+      (headline ? '<p class="section-popup-metric">' + headline + '</p>' : '') +
+      (products ? '<p class="notice-group-line"><span class="section-popup-label">Products</span> ' + products + '</p>' : '') +
+      (chemicals ? '<p class="notice-group-line"><span class="section-popup-label">Chemicals</span> ' + chemicals + '</p>' : '') +
+      (noticeUrl ? '<a class="section-popup-action" href="' + escapeHtml(noticeUrl) + '"><span class="fa-regular fa-fw fa-circle-info"></span> Notice details</a>' : '') +
+      '</div>'
+    );
   };
 
   // A notice popup in the section popup's idiom: title, grey subline,
