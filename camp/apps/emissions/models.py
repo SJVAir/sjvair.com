@@ -863,6 +863,10 @@ class MethaneSource(models.Model):
         '6A': (Group.WASTE, 'Solid waste'),
         '6B': (Group.WASTE, 'Wastewater'),
         '4C': (Group.OTHER, 'Rice cultivation'),
+        # Carbon Mapper's two uncoded values ('Other', and 'NA' for a source
+        # it hasn't attributed to a sector), with no IPCC code in parens.
+        'OTHER': (Group.OTHER, 'Other'),
+        'NA': (Group.OTHER, 'Not attributed'),
     }
 
     sqid = SqidsField(alphabet=shuffle_alphabet('emissions.MethaneSource'))

@@ -83,6 +83,11 @@ class ParseTests(TestCase):
         parsed = carbonmapper.parse_row(row(sector='Solid Waste (6A)'))
         assert (parsed['ipcc_sector'], parsed['sector_label']) == ('6A', 'Solid waste')
 
+    def test_uncoded_sectors_read_plainly(self):
+        # Carbon Mapper also sends a bare 'Other' and 'NA' (not attributed), with no code.
+        assert carbonmapper.parse_row(row(sector='Other'))['sector_label'] == 'Other'
+        assert carbonmapper.parse_row(row(sector='NA'))['sector_label'] == 'Not attributed'
+
 
 class ApplyTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
