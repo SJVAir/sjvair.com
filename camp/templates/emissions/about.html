@@ -82,6 +82,15 @@
 <p>Well data is a snapshot, refreshed weekly from CalGEM. It isn't broken down by year, so it can't show how many wells were active in a past year, and wells plugged since are gone from it. Spud (drilling start) dates are missing for about half of wells.</p>
 <p>{% if wells_stamp %}Wells last fetched from CalGEM {{ wells_stamp.imported_at|date:"N j, Y" }}; refreshed weekly.{% else %}No well data has been imported yet.{% endif %}</p>
 
+<h2 id="greenhouse-gases">Greenhouse gases</h2>
+<p>Facility pages for the largest emitters carry a <strong>Greenhouse gases</strong> card, and county pages a <strong>Largest greenhouse-gas reporters</strong> table, from two programs: EPA's <a href="https://ghgdata.epa.gov/flight">Greenhouse Gas Reporting Program</a> (GHGRP) and CARB's <a href="https://ww2.arb.ca.gov/mrr-data">Mandatory GHG Reporting</a> (MRR). {% if ghg_stamps.ghgrp or ghg_stamps.mrr %}{% if ghg_stamps.ghgrp %}EPA GHGRP reporting year {{ ghg_stamps.ghgrp.version }}{% if ghg_stamps.mrr %}; {% endif %}{% endif %}{% if ghg_stamps.mrr %}CARB MRR data year {{ ghg_stamps.mrr.version }}{% endif %}.{% else %}No greenhouse-gas data has been imported yet.{% endif %}</p>
+<ul>
+    <li><strong>Greenhouse gases warm the climate; they aren't a local health measure.</strong> Only large emitters (about 10,000 t CO2e a year and up) report, so most facilities have none. Oil and gas production reports for a whole basin, not one site. Fuel sold by suppliers isn't counted here. Dairies don't report to either program.</li>
+    <li><strong>Metric tons.</strong> CO2e is the emitter's own non-biogenic total. CH4 and N2O are tons of the gas, not CO2e; biogenic CO2 (from burning biomass) is shown apart.</li>
+    <li><strong>How reporters are matched.</strong> EPA's registry carries the Valley Air District's facility id for most of its reporters, so those matches are exact. CARB's file has only a name, a city and a ZIP; the largest CARB reporters are matched by hand, the rest only when the name clearly matches a facility in the same ZIP. A reporter we couldn't match still appears on its county's table, never on a facility page.</li>
+    <li><strong>Years differ.</strong> EPA's newest published year is 2023 (EPA has proposed ending the program); CARB publishes the previous year each November.</li>
+</ul>
+
 <h2 id="sources">Sources</h2>
 <ul>
     <li><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">CARB facility emissions inventory (CEIDARS)</a></li>
@@ -94,6 +103,8 @@
     <li><a href="https://echo.epa.gov/tools/data-downloads">EPA ECHO / ICIS-Air data downloads</a></li>
     <li><a href="https://www.epa.gov/air-emissions-inventories/2023-nei-supporting-data-and-summaries">EPA 2023 National Emissions Inventory data summaries</a></li>
     <li><a href="https://data.ca.gov/dataset/wellstar-oil-and-gas-wells">CalGEM WellSTAR oil and gas wells</a></li>
+    <li><a href="https://ghgdata.epa.gov/flight">EPA Greenhouse Gas Reporting Program (FLIGHT)</a> via <a href="https://www.epa.gov/enviro/greenhouse-gas-customized-search">Envirofacts</a></li>
+    <li><a href="https://ww2.arb.ca.gov/mrr-data">CARB Mandatory GHG Reporting data</a></li>
 </ul>
 
 <p class="is-size-7 has-text-grey">Header photo: <a href="https://commons.wikimedia.org/wiki/File:Pumpjacks,_San_Joaquin_Valley,_California.jpg">Pumpjacks, San Joaquin Valley, California</a> by Downtowngal, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, resized, cropped and darkened.</p>

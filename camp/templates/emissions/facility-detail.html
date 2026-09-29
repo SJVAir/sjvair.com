@@ -139,5 +139,7 @@
 
 {% if compliance_card %}{% include 'emissions/includes/compliance-card.html' %}{% endif %}
 
+{% if ghg_card %}{% include 'emissions/includes/ghg-card.html' %}{% endif %}
+
 <p class="is-size-7 has-text-grey">Source: California Air Resources Board facility emissions inventory (CEIDARS). <a href="{% url 'emissions:about' %}">About this data</a>.</p>
 {% endblock %}

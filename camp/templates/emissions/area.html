@@ -9,9 +9,9 @@
     <h1 class="title is-3 mb-1">{{ name }}</h1>
     <p class="heading">{{ kind }}{% if county_region and county_region != area.region %} · {{ county_region.name }}{% endif %}{% if population %} · {{ population|whole }} people{% endif %}</p>
     {# In-page links (plain anchors, which htmx doesn't boost); only when there's more than the facilities to jump to. #}
-    {% if dairy_block.has_dairies or within.any or community or tract_ces or wells_block %}
+    {% if dairy_block.has_dairies or within.any or community or tract_ces or wells_block or ghg_table.rows %}
     <nav class="section-nav is-size-7" aria-label="On this page">
-        <a href="#facilities">Facilities</a>{% if community or tract_ces %} · <a href="#community">Community</a>{% endif %}{% if wells_block %} · <a href="#wells">Oil &amp; gas wells</a>{% endif %}{% if dairy_block.has_dairies %} · <a href="#dairies">Dairies</a>{% endif %}{% if within.any %} · <a href="#in-and-around">In and around</a>{% endif %}
+        <a href="#facilities">Facilities</a>{% if community or tract_ces %} · <a href="#community">Community</a>{% endif %}{% if wells_block %} · <a href="#wells">Oil &amp; gas wells</a>{% endif %}{% if ghg_table.rows %} · <a href="#greenhouse-gases">Greenhouse gases</a>{% endif %}{% if dairy_block.has_dairies %} · <a href="#dairies">Dairies</a>{% endif %}{% if within.any %} · <a href="#in-and-around">In and around</a>{% endif %}
     </nav>
     {% endif %}
     {% if radius_options %}
@@ -59,6 +59,7 @@
         {% emissions_trend_chart by_year pollutant year %}
     </div>
 </div>
+{% if ghg_table.rows %}{% include 'emissions/includes/ghg-table.html' %}{% endif %}
 {% if wells_block %}{% include 'emissions/includes/wells-block.html' %}{% endif %}
 {% if dairy_block %}{% include 'emissions/includes/dairy-summary.html' %}{% endif %}
 

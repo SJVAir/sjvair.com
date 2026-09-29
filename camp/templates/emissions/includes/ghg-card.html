@@ -1,0 +1,19 @@
+{% load emissions_explorer %}
+{% comment %}
+A facility's newest greenhouse-gas report per program (ghg.facility_card):
+metric tons a year, CO2e with CH4 and N2O as tons of gas, biogenic CO2
+apart. Rendered only when the facility has a report: most don't, because
+only large emitters report, and that absence isn't a figure.
+{% endcomment %}
+<section class="ghg-card mt-5" id="greenhouse-gases">
+    <h3 class="title is-4">Greenhouse gases</h3>
+    <ul>
+    {% for r in ghg_card %}
+        <li>{{ r.year }}: {{ r.co2e|whole }} t CO2e{% if r.ch4 is not None or r.n2o is not None %} (CH4 {{ r.ch4|quantity }} t, N2O {{ r.n2o|quantity }} t){% endif %}{% if r.co2e_biogenic %}, plus {{ r.co2e_biogenic|whole }} t biogenic CO2{% endif %} · <a href="{{ r.source_url }}">{{ r.get_program_display }} →</a></li>
+    {% endfor %}
+    </ul>
+    <details class="ghg-caveats is-size-7">
+        <summary>What this is, and isn't</summary>
+        <p>Greenhouse gases warm the climate; they aren't a local health measure. Only large emitters (about 10,000 t CO2e a year and up) report, so most facilities have none. Oil and gas production reports for a whole basin, not one site. Fuel sold by suppliers isn't counted here. Dairies don't report to either program.</p>
+    </details>
+</section>

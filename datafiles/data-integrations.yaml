@@ -128,7 +128,7 @@
     name: fa-industry-windows
     primary: sienna
     secondary: burlywood
-  description: 'The state and federal records behind the <a href="/tools/emissions/">Facility Emissions Explorer</a>: what each permitted facility in the San Joaquin Valley reports releasing and how toxic it is, where each one is, its federal compliance record, the Valley''s dairies and oil and gas wells, and the county-wide inventories that put them in context.'
+  description: 'The state and federal records behind the <a href="/tools/emissions/">Facility Emissions Explorer</a>: what each permitted facility in the San Joaquin Valley reports releasing and how toxic it is, where each one is, its federal compliance record, its reported greenhouse gases, the Valley''s dairies and oil and gas wells, and the county-wide inventories that put them in context.'
   integrations:
     - name: CEIDARS
       logo: img/logo/carb-vertical.png
@@ -169,6 +169,16 @@
       logo: img/logo/conservation.svg
       url: https://data.ca.gov/dataset/wellstar-oil-and-gas-wells
       description: The California Geologic Energy Management Division's WellSTAR database is the state's record of every oil and gas well — its operator, field, status and whether it sits in a health protection zone under SB 1137. SJVAir shows the Valley's active, idle and new wells as a map overlay, counts them on region pages, and lists the schools and child-care centers with a well within 3,200 ft.
+
+    - name: EPA Greenhouse Gas Reporting Program
+      logo: img/logo/epa-vertical.svg
+      url: https://ghgdata.epa.gov/flight
+      description: EPA's Greenhouse Gas Reporting Program collects annual greenhouse-gas totals from the largest emitters — power plants, refineries, landfills, oil and gas fields and heavy industry — with each one's location and its ids in other federal systems. SJVAir imports the Valley's reporters, links them to the Valley Air District's facilities through EPA's facility registry, and shows each one's CO2e, methane and nitrous oxide on its facility page.
+
+    - name: CARB Mandatory GHG Reporting
+      logo: img/logo/carb-vertical.png
+      url: https://ww2.arb.ca.gov/mrr-data
+      description: California's Mandatory Greenhouse Gas Reporting program publishes a verified annual summary of every large emitter's greenhouse gases, a year sooner than the federal program and including California-only reporters. SJVAir imports the Valley's emitters (only their own emissions, never the fuel that suppliers sell), matches the largest to their permitted facilities by hand and the rest by name and ZIP, and lists each county's largest reporters.
 
 - category: Geospatial Data
   icon:

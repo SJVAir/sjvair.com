@@ -15,7 +15,7 @@ from django.urls import reverse
 import vanilla
 
 from camp.apps.ces import stats as ces_stats
-from camp.apps.emissions import areas, compliance, dairies, nei, schools, stats, wells
+from camp.apps.emissions import areas, compliance, dairies, ghg, nei, schools, stats, wells
 from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
@@ -172,6 +172,7 @@ class About(ScopeMixin, vanilla.TemplateView):
             compliance_stamp=compliance.stamp(),
             nei_stamp=SourceImport.latest(nei.SOURCE),
             wells_stamp=wells.stamp(),
+            ghg_stamps=ghg.stamps(),
             **kwargs,
         )
 
@@ -290,6 +291,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             area_links=area_links(facility_regions),
             facility_ces=ces_stats.tract_record(tract),
             compliance_card=compliance.facility_card(facility),
+            ghg_card=ghg.facility_card(facility),
             nearby=nearby,
             nearby_shown=schools.SHOWN,
             nearby_groups=nearby_groups(nearby),
@@ -701,6 +703,7 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         # A region page overrides this with its own "In and around" lists;
         # a near-me page (a point, not a region) has none.
         kwargs.setdefault('within', None)
+        kwargs.setdefault('ghg_table', None)
         # The Community card (CalEnviroScreen): a summary of the tracts the
         # area covers, or on a tract page the tract's own row. Subclasses set
         # them; None hides the card.
@@ -838,6 +841,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             context_bar=stats.county_context(county_scope) if county_scope else None,
             nei_context=nei.context(county_scope) if county_scope else None,
             within=region_within(region) if region.boundary_id else None,
+            ghg_table=ghg.county_table(region) if region.type == Region.Type.COUNTY else None,
             **extra,
             **kwargs,
         )

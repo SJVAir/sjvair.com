@@ -12,6 +12,7 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
+from django.urls import reverse
 
 from camp.apps.emissions import ghg, ghg_crosswalk, ghgrp, icis, stats
 from camp.apps.emissions.models import Facility, GHGReport, SourceImport
@@ -412,3 +413,62 @@ class ReadSideTests(GHGTestCase):
         assert ghg.stamps() == {'ghgrp': None, 'mrr': None}
         SourceImport.objects.create(source='mrr', version='2024', data_through=date(2024, 12, 31))
         assert ghg.stamps()['mrr'].version == '2024' and ghg.stamps()['ghgrp'] is None
+
+
+class GHGPageTests(GHGTestCase):
+    def detail(self, facility, **params):
+        return self.client.get(facility.get_absolute_url(), params).content.decode()
+
+    def test_no_card_without_reports(self):
+        content = self.detail(self.plant)
+        assert 'Greenhouse gases' not in content and 'id="greenhouse-gases"' not in content
+
+    def test_card(self):
+        report('mrr', '900001', 2024, facility=self.plant, county=self.fresno, co2e=87635.27, ch4=1.1628941, n2o=0.11628941)
+        report('ghgrp', '501', 2023, facility=self.plant, county=self.fresno, co2e=71574.356, ch4=0.97, n2o=0.097, co2e_biogenic=12.4)
+        content = self.detail(self.plant)
+        card = content[content.index('id="greenhouse-gases"'):content.index('Source: California Air Resources Board')]
+        assert '<h3 class="title is-4">Greenhouse gases</h3>' in card
+        assert '2024: 87,635 t CO2e (CH4 1.2 t, N2O 0.1 t)' in card
+        assert '2023: 71,574 t CO2e (CH4 1.0 t, N2O 0.1 t), plus 12 t biogenic CO2' in card
+        assert card.index('2024:') < card.index('2023:')
+        assert 'href="https://ww2.arb.ca.gov/mrr-data">CARB MRR →</a>' in card
+        assert 'href="https://ghgdata.epa.gov/ghgp/service/facilityDetail/2023?id=501&amp;et=undefined">EPA GHGRP →</a>' in card
+        assert "Dairies don't report to either program." in card
+        # A report with no per-gas figures has no parenthetical.
+        GHGReport.objects.filter(external_id='900001').update(ch4=None, n2o=None)
+        assert '2024: 87,635 t CO2e ·' in self.detail(self.plant)
+
+    def test_county_table(self):
+        report('mrr', '900002', 2024, county=self.fresno, co2e=2898915.2, name='Valley Oil - San Joaquin Valley Basin 745', basin_wide=True, ch4=1477.8, sector='Oil and Gas Production')
+        report('mrr', '900001', 2024, facility=self.plant, county=self.fresno, co2e=87635.27, ch4=1.16, name='Test Plant Inc.', sector='Other Combustion Source')
+        report('ghgrp', '501', 2023, facility=self.plant, county=self.fresno, co2e=71574.4, ch4=0.97)
+        report('ghgrp', '503', 2023, county=self.fresno, co2e=800.0, name='Lonely Landfill', sector='Direct Emitter')
+        content = self.client.get(self.fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        table = content[content.index('id="greenhouse-gases"'):]
+        assert '<h2 class="title is-4">Largest greenhouse-gas reporters</h2>' in table
+        assert '<th class="has-text-right">CARB MRR 2024</th>' in table and '<th class="has-text-right">EPA GHGRP 2023</th>' in table
+        assert table.index('Valley Oil') < table.index('Test Plant') < table.index('Lonely Landfill')
+        assert 'basin-wide, not one site' in table
+        assert f'href="{self.plant.get_absolute_url()}' in table and '>Test Plant</a>' in table
+        assert 'not matched to a permitted facility' in table
+        assert '2,898,915' in table and '87,635' in table and '71,574' in table and '1,478' in table
+        assert 'Only large emitters (about 10,000 t CO2e a year and up) report' in table
+        assert '<a href="#greenhouse-gases">Greenhouse gases</a>' in content
+        # Other counties and non-county pages have no table.
+        assert 'greenhouse-gas reporters' not in self.client.get(self.kern.get_emissions_url(), {'year': '2024'}).content.decode()
+        near = self.client.get(reverse('emissions:near-me'), {'lat': '36.737', 'lng': '-119.787', 'radius': '1'}).content.decode()
+        assert 'greenhouse-gas reporters' not in near
+
+    def test_about_and_integrations(self):
+        content = self.client.get(reverse('emissions:about')).content.decode()
+        assert '<h2 id="greenhouse-gases">Greenhouse gases</h2>' in content
+        assert 'No greenhouse-gas data has been imported yet.' in content
+        assert 'Greenhouse gases warm the climate' in content
+        SourceImport.objects.create(source='ghgrp', version='2023', data_through=date(2023, 12, 31))
+        SourceImport.objects.create(source='mrr', version='2024', data_through=date(2024, 12, 31))
+        content = self.client.get(reverse('emissions:about')).content.decode()
+        assert 'EPA GHGRP reporting year 2023; CARB MRR data year 2024.' in content
+        assert 'ghgdata.epa.gov' in content and 'ww2.arb.ca.gov/mrr-data' in content
+        integrations = self.client.get('/about/integrations/').content.decode()
+        assert 'EPA Greenhouse Gas Reporting Program' in integrations and 'CARB Mandatory GHG Reporting' in integrations
