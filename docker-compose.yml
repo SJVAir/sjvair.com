@@ -105,7 +105,7 @@ services:
       context: .
       target: test
     image: sjvair-com-test:latest
-    command: pytest
+    command: pytest -n 4 --dist loadscope
     env_file:
       - .env.test
     depends_on:
