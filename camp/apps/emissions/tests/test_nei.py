@@ -198,6 +198,15 @@ class ReadSideTests(NEITestCase):
         assert context['facilities'] == 0.05 and abs(context['facility_share'] - 0.05 / 14190) < 1e-12
         assert context['counties'] == [self.fresno]
 
+    def test_dairy_is_capped_at_the_livestock_total(self):
+        # The two EPA files needn't agree: dairy (nonpoint) over livestock (sector) mustn't make a negative segment.
+        from camp.apps.emissions.tests.test_stats import scope
+        CountyNEI.objects.filter(county=self.fresno, subsector=nei.DAIRY_SUBSECTOR).update(tons=12000)
+        stats.clear_caches()
+        parts = {part['key']: part['tons'] for part in nei.context(scope(pollutant='nh3', county='fresno'))['parts']}
+        assert parts['dairy'] == 9784 and parts['livestock'] == 0
+        assert sum(parts.values()) == 9784 + 3806 + 500 + 100
+
     def test_context_for_the_valley_and_its_absences(self):
         from camp.apps.emissions.tests.test_stats import scope
         everywhere = nei.context(scope(pollutant='nh3'))

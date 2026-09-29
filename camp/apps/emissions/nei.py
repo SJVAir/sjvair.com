@@ -249,6 +249,10 @@ def context(scope):
         total, livestock, dairy, fertilizer = _sums(counties, year)
         if not total:
             return None
+        # Dairy comes from the nonpoint file, the livestock total from the
+        # sector file: two EPA products that needn't agree. Cap dairy at the
+        # livestock total so the four segments always add up to it.
+        dairy = min(dairy, livestock)
         tons = {'dairy': dairy, 'livestock': livestock - dairy, 'fertilizer': fertilizer, 'other': total - livestock - fertilizer}
         facilities = stats.totals(scope)['value'] or 0.0
         return {
