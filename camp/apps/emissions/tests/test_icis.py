@@ -192,3 +192,27 @@ class ApplyTests(TestCase):
     def test_bad_dates_are_skipped_not_fatal(self):
         self.run_apply(novs=[dict(NOVS[0], ACHIEVED_DATE='')])
         assert not AirComplianceFacility.objects.get(pgm_sys_id=PLANT).events.filter(kind='nov').exists()
+
+
+class CommandTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def test_path_imports_and_reports(self):
+        from io import StringIO
+        from django.core.management import call_command
+        with tempfile.TemporaryDirectory() as tmp:
+            out = StringIO()
+            call_command('import_icis_air', path=build_zip(tmp), stdout=out)
+        assert AirComplianceFacility.objects.count() == 3
+        assert '2 matched to CEIDARS' in out.getvalue()
+
+    def test_default_downloads_then_unlinks(self):
+        from unittest.mock import patch
+        from django.core.management import call_command
+        tmp = tempfile.mkdtemp()
+        path = build_zip(tmp)
+        with patch('camp.apps.emissions.icis.download', return_value=path) as download:
+            call_command('import_icis_air')
+        download.assert_called_once_with()
+        assert not os.path.exists(path)
+        assert SourceImport.latest('icis-air') is not None
