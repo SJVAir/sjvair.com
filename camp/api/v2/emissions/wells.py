@@ -21,7 +21,10 @@ class WellGeoJSONBase(generics.Endpoint):
         for well in Well.objects.only('id', 'status', 'in_hpz', 'point').order_by('pk').iterator(chunk_size=5000):
             features.append({
                 'type': 'Feature',
-                'id': well.sqid,
+                # No top-level `id` -- `properties.id` alone is what the map's
+                # GeoJSON source promotes (shell.ensureSource's `promoteId:
+                # 'id'`) and what the popup (openWellPopup) reads; a
+                # duplicate top-level id would just be more bytes ×66,000.
                 'geometry': {'type': 'Point', 'coordinates': [round(well.point.x, 5), round(well.point.y, 5)]},
                 'properties': {'id': well.sqid, 's': well.status, 'h': 1 if well.in_hpz == Well.HPZ.VERIFIED else 0},
             })

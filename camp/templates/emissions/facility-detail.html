@@ -52,6 +52,16 @@
     <div class="column is-half">
         {% include 'emissions/includes/schools-card.html' %}
     </div>
+    {% elif facility.sector == 'oil-gas' %}
+    <div class="column is-half">
+        <div class="card">
+            <header class="card-header"><p class="card-header-title">About this location</p></header>
+            <div class="card-content">
+                <p>This is a district permit grouping that can span a whole oil field. Its map point is the operator's address, not a well.</p>
+                <p class="is-size-7 has-text-grey"><a href="{% url 'emissions:about' %}#oil-gas">Where the wells are</a></p>
+            </div>
+        </div>
+    </div>
     {% endif %}
 </div>
 {% include 'emissions/includes/facility-map.html' %}

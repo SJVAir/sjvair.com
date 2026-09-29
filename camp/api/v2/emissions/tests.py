@@ -467,8 +467,11 @@ class WellEndpointTests(TestCase):
         assert response.status_code == 200
         body = response.json()
         assert body['properties']['wells'] == 2 and body['properties']['imported'] is None
-        by_id = {f['id']: f for f in body['features']}
+        by_id = {f['properties']['id']: f for f in body['features']}
         idle = by_id[self.idle.sqid]
+        # No top-level `id`: properties.id alone (the map source's promoteId
+        # and the popup fetch both read it there) -- one id per well, not two.
+        assert set(idle) == {'type', 'geometry', 'properties'}
         assert idle['properties'] == {'id': self.idle.sqid, 's': 'Idle', 'h': 1}
         assert by_id[self.active.sqid]['properties']['h'] == 0
         assert idle['geometry'] == {'type': 'Point', 'coordinates': [round(IN_KERN[0] + 0.001, 5), IN_KERN[1]]}

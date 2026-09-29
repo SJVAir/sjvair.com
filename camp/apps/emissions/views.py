@@ -15,7 +15,7 @@ from django.urls import reverse
 import vanilla
 
 from camp.apps.ces import stats as ces_stats
-from camp.apps.emissions import areas, compliance, dairies, nei, schools, stats
+from camp.apps.emissions import areas, compliance, dairies, nei, schools, stats, wells
 from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
@@ -171,6 +171,7 @@ class About(ScopeMixin, vanilla.TemplateView):
             toxics_import=SourceImport.latest('ceidars-toxics'),
             compliance_stamp=compliance.stamp(),
             nei_stamp=SourceImport.latest(nei.SOURCE),
+            wells_stamp=wells.stamp(),
             **kwargs,
         )
 
@@ -338,7 +339,12 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             counties=stats.county_breakdown(scope, sector=self.sector),
             rows=stats.with_ranks(table[:SECTOR_PAGE_ROWS], stats.ranks(scope)),
             facility_count=table.count(),
-            map_config=facility_map_config(scope, mode='compact', sector=self.sector),
+            map_config=facility_map_config(
+                scope, mode='compact', sector=self.sector,
+                wells=wells_overlay(self.request.GET, default=self.sector == Facility.Sector.OIL_GAS),
+            ),
+            kern_callout=wells.kern_callout(scope.year) if self.sector == Facility.Sector.OIL_GAS else None,
+            wells_stamp=wells.stamp(),
             **kwargs,
         )
 
@@ -373,9 +379,50 @@ def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None, *, share=False):
     }
 
 
+def wells_overlay(get, *, default=False):
+    """
+    The map's Oil & gas wells overlay: on by default where `default` says
+    (Kern County's page, the oil-gas sector page), off elsewhere; ?wells=1|0
+    overrides either way so the state can be shared.
+    """
+    raw = get.get('wells')
+    on = raw == '1' if raw in ('0', '1') else default
+    return {'on': on, 'default': default}
+
+
+def is_kern(region):
+    """Kern County's page: the overlay's default is on and the block carries the oil & gas callout."""
+    return region.type == Region.Type.COUNTY and region.slug == wells.KERN_SLUG
+
+
+def wells_block(area, scope, *, kern=False):
+    """
+    The "Oil & gas wells" section on a region or near-me page, or None when
+    the area has no wells: the counts, the schools and child-care centers
+    with a well within 3,200 ft, and on Kern County's page what the oil & gas
+    permit groupings report (wells.kern_callout).
+    """
+    summary = wells.area_summary(area)
+    if summary is None:
+        return None
+    return {
+        'summary': summary,
+        'schools': wells.schools_near_wells(area),
+        'kern': wells.kern_callout(scope.year) if kern else None,
+        'stamp': wells.stamp(),
+    }
+
+
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
-                        outline_url='', center='', zoom='', radius='', nearby=None):
-    """The data-* attributes of a `.facility-map` container (see assets/js/emissions/facility-map.js). `nearby` is a FeatureCollection (schools.geojson) for the facility page's schools-and-child-care overlay, or None."""
+                        outline_url='', center='', zoom='', radius='', nearby=None, wells=None):
+    """
+    The data-* attributes of a `.facility-map` container (see
+    assets/js/emissions/facility-map.js). `nearby` is a FeatureCollection
+    (schools.geojson) for the facility page's schools-and-child-care overlay,
+    or None. `wells` (views.wells_overlay's return, or None) offers the Oil &
+    gas wells overlay and its initial state; None (a facility's own map)
+    leaves it off with no URL at all.
+    """
     params = dict(params) if params is not None else scope.params()
     if sector:
         params['sector'] = sector
@@ -398,6 +445,14 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # The region or circle the page is about (region pages, near-me).
         'outline_url': outline_url,
         'radius': radius,
+        # The Oil & gas wells overlay (CalGEM WellSTAR, wells.py): offered where
+        # `wells` is set (the map page, region, near-me and sector pages) and
+        # never on a facility's own map. `wells` is its initial state, `wells_default`
+        # the page's default (the JS writes ?wells= only when they differ).
+        'wells_url': reverse('api:v2:emissions:wells-geojson') if wells else '',
+        'well_url': reverse('api:v2:emissions:well-detail', args=['__id__']).replace('__id__', '{id}') if wells else '',
+        'wells': '1' if wells and wells['on'] else '',
+        'wells_default': '1' if wells and wells['default'] else '',
         # The facility page's schools and child care within 1/4 mile (a
         # FeatureCollection, JSON in the attribute) and the ring to draw.
         'nearby': json.dumps(nearby) if nearby else '',
@@ -457,6 +512,7 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
             map_config=facility_map_config(
                 scope, sector=sector,
                 areas_view=map_view(self.request.GET, year=scope.year, share=scope.pollutant.unit == 'share'),
+                wells=wells_overlay(self.request.GET),
             ),
             sector_options=sector_options(),
             **kwargs,
@@ -648,6 +704,10 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         kwargs.setdefault('community', None)
         kwargs.setdefault('tract_ces', None)
         kwargs.setdefault('show_top_tracts', False)
+        # The "Oil & gas wells" section (region and near-me pages); a
+        # near-me page's own get_context_data sets it, so this default only
+        # matters for whichever subclass doesn't.
+        kwargs.setdefault('wells_block', None)
         return super().get_context_data(
             area=area,
             county_region=county,
@@ -737,6 +797,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             scope, mode='compact', params=scope.params(county=None),
             areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
+            wells=wells_overlay(self.request.GET, default=is_kern(self.region)),
         )
 
     def dairy_url(self, query):
@@ -756,6 +817,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
         elif region.boundary_id:
             extra['community'] = ces_stats.tract_summary(region.boundary.geometry)
             extra['show_top_tracts'] = region.type == Region.Type.COUNTY
+        extra['wells_block'] = wells_block(areas.RegionArea(region), self.get_scope(), kern=is_kern(region))
         county_scope = stats.Scope(
             year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant, minor=self.get_scope().minor,
         ) if region.type == Region.Type.COUNTY else None
@@ -887,6 +949,7 @@ class NearMe(NearLookupMixin, AreaPage):
             areas_view=map_view(self.request.GET, Region.Type.TRACT, year=scope.year, share=scope.pollutant.unit == 'share'),
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
+            wells=wells_overlay(self.request.GET),
         )
 
     def dairy_url(self, query):
@@ -909,5 +972,6 @@ class NearMe(NearLookupMixin, AreaPage):
             radius_options=self.radius_options(),
             privacy_note=True,
             community=ces_stats.tract_summary(self.near.geometry),
+            wells_block=wells_block(self.near, self.get_scope()),
             **kwargs,
         )

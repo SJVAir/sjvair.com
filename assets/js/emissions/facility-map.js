@@ -24,6 +24,10 @@
  * highlighted and the rest faded).
  * On a facility page the schools and child care within 1/4 mile are drawn
  * as dots inside a dashed ring (data-nearby).
+ *
+ * Overlays: Oil & gas wells (CalGEM), clustered, from data-wells-url; on
+ * where data-wells is 1; the legend's checkbox toggles it and ?wells=
+ * carries it.
  */
 (function () {
   'use strict';
@@ -82,6 +86,16 @@
   var WORLD_RING = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
   var CIRCLE_POINTS = 64;
   var METERS_PER_MILE = 1609.344;
+
+  // The Oil & gas wells overlay (CalGEM WellSTAR, /api/2.0/emissions/wells/geojson/):
+  // one point per well, clustered by the GeoJSON source until CLUSTER_MAX_ZOOM.
+  // Status colours; a red ring marks a verified health protection zone.
+  var WELL_COLORS = { Active: '#b45309', Idle: '#6b7280', New: '#2563eb' };
+  var WELL_HPZ_COLOR = '#dc2626';
+  var CLUSTER_COLOR = '#7c2d12';
+  var CLUSTER_MAX_ZOOM = 11;
+  var CLUSTER_RADIUS = 40;
+  var WELL_STATUSES = ['Active', 'Idle', 'New'];
 
   var escapeHtml = M.escapeHtml;
   var logError = M.logger('facility-map');
@@ -273,7 +287,11 @@
     this.map.on('mousemove', 'areas-fill', function (evt) { self.areaHover.set(evt.features[0], evt.lngLat); });
     this.map.on('mouseleave', 'areas-fill', function () { self.areaHover.clear(); });
     this.map.on('click', 'nearby', function (evt) { self.openNearbyPopup(evt.features[0], evt.lngLat); });
-    ['facilities', 'areas-fill', 'nearby'].forEach(function (layer) {
+    this.wellsData = null;
+    this.wellsRequest = 0;
+    this.map.on('click', 'wells-clusters', function (evt) { self.zoomToCluster(evt.features[0]); });
+    this.map.on('click', 'wells', function (evt) { self.openWellPopup(evt.features[0], evt.lngLat); });
+    ['facilities', 'areas-fill', 'nearby', 'wells-clusters', 'wells'].forEach(function (layer) {
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
@@ -311,6 +329,11 @@
     // A shared link asking for density (or per-resident) on a share opens as
     // Total; the address bar says so too.
     if (this.areasEnabled && this.data.unit === 'share' && /[?&]measure=(?!total(&|$))/.test(window.location.search)) this.syncUrl();
+    // The wells overlay: offered where the page gave a URL; its default is the
+    // page's (Kern County, the oil-gas sector), the URL may override it.
+    this.wellsEnabled = !!this.data.wellsUrl;
+    this.wellsDefault = this.data.wellsDefault === '1';
+    this.wells = this.wellsEnabled && this.data.wells === '1';
   };
 
   // Bottom to top: the shaded areas, the county and district lines, the
@@ -348,6 +371,34 @@
       id: 'districts', type: 'line', source: 'districts',
       paint: { 'line-color': DISTRICT_COLOR, 'line-width': 2, 'line-dasharray': [3, 2] },
     });
+    // Wells: clustered until CLUSTER_MAX_ZOOM; cluster size by count, colour
+    // by its active share; single wells by status, ringed when in a verified HPZ.
+    this.shell.ensureSource('wells', {
+      cluster: true, clusterMaxZoom: CLUSTER_MAX_ZOOM, clusterRadius: CLUSTER_RADIUS,
+      clusterProperties: {
+        active: ['+', ['case', ['==', ['get', 's'], 'Active'], 1, 0]],
+        hpz: ['+', ['get', 'h']],
+      },
+    });
+    this.shell.ensureLayer({
+      id: 'wells-clusters', type: 'circle', source: 'wells', filter: ['has', 'point_count'],
+      paint: {
+        'circle-radius': ['step', ['get', 'point_count'], 10, 50, 14, 500, 19, 5000, 26],
+        'circle-color': CLUSTER_COLOR,
+        'circle-opacity': ['interpolate', ['linear'], ['/', ['get', 'active'], ['get', 'point_count']], 0, 0.35, 1, 0.8],
+        'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5,
+      },
+    });
+    this.shell.ensureLayer({
+      id: 'wells', type: 'circle', source: 'wells', filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-radius': 4,
+        'circle-color': ['match', ['get', 's'], 'Active', WELL_COLORS.Active, 'Idle', WELL_COLORS.Idle, 'New', WELL_COLORS.New, WELL_COLORS.Idle],
+        'circle-opacity': 0.85,
+        'circle-stroke-color': ['case', ['==', ['get', 'h'], 1], WELL_HPZ_COLOR, '#ffffff'],
+        'circle-stroke-width': ['case', ['==', ['get', 'h'], 1], 2, 0.5],
+      },
+    });
     this.shell.ensureLayer({
       id: 'facilities', type: 'circle', source: 'facilities',
       // Larger values draw on top.
@@ -378,6 +429,7 @@
     this.applyHighlight();
     this.applyView();
     this.showNearby();
+    this.applyWells();
   };
 
   // Every circle outlined in a darker shade of its fill (grey for "none
@@ -443,6 +495,7 @@
     if (this.view === 'areas') this.loadAreas();
     this.loadOutline();
     this.showNearby();
+    if (this.wells) this.loadWells();
   };
 
   FacilityMap.prototype.loadFacilities = function () {
@@ -602,6 +655,102 @@
     if (this.outlineBounds) this.map.fitBounds(this.outlineBounds, { padding: 24, duration: 0 });
   };
 
+  // The overlay's layers follow `this.wells`; the legend's checkbox too.
+  FacilityMap.prototype.applyWells = function () {
+    var on = this.wellsEnabled && this.wells;
+    if (this.map) {
+      ['wells-clusters', 'wells'].forEach(function (id) {
+        if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+      }, this);
+    }
+  };
+
+  // Every Valley well, fetched once per page load (about 66,000 points, a
+  // day's cache server-side) and only when the overlay is on.
+  FacilityMap.prototype.loadWells = function () {
+    var self = this;
+    if (!this.wellsEnabled) return;
+    if (this.wellsData) {
+      this.shell.setSourceData('wells', this.wellsData);
+      this.el.dataset.wellsLoaded = '1';
+      return;
+    }
+    var request = ++this.wellsRequest;
+    this.el.dataset.wellsLoaded = '';
+    getJson(this.data.wellsUrl)
+      .then(function (collection) {
+        if (request !== self.wellsRequest || !self.map) return;
+        self.wellsData = collection;
+        self.shell.setSourceData('wells', collection);
+        self.shell.updateLegend();
+        self.el.dataset.wellsLoaded = '1';
+      })
+      .catch(function (err) {
+        if (request !== self.wellsRequest || !self.map) return;
+        logError('failed to load the wells', err);
+      });
+  };
+
+  FacilityMap.prototype.setWells = function (on) {
+    if (!this.wellsEnabled) return;
+    this.wells = !!on;
+    this.applyWells();
+    this.syncUrl();
+    this.shell.updateLegend();
+    if (this.wells) this.loadWells();
+  };
+
+  // A cluster click zooms to where it breaks apart (MapLibre's expansion
+  // zoom: a Promise on current SDKs, a callback on older ones).
+  FacilityMap.prototype.zoomToCluster = function (feature) {
+    var self = this;
+    var source = this.map.getSource('wells');
+    var center = feature.geometry.coordinates;
+    var go = function (zoom) {
+      if (typeof zoom !== 'number') return;
+      self.map.easeTo({ center: center, zoom: zoom + 0.5, duration: self.shell.reducedMotion ? 0 : 400 });
+    };
+    var result = source.getClusterExpansionZoom(feature.properties.cluster_id, function (err, zoom) { if (!err) go(zoom); });
+    if (result && typeof result.then === 'function') result.then(go).catch(function (err) { logError('cluster zoom', err); });
+  };
+
+  FacilityMap.prototype.openWellPopup = function (feature, lngLat) {
+    var self = this;
+    var id = feature.properties.id;
+    var popup = this.shell.placePopup('<div class="facility-popup well-popup"><p>Loading…</p></div>', lngLat);
+    getJson((this.data.wellUrl || '').replace('{id}', encodeURIComponent(id)))
+      .then(function (well) {
+        if (self.shell.popup !== popup) return;
+        popup.setHTML('<div class="facility-popup well-popup">' +
+          '<p class="facility-popup-name">' + escapeHtml(well.label) + '</p>' +
+          '<p>' + escapeHtml(well.status) + (well.well_type ? ' · ' + escapeHtml(well.well_type) : '') + '</p>' +
+          (well.operator ? '<p>' + escapeHtml(well.operator) + (well.field ? ', ' + escapeHtml(well.field) + ' field' : '') + '</p>' : '') +
+          '<p>' + (well.spud_year ? 'Drilled ' + escapeHtml(String(well.spud_year)) + ' · ' : '') + escapeHtml(well.in_hpz || 'HPZ status unknown') + '</p>' +
+          '<p><a href="' + escapeHtml(well.url) + '">CalGEM record →</a></p>' +
+          '</div>');
+        if (self.shell.panPopupIntoView) self.shell.panPopupIntoView(popup);
+      })
+      .catch(function (err) {
+        if (self.shell.popup !== popup) return;
+        popup.setHTML('<div class="facility-popup well-popup"><p>Couldn\'t load this well.</p></div>');
+        logError('failed to load a well', err);
+      });
+  };
+
+  // The legend's overlay row: the checkbox, and while it's on the key.
+  FacilityMap.prototype.wellsLegendHtml = function () {
+    if (!this.wellsEnabled) return '';
+    var html = '<div class="legend-overlay"><label class="legend-toggle"><input type="checkbox" data-wells' +
+      (this.wells ? ' checked' : '') + '> Oil &amp; gas wells</label>';
+    if (this.wells) {
+      html += '<p class="legend-wells">' + WELL_STATUSES.map(function (status) {
+        return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + WELL_COLORS[status] + '"></span>' + status + '</span>';
+      }).join('') + '<span class="legend-well"><span class="legend-swatch is-well is-hpz"></span>Verified health-protection zone</span></p>' +
+        '<p class="legend-note">CalGEM records, not emissions. Zoom in to split the clusters; click a well for its record.</p>';
+    }
+    return html + '</div>';
+  };
+
   // The schools and child care listed on a facility page, from the
   // container's own attributes (no fetch): the dots and the 1/4-mile ring
   // around the page's centre. Empty on every other page.
@@ -740,7 +889,7 @@
         changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>' +
         'New, too small to compare, or none reported in ' + escapeHtml(String(this.legendData.compare)) + '</p>' +
         '<p class="legend-note">Facilities that closed before ' + escapeHtml(this.data.year || '') +
-        ' aren\'t shown.</p>';
+        ' aren\'t shown.</p>' + this.wellsLegendHtml();
       return;
     }
     var breaks = this.legendData.breaks;
@@ -748,7 +897,7 @@
       ? 'Share of Valley ' + escapeHtml(this.data.label).toLowerCase() + ' toxics, ' + escapeHtml(String(this.data.year || ''))
       : escapeHtml(this.data.label) + ' (' + escapeHtml(this.data.unit) + '/yr)';
     if (!max) {
-      legend.innerHTML = '<p>No facilities here reported ' + escapeHtml(this.data.label) + '.</p>';
+      legend.innerHTML = '<p>No facilities here reported ' + escapeHtml(this.data.label) + '.</p>' + this.wellsLegendHtml();
       return;
     }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
@@ -756,7 +905,8 @@
       facilityBins(breaks, undefined, round) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>' +
       (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '') +
-      (this.data.nearby ? '<p class="legend-note">Green dots: schools and child care within ¼ mile (dashed ring).</p>' : '');
+      (this.data.nearby ? '<p class="legend-note">Green dots: schools and child care within ¼ mile (dashed ring).</p>' : '') +
+      this.wellsLegendHtml();
   };
 
   // Before a view, level, measure, sector or page change swaps the data: no
@@ -780,7 +930,7 @@
         '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>New, too small to compare, or none reported in ' +
         escapeHtml(String(data.compareActive)) + (this.measure === 'per_resident' ? ', or no population' : '') + '</p>' +
         '<p class="legend-note">Areas whose only facilities closed before ' + escapeHtml(this.data.year || '') +
-        ' aren\'t shown.</p>';
+        ' aren\'t shown.</p>' + this.wellsLegendHtml();
       return;
     }
     var plainTitle = share
@@ -791,7 +941,8 @@
       '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>No facilities' +
       (this.measure === 'per_resident' ? ' or no population' : '') + '</p>' +
       (missing ? '<p class="legend-note">' + missing.toLocaleString('en-US') + ' facilit' + (missing === 1 ? 'y has' : 'ies have') +
-        ' no location and ' + (missing === 1 ? 'isn\'t' : 'aren\'t') + ' counted here.</p>' : '');
+        ' no location and ' + (missing === 1 ? 'isn\'t' : 'aren\'t') + ' counted here.</p>' : '') +
+      this.wellsLegendHtml();
   };
 
   // The toolbar's controls: the view switch, level and measure (Areas), and
@@ -806,6 +957,16 @@
     shell.bindControls('[data-measure]', function (item) { self.setMeasure(item.getAttribute('data-measure'), item.textContent.trim()); });
     shell.bindControls('[data-compare]', function (item) { self.setCompare(item.getAttribute('data-compare')); });
     this.applyView();
+
+    // The legend's wells checkbox is re-rendered with the legend, so the
+    // handler is delegated to the legend body, bound once.
+    var legendBody = this.shell.legendBodyEl;
+    if (legendBody && !legendBody.getAttribute('data-wells-bound')) {
+      legendBody.setAttribute('data-wells-bound', '1');
+      legendBody.addEventListener('change', function (event) {
+        if (event.target && event.target.hasAttribute('data-wells')) self.setWells(event.target.checked);
+      });
+    }
 
     // The Options menu's experiment controls (basemap style, colour ramp),
     // same pattern as the pesticides section map: fill the selects, apply
@@ -889,6 +1050,8 @@
     if (this.tileStyle && this.tileStyle !== this.defaultTileStyle) params.set('tiles', this.tileStyle); else params.delete('tiles');
     if (this.rampName !== DEFAULT_RAMP) params.set('ramp', this.rampName); else params.delete('ramp');
     if (this.dRampName !== DEFAULT_DRAMP) params.set('dramp', this.dRampName); else params.delete('dramp');
+    // The wells overlay: written only when it differs from the page's default.
+    if (this.wellsEnabled && this.wells !== this.wellsDefault) params.set('wells', this.wells ? '1' : '0'); else params.delete('wells');
   };
 
   // The address bar follows the view, level and measure (and the sector) so
@@ -1069,6 +1232,8 @@
     this.shell.setStatus('');
     this.readViewState();
     this.applyView();
+    this.applyWells();
+    if (this.wells) this.loadWells();
     this.fitted = false;
     this.shell.frame();
     this.applyHighlight();

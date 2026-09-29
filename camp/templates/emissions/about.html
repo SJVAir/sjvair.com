@@ -76,6 +76,11 @@
 <p>Ammonia isn't toxic at these levels, but it reacts with other pollution to form fine particles (PM2.5), the Valley's main winter air problem. Most Valley ammonia, about 90%, comes from livestock and fertilizer that aren't permitted facilities; only 7 dairies report ammonia to CARB. County figures are EPA and CARB model estimates for 2023, not measurements.</p>
 <p>Facility ammonia is what each permitted facility reports to CARB, shown in tons per year beside the criteria pollutants (CARB delivers it in its toxics feed, but the explorer never weights or lists it as a toxic). County and Valley totals by source come from EPA's National Emissions Inventory (NEI), whose California point sources are CARB's own inventory resubmitted: the county pages' ammonia bar and the county dairy pages' dairy-cattle tile are EPA's 2023 estimates by source. {% if nei_stamp %}NEI {{ nei_stamp.version }} loaded.{% else %}No NEI data has been loaded yet.{% endif %}</p>
 
+<h2 id="oil-gas">Oil and gas</h2>
+<p>CARB's inventory lists oil and gas production as district permit groupings ("HEAVY OIL WESTERN", "LIGHT OIL") that can cover a whole field, and half of Kern's have no map point at all; where one exists it's the operator's address. So the explorer also shows <strong>where the wells are</strong>: every active, idle and newly permitted well in CalGEM's WellSTAR database (about 66,000 in the eight counties, nearly all in Kern), as an <em>Oil &amp; gas wells</em> overlay on the map, as counts on region pages, and as the schools and child-care centers with a well within 3,200 ft, the distance state law (SB 1137) sets for a health protection zone around homes, schools and other sensitive receptors.</p>
+<p>Well counts are CalGEM's regulatory records, not emissions. Idle wells can still leak; plugged wells aren't shown. Health-protection-zone status is CalGEM's and is still being revised. Distances to schools are straight lines from the school's map point (the law measures from property lines). Oil &amp; gas "facilities" in CARB's inventory are permit groupings that can cover a whole field; their map points aren't well locations.</p>
+<p>{% if wells_stamp %}Wells last fetched from CalGEM {{ wells_stamp.imported_at|date:"N j, Y" }}; refreshed weekly.{% else %}No well data has been imported yet.{% endif %}</p>
+
 <h2 id="sources">Sources</h2>
 <ul>
     <li><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">CARB facility emissions inventory (CEIDARS)</a></li>
@@ -87,6 +92,7 @@
     <li><a href="https://oehha.ca.gov/calenviroscreen">OEHHA CalEnviroScreen</a> and <a href="https://calepa.ca.gov/envjustice/ghginvest/">CalEPA SB 535 disadvantaged communities</a></li>
     <li><a href="https://echo.epa.gov/tools/data-downloads">EPA ECHO / ICIS-Air data downloads</a></li>
     <li><a href="https://www.epa.gov/air-emissions-inventories/2023-nei-supporting-data-and-summaries">EPA 2023 National Emissions Inventory data summaries</a></li>
+    <li><a href="https://data.ca.gov/dataset/wellstar-oil-and-gas-wells">CalGEM WellSTAR oil and gas wells</a></li>
 </ul>
 
 <p class="is-size-7 has-text-grey">Header photo: <a href="https://commons.wikimedia.org/wiki/File:Pumpjacks,_San_Joaquin_Valley,_California.jpg">Pumpjacks, San Joaquin Valley, California</a> by Downtowngal, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, resized, cropped and darkened.</p>

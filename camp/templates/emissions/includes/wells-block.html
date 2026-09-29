@@ -1,0 +1,26 @@
+{% load humanize %}
+{% comment %}
+A region or near-me page's "Oil & gas wells" section (views.wells_block):
+CalGEM's active, idle and new wells here by status and how many sit in a
+verified health protection zone; on Kern County's page the oil & gas callout;
+the schools and child-care centers with a well within 3,200 ft (SB 1137's
+distance), the ten with the most wells listed. Nothing when the area has no wells.
+{% endcomment %}
+<section class="wells-block mt-5" id="wells">
+    <h2 class="title is-4"><span class="icon"><span class="fa-duotone fa-fw fa-oil-well explorer-icon is-wells" aria-hidden="true"></span></span> Oil &amp; gas wells</h2>
+    {% with s=wells_block.summary %}
+    <p class="wells-line">{{ s.active|intcomma }} active · {{ s.idle|intcomma }} idle{% if s.new %} · {{ s.new|intcomma }} new{% endif %} · {{ s.hpz|intcomma }} in a verified health-protection zone (3,200 ft of homes or schools)</p>
+    {% endwith %}
+    {% if wells_block.kern %}{% include 'emissions/includes/oil-gas-callout.html' with callout=wells_block.kern %}{% endif %}
+    {% with schools=wells_block.schools %}
+    {% if schools.count %}
+    <p><strong>{{ schools.count|intcomma }}</strong> {% if schools.count == 1 %}school or child-care center here has{% else %}schools and child-care centers here have{% endif %} an active or idle well within 3,200 ft{% if schools.top|length < schools.count %} (the {{ schools.top|length }} with the most wells){% endif %}:</p>
+    <ul class="wells-schools">
+        {% for row in schools.top %}<li>{{ row.name }} <span class="has-text-grey is-size-7">{{ row.type_label }} · {{ row.wells|intcomma }} well{{ row.wells|pluralize }}</span></li>{% endfor %}
+    </ul>
+    {% else %}
+    <p>No school or child-care center here has a well within 3,200 ft.</p>
+    {% endif %}
+    {% endwith %}
+    <p class="is-size-7 has-text-grey">CalGEM's records{% if wells_block.stamp %}, fetched {{ wells_block.stamp.imported_at|date:"N j, Y" }}{% endif %}: counts of wells, not emissions; idle wells can still leak; plugged wells aren't shown; distances are straight lines from the school's map point. <a href="{% url 'emissions:about' %}#oil-gas">About</a></p>
+</section>

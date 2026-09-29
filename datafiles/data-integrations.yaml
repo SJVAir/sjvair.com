@@ -165,6 +165,11 @@
       url: https://www.epa.gov/air-emissions-inventories/2023-nei-supporting-data-and-summaries
       description: EPA's National Emissions Inventory estimates every county's emissions by source every three years, from permitted facilities to livestock, fertilizer, vehicles and dust. SJVAir uses its 2023 ammonia estimates for the eight Valley counties, split by source, to show how small a share of the Valley's ammonia the permitted facilities on the map are, and how much comes from dairy cattle.
 
+    - name: CalGEM WellSTAR
+      logo: img/logo/conservation.svg
+      url: https://data.ca.gov/dataset/wellstar-oil-and-gas-wells
+      description: The California Geologic Energy Management Division's WellSTAR database is the state's record of every oil and gas well — its operator, field, status and whether it sits in a health protection zone under SB 1137. SJVAir shows the Valley's active, idle and new wells as a map overlay, counts them on region pages, and lists the schools and child-care centers with a well within 3,200 ft.
+
 - category: Geospatial Data
   icon:
     name: fa-map-location-dot

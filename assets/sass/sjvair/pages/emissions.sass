@@ -53,6 +53,11 @@ body.emissions
     &.is-about
       --fa-primary-color: #{$white}
       --fa-secondary-color: #5a6b7b
+    // The Oil & gas wells section heading (wells-block.html); the pumpjack
+    // brown of the map overlay's Active well colour.
+    &.is-wells
+      --fa-primary-color: #7c2d12
+      --fa-secondary-color: #d9a679
   // On the dark hero (inactive tab) it inverts: a white circle, a slate "i".
   .hook .explorer-nav li:not(.is-active) .explorer-icon.is-about
     --fa-primary-color: #5a6b7b
@@ -174,6 +179,40 @@ body.emissions
     margin-right: 0.3rem
     border-radius: 2px
     vertical-align: middle
+  // The facility map legend's Oil & gas wells checkbox row and, while it's
+  // on, the status/HPZ key -- and the wells-block section on region and
+  // near-me pages.
+  .legend-overlay
+    margin-top: 0.5rem
+    padding-top: 0.5rem
+    border-top: 1px solid $grey-lighter
+  .legend-toggle
+    display: flex
+    align-items: center
+    gap: 0.4rem
+    font-weight: 600
+  .legend-wells
+    display: flex
+    flex-wrap: wrap
+    gap: 0.25rem 0.75rem
+    margin: 0.25rem 0
+  .legend-swatch.is-well
+    width: 0.7rem
+    height: 0.7rem
+    border-radius: 50%
+    display: inline-block
+    margin-right: 0.25rem
+    &.is-hpz
+      background: transparent
+      border: 2px solid #dc2626
+  .wells-block
+    .wells-line
+      font-weight: 600
+    .wells-schools
+      margin: 0.5rem 0 0.75rem 1.25rem
+      list-style: disc
+  .oil-gas-callout
+    margin: 0.5rem 0 1rem
   .share-bar
     background: #deebf7
     height: 0.5rem
