@@ -1,10 +1,13 @@
+import tempfile
+
+from pathlib import Path
 from unittest import mock
 
 import geopandas as gpd
 from django.test import SimpleTestCase
-from shapely.geometry import box
+from shapely.geometry import Point, box
 
-from camp.utils import geodata
+from camp.utils import geodata, gis
 
 
 class FilterByOverlapTests(SimpleTestCase):
@@ -28,6 +31,45 @@ class FilterByOverlapTests(SimpleTestCase):
         self.plume = box(20, 20, 30, 30)
         result = list(geodata.filter_by_overlap(self.rows(), self.region, threshold=0.0))
         assert result == []
+
+
+class StreamFilteredGdfTests(SimpleTestCase):
+    def setUp(self):
+        # Fresno and Bakersfield, stored in California Albers (EPSG:3310) so
+        # every row has to be reprojected back to lat/lon.
+        self.latlon = gpd.GeoDataFrame(
+            {'name': ['fresno', 'bakersfield'], 'count': [3, 7]},
+            geometry=[Point(-119.7871, 36.7378), Point(-119.0187, 35.3733)],
+            crs=gis.EPSG_LATLON,
+        )
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        self.path = Path(tmpdir.name) / 'points.shp'
+        self.latlon.to_crs(epsg=3310).to_file(self.path)
+
+    def rows(self, **kwargs):
+        return list(geodata.stream_filtered_gdf(str(self.path), **kwargs))
+
+    def test_rows_are_reprojected_to_the_requested_crs(self):
+        expected = self.latlon.to_crs(epsg=3310).to_crs(gis.EPSG_LATLON)
+        rows = self.rows()
+        assert [row.geometry for row in rows] == list(expected.geometry)
+
+    def test_rows_carry_properties_and_geometry(self):
+        row = self.rows()[0]
+        assert list(row.index) == ['name', 'count', 'geometry']
+        assert row['name'] == 'fresno'
+        assert row['count'] == 3
+        assert row.name == 0
+
+    def test_string_fields_stringifies_the_named_fields(self):
+        row = self.rows(string_fields=['count'])[0]
+        assert row['count'] == '3'
+        assert row['name'] == 'fresno'
+
+    def test_region_geometry_filters_by_bbox(self):
+        around_fresno = box(-120.0, 36.5, -119.5, 37.0)
+        assert [row['name'] for row in self.rows(region_geometry=around_fresno)] == ['fresno']
 
 
 class IterFromUrlCacheTests(SimpleTestCase):

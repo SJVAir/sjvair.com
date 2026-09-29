@@ -9,6 +9,8 @@ import ckanapi
 import fiona
 import geopandas as gpd
 import pandas as pd
+import pyproj
+import shapely
 
 from shapely.geometry import shape, Point, LineString
 from shapely.geometry.base import BaseGeometry
@@ -121,9 +123,12 @@ def filter_by_overlap(
     Yields:
         GeoSeries rows that meet the overlap threshold.
     """
+    # Every row is tested against the same (often detailed) geometry, so build
+    # its spatial index once rather than per intersects() call.
+    shapely.prepare(reference_geom)
     for series in series_iter:
         geom = series.geometry
-        if geom.is_empty or not geom.intersects(reference_geom):
+        if geom.is_empty or not reference_geom.intersects(geom):
             continue
 
         if isinstance(geom, (Point, LineString)):
@@ -240,9 +245,15 @@ def stream_filtered_gdf(
             region = load_region_geometry(src.crs)
             iterable = src.filter(bbox=region.bounds)
 
-        for i, feat in enumerate(iterable):
+        # Build the transformer once per file: a per-row GeoDataFrame.to_crs()
+        # constructs a new one for every feature.
+        transform = None
+        if src.crs and src.crs.to_string() != crs:
+            transform = pyproj.Transformer.from_crs(pyproj.CRS.from_user_input(src.crs), crs, always_xy=True).transform
+
+        for feat in iterable:
             geometry = shape(feat['geometry'])
-            props = feat['properties']
+            props = dict(feat['properties'])
 
             if string_fields is True:
                 props = {k: clean_value(v) for k, v in props.items()}
@@ -252,11 +263,12 @@ def stream_filtered_gdf(
                     for k, v in props.items()
                 }
 
-            gdf = gpd.GeoDataFrame([props], geometry=[geometry], crs=src.crs or crs)
-            if src.crs and src.crs.to_string() != crs:
-                gdf = gdf.to_crs(crs)
+            if transform is not None:
+                geometry = shapely.transform(geometry, transform, interleaved=False)
 
-            yield gdf.iloc[0]
+            # Equivalent to the first row of a one-row GeoDataFrame (name 0),
+            # without the ~3ms cost of building that frame for every feature.
+            yield pd.Series({**props, 'geometry': geometry}, name=0)
 
 
 def iter_from_ckan(
