@@ -862,8 +862,8 @@ def main():
         check(results, "'Dairies in Tulare County →' goes to the dairy page", bool(link) and link.split('?')[0] == tulare, str(link))
         nav = driver.execute_script(
             "return Array.prototype.map.call(document.querySelectorAll('.section-nav a'), function (a) { return a.getAttribute('href'); });")
-        check(results, 'its section nav links Facilities, Community, Wells, Dairies, In and around',
-              nav == ['#facilities', '#community', '#wells', '#dairies', '#in-and-around'], str(nav))
+        check(results, 'its section nav links Facilities, Community, Wells, Greenhouse gases, Dairies, In and around',
+              nav == ['#facilities', '#community', '#wells', '#greenhouse-gases', '#dairies', '#in-and-around'], str(nav))
         # A boosted swap would replace #explorer-body, and the mark with it.
         driver.execute_script("document.getElementById('explorer-body').dataset.smoke = '1'; window.scrollTo(0, 0);")
         driver.find_element(By.CSS_SELECTOR, '.section-nav a[href="#dairies"]').click()
