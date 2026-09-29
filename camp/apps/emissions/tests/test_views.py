@@ -15,6 +15,16 @@ from camp.apps.emissions.models import CountyInventory, EmissionsRecord, Facilit
 from camp.apps.regions.models import Region
 
 
+def map_data(content, key):
+    """
+    A map container's data-{key} value, whichever kind of map rendered the
+    page (facility-map or dairy-map): shared by the overlay tests
+    (test_methane.py), which check both kinds of page.
+    """
+    match = re.search(rf'class="(?:facility|dairy)-map map-canvas"[^>]*data-{key}="([^"]*)"', content)
+    return match.group(1) if match else None
+
+
 class ViewTestCase(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']
 

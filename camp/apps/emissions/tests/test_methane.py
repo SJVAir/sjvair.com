@@ -98,3 +98,47 @@ class ViewTests(MethaneTestCase):
         SourceImport.objects.filter(source='carbon-mapper').delete()
         methane.clear_caches()
         assert self.client.get(reverse('emissions:methane-geojson')).status_code == 404
+
+
+class OverlayConfigTests(MethaneTestCase):
+    def test_methane_overlay_helper(self):
+        from camp.apps.emissions import views
+        assert views.methane_overlay({}) == {'on': False, 'default': False}
+        assert views.methane_overlay({'methane': '1'}) == {'on': True, 'default': False}
+        assert views.methane_overlay({'methane': '0'}, default=True) == {'on': False, 'default': True}
+        assert views.methane_overlay({'methane': 'x'}) == {'on': False, 'default': False}
+        MethaneSource.objects.all().delete()
+        from camp.apps.emissions.models import SourceImport
+        SourceImport.objects.filter(source='carbon-mapper').delete()
+        assert views.methane_overlay({'methane': '1'}) is None
+
+    def test_every_map_offers_the_overlay_off_by_default(self):
+        from camp.apps.emissions.tests.test_views import map_data
+        region = self.plant.county
+        urls = [
+            reverse('emissions:map'),
+            region.get_emissions_url(), region.get_emissions_dairies_url(), reverse('emissions:dairy-list'),
+            reverse('emissions:sector-detail', args=['oil-gas']), self.plant.get_absolute_url(),
+        ]
+        for url in urls:
+            content = self.client.get(url, {'year': 2023}).content.decode()
+            assert map_data(content, 'methane-url') == reverse('emissions:methane-geojson'), url
+            assert map_data(content, 'methane') == '', url
+            assert 'Carbon Mapper' in map_data(content, 'methane-attribution'), url
+        content = self.client.get(reverse('emissions:map'), {'methane': '1'}).content.decode()
+        assert map_data(content, 'methane') == '1'
+
+    def test_nothing_offered_before_an_import(self):
+        from camp.apps.emissions.models import SourceImport
+        from camp.apps.emissions.tests.test_views import map_data
+        MethaneSource.objects.all().delete()
+        SourceImport.objects.filter(source='carbon-mapper').delete()
+        methane.clear_caches()
+        content = self.client.get(reverse('emissions:map'), {'methane': '1'}).content.decode()
+        assert map_data(content, 'methane-url') == ''
+
+    def test_about_has_the_methane_section(self):
+        content = self.client.get(reverse('emissions:about')).content.decode()
+        assert '<h2 id="methane">Methane</h2>' in content
+        assert 'Data by Carbon Mapper®' in content and 'https://carbonmapper.org/terms' in content
+        assert 'not an annual total' in content and 'Methane is a climate pollutant, not a direct local toxic' in content

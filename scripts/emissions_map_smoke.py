@@ -19,7 +19,12 @@ shaded), an Options menu with Tiles only (a size filter surviving the style
 swap, tiles= in the URL), a measure change redrawing the legend, a sort (a
 boosted swap) keeping Counties and its measure, a table row's name zooming to its dairy
 with its popup, a county narrowing the dairies, and the NOx / 2024 fallback
-notes. Last, a county page in 2023 maps its facilities (sized circles, the
+notes, and the Methane sources (Carbon Mapper) overlay: off until ticked,
+loads the layer and writes ?methane=1, the legend's attribution and sector
+key, the map's own attribution control naming Carbon Mapper, and a plume's
+popup carrying the "Carbon Mapper estimate" label and the non-commercial
+attribution (needs import_carbon_mapper on this DB; skipped otherwise). Last,
+a county page in 2023 maps its facilities (sized circles, the
 plain legend with a size key -- dairies were removed from this map; the
 Dairies tab is the only place they're mapped), and the Dairies tab's own
 charts. Then the dairy pages: Tulare County's (outlined, Dairies only, its
@@ -33,7 +38,8 @@ showing the Dairies section as a summary only, linking to the dairy page,
 with its section nav unchanged. Fails on any console error. Dev-only;
 nothing here runs in CI. Needs local data (import_air_districts,
 import_ceidars, import_cepam, import_cadd, and the regions with their
-boundaries).
+boundaries); the methane overlay checks additionally need
+import_carbon_mapper and are skipped (not failed) without it.
 
 Setup (Chrome must be installed):
     python3 -m venv .venv && .venv/bin/pip install selenium
@@ -147,6 +153,16 @@ def wait_dairies(driver, timeout=MAP_TIMEOUT):
     deadline = time.time() + timeout
     while time.time() < deadline:
         if driver.execute_script("var el = document.querySelector('.dairy-map'); return !!el && el.dataset.loaded === '1';"):
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def wait_for(driver, script, timeout=MAP_TIMEOUT):
+    """Polls `execute_script(script)` until it's truthy."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if driver.execute_script(script):
             return True
         time.sleep(0.25)
     return False
@@ -659,6 +675,28 @@ def main():
             "return m.map.queryRenderedFeatures({layers: ['dairies']}).map(function (f) { return [f.properties.size_class, f.properties.digester]; });")
         check(results, 'the reloaded map only draws medium/large digester dairies',
               bool(rendered) and all(sc != 'small' and dig for sc, dig in rendered), str(rendered[:5]))
+
+        # Phase 9: the methane overlay on the dairy map. Ticking the legend's
+        # checkbox loads the layer, writes ?methane=1, and a plume's popup
+        # carries the attribution.
+        driver.get(args.base + '/tools/emissions/dairies/')
+        wait_dairies(driver)
+        has_toggle = driver.execute_script("return !!document.querySelector('.dairy-map-legend [data-methane]');")
+        check(results, 'dairies tab offers the methane overlay (needs import_carbon_mapper on this DB)', has_toggle)
+        if has_toggle:
+            driver.execute_script("document.querySelector('.dairy-map-legend [data-methane]').click()")
+            loaded = wait_for(driver, "var el = document.querySelector('.dairy-map'); return !!el && el.dataset.methaneLoaded === '1';")
+            count = driver.execute_script("var m = window.EmissionsDairyMap.instances()[0]; return m.map.querySourceFeatures('methane').length;")
+            check(results, 'the methane layer loads and ?methane=1 lands in the URL', loaded and count > 0 and 'methane=1' in driver.current_url, f'{count} sources; {driver.current_url}')
+            legend = driver.execute_script("return document.querySelector('.dairy-map-legend').textContent;")
+            check(results, 'the methane legend carries the attribution', 'Data by Carbon Mapper' in legend and 'Livestock' in legend)
+            attribution = driver.execute_script("var el = document.querySelector('.maplibregl-ctrl-attrib-inner, .maptiler-ctrl-attrib-inner'); return el ? el.textContent : '';")
+            check(results, "the map's attribution control names Carbon Mapper", 'Carbon Mapper' in attribution, attribution[:120])
+            opened = driver.execute_script(
+                "var m = window.EmissionsDairyMap.instances()[0]; var f = m.map.querySourceFeatures('methane')[0]; if (!f) return false;"
+                "m.methane.openPopup(f, {lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1]}); return true;")
+            popup = driver.execute_script("var p = document.querySelector('.methane-popup'); return p ? p.textContent : '';") if opened else ''
+            check(results, 'a methane popup says Carbon Mapper estimate and carries the attribution', 'Carbon Mapper estimate' in popup and 'Data by Carbon Mapper' in popup, popup[:160])
 
         driver.execute_script("document.querySelector('.dairy-map-view [data-view=counties]').click()")
         shaded = settled_count(driver, shaded_counties)

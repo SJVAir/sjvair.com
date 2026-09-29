@@ -16,7 +16,7 @@ import vanilla
 
 from camp.apps.ces import stats as ces_stats
 from camp.apps.emissions import areas, compliance, dairies, ghg, methane, nei, schools, stats, wells
-from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport
+from camp.apps.emissions.models import AirComplianceFacility, Facility, MethaneSource, SourceImport
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
 from camp.apps.regions.models import Region
@@ -306,6 +306,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
                 scope, mode='compact', highlight=facility,
                 params=scope.params(year=shown_year, minor='1', county=None),
                 nearby=schools.geojson(nearby) if nearby else None,
+                methane=methane_overlay(self.request.GET),
             ),
             **kwargs,
         )
@@ -348,6 +349,7 @@ class SectorDetail(ScopeMixin, vanilla.TemplateView):
             map_config=facility_map_config(
                 scope, mode='compact', sector=self.sector,
                 wells=wells_overlay(self.request.GET, default=self.sector == Facility.Sector.OIL_GAS),
+                methane=methane_overlay(self.request.GET),
             ),
             kern_callout=wells.kern_callout(scope.year) if self.sector == Facility.Sector.OIL_GAS else None,
             wells_stamp=wells.stamp(),
@@ -426,15 +428,43 @@ def wells_block(area, scope, *, kern=False):
     }
 
 
+def methane_overlay(get, *, default=False):
+    """
+    The maps' Methane sources (Carbon Mapper) overlay: nothing (None) until
+    an import has run; else off unless the page says otherwise, with
+    ?methane=1|0 overriding either way so the state can be shared.
+    """
+    if not methane.enabled():
+        return None
+    raw = get.get('methane')
+    on = raw == '1' if raw in ('0', '1') else default
+    return {'on': on, 'default': default}
+
+
+def methane_map_data(overlay):
+    """The data-* values both map configs carry for the overlay; empty strings when it isn't offered."""
+    if not overlay:
+        return {'methane_url': '', 'methane': '', 'methane_default': '', 'methane_attribution': '', 'methane_home': ''}
+    return {
+        'methane_url': reverse('emissions:methane-geojson'),
+        'methane': '1' if overlay['on'] else '',
+        'methane_default': '1' if overlay['default'] else '',
+        'methane_attribution': MethaneSource.ATTRIBUTION,
+        'methane_home': MethaneSource.HOME_URL,
+    }
+
+
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
-                        outline_url='', center='', zoom='', radius='', nearby=None, wells=None):
+                        outline_url='', center='', zoom='', radius='', nearby=None, wells=None, methane=None):
     """
     The data-* attributes of a `.facility-map` container (see
     assets/js/emissions/facility-map.js). `nearby` is a FeatureCollection
     (schools.geojson) for the facility page's schools-and-child-care overlay,
     or None. `wells` (views.wells_overlay's return, or None) offers the Oil &
     gas wells overlay and its initial state; None (a facility's own map)
-    leaves it off with no URL at all.
+    leaves it off with no URL at all. `methane` (views.methane_overlay's
+    return, or None) offers the Methane sources (Carbon Mapper) overlay the
+    same way, including on a facility's own map.
     """
     params = dict(params) if params is not None else scope.params()
     if sector:
@@ -466,6 +496,10 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         'well_url': reverse('api:v2:emissions:well-detail', args=['__id__']).replace('__id__', '{id}') if wells else '',
         'wells': '1' if wells and wells['on'] else '',
         'wells_default': '1' if wells and wells['default'] else '',
+        # The Methane sources (Carbon Mapper) overlay (methane.py): offered
+        # where `methane` is set, including a facility's own map -- unlike
+        # wells, a nearby plume is relevant there.
+        **methane_map_data(methane),
         # The facility page's schools and child care within 1/4 mile (a
         # FeatureCollection, JSON in the attribute) and the ring to draw.
         'nearby': json.dumps(nearby) if nearby else '',
@@ -526,6 +560,7 @@ class MapPage(ScopeMixin, vanilla.TemplateView):
                 scope, sector=sector,
                 areas_view=map_view(self.request.GET, year=scope.year, share=scope.pollutant.unit == 'share'),
                 wells=wells_overlay(self.request.GET),
+                methane=methane_overlay(self.request.GET),
             ),
             sector_options=sector_options(),
             **kwargs,
@@ -812,6 +847,7 @@ class RegionPage(RegionLookupMixin, AreaPage):
             areas_view=map_view(self.request.GET, level, year=scope.year, share=scope.pollutant.unit == 'share') if level else None,
             outline_url=reverse('api:v2:regions:region-detail', args=[self.region.sqid]),
             wells=wells_overlay(self.request.GET, default=is_kern(self.region)),
+            methane=methane_overlay(self.request.GET),
         )
 
     def dairy_url(self, query):
@@ -965,6 +1001,7 @@ class NearMe(NearLookupMixin, AreaPage):
             center=f'{self.near.lat:.4f},{self.near.lng:.4f}', zoom=RADIUS_ZOOMS[self.near.radius],
             radius=self.near.radius,
             wells=wells_overlay(self.request.GET),
+            methane=methane_overlay(self.request.GET),
         )
 
     def dairy_url(self, query):

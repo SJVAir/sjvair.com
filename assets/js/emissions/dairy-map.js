@@ -22,6 +22,9 @@
  * the page's area (the region's outline, or near-me's radius as a circle),
  * with everything outside washed out; the points are already narrowed to
  * the area by the GeoJSON's `region=` / `lat`/`lng`/`radius`.
+ *
+ * Overlay: Methane sources (Carbon Mapper), from data-methane-url, shared
+ * with the facility map (methane-overlay.js).
  */
 (function () {
   'use strict';
@@ -306,6 +309,7 @@
       if (path !== null) detail.path = path;
     };
     document.body.addEventListener('htmx:configRequest', this.onConfigRequest);
+    this.methane = window.EmissionsMethaneOverlay ? new window.EmissionsMethaneOverlay(this, { before: 'dairies' }) : null;
     // For debugging from the console: document.querySelector('.dairy-map').dairyMap
     this.el.dairyMap = this;
   }
@@ -352,6 +356,7 @@
     });
     this.applyView();
     this.applyFilters();
+    if (this.methane) this.methane.addLayers();
   };
 
   // One view at a time: the layers, the switch and the Counties-only measure
@@ -421,6 +426,7 @@
     if (!keepOutline) this.loadOutline();
     this.el.dataset.loaded = '';
     this.shell.setStatus('Loading dairies…');
+    if (this.methane) this.methane.load();
     var shapes = this.shapes ? Promise.resolve(this.shapes) : getJson(this.data.shapesUrl);
     Promise.all([getJson(this.data.geojsonUrl), shapes, getJson(this.data.countiesUrl)])
       .then(function (results) {
@@ -697,9 +703,14 @@
   DairyMap.prototype.legend = function (body) {
     var legend = body.querySelector('.dairy-map-legend');
     if (!legend) return;
-    if (this.view === 'counties' ? !this.counties : !this.dairies) return;
+    var hasData = this.view === 'counties' ? !!this.counties : !!this.dairies;
+    var methaneHtml = this.methane ? this.methane.legendHtml() : '';
+    // The overlay row still needs to render on an empty area page, so the
+    // early exit only fires when there's neither the map's own data nor an
+    // enabled overlay to show.
+    if (!hasData && !methaneHtml) return;
     if (this.shell.legendPanelEl) this.shell.legendPanelEl.hidden = false;
-    legend.innerHTML = this.view === 'counties' ? this.countyLegend() : this.dairyLegend();
+    legend.innerHTML = (hasData ? (this.view === 'counties' ? this.countyLegend() : this.dairyLegend()) : '') + methaneHtml;
   };
 
   DairyMap.prototype.onChrome = function () {
@@ -711,6 +722,7 @@
     this.bindSizeCheckboxes();
     this.shell.bindTiles('select[name="tiles"]', function () { self.syncUrl(); });
     this.applyView();
+    if (this.methane) this.methane.bind(this.shell.legendBodyEl);
   };
 
   // The size dropdown's checkboxes: bindControls always closes its dropdown
@@ -745,6 +757,7 @@
     // The Options menu's Tiles experiment (shell.bindTiles); not page scope,
     // so it's written regardless of view.
     if (this.shell.tileStyle && this.shell.tileStyle !== this.defaultTileStyle) params.set('tiles', this.shell.tileStyle); else params.delete('tiles');
+    if (this.methane) this.methane.writeState(params);
   };
 
   DairyMap.prototype.syncUrl = function () {
@@ -823,6 +836,7 @@
     // reader's zoom, rather than blinking out for a round trip.
     var outlineChanged = changed.some(function (key) { return ['outlineUrl', 'center', 'radius'].indexOf(key) !== -1; });
     this.readState();
+    if (this.methane) this.methane.onAdopt();
     this.clearHover();
     this.applyView();
     this.applyFilters();
@@ -855,6 +869,7 @@
   DairyMap.prototype.destroy = function () {
     this.shell.closePopup();
     this.clearHover();
+    if (this.methane) this.methane.destroy();
     document.body.removeEventListener('htmx:configRequest', this.onConfigRequest);
     document.body.removeEventListener('click', this.onZoomClick);
     this.map = null;

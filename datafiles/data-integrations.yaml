@@ -128,7 +128,7 @@
     name: fa-industry-windows
     primary: sienna
     secondary: burlywood
-  description: 'The state and federal records behind the <a href="/tools/emissions/">Facility Emissions Explorer</a>: what each permitted facility in the San Joaquin Valley reports releasing and how toxic it is, where each one is, its federal compliance record, its reported greenhouse gases, the Valley''s dairies and oil and gas wells, and the county-wide inventories that put them in context.'
+  description: 'The state and federal records behind the <a href="/tools/emissions/">Facility Emissions Explorer</a>: what each permitted facility in the San Joaquin Valley reports releasing and how toxic it is, where each one is, its federal compliance record, its reported greenhouse gases, the Valley''s dairies, oil and gas wells and observed methane sources, and the county-wide inventories that put them in context.'
   integrations:
     - name: CEIDARS
       logo: img/logo/carb-vertical.png
@@ -179,6 +179,11 @@
       logo: img/logo/carb-vertical.png
       url: https://ww2.arb.ca.gov/mrr-data
       description: California's Mandatory Greenhouse Gas Reporting program publishes a verified annual summary of every large emitter's greenhouse gases, a year sooner than the federal program and including California-only reporters. SJVAir imports the Valley's emitters (only their own emissions, never the fuel that suppliers sell), matches the largest to their permitted facilities by hand and the rest by name and ZIP, and lists each county's largest reporters.
+
+    - name: Carbon Mapper
+      logo: img/logo/carbonmapper.svg
+      url: https://carbonmapper.org/
+      description: Carbon Mapper is a non-profit that finds methane and CO2 super-emitters from aircraft and satellites and publishes each source's location, estimated emission rate and how often it was seen. SJVAir shows the Valley's methane sources as a map overlay and links each to the nearest dairy or permitted facility. Data by Carbon Mapper®, for non-commercial use.
 
 - category: Geospatial Data
   icon:

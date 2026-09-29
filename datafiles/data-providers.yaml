@@ -70,3 +70,8 @@
       logo: img/logo/conservation.svg
       url: https://www.conservation.ca.gov/calgem
       classes: is-6-mobile is-4-tablet is-4-desktop
+
+    - name: Carbon Mapper
+      logo: img/logo/carbonmapper.svg
+      url: https://carbonmapper.org/
+      classes: is-6-mobile is-4-tablet is-4-desktop

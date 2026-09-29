@@ -27,7 +27,8 @@
  *
  * Overlays: Oil & gas wells (CalGEM), clustered, from data-wells-url; on
  * where data-wells is 1; the legend's checkbox toggles it and ?wells=
- * carries it.
+ * carries it. Methane sources (Carbon Mapper), from data-methane-url,
+ * shared with the dairy map (methane-overlay.js).
  */
 (function () {
   'use strict';
@@ -295,6 +296,7 @@
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
+    this.methane = window.EmissionsMethaneOverlay ? new window.EmissionsMethaneOverlay(this, { before: 'facilities' }) : null;
     // The scope bar's links (year, pollutant, toggles) were rendered before
     // the reader switched view, level, measure or sector here, and carry the
     // page's original values. Rewrite the boosted request's URL (htmx reads
@@ -430,6 +432,7 @@
     this.applyView();
     this.showNearby();
     this.applyWells();
+    if (this.methane) this.methane.addLayers();
   };
 
   // Every circle outlined in a darker shade of its fill (grey for "none
@@ -496,6 +499,7 @@
     this.loadOutline();
     this.showNearby();
     if (this.wells) this.loadWells();
+    if (this.methane) this.methane.load();
   };
 
   FacilityMap.prototype.loadFacilities = function () {
@@ -779,6 +783,11 @@
     return html + '</div>';
   };
 
+  // The Methane sources (Carbon Mapper) overlay's own legend row (methane-overlay.js).
+  FacilityMap.prototype.methaneLegendHtml = function () {
+    return this.methane ? this.methane.legendHtml() : '';
+  };
+
   // The schools and child care listed on a facility page, from the
   // container's own attributes (no fetch): the dots and the 1/4-mile ring
   // around the page's centre. Empty on every other page.
@@ -917,7 +926,7 @@
         changeBins() + '<p class="legend-empty"><span class="legend-ring"></span>' +
         'New, too small to compare, or none reported in ' + escapeHtml(String(this.legendData.compare)) + '</p>' +
         '<p class="legend-note">Facilities that closed before ' + escapeHtml(this.data.year || '') +
-        ' aren\'t shown.</p>' + this.wellsLegendHtml();
+        ' aren\'t shown.</p>' + this.wellsLegendHtml() + this.methaneLegendHtml();
       return;
     }
     var breaks = this.legendData.breaks;
@@ -925,7 +934,7 @@
       ? 'Share of Valley ' + escapeHtml(this.data.label).toLowerCase() + ' toxics, ' + escapeHtml(String(this.data.year || ''))
       : escapeHtml(this.data.label) + ' (' + escapeHtml(this.data.unit) + '/yr)';
     if (!max) {
-      legend.innerHTML = '<p>No facilities here reported ' + escapeHtml(this.data.label) + '.</p>' + this.wellsLegendHtml();
+      legend.innerHTML = '<p>No facilities here reported ' + escapeHtml(this.data.label) + '.</p>' + this.wellsLegendHtml() + this.methaneLegendHtml();
       return;
     }
     legend.innerHTML = '<p class="legend-title">' + label + '</p>' +
@@ -934,7 +943,7 @@
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>' +
       (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '') +
       (this.data.nearby ? '<p class="legend-note">Green dots: schools and child care within ¼ mile (dashed ring).</p>' : '') +
-      this.wellsLegendHtml();
+      this.wellsLegendHtml() + this.methaneLegendHtml();
   };
 
   // Before a view, level, measure, sector or page change swaps the data: no
@@ -958,7 +967,7 @@
         '<p class="legend-empty"><span class="legend-swatch is-area is-none"></span>New, too small to compare, or none reported in ' +
         escapeHtml(String(data.compareActive)) + (this.measure === 'per_resident' ? ', or no population' : '') + '</p>' +
         '<p class="legend-note">Areas whose only facilities closed before ' + escapeHtml(this.data.year || '') +
-        ' aren\'t shown.</p>' + this.wellsLegendHtml();
+        ' aren\'t shown.</p>' + this.wellsLegendHtml() + this.methaneLegendHtml();
       return;
     }
     var plainTitle = share
@@ -970,7 +979,7 @@
       (this.measure === 'per_resident' ? ' or no population' : '') + '</p>' +
       (missing ? '<p class="legend-note">' + missing.toLocaleString('en-US') + ' facilit' + (missing === 1 ? 'y has' : 'ies have') +
         ' no location and ' + (missing === 1 ? 'isn\'t' : 'aren\'t') + ' counted here.</p>' : '') +
-      this.wellsLegendHtml();
+      this.wellsLegendHtml() + this.methaneLegendHtml();
   };
 
   // The toolbar's controls: the view switch, level and measure (Areas), and
@@ -995,6 +1004,7 @@
         if (event.target && event.target.hasAttribute('data-wells')) self.setWells(event.target.checked);
       });
     }
+    if (this.methane) this.methane.bind(legendBody);
 
     // The Options menu's experiment controls (basemap style, colour ramp),
     // same pattern as the pesticides section map: fill the selects, apply
@@ -1080,6 +1090,7 @@
     if (this.dRampName !== DEFAULT_DRAMP) params.set('dramp', this.dRampName); else params.delete('dramp');
     // The wells overlay: written only when it differs from the page's default.
     if (this.wellsEnabled && this.wells !== this.wellsDefault) params.set('wells', this.wells ? '1' : '0'); else params.delete('wells');
+    if (this.methane) this.methane.writeState(params);
   };
 
   // The address bar follows the view, level and measure (and the sector) so
@@ -1262,6 +1273,7 @@
     this.applyView();
     this.applyWells();
     if (this.wells) this.loadWells();
+    if (this.methane) this.methane.onAdopt();
     this.fitted = false;
     this.shell.frame();
     this.applyHighlight();
@@ -1271,6 +1283,7 @@
   FacilityMap.prototype.destroy = function () {
     this.shell.closePopup();
     this.clearHover();
+    if (this.methane) this.methane.destroy();
     document.body.removeEventListener('htmx:configRequest', this.onConfigRequest);
     this.map = null;
   };
