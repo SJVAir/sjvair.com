@@ -76,10 +76,10 @@
     secondary: deepskyblue
   description: Datasets that combine environmental, health, and socioeconomic indicators to identify communities most impacted by pollution and support equity-focused decision making.
   integrations:
-    - name: CalEnvironScreen
+    - name: CalEnviroScreen
       logo: img/logo/calenviroscreen-logo.png
       url: https://oehha.ca.gov/calenviroscreen
-      description: CalEnviroScreen is a mapping and screening tool developed by the California Office of Environmental Health Hazard Assessment (OEHHA). It combines environmental, health, and socioeconomic data from state and federal sources to identify communities most affected by pollution and socioeconomic burdens, helping guide California's environmental justice policies and investments.
+      description: CalEnviroScreen is a mapping and screening tool developed by the California Office of Environmental Health Hazard Assessment (OEHHA). It combines environmental, health, and socioeconomic data from state and federal sources to identify communities most affected by pollution and socioeconomic burdens, helping guide California's environmental justice policies and investments. On the Facility Emissions Explorer, SJVAir summarizes the census tracts in each region and near-me search, and each facility's own tract, by their CalEnviroScreen percentiles and the state's SB 535 disadvantaged-community designations.
 
     - name: Healthy Places Index
       logo: img/logo/healthy-places-index-logo.png
@@ -128,7 +128,7 @@
     name: fa-industry-windows
     primary: sienna
     secondary: burlywood
-  description: 'The CARB records behind the <a href="/tools/emissions/">Facility Emissions Explorer</a>: what each permitted facility in the San Joaquin Valley reports releasing, where each one is, the Valley''s dairies and their herds, and the county-wide inventories that put them in context.'
+  description: 'The state and federal records behind the <a href="/tools/emissions/">Facility Emissions Explorer</a>: what each permitted facility in the San Joaquin Valley reports releasing and how toxic it is, where each one is, its federal compliance record, the Valley''s dairies and oil and gas wells, and the county-wide inventories that put them in context.'
   integrations:
     - name: CEIDARS
       logo: img/logo/carb-vertical.png
@@ -175,12 +175,12 @@
     name: fa-map-location-dot
     primary: steelblue
     secondary: lightsteelblue
-  description: 'The boundaries and points every page is organized around: counties, cities and census-designated places, ZIP codes, urban areas, air districts, the square-mile sections pesticide use is reported by, school districts, and the schools and child care centers shown alongside pesticide data. Most of it comes through the <a href="https://data.ca.gov/">California Open Data Portal</a>, maintained there by the state department named on each dataset.'
+  description: 'The boundaries and points every page is organized around: counties, cities and census-designated places, ZIP codes, urban areas, air districts, the square-mile sections pesticide use is reported by, school districts, and the schools and child care centers shown alongside pesticide data and near emitting facilities and oil and gas wells. Most of it comes through the <a href="https://data.ca.gov/">California Open Data Portal</a>, maintained there by the state department named on each dataset.'
   integrations:
     - name: U.S. Census Bureau
       logo: img/logo/census.svg
       url: https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html
-      description: The Census Bureau's TIGER/Line files are the reference geography for the United States. SJVAir takes its ZIP codes (as ZIP Code Tabulation Areas), census tracts, and congressional districts directly from TIGER/Line, and the county and place boundaries below are the Bureau's as well, republished by the state.
+      description: The Census Bureau's TIGER/Line files are the reference geography for the United States. SJVAir takes its ZIP codes (as ZIP Code Tabulation Areas), census tracts, and congressional districts directly from TIGER/Line, and the county and place boundaries below are the Bureau's as well, republished by the state. The Bureau's geocoder also places emissions facilities at their street addresses.
 
     - name: CA Geographic Boundaries
       logo: img/logo/ca-open-data.png
@@ -205,9 +205,9 @@
     - name: California Department of Education
       logo: img/logo/cde.png
       url: https://data.ca.gov/organization/california-department-of-education
-      description: The Department of Education publishes school district boundaries, with each district's enrollment and demographics, and the directory of public and private schools with their locations. SJVAir uses the district boundaries as regions and shows the schools alongside pesticide use in each district.
+      description: The Department of Education publishes school district boundaries, with each district's enrollment and demographics, and the directory of public and private schools with their locations. SJVAir uses the district boundaries as regions and shows the schools alongside pesticide use in each district, and on the Facility Emissions Explorer lists the schools near each facility and near oil and gas wells.
 
     - name: Department of Social Services
       logo: img/logo/cdss.png
       url: https://data.ca.gov/dataset/community-care-licensing-facilities1
-      description: The California Department of Social Services licenses child care centers through its Community Care Licensing Division and publishes the facility list, with addresses and capacities. SJVAir shows the licensed child care centers in the Valley alongside schools on its pesticide maps and district pages.
+      description: The California Department of Social Services licenses child care centers through its Community Care Licensing Division and publishes the facility list, with addresses and capacities. SJVAir shows the licensed child care centers in the Valley alongside schools on its pesticide maps and district pages, and near facilities and oil and gas wells on the Facility Emissions Explorer.
