@@ -3,8 +3,9 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
+import fiona
 import geopandas as gpd
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 from shapely.geometry import Point, box
 
 from camp.utils import geodata, gis
@@ -33,6 +34,41 @@ class FilterByOverlapTests(SimpleTestCase):
         assert result == []
 
 
+class CrsComparisonTests(SimpleTestCase):
+    def test_is_same_crs_across_representations(self):
+        assert geodata.is_same_crs(4326, 'EPSG:4326')
+        assert geodata.is_same_crs(fiona.crs.CRS.from_epsg(4326), gis.EPSG_LATLON)
+        assert not geodata.is_same_crs('EPSG:3310', gis.EPSG_LATLON)
+
+    def test_to_src_crs_leaves_latlon_sources_alone(self):
+        geom = box(-120.0, 36.5, -119.5, 37.0)
+        with mock.patch('camp.utils.geodata.gpd.GeoSeries') as geoseries:
+            assert geodata._to_src_crs(geom, fiona.crs.CRS.from_epsg(4326)) is geom
+            assert geodata._to_src_crs(geom, None) is geom
+        geoseries.assert_not_called()
+
+    def test_to_src_crs_reprojects_other_sources(self):
+        geom = box(-120.0, 36.5, -119.5, 37.0)
+        expected = gpd.GeoSeries([geom], crs=gis.EPSG_LATLON).to_crs(epsg=3310).iloc[0]
+        assert geodata._to_src_crs(geom, fiona.crs.CRS.from_epsg(3310)).equals_exact(expected, tolerance=1e-6)
+
+
+class LoadRegionGeometryTests(TestCase):
+    fixtures = ['regions.yaml']
+
+    def test_latlon_crs_in_any_form_is_not_reprojected(self):
+        latlon = geodata.load_region_geometry()
+        with mock.patch('camp.utils.geodata.gpd.GeoSeries') as geoseries:
+            assert geodata.load_region_geometry(fiona.crs.CRS.from_epsg(4326)).equals(latlon)
+            assert geodata.load_region_geometry('EPSG:4326').equals(latlon)
+        geoseries.assert_not_called()
+
+    def test_other_crs_is_reprojected(self):
+        expected = gpd.GeoSeries([geodata.load_region_geometry()], crs=gis.EPSG_LATLON).to_crs(epsg=3310).iloc[0]
+        albers = geodata.load_region_geometry(fiona.crs.CRS.from_epsg(3310))
+        assert albers.equals_exact(expected, tolerance=1e-6)
+
+
 class StreamFilteredGdfTests(SimpleTestCase):
     def setUp(self):
         # Fresno and Bakersfield, stored in California Albers (EPSG:3310) so
@@ -44,11 +80,16 @@ class StreamFilteredGdfTests(SimpleTestCase):
         )
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
-        self.path = Path(tmpdir.name) / 'points.shp'
-        self.latlon.to_crs(epsg=3310).to_file(self.path)
+        self.tmpdir = Path(tmpdir.name)
+        self.path = self.write(self.latlon.to_crs(epsg=3310), 'points')
 
-    def rows(self, **kwargs):
-        return list(geodata.stream_filtered_gdf(str(self.path), **kwargs))
+    def write(self, gdf, name):
+        path = self.tmpdir / f'{name}.shp'
+        gdf.to_file(path)
+        return path
+
+    def rows(self, path=None, **kwargs):
+        return list(geodata.stream_filtered_gdf(str(path or self.path), **kwargs))
 
     def test_rows_are_reprojected_to_the_requested_crs(self):
         expected = self.latlon.to_crs(epsg=3310).to_crs(gis.EPSG_LATLON)
@@ -70,6 +111,20 @@ class StreamFilteredGdfTests(SimpleTestCase):
     def test_region_geometry_filters_by_bbox(self):
         around_fresno = box(-120.0, 36.5, -119.5, 37.0)
         assert [row['name'] for row in self.rows(region_geometry=around_fresno)] == ['fresno']
+
+    def test_source_already_in_the_requested_crs_is_not_transformed(self):
+        path = self.write(self.latlon, 'latlon')
+        with mock.patch('camp.utils.geodata.pyproj.Transformer.from_crs') as from_crs:
+            rows = self.rows(path)
+        from_crs.assert_not_called()
+        assert [row.geometry for row in rows] == list(self.latlon.geometry)
+
+    def test_z_is_dropped_with_or_without_reprojection(self):
+        points_z = self.latlon.set_geometry([Point(p.x, p.y, 90.0) for p in self.latlon.geometry], crs=gis.EPSG_LATLON)
+        for path in (self.write(points_z, 'latlon_z'), self.write(points_z.to_crs(epsg=3310), 'albers_z')):
+            rows = self.rows(path)
+            assert not any(row.geometry.has_z for row in rows)
+            assert rows[0].geometry.equals_exact(Point(-119.7871, 36.7378), tolerance=1e-9)
 
 
 class IterFromUrlCacheTests(SimpleTestCase):

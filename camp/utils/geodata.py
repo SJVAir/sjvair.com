@@ -143,10 +143,18 @@ def filter_by_overlap(
             yield series
 
 
+def is_same_crs(a, b) -> bool:
+    """
+    Compare CRSs given in any form pyproj accepts (4326, 'EPSG:4326', a fiona
+    or pyproj CRS). Comparing raw values is a trap: 'EPSG:4326' != 4326.
+    """
+    return pyproj.CRS.from_user_input(a) == pyproj.CRS.from_user_input(b)
+
+
 def load_region_geometry(crs: Optional[str] = gis.EPSG_LATLON):
     from camp.apps.regions.models import Region
     geometry = Region.objects.counties().to_dataframe().unary_union
-    if crs != gis.EPSG_LATLON:
+    if crs and not is_same_crs(crs, gis.EPSG_LATLON):
         geometry = (
             gpd.GeoSeries([geometry], crs=gis.EPSG_LATLON)
             .to_crs(crs)
@@ -167,14 +175,11 @@ def _finalize_gdf(gdf: gpd.GeoDataFrame, crs: str) -> gpd.GeoDataFrame:
 
 def _to_src_crs(geom, src_crs):
     """Transform a WGS84 Shapely geometry to the fiona source CRS for bbox pre-filtering."""
-    if src_crs is None:
-        return geom
-    target = src_crs.to_string() if hasattr(src_crs, 'to_string') else str(src_crs)
-    if target == gis.EPSG_LATLON:
+    if not src_crs or is_same_crs(src_crs, gis.EPSG_LATLON):
         return geom
     return (
         gpd.GeoSeries([geom], crs=gis.EPSG_LATLON)
-        .to_crs(target)
+        .to_crs(pyproj.CRS.from_user_input(src_crs))
         .iloc[0]
     )
 
@@ -248,11 +253,13 @@ def stream_filtered_gdf(
         # Build the transformer once per file: a per-row GeoDataFrame.to_crs()
         # constructs a new one for every feature.
         transform = None
-        if src.crs and src.crs.to_string() != crs:
+        if src.crs and not is_same_crs(src.crs, crs):
             transform = pyproj.Transformer.from_crs(pyproj.CRS.from_user_input(src.crs), crs, always_xy=True).transform
 
         for feat in iterable:
-            geometry = shape(feat['geometry'])
+            # Nothing we import needs Z, so every row is 2D regardless of
+            # whether it's reprojected.
+            geometry = shapely.force_2d(shape(feat['geometry']))
             props = dict(feat['properties'])
 
             if string_fields is True:
