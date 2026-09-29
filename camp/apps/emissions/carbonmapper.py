@@ -22,12 +22,16 @@ from datetime import date
 import requests
 from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
-from django.contrib.gis.geos import Point
+from django.contrib.gis.geos import Point, Polygon
 from django.contrib.gis.measure import D
+from django.core.files.base import ContentFile
 from django.db import transaction
+from django.utils.dateparse import parse_datetime
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from camp.apps.emissions import dairies
-from camp.apps.emissions.models import Dairy, DairyHerd, Facility, MethaneSource, SourceImport
+from camp.apps.emissions.models import Dairy, DairyHerd, Facility, MethaneSource, MethanePlume, SourceImport
 from camp.apps.regions.models import Region
 
 URL = 'https://api.carbonmapper.org/api/v1/catalog/sources-csv'
@@ -36,6 +40,14 @@ SOURCE = 'carbon-mapper'
 MATCH_METERS = 1000
 # The index prefilter around a source, in degrees (a little over 1 km of latitude).
 COARSE_DEGREES = 0.012
+
+# Plumes: the annotated catalog is paginated, not a single CSV.
+PLUMES_URL = 'https://api.carbonmapper.org/api/v1/catalog/plumes/annotated'
+PLUME_PAGE_SIZE = 500
+# A plume's payload carries no source id -- matched to the nearest
+# MethaneSource within the same radius sources are matched to a dairy or
+# facility (MATCH_METERS; the "1000m" in a source_name's own eps).
+PLUME_MATCH_METERS = MATCH_METERS
 COLUMNS = (
     'source_name', 'source_latitude', 'source_longitude', 'gas', 'observation_date_count',
     'detection_date_count', 'source_persistence', 'source_emission', 'source_emission_uncertainty', 'ipcc_sector',
@@ -226,4 +238,187 @@ def apply(rows):
         )
     methane.clear_caches()
     dairies.clear_caches()
+    return report
+
+
+def _bearer_headers():
+    headers = {}
+    if settings.CARBON_MAPPER_API_KEY:
+        headers['Authorization'] = f'Bearer {settings.CARBON_MAPPER_API_KEY}'
+    return headers
+
+
+def fetch_plumes_page(limit, offset):
+    """One page of the plumes/annotated catalog for BBOX: published, CH4 plumes only. The one listing network call; tests patch it."""
+    params = {
+        'bbox': list(BBOX), 'plume_gas': MethaneSource.Gas.CH4,
+        'status': 'published', 'limit': limit, 'offset': offset,
+    }
+    response = requests.get(PLUMES_URL, params=params, headers=_bearer_headers(), timeout=120)
+    response.raise_for_status()
+    return response.json()
+
+
+def fetch_all_plumes():
+    """Every published CH4 plume for BBOX, paged in order; the API's own bbox_count bounds the loop."""
+    items = []
+    offset = 0
+    while True:
+        page = fetch_plumes_page(PLUME_PAGE_SIZE, offset)
+        page_items = page.get('items') or []
+        items.extend(page_items)
+        offset += len(page_items)
+        if not page_items or offset >= (page.get('bbox_count') or 0):
+            break
+    return items
+
+
+def _image_session():
+    session = requests.Session()
+    retry = Retry(total=3, backoff_factor=0.5, status_forcelist=(429, 500, 502, 503, 504))
+    session.mount('https://', HTTPAdapter(max_retries=retry))
+    return session
+
+
+def fetch_plume_image(url, session=None):
+    """
+    The plume PNG's bytes for a (signed, short-lived) `url`, or None on
+    failure -- a failed image download is counted and skipped, never fatal.
+    Never logs the url: it's a signed S3 link.
+    """
+    session = session or _image_session()
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+    except requests.RequestException:
+        return None
+    return response.content
+
+
+def parse_plume(item):
+    """A MethanePlume's field values plus '_image_url' (popped before saving), or None for anything not worth keeping."""
+    plume_id = (item.get('plume_id') or '').strip()[:64]
+    if not plume_id:
+        return None
+    if (item.get('gas') or '').strip().upper() != MethaneSource.Gas.CH4:
+        return None
+    if (item.get('status') or '').strip().lower() != 'published' or item.get('hide_emission'):
+        return None
+    coords = (item.get('geometry_json') or {}).get('coordinates') or []
+    lng = _float(coords[0]) if len(coords) > 0 else None
+    lat = _float(coords[1]) if len(coords) > 1 else None
+    if lng is None or lat is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return None
+    bounds = item.get('plume_bounds') or []
+    if len(bounds) != 4:
+        return None
+    west, south, east, north = (_float(value) for value in bounds)
+    if None in (west, south, east, north):
+        return None
+    observed_at = parse_datetime(item.get('scene_timestamp') or '')
+    if observed_at is None:
+        return None
+    bounds = Polygon.from_bbox((west, south, east, north))
+    bounds.srid = 4326
+    return {
+        'plume_id': plume_id,
+        'observed_at': observed_at,
+        'platform': (item.get('platform') or '').strip()[:32],
+        'instrument': (item.get('instrument') or '').strip()[:16],
+        'point': Point(lng, lat, srid=4326),
+        'bounds': bounds,
+        'emission_kg_h': _float(item.get('emission_auto')),
+        'uncertainty_kg_h': _float(item.get('emission_uncertainty_auto')),
+        'wind_speed': _float(item.get('wind_speed_avg_auto')),
+        'wind_direction': _float(item.get('wind_direction_avg_auto')),
+        '_image_url': (item.get('plume_png') or '').strip(),
+    }
+
+
+@dataclass
+class PlumeReport:
+    fetched: int = 0
+    skipped: int = 0
+    created: int = 0
+    updated: int = 0
+    deleted: int = 0
+    matched: int = 0
+    images_fetched: int = 0
+    images_failed: int = 0
+
+    def lines(self):
+        return [
+            f'Carbon Mapper plumes: {self.fetched:,} rows; {self.skipped:,} unparseable, unpublished, hidden, or duplicate.',
+            f'{self.created:,} created, {self.updated:,} updated, {self.deleted:,} removed (no longer in the catalog); '
+            f'{self.matched:,} linked to a source within {PLUME_MATCH_METERS:,} m.',
+            f'{self.images_fetched:,} images fetched, {self.images_failed:,} failed.',
+        ]
+
+
+def _save_plume_image(plume, image_bytes, filename):
+    """
+    Uploads the image to storage first and returns the stored name, without
+    touching the row -- mirrors tempo/sync.py's sync_granule ordering, so a
+    failed upload never strands a plume pointing at a name that was never
+    written. `plume` need not be saved yet; generate_filename only reads its
+    fields (observed_at, for the upload path).
+    """
+    name = plume.image.field.generate_filename(plume, filename)
+    return plume.image.storage.save(name, ContentFile(image_bytes))
+
+
+def apply_plumes(items):
+    """
+    Upsert every published, non-hidden CH4 plume in `items` on plume_id,
+    link each to the nearest MethaneSource within PLUME_MATCH_METERS (the
+    catalog's plume payload carries no source id), delete plumes no longer
+    returned (and their image files), and fetch the PNG for any plume that's
+    new or still has no image -- never re-downloading one already on file.
+    Every image is uploaded before its row is written or updated. `items` is
+    the whole bbox: a partial list would delete the rest.
+    """
+    report = PlumeReport(fetched=len(items))
+    sources = MethaneSource.objects.filter(gas=MethaneSource.Gas.CH4)
+    session = _image_session()
+    existing = {plume.plume_id: plume for plume in MethanePlume.objects.all()}
+    seen = set()
+    prepared = []
+    for raw in items:
+        values = parse_plume(raw)
+        if values is None or values['plume_id'] in seen:
+            report.skipped += 1
+            continue
+        image_url = values.pop('_image_url')
+        seen.add(values['plume_id'])
+        source_pk, _ = nearest(sources, values['point'])
+        values['source_id'] = source_pk
+        report.matched += source_pk is not None
+
+        plume = existing.get(values['plume_id']) or MethanePlume(plume_id=values['plume_id'])
+        for field, value in values.items():
+            setattr(plume, field, value)
+
+        image_name = None
+        if image_url and not plume.image:
+            image_bytes = fetch_plume_image(image_url, session=session)
+            if image_bytes is None:
+                report.images_failed += 1
+            else:
+                image_name = _save_plume_image(plume, image_bytes, f'{plume.plume_id}.png')
+                report.images_fetched += 1
+        prepared.append((plume, image_name))
+
+    with transaction.atomic():
+        for plume, image_name in prepared:
+            if image_name:
+                plume.image.name = image_name
+            is_new = plume.pk is None
+            plume.save()
+            report.created += is_new
+            report.updated += not is_new
+        stale = MethanePlume.objects.exclude(plume_id__in=seen)
+        for plume in stale:
+            if plume.image:
+                plume.image.delete(save=False)
+        report.deleted, _ = stale.delete()
     return report

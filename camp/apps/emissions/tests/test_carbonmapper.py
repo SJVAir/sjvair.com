@@ -3,9 +3,19 @@ data/carbon-mapper-sources.csv is the header and the first eight data rows
 of the real sources CSV for the Valley bbox, fetched 2026-09-29 (Task 2
 Step 2). It pins the column names and value shapes; the match tests build
 their own rows near the fixture's facilities and dairies with `row()`.
+
+data/carbon-mapper-plumes.json is a trimmed real page (4 items) of
+/catalog/plumes/annotated for the same bbox, fetched the same day; its
+image URLs are scrubbed to a placeholder (they're signed and expire in
+~a day, so the real values are worthless -- and never worth committing).
+data/sample-plume.png is one real plume PNG (115x115, ~2KB) saved from
+that page, used to stand in for every downloaded image. The match/image
+tests build their own items near the fixture's facilities and dairies
+with `plume_item()`.
 """
 import csv
 import io
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -16,14 +26,16 @@ from django.contrib.gis.geos import Point
 from django.core.cache import cache
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from camp.apps.emissions import carbonmapper, dairies, methane
-from camp.apps.emissions.models import Facility, MethaneSource, SourceImport
+from camp.apps.emissions.models import Facility, MethanePlume, MethaneSource, SourceImport
 from camp.apps.emissions.tests.test_dairies import make_dairies
 from camp.apps.regions.models import Region
 
 SAMPLE = Path(__file__).parent / 'data' / 'carbon-mapper-sources.csv'
+SAMPLE_PLUMES = Path(__file__).parent / 'data' / 'carbon-mapper-plumes.json'
+SAMPLE_PNG = (Path(__file__).parent / 'data' / 'sample-plume.png').read_bytes()
 
 # TEST PLANT is at (-119.787, 36.737), BIG DAIRY at (-119.785, 36.735).
 NEAR_BOTH = (-119.786, 36.736)          # ~130 m from each
@@ -49,6 +61,31 @@ def csv_text(rows):
     writer.writeheader()
     writer.writerows(rows)
     return out.getvalue()
+
+
+def plume_item(plume_id='tan-test-A', lnglat=NEAR_BOTH, gas='CH4', status='published', hidden=False,
+                sector='4B', platform='Tanager', instrument='tan', scene_timestamp='2026-08-23T20:09:09.630Z',
+                rate=120.5, unc=40.2, wind_speed=2.5, wind_dir=38.6, bounds=None, image_url=None, **overrides):
+    """A plumes/annotated item shaped like the real API's PlumeAnnotatedOut, near a `row()` source by default."""
+    lng, lat = lnglat
+    if bounds is None:
+        bounds = [lng - 0.01, lat - 0.01, lng + 0.01, lat + 0.01]
+    if image_url is None:
+        image_url = f'https://catalog.carbonmapper.org/sample/{plume_id}/plume.png?Expires=0&Signature=test'
+    item = {
+        'id': f'uuid-{plume_id}', 'plume_id': plume_id, 'gas': gas,
+        'geometry_json': {'type': 'Point', 'coordinates': [lng, lat]},
+        'scene_id': f'scene-{plume_id}', 'scene_timestamp': scene_timestamp,
+        'instrument': instrument, 'platform': platform,
+        'emission_auto': rate, 'emission_uncertainty_auto': unc,
+        'plume_png': image_url,
+        'plume_bounds': bounds,
+        'wind_speed_avg_auto': wind_speed, 'wind_direction_avg_auto': wind_dir,
+        'sector': sector, 'status': status, 'hide_emission': hidden,
+        'published_at': '2026-09-22T20:19:17.504Z',
+    }
+    item.update(overrides)
+    return item
 
 
 class ParseTests(TestCase):
@@ -87,6 +124,45 @@ class ParseTests(TestCase):
         # Carbon Mapper also sends a bare 'Other' and 'NA' (not attributed), with no code.
         assert carbonmapper.parse_row(row(sector='Other'))['sector_label'] == 'Other'
         assert carbonmapper.parse_row(row(sector='NA'))['sector_label'] == 'Not attributed'
+
+
+class ParsePlumeTests(TestCase):
+    def test_the_real_page(self):
+        items = json.loads(SAMPLE_PLUMES.read_text())['items']
+        assert len(items) == 4
+        parsed = [carbonmapper.parse_plume(item) for item in items]
+        assert all(p is not None for p in parsed)
+        first = parsed[0]
+        assert set(first) == {'plume_id', 'observed_at', 'platform', 'instrument', 'point', 'bounds',
+                              'emission_kg_h', 'uncertainty_kg_h', 'wind_speed', 'wind_direction', '_image_url'}
+        assert first['point'].srid == 4326 and -122 < first['point'].x < -118 and 34 < first['point'].y < 39
+        assert first['bounds'].srid == 4326
+        assert first['_image_url'].startswith('https://')
+
+    def test_parse_plume_shapes(self):
+        parsed = carbonmapper.parse_plume(plume_item())
+        assert parsed['plume_id'] == 'tan-test-A'
+        assert (parsed['emission_kg_h'], parsed['uncertainty_kg_h']) == (120.5, 40.2)
+        assert (parsed['wind_speed'], parsed['wind_direction']) == (2.5, 38.6)
+        assert parsed['point'].x == NEAR_BOTH[0] and parsed['point'].y == NEAR_BOTH[1]
+        west, south, east, north = parsed['bounds'].extent
+        expected = plume_item()['plume_bounds']
+        assert [west, south, east, north] == pytest.approx(expected)
+        assert parsed['observed_at'].year == 2026
+
+    def test_skips_a_non_published_or_hidden_plume(self):
+        assert carbonmapper.parse_plume(plume_item(status='valid')) is None
+        assert carbonmapper.parse_plume(plume_item(status='publish_ready')) is None
+        assert carbonmapper.parse_plume(plume_item(hidden=True)) is None
+
+    def test_skips_wrong_gas_and_missing_fields(self):
+        assert carbonmapper.parse_plume(plume_item(gas='CO2')) is None
+        assert carbonmapper.parse_plume(plume_item(plume_id='')) is None
+        assert carbonmapper.parse_plume(plume_item(bounds=[1, 2, 3])) is None
+        assert carbonmapper.parse_plume(plume_item(scene_timestamp='')) is None
+        item = plume_item()
+        item['geometry_json'] = {'type': 'Point', 'coordinates': []}
+        assert carbonmapper.parse_plume(item) is None
 
 
 class ApplyTests(TestCase):
@@ -159,19 +235,160 @@ class CommandTests(TestCase):
 
     def test_fetches_and_reports(self):
         with patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([row(), row(name='co2', gas='CO2')])):
-            call_command('import_carbon_mapper')
+            call_command('import_carbon_mapper', no_plumes=True)
         assert MethaneSource.objects.count() == 1
 
     def test_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, 'sources.csv')
             Path(path).write_text(csv_text([row(name='p')]))
-            call_command('import_carbon_mapper', path=path)
+            call_command('import_carbon_mapper', path=path, no_plumes=True)
         assert MethaneSource.objects.filter(source_name='p').exists()
 
     def test_an_empty_feed_changes_nothing(self):
         carbonmapper.apply([row()])
         with patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([])):
             with pytest.raises(CommandError, match='no sources'):
-                call_command('import_carbon_mapper')
+                call_command('import_carbon_mapper', no_plumes=True)
         assert MethaneSource.objects.count() == 1
+
+    def test_no_plumes_skips_the_plume_step(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([row()])), \
+                patch('camp.apps.emissions.carbonmapper.fetch_all_plumes') as fetch_plumes:
+            call_command('import_carbon_mapper', no_plumes=True)
+        fetch_plumes.assert_not_called()
+        assert MethanePlume.objects.count() == 0
+
+    def test_plumes_are_imported_after_sources(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root), \
+                patch('camp.apps.emissions.carbonmapper.fetch_csv', return_value=csv_text([row()])), \
+                patch('camp.apps.emissions.carbonmapper.fetch_all_plumes', return_value=[plume_item()]), \
+                patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            call_command('import_carbon_mapper')
+        assert MethaneSource.objects.count() == 1
+        plume = MethanePlume.objects.get(plume_id='tan-test-A')
+        assert plume.source == MethaneSource.objects.get()
+        assert plume.image.name
+
+
+class ApplyPlumesTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        self.tmp = tempfile.mkdtemp()
+        self._media_root = override_settings(MEDIA_ROOT=self.tmp)
+        self._media_root.enable()
+        self.addCleanup(self._media_root.disable)
+        fresno = Region.objects.get(type=Region.Type.COUNTY, slug='fresno')
+        # Beside TEST PLANT (-119.787, 36.737); NEAR_BOTH is ~130m away.
+        self.source = MethaneSource.objects.create(
+            source_name='CH4_4B_1000m_-119.787_36.737', gas=MethaneSource.Gas.CH4,
+            point=Point(-119.787, 36.737, srid=4326), ipcc_sector='4B', sector_label='Livestock', county=fresno,
+        )
+
+    def test_import_creates_links_and_fetches_the_image(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG) as fetch_image:
+            report = carbonmapper.apply_plumes([plume_item()])
+        fetch_image.assert_called_once()
+        plume = MethanePlume.objects.get(plume_id='tan-test-A')
+        assert plume.source == self.source
+        assert plume.image.name and plume.image.storage.exists(plume.image.name)
+        assert plume.image.read() == SAMPLE_PNG
+        assert (report.created, report.matched, report.images_fetched, report.images_failed) == (1, 1, 1, 0)
+
+    def test_a_far_plume_is_unmatched(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            report = carbonmapper.apply_plumes([plume_item(plume_id='far', lnglat=OFFSHORE)])
+        plume = MethanePlume.objects.get(plume_id='far')
+        assert plume.source is None
+        assert report.matched == 0
+
+    def test_a_failed_image_download_is_counted_not_fatal(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=None):
+            report = carbonmapper.apply_plumes([plume_item()])
+        plume = MethanePlume.objects.get(plume_id='tan-test-A')
+        assert not plume.image
+        assert (report.created, report.images_fetched, report.images_failed) == (1, 0, 1)
+
+    def test_an_image_already_on_file_is_never_refetched(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG) as fetch_image:
+            carbonmapper.apply_plumes([plume_item()])
+            assert fetch_image.call_count == 1
+            report = carbonmapper.apply_plumes([plume_item(rate=999)])
+            assert fetch_image.call_count == 1  # not called again
+        plume = MethanePlume.objects.get(plume_id='tan-test-A')
+        assert plume.emission_kg_h == 999
+        assert report.updated == 1 and report.images_fetched == 0
+
+    def test_hidden_and_unpublished_plumes_are_skipped(self):
+        report = carbonmapper.apply_plumes([
+            plume_item(plume_id='hidden', hidden=True), plume_item(plume_id='not-published', status='valid'),
+        ])
+        assert MethanePlume.objects.count() == 0
+        assert (report.fetched, report.skipped) == (2, 2)
+
+    def test_duplicate_plume_id_in_a_page_keeps_the_first(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            report = carbonmapper.apply_plumes([plume_item(rate=100), plume_item(rate=999)])
+        assert MethanePlume.objects.count() == 1
+        assert MethanePlume.objects.get().emission_kg_h == 100
+        assert report.skipped == 1
+
+    def test_removed_plumes_are_deleted_with_their_files(self):
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            carbonmapper.apply_plumes([plume_item(plume_id='a'), plume_item(plume_id='b')])
+        b = MethanePlume.objects.get(plume_id='b')
+        image_name, storage = b.image.name, b.image.storage
+        assert storage.exists(image_name)
+        with patch('camp.apps.emissions.carbonmapper.fetch_plume_image', return_value=SAMPLE_PNG):
+            report = carbonmapper.apply_plumes([plume_item(plume_id='a')])
+        assert report.deleted == 1
+        assert not MethanePlume.objects.filter(plume_id='b').exists()
+        assert not storage.exists(image_name)
+
+
+class FetchPlumesTests(TestCase):
+    def test_pages_until_bbox_count_is_reached(self):
+        page1 = {'bbox_count': 3, 'items': [plume_item(plume_id='a'), plume_item(plume_id='b')]}
+        page2 = {'bbox_count': 3, 'items': [plume_item(plume_id='c')]}
+        with patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, page2]) as fetch_page:
+            items = carbonmapper.fetch_all_plumes()
+        assert [item['plume_id'] for item in items] == ['a', 'b', 'c']
+        assert fetch_page.call_count == 2
+        assert fetch_page.call_args_list[1].args == (carbonmapper.PLUME_PAGE_SIZE, 2)
+
+    def test_stops_on_an_empty_page(self):
+        page1 = {'bbox_count': 10, 'items': [plume_item(plume_id='a')]}
+        empty = {'bbox_count': 10, 'items': []}
+        with patch('camp.apps.emissions.carbonmapper.fetch_plumes_page', side_effect=[page1, empty]):
+            items = carbonmapper.fetch_all_plumes()
+        assert [item['plume_id'] for item in items] == ['a']
+
+    def test_fetch_plumes_page_sends_the_bearer_key_and_never_the_url_beyond_that(self):
+        with patch('camp.apps.emissions.carbonmapper.settings') as mock_settings, \
+                patch('camp.apps.emissions.carbonmapper.requests.get') as mock_get:
+            mock_settings.CARBON_MAPPER_API_KEY = 'secret-key'
+            mock_get.return_value.raise_for_status.return_value = None
+            mock_get.return_value.json.return_value = {'items': [], 'bbox_count': 0}
+            carbonmapper.fetch_plumes_page(10, 0)
+        _args, kwargs = mock_get.call_args
+        assert kwargs['headers']['Authorization'] == 'Bearer secret-key'
+        assert kwargs['params']['status'] == 'published'
+
+
+class FetchPlumeImageTests(TestCase):
+    def test_returns_the_bytes(self):
+        session = type('S', (), {})()
+        response = type('R', (), {'content': SAMPLE_PNG, 'raise_for_status': lambda self: None})()
+        session.get = lambda *a, **k: response
+        assert carbonmapper.fetch_plume_image('https://example.com/x.png', session=session) == SAMPLE_PNG
+
+    def test_a_request_failure_returns_none_not_an_exception(self):
+        import requests
+
+        class FailingSession:
+            def get(self, *a, **k):
+                raise requests.RequestException('boom')
+
+        assert carbonmapper.fetch_plume_image('https://example.com/x.png', session=FailingSession()) is None

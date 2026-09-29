@@ -921,3 +921,67 @@ class MethaneSource(models.Model):
         if self.uncertainty_kg_h is not None:
             text += f' ± {self.uncertainty_kg_h:,.0f}'
         return f'{text} kg/h'
+
+
+def methane_plume_upload_to(instance, filename):
+    # Partitioned by year/month, matching tempo's granule_preview_upload_to
+    # precedent -- otherwise a monthly, indefinite-retention import piles
+    # everything into one flat, ever-growing S3 prefix.
+    return '/'.join([
+        'emissions', 'methane-plumes',
+        f'{instance.observed_at.year}',
+        f'{instance.observed_at.month:02d}',
+        filename,
+    ])
+
+
+class MethanePlume(models.Model):
+    """
+    One detection behind a MethaneSource, from Carbon Mapper's public plume
+    catalog (`/catalog/plumes/annotated`): a single aircraft/satellite pass's
+    view of a release, with the small plume image Carbon Mapper renders for
+    it. A source's plumes are what its emission rate is estimated from.
+
+    The catalog's plume payload carries no source id, so `source` is set by
+    import_carbon_mapper the same way a MethaneSource is matched to a dairy
+    or facility: the nearest MethaneSource within MATCH_METERS of the
+    plume's point (carbonmapper.py's `nearest`). A plume can be left
+    unmatched (source NULL) when nothing is that close.
+
+    Licence: Carbon Mapper's custom non-commercial terms, same as
+    MethaneSource (see its docstring) -- every rendering carries
+    MethaneSource.ATTRIBUTION.
+    """
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.MethanePlume'))
+    plume_id = models.CharField(_('Plume id'), max_length=64, unique=True)
+    source = models.ForeignKey(
+        MethaneSource, verbose_name=_('Source'), null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='plumes',
+    )
+    observed_at = models.DateTimeField(_('Observed at'))
+    platform = models.CharField(_('Platform'), max_length=32, blank=True)
+    instrument = models.CharField(_('Instrument'), max_length=16, blank=True)
+    point = models.PointField(_('Point'))
+    # Carbon Mapper's plume_bounds, the box a MapLibre image source uses to
+    # place the PNG on the map.
+    bounds = models.PolygonField(_('Bounds'), srid=4326)
+    emission_kg_h = models.FloatField(_('Emission rate (kg/h)'), null=True, blank=True)
+    uncertainty_kg_h = models.FloatField(_('Emission uncertainty (kg/h)'), null=True, blank=True)
+    wind_speed = models.FloatField(_('Wind speed'), null=True, blank=True)
+    wind_direction = models.FloatField(_('Wind direction'), null=True, blank=True)
+    image = models.ImageField(_('Plume image'), upload_to=methane_plume_upload_to, blank=True)
+    fetched_at = models.DateTimeField(_('Fetched at'), auto_now=True)
+
+    class Meta:
+        ordering = ['-observed_at']
+        indexes = [models.Index(fields=['source', '-observed_at'])]
+
+    def __str__(self):
+        return self.plume_id
+
+    @property
+    def bounds_bbox(self):
+        """[west, south, east, north], as Carbon Mapper's plume_bounds gives it."""
+        west, south, east, north = self.bounds.extent
+        return [west, south, east, north]
