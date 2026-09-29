@@ -68,6 +68,32 @@ class FacilityTests(TestCase):
         facility.refresh_from_db()
         assert facility.point is None
 
+    def test_point_source_choices_and_trust(self):
+        plant = Facility.objects.get(name='TEST PLANT')
+        assert plant.point_source == Facility.PointSource.CENSUS
+        assert plant.has_trusted_point
+        cement = Facility.objects.get(name='TEST CEMENT')
+        assert cement.point_source == Facility.PointSource.CARB and cement.has_trusted_point
+        station = Facility.objects.get(name='TEST GAS STATION')
+        assert station.point_source == Facility.PointSource.MAPTILER and not station.has_trusted_point
+        station.point_source = Facility.PointSource.LEGACY
+        assert not station.has_trusted_point
+        station.point = None
+        station.point_source = Facility.PointSource.CENSUS
+        assert not station.has_trusted_point  # no point, whatever the source says
+        assert Facility._meta.get_field('point_source').default == ''
+
+    def test_geocode_records_the_geocoder(self):
+        facility = Facility.objects.get(pk=2)
+        point = Point(-119.0, 35.4, srid=4326)
+        with patch('camp.utils.geocode.census', return_value=point):
+            assert facility.geocode() is True
+        assert facility.point_source == Facility.PointSource.CENSUS
+        with patch('camp.utils.geocode.census', return_value=None):
+            with patch('camp.utils.geocode.maptiler', return_value=point):
+                assert facility.geocode() is True
+        assert facility.point_source == Facility.PointSource.MAPTILER
+
 
 class EmissionsRecordTests(TestCase):
     fixtures = ['regions.yaml', 'emissions.yaml']

@@ -77,6 +77,18 @@ class Facility(TimeStampedModel):
         COMMERCIAL = 'commercial', _('Commercial & services')
         OTHER = 'other', _('Other')
 
+    # Where the map point came from. Only a Census street match or CARB's own
+    # coordinates (pmt.py) are trusted for anything that measures from the
+    # point (the schools card): a MapTiler result can be a city centroid, and
+    # `legacy` is a point from before this field existed, provenance unknown.
+    class PointSource(models.TextChoices):
+        CENSUS = 'census', _('Census street match')
+        CARB = 'carb', _('CARB coordinates')
+        MAPTILER = 'maptiler', _('MapTiler')
+        LEGACY = 'legacy', _('Legacy (unknown)')
+
+    TRUSTED_POINT_SOURCES = (PointSource.CENSUS, PointSource.CARB)
+
     objects = FacilityManager()
     sqid = SqidsField(alphabet=shuffle_alphabet('emissions.Facility'))
 
@@ -135,6 +147,7 @@ class Facility(TimeStampedModel):
     )
 
     point = models.PointField(_('Point'), null=True, blank=True)
+    point_source = models.CharField(_('Point source'), max_length=16, choices=PointSource.choices, blank=True, default='')
 
     class Meta:
         unique_together = [('county_code', 'air_district', 'facid')]
@@ -156,6 +169,11 @@ class Facility(TimeStampedModel):
     def is_minor_source(self):
         return self.sic_code in MINOR_SOURCE_SIC_CODES
 
+    @property
+    def has_trusted_point(self):
+        """A point we'd measure from: one that exists and came from Census or CARB."""
+        return self.point is not None and self.point_source in self.TRUSTED_POINT_SOURCES
+
     def get_absolute_url(self):
         return reverse('emissions:facility-detail', kwargs={
             'sqid': self.sqid,
@@ -164,16 +182,20 @@ class Facility(TimeStampedModel):
 
     def geocode(self):
         """
-        Geocodes the facility address, trying Census first then MapTiler.
-        Sets self.point on success. Returns True/False. Does not save.
+        Geocodes the facility address, trying Census first then MapTiler, and
+        records which one answered in point_source. Sets self.point on success.
+        Returns True/False. Does not save.
         """
         street = self.address.get('street', '')
         city = self.address.get('city', '')
         zipcode = self.address.get('zipcode', '')
-        point = _geocode.resolve(f'{street}, {city}, CA {zipcode}')
-        if point:
-            self.point = point
-            return True
+        query = f'{street}, {city}, CA {zipcode}'
+        for source, geocoder in ((self.PointSource.CENSUS, _geocode.census), (self.PointSource.MAPTILER, _geocode.maptiler)):
+            point = geocoder(query)
+            if point:
+                self.point = point
+                self.point_source = source
+                return True
         return False
 
 

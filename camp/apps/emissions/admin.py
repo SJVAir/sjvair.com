@@ -115,8 +115,8 @@ class SourceImportAdmin(ReadOnlyAdminMixin, base_admin.ModelAdmin):
 
 @admin.register(Facility)
 class FacilityAdmin(MapFigureMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
-    list_display = ['name', 'get_county', 'air_district', 'get_city', 'get_zipcode', 'sic_code', 'sector', 'is_minor_source', 'has_point', 'latest_year']
-    list_filter = [CountyFilter, 'air_district', 'sector', EmissionsYearFilter, SourceTypeFilter]
+    list_display = ['name', 'get_county', 'air_district', 'get_city', 'get_zipcode', 'sic_code', 'sector', 'is_minor_source', 'has_point', 'point_source', 'latest_year']
+    list_filter = [CountyFilter, 'air_district', 'sector', EmissionsYearFilter, SourceTypeFilter, 'point_source']
     search_fields = ['name', 'address__street', 'address__city']
     readonly_fields = ['sqid', 'county_code', 'air_district', 'facid', 'name', 'sic_code', 'sector', 'metadata_year', 'address', 'point', 'get_county_display', 'get_city_display', 'get_zipcode_display']
     inlines = [EmissionsRecordInline, ToxicEmissionInline]
@@ -203,7 +203,7 @@ class FacilityAdmin(MapFigureMixin, ReadOnlyAdminMixin, admin.GISModelAdmin):
         failed = 0
         for facility in queryset:
             if facility.geocode():
-                facility.save(update_fields=['point'])
+                facility.save(update_fields=['point', 'point_source'])
                 success += 1
             else:
                 failed += 1
