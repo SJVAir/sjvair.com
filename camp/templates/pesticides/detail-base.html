@@ -46,7 +46,7 @@ doesn't render as one row of content beside ten and a screen of whitespace.
                 {% endif %}
             </div>
         </div>
-        <p class="mt-4"><a href="{{ records_url }}">Browse these {{ totals.applications|default:0|intcomma }} applications</a></p>
+        <p class="mt-4"><a class="button is-link is-light" href="{{ records_url }}"><span class="icon"><span class="fas fa-table-list"></span></span><span>Browse these {{ totals.applications|default:0|intcomma }} applications</span></a></p>
     {% else %}
         <p class="has-text-grey">No confirmed applications on record{% if years %} for {{ years.0 }}–{{ years.1 }}{% endif %}.</p>
     {% endif %}

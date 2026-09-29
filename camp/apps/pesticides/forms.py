@@ -4,7 +4,7 @@ from django.core.cache import cache
 from django.utils.translation import gettext_lazy as _
 
 from camp.apps.pesticides.models import Chemical, FumigationMethod, PesticideNotice, PesticideUse
-from camp.apps.pesticides.stats import METHOD_LABELS, METHOD_ORDER
+from camp.apps.pesticides.stats import METHOD_LABELS, METHOD_ORDER, NOTICE_METHOD_LABELS
 from camp.apps.pesticides.places import RADIUS_CHOICES as RADIUS_MILES
 
 # Blank is "no filter" in a select, so records CDPR left without a method get
@@ -83,7 +83,7 @@ class NoticeFilterForm(forms.Form):
                 .distinct()
             )
             cache.set('pesticides:notice-methods', methods, 60 * 60)
-        self.fields['method'].choices = [('', _('Any'))] + [(method, method) for method in sorted(methods)]
+        self.fields['method'].choices = [('', _('Any'))] + [(method, NOTICE_METHOD_LABELS.get(method, method)) for method in sorted(methods)]
 
 
 class RecordsFilterForm(forms.Form):

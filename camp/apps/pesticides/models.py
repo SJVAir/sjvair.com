@@ -183,8 +183,8 @@ class Chemical(TimeStampedModel):
 
     @property
     def other_categories(self):
-        """Categories not already expressed by the Prop 65 / CARB TAC badges."""
-        implied = self.PROP65_CATEGORIES | {self.Category.TOXIC_AIR_CONTAMINANT}
+        """Categories not already expressed by the Prop 65 / CARB TAC / Restricted badges."""
+        implied = self.PROP65_CATEGORIES | {self.Category.TOXIC_AIR_CONTAMINANT, self.Category.CALIFORNIA_RESTRICTED}
         return [c for c in (self.categories or []) if c not in implied]
 
     @property

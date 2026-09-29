@@ -87,15 +87,18 @@
     <p class="mt-2 mb-0"><a href="{{ spraydays_url }}" target="_blank" rel="noopener">Sign up for SprayDays notices</a> to be alerted before applications happen near you.</p>
 </div>
 
-<div class="columns mt-6">
-    <section class="column is-5-desktop trend-section">
-        <h2 class="title is-4">By year</h2>
+{# One section, with each chart labelled by its own title: an h2 per column #}
+{# repeated what the chart title under it said. How it was applied sits under #}
+{# the trend, where a row of its own left 40% of the page empty. #}
+<section class="over-time mt-6">
+<h2 class="title is-4">Over time</h2>
+<div class="columns">
+    <div class="column is-5-desktop trend-section">
         {% trend_chart by_year year compare=compare_by_year compare_label=compare_label %}
-    </section>
-    <section class="column is-7-desktop season-section">
-        <h2 class="title is-4">By month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
+        {% if by_method %}<div class="by-method mt-5">{% include 'pesticides/includes/method-breakdown.html' %}</div>{% endif %}
+    </div>
+    <div class="column is-7-desktop season-section">
         {% if by_month %}
-            {% if peak_month %}<p class="mb-3">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
             {# The heatmap's top row is the same year the bars drew, so only #}
             {# one of them runs. The bars are the fallback for a place with a #}
             {# single year loaded, where a one-row grid would say less. #}
@@ -104,17 +107,14 @@
             {% else %}
                 {% month_chart by_month year_label %}
             {% endif %}
+            {# Under the chart, so both columns open on their chart titles. #}
+            {% if peak_month %}<p class="mt-3">Spraying peaks in {{ peak_month }} here.</p>{% endif %}
         {% else %}
             <p class="has-text-grey">No confirmed applications on record{% if year_label %} for {{ year_label }}{% endif %}.</p>
         {% endif %}
-    </section>
+    </div>
 </div>
-
-{% if by_method %}
-<section class="by-method mt-6">
-    <div class="columns"><div class="column is-7-desktop">{% include 'pesticides/includes/method-breakdown.html' %}</div></div>
 </section>
-{% endif %}
 
 {# Directly under the trend it explains: "Down 2% since 2022" and the #}
 {# chemicals that account for it used to sit 800px apart. Full width because #}
@@ -122,7 +122,7 @@
 {# first thing to get cut off. #}
 {% if movers %}
 <section class="movers-section mt-6">
-    <h2 class="title is-4">What moved most</h2>
+    {# The card's own title names it and the years; an h2 above said it twice. #}
     {% include 'pesticides/includes/movers.html' with title='Biggest movers' kind='chemicals' %}
 </section>
 {% endif %}

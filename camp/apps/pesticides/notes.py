@@ -60,7 +60,9 @@ def keys_for_chemical(chemical):
         keys.append('carb_tac')
     if chemical.iarc_group:
         keys.append(f'iarc_{chemical.iarc_group.lower()}')
-    for category in chemical.other_categories:
+    # All categories, not other_categories: restricted has a badge of its own
+    # but still gets its note.
+    for category in chemical.categories or []:
         if category in _CATEGORY_NOTE_KEYS and category not in keys:
             keys.append(category)
     return keys

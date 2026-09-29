@@ -1,7 +1,7 @@
 {% comment %}Shared by the section page and the map page's section panel; context from views.section_summary() plus upcoming/upcoming_days/upcoming_count and year_label.{% endcomment %}
 {% load pesticides_explorer %}
 <section class="month-bars-section mt-6">
-    <h2 class="title is-4">Pounds applied by month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
+    <h2 class="title is-4">Lbs applied by month{% if year_label %} <small class="has-text-grey is-size-6">{{ year_label }}</small>{% endif %}</h2>
     {% if totals.applications and by_month %}
         {% month_chart by_month year_label %}
         {% if peak_month %}<p class="mt-2">Spraying here peaks in {{ peak_month }}.</p>{% endif %}
@@ -22,7 +22,7 @@
 {% endif %}
 
 <section class="by-year mt-6">
-    <h2 class="title is-4">Applications by year</h2>
+    <h2 class="title is-4">By year</h2>
     {% if by_year %}
         {% include 'pesticides/includes/by-year-table.html' %}
     {% else %}

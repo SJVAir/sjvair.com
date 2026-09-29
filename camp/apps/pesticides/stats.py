@@ -312,6 +312,9 @@ def in_year(rows, year, all_years=False):
 
 METHOD_LABELS = {'G': 'Ground', 'A': 'Air', 'F': 'Field fumigation', 'O': 'Other', '': 'Not reported'}
 METHOD_ORDER = ('G', 'A', 'F', 'O', '')
+# SprayDays names its methods itself; where they differ from the labels above
+# for the same thing, tables show ours.
+NOTICE_METHOD_LABELS = {'Aircraft': 'Air'}
 
 
 def by_method(rows, year, lbs_field='lbs_chemical', all_years=False, apps_field='records'):

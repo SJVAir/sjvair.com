@@ -108,6 +108,12 @@ def method_label(code):
 
 
 @register.filter
+def notice_method(value):
+    """A SprayDays method in the explorer's words: its "Aircraft" is the PUR records' "Air"."""
+    return stats.NOTICE_METHOD_LABELS.get(value, value)
+
+
+@register.filter
 def css_percent(value):
     """A 0-1 share as a CSS width."""
     return f'{(value or 0) * 100:.2f}%'
@@ -124,7 +130,9 @@ def signed_lbs(value):
         return '—'
     if not value:
         return '0'
-    return f'+{lbs(value)}' if value > 0 else lbs(value)
+    # A true minus sign: a hyphen is shorter than the plus beside it and
+    # doesn't line up down a column.
+    return f'+{lbs(value)}' if value > 0 else f'\u2212{lbs(-value)}'
 
 
 @register.filter
@@ -133,7 +141,7 @@ def signed_pct(value):
     leaves it off where the baseline is too small to mean anything."""
     if value is None:
         return ''
-    return f'{value:+.1f}%'
+    return f'{value:+.1f}%'.replace('-', '\u2212')
 
 
 # A word, with an apostrophe inside it kept ("CHILDREN'S" -> "Children's").
