@@ -22,6 +22,8 @@
  * Modes: `full` (the map page, with the sector filter) and `compact`
  * (facility, sector and region pages; a facility page's own facility is
  * highlighted and the rest faded).
+ * On a facility page the schools and child care within 1/4 mile are drawn
+ * as dots inside a dashed ring (data-nearby).
  */
 (function () {
   'use strict';
@@ -74,6 +76,7 @@
   var DISTRICT_COLOR = '#6a3d9a';
   var AREA_LINE_COLOR = '#4a5568';
   var AREA_LINE_WIDTH = 0.5;
+  var NEARBY_COLOR = '#2f6f4e';
   var MIN_RADIUS = 4;
   var MAX_RADIUS = 34;
   var WORLD_RING = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
@@ -269,7 +272,8 @@
     this.map.on('click', 'areas-fill', function (evt) { self.openAreaPopup(evt.features[0], evt.lngLat); });
     this.map.on('mousemove', 'areas-fill', function (evt) { self.areaHover.set(evt.features[0], evt.lngLat); });
     this.map.on('mouseleave', 'areas-fill', function () { self.areaHover.clear(); });
-    ['facilities', 'areas-fill'].forEach(function (layer) {
+    this.map.on('click', 'nearby', function (evt) { self.openNearbyPopup(evt.features[0], evt.lngLat); });
+    ['facilities', 'areas-fill', 'nearby'].forEach(function (layer) {
       self.map.on('mouseenter', layer, function () { self.map.getCanvas().style.cursor = 'pointer'; });
       self.map.on('mouseleave', layer, function () { self.map.getCanvas().style.cursor = ''; });
     });
@@ -350,6 +354,18 @@
       layout: { 'circle-sort-key': ['get', '_sort'] },
       paint: { 'circle-radius': ['get', '_radius'], 'circle-color': ['get', '_color'] },
     });
+    // The facility page's schools and child care within 1/4 mile: the ring,
+    // then the dots (data-nearby / data-ring-miles; camp.apps.emissions.schools).
+    this.shell.ensureSource('nearby-ring');
+    this.shell.ensureSource('nearby');
+    this.shell.ensureLayer({
+      id: 'nearby-ring', type: 'line', source: 'nearby-ring',
+      paint: { 'line-color': NEARBY_COLOR, 'line-width': 1.5, 'line-dasharray': [2, 2], 'line-opacity': 0.8 },
+    });
+    this.shell.ensureLayer({
+      id: 'nearby', type: 'circle', source: 'nearby',
+      paint: { 'circle-radius': 5, 'circle-color': NEARBY_COLOR, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 },
+    });
     this.shell.ensureLayer({
       id: 'outline-mask', type: 'fill', source: 'outline-mask',
       paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 },
@@ -361,6 +377,7 @@
     });
     this.applyHighlight();
     this.applyView();
+    this.showNearby();
   };
 
   // Every circle outlined in a darker shade of its fill (grey for "none
@@ -425,6 +442,7 @@
     this.loadFacilities();
     if (this.view === 'areas') this.loadAreas();
     this.loadOutline();
+    this.showNearby();
   };
 
   FacilityMap.prototype.loadFacilities = function () {
@@ -584,6 +602,30 @@
     if (this.outlineBounds) this.map.fitBounds(this.outlineBounds, { padding: 24, duration: 0 });
   };
 
+  // The schools and child care listed on a facility page, from the
+  // container's own attributes (no fetch): the dots and the 1/4-mile ring
+  // around the page's centre. Empty on every other page.
+  FacilityMap.prototype.showNearby = function () {
+    var collection = M.EMPTY;
+    if (this.data.nearby) {
+      try { collection = JSON.parse(this.data.nearby); } catch (err) { logError('bad nearby JSON', err); }
+    }
+    var center = M.parseCenter(this.data.center);
+    var miles = parseFloat(this.data.ringMiles);
+    this.shell.setSourceData('nearby', collection);
+    this.shell.setSourceData('nearby-ring', center && miles > 0
+      ? { type: 'Feature', properties: {}, geometry: circle(center, miles) }
+      : M.EMPTY);
+  };
+
+  FacilityMap.prototype.openNearbyPopup = function (feature, lngLat) {
+    var p = feature.properties;
+    this.shell.placePopup('<div class="facility-popup">' +
+      '<p class="facility-popup-name">' + escapeHtml(p.name) + '</p>' +
+      '<p>' + escapeHtml(p.type_label) + ' · ' + Number(p.feet).toLocaleString('en-US') + ' ft away</p>' +
+      '</div>', lngLat);
+  };
+
   // Home goes back to the page's area when it has one.
   FacilityMap.prototype.home = function () {
     return this.outlineBounds ? { bounds: this.outlineBounds, padding: 24 } : null;
@@ -713,7 +755,8 @@
       sizeKeyHtml(max, RAMP[RAMP.length - 1], round) +
       facilityBins(breaks, undefined, round) +
       '<p class="legend-empty"><span class="legend-ring"></span>None reported</p>' +
-      (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '');
+      (share ? '<p class="legend-note">Pounds × OEHHA toxicity, relative to the Valley total. Not a health risk: stack height, weather and distance are ignored.</p>' : '') +
+      (this.data.nearby ? '<p class="legend-note">Green dots: schools and child care within ¼ mile (dashed ring).</p>' : '');
   };
 
   // Before a view, level, measure, sector or page change swaps the data: no

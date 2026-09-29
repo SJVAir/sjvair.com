@@ -1,4 +1,5 @@
 import csv
+import json
 import math
 import re
 
@@ -13,7 +14,7 @@ from django.urls import reverse
 
 import vanilla
 
-from camp.apps.emissions import areas, dairies, stats
+from camp.apps.emissions import areas, dairies, schools, stats
 from camp.apps.emissions.models import Facility, SourceImport
 from camp.apps.emissions.pollutants import CRITERIA
 from camp.apps.regions import nearby
@@ -231,6 +232,16 @@ class FacilityRedirect(vanilla.View):
         return redirect(facility.get_absolute_url() + (f'?{query}' if query else ''), permanent=True)
 
 
+def nearby_groups(nearby):
+    """(heading, rows, hidden count) per group of schools.near(), for the card's template."""
+    if not nearby:
+        return []
+    return [
+        (heading, rows, max(len(rows) - schools.SHOWN, 0))
+        for heading, rows in (('Within 1,000 ft', nearby['within_1000ft']), ('1,000 ft to ¼ mile', nearby['within_quarter_mile']))
+    ]
+
+
 class FacilityDetail(ScopeMixin, vanilla.TemplateView):
     template_name = 'emissions/facility-detail.html'
     section = 'facilities'
@@ -247,6 +258,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
         facility = self.facility
         record = facility.emissions.filter(year=scope.year).first() or facility.emissions.order_by('-year').first()
         shown_year = record.year if record else scope.year
+        nearby = schools.near(facility)
         return super().get_context_data(
             facility=facility,
             district=facility.air_district,
@@ -258,12 +270,16 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             hot_spots=stats.hot_spots(record),
             health_values=SourceImport.latest('contable'),
             area_links=area_links(areas.facility_areas(facility)),
+            nearby=nearby,
+            nearby_shown=schools.SHOWN,
+            nearby_groups=nearby_groups(nearby),
             # The facility's own map always includes it: the page scope can
             # exclude it (a minor source with `minor` off, no record in the
             # scope year, or a different `county`), but its map shouldn't.
             map_config=facility_map_config(
                 scope, mode='compact', highlight=facility,
                 params=scope.params(year=shown_year, minor='1', county=None),
+                nearby=schools.geojson(nearby) if nearby else None,
             ),
             **kwargs,
         )
@@ -339,8 +355,8 @@ def map_view(get, default_level=areas.DEFAULT_LEVEL, year=None, *, share=False):
 
 
 def facility_map_config(scope, *, mode='full', highlight=None, sector=None, params=None, areas_view=None,
-                        outline_url='', center='', zoom='', radius=''):
-    """The data-* attributes of a `.facility-map` container (see assets/js/emissions/facility-map.js)."""
+                        outline_url='', center='', zoom='', radius='', nearby=None):
+    """The data-* attributes of a `.facility-map` container (see assets/js/emissions/facility-map.js). `nearby` is a FeatureCollection (schools.geojson) for the facility page's schools-and-child-care overlay, or None."""
     params = dict(params) if params is not None else scope.params()
     if sector:
         params['sector'] = sector
@@ -363,6 +379,10 @@ def facility_map_config(scope, *, mode='full', highlight=None, sector=None, para
         # The region or circle the page is about (region pages, near-me).
         'outline_url': outline_url,
         'radius': radius,
+        # The facility page's schools and child care within 1/4 mile (a
+        # FeatureCollection, JSON in the attribute) and the ring to draw.
+        'nearby': json.dumps(nearby) if nearby else '',
+        'ring_miles': schools.QUARTER_MILE_FT / schools.FEET_PER_MILE if nearby else '',
         # The Areas view (the map page, region pages): off where it's None.
         'areas': '1' if areas_view else '',
         'areas_url': reverse('api:v2:emissions:areas') if areas_view else '',

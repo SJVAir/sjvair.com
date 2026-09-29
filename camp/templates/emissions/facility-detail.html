@@ -44,6 +44,11 @@
         </div>
     </div>
     {% if hot_spots %}<div class="column is-half">{% include 'emissions/includes/hot-spots.html' %}</div>{% endif %}
+    {% if nearby is not None %}
+    <div class="column is-half">
+        {% include 'emissions/includes/schools-card.html' %}
+    </div>
+    {% endif %}
 </div>
 {% include 'emissions/includes/facility-map.html' %}
 

@@ -94,3 +94,58 @@ class FacilityToxicsTests(TestCase):
         cement = Facility.objects.get(name='TEST CEMENT')
         ToxicEmission.objects.filter(facility=cement).delete()
         assert 'toxics-table' not in self.detail(cement)
+
+
+class SchoolsCardTests(TestCase):
+    fixtures = ['regions.yaml', 'emissions.yaml']
+
+    def setUp(self):
+        cache.clear()
+        from camp.apps.emissions.tests.test_schools import location, north_of
+        self.plant = Facility.objects.get(name='TEST PLANT')
+        location('NEAR ELEMENTARY', north_of(self.plant.point, 900))
+        location('QUARTER MILE ACADEMY', north_of(self.plant.point, 1200))
+        location('FAR HIGH', north_of(self.plant.point, 2000))
+
+    def detail(self, facility):
+        return self.client.get(facility.get_absolute_url()).content.decode()
+
+    def test_card_groups_and_map_overlay(self):
+        from camp.apps.emissions.tests.test_areas_pages import map_data
+        content = self.detail(self.plant)
+        card = content[content.index('card-header-title">Schools and child care nearby'):content.index('facility-map map-canvas')]
+        assert card.index('Within 1,000 ft') < card.index('NEAR ELEMENTARY') < card.index('1,000 ft to ¼ mile') < card.index('QUARTER MILE ACADEMY')
+        assert 'FAR HIGH' not in card
+        assert re.search(r'NEAR ELEMENTARY.*?Public school · \d{3} ft', card, re.S)
+        assert ' more</p>' not in card  # no "and N more" with one or two rows
+        assert map_data(content, 'ring-miles') == '0.25'
+        nearby = map_data(content, 'nearby')
+        assert 'NEAR ELEMENTARY' in nearby and 'FAR HIGH' not in nearby and '&quot;FeatureCollection&quot;' in nearby
+        assert 'href="/tools/emissions/about/#schools"' in card
+
+    def test_none_within_a_quarter_mile(self):
+        from camp.apps.regions.models import Location
+        Location.objects.exclude(name='FAR HIGH').delete()
+        content = self.detail(self.plant)
+        assert 'None within ¼ mile.' in content
+        assert 'Within 1,000 ft' not in content
+
+    def test_and_n_more(self):
+        from camp.apps.emissions.tests.test_schools import location, north_of
+        for i in range(11):
+            location(f'CROWD {i}', north_of(self.plant.point, 400 + i))
+        content = self.detail(self.plant)
+        assert 'and 2 more' in content  # 12 within 1,000 ft, 10 shown
+
+    def test_hidden_for_an_untrusted_point(self):
+        from camp.apps.emissions.tests.test_areas_pages import map_data
+        content = self.detail(Facility.objects.get(name='TEST GAS STATION'))  # point_source maptiler
+        assert 'Schools and child care nearby' not in content
+        assert map_data(content, 'nearby') == '' and map_data(content, 'ring-miles') == ''
+
+    def test_about_page_explains_the_distances(self):
+        from django.urls import reverse
+        content = self.client.get(reverse('emissions:about')).content.decode()
+        assert '<h2 id="schools">' in content
+        assert 'Health &amp; Safety Code 42301.6' in content and 'Education Code 17213' in content
+        assert 'Child care covers licensed centers only, not family child-care homes.' in content
