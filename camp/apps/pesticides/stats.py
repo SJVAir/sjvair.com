@@ -1051,14 +1051,22 @@ def narrowed_lbs(field, lbs_field, narrow, year=None, all_years=False, county=No
     across all years. The keys are also the entities that count as "used"
     under the narrowing.
     """
+    # A raw `?county=` string never goes into the cache key: memcached
+    # rejects keys with spaces or control characters. Resolve it to the
+    # county, and a slug that names none matches nothing.
+    if isinstance(county, str):
+        slug, county = county, None
+        if slug:
+            county = Region.objects.filter(type=Region.Type.COUNTY, slug=slug).only('pk').first()
+            if county is None:
+                return {}
     rows = narrow_rows(PesticideUseRollup.objects.filter(**{f'{field}__isnull': False}), narrow)
-    slug = getattr(county, 'slug', county)
-    if slug:
-        rows = rows.filter(county__slug=slug)
+    if county is not None:
+        rows = rows.filter(county=county)
     parts = [
         'narrowed-lbs', field, lbs_field, narrow,
         ALL_YEARS if all_years else year,
-        getattr(county, 'pk', slug) or '',
+        county.pk if county is not None else '',
     ]
     return cached(
         all_years_key(*parts),

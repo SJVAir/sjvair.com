@@ -1,3 +1,5 @@
+from unittest import mock
+
 from django.core.cache import cache
 from django.db import connection
 from django.db.models import Sum
@@ -8,6 +10,7 @@ from django.urls import reverse
 from camp.apps.pesticides import stats
 from camp.apps.pesticides.models import Chemical, Commodity, PesticideUseRollup, Product
 from camp.apps.pesticides.tests.rollup_mixin import RollupTestMixin
+from camp.apps.regions.models import Region
 
 
 NARROWS = ('aerial', 'fumigant', 'restricted', 'concern')
@@ -130,3 +133,48 @@ class NarrowedEntitySearchTests(RollupTestMixin, TestCase):
         with CaptureQueriesContext(connection) as queries:
             self.names(type='product', q='rou', narrow='fumigant', year='2023')
         assert not [q for q in queries if 'pesticideuserollup' in q['sql']]
+
+
+class NarrowedCountyKeyTests(RollupTestMixin, TestCase):
+    """
+    The county reaches the narrowed cache as a Region or a raw `?county=`
+    string; only the county's pk may go into the key. Memcached rejects keys
+    with spaces or control characters, so a raw value there was a 500.
+    """
+
+    fixtures = ['pesticides-explorer']
+
+    def setUp(self):
+        cache.clear()
+
+    def keys_used(self, **kwargs):
+        seen = []
+        real = stats.cached
+
+        def spy(key, build, *args, **kw):
+            seen.append(key)
+            return real(key, build, *args, **kw)
+
+        with mock.patch.object(stats, 'cached', spy):
+            result = stats.narrowed_lbs('chemical', 'lbs_chemical', 'aerial', 2023, **kwargs)
+        return result, seen
+
+    def test_a_slug_is_keyed_by_the_county_pk(self):
+        by_slug, slug_keys = self.keys_used(county='kern')
+        by_region, region_keys = self.keys_used(county=Region.objects.get(pk=9002))
+        assert by_slug == by_region and by_slug
+        assert slug_keys == region_keys
+        assert 'kern' not in slug_keys[0]
+
+    def test_an_unknown_or_malformed_county_matches_nothing_without_a_key(self):
+        for value in ('a b', 'nowhere', 'x' * 300, 'tab\there'):
+            result, keys = self.keys_used(county=value)
+            assert result == {} and keys == []
+
+    def test_search_with_a_narrowing_and_a_malformed_county_is_not_an_error(self):
+        response = self.client.get(
+            reverse('api:v2:pesticides:entity-search'),
+            {'type': 'chemical', 'q': 'gl', 'narrow': 'aerial', 'county': 'a b'},
+        )
+        assert response.status_code == 200
+        assert response.json()['results'] == []
