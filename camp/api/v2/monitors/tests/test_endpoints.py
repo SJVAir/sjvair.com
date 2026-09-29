@@ -5,8 +5,6 @@ from decimal import Decimal
 from io import StringIO
 from pprint import pprint
 
-import pytest
-
 from django.conf import settings
 from django.test import TestCase, RequestFactory, override_settings
 from django.urls import reverse
@@ -20,6 +18,7 @@ from camp.apps.monitors.cimis.models import CIMIS
 from camp.apps.monitors.purpleair.models import PurpleAir
 from camp.utils.datetime import make_aware
 from camp.utils.test import debug, get_response_data
+from camp.utils.test.helpers import create_hourly_data_for_monitor
 
 closest_monitor = endpoints.ClosestMonitor.as_view()
 current_data = endpoints.CurrentData.as_view()
@@ -31,13 +30,18 @@ create_entry = endpoints.CreateEntry.as_view()
 entry_list = endpoints.EntryList.as_view()
 entry_csv = endpoints.EntryCSV.as_view()
 
-pytestmark = [
-    pytest.mark.usefixtures('purpleair_monitor'),
-    pytest.mark.django_db(transaction=True),
-]
+# A few minutes of per-minute data through the processing pipeline is
+# enough for every stage/sensor to exist; a full hour costs seconds.
+ENTRY_MINUTES = 5
 
 
 class EndpointTests(TestCase):
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'default-calibrations.yaml']
+
+    @classmethod
+    def setUpTestData(cls):
+        create_hourly_data_for_monitor(PurpleAir.objects.get(sensor_id=8892), minutes=ENTRY_MINUTES)
+
     def setUp(self):
         self.factory = RequestFactory()
 
@@ -118,7 +122,7 @@ class EndpointTests(TestCase):
     @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
     def test_monitors_at_returns_entry_current_at_timestamp(self):
         # threshold=0 so the monitor is considered healthy despite the
-        # purpleair_monitor fixture not creating any HealthCheck rows.
+        # test data not creating any HealthCheck rows.
         monitor = self.get_purple_air()
         as_of = make_aware(datetime(2026, 7, 4, 21, 0))
         stage = monitor.get_default_stage(entry_models.PM25)
@@ -157,7 +161,7 @@ class EndpointTests(TestCase):
     @override_settings(MONITOR_HEALTHY_THRESHOLD=0)
     def test_monitors_at_filters_by_bbox(self):
         # threshold=0 so the monitor is considered healthy despite the
-        # purpleair_monitor fixture not creating any HealthCheck rows.
+        # test data not creating any HealthCheck rows.
         monitor = self.get_purple_air()
         as_of = make_aware(datetime(2026, 7, 4, 21, 0))
         stage = monitor.get_default_stage(entry_models.PM25)
@@ -554,10 +558,12 @@ class EndpointTests(TestCase):
 class MonitorFilterDeviceTests(TestCase):
     '''
         MonitorFilter.filter_device() hardcodes a device-name -> lookup-field
-        map. purpleair_monitor (module-level fixture) guarantees a non-CIMIS,
+        map. The purple-air.yaml fixture guarantees a non-CIMIS,
         non-AirGradient monitor exists, so these tests fail if filtering
         doesn't actually narrow the queryset.
     '''
+
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'default-calibrations.yaml']
 
     def setUp(self):
         self.factory = RequestFactory()
@@ -747,6 +753,8 @@ class PublishedEntryTypeTests(TestCase):
     the type is ingested but not displayed for that pollutant.
     """
 
+    fixtures = ['purple-air.yaml', 'bam1022.yaml', 'default-calibrations.yaml']
+
     def setUp(self):
         from django.contrib.gis.geos import Point
         from camp.apps.calibrations import processors
@@ -825,10 +833,11 @@ class PublishedEntryTypeTests(TestCase):
         assert str(self.vozbox.pk) in self._current_ids('pm25')
 
     def test_pm25_current_still_health_gated(self):
-        # Sanity: the PM2.5 gate is untouched -- the purpleair fixture has
+        # Sanity: the PM2.5 gate is untouched -- the purpleair monitor has
         # entries but no HealthCheck rows, so it's excluded at threshold 0.9
         # and included at 0.
         purpleair = PurpleAir.objects.get(sensor_id=8892)
+        create_hourly_data_for_monitor(purpleair, minutes=ENTRY_MINUTES)
         with override_settings(MONITOR_HEALTHY_THRESHOLD=0.9):
             assert str(purpleair.pk) not in self._current_ids('pm25')
         with override_settings(MONITOR_HEALTHY_THRESHOLD=0):
@@ -844,12 +853,14 @@ class PublishedEntryTypeTests(TestCase):
 
 
 class PublishedFixtureTests(TestCase):
+    fixtures = ['default-calibrations.yaml']
+
     def test_fixture_is_idempotent_and_matches_existing_rows(self):
         from django.core.management import call_command
         from camp.apps.calibrations.models import DefaultCalibration
 
-        # Already loaded once by the purpleair_monitor session fixture; the
-        # vozbox/o3 row also comes from migration 0007 with its own pk.
+        # Already loaded once as a class fixture; the vozbox/o3 row also
+        # comes from migration 0007 with its own pk.
         # Loading again must update in place, not collide on unique_together.
         before = DefaultCalibration.objects.count()
         call_command('loaddata', 'default-calibrations.yaml', verbosity=0)
