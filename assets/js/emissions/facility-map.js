@@ -304,6 +304,9 @@
     // The year Compare shades the change against, in both views, or ''
     // for plain values; a toolbar control, not part of the page's scope.
     this.compare = this.data.compare || '';
+    // A shared link asking for density (or per-resident) on a share opens as
+    // Total; the address bar says so too.
+    if (this.areasEnabled && this.data.unit === 'share' && /[?&]measure=(?!total(&|$))/.test(window.location.search)) this.syncUrl();
   };
 
   // Bottom to top: the shaded areas, the county and district lines, the
