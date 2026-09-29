@@ -277,5 +277,8 @@ def county_map(by_county, width=600, height=420, query='', metric='lbs', ramp=No
             label=label,
             label_on_hover=True,
             url=f'{url}?{query}' if query else url,
+            # Matches the table row's data-county (by-county-table.html), so
+            # hovering either highlights both.
+            key=county.sqid,
         ))
     return mark_safe(figure.render())

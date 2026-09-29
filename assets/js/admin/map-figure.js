@@ -13,7 +13,8 @@
  *                      `kind` ('marker' | 'area'), the style as four flat
  *                      keys (`fillColor`, `fillOpacity`, `color`,
  *                      `weight`), for markers `shape` and `size`, for
- *                      areas optionally a `url` to follow on click, and
+ *                      areas optionally a `url` to follow on click, a `key`
+ *                      naming the area for highlight()/the hover event, and
  *                      optionally a `label` shown permanently, or only on
  *                      hover when `labelOnHover` is true.
  *   data-style         MapTiler style id (the core's TILE_STYLE_PATHS)
@@ -189,6 +190,8 @@
     var points = [];
     var areas = [];
     this.anchors = {};
+    // A keyed area can be highlighted by name from outside the map.
+    this.areaByKey = {};
     for (var i = 0; i < geojson.features.length; i++) {
       var feature = geojson.features[i];
       feature.properties = feature.properties || {};
@@ -197,7 +200,10 @@
       // centroid per ring -- the report maps carry a thousand unlabelled tracts.
       this.anchors[i] = feature.properties.label ? labelAnchor(feature) : null;
       if (feature.geometry && feature.geometry.type === 'Point') points.push(feature);
-      else areas.push(feature);
+      else {
+        if (feature.properties.key) this.areaByKey[feature.properties.key] = feature;
+        areas.push(feature);
+      }
     }
     shell.sourceData.areas = { type: 'FeatureCollection', features: areas };
     // Kept as a direct alias (same object as shell.sourceData.areas) for the
@@ -282,16 +288,48 @@
       } else {
         self.hideHover();
       }
+      self.reportHover(props.key || null);
     });
     map.on('mouseleave', 'areas-fill', function () {
       map.getCanvas().style.cursor = '';
       self.setAreaHover(null);
       self.hideHover();
+      self.reportHover(null);
     });
     map.on('click', 'areas-fill', function (event) {
       var feature = event.features && event.features[0];
       if (feature && feature.properties.url) window.location.assign(feature.properties.url);
     });
+  };
+
+  // Which keyed area the cursor is over, for markup elsewhere on the page that
+  // stands for the same areas (a table beside the map). Bubbles, so a listener
+  // on the document catches every figure, and fires only on a change.
+  Figure.prototype.reportHover = function (key) {
+    if (this.reportedKey === key) return;
+    this.reportedKey = key;
+    this.el.dispatchEvent(new CustomEvent('mapfigure:hover', {
+      bubbles: true,
+      detail: { key: key, figure: this },
+    }));
+  };
+
+  // The same marking the cursor would give the area named by `key` -- its
+  // outline, and its hover label where it has one. `null` clears it. Silently
+  // does nothing for an unknown key, or before the style is up.
+  Figure.prototype.highlight = function (key) {
+    if (!this.map || !this.map.getSource('areas')) return;
+    var feature = key == null ? null : this.areaByKey[key];
+    if (!feature) {
+      this.setAreaHover(null);
+      this.hideHover();
+      return;
+    }
+    var id = feature.properties.id;
+    this.setAreaHover(id);
+    if (feature.properties.label && this.anchors[id]) {
+      this.showHover(id, feature.properties.label, this.anchors[id], 0);
+    }
   };
 
   // The hovered area's outline, as feature state, so the paint expression does

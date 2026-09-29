@@ -433,6 +433,11 @@ body.pesticides
             a
                 color: $white
                 font-weight: 600
+        // The row and its county on the map, hovered together
+        // (js/pesticides/county-hover.js). A tint rather than a grey: the
+        // rows are already striped in greys.
+        tbody tr:hover, tbody tr:focus-within, tbody tr.is-hovered
+            background-color: rgba($link, 0.1)
 
     .explorer-filters, .records-filters, .notice-filters
         padding: 1.25rem

@@ -39,7 +39,9 @@ wrapper scrolls before they overflow (all-years pounds run to ten digits).
     </tr></thead>
     <tbody>
     {% for row in by_county %}
-        <tr>
+        {# data-county pairs the row with its area on the map beside it #}
+        {# (js/pesticides/county-hover.js). #}
+        <tr data-county="{{ row.county_sqid }}">
             <td><span class="county-swatch" style="background-color: {{ row.color }};" aria-hidden="true"></span><a href="{% url 'pesticides:region' sqid=row.county_sqid slug=row.county_slug %}{{ scope_qs }}">{{ row.county_name|cut:" County" }}</a></td>
             {# rank_counties() already put the chosen metric on the row, so #}
             {# the column and the map's shade can't drift apart. #}
