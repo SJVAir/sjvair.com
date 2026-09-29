@@ -60,9 +60,16 @@ def fetch_json(url, retries=3):
 
 
 def gas_totals(rows):
-    """{gas_id: CO2e} summed over sector rows."""
+    """
+    {gas_id: CO2e} summed over sector rows. A reporter with nothing in the
+    emissions table for the year (often a supplier, not an emitter) comes
+    back as one placeholder row with a null gas_id and emission; those are
+    skipped, so its totals are empty and import_county leaves it out.
+    """
     totals = Counter()
     for row in rows:
+        if row.get('gas_id') is None:
+            continue
         totals[int(row['gas_id'])] += float(row['co2e_emission'] or 0)
     return dict(totals)
 

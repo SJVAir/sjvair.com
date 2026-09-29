@@ -137,6 +137,12 @@ def ef_gas(facility_id, gas_id, co2e):
 
 
 class GHGRPParseTests(TestCase):
+    def test_a_placeholder_row_has_no_totals(self):
+        # Envirofacts' reply for a reporter with no emissions that year.
+        placeholder = [{'facility_id': 1000314, 'year': 2023, 'sector_id': 3, 'subsector_id': 1, 'gas_id': None, 'co2e_emission': None}]
+        assert ghgrp.gas_totals(placeholder) == {}
+        assert ghgrp.gas_totals(placeholder + [{'gas_id': 1, 'co2e_emission': 5.0}]) == {1: 5.0}
+
     def test_gas_totals_and_figures(self):
         totals = ghgrp.gas_totals(load('ghgrp/emissions-1000005.json'))
         assert totals == {1: 71521.2, 2: 24.25, 3: 28.906}
