@@ -1,4 +1,7 @@
+import shutil
+
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest import mock
 
 import geopandas as gpd
@@ -17,6 +20,22 @@ from .tasks import fetch_fire, fetch_fire_final, fetch_smoke, fetch_smoke_final,
 
 TEST_DATE = datetime(2025, 9, 1).date()
 
+# NOAA's HMS files for TEST_DATE, recorded so the fetch tests run offline.
+# The fire file is sampled down from ~38k national points to 342 California
+# points (199 inside the SJV bounding box, 143 outside it for the region filter).
+TEST_DATA_DIR = Path(__file__).parent / 'testdata'
+
+
+class RecordedDownloadMixin:
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch('camp.utils.geodata.stream_to_disk', side_effect=self.copy_recorded_file)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def copy_recorded_file(self, url, dest, verify=True):
+        shutil.copyfile(TEST_DATA_DIR / url.rsplit('/', 1)[-1], dest)
+
 
 class ParseTimestampTests(TestCase):
     def test_julian_date_format(self):
@@ -29,7 +48,7 @@ class ParseTimestampTests(TestCase):
         assert result.tzinfo is not None
 
 
-class FetchSmokeTests(TestCase):
+class FetchSmokeTests(RecordedDownloadMixin, TestCase):
     fixtures = ['regions.yaml']
 
     def test_fetch_smoke(self):
@@ -58,7 +77,7 @@ class FetchSmokeTests(TestCase):
         assert Smoke.objects.filter(date=TEST_DATE).count() > 0
 
 
-class FetchFireTests(TestCase):
+class FetchFireTests(RecordedDownloadMixin, TestCase):
     fixtures = ['regions.yaml']
 
     def test_fetch_fire(self):
