@@ -66,6 +66,11 @@
       url: https://www.cdpr.ca.gov/
       classes: is-3-mobile is-2-tablet is-2-desktop
 
+    - name: California Department of Food and Agriculture
+      logo: img/logo/cdfa.svg
+      url: https://www.cdfa.ca.gov/
+      classes: is-4-mobile is-3-tablet is-3-desktop
+
     - name: California Geologic Energy Management Division (CalGEM)
       logo: img/logo/conservation.svg
       url: https://www.conservation.ca.gov/calgem
