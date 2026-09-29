@@ -9,7 +9,7 @@ by point and schools by distance (wells.py).
 """
 import math
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from datetime import date, datetime, timezone
 
 import requests
@@ -158,12 +158,19 @@ class Report:
     unchanged: int = 0
     deleted: int = 0
     skipped: int = 0
+    unknown_counties: list = dataclass_field(default_factory=list)
 
     def lines(self):
-        return [
+        lines = [
             f'WellSTAR: {self.fetched:,} features; {self.created:,} wells created, {self.updated:,} updated, '
             f'{self.unchanged:,} unchanged, {self.deleted:,} removed (no longer active, idle or new), {self.skipped:,} skipped.',
         ]
+        if self.unknown_counties:
+            lines.append(
+                f'County names that matched no covered county: {", ".join(self.unknown_counties)}. '
+                'Only matched counties had wells removed; check CalGEM\'s CountyName spelling.'
+            )
+        return lines
 
 
 def _counties():
@@ -196,7 +203,11 @@ def apply(features):
     (plugged or cancelled since, or gone from the service), stamp
     SourceImport('wellstar') and bump the wells cache generation, in one
     transaction. `features` is the whole Valley (every page): a partial list
-    would delete the rest.
+    would delete the rest. The query already asks for the covered counties
+    by name, so a CountyName that matches none of them means CalGEM's
+    spelling drifted: deletion is then limited to the counties that did
+    match, so the drifted county keeps its wells instead of losing them all
+    (and the report says which name didn't match).
     """
     from camp.apps.emissions import wells
 
@@ -204,18 +215,22 @@ def apply(features):
     counties = _counties()
     with transaction.atomic():
         existing = {well.api: well for well in Well.objects.all()}
-        seen, new, changed = set(), [], []
+        seen, seen_counties, unknown, new, changed = set(), set(), set(), [], []
         for feature in features:
             values = parse_feature(feature)
             if values is None:
                 report.skipped += 1
                 continue
-            county = counties.get(values.pop('county_name'))
+            name = values.pop('county_name')
+            county = counties.get(name)
+            if county is None:
+                unknown.add(name)
             if county is None or values['api'] in seen:
                 report.skipped += 1
                 continue
             values['county'] = county
             seen.add(values['api'])
+            seen_counties.add(county.pk)
             well = existing.get(values['api'])
             if well is None:
                 new.append(Well(**values))
@@ -229,7 +244,11 @@ def apply(features):
         Well.objects.bulk_create(new, batch_size=1000)
         Well.objects.bulk_update(changed, list(FIELDS) + ['imported_at'], batch_size=1000)
         report.created, report.updated = len(new), len(changed)
-        report.deleted, _ = Well.objects.exclude(api__in=seen).delete()
+        gone = Well.objects.exclude(api__in=seen)
+        if unknown:
+            gone = gone.filter(county__in=seen_counties)
+        report.deleted, _ = gone.delete()
+        report.unknown_counties = sorted(str(name) for name in unknown)
         SourceImport.objects.create(
             source=SOURCE, data_through=date.today(),
             notes={'wells': len(seen), 'created': report.created, 'updated': report.updated, 'deleted': report.deleted},

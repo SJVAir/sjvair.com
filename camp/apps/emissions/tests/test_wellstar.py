@@ -133,6 +133,15 @@ class ApplyTests(TestCase):
         assert (report.created, report.updated, report.unchanged, report.deleted) == (1, 1, 1, 2)
         assert wells.generation() == before + 1
 
+    def test_a_county_name_that_stops_matching_keeps_that_countys_wells(self):
+        wellstar.apply(FEATURES)
+        # CalGEM respells Fresno: its well no longer matches, so Fresno keeps it; Kern's 0003 is still removed.
+        again = [FEATURES[0], FEATURES[1], feature('0401900004', NEAR_PLANT, county='FRESNO CO.')]
+        report = wellstar.apply(again)
+        assert set(Well.objects.values_list('api', flat=True)) == {'0402900001', '0402900002', '0401900004'}
+        assert report.deleted == 1 and report.unknown_counties == ['FRESNO CO.']
+        assert 'FRESNO CO.' in report.lines()[1]
+
     def test_a_duplicate_api_in_the_feed_is_written_once(self):
         wellstar.apply([FEATURES[0], FEATURES[0]])
         assert Well.objects.count() == 1
