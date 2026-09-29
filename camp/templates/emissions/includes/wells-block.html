@@ -11,6 +11,15 @@ distance), the ten with the most wells listed. Nothing when the area has no well
     {% with s=wells_block.summary %}
     <p class="wells-line">{{ s.active|intcomma }} active · {{ s.idle|intcomma }} idle{% if s.new %} · {{ s.new|intcomma }} new{% endif %} · {{ s.hpz|intcomma }} in a verified health-protection zone (3,200 ft of homes or schools)</p>
     {% endwith %}
+    {% with imported=wells_block.stamp.imported_at|date:"N j, Y" %}
+    <div class="notification is-warning is-light wells-snapshot">
+        {% if wells_block.past_year %}
+        <p><strong>These are today's wells, not {{ wells_block.year }}'s.</strong> CalGEM's current list of active, idle and new wells{% if imported %}, as of {{ imported }}{% endif %}. It isn't broken down by year: wells plugged or abandoned before then aren't shown, and a well drilled after {{ wells_block.year }} still appears. The emissions figures on this page are for {{ wells_block.year }}.</p>
+        {% else %}
+        <p><strong>Current wells{% if imported %}, as of {{ imported }}{% endif %}.</strong> CalGEM's list of active, idle and new wells. It has no history by year; plugged wells aren't shown.</p>
+        {% endif %}
+    </div>
+    {% endwith %}
     {% if wells_block.kern %}{% include 'emissions/includes/oil-gas-callout.html' with callout=wells_block.kern %}{% endif %}
     {% with schools=wells_block.schools %}
     {% if schools.count %}
@@ -22,5 +31,5 @@ distance), the ten with the most wells listed. Nothing when the area has no well
     <p>No school or child-care center here has a well within 3,200 ft.</p>
     {% endif %}
     {% endwith %}
-    <p class="is-size-7 has-text-grey">CalGEM's records{% if wells_block.stamp %}, fetched {{ wells_block.stamp.imported_at|date:"N j, Y" }}{% endif %}: counts of wells, not emissions; idle wells can still leak; plugged wells aren't shown; distances are straight lines from the school's map point. <a href="{% url 'emissions:about' %}#oil-gas">About</a></p>
+    <p class="is-size-7 has-text-grey">CalGEM's records: counts of wells, not emissions; idle wells can still leak; plugged wells aren't shown; distances are straight lines from the school's map point. <a href="{% url 'emissions:about' %}#oil-gas">About</a></p>
 </section>

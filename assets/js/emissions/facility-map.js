@@ -726,6 +726,7 @@
           '<p>' + escapeHtml(well.status) + (well.well_type ? ' · ' + escapeHtml(well.well_type) : '') + '</p>' +
           (well.operator ? '<p>' + escapeHtml(well.operator) + (well.field ? ', ' + escapeHtml(well.field) + ' field' : '') + '</p>' : '') +
           '<p>' + (well.spud_year ? 'Drilled ' + escapeHtml(String(well.spud_year)) + ' · ' : '') + escapeHtml(well.in_hpz || 'HPZ status unknown') + '</p>' +
+          '<p class="is-size-7 has-text-grey">' + escapeHtml(self.wellsAsOf('Current status')) + '</p>' +
           '<p><a href="' + escapeHtml(well.url) + '">CalGEM record →</a></p>' +
           '</div>');
         if (self.shell.panPopupIntoView) self.shell.panPopupIntoView(popup);
@@ -737,6 +738,15 @@
       });
   };
 
+  // "Today's wells, as of Sep 29, 2026": the import date the wells GeoJSON
+  // carries. Wells are CalGEM's current snapshot, whatever the page's year.
+  FacilityMap.prototype.wellsAsOf = function (lead) {
+    var imported = this.wellsData && this.wellsData.properties && this.wellsData.properties.imported;
+    if (!imported) return lead;
+    var date = new Date(imported + 'T12:00:00');
+    return lead + ', as of ' + date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
   // The legend's overlay row: the checkbox, and while it's on the key.
   FacilityMap.prototype.wellsLegendHtml = function () {
     if (!this.wellsEnabled) return '';
@@ -746,7 +756,7 @@
       html += '<p class="legend-wells">' + WELL_STATUSES.map(function (status) {
         return '<span class="legend-well"><span class="legend-swatch is-well" style="background: ' + WELL_COLORS[status] + '"></span>' + status + '</span>';
       }).join('') + '<span class="legend-well"><span class="legend-swatch is-well is-hpz"></span>Verified health-protection zone</span></p>' +
-        '<p class="legend-note">CalGEM records, not emissions. Zoom in to split the clusters; click a well for its record.</p>';
+        '<p class="legend-note">' + this.wellsAsOf('Today\'s wells') + ', not by year: CalGEM records, not emissions. Zoom in to split the clusters; click a well for its record.</p>';
     }
     return html + '</div>';
   };

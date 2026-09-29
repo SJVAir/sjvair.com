@@ -410,6 +410,9 @@ def wells_block(area, scope, *, kern=False):
         'schools': wells.schools_near_wells(area),
         'kern': wells.kern_callout(scope.year) if kern else None,
         'stamp': wells.stamp(),
+        # Wells are today's snapshot, not the scope year's: the caveat is louder on a past year.
+        'year': scope.year,
+        'past_year': scope.year is not None and scope.year != stats.latest_year(),
     }
 
 

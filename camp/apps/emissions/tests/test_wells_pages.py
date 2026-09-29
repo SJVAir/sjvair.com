@@ -87,6 +87,17 @@ class WellsBlockTests(WellsPagesTestCase):
         assert 'Oil &amp; gas facilities reported' not in block  # the Kern sentence is Kern's
         assert 'href="/tools/emissions/about/#oil-gas"' in block
 
+    def test_the_snapshot_caveat_names_the_year(self):
+        self.add_wells()
+        latest = self.get(self.fresno.get_emissions_url(), {'year': '2024'})
+        block = latest[latest.index('id="wells"'):]
+        assert '<strong>Current wells' in block and 'It has no history by year' in block
+        assert "not 2024's" not in block
+        past = self.get(self.fresno.get_emissions_url(), {'year': '2023'})
+        block = past[past.index('id="wells"'):]
+        assert "<strong>These are today's wells, not 2023's.</strong>" in block.replace('&#x27;', "'")
+        assert 'The emissions figures on this page are for 2023.' in block
+
     def test_kern_block_has_the_callout(self):
         self.add_wells()
         self.add_kern_oil_gas()
