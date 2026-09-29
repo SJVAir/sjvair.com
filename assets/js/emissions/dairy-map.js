@@ -198,7 +198,7 @@
     var me = data.methane;
     if (me && me.sources && me.sources.length) {
       var lines = me.sources.map(function (s) {
-        return '<strong>Methane observed</strong>: ' + escapeHtml(s.rate_text) + ' (Carbon Mapper estimate)' +
+        return '<strong>Methane observed</strong>: ' + escapeHtml(s.rate_text) + (s.rate != null ? ' (Carbon Mapper estimate)' : '') +
           (s.det ? ', ' + s.det + ' detection' + (s.det === 1 ? '' : 's') + ' of ' + s.obs + ' pass' + (s.obs === 1 ? '' : 'es') : '') +
           ' · <a href="' + escapeHtml(s.viewer_url) + '">View at Carbon Mapper →</a>';
       });

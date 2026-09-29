@@ -914,7 +914,7 @@ class MethaneSource(models.Model):
 
     @property
     def rate_text(self):
-        """`120 ± 40 kg/h`; without an uncertainty `120 kg/h`; without a rate `rate not estimated`. Always shown beside "Carbon Mapper estimate"."""
+        """`120 ± 40 kg/h`; without an uncertainty `120 kg/h`; without a rate `rate not estimated`. A rate is always shown beside "Carbon Mapper estimate"."""
         if self.emission_kg_h is None:
             return 'rate not estimated'
         text = f'{self.emission_kg_h:,.0f}'
