@@ -177,3 +177,69 @@ class CommandTests(NEITestCase):
         from django.core.management.base import CommandError
         with pytest.raises(CommandError, match='No download URLs'):
             call_command('import_nei', year=2020)
+
+
+class ReadSideTests(NEITestCase):
+    def setUp(self):
+        super().setUp()
+        nei.apply(2023, nei.read_sector(self.sector_zip, self.fips), nei.read_nonpoint(self.nonpoint_zip, self.fips))
+        cache.clear()
+
+    def test_context_for_a_county(self):
+        from camp.apps.emissions.tests.test_stats import scope
+        context = nei.context(scope(pollutant='nh3', county='fresno'))
+        assert context['year'] == 2023 and context['total'] == 9784 + 3806 + 500 + 100
+        parts = {part['key']: part for part in context['parts']}
+        assert [part['key'] for part in context['parts']] == ['dairy', 'livestock', 'fertilizer', 'other']
+        assert parts['dairy']['tons'] == 4070 and parts['livestock']['tons'] == 9784 - 4070
+        assert parts['fertilizer']['tons'] == 3806 and parts['other']['tons'] == 600
+        assert abs(sum(part['share'] for part in context['parts']) - 1) < 1e-9
+        # TEST PLANT's 100 lbs (0.05 tons) of CEIDARS ammonia against the county's EPA total.
+        assert context['facilities'] == 0.05 and abs(context['facility_share'] - 0.05 / 14190) < 1e-12
+        assert context['counties'] == [self.fresno]
+
+    def test_context_for_the_valley_and_its_absences(self):
+        from camp.apps.emissions.tests.test_stats import scope
+        everywhere = nei.context(scope(pollutant='nh3'))
+        assert everywhere['total'] == 14190 + 7149 + 10255 and len(everywhere['counties']) == 8
+        assert nei.context(scope(pollutant='nox', county='fresno')) is None
+        assert nei.context(scope(pollutant='nh3', county='tulare')) is None  # no rows for Tulare
+        CountyNEI.objects.all().delete()
+        stats.clear_caches()
+        assert nei.context(scope(pollutant='nh3')) is None and nei.latest_year() is None
+
+    def test_dairy_tile(self):
+        tile = nei.dairy_tile(self.fresno)
+        assert tile == {'tons': 4070, 'share': 4070 / 14190, 'year': 2023}
+        assert nei.dairy_tile(self.kern) == {'tons': 3492, 'share': 3492 / (7149 + 10255), 'year': 2023}
+        assert nei.dairy_tile(Region.objects.get(type=Region.Type.COUNTY, slug='tulare')) is None
+
+
+class NeiBarTests(NEITestCase):
+    def setUp(self):
+        super().setUp()
+        nei.apply(2023, nei.read_sector(self.sector_zip, self.fips), nei.read_nonpoint(self.nonpoint_zip, self.fips))
+        cache.clear()
+
+    def test_county_page_shows_the_bar_for_ammonia_only(self):
+        content = self.client.get(self.fresno.get_emissions_url(), {'pollutant': 'nh3', 'year': '2024'}).content.decode()
+        assert 'nei-context' in content and 'Dairy cattle' in content and "EPA's 2023 National Emissions Inventory" in content
+        assert '14,190' in content and 'about 0%' not in content  # the share is written with `percent`: '<1%'
+        assert '<1%' in content or '&lt;1%' in content  # HTML-escaped in the rendered page
+        assert 'CARB estimates all sources' not in content
+        content = self.client.get(self.fresno.get_emissions_url(), {'year': '2024'}).content.decode()
+        assert 'nei-context' not in content
+
+    def test_home_page_bar_and_a_county_without_rows(self):
+        from django.urls import reverse
+        content = self.client.get(reverse('emissions:home'), {'pollutant': 'nh3'}).content.decode()
+        assert 'nei-context' in content and 'these counties' in content
+        tulare = Region.objects.get(type=Region.Type.COUNTY, slug='tulare')
+        assert 'nei-context' not in self.client.get(tulare.get_emissions_url(), {'pollutant': 'nh3'}).content.decode()
+
+    def test_about_page(self):
+        from django.urls import reverse
+        content = self.client.get(reverse('emissions:about')).content.decode()
+        assert '<h2 id="ammonia">Ammonia</h2>' in content
+        assert 'only 7 dairies report ammonia to CARB' in content and 'NEI 2023 loaded' in content
+        assert 'National Emissions Inventory' in self.client.get('/about/integrations/').content.decode()

@@ -254,6 +254,19 @@ class ContentTests(DairyAreaTestCase):
         # Not "<title>Dairies in Within 3 miles of Home" -- the near-me phrase reads mid-sentence.
         assert '<title>Dairies within 3 miles of Home | ' in near
 
+    def test_county_dairy_page_has_the_epa_ammonia_tile(self):
+        from camp.apps.emissions import nei
+        from camp.apps.emissions.models import CountyNEI
+        CountyNEI.objects.create(county=self.fresno, year=2023, sector=nei.LIVESTOCK_SECTOR, tons=8000)
+        CountyNEI.objects.create(county=self.fresno, year=2023, sector=nei.FERTILIZER_SECTOR, tons=2000)
+        CountyNEI.objects.create(county=self.fresno, year=2023, sector=nei.LIVESTOCK_SECTOR, subsector=nei.DAIRY_SUBSECTOR, tons=4000)
+        content = self.get(self.fresno, {'year': '2023'}).content.decode()
+        assert '<p class="heading">Ammonia, EPA estimate</p><p class="title">4,000 <span class="is-size-5">tons/yr</span></p>' in content
+        assert 'dairy cattle, 40% of the county&#x27;s ammonia (2023)' in content or "dairy cattle, 40% of the county's ammonia (2023)" in content
+        # Not on a city's dairy page, and not without rows.
+        assert 'Ammonia, EPA estimate' not in self.get(self.fresno_city, {'year': '2023'}).content.decode()
+        assert 'Ammonia, EPA estimate' not in self.get(self.kern, {'year': '2023'}).content.decode()
+
 
 class MapConfigTests(DairyAreaTestCase):
     def test_region_page_map(self):

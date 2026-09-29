@@ -5,7 +5,8 @@ region page: the counted dairies with the Large CAFOs, digesters with their
 share, milk cows with their share of cattle, and all cattle. `carb_estimate`
 ({tons, share, place}; county dairy pages only) adds CARB's county estimate
 of dairy-cattle emissions in the scope pollutant, with dairy cattle's share
-of the county's all-sources total.
+of the county's all-sources total. `nei_dairy` (county dairy pages): EPA's
+dairy-cattle ammonia and its share of the county's.
 {% endcomment %}
 <div class="level is-mobile stat-row box is-grid-mobile">
     <div class="level-item has-text-centered"><div>
@@ -29,6 +30,12 @@ of the county's all-sources total.
         <p class="heading">Dairy cattle, CARB estimate</p><p class="title">{{ carb_estimate.tons|whole }} <span class="is-size-5">tons/yr {{ pollutant.label }}</span></p>
         {% if carb_estimate.share is not None %}<p class="is-size-7 has-text-grey">{{ carb_estimate.share|percent }} of {{ carb_estimate.place }} {{ pollutant.label }}</p>{% endif %}
         {% if carb_estimate.flat_since %}<p class="is-size-7 has-text-grey">Same every year since {{ carb_estimate.flat_since }}</p>{% endif %}
+    </div></div>
+    {% endif %}
+    {% if nei_dairy %}
+    <div class="level-item has-text-centered"><div>
+        <p class="heading">Ammonia, EPA estimate</p><p class="title">{{ nei_dairy.tons|whole }} <span class="is-size-5">tons/yr</span></p>
+        <p class="is-size-7 has-text-grey">dairy cattle, {{ nei_dairy.share|percent }} of the county's ammonia ({{ nei_dairy.year }})</p>
     </div></div>
     {% endif %}
 </div>

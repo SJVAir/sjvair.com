@@ -160,6 +160,11 @@
       url: https://echo.epa.gov/
       description: EPA's Enforcement and Compliance History Online publishes the Clean Air Act compliance record — inspections, notices of violation, settlements and high-priority violations — that air districts report for the largest permitted sources. SJVAir matches those records to the Valley Air District's facilities and shows each one's record on its facility page, stamped with how far the district's reporting reaches.
 
+    - name: EPA National Emissions Inventory
+      logo: img/logo/epa-vertical.svg
+      url: https://www.epa.gov/air-emissions-inventories/2023-nei-supporting-data-and-summaries
+      description: EPA's National Emissions Inventory estimates every county's emissions by source every three years, from permitted facilities to livestock, fertilizer, vehicles and dust. SJVAir uses its 2023 ammonia estimates for the eight Valley counties, split by source, to show how small a share of the Valley's ammonia the permitted facilities on the map are, and how much comes from dairy cattle.
+
 - category: Geospatial Data
   icon:
     name: fa-map-location-dot

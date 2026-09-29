@@ -15,7 +15,7 @@ from django.urls import reverse
 import vanilla
 
 from camp.apps.ces import stats as ces_stats
-from camp.apps.emissions import areas, compliance, dairies, schools, stats
+from camp.apps.emissions import areas, compliance, dairies, nei, schools, stats
 from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport
 from camp.apps.emissions.pollutants import CRITERIA, PRECURSORS
 from camp.apps.regions import nearby
@@ -139,6 +139,7 @@ class Home(ScopeMixin, vanilla.TemplateView):
             totals=totals,
             total=totals['value'],
             context_bar=stats.county_context(scope),
+            nei_context=nei.context(scope),
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
             top_rows=stats.with_ranks(stats.facility_table(scope)[:10], stats.ranks(scope)),
             top_sectors=stats.sector_breakdown(scope)[:6],
@@ -169,6 +170,7 @@ class About(ScopeMixin, vanilla.TemplateView):
             health_values=SourceImport.latest('contable'),
             toxics_import=SourceImport.latest('ceidars-toxics'),
             compliance_stamp=compliance.stamp(),
+            nei_stamp=SourceImport.latest(nei.SOURCE),
             **kwargs,
         )
 
@@ -754,6 +756,9 @@ class RegionPage(RegionLookupMixin, AreaPage):
         elif region.boundary_id:
             extra['community'] = ces_stats.tract_summary(region.boundary.geometry)
             extra['show_top_tracts'] = region.type == Region.Type.COUNTY
+        county_scope = stats.Scope(
+            year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant, minor=self.get_scope().minor,
+        ) if region.type == Region.Type.COUNTY else None
         return super().get_context_data(
             # `name` is the plain heading (h1); `title` (the <title> tag and
             # the breadcrumb, which have no identifiers line under them to
@@ -765,10 +770,8 @@ class RegionPage(RegionLookupMixin, AreaPage):
             dairies_label=f'in {region_title(region)}',
             kind=region.type_label,
             population=(region.metadata or {}).get('population'),
-            context_bar=stats.county_context(stats.Scope(
-                year=self.get_scope().year, county=region, pollutant=self.get_scope().pollutant,
-                minor=self.get_scope().minor,
-            )) if region.type == Region.Type.COUNTY else None,
+            context_bar=stats.county_context(county_scope) if county_scope else None,
+            nei_context=nei.context(county_scope) if county_scope else None,
             within=region_within(region) if region.boundary_id else None,
             **extra,
             **kwargs,

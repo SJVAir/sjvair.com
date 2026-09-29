@@ -49,7 +49,7 @@
     <li><strong>Where a dairy counts.</strong> A dairy counts toward a city or community by its mailing city or its point, whichever falls inside it; it counts toward an urban area, a ZIP area or a census tract by its point only.</li>
     <li><strong>Coverage grew in 2019.</strong> CADD has herds for {{ dairies_before|intcomma }} Valley dairies in 2018 and {{ dairies_after|intcomma }} in 2019. The two years aren't a like-for-like comparison.</li>
     <li><strong>Digesters.</strong> CADD lists the year each digester started and, for the few that closed, the year it shut down. A dairy has a digester in a year when one was operating that year.</li>
-    <li><strong>County dairy emissions.</strong> The Counties view and the county pages use CARB's county inventory (CEPAM) for dairy cattle waste. The explorer shows its ROG, TOG, total PM and PM10; CARB reports no NOx, SOx or CO from dairy cattle, and CEPAM has no ammonia. That's the animals and their manure only. Feed and silage are left out: CARB reports them separately, without assigning them to an animal type, and for ROG they're the larger source, so these figures understate dairies' ROG. Like the rest of CEPAM, these are CARB's projections from its 2017 base year, converted from tons per day to tons per year.</li>
+    <li><strong>County dairy emissions.</strong> The Counties view and the county pages use CARB's county inventory (CEPAM) for dairy cattle waste. The explorer shows its ROG, TOG, total PM and PM10; CARB reports no NOx, SOx or CO from dairy cattle, and CEPAM has no ammonia, so the county dairy pages take dairy-cattle ammonia from EPA's NEI. That's the animals and their manure only. Feed and silage are left out: CARB reports them separately, without assigning them to an animal type, and for ROG they're the larger source, so these figures understate dairies' ROG. Like the rest of CEPAM, these are CARB's projections from its 2017 base year, converted from tons per day to tons per year.</li>
 </ul>
 
 <h2 id="schools">Schools and child care</h2>
@@ -72,6 +72,10 @@
     <li><strong>How facilities are matched.</strong> The district's facility id is embedded in EPA's id, so the match is exact for the Valley Air District's sources; Eastern Kern sources aren't matched yet. The five-year counts are measured back from the newest event EPA has, not from today.</li>
 </ul>
 
+<h2 id="ammonia">Ammonia</h2>
+<p>Ammonia isn't toxic at these levels, but it reacts with other pollution to form fine particles (PM2.5), the Valley's main winter air problem. Most Valley ammonia, about 90%, comes from livestock and fertilizer that aren't permitted facilities; only 7 dairies report ammonia to CARB. County figures are EPA and CARB model estimates for 2023, not measurements.</p>
+<p>Facility ammonia is what each permitted facility reports to CARB, shown in tons per year beside the criteria pollutants (CARB delivers it in its toxics feed, but the explorer never weights or lists it as a toxic). County and Valley totals by source come from EPA's National Emissions Inventory (NEI), whose California point sources are CARB's own inventory resubmitted: the county pages' ammonia bar and the county dairy pages' dairy-cattle tile are EPA's 2023 estimates by source. {% if nei_stamp %}NEI {{ nei_stamp.version }} loaded.{% else %}No NEI data has been loaded yet.{% endif %}</p>
+
 <h2 id="sources">Sources</h2>
 <ul>
     <li><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">CARB facility emissions inventory (CEIDARS)</a></li>
@@ -82,6 +86,7 @@
     <li><a href="https://data.ca.gov/dataset/california-public-schools-2025-26">CDE public schools</a>, <a href="https://data.ca.gov/dataset/california-private-schools-2024-25">CDE private schools</a> and <a href="https://data.ca.gov/dataset/community-care-licensing-facilities1">CDSS licensed child-care facilities</a></li>
     <li><a href="https://oehha.ca.gov/calenviroscreen">OEHHA CalEnviroScreen</a> and <a href="https://calepa.ca.gov/envjustice/ghginvest/">CalEPA SB 535 disadvantaged communities</a></li>
     <li><a href="https://echo.epa.gov/tools/data-downloads">EPA ECHO / ICIS-Air data downloads</a></li>
+    <li><a href="https://www.epa.gov/air-emissions-inventories/2023-nei-supporting-data-and-summaries">EPA 2023 National Emissions Inventory data summaries</a></li>
 </ul>
 
 <p class="is-size-7 has-text-grey">Header photo: <a href="https://commons.wikimedia.org/wiki/File:Pumpjacks,_San_Joaquin_Valley,_California.jpg">Pumpjacks, San Joaquin Valley, California</a> by Downtowngal, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, resized, cropped and darkened.</p>
