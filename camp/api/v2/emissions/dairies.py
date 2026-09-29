@@ -180,6 +180,5 @@ class DairyDetail(generics.Endpoint):
                     'rate': s.emission_kg_h, 'unc': s.uncertainty_kg_h, 'persistence': s.persistence,
                     'obs': s.observations, 'det': s.detections, 'viewer_url': s.viewer_url,
                 } for s in methane.for_dairy(dairy)],
-                'attribution': methane.attribution(),
             },
         }

@@ -173,7 +173,7 @@
   // mature dairy cows, EPA size and the herd by class (CARB's estimates starred), its
   // digesters, any Carbon Mapper methane sources linked to it, and the region
   // pages it counts in (`qs`, the scope, rides along).
-  function popupHtml(data, qs) {
+  function popupHtml(data, qs, config) {
     var address = data.address || {};
     var parts = [
       '<div class="facility-popup dairy-popup">',
@@ -205,7 +205,7 @@
           (s.det ? ', ' + s.det + ' detection' + (s.det === 1 ? '' : 's') + ' of ' + s.obs + ' pass' + (s.obs === 1 ? '' : 'es') : '') +
           ' · <a href="' + escapeHtml(s.viewer_url) + '">View at Carbon Mapper →</a>';
       });
-      lines.push('<span class="has-text-grey"><a href="' + escapeHtml(me.attribution.url) + '">' + escapeHtml(me.attribution.text) + '</a>, non-commercial use</span>');
+      lines.push('<span class="has-text-grey"><a href="' + escapeHtml(config.methaneHome || 'https://carbonmapper.org') + '">' + escapeHtml(config.methaneAttribution || 'Data by Carbon Mapper®') + '</a>, non-commercial use</span>');
       parts.push('<div class="dairy-popup-methane is-size-7"><p>' + lines.join('<br>') + '</p></div>');
     }
     if (data.areas && data.areas.length) {
@@ -627,7 +627,7 @@
     getJson((this.data.popupUrl || '').replace('{id}', encodeURIComponent(id)))
       .then(function (data) {
         if (request !== self.popupRequest || self.shell.popup !== popup) return;
-        popup.setHTML(popupHtml(data, self.regionQuery()));
+        popup.setHTML(popupHtml(data, self.regionQuery(), self.data));
         self.shell.panPopupIntoView(popup);
       })
       .catch(function (err) {

@@ -463,7 +463,7 @@ class DairyEndpointTests(TestCase):
         block = self.get('dairy-detail', sqid=self.big.sqid).json()['methane']
         assert [s['rate_text'] for s in block['sources']] == ['120 ± 40 kg/h']
         assert block['sources'][0]['viewer_url'].startswith('https://data.carbonmapper.org/#')
-        assert block['attribution']['text'] == 'Data by Carbon Mapper®'
+        assert 'attribution' not in block  # the popup draws it from the map's own config
         assert self.get('dairy-detail', sqid=self.small.sqid).json()['methane']['sources'] == []
 
 
@@ -521,15 +521,13 @@ class MethaneEndpointTests(TestCase):
         carbonmapper.apply([row(name='near', lnglat=NEAR_BOTH)])
         self.source = MethaneSource.objects.get(source_name='near')
 
-    def test_geojson_carries_the_attribution_and_licence(self):
+    def test_geojson_is_lean(self):
         response = self.client.get(reverse('api:v2:emissions:methane-geojson'))
         assert response.status_code == 200
         body = response.json()
         assert body['type'] == 'FeatureCollection' and len(body['features']) == 1
-        assert body['properties']['attribution'] == 'Data by Carbon Mapper®'
-        assert body['properties']['license'] == 'Carbon Mapper non-commercial terms, https://carbonmapper.org/terms'
-        assert body['properties']['license_url'] == 'https://carbonmapper.org/terms'
-        assert body['properties']['home_url'] == 'https://carbonmapper.org'
+        # Attribution is on the pages and the map, not repeated in the payload.
+        assert set(body['properties']) == {'sources', 'imported'}
 
     def test_geojson_is_404_before_any_import(self):
         MethaneSource.objects.all().delete()
@@ -564,10 +562,7 @@ class MethaneEndpointTests(TestCase):
         assert older['image_url'] and older['image_url'].startswith('/')
         newer = body['plumes'][0]
         assert newer['uncertainty'] is None and newer['wind_speed'] is None and newer['rate_text'] == '200 kg/h'
-        assert body['attribution'] == 'Data by Carbon Mapper®'
-        assert body['license'] == 'Carbon Mapper non-commercial terms, https://carbonmapper.org/terms'
-        assert body['license_url'] == 'https://carbonmapper.org/terms'
-        assert body['home_url'] == 'https://carbonmapper.org'
+        assert set(body) == {'source', 'plumes'}
         assert body['source'] == self.source.sqid
 
     def test_plume_with_no_image_is_null(self):

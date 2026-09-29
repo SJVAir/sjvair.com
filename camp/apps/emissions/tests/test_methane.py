@@ -35,12 +35,9 @@ class MethaneTestCase(TestCase):
 
 
 class CollectionTests(MethaneTestCase):
-    def test_collection_carries_the_licence(self):
+    def test_collection(self):
         body = methane.collection()
         assert body['type'] == 'FeatureCollection' and body['properties']['sources'] == 3
-        assert body['properties']['attribution'] == 'Data by Carbon Mapper®'
-        assert body['properties']['license'] == 'Carbon Mapper non-commercial terms, https://carbonmapper.org/terms'
-        assert body['properties']['license_url'] == 'https://carbonmapper.org/terms'
         assert body['properties']['imported'] is not None
 
     def test_features(self):

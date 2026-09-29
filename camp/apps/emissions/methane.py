@@ -72,7 +72,7 @@ def feature(source):
 
 
 def collection():
-    """The overlay's GeoJSON: every CH4 source, with the licence and attribution on the collection. Cached a day; an import invalidates it."""
+    """The overlay's GeoJSON: every CH4 source. Cached a day; an import invalidates it. Attribution is on the pages and the map, not in the payload."""
     def compute():
         features = [feature(source) for source in sources().order_by('pk')]
         imported = stamp()
@@ -81,8 +81,6 @@ def collection():
             'properties': {
                 'sources': len(features),
                 'imported': imported.imported_at.date().isoformat() if imported else None,
-                'attribution': MethaneSource.ATTRIBUTION, 'license': MethaneSource.LICENSE,
-                'license_url': MethaneSource.LICENSE_URL, 'home_url': MethaneSource.HOME_URL,
             },
             'features': features,
         }
@@ -147,8 +145,6 @@ def source_plumes(source):
         return {
             'source': source.sqid,
             'plumes': plumes,
-            'attribution': MethaneSource.ATTRIBUTION, 'license': MethaneSource.LICENSE,
-            'license_url': MethaneSource.LICENSE_URL, 'home_url': MethaneSource.HOME_URL,
         }
     return cache.get_or_set(key('plumes', source.pk), compute, CACHE_TIMEOUT)
 
