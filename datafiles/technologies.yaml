@@ -50,6 +50,10 @@
   logo: img/logo/tech/redis.svg
   url: https://redis.io/
 
+- name: Memcached
+  logo: img/logo/tech/memcached.svg
+  url: https://memcached.org/
+
 - name: Gunicorn
   logo: img/logo/tech/gunicorn.svg
   url: https://gunicorn.org/
