@@ -431,6 +431,33 @@ class CountyInventory(models.Model):
         return f'{self.eic} {self.county} {self.year}'
 
 
+class CountyNEI(models.Model):
+    """
+    One county's emissions of one pollutant in EPA's National Emissions
+    Inventory for one NEI year, by EPA sector (subsector blank) or, for the
+    livestock-waste sector, by animal type (the nonpoint file's SCC level 3,
+    "Dairy Cattle Waste"). Every source, not only permitted facilities; EPA
+    and CARB model estimates in tons per year, not measurements. Ammonia only
+    for now: CARB's own county inventory (CEPAM) publishes none.
+    """
+
+    sqid = SqidsField(alphabet=shuffle_alphabet('emissions.CountyNEI'))
+    county = models.ForeignKey('regions.Region', verbose_name=_('County'), on_delete=models.CASCADE, related_name='+')
+    year = models.IntegerField(_('NEI year'))
+    pollutant = models.CharField(_('Pollutant code'), max_length=8, default='NH3')
+    sector = models.CharField(_('EPA sector'), max_length=128)
+    subsector = models.CharField(_('Subsector'), max_length=128, blank=True)
+    tons = models.FloatField(_('Emissions (tons/yr)'))
+
+    class Meta:
+        unique_together = [('county', 'year', 'pollutant', 'sector', 'subsector')]
+        verbose_name = 'county NEI row'
+        verbose_name_plural = 'county NEI rows'
+
+    def __str__(self):
+        return f'{self.county} {self.year} {self.pollutant} {self.sector}{" / " + self.subsector if self.subsector else ""}'
+
+
 # CADD's reference code for a count that was reported; every other code
 # (2a-2f, 3a-3g) marks one of CARB's estimates or gap fills.
 REPORTED_REF_CODE = '1'
