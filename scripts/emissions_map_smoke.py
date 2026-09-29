@@ -10,7 +10,9 @@ the view in the URL, tracts, a measure change, back to facilities), a county
 page (outlined, and a boosted year change keeping one map still in Areas) and
 a near-me page (its circle), and checks the scope bar's boosted swaps carry
 the map's current state (back to Facilities, a cleared sector, no repeated
-parameters). Then the Dairies tab: its two views (dairies drawn, counties
+parameters). The toxics scope: the cancer-weighted default (legend, a popup
+as a percent of the Valley total, Areas limited to Total) and benzene in
+pounds. Then the Dairies tab: its two views (dairies drawn, counties
 shaded), an Options menu with Tiles only (a size filter surviving the style
 swap, tiles= in the URL), a measure change redrawing the legend, a sort (a
 boosted swap) keeping Counties and its measure, a table row's name zooming to its dairy
@@ -491,6 +493,35 @@ def main():
         stayed = wait_areas(driver) and driver.execute_script(
             "var list = window.EmissionsFacilityMap.instances(); return list.length === 1 && list[0].view === 'areas';")
         check(results, 'near-me radius button keeps Areas view', stayed and 'view=areas' in driver.current_url, driver.current_url)
+
+        # Toxics scope: the default is the cancer-weighted share; the legend
+        # names it, the popup prints a percent, and the Areas view only
+        # offers Total.
+        driver.get(args.base + '/tools/emissions/map/?toxics=1')
+        check(results, 'toxics map loads (cancer-weighted default)', wait_loaded(driver) and settled_count(driver, feature_count) > 0)
+        legend = driver.execute_script("return document.querySelector('.facility-map-legend').textContent;")
+        check(results, 'the legend names the share measure and its year',
+              'Share of Valley cancer-weighted toxics' in legend and '%' in legend and 'Not a health risk' in legend, legend[:200])
+        check(results, 'the URL carries no pollutant (cancer is the default)', 'pollutant=' not in driver.current_url, driver.current_url)
+        # Open the largest facility's popup from its feature.
+        popup = driver.execute_script("""
+            var m = window.EmissionsFacilityMap.instances()[0];
+            var fs = m.map.querySourceFeatures('facilities').filter(function (f) { return f.properties.value > 0; });
+            fs.sort(function (a, b) { return b.properties.value - a.properties.value; });
+            if (!fs.length) return '';
+            m.openPopup(fs[0], fs[0].geometry.coordinates);
+            var el = document.querySelector('.facility-popup');
+            return el ? el.textContent : '';
+        """)
+        check(results, 'a popup shows the share as a percent of the Valley total', '% of Valley total' in popup and '#1' in popup, popup[:160])
+        driver.get(args.base + '/tools/emissions/map/?toxics=1&view=areas&measure=density')
+        check(results, 'areas view for a share forces Total and disables density', wait_areas(driver) and 'measure=' not in driver.current_url.replace('measure=total', '')
+              and driver.execute_script("return document.querySelectorAll('.facility-map-measure .dropdown-item.is-disabled').length;") == 2, driver.current_url)
+        legend = driver.execute_script("return document.querySelector('.facility-map-legend .legend-title').textContent;")
+        check(results, 'the areas legend is the share title', 'Share of Valley cancer-weighted toxics' in legend, legend)
+        # One toxic in pounds still works, and the old key redirects to it.
+        driver.get(args.base + '/tools/emissions/map/?toxics=1&pollutant=benzene')
+        check(results, 'benzene in pounds', wait_loaded(driver) and 'lbs/yr' in driver.execute_script("return document.querySelector('.facility-map-legend').textContent;"))
 
         driver.get(args.base + '/tools/emissions/dairies/')
         check(results, 'dairies tab loads', wait_dairies(driver))
