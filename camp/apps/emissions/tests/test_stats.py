@@ -3,7 +3,7 @@ from django.http import QueryDict
 from django.test import TestCase
 
 from camp.apps.emissions import cepam, stats
-from camp.apps.emissions.models import CountyInventory, EmissionsRecord, Facility
+from camp.apps.emissions.models import CountyInventory, EmissionsRecord, Facility, ToxicPollutant
 from camp.apps.emissions.pollutants import POLLUTANTS, get_pollutant
 from camp.apps.regions.models import Region
 
@@ -32,16 +32,15 @@ class PollutantTests(TestCase):
     def test_units(self):
         assert POLLUTANTS['nox'].unit == 'tons'
         assert POLLUTANTS['nox'].display(2) == 2
-        assert POLLUTANTS['benzene'].unit == 'lbs'
-        assert POLLUTANTS['benzene'].display(0.001) == 0.001
+        assert POLLUTANTS['cancer'].unit == 'share' and POLLUTANTS['cancer'].unit_label == 'share of Valley total'
+        assert POLLUTANTS['chronic'].weighted and not POLLUTANTS['nox'].weighted
         assert POLLUTANTS['pm'].label == 'Total PM'
         assert 'pm25' not in POLLUTANTS
 
     def test_get_pollutant_falls_back_to_the_kind_default(self):
         assert get_pollutant('rog').key == 'rog'
         assert get_pollutant('bogus').key == 'nox'
-        assert get_pollutant('nox', toxic=True).key == 'benzene'
-        assert get_pollutant('formaldehyde', toxic=True).key == 'formaldehyde'
+        assert get_pollutant('cancer').key == 'nox'
 
 
 class ScopeTests(StatsTestCase):
@@ -59,7 +58,7 @@ class ScopeTests(StatsTestCase):
     def test_toxics_and_county(self):
         s = scope(toxics=1, county='fresno', minor=1)
         assert s.toxics and s.minor
-        assert s.pollutant.key == 'benzene'
+        assert s.pollutant.key == 'cancer'
         assert s.county == self.fresno
 
     def test_query_drops_defaults(self):
@@ -67,6 +66,34 @@ class ScopeTests(StatsTestCase):
         assert scope(year=2023, county='fresno').query() == '?year=2023&county=fresno'
         assert scope().query(pollutant='rog') == '?pollutant=rog'
         assert scope(toxics=1).query() == '?toxics=1'
+
+
+class ToxicResolutionTests(StatsTestCase):
+    def test_weighted_keys_slugs_and_legacy_keys(self):
+        assert stats.resolve_toxic('cancer').weight_field == 'cancer_weight'
+        assert stats.resolve_toxic('chronic').unit == 'share'
+        benzene = stats.resolve_toxic('benzene')
+        assert benzene.key == 'benzene' and benzene.pollutant_id == 1 and benzene.unit == 'lbs'
+        ToxicPollutant.objects.filter(pk=1).update(slug='benzene-x')
+        assert stats.resolve_toxic('benzene').key == 'benzene-x'          # a legacy key resolves by CARB id
+        assert stats.legacy_toxic_slug({'toxics': '1', 'pollutant': 'benzene'}) == 'benzene-x'
+        assert stats.legacy_toxic_slug({'pollutant': 'benzene'}) is None
+        assert stats.legacy_toxic_slug({'toxics': '1', 'pollutant': 'cancer'}) is None
+
+    def test_unknown_and_precursor_fall_back_to_cancer(self):
+        assert stats.resolve_toxic('bogus').key == 'cancer'
+        assert stats.resolve_toxic('ammonia').key == 'cancer'
+        assert scope(toxics=1).pollutant.key == 'cancer'
+        assert scope(toxics=1, pollutant='diesel-pm').pollutant.key == 'diesel-pm'
+
+    def test_toxic_options_order_and_precursor_exclusion(self):
+        keys = [p.key for p in stats.toxic_options(2024)]
+        assert keys == ['cancer', 'chronic', 'diesel-pm', 'benzene', 'isopropyl-alcohol']
+        assert [p.key for p in stats.toxic_options(2023)] == ['cancer', 'chronic', 'benzene']
+
+    def test_query_drops_the_toxics_default(self):
+        assert scope(toxics=1).query() == '?toxics=1'
+        assert scope(toxics=1, pollutant='benzene').query() == '?pollutant=benzene&toxics=1'
 
 
 class TotalsAndRanksTests(StatsTestCase):
@@ -100,6 +127,50 @@ class TotalsAndRanksTests(StatsTestCase):
         rows = stats.with_ranks(stats.facility_table(s), stats.ranks(s))
         assert [(rank, record.facility.name) for rank, record in rows] == [(1, 'TEST CEMENT'), (2, 'TEST PLANT')]
 
+    def test_one_toxic_in_pounds(self):
+        s = scope(toxics=1, pollutant='benzene')
+        assert stats.totals(s)['value'] == 2.0
+        assert stats.totals(scope(toxics=1, pollutant='benzene', minor=1))['value'] == 2.5
+        assert stats.ranks(s) == {self.plant.pk: 1}
+        # The cement plant has no benzene row: its value is None, not missing.
+        assert dict(stats.values(s)) == {self.plant.pk: 2.0, self.cement.pk: None}
+
+    def test_weighted_values_are_shares_that_sum_to_one(self):
+        # 2024 cancer weights: plant 0.4466, cement 23.1, gas station 0.11165 (fixture comments).
+        total = 23.65825
+        everyone = scope(toxics=1, minor=1)
+        shares = dict(stats.values(everyone))
+        assert abs(shares[self.cement.pk] - 23.1 / total) < 1e-9
+        assert abs(shares[self.plant.pk] - 0.4466 / total) < 1e-9
+        assert abs(sum(shares.values()) - 1.0) < 1e-9
+        assert abs(stats.totals(everyone)['value'] - 1.0) < 1e-9
+        # Minor sources off: the shares are of the same Valley total, so they no longer sum to one.
+        assert abs(stats.totals(scope(toxics=1))['value'] - (23.1 + 0.4466) / total) < 1e-9
+        assert stats.ranks(scope(toxics=1)) == {self.cement.pk: 1, self.plant.pk: 2}
+        totals = stats.valley_totals('cancer_weight')
+        assert set(totals) == {2023, 2024}
+        assert abs(totals[2023] - 0.2233) < 1e-9 and abs(totals[2024] - total) < 1e-9
+
+    def test_chronic_measure(self):
+        shares = dict(stats.values(scope(toxics=1, pollutant='chronic', minor=1)))
+        total = 2.0 * 0.005706666666666667 + 10 * 0.003424 + 0.5 * 0.005706666666666667
+        assert abs(shares[self.cement.pk] - 0.03424 / total) < 1e-9
+
+    def test_precursor_is_not_a_toxic(self):
+        # Ammonia has weights 0 and kind precursor: 100 lbs of it move nothing.
+        ToxicPollutant.objects.filter(carb_id='7664417').update(cancer_weight=5.0)
+        cache.clear()
+        assert abs(stats.valley_totals('cancer_weight')[2024] - 23.65825) < 1e-9
+
+    def test_facility_table_sorts_on_the_measure(self):
+        names = [r.facility.name for r in stats.facility_table(scope(toxics=1))]
+        assert names == ['TEST CEMENT', 'TEST PLANT']
+        assert [r.facility.name for r in stats.facility_table(scope(toxics=1), sort='value')] == ['TEST PLANT', 'TEST CEMENT']
+        assert abs(stats.facility_table(scope(toxics=1))[0].value - 23.1 / 23.65825) < 1e-9
+
+    def test_share_baseline_floor(self):
+        assert stats.comparable_baseline(0.0002, 'share') and not stats.comparable_baseline(0.00005, 'share')
+
 
 class BreakdownTests(StatsTestCase):
     def test_sector_breakdown(self):
@@ -125,6 +196,27 @@ class BreakdownTests(StatsTestCase):
     def test_sector_trends(self):
         trends = stats.sector_trends(scope())
         assert trends['glass'] == [{'year': 2023, 'value': 3.0}, {'year': 2024, 'value': 6.0}]
+
+    def test_by_year_and_breakdowns_for_a_weighted_measure(self):
+        s = scope(toxics=1, minor=1)
+        assert [(row['year'], round(row['value'], 6)) for row in stats.by_year(s)] == [(2023, 1.0), (2024, 1.0)]
+        assert round(stats.by_year(scope(toxics=1), facility=self.plant)[1]['value'], 6) == round(0.4466 / 23.65825, 6)
+        sectors = {row['sector']: row for row in stats.sector_breakdown(s)}
+        assert round(sectors['cement-minerals']['value'], 6) == round(23.1 / 23.65825, 6)
+        assert round(sectors['cement-minerals']['share'], 6) == round(23.1 / 23.65825, 6)
+        counties = {row['county']: row['value'] for row in stats.county_breakdown(s)}
+        assert round(counties[self.kern], 6) == round((23.1 + 0.11165) / 23.65825, 6)
+
+    def test_toxics_breakdown(self):
+        breakdown = stats.toxics_breakdown(scope(toxics=1))
+        assert [part['name'] for part in breakdown['parts']] == ['Diesel PM', 'Benzene']
+        assert round(breakdown['parts'][0]['share'], 6) == round(23.1 / (23.1 + 0.4466), 6)
+        assert breakdown['parts'][1]['slug'] == 'benzene'
+        assert round(breakdown['valley_share'], 6) == round((23.1 + 0.4466) / 23.65825, 6)
+        assert stats.toxics_breakdown(scope(toxics=1, county='fresno', year=2023))['parts'][0]['name'] == 'Benzene'
+        assert stats.toxics_breakdown(scope(toxics=1, county='fresno', year=2023, pollutant='benzene')) is not None  # any toxics scope, not only the weighted ones
+        top = stats.toxics_breakdown(scope(toxics=1, minor=1), top=1)
+        assert [part['name'] for part in top['parts']] == ['Diesel PM', 'Other']
 
 
 class CountyContextTests(StatsTestCase):
@@ -167,10 +259,24 @@ class FacilityDetailStatsTests(StatsTestCase):
         assert rows['nox']['county_share'] == 1.0
         assert rows['rog']['value'] is None
 
-    def test_facility_toxics_in_lbs(self):
+    def test_facility_toxics_rows(self):
         rows = stats.facility_toxics(self.plant, 2024)
-        assert [(row['pollutant'].key, row['value']) for row in rows] == [('benzene', 2.0)]
-        assert rows[0]['previous'] is None
+        assert [row['pollutant'].slug for row in rows] == ['benzene', 'isopropyl-alcohol']   # no ammonia; weighted first
+        benzene, isopropyl = rows
+        assert (benzene['value'], benzene['previous'], benzene['previous_year']) == (2.0, 1.0, 2023)
+        assert round(benzene['share'], 6) == round(0.4466 / 23.65825, 6)
+        assert benzene['has_cancer_value'] and benzene['hazard']
+        assert isopropyl['share'] is None and not isopropyl['has_cancer_value'] and not isopropyl['hazard']
+        assert isopropyl['previous'] is None and isopropyl['previous_year'] == 2023
+        assert stats.facility_toxics(self.cement, 2023) == []
+
+    def test_hot_spots(self):
+        record = self.plant.emissions.get(year=2024)
+        assert stats.hot_spots(record) is None
+        EmissionsRecord.objects.filter(pk=record.pk).update(total_score=12.5, hra=4.27)
+        record.refresh_from_db()
+        assert stats.hot_spots(record) == {'total_score': 12.5, 'hra': 4.27, 'chindex': None, 'ahindex': None}
+        assert stats.hot_spots(None) is None
 
     def test_large_changes(self):
         # nox 3 -> 6 is +100%; pm 0.8 -> 1.0 (+25%) and pm10 0.5 -> 0.6 (+20%) are under the 50% threshold.

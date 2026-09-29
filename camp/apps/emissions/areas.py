@@ -95,19 +95,16 @@ def _per(total, divisor, scale=1):
     return total / divisor * scale if total is not None and divisor else None
 
 
-def _area_sums(scope, level, sector, index, field):
-    """{region pk: summed field value} over every facility in `scope` that falls in `level`."""
-    rows = stats.records(scope)
-    if sector:
-        rows = rows.filter(facility__sector=sector)
+def _area_sums(scope, level, sector, index):
+    """{region pk: summed value} over every facility in `scope` that falls in `level`, through stats.values()."""
     sums, counts = {}, {}
-    for facility_id, value in rows.values_list('facility_id', field):
+    for facility_id, value in stats.values(scope, sector=sector):
         region = index.get(facility_id)
         if region is None:
             continue
         counts[region] = counts.get(region, 0) + 1
         sums[region] = sums.get(region, 0.0) + float(value or 0)
-    return counts, sums, rows
+    return counts, sums
 
 
 def area_values(scope, level, sector=None, compare=None):
@@ -122,17 +119,18 @@ def area_values(scope, level, sector=None, compare=None):
     so a region whose only facilities closed before it isn't shown. The
     `_prev` fields are left out (null) when the compared year's total is
     below stats.SMALL_BASELINE_FLOOR for the unit -- too small a baseline
-    for a percent change to mean anything.
+    for a percent change to mean anything. For a weighted measure (`unit ==
+    'share'`) the two rates are meaningless (a share isn't a quantity a
+    square mile or a resident count can divide), so they're always None.
     """
-    field = scope.pollutant.key
-
     def compute():
         index = region_index(level)
-        counts, sums, rows = _area_sums(scope, level, sector, index, field)
+        counts, sums = _area_sums(scope, level, sector, index)
         compare_sums = {}
         if compare:
-            _, compare_sums, _ = _area_sums(replace(scope, year=compare), level, sector, index, field)
+            _, compare_sums = _area_sums(replace(scope, year=compare), level, sector, index)
         miles = region_sq_miles(level)
+        is_share = scope.pollutant.unit == 'share'
         regions = Region.objects.filter(pk__in=counts).values_list('pk', 'sqid', 'metadata')
         result = []
         for pk, sqid, metadata in regions:
@@ -141,8 +139,8 @@ def area_values(scope, level, sector=None, compare=None):
                 'id': sqid,
                 'facilities': counts[pk],
                 'total': total,
-                'per_sq_mi': _per(total, miles.get(pk)),
-                'per_1k_residents': _per(total, (metadata or {}).get('population'), 1000),
+                'per_sq_mi': None if is_share else _per(total, miles.get(pk)),
+                'per_1k_residents': None if is_share else _per(total, (metadata or {}).get('population'), 1000),
             }
             if compare:
                 prev_total = scope.pollutant.display(compare_sums[pk]) if pk in compare_sums else None
@@ -150,11 +148,14 @@ def area_values(scope, level, sector=None, compare=None):
                     prev_total = None
                 row.update({
                     'total_prev': prev_total,
-                    'per_sq_mi_prev': _per(prev_total, miles.get(pk)),
-                    'per_1k_residents_prev': _per(prev_total, (metadata or {}).get('population'), 1000),
+                    'per_sq_mi_prev': None if is_share else _per(prev_total, miles.get(pk)),
+                    'per_1k_residents_prev': None if is_share else _per(prev_total, (metadata or {}).get('population'), 1000),
                 })
             result.append(row)
         result.sort(key=lambda area: area['id'])
+        rows = stats.records(scope)
+        if sector:
+            rows = rows.filter(facility__sector=sector)
         without_point = 0 if level == Region.Type.COUNTY else rows.filter(facility__point=None).count()
         return {
             'level': level, 'unit': scope.pollutant.unit, 'facilities_without_point': without_point,

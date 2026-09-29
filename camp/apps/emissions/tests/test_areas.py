@@ -75,10 +75,17 @@ class AreaValuesTests(AreaTestCase):
         for area in areas.area_values(self.scope, Region.Type.TRACT)['areas']:
             assert area['per_1k_residents'] is None
 
-    def test_toxics_in_pounds(self):
-        make(Region.Type.TRACT, 'T1', AROUND_PLANT)
-        scope = stats.resolve_scope({'year': '2024', 'toxics': '1'})
-        assert areas.area_values(scope, Region.Type.TRACT)['unit'] == 'lbs'
+    def test_toxics_in_pounds_and_weighted_shares(self):
+        tract = make(Region.Type.TRACT, 'T1', AROUND_PLANT, population=2000)
+        lbs = stats.resolve_scope({'year': '2024', 'toxics': '1', 'pollutant': 'benzene'})
+        values = areas.area_values(lbs, Region.Type.TRACT)
+        assert values['unit'] == 'lbs' and values['areas'][0]['total'] == 2.0
+        share = stats.resolve_scope({'year': '2024', 'toxics': '1'})
+        values = areas.area_values(share, Region.Type.TRACT)
+        assert values['unit'] == 'share'
+        [area] = values['areas']
+        assert abs(area['total'] - 0.4466 / 23.65825) < 1e-9
+        assert area['per_sq_mi'] is None and area['per_1k_residents'] is None
 
     def test_sector_filter(self):
         make(Region.Type.TRACT, 'T1', AROUND_PLANT)

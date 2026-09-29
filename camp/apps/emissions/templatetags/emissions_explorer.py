@@ -24,8 +24,31 @@ def quantity(value):
 
 
 @register.filter
+def share_pct(value):
+    """
+    A share of the Valley total (0-1) as a percent with the precision small
+    shares need: '24%', '1.2%', '0.03%', '<0.01%', '0%', '—'.
+    """
+    if value is None:
+        return '—'
+    value = float(value)
+    if value == 0:
+        return '0%'
+    pct = value * 100
+    if pct < 0.01:
+        return '<0.01%'
+    if pct < 0.1:
+        return f'{pct:.2f}%'
+    if pct < 10:
+        return f'{pct:.1f}%'
+    return f'{pct:.0f}%'
+
+
+@register.filter
 def amount(value, pollutant):
-    """A pollutant amount (already in its display unit) formatted; see quantity()."""
+    """A pollutant amount (already in its display unit) formatted: a percent for a weighted measure, else quantity()."""
+    if pollutant.unit == 'share':
+        return share_pct(pollutant.display(value))
     return quantity(pollutant.display(value))
 
 
@@ -77,17 +100,25 @@ def emissions_trend_chart(points, pollutant, year=None, title=None):
     rows = sorted(points, key=lambda row: row['year'])
     years = [row['year'] for row in rows]
     values = [pollutant.display(row['value']) or 0 for row in rows]
+    unit = pollutant.unit
+    if unit == 'share':
+        values = [value * 100 for value in values]
+        unit = '%'
+    default_title = (
+        f'{pollutant.label} toxics, share of Valley total by year (%)' if unit == '%'
+        else f'{pollutant.label} by year ({unit}/yr)'
+    )
     return {
         'chart_id': f'chart-{uuid.uuid4().hex[:8]}',
         'chart': {
             'type': 'line',
-            'unit': pollutant.unit,
+            'unit': unit,
             'x': years,
             'y': values,
             'selected': year if year in years else None,
         },
         'has_data': bool(rows),
-        'title': title or f'{pollutant.label} by year ({pollutant.unit}/yr)',
+        'title': title or default_title,
         'sentence': _change_sentence(dict(zip(years, values)), year),
         'first_year': years[0] if years else None,
         'last_year': years[-1] if years else None,

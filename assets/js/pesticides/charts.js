@@ -49,6 +49,7 @@
       return Math.round(value).toLocaleString('en-US') + ' ' + (value === 1 ? 'application' : 'applications');
     }
     if (unit === 'tons') return full(value) + ' tons/yr';
+    if (unit === '%') return full(value) + '%';
     return full(value) + ' lbs';
   }
 

@@ -6,7 +6,7 @@ from django.test import TestCase
 
 from camp.apps.emissions import areas, cepam, dairies
 from camp.apps.emissions.models import CountyInventory, Dairy, DairyHerd, Digester, SizeClass, herd_totals
-from camp.apps.emissions.pollutants import POLLUTANTS
+from camp.apps.emissions.pollutants import POLLUTANTS, toxic_pollutant
 from camp.apps.emissions.tests.test_areas import AROUND_PLANT, make
 from camp.apps.regions.models import Region
 
@@ -320,7 +320,8 @@ class EmissionsTrendTests(DairyTestCase):
     def test_pollutants_carb_doesnt_report_for_dairy_cattle(self):
         dairy_inventory(self.fresno, rog=2.0)
         assert dairies.emissions_trend(POLLUTANTS['nox'], county=self.fresno) == []
-        assert dairies.emissions_trend(POLLUTANTS['benzene']) == []
+        benzene = toxic_pollutant({'pk': 1, 'slug': 'benzene', 'name': 'Benzene'})
+        assert dairies.emissions_trend(benzene) == []
 
     def test_no_inventory(self):
         assert dairies.emissions_trend(POLLUTANTS['rog']) == []

@@ -1,7 +1,8 @@
 from django.test import TestCase
 
-from camp.apps.emissions.pollutants import POLLUTANTS
+from camp.apps.emissions.pollutants import CANCER, POLLUTANTS, toxic_pollutant
 from camp.apps.emissions.templatetags import emissions_explorer as tags
+from camp.apps.emissions.templatetags.emissions_explorer import amount, share_pct
 
 
 class AmountTests(TestCase):
@@ -22,7 +23,8 @@ class AmountTests(TestCase):
         assert tags.quantity(None) == '—'
 
     def test_toxics_are_already_in_lbs(self):
-        assert tags.amount(2.0, POLLUTANTS['benzene']) == '2.0'
+        benzene = toxic_pollutant({'pk': 1, 'slug': 'benzene', 'name': 'Benzene'})
+        assert tags.amount(2.0, benzene) == '2.0'
 
 
 class PercentTests(TestCase):
@@ -83,3 +85,11 @@ class SparklineTests(TestCase):
         assert svg.startswith('<svg class="sparkline"')
         assert '<polyline points="0.0,12.0 100.0,2.0"' in svg
         assert tags.sparkline([{'year': 2024, 'value': 1.0}]) == ''
+
+
+class SharePctTests(TestCase):
+    def test_formats(self):
+        assert share_pct(None) == '—' and share_pct(0) == '0%'
+        assert share_pct(0.00005) == '<0.01%' and share_pct(0.0003) == '0.03%'
+        assert share_pct(0.012) == '1.2%' and share_pct(0.2437) == '24%' and share_pct(1) == '100%'
+        assert amount(0.012, CANCER) == '1.2%' and amount(2, POLLUTANTS['nox']) == '2.0'
