@@ -44,6 +44,9 @@
 {% else %}
 <p class="has-text-grey">No facilities here reported {{ pollutant.name }} in {{ year }}.</p>
 {% endif %}
+{% if compliance_line %}
+<p class="compliance-line is-size-7 mt-2">{{ compliance_line.tracked|intcomma }} of the {{ compliance_line.facilities|intcomma }} facilities here are tracked in EPA's air compliance system; {{ compliance_line.unaddressed|intcomma }} have an unaddressed high-priority violation <a href="{{ compliance_line.url }}">→</a></p>
+{% endif %}
 {% if toxics_breakdown %}{% include 'emissions/includes/toxics-breakdown.html' %}{% endif %}
 
 <div class="columns mt-5">

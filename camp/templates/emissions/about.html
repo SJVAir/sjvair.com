@@ -62,6 +62,16 @@
 <p>CalEnviroScreen percentiles are OEHHA's, for census tracts, and rank tracts against the rest of California. Figures for a city, ZIP or county are SJVAir's summary of the tracts inside it, not an OEHHA score. The SB 535 disadvantaged-community list shown is CalEPA's 2026 draft until it is final.</p>
 <p>A tract counts toward an area when its centre is inside the area or the area covers at least a tenth of the tract; a place too small to do either is described by the tract it sits in. Tracts OEHHA leaves unscored (too few people, or missing data) count toward populations but not toward percentiles.</p>
 
+<h2 id="compliance">Compliance</h2>
+<p>Facility pages for the largest sources carry a <strong>Compliance (federal Clean Air Act reporting)</strong> card from EPA's ICIS-Air database, where the Valley Air District reports its inspections, notices of violation, settlements and high-priority violations for the sources federal law requires it to track. {% if compliance_stamp and compliance_stamp.data_through %}Reported through {{ compliance_stamp.data_through|date:"N j, Y" }}.{% else %}No compliance data has been imported yet.{% endif %}</p>
+<ul>
+    <li><strong>Only large sources are here.</strong> About 660 of the Valley's 11,000 permitted facilities are tracked in EPA's air compliance system. Smaller sources' inspections and violations aren't published anywhere. A facility with no compliance card isn't known to be in compliance.</li>
+    <li><strong>The record runs late.</strong> The district reports to EPA roughly a year or more behind. Recent quarters look quiet because they haven't been reported yet, not because violations stopped.</li>
+    <li><strong>A notice of violation is an allegation.</strong> Many are settled without any admission, and penalties are negotiated amounts.</li>
+    <li><strong>Names are as reported to EPA</strong> and may be a previous owner's.</li>
+    <li><strong>How facilities are matched.</strong> The district's facility id is embedded in EPA's id, so the match is exact for the Valley Air District's sources; Eastern Kern sources aren't matched yet. The five-year counts are measured back from the newest event EPA has, not from today.</li>
+</ul>
+
 <h2 id="sources">Sources</h2>
 <ul>
     <li><a href="https://ww2.arb.ca.gov/criteria-pollutant-emission-inventory-data">CARB facility emissions inventory (CEIDARS)</a></li>
@@ -71,6 +81,7 @@
     <li><a href="https://ww2.arb.ca.gov/california-dairy-livestock-database-cadd">CARB California Dairy &amp; Livestock Database (CADD)</a></li>
     <li><a href="https://data.ca.gov/dataset/california-public-schools-2025-26">CDE public schools</a>, <a href="https://data.ca.gov/dataset/california-private-schools-2024-25">CDE private schools</a> and <a href="https://data.ca.gov/dataset/community-care-licensing-facilities1">CDSS licensed child-care facilities</a></li>
     <li><a href="https://oehha.ca.gov/calenviroscreen">OEHHA CalEnviroScreen</a> and <a href="https://calepa.ca.gov/envjustice/ghginvest/">CalEPA SB 535 disadvantaged communities</a></li>
+    <li><a href="https://echo.epa.gov/tools/data-downloads">EPA ECHO / ICIS-Air data downloads</a></li>
 </ul>
 
 <p class="is-size-7 has-text-grey">Header photo: <a href="https://commons.wikimedia.org/wiki/File:Pumpjacks,_San_Joaquin_Valley,_California.jpg">Pumpjacks, San Joaquin Valley, California</a> by Downtowngal, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>, resized, cropped and darkened.</p>
