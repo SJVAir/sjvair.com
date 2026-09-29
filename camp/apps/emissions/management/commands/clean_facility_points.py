@@ -32,6 +32,6 @@ class Command(BaseCommand):
         for facility in cleared:
             self.stdout.write(f'  {facility.name} ({facility.get_county()}): {facility.address}')
         if not dry_run and cleared:
-            Facility.objects.filter(pk__in=[facility.pk for facility in cleared]).update(point=None)
+            Facility.objects.filter(pk__in=[facility.pk for facility in cleared]).update(point=None, point_source='')
         verb = 'Would clear' if dry_run else 'Cleared'
         self.stdout.write(f'{verb} {len(cleared)} facility points.')

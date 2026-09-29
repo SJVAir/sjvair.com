@@ -15,8 +15,9 @@ class Command(BaseCommand):
     help = (
         "Re-choose every facility's point from CARB's Pollution Mapping Tool "
         "coordinates and a fresh Census street match (locations.choose_point: "
-        "Census street match, then CARB, then the point it has). Safe to re-run; "
-        "run it after import_ceidars."
+        "Census street match, then CARB, then the point it has). Also records "
+        "where each point came from (point_source). Safe to re-run; run it "
+        "after import_ceidars."
     )
 
     def add_arguments(self, parser):
@@ -47,18 +48,24 @@ class Command(BaseCommand):
             )
             if point is None:
                 counts['none'] += 1
+                source = ''
             elif point is census.get(facility.pk):
                 counts['census'] += 1
+                source = Facility.PointSource.CENSUS
             elif point is carb:
                 counts['carb'] += 1
+                source = Facility.PointSource.CARB
             else:
                 counts['current'] += 1
+                source = facility.point_source  # the point it had keeps the provenance it had
 
-            if not self.same(point, facility.point):
-                distance = self.distance(facility.point, point)
-                if distance is None or distance >= REPORT_METERS:
-                    moved.append((facility, distance))
+            if not self.same(point, facility.point) or source != facility.point_source:
+                if not self.same(point, facility.point):
+                    distance = self.distance(facility.point, point)
+                    if distance is None or distance >= REPORT_METERS:
+                        moved.append((facility, distance))
                 facility.point = point
+                facility.point_source = source
                 changed.append(facility)
 
         for facility, distance in sorted(moved, key=lambda row: -(row[1] or 0)):
@@ -68,7 +75,7 @@ class Command(BaseCommand):
             'Points from: {census} Census street matches, {carb} CARB, {current} kept, {none} none.'.format(**counts)
         )
         if not dry_run and changed:
-            Facility.objects.bulk_update(changed, ['point'], batch_size=1000)
+            Facility.objects.bulk_update(changed, ['point', 'point_source'], batch_size=1000)
         verb = 'Would update' if dry_run else 'Updated'
         self.stdout.write(f'{verb} {len(changed)} facility points ({len(moved)} moved {REPORT_METERS // 1000} km or more, or new).')
 

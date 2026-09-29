@@ -109,6 +109,7 @@ class CleanFacilityPointsTests(TestCase):
         output = self.run_command()
         assert 'Cleared 1 facility points.' in output
         assert Facility.objects.get(name='TEST PLANT').point is None
+        assert Facility.objects.get(name='TEST PLANT').point_source == ''
         assert Facility.objects.get(name='TEST CEMENT').point is not None
         assert Facility.objects.get(name='TEST GAS STATION').point is not None
 

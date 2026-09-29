@@ -53,7 +53,11 @@ def carb(criteria_by_county, toxics_by_county, urls=None):
 
 
 def geocode_all(addresses, **kwargs):
-    return [(address, POINT) for address in addresses]
+    return [(address, POINT, 'census') for address in addresses]
+
+
+def geocode_maptiler(addresses, **kwargs):
+    return [(address, POINT, 'maptiler') for address in addresses]
 
 
 class ImportCeidarsTests(TestCase):
@@ -136,10 +140,22 @@ class ImportCeidarsTests(TestCase):
         assert facility.emissions.count() == 2
 
     def test_geocode_failure_does_not_abort(self):
-        self.run_import(county='fresno', geocode=lambda addresses, **kw: [(a, None) for a in addresses])
+        self.run_import(county='fresno', geocode=lambda addresses, **kw: [(a, None, '') for a in addresses])
         facility = Facility.objects.get(county_code=10, facid=1)
         assert facility.point is None
         assert facility.emissions.count() == 1
+
+    def test_point_source_records_which_geocoder_answered(self):
+        self.run_import(county='fresno')
+        assert Facility.objects.get(county_code=10, facid=1).point_source == Facility.PointSource.CENSUS
+        Facility.objects.all().delete()
+        self.run_import(county='fresno', geocode=geocode_maptiler)
+        assert Facility.objects.get(county_code=10, facid=1).point_source == Facility.PointSource.MAPTILER
+
+    def test_no_point_means_no_source(self):
+        self.run_import(county='fresno', geocode=lambda addresses, **kwargs: [])
+        facility = Facility.objects.get(county_code=10, facid=1)
+        assert facility.point is None and facility.point_source == ''
 
     def test_unknown_district_fails_that_county_and_writes_nothing(self):
         Facility.objects.filter(air_district__external_id='KER').delete()
@@ -162,7 +178,7 @@ class ImportCeidarsTests(TestCase):
 
     def test_point_outside_the_county_is_dropped(self):
         slovakia = Point(19.174, 48.741, srid=4326)
-        self.run_import(county='fresno', geocode=lambda addresses, **kw: [(a, slovakia) for a in addresses])
+        self.run_import(county='fresno', geocode=lambda addresses, **kw: [(a, slovakia, 'census') for a in addresses])
         assert Facility.objects.get(county_code=10, facid=1).point is None
 
     def test_various_locations_are_not_geocoded(self):
@@ -173,7 +189,7 @@ class ImportCeidarsTests(TestCase):
 
         def geocode(addresses, **kw):
             geocoded.extend(addresses)
-            return [(a, POINT) for a in addresses]
+            return [(a, POINT, 'census') for a in addresses]
 
         self.run_import(county='fresno', criteria=criteria, toxics=toxics, geocode=geocode)
         assert geocoded == []

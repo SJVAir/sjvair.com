@@ -100,14 +100,14 @@ class Command(BaseCommand):
             # Batch geocode upfront via Census, falling back to MapTiler for
             # failures. A point outside the facility's county is a bad match
             # and is dropped.
-            positions = {}
+            positions = {}  # (district, facid) -> (Point, source)
             if geocode_index:
                 self.status(f'{label}: geocoding {len(geocode_index)} facilities...')
                 area = locations.county_area(county)
                 addr_to_key = {id(addr): key for key, addr in geocode_index}
-                for addr, point in geocode.resolve_batch([addr for _, addr in geocode_index]):
+                for addr, point, source in geocode.resolve_batch([addr for _, addr in geocode_index]):
                     if locations.plausible(point, area):
-                        positions[addr_to_key[id(addr)]] = point
+                        positions[addr_to_key[id(addr)]] = (point, source)
 
             total_rows = len(merged)
             seen_keys = set()
@@ -147,14 +147,14 @@ class Command(BaseCommand):
 
                 if created:
                     created_count += 1
-                    facility.point = positions.get(key)
+                    facility.point, facility.point_source = positions.get(key, (None, ''))
                     if facility.point is None:
                         geocode_failures += 1
                     facility.save()
                 else:
                     updated_count += 1
                     if regeocode:
-                        facility.point = positions.get(key)
+                        facility.point, facility.point_source = positions.get(key, (None, ''))
                         if facility.point is None:
                             geocode_failures += 1
 
