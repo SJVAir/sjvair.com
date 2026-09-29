@@ -1,4 +1,5 @@
 import tempfile
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -465,6 +466,20 @@ class DairyEndpointTests(TestCase):
         assert block['sources'][0]['viewer_url'].startswith('https://data.carbonmapper.org/#')
         assert 'attribution' not in block  # the popup draws it from the map's own config
         assert self.get('dairy-detail', sqid=self.small.sqid).json()['methane']['sources'] == []
+
+    def test_detail_carries_grants(self):
+        from camp.apps.emissions import ddrdp
+        grant_row = dict(
+            project_name='Big Dairy Digester', dairy_name='Big Dairy', city='Riverdale', county='Fresno',
+            developer='Dev Co', grant_amount=Decimal('1500000'), end_use='Pipeline injection',
+            est_reduction_tco2e=12000.0, awarded=None, operational=None,
+        )
+        ddrdp.apply(ddrdp.match([grant_row]), '2026-06-27')
+        assert self.get('dairy-detail', sqid=self.big.sqid).json()['grants'] == [{
+            'project_name': 'Big Dairy Digester', 'amount': 1500000.0, 'awarded_year': None,
+            'end_use': 'Pipeline injection', 'reduction': 12000.0,
+        }]
+        assert self.get('dairy-detail', sqid=self.small.sqid).json()['grants'] == []
 
 
 class WellEndpointTests(TestCase):

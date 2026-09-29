@@ -155,6 +155,22 @@ class ContentTests(DairyAreaTestCase):
         content = self.get(self.fresno, {'year': '2023', 'pollutant': 'rog'}).content.decode()
         assert '>County <span class="icon' not in content
 
+    def test_ddrdp_tile_on_a_county_page(self):
+        from decimal import Decimal
+
+        from camp.apps.emissions import ddrdp
+        row = dict(
+            project_name='Big Dairy Digester', dairy_name='Big Dairy', city='Riverdale', county='Fresno',
+            developer='Dev Co', grant_amount=Decimal('1500000'), end_use='Pipeline injection',
+            est_reduction_tco2e=12000.0, awarded=None, operational=None,
+        )
+        ddrdp.apply(ddrdp.match([row]), '2026-06-27')
+        content = self.get(self.fresno, {'year': '2023'}).content.decode()
+        assert '<p class="heading">DDRDP digester grants</p>' in content
+        assert '$1,500,000' in content
+        city_content = self.get(self.fresno_city, {'year': '2023'}).content.decode()
+        assert '<p class="heading">DDRDP digester grants</p>' not in city_content
+
     def test_summary_and_digester_chart_count_the_same_dairies(self):
         cdp = make(Region.Type.CDP, 'Plantville', AROUND_PLANT)
         context = self.get(cdp, {'year': '2023'}).context

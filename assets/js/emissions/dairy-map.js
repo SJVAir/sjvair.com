@@ -198,6 +198,12 @@
     if (data.digesters && data.digesters.length) {
       parts.push('<p>Digester' + (data.digesters.length > 1 ? 's' : '') + ': ' + data.digesters.map(digesterText).join('; ') + '</p>');
     }
+    if (data.grants && data.grants.length) {
+      parts.push('<p class="is-size-7">' + data.grants.map(function (g) {
+        return 'CDFA DDRDP grant' + (g.amount !== null ? ', $' + whole(g.amount) : '') + (g.awarded_year ? ' (' + g.awarded_year + ')' : '') +
+          (g.reduction !== null ? ', estimated ' + whole(g.reduction) + ' t CO2e/yr reduction' : '') + ' <span class="has-text-grey">(CDFA\'s estimate)</span>';
+      }).join('<br>') + '</p>');
+    }
     var me = data.methane;
     if (me && me.sources && me.sources.length) {
       var lines = me.sources.map(function (s) {

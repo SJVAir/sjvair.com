@@ -181,4 +181,11 @@ class DairyDetail(generics.Endpoint):
                     'obs': s.observations, 'det': s.detections, 'viewer_url': s.viewer_url,
                 } for s in methane.for_dairy(dairy)],
             },
+            'grants': [{
+                'project_name': g.project_name,
+                'amount': float(g.grant_amount) if g.grant_amount is not None else None,
+                'awarded_year': g.awarded.year if g.awarded else None,
+                'end_use': g.end_use,
+                'reduction': g.est_reduction_tco2e,
+            } for g in dairy.grants.all()],
         }
