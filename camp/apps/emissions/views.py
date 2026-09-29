@@ -15,8 +15,8 @@ from django.urls import reverse
 import vanilla
 
 from camp.apps.ces import stats as ces_stats
-from camp.apps.emissions import areas, dairies, schools, stats
-from camp.apps.emissions.models import Facility, SourceImport
+from camp.apps.emissions import areas, compliance, dairies, schools, stats
+from camp.apps.emissions.models import AirComplianceFacility, Facility, SourceImport
 from camp.apps.emissions.pollutants import CRITERIA
 from camp.apps.regions import nearby
 from camp.apps.regions.models import Region
@@ -103,11 +103,13 @@ def list_filters(get):
     sector = get.get('sector')
     sort = get.get('sort')
     region = get_filter_region(get.get('region'))
+    compliance_value = get.get('compliance')
     return {
         'sector': sector if sector in Facility.Sector.values else None,
         'area': areas.RegionArea(region) if region else None,
         'q': (get.get('q') or '').strip() or None,
         'sort': sort if sort in stats.SORTS else '-value',
+        'compliance': compliance_value if compliance_value in compliance.FILTERS else None,
     }
 
 
@@ -166,6 +168,7 @@ class About(ScopeMixin, vanilla.TemplateView):
             dairy_size_classes=dairies.size_classes(),
             health_values=SourceImport.latest('contable'),
             toxics_import=SourceImport.latest('ceidars-toxics'),
+            compliance_stamp=compliance.stamp(),
             **kwargs,
         )
 
@@ -191,6 +194,7 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
             filters=filters,
             region=filters['area'].region if filters['area'] else None,
             sector_options=sector_options(),
+            compliance_options=compliance.FILTER_LABELS,
             **kwargs,
         )
 
@@ -204,7 +208,9 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
         writer.writerow(
             ['rank', 'facility', 'id', 'air_district', 'county', 'city', 'sector', 'sic_code', 'year']
             + [f'{pollutant.key}_tons' for pollutant in CRITERIA] + toxic_column
+            + ['epa_tracked', 'hpv_status']
         )
+        tracked = {row.facility_id: row for row in AirComplianceFacility.objects.exclude(facility=None).order_by('reported_through')}
         for record in stats.facility_table(scope, **list_filters(self.request.GET)):
             facility = record.facility
             values = [pollutant.display(getattr(record, pollutant.key)) for pollutant in CRITERIA] + ([record.value] if scope.toxics else [])
@@ -213,6 +219,7 @@ class FacilityList(ScopeMixin, vanilla.TemplateView):
                  facility.get_county() or '', facility.get_city(), facility.get_sector_display(),
                  facility.sic_code or '', record.year]
                 + ['' if value is None else value for value in values]
+                + ['yes' if facility.pk in tracked else '', tracked[facility.pk].hpv_status if facility.pk in tracked else '']
             )
         return response
 
@@ -274,6 +281,7 @@ class FacilityDetail(ScopeMixin, vanilla.TemplateView):
             health_values=SourceImport.latest('contable'),
             area_links=area_links(facility_regions),
             facility_ces=ces_stats.tract_record(tract),
+            compliance_card=compliance.facility_card(facility),
             nearby=nearby,
             nearby_shown=schools.SHOWN,
             nearby_groups=nearby_groups(nearby),
@@ -522,6 +530,22 @@ def area_links(regions):
     } for region in regions]
 
 
+def compliance_list_url(scope, area):
+    """
+    The facility list filtered to unaddressed HPVs, narrowed to the area where
+    the list can be: ?county= for a county, ?region= for the types its region
+    filter searches (cities, urban areas, CDPs, ZIPs), nothing for the rest.
+    """
+    params = dict(scope.params(county=None), compliance='hpv')
+    region = getattr(area, 'region', None)
+    if region is not None:
+        if region.type == Region.Type.COUNTY:
+            params['county'] = region.slug
+        elif region.type in areas.FILTER_REGION_TYPES:
+            params['region'] = region.sqid
+    return f"{reverse('emissions:facility-list')}?{urlencode(params)}"
+
+
 def dairy_page_query(scope, year):
     """
     The area's dairy page's query from an emissions scope: the year, and the
@@ -601,6 +625,8 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
         base = self.get_scope()
         area = self.get_area()
         scope = stats.Scope(year=base.year, county=None, pollutant=base.pollutant, minor=base.minor, area=area)
+        summary = compliance.area_summary(scope)
+        compliance_line = dict(summary, url=compliance_list_url(base, area)) if summary else None
         totals = stats.totals(scope)
         total = totals['value'] or 0
         county = self.get_county()
@@ -626,6 +652,7 @@ class AreaPage(ScopeMixin, vanilla.TemplateView):
             top_sectors=stats.sector_breakdown(scope),
             by_year=stats.by_year(scope),
             map_config=self.get_map_config(base),
+            compliance_line=compliance_line,
             dairy_block=dairy_block(base, area, self.dairy_url, county=self.dairy_county()),
             toxics_breakdown=stats.toxics_breakdown(scope) if scope.toxics else None,
             share_unit=scope.pollutant.unit == 'share',

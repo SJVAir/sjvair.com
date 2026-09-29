@@ -353,7 +353,7 @@ def with_ranks(rows, rank_map):
     return [(rank_map.get(record.facility_id), record) for record in rows]
 
 
-def facility_table(scope, *, sector=None, area=None, q=None, sort='-value'):
+def facility_table(scope, *, sector=None, area=None, q=None, sort='-value', compliance=None):
     """
     The scope's facility records, `value` annotated. `area` (an areas.RegionArea)
     narrows the list without touching the scope, so ranks stay scope-wide.
@@ -365,6 +365,11 @@ def facility_table(scope, *, sector=None, area=None, q=None, sort='-value'):
         queryset = queryset.filter(area.q())
     if q:
         queryset = queryset.filter(facility__name__icontains=q)
+    if compliance:
+        from camp.apps.emissions import compliance as _compliance  # compliance imports stats
+        narrowed = _compliance.filter_q(compliance)
+        if narrowed is not None:
+            queryset = queryset.filter(narrowed).distinct()
     sort = sort if sort in SORTS else '-value'
     key = sort.lstrip('-')
     descending = sort.startswith('-')

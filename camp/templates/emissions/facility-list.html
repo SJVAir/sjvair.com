@@ -25,6 +25,13 @@
                     {% for value, label in sector_options %}<option value="{{ value }}"{% if filters.sector == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select></div></div>
             </div>
+            <div class="field">
+                <label class="label" for="facility-compliance">EPA compliance</label>
+                <div class="control"><div class="select is-fullwidth"><select id="facility-compliance" name="compliance">
+                    {% for value, label in compliance_options %}<option value="{{ value }}"{% if filters.compliance == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select></div></div>
+                <p class="help">About 660 large sources; <a href="{% url 'emissions:about' %}#compliance">what this covers</a>.</p>
+            </div>
             {# Cities, urban areas, communities (CDPs) and ZIP codes; a facility counts in the one its map point falls in, as on the region pages. #}
             {% url 'api:v2:emissions:places' as places_url %}{% include 'pesticides/includes/entity-picker.html' with kind='region' label='City, community or ZIP' selected=region search_url=places_url autosubmit=1 %}
             <div class="field is-grouped">

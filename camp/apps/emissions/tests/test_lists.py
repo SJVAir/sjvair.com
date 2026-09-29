@@ -135,12 +135,28 @@ class SectorSortTests(ListTestCase):
         assert 'href="?sort=-share"' in content
 
 
+class ComplianceFilterTests(ListTestCase):
+    def test_list_and_csv_follow_the_filter(self):
+        from camp.apps.emissions.models import AirComplianceFacility
+        AirComplianceFacility.objects.create(facility=self.plant, pgm_sys_id='CASJV00006019C0001', name='X', current_hpv='Unaddressed-Local', match_method='parsed')
+        content = self.client.get(reverse('emissions:facility-list'), {'compliance': 'hpv'}).content.decode()
+        assert 'TEST PLANT' in content and 'TEST CEMENT' not in content
+        assert '<option value="hpv" selected>' in content
+        body = self.client.get(reverse('emissions:facility-list'), {'compliance': 'any', 'format': 'csv'}).content.decode()
+        assert 'TEST PLANT' in body and 'TEST CEMENT' not in body
+        assert 'epa_tracked,hpv_status' in body.splitlines()[0]
+
+
 class FacilityListLayoutTests(ListTestCase):
     def test_filters_sit_in_the_sidebar_with_sectors_a_to_z(self):
         content = self.client.get(reverse('emissions:facility-list')).content.decode()
         form = content[content.index('class="explorer-filters box"'):content.index('</form>')]
         assert 'id="facility-q"' in form and 'id="facility-sector"' in form and 'data-kind="region"' in form
-        labels = re.findall(r'<option value="([^"]+)"[^>]*>([^<]+)</option>', form)
+        # Scoped to the sector select itself: the facility list also carries
+        # a compliance filter select now, whose own options aren't part of
+        # this alphabetical-sectors check.
+        sector_select = form[form.index('id="facility-sector"'):form.index('</select>', form.index('id="facility-sector"'))]
+        labels = re.findall(r'<option value="([^"]+)"[^>]*>([^<]+)</option>', sector_select)
         names = [label for value, label in labels]
         assert names[-1] == 'Other'
         assert names[:-1] == sorted(names[:-1])
